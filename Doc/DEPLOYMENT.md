@@ -1,4 +1,4 @@
-# BasicDiet145 – Deployment Guide
+# BasicDiet145 - Deployment Guide
 
 This guide provides step-by-step instructions for deploying the BasicDiet145 backend to production.
 
@@ -8,7 +8,7 @@ This guide provides step-by-step instructions for deploying the BasicDiet145 bac
 
 Before deploying, ensure you have:
 
-- [ ] MongoDB cluster (MongoDB Atlas, AWS DocumentDB, or self-hosted)
+- [ ] MongoDB Atlas cluster
 - [ ] Firebase project with Auth and Cloud Messaging enabled
 - [ ] Moyasar account with API keys
 - [ ] Domain name with HTTPS/TLS certificate
@@ -64,25 +64,12 @@ services:
       - "3000:3000"
     environment:
       - PORT=3000
-      - MONGO_URI=mongodb://mongo:27017
+      - MONGO_URI=mongodb+srv://user:pass@cluster.mongodb.net/basicdiet145?retryWrites=true&w=majority&appName=basicdiet145
       - MONGO_DB=basicdiet145
       - NODE_ENV=production
     env_file:
       - .env.production
     restart: unless-stopped
-    depends_on:
-      - mongo
-
-  mongo:
-    image: mongo:7
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongo-data:/data/db
-    restart: unless-stopped
-
-volumes:
-  mongo-data:
 ```
 
 ```bash
@@ -129,7 +116,7 @@ services:
 #### Step 2: Connect Repository
 
 1. Go to [Render Dashboard](https://dashboard.render.com/)
-2. Click "New" → "Web Service"
+2. Click "New" -> "Web Service"
 3. Connect your GitHub/GitLab repository
 4. Render will detect `render.yaml` and create the service
 
@@ -183,7 +170,7 @@ eb deploy
 
 #### Step 6: Configure HTTPS
 
-1. Go to EC2 → Load Balancers
+1. Go to EC2 -> Load Balancers
 2. Add HTTPS listener with SSL certificate
 3. Update security groups
 
@@ -318,29 +305,6 @@ ufw enable
    mongodb+srv://username:password@cluster0.xxxxx.mongodb.net/basicdiet145?retryWrites=true&w=majority
    ```
 
-### Option B: Self-Hosted MongoDB
-
-```bash
-# Install MongoDB 7
-curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | sudo gpg --dearmor -o /usr/share/keyrings/mongodb-server-7.0.gpg
-
-echo "deb [ signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list
-
-apt update
-apt install -y mongodb-org
-
-# Start MongoDB
-systemctl start mongod
-systemctl enable mongod
-
-# Connection URI
-MONGO_URI=mongodb://localhost:27017
-```
-
-**⚠️ Important:** Configure MongoDB authentication and bind to localhost only for security.
-
----
-
 ## Environment Variables Setup
 
 Create `.env.production` with production values:
@@ -384,7 +348,7 @@ LOG_LEVEL=info
 LOG_FILE=logs/app.log
 ```
 
-**🔐 Security Notes:**
+**Security Notes:**
 
 - Use strong, randomly generated `JWT_SECRET` (64+ characters)
 - Never commit `.env.production` to git
@@ -483,7 +447,7 @@ Visit: `https://api.yourdomain.com/api-docs`
 
 ### Setup Moyasar Webhook
 
-1. Go to Moyasar Dashboard → Webhooks
+1. Go to Moyasar Dashboard -> Webhooks
 2. Add webhook URL: `https://api.yourdomain.com/webhooks/moyasar`
 3. Select events: `payment.paid`, `payment.failed`
 4. Save webhook secret to `MOYASAR_WEBHOOK_SECRET`

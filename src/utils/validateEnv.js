@@ -22,6 +22,11 @@ function validateEnv() {
     return { ok: false, missing };
   }
 
+  if (!process.env.MONGO_URI.startsWith("mongodb+srv://")) {
+    logger.error("Invalid MONGO_URI: must be a MongoDB Atlas SRV connection string (mongodb+srv://...)");
+    return { ok: false, invalid: ["MONGO_URI"] };
+  }
+
   return { ok: true };
 }
 

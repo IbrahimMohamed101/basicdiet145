@@ -7,19 +7,7 @@ services:
     env_file:
       - .env
     environment:
-      # Default to local dockerized mongo if for local dev
-      MONGO_URI: ${MONGO_URI:-mongodb://mongo:27017/basicdiet145}
+      # Atlas-only: must be provided via .env or host environment
+      MONGO_URI: ${MONGO_URI}
       MONGO_DB: basicdiet145
     restart: always
-    depends_on:
-      - mongo
-
-  mongo:
-    image: mongo:7
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongo_data:/data/db
-
-volumes:
-  mongo_data:

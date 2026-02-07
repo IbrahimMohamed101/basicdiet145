@@ -509,27 +509,32 @@ async function seedPayments(subscriptions, orders) {
     console.log('💳 Seeding Payments...');
 
     const payments = [];
-    const providers = ['moyasar', 'cash', 'bank_transfer'];
+    const providers = ['moyasar'];
     const paymentStatuses = ['initiated', 'paid', 'failed', 'refunded'];
 
     // Payments for subscriptions
     for (const subscription of subscriptions) {
         if (subscription.status !== 'pending_payment') {
             const plan = await Plan.findById(subscription.planId);
+            const invoiceId = `inv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            const paymentId = `pay_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
             payments.push({
                 provider: randomElement(providers),
-                type: 'subscription_purchase',
+                type: 'subscription_activation',
                 status: subscription.status === 'active' ? 'paid' : randomElement(['paid', 'refunded']),
                 amount: plan.price,
                 userId: subscription.userId,
                 subscriptionId: subscription._id,
                 applied: true,
-                providerPaymentId: `pay_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+                providerInvoiceId: invoiceId,
+                providerPaymentId: paymentId
             });
         }
 
         // Premium topup payments
         if (subscription.premiumRemaining > 0 && Math.random() > 0.5) {
+            const invoiceId = `inv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            const paymentId = `pay_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
             payments.push({
                 provider: randomElement(providers),
                 type: 'premium_topup',
@@ -538,7 +543,8 @@ async function seedPayments(subscriptions, orders) {
                 userId: subscription.userId,
                 subscriptionId: subscription._id,
                 applied: true,
-                providerPaymentId: `pay_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+                providerInvoiceId: invoiceId,
+                providerPaymentId: paymentId
             });
         }
     }
@@ -546,15 +552,18 @@ async function seedPayments(subscriptions, orders) {
     // Payments for orders
     for (const order of orders) {
         if (order.paymentStatus === 'paid') {
+            const invoiceId = `inv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            const paymentId = `pay_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
             payments.push({
                 provider: randomElement(providers),
-                type: 'order_purchase',
+                type: 'one_time_order',
                 status: 'paid',
                 amount: order.pricing.total,
                 userId: order.userId,
                 orderId: order._id,
                 applied: true,
-                providerPaymentId: `pay_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+                providerInvoiceId: invoiceId,
+                providerPaymentId: paymentId
             });
         }
     }
@@ -633,8 +642,15 @@ async function main() {
         console.log(`  - Subscriptions: ${subscriptionCount}`);
         console.log(`  - Orders: ${orderCount}\n`);
 
-        // Connect to MongoDB
-        const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/basicdiet145';
+        // Connect to MongoDB (Atlas-only)
+        if (!process.env.MONGO_URI) {
+            throw new Error('Missing MONGO_URI (MongoDB Atlas URI)');
+        }
+        if (!process.env.MONGO_URI.startsWith('mongodb+srv://')) {
+            throw new Error('Invalid MONGO_URI: must be a MongoDB Atlas SRV connection string (mongodb+srv://...)');
+        }
+        const MONGO_URI = process.env.MONGO_URI;
+        console.log(`Connecting to: ${MONGO_URI.replace(/\/\/([^:]+):([^@]+)@/, '//***:***@')}\n`);
         await mongoose.connect(MONGO_URI);
         console.log('✅ Connected to MongoDB\n');
 
@@ -675,7 +691,7 @@ async function main() {
 
         console.log('\n🎯 Next steps:');
         console.log('  1. Test the APIs with: curl -H "Authorization: Bearer dev-client-token" http://localhost:3000/api/subscriptions');
-        console.log('  2. Check MongoDB: docker exec -it <mongo-container> mongosh basicdiet145');
+        console.log('  2. Check MongoDB Atlas with mongosh using the same MONGO_URI in .env');
         console.log('  3. Start building your frontend! 🚀\n');
 
     } catch (error) {

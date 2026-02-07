@@ -231,8 +231,8 @@
 +
 +        // 5. Notify User (Optional)
 +        await notifyUser(sub.userId, {
-+            title: "تم تأكيد طلبك لغدًا",
-+            body: "تم إقفال اختيارات الوجبات وبدء التجهيز لغدًا",
++            title: "Ã˜ÂªÃ™â€¦ Ã˜ÂªÃ˜Â£Ã™Æ’Ã™Å Ã˜Â¯ Ã˜Â·Ã™â€žÃ˜Â¨Ã™Æ’ Ã™â€žÃ˜ÂºÃ˜Â¯Ã™â€¹Ã˜Â§",
++            body: "Ã˜ÂªÃ™â€¦ Ã˜Â¥Ã™â€šÃ™ÂÃ˜Â§Ã™â€ž Ã˜Â§Ã˜Â®Ã˜ÂªÃ™Å Ã˜Â§Ã˜Â±Ã˜Â§Ã˜Âª Ã˜Â§Ã™â€žÃ™Ë†Ã˜Â¬Ã˜Â¨Ã˜Â§Ã˜Âª Ã™Ë†Ã˜Â¨Ã˜Â¯Ã˜Â¡ Ã˜Â§Ã™â€žÃ˜ÂªÃ˜Â¬Ã™â€¡Ã™Å Ã˜Â² Ã™â€žÃ˜ÂºÃ˜Â¯Ã™â€¹Ã˜Â§",
 +            data: { subscriptionId: String(sub._id), date: tomorrow }
 +        });
 +    }
@@ -1628,8 +1628,8 @@
 +    });
 +    if (toStatus === "ready_for_pickup" && sub) {
 +      await notifyUser(sub.userId, {
-+        title: "الطلب جاهز للاستلام",
-+        body: "طلبك أصبح جاهزًا للاستلام من المطعم",
++        title: "Ã˜Â§Ã™â€žÃ˜Â·Ã™â€žÃ˜Â¨ Ã˜Â¬Ã˜Â§Ã™â€¡Ã˜Â² Ã™â€žÃ™â€žÃ˜Â§Ã˜Â³Ã˜ÂªÃ™â€žÃ˜Â§Ã™â€¦",
++        body: "Ã˜Â·Ã™â€žÃ˜Â¨Ã™Æ’ Ã˜Â£Ã˜ÂµÃ˜Â¨Ã˜Â­ Ã˜Â¬Ã˜Â§Ã™â€¡Ã˜Â²Ã™â€¹Ã˜Â§ Ã™â€žÃ™â€žÃ˜Â§Ã˜Â³Ã˜ÂªÃ™â€žÃ˜Â§Ã™â€¦ Ã™â€¦Ã™â€  Ã˜Â§Ã™â€žÃ™â€¦Ã˜Â·Ã˜Â¹Ã™â€¦",
 +        data: { subscriptionId: String(sub._id), date: day.date },
 +      });
 +    }
@@ -2075,7 +2075,7 @@
 *** Delete File: .env.example
 *** Add File: .env.example
 +PORT=3000
-+MONGO_URI=mongodb://localhost:27017/basicdiet
++MONGO_URI=mongodb+srv://<user>:<password>@<cluster>.mongodb.net/basicdiet?retryWrites=true&w=majority&appName=basicdiet145
 +MONGO_DB=basicdiet145
 +APP_TIMEZONE=Asia/Riyadh
 +JWT_SECRET=change_me
@@ -2234,7 +2234,7 @@
 +    env_file:
 +      - .env
 +    environment:
-+      MONGO_URI: mongodb://mongo:27017/basicdiet
++      MONGO_URI: mongodb+srv://<user>:<password>@<cluster>.mongodb.net/basicdiet?retryWrites=true&w=majority&appName=basicdiet145
 +      MONGO_DB: basicdiet145
 +    depends_on:
 +      - mongo

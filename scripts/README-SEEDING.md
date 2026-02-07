@@ -33,8 +33,7 @@
 
 ### المتطلبات
 - Node.js 20+
-- MongoDB قيد التشغيل
-- Docker (اختياري)
+- MongoDB Atlas access
 
 ### الأوامر السريعة
 
@@ -120,11 +119,8 @@ node scripts/seed-demo-data.js --clear --users=100 --subscriptions=150 --orders=
 ### 1. عبر MongoDB Shell
 
 ```bash
-# الدخول إلى MongoDB
-docker exec -it basicdiet145-mongo-1 mongosh basicdiet145
-
-# أو إذا كان MongoDB محلي
-mongosh basicdiet145
+# Connect to MongoDB Atlas (use the same URI from .env)
+mongosh "mongodb+srv://<user>:<password>@<cluster>.mongodb.net/basicdiet145?retryWrites=true&w=majority&appName=basicdiet145"
 ```
 
 ثم:
@@ -240,10 +236,7 @@ node scripts/seed-demo-data.js --clear \
 ### خطأ: Connection refused
 
 ```bash
-# تأكد من تشغيل MongoDB
-docker-compose up -d mongo
-
-# أو تحقق من MONGO_URI في .env
+# Verify MONGO_URI in .env points to MongoDB Atlas
 ```
 
 ### خطأ: Duplicate key error
