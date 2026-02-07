@@ -1,0 +1,2258 @@
+*** Begin Patch
+*** Delete File: src/app.js
+*** Add File: src/app.js
++const express = require("express");
++const helmet = require("helmet");
++const cors = require("cors");
++const mongoose = require("mongoose");
++const swaggerUi = require("swagger-ui-express");
++const { toNodeHandler } = require("better-auth/node");
++const { auth } = require("./auth/betterAuth");
++const routes = require("./routes");
++const swaggerSpec = require("./docs/swagger");
++const { logger } = require("./utils/logger");
++
++function createApp() {
++  const app = express();
++
++  const trustProxy = process.env.TRUST_PROXY;
++  if (trustProxy) {
++    const value = trustProxy === "true" ? 1 : Number(trustProxy);
++    if (!Number.isNaN(value)) {
++      app.set("trust proxy", value);
++    }
++  }
++
++  app.use(helmet());
++
++  const allowedOrigins = (process.env.CORS_ORIGINS || "")
++    .split(",")
++    .map((o) => o.trim())
++    .filter(Boolean);
++
++  const corsOptions = {
++    origin: (origin, callback) => {
++      if (!origin || allowedOrigins.length === 0) return callback(null, true);
++      if (allowedOrigins.includes(origin)) return callback(null, true);
++      return callback(new Error("Not allowed by CORS"));
++    },
++    credentials: true,
++  };
++
++  app.use(cors(corsOptions));
++  app.options("*", cors(corsOptions));
++
++  // Better Auth handler must run before express.json
++  app.all("/api/dashboard-auth/*", toNodeHandler(auth));
++
++  app.use(express.json({ limit: "1mb" }));
++
++  /**
++   * @openapi
++   * /health:
++   *   get:
++   *     summary: Health check
++   *     description: Returns API and database connectivity status.
++   *     responses:
++   *       200:
++   *         description: OK
++   *       503:
++   *         description: Database unavailable
++   */
++  app.get("/health", async (_req, res) => {
++    const state = mongoose.connection.readyState;
++    if (state !== 1) {
++      return res.status(503).json({ ok: false, db: { state } });
++    }
++    try {
++      if (mongoose.connection.db) {
++        await mongoose.connection.db.admin().ping();
++      }
++      return res.status(200).json({ ok: true, db: { state: "up" } });
++    } catch (err) {
++      logger.error("Health check DB ping failed", { error: err.message });
++      return res.status(503).json({ ok: false, db: { state: "down" } });
++    }
++  });
++
++  app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
++
++  app.use("/api", routes);
++
++  // Basic error handler to capture unhandled errors
++  app.use((err, _req, res, _next) => {
++    if (err && err.message === "Not allowed by CORS") {
++      return res.status(403).json({ ok: false, error: { code: "CORS", message: err.message } });
++    }
++    logger.error("Unhandled error", { error: err.message, stack: err.stack });
++    res.status(500).json({ ok: false, error: { code: "INTERNAL", message: "Unexpected error" } });
++  });
++
++  return app;
++}
++
++module.exports = { createApp };
+*** Delete File: src/index.js
+*** Add File: src/index.js
++require("dotenv").config();
++
++const { createServer } = require("http");
++const { createApp } = require("./app");
++const { connectDb } = require("./db");
++const { startJobs } = require("./jobs");
++const { validateEnv } = require("./utils/validateEnv");
++const { logger } = require("./utils/logger");
++
++const PORT = process.env.PORT || 3000;
++
++const app = createApp();
++const server = createServer(app);
++
++const envCheck = validateEnv();
++if (!envCheck.ok) {
++  process.exit(1);
++}
++
++connectDb()
++  .then(() => {
++    startJobs();
++    server.listen(PORT, () => {
++      logger.info("API listening", { port: PORT });
++    });
++  })
++  .catch((err) => {
++    logger.error("Failed to connect DB", { error: err.message, stack: err.stack });
++    process.exit(1);
++  });
+*** Delete File: src/jobs/index.js
+*** Add File: src/jobs/index.js
++const { formatInTimeZone } = require("date-fns-tz");
++const { processDailyCutoff } = require("../services/automationService");
++const Setting = require("../models/Setting");
++const { KSA_TIMEZONE } = require("../utils/date");
++const { logger } = require("../utils/logger");
++
++async function getSettingValue(key, fallback) {
++  const setting = await Setting.findOne({ key }).lean();
++  return setting ? setting.value : fallback;
++}
++
++function startJobs() {
++    logger.info("Jobs starting");
++    let lastRunDate = null;
++
++    // Check every minute to run cutoff once per KSA day after the configured time.
++    setInterval(async () => {
++        try {
++            const cutoffTime = await getSettingValue("cutoff_time", "00:00");
++            const now = new Date();
++            const nowTime = formatInTimeZone(now, KSA_TIMEZONE, "HH:mm");
++            const todayKSA = formatInTimeZone(now, KSA_TIMEZONE, "yyyy-MM-dd");
++
++            if (nowTime >= cutoffTime && lastRunDate !== todayKSA) {
++                await processDailyCutoff();
++                lastRunDate = todayKSA;
++            }
++        } catch (err) {
++            logger.error("Jobs error", { error: err.message, stack: err.stack });
++        }
++    }, 60 * 1000);
++}
++
++module.exports = { startJobs };
+*** Delete File: src/services/automationService.js
+*** Add File: src/services/automationService.js
++const SubscriptionDay = require("../models/SubscriptionDay");
++const Meal = require("../models/Meal");
++const { getTomorrowKSADate } = require("../utils/date");
++const { notifyUser } = require("../utils/notify");
++const { writeLog } = require("../utils/log");
++const { getEffectiveDeliveryDetails } = require("../utils/delivery");
++const { logger } = require("../utils/logger");
++
++async function processDailyCutoff() {
++    const tomorrow = getTomorrowKSADate();
++    logger.info("Automation cutoff start", { date: tomorrow });
++
++    // 1. Find all active subscriptions that have an "open" day for tomorrow
++    // and are due for processing.
++    const openDays = await SubscriptionDay.find({
++        date: tomorrow,
++        status: "open"
++    }).populate({ path: "subscriptionId", populate: { path: "planId" } });
++
++    for (const day of openDays) {
++        const sub = day.subscriptionId;
++        if (!sub || sub.status !== "active") continue;
++
++        const mealsPerDay = sub.planId ? sub.planId.mealsPerDay : 1;
++
++        // 2. Auto-assign meals if selections are empty
++        if (day.selections.length === 0 && day.premiumSelections.length === 0) {
++            logger.info("Automation auto-assign meals", { subscriptionId: String(sub._id) });
++
++            // Get some default meals (simplified logic)
++            const defaultMeals = await Meal.find({ isPremium: false }).limit(mealsPerDay).lean();
++            day.selections = defaultMeals.map(m => m._id);
++            day.assignedByKitchen = true;
++        }
++
++        // 3. Capture Snapshot
++        if (!day.lockedSnapshot) {
++            const { address, deliveryWindow } = getEffectiveDeliveryDetails(sub, day);
++            day.lockedSnapshot = {
++            selections: day.selections,
++            premiumSelections: day.premiumSelections,
++            addonsOneTime: day.addonsOneTime,
++            subscriptionAddons: sub.addonSubscriptions || [],
++            address,
++            deliveryWindow,
++            pricing: {
++                planId: sub.planId,
++                premiumPrice: sub.premiumPrice,
++                addons: sub.addonSubscriptions,
++            },
++            mealsPerDay,
++        };
++            day.lockedAt = new Date();
++        }
++
++        // 4. Transition to locked
++        day.status = "locked";
++        await day.save();
++
++        await writeLog({
++            entityType: "subscription_day",
++            entityId: day._id,
++            action: "auto_lock",
++            byRole: "system",
++            meta: { date: tomorrow }
++        });
++
++        // 5. Notify User (Optional)
++        await notifyUser(sub.userId, {
++            title: "تم تأكيد طلبك لغدًا",
++            body: "تم إقفال اختيارات الوجبات وبدء التجهيز لغدًا",
++            data: { subscriptionId: String(sub._id), date: tomorrow }
++        });
++    }
++
++    logger.info("Automation cutoff finished", { count: openDays.length });
++}
++
++module.exports = { processDailyCutoff };
+*** Delete File: src/controllers/adminController.js
+*** Add File: src/controllers/adminController.js
++const Plan = require("../models/Plan");
++const Setting = require("../models/Setting");
++const DashboardUser = require("../models/DashboardUser");
++const ActivityLog = require("../models/ActivityLog");
++const NotificationLog = require("../models/NotificationLog");
++const { processDailyCutoff } = require("../services/automationService");
++const { logger } = require("../utils/logger");
++
++async function createPlan(req, res) {
++  const { name, daysCount, mealsPerDay, grams, price } = req.body || {};
++  if (!name || !daysCount || !mealsPerDay || !grams || !price) {
++    return res.status(400).json({ ok: false, error: { code: "INVALID", message: "Missing fields" } });
++  }
++
++  const plan = await Plan.create({ name, daysCount, mealsPerDay, grams, price });
++  return res.status(201).json({ ok: true, data: { id: plan.id } });
++}
++
++async function updateSetting(key, value, res) {
++  await Setting.findOneAndUpdate({ key }, { value }, { upsert: true });
++  return res.status(200).json({ ok: true });
++}
++
++async function updateCutoff(req, res) {
++  const { time } = req.body || {};
++  if (!time) return res.status(400).json({ ok: false, error: { code: "INVALID", message: "Missing time" } });
++  return updateSetting("cutoff_time", time, res);
++}
++
++async function updateDeliveryWindows(req, res) {
++  const { windows } = req.body || {};
++  if (!windows || !Array.isArray(windows))
++    return res.status(400).json({ ok: false, error: { code: "INVALID", message: "Missing windows array" } });
++  return updateSetting("delivery_windows", windows, res);
++}
++
++async function updateSkipAllowance(req, res) {
++  const { days } = req.body || {};
++  if (days === undefined)
++    return res.status(400).json({ ok: false, error: { code: "INVALID", message: "Missing days" } });
++  return updateSetting("skip_allowance", days, res);
++}
++
++async function updatePremiumPrice(req, res) {
++  const { price } = req.body || {};
++  if (price === undefined)
++    return res.status(400).json({ ok: false, error: { code: "INVALID", message: "Missing price" } });
++  return updateSetting("premium_price", price, res);
++}
++
++async function listDashboardUsers(_req, res) {
++  const users = await DashboardUser.find().sort({ createdAt: -1 }).lean();
++  return res.status(200).json({ ok: true, data: users });
++}
++
++async function createDashboardUser(req, res) {
++  const { email, role } = req.body || {};
++  if (!email || !role) {
++    return res.status(400).json({ ok: false, error: { code: "INVALID", message: "Missing email or role" } });
++  }
++  const user = await DashboardUser.create({ email, role });
++  return res.status(201).json({ ok: true, data: { id: user.id } });
++}
++
++async function listActivityLogs(req, res) {
++  const {
++    entityType,
++    entityId,
++    action,
++    from,
++    to,
++    byRole,
++    page = 1,
++    limit = 50,
++  } = req.query || {};
++
++  const query = {};
++  if (entityType) query.entityType = entityType;
++  if (entityId) query.entityId = entityId;
++  if (action) query.action = action;
++  if (byRole) query.byRole = byRole;
++  if (from || to) {
++    query.createdAt = {};
++    if (from) query.createdAt.$gte = new Date(from);
++    if (to) query.createdAt.$lte = new Date(to);
++  }
++
++  const safeLimit = Math.min(Number(limit) || 50, 200);
++  const safePage = Math.max(Number(page) || 1, 1);
++  const skip = (safePage - 1) * safeLimit;
++
++  const [logs, total] = await Promise.all([
++    ActivityLog.find(query)
++      .sort({ createdAt: -1 })
++      .skip(skip)
++      .limit(safeLimit)
++      .lean(),
++    ActivityLog.countDocuments(query),
++  ]);
++
++  return res.status(200).json({
++    ok: true,
++    data: logs,
++    meta: {
++      page: safePage,
++      limit: safeLimit,
++      total,
++      totalPages: Math.ceil(total / safeLimit),
++    },
++  });
++}
++
++async function listNotificationLogs(req, res) {
++  const { userId, from, to, page = 1, limit = 50 } = req.query || {};
++  const query = {};
++  if (userId) query.userId = userId;
++  if (from || to) {
++    query.createdAt = {};
++    if (from) query.createdAt.$gte = new Date(from);
++    if (to) query.createdAt.$lte = new Date(to);
++  }
++
++  const safeLimit = Math.min(Number(limit) || 50, 200);
++  const safePage = Math.max(Number(page) || 1, 1);
++  const skip = (safePage - 1) * safeLimit;
++
++  const [logs, total] = await Promise.all([
++    NotificationLog.find(query).sort({ createdAt: -1 }).skip(skip).limit(safeLimit).lean(),
++    NotificationLog.countDocuments(query),
++  ]);
++
++  return res.status(200).json({
++    ok: true,
++    data: logs,
++    meta: { page: safePage, limit: safeLimit, total, totalPages: Math.ceil(total / safeLimit) },
++  });
++}
++
++module.exports = {
++  createPlan,
++  updateCutoff,
++  updateDeliveryWindows,
++  updateSkipAllowance,
++  updatePremiumPrice,
++  listDashboardUsers,
++  createDashboardUser,
++  listActivityLogs,
++  listNotificationLogs,
++  triggerDailyCutoff: async (req, res) => {
++    try {
++      await processDailyCutoff();
++      return res.status(200).json({ ok: true, message: "Cutoff processed successfully" });
++    } catch (err) {
++      logger.error("Cutoff trigger error", { error: err.message, stack: err.stack });
++      return res.status(500).json({ ok: false, message: "Cutoff processing failed" });
++    }
++  }
++};
+*** Delete File: src/auth/betterAuth.js
+*** Add File: src/auth/betterAuth.js
++const { MongoClient } = require("mongodb");
++const { betterAuth } = require("better-auth");
++const { mongodbAdapter } = require("better-auth/adapters/mongodb");
++const { logger } = require("../utils/logger");
++
++const mongoUri = process.env.MONGO_URI;
++if (!mongoUri) {
++  throw new Error("Missing MONGO_URI for Better Auth");
++}
++
++const dbName = process.env.MONGO_DB || "basicdiet145";
++const client = new MongoClient(mongoUri);
++client.connect().catch((err) => {
++  logger.error("Better Auth MongoDB connection failed", { error: err.message, stack: err.stack });
++});
++
++const db = client.db(dbName);
++
++const auth = betterAuth({
++  database: mongodbAdapter(db),
++  emailAndPassword: { enabled: true },
++});
++
++module.exports = { auth };
+*** Delete File: src/controllers/webhookController.js
+*** Add File: src/controllers/webhookController.js
++const mongoose = require("mongoose");
++const { addDays } = require("date-fns");
++const Subscription = require("../models/Subscription");
++const SubscriptionDay = require("../models/SubscriptionDay");
++const Payment = require("../models/Payment");
++const Plan = require("../models/Plan");
++const { writeLog } = require("../utils/log");
++const { logger } = require("../utils/logger");
++const { toKSADateString } = require("../utils/date");
++
++function normalizePaymentStatus(payload, eventType) {
++  if (payload && payload.status) return payload.status;
++  if (!eventType) return undefined;
++  const normalized = String(eventType).toLowerCase();
++  if (normalized.includes("paid")) return "paid";
++  if (normalized.includes("failed")) return "failed";
++  if (normalized.includes("canceled") || normalized.includes("cancelled")) return "canceled";
++  return undefined;
++}
++
++async function handleMoyasarWebhook(req, res) {
++  const payload = req.body || {};
++  const secret = process.env.MOYASAR_WEBHOOK_SECRET;
++  if (secret && payload.secret_token !== secret) {
++    return res.status(401).json({ ok: false, error: { code: "UNAUTHORIZED", message: "Invalid webhook token" } });
++  }
++
++  const eventType = payload.type || payload.event;
++  const data = payload.data || payload.payment || payload;
++  const paymentStatus = normalizePaymentStatus(data, eventType);
++  const isPaid = paymentStatus === "paid";
++
++  const paymentId = data.id;
++  const invoiceId = data.invoice_id || data.invoiceId;
++  const metadata = data.metadata || {};
++
++  if (!paymentId && !invoiceId) {
++    return res.status(400).json({ ok: false, error: { code: "INVALID", message: "Missing payment identifiers" } });
++  }
++
++  const session = await mongoose.startSession();
++  session.startTransaction();
++  try {
++    let payment = await Payment.findOne({
++      provider: "moyasar",
++      $or: [
++        paymentId ? { providerPaymentId: paymentId } : null,
++        invoiceId ? { providerInvoiceId: invoiceId } : null,
++      ].filter(Boolean),
++    }).session(session);
++
++    if (!payment) {
++      try {
++        const created = await Payment.create([
++          {
++            provider: "moyasar",
++            type: metadata.type || "premium_topup",
++            status: isPaid ? "paid" : "initiated",
++            amount: data.amount || 0,
++            currency: data.currency || "SAR",
++            userId: metadata.userId,
++            subscriptionId: metadata.subscriptionId,
++            providerInvoiceId: invoiceId,
++            providerPaymentId: paymentId,
++            metadata,
++            paidAt: isPaid ? new Date() : undefined,
++          },
++        ], { session });
++        payment = created[0];
++      } catch (err) {
++        if (err && err.code === 11000) {
++          payment = await Payment.findOne({
++            provider: "moyasar",
++            $or: [
++              paymentId ? { providerPaymentId: paymentId } : null,
++              invoiceId ? { providerInvoiceId: invoiceId } : null,
++            ].filter(Boolean),
++          }).session(session);
++        } else {
++          throw err;
++        }
++      }
++    } else {
++      if (paymentId && payment.providerPaymentId !== paymentId) payment.providerPaymentId = paymentId;
++      if (invoiceId && payment.providerInvoiceId !== invoiceId) payment.providerInvoiceId = invoiceId;
++      if (data.amount) payment.amount = data.amount;
++      if (data.currency) payment.currency = data.currency;
++      if (metadata && Object.keys(metadata).length) payment.metadata = metadata;
++      if (paymentStatus && payment.status !== paymentStatus) payment.status = paymentStatus;
++      if (isPaid && !payment.paidAt) payment.paidAt = new Date();
++      await payment.save({ session });
++    }
++
++    if (!isPaid) {
++      await session.commitTransaction();
++      session.endSession();
++      return res.status(200).json({ ok: true, message: "Ignored non-paid status" });
++    }
++
++    if (payment.applied) {
++      await session.commitTransaction();
++      session.endSession();
++      return res.status(200).json({ ok: true });
++    }
++
++    const type = payment.type || metadata.type;
++    let applied = false;
++    let unappliedReason;
++
++    const claim = await Payment.findOneAndUpdate(
++      { _id: payment._id, applied: false },
++      { $set: { applied: true, status: "paid" } },
++      { new: true, session }
++    );
++    if (!claim) {
++      await session.commitTransaction();
++      session.endSession();
++      return res.status(200).json({ ok: true });
++    }
++
++    if (type === "premium_topup") {
++      const count = parseInt(metadata.premiumCount || metadata.count || 0, 10);
++      if (count > 0 && metadata.subscriptionId) {
++        const update = await Subscription.updateOne(
++          { _id: metadata.subscriptionId },
++          { $inc: { premiumRemaining: count } },
++          { session }
++        );
++        if (update.modifiedCount) {
++          applied = true;
++          await writeLog({
++            entityType: "subscription",
++            entityId: metadata.subscriptionId,
++            action: "premium_topup_webhook",
++            byRole: "system",
++            meta: { count, paymentId },
++          });
++        } else {
++          unappliedReason = "subscription_not_found";
++        }
++      } else {
++        unappliedReason = "invalid_metadata";
++      }
++    } else if (type === "one_time_addon") {
++      if (metadata.subscriptionId && metadata.addonId && metadata.date) {
++        const updatedDay = await SubscriptionDay.findOneAndUpdate(
++          { subscriptionId: metadata.subscriptionId, date: metadata.date, status: "open" },
++          { $addToSet: { addonsOneTime: metadata.addonId } },
++          { new: true, session }
++        );
++        if (updatedDay) {
++          applied = true;
++          await writeLog({
++            entityType: "subscription_day",
++            entityId: updatedDay._id,
++            action: "one_time_addon_webhook",
++            byRole: "system",
++            meta: { addonId: metadata.addonId, date: metadata.date, paymentId },
++          });
++        } else {
++          const dayCheck = await SubscriptionDay.findOne(
++            { subscriptionId: metadata.subscriptionId, date: metadata.date },
++            { status: 1 }
++          ).session(session).lean();
++          if (!dayCheck) {
++            unappliedReason = "day_not_found";
++          } else {
++            unappliedReason = `day_not_open:${dayCheck.status}`;
++          }
++        }
++      } else {
++        unappliedReason = "invalid_metadata";
++      }
++    } else if (type === "subscription_activation") {
++      if (metadata.subscriptionId) {
++        const sub = await Subscription.findById(metadata.subscriptionId).session(session);
++        if (!sub) {
++          unappliedReason = "subscription_not_found";
++        } else if (sub.status !== "pending_payment") {
++          unappliedReason = `subscription_not_pending:${sub.status}`;
++        } else {
++          const plan = await Plan.findById(sub.planId).lean();
++          const start = sub.startDate ? new Date(sub.startDate) : new Date();
++          const end = plan ? addDays(start, plan.daysCount - 1) : sub.endDate || start;
++          sub.status = "active";
++          sub.endDate = end;
++          sub.validityEndDate = end;
++          await sub.save({ session });
++
++          const existingDays = await SubscriptionDay.countDocuments({ subscriptionId: sub._id }).session(session);
++          if (!existingDays && plan) {
++            const dayEntries = [];
++            for (let i = 0; i < plan.daysCount; i++) {
++              const currentDate = addDays(start, i);
++              dayEntries.push({
++                subscriptionId: sub._id,
++                date: toKSADateString(currentDate),
++                status: "open",
++              });
++            }
++            await SubscriptionDay.insertMany(dayEntries, { session });
++          }
++          applied = true;
++        }
++      } else {
++        unappliedReason = "invalid_metadata";
++      }
++    }
++
++    if (!applied) {
++      if (unappliedReason) {
++        const mergedMetadata = Object.assign({}, payment.metadata || {}, { unappliedReason });
++        await Payment.updateOne(
++          { _id: payment._id },
++          { $set: { applied: true, status: "paid", metadata: mergedMetadata } },
++          { session }
++        );
++        await writeLog({
++          entityType: "payment",
++          entityId: payment._id,
++          action: "payment_unapplied",
++          byRole: "system",
++          meta: { reason: unappliedReason, paymentId },
++        });
++      } else {
++        await Payment.updateOne({ _id: payment._id }, { $set: { applied: false } }, { session });
++      }
++    }
++
++    await session.commitTransaction();
++    session.endSession();
++    return res.status(200).json({ ok: true });
++  } catch (err) {
++    await session.abortTransaction();
++    session.endSession();
++    logger.error("Webhook error", { error: err.message, stack: err.stack });
++    return res.status(500).json({ ok: false });
++  }
++}
++
++module.exports = { handleMoyasarWebhook };
+*** Delete File: src/controllers/subscriptionController.js
+*** Add File: src/controllers/subscriptionController.js
++const mongoose = require("mongoose");
++const { addDays } = require("date-fns");
++const Plan = require("../models/Plan");
++const Addon = require("../models/Addon");
++const Subscription = require("../models/Subscription");
++const SubscriptionDay = require("../models/SubscriptionDay");
++const Payment = require("../models/Payment");
++const Setting = require("../models/Setting");
++const {
++  getTodayKSADate,
++  getTomorrowKSADate,
++  isBeforeCutoff,
++  isInSubscriptionRange,
++  isOnOrAfterKSADate,
++  isValidKSADateString,
++  toKSADateString,
++} = require("../utils/date");
++const { canTransition } = require("../utils/state");
++const { writeLog } = require("../utils/log");
++const { getEffectiveDeliveryDetails } = require("../utils/delivery");
++const { createInvoice } = require("../services/moyasarService");
++const { fulfillSubscriptionDay } = require("../services/fulfillmentService");
++const { logger } = require("../utils/logger");
++
++async function getSettingValue(key, fallback) {
++  const setting = await Setting.findOne({ key }).lean();
++  return setting ? setting.value : fallback;
++}
++
++async function calcTotal(plan, premiumCount, addonIds) {
++  const premiumPrice = await getSettingValue("premium_price", 20);
++  const addonDocs = await Addon.find({ _id: { $in: addonIds } }).lean();
++
++  let addonsSum = 0;
++  for (const addon of addonDocs) {
++    if (addon.type === "subscription") {
++      addonsSum += addon.price * plan.daysCount;
++    } else {
++      addonsSum += addon.price;
++    }
++  }
++
++  const total = plan.price + premiumCount * premiumPrice + addonsSum;
++  return { total, breakdown: { plan: plan.price, premium: premiumCount * premiumPrice, addons: addonsSum }, premiumPrice, addonDocs };
++}
++
++function validateFutureDateOrThrow(date, sub) {
++  if (!isValidKSADateString(date)) {
++    const err = new Error("Invalid date format");
++    err.code = "INVALID_DATE";
++    throw err;
++  }
++  const tomorrow = getTomorrowKSADate();
++  if (!isOnOrAfterKSADate(date, tomorrow)) {
++    const err = new Error("Date must be from tomorrow onward");
++    err.code = "INVALID_DATE";
++    throw err;
++  }
++  const endDate = sub.validityEndDate || sub.endDate;
++  if (!isInSubscriptionRange(date, endDate)) {
++    const err = new Error("Date outside subscription validity");
++    err.code = "INVALID_DATE";
++    throw err;
++  }
++}
++
++function ensureActive(subscription, dateStr) {
++  if (subscription.status !== "active") {
++    const err = new Error("Subscription not active");
++    err.code = "SUB_INACTIVE";
++    throw err;
++  }
++  const endDate = subscription.validityEndDate || subscription.endDate;
++  if (endDate) {
++    const endStr = toKSADateString(endDate);
++    const compareTo = dateStr || getTodayKSADate();
++    if (compareTo > endStr) {
++      const err = new Error("Subscription expired");
++      err.code = "SUB_EXPIRED";
++      throw err;
++    }
++  }
++}
++
++async function previewSubscription(req, res) {
++  const { planId, premiumCount = 0, addons = [] } = req.body || {};
++  const plan = await Plan.findById(planId).lean();
++  if (!plan) {
++    return res.status(404).json({ ok: false, error: { code: "NOT_FOUND", message: "Plan not found" } });
++  }
++
++  const { total, breakdown } = await calcTotal(plan, premiumCount, addons.map((a) => a.addonId));
++  return res.status(200).json({ ok: true, data: { total, breakdown } });
++}
++
++async function checkoutSubscription(req, res) {
++  const {
++    planId,
++    premiumCount = 0,
++    addons = [],
++    deliveryMode,
++    deliveryAddress,
++    deliveryWindow,
++    startDate,
++  } = req.body || {};
++
++  const plan = await Plan.findById(planId).lean();
++  if (!plan) {
++    return res.status(404).json({ ok: false, error: { code: "NOT_FOUND", message: "Plan not found" } });
++  }
++  if (!deliveryMode) {
++    return res.status(400).json({ ok: false, error: { code: "INVALID", message: "Missing deliveryMode" } });
++  }
++  if (deliveryMode === "delivery") {
++    if (!deliveryAddress) {
++      return res.status(400).json({ ok: false, error: { code: "INVALID", message: "Missing deliveryAddress" } });
++    }
++    const windows = await getSettingValue("delivery_windows", []);
++    if (deliveryWindow && windows.length && !windows.includes(deliveryWindow)) {
++      return res.status(400).json({ ok: false, error: { code: "INVALID", message: "Invalid delivery window" } });
++    }
++  }
++
++  const { total, premiumPrice, addonDocs } = await calcTotal(plan, premiumCount, addons.map((a) => a.addonId));
++  const totalMeals = plan.daysCount * plan.mealsPerDay;
++  const start = startDate ? new Date(startDate) : new Date();
++  const end = addDays(start, plan.daysCount - 1);
++
++  const subscription = await Subscription.create({
++    userId: req.userId,
++    planId,
++    status: "pending_payment",
++    totalMeals,
++    remainingMeals: totalMeals,
++    premiumRemaining: premiumCount,
++    premiumPrice,
++    addonSubscriptions: addonDocs.map((a) => ({
++      addonId: a._id,
++      name: a.name,
++      price: a.price,
++      type: a.type,
++    })),
++    deliveryMode,
++    deliveryAddress: deliveryAddress || undefined,
++    deliveryWindow: deliveryWindow || undefined,
++    startDate: start,
++    endDate: end,
++    validityEndDate: end,
++  });
++
++  return res.status(200).json({
++    ok: true,
++    data: {
++      payment_url: `https://mock-payment.com/${subscription._id}`,
++      subscriptionId: subscription.id,
++      total,
++    },
++  });
++}
++
++async function activateSubscription(req, res) {
++  const { id } = req.params;
++  const sub = await Subscription.findById(id).populate("planId");
++  if (!sub) return res.status(404).json({ ok: false, error: { code: "NOT_FOUND", message: "Subscription not found" } });
++
++  if (sub.status === "active") return res.status(200).json({ ok: true, message: "Already active" });
++
++  sub.status = "active";
++  const start = new Date(sub.startDate);
++  sub.endDate = addDays(start, sub.planId.daysCount - 1);
++  sub.validityEndDate = sub.endDate;
++  await sub.save();
++
++  const dayEntries = [];
++  for (let i = 0; i < sub.planId.daysCount; i++) {
++    const currentDate = addDays(start, i);
++    dayEntries.push({
++      subscriptionId: sub._id,
++      date: toKSADateString(currentDate),
++      status: "open",
++    });
++  }
++  await SubscriptionDay.insertMany(dayEntries);
++
++  res.status(200).json({ ok: true, data: sub });
++}
++
++async function getSubscription(req, res) {
++  const sub = await Subscription.findById(req.params.id).lean();
++  if (!sub) {
++    return res.status(404).json({ ok: false, error: { code: "NOT_FOUND", message: "Subscription not found" } });
++  }
++  return res.status(200).json({ ok: true, data: sub });
++}
++
++async function getSubscriptionDays(req, res) {
++  const days = await SubscriptionDay.find({ subscriptionId: req.params.id }).sort({ date: 1 }).lean();
++  return res.status(200).json({ ok: true, data: days });
++}
++
++async function getSubscriptionDay(req, res) {
++  const day = await SubscriptionDay.findOne({ subscriptionId: req.params.id, date: req.params.date }).lean();
++  if (!day) {
++    return res.status(404).json({ ok: false, error: { code: "NOT_FOUND", message: "Day not found" } });
++  }
++  return res.status(200).json({ ok: true, data: day });
++}
++
++async function getSubscriptionToday(req, res) {
++  const today = getTodayKSADate();
++  const day = await SubscriptionDay.findOne({ subscriptionId: req.params.id, date: today }).lean();
++  if (!day) {
++    return res.status(404).json({ ok: false, error: { code: "NOT_FOUND", message: "Day not found" } });
++  }
++  return res.status(200).json({ ok: true, data: day });
++}
++
++async function updateDaySelection(req, res) {
++  const body = req.body || {};
++  const selections = body.selections || [];
++  const premiumSelections = body.premiumSelections || [];
++  const { id, date } = req.params;
++  const sub = await Subscription.findById(id).populate("planId");
++  if (!sub) return res.status(404).json({ ok: false, error: { code: "NOT_FOUND", message: "Subscription not found" } });
++  try {
++    ensureActive(sub, date);
++    validateFutureDateOrThrow(date, sub);
++  } catch (err) {
++    const status = err.code === "SUB_INACTIVE" || err.code === "SUB_EXPIRED" ? 422 : 400;
++    return res.status(status).json({ ok: false, error: { code: err.code || "INVALID_DATE", message: err.message } });
++  }
++
++  const cutoffTime = await getSettingValue("cutoff_time", "00:00");
++  const tomorrow = getTomorrowKSADate();
++  if (date === tomorrow && !isBeforeCutoff(cutoffTime)) {
++    return res.status(400).json({ ok: false, error: { code: "LOCKED", message: "Cutoff time passed for tomorrow" } });
++  }
++
++  const totalSelected = selections.length + premiumSelections.length;
++  if (totalSelected > sub.planId.mealsPerDay) {
++    return res.status(400).json({
++      ok: false,
++      error: { code: "DAILY_CAP", message: "Selections exceed meals per day" },
++    });
++  }
++
++  const session = await mongoose.startSession();
++  session.startTransaction();
++  try {
++    const existingDay = await SubscriptionDay.findOne({ subscriptionId: id, date }).session(session);
++    if (existingDay && existingDay.status !== "open") {
++      await session.abortTransaction();
++      session.endSession();
++      return res.status(409).json({ ok: false, error: { code: "LOCKED", message: "Day is locked" } });
++    }
++
++    const prevPremium = existingDay ? existingDay.premiumSelections.length : 0;
++    const diff = premiumSelections.length - prevPremium;
++    if (diff > 0) {
++      const updateRes = await Subscription.updateOne(
++        { _id: id, premiumRemaining: { $gte: diff } },
++        { $inc: { premiumRemaining: -diff } },
++        { session }
++      );
++      if (!updateRes.modifiedCount) {
++        await session.abortTransaction();
++        session.endSession();
++        return res.status(400).json({
++          ok: false,
++          error: { code: "INSUFFICIENT_PREMIUM", message: "Not enough premium balance" },
++        });
++      }
++    } else if (diff < 0) {
++      await Subscription.updateOne(
++        { _id: id },
++        { $inc: { premiumRemaining: -diff } },
++        { session }
++      );
++    }
++
++    const update = { selections, premiumSelections };
++    if (body.addonsOneTime !== undefined) {
++      update.addonsOneTime = body.addonsOneTime;
++    }
++
++    const day = await SubscriptionDay.findOneAndUpdate(
++      { subscriptionId: id, date: date },
++      update,
++      { upsert: true, new: true, session }
++    );
++
++    await session.commitTransaction();
++    session.endSession();
++
++    await writeLog({
++      entityType: "subscription_day",
++      entityId: day._id,
++      action: "selection_update",
++      byUserId: req.userId,
++      byRole: "client",
++      meta: { selectionsCount: selections.length, premiumCount: premiumSelections.length },
++    });
++    return res.status(200).json({ ok: true, data: day });
++  } catch (err) {
++    await session.abortTransaction();
++    session.endSession();
++    return res.status(500).json({ ok: false, error: { code: "INTERNAL", message: "Selection failed" } });
++  }
++}
++
++async function lockDaySnapshot(sub, day, session) {
++  if (day.lockedSnapshot) return day.lockedSnapshot;
++  const { address, deliveryWindow } = getEffectiveDeliveryDetails(sub, day);
++  const snapshot = {
++    selections: day.selections,
++    premiumSelections: day.premiumSelections,
++    addonsOneTime: day.addonsOneTime,
++    subscriptionAddons: sub.addonSubscriptions || [],
++    address,
++    deliveryWindow,
++    pricing: {
++      planId: sub.planId,
++      premiumPrice: sub.premiumPrice,
++      addons: sub.addonSubscriptions,
++    },
++    mealsPerDay: sub.totalMeals ? Math.ceil(sub.totalMeals / sub.planId.daysCount) : sub.planId.mealsPerDay,
++  };
++  day.lockedSnapshot = snapshot;
++  day.lockedAt = new Date();
++  await day.save({ session });
++  return snapshot;
++}
++
++async function skipDay(req, res) {
++  const { id, date } = req.params;
++  const sub = await Subscription.findById(id).populate("planId");
++  if (!sub) return res.status(404).json({ ok: false, error: { code: "NOT_FOUND", message: "Subscription not found" } });
++  try {
++    ensureActive(sub, date);
++    validateFutureDateOrThrow(date, sub);
++  } catch (err) {
++    const status = err.code === "SUB_INACTIVE" || err.code === "SUB_EXPIRED" ? 422 : 400;
++    return res.status(status).json({ ok: false, error: { code: err.code || "INVALID_DATE", message: err.message } });
++  }
++
++  const cutoffTime = await getSettingValue("cutoff_time", "00:00");
++  const tomorrow = getTomorrowKSADate();
++  if (date === tomorrow && !isBeforeCutoff(cutoffTime)) {
++    return res.status(400).json({ ok: false, error: { code: "LOCKED", message: "Cutoff time passed for tomorrow" } });
++  }
++
++  const day = await SubscriptionDay.findOne({ subscriptionId: id, date }).lean();
++  if (day && day.status === "skipped") {
++    return res.status(200).json({ ok: true, data: day });
++  }
++  if (day && day.status !== "open") {
++    return res.status(409).json({ ok: false, error: { code: "LOCKED", message: "Cannot skip after lock" } });
++  }
++
++  const grace = await getSettingValue("skip_allowance", 0);
++  const mealsToDeduct = sub.planId.mealsPerDay;
++  if (sub.remainingMeals < mealsToDeduct) {
++    return res.status(400).json({ ok: false, error: { code: "INSUFFICIENT_CREDITS", message: "Not enough credits" } });
++  }
++
++  const session = await mongoose.startSession();
++  session.startTransaction();
++  try {
++    const existingDay = await SubscriptionDay.findOne({ subscriptionId: id, date }).session(session);
++    if (existingDay && existingDay.status === "skipped") {
++      await session.commitTransaction();
++      session.endSession();
++      return res.status(200).json({ ok: true, data: existingDay });
++    }
++    if (existingDay && existingDay.status !== "open") {
++      await session.abortTransaction();
++      session.endSession();
++      return res.status(409).json({ ok: false, error: { code: "LOCKED", message: "Cannot skip after lock" } });
++    }
++
++    const updatedDay = await SubscriptionDay.findOneAndUpdate(
++      { subscriptionId: id, date },
++      { status: "skipped" },
++      { upsert: true, new: true, session }
++    );
++
++    const subUpdate = await Subscription.updateOne(
++      { _id: id, remainingMeals: { $gte: mealsToDeduct } },
++      { $inc: { remainingMeals: -mealsToDeduct, skippedCount: 1 } },
++      { session }
++    );
++    if (!subUpdate.modifiedCount) {
++      await session.abortTransaction();
++      session.endSession();
++      return res.status(400).json({ ok: false, error: { code: "INSUFFICIENT_CREDITS", message: "Not enough credits" } });
++    }
++
++    // Compensation if within grace
++    if (sub.skippedCount + 1 <= grace) {
++      const newEnd = addDays(new Date(sub.validityEndDate || sub.endDate || new Date()), 1);
++      const newDateStr = toKSADateString(newEnd);
++      const existingCompDay = await SubscriptionDay.findOne({ subscriptionId: id, date: newDateStr }).session(session).lean();
++      await Subscription.findByIdAndUpdate(
++        id,
++        { $set: { validityEndDate: newEnd, endDate: newEnd } },
++        { session }
++      );
++      if (!existingCompDay) {
++        await SubscriptionDay.updateOne(
++          { subscriptionId: id, date: newDateStr },
++          { $setOnInsert: { status: "open" } },
++          { upsert: true, session }
++        );
++      }
++    }
++
++    await session.commitTransaction();
++    session.endSession();
++    await writeLog({
++      entityType: "subscription_day",
++      entityId: updatedDay._id,
++      action: "skip",
++      byUserId: req.userId,
++      byRole: "client",
++      meta: { compensated: sub.skippedCount + 1 <= grace, date: updatedDay.date },
++    });
++    return res.status(200).json({ ok: true, data: updatedDay });
++  } catch (err) {
++    await session.abortTransaction();
++    session.endSession();
++    return res.status(500).json({ ok: false, error: { code: "INTERNAL", message: "Skip failed" } });
++  }
++}
++
++async function topupPremium(_req, res) {
++  try {
++    const { id } = _req.params;
++    const { count, successUrl, backUrl } = _req.body || {};
++    const premiumCount = parseInt(count, 10);
++    if (!premiumCount || premiumCount <= 0) {
++      return res.status(400).json({ ok: false, error: { code: "INVALID", message: "Invalid premium count" } });
++    }
++
++    const sub = await Subscription.findById(id);
++    if (!sub) return res.status(404).json({ ok: false, error: { code: "NOT_FOUND", message: "Subscription not found" } });
++    try {
++      ensureActive(sub);
++    } catch (err) {
++      return res.status(422).json({ ok: false, error: { code: err.code, message: err.message } });
++    }
++
++    const premiumPrice = await getSettingValue("premium_price", 20);
++    const amount = Math.round(premiumPrice * premiumCount * 100);
++    const appUrl = process.env.APP_URL || "https://example.com";
++
++    const invoice = await createInvoice({
++      amount,
++      description: `Premium top-up (${premiumCount})`,
++      callbackUrl: `${appUrl}/api/webhooks/moyasar`,
++      successUrl: successUrl || `${appUrl}/payments/success`,
++      backUrl: backUrl || `${appUrl}/payments/cancel`,
++      metadata: {
++        type: "premium_topup",
++        subscriptionId: String(sub._id),
++        userId: String(_req.userId),
++        premiumCount,
++      },
++    });
++
++    const payment = await Payment.create({
++      provider: "moyasar",
++      type: "premium_topup",
++      status: "initiated",
++      amount,
++      currency: invoice.currency || "SAR",
++      userId: _req.userId,
++      subscriptionId: sub._id,
++      providerInvoiceId: invoice.id,
++      metadata: invoice.metadata || {},
++    });
++
++    return res.status(200).json({
++      ok: true,
++      data: { payment_url: invoice.url, invoice_id: invoice.id, payment_id: payment.id },
++    });
++  } catch (err) {
++    logger.error("Topup error", { error: err.message, stack: err.stack });
++    return res.status(500).json({ ok: false, error: { code: "INTERNAL", message: "Top-up failed" } });
++  }
++}
++
++async function addOneTimeAddon(_req, res) {
++  try {
++    const { id } = _req.params;
++    const { addonId, date, successUrl, backUrl } = _req.body || {};
++    if (!addonId || !date) {
++      return res.status(400).json({ ok: false, error: { code: "INVALID", message: "Missing addonId or date" } });
++    }
++
++    const sub = await Subscription.findById(id).populate("planId");
++    if (!sub) return res.status(404).json({ ok: false, error: { code: "NOT_FOUND", message: "Subscription not found" } });
++    try {
++      ensureActive(sub, date);
++      validateFutureDateOrThrow(date, sub);
++    } catch (err) {
++      const status = err.code === "SUB_INACTIVE" || err.code === "SUB_EXPIRED" ? 422 : 400;
++      return res.status(status).json({ ok: false, error: { code: err.code || "INVALID_DATE", message: err.message } });
++    }
++
++    const addon = await Addon.findById(addonId).lean();
++    if (!addon || addon.type !== "one_time" || addon.isActive === false) {
++      return res.status(404).json({ ok: false, error: { code: "NOT_FOUND", message: "Addon not found" } });
++    }
++
++    const day = await SubscriptionDay.findOne({ subscriptionId: id, date }).lean();
++    if (day && day.status !== "open") {
++      return res.status(409).json({ ok: false, error: { code: "LOCKED", message: "Day is locked" } });
++    }
++
++    const amount = Math.round(addon.price * 100);
++    const appUrl = process.env.APP_URL || "https://example.com";
++
++    const invoice = await createInvoice({
++      amount,
++      description: `Add-on (${addon.name})`,
++      callbackUrl: `${appUrl}/api/webhooks/moyasar`,
++      successUrl: successUrl || `${appUrl}/payments/success`,
++      backUrl: backUrl || `${appUrl}/payments/cancel`,
++      metadata: {
++        type: "one_time_addon",
++        subscriptionId: String(sub._id),
++        userId: String(_req.userId),
++        addonId: String(addon._id),
++        date,
++      },
++    });
++
++    const payment = await Payment.create({
++      provider: "moyasar",
++      type: "one_time_addon",
++      status: "initiated",
++      amount,
++      currency: invoice.currency || "SAR",
++      userId: _req.userId,
++      subscriptionId: sub._id,
++      providerInvoiceId: invoice.id,
++      metadata: invoice.metadata || {},
++    });
++
++    return res.status(200).json({
++      ok: true,
++      data: { payment_url: invoice.url, invoice_id: invoice.id, payment_id: payment.id },
++    });
++  } catch (err) {
++    logger.error("Addon error", { error: err.message, stack: err.stack });
++    return res.status(500).json({ ok: false, error: { code: "INTERNAL", message: "Addon purchase failed" } });
++  }
++}
++
++async function preparePickup(req, res) {
++  const { id, date } = req.params;
++  const session = await mongoose.startSession();
++  session.startTransaction();
++  try {
++    const sub = await Subscription.findById(id).populate("planId").session(session);
++    if (!sub) {
++      await session.abortTransaction();
++      session.endSession();
++      return res.status(404).json({ ok: false, error: { code: "NOT_FOUND", message: "Subscription not found" } });
++    }
++    try {
++      ensureActive(sub, date);
++      validateFutureDateOrThrow(date, sub);
++    } catch (err) {
++      await session.abortTransaction();
++      session.endSession();
++      const status = err.code === "SUB_INACTIVE" || err.code === "SUB_EXPIRED" ? 422 : 400;
++      return res.status(status).json({ ok: false, error: { code: err.code || "INVALID_DATE", message: err.message } });
++    }
++    if (sub.deliveryMode !== "pickup") {
++      await session.abortTransaction();
++      session.endSession();
++      return res.status(400).json({ ok: false, error: { code: "INVALID", message: "Delivery mode is not pickup" } });
++    }
++
++    const day = await SubscriptionDay.findOne({ subscriptionId: id, date }).session(session);
++    if (day && !canTransition(day.status, "locked")) {
++      await session.abortTransaction();
++      session.endSession();
++      return res.status(409).json({ ok: false, error: { code: "INVALID_TRANSITION", message: "Invalid state transition" } });
++    }
++
++    const updatedDay = await SubscriptionDay.findOneAndUpdate(
++      { subscriptionId: id, date },
++      { pickupRequested: true, status: "locked" },
++      { upsert: true, new: true, session }
++    );
++
++    await lockDaySnapshot(sub, updatedDay, session);
++
++    await session.commitTransaction();
++    session.endSession();
++
++    await writeLog({
++      entityType: "subscription_day",
++      entityId: updatedDay._id,
++      action: "pickup_prepare",
++      byUserId: req.userId,
++      byRole: "client",
++      meta: { date: updatedDay.date },
++    });
++    return res.status(200).json({ ok: true, data: updatedDay });
++  } catch (err) {
++    await session.abortTransaction();
++    session.endSession();
++    return res.status(500).json({ ok: false, error: { code: "INTERNAL", message: "Pickup prepare failed" } });
++  }
++}
++
++async function updateDeliveryDetails(req, res) {
++  const { id } = req.params;
++  const { deliveryAddress, deliveryWindow } = req.body || {};
++  if (!deliveryAddress && !deliveryWindow) {
++    return res.status(400).json({ ok: false, error: { code: "INVALID", message: "Missing delivery update fields" } });
++  }
++
++  const sub = await Subscription.findById(id);
++  if (!sub) return res.status(404).json({ ok: false, error: { code: "NOT_FOUND", message: "Subscription not found" } });
++  try {
++    ensureActive(sub);
++  } catch (err) {
++    return res.status(422).json({ ok: false, error: { code: err.code, message: err.message } });
++  }
++  if (sub.deliveryMode !== "delivery") {
++    return res.status(400).json({ ok: false, error: { code: "INVALID", message: "Delivery mode is not delivery" } });
++  }
++
++  const windows = await getSettingValue("delivery_windows", []);
++  if (deliveryWindow && windows.length && !windows.includes(deliveryWindow)) {
++    return res.status(400).json({ ok: false, error: { code: "INVALID", message: "Invalid delivery window" } });
++  }
++
++  sub.deliveryAddress = deliveryAddress || sub.deliveryAddress;
++  sub.deliveryWindow = deliveryWindow || sub.deliveryWindow;
++  await sub.save();
++  await writeLog({
++    entityType: "subscription",
++    entityId: sub._id,
++    action: "delivery_update",
++    byUserId: req.userId,
++    byRole: "client",
++    meta: { deliveryWindow: sub.deliveryWindow },
++  });
++  return res.status(200).json({ ok: true, data: sub });
++}
++
++async function updateDeliveryDetailsForDate(req, res) {
++  const { id, date } = req.params;
++  const { deliveryAddress, deliveryWindow } = req.body || {};
++  if (deliveryAddress === undefined && deliveryWindow === undefined) {
++    return res.status(400).json({ ok: false, error: { code: "INVALID", message: "Missing delivery update fields" } });
++  }
++
++  const sub = await Subscription.findById(id);
++  if (!sub) return res.status(404).json({ ok: false, error: { code: "NOT_FOUND", message: "Subscription not found" } });
++  try {
++    ensureActive(sub, date);
++    validateFutureDateOrThrow(date, sub);
++  } catch (err) {
++    const status = err.code === "SUB_INACTIVE" || err.code === "SUB_EXPIRED" ? 422 : 400;
++    return res.status(status).json({ ok: false, error: { code: err.code || "INVALID_DATE", message: err.message } });
++  }
++
++  if (sub.deliveryMode !== "delivery") {
++    return res.status(400).json({ ok: false, error: { code: "INVALID", message: "Delivery mode is not delivery" } });
++  }
++
++  const windows = await getSettingValue("delivery_windows", []);
++  if (deliveryWindow && windows.length && !windows.includes(deliveryWindow)) {
++    return res.status(400).json({ ok: false, error: { code: "INVALID", message: "Invalid delivery window" } });
++  }
++
++  const day = await SubscriptionDay.findOne({ subscriptionId: id, date }).lean();
++  if (day && day.status !== "open") {
++    return res.status(409).json({ ok: false, error: { code: "LOCKED", message: "Day is locked" } });
++  }
++
++  const update = {};
++  if (deliveryAddress !== undefined) update.deliveryAddressOverride = deliveryAddress;
++  if (deliveryWindow !== undefined) update.deliveryWindowOverride = deliveryWindow;
++
++  const updatedDay = await SubscriptionDay.findOneAndUpdate(
++    { subscriptionId: id, date },
++    { $set: update },
++    { upsert: true, new: true }
++  );
++
++  await writeLog({
++    entityType: "subscription_day",
++    entityId: updatedDay._id,
++    action: "delivery_update_day",
++    byUserId: req.userId,
++    byRole: "client",
++    meta: { date, deliveryWindow: updatedDay.deliveryWindowOverride },
++  });
++
++  return res.status(200).json({ ok: true, data: updatedDay });
++}
++
++async function transitionDay(req, res, toStatus) {
++  const { id, date } = req.params;
++  const session = await mongoose.startSession();
++  session.startTransaction();
++  try {
++    const day = await SubscriptionDay.findOne({ subscriptionId: id, date }).session(session);
++    if (!day) {
++      await session.abortTransaction();
++      session.endSession();
++      return res.status(404).json({ ok: false, error: { code: "NOT_FOUND", message: "Day not found" } });
++    }
++    if (!canTransition(day.status, toStatus)) {
++      await session.abortTransaction();
++      session.endSession();
++      return res.status(409).json({ ok: false, error: { code: "INVALID_TRANSITION", message: "Invalid state transition" } });
++    }
++
++    const sub = await Subscription.findById(id).populate("planId").session(session);
++    if (!sub) {
++      await session.abortTransaction();
++      session.endSession();
++      return res.status(404).json({ ok: false, error: { code: "NOT_FOUND", message: "Subscription not found" } });
++    }
++
++    if (toStatus === "locked") {
++      await lockDaySnapshot(sub, day, session);
++    }
++
++    day.status = toStatus;
++    await day.save({ session });
++
++    await session.commitTransaction();
++    session.endSession();
++    return res.status(200).json({ ok: true, data: day });
++  } catch (err) {
++    await session.abortTransaction();
++    session.endSession();
++    return res.status(500).json({ ok: false, error: { code: "INTERNAL", message: "Transition failed" } });
++  }
++}
++
++async function fulfillDay(req, res) {
++  const { id, date } = req.params;
++  const session = await mongoose.startSession();
++  session.startTransaction();
++  try {
++    const result = await fulfillSubscriptionDay({ subscriptionId: id, date, session });
++    if (!result.ok) {
++      await session.abortTransaction();
++      session.endSession();
++      const status =
++        result.code === "NOT_FOUND" ? 404 :
++        result.code === "INSUFFICIENT_CREDITS" ? 400 :
++        result.code === "INVALID_TRANSITION" ? 409 :
++        400;
++      return res.status(status).json({ ok: false, error: { code: result.code, message: result.message } });
++    }
++
++    await session.commitTransaction();
++    session.endSession();
++    return res.status(200).json({ ok: true, data: result.day, alreadyFulfilled: result.alreadyFulfilled });
++  } catch (err) {
++    await session.abortTransaction();
++    session.endSession();
++    return res.status(500).json({ ok: false, error: { code: "INTERNAL", message: "Fulfillment failed" } });
++  }
++}
++
++module.exports = {
++  previewSubscription,
++  checkoutSubscription,
++  activateSubscription,
++  getSubscription,
++  getSubscriptionDays,
++  getSubscriptionToday,
++  getSubscriptionDay,
++  updateDaySelection,
++  skipDay,
++  topupPremium,
++  addOneTimeAddon,
++  preparePickup,
++  updateDeliveryDetails,
++  updateDeliveryDetailsForDate,
++  transitionDay,
++  fulfillDay,
++};
+*** Delete File: src/controllers/kitchenController.js
+*** Add File: src/controllers/kitchenController.js
++const mongoose = require("mongoose");
++const Subscription = require("../models/Subscription");
++const SubscriptionDay = require("../models/SubscriptionDay");
++const Delivery = require("../models/Delivery");
++const { canTransition } = require("../utils/state");
++const { writeLog } = require("../utils/log");
++const { notifyUser } = require("../utils/notify");
++const { getEffectiveDeliveryDetails } = require("../utils/delivery");
++const { fulfillSubscriptionDay } = require("../services/fulfillmentService");
++
++async function listDailyOrders(req, res) {
++  const { date } = req.params;
++  const days = await SubscriptionDay.find({ date })
++    .populate({ path: "addonsOneTime", select: "name price type" })
++    .populate({
++      path: "subscriptionId",
++      select: "addonSubscriptions userId deliveryMode deliveryAddress deliveryWindow planId"
++    })
++    .lean();
++
++  // Transform to include subscription add-ons explicitly if needed
++  const enrichedDays = days.map(d => {
++    const sub = d.subscriptionId;
++    const subscriptionAddons = sub ? sub.addonSubscriptions || [] : [];
++    const effectiveAddress = sub
++      ? (d.deliveryAddressOverride && Object.keys(d.deliveryAddressOverride).length > 0 ? d.deliveryAddressOverride : sub.deliveryAddress)
++      : null;
++    const effectiveWindow = sub
++      ? (d.deliveryWindowOverride || sub.deliveryWindow)
++      : null;
++
++    return {
++      ...d,
++      subscriptionAddons,
++      effectiveAddress,
++      effectiveWindow,
++      kitchenAddons: [...subscriptionAddons, ...(d.addonsOneTime || [])],
++    };
++  });
++
++  return res.status(200).json({ ok: true, data: enrichedDays });
++}
++
++async function assignMeals(req, res) {
++  const { id, date } = req.params;
++  const { selections = [], premiumSelections = [] } = req.body || {};
++  const sub = await Subscription.findById(id).populate("planId").lean();
++  if (!sub) {
++    return res.status(404).json({ ok: false, error: { code: "NOT_FOUND", message: "Subscription not found" } });
++  }
++  const totalSelected = selections.length + premiumSelections.length;
++  if (totalSelected > sub.planId.mealsPerDay) {
++    return res.status(400).json({ ok: false, error: { code: "DAILY_CAP", message: "Selections exceed meals per day" } });
++  }
++  const day = await SubscriptionDay.findOneAndUpdate(
++    { subscriptionId: id, date },
++    { selections, premiumSelections, assignedByKitchen: true },
++    { upsert: true, new: true }
++  );
++  await writeLog({
++    entityType: "subscription_day",
++    entityId: day._id,
++    action: "assign_meals",
++    byUserId: req.dashboardUser ? req.dashboardUser._id : undefined,
++    byRole: req.dashboardRole,
++    meta: { selectionsCount: selections.length, premiumCount: premiumSelections.length },
++  });
++  return res.status(200).json({ ok: true, data: day });
++}
++
++async function ensureLockedSnapshot(sub, day, session) {
++  if (day.lockedSnapshot) return;
++  const { address, deliveryWindow } = getEffectiveDeliveryDetails(sub, day);
++  day.lockedSnapshot = {
++    selections: day.selections,
++    premiumSelections: day.premiumSelections,
++    addonsOneTime: day.addonsOneTime,
++    subscriptionAddons: sub.addonSubscriptions || [],
++    address,
++    deliveryWindow,
++    pricing: {
++      planId: sub.planId,
++      premiumPrice: sub.premiumPrice,
++      addons: sub.addonSubscriptions,
++    },
++  };
++  day.lockedAt = new Date();
++  await day.save({ session });
++}
++
++async function transitionDay(req, res, toStatus) {
++  const { id, date } = req.params;
++  const session = await mongoose.startSession();
++  session.startTransaction();
++  try {
++    const day = await SubscriptionDay.findOne({ subscriptionId: id, date }).session(session);
++    if (!day) {
++      await session.abortTransaction();
++      session.endSession();
++      return res.status(404).json({ ok: false, error: { code: "NOT_FOUND", message: "Day not found" } });
++    }
++    if (!canTransition(day.status, toStatus)) {
++      await session.abortTransaction();
++      session.endSession();
++      return res.status(409).json({ ok: false, error: { code: "INVALID_TRANSITION", message: "Invalid state transition" } });
++    }
++    const sub = await Subscription.findById(id).session(session).lean();
++    if (toStatus === "locked" && sub) {
++      await ensureLockedSnapshot(sub, day, session);
++    }
++    if (toStatus === "out_for_delivery") {
++      if (sub && sub.deliveryMode !== "delivery") {
++        await session.abortTransaction();
++        session.endSession();
++        return res.status(400).json({ ok: false, error: { code: "INVALID", message: "Not a delivery subscription" } });
++      }
++      if (sub) {
++        const effective = day.lockedSnapshot
++          ? { address: day.lockedSnapshot.address || null, deliveryWindow: day.lockedSnapshot.deliveryWindow || null }
++          : getEffectiveDeliveryDetails(sub, day);
++        await Delivery.updateOne(
++          { dayId: day._id },
++          {
++            $setOnInsert: {
++              subscriptionId: sub._id,
++              dayId: day._id,
++              address: effective.address,
++              window: effective.deliveryWindow,
++              status: "out_for_delivery",
++            },
++          },
++          { upsert: true, session }
++        );
++      }
++    }
++    if (toStatus === "ready_for_pickup") {
++      if (sub && sub.deliveryMode !== "pickup") {
++        await session.abortTransaction();
++        session.endSession();
++        return res.status(400).json({ ok: false, error: { code: "INVALID", message: "Not a pickup subscription" } });
++      }
++    }
++    const fromStatus = day.status;
++    day.status = toStatus;
++    await day.save({ session });
++
++    await session.commitTransaction();
++    session.endSession();
++
++    await writeLog({
++      entityType: "subscription_day",
++      entityId: day._id,
++      action: "state_change",
++      byUserId: req.dashboardUser ? req.dashboardUser._id : undefined,
++      byRole: req.dashboardRole,
++      meta: { from: fromStatus, to: toStatus, date: day.date },
++    });
++    if (toStatus === "ready_for_pickup" && sub) {
++      await notifyUser(sub.userId, {
++        title: "الطلب جاهز للاستلام",
++        body: "طلبك أصبح جاهزًا للاستلام من المطعم",
++        data: { subscriptionId: String(sub._id), date: day.date },
++      });
++    }
++    return res.status(200).json({ ok: true, data: day });
++  } catch (err) {
++    await session.abortTransaction();
++    session.endSession();
++    return res.status(500).json({ ok: false, error: { code: "INTERNAL", message: "Transition failed" } });
++  }
++}
++
++async function fulfillPickup(req, res) {
++  const { id, date } = req.params;
++  const session = await mongoose.startSession();
++  session.startTransaction();
++  try {
++    const result = await fulfillSubscriptionDay({ subscriptionId: id, date, session });
++    if (!result.ok) {
++      await session.abortTransaction();
++      session.endSession();
++      const status =
++        result.code === "NOT_FOUND" ? 404 :
++        result.code === "INSUFFICIENT_CREDITS" ? 400 :
++        result.code === "INVALID_TRANSITION" ? 409 :
++        400;
++      return res.status(status).json({ ok: false, error: { code: result.code, message: result.message } });
++    }
++
++    await session.commitTransaction();
++    session.endSession();
++    await writeLog({
++      entityType: "subscription_day",
++      entityId: result.day._id,
++      action: "pickup_fulfilled",
++      byUserId: req.dashboardUser ? req.dashboardUser._id : undefined,
++      byRole: req.dashboardRole,
++      meta: { deductedCredits: result.deductedCredits, date },
++    });
++    return res.status(200).json({ ok: true, data: result.day, alreadyFulfilled: result.alreadyFulfilled });
++  } catch (err) {
++    await session.abortTransaction();
++    session.endSession();
++    return res.status(500).json({ ok: false, error: { code: "INTERNAL", message: "Fulfillment failed" } });
++  }
++}
++
++module.exports = {
++  listDailyOrders,
++  assignMeals,
++  transitionDay,
++  fulfillPickup,
++};
++
+*** Delete File: src/routes/auth.js
+*** Add File: src/routes/auth.js
++const { Router } = require("express");
++const { requestOtp, verifyOtp, updateDeviceToken } = require("../controllers/authController");
++const { authMiddleware } = require("../middleware/auth");
++const { otpLimiter } = require("../middleware/rateLimit");
++
++const router = Router();
++
++/**
++ * @openapi
++ * /auth/otp/request:
++ *   post:
++ *     summary: Request OTP
++ *     tags: [Auth]
++ *     requestBody:
++ *       required: true
++ *       content:
++ *         application/json:
++ *           schema:
++ *             type: object
++ *             properties:
++ *               phone:
++ *                 type: string
++ *     responses:
++ *       200:
++ *         description: OTP initiated on client
++ */
++router.post("/otp/request", otpLimiter, requestOtp);
++
++/**
++ * @openapi
++ * /auth/otp/verify:
++ *   post:
++ *     summary: Verify OTP (Firebase ID token)
++ *     tags: [Auth]
++ *     requestBody:
++ *       required: true
++ *       content:
++ *         application/json:
++ *           schema:
++ *             type: object
++ *             properties:
++ *               idToken:
++ *                 type: string
++ *     responses:
++ *       200:
++ *         description: Returns JWT token
++ */
++router.post("/otp/verify", verifyOtp);
++router.post("/device-token", authMiddleware, updateDeviceToken);
++
++module.exports = router;
+*** Delete File: src/routes/subscriptions.js
+*** Add File: src/routes/subscriptions.js
++const { Router } = require("express");
++const controller = require("../controllers/subscriptionController");
++const { authMiddleware } = require("../middleware/auth");
++const { checkoutLimiter } = require("../middleware/rateLimit");
++
++const router = Router();
++
++router.use(authMiddleware);
++
++router.post("/preview", controller.previewSubscription);
++/**
++ * @openapi
++ * /subscriptions/checkout:
++ *   post:
++ *     summary: Checkout subscription
++ *     tags: [Subscriptions]
++ *     security:
++ *       - bearerAuth: []
++ *     requestBody:
++ *       required: true
++ *       content:
++ *         application/json:
++ *           schema:
++ *             type: object
++ *             properties:
++ *               planId:
++ *                 type: string
++ *               premiumCount:
++ *                 type: integer
++ *               addons:
++ *                 type: array
++ *                 items:
++ *                   type: object
++ *                   properties:
++ *                     addonId:
++ *                       type: string
++ *               deliveryMode:
++ *                 type: string
++ *               deliveryAddress:
++ *                 type: object
++ *     responses:
++ *       200:
++ *         description: Checkout initiated
++ */
++router.post("/checkout", checkoutLimiter, controller.checkoutSubscription);
++router.post("/:id/activate", controller.activateSubscription); // Mock endpoint for activation
++router.get("/:id", controller.getSubscription);
++router.get("/:id/days", controller.getSubscriptionDays);
++router.get("/:id/today", controller.getSubscriptionToday);
++router.get("/:id/days/:date", controller.getSubscriptionDay);
++/**
++ * @openapi
++ * /subscriptions/{id}/days/{date}/selection:
++ *   put:
++ *     summary: Update day selections
++ *     tags: [Subscriptions]
++ *     security:
++ *       - bearerAuth: []
++ *     parameters:
++ *       - name: id
++ *         in: path
++ *         required: true
++ *       - name: date
++ *         in: path
++ *         required: true
++ *         schema:
++ *           type: string
++ *     responses:
++ *       200:
++ *         description: Updated selections
++ */
++router.put("/:id/days/:date/selection", controller.updateDaySelection);
++/**
++ * @openapi
++ * /subscriptions/{id}/days/{date}/skip:
++ *   post:
++ *     summary: Skip a day
++ *     tags: [Subscriptions]
++ *     security:
++ *       - bearerAuth: []
++ *     parameters:
++ *       - name: id
++ *         in: path
++ *         required: true
++ *       - name: date
++ *         in: path
++ *         required: true
++ *     responses:
++ *       200:
++ *         description: Day skipped
++ */
++router.post("/:id/days/:date/skip", controller.skipDay);
++/**
++ * @openapi
++ * /subscriptions/{id}/days/{date}/pickup/prepare:
++ *   post:
++ *     summary: Prepare pickup for a day
++ *     tags: [Subscriptions]
++ *     security:
++ *       - bearerAuth: []
++ *     parameters:
++ *       - name: id
++ *         in: path
++ *         required: true
++ *       - name: date
++ *         in: path
++ *         required: true
++ *     responses:
++ *       200:
++ *         description: Pickup prepared
++ */
++router.post("/:id/days/:date/pickup/prepare", controller.preparePickup);
++router.put("/:id/days/:date/delivery", controller.updateDeliveryDetailsForDate);
++router.post("/:id/premium/topup", controller.topupPremium);
++router.post("/:id/addons/one-time", controller.addOneTimeAddon);
++router.put("/:id/delivery", controller.updateDeliveryDetails);
++
++module.exports = router;
+*** Delete File: src/routes/courier.js
+*** Add File: src/routes/courier.js
++const { Router } = require("express");
++const controller = require("../controllers/courierController");
++const { dashboardAuthMiddleware, dashboardRoleMiddleware } = require("../middleware/dashboardAuth");
++
++const router = Router();
++
++router.use(dashboardAuthMiddleware, dashboardRoleMiddleware(["courier", "admin"]));
++
++router.get("/deliveries/today", controller.listTodayDeliveries);
++router.put("/deliveries/:id/arriving-soon", controller.markArrivingSoon);
++/**
++ * @openapi
++ * /courier/deliveries/{id}/delivered:
++ *   put:
++ *     summary: Mark delivery as delivered
++ *     tags: [Courier]
++ *     parameters:
++ *       - name: id
++ *         in: path
++ *         required: true
++ *     responses:
++ *       200:
++ *         description: Delivered
++ */
++router.put("/deliveries/:id/delivered", controller.markDelivered);
++
++module.exports = router;
+*** Delete File: src/routes/webhooks.js
+*** Add File: src/routes/webhooks.js
++const { Router } = require("express");
++const controller = require("../controllers/webhookController");
++
++const router = Router();
++
++// Moyasar webhook (public, should use secret validation in production)
++/**
++ * @openapi
++ * /webhooks/moyasar:
++ *   post:
++ *     summary: Moyasar webhook
++ *     tags: [Webhooks]
++ *     requestBody:
++ *       required: true
++ *       content:
++ *         application/json:
++ *           schema:
++ *             type: object
++ *     responses:
++ *       200:
++ *         description: Webhook processed
++ */
++router.post("/moyasar", controller.handleMoyasarWebhook);
++
++module.exports = router;
+*** Delete File: src/utils/date.js
+*** Add File: src/utils/date.js
++const { formatInTimeZone, toDate } = require("date-fns-tz");
++const { addDays } = require("date-fns");
++
++const KSA_TIMEZONE = "Asia/Riyadh";
++
++function getCurrentKSA() {
++    return toDate(new Date(), { timeZone: KSA_TIMEZONE });
++}
++
++function toKSADateString(date) {
++    return formatInTimeZone(date, KSA_TIMEZONE, "yyyy-MM-dd");
++}
++
++function formatKSA(date, pattern = "yyyy-MM-dd HH:mm:ss") {
++    return formatInTimeZone(date, KSA_TIMEZONE, pattern);
++}
++
++function getTodayKSADate() {
++    return toKSADateString(getCurrentKSA());
++}
++
++function getTomorrowKSADate() {
++    return toKSADateString(addDays(getCurrentKSA(), 1));
++}
++
++function isBeforeCutoff(cutoffTimeStr) {
++    // cutoffTimeStr is "HH:mm" e.g. "22:00"
++    const now = getCurrentKSA();
++    const [hours, minutes] = cutoffTimeStr.split(":").map(Number);
++    const todayStr = toKSADateString(now);
++    const cutoff = toDate(`${todayStr} ${cutoffTimeStr}:00`, { timeZone: KSA_TIMEZONE });
++
++    return now < cutoff;
++}
++
++function compareKSADateStrings(a, b) {
++    if (a === b) return 0;
++    return a < b ? -1 : 1;
++}
++
++function isAfterKSADate(a, b) {
++    return compareKSADateStrings(a, b) > 0;
++}
++
++function isOnOrAfterKSADate(a, b) {
++    return compareKSADateStrings(a, b) >= 0;
++}
++
++function isValidKSADateString(dateStr) {
++    return typeof dateStr === "string" && /^\d{4}-\d{2}-\d{2}$/.test(dateStr);
++}
++
++function isInSubscriptionRange(dateStr, endDate) {
++    if (!endDate) return true;
++    const endStr = toKSADateString(endDate);
++    return compareKSADateStrings(dateStr, endStr) <= 0;
++}
++
++module.exports = {
++    KSA_TIMEZONE,
++    getCurrentKSA,
++    formatKSA,
++    getTodayKSADate,
++    getTomorrowKSADate,
++    isBeforeCutoff,
++    toKSADateString,
++    compareKSADateStrings,
++    isAfterKSADate,
++    isOnOrAfterKSADate,
++    isValidKSADateString,
++    isInSubscriptionRange,
++};
+*** Delete File: src/models/Subscription.js
+*** Add File: src/models/Subscription.js
++const mongoose = require("mongoose");
++
++const SubscriptionSchema = new mongoose.Schema(
++  {
++    userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
++    planId: { type: mongoose.Schema.Types.ObjectId, ref: "Plan", required: true },
++    status: { type: String, enum: ["pending_payment", "active", "expired"], default: "pending_payment" },
++    startDate: { type: Date },
++    endDate: { type: Date },
++    validityEndDate: { type: Date },
++    totalMeals: { type: Number, required: true },
++    remainingMeals: { type: Number, required: true },
++    premiumRemaining: { type: Number, default: 0 },
++    premiumPrice: { type: Number, default: 0 },
++    addonSubscriptions: [
++      {
++        addonId: { type: mongoose.Schema.Types.ObjectId, ref: "Addon" },
++        name: { type: String },
++        price: { type: Number },
++        type: { type: String },
++      },
++    ],
++    deliveryMode: { type: String, enum: ["delivery", "pickup"], required: true },
++    deliveryAddress: {
++      line1: { type: String },
++      line2: { type: String },
++      city: { type: String },
++      notes: { type: String },
++    },
++    deliveryWindow: { type: String },
++    skippedCount: { type: Number, default: 0 },
++  },
++  { timestamps: true }
++);
++
++SubscriptionSchema.index({ userId: 1 });
++
++module.exports = mongoose.model("Subscription", SubscriptionSchema);
+*** Delete File: src/models/User.js
+*** Add File: src/models/User.js
++const mongoose = require("mongoose");
++
++const UserSchema = new mongoose.Schema(
++  {
++    phone: { type: String, required: true, unique: true },
++    name: { type: String },
++    role: { type: String, enum: ["client", "admin", "kitchen", "courier"], default: "client" },
++    isActive: { type: Boolean, default: true },
++    fcmTokens: [{ type: String }],
++  },
++  { timestamps: true }
++);
++
++UserSchema.index({ phone: 1 }, { unique: true });
++
++module.exports = mongoose.model("User", UserSchema);
+*** Delete File: package.json
+*** Add File: package.json
++{
++  "name": "basicdiet145-backend",
++  "version": "0.1.0",
++  "private": true,
++  "main": "src/index.js",
++  "scripts": {
++    "start": "node src/index.js"
++  },
++  "dependencies": {
++    "better-auth": "^1.4.0",
++    "cors": "^2.8.5",
++    "date-fns": "^3.6.0",
++    "date-fns-tz": "^3.1.3",
++    "dotenv": "^16.6.1",
++    "express": "^4.18.2",
++    "express-rate-limit": "^7.4.0",
++    "firebase-admin": "^12.5.0",
++    "helmet": "^7.1.0",
++    "jsonwebtoken": "^9.0.2",
++    "mongodb": "^6.13.0",
++    "mongoose": "^8.10.0",
++    "swagger-jsdoc": "^6.2.8",
++    "swagger-ui-express": "^5.0.0",
++    "winston": "^3.14.2"
++  }
++}
+*** Delete File: .env.example
+*** Add File: .env.example
++PORT=3000
++MONGO_URI=mongodb://localhost:27017/basicdiet
++MONGO_DB=basicdiet145
++APP_TIMEZONE=Asia/Riyadh
++JWT_SECRET=change_me
++FIREBASE_PROJECT_ID=your_project_id
++FIREBASE_CLIENT_EMAIL=your_service_account_email
++FIREBASE_PRIVATE_KEY=your_private_key
++APP_URL=http://localhost:3000
++MOYASAR_SECRET_KEY=sk_test_xxx
++MOYASAR_WEBHOOK_SECRET=whsec_xxx
++CORS_ORIGINS=http://localhost:3000,http://localhost:5173
++RATE_LIMIT_OTP_WINDOW_MS=60000
++RATE_LIMIT_OTP_MAX=5
++RATE_LIMIT_CHECKOUT_WINDOW_MS=300000
++RATE_LIMIT_CHECKOUT_MAX=20
++LOG_LEVEL=info
++LOG_DIR=logs
++TRUST_PROXY=true
+*** Add File: src/utils/logger.js
++const fs = require("fs");
++const path = require("path");
++const winston = require("winston");
++
++const logDir = process.env.LOG_DIR || "logs";
++if (!fs.existsSync(logDir)) {
++  fs.mkdirSync(logDir, { recursive: true });
++}
++
++const logger = winston.createLogger({
++  level: process.env.LOG_LEVEL || "info",
++  format: winston.format.combine(
++    winston.format.timestamp(),
++    winston.format.errors({ stack: true }),
++    winston.format.json()
++  ),
++  transports: [
++    new winston.transports.Console(),
++    new winston.transports.File({
++      filename: path.join(logDir, "error.log"),
++      level: "error",
++    }),
++    new winston.transports.File({
++      filename: path.join(logDir, "app.log"),
++    }),
++  ],
++});
++
++module.exports = { logger };
+*** Add File: src/utils/validateEnv.js
++const { logger } = require("./logger");
++
++function validateEnv() {
++  const required = [
++    "MONGO_URI",
++    "MONGO_DB",
++    "JWT_SECRET",
++    "APP_TIMEZONE",
++    "FIREBASE_PROJECT_ID",
++    "FIREBASE_CLIENT_EMAIL",
++    "FIREBASE_PRIVATE_KEY",
++    "APP_URL",
++    "MOYASAR_SECRET_KEY",
++    "MOYASAR_WEBHOOK_SECRET",
++  ];
++
++  const missing = required.filter((key) => !process.env[key]);
++  if (missing.length) {
++    logger.error("Missing required environment variables", { missing });
++    return { ok: false, missing };
++  }
++
++  return { ok: true };
++}
++
++module.exports = { validateEnv };
+*** Add File: src/docs/swagger.js
++const swaggerJSDoc = require("swagger-jsdoc");
++
++const definition = {
++  openapi: "3.0.0",
++  info: {
++    title: "BasicDiet API",
++    version: "1.0.0",
++    description: "Diet meal subscription backend API",
++  },
++  servers: [
++    { url: "/api", description: "Local API base" },
++    { url: "/", description: "Root (non-API endpoints)" },
++  ],
++  components: {
++    securitySchemes: {
++      bearerAuth: {
++        type: "http",
++        scheme: "bearer",
++        bearerFormat: "JWT",
++      },
++    },
++  },
++};
++
++const options = {
++  definition,
++  apis: ["./src/routes/*.js", "./src/app.js"],
++};
++
++module.exports = swaggerJSDoc(options);
+*** Add File: src/middleware/rateLimit.js
++const rateLimit = require("express-rate-limit");
++
++function buildLimiter({ windowMs, max, message }) {
++  return rateLimit({
++    windowMs,
++    max,
++    standardHeaders: true,
++    legacyHeaders: false,
++    message: message || {
++      ok: false,
++      error: { code: "RATE_LIMIT", message: "Too many requests" },
++    },
++  });
++}
++
++const otpLimiter = buildLimiter({
++  windowMs: Number(process.env.RATE_LIMIT_OTP_WINDOW_MS) || 60 * 1000,
++  max: Number(process.env.RATE_LIMIT_OTP_MAX) || 5,
++  message: { ok: false, error: { code: "RATE_LIMIT", message: "Too many OTP requests" } },
++});
++
++const checkoutLimiter = buildLimiter({
++  windowMs: Number(process.env.RATE_LIMIT_CHECKOUT_WINDOW_MS) || 5 * 60 * 1000,
++  max: Number(process.env.RATE_LIMIT_CHECKOUT_MAX) || 20,
++  message: { ok: false, error: { code: "RATE_LIMIT", message: "Too many checkout attempts" } },
++});
++
++module.exports = { otpLimiter, checkoutLimiter };
+*** Add File: Dockerfile
++FROM node:20-alpine AS deps
++WORKDIR /app
++COPY package*.json ./
++RUN npm install --omit=dev
++
++FROM node:20-alpine
++WORKDIR /app
++ENV NODE_ENV=production
++COPY --from=deps /app/node_modules ./node_modules
++COPY . .
++EXPOSE 3000
++CMD ["node", "src/index.js"]
+*** Add File: docker-compose.yml
++version: "3.9"
++
++services:
++  api:
++    build: .
++    ports:
++      - "3000:3000"
++    env_file:
++      - .env
++    environment:
++      MONGO_URI: mongodb://mongo:27017/basicdiet
++      MONGO_DB: basicdiet145
++    depends_on:
++      - mongo
++
++  mongo:
++    image: mongo:7
++    ports:
++      - "27017:27017"
++    volumes:
++      - mongo_data:/data/db
++
++volumes:
++  mongo_data:
+*** Add File: .dockerignore
++node_modules
++logs
++.git
++.env
++npm-debug.log
++audit.patch
+*** End Patch

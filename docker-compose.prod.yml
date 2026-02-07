@@ -1,0 +1,12 @@
+
+services:
+  api:
+    build: .
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      # Only use MongoDB DB name here; connection string must come from Render env vars
+      MONGO_DB: basicdiet145
+    restart: always

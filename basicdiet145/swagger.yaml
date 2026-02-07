@@ -1,0 +1,1360 @@
+openapi: 3.0.0
+info:
+  title: Diet Meal Subscription API
+  version: 1.0.0
+  description: |
+    Complete PRODUCTION-READY API documentation for the Diet Meal Subscription platform.
+    
+    ### Authentication
+    - **Client (Mobile):** USES Bearer JWT in the `Authorization` header.
+    - **Dashboard (Admin/Kitchen/Courier):** Uses Session/Cookie based authentication (via Better Auth).
+    
+    ### Business Rules
+    - **Cutoff:** Tomorrow's meals/skips are locked after the configured cutoff time.
+    - **Skips:** Subscriptions have a limited skip allowance. Once exhausted, skips may behave differently or be rejected.
+    - **Status Flow:** 
+      - Subscription Days: `open` -> `locked` -> `in_preparation` -> `out_for_delivery` / `ready_for_pickup` -> `fulfilled`.
+      - Orders: `created` -> `confirmed` -> `preparing` -> `out_for_delivery` / `ready_for_pickup` -> `fulfilled`.
+servers:
+  - url: http://localhost:3000/api
+    description: Local development server
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: session
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        ok:
+          type: boolean
+          example: false
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              example: "UNAUTHORIZED"
+            message:
+              type: string
+              example: "Invalid token"
+
+    User:
+      type: object
+      properties:
+        _id: { type: string }
+        phone: { type: string }
+        name: { type: string }
+        role: { type: string, enum: [client, admin, kitchen, courier] }
+        isActive: { type: boolean }
+        fcmTokens: { type: array, items: { type: string } }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    DashboardUser:
+      type: object
+      properties:
+        _id: { type: string }
+        email: { type: string }
+        role: { type: string, enum: [admin, kitchen, courier] }
+        isActive: { type: boolean }
+        createdAt: { type: string, format: date-time }
+
+    Plan:
+      type: object
+      properties:
+        _id: { type: string }
+        name: { type: string }
+        daysCount: { type: integer }
+        mealsPerDay: { type: integer }
+        grams: { type: integer }
+        price: { type: number }
+        skipAllowance: { type: integer }
+        isActive: { type: boolean }
+
+    Subscription:
+      type: object
+      properties:
+        _id: { type: string }
+        userId: { type: string }
+        planId: { type: string }
+        status: { type: string, enum: [pending_payment, active, expired] }
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date }
+        validityEndDate: { type: string, format: date }
+        totalMeals: { type: integer }
+        remainingMeals: { type: integer }
+        premiumRemaining: { type: integer }
+        premiumPrice: { type: number }
+        addonSubscriptions:
+          type: array
+          items:
+            type: object
+            properties:
+              addonId: { type: string }
+              name: { type: string }
+              price: { type: number }
+              type: { type: string, enum: [subscription, one_time] }
+        deliveryMode: { type: string, enum: [delivery, pickup] }
+        deliveryAddress:
+          $ref: '#/components/schemas/Address'
+        deliveryWindow: { type: string }
+        skippedCount: { type: integer }
+
+    SubscriptionDay:
+      type: object
+      properties:
+        _id: { type: string }
+        subscriptionId: { type: string }
+        date: { type: string, format: date }
+        status: { type: string, enum: [open, locked, in_preparation, out_for_delivery, ready_for_pickup, fulfilled, skipped] }
+        selections: { type: array, items: { type: string } }
+        premiumSelections: { type: array, items: { type: string } }
+        addonsOneTime: { type: array, items: { type: string } }
+        pickupRequested: { type: boolean }
+        creditsDeducted: { type: boolean }
+        customSalads: { type: array, items: { $ref: '#/components/schemas/CustomSalad' } }
+        lockedSnapshot: { type: object }
+        fulfilledSnapshot: { type: object }
+
+    Address:
+      type: object
+      properties:
+        line1: { type: string }
+        line2: { type: string }
+        city: { type: string }
+        notes: { type: string }
+
+    CustomSalad:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              ingredientId: { type: string }
+              name_en: { type: string }
+              name_ar: { type: string }
+              unitPriceSar: { type: number }
+              quantity: { type: number }
+              calories: { type: number }
+        totalPriceSar: { type: number }
+
+    Order:
+      type: object
+      properties:
+        _id: { type: string }
+        userId: { type: string }
+        status: { type: string, enum: [created, confirmed, preparing, out_for_delivery, ready_for_pickup, fulfilled, canceled] }
+        deliveryMode: { type: string, enum: [delivery, pickup] }
+        deliveryDate: { type: string, format: date }
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              mealId: { type: string }
+              name: { type: string }
+              type: { type: string }
+              quantity: { type: integer }
+              unitPrice: { type: integer }
+        pricing:
+          type: object
+          properties:
+            subtotal: { type: integer }
+            deliveryFee: { type: integer }
+            total: { type: integer }
+            currency: { type: string }
+        deliveryAddress: { $ref: '#/components/schemas/Address' }
+        deliveryWindow: { type: string }
+        paymentStatus: { type: string, enum: [initiated, paid, failed, canceled, expired, refunded] }
+
+    Meal:
+      type: object
+      properties:
+        _id: { type: string }
+        name: { type: string }
+        type: { type: string, enum: [regular, premium] }
+        isActive: { type: boolean }
+
+    SaladIngredient:
+      type: object
+      properties:
+        _id: { type: string }
+        name_en: { type: string }
+        name_ar: { type: string }
+        price: { type: number }
+        calories: { type: number }
+        maxQuantity: { type: number }
+        isActive: { type: boolean }
+
+    Payment:
+      type: object
+      properties:
+        _id: { type: string }
+        provider: { type: string, enum: [moyasar] }
+        type: { type: string, enum: [premium_topup, one_time_addon, subscription_activation, one_time_order, custom_salad_day, custom_salad_order] }
+        status: { type: string, enum: [initiated, paid, failed, canceled, expired, refunded] }
+        amount: { type: integer }
+        currency: { type: string }
+        userId: { type: string }
+        subscriptionId: { type: string }
+        orderId: { type: string }
+        applied: { type: boolean }
+
+    Setting:
+      type: object
+      properties:
+        key: { type: string }
+        value: { type: object }
+        description: { type: string }
+
+    ActivityLog:
+      type: object
+      properties:
+        _id: { type: string }
+        entityType: { type: string }
+        entityId: { type: string }
+        action: { type: string }
+        byRole: { type: string }
+        meta: { type: object }
+        createdAt: { type: string, format: date-time }
+
+paths:
+  # --- PUBLIC / COMMON ---
+  /settings:
+    get:
+      summary: List all public settings
+      tags: [Settings]
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  data: { type: array, items: { $ref: '#/components/schemas/Setting' } }
+
+  # --- AUTH ---
+  /auth/otp/request:
+    post:
+      summary: Request OTP for login
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone]
+              properties:
+                phone: { type: string, example: "+966501234567" }
+      responses:
+        200: { description: OTP sent }
+
+  /auth/otp/verify:
+    post:
+      summary: Verify OTP and login
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [idToken]
+              properties:
+                idToken: { type: string }
+      responses:
+        200:
+          description: Logged in
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  token: { type: string }
+                  user: { $ref: '#/components/schemas/User' }
+
+  /auth/device-token:
+    post:
+      summary: Update FCM device token
+      tags: [Auth]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fcmToken]
+              properties:
+                fcmToken: { type: string }
+      responses: { 200: { description: Updated } }
+
+  # --- PLANS ---
+  /plans:
+    get:
+      summary: List all active plans
+      tags: [Subscriptions]
+      security: [{ bearerAuth: [] }]
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  data: { type: array, items: { $ref: '#/components/schemas/Plan' } }
+
+  # --- SUBSCRIPTIONS ---
+  /plans/{id}:
+    get:
+      summary: Get plan details
+      tags: [Subscriptions]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  data: { $ref: '#/components/schemas/Plan' }
+
+  /subscriptions/{id}/activate:
+    post:
+      summary: Activate a subscription (Mock for testing)
+      tags: [Subscriptions]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        200:
+          description: Activated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  data: { $ref: '#/components/schemas/Subscription' }
+
+  /subscriptions/preview:
+    post:
+      summary: Preview subscription price
+      tags: [Subscriptions]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [planId]
+              properties:
+                planId: { type: string }
+                premiumCount: { type: integer }
+                addons: { type: array, items: { type: object, properties: { addonId: { type: string } } } }
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      total: { type: number }
+                      breakdown: { type: object }
+
+  /subscriptions/checkout:
+    post:
+      summary: Checkout subscription (Initiate payment)
+      tags: [Subscriptions]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [planId, deliveryMode]
+              properties:
+                planId: { type: string }
+                premiumCount: { type: integer }
+                addons: { type: array, items: { type: object, properties: { addonId: { type: string } } } }
+                deliveryMode: { type: string, enum: [delivery, pickup] }
+                deliveryAddress: { $ref: '#/components/schemas/Address' }
+                deliveryWindow: { type: string }
+                startDate: { type: string, format: date }
+      responses:
+        200:
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      payment_url: { type: string }
+                      subscriptionId: { type: string }
+                      total: { type: number }
+
+  /subscriptions/{id}:
+    get:
+      summary: Get detailed subscription info
+      tags: [Subscriptions]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  data: { $ref: '#/components/schemas/Subscription' }
+
+  /subscriptions/{id}/days:
+    get:
+      summary: List all days in subscription
+      tags: [Subscriptions]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  data: { type: array, items: { $ref: '#/components/schemas/SubscriptionDay' } }
+
+  /subscriptions/{id}/today:
+    get:
+      summary: Get today's subscription day
+      tags: [Subscriptions]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  data: { $ref: '#/components/schemas/SubscriptionDay' }
+
+  /subscriptions/{id}/days/{date}:
+    get:
+      summary: Get subscription day by date
+      tags: [Subscriptions]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: date
+          in: path
+          required: true
+          schema: { type: string, format: date }
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  data: { $ref: '#/components/schemas/SubscriptionDay' }
+
+  /subscriptions/{id}/days/{date}/selection:
+    put:
+      summary: Update choices for a day
+      description: "Requires tomorrow to be before cutoff. Cannot update if day is locked/fulfilled."
+      tags: [Subscriptions]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: date
+          in: path
+          required: true
+          schema: { type: string, format: date }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                selections: { type: array, items: { type: string } }
+                premiumSelections: { type: array, items: { type: string } }
+      responses:
+        200:
+          description: Updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  data: { $ref: '#/components/schemas/SubscriptionDay' }
+                  requiresPremiumTopup: { type: boolean }
+
+  /subscriptions/{id}/days/{date}/skip:
+    post:
+      summary: Skip a specific day
+      tags: [Subscriptions]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: date
+          in: path
+          required: true
+          schema: { type: string, format: date }
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  data: { $ref: '#/components/schemas/SubscriptionDay' }
+        400: { description: Locked or insufficient skip allowance }
+
+  /subscriptions/{id}/skip-range:
+    post:
+      summary: Bulk skip days
+      tags: [Subscriptions]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [startDate, days]
+              properties:
+                startDate: { type: string, format: date }
+                days: { type: integer, minimum: 1 }
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      skippedDates: { type: array, items: { type: string } }
+                      rejected: { type: array, items: { type: object } }
+
+  /subscriptions/{id}/days/{date}/pickup/prepare:
+    post:
+      summary: Client confirms pickup for tomorrow
+      description: "Locks the day immediately and deducts credits. Only for pickup mode."
+      tags: [Subscriptions]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: date
+          in: path
+          required: true
+          schema: { type: string, format: date }
+      responses: { 200: { description: OK } }
+
+  /subscriptions/{id}/days/{date}/custom-salad:
+    post:
+      summary: Purchase a custom salad for a subscription day
+      tags: [Subscriptions]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+        - name: date
+          in: path
+          required: true
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ingredients]
+              properties:
+                ingredients: { type: array, items: { type: object } }
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  data: { type: object, properties: { payment_url: { type: string } } }
+
+  /subscriptions/{id}/days/{date}/delivery:
+    put:
+      summary: Update delivery details for a specific date
+      tags: [Subscriptions]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+        - name: date
+          in: path
+          required: true
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                deliveryAddressOverride: { $ref: '#/components/schemas/Address' }
+                deliveryWindowOverride: { type: string }
+      responses: { 200: { description: OK } }
+
+  /subscriptions/{id}/delivery:
+    put:
+      summary: Update global delivery details for subscription
+      tags: [Subscriptions]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                deliveryAddress: { $ref: '#/components/schemas/Address' }
+                deliveryWindow: { type: string }
+      responses: { 200: { description: OK } }
+
+  /subscriptions/{id}/premium/topup:
+    post:
+      summary: Buy more premium credits
+      tags: [Subscriptions]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [count]
+              properties:
+                count: { type: integer, minimum: 1 }
+                successUrl: { type: string }
+                backUrl: { type: string }
+      responses:
+        200:
+          description: Payment URL generated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  data: { type: object, properties: { payment_url: { type: string } } }
+
+  /subscriptions/{id}/addons/one-time:
+    post:
+      summary: Purchase one-time addon for a day
+      tags: [Subscriptions]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [addonId, date]
+              properties:
+                addonId: { type: string }
+                date: { type: string, format: date }
+      responses: { 200: { description: Payment URL } }
+
+  # --- ORDERS (ONE-TIME) ---
+  /orders:
+    get:
+      summary: List all orders for the current user
+      tags: [Orders]
+      security: [{ bearerAuth: [] }]
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  data: { type: array, items: { $ref: '#/components/schemas/Order' } }
+
+  /orders/checkout:
+    post:
+      summary: Buy meals without subscription
+      tags: [Orders]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [deliveryMode, deliveryDate]
+              properties:
+                meals: { type: array, items: { type: object, properties: { mealId: { type: string }, quantity: { type: integer } } } }
+                customSalads: { type: array, items: { type: object } }
+                deliveryMode: { type: string, enum: [delivery, pickup] }
+                deliveryDate: { type: string, format: date }
+                deliveryAddress: { $ref: '#/components/schemas/Address' }
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  data: { type: object, properties: { payment_url: { type: string }, orderId: { type: string } } }
+
+  /orders/{id}/confirm:
+    post:
+      summary: Mock payment confirmation for an order
+      tags: [Orders]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses: { 200: { description: OK } }
+
+  /orders/{id}/items/custom-salad:
+    post:
+      summary: Add custom salad to an existing order
+      tags: [Orders]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ingredients]
+              properties:
+                ingredients: { type: array, items: { type: object } }
+      responses: { 200: { description: OK } }
+
+  /orders/{id}:
+    get:
+      summary: Get order details
+      tags: [Orders]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  data: { $ref: '#/components/schemas/Order' }
+
+  # --- SALADS ---
+  /salad-ingredients:
+    get:
+      summary: List all active salad ingredients
+      tags: [Salad]
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  data: { type: array, items: { $ref: '#/components/schemas/SaladIngredient' } }
+
+  /custom-salads/price:
+    post:
+      summary: Preview custom salad price
+      tags: [Salad]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ingredients]
+              properties:
+                ingredients: { type: array, items: { type: object, properties: { ingredientId: { type: string }, quantity: { type: integer } } } }
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  data: { $ref: '#/components/schemas/CustomSalad' }
+
+  # --- KITCHEN ---
+  /kitchen/days/{date}:
+    get:
+      summary: List all meals to prepare for a date
+      tags: [Kitchen]
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - name: date
+          in: path
+          required: true
+          schema: { type: string, format: date }
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  data: { type: array, items: { type: object } }
+
+  /kitchen/subscriptions/{id}/days/{date}/assign:
+    put:
+      summary: Kitchen assigns meals to a user (Admin/Kitchen override)
+      tags: [Kitchen]
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: date
+          in: path
+          required: true
+          schema: { type: string, format: date }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                selections: { type: array, items: { type: string } }
+                premiumSelections: { type: array, items: { type: string } }
+      responses: { 200: { description: OK } }
+
+  /kitchen/subscriptions/{id}/days/{date}/lock:
+    post:
+      summary: Move day to LOCKED (preparing)
+      tags: [Kitchen]
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: date
+          in: path
+          required: true
+          schema: { type: string, format: date }
+      responses: { 200: { description: OK } }
+
+  /kitchen/subscriptions/{id}/days/{date}/in-preparation:
+    post:
+      summary: Move day to IN PREPARATION
+      tags: [Kitchen]
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: date
+          in: path
+          required: true
+          schema: { type: string, format: date }
+      responses: { 200: { description: OK } }
+
+  /kitchen/subscriptions/{id}/days/{date}/out-for-delivery:
+    post:
+      summary: Move day to ON THE WAY
+      tags: [Kitchen]
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: date
+          in: path
+          required: true
+          schema: { type: string, format: date }
+      responses: { 200: { description: OK } }
+
+  /kitchen/subscriptions/{id}/days/{date}/ready-for-pickup:
+    post:
+      summary: Move day to READY FOR PICKUP
+      tags: [Kitchen]
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: date
+          in: path
+          required: true
+          schema: { type: string, format: date }
+      responses: { 200: { description: OK } }
+
+  /kitchen/subscriptions/{id}/days/{date}/fulfill-pickup:
+    post:
+      summary: Fulfill a pickup (Customer grabbed it)
+      tags: [Kitchen]
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: date
+          in: path
+          required: true
+          schema: { type: string, format: date }
+      responses: { 200: { description: OK } }
+
+  /kitchen/orders/{date}:
+    get:
+      summary: List one-time orders to prepare for a date
+      tags: [Kitchen]
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - name: date
+          in: path
+          required: true
+          schema: { type: string, format: date }
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  data: { type: array, items: { $ref: '#/components/schemas/Order' } }
+
+  /kitchen/orders/{id}/preparing:
+    post:
+      summary: Move one-time order to PREPARING
+      tags: [Kitchen]
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses: { 200: { description: OK } }
+
+  /kitchen/orders/{id}/out-for-delivery:
+    post:
+      summary: Move one-time order to OUT FOR DELIVERY
+      tags: [Kitchen]
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses: { 200: { description: OK } }
+
+  /kitchen/orders/{id}/ready-for-pickup:
+    post:
+      summary: Move one-time order to READY FOR PICKUP
+      tags: [Kitchen]
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses: { 200: { description: OK } }
+
+  # --- COURIER ---
+  /courier/deliveries/today:
+    get:
+      summary: List assigned deliveries for today
+      tags: [Courier]
+      security: [{ cookieAuth: [] }]
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  data: { type: array, items: { type: object } }
+
+  /courier/deliveries/{id}/arriving-soon:
+    put:
+      summary: Notify customer about arrival
+      tags: [Courier]
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses: { 200: { description: OK } }
+
+  /courier/deliveries/{id}/delivered:
+    put:
+      summary: Mark delivery as SUCCESS (Fulfills day)
+      tags: [Courier]
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses: { 200: { description: OK } }
+
+  /courier/deliveries/{id}/cancel:
+    put:
+      summary: Courier cancels delivery (Functions as a skip)
+      tags: [Courier]
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses: { 200: { description: OK } }
+
+  /courier/orders/today:
+    get:
+      summary: List one-time orders for delivery today
+      tags: [Courier]
+      security: [{ cookieAuth: [] }]
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  data: { type: array, items: { $ref: '#/components/schemas/Order' } }
+
+  /courier/orders/{id}/delivered:
+    put:
+      summary: Mark one-time order as DELIVERED
+      tags: [Courier]
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses: { 200: { description: OK } }
+
+  /courier/orders/{id}/cancel:
+    put:
+      summary: Cancel one-time order delivery
+      tags: [Courier]
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses: { 200: { description: OK } }
+
+  # --- ADMIN ---
+  /admin/plans:
+    post:
+      summary: Create a new subscription plan
+      tags: [Admin]
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, daysCount, mealsPerDay, grams, price]
+              properties:
+                name: { type: string }
+                daysCount: { type: integer }
+                mealsPerDay: { type: integer }
+                grams: { type: integer }
+                price: { type: number }
+                skipAllowance: { type: integer }
+      responses: { 201: { description: Created } }
+
+  /admin/settings/cutoff:
+    put:
+      summary: Set cutoff time (e.g. "23:00")
+      tags: [Admin]
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [time]
+              properties: { time: { type: string, example: "23:00" } }
+      responses: { 200: { description: OK } }
+
+  /admin/settings/delivery-windows:
+    put:
+      summary: Update delivery windows list
+      tags: [Admin]
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [windows]
+              properties: { windows: { type: array, items: { type: string } } }
+      responses: { 200: { description: OK } }
+
+  /admin/settings/skip-allowance:
+    put:
+      summary: Update default skip allowance
+      tags: [Admin]
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [days]
+              properties: { days: { type: integer } }
+      responses: { 200: { description: OK } }
+
+  /admin/settings/premium-price:
+    put:
+      summary: Update premium meal price
+      tags: [Admin]
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [price]
+              properties: { price: { type: number } }
+      responses: { 200: { description: OK } }
+
+  /admin/dashboard-users:
+    get:
+      summary: List all dashboard users
+      tags: [Admin]
+      security: [{ cookieAuth: [] }]
+      responses:
+        200:
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/DashboardUser' } } } }
+
+    post:
+      summary: Create a new dashboard user
+      tags: [Admin]
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, role]
+              properties:
+                email: { type: string }
+                role: { type: string, enum: [admin, kitchen, courier] }
+      responses: { 201: { description: Created } }
+
+  /admin/notification-logs:
+    get:
+      summary: View notification logs
+      tags: [Admin]
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - name: userId
+          in: query
+          schema: { type: string }
+        - name: page
+          in: query
+          schema: { type: integer }
+      responses:
+        200:
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/NotificationLog' } } } }
+
+  /admin/salad-ingredients:
+    post:
+      summary: Create a new salad ingredient
+      tags: [Admin]
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SaladIngredient' }
+      responses: { 201: { description: Created } }
+
+  /admin/salad-ingredients/{id}:
+    patch:
+      summary: Update a salad ingredient
+      tags: [Admin]
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SaladIngredient' }
+      responses: { 200: { description: OK } }
+
+  /admin/salad-ingredients/{id}/toggle:
+    patch:
+      summary: Toggle salad ingredient active state
+      tags: [Admin]
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses: { 200: { description: OK } }
+
+  /admin/logs:
+    get:
+      summary: View audit logs
+      tags: [Admin]
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - name: entityType
+          in: query
+          schema: { type: string }
+        - name: page
+          in: query
+          schema: { type: integer }
+      responses:
+        200:
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/ActivityLog' } } } }
+
+  /admin/trigger-cutoff:
+    post:
+      summary: Manually trigger daily cutoff processing
+      tags: [Admin]
+      security: [{ cookieAuth: [] }]
+      responses: { 200: { description: Processed } }
+
+  # --- WEBHOOKS ---
+  /webhooks/moyasar:
+    post:
+      summary: Handle payment events from Moyasar
+      tags: [Webhooks]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses: { 200: { description: OK } }

@@ -1,0 +1,6 @@
+node_modules
+logs
+.git
+.env
+npm-debug.log
+audit.patch
