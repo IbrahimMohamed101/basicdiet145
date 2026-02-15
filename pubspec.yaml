@@ -1,0 +1,53 @@
+name: basic_diet
+description: "A new Flutter project."
+publish_to: 'none' # Remove this line if you wish to publish to pub.dev
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.10.8
+
+dependencies:
+  cupertino_icons: ^1.0.8
+  flutter:
+    sdk: flutter
+  flutter_screenutil: ^5.9.3
+  gap: ^3.0.1
+  go_router: any
+  url_launcher: ^6.3.2
+
+dev_dependencies:
+  flutter_launcher_icons: ^0.14.4
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/images/appLogo.png"
+  min_sdk_android: 21
+  adaptive_icon_background: "#000000"
+  adaptive_icon_foreground: "assets/images/appLogo.png"
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/images/
+    - assets/icons/
+    - assets/fonts/
+    - assets/json/
+    - assets/translations/
+    - .env
+
+  fonts:
+    - family: Arimo
+      fonts:
+        - asset: assets/fonts/Arimo-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/Arimo-BoldItalic.ttf
+          weight: 700
+        - asset: assets/fonts/Arimo-Italic.ttf
+          weight: 400
+        - asset: assets/fonts/Arimo-Regular.ttf
+          weight: 400
