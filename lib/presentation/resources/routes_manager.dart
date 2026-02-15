@@ -1,7 +1,9 @@
 import 'package:basic_diet/app/functions.dart';
 import 'package:basic_diet/presentation/login/login_screen.dart';
 import 'package:basic_diet/presentation/onboarding/on_boarding_screen.dart';
+import 'package:basic_diet/presentation/register/register_screen.dart';
 import 'package:basic_diet/presentation/splash/splash_screen.dart';
+import 'package:basic_diet/presentation/verify/verify_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -24,6 +26,19 @@ class GoRouterConfig {
         path: LoginScreen.loginRoute,
         pageBuilder: (BuildContext context, GoRouterState state) =>
             getCustomTransitionPage(state: state, child: LoginScreen()),
+      ),
+      GoRoute(
+        path: RegisterScreen.registerRoute,
+        pageBuilder: (BuildContext context, GoRouterState state) =>
+            getCustomTransitionPage(state: state, child: RegisterScreen()),
+      ),
+      GoRoute(
+        path: VerifyScreen.verifyRoute,
+        pageBuilder: (BuildContext context, GoRouterState state) =>
+            getCustomTransitionPage(
+              state: state,
+              child: VerifyScreen(phoneNumber: state.extra as String?),
+            ),
       ),
     ],
   );

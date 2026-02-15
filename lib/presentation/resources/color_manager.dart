@@ -15,7 +15,7 @@ class ColorManager {
 
   static const Color errorColor = Color(0xFFED1B24);
   static const Color whiteColor = Color(0xFFFBFFFC);
-  static const Color blackColor = Color(0xFF000000);
-  static const Color grayColor = Color(0xFFB1B1B1);
+  static const Color blackColor = Color(0xFF0A0A0A);
+  static const Color grayColor = Color(0xFF717182);
   static const Color formFieldsBorderColor = Color(0xFFE5E7EB);
 }
