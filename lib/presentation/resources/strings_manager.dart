@@ -25,7 +25,9 @@ class Strings {
   static const String emailHint = "Enter your email address";
   static const String createAccount = "Create Account";
   static const String alreadyHaveAccount = "Already have an account? ";
+  static const String dontHaveAccount = "Don't have an account? ";
   static const String signIn = "Sign In";
+  static const String signUp = "Sign Up";
   static const String back = "Back";
   static const String verifyYourPhone = "Verify Your Phone";
   static const String otpSentSubtitle = "We've sent a 6-digit code to";

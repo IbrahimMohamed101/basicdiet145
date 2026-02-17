@@ -7,6 +7,7 @@ import 'package:basic_diet/presentation/resources/values_manager.dart';
 import 'package:basic_diet/presentation/verify/verify_screen.dart';
 import 'package:basic_diet/presentation/widgets/button_widget.dart';
 import 'package:basic_diet/presentation/widgets/custom_text_field_style.dart';
+import 'package:basic_diet/presentation/widgets/text_button_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:gap/gap.dart';
@@ -49,6 +50,9 @@ class _LoginScreenState extends State<LoginScreen> {
               _buildHeader(),
               Gap(AppSize.s105.h),
               _buildForm(context),
+              Gap(AppSize.s20.h),
+              _buildFooter(context),
+              Gap(AppSize.s20.h),
             ],
           ),
         ),
@@ -103,6 +107,27 @@ class _LoginScreenState extends State<LoginScreen> {
             VerifyScreen.verifyRoute,
             extra: _phoneController.text,
           ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFooter(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Text(
+          Strings.dontHaveAccount,
+          style: getRegularTextStyle(
+            color: ColorManager.grayColor,
+            fontSize: FontSizeManager.s14.sp,
+          ),
+        ),
+        TextButtonWidget(
+          Strings.signUp,
+          ColorManager.greenDark,
+          FontSizeManager.s14,
+          () => context.push(RegisterScreen.registerRoute),
         ),
       ],
     );
