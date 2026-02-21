@@ -42,13 +42,13 @@ class LoginBloc extends Bloc<LoginEvent, LoginState> {
     //   return;
     // }
 
-    emit(LoginLoading(phone: state.phone));
+    emit(LoginLoadingState(phone: state.phone));
 
     try {
       await Future.delayed(const Duration(seconds: 1));
-      emit(LoginSuccess(phone: state.phone));
+      emit(LoginSuccessState(phone: state.phone));
     } catch (e) {
-      emit(LoginError("Something went wrong", phone: state.phone));
+      emit(LoginErrorState("Something went wrong", phone: state.phone));
     }
   }
 

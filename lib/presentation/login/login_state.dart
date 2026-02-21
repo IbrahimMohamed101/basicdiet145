@@ -37,35 +37,41 @@ class LoginFormInitialState extends LoginState {
 // UI Reaction:
 //   Disable the Login button so the user doesn't click it twice.
 //   Show a CircularProgressIndicator (spinner).
-class LoginLoading extends LoginState {
-  const LoginLoading({super.phone = '', super.phoneError});
+class LoginLoadingState extends LoginState {
+  const LoginLoadingState({super.phone = '', super.phoneError});
 
   @override
   LoginState copyWith({String? phone, String? phoneError}) {
-    return LoginLoading(phone: phone ?? this.phone, phoneError: phoneError);
+    return LoginLoadingState(
+      phone: phone ?? this.phone,
+      phoneError: phoneError,
+    );
   }
 }
 
 // Meaning: The server returned a 200 OK. The user is authenticated.
 // UI Reaction: Navigate away from this screen (e.g., Navigator.pushReplacementNamed('/home')).
-class LoginSuccess extends LoginState {
-  const LoginSuccess({super.phone = '', super.phoneError});
+class LoginSuccessState extends LoginState {
+  const LoginSuccessState({super.phone = '', super.phoneError});
 
   @override
   LoginState copyWith({String? phone, String? phoneError}) {
-    return LoginSuccess(phone: phone ?? this.phone, phoneError: phoneError);
+    return LoginSuccessState(
+      phone: phone ?? this.phone,
+      phoneError: phoneError,
+    );
   }
 }
 
 // Meaning: The request was sent, but something went wrong. Could be "No Internet", "Server Down", or "Wrong Password" returned by the API.
 // UI Reaction: Show a Snackbar or a global error message telling the user what went wrong (e.g., "Connection Timeout").
-class LoginError extends LoginState {
+class LoginErrorState extends LoginState {
   final String message;
-  const LoginError(this.message, {super.phone = '', super.phoneError});
+  const LoginErrorState(this.message, {super.phone = '', super.phoneError});
 
   @override
   LoginState copyWith({String? phone, String? phoneError}) {
-    return LoginError(
+    return LoginErrorState(
       message,
       phone: phone ?? this.phone,
       phoneError: phoneError,
