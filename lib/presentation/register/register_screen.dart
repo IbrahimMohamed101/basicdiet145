@@ -9,34 +9,60 @@ import 'package:basic_diet/presentation/widgets/custom_back_button.dart';
 import 'package:basic_diet/presentation/widgets/custom_text_field_style.dart';
 import 'package:basic_diet/presentation/widgets/text_button_widget.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:gap/gap.dart';
 import 'package:go_router/go_router.dart';
+import 'register_bloc.dart';
+import 'register_event.dart';
+import 'register_state.dart';
 
 class RegisterScreen extends StatelessWidget {
   static const String registerRoute = "/register";
-  const RegisterScreen({super.key});
+  RegisterScreen({super.key});
+
+  late final TextEditingController _fullNameController =
+      TextEditingController();
+  late final TextEditingController _phoneController = TextEditingController();
+  late final TextEditingController _emailController = TextEditingController();
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: ColorManager.whiteColor,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: EdgeInsetsDirectional.symmetric(horizontal: AppSize.s24.w),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Gap(AppSize.s20.h),
-              const CustomBackButton(),
-              Gap(AppSize.s100.h),
-              _buildHeader(),
-              Gap(AppSize.s40.h),
-              _buildForm(context),
-              Gap(AppSize.s20.h),
-              _buildFooter(context),
-              Gap(AppSize.s20.h),
-            ],
+    return BlocProvider(
+      create: (_) => RegisterBloc(),
+      child: BlocListener<RegisterBloc, RegisterState>(
+        listener: (context, state) {
+          if (state is RegisterSuccessState) {
+            context.push(LoginScreen.loginRoute);
+          }
+          if (state is RegisterErrorState) {
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text(state.message)));
+          }
+        },
+        child: Scaffold(
+          backgroundColor: ColorManager.whiteColor,
+          body: SafeArea(
+            child: SingleChildScrollView(
+              padding: EdgeInsetsDirectional.symmetric(
+                horizontal: AppSize.s24.w,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Gap(AppSize.s20.h),
+                  const CustomBackButton(),
+                  Gap(AppSize.s100.h),
+                  _buildHeader(),
+                  Gap(AppSize.s40.h),
+                  _buildForm(context),
+                  Gap(AppSize.s20.h),
+                  _buildFooter(context),
+                  Gap(AppSize.s20.h),
+                ],
+              ),
+            ),
           ),
         ),
       ),
@@ -79,9 +105,21 @@ class RegisterScreen extends StatelessWidget {
           ),
         ),
         Gap(AppSize.s8.h),
-        AppTextField.normal(
-          hintText: Strings.fullNameHint,
-          controller: TextEditingController(),
+        BlocBuilder<RegisterBloc, RegisterState>(
+          buildWhen: (previous, current) =>
+              previous.fullNameError != current.fullNameError,
+          builder: (context, state) {
+            return AppTextField.normal(
+              hintText: Strings.fullNameHint,
+              controller: _fullNameController,
+              errorText: state.fullNameError,
+              onChanged: (fullName) {
+                context.read<RegisterBloc>().add(
+                  RegisterFullNameChanged(fullName),
+                );
+              },
+            );
+          },
         ),
         Gap(AppSize.s16.h),
 
@@ -94,7 +132,19 @@ class RegisterScreen extends StatelessWidget {
           ),
         ),
         Gap(AppSize.s8.h),
-        AppTextField.phone(controller: TextEditingController()),
+        BlocBuilder<RegisterBloc, RegisterState>(
+          buildWhen: (previous, current) =>
+              previous.phoneError != current.phoneError,
+          builder: (context, state) {
+            return AppTextField.phone(
+              controller: _phoneController,
+              errorText: state.phoneError,
+              onChanged: (phone) {
+                context.read<RegisterBloc>().add(RegisterPhoneChanged(phone));
+              },
+            );
+          },
+        ),
         Gap(AppSize.s16.h),
 
         // Email Address
@@ -106,17 +156,47 @@ class RegisterScreen extends StatelessWidget {
           ),
         ),
         Gap(AppSize.s8.h),
-        AppTextField.email(controller: TextEditingController()),
+        BlocBuilder<RegisterBloc, RegisterState>(
+          buildWhen: (previous, current) =>
+              previous.emailError != current.emailError,
+          builder: (context, state) {
+            return AppTextField.email(
+              controller: _emailController,
+              errorText: state.emailError,
+              onChanged: (email) {
+                context.read<RegisterBloc>().add(RegisterEmailChanged(email));
+              },
+            );
+          },
+        ),
         Gap(AppSize.s24.h),
 
         // Create Account Button
-        ButtonWidget(
-          text: Strings.createAccount,
-          textColor: ColorManager.whiteColor,
-          color: ColorManager.greenDark,
-          width: double.infinity,
-          radius: AppSize.s12.r,
-          onTap: () {},
+        BlocBuilder<RegisterBloc, RegisterState>(
+          builder: (context, state) {
+            final isLoading = state is RegisterLoadingState;
+            final isEnabled =
+                state.fullNameError == null &&
+                state.fullName.isNotEmpty &&
+                state.phoneError == null &&
+                state.phone.isNotEmpty &&
+                state.emailError == null;
+
+            return ButtonWidget(
+              text: isLoading ? Strings.loading : Strings.createAccount,
+              textColor: ColorManager.whiteColor,
+              color: isEnabled
+                  ? ColorManager.greenDark
+                  : ColorManager.greenDark.withValues(alpha: 0.5),
+              width: double.infinity,
+              radius: AppSize.s12.r,
+              onTap: isEnabled
+                  ? () => context.read<RegisterBloc>().add(
+                      const RegisterSubmitted(),
+                    )
+                  : null,
+            );
+          },
         ),
       ],
     );

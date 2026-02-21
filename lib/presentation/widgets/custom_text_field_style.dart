@@ -28,6 +28,8 @@ class AppTextField extends StatelessWidget {
   factory AppTextField.normal({
     required String hintText,
     required TextEditingController controller,
+    ValueChanged<String>? onChanged,
+    String? errorText,
   }) {
     return AppTextField._(
       hintText: hintText,
@@ -35,6 +37,8 @@ class AppTextField extends StatelessWidget {
       keyboardType: TextInputType.text,
       obscureText: false,
       textInputAction: TextInputAction.done,
+      errorText: errorText,
+      onChanged: onChanged,
     );
   }
 
@@ -50,6 +54,8 @@ class AppTextField extends StatelessWidget {
       keyboardType: TextInputType.emailAddress,
       obscureText: false,
       textInputAction: TextInputAction.next,
+      errorText: errorText,
+      onChanged: onChanged,
     );
   }
 

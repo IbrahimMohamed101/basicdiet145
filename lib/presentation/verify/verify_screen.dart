@@ -1,14 +1,18 @@
+import 'package:basic_diet/presentation/main/main_screen.dart';
 import 'package:basic_diet/presentation/resources/color_manager.dart';
 import 'package:basic_diet/presentation/resources/font_manager.dart';
 import 'package:basic_diet/presentation/resources/strings_manager.dart';
 import 'package:basic_diet/presentation/resources/styles_manager.dart';
 import 'package:basic_diet/presentation/resources/values_manager.dart';
-import 'package:basic_diet/presentation/widgets/button_widget.dart';
-import 'package:basic_diet/presentation/widgets/custom_back_button.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_otp_text_field/flutter_otp_text_field.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:gap/gap.dart';
+import 'package:go_router/go_router.dart';
+import 'verify_bloc.dart';
+import 'verify_event.dart';
+import 'verify_state.dart';
 
 class VerifyScreen extends StatelessWidget {
   static const String verifyRoute = "/verify";
@@ -18,126 +22,215 @@ class VerifyScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: ColorManager.whiteColor,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: EdgeInsets.symmetric(horizontal: AppPadding.p20.w),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Gap(AppSize.s20.h),
-              const CustomBackButton(),
-              Gap(AppSize.s40.h),
-              Center(
-                child: Column(
-                  children: [
-                    Text(
-                      Strings.verifyYourPhone,
-                      style: getBoldTextStyle(
-                        color: ColorManager.blackColor,
-                        fontSize: FontSizeManager.s24.sp,
-                      ),
-                    ),
-                    Gap(AppSize.s16.h),
-                    Text(
-                      Strings.otpSentSubtitle,
-                      style: getRegularTextStyle(
-                        color: ColorManager.grayColor,
-                        fontSize: FontSizeManager.s14.sp,
-                      ),
-                    ),
-                    Gap(AppSize.s8.h),
-                    Text(
-                      phoneNumber ?? "",
-                      style: getBoldTextStyle(
-                        color: ColorManager.blackColor,
-                        fontSize: FontSizeManager.s16.sp,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Gap(AppSize.s40.h),
-              OtpTextField(
-                numberOfFields: 4,
-                borderColor: ColorManager.greenPrimary,
-                focusedBorderColor: ColorManager.greenPrimary,
-                showFieldAsBox: true,
-                fieldWidth: AppSize.s70.w,
-                fieldHeight: AppSize.s70.h,
-                onCodeChanged: (String code) {},
-                onSubmit: (String verificationCode) {},
-                borderRadius: BorderRadius.circular(AppSize.s16.r),
-                filled: true,
-                fillColor: ColorManager.whiteColor,
-              ),
-              Gap(AppSize.s24.h),
-              Center(
-                child: RichText(
-                  text: TextSpan(
-                    text: "${Strings.resendCodeIn} ",
-                    style: getRegularTextStyle(
-                      color: ColorManager.grayColor,
-                      fontSize: FontSizeManager.s14.sp,
-                    ),
-                    children: [
-                      TextSpan(
-                        text: "0:52",
-                        style: getBoldTextStyle(
-                          color: ColorManager.greenDark,
-                          fontSize: FontSizeManager.s14.sp,
-                        ),
-                      ),
-                    ],
+    return BlocProvider(
+      create: (_) => VerifyBloc(),
+      child: BlocListener<VerifyBloc, VerifyState>(
+        listener: (context, state) {
+          if (state is VerifySuccessState) {
+            context.push(MainScreen.mainRoute);
+          }
+          if (state is VerifyErrorState) {
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text(state.message)));
+          }
+        },
+        child: Scaffold(
+          backgroundColor: ColorManager.whiteColor,
+          body: SafeArea(
+            child: SingleChildScrollView(
+              padding: EdgeInsets.symmetric(horizontal: AppPadding.p20.w),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Gap(AppSize.s20.h),
+                  // const CustomBackButton(),
+                  Gap(AppSize.s40.h),
+                  _buildHeader(),
+                  Gap(AppSize.s40.h),
+                  _buildOtpForm(context),
+                  Gap(AppSize.s24.h),
+                  _buildResendCode(context),
+                  Gap(AppSize.s40.h),
+                  // _buildVerifyButton(),
+                  BlocBuilder<VerifyBloc, VerifyState>(
+                    builder: (context, state) {
+                      if (state is VerifyLoadingState) {
+                        return _loader();
+                      }
+                      return const SizedBox.shrink();
+                    },
                   ),
-                ),
+                  Gap(AppSize.s20.h),
+                  _buildSecurityInfo(),
+                ],
               ),
-              Gap(AppSize.s40.h),
-              ButtonWidget(
-                text: Strings.verifyAndContinue,
-                textColor: ColorManager.whiteColor,
-                color: ColorManager.greenDark,
-                width: double.infinity,
-                radius: AppSize.s12.r,
-                onTap: () {},
-              ),
-              Gap(AppSize.s20.h),
-              Container(
-                padding: EdgeInsets.all(AppPadding.p12.w),
-                decoration: BoxDecoration(
-                  color: ColorManager.greenLight.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(AppSize.s8.r),
-                  border: Border.all(
-                    color: ColorManager.greenLight.withOpacity(0.3),
-                  ),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.lock,
-                      size: AppSize.s16.sp,
-                      color: ColorManager.grayColor,
-                    ),
-                    Gap(AppSize.s8.w),
-                    Expanded(
-                      child: Text(
-                        Strings.secureInfo,
-                        style: getRegularTextStyle(
-                          color: ColorManager.grayColor,
-                          fontSize: FontSizeManager.s12.sp,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildHeader() {
+    return Center(
+      child: Column(
+        children: [
+          Text(
+            Strings.verifyYourPhone,
+            style: getBoldTextStyle(
+              color: ColorManager.blackColor,
+              fontSize: FontSizeManager.s24.sp,
+            ),
+          ),
+          Gap(AppSize.s16.h),
+          Text(
+            Strings.otpSentSubtitle,
+            style: getRegularTextStyle(
+              color: ColorManager.grayColor,
+              fontSize: FontSizeManager.s14.sp,
+            ),
+          ),
+          Gap(AppSize.s8.h),
+          Text(
+            phoneNumber ?? "",
+            style: getBoldTextStyle(
+              color: ColorManager.blackColor,
+              fontSize: FontSizeManager.s16.sp,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOtpForm(BuildContext context) {
+    return Builder(
+      builder: (context) {
+        return OtpTextField(
+          numberOfFields: 4,
+          borderColor: ColorManager.greenPrimary,
+          focusedBorderColor: ColorManager.greenPrimary,
+          showFieldAsBox: true,
+          fieldWidth: AppSize.s70.w,
+          fieldHeight: AppSize.s70.h,
+          onCodeChanged: (String code) {
+            context.read<VerifyBloc>().add(VerifyCodeChanged(code));
+          },
+          onSubmit: (String verificationCode) {
+            context.read<VerifyBloc>().add(VerifyCodeChanged(verificationCode));
+            context.read<VerifyBloc>().add(const VerifySubmitted());
+          },
+          borderRadius: BorderRadius.circular(AppSize.s16.r),
+          filled: true,
+          fillColor: ColorManager.whiteColor,
+        );
+      },
+    );
+  }
+
+  Widget _buildResendCode(BuildContext context) {
+    return BlocBuilder<VerifyBloc, VerifyState>(
+      builder: (context, state) {
+        return Center(
+          child: GestureDetector(
+            onTap: state.canResend
+                ? () => context.read<VerifyBloc>().add(const VerifyResendCode())
+                : null,
+            child: RichText(
+              text: TextSpan(
+                text: state.canResend
+                    ? "Resend Code"
+                    : "${Strings.resendCodeIn} ",
+                style:
+                    getRegularTextStyle(
+                      color: state.canResend
+                          ? ColorManager.greenDark
+                          : ColorManager.grayColor,
+                      fontSize: FontSizeManager.s14.sp,
+                    ).copyWith(
+                      fontWeight: state.canResend
+                          ? FontWeight.bold
+                          : FontWeight.normal,
+                    ),
+                children: state.canResend
+                    ? []
+                    : [
+                        TextSpan(
+                          text:
+                              "0:${state.timerDuration.toString().padLeft(2, '0')}",
+                          style: getBoldTextStyle(
+                            color: ColorManager.greenDark,
+                            fontSize: FontSizeManager.s14.sp,
+                          ),
+                        ),
+                      ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // Widget _buildVerifyButton() {
+  //   return BlocBuilder<VerifyBloc, VerifyState>(
+  //     builder: (context, state) {
+  //       final isLoading = state is VerifyLoadingState; // check if loading
+  //       final isEnabled =
+  //           state.otpError == null &&
+  //           state.otpCode.length ==
+  //               4; // check if text field is valid and filled
+
+  //       return ButtonWidget(
+  //         text: isLoading ? Strings.loading : Strings.verifyAndContinue,
+  //         textColor: ColorManager.whiteColor,
+  //         color: isEnabled
+  //             ? ColorManager.greenDark
+  //             : ColorManager.greenDark.withValues(alpha: 0.5),
+  //         width: double.infinity,
+  //         radius: AppSize.s12.r,
+  //         onTap: isEnabled
+  //             ? () => context.read<VerifyBloc>().add(const VerifySubmitted())
+  //             : null,
+  //       );
+  //     },
+  //   );
+  // }
+
+  Widget _buildSecurityInfo() {
+    return Container(
+      padding: EdgeInsets.all(AppPadding.p12.w),
+      decoration: BoxDecoration(
+        color: ColorManager.greenLight.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(AppSize.s8.r),
+        border: Border.all(
+          color: ColorManager.greenLight.withValues(alpha: 0.3),
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.lock, size: AppSize.s16.sp, color: ColorManager.grayColor),
+          Gap(AppSize.s8.w),
+          Expanded(
+            child: Text(
+              Strings.secureInfo,
+              style: getRegularTextStyle(
+                color: ColorManager.grayColor,
+                fontSize: FontSizeManager.s12.sp,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _loader() {
+    return Center(
+      child: CircularProgressIndicator(color: ColorManager.greenDark),
     );
   }
 }
