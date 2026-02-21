@@ -12,6 +12,7 @@ class AppTextField extends StatelessWidget {
   final bool obscureText;
   final String? errorText;
   final TextInputAction textInputAction;
+  final ValueChanged<String>? onChanged;
 
   const AppTextField._({
     required this.hintText,
@@ -20,6 +21,7 @@ class AppTextField extends StatelessWidget {
     required this.obscureText,
     required this.textInputAction,
     this.errorText,
+    this.onChanged,
   });
 
   // 🔹 Default constructor
@@ -39,6 +41,7 @@ class AppTextField extends StatelessWidget {
   // 🔹 Email constructor
   factory AppTextField.email({
     required TextEditingController controller,
+    ValueChanged<String>? onChanged,
     String? errorText,
   }) {
     return AppTextField._(
@@ -52,6 +55,7 @@ class AppTextField extends StatelessWidget {
 
   factory AppTextField.phone({
     required TextEditingController controller,
+    ValueChanged<String>? onChanged,
     String? errorText,
   }) {
     return AppTextField._(
@@ -61,12 +65,14 @@ class AppTextField extends StatelessWidget {
       obscureText: false,
       textInputAction: TextInputAction.done,
       errorText: errorText,
+      onChanged: onChanged,
     );
   }
 
   @override
   Widget build(BuildContext context) {
     return TextFormField(
+      onChanged: onChanged,
       controller: controller,
       keyboardType: keyboardType,
       obscureText: obscureText,

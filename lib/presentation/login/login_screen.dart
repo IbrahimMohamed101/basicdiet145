@@ -9,51 +9,56 @@ import 'package:basic_diet/presentation/widgets/button_widget.dart';
 import 'package:basic_diet/presentation/widgets/custom_text_field_style.dart';
 import 'package:basic_diet/presentation/widgets/text_button_widget.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:gap/gap.dart';
 import 'package:go_router/go_router.dart';
+import 'login_bloc.dart';
+import 'login_event.dart';
+import 'login_state.dart';
 
-class LoginScreen extends StatefulWidget {
+class LoginScreen extends StatelessWidget {
   static const String loginRoute = "/login";
-  const LoginScreen({super.key});
+  LoginScreen({super.key});
 
-  @override
-  State<LoginScreen> createState() => _LoginScreenState();
-}
+  late final TextEditingController _phoneController = TextEditingController();
 
-class _LoginScreenState extends State<LoginScreen> {
-  late final TextEditingController _phoneController;
-
-  @override
-  void initState() {
-    super.initState();
-    _phoneController = TextEditingController();
-  }
-
-  @override
-  void dispose() {
-    _phoneController.dispose();
-    super.dispose();
-  }
-
+  // @override
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: ColorManager.whiteColor,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: EdgeInsetsDirectional.symmetric(horizontal: AppSize.s24.w),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Gap(AppSize.s100.h),
-              _buildHeader(),
-              Gap(AppSize.s105.h),
-              _buildForm(context),
-              Gap(AppSize.s20.h),
-              _buildFooter(context),
-              Gap(AppSize.s20.h),
-            ],
+    return BlocProvider(
+      create: (_) => LoginBloc(),
+      child: BlocListener<LoginBloc, LoginState>(
+        listener: (context, state) {
+          if (state is LoginSuccess) {
+            context.push(VerifyScreen.verifyRoute, extra: state.phone);
+          }
+          if (state is LoginError) {
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text(state.message)));
+          }
+        },
+        child: Scaffold(
+          backgroundColor: ColorManager.whiteColor,
+          body: SafeArea(
+            child: SingleChildScrollView(
+              padding: EdgeInsetsDirectional.symmetric(
+                horizontal: AppSize.s24.w,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Gap(AppSize.s100.h),
+                  _buildHeader(),
+                  Gap(AppSize.s105.h),
+                  _buildForm(context),
+                  Gap(AppSize.s20.h),
+                  _buildFooter(context),
+                  Gap(AppSize.s20.h),
+                ],
+              ),
+            ),
           ),
         ),
       ),
@@ -95,18 +100,39 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         ),
         Gap(AppSize.s8.h),
-        AppTextField.phone(controller: _phoneController),
+        BlocBuilder<LoginBloc, LoginState>(
+          buildWhen: (previous, current) =>
+              previous.phoneError != current.phoneError,
+          builder: (context, state) {
+            return AppTextField.phone(
+              controller: _phoneController,
+              errorText: state.phoneError,
+              onChanged: (phone) {
+                context.read<LoginBloc>().add(LoginPhoneChanged(phone));
+              },
+            );
+          },
+        ),
         Gap(AppSize.s16.h),
-        ButtonWidget(
-          text: Strings.sendOtp,
-          textColor: ColorManager.whiteColor,
-          color: ColorManager.greenDark,
-          width: double.infinity,
-          radius: AppSize.s12.r,
-          onTap: () => context.push(
-            VerifyScreen.verifyRoute,
-            extra: _phoneController.text,
-          ),
+        BlocBuilder<LoginBloc, LoginState>(
+          builder: (context, state) {
+            final isLoading = state is LoginLoading;
+            final isEnabled =
+                state.phoneError == null && state.phone.isNotEmpty;
+
+            return ButtonWidget(
+              text: isLoading ? Strings.loading : Strings.sendOtp,
+              textColor: ColorManager.whiteColor,
+              color: isEnabled
+                  ? ColorManager.greenDark
+                  : ColorManager.greenDark.withValues(alpha: 0.5),
+              width: double.infinity,
+              radius: AppSize.s12.r,
+              onTap: isEnabled
+                  ? () => context.read<LoginBloc>().add(const LoginSubmitted())
+                  : null,
+            );
+          },
         ),
       ],
     );
@@ -133,43 +159,3 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 }
-
-// StreamBuilder<bool>(
-//   stream: viewModel.outShowPhoneError,
-//   builder: (_, snapshot) {
-//     return AppTextField.phone(
-//       controller: phoneController,
-//       errorText: snapshot.data == true
-//           ? "Phone is required"
-//           : null,
-//     );
-//   },
-// );
-
-
-
-
-/*
-
-🎯 New Clean Flow with BLoC
-
-Instead of:
-
-ViewModel
-  ↓
-Streams
-  ↓
-StreamBuilder
-  ↓
-PhoneField
-
-
-You’ll have:
-
-Bloc
-  ↓
-BlocBuilder
-  ↓
-AppTextField
-
-*/

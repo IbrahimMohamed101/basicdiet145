@@ -7,13 +7,17 @@ environment:
   sdk: ^3.10.8
 
 dependencies:
+  bloc: ^9.2.0
   cupertino_icons: ^1.0.8
+  equatable: ^2.0.8
   flutter:
     sdk: flutter
+  flutter_bloc: ^9.1.1
   flutter_otp_text_field: ^1.5.1+1
   flutter_screenutil: ^5.9.3
   gap: ^3.0.1
   go_router: any
+  rxdart: ^0.28.0
   url_launcher: ^6.3.2
 
 dev_dependencies:

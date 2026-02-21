@@ -34,4 +34,5 @@ class Strings {
   static const String resendCodeIn = "Resend code in";
   static const String verifyAndContinue = "Verify & Continue";
   static const String secureInfo = "Your information is secure and encrypted";
+  static const String loading = "Loading";
 }
