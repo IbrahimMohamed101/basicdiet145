@@ -6,7 +6,19 @@ const { writeLog } = require("../utils/log");
 const { getEffectiveDeliveryDetails } = require("../utils/delivery");
 const { logger } = require("../utils/logger");
 
+let isCutoffJobRunning = false;
+
 async function processDailyCutoff() {
+    // MEDIUM AUDIT FIX: Enforce single-run lock so overlapping manual/scheduled triggers cannot process the same cutoff twice.
+    if (isCutoffJobRunning) {
+        const err = new Error("Cutoff job is already running");
+        err.code = "JOB_RUNNING";
+        throw err;
+    }
+    isCutoffJobRunning = true;
+
+    const sentNotificationKeys = new Set();
+    try {
     const tomorrow = getTomorrowKSADate();
     logger.info("Automation cutoff start", { date: tomorrow });
 
@@ -68,15 +80,22 @@ async function processDailyCutoff() {
             meta: { date: tomorrow }
         });
 
-        // 5. Notify User (Optional)
-        await notifyUser(sub.userId, {
-            title: "تم تأكيد طلبك لغدًا",
-            body: "تم إقفال اختيارات الوجبات وبدء التجهيز لغدًا",
-            data: { subscriptionId: String(sub._id), date: tomorrow }
-        });
+        // MEDIUM AUDIT FIX: Deduplicate notifications within the same run to avoid double sends during repeated day hits.
+        const notificationKey = `${sub._id}:${tomorrow}:cutoff_locked`;
+        if (!sentNotificationKeys.has(notificationKey)) {
+            await notifyUser(sub.userId, {
+                title: "تم تأكيد طلبك لغدًا",
+                body: "تم إقفال اختيارات الوجبات وبدء التجهيز لغدًا",
+                data: { subscriptionId: String(sub._id), date: tomorrow }
+            });
+            sentNotificationKeys.add(notificationKey);
+        }
     }
 
     logger.info("Automation cutoff finished", { count: openDays.length });
+    } finally {
+        isCutoffJobRunning = false;
+    }
 }
 
 module.exports = { processDailyCutoff };

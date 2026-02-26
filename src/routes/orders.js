@@ -3,13 +3,14 @@ const controller = require("../controllers/orderController");
 const customSaladController = require("../controllers/customSaladController");
 const { authMiddleware } = require("../middleware/auth");
 const { checkoutLimiter } = require("../middleware/rateLimit");
+const asyncHandler = require("../middleware/asyncHandler");
 
 const router = Router();
 
 router.use(authMiddleware);
 
-router.post("/checkout", checkoutLimiter, controller.checkoutOrder);
-router.post("/:id/confirm", controller.confirmOrder); // Mock payment confirmation
+router.post("/checkout", checkoutLimiter, asyncHandler(controller.checkoutOrder));
+router.post("/:id/confirm", asyncHandler(controller.confirmOrder)); // Mock confirm — dev only
 /**
  * @openapi
  * /orders/{id}/items/custom-salad:
@@ -44,8 +45,8 @@ router.post("/:id/confirm", controller.confirmOrder); // Mock payment confirmati
  *       200:
  *         description: Custom salad added
  */
-router.post("/:id/items/custom-salad", customSaladController.addCustomSaladToOrder);
-router.get("/", controller.listOrders);
-router.get("/:id", controller.getOrder);
+router.post("/:id/items/custom-salad", asyncHandler(customSaladController.addCustomSaladToOrder));
+router.get("/", asyncHandler(controller.listOrders));
+router.get("/:id", asyncHandler(controller.getOrder));
 
 module.exports = router;

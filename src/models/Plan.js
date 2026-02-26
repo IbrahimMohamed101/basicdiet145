@@ -2,7 +2,10 @@ const mongoose = require("mongoose");
 
 const PlanSchema = new mongoose.Schema(
   {
-    name: { type: String, required: true },
+    name: {
+      ar: { type: String, default: "" },
+      en: { type: String, default: "" },
+    },
     daysCount: { type: Number, required: true },
     mealsPerDay: { type: Number, required: true },
     grams: { type: Number, required: true },

@@ -29,6 +29,8 @@ const SubscriptionSchema = new mongoose.Schema(
     },
     deliveryWindow: { type: String },
     skippedCount: { type: Number, default: 0 },
+    expiryReminder3dSentAt: { type: Date, default: null },
+    expiryReminder24hSentAt: { type: Date, default: null },
   },
   { timestamps: true }
 );

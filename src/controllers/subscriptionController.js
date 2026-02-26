@@ -21,8 +21,11 @@ const { writeLog } = require("../utils/log");
 const { getEffectiveDeliveryDetails } = require("../utils/delivery");
 const { createInvoice } = require("../services/moyasarService");
 const { fulfillSubscriptionDay } = require("../services/fulfillmentService");
-const { applySkipForDate } = require("../services/subscriptionService");
+const { applySkipForDate, enforceSkipAllowanceOrThrow } = require("../services/subscriptionService");
 const { logger } = require("../utils/logger");
+const { getRequestLang, pickLang } = require("../utils/i18n");
+const validateObjectId = require("../utils/validateObjectId");
+const errorResponse = require("../utils/errorResponse");
 
 async function getSettingValue(key, fallback) {
   const setting = await Setting.findOne({ key }).lean();
@@ -52,14 +55,14 @@ function validateFutureDateOrThrow(date, sub, endDateOverride) {
     err.code = "INVALID_DATE";
     throw err;
   }
-  
+
   // CR-09 FIX: Add lower bound validation - date must be >= today
   if (!isOnOrAfterTodayKSADate(date)) {
     const err = new Error("Date cannot be in the past");
     err.code = "INVALID_DATE";
     throw err;
   }
-  
+
   const tomorrow = getTomorrowKSADate();
   if (!isOnOrAfterKSADate(date, tomorrow)) {
     const err = new Error("Date must be from tomorrow onward");
@@ -110,14 +113,84 @@ function mapStatusForClient(status) {
   return map[status] || status;
 }
 
+function sendValidationError(res, message) {
+  // MEDIUM AUDIT FIX: Normalize client input failures under a controlled 400 VALIDATION_ERROR response shape.
+  return errorResponse(res, 400, "VALIDATION_ERROR", message);
+}
+
+function parsePremiumCount(rawValue) {
+  const parsed = Number(rawValue);
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    return null;
+  }
+  return parsed;
+}
+
+function parseFutureStartDate(rawValue) {
+  if (rawValue === undefined || rawValue === null || rawValue === "") {
+    return { ok: true, value: null };
+  }
+  const parsed = new Date(rawValue);
+  if (Number.isNaN(parsed.getTime())) {
+    return { ok: false, message: "startDate must be a valid date" };
+  }
+  const parsedDate = toKSADateString(parsed);
+  const tomorrow = getTomorrowKSADate();
+  if (!isOnOrAfterKSADate(parsedDate, tomorrow)) {
+    return { ok: false, message: "startDate must be a future date" };
+  }
+  return { ok: true, value: parsed };
+}
+
+async function enforceTomorrowCutoffOrThrow(dateStr) {
+  // MEDIUM AUDIT FIX: Centralize tomorrow cutoff validation to avoid bypasses across endpoints.
+  const cutoffTime = await getSettingValue("cutoff_time", "00:00");
+  const tomorrow = getTomorrowKSADate();
+  if (dateStr === tomorrow && !isBeforeCutoff(cutoffTime)) {
+    const err = new Error("Cutoff time passed for tomorrow");
+    err.code = "LOCKED";
+    throw err;
+  }
+}
+
+function hasDeliveryAddressOverride(day) {
+  return Boolean(day && day.deliveryAddressOverride && Object.keys(day.deliveryAddressOverride).length > 0);
+}
+
+function hasDeliveryWindowOverride(day) {
+  return Boolean(day && day.deliveryWindowOverride);
+}
+
 async function previewSubscription(req, res) {
-  const { planId, premiumCount = 0, addons = [] } = req.body || {};
-  const plan = await Plan.findById(planId).lean();
-  if (!plan) {
-    return res.status(404).json({ ok: false, error: { code: "NOT_FOUND", message: "Plan not found" } });
+  const { planId, premiumCount = 0, addons = [], deliveryMode, startDate } = req.body || {};
+  // MEDIUM AUDIT FIX: Validate preview payload before DB calls to avoid cast errors and enforce strict API contracts.
+  try {
+    validateObjectId(planId, "planId");
+  } catch (_err) {
+    return sendValidationError(res, "planId must be a valid ObjectId");
+  }
+  const parsedPremiumCount = parsePremiumCount(premiumCount);
+  if (parsedPremiumCount === null) {
+    return sendValidationError(res, "premiumCount must be an integer greater than or equal to 0");
+  }
+  if (deliveryMode !== undefined && !["delivery", "pickup"].includes(deliveryMode)) {
+    return sendValidationError(res, "deliveryMode must be one of: delivery, pickup");
+  }
+  const startValidation = parseFutureStartDate(startDate);
+  if (!startValidation.ok) {
+    return sendValidationError(res, startValidation.message);
+  }
+  if (!Array.isArray(addons)) {
+    return sendValidationError(res, "addons must be an array");
   }
 
-  const { total, breakdown } = await calcTotal(plan, premiumCount, addons.map((a) => a.addonId));
+  const plan = await Plan.findById(planId).lean();
+  if (!plan) {
+    return errorResponse(res, 404, "NOT_FOUND", "Plan not found" );
+  }
+
+  const addonIds = addons.map((a) => (a && a.addonId ? a.addonId : null)).filter(Boolean);
+  const { total, breakdown } = await calcTotal(plan, parsedPremiumCount, addonIds);
   return res.status(200).json({ ok: true, data: { total, breakdown } });
 }
 
@@ -132,27 +205,48 @@ async function checkoutSubscription(req, res) {
     startDate,
   } = req.body || {};
 
+  // MEDIUM AUDIT FIX: Validate checkout inputs with controlled 400 responses instead of deferred 500s.
+  try {
+    validateObjectId(planId, "planId");
+  } catch (_err) {
+    return sendValidationError(res, "planId must be a valid ObjectId");
+  }
+  const parsedPremiumCount = parsePremiumCount(premiumCount);
+  if (parsedPremiumCount === null) {
+    return sendValidationError(res, "premiumCount must be an integer greater than or equal to 0");
+  }
+  const startValidation = parseFutureStartDate(startDate);
+  if (!startValidation.ok) {
+    return sendValidationError(res, startValidation.message);
+  }
+  if (!["delivery", "pickup"].includes(deliveryMode)) {
+    return sendValidationError(res, "deliveryMode must be one of: delivery, pickup");
+  }
+  if (!Array.isArray(addons)) {
+    return sendValidationError(res, "addons must be an array");
+  }
+
   const plan = await Plan.findById(planId).lean();
   if (!plan) {
-    return res.status(404).json({ ok: false, error: { code: "NOT_FOUND", message: "Plan not found" } });
-  }
-  if (!deliveryMode) {
-    return res.status(400).json({ ok: false, error: { code: "INVALID", message: "Missing deliveryMode" } });
+    return errorResponse(res, 404, "NOT_FOUND", "Plan not found" );
   }
   if (deliveryMode === "delivery") {
     if (!deliveryAddress) {
-      return res.status(400).json({ ok: false, error: { code: "INVALID", message: "Missing deliveryAddress" } });
+      return errorResponse(res, 400, "INVALID", "Missing deliveryAddress" );
     }
     const windows = await getSettingValue("delivery_windows", []);
     if (deliveryWindow && windows.length && !windows.includes(deliveryWindow)) {
-      return res.status(400).json({ ok: false, error: { code: "INVALID", message: "Invalid delivery window" } });
+      return errorResponse(res, 400, "INVALID", "Invalid delivery window" );
     }
   }
 
-  const { total, premiumPrice, addonDocs } = await calcTotal(plan, premiumCount, addons.map((a) => a.addonId));
+  const addonIds = addons.map((a) => (a && a.addonId ? a.addonId : null)).filter(Boolean);
+  const { total, premiumPrice, addonDocs } = await calcTotal(plan, parsedPremiumCount, addonIds);
   const totalMeals = plan.daysCount * plan.mealsPerDay;
-  const start = startDate ? new Date(startDate) : new Date();
+  // MEDIUM AUDIT FIX: Keep default start date future-safe (tomorrow KSA) when client omits startDate.
+  const start = startValidation.value || new Date(`${getTomorrowKSADate()}T00:00:00+03:00`);
   const end = addDays(start, plan.daysCount - 1);
+  const lang = getRequestLang(req);
 
   const subscription = await Subscription.create({
     userId: req.userId,
@@ -160,11 +254,12 @@ async function checkoutSubscription(req, res) {
     status: "pending_payment",
     totalMeals,
     remainingMeals: totalMeals,
-    premiumRemaining: premiumCount,
+    premiumRemaining: parsedPremiumCount,
     premiumPrice,
     addonSubscriptions: addonDocs.map((a) => ({
       addonId: a._id,
-      name: a.name,
+      // Fix: persist a plain string so Subscription schema String cast never fails.
+      name: pickLang(a.name, lang),
       price: a.price,
       type: a.type,
     })),
@@ -188,8 +283,15 @@ async function checkoutSubscription(req, res) {
 
 async function activateSubscription(req, res) {
   const { id } = req.params;
+  // SECURITY FIX: Mock activation endpoint must be disabled in production.
+  if (process.env.NODE_ENV === "production") {
+    return errorResponse(res, 403, "FORBIDDEN", "Mock activation is disabled in production");
+  }
   const sub = await Subscription.findById(id).populate("planId");
-  if (!sub) return res.status(404).json({ ok: false, error: { code: "NOT_FOUND", message: "Subscription not found" } });
+  if (!sub) return errorResponse(res, 404, "NOT_FOUND", "Subscription not found" );
+  if (sub.userId.toString() !== req.userId.toString()) {
+    return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
+  }
 
   if (sub.status === "active") return res.status(200).json({ ok: true, message: "Already active" });
 
@@ -214,33 +316,85 @@ async function activateSubscription(req, res) {
 }
 
 async function getSubscription(req, res) {
-  const sub = await Subscription.findById(req.params.id).lean();
+  const { id } = req.params;
+  // MEDIUM AUDIT FIX: Validate ObjectId up front to return 400 INVALID_ID instead of CastError 500.
+  try {
+    validateObjectId(id, "subscriptionId");
+  } catch (err) {
+    return errorResponse(res, err.status, err.code, err.message);
+  }
+  const sub = await Subscription.findById(id).lean();
   if (!sub) {
-    return res.status(404).json({ ok: false, error: { code: "NOT_FOUND", message: "Subscription not found" } });
+    return errorResponse(res, 404, "NOT_FOUND", "Subscription not found" );
+  }
+  if (sub.userId.toString() !== req.userId.toString()) {
+    return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
   }
   return res.status(200).json({ ok: true, data: sub });
 }
 
 async function getSubscriptionDays(req, res) {
-  const days = await SubscriptionDay.find({ subscriptionId: req.params.id }).sort({ date: 1 }).lean();
+  const { id } = req.params;
+  // MEDIUM AUDIT FIX: Validate ObjectId up front to return 400 INVALID_ID instead of CastError 500.
+  try {
+    validateObjectId(id, "subscriptionId");
+  } catch (err) {
+    return errorResponse(res, err.status, err.code, err.message);
+  }
+  const sub = await Subscription.findById(id).lean();
+  if (!sub) {
+    return errorResponse(res, 404, "NOT_FOUND", "Subscription not found" );
+  }
+  if (sub.userId.toString() !== req.userId.toString()) {
+    return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
+  }
+  const days = await SubscriptionDay.find({ subscriptionId: id }).sort({ date: 1 }).lean();
   const mappedDays = days.map(d => ({ ...d, status: mapStatusForClient(d.status) }));
   return res.status(200).json({ ok: true, data: mappedDays });
 }
 
 async function getSubscriptionDay(req, res) {
-  const day = await SubscriptionDay.findOne({ subscriptionId: req.params.id, date: req.params.date }).lean();
+  const { id, date } = req.params;
+  // MEDIUM AUDIT FIX: Validate ObjectId up front to return 400 INVALID_ID instead of CastError 500.
+  try {
+    validateObjectId(id, "subscriptionId");
+  } catch (err) {
+    return errorResponse(res, err.status, err.code, err.message);
+  }
+  const sub = await Subscription.findById(id).lean();
+  if (!sub) {
+    return errorResponse(res, 404, "NOT_FOUND", "Subscription not found" );
+  }
+  if (sub.userId.toString() !== req.userId.toString()) {
+    return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
+  }
+  const day = await SubscriptionDay.findOne({ subscriptionId: id, date }).lean();
   if (!day) {
-    return res.status(404).json({ ok: false, error: { code: "NOT_FOUND", message: "Day not found" } });
+    return errorResponse(res, 404, "NOT_FOUND", "Day not found" );
   }
   day.status = mapStatusForClient(day.status);
   return res.status(200).json({ ok: true, data: day });
 }
 
 async function getSubscriptionToday(req, res) {
+  const { id } = req.params;
+  // MEDIUM AUDIT FIX: Validate ObjectId up front to return 400 INVALID_ID instead of CastError 500.
+  try {
+    validateObjectId(id, "subscriptionId");
+  } catch (err) {
+    return errorResponse(res, err.status, err.code, err.message);
+  }
+  const sub = await Subscription.findById(id).lean();
+  if (!sub) {
+    return errorResponse(res, 404, "NOT_FOUND", "Subscription not found" );
+  }
+  if (sub.userId.toString() !== req.userId.toString()) {
+    return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
+  }
   const today = getTodayKSADate();
-  const day = await SubscriptionDay.findOne({ subscriptionId: req.params.id, date: today }).lean();
+  const day = await SubscriptionDay.findOne({ subscriptionId: id, date: today }).lean();
   if (!day) {
-    return res.status(404).json({ ok: false, error: { code: "NOT_FOUND", message: "Day not found" } });
+    return errorResponse(res, 404, "NOT_FOUND", "Day not found" );
   }
   day.status = mapStatusForClient(day.status);
   return res.status(200).json({ ok: true, data: day });
@@ -252,54 +406,54 @@ async function updateDaySelection(req, res) {
   const premiumSelections = body.premiumSelections || [];
   const { id, date } = req.params;
   const sub = await Subscription.findById(id).populate("planId");
-  if (!sub) return res.status(404).json({ ok: false, error: { code: "NOT_FOUND", message: "Subscription not found" } });
+  if (!sub) return errorResponse(res, 404, "NOT_FOUND", "Subscription not found" );
+  if (sub.userId.toString() !== req.userId.toString()) {
+    return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
+  }
   try {
     ensureActive(sub, date);
     validateFutureDateOrThrow(date, sub);
   } catch (err) {
     const status = err.code === "SUB_INACTIVE" || err.code === "SUB_EXPIRED" ? 422 : 400;
-    return res.status(status).json({ ok: false, error: { code: err.code || "INVALID_DATE", message: err.message } });
+    return errorResponse(res, status, err.code || "INVALID_DATE", err.message );
   }
 
-  const cutoffTime = await getSettingValue("cutoff_time", "00:00");
-  const tomorrow = getTomorrowKSADate();
-  if (date === tomorrow && !isBeforeCutoff(cutoffTime)) {
-    return res.status(400).json({ ok: false, error: { code: "LOCKED", message: "Cutoff time passed for tomorrow" } });
+  try {
+    await enforceTomorrowCutoffOrThrow(date);
+  } catch (err) {
+    return errorResponse(res, 400, err.code || "LOCKED", err.message );
   }
 
   const totalSelected = selections.length + premiumSelections.length;
   if (totalSelected > sub.planId.mealsPerDay) {
-    return res.status(400).json({
-      ok: false,
-      error: { code: "DAILY_CAP", message: "Selections exceed meals per day" },
-    });
+    return errorResponse(res, 400, "DAILY_CAP", "Selections exceed meals per day");
   }
 
   const session = await mongoose.startSession();
   session.startTransaction();
   try {
     const existingDay = await SubscriptionDay.findOne({ subscriptionId: id, date }).session(session);
-    
+
     // CR-04 FIX: Check for idempotency - if same selections, return early
     if (existingDay && existingDay.status === "open") {
       const existingRegSet = new Set(existingDay.selections.map(s => s.toString()));
       const existingPremSet = new Set(existingDay.premiumSelections.map(s => s.toString()));
       const newRegSet = new Set(selections.map(s => s));
       const newPremSet = new Set(premiumSelections.map(s => s));
-      
+
       const setsEqual = (a, b) => a.size === b.size && [...a].every(value => b.has(value));
-      
+
       if (setsEqual(existingRegSet, newRegSet) && setsEqual(existingPremSet, newPremSet)) {
         await session.commitTransaction();
         session.endSession();
         return res.status(200).json({ ok: true, data: existingDay, idempotent: true });
       }
     }
-    
+
     if (existingDay && existingDay.status !== "open") {
       await session.abortTransaction();
       session.endSession();
-      return res.status(409).json({ ok: false, error: { code: "LOCKED", message: "Day is locked" } });
+      return errorResponse(res, 409, "LOCKED", "Day is locked" );
     }
 
     const prevPremium = existingDay ? existingDay.premiumSelections.length : 0;
@@ -316,10 +470,7 @@ async function updateDaySelection(req, res) {
       if (!updateRes.modifiedCount) {
         await session.abortTransaction();
         session.endSession();
-        return res.status(400).json({ 
-          ok: false, 
-          error: { code: "INSUFFICIENT_PREMIUM", message: "Not enough premium credits" } 
-        });
+        return errorResponse(res, 400, "INSUFFICIENT_PREMIUM", "Not enough premium credits" );
       }
     } else if (diff < 0) {
       // Refund premium when removing selections
@@ -356,7 +507,7 @@ async function updateDaySelection(req, res) {
   } catch (err) {
     await session.abortTransaction();
     session.endSession();
-    return res.status(500).json({ ok: false, error: { code: "INTERNAL", message: "Selection failed" } });
+    return errorResponse(res, 500, "INTERNAL", "Selection failed" );
   }
 }
 
@@ -388,19 +539,22 @@ async function lockDaySnapshot(sub, day, session) {
 async function skipDay(req, res) {
   const { id, date } = req.params;
   const sub = await Subscription.findById(id).populate("planId");
-  if (!sub) return res.status(404).json({ ok: false, error: { code: "NOT_FOUND", message: "Subscription not found" } });
+  if (!sub) return errorResponse(res, 404, "NOT_FOUND", "Subscription not found" );
+  if (sub.userId.toString() !== req.userId.toString()) {
+    return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
+  }
   try {
     ensureActive(sub, date);
     validateFutureDateOrThrow(date, sub);
   } catch (err) {
     const status = err.code === "SUB_INACTIVE" || err.code === "SUB_EXPIRED" ? 422 : 400;
-    return res.status(status).json({ ok: false, error: { code: err.code || "INVALID_DATE", message: err.message } });
+    return errorResponse(res, status, err.code || "INVALID_DATE", err.message );
   }
 
-  const cutoffTime = await getSettingValue("cutoff_time", "00:00");
-  const tomorrow = getTomorrowKSADate();
-  if (date === tomorrow && !isBeforeCutoff(cutoffTime)) {
-    return res.status(400).json({ ok: false, error: { code: "LOCKED", message: "Cutoff time passed for tomorrow" } });
+  try {
+    await enforceTomorrowCutoffOrThrow(date);
+  } catch (err) {
+    return errorResponse(res, 400, err.code || "LOCKED", err.message );
   }
 
   const session = await mongoose.startSession();
@@ -410,14 +564,15 @@ async function skipDay(req, res) {
     if (!subInSession) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(404).json({ ok: false, error: { code: "NOT_FOUND", message: "Subscription not found" } });
+      return errorResponse(res, 404, "NOT_FOUND", "Subscription not found" );
     }
     if (subInSession.status !== "active") {
       await session.abortTransaction();
       session.endSession();
-      return res.status(422).json({ ok: false, error: { code: "SUB_INACTIVE", message: "Subscription not active" } });
+      return errorResponse(res, 422, "SUB_INACTIVE", "Subscription not active" );
     }
 
+    // MEDIUM AUDIT FIX: Helper returns status only; transaction lifecycle remains owned by this controller.
     const result = await applySkipForDate({ sub: subInSession, date, session });
 
     if (result.status === "already_skipped") {
@@ -428,17 +583,17 @@ async function skipDay(req, res) {
     if (result.status === "locked") {
       await session.abortTransaction();
       session.endSession();
-      return res.status(409).json({ ok: false, error: { code: "LOCKED", message: "Cannot skip after lock" } });
+      return errorResponse(res, 409, "LOCKED", "Cannot skip after lock" );
     }
     if (result.status === "insufficient_credits") {
       await session.abortTransaction();
       session.endSession();
-      return res.status(400).json({ ok: false, error: { code: "INSUFFICIENT_CREDITS", message: "Not enough credits" } });
+      return errorResponse(res, 400, "INSUFFICIENT_CREDITS", "Not enough credits" );
     }
     if (result.status !== "skipped") {
       await session.abortTransaction();
       session.endSession();
-      return res.status(400).json({ ok: false, error: { code: "INVALID", message: "Skip failed" } });
+      return errorResponse(res, 400, "INVALID", "Skip failed" );
     }
 
     await session.commitTransaction();
@@ -449,13 +604,19 @@ async function skipDay(req, res) {
       action: "skip",
       byUserId: req.userId,
       byRole: "client",
-      meta: { compensated: Boolean(result.compensatedDateAdded), date: result.day.date },
+      // BUSINESS RULE: Skip operations never generate compensation days; log only the skipped date.
+      meta: { date: result.day.date },
     });
     return res.status(200).json({ ok: true, data: result.day });
   } catch (err) {
+    if (err.code === "SKIP_LIMIT_REACHED") {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 403, "SKIP_LIMIT_REACHED", "You have reached your maximum allowed skip days");
+    }
     await session.abortTransaction();
     session.endSession();
-    return res.status(500).json({ ok: false, error: { code: "INTERNAL", message: "Skip failed" } });
+    return errorResponse(res, 500, "INTERNAL", "Skip failed" );
   }
 }
 
@@ -465,29 +626,33 @@ async function skipRange(req, res) {
   const rangeDays = parseInt(days, 10);
 
   if (!startDate || !isValidKSADateString(startDate)) {
-    return res.status(400).json({ ok: false, error: { code: "INVALID_DATE", message: "Invalid startDate" } });
+    return errorResponse(res, 400, "INVALID_DATE", "Invalid startDate" );
   }
   if (!rangeDays || rangeDays <= 0) {
-    return res.status(400).json({ ok: false, error: { code: "INVALID", message: "Invalid days count" } });
+    return errorResponse(res, 400, "INVALID", "Invalid days count" );
   }
 
   const sub = await Subscription.findById(id).populate("planId");
-  if (!sub) return res.status(404).json({ ok: false, error: { code: "NOT_FOUND", message: "Subscription not found" } });
+  if (!sub) return errorResponse(res, 404, "NOT_FOUND", "Subscription not found" );
+  if (sub.userId.toString() !== req.userId.toString()) {
+    return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
+  }
   try {
     ensureActive(sub);
   } catch (err) {
-    return res.status(422).json({ ok: false, error: { code: err.code, message: err.message } });
+    return errorResponse(res, 422, err.code, err.message );
   }
 
   const tomorrow = getTomorrowKSADate();
   if (!isOnOrAfterKSADate(startDate, tomorrow)) {
-    return res.status(400).json({ ok: false, error: { code: "INVALID_DATE", message: "startDate must be from tomorrow onward" } });
+    return errorResponse(res, 400, "INVALID_DATE", "startDate must be from tomorrow onward" );
   }
 
   const cutoffTime = await getSettingValue("cutoff_time", "00:00");
   const baseEndDate = sub.validityEndDate || sub.endDate;
   const summary = {
     skippedDates: [],
+    // BUSINESS RULE: Compensation is disabled for all skips, so this list remains empty.
     compensatedDatesAdded: [],
     alreadySkipped: [],
     rejected: [],
@@ -501,8 +666,10 @@ async function skipRange(req, res) {
     if (!subInSession) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(404).json({ ok: false, error: { code: "NOT_FOUND", message: "Subscription not found" } });
+      return errorResponse(res, 404, "NOT_FOUND", "Subscription not found" );
     }
+    // BUSINESS RULE: Reject the entire request if requested skip count exceeds remaining global allowance.
+    await enforceSkipAllowanceOrThrow({ subscriptionId: subInSession._id, daysToSkip: rangeDays, session });
 
     for (let i = 0; i < rangeDays; i++) {
       const dateStr = addDaysToKSADateString(startDate, i);
@@ -519,6 +686,7 @@ async function skipRange(req, res) {
         continue;
       }
 
+      // MEDIUM AUDIT FIX: Helper returns status only; controller keeps commit/abort ownership for the full range transaction.
       const result = await applySkipForDate({ sub: subInSession, date: dateStr, session });
       if (result.status === "already_skipped") {
         summary.alreadySkipped.push(dateStr);
@@ -538,10 +706,7 @@ async function skipRange(req, res) {
       }
 
       summary.skippedDates.push(dateStr);
-      if (result.compensatedDateAdded) {
-        summary.compensatedDatesAdded.push(result.compensatedDateAdded);
-      }
-      skippedForLog.push({ dayId: result.day._id, date: result.day.date, compensated: Boolean(result.compensatedDateAdded) });
+      skippedForLog.push({ dayId: result.day._id, date: result.day.date });
     }
 
     await session.commitTransaction();
@@ -554,15 +719,20 @@ async function skipRange(req, res) {
         action: "skip",
         byUserId: req.userId,
         byRole: "client",
-        meta: { compensated: item.compensated, date: item.date },
+        meta: { date: item.date },
       });
     }
 
     return res.status(200).json({ ok: true, data: summary });
   } catch (err) {
+    if (err.code === "SKIP_LIMIT_REACHED") {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 403, "SKIP_LIMIT_REACHED", "You have reached your maximum allowed skip days");
+    }
     await session.abortTransaction();
     session.endSession();
-    return res.status(500).json({ ok: false, error: { code: "INTERNAL", message: "Skip range failed" } });
+    return errorResponse(res, 500, "INTERNAL", "Skip range failed" );
   }
 }
 
@@ -572,15 +742,18 @@ async function topupPremium(_req, res) {
     const { count, successUrl, backUrl } = _req.body || {};
     const premiumCount = parseInt(count, 10);
     if (!premiumCount || premiumCount <= 0) {
-      return res.status(400).json({ ok: false, error: { code: "INVALID", message: "Invalid premium count" } });
+      return errorResponse(res, 400, "INVALID", "Invalid premium count" );
     }
 
     const sub = await Subscription.findById(id);
-    if (!sub) return res.status(404).json({ ok: false, error: { code: "NOT_FOUND", message: "Subscription not found" } });
+    if (!sub) return errorResponse(res, 404, "NOT_FOUND", "Subscription not found" );
+    if (sub.userId.toString() !== _req.userId.toString()) {
+      return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
+    }
     try {
       ensureActive(sub);
     } catch (err) {
-      return res.status(422).json({ ok: false, error: { code: err.code, message: err.message } });
+      return errorResponse(res, 422, err.code, err.message );
     }
 
     const premiumPrice = await getSettingValue("premium_price", 20);
@@ -619,7 +792,7 @@ async function topupPremium(_req, res) {
     });
   } catch (err) {
     logger.error("Topup error", { error: err.message, stack: err.stack });
-    return res.status(500).json({ ok: false, error: { code: "INTERNAL", message: "Top-up failed" } });
+    return errorResponse(res, 500, "INTERNAL", "Top-up failed" );
   }
 }
 
@@ -628,35 +801,47 @@ async function addOneTimeAddon(_req, res) {
     const { id } = _req.params;
     const { addonId, date, successUrl, backUrl } = _req.body || {};
     if (!addonId || !date) {
-      return res.status(400).json({ ok: false, error: { code: "INVALID", message: "Missing addonId or date" } });
+      return errorResponse(res, 400, "INVALID", "Missing addonId or date" );
     }
 
     const sub = await Subscription.findById(id).populate("planId");
-    if (!sub) return res.status(404).json({ ok: false, error: { code: "NOT_FOUND", message: "Subscription not found" } });
+    if (!sub) return errorResponse(res, 404, "NOT_FOUND", "Subscription not found" );
+    if (sub.userId.toString() !== _req.userId.toString()) {
+      return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
+    }
     try {
       ensureActive(sub, date);
       validateFutureDateOrThrow(date, sub);
     } catch (err) {
       const status = err.code === "SUB_INACTIVE" || err.code === "SUB_EXPIRED" ? 422 : 400;
-      return res.status(status).json({ ok: false, error: { code: err.code || "INVALID_DATE", message: err.message } });
+      return errorResponse(res, status, err.code || "INVALID_DATE", err.message );
+    }
+    // MEDIUM AUDIT FIX: One-time add-on purchases must obey the same tomorrow cutoff guard as meal edits.
+    try {
+      await enforceTomorrowCutoffOrThrow(date);
+    } catch (err) {
+      return errorResponse(res, 400, err.code || "LOCKED", err.message );
     }
 
     const addon = await Addon.findById(addonId).lean();
     if (!addon || addon.type !== "one_time" || addon.isActive === false) {
-      return res.status(404).json({ ok: false, error: { code: "NOT_FOUND", message: "Addon not found" } });
+      return errorResponse(res, 404, "NOT_FOUND", "Addon not found" );
     }
 
     const day = await SubscriptionDay.findOne({ subscriptionId: id, date }).lean();
     if (day && day.status !== "open") {
-      return res.status(409).json({ ok: false, error: { code: "LOCKED", message: "Day is locked" } });
+      return errorResponse(res, 409, "LOCKED", "Day is locked" );
     }
 
     const amount = Math.round(addon.price * 100);
     const appUrl = process.env.APP_URL || "https://example.com";
+    const lang = getRequestLang(_req);
+    const addonDisplayName = pickLang(addon.name, lang);
 
     const invoice = await createInvoice({
       amount,
-      description: `Add-on (${addon.name})`,
+      // Fix: reuse the same language resolver used for persisted string names.
+      description: `Add-on (${addonDisplayName})`,
       callbackUrl: `${appUrl}/api/webhooks/moyasar`,
       successUrl: successUrl || `${appUrl}/payments/success`,
       backUrl: backUrl || `${appUrl}/payments/cancel`,
@@ -687,7 +872,7 @@ async function addOneTimeAddon(_req, res) {
     });
   } catch (err) {
     logger.error("Addon error", { error: err.message, stack: err.stack });
-    return res.status(500).json({ ok: false, error: { code: "INTERNAL", message: "Addon purchase failed" } });
+    return errorResponse(res, 500, "INTERNAL", "Addon purchase failed" );
   }
 }
 
@@ -700,7 +885,12 @@ async function preparePickup(req, res) {
     if (!sub) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(404).json({ ok: false, error: { code: "NOT_FOUND", message: "Subscription not found" } });
+      return errorResponse(res, 404, "NOT_FOUND", "Subscription not found" );
+    }
+    if (sub.userId.toString() !== req.userId.toString()) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
     }
 
     try {
@@ -710,32 +900,32 @@ async function preparePickup(req, res) {
       await session.abortTransaction();
       session.endSession();
       const status = err.code === "SUB_INACTIVE" || err.code === "SUB_EXPIRED" ? 422 : 400;
-      return res.status(status).json({ ok: false, error: { code: err.code || "INVALID_DATE", message: err.message } });
+      return errorResponse(res, status, err.code || "INVALID_DATE", err.message );
     }
 
-    const cutoffTime = await getSettingValue("cutoff_time", "00:00");
-    const tomorrow = getTomorrowKSADate();
-    if (date === tomorrow && !isBeforeCutoff(cutoffTime)) {
+    try {
+      await enforceTomorrowCutoffOrThrow(date);
+    } catch (err) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(400).json({ ok: false, error: { code: "LOCKED", message: "Cutoff time passed for tomorrow" } });
+      return errorResponse(res, 400, err.code || "LOCKED", err.message );
     }
 
     if (sub.deliveryMode !== "pickup") {
       await session.abortTransaction();
       session.endSession();
-      return res.status(400).json({ ok: false, error: { code: "INVALID", message: "Delivery mode is not pickup" } });
+      return errorResponse(res, 400, "INVALID", "Delivery mode is not pickup" );
     }
 
     const day = await SubscriptionDay.findOne({ subscriptionId: id, date }).session(session);
-    
+
     // CR-03 FIX: Check if already processed (idempotency)
     if (day && day.pickupRequested) {
       await session.commitTransaction();
       session.endSession();
       return res.status(200).json({ ok: true, data: day });
     }
-    
+
     if (day && day.creditsDeducted) {
       await session.commitTransaction();
       session.endSession();
@@ -745,7 +935,7 @@ async function preparePickup(req, res) {
     if (day && !canTransition(day.status, "locked")) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(409).json({ ok: false, error: { code: "INVALID_TRANSITION", message: "Invalid state transition" } });
+      return errorResponse(res, 409, "INVALID_TRANSITION", "Invalid state transition" );
     }
 
     const mealsToDeduct = sub.planId.mealsPerDay;
@@ -769,7 +959,7 @@ async function preparePickup(req, res) {
       if (!updatedDay) {
         await session.abortTransaction();
         session.endSession();
-        return res.status(409).json({ ok: false, error: { code: "LOCKED", message: "Day already locked" } });
+        return errorResponse(res, 409, "LOCKED", "Day already locked" );
       }
     }
 
@@ -792,7 +982,7 @@ async function preparePickup(req, res) {
       );
       await session.abortTransaction();
       session.endSession();
-      return res.status(400).json({ ok: false, error: { code: "INSUFFICIENT_CREDITS", message: "Not enough credits" } });
+      return errorResponse(res, 400, "INSUFFICIENT_CREDITS", "Not enough credits" );
     }
 
     await session.commitTransaction();
@@ -811,35 +1001,64 @@ async function preparePickup(req, res) {
     await session.abortTransaction();
     session.endSession();
     logger.error("Pickup prepare failed", { error: err.message, stack: err.stack });
-    return res.status(500).json({ ok: false, error: { code: "INTERNAL", message: "Pickup prepare failed" } });
+    return errorResponse(res, 500, "INTERNAL", "Pickup prepare failed" );
   }
 }
 
 async function updateDeliveryDetails(req, res) {
   const { id } = req.params;
   const { deliveryAddress, deliveryWindow } = req.body || {};
-  if (!deliveryAddress && !deliveryWindow) {
-    return res.status(400).json({ ok: false, error: { code: "INVALID", message: "Missing delivery update fields" } });
+  if (deliveryAddress === undefined && deliveryWindow === undefined) {
+    return errorResponse(res, 400, "INVALID", "Missing delivery update fields" );
   }
 
   const sub = await Subscription.findById(id);
-  if (!sub) return res.status(404).json({ ok: false, error: { code: "NOT_FOUND", message: "Subscription not found" } });
+  if (!sub) return errorResponse(res, 404, "NOT_FOUND", "Subscription not found" );
+  if (sub.userId.toString() !== req.userId.toString()) {
+    return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
+  }
   try {
     ensureActive(sub);
   } catch (err) {
-    return res.status(422).json({ ok: false, error: { code: err.code, message: err.message } });
+    return errorResponse(res, 422, err.code, err.message );
   }
   if (sub.deliveryMode !== "delivery") {
-    return res.status(400).json({ ok: false, error: { code: "INVALID", message: "Delivery mode is not delivery" } });
+    return errorResponse(res, 400, "INVALID", "Delivery mode is not delivery" );
   }
 
   const windows = await getSettingValue("delivery_windows", []);
   if (deliveryWindow && windows.length && !windows.includes(deliveryWindow)) {
-    return res.status(400).json({ ok: false, error: { code: "INVALID", message: "Invalid delivery window" } });
+    return errorResponse(res, 400, "INVALID", "Invalid delivery window" );
   }
 
-  sub.deliveryAddress = deliveryAddress || sub.deliveryAddress;
-  sub.deliveryWindow = deliveryWindow || sub.deliveryWindow;
+  const willChangeAddress =
+    deliveryAddress !== undefined &&
+    JSON.stringify(deliveryAddress) !== JSON.stringify(sub.deliveryAddress || null);
+  const willChangeWindow =
+    deliveryWindow !== undefined &&
+    deliveryWindow !== (sub.deliveryWindow || null);
+
+  // MEDIUM AUDIT FIX: Global delivery updates must not mutate tomorrow's effective details after cutoff has passed.
+  if (willChangeAddress || willChangeWindow) {
+    const tomorrow = getTomorrowKSADate();
+    const endDate = sub.validityEndDate || sub.endDate;
+    if (isInSubscriptionRange(tomorrow, endDate)) {
+      const tomorrowDay = await SubscriptionDay.findOne({ subscriptionId: id, date: tomorrow }).lean();
+      const isTomorrowEditable = !tomorrowDay || tomorrowDay.status === "open";
+      const addressImpactsTomorrow = willChangeAddress && !hasDeliveryAddressOverride(tomorrowDay);
+      const windowImpactsTomorrow = willChangeWindow && !hasDeliveryWindowOverride(tomorrowDay);
+      if (isTomorrowEditable && (addressImpactsTomorrow || windowImpactsTomorrow)) {
+        try {
+          await enforceTomorrowCutoffOrThrow(tomorrow);
+        } catch (err) {
+          return errorResponse(res, 400, err.code || "LOCKED", err.message );
+        }
+      }
+    }
+  }
+
+  if (deliveryAddress !== undefined) sub.deliveryAddress = deliveryAddress;
+  if (deliveryWindow !== undefined) sub.deliveryWindow = deliveryWindow;
   await sub.save();
   await writeLog({
     entityType: "subscription",
@@ -856,37 +1075,40 @@ async function updateDeliveryDetailsForDate(req, res) {
   const { id, date } = req.params;
   const { deliveryAddress, deliveryWindow } = req.body || {};
   if (deliveryAddress === undefined && deliveryWindow === undefined) {
-    return res.status(400).json({ ok: false, error: { code: "INVALID", message: "Missing delivery update fields" } });
+    return errorResponse(res, 400, "INVALID", "Missing delivery update fields" );
   }
 
   const sub = await Subscription.findById(id);
-  if (!sub) return res.status(404).json({ ok: false, error: { code: "NOT_FOUND", message: "Subscription not found" } });
+  if (!sub) return errorResponse(res, 404, "NOT_FOUND", "Subscription not found" );
+  if (sub.userId.toString() !== req.userId.toString()) {
+    return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
+  }
   try {
     ensureActive(sub, date);
     validateFutureDateOrThrow(date, sub);
   } catch (err) {
     const status = err.code === "SUB_INACTIVE" || err.code === "SUB_EXPIRED" ? 422 : 400;
-    return res.status(status).json({ ok: false, error: { code: err.code || "INVALID_DATE", message: err.message } });
+    return errorResponse(res, status, err.code || "INVALID_DATE", err.message );
   }
 
-  const cutoffTime = await getSettingValue("cutoff_time", "00:00");
-  const tomorrow = getTomorrowKSADate();
-  if (date === tomorrow && !isBeforeCutoff(cutoffTime)) {
-    return res.status(400).json({ ok: false, error: { code: "LOCKED", message: "Cutoff time passed for tomorrow" } });
+  try {
+    await enforceTomorrowCutoffOrThrow(date);
+  } catch (err) {
+    return errorResponse(res, 400, err.code || "LOCKED", err.message );
   }
 
   if (sub.deliveryMode !== "delivery") {
-    return res.status(400).json({ ok: false, error: { code: "INVALID", message: "Delivery mode is not delivery" } });
+    return errorResponse(res, 400, "INVALID", "Delivery mode is not delivery" );
   }
 
   const windows = await getSettingValue("delivery_windows", []);
   if (deliveryWindow && windows.length && !windows.includes(deliveryWindow)) {
-    return res.status(400).json({ ok: false, error: { code: "INVALID", message: "Invalid delivery window" } });
+    return errorResponse(res, 400, "INVALID", "Invalid delivery window" );
   }
 
   const day = await SubscriptionDay.findOne({ subscriptionId: id, date }).lean();
   if (day && day.status !== "open") {
-    return res.status(409).json({ ok: false, error: { code: "LOCKED", message: "Day is locked" } });
+    return errorResponse(res, 409, "LOCKED", "Day is locked" );
   }
 
   const update = {};
@@ -911,6 +1133,7 @@ async function updateDeliveryDetailsForDate(req, res) {
   return res.status(200).json({ ok: true, data: updatedDay });
 }
 
+/** @unwired - NOT mounted on any route. Do not call without review. */
 async function transitionDay(req, res, toStatus) {
   const { id, date } = req.params;
   const session = await mongoose.startSession();
@@ -920,19 +1143,19 @@ async function transitionDay(req, res, toStatus) {
     if (!day) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(404).json({ ok: false, error: { code: "NOT_FOUND", message: "Day not found" } });
+      return errorResponse(res, 404, "NOT_FOUND", "Day not found" );
     }
     if (!canTransition(day.status, toStatus)) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(409).json({ ok: false, error: { code: "INVALID_TRANSITION", message: "Invalid state transition" } });
+      return errorResponse(res, 409, "INVALID_TRANSITION", "Invalid state transition" );
     }
 
     const sub = await Subscription.findById(id).populate("planId").session(session);
     if (!sub) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(404).json({ ok: false, error: { code: "NOT_FOUND", message: "Subscription not found" } });
+      return errorResponse(res, 404, "NOT_FOUND", "Subscription not found" );
     }
 
     if (toStatus === "locked") {
@@ -948,10 +1171,11 @@ async function transitionDay(req, res, toStatus) {
   } catch (err) {
     await session.abortTransaction();
     session.endSession();
-    return res.status(500).json({ ok: false, error: { code: "INTERNAL", message: "Transition failed" } });
+    return errorResponse(res, 500, "INTERNAL", "Transition failed" );
   }
 }
 
+/** @unwired - NOT mounted on any route. Do not call without review. */
 async function fulfillDay(req, res) {
   const { id, date } = req.params;
   const session = await mongoose.startSession();
@@ -966,7 +1190,7 @@ async function fulfillDay(req, res) {
           result.code === "INSUFFICIENT_CREDITS" ? 400 :
             result.code === "INVALID_TRANSITION" ? 409 :
               400;
-      return res.status(status).json({ ok: false, error: { code: result.code, message: result.message } });
+      return errorResponse(res, status, result.code, result.message );
     }
 
     await session.commitTransaction();
@@ -975,7 +1199,7 @@ async function fulfillDay(req, res) {
   } catch (err) {
     await session.abortTransaction();
     session.endSession();
-    return res.status(500).json({ ok: false, error: { code: "INTERNAL", message: "Fulfillment failed" } });
+    return errorResponse(res, 500, "INTERNAL", "Fulfillment failed" );
   }
 }
 

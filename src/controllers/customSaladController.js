@@ -5,6 +5,7 @@ const Order = require("../models/Order");
 const Payment = require("../models/Payment");
 const Setting = require("../models/Setting");
 const { buildCustomSaladSnapshot } = require("../services/customSaladService");
+const { createInvoice } = require("../services/moyasarService");
 const {
   getTomorrowKSADate,
   isBeforeCutoff,
@@ -16,6 +17,7 @@ const {
 } = require("../utils/date");
 const { writeLog } = require("../utils/log");
 const { logger } = require("../utils/logger");
+const errorResponse = require("../utils/errorResponse");
 
 async function getSettingValue(key, fallback) {
   const setting = await Setting.findOne({ key }).lean();
@@ -47,7 +49,7 @@ async function previewCustomSaladPrice(req, res) {
     return res.status(200).json({ ok: true, data: snapshot });
   } catch (err) {
     const status = err.code === "NOT_FOUND" ? 404 : 400;
-    return res.status(status).json({ ok: false, error: { code: err.code || "INVALID", message: err.message } });
+    return errorResponse(res, status, err.code || "INVALID", err.message);
   }
 }
 
@@ -61,12 +63,12 @@ async function addCustomSaladToOrder(req, res) {
     if (!order) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(404).json({ ok: false, error: { code: "NOT_FOUND", message: "Order not found" } });
+      return errorResponse(res, 404, "NOT_FOUND", "Order not found");
     }
     if (order.status !== "created" || order.paymentStatus !== "initiated") {
       await session.abortTransaction();
       session.endSession();
-      return res.status(409).json({ ok: false, error: { code: "LOCKED", message: "Order is locked for edits" } });
+      return errorResponse(res, 409, "LOCKED", "Order is locked for edits");
     }
 
     let snapshot;
@@ -76,7 +78,7 @@ async function addCustomSaladToOrder(req, res) {
       await session.abortTransaction();
       session.endSession();
       const status = err.code === "NOT_FOUND" ? 404 : 400;
-      return res.status(status).json({ ok: false, error: { code: err.code || "INVALID", message: err.message } });
+      return errorResponse(res, status, err.code || "INVALID", err.message);
     }
 
     order.customSalads = order.customSalads || [];
@@ -121,17 +123,21 @@ async function addCustomSaladToOrder(req, res) {
   } catch (err) {
     await session.abortTransaction();
     session.endSession();
-    logger.error("Add custom salad to order failed", { error: err.message, stack: err.stack });
-    return res.status(500).json({ ok: false, error: { code: "INTERNAL", message: "Failed to add custom salad" } });
+    logger.error("customSaladController.addCustomSaladToOrder failed", { error: err.message, stack: err.stack });
+    return errorResponse(res, 500, "INTERNAL", "Failed to add custom salad");
   }
 }
 
 async function addCustomSaladToSubscriptionDay(req, res) {
   const { id, date } = req.params;
-  const { ingredients } = req.body || {};
+  const { ingredients, successUrl, backUrl } = req.body || {};
 
   const sub = await Subscription.findById(id).populate("planId");
-  if (!sub) return res.status(404).json({ ok: false, error: { code: "NOT_FOUND", message: "Subscription not found" } });
+  if (!sub) return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
+  // SECURITY FIX: Enforce ownership before any business logic for subscription-day mutation/payment.
+  if (sub.userId.toString() !== req.userId.toString()) {
+    return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
+  }
   try {
     ensureActive(sub, date);
     if (!isValidKSADateString(date)) {
@@ -161,102 +167,85 @@ async function addCustomSaladToSubscriptionDay(req, res) {
     }
   } catch (err) {
     const status = err.code === "SUB_INACTIVE" || err.code === "SUB_EXPIRED" ? 422 : 400;
-    return res.status(status).json({ ok: false, error: { code: err.code || "INVALID_DATE", message: err.message } });
+    return errorResponse(res, status, err.code || "INVALID_DATE", err.message);
   }
 
   const cutoffTime = await getSettingValue("cutoff_time", "00:00");
   const tomorrow = getTomorrowKSADate();
   if (date === tomorrow && !isBeforeCutoff(cutoffTime)) {
-    return res.status(400).json({ ok: false, error: { code: "LOCKED", message: "Cutoff time passed for tomorrow" } });
+    return errorResponse(res, 400, "LOCKED", "Cutoff time passed for tomorrow");
   }
 
-  const session = await mongoose.startSession();
-  session.startTransaction();
   try {
-    const day = await SubscriptionDay.findOne({ subscriptionId: id, date }).session(session);
+    const day = await SubscriptionDay.findOne({ subscriptionId: id, date }).lean();
     if (day && day.status !== "open") {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(409).json({ ok: false, error: { code: "LOCKED", message: "Day is locked" } });
+      return errorResponse(res, 409, "LOCKED", "Day is locked");
     }
 
-    let snapshot;
-    try {
-      snapshot = await buildCustomSaladSnapshot(ingredients);
-    } catch (err) {
-      await session.abortTransaction();
-      session.endSession();
-      const status = err.code === "NOT_FOUND" ? 404 : 400;
-      return res.status(status).json({ ok: false, error: { code: err.code || "INVALID", message: err.message } });
-    }
+    const snapshot = await buildCustomSaladSnapshot(ingredients);
+    const appUrl = process.env.APP_URL || "https://example.com";
 
-    let updatedDay;
-    if (!day) {
-      const created = await SubscriptionDay.create(
-        [
-          {
-            subscriptionId: id,
-            date,
-            status: "open",
-            customSalads: [snapshot],
-          },
-        ],
-        { session }
-      );
-      updatedDay = created[0];
-    } else {
-      updatedDay = await SubscriptionDay.findOneAndUpdate(
-        { _id: day._id, status: "open" },
-        { $push: { customSalads: snapshot } },
-        { new: true, session }
-      );
-      if (!updatedDay) {
-        await session.abortTransaction();
-        session.endSession();
-        return res.status(409).json({ ok: false, error: { code: "LOCKED", message: "Day already locked" } });
-      }
-    }
+    const checkoutMetadata = {
+      type: "custom_salad_day",
+      subscriptionId: String(id),
+      userId: String(req.userId),
+      date,
+    };
 
-    const payment = await Payment.create(
-      [
-        {
-          provider: "moyasar",
-          type: "custom_salad_day",
-          status: "initiated",
-          applied: false,
-          amount: snapshot.totalPrice,
-          currency: snapshot.currency || "SAR",
-          userId: req.userId,
-          subscriptionId: id,
-          metadata: {
-            type: "custom_salad_day",
-            subscriptionId: String(id),
-            date,
-            totalPrice: snapshot.totalPrice,
-          },
-        },
-      ],
-      { session }
-    );
-
-    await session.commitTransaction();
-    session.endSession();
-
-    await writeLog({
-      entityType: "subscription_day",
-      entityId: updatedDay._id,
-      action: "custom_salad_added",
-      byUserId: req.userId,
-      byRole: "client",
-      meta: { date, paymentId: String(payment[0]._id), totalPrice: snapshot.totalPrice },
+    const invoice = await createInvoice({
+      amount: snapshot.totalPrice,
+      description: `Custom salad (${date})`,
+      callbackUrl: `${appUrl}/api/webhooks/moyasar`,
+      successUrl: successUrl || `${appUrl}/payments/success`,
+      backUrl: backUrl || `${appUrl}/payments/cancel`,
+      metadata: checkoutMetadata,
     });
 
-    return res.status(200).json({ ok: true, data: updatedDay });
+    // SECURITY FIX: Do not apply custom salad before payment; persist snapshot for webhook-only application.
+    const payment = await Payment.create({
+      provider: "moyasar",
+      type: "custom_salad_day",
+      status: "initiated",
+      applied: false,
+      amount: snapshot.totalPrice,
+      currency: invoice.currency || snapshot.currency || "SAR",
+      userId: req.userId,
+      subscriptionId: id,
+      providerInvoiceId: invoice.id,
+      metadata: {
+        ...checkoutMetadata,
+        snapshot,
+      },
+    });
+
+    await writeLog({
+      entityType: "payment",
+      entityId: payment._id,
+      action: "custom_salad_payment_initiated",
+      byUserId: req.userId,
+      byRole: "client",
+      meta: { date, totalPrice: snapshot.totalPrice, subscriptionId: String(id) },
+    });
+
+    return res.status(200).json({
+      ok: true,
+      data: {
+        payment_url: invoice.url,
+        invoice_id: invoice.id,
+        payment_id: payment.id,
+        total: snapshot.totalPrice,
+        currency: payment.currency,
+      },
+    });
   } catch (err) {
-    await session.abortTransaction();
-    session.endSession();
-    logger.error("Add custom salad to subscription day failed", { error: err.message, stack: err.stack });
-    return res.status(500).json({ ok: false, error: { code: "INTERNAL", message: "Failed to add custom salad" } });
+    const status = err.code === "NOT_FOUND" ? 404 : err.code === "MAX_EXCEEDED" || err.code === "INVALID" ? 400 : 500;
+    logger.error("customSaladController.addCustomSaladToSubscriptionDay failed", { error: err.message, stack: err.stack });
+    return errorResponse(
+      res,
+      status,
+      status === 500 ? "INTERNAL" : err.code || "INVALID",
+      status === 500 ? "Failed to add custom salad" : err.message
+    );
   }
 }
 

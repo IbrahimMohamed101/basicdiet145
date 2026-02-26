@@ -8,6 +8,7 @@ const Order = require("../models/Order");
 const { writeLog } = require("../utils/log");
 const { logger } = require("../utils/logger");
 const { toKSADateString } = require("../utils/date");
+const errorResponse = require("../utils/errorResponse");
 
 function normalizePaymentStatus(payload, eventType) {
   if (payload && payload.status) return payload.status;
@@ -22,8 +23,9 @@ function normalizePaymentStatus(payload, eventType) {
 async function handleMoyasarWebhook(req, res) {
   const payload = req.body || {};
   const secret = process.env.MOYASAR_WEBHOOK_SECRET;
-  if (secret && payload.secret_token !== secret) {
-    return res.status(401).json({ ok: false, error: { code: "UNAUTHORIZED", message: "Invalid webhook token" } });
+  // SECURITY FIX: Fail closed when webhook secret is missing or mismatched.
+  if (!secret || payload.secret_token !== secret) {
+    return errorResponse(res, 401, "UNAUTHORIZED", "Invalid webhook token" );
   }
 
   const eventType = payload.type || payload.event;
@@ -33,10 +35,9 @@ async function handleMoyasarWebhook(req, res) {
 
   const paymentId = data.id;
   const invoiceId = data.invoice_id || data.invoiceId;
-  const metadata = data.metadata || {};
 
   if (!paymentId && !invoiceId) {
-    return res.status(400).json({ ok: false, error: { code: "INVALID", message: "Missing payment identifiers" } });
+    return errorResponse(res, 400, "INVALID", "Missing payment identifiers" );
   }
 
   const session = await mongoose.startSession();
@@ -50,52 +51,11 @@ async function handleMoyasarWebhook(req, res) {
       ].filter(Boolean),
     }).session(session);
 
+    // SECURITY FIX: Reject unknown payment references instead of creating new records from webhook payload.
     if (!payment) {
-      try {
-        const created = await Payment.create([
-          {
-            provider: "moyasar",
-            type: metadata.type || "premium_topup",
-            status: isPaid ? "paid" : "initiated",
-            amount: data.amount || 0,
-            currency: data.currency || "SAR",
-            userId: metadata.userId,
-            subscriptionId: metadata.subscriptionId,
-            providerInvoiceId: invoiceId,
-            providerPaymentId: paymentId,
-            metadata,
-            paidAt: isPaid ? new Date() : undefined,
-          },
-        ], { session });
-        payment = created[0];
-      } catch (err) {
-        if (err && err.code === 11000) {
-          payment = await Payment.findOne({
-            provider: "moyasar",
-            $or: [
-              paymentId ? { providerPaymentId: paymentId } : null,
-              invoiceId ? { providerInvoiceId: invoiceId } : null,
-            ].filter(Boolean),
-          }).session(session);
-        } else {
-          throw err;
-        }
-      }
-    } else {
-      if (paymentId && payment.providerPaymentId !== paymentId) payment.providerPaymentId = paymentId;
-      if (invoiceId && payment.providerInvoiceId !== invoiceId) payment.providerInvoiceId = invoiceId;
-      if (data.amount) payment.amount = data.amount;
-      if (data.currency) payment.currency = data.currency;
-      if (metadata && Object.keys(metadata).length) payment.metadata = metadata;
-      if (paymentStatus && payment.status !== paymentStatus) payment.status = paymentStatus;
-      if (isPaid && !payment.paidAt) payment.paidAt = new Date();
-      await payment.save({ session });
-    }
-
-    if (!isPaid) {
-      await session.commitTransaction();
+      await session.abortTransaction();
       session.endSession();
-      return res.status(200).json({ ok: true, message: "Ignored non-paid status" });
+      return errorResponse(res, 404, "NOT_FOUND", "Payment not found" );
     }
 
     if (payment.applied) {
@@ -104,7 +64,50 @@ async function handleMoyasarWebhook(req, res) {
       return res.status(200).json({ ok: true });
     }
 
-    const type = payment.type || metadata.type;
+    // SECURITY FIX: Only initiated payments are eligible for first-time webhook application.
+    if (payment.status !== "initiated") {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 409, "INVALID_STATE", "Payment is not in initiated state" );
+    }
+
+    if (paymentId && payment.providerPaymentId && payment.providerPaymentId !== paymentId) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 409, "MISMATCH", "Payment ID mismatch" );
+    }
+    if (invoiceId && payment.providerInvoiceId && payment.providerInvoiceId !== invoiceId) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 409, "MISMATCH", "Invoice ID mismatch" );
+    }
+    if (paymentId && !payment.providerPaymentId) payment.providerPaymentId = paymentId;
+    if (invoiceId && !payment.providerInvoiceId) payment.providerInvoiceId = invoiceId;
+
+    // SECURITY FIX: Verify amount/currency consistency with checkout-time payment record.
+    if (data.amount !== undefined && Number(data.amount) !== Number(payment.amount)) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 409, "MISMATCH", "Amount mismatch" );
+    }
+    if (data.currency && String(data.currency).toUpperCase() !== String(payment.currency || "").toUpperCase()) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 409, "MISMATCH", "Currency mismatch" );
+    }
+
+    if (isPaid && !payment.paidAt) payment.paidAt = new Date();
+    await payment.save({ session });
+
+    if (!isPaid) {
+      await session.commitTransaction();
+      session.endSession();
+      return res.status(200).json({ ok: true, message: "Ignored non-paid status" });
+    }
+
+    // SECURITY FIX: Use only stored metadata created at checkout/initiation; never trust webhook payload metadata.
+    const metadata = payment.metadata || {};
+    const type = payment.type;
     let applied = false;
     let unappliedReason;
 
@@ -172,6 +175,49 @@ async function handleMoyasarWebhook(req, res) {
       } else {
         unappliedReason = "invalid_metadata";
       }
+    } else if (type === "custom_salad_day") {
+      const snapshot = metadata.snapshot;
+      if (metadata.subscriptionId && metadata.date && snapshot) {
+        const existingDay = await SubscriptionDay.findOne(
+          { subscriptionId: metadata.subscriptionId, date: metadata.date }
+        ).session(session);
+
+        let updatedDay;
+        if (!existingDay) {
+          const createdDay = await SubscriptionDay.create(
+            [
+              {
+                subscriptionId: metadata.subscriptionId,
+                date: metadata.date,
+                status: "open",
+                customSalads: [snapshot],
+              },
+            ],
+            { session }
+          );
+          updatedDay = createdDay[0];
+        } else if (existingDay.status === "open") {
+          existingDay.customSalads = existingDay.customSalads || [];
+          existingDay.customSalads.push(snapshot);
+          await existingDay.save({ session });
+          updatedDay = existingDay;
+        } else {
+          unappliedReason = `day_not_open:${existingDay.status}`;
+        }
+
+        if (updatedDay) {
+          applied = true;
+          await writeLog({
+            entityType: "subscription_day",
+            entityId: updatedDay._id,
+            action: "custom_salad_day_webhook",
+            byRole: "system",
+            meta: { date: metadata.date, paymentId },
+          });
+        }
+      } else {
+        unappliedReason = "invalid_metadata";
+      }
     } else if (type === "subscription_activation") {
       if (metadata.subscriptionId) {
         const sub = await Subscription.findById(metadata.subscriptionId).session(session);
@@ -233,6 +279,8 @@ async function handleMoyasarWebhook(req, res) {
       } else {
         unappliedReason = "invalid_metadata";
       }
+    } else {
+      unappliedReason = "unsupported_payment_type";
     }
 
     if (!applied) {
@@ -259,10 +307,12 @@ async function handleMoyasarWebhook(req, res) {
     session.endSession();
     return res.status(200).json({ ok: true });
   } catch (err) {
-    await session.abortTransaction();
+    if (session.inTransaction()) {
+      await session.abortTransaction();
+    }
     session.endSession();
-    logger.error("Webhook error", { error: err.message, stack: err.stack });
-    return res.status(500).json({ ok: false });
+    logger.error("webhookController.handleMoyasarWebhook failed", { error: err.message, stack: err.stack });
+    return errorResponse(res, 500, "INTERNAL", "Webhook processing failed");
   }
 }
 

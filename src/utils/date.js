@@ -51,7 +51,15 @@ function isOnOrAfterKSADate(a, b) {
 }
 
 function isValidKSADateString(dateStr) {
-    return typeof dateStr === "string" && /^\d{4}-\d{2}-\d{2}$/.test(dateStr);
+    // MEDIUM AUDIT FIX: Regex alone accepts impossible dates (e.g., 2026-02-31), so round-trip through a KSA (+03:00) date parse.
+    if (typeof dateStr !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+        return false;
+    }
+    const parsed = new Date(`${dateStr}T00:00:00+03:00`);
+    if (Number.isNaN(parsed.getTime())) {
+        return false;
+    }
+    return toKSADateString(parsed) === dateStr;
 }
 
 function isInSubscriptionRange(dateStr, endDate) {

@@ -1,5 +1,6 @@
 const { Router } = require("express");
 const controller = require("../controllers/webhookController");
+const asyncHandler = require("../middleware/asyncHandler");
 
 const router = Router();
 
@@ -20,6 +21,6 @@ const router = Router();
  *       200:
  *         description: Webhook processed
  */
-router.post("/moyasar", controller.handleMoyasarWebhook);
+router.post("/moyasar", asyncHandler(controller.handleMoyasarWebhook));
 
 module.exports = router;

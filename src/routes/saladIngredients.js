@@ -1,5 +1,6 @@
 const { Router } = require("express");
 const controller = require("../controllers/saladIngredientController");
+const asyncHandler = require("../middleware/asyncHandler");
 
 const router = Router();
 
@@ -13,6 +14,6 @@ const router = Router();
  *       200:
  *         description: Ingredient list
  */
-router.get("/", controller.listActiveIngredients);
+router.get("/", asyncHandler(controller.listActiveIngredients));
 
 module.exports = router;

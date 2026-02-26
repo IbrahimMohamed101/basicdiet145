@@ -2,9 +2,31 @@ const { getFirebaseAdmin } = require("./firebase");
 const User = require("../models/User");
 const NotificationLog = require("../models/NotificationLog");
 
-async function notifyUser(userId, { title, body, data }) {
+async function notifyUser(userId, { title, body, data }, options = {}) {
+  const { skipLog = false, logFields = {} } = options;
   const user = await User.findById(userId).lean();
-  if (!user || !user.fcmTokens || user.fcmTokens.length === 0) return;
+  if (!user || !user.fcmTokens || user.fcmTokens.length === 0) {
+    if (!skipLog) {
+      await NotificationLog.create({
+        userId,
+        title,
+        body,
+        data: data || {},
+        status: "no_tokens",
+        sentAt: new Date(),
+        ...logFields,
+      });
+    }
+    return {
+      sent: false,
+      noTokens: true,
+      successCount: 0,
+      failureCount: 0,
+      errorCodes: [],
+      retryCount: 0,
+    };
+  }
+
   const admin = getFirebaseAdmin();
   const response = await admin.messaging().sendEachForMulticast({
     tokens: user.fcmTokens,
@@ -45,16 +67,33 @@ async function notifyUser(userId, { title, body, data }) {
     retryFailure = retryResponse.failureCount || 0;
   }
 
-  await NotificationLog.create({
-    userId,
-    title,
-    body,
-    data: data || {},
-    successCount: (response.successCount || 0) + retrySuccess,
-    failureCount: (response.failureCount || 0) + retryFailure,
+  const successCount = (response.successCount || 0) + retrySuccess;
+  const failureCount = (response.failureCount || 0) + retryFailure;
+
+  if (!skipLog) {
+    await NotificationLog.create({
+      userId,
+      title,
+      body,
+      data: data || {},
+      sentAt: new Date(),
+      status: "sent",
+      successCount,
+      failureCount,
+      errorCodes,
+      retryCount,
+      ...logFields,
+    });
+  }
+
+  return {
+    sent: successCount > 0,
+    noTokens: false,
+    successCount,
+    failureCount,
     errorCodes,
     retryCount,
-  });
+  };
 }
 
 module.exports = { notifyUser };

@@ -2,11 +2,15 @@ const mongoose = require("mongoose");
 const Subscription = require("../models/Subscription");
 const SubscriptionDay = require("../models/SubscriptionDay");
 const Delivery = require("../models/Delivery");
+const Meal = require("../models/Meal");
 const { canTransition } = require("../utils/state");
 const { writeLog } = require("../utils/log");
 const { notifyUser } = require("../utils/notify");
 const { getEffectiveDeliveryDetails } = require("../utils/delivery");
 const { fulfillSubscriptionDay } = require("../services/fulfillmentService");
+const { logger } = require("../utils/logger");
+const validateObjectId = require("../utils/validateObjectId");
+const errorResponse = require("../utils/errorResponse");
 
 async function listDailyOrders(req, res) {
   const { date } = req.params;
@@ -46,6 +50,23 @@ async function listDailyOrders(req, res) {
 async function assignMeals(req, res) {
   const { id, date } = req.params;
   const { selections = [], premiumSelections = [] } = req.body || {};
+  try {
+    validateObjectId(id, "subscriptionId");
+  } catch (err) {
+    return errorResponse(res, err.status, err.code, err.message);
+  }
+  if (!Array.isArray(selections) || !Array.isArray(premiumSelections)) {
+    // MEDIUM AUDIT FIX: Reject malformed payload shapes early to prevent partial writes.
+    return errorResponse(res, 400, "INVALID", "selections and premiumSelections must be arrays");
+  }
+
+  const selectedMealIds = [...selections, ...premiumSelections].map((mealId) => String(mealId));
+  // MEDIUM AUDIT FIX: Guard all meal ids before querying to avoid cast errors.
+  try {
+    selectedMealIds.forEach((mealId) => validateObjectId(mealId, "mealId"));
+  } catch (err) {
+    return errorResponse(res, err.status, err.code, "Invalid meal id in selections");
+  }
 
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -54,25 +75,68 @@ async function assignMeals(req, res) {
     if (!sub) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(404).json({ ok: false, error: { code: "NOT_FOUND", message: "Subscription not found" } });
+      return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
     }
     const totalSelected = selections.length + premiumSelections.length;
     if (totalSelected > sub.planId.mealsPerDay) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(400).json({ ok: false, error: { code: "DAILY_CAP", message: "Selections exceed meals per day" } });
+      return errorResponse(res, 400, "DAILY_CAP", "Selections exceed meals per day");
     }
-    const day = await SubscriptionDay.findOneAndUpdate(
-      { subscriptionId: id, date },
-      { selections, premiumSelections, assignedByKitchen: true },
-      { upsert: true, new: true, session }
-    );
+
+    // MEDIUM AUDIT FIX: Ensure all referenced meals exist and are active so kitchen assignments cannot reference missing records.
+    const uniqueMealIds = Array.from(new Set(selectedMealIds));
+    if (uniqueMealIds.length > 0) {
+      const existingMeals = await Meal.find({ _id: { $in: uniqueMealIds }, isActive: true }).select("_id type").session(session).lean();
+      if (existingMeals.length !== uniqueMealIds.length) {
+        await session.abortTransaction();
+        session.endSession();
+        return errorResponse(res, 404, "NOT_FOUND", "One or more meals were not found");
+      }
+    }
+
+    const existingDay = await SubscriptionDay.findOne({ subscriptionId: id, date }).session(session);
+    // MEDIUM AUDIT FIX: Enforce premium entitlement when kitchen updates day selections.
+    const previousPremiumCount = existingDay ? existingDay.premiumSelections.length : 0;
+    const premiumEntitlement = Number(sub.premiumRemaining || 0) + previousPremiumCount;
+    if (premiumSelections.length > premiumEntitlement) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 400, "INSUFFICIENT_PREMIUM", "Premium selections exceed entitlement");
+    }
+    // SECURITY FIX: Kitchen assignment must not overwrite non-open (locked/fulfilled/skipped) days.
+    if (existingDay && existingDay.status !== "open") {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 409, "LOCKED", "Day is not open for assignment");
+    }
+
+    let day;
+    if (!existingDay) {
+      const created = await SubscriptionDay.create(
+        [{ subscriptionId: id, date, status: "open", selections, premiumSelections, assignedByKitchen: true }],
+        { session }
+      );
+      day = created[0];
+    } else {
+      day = await SubscriptionDay.findOneAndUpdate(
+        { _id: existingDay._id, status: "open" },
+        { $set: { selections, premiumSelections, assignedByKitchen: true } },
+        { new: true, session }
+      );
+      if (!day) {
+        await session.abortTransaction();
+        session.endSession();
+        return errorResponse(res, 409, "LOCKED", "Day is not open for assignment");
+      }
+    }
+
     await writeLog({
       entityType: "subscription_day",
       entityId: day._id,
       action: "assign_meals",
-      byUserId: req.dashboardUser ? req.dashboardUser._id : undefined,
-      byRole: req.dashboardRole,
+      byUserId: req.userId,
+      byRole: req.userRole,
       meta: { selectionsCount: selections.length, premiumCount: premiumSelections.length },
     });
 
@@ -82,7 +146,8 @@ async function assignMeals(req, res) {
   } catch (err) {
     await session.abortTransaction();
     session.endSession();
-    return res.status(500).json({ ok: false, error: { code: "INTERNAL", message: "Assignment failed" } });
+    logger.error("kitchenController.assignMeals failed", { error: err.message, stack: err.stack });
+    return errorResponse(res, 500, "INTERNAL", "Assignment failed");
   }
 }
 
@@ -109,21 +174,29 @@ async function ensureLockedSnapshot(sub, day, session) {
 
 async function transitionDay(req, res, toStatus) {
   const { id, date } = req.params;
-  const session = await mongoose.startSession();
-  session.startTransaction();
   try {
-    const day = await SubscriptionDay.findOne({ subscriptionId: id, date }).session(session);
+    validateObjectId(id, "subscriptionId");
+  } catch (err) {
+    return errorResponse(res, err.status, err.code, err.message);
+  }
+  const session = await mongoose.startSession();
+  let day;
+  let sub;
+  let fromStatus;
+  try {
+    session.startTransaction();
+    day = await SubscriptionDay.findOne({ subscriptionId: id, date }).session(session);
     if (!day) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(404).json({ ok: false, error: { code: "NOT_FOUND", message: "Day not found" } });
+      return errorResponse(res, 404, "NOT_FOUND", "Day not found");
     }
     if (!canTransition(day.status, toStatus)) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(409).json({ ok: false, error: { code: "INVALID_TRANSITION", message: "Invalid state transition" } });
+      return errorResponse(res, 409, "INVALID_TRANSITION", "Invalid state transition");
     }
-    const sub = await Subscription.findById(id).session(session).lean();
+    sub = await Subscription.findById(id).session(session).lean();
     if (toStatus === "locked" && sub) {
       await ensureLockedSnapshot(sub, day, session);
     }
@@ -131,7 +204,7 @@ async function transitionDay(req, res, toStatus) {
       if (sub && sub.deliveryMode !== "delivery") {
         await session.abortTransaction();
         session.endSession();
-        return res.status(400).json({ ok: false, error: { code: "INVALID", message: "Not a delivery subscription" } });
+        return errorResponse(res, 400, "INVALID", "Not a delivery subscription");
       }
       if (sub) {
         const effective = day.lockedSnapshot
@@ -140,12 +213,16 @@ async function transitionDay(req, res, toStatus) {
         await Delivery.updateOne(
           { dayId: day._id },
           {
-            $setOnInsert: {
-              subscriptionId: sub._id,
-              dayId: day._id,
+            // MEDIUM AUDIT FIX: Delivery details are mutable and must be updated on existing docs; only identity fields are insert-only.
+            $set: {
               address: effective.address,
               window: effective.deliveryWindow,
               status: "out_for_delivery",
+            },
+            $setOnInsert: {
+              subscriptionId: sub._id,
+              dayId: day._id,
+              orderId: null,
             },
           },
           { upsert: true, session }
@@ -156,24 +233,36 @@ async function transitionDay(req, res, toStatus) {
       if (sub && sub.deliveryMode !== "pickup") {
         await session.abortTransaction();
         session.endSession();
-        return res.status(400).json({ ok: false, error: { code: "INVALID", message: "Not a pickup subscription" } });
+        return errorResponse(res, 400, "INVALID", "Not a pickup subscription");
       }
     }
-    const fromStatus = day.status;
+    fromStatus = day.status;
     day.status = toStatus;
     await day.save({ session });
 
     await session.commitTransaction();
     session.endSession();
+  } catch (err) {
+    await session.abortTransaction();
+    session.endSession();
+    logger.error("kitchenController.transitionDay failed", { error: err.message, stack: err.stack });
+    return errorResponse(res, 500, "INTERNAL", "Transition failed");
+  }
 
+  // MEDIUM AUDIT FIX: Keep logs/notifications outside transaction so commit/abort lifecycle stays consistent.
+  try {
     await writeLog({
       entityType: "subscription_day",
       entityId: day._id,
       action: "state_change",
-      byUserId: req.dashboardUser ? req.dashboardUser._id : undefined,
-      byRole: req.dashboardRole,
+      byUserId: req.userId,
+      byRole: req.userRole,
       meta: { from: fromStatus, to: toStatus, date: day.date },
     });
+  } catch (err) {
+    logger.error("Kitchen transition log write failed", { error: err.message, stack: err.stack, dayId: String(day._id) });
+  }
+  try {
     if (toStatus === "ready_for_pickup" && sub) {
       await notifyUser(sub.userId, {
         title: "الطلب جاهز للاستلام",
@@ -181,20 +270,37 @@ async function transitionDay(req, res, toStatus) {
         data: { subscriptionId: String(sub._id), date: day.date },
       });
     }
-    return res.status(200).json({ ok: true, data: day });
   } catch (err) {
-    await session.abortTransaction();
-    session.endSession();
-    return res.status(500).json({ ok: false, error: { code: "INTERNAL", message: "Transition failed" } });
+    logger.error("Kitchen transition notification failed", { error: err.message, stack: err.stack, dayId: String(day._id) });
   }
+  return res.status(200).json({ ok: true, data: day });
 }
 
 async function fulfillPickup(req, res) {
   const { id, date } = req.params;
-  const session = await mongoose.startSession();
-  session.startTransaction();
   try {
-    const result = await fulfillSubscriptionDay({ subscriptionId: id, date, session });
+    validateObjectId(id, "subscriptionId");
+  } catch (err) {
+    return errorResponse(res, err.status, err.code, err.message);
+  }
+  const session = await mongoose.startSession();
+  let result;
+  try {
+    session.startTransaction();
+    const sub = await Subscription.findById(id).session(session).lean();
+    if (!sub) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
+    }
+    // SECURITY FIX: Pickup fulfillment endpoint must enforce pickup delivery mode.
+    if (sub.deliveryMode !== "pickup") {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 400, "INVALID", "Not a pickup subscription");
+    }
+
+    result = await fulfillSubscriptionDay({ subscriptionId: id, date, session });
     if (!result.ok) {
       await session.abortTransaction();
       session.endSession();
@@ -203,25 +309,32 @@ async function fulfillPickup(req, res) {
           result.code === "INSUFFICIENT_CREDITS" ? 400 :
             result.code === "INVALID_TRANSITION" ? 409 :
               400;
-      return res.status(status).json({ ok: false, error: { code: result.code, message: result.message } });
+      return errorResponse(res, status, result.code, result.message);
     }
 
     await session.commitTransaction();
     session.endSession();
+  } catch (err) {
+    await session.abortTransaction();
+    session.endSession();
+    logger.error("kitchenController.fulfillPickup failed", { error: err.message, stack: err.stack });
+    return errorResponse(res, 500, "INTERNAL", "Fulfillment failed");
+  }
+
+  // MEDIUM AUDIT FIX: Keep logs outside transaction to avoid abort-after-commit failures.
+  try {
     await writeLog({
       entityType: "subscription_day",
       entityId: result.day._id,
       action: "pickup_fulfilled",
-      byUserId: req.dashboardUser ? req.dashboardUser._id : undefined,
-      byRole: req.dashboardRole,
+      byUserId: req.userId,
+      byRole: req.userRole,
       meta: { deductedCredits: result.deductedCredits, date },
     });
-    return res.status(200).json({ ok: true, data: result.day, alreadyFulfilled: result.alreadyFulfilled });
   } catch (err) {
-    await session.abortTransaction();
-    session.endSession();
-    return res.status(500).json({ ok: false, error: { code: "INTERNAL", message: "Fulfillment failed" } });
+    logger.error("Kitchen pickup fulfillment log write failed", { error: err.message, stack: err.stack, dayId: String(result.day._id) });
   }
+  return res.status(200).json({ ok: true, data: result.day, alreadyFulfilled: result.alreadyFulfilled });
 }
 
 module.exports = {
@@ -230,4 +343,3 @@ module.exports = {
   transitionDay,
   fulfillPickup,
 };
-

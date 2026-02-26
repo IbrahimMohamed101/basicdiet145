@@ -1,23 +1,55 @@
-openapi: 3.0.0
+openapi: 3.0.3
 info:
-  title: Diet Meal Subscription API
+  title: basicdiet145 Backend API
   version: 1.0.0
   description: |
-    Complete PRODUCTION-READY API documentation for the Diet Meal Subscription platform.
-    
-    ### Authentication
-    - **Client (Mobile):** USES Bearer JWT in the `Authorization` header.
-    - **Dashboard (Admin/Kitchen/Courier):** Uses Session/Cookie based authentication (via Better Auth).
-    
-    ### Business Rules
-    - **Cutoff:** Tomorrow's meals/skips are locked after the configured cutoff time.
-    - **Skips:** Subscriptions have a limited skip allowance. Once exhausted, skips may behave differently or be rejected.
-    - **Status Flow:** 
-      - Subscription Days: `open` -> `locked` -> `in_preparation` -> `out_for_delivery` / `ready_for_pickup` -> `fulfilled`.
-      - Orders: `created` -> `confirmed` -> `preparing` -> `out_for_delivery` / `ready_for_pickup` -> `fulfilled`.
+    Code-inspected OpenAPI spec for the Node.js + Express + MongoDB backend.
+
+    Authentication details:
+    - `bearerAuth` is JWT (`Authorization: Bearer <token>`).
+    - App tokens are minted by OTP/app auth endpoints and include `tokenType: app_access`.
+    - Dashboard/admin/kitchen/courier endpoints require JWTs with role claims (`admin`, `kitchen`, `courier`) accepted by the same middleware.
+    - In development only, `DEV_AUTH_BYPASS=true` allows a static token (`DEV_STATIC_TOKEN`) mapped to configured user/role.
+
+    Localization:
+    - Some endpoints resolve multilingual fields using `Accept-Language`.
+    - Supported resolved languages are `ar` and `en`.
+    - Fallback order at runtime: requested language -> other supported language -> empty string.
+
 servers:
-  - url: http://localhost:3000/api
+  - url: http://localhost:{port}
     description: Local development server
+    variables:
+      port:
+        default: "3000"
+
+tags:
+  - name: System
+    description: Health and documentation endpoints.
+  - name: Auth (App)
+    description: OTP and app registration/authentication.
+  - name: Auth (Dashboard)
+    description: No dedicated dashboard auth routes are wired in this codebase.
+  - name: Users
+    description: User and dashboard-user related endpoints.
+  - name: Meals / Menu
+    description: Meals, salad ingredients, and custom salad pricing.
+  - name: Plans
+    description: Subscription plan endpoints.
+  - name: Orders
+    description: One-time order lifecycle endpoints.
+  - name: Deliveries / Courier
+    description: Courier and delivery operations.
+  - name: Kitchen
+    description: Kitchen operations and transitions.
+  - name: Subscriptions
+    description: Subscription lifecycle and day operations.
+  - name: Webhooks
+    description: External webhook ingestion.
+  - name: Admin (Dashboard)
+    description: Admin settings and dashboard management endpoints.
+  - name: Notifications
+    description: Notification-log endpoints.
 
 components:
   securitySchemes:
@@ -25,1336 +57,4005 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
-    cookieAuth:
-      type: apiKey
-      in: cookie
-      name: session
+      description: |
+        JWT signed with `JWT_SECRET`.
+        App tokens include `tokenType=app_access` and `role=client`.
+        Dashboard endpoints require role claims (`admin`, `kitchen`, `courier`) validated by `roleMiddleware`.
+        DEV-only bypass: if `DEV_AUTH_BYPASS=true`, exact token match against `DEV_STATIC_TOKEN` is accepted.
+
+  parameters:
+    AcceptLanguage:
+      name: Accept-Language
+      in: header
+      required: false
+      description: Preferred language. Runtime resolves to `ar` or `en`; unknown values fall back to `ar`.
+      schema:
+        type: string
+        example: en
+    PlanId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Plan Mongo ObjectId.
+    SubscriptionId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Mongo ObjectId.
+    OrderId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Mongo ObjectId.
+    DeliveryId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Mongo ObjectId.
+    IngredientId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Mongo ObjectId.
+    KsaDate:
+      name: date
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^\\d{4}-\\d{2}-\\d{2}$'
+      description: KSA date string in `YYYY-MM-DD` format.
+    Page:
+      name: page
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 50
+
+  responses:
+    BadRequest:
+      description: Bad request.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            ok: false
+            error:
+              code: INVALID
+              message: Invalid input
+    Unauthorized:
+      description: Missing or invalid token.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            ok: false
+            error:
+              code: UNAUTHORIZED
+              message: Missing token
+    Forbidden:
+      description: Authenticated but insufficient role/permissions.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            ok: false
+            error:
+              code: FORBIDDEN
+              message: Insufficient permissions
+    NotFound:
+      description: Resource not found.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            ok: false
+            error:
+              code: NOT_FOUND
+              message: Resource not found
+    Conflict:
+      description: Resource state conflict.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            ok: false
+            error:
+              code: LOCKED
+              message: Day is locked
+    Unprocessable:
+      description: Unprocessable entity / business rule violation.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            ok: false
+            error:
+              code: SUB_INACTIVE
+              message: Subscription not active
+    TooManyRequests:
+      description: Rate limit or OTP cooldown exceeded.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            ok: false
+            error:
+              code: RATE_LIMIT
+              message: Too many requests
+    Internal:
+      description: Internal error.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            ok: false
+            error:
+              code: INTERNAL
+              message: Unexpected error
 
   schemas:
-    Error:
+    ErrorObject:
       type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+
+    ErrorResponse:
+      type: object
+      required:
+        - ok
+        - error
       properties:
         ok:
           type: boolean
-          example: false
+          enum: [false]
         error:
-          type: object
-          properties:
-            code:
-              type: string
-              example: "UNAUTHORIZED"
-            message:
-              type: string
-              example: "Invalid token"
+          $ref: '#/components/schemas/ErrorObject'
 
-    User:
+    LocalizedText:
       type: object
       properties:
-        _id: { type: string }
-        phone: { type: string }
-        name: { type: string }
-        role: { type: string, enum: [client, admin, kitchen, courier] }
-        isActive: { type: boolean }
-        fcmTokens: { type: array, items: { type: string } }
-        createdAt: { type: string, format: date-time }
-        updatedAt: { type: string, format: date-time }
-
-    DashboardUser:
-      type: object
-      properties:
-        _id: { type: string }
-        email: { type: string }
-        role: { type: string, enum: [admin, kitchen, courier] }
-        isActive: { type: boolean }
-        createdAt: { type: string, format: date-time }
-
-    Plan:
-      type: object
-      properties:
-        _id: { type: string }
-        name: { type: string }
-        daysCount: { type: integer }
-        mealsPerDay: { type: integer }
-        grams: { type: integer }
-        price: { type: number }
-        skipAllowance: { type: integer }
-        isActive: { type: boolean }
-
-    Subscription:
-      type: object
-      properties:
-        _id: { type: string }
-        userId: { type: string }
-        planId: { type: string }
-        status: { type: string, enum: [pending_payment, active, expired] }
-        startDate: { type: string, format: date }
-        endDate: { type: string, format: date }
-        validityEndDate: { type: string, format: date }
-        totalMeals: { type: integer }
-        remainingMeals: { type: integer }
-        premiumRemaining: { type: integer }
-        premiumPrice: { type: number }
-        addonSubscriptions:
-          type: array
-          items:
-            type: object
-            properties:
-              addonId: { type: string }
-              name: { type: string }
-              price: { type: number }
-              type: { type: string, enum: [subscription, one_time] }
-        deliveryMode: { type: string, enum: [delivery, pickup] }
-        deliveryAddress:
-          $ref: '#/components/schemas/Address'
-        deliveryWindow: { type: string }
-        skippedCount: { type: integer }
-
-    SubscriptionDay:
-      type: object
-      properties:
-        _id: { type: string }
-        subscriptionId: { type: string }
-        date: { type: string, format: date }
-        status: { type: string, enum: [open, locked, in_preparation, out_for_delivery, ready_for_pickup, fulfilled, skipped] }
-        selections: { type: array, items: { type: string } }
-        premiumSelections: { type: array, items: { type: string } }
-        addonsOneTime: { type: array, items: { type: string } }
-        pickupRequested: { type: boolean }
-        creditsDeducted: { type: boolean }
-        customSalads: { type: array, items: { $ref: '#/components/schemas/CustomSalad' } }
-        lockedSnapshot: { type: object }
-        fulfilledSnapshot: { type: object }
+        ar:
+          type: string
+        en:
+          type: string
+      additionalProperties: false
 
     Address:
       type: object
       properties:
-        line1: { type: string }
-        line2: { type: string }
-        city: { type: string }
-        notes: { type: string }
+        line1:
+          type: string
+        line2:
+          type: string
+        city:
+          type: string
+        notes:
+          type: string
 
-    CustomSalad:
+    PaginationMeta:
+      type: object
+      required:
+        - page
+        - limit
+        - total
+        - totalPages
+      properties:
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+        totalPages:
+          type: integer
+
+    User:
       type: object
       properties:
-        items:
+        _id:
+          type: string
+        phone:
+          type: string
+        name:
+          type: string
+          nullable: true
+        email:
+          type: string
+          nullable: true
+        role:
+          type: string
+          enum: [client, admin, kitchen, courier]
+        isActive:
+          type: boolean
+        fcmTokens:
           type: array
           items:
-            type: object
-            properties:
-              ingredientId: { type: string }
-              name_en: { type: string }
-              name_ar: { type: string }
-              unitPriceSar: { type: number }
-              quantity: { type: number }
-              calories: { type: number }
-        totalPriceSar: { type: number }
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
 
-    Order:
+    AppUser:
       type: object
       properties:
-        _id: { type: string }
-        userId: { type: string }
-        status: { type: string, enum: [created, confirmed, preparing, out_for_delivery, ready_for_pickup, fulfilled, canceled] }
-        deliveryMode: { type: string, enum: [delivery, pickup] }
-        deliveryDate: { type: string, format: date }
-        items:
+        _id:
+          type: string
+        fullName:
+          type: string
+          nullable: true
+        phone:
+          type: string
+        email:
+          type: string
+          nullable: true
+        role:
+          type: string
+          enum: [app_user]
+        fcmTokens:
           type: array
           items:
-            type: object
-            properties:
-              mealId: { type: string }
-              name: { type: string }
-              type: { type: string }
-              quantity: { type: integer }
-              unitPrice: { type: integer }
-        pricing:
-          type: object
+            type: string
+        coreUserId:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    DashboardUser:
+      type: object
+      properties:
+        _id:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+          enum: [admin, kitchen, courier]
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    AuthUserProfile:
+      type: object
+      required:
+        - id
+        - phone
+        - role
+      properties:
+        id:
+          type: string
+        fullName:
+          type: string
+          nullable: true
+        phone:
+          type: string
+        email:
+          type: string
+          nullable: true
+        role:
+          type: string
+          enum: [client]
+        createdAt:
+          type: string
+          format: date-time
+
+    Plan:
+      type: object
+      properties:
+        _id:
+          type: string
+        name:
+          $ref: '#/components/schemas/LocalizedText'
+        daysCount:
+          type: integer
+        mealsPerDay:
+          type: integer
+        grams:
+          type: integer
+        price:
+          type: number
+        skipAllowance:
+          type: integer
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    PlanResolved:
+      allOf:
+        - $ref: '#/components/schemas/Plan'
+        - type: object
           properties:
-            subtotal: { type: integer }
-            deliveryFee: { type: integer }
-            total: { type: integer }
-            currency: { type: string }
-        deliveryAddress: { $ref: '#/components/schemas/Address' }
-        deliveryWindow: { type: string }
-        paymentStatus: { type: string, enum: [initiated, paid, failed, canceled, expired, refunded] }
+            name:
+              type: string
 
     Meal:
       type: object
       properties:
-        _id: { type: string }
-        name: { type: string }
-        type: { type: string, enum: [regular, premium] }
-        isActive: { type: boolean }
+        _id:
+          type: string
+        name:
+          $ref: '#/components/schemas/LocalizedText'
+        type:
+          type: string
+          enum: [regular, premium]
+        isActive:
+          type: boolean
+
+    Addon:
+      type: object
+      properties:
+        _id:
+          type: string
+        name:
+          $ref: '#/components/schemas/LocalizedText'
+        price:
+          type: number
+        type:
+          type: string
+          enum: [subscription, one_time]
+        isActive:
+          type: boolean
 
     SaladIngredient:
       type: object
       properties:
-        _id: { type: string }
-        name_en: { type: string }
-        name_ar: { type: string }
-        price: { type: number }
-        calories: { type: number }
-        maxQuantity: { type: number }
-        isActive: { type: boolean }
+        _id:
+          type: string
+        name:
+          $ref: '#/components/schemas/LocalizedText'
+        price:
+          type: number
+        calories:
+          type: number
+          nullable: true
+        maxQuantity:
+          type: number
+          nullable: true
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    SaladIngredientResolved:
+      allOf:
+        - $ref: '#/components/schemas/SaladIngredient'
+        - type: object
+          properties:
+            name:
+              type: string
+
+    CustomSaladItem:
+      type: object
+      properties:
+        ingredientId:
+          type: string
+        name_en:
+          type: string
+        name_ar:
+          type: string
+        unitPriceSar:
+          type: number
+        unitPrice:
+          type: number
+          description: Minor units (halalas)
+        quantity:
+          type: number
+        calories:
+          type: number
+          nullable: true
+
+    CustomSaladSnapshot:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CustomSaladItem'
+        basePriceSar:
+          type: number
+        basePrice:
+          type: number
+          description: Minor units (halalas)
+        totalPriceSar:
+          type: number
+        totalPrice:
+          type: number
+          description: Minor units (halalas)
+        currency:
+          type: string
+          example: SAR
+
+    OrderItem:
+      type: object
+      properties:
+        mealId:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+        quantity:
+          type: number
+        unitPrice:
+          type: number
+          description: Minor units (halalas)
+
+    OrderPricing:
+      type: object
+      properties:
+        unitPrice:
+          type: number
+        premiumUnitPrice:
+          type: number
+        quantity:
+          type: number
+        subtotal:
+          type: number
+        deliveryFee:
+          type: number
+        total:
+          type: number
+        currency:
+          type: string
+
+    Order:
+      type: object
+      properties:
+        _id:
+          type: string
+        userId:
+          type: string
+        status:
+          type: string
+          enum: [created, confirmed, preparing, out_for_delivery, ready_for_pickup, fulfilled, canceled]
+        deliveryMode:
+          type: string
+          enum: [delivery, pickup]
+        deliveryDate:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderItem'
+        customSalads:
+          type: array
+          items:
+            $ref: '#/components/schemas/CustomSaladSnapshot'
+        pricing:
+          $ref: '#/components/schemas/OrderPricing'
+        deliveryAddress:
+          $ref: '#/components/schemas/Address'
+        deliveryWindow:
+          type: string
+          nullable: true
+        paymentStatus:
+          type: string
+          enum: [initiated, paid, failed, canceled, expired, refunded]
+        paymentId:
+          type: string
+          nullable: true
+        providerInvoiceId:
+          type: string
+          nullable: true
+        providerPaymentId:
+          type: string
+          nullable: true
+        confirmedAt:
+          type: string
+          format: date-time
+          nullable: true
+        fulfilledAt:
+          type: string
+          format: date-time
+          nullable: true
+        canceledAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Delivery:
+      type: object
+      properties:
+        _id:
+          type: string
+        subscriptionId:
+          type: string
+        dayId:
+          type: string
+        courierId:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [scheduled, out_for_delivery, delivered, canceled, cancelled]
+        address:
+          $ref: '#/components/schemas/Address'
+        window:
+          type: string
+          nullable: true
+        etaAt:
+          type: string
+          format: date-time
+          nullable: true
+        arrivingSoonReminderSentAt:
+          type: string
+          format: date-time
+          nullable: true
+        deliveredNotificationSentAt:
+          type: string
+          format: date-time
+          nullable: true
+        deliveredAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    SubscriptionAddonSnapshot:
+      type: object
+      properties:
+        addonId:
+          type: string
+        name:
+          type: string
+        price:
+          type: number
+        type:
+          type: string
+
+    Subscription:
+      type: object
+      properties:
+        _id:
+          type: string
+        userId:
+          type: string
+        planId:
+          type: string
+        status:
+          type: string
+          enum: [pending_payment, active, expired]
+        startDate:
+          type: string
+          format: date-time
+          nullable: true
+        endDate:
+          type: string
+          format: date-time
+          nullable: true
+        validityEndDate:
+          type: string
+          format: date-time
+          nullable: true
+        totalMeals:
+          type: number
+        remainingMeals:
+          type: number
+        premiumRemaining:
+          type: number
+        premiumPrice:
+          type: number
+        addonSubscriptions:
+          type: array
+          items:
+            $ref: '#/components/schemas/SubscriptionAddonSnapshot'
+        deliveryMode:
+          type: string
+          enum: [delivery, pickup]
+        deliveryAddress:
+          $ref: '#/components/schemas/Address'
+        deliveryWindow:
+          type: string
+          nullable: true
+        skippedCount:
+          type: number
+        expiryReminder3dSentAt:
+          type: string
+          format: date-time
+          nullable: true
+        expiryReminder24hSentAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    SubscriptionDay:
+      type: object
+      properties:
+        _id:
+          type: string
+        subscriptionId:
+          type: string
+        date:
+          type: string
+        status:
+          type: string
+          enum: [open, locked, in_preparation, out_for_delivery, ready_for_pickup, fulfilled, skipped]
+        selections:
+          type: array
+          items:
+            type: string
+        premiumSelections:
+          type: array
+          items:
+            type: string
+        addonsOneTime:
+          type: array
+          items:
+            type: string
+        assignedByKitchen:
+          type: boolean
+        pickupRequested:
+          type: boolean
+        creditsDeducted:
+          type: boolean
+        deliveryAddressOverride:
+          $ref: '#/components/schemas/Address'
+        deliveryWindowOverride:
+          type: string
+          nullable: true
+        customSalads:
+          type: array
+          items:
+            $ref: '#/components/schemas/CustomSaladSnapshot'
+        lockedSnapshot:
+          type: object
+          additionalProperties: true
+          nullable: true
+        fulfilledSnapshot:
+          type: object
+          additionalProperties: true
+          nullable: true
+        lockedAt:
+          type: string
+          format: date-time
+          nullable: true
+        fulfilledAt:
+          type: string
+          format: date-time
+          nullable: true
+        mealReminderSentAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
 
     Payment:
       type: object
       properties:
-        _id: { type: string }
-        provider: { type: string, enum: [moyasar] }
-        type: { type: string, enum: [premium_topup, one_time_addon, subscription_activation, one_time_order, custom_salad_day, custom_salad_order] }
-        status: { type: string, enum: [initiated, paid, failed, canceled, expired, refunded] }
-        amount: { type: integer }
-        currency: { type: string }
-        userId: { type: string }
-        subscriptionId: { type: string }
-        orderId: { type: string }
-        applied: { type: boolean }
+        _id:
+          type: string
+        provider:
+          type: string
+          enum: [moyasar]
+        type:
+          type: string
+          enum: [premium_topup, one_time_addon, subscription_activation, one_time_order, custom_salad_day, custom_salad_order]
+        status:
+          type: string
+          enum: [initiated, paid, failed, canceled, expired, refunded]
+        amount:
+          type: number
+          description: Minor units (halalas)
+        currency:
+          type: string
+        userId:
+          type: string
+          nullable: true
+        subscriptionId:
+          type: string
+          nullable: true
+        orderId:
+          type: string
+          nullable: true
+        providerInvoiceId:
+          type: string
+          nullable: true
+        providerPaymentId:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
+        applied:
+          type: boolean
+        paidAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
 
-    Setting:
+    NotificationLog:
       type: object
       properties:
-        key: { type: string }
-        value: { type: object }
-        description: { type: string }
+        _id:
+          type: string
+        userId:
+          type: string
+          nullable: true
+        type:
+          type: string
+          nullable: true
+        dedupeKey:
+          type: string
+          nullable: true
+        entityType:
+          type: string
+          nullable: true
+        entityId:
+          type: string
+          nullable: true
+        title:
+          type: string
+        body:
+          type: string
+        data:
+          type: object
+          additionalProperties: true
+        scheduledFor:
+          type: string
+          format: date-time
+          nullable: true
+        sentAt:
+          type: string
+          format: date-time
+          nullable: true
+        status:
+          type: string
+          enum: [processing, sent, failed, no_tokens]
+        error:
+          type: string
+          nullable: true
+        successCount:
+          type: number
+        failureCount:
+          type: number
+        errorCodes:
+          type: array
+          items:
+            type: string
+        retryCount:
+          type: number
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
 
     ActivityLog:
       type: object
       properties:
-        _id: { type: string }
-        entityType: { type: string }
-        entityId: { type: string }
-        action: { type: string }
-        byRole: { type: string }
-        meta: { type: object }
-        createdAt: { type: string, format: date-time }
+        _id:
+          type: string
+        entityType:
+          type: string
+        entityId:
+          type: string
+        action:
+          type: string
+        byUserId:
+          type: string
+          nullable: true
+        byRole:
+          type: string
+          nullable: true
+        meta:
+          type: object
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    SettingsMap:
+      type: object
+      additionalProperties: true
+      example:
+        cutoff_time: "00:00"
+        delivery_windows:
+          - "08:00-11:00"
+          - "12:00-15:00"
+        skip_allowance: 3
+        premium_price: 20
+        one_time_meal_price: 25
+        one_time_premium_price: 25
+        one_time_delivery_fee: 0
+        custom_salad_base_price: 0
 
 paths:
-  # --- PUBLIC / COMMON ---
-  /settings:
+  /:
     get:
-      summary: List all public settings
-      tags: [Settings]
+      tags: [System]
+      summary: Root health endpoint
+      description: Simple deployment smoke-test endpoint.
       responses:
-        200:
-          description: OK
+        '200':
+          description: Service is running.
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  ok: { type: boolean }
-                  data: { type: array, items: { $ref: '#/components/schemas/Setting' } }
+                  ok:
+                    type: boolean
+                  message:
+                    type: string
+              example:
+                ok: true
+                message: basicdiet145 backend is running
 
-  # --- AUTH ---
-  /auth/otp/request:
+  /health:
+    get:
+      tags: [System]
+      summary: Health check with DB status
+      description: Returns API status and Mongo connectivity state.
+      responses:
+        '200':
+          description: API and DB are healthy.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  db:
+                    type: object
+                    additionalProperties: true
+              example:
+                ok: true
+                db:
+                  state: up
+        '503':
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  db:
+                    type: object
+                    additionalProperties: true
+
+  /api-docs:
+    get:
+      tags: [System]
+      summary: Swagger UI
+      description: Serves Swagger UI configured to load `/api-docs/swagger.yaml`.
+      responses:
+        '200':
+          description: HTML page.
+          content:
+            text/html:
+              schema:
+                type: string
+
+  /api-docs/swagger.yaml:
+    get:
+      tags: [System]
+      summary: Raw Swagger YAML
+      description: Serves the OpenAPI spec file used by Swagger UI.
+      responses:
+        '200':
+          description: YAML document.
+          content:
+            text/yaml:
+              schema:
+                type: string
+
+  /api/settings:
+    get:
+      tags: [System]
+      summary: Get public runtime settings
+      description: Returns settings map with defaults when keys are missing.
+      responses:
+        '200':
+          description: Settings map.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/SettingsMap'
+
+  /api/webhooks/moyasar:
     post:
-      summary: Request OTP for login
-      tags: [Auth]
+      tags: [Webhooks]
+      summary: Moyasar payment webhook
+      description: |
+        Public webhook endpoint.
+
+        Security behavior in code:
+        - No signature header verification is implemented.
+        - If `MOYASAR_WEBHOOK_SECRET` is set, request body field `secret_token` must match.
+
+        Idempotency behavior:
+        - Payment records are deduplicated by unique indexes on `(provider, providerInvoiceId)` and `(provider, providerPaymentId)`.
+        - Application side-effects are guarded by `Payment.applied` and an atomic claim update.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [phone]
               properties:
-                phone: { type: string, example: "+966501234567" }
+                type:
+                  type: string
+                  example: payment_paid
+                event:
+                  type: string
+                secret_token:
+                  type: string
+                data:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                    invoice_id:
+                      type: string
+                    status:
+                      type: string
+                    amount:
+                      type: number
+                    currency:
+                      type: string
+                    metadata:
+                      type: object
+                      additionalProperties: true
+                payment:
+                  type: object
+                  additionalProperties: true
+            example:
+              type: payment_paid
+              secret_token: your-shared-secret
+              data:
+                id: pay_abc123
+                invoice_id: inv_abc123
+                status: paid
+                amount: 5000
+                currency: SAR
+                metadata:
+                  type: one_time_order
+                  orderId: 65f0f01f1f1f1f1f1f1f1f1f
+                  userId: 65f0f01f1f1f1f1f1f1f1f20
       responses:
-        200: { description: OTP sent }
+        '200':
+          description: Webhook accepted/processed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  message:
+                    type: string
+                    nullable: true
+              example:
+                ok: true
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/Internal'
 
-  /auth/otp/verify:
+  /api/auth/otp/request:
     post:
-      summary: Verify OTP and login
-      tags: [Auth]
+      tags: [Auth (App)]
+      summary: Request OTP over WhatsApp
+      description: Rate-limited endpoint that sends OTP to `phoneE164`.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [idToken]
+              required: [phoneE164]
               properties:
-                idToken: { type: string }
+                phoneE164:
+                  type: string
+                  example: "+966501234567"
       responses:
-        200:
-          description: Logged in
+        '200':
+          description: OTP sent.
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  ok: { type: boolean }
-                  token: { type: string }
-                  user: { $ref: '#/components/schemas/User' }
+                  ok:
+                    type: boolean
+              example:
+                ok: true
+        '400':
+          description: Invalid phone input.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalidPhone:
+                  value:
+                    ok: false
+                    error:
+                      code: INVALID_PHONE
+                      message: phoneE164 must be a valid E.164 phone number
+        '429':
+          description: OTP cooldown or rate-limit exceeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                cooldown:
+                  value:
+                    ok: false
+                    error:
+                      code: OTP_COOLDOWN
+                      message: Please wait 20s before requesting a new OTP
+                      details:
+                        cooldownSecondsRemaining: 20
+                rateLimit:
+                  value:
+                    ok: false
+                    error:
+                      code: RATE_LIMIT
+                      message: Too many OTP requests
+        '500':
+          $ref: '#/components/responses/Internal'
 
-  /auth/device-token:
+  /api/auth/otp/verify:
     post:
-      summary: Update FCM device token
-      tags: [Auth]
-      security: [{ bearerAuth: [] }]
+      tags: [Auth (App)]
+      summary: Verify OTP and issue app access token
+      description: Verifies OTP and returns JWT (`tokenType=app_access`) plus normalized app user profile.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [fcmToken]
+              required: [phoneE164, otp]
               properties:
-                fcmToken: { type: string }
-      responses: { 200: { description: Updated } }
-
-  # --- PLANS ---
-  /plans:
-    get:
-      summary: List all active plans
-      tags: [Subscriptions]
-      security: [{ bearerAuth: [] }]
+                phoneE164:
+                  type: string
+                otp:
+                  type: string
+                  description: 6-digit code
       responses:
-        200:
-          description: OK
+        '200':
+          description: Verified.
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  ok: { type: boolean }
-                  data: { type: array, items: { $ref: '#/components/schemas/Plan' } }
+                  ok:
+                    type: boolean
+                  token:
+                    type: string
+                  user:
+                    $ref: '#/components/schemas/AuthUserProfile'
+              example:
+                ok: true
+                token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+                user:
+                  id: 65f0f01f1f1f1f1f1f1f1f20
+                  fullName: null
+                  phone: "+966501234567"
+                  email: null
+                  role: client
+                  createdAt: "2026-02-26T07:30:00.000Z"
+        '400':
+          description: Invalid input or expired/missing OTP.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Invalid OTP.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: OTP attempts exceeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/Internal'
 
-  # --- SUBSCRIPTIONS ---
-  /plans/{id}:
+  /api/auth/device-token:
+    post:
+      tags: [Auth (App), Users]
+      summary: Attach mobile device token to authenticated user
+      description: Adds an FCM token to `User.fcmTokens` with `$addToSet` semantics.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+      responses:
+        '200':
+          description: Token saved.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+              example:
+                ok: true
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/app/login:
+    post:
+      tags: [Auth (App)]
+      summary: App login step (request OTP)
+      description: Same OTP request behavior as `/api/auth/otp/request`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phoneE164]
+              properties:
+                phoneE164:
+                  type: string
+      responses:
+        '200':
+          description: OTP sent.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/Internal'
+
+  /api/app/register:
+    post:
+      tags: [Auth (App)]
+      summary: Complete app profile registration
+      description: Requires authenticated app token and returns a refreshed app access token.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fullName]
+              properties:
+                fullName:
+                  type: string
+                phoneE164:
+                  type: string
+                  description: Optional; if present must match authenticated user phone.
+                email:
+                  type: string
+                  nullable: true
+      responses:
+        '200':
+          description: Profile registered.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  token:
+                    type: string
+                  user:
+                    $ref: '#/components/schemas/AuthUserProfile'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/Internal'
+
+  /api/plans:
     get:
-      summary: Get plan details
-      tags: [Subscriptions]
-      security: [{ bearerAuth: [] }]
+      tags: [Plans]
+      summary: List active plans
+      description: Requires auth. Returns plans with `name` resolved by `Accept-Language`.
+      security:
+        - bearerAuth: []
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/AcceptLanguage'
       responses:
-        200:
-          description: OK
+        '200':
+          description: Plan list.
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  ok: { type: boolean }
-                  data: { $ref: '#/components/schemas/Plan' }
+                  ok:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PlanResolved'
+              example:
+                ok: true
+                data:
+                  - _id: 65f1000a1f1f1f1f1f1f1001
+                    name: High Protein
+                    daysCount: 20
+                    mealsPerDay: 2
+                    grams: 200
+                    price: 1800
+                    skipAllowance: 3
+                    isActive: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 
-  /subscriptions/{id}/activate:
-    post:
-      summary: Activate a subscription (Mock for testing)
-      tags: [Subscriptions]
-      security: [{ bearerAuth: [] }]
+  /api/plans/{id}:
+    get:
+      tags: [Plans]
+      summary: Get plan by id
+      description: Returns plan with localized `name` string.
+      security:
+        - bearerAuth: []
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/PlanId'
+        - $ref: '#/components/parameters/AcceptLanguage'
       responses:
-        200:
-          description: Activated
+        '200':
+          description: Plan found.
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  ok: { type: boolean }
-                  data: { $ref: '#/components/schemas/Subscription' }
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/PlanResolved'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
-  /subscriptions/preview:
+  /api/subscriptions/preview:
     post:
-      summary: Preview subscription price
       tags: [Subscriptions]
-      security: [{ bearerAuth: [] }]
+      summary: Preview subscription pricing
+      description: Computes total from selected plan, premium count, and add-ons.
+      security:
+        - bearerAuth: []
       requestBody:
+        required: true
         content:
           application/json:
             schema:
               type: object
               required: [planId]
               properties:
-                planId: { type: string }
-                premiumCount: { type: integer }
-                addons: { type: array, items: { type: object, properties: { addonId: { type: string } } } }
+                planId:
+                  type: string
+                premiumCount:
+                  type: integer
+                  default: 0
+                addons:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      addonId:
+                        type: string
       responses:
-        200:
-          description: OK
+        '200':
+          description: Preview output.
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  ok: { type: boolean }
+                  ok:
+                    type: boolean
                   data:
                     type: object
                     properties:
-                      total: { type: number }
-                      breakdown: { type: object }
+                      total:
+                        type: number
+                      breakdown:
+                        type: object
+                        additionalProperties: true
+              example:
+                ok: true
+                data:
+                  total: 2200
+                  breakdown:
+                    plan: 1800
+                    premium: 200
+                    addons: 200
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
-  /subscriptions/checkout:
+  /api/subscriptions/checkout:
     post:
-      summary: Checkout subscription (Initiate payment)
       tags: [Subscriptions]
-      security: [{ bearerAuth: [] }]
+      summary: Checkout subscription
+      description: Creates a `pending_payment` subscription and returns mock payment URL. Rate limited.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
       requestBody:
+        required: true
         content:
           application/json:
             schema:
               type: object
               required: [planId, deliveryMode]
               properties:
-                planId: { type: string }
-                premiumCount: { type: integer }
-                addons: { type: array, items: { type: object, properties: { addonId: { type: string } } } }
-                deliveryMode: { type: string, enum: [delivery, pickup] }
-                deliveryAddress: { $ref: '#/components/schemas/Address' }
-                deliveryWindow: { type: string }
-                startDate: { type: string, format: date }
+                planId:
+                  type: string
+                premiumCount:
+                  type: integer
+                  default: 0
+                addons:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      addonId:
+                        type: string
+                deliveryMode:
+                  type: string
+                  enum: [delivery, pickup]
+                deliveryAddress:
+                  $ref: '#/components/schemas/Address'
+                deliveryWindow:
+                  type: string
+                startDate:
+                  type: string
+                  format: date
       responses:
-        200:
-          description: Created
+        '200':
+          description: Subscription checkout created.
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  ok: { type: boolean }
+                  ok:
+                    type: boolean
                   data:
                     type: object
                     properties:
-                      payment_url: { type: string }
-                      subscriptionId: { type: string }
-                      total: { type: number }
+                      payment_url:
+                        type: string
+                      subscriptionId:
+                        type: string
+                      total:
+                        type: number
+              example:
+                ok: true
+                data:
+                  payment_url: https://mock-payment.com/65f1b6a0be3f7e2ea1234567
+                  subscriptionId: 65f1b6a0be3f7e2ea1234567
+                  total: 2200
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
 
-  /subscriptions/{id}:
-    get:
-      summary: Get detailed subscription info
+  /api/subscriptions/{id}/activate:
+    post:
       tags: [Subscriptions]
-      security: [{ bearerAuth: [] }]
+      summary: Activate subscription (mock endpoint)
+      description: Transitions subscription to `active` and creates day records.
+      security:
+        - bearerAuth: []
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/SubscriptionId'
       responses:
-        200:
-          description: OK
+        '200':
+          description: Activated or already active.
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  ok: { type: boolean }
-                  data: { $ref: '#/components/schemas/Subscription' }
+                  ok:
+                    type: boolean
+                  message:
+                    type: string
+                    nullable: true
+                  data:
+                    $ref: '#/components/schemas/Subscription'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
-  /subscriptions/{id}/days:
+  /api/subscriptions/{id}:
     get:
-      summary: List all days in subscription
       tags: [Subscriptions]
-      security: [{ bearerAuth: [] }]
+      summary: Get subscription by id
+      description: Returns subscription document by id.
+      security:
+        - bearerAuth: []
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/SubscriptionId'
       responses:
-        200:
-          description: OK
+        '200':
+          description: Subscription found.
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  ok: { type: boolean }
-                  data: { type: array, items: { $ref: '#/components/schemas/SubscriptionDay' } }
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Subscription'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
-  /subscriptions/{id}/today:
+  /api/subscriptions/{id}/days:
     get:
+      tags: [Subscriptions]
+      summary: List all subscription days
+      description: Returns day list sorted by date with client-facing mapped statuses.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+      responses:
+        '200':
+          description: Day list.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SubscriptionDay'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/subscriptions/{id}/today:
+    get:
+      tags: [Subscriptions]
       summary: Get today's subscription day
-      tags: [Subscriptions]
-      security: [{ bearerAuth: [] }]
+      description: Returns today's day record for the subscription.
+      security:
+        - bearerAuth: []
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/SubscriptionId'
       responses:
-        200:
-          description: OK
+        '200':
+          description: Day found.
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  ok: { type: boolean }
-                  data: { $ref: '#/components/schemas/SubscriptionDay' }
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/SubscriptionDay'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
-  /subscriptions/{id}/days/{date}:
+  /api/subscriptions/{id}/days/{date}:
     get:
-      summary: Get subscription day by date
       tags: [Subscriptions]
-      security: [{ bearerAuth: [] }]
+      summary: Get subscription day by date
+      description: Returns a specific day record for the provided KSA date.
+      security:
+        - bearerAuth: []
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
-        - name: date
-          in: path
-          required: true
-          schema: { type: string, format: date }
+        - $ref: '#/components/parameters/SubscriptionId'
+        - $ref: '#/components/parameters/KsaDate'
       responses:
-        200:
-          description: OK
+        '200':
+          description: Day found.
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  ok: { type: boolean }
-                  data: { $ref: '#/components/schemas/SubscriptionDay' }
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/SubscriptionDay'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
-  /subscriptions/{id}/days/{date}/selection:
+  /api/subscriptions/{id}/days/{date}/selection:
     put:
-      summary: Update choices for a day
-      description: "Requires tomorrow to be before cutoff. Cannot update if day is locked/fulfilled."
       tags: [Subscriptions]
-      security: [{ bearerAuth: [] }]
+      summary: Update day meal selections
+      description: Updates selections for a future open day and adjusts premium credits atomically.
+      security:
+        - bearerAuth: []
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
-        - name: date
-          in: path
-          required: true
-          schema: { type: string, format: date }
+        - $ref: '#/components/parameters/SubscriptionId'
+        - $ref: '#/components/parameters/KsaDate'
       requestBody:
+        required: true
         content:
           application/json:
             schema:
               type: object
               properties:
-                selections: { type: array, items: { type: string } }
-                premiumSelections: { type: array, items: { type: string } }
+                selections:
+                  type: array
+                  items:
+                    type: string
+                premiumSelections:
+                  type: array
+                  items:
+                    type: string
+                addonsOneTime:
+                  type: array
+                  items:
+                    type: string
       responses:
-        200:
-          description: Updated
+        '200':
+          description: Updated or idempotent no-op.
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  ok: { type: boolean }
-                  data: { $ref: '#/components/schemas/SubscriptionDay' }
-                  requiresPremiumTopup: { type: boolean }
+                  ok:
+                    type: boolean
+                  idempotent:
+                    type: boolean
+                    nullable: true
+                  data:
+                    $ref: '#/components/schemas/SubscriptionDay'
+        '400':
+          description: Validation/cutoff/daily-cap/premium errors.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '500':
+          $ref: '#/components/responses/Internal'
 
-  /subscriptions/{id}/days/{date}/skip:
+  /api/subscriptions/{id}/days/{date}/skip:
     post:
-      summary: Skip a specific day
       tags: [Subscriptions]
-      security: [{ bearerAuth: [] }]
+      summary: Skip one subscription day
+      description: Applies skip rules, credit deduction, and optional compensated extension day.
+      security:
+        - bearerAuth: []
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
-        - name: date
-          in: path
-          required: true
-          schema: { type: string, format: date }
+        - $ref: '#/components/parameters/SubscriptionId'
+        - $ref: '#/components/parameters/KsaDate'
       responses:
-        200:
-          description: OK
+        '200':
+          description: Skipped or already skipped.
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  ok: { type: boolean }
-                  data: { $ref: '#/components/schemas/SubscriptionDay' }
-        400: { description: Locked or insufficient skip allowance }
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/SubscriptionDay'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '500':
+          $ref: '#/components/responses/Internal'
 
-  /subscriptions/{id}/skip-range:
+  /api/subscriptions/{id}/skip-range:
     post:
-      summary: Bulk skip days
       tags: [Subscriptions]
-      security: [{ bearerAuth: [] }]
+      summary: Skip a date range
+      description: Attempts to skip `days` consecutive dates from `startDate`, returning per-date summary.
+      security:
+        - bearerAuth: []
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/SubscriptionId'
       requestBody:
+        required: true
         content:
           application/json:
             schema:
               type: object
               required: [startDate, days]
               properties:
-                startDate: { type: string, format: date }
-                days: { type: integer, minimum: 1 }
+                startDate:
+                  type: string
+                  pattern: '^\\d{4}-\\d{2}-\\d{2}$'
+                days:
+                  type: integer
+                  minimum: 1
       responses:
-        200:
-          description: OK
+        '200':
+          description: Skip summary.
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  ok: { type: boolean }
+                  ok:
+                    type: boolean
                   data:
                     type: object
                     properties:
-                      skippedDates: { type: array, items: { type: string } }
-                      rejected: { type: array, items: { type: object } }
+                      skippedDates:
+                        type: array
+                        items:
+                          type: string
+                      compensatedDatesAdded:
+                        type: array
+                        items:
+                          type: string
+                      alreadySkipped:
+                        type: array
+                        items:
+                          type: string
+                      rejected:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            date:
+                              type: string
+                            reason:
+                              type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '500':
+          $ref: '#/components/responses/Internal'
 
-  /subscriptions/{id}/days/{date}/pickup/prepare:
+  /api/subscriptions/{id}/days/{date}/pickup/prepare:
     post:
-      summary: Client confirms pickup for tomorrow
-      description: "Locks the day immediately and deducts credits. Only for pickup mode."
       tags: [Subscriptions]
-      security: [{ bearerAuth: [] }]
+      summary: Prepare pickup for a date
+      description: For pickup subscriptions only; locks day and deducts meal credits atomically.
+      security:
+        - bearerAuth: []
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
-        - name: date
-          in: path
-          required: true
-          schema: { type: string, format: date }
-      responses: { 200: { description: OK } }
+        - $ref: '#/components/parameters/SubscriptionId'
+        - $ref: '#/components/parameters/KsaDate'
+      responses:
+        '200':
+          description: Prepared (idempotent when already prepared).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/SubscriptionDay'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '500':
+          $ref: '#/components/responses/Internal'
 
-  /subscriptions/{id}/days/{date}/custom-salad:
+  /api/subscriptions/{id}/days/{date}/custom-salad:
     post:
-      summary: Purchase a custom salad for a subscription day
-      tags: [Subscriptions]
-      security: [{ bearerAuth: [] }]
+      tags: [Subscriptions, Meals / Menu]
+      summary: Add custom salad to subscription day
+      description: Builds priced custom salad snapshot and appends it to the day.
+      security:
+        - bearerAuth: []
       parameters:
-        - name: id
-          in: path
-          required: true
-        - name: date
-          in: path
-          required: true
+        - $ref: '#/components/parameters/SubscriptionId'
+        - $ref: '#/components/parameters/KsaDate'
       requestBody:
+        required: true
         content:
           application/json:
             schema:
               type: object
               required: [ingredients]
               properties:
-                ingredients: { type: array, items: { type: object } }
+                ingredients:
+                  type: array
+                  items:
+                    type: object
+                    required: [ingredientId]
+                    properties:
+                      ingredientId:
+                        type: string
+                      quantity:
+                        type: integer
+                        minimum: 1
       responses:
-        200:
-          description: OK
+        '200':
+          description: Updated day.
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  ok: { type: boolean }
-                  data: { type: object, properties: { payment_url: { type: string } } }
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/SubscriptionDay'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '500':
+          $ref: '#/components/responses/Internal'
 
-  /subscriptions/{id}/days/{date}/delivery:
+  /api/subscriptions/{id}/days/{date}/delivery:
     put:
-      summary: Update delivery details for a specific date
       tags: [Subscriptions]
-      security: [{ bearerAuth: [] }]
+      summary: Override delivery details for one date
+      description: Updates `deliveryAddressOverride`/`deliveryWindowOverride` for a specific open day.
+      security:
+        - bearerAuth: []
       parameters:
-        - name: id
-          in: path
-          required: true
-        - name: date
-          in: path
-          required: true
+        - $ref: '#/components/parameters/SubscriptionId'
+        - $ref: '#/components/parameters/KsaDate'
       requestBody:
+        required: true
         content:
           application/json:
             schema:
               type: object
               properties:
-                deliveryAddressOverride: { $ref: '#/components/schemas/Address' }
-                deliveryWindowOverride: { type: string }
-      responses: { 200: { description: OK } }
+                deliveryAddress:
+                  $ref: '#/components/schemas/Address'
+                deliveryWindow:
+                  type: string
+      responses:
+        '200':
+          description: Day override updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/SubscriptionDay'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '500':
+          $ref: '#/components/responses/Internal'
 
-  /subscriptions/{id}/delivery:
-    put:
-      summary: Update global delivery details for subscription
-      tags: [Subscriptions]
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - name: id
-          in: path
-          required: true
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                deliveryAddress: { $ref: '#/components/schemas/Address' }
-                deliveryWindow: { type: string }
-      responses: { 200: { description: OK } }
-
-  /subscriptions/{id}/premium/topup:
+  /api/subscriptions/{id}/premium/topup:
     post:
-      summary: Buy more premium credits
       tags: [Subscriptions]
-      security: [{ bearerAuth: [] }]
+      summary: Purchase premium top-up
+      description: Creates Moyasar invoice/payment record for premium credits.
+      security:
+        - bearerAuth: []
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/SubscriptionId'
       requestBody:
+        required: true
         content:
           application/json:
             schema:
               type: object
               required: [count]
               properties:
-                count: { type: integer, minimum: 1 }
-                successUrl: { type: string }
-                backUrl: { type: string }
+                count:
+                  type: integer
+                  minimum: 1
+                successUrl:
+                  type: string
+                backUrl:
+                  type: string
       responses:
-        200:
-          description: Payment URL generated
+        '200':
+          description: Invoice created.
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  ok: { type: boolean }
-                  data: { type: object, properties: { payment_url: { type: string } } }
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      payment_url:
+                        type: string
+                      invoice_id:
+                        type: string
+                      payment_id:
+                        type: string
+              example:
+                ok: true
+                data:
+                  payment_url: https://mysr.co/invoice/abc
+                  invoice_id: iv_abc
+                  payment_id: 65f2b6a0be3f7e2ea1234abc
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '500':
+          $ref: '#/components/responses/Internal'
 
-  /subscriptions/{id}/addons/one-time:
+  /api/subscriptions/{id}/addons/one-time:
     post:
-      summary: Purchase one-time addon for a day
       tags: [Subscriptions]
-      security: [{ bearerAuth: [] }]
+      summary: Purchase one-time add-on for a date
+      description: Creates Moyasar invoice/payment; add-on is applied by webhook when paid.
+      security:
+        - bearerAuth: []
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/SubscriptionId'
+        - $ref: '#/components/parameters/AcceptLanguage'
       requestBody:
+        required: true
         content:
           application/json:
             schema:
               type: object
               required: [addonId, date]
               properties:
-                addonId: { type: string }
-                date: { type: string, format: date }
-      responses: { 200: { description: Payment URL } }
-
-  # --- ORDERS (ONE-TIME) ---
-  /orders:
-    get:
-      summary: List all orders for the current user
-      tags: [Orders]
-      security: [{ bearerAuth: [] }]
+                addonId:
+                  type: string
+                date:
+                  type: string
+                  pattern: '^\\d{4}-\\d{2}-\\d{2}$'
+                successUrl:
+                  type: string
+                backUrl:
+                  type: string
       responses:
-        200:
-          description: OK
+        '200':
+          description: Invoice created.
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  ok: { type: boolean }
-                  data: { type: array, items: { $ref: '#/components/schemas/Order' } }
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      payment_url:
+                        type: string
+                      invoice_id:
+                        type: string
+                      payment_id:
+                        type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '500':
+          $ref: '#/components/responses/Internal'
 
-  /orders/checkout:
-    post:
-      summary: Buy meals without subscription
-      tags: [Orders]
-      security: [{ bearerAuth: [] }]
+  /api/subscriptions/{id}/delivery:
+    put:
+      tags: [Subscriptions]
+      summary: Update subscription-level delivery details
+      description: Updates base delivery address/window for delivery-mode subscriptions.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
       requestBody:
+        required: true
         content:
           application/json:
             schema:
               type: object
-              required: [deliveryMode, deliveryDate]
               properties:
-                meals: { type: array, items: { type: object, properties: { mealId: { type: string }, quantity: { type: integer } } } }
-                customSalads: { type: array, items: { type: object } }
-                deliveryMode: { type: string, enum: [delivery, pickup] }
-                deliveryDate: { type: string, format: date }
-                deliveryAddress: { $ref: '#/components/schemas/Address' }
+                deliveryAddress:
+                  $ref: '#/components/schemas/Address'
+                deliveryWindow:
+                  type: string
       responses:
-        200:
-          description: OK
+        '200':
+          description: Subscription updated.
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  ok: { type: boolean }
-                  data: { type: object, properties: { payment_url: { type: string }, orderId: { type: string } } }
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Subscription'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
 
-  /orders/{id}/confirm:
+  /api/orders/checkout:
     post:
-      summary: Mock payment confirmation for an order
       tags: [Orders]
-      security: [{ bearerAuth: [] }]
+      summary: Checkout one-time order
+      description: Creates order and initiated payment; delivery date may auto-shift if tomorrow cutoff already passed.
+      security:
+        - bearerAuth: []
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
-      responses: { 200: { description: OK } }
-
-  /orders/{id}/items/custom-salad:
-    post:
-      summary: Add custom salad to an existing order
-      tags: [Orders]
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
+        - $ref: '#/components/parameters/AcceptLanguage'
       requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [deliveryMode]
+              properties:
+                meals:
+                  type: array
+                  items:
+                    type: object
+                    required: [mealId]
+                    properties:
+                      mealId:
+                        type: string
+                      quantity:
+                        type: integer
+                        minimum: 1
+                customSalads:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      ingredients:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            ingredientId:
+                              type: string
+                            quantity:
+                              type: integer
+                deliveryMode:
+                  type: string
+                  enum: [delivery, pickup]
+                deliveryAddress:
+                  $ref: '#/components/schemas/Address'
+                deliveryWindow:
+                  type: string
+                deliveryDate:
+                  type: string
+                  pattern: '^\\d{4}-\\d{2}-\\d{2}$'
+      responses:
+        '200':
+          description: Order checkout created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      orderId:
+                        type: string
+                      deliveryDate:
+                        type: string
+                      dateAdjusted:
+                        type: boolean
+                      payment_url:
+                        type: string
+                      pricing:
+                        $ref: '#/components/schemas/OrderPricing'
+              example:
+                ok: true
+                data:
+                  orderId: 65f3b6a0be3f7e2ea12340aa
+                  deliveryDate: "2026-03-01"
+                  dateAdjusted: false
+                  payment_url: https://mock-payment.com/orders/65f3b6a0be3f7e2ea12340aa
+                  pricing:
+                    unitPrice: 2500
+                    premiumUnitPrice: 3500
+                    quantity: 2
+                    subtotal: 5000
+                    deliveryFee: 0
+                    total: 5000
+                    currency: SAR
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/Internal'
+
+  /api/orders/{id}/confirm:
+    post:
+      tags: [Orders]
+      summary: Confirm order payment (mock)
+      description: Marks order/payment as paid and confirms order when current state allows.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '200':
+          description: Confirmed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Order'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/Internal'
+
+  /api/orders/{id}/items/custom-salad:
+    post:
+      tags: [Orders, Meals / Menu]
+      summary: Add custom salad item to order
+      description: Allowed only while order is `created` and payment is `initiated`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      requestBody:
+        required: true
         content:
           application/json:
             schema:
               type: object
               required: [ingredients]
               properties:
-                ingredients: { type: array, items: { type: object } }
-      responses: { 200: { description: OK } }
+                ingredients:
+                  type: array
+                  items:
+                    type: object
+                    required: [ingredientId]
+                    properties:
+                      ingredientId:
+                        type: string
+                      quantity:
+                        type: integer
+                        minimum: 1
+      responses:
+        '200':
+          description: Order updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Order'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/Internal'
 
-  /orders/{id}:
+  /api/orders:
     get:
-      summary: Get order details
       tags: [Orders]
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
+      summary: List current user's orders
+      description: Returns authenticated user's orders sorted by most recent first.
+      security:
+        - bearerAuth: []
       responses:
-        200:
-          description: OK
+        '200':
+          description: Order list.
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  ok: { type: boolean }
-                  data: { $ref: '#/components/schemas/Order' }
+                  ok:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Order'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 
-  # --- SALADS ---
-  /salad-ingredients:
+  /api/orders/{id}:
     get:
-      summary: List all active salad ingredients
-      tags: [Salad]
+      tags: [Orders]
+      summary: Get order by id
+      description: Returns one order belonging to the authenticated user.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
       responses:
-        200:
+        '200':
+          description: Order found.
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  ok: { type: boolean }
-                  data: { type: array, items: { $ref: '#/components/schemas/SaladIngredient' } }
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Order'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
-  /custom-salads/price:
+  /api/salad-ingredients:
+    get:
+      tags: [Meals / Menu]
+      summary: List active salad ingredients
+      description: Returns localized ingredient name by `Accept-Language`.
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
+      responses:
+        '200':
+          description: Active ingredients.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SaladIngredientResolved'
+
+  /api/custom-salads/price:
     post:
+      tags: [Meals / Menu]
       summary: Preview custom salad price
-      tags: [Salad]
-      security: [{ bearerAuth: [] }]
+      description: Calculates and returns a custom salad pricing snapshot from selected ingredients.
+      security:
+        - bearerAuth: []
       requestBody:
+        required: true
         content:
           application/json:
             schema:
               type: object
               required: [ingredients]
               properties:
-                ingredients: { type: array, items: { type: object, properties: { ingredientId: { type: string }, quantity: { type: integer } } } }
+                ingredients:
+                  type: array
+                  items:
+                    type: object
+                    required: [ingredientId]
+                    properties:
+                      ingredientId:
+                        type: string
+                      quantity:
+                        type: integer
+                        minimum: 1
       responses:
-        200:
+        '200':
+          description: Price snapshot.
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  ok: { type: boolean }
-                  data: { $ref: '#/components/schemas/CustomSalad' }
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/CustomSaladSnapshot'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
-  # --- KITCHEN ---
-  /kitchen/days/{date}:
+  /api/courier/deliveries/today:
     get:
-      summary: List all meals to prepare for a date
-      tags: [Kitchen]
-      security: [{ cookieAuth: [] }]
-      parameters:
-        - name: date
-          in: path
-          required: true
-          schema: { type: string, format: date }
+      tags: [Deliveries / Courier]
+      summary: List today's subscription deliveries
+      description: Requires `courier` or `admin` role.
+      security:
+        - bearerAuth: []
       responses:
-        200:
-          description: OK
+        '200':
+          description: Delivery list.
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  ok: { type: boolean }
-                  data: { type: array, items: { type: object } }
+                  ok:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Delivery'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
 
-  /kitchen/subscriptions/{id}/days/{date}/assign:
+  /api/courier/deliveries/{id}/arriving-soon:
     put:
-      summary: Kitchen assigns meals to a user (Admin/Kitchen override)
-      tags: [Kitchen]
-      security: [{ cookieAuth: [] }]
+      tags: [Deliveries / Courier]
+      summary: Mark delivery as arriving soon
+      description: Sets delivery status to `out_for_delivery` and sends an arriving-soon notification.
+      security:
+        - bearerAuth: []
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
-        - name: date
-          in: path
-          required: true
-          schema: { type: string, format: date }
+        - $ref: '#/components/parameters/DeliveryId'
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/courier/deliveries/{id}/delivered:
+    put:
+      tags: [Deliveries / Courier]
+      summary: Mark delivery as delivered
+      description: Fulfills the subscription day and sends delivered notification with dedupe safeguards.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/DeliveryId'
+      responses:
+        '200':
+          description: Marked delivered (idempotent when already delivered).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/Internal'
+
+  /api/courier/deliveries/{id}/cancel:
+    put:
+      tags: [Deliveries / Courier]
+      summary: Cancel delivery
+      description: Applies skip compensation rules for linked subscription day.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/DeliveryId'
+      responses:
+        '200':
+          description: Cancelled.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/Internal'
+
+  /api/courier/orders/today:
+    get:
+      tags: [Deliveries / Courier, Orders]
+      summary: List today's one-time delivery orders
+      description: Lists today's one-time orders where `deliveryMode=delivery`.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Order list.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Order'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/courier/orders/{id}/delivered:
+    put:
+      tags: [Deliveries / Courier, Orders]
+      summary: Mark one-time order delivered
+      description: Transitions order to `fulfilled` when transition rules allow.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '200':
+          description: Delivered.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/courier/orders/{id}/cancel:
+    put:
+      tags: [Deliveries / Courier, Orders]
+      summary: Cancel one-time order
+      description: Transitions one-time order to `canceled` when transition rules allow.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '200':
+          description: Cancelled.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/kitchen/days/{date}:
+    get:
+      tags: [Kitchen]
+      summary: List kitchen workload for subscription days
+      description: Requires `kitchen` or `admin` role.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/KsaDate'
+      responses:
+        '200':
+          description: Day workload.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/kitchen/subscriptions/{id}/days/{date}/assign:
+    put:
+      tags: [Kitchen]
+      summary: Assign meals for subscription day
+      description: Assigns regular and premium selections with meals-per-day cap enforcement.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+        - $ref: '#/components/parameters/KsaDate'
       requestBody:
+        required: true
         content:
           application/json:
             schema:
               type: object
               properties:
-                selections: { type: array, items: { type: string } }
-                premiumSelections: { type: array, items: { type: string } }
-      responses: { 200: { description: OK } }
-
-  /kitchen/subscriptions/{id}/days/{date}/lock:
-    post:
-      summary: Move day to LOCKED (preparing)
-      tags: [Kitchen]
-      security: [{ cookieAuth: [] }]
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
-        - name: date
-          in: path
-          required: true
-          schema: { type: string, format: date }
-      responses: { 200: { description: OK } }
-
-  /kitchen/subscriptions/{id}/days/{date}/in-preparation:
-    post:
-      summary: Move day to IN PREPARATION
-      tags: [Kitchen]
-      security: [{ cookieAuth: [] }]
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
-        - name: date
-          in: path
-          required: true
-          schema: { type: string, format: date }
-      responses: { 200: { description: OK } }
-
-  /kitchen/subscriptions/{id}/days/{date}/out-for-delivery:
-    post:
-      summary: Move day to ON THE WAY
-      tags: [Kitchen]
-      security: [{ cookieAuth: [] }]
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
-        - name: date
-          in: path
-          required: true
-          schema: { type: string, format: date }
-      responses: { 200: { description: OK } }
-
-  /kitchen/subscriptions/{id}/days/{date}/ready-for-pickup:
-    post:
-      summary: Move day to READY FOR PICKUP
-      tags: [Kitchen]
-      security: [{ cookieAuth: [] }]
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
-        - name: date
-          in: path
-          required: true
-          schema: { type: string, format: date }
-      responses: { 200: { description: OK } }
-
-  /kitchen/subscriptions/{id}/days/{date}/fulfill-pickup:
-    post:
-      summary: Fulfill a pickup (Customer grabbed it)
-      tags: [Kitchen]
-      security: [{ cookieAuth: [] }]
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
-        - name: date
-          in: path
-          required: true
-          schema: { type: string, format: date }
-      responses: { 200: { description: OK } }
-
-  /kitchen/orders/{date}:
-    get:
-      summary: List one-time orders to prepare for a date
-      tags: [Kitchen]
-      security: [{ cookieAuth: [] }]
-      parameters:
-        - name: date
-          in: path
-          required: true
-          schema: { type: string, format: date }
+                selections:
+                  type: array
+                  items:
+                    type: string
+                premiumSelections:
+                  type: array
+                  items:
+                    type: string
       responses:
-        200:
-          description: OK
+        '200':
+          description: Assigned.
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  ok: { type: boolean }
-                  data: { type: array, items: { $ref: '#/components/schemas/Order' } }
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/SubscriptionDay'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/Internal'
 
-  /kitchen/orders/{id}/preparing:
+  /api/kitchen/subscriptions/{id}/days/{date}/lock:
     post:
-      summary: Move one-time order to PREPARING
       tags: [Kitchen]
-      security: [{ cookieAuth: [] }]
+      summary: Transition subscription day to locked
+      description: Moves day to `locked` and captures locked snapshot data when needed.
+      security:
+        - bearerAuth: []
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
-      responses: { 200: { description: OK } }
-
-  /kitchen/orders/{id}/out-for-delivery:
-    post:
-      summary: Move one-time order to OUT FOR DELIVERY
-      tags: [Kitchen]
-      security: [{ cookieAuth: [] }]
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
-      responses: { 200: { description: OK } }
-
-  /kitchen/orders/{id}/ready-for-pickup:
-    post:
-      summary: Move one-time order to READY FOR PICKUP
-      tags: [Kitchen]
-      security: [{ cookieAuth: [] }]
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
-      responses: { 200: { description: OK } }
-
-  # --- COURIER ---
-  /courier/deliveries/today:
-    get:
-      summary: List assigned deliveries for today
-      tags: [Courier]
-      security: [{ cookieAuth: [] }]
+        - $ref: '#/components/parameters/SubscriptionId'
+        - $ref: '#/components/parameters/KsaDate'
       responses:
-        200:
+        '200':
+          description: Transitioned.
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  ok: { type: boolean }
-                  data: { type: array, items: { type: object } }
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/SubscriptionDay'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/Internal'
 
-  /courier/deliveries/{id}/arriving-soon:
-    put:
-      summary: Notify customer about arrival
-      tags: [Courier]
-      security: [{ cookieAuth: [] }]
+  /api/kitchen/subscriptions/{id}/days/{date}/in-preparation:
+    post:
+      tags: [Kitchen]
+      summary: Transition subscription day to in_preparation
+      description: Moves a locked subscription day into `in_preparation`.
+      security:
+        - bearerAuth: []
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
-      responses: { 200: { description: OK } }
-
-  /courier/deliveries/{id}/delivered:
-    put:
-      summary: Mark delivery as SUCCESS (Fulfills day)
-      tags: [Courier]
-      security: [{ cookieAuth: [] }]
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
-      responses: { 200: { description: OK } }
-
-  /courier/deliveries/{id}/cancel:
-    put:
-      summary: Courier cancels delivery (Functions as a skip)
-      tags: [Courier]
-      security: [{ cookieAuth: [] }]
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
-      responses: { 200: { description: OK } }
-
-  /courier/orders/today:
-    get:
-      summary: List one-time orders for delivery today
-      tags: [Courier]
-      security: [{ cookieAuth: [] }]
+        - $ref: '#/components/parameters/SubscriptionId'
+        - $ref: '#/components/parameters/KsaDate'
       responses:
-        200:
+        '200':
+          description: Transitioned.
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  ok: { type: boolean }
-                  data: { type: array, items: { $ref: '#/components/schemas/Order' } }
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/SubscriptionDay'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/Internal'
 
-  /courier/orders/{id}/delivered:
-    put:
-      summary: Mark one-time order as DELIVERED
-      tags: [Courier]
-      security: [{ cookieAuth: [] }]
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
-      responses: { 200: { description: OK } }
-
-  /courier/orders/{id}/cancel:
-    put:
-      summary: Cancel one-time order delivery
-      tags: [Courier]
-      security: [{ cookieAuth: [] }]
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
-      responses: { 200: { description: OK } }
-
-  # --- ADMIN ---
-  /admin/plans:
+  /api/kitchen/subscriptions/{id}/days/{date}/out-for-delivery:
     post:
-      summary: Create a new subscription plan
-      tags: [Admin]
-      security: [{ cookieAuth: [] }]
+      tags: [Kitchen]
+      summary: Transition subscription day to out_for_delivery
+      description: Creates delivery record when needed; valid only for delivery subscriptions.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+        - $ref: '#/components/parameters/KsaDate'
+      responses:
+        '200':
+          description: Transitioned.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/SubscriptionDay'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/Internal'
+
+  /api/kitchen/subscriptions/{id}/days/{date}/ready-for-pickup:
+    post:
+      tags: [Kitchen]
+      summary: Transition subscription day to ready_for_pickup
+      description: Valid only for pickup subscriptions.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+        - $ref: '#/components/parameters/KsaDate'
+      responses:
+        '200':
+          description: Transitioned.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/SubscriptionDay'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/Internal'
+
+  /api/kitchen/subscriptions/{id}/days/{date}/fulfill-pickup:
+    post:
+      tags: [Kitchen]
+      summary: Fulfill pickup subscription day
+      description: Finalizes pickup fulfillment using shared fulfillment service logic.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+        - $ref: '#/components/parameters/KsaDate'
+      responses:
+        '200':
+          description: Fulfilled.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  alreadyFulfilled:
+                    type: boolean
+                    nullable: true
+                  data:
+                    $ref: '#/components/schemas/SubscriptionDay'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/Internal'
+
+  /api/kitchen/orders/{date}:
+    get:
+      tags: [Kitchen, Orders]
+      summary: List one-time orders by date
+      description: Lists one-time orders scheduled for the provided KSA date.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/KsaDate'
+      responses:
+        '200':
+          description: Orders for date.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Order'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/kitchen/orders/{id}/preparing:
+    post:
+      tags: [Kitchen, Orders]
+      summary: Transition one-time order to preparing
+      description: Moves one-time order from `confirmed` to `preparing` when allowed.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '200':
+          description: Transitioned.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Order'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/kitchen/orders/{id}/out-for-delivery:
+    post:
+      tags: [Kitchen, Orders]
+      summary: Transition one-time order to out_for_delivery
+      description: Valid only for delivery-mode orders.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '200':
+          description: Transitioned.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Order'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/kitchen/orders/{id}/ready-for-pickup:
+    post:
+      tags: [Kitchen, Orders]
+      summary: Transition one-time order to ready_for_pickup
+      description: Valid only for pickup-mode orders.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '200':
+          description: Transitioned.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Order'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/admin/plans:
+    post:
+      tags: [Admin (Dashboard), Plans]
+      summary: Create plan
+      description: Admin-only.
+      security:
+        - bearerAuth: []
       requestBody:
+        required: true
         content:
           application/json:
             schema:
               type: object
               required: [name, daysCount, mealsPerDay, grams, price]
               properties:
-                name: { type: string }
-                daysCount: { type: integer }
-                mealsPerDay: { type: integer }
-                grams: { type: integer }
-                price: { type: number }
-                skipAllowance: { type: integer }
-      responses: { 201: { description: Created } }
+                name:
+                  oneOf:
+                    - type: string
+                    - $ref: '#/components/schemas/LocalizedText'
+                daysCount:
+                  type: integer
+                mealsPerDay:
+                  type: integer
+                grams:
+                  type: integer
+                price:
+                  type: number
+                skipAllowance:
+                  type: integer
+      responses:
+        '201':
+          description: Plan created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
 
-  /admin/settings/cutoff:
+  /api/admin/settings/cutoff:
     put:
-      summary: Set cutoff time (e.g. "23:00")
-      tags: [Admin]
-      security: [{ cookieAuth: [] }]
+      tags: [Admin (Dashboard)]
+      summary: Update cutoff time
+      description: Admin-only.
+      security:
+        - bearerAuth: []
       requestBody:
+        required: true
         content:
           application/json:
             schema:
               type: object
               required: [time]
-              properties: { time: { type: string, example: "23:00" } }
-      responses: { 200: { description: OK } }
+              properties:
+                time:
+                  type: string
+                  example: "22:00"
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
 
-  /admin/settings/delivery-windows:
+  /api/admin/settings/delivery-windows:
     put:
-      summary: Update delivery windows list
-      tags: [Admin]
-      security: [{ cookieAuth: [] }]
+      tags: [Admin (Dashboard)]
+      summary: Update delivery windows
+      description: Sets the allowed delivery windows used by checkout validations.
+      security:
+        - bearerAuth: []
       requestBody:
+        required: true
         content:
           application/json:
             schema:
               type: object
               required: [windows]
-              properties: { windows: { type: array, items: { type: string } } }
-      responses: { 200: { description: OK } }
+              properties:
+                windows:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
 
-  /admin/settings/skip-allowance:
+  /api/admin/settings/skip-allowance:
     put:
-      summary: Update default skip allowance
-      tags: [Admin]
-      security: [{ cookieAuth: [] }]
+      tags: [Admin (Dashboard)]
+      summary: Update global skip allowance
+      description: Sets global skip allowance setting value.
+      security:
+        - bearerAuth: []
       requestBody:
+        required: true
         content:
           application/json:
             schema:
               type: object
               required: [days]
-              properties: { days: { type: integer } }
-      responses: { 200: { description: OK } }
+              properties:
+                days:
+                  type: number
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
 
-  /admin/settings/premium-price:
+  /api/admin/settings/premium-price:
     put:
+      tags: [Admin (Dashboard)]
       summary: Update premium meal price
-      tags: [Admin]
-      security: [{ cookieAuth: [] }]
+      description: Sets premium price setting used by subscription pricing logic.
+      security:
+        - bearerAuth: []
       requestBody:
+        required: true
         content:
           application/json:
             schema:
               type: object
               required: [price]
-              properties: { price: { type: number } }
-      responses: { 200: { description: OK } }
-
-  /admin/dashboard-users:
-    get:
-      summary: List all dashboard users
-      tags: [Admin]
-      security: [{ cookieAuth: [] }]
+              properties:
+                price:
+                  type: number
       responses:
-        200:
+        '200':
+          description: Updated.
           content:
             application/json:
-              schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/DashboardUser' } } } }
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
 
+  /api/admin/dashboard-users:
+    get:
+      tags: [Admin (Dashboard), Users]
+      summary: List dashboard users
+      description: Returns all dashboard users sorted by creation date descending.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Dashboard users.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DashboardUser'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
     post:
-      summary: Create a new dashboard user
-      tags: [Admin]
-      security: [{ cookieAuth: [] }]
+      tags: [Admin (Dashboard), Users]
+      summary: Create dashboard user
+      description: Creates dashboard user with `email` and role (`admin|kitchen|courier`).
+      security:
+        - bearerAuth: []
       requestBody:
+        required: true
         content:
           application/json:
             schema:
               type: object
               required: [email, role]
               properties:
-                email: { type: string }
-                role: { type: string, enum: [admin, kitchen, courier] }
-      responses: { 201: { description: Created } }
-
-  /admin/notification-logs:
-    get:
-      summary: View notification logs
-      tags: [Admin]
-      security: [{ cookieAuth: [] }]
-      parameters:
-        - name: userId
-          in: query
-          schema: { type: string }
-        - name: page
-          in: query
-          schema: { type: integer }
+                email:
+                  type: string
+                role:
+                  type: string
+                  enum: [admin, kitchen, courier]
       responses:
-        200:
+        '201':
+          description: Dashboard user created.
           content:
             application/json:
-              schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/NotificationLog' } } } }
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
 
-  /admin/salad-ingredients:
-    post:
-      summary: Create a new salad ingredient
-      tags: [Admin]
-      security: [{ cookieAuth: [] }]
-      requestBody:
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/SaladIngredient' }
-      responses: { 201: { description: Created } }
-
-  /admin/salad-ingredients/{id}:
-    patch:
-      summary: Update a salad ingredient
-      tags: [Admin]
-      security: [{ cookieAuth: [] }]
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
-      requestBody:
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/SaladIngredient' }
-      responses: { 200: { description: OK } }
-
-  /admin/salad-ingredients/{id}/toggle:
-    patch:
-      summary: Toggle salad ingredient active state
-      tags: [Admin]
-      security: [{ cookieAuth: [] }]
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
-      responses: { 200: { description: OK } }
-
-  /admin/logs:
+  /api/admin/logs:
     get:
-      summary: View audit logs
-      tags: [Admin]
-      security: [{ cookieAuth: [] }]
+      tags: [Admin (Dashboard)]
+      summary: List activity logs
+      description: Returns paginated activity logs with optional filter parameters.
+      security:
+        - bearerAuth: []
       parameters:
         - name: entityType
           in: query
-          schema: { type: string }
-        - name: page
+          schema:
+            type: string
+        - name: entityId
           in: query
-          schema: { type: integer }
+          schema:
+            type: string
+        - name: action
+          in: query
+          schema:
+            type: string
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: byRole
+          in: query
+          schema:
+            type: string
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
       responses:
-        200:
+        '200':
+          description: Paginated logs.
           content:
             application/json:
-              schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/ActivityLog' } } } }
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ActivityLog'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
 
-  /admin/trigger-cutoff:
-    post:
-      summary: Manually trigger daily cutoff processing
-      tags: [Admin]
-      security: [{ cookieAuth: [] }]
-      responses: { 200: { description: Processed } }
+  /api/admin/notification-logs:
+    get:
+      tags: [Notifications, Admin (Dashboard)]
+      summary: List notification logs
+      description: Returns paginated notification dispatch logs with optional filters.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: query
+          schema:
+            type: string
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Paginated notification logs.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/NotificationLog'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
 
-  # --- WEBHOOKS ---
-  /webhooks/moyasar:
+  /api/admin/trigger-cutoff:
     post:
-      summary: Handle payment events from Moyasar
-      tags: [Webhooks]
+      tags: [Admin (Dashboard)]
+      summary: Trigger cutoff job immediately
+      description: Admin-only manual trigger for daily cutoff automation.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Job completed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  message:
+                    type: string
+              example:
+                ok: true
+                message: Cutoff processed successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          description: Trigger failed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  message:
+                    type: string
+              example:
+                ok: false
+                message: Cutoff processing failed
+
+  /api/admin/salad-ingredients:
+    post:
+      tags: [Admin (Dashboard), Meals / Menu]
+      summary: Create salad ingredient
+      description: Creates an ingredient; supports both new multilingual and legacy name fields.
+      security:
+        - bearerAuth: []
       requestBody:
+        required: true
         content:
           application/json:
-            schema: { type: object }
-      responses: { 200: { description: OK } }
+            schema:
+              type: object
+              properties:
+                name:
+                  $ref: '#/components/schemas/LocalizedText'
+                name_ar:
+                  type: string
+                  description: Legacy field accepted by backend.
+                name_en:
+                  type: string
+                  description: Legacy field accepted by backend.
+                price:
+                  type: number
+                calories:
+                  type: number
+                maxQuantity:
+                  type: number
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/SaladIngredient'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/admin/salad-ingredients/{id}:
+    patch:
+      tags: [Admin (Dashboard), Meals / Menu]
+      summary: Update salad ingredient
+      description: Partially updates ingredient fields, including per-language name keys.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IngredientId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  $ref: '#/components/schemas/LocalizedText'
+                name_ar:
+                  type: string
+                name_en:
+                  type: string
+                price:
+                  type: number
+                calories:
+                  type: number
+                maxQuantity:
+                  type: number
+                  nullable: true
+                isActive:
+                  type: boolean
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/SaladIngredient'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/admin/salad-ingredients/{id}/toggle:
+    patch:
+      tags: [Admin (Dashboard), Meals / Menu]
+      summary: Toggle salad ingredient active state
+      description: Flips ingredient `isActive` between true and false.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IngredientId'
+      responses:
+        '200':
+          description: Toggled.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/SaladIngredient'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/dashboard/plans:
+    post:
+      tags: [Admin (Dashboard), Plans]
+      summary: Create plan (dashboard alias)
+      description: Alias of `/api/admin/plans`.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, daysCount, mealsPerDay, grams, price]
+              properties:
+                name:
+                  oneOf:
+                    - type: string
+                    - $ref: '#/components/schemas/LocalizedText'
+                daysCount:
+                  type: integer
+                mealsPerDay:
+                  type: integer
+                grams:
+                  type: integer
+                price:
+                  type: number
+                skipAllowance:
+                  type: integer
+      responses:
+        '201':
+          description: Plan created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/dashboard/settings/cutoff:
+    put:
+      tags: [Admin (Dashboard)]
+      summary: Update cutoff time (dashboard alias)
+      description: Alias of `/api/admin/settings/cutoff`.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [time]
+              properties:
+                time:
+                  type: string
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/dashboard/settings/delivery-windows:
+    put:
+      tags: [Admin (Dashboard)]
+      summary: Update delivery windows (dashboard alias)
+      description: Alias of `/api/admin/settings/delivery-windows`.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [windows]
+              properties:
+                windows:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/dashboard/settings/skip-allowance:
+    put:
+      tags: [Admin (Dashboard)]
+      summary: Update skip allowance (dashboard alias)
+      description: Alias of `/api/admin/settings/skip-allowance`.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [days]
+              properties:
+                days:
+                  type: number
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/dashboard/settings/premium-price:
+    put:
+      tags: [Admin (Dashboard)]
+      summary: Update premium price (dashboard alias)
+      description: Alias of `/api/admin/settings/premium-price`.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [price]
+              properties:
+                price:
+                  type: number
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/dashboard/dashboard-users:
+    get:
+      tags: [Admin (Dashboard), Users]
+      summary: List dashboard users (dashboard alias)
+      description: Alias of `/api/admin/dashboard-users`.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Dashboard users.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DashboardUser'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [Admin (Dashboard), Users]
+      summary: Create dashboard user (dashboard alias)
+      description: Alias of `/api/admin/dashboard-users`.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, role]
+              properties:
+                email:
+                  type: string
+                role:
+                  type: string
+                  enum: [admin, kitchen, courier]
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/dashboard/logs:
+    get:
+      tags: [Admin (Dashboard)]
+      summary: List activity logs (dashboard alias)
+      description: Alias of `/api/admin/logs`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: entityType
+          in: query
+          schema:
+            type: string
+        - name: entityId
+          in: query
+          schema:
+            type: string
+        - name: action
+          in: query
+          schema:
+            type: string
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: byRole
+          in: query
+          schema:
+            type: string
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Paginated logs.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ActivityLog'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/dashboard/notification-logs:
+    get:
+      tags: [Notifications, Admin (Dashboard)]
+      summary: List notification logs (dashboard alias)
+      description: Alias of `/api/admin/notification-logs`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: query
+          schema:
+            type: string
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Paginated notification logs.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/NotificationLog'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/dashboard/trigger-cutoff:
+    post:
+      tags: [Admin (Dashboard)]
+      summary: Trigger cutoff job (dashboard alias)
+      description: Alias of `/api/admin/trigger-cutoff`.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Job completed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  message:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          description: Trigger failed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  message:
+                    type: string
+
+  /api/dashboard/salad-ingredients:
+    post:
+      tags: [Admin (Dashboard), Meals / Menu]
+      summary: Create salad ingredient (dashboard alias)
+      description: Alias of `/api/admin/salad-ingredients`.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  $ref: '#/components/schemas/LocalizedText'
+                name_ar:
+                  type: string
+                name_en:
+                  type: string
+                price:
+                  type: number
+                calories:
+                  type: number
+                maxQuantity:
+                  type: number
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/SaladIngredient'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/dashboard/salad-ingredients/{id}:
+    patch:
+      tags: [Admin (Dashboard), Meals / Menu]
+      summary: Update salad ingredient (dashboard alias)
+      description: Alias of `/api/admin/salad-ingredients/{id}`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IngredientId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/SaladIngredient'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/dashboard/salad-ingredients/{id}/toggle:
+    patch:
+      tags: [Admin (Dashboard), Meals / Menu]
+      summary: Toggle salad ingredient state (dashboard alias)
+      description: Alias of `/api/admin/salad-ingredients/{id}/toggle`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IngredientId'
+      responses:
+        '200':
+          description: Toggled.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/SaladIngredient'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'

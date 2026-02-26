@@ -1,6 +1,7 @@
 const { Router } = require("express");
 const controller = require("../controllers/customSaladController");
 const { authMiddleware } = require("../middleware/auth");
+const asyncHandler = require("../middleware/asyncHandler");
 
 const router = Router();
 
@@ -34,6 +35,6 @@ router.use(authMiddleware);
  *       200:
  *         description: Price snapshot
  */
-router.post("/price", controller.previewCustomSaladPrice);
+router.post("/price", asyncHandler(controller.previewCustomSaladPrice));
 
 module.exports = router;

@@ -4,8 +4,6 @@ const helmet = require("helmet");
 const cors = require("cors");
 const mongoose = require("mongoose");
 const swaggerUi = require("swagger-ui-express");
-const { toNodeHandler } = require("better-auth/node");
-const { auth } = require("./auth/betterAuth");
 const routes = require("./routes");
 const { logger } = require("./utils/logger");
 
@@ -39,9 +37,6 @@ function createApp() {
   app.use(cors(corsOptions));
   app.options("*", cors(corsOptions));
 
-  // Better Auth handler must run before express.json
-  app.all("/api/dashboard-auth/*", toNodeHandler(auth));
-
   app.use(express.json({ limit: "1mb" }));
 
   /**
@@ -70,6 +65,11 @@ function createApp() {
       logger.error("Health check DB ping failed", { error: err.message });
       return res.status(503).json({ ok: false, db: { state: "down" } });
     }
+  });
+
+  // Keep a simple root health endpoint for deployment smoke tests.
+  app.get("/", (_req, res) => {
+    res.status(200).json({ ok: true, message: "basicdiet145 backend is running" });
   });
 
   const swaggerPath = path.join(__dirname, "..", "swagger.yaml");

@@ -1,23 +1,24 @@
 const { Router } = require("express");
 const controller = require("../controllers/adminController");
 const saladController = require("../controllers/saladIngredientController");
-const { dashboardAuthMiddleware, dashboardRoleMiddleware } = require("../middleware/dashboardAuth");
+const { authMiddleware, roleMiddleware } = require("../middleware/auth");
+const asyncHandler = require("../middleware/asyncHandler");
 
 const router = Router();
 
-router.use(dashboardAuthMiddleware, dashboardRoleMiddleware(["admin"]));
+router.use(authMiddleware, roleMiddleware(["admin"]));
 
-router.post("/plans", controller.createPlan);
-router.put("/settings/cutoff", controller.updateCutoff);
-router.put("/settings/delivery-windows", controller.updateDeliveryWindows);
-router.put("/settings/skip-allowance", controller.updateSkipAllowance);
-router.put("/settings/premium-price", controller.updatePremiumPrice);
-router.get("/dashboard-users", controller.listDashboardUsers);
-router.post("/dashboard-users", controller.createDashboardUser);
-router.get("/logs", controller.listActivityLogs);
-router.get("/notification-logs", controller.listNotificationLogs);
+router.post("/plans", asyncHandler(controller.createPlan));
+router.put("/settings/cutoff", asyncHandler(controller.updateCutoff));
+router.put("/settings/delivery-windows", asyncHandler(controller.updateDeliveryWindows));
+router.put("/settings/skip-allowance", asyncHandler(controller.updateSkipAllowance));
+router.put("/settings/premium-price", asyncHandler(controller.updatePremiumPrice));
+router.get("/dashboard-users", asyncHandler(controller.listDashboardUsers));
+router.post("/dashboard-users", asyncHandler(controller.createDashboardUser));
+router.get("/logs", asyncHandler(controller.listActivityLogs));
+router.get("/notification-logs", asyncHandler(controller.listNotificationLogs));
 
-router.post("/trigger-cutoff", controller.triggerDailyCutoff);
+router.post("/trigger-cutoff", asyncHandler(controller.triggerDailyCutoff));
 
 /**
  * @openapi
@@ -48,7 +49,7 @@ router.post("/trigger-cutoff", controller.triggerDailyCutoff);
  *       201:
  *         description: Created
  */
-router.post("/salad-ingredients", saladController.createIngredient);
+router.post("/salad-ingredients", asyncHandler(saladController.createIngredient));
 /**
  * @openapi
  * /admin/salad-ingredients/{id}:
@@ -73,7 +74,7 @@ router.post("/salad-ingredients", saladController.createIngredient);
  *       200:
  *         description: Updated
  */
-router.patch("/salad-ingredients/:id", saladController.updateIngredient);
+router.patch("/salad-ingredients/:id", asyncHandler(saladController.updateIngredient));
 /**
  * @openapi
  * /admin/salad-ingredients/{id}/toggle:
@@ -92,6 +93,6 @@ router.patch("/salad-ingredients/:id", saladController.updateIngredient);
  *       200:
  *         description: Toggled
  */
-router.patch("/salad-ingredients/:id/toggle", saladController.toggleIngredient);
+router.patch("/salad-ingredients/:id/toggle", asyncHandler(saladController.toggleIngredient));
 
 module.exports = router;

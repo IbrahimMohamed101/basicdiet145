@@ -6,6 +6,20 @@ async function getSettingValue(key, fallback) {
   return setting ? setting.value : fallback;
 }
 
+function resolveIngredientName(ingredient, lang) {
+  const current = ingredient && ingredient.name;
+
+  // Fix: prefer new multilingual shape, but keep legacy flat-field fallback during transition.
+  if (current && typeof current === "object" && !Array.isArray(current)) {
+    if (current[lang]) return current[lang];
+    return lang === "en" ? (current.ar || "") : (current.en || "");
+  }
+  if (typeof current === "string") return current;
+
+  if (lang === "en") return ingredient.name_en || ingredient.name_ar || "";
+  return ingredient.name_ar || ingredient.name_en || "";
+}
+
 function normalizeSelections(selections) {
   if (!Array.isArray(selections) || selections.length === 0) {
     const err = new Error("Ingredients are required");
@@ -55,8 +69,8 @@ async function buildCustomSaladSnapshot(selections) {
     totalPrice += unitPrice * qty;
     return {
       ingredientId: ing._id,
-      name_en: ing.name_en,
-      name_ar: ing.name_ar,
+      name_en: resolveIngredientName(ing, "en"),
+      name_ar: resolveIngredientName(ing, "ar"),
       unitPriceSar,
       unitPrice,
       quantity: qty,

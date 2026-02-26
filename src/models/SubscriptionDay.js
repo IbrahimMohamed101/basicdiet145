@@ -54,6 +54,7 @@ const SubscriptionDaySchema = new mongoose.Schema(
     fulfilledSnapshot: { type: mongoose.Schema.Types.Mixed },
     lockedAt: { type: Date },
     fulfilledAt: { type: Date },
+    mealReminderSentAt: { type: Date, default: null },
   },
   { timestamps: true }
 );

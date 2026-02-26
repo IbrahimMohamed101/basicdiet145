@@ -3,12 +3,13 @@ const controller = require("../controllers/subscriptionController");
 const customSaladController = require("../controllers/customSaladController");
 const { authMiddleware } = require("../middleware/auth");
 const { checkoutLimiter } = require("../middleware/rateLimit");
+const asyncHandler = require("../middleware/asyncHandler");
 
 const router = Router();
 
 router.use(authMiddleware);
 
-router.post("/preview", controller.previewSubscription);
+router.post("/preview", asyncHandler(controller.previewSubscription));
 /**
  * @openapi
  * /subscriptions/checkout:
@@ -43,12 +44,12 @@ router.post("/preview", controller.previewSubscription);
  *       200:
  *         description: Checkout initiated
  */
-router.post("/checkout", checkoutLimiter, controller.checkoutSubscription);
-router.post("/:id/activate", controller.activateSubscription); // Mock endpoint for activation
-router.get("/:id", controller.getSubscription);
-router.get("/:id/days", authMiddleware, controller.getSubscriptionDays);
-router.get("/:id/today", controller.getSubscriptionToday);
-router.get("/:id/days/:date", controller.getSubscriptionDay);
+router.post("/checkout", checkoutLimiter, asyncHandler(controller.checkoutSubscription));
+router.post("/:id/activate", asyncHandler(controller.activateSubscription)); // Mock activation — dev only
+router.get("/:id", asyncHandler(controller.getSubscription));
+router.get("/:id/days", authMiddleware, asyncHandler(controller.getSubscriptionDays));
+router.get("/:id/today", asyncHandler(controller.getSubscriptionToday));
+router.get("/:id/days/:date", asyncHandler(controller.getSubscriptionDay));
 /**
  * @openapi
  * /subscriptions/{id}/days/{date}/selection:
@@ -70,7 +71,7 @@ router.get("/:id/days/:date", controller.getSubscriptionDay);
  *       200:
  *         description: Updated selections
  */
-router.put("/:id/days/:date/selection", controller.updateDaySelection);
+router.put("/:id/days/:date/selection", asyncHandler(controller.updateDaySelection));
 /**
  * @openapi
  * /subscriptions/{id}/days/{date}/skip:
@@ -90,7 +91,7 @@ router.put("/:id/days/:date/selection", controller.updateDaySelection);
  *       200:
  *         description: Day skipped
  */
-router.post("/:id/days/:date/skip", controller.skipDay);
+router.post("/:id/days/:date/skip", asyncHandler(controller.skipDay));
 /**
  * @openapi
  * /subscriptions/{id}/skip-range:
@@ -118,7 +119,7 @@ router.post("/:id/days/:date/skip", controller.skipDay);
  *       200:
  *         description: Range skip summary
  */
-router.post("/:id/skip-range", authMiddleware, controller.skipRange);
+router.post("/:id/skip-range", authMiddleware, asyncHandler(controller.skipRange));
 /**
  * @openapi
  * /subscriptions/{id}/days/{date}/pickup/prepare:
@@ -138,7 +139,7 @@ router.post("/:id/skip-range", authMiddleware, controller.skipRange);
  *       200:
  *         description: Pickup prepared
  */
-router.post("/:id/days/:date/pickup/prepare", controller.preparePickup);
+router.post("/:id/days/:date/pickup/prepare", asyncHandler(controller.preparePickup));
 /**
  * @openapi
  * /subscriptions/{id}/days/{date}/custom-salad:
@@ -178,10 +179,10 @@ router.post("/:id/days/:date/pickup/prepare", controller.preparePickup);
  *       200:
  *         description: Custom salad added to day
  */
-router.post("/:id/days/:date/custom-salad", customSaladController.addCustomSaladToSubscriptionDay);
-router.put("/:id/days/:date/delivery", controller.updateDeliveryDetailsForDate);
-router.post("/:id/premium/topup", controller.topupPremium);
-router.post("/:id/addons/one-time", controller.addOneTimeAddon);
-router.put("/:id/delivery", controller.updateDeliveryDetails);
+router.post("/:id/days/:date/custom-salad", asyncHandler(customSaladController.addCustomSaladToSubscriptionDay));
+router.put("/:id/days/:date/delivery", asyncHandler(controller.updateDeliveryDetailsForDate));
+router.post("/:id/premium/topup", asyncHandler(controller.topupPremium));
+router.post("/:id/addons/one-time", asyncHandler(controller.addOneTimeAddon));
+router.put("/:id/delivery", asyncHandler(controller.updateDeliveryDetails));
 
 module.exports = router;

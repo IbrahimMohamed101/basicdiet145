@@ -2,8 +2,10 @@ const mongoose = require("mongoose");
 
 const SaladIngredientSchema = new mongoose.Schema(
   {
-    name_en: { type: String },
-    name_ar: { type: String },
+    name: {
+      ar: { type: String, default: "" },
+      en: { type: String, default: "" },
+    },
     price: { type: Number, required: true }, // SAR
     calories: { type: Number },
     maxQuantity: { type: Number },

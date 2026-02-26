@@ -2,6 +2,8 @@ const Order = require("../models/Order");
 const Delivery = require("../models/Delivery");
 const { canOrderTransition } = require("../utils/orderState");
 const { writeLog } = require("../utils/log");
+const validateObjectId = require("../utils/validateObjectId");
+const errorResponse = require("../utils/errorResponse");
 
 async function listOrdersByDate(req, res) {
   const { date } = req.params;
@@ -11,20 +13,25 @@ async function listOrdersByDate(req, res) {
 
 async function transitionOrder(req, res, toStatus) {
   const { id } = req.params;
+  try {
+    validateObjectId(id, "orderId");
+  } catch (err) {
+    return errorResponse(res, err.status, err.code, err.message);
+  }
   const order = await Order.findById(id);
   if (!order) {
-    return res.status(404).json({ ok: false, error: { code: "NOT_FOUND", message: "Order not found" } });
+    return errorResponse(res, 404, "NOT_FOUND", "Order not found");
   }
 
   if (!canOrderTransition(order.status, toStatus)) {
-    return res.status(409).json({ ok: false, error: { code: "INVALID_TRANSITION", message: "Invalid state transition" } });
+    return errorResponse(res, 409, "INVALID_TRANSITION", "Invalid state transition");
   }
 
   if (toStatus === "out_for_delivery" && order.deliveryMode !== "delivery") {
-    return res.status(400).json({ ok: false, error: { code: "INVALID", message: "Order is not delivery" } });
+    return errorResponse(res, 400, "INVALID", "Order is not delivery");
   }
   if (toStatus === "ready_for_pickup" && order.deliveryMode !== "pickup") {
-    return res.status(400).json({ ok: false, error: { code: "INVALID", message: "Order is not pickup" } });
+    return errorResponse(res, 400, "INVALID", "Order is not pickup");
   }
 
   const fromStatus = order.status;
@@ -40,7 +47,7 @@ async function transitionOrder(req, res, toStatus) {
       {
         $setOnInsert: {
           orderId: order._id,
-          subscriptionId: null, // One-time orders have no subscription
+          // One-time order deliveries are linked by orderId only.
           address: order.deliveryAddress,
           window: order.deliveryWindow,
           status: "out_for_delivery",
@@ -56,8 +63,8 @@ async function transitionOrder(req, res, toStatus) {
     entityType: "order",
     entityId: order._id,
     action: "order_state_change",
-    byUserId: req.dashboardUser ? req.dashboardUser._id : undefined,
-    byRole: req.dashboardRole,
+    byUserId: req.userId,
+    byRole: req.userRole,
     meta: { from: fromStatus, to: toStatus },
   });
 

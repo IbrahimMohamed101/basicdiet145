@@ -11,8 +11,11 @@ const {
   isValidKSADateString,
   toKSADateString,
 } = require("../utils/date");
+const { getRequestLang, pickLang } = require("../utils/i18n");
 const { writeLog } = require("../utils/log");
 const { logger } = require("../utils/logger");
+const validateObjectId = require("../utils/validateObjectId");
+const errorResponse = require("../utils/errorResponse");
 
 async function getSettingValue(key, fallback) {
   const setting = await Setting.findOne({ key }).lean();
@@ -36,30 +39,30 @@ async function checkoutOrder(req, res) {
     } = req.body || {};
 
     if ((!Array.isArray(meals) || meals.length === 0) && (!Array.isArray(customSalads) || customSalads.length === 0)) {
-      return res.status(400).json({ ok: false, error: { code: "INVALID", message: "Meals or Custom Salads are required" } });
+      return errorResponse(res, 400, "INVALID", "Meals or Custom Salads are required" );
     }
     if (!deliveryMode) {
-      return res.status(400).json({ ok: false, error: { code: "INVALID", message: "Missing deliveryMode" } });
+      return errorResponse(res, 400, "INVALID", "Missing deliveryMode" );
     }
     if (deliveryMode === "delivery" && !deliveryAddress) {
-      return res.status(400).json({ ok: false, error: { code: "INVALID", message: "Missing deliveryAddress" } });
+      return errorResponse(res, 400, "INVALID", "Missing deliveryAddress" );
     }
     if (deliveryMode !== "delivery" && deliveryMode !== "pickup") {
-      return res.status(400).json({ ok: false, error: { code: "INVALID", message: "Invalid deliveryMode" } });
+      return errorResponse(res, 400, "INVALID", "Invalid deliveryMode" );
     }
 
     const windows = await getSettingValue("delivery_windows", []);
     if (deliveryWindow && windows.length && !windows.includes(deliveryWindow)) {
-      return res.status(400).json({ ok: false, error: { code: "INVALID", message: "Invalid delivery window" } });
+      return errorResponse(res, 400, "INVALID", "Invalid delivery window" );
     }
 
     let requestedDate = deliveryDate || getTomorrowKSADate();
     if (!isValidKSADateString(requestedDate)) {
-      return res.status(400).json({ ok: false, error: { code: "INVALID_DATE", message: "Invalid deliveryDate" } });
+      return errorResponse(res, 400, "INVALID_DATE", "Invalid deliveryDate" );
     }
     const tomorrow = getTomorrowKSADate();
     if (!isOnOrAfterKSADate(requestedDate, tomorrow)) {
-      return res.status(400).json({ ok: false, error: { code: "INVALID_DATE", message: "deliveryDate must be from tomorrow onward" } });
+      return errorResponse(res, 400, "INVALID_DATE", "deliveryDate must be from tomorrow onward" );
     }
 
     const cutoffTime = await getSettingValue("cutoff_time", "00:00");
@@ -72,12 +75,12 @@ async function checkoutOrder(req, res) {
 
     const mealIds = meals.map((m) => (m && m.mealId ? String(m.mealId) : null)).filter(Boolean);
     if (mealIds.length !== meals.length) {
-      return res.status(400).json({ ok: false, error: { code: "INVALID", message: "Each meal must include mealId" } });
+      return errorResponse(res, 400, "INVALID", "Each meal must include mealId" );
     }
     const uniqueIds = Array.from(new Set(mealIds));
     const mealDocs = await Meal.find({ _id: { $in: uniqueIds }, isActive: true }).lean();
     if (mealDocs.length !== uniqueIds.length) {
-      return res.status(404).json({ ok: false, error: { code: "NOT_FOUND", message: "One or more meals not found" } });
+      return errorResponse(res, 404, "NOT_FOUND", "One or more meals not found" );
     }
     const mealMap = mealDocs.reduce((acc, m) => {
       acc[String(m._id)] = m;
@@ -91,6 +94,7 @@ async function checkoutOrder(req, res) {
     const regularUnit = Math.round(regularPriceSar * 100);
     const premiumUnit = Math.round(premiumPriceSar * 100);
     const deliveryFee = deliveryMode === "delivery" ? Math.round(deliveryFeeSar * 100) : 0;
+    const lang = getRequestLang(req);
 
     let quantity = 0;
     let subtotal = 0;
@@ -103,7 +107,8 @@ async function checkoutOrder(req, res) {
       subtotal += unitPrice * qty;
       return {
         mealId: meal._id,
-        name: meal.name,
+        // Fix: keep Order.items[].name as plain string to match schema and avoid CastError.
+        name: pickLang(meal.name, lang),
         type: meal.type,
         quantity: qty,
         unitPrice,
@@ -203,13 +208,23 @@ async function checkoutOrder(req, res) {
       throw err;
     }
   } catch (err) {
-    logger.error("Order checkout failed", { error: err.message, stack: err.stack });
-    return res.status(500).json({ ok: false, error: { code: "INTERNAL", message: "Order checkout failed" } });
+    logger.error("orderController.checkoutOrder failed", { error: err.message, stack: err.stack });
+    return errorResponse(res, 500, "INTERNAL", "Order checkout failed");
   }
 }
 
 async function confirmOrder(req, res) {
   const { id } = req.params;
+  // MEDIUM AUDIT FIX: Validate path id before DB access to avoid cast failures.
+  try {
+    validateObjectId(id, "orderId");
+  } catch (err) {
+    return errorResponse(res, err.status, err.code, err.message);
+  }
+  // SECURITY FIX: Mock confirmation endpoint must be disabled in production.
+  if (process.env.NODE_ENV === "production") {
+    return errorResponse(res, 403, "FORBIDDEN", "Mock confirmation is disabled in production");
+  }
   const session = await mongoose.startSession();
   session.startTransaction();
   try {
@@ -217,13 +232,13 @@ async function confirmOrder(req, res) {
     if (!order) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(404).json({ ok: false, error: { code: "NOT_FOUND", message: "Order not found" } });
+      return errorResponse(res, 404, "NOT_FOUND", "Order not found" );
     }
 
     if (order.status === "canceled" || order.status === "fulfilled") {
       await session.abortTransaction();
       session.endSession();
-      return res.status(409).json({ ok: false, error: { code: "INVALID_TRANSITION", message: "Order cannot be confirmed" } });
+      return errorResponse(res, 409, "INVALID_TRANSITION", "Order cannot be confirmed" );
     }
 
     if (order.status === "created") {
@@ -257,20 +272,35 @@ async function confirmOrder(req, res) {
   } catch (err) {
     await session.abortTransaction();
     session.endSession();
-    logger.error("Order confirm failed", { error: err.message, stack: err.stack });
-    return res.status(500).json({ ok: false, error: { code: "INTERNAL", message: "Order confirmation failed" } });
+    logger.error("orderController.confirmOrder failed", { error: err.message, stack: err.stack });
+    return errorResponse(res, 500, "INTERNAL", "Order confirmation failed");
   }
 }
 
 async function listOrders(req, res) {
+  // MEDIUM AUDIT FIX: Guard optional route id if this handler is ever mounted under a parameterized parent path.
+  if (req.params && req.params.id) {
+    try {
+      validateObjectId(req.params.id, "orderId");
+    } catch (err) {
+      return errorResponse(res, err.status, err.code, err.message);
+    }
+  }
   const orders = await Order.find({ userId: req.userId }).sort({ createdAt: -1 }).lean();
   return res.status(200).json({ ok: true, data: orders });
 }
 
 async function getOrder(req, res) {
-  const order = await Order.findOne({ _id: req.params.id, userId: req.userId }).lean();
+  const { id } = req.params;
+  // MEDIUM AUDIT FIX: Validate path id before DB access to avoid cast failures.
+  try {
+    validateObjectId(id, "orderId");
+  } catch (err) {
+    return errorResponse(res, err.status, err.code, err.message);
+  }
+  const order = await Order.findOne({ _id: id, userId: req.userId }).lean();
   if (!order) {
-    return res.status(404).json({ ok: false, error: { code: "NOT_FOUND", message: "Order not found" } });
+    return errorResponse(res, 404, "NOT_FOUND", "Order not found" );
   }
   return res.status(200).json({ ok: true, data: order });
 }

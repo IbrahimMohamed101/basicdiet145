@@ -2,7 +2,10 @@ const mongoose = require("mongoose");
 
 const AddonSchema = new mongoose.Schema(
   {
-    name: { type: String, required: true },
+    name: {
+      ar: { type: String, default: "" },
+      en: { type: String, default: "" },
+    },
     price: { type: Number, required: true },
     type: { type: String, enum: ["subscription", "one_time"], required: true },
     isActive: { type: Boolean, default: true },
