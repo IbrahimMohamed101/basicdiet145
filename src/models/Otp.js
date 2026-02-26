@@ -11,7 +11,6 @@ const OtpSchema = new mongoose.Schema(
   { timestamps: true, collection: "otps" }
 );
 
-OtpSchema.index({ phone: 1 }, { unique: true });
 OtpSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 module.exports = mongoose.model("Otp", OtpSchema);

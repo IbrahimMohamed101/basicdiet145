@@ -12,7 +12,6 @@ const AppUserSchema = new mongoose.Schema(
   { timestamps: true, collection: "app_users" }
 );
 
-AppUserSchema.index({ phone: 1 }, { unique: true });
 AppUserSchema.index({ email: 1 }, { unique: true, sparse: true });
 
 module.exports = mongoose.model("AppUser", AppUserSchema);
