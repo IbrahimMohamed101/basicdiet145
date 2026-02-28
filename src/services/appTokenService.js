@@ -10,7 +10,7 @@ function issueAppAccessToken(user) {
       tokenType: "app_access",
     },
     JWT_SECRET,
-    { expiresIn: process.env.APP_ACCESS_TOKEN_TTL || "30d" }
+    { expiresIn: process.env.APP_ACCESS_TOKEN_TTL || "31d" }
   );
 }
 

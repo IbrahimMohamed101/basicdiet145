@@ -1,7 +1,7 @@
 const jwt = require("jsonwebtoken");
 
 const JWT_SECRET = process.env.JWT_SECRET || "supersecret";
-const DEV_AUTH_BYPASS = process.env.DEV_AUTH_BYPASS === "true";
+const DEV_AUTH_BYPASS = process.env.NODE_ENV !== "production" && process.env.DEV_AUTH_BYPASS === "true";
 const DEV_STATIC_TOKEN = process.env.DEV_STATIC_TOKEN;
 const DEV_STATIC_USER_ID = process.env.DEV_STATIC_USER_ID || "507f1f77bcf86cd799439011";
 const DEV_STATIC_ROLE = process.env.DEV_STATIC_ROLE || "client";
@@ -21,6 +21,12 @@ function authMiddleware(req, res, next) {
 
     try {
         const decoded = jwt.verify(token, JWT_SECRET);
+        if (decoded.role === "client" && decoded.tokenType !== "app_access") {
+            return res.status(401).json({ ok: false, error: { code: "UNAUTHORIZED", message: "Invalid token type" } });
+        }
+        if (!decoded.userId || !decoded.role) {
+            return res.status(401).json({ ok: false, error: { code: "UNAUTHORIZED", message: "Invalid token payload" } });
+        }
         req.userId = decoded.userId;
         req.userRole = decoded.role;
         return next();

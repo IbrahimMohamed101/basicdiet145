@@ -5,11 +5,11 @@
 1. `POST /api/app/login` (or `POST /api/auth/otp/request`) with `phoneE164`
 2. Backend validates E.164, checks cooldown (30s), creates 6-digit OTP, hashes OTP, stores OTP with TTL (5m), sends WhatsApp OTP through Twilio.
 3. `POST /api/auth/otp/verify` with `phoneE164` + `otp`
-4. Backend validates expiry + attempts (max 5), compares hash.
+4. Backend validates expiry + attempts (max 5), compares hash, and applies IP rate-limit for verify attempts.
 5. On valid OTP:
-   - If app user exists: return app JWT + user.
-   - If app user does not exist: return short-lived `registration token`.
-6. `POST /api/app/register` with profile + `verificationToken` to create app-only user (`role=app_user`).
+   - Return app JWT (`tokenType=app_access`) + user profile.
+   - Auto-link/create both `AppUser` and core `User` (role=`client`) by phone.
+6. Optional: `POST /api/app/register` with profile fields (`fullName`, optional `email`) and bearer token from step 5.
 
 Dashboard/admin creation is not exposed in `/api/app/*` and app registration cannot assign admin/dashboard roles.
 
@@ -21,14 +21,12 @@ Dashboard/admin creation is not exposed in `/api/app/*` and app registration can
 
 - `POST /api/auth/otp/verify`
   - Input: `{ "phoneE164": "+9665XXXXXXXX", "otp": "123456" }`
-  - Existing app user output:
+  - Output:
     - `{ "ok": true, "token": "<app_jwt>", "user": { ... } }`
-  - New app user output:
-    - `{ "ok": true, "token": "<registration_token>", "user": null, "registrationRequired": true }`
 
 - `POST /api/app/register`
   - Input:
-    - `{ "fullName": "...", "phoneE164": "+966...", "email": "...", "verificationToken": "..." }`
+    - `{ "fullName": "...", "phoneE164": "+966...", "email": "..." }`
   - Output:
     - `{ "ok": true, "token": "<app_jwt>", "user": { ... } }`
 
@@ -53,7 +51,8 @@ curl -X POST http://localhost:3000/api/auth/otp/verify \
 ```bash
 curl -X POST http://localhost:3000/api/app/register \
   -H "Content-Type: application/json" \
-  -d '{"fullName":"Jane Doe","phoneE164":"+9665XXXXXXXX","email":"jane@example.com","verificationToken":"<registration_token>"}'
+  -H "Authorization: Bearer <app_jwt>" \
+  -d '{"fullName":"Jane Doe","phoneE164":"+9665XXXXXXXX","email":"jane@example.com"}'
 ```
 
 ```bash
@@ -74,6 +73,12 @@ Required OTP/Twilio vars:
 - `OTP_COOLDOWN_SECONDS` (default 30)
 - `OTP_MAX_ATTEMPTS` (default 5)
 - `OTP_HASH_SECRET` (recommended)
+- `RATE_LIMIT_OTP_WINDOW_MS` (default 60000)
+- `RATE_LIMIT_OTP_MAX` (default 5)
+- `RATE_LIMIT_OTP_VERIFY_WINDOW_MS` (default 60000)
+- `RATE_LIMIT_OTP_VERIFY_MAX` (default 10)
+- `APP_ACCESS_TOKEN_TTL` (default 31d)
+- `DEV_AUTH_BYPASS` (default false; dev-only)
 
 ## Sandbox to Production migration
 
@@ -92,3 +97,4 @@ Only switch operational config:
 - Cooldown blocks rapid re-request (default 30 seconds).
 - Wrong OTP attempts are limited (default 5), then OTP is invalidated.
 - OTP record is deleted after successful verification.
+- `POST /api/app/register` and other protected endpoints require bearer token.
