@@ -7,10 +7,12 @@
     "start": "node src/index.js",
     "seed": "node scripts/seed-demo-data.js",
     "seed:clear": "node scripts/seed-demo-data.js --clear",
-    "seed:full": "node scripts/seed-demo-data.js --clear --users=50 --subscriptions=80 --orders=50"
+    "seed:full": "node scripts/seed-demo-data.js --clear --users=50 --subscriptions=80 --orders=50",
+    "create:dashboard-user": "node scripts/create-dashboard-user.js",
+    "seed:dashboard-users": "node scripts/seed-dashboard-users.js"
   },
   "dependencies": {
-    "better-auth": "^1.4.0",
+    "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "date-fns": "^3.6.0",
     "date-fns-tz": "^3.1.3",

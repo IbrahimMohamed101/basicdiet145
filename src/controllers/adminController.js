@@ -7,11 +7,22 @@ const { processDailyCutoff } = require("../services/automationService");
 const { logger } = require("../utils/logger");
 const validateObjectId = require("../utils/validateObjectId");
 const errorResponse = require("../utils/errorResponse");
+const {
+  normalizeDashboardEmail,
+  isValidEmailFormat,
+  validateDashboardPassword,
+  hashDashboardPassword,
+} = require("../services/dashboardPasswordService");
 
 const MAX_PREMIUM_PRICE = 10000;
+const DASHBOARD_ROLES = new Set(["superadmin", "admin", "kitchen", "courier"]);
 
 function isPositiveInteger(value) {
   return Number.isInteger(value) && value >= 1;
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function resolvePagination(query = {}) {
@@ -165,16 +176,43 @@ async function updatePremiumPrice(req, res) {
 }
 
 async function listDashboardUsers(_req, res) {
-  const users = await DashboardUser.find().sort({ createdAt: -1 }).lean();
+  const users = await DashboardUser.find()
+    .select("-passwordHash")
+    .sort({ createdAt: -1 })
+    .lean();
   return res.status(200).json({ ok: true, data: users });
 }
 
 async function createDashboardUser(req, res) {
-  const { email, role } = req.body || {};
-  if (!email || !role) {
-    return errorResponse(res, 400, "INVALID", "Missing email or role");
+  const { email, role, password, isActive } = req.body || {};
+  const normalizedEmail = normalizeDashboardEmail(email);
+  if (!normalizedEmail || !role || !password) {
+    return errorResponse(res, 400, "INVALID", "Missing email, role, or password");
   }
-  const user = await DashboardUser.create({ email, role });
+  if (!isValidEmailFormat(normalizedEmail)) {
+    return errorResponse(res, 400, "INVALID", "Invalid email format");
+  }
+  if (!DASHBOARD_ROLES.has(role)) {
+    return errorResponse(res, 400, "INVALID", "role must be one of: superadmin, admin, kitchen, courier");
+  }
+  const passwordValidation = validateDashboardPassword(password);
+  if (!passwordValidation.ok) {
+    return errorResponse(res, 400, "INVALID", passwordValidation.message);
+  }
+  const existing = await DashboardUser.findOne({
+    email: { $regex: new RegExp(`^${escapeRegExp(normalizedEmail)}$`, "i") },
+  }).lean();
+  if (existing) {
+    return errorResponse(res, 409, "CONFLICT", "Dashboard user already exists");
+  }
+  const passwordHash = await hashDashboardPassword(password);
+  const user = await DashboardUser.create({
+    email: normalizedEmail,
+    role,
+    passwordHash,
+    isActive: isActive === undefined ? true : Boolean(isActive),
+    passwordChangedAt: new Date(),
+  });
   return res.status(201).json({ ok: true, data: { id: user.id } });
 }
 

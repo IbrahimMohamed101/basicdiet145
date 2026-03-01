@@ -20,6 +20,7 @@ function validateEnv() {
   const missing = [];
   if (!hasMongoUri) missing.push("MONGO_URI or MONGODB_URI");
   addMissingIfEmpty(missing, "JWT_SECRET");
+  addMissingIfEmpty(missing, "DASHBOARD_JWT_SECRET");
   addMissingBypassAware(missing, "TWILIO_ACCOUNT_SID", shouldRequireOtpProvider);
   addMissingBypassAware(missing, "TWILIO_AUTH_TOKEN", shouldRequireOtpProvider);
   addMissingBypassAware(missing, "TWILIO_WHATSAPP_FROM", shouldRequireOtpProvider);
@@ -62,6 +63,24 @@ function validateEnv() {
   const appAccessTokenTtl = process.env.APP_ACCESS_TOKEN_TTL;
   if (appAccessTokenTtl !== undefined && !String(appAccessTokenTtl).trim()) {
     invalid.push("APP_ACCESS_TOKEN_TTL");
+  }
+  const dashboardAccessTokenTtl = process.env.DASHBOARD_JWT_EXPIRES_IN;
+  if (dashboardAccessTokenTtl !== undefined && !String(dashboardAccessTokenTtl).trim()) {
+    invalid.push("DASHBOARD_JWT_EXPIRES_IN");
+  }
+
+  const bcryptRounds = Number(process.env.BCRYPT_ROUNDS || 10);
+  if (!Number.isFinite(bcryptRounds) || bcryptRounds < 4 || bcryptRounds > 15) {
+    invalid.push("BCRYPT_ROUNDS");
+  }
+
+  const dashboardLoginWindowMs = Number(process.env.RATE_LIMIT_DASHBOARD_LOGIN_WINDOW_MS || 15 * 60 * 1000);
+  if (!Number.isFinite(dashboardLoginWindowMs) || dashboardLoginWindowMs <= 0) {
+    invalid.push("RATE_LIMIT_DASHBOARD_LOGIN_WINDOW_MS");
+  }
+  const dashboardLoginMax = Number(process.env.RATE_LIMIT_DASHBOARD_LOGIN_MAX || 20);
+  if (!Number.isFinite(dashboardLoginMax) || dashboardLoginMax <= 0) {
+    invalid.push("RATE_LIMIT_DASHBOARD_LOGIN_MAX");
   }
 
   if (invalid.length) {

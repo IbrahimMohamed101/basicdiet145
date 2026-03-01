@@ -4,6 +4,7 @@ const { createServer } = require("http");
 const { createApp } = require("./app");
 const { connectDb } = require("./db");
 const { startJobs } = require("./jobs");
+const { ensureDefaultDashboardUsers } = require("./services/dashboardDefaultUsersService");
 const { validateEnv } = require("./utils/validateEnv");
 const { logger } = require("./utils/logger");
 
@@ -18,7 +19,8 @@ if (!envCheck.ok) {
 }
 
 connectDb()
-  .then(() => {
+  .then(async () => {
+    await ensureDefaultDashboardUsers();
     startJobs();
     server.listen(PORT, () => {
       logger.info("API listening", { port: PORT });

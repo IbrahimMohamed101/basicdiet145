@@ -440,8 +440,8 @@ They are intentionally listed as **Not wired** and are not documented as active 
 
 ## Known limitations / TODOs discovered
 
-1. No dedicated dashboard auth endpoint is wired.
-- Dashboard routes rely on generic JWT role claims but no login route exists for these roles.
+1. Dashboard auth is isolated from app OTP auth.
+- Dashboard users authenticate via `POST /api/dashboard/auth/login` and receive `tokenType=dashboard_access`.
 
 2. Moyasar webhook verification is body-token based, not signature-header based.
 - Only `payload.secret_token` is checked when `MOYASAR_WEBHOOK_SECRET` is set.

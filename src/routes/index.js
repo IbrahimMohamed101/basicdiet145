@@ -1,6 +1,7 @@
 const { Router } = require("express");
 
 const authRoutes = require("./auth");
+const dashboardAuthRoutes = require("./dashboardAuth");
 const appAuthRoutes = require("./appAuth");
 const planRoutes = require("./plans");
 const subscriptionRoutes = require("./subscriptions");
@@ -19,6 +20,7 @@ const router = Router();
 
 router.use("/webhooks", webhookRoutes);
 router.use("/auth", authRoutes);
+router.use("/dashboard/auth", dashboardAuthRoutes);
 router.use("/app", appAuthRoutes);
 router.use("/plans", planRoutes);
 router.use("/subscriptions", subscriptionRoutes);

@@ -21,6 +21,7 @@
 
 require('dotenv').config();
 const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs');
 const { format, addDays, subDays } = require('date-fns');
 const { formatInTimeZone } = require('date-fns-tz');
 
@@ -263,14 +264,14 @@ async function seedUsers(count = 50) {
 async function seedDashboardUsers() {
     console.log('👨‍💼 Seeding Dashboard Users...');
 
-    // Note: DashboardUser uses better-auth, so we're just creating records
-    // Actual authentication happens via better-auth system
+    const passwordHash = await bcrypt.hash('StrongPass123', Number(process.env.BCRYPT_ROUNDS || 10));
     const dashboardUsers = [
-        { email: 'admin@basicdiet.sa', role: 'admin', isActive: true },
-        { email: 'kitchen@basicdiet.sa', role: 'kitchen', isActive: true },
-        { email: 'kitchen2@basicdiet.sa', role: 'kitchen', isActive: true },
-        { email: 'courier@basicdiet.sa', role: 'courier', isActive: true },
-        { email: 'courier2@basicdiet.sa', role: 'courier', isActive: true }
+        { email: 'superadmin@basicdiet.sa', role: 'superadmin', isActive: true, passwordHash, passwordChangedAt: new Date() },
+        { email: 'admin@basicdiet.sa', role: 'admin', isActive: true, passwordHash, passwordChangedAt: new Date() },
+        { email: 'kitchen@basicdiet.sa', role: 'kitchen', isActive: true, passwordHash, passwordChangedAt: new Date() },
+        { email: 'kitchen2@basicdiet.sa', role: 'kitchen', isActive: true, passwordHash, passwordChangedAt: new Date() },
+        { email: 'courier@basicdiet.sa', role: 'courier', isActive: true, passwordHash, passwordChangedAt: new Date() },
+        { email: 'courier2@basicdiet.sa', role: 'courier', isActive: true, passwordHash, passwordChangedAt: new Date() }
     ];
 
     await DashboardUser.insertMany(dashboardUsers);

@@ -1,12 +1,12 @@
 const { Router } = require("express");
 const controller = require("../controllers/courierController");
 const orderController = require("../controllers/orderCourierController");
-const { authMiddleware, roleMiddleware } = require("../middleware/auth");
+const { dashboardAuthMiddleware, dashboardRoleMiddleware } = require("../middleware/dashboardAuth");
 const asyncHandler = require("../middleware/asyncHandler");
 
 const router = Router();
 
-router.use(authMiddleware, roleMiddleware(["courier", "admin"]));
+router.use(dashboardAuthMiddleware, dashboardRoleMiddleware(["courier", "admin"]));
 
 router.get("/deliveries/today", asyncHandler(controller.listTodayDeliveries));
 router.put("/deliveries/:id/arriving-soon", asyncHandler(controller.markArrivingSoon));

@@ -21,7 +21,7 @@ function authMiddleware(req, res, next) {
 
     try {
         const decoded = jwt.verify(token, JWT_SECRET);
-        if (decoded.role === "client" && decoded.tokenType !== "app_access") {
+        if (decoded.tokenType !== "app_access" || decoded.role !== "client") {
             return res.status(401).json({ ok: false, error: { code: "UNAUTHORIZED", message: "Invalid token type" } });
         }
         if (!decoded.userId || !decoded.role) {

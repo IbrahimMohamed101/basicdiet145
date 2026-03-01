@@ -1,12 +1,12 @@
 const { Router } = require("express");
 const controller = require("../controllers/adminController");
 const saladController = require("../controllers/saladIngredientController");
-const { authMiddleware, roleMiddleware } = require("../middleware/auth");
+const { dashboardAuthMiddleware, dashboardRoleMiddleware } = require("../middleware/dashboardAuth");
 const asyncHandler = require("../middleware/asyncHandler");
 
 const router = Router();
 
-router.use(authMiddleware, roleMiddleware(["admin"]));
+router.use(dashboardAuthMiddleware, dashboardRoleMiddleware(["admin"]));
 
 router.post("/plans", asyncHandler(controller.createPlan));
 router.put("/settings/cutoff", asyncHandler(controller.updateCutoff));
@@ -27,7 +27,7 @@ router.post("/trigger-cutoff", asyncHandler(controller.triggerDailyCutoff));
  *     summary: Create salad ingredient
  *     tags: [Salad]
  *     security:
- *       - bearerAuth: []
+ *       - dashboardBearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -57,7 +57,7 @@ router.post("/salad-ingredients", asyncHandler(saladController.createIngredient)
  *     summary: Update salad ingredient
  *     tags: [Salad]
  *     security:
- *       - bearerAuth: []
+ *       - dashboardBearerAuth: []
  *     parameters:
  *       - name: id
  *         in: path
@@ -82,7 +82,7 @@ router.patch("/salad-ingredients/:id", asyncHandler(saladController.updateIngred
  *     summary: Toggle salad ingredient active state
  *     tags: [Salad]
  *     security:
- *       - bearerAuth: []
+ *       - dashboardBearerAuth: []
  *     parameters:
  *       - name: id
  *         in: path

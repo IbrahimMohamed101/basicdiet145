@@ -31,4 +31,10 @@ const checkoutLimiter = buildLimiter({
   message: { ok: false, error: { code: "RATE_LIMIT", message: "Too many checkout attempts" } },
 });
 
-module.exports = { otpLimiter, otpVerifyLimiter, checkoutLimiter };
+const dashboardLoginLimiter = buildLimiter({
+  windowMs: Number(process.env.RATE_LIMIT_DASHBOARD_LOGIN_WINDOW_MS) || 15 * 60 * 1000,
+  max: Number(process.env.RATE_LIMIT_DASHBOARD_LOGIN_MAX) || 20,
+  message: { ok: false, error: { code: "RATE_LIMIT", message: "Too many dashboard login attempts" } },
+});
+
+module.exports = { otpLimiter, otpVerifyLimiter, checkoutLimiter, dashboardLoginLimiter };

@@ -6,9 +6,9 @@ info:
     Code-inspected OpenAPI spec for the Node.js + Express + MongoDB backend.
 
     Authentication details:
-    - `bearerAuth` is JWT (`Authorization: Bearer <token>`).
+    - `bearerAuth` is JWT for app/mobile users (`Authorization: Bearer <token>`).
     - App tokens are minted by OTP/app auth endpoints and include `tokenType: app_access`.
-    - Dashboard/admin/kitchen/courier endpoints require JWTs with role claims (`admin`, `kitchen`, `courier`) accepted by the same middleware.
+    - `dashboardBearerAuth` is JWT for dashboard/internal users and includes `tokenType: dashboard_access`.
     - In development only, `DEV_AUTH_BYPASS=true` allows a static token (`DEV_STATIC_TOKEN`) mapped to configured user/role.
 
     Localization:
@@ -29,7 +29,7 @@ tags:
   - name: Auth (App)
     description: OTP and app registration/authentication.
   - name: Auth (Dashboard)
-    description: No dedicated dashboard auth routes are wired in this codebase.
+    description: Email/password + JWT auth for internal dashboard users.
   - name: Users
     description: User and dashboard-user related endpoints.
   - name: Meals / Menu
@@ -58,10 +58,16 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: |
-        JWT signed with `JWT_SECRET`.
+        App JWT signed with `JWT_SECRET`.
         App tokens include `tokenType=app_access` and `role=client`.
-        Dashboard endpoints require role claims (`admin`, `kitchen`, `courier`) validated by `roleMiddleware`.
         DEV-only bypass: if `DEV_AUTH_BYPASS=true`, exact token match against `DEV_STATIC_TOKEN` is accepted.
+    dashboardBearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Dashboard JWT signed with `DASHBOARD_JWT_SECRET`.
+        Dashboard tokens include `tokenType=dashboard_access` and role in `superadmin|admin|kitchen|courier`.
 
   parameters:
     AcceptLanguage:
@@ -356,9 +362,23 @@ components:
           type: string
         role:
           type: string
-          enum: [admin, kitchen, courier]
+          enum: [superadmin, admin, kitchen, courier]
         isActive:
           type: boolean
+        lastLoginAt:
+          type: string
+          format: date-time
+          nullable: true
+        failedAttempts:
+          type: integer
+        lockUntil:
+          type: string
+          format: date-time
+          nullable: true
+        passwordChangedAt:
+          type: string
+          format: date-time
+          nullable: true
         createdAt:
           type: string
           format: date-time
@@ -1293,6 +1313,98 @@ paths:
                 ok: true
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/dashboard/auth/login:
+    post:
+      tags: [Auth (Dashboard)]
+      summary: Dashboard login with email and password
+      description: Returns dashboard access JWT (`tokenType=dashboard_access`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+      responses:
+        '200':
+          description: Authenticated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  token:
+                    type: string
+                  user:
+                    $ref: '#/components/schemas/DashboardUser'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '423':
+          description: Account temporarily locked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /api/dashboard/auth/me:
+    get:
+      tags: [Auth (Dashboard)]
+      summary: Get authenticated dashboard user profile
+      security:
+        - dashboardBearerAuth: []
+      responses:
+        '200':
+          description: Current dashboard user.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  user:
+                    $ref: '#/components/schemas/DashboardUser'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/dashboard/auth/logout:
+    post:
+      tags: [Auth (Dashboard)]
+      summary: Dashboard logout
+      description: Stateless JWT logout. Server-side token revocation is not implemented.
+      security:
+        - dashboardBearerAuth: []
+      responses:
+        '200':
+          description: Logged out (no-op for stateless JWT).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+              example:
+                ok: true
         '401':
           $ref: '#/components/responses/Unauthorized'
 
@@ -2467,7 +2579,7 @@ paths:
       summary: List today's subscription deliveries
       description: Requires `courier` or `admin` role.
       security:
-        - bearerAuth: []
+        - dashboardBearerAuth: []
       responses:
         '200':
           description: Delivery list.
@@ -2493,7 +2605,7 @@ paths:
       summary: Mark delivery as arriving soon
       description: Sets delivery status to `out_for_delivery` and sends an arriving-soon notification.
       security:
-        - bearerAuth: []
+        - dashboardBearerAuth: []
       parameters:
         - $ref: '#/components/parameters/DeliveryId'
       responses:
@@ -2519,7 +2631,7 @@ paths:
       summary: Mark delivery as delivered
       description: Fulfills the subscription day and sends delivered notification with dedupe safeguards.
       security:
-        - bearerAuth: []
+        - dashboardBearerAuth: []
       parameters:
         - $ref: '#/components/parameters/DeliveryId'
       responses:
@@ -2551,7 +2663,7 @@ paths:
       summary: Cancel delivery
       description: Applies skip compensation rules for linked subscription day.
       security:
-        - bearerAuth: []
+        - dashboardBearerAuth: []
       parameters:
         - $ref: '#/components/parameters/DeliveryId'
       responses:
@@ -2581,7 +2693,7 @@ paths:
       summary: List today's one-time delivery orders
       description: Lists today's one-time orders where `deliveryMode=delivery`.
       security:
-        - bearerAuth: []
+        - dashboardBearerAuth: []
       responses:
         '200':
           description: Order list.
@@ -2607,7 +2719,7 @@ paths:
       summary: Mark one-time order delivered
       description: Transitions order to `fulfilled` when transition rules allow.
       security:
-        - bearerAuth: []
+        - dashboardBearerAuth: []
       parameters:
         - $ref: '#/components/parameters/OrderId'
       responses:
@@ -2637,7 +2749,7 @@ paths:
       summary: Cancel one-time order
       description: Transitions one-time order to `canceled` when transition rules allow.
       security:
-        - bearerAuth: []
+        - dashboardBearerAuth: []
       parameters:
         - $ref: '#/components/parameters/OrderId'
       responses:
@@ -2665,7 +2777,7 @@ paths:
       summary: List kitchen workload for subscription days
       description: Requires `kitchen` or `admin` role.
       security:
-        - bearerAuth: []
+        - dashboardBearerAuth: []
       parameters:
         - $ref: '#/components/parameters/KsaDate'
       responses:
@@ -2694,7 +2806,7 @@ paths:
       summary: Assign meals for subscription day
       description: Assigns regular and premium selections with meals-per-day cap enforcement.
       security:
-        - bearerAuth: []
+        - dashboardBearerAuth: []
       parameters:
         - $ref: '#/components/parameters/SubscriptionId'
         - $ref: '#/components/parameters/KsaDate'
@@ -2742,7 +2854,7 @@ paths:
       summary: Transition subscription day to locked
       description: Moves day to `locked` and captures locked snapshot data when needed.
       security:
-        - bearerAuth: []
+        - dashboardBearerAuth: []
       parameters:
         - $ref: '#/components/parameters/SubscriptionId'
         - $ref: '#/components/parameters/KsaDate'
@@ -2775,7 +2887,7 @@ paths:
       summary: Transition subscription day to in_preparation
       description: Moves a locked subscription day into `in_preparation`.
       security:
-        - bearerAuth: []
+        - dashboardBearerAuth: []
       parameters:
         - $ref: '#/components/parameters/SubscriptionId'
         - $ref: '#/components/parameters/KsaDate'
@@ -2808,7 +2920,7 @@ paths:
       summary: Transition subscription day to out_for_delivery
       description: Creates delivery record when needed; valid only for delivery subscriptions.
       security:
-        - bearerAuth: []
+        - dashboardBearerAuth: []
       parameters:
         - $ref: '#/components/parameters/SubscriptionId'
         - $ref: '#/components/parameters/KsaDate'
@@ -2843,7 +2955,7 @@ paths:
       summary: Transition subscription day to ready_for_pickup
       description: Valid only for pickup subscriptions.
       security:
-        - bearerAuth: []
+        - dashboardBearerAuth: []
       parameters:
         - $ref: '#/components/parameters/SubscriptionId'
         - $ref: '#/components/parameters/KsaDate'
@@ -2878,7 +2990,7 @@ paths:
       summary: Fulfill pickup subscription day
       description: Finalizes pickup fulfillment using shared fulfillment service logic.
       security:
-        - bearerAuth: []
+        - dashboardBearerAuth: []
       parameters:
         - $ref: '#/components/parameters/SubscriptionId'
         - $ref: '#/components/parameters/KsaDate'
@@ -2916,7 +3028,7 @@ paths:
       summary: List one-time orders by date
       description: Lists one-time orders scheduled for the provided KSA date.
       security:
-        - bearerAuth: []
+        - dashboardBearerAuth: []
       parameters:
         - $ref: '#/components/parameters/KsaDate'
       responses:
@@ -2944,7 +3056,7 @@ paths:
       summary: Transition one-time order to preparing
       description: Moves one-time order from `confirmed` to `preparing` when allowed.
       security:
-        - bearerAuth: []
+        - dashboardBearerAuth: []
       parameters:
         - $ref: '#/components/parameters/OrderId'
       responses:
@@ -2974,7 +3086,7 @@ paths:
       summary: Transition one-time order to out_for_delivery
       description: Valid only for delivery-mode orders.
       security:
-        - bearerAuth: []
+        - dashboardBearerAuth: []
       parameters:
         - $ref: '#/components/parameters/OrderId'
       responses:
@@ -3006,7 +3118,7 @@ paths:
       summary: Transition one-time order to ready_for_pickup
       description: Valid only for pickup-mode orders.
       security:
-        - bearerAuth: []
+        - dashboardBearerAuth: []
       parameters:
         - $ref: '#/components/parameters/OrderId'
       responses:
@@ -3038,7 +3150,7 @@ paths:
       summary: Create plan
       description: Admin-only.
       security:
-        - bearerAuth: []
+        - dashboardBearerAuth: []
       requestBody:
         required: true
         content:
@@ -3089,7 +3201,7 @@ paths:
       summary: Update cutoff time
       description: Admin-only.
       security:
-        - bearerAuth: []
+        - dashboardBearerAuth: []
       requestBody:
         required: true
         content:
@@ -3124,7 +3236,7 @@ paths:
       summary: Update delivery windows
       description: Sets the allowed delivery windows used by checkout validations.
       security:
-        - bearerAuth: []
+        - dashboardBearerAuth: []
       requestBody:
         required: true
         content:
@@ -3160,7 +3272,7 @@ paths:
       summary: Update global skip allowance
       description: Sets global skip allowance setting value.
       security:
-        - bearerAuth: []
+        - dashboardBearerAuth: []
       requestBody:
         required: true
         content:
@@ -3194,7 +3306,7 @@ paths:
       summary: Update premium meal price
       description: Sets premium price setting used by subscription pricing logic.
       security:
-        - bearerAuth: []
+        - dashboardBearerAuth: []
       requestBody:
         required: true
         content:
@@ -3228,7 +3340,7 @@ paths:
       summary: List dashboard users
       description: Returns all dashboard users sorted by creation date descending.
       security:
-        - bearerAuth: []
+        - dashboardBearerAuth: []
       responses:
         '200':
           description: Dashboard users.
@@ -3252,7 +3364,7 @@ paths:
       summary: Create dashboard user
       description: Creates dashboard user with `email` and role (`admin|kitchen|courier`).
       security:
-        - bearerAuth: []
+        - dashboardBearerAuth: []
       requestBody:
         required: true
         content:
@@ -3294,7 +3406,7 @@ paths:
       summary: List activity logs
       description: Returns paginated activity logs with optional filter parameters.
       security:
-        - bearerAuth: []
+        - dashboardBearerAuth: []
       parameters:
         - name: entityType
           in: query
@@ -3351,7 +3463,7 @@ paths:
       summary: List notification logs
       description: Returns paginated notification dispatch logs with optional filters.
       security:
-        - bearerAuth: []
+        - dashboardBearerAuth: []
       parameters:
         - name: userId
           in: query
@@ -3396,7 +3508,7 @@ paths:
       summary: Trigger cutoff job immediately
       description: Admin-only manual trigger for daily cutoff automation.
       security:
-        - bearerAuth: []
+        - dashboardBearerAuth: []
       responses:
         '200':
           description: Job completed.
@@ -3437,7 +3549,7 @@ paths:
       summary: Create salad ingredient
       description: Creates an ingredient; supports both new multilingual and legacy name fields.
       security:
-        - bearerAuth: []
+        - dashboardBearerAuth: []
       requestBody:
         required: true
         content:
@@ -3484,7 +3596,7 @@ paths:
       summary: Update salad ingredient
       description: Partially updates ingredient fields, including per-language name keys.
       security:
-        - bearerAuth: []
+        - dashboardBearerAuth: []
       parameters:
         - $ref: '#/components/parameters/IngredientId'
       requestBody:
@@ -3536,7 +3648,7 @@ paths:
       summary: Toggle salad ingredient active state
       description: Flips ingredient `isActive` between true and false.
       security:
-        - bearerAuth: []
+        - dashboardBearerAuth: []
       parameters:
         - $ref: '#/components/parameters/IngredientId'
       responses:
@@ -3564,7 +3676,7 @@ paths:
       summary: Create plan (dashboard alias)
       description: Alias of `/api/admin/plans`.
       security:
-        - bearerAuth: []
+        - dashboardBearerAuth: []
       requestBody:
         required: true
         content:
@@ -3615,7 +3727,7 @@ paths:
       summary: Update cutoff time (dashboard alias)
       description: Alias of `/api/admin/settings/cutoff`.
       security:
-        - bearerAuth: []
+        - dashboardBearerAuth: []
       requestBody:
         required: true
         content:
@@ -3649,7 +3761,7 @@ paths:
       summary: Update delivery windows (dashboard alias)
       description: Alias of `/api/admin/settings/delivery-windows`.
       security:
-        - bearerAuth: []
+        - dashboardBearerAuth: []
       requestBody:
         required: true
         content:
@@ -3685,7 +3797,7 @@ paths:
       summary: Update skip allowance (dashboard alias)
       description: Alias of `/api/admin/settings/skip-allowance`.
       security:
-        - bearerAuth: []
+        - dashboardBearerAuth: []
       requestBody:
         required: true
         content:
@@ -3719,7 +3831,7 @@ paths:
       summary: Update premium price (dashboard alias)
       description: Alias of `/api/admin/settings/premium-price`.
       security:
-        - bearerAuth: []
+        - dashboardBearerAuth: []
       requestBody:
         required: true
         content:
@@ -3753,7 +3865,7 @@ paths:
       summary: List dashboard users (dashboard alias)
       description: Alias of `/api/admin/dashboard-users`.
       security:
-        - bearerAuth: []
+        - dashboardBearerAuth: []
       responses:
         '200':
           description: Dashboard users.
@@ -3777,7 +3889,7 @@ paths:
       summary: Create dashboard user (dashboard alias)
       description: Alias of `/api/admin/dashboard-users`.
       security:
-        - bearerAuth: []
+        - dashboardBearerAuth: []
       requestBody:
         required: true
         content:
@@ -3819,7 +3931,7 @@ paths:
       summary: List activity logs (dashboard alias)
       description: Alias of `/api/admin/logs`.
       security:
-        - bearerAuth: []
+        - dashboardBearerAuth: []
       parameters:
         - name: entityType
           in: query
@@ -3876,7 +3988,7 @@ paths:
       summary: List notification logs (dashboard alias)
       description: Alias of `/api/admin/notification-logs`.
       security:
-        - bearerAuth: []
+        - dashboardBearerAuth: []
       parameters:
         - name: userId
           in: query
@@ -3921,7 +4033,7 @@ paths:
       summary: Trigger cutoff job (dashboard alias)
       description: Alias of `/api/admin/trigger-cutoff`.
       security:
-        - bearerAuth: []
+        - dashboardBearerAuth: []
       responses:
         '200':
           description: Job completed.
@@ -3956,7 +4068,7 @@ paths:
       summary: Create salad ingredient (dashboard alias)
       description: Alias of `/api/admin/salad-ingredients`.
       security:
-        - bearerAuth: []
+        - dashboardBearerAuth: []
       requestBody:
         required: true
         content:
@@ -4001,7 +4113,7 @@ paths:
       summary: Update salad ingredient (dashboard alias)
       description: Alias of `/api/admin/salad-ingredients/{id}`.
       security:
-        - bearerAuth: []
+        - dashboardBearerAuth: []
       parameters:
         - $ref: '#/components/parameters/IngredientId'
       requestBody:
@@ -4038,7 +4150,7 @@ paths:
       summary: Toggle salad ingredient state (dashboard alias)
       description: Alias of `/api/admin/salad-ingredients/{id}/toggle`.
       security:
-        - bearerAuth: []
+        - dashboardBearerAuth: []
       parameters:
         - $ref: '#/components/parameters/IngredientId'
       responses:

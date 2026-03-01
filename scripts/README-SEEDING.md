@@ -220,6 +220,7 @@ node scripts/seed-demo-data.js --clear \
 
 | البريد الإلكتروني | الدور |
 |-------------------|-------|
+| superadmin@basicdiet.sa | superadmin |
 | admin@basicdiet.sa | admin |
 | kitchen@basicdiet.sa | kitchen |
 | kitchen2@basicdiet.sa | kitchen |
@@ -227,7 +228,8 @@ node scripts/seed-demo-data.js --clear \
 | courier2@basicdiet.sa | courier |
 
 > [!TIP]
-> استخدم هذه الحسابات مع نظام better-auth للدخول إلى الداشبورد
+> استخدم هذه الحسابات مع نظام Dashboard JWT Auth للدخول إلى الداشبورد (email + password)
+> كلمة المرور الافتراضية في الـseed: `StrongPass123`
 
 ---
 
