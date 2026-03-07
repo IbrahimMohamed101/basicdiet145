@@ -50,6 +50,12 @@ tags:
     description: Admin settings and dashboard management endpoints.
   - name: Notifications
     description: Notification-log endpoints.
+  - name: Menu
+    description: Public premium meals and addons menu endpoints.
+  - name: Wallet
+    description: Premium/addon wallet consumption, refunds, and top-ups.
+  - name: Admin
+    description: Admin CRUD and controls for premium meals and addons.
 
 components:
   securitySchemes:
@@ -228,6 +234,96 @@ components:
             error:
               code: INTERNAL
               message: Unexpected error
+    ValidationError:
+      description: Input validation failed.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            ok: false
+            error:
+              code: VALIDATION_ERROR
+              message: Invalid request payload
+    LockedConflict:
+      description: Day is not open / resource is locked.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            ok: false
+            error:
+              code: LOCKED
+              message: Day is locked
+    CheckoutInProgressConflict:
+      description: Existing checkout draft is still initializing for the same idempotency scope.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            ok: false
+            error:
+              code: CHECKOUT_IN_PROGRESS
+              message: Checkout initialization is still in progress. Retry with the same idempotency key.
+              details:
+                draftId: 65f1b6a0be3f7e2ea1234567
+    IdempotencyConflict:
+      description: Idempotency key reused with a different payload or finalized status.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            ok: false
+            error:
+              code: IDEMPOTENCY_CONFLICT
+              message: idempotencyKey is already used with a different checkout payload
+    DataIntegrityConflict:
+      description: Wallet refund/restore integrity violation.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            ok: false
+            error:
+              code: DATA_INTEGRITY_ERROR
+              message: Cannot refund premium credits because the original wallet bucket was not found
+    InsufficientPremium:
+      description: Not enough premium credits available.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            ok: false
+            error:
+              code: INSUFFICIENT_PREMIUM
+              message: Not enough premium credits
+    InsufficientAddon:
+      description: Not enough addon credits available.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            ok: false
+            error:
+              code: INSUFFICIENT_ADDON
+              message: Not enough addon credits
+    MismatchConflict:
+      description: Webhook payload does not match stored payment identifiers/amount/currency.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            ok: false
+            error:
+              code: MISMATCH
+              message: Amount mismatch
 
   schemas:
     ErrorObject:
@@ -245,6 +341,9 @@ components:
           additionalProperties: true
 
     ErrorResponse:
+      description: |
+        Runtime error envelope returned by `errorResponse(...)`.
+        Shape in backend responses is `{ ok:false, error:{ code, message, details? } }`.
       type: object
       required:
         - ok
@@ -253,8 +352,47 @@ components:
         ok:
           type: boolean
           enum: [false]
+        code:
+          type: string
+          nullable: true
+          description: Optional flattened alias for compatibility; canonical value is `error.code`.
+        message:
+          type: string
+          nullable: true
+          description: Optional flattened alias for compatibility; canonical value is `error.message`.
+        details:
+          type: object
+          nullable: true
+          additionalProperties: true
+          description: Optional flattened alias for compatibility; canonical value is `error.details`.
         error:
           $ref: '#/components/schemas/ErrorObject'
+
+    OkResponse:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          nullable: true
+          description: Optional payload object; shape varies by endpoint.
+          oneOf:
+            - type: object
+              additionalProperties: true
+            - type: array
+              items:
+                type: object
+                additionalProperties: true
+            - type: string
+            - type: number
+            - type: boolean
+
+    HalalaAmount:
+      type: integer
+      minimum: 0
+      description: Amount in halala (SAR minor units). All pricing is SAR-only.
 
     LocalizedText:
       type: object
@@ -276,6 +414,319 @@ components:
           type: string
         notes:
           type: string
+
+    DeliverySlotInput:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [delivery, pickup]
+        window:
+          type: string
+        slotId:
+          type: string
+
+    DeliveryInput:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [delivery, pickup]
+        address:
+          type: object
+          nullable: true
+          additionalProperties: true
+        slot:
+          $ref: '#/components/schemas/DeliverySlotInput'
+
+    PremiumItemInput:
+      type: object
+      required: [premiumMealId, qty]
+      properties:
+        premiumMealId:
+          type: string
+        qty:
+          type: integer
+          minimum: 1
+
+    AddonItemInput:
+      type: object
+      required: [addonId, qty]
+      properties:
+        addonId:
+          type: string
+        qty:
+          type: integer
+          minimum: 1
+
+    CheckoutBreakdown:
+      type: object
+      properties:
+        basePlanPriceHalala:
+          $ref: '#/components/schemas/HalalaAmount'
+        premiumTotalHalala:
+          $ref: '#/components/schemas/HalalaAmount'
+        addonsTotalHalala:
+          $ref: '#/components/schemas/HalalaAmount'
+        deliveryFeeHalala:
+          $ref: '#/components/schemas/HalalaAmount'
+        vatHalala:
+          $ref: '#/components/schemas/HalalaAmount'
+        totalHalala:
+          $ref: '#/components/schemas/HalalaAmount'
+        currency:
+          type: string
+          enum: [SAR]
+      description: |
+        All prices are in SAR halala integers.
+        `deliveryFeeHalala` is determined server-side only.
+        If server cannot determine delivery fee, backend returns `400 VALIDATION_ERROR`.
+
+    SubscriptionQuoteRequest:
+      type: object
+      required: [planId, grams, mealsPerDay, delivery]
+      properties:
+        planId:
+          type: string
+        grams:
+          type: integer
+          minimum: 1
+        mealsPerDay:
+          type: integer
+          minimum: 1
+        startDate:
+          type: string
+          format: date
+        delivery:
+          $ref: '#/components/schemas/DeliveryInput'
+        premiumItems:
+          type: array
+          items:
+            $ref: '#/components/schemas/PremiumItemInput'
+        addons:
+          type: array
+          items:
+            $ref: '#/components/schemas/AddonItemInput'
+      description: Quote input. Totals are always recomputed server-side.
+
+    SubscriptionQuoteResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          type: object
+          properties:
+            breakdown:
+              $ref: '#/components/schemas/CheckoutBreakdown'
+            totalSar:
+              type: number
+
+    SubscriptionCheckoutRequest:
+      type: object
+      required: [planId, grams, mealsPerDay, delivery]
+      properties:
+        planId:
+          type: string
+        grams:
+          type: integer
+          minimum: 1
+        mealsPerDay:
+          type: integer
+          minimum: 1
+        startDate:
+          type: string
+          format: date
+        idempotencyKey:
+          type: string
+          description: Optional body key; header keys are also accepted.
+        delivery:
+          $ref: '#/components/schemas/DeliveryInput'
+        successUrl:
+          type: string
+        backUrl:
+          type: string
+        premiumItems:
+          type: array
+          items:
+            $ref: '#/components/schemas/PremiumItemInput'
+        addons:
+          type: array
+          items:
+            $ref: '#/components/schemas/AddonItemInput'
+      description: |
+        Idempotency key is required from either:
+        - `Idempotency-Key` header
+        - `X-Idempotency-Key` header
+        - `body.idempotencyKey`
+
+    SubscriptionCheckoutData:
+      type: object
+      properties:
+        subscriptionId:
+          type: string
+          nullable: true
+          description: Always `null` during checkout init. Created only after paid webhook.
+        draftId:
+          type: string
+        paymentId:
+          type: string
+          nullable: true
+        payment_url:
+          type: string
+        totals:
+          $ref: '#/components/schemas/CheckoutBreakdown'
+        reused:
+          type: boolean
+          nullable: true
+
+    SubscriptionCheckoutResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          $ref: '#/components/schemas/SubscriptionCheckoutData'
+
+    ConsumePremiumSelectionRequest:
+      type: object
+      required: [baseSlotKey, premiumMealId]
+      properties:
+        dayId:
+          type: string
+        date:
+          type: string
+          pattern: '^\\d{4}-\\d{2}-\\d{2}$'
+        baseSlotKey:
+          type: string
+        premiumMealId:
+          type: string
+
+    ConsumePremiumSelectionResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          type: object
+          properties:
+            subscriptionId:
+              type: string
+            premiumMealId:
+              type: string
+            remainingQtyTotal:
+              type: integer
+
+    RefundPremiumSelectionRequest:
+      type: object
+      required: [baseSlotKey]
+      properties:
+        dayId:
+          type: string
+        date:
+          type: string
+          pattern: '^\\d{4}-\\d{2}-\\d{2}$'
+        baseSlotKey:
+          type: string
+
+    ConsumeAddonSelectionRequest:
+      type: object
+      required: [addonId, qty]
+      properties:
+        dayId:
+          type: string
+        date:
+          type: string
+          pattern: '^\\d{4}-\\d{2}-\\d{2}$'
+        addonId:
+          type: string
+        qty:
+          type: integer
+          minimum: 1
+
+    ConsumeAddonSelectionResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          type: object
+          properties:
+            subscriptionId:
+              type: string
+            addonId:
+              type: string
+            remainingQtyTotal:
+              type: integer
+
+    RefundAddonSelectionRequest:
+      type: object
+      required: [addonId]
+      properties:
+        dayId:
+          type: string
+        date:
+          type: string
+          pattern: '^\\d{4}-\\d{2}-\\d{2}$'
+        addonId:
+          type: string
+
+    PremiumTopupRequest:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PremiumItemInput'
+        successUrl:
+          type: string
+        backUrl:
+          type: string
+      description: Payment is initialized now; wallet credits are applied only after paid webhook.
+
+    AddonTopupRequest:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AddonItemInput'
+        successUrl:
+          type: string
+        backUrl:
+          type: string
+      description: Payment is initialized now; wallet credits are applied only after paid webhook.
+
+    TopupInitResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          type: object
+          properties:
+            payment_url:
+              type: string
+            invoice_id:
+              type: string
+            payment_id:
+              type: string
+            totalHalala:
+              type: integer
+              nullable: true
 
     PaginationMeta:
       type: object
@@ -410,6 +861,151 @@ components:
           type: string
           format: date-time
 
+    PlanFreezePolicy:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        maxDays:
+          type: integer
+        maxTimes:
+          type: integer
+
+    PlanMealsOption:
+      type: object
+      description: Public meals option shape returned by `/api/plans` endpoints.
+      properties:
+        mealsPerDay:
+          type: integer
+        priceHalala:
+          $ref: '#/components/schemas/HalalaAmount'
+        compareAtHalala:
+          $ref: '#/components/schemas/HalalaAmount'
+        priceSar:
+          type: number
+          description: "priceHalala / 100"
+        compareAtSar:
+          type: number
+          description: "compareAtHalala / 100"
+      required: [mealsPerDay, priceHalala, compareAtHalala, priceSar, compareAtSar]
+
+    PlanGramsOption:
+      type: object
+      description: Public grams option shape returned by `/api/plans` endpoints.
+      properties:
+        grams:
+          type: integer
+        mealsOptions:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlanMealsOption'
+      required: [grams, mealsOptions]
+
+    PlanCreateMealsOption:
+      type: object
+      description: Admin create/update meals option payload.
+      required: [mealsPerDay, priceHalala, compareAtHalala]
+      properties:
+        mealsPerDay:
+          type: integer
+          minimum: 1
+        sortOrder:
+          type: integer
+          minimum: 0
+        isActive:
+          type: boolean
+          default: true
+        priceHalala:
+          $ref: '#/components/schemas/HalalaAmount'
+        compareAtHalala:
+          $ref: '#/components/schemas/HalalaAmount'
+
+    PlanCreateGramsOption:
+      type: object
+      description: Admin create/update grams option payload.
+      required: [grams, mealsOptions]
+      properties:
+        grams:
+          type: integer
+          minimum: 1
+        sortOrder:
+          type: integer
+          minimum: 0
+        isActive:
+          type: boolean
+          default: true
+        mealsOptions:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/PlanCreateMealsOption'
+
+    PlanCreateRequest:
+      type: object
+      description: |
+        Admin plan create payload.
+        - Currency is system currency and must be `SAR`.
+        - All prices are integers in halala.
+      required: [name, daysCount, gramsOptions]
+      properties:
+        name:
+          oneOf:
+            - type: string
+            - $ref: '#/components/schemas/LocalizedText'
+        daysCount:
+          type: integer
+          minimum: 1
+        currency:
+          type: string
+          enum: [SAR]
+          default: SAR
+        sortOrder:
+          type: integer
+          minimum: 0
+        isActive:
+          type: boolean
+          default: true
+        skipAllowanceCompensatedDays:
+          type: integer
+          minimum: 0
+        freezePolicy:
+          $ref: '#/components/schemas/PlanFreezePolicy'
+        gramsOptions:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/PlanCreateGramsOption'
+
+    PlanPublic:
+      type: object
+      description: |
+        Public plan shape returned by authenticated client endpoints.
+        Only active plans/options are included by runtime filtering.
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+          description: Localized resolved name from `Accept-Language` (ar/en, fallback ar).
+        daysCount:
+          type: integer
+        currency:
+          type: string
+          enum: [SAR]
+          example: SAR
+        isActive:
+          type: boolean
+        skipAllowanceCompensatedDays:
+          type: integer
+        freezePolicy:
+          $ref: '#/components/schemas/PlanFreezePolicy'
+        gramsOptions:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlanGramsOption'
+      required:
+        [id, name, daysCount, currency, isActive, skipAllowanceCompensatedDays, freezePolicy, gramsOptions]
+
     Plan:
       type: object
       properties:
@@ -419,16 +1015,21 @@ components:
           $ref: '#/components/schemas/LocalizedText'
         daysCount:
           type: integer
-        mealsPerDay:
+        currency:
+          type: string
+          example: SAR
+        gramsOptions:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlanCreateGramsOption'
+        skipAllowanceCompensatedDays:
           type: integer
-        grams:
-          type: integer
-        price:
-          type: number
-        skipAllowance:
-          type: integer
+        freezePolicy:
+          $ref: '#/components/schemas/PlanFreezePolicy'
         isActive:
           type: boolean
+        sortOrder:
+          type: integer
         createdAt:
           type: string
           format: date-time
@@ -436,13 +1037,17 @@ components:
           type: string
           format: date-time
 
+    PlanResolvedMealsOption:
+      allOf:
+        - $ref: '#/components/schemas/PlanMealsOption'
+
+    PlanResolvedGramsOption:
+      allOf:
+        - $ref: '#/components/schemas/PlanGramsOption'
+
     PlanResolved:
       allOf:
-        - $ref: '#/components/schemas/Plan'
-        - type: object
-          properties:
-            name:
-              type: string
+        - $ref: '#/components/schemas/PlanPublic'
 
     Meal:
       type: object
@@ -457,20 +1062,114 @@ components:
         isActive:
           type: boolean
 
-    Addon:
+    PremiumMeal:
       type: object
+      description: Public menu shape (localized fields already resolved to strings).
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        imageUrl:
+          type: string
+        extraFeeHalala:
+          $ref: '#/components/schemas/HalalaAmount'
+        extraFeeSar:
+          type: number
+          description: "extraFeeHalala / 100"
+        currency:
+          type: string
+          enum: [SAR]
+      required: [id, name, description, imageUrl, currency, extraFeeHalala, extraFeeSar]
+
+    PremiumMealAdmin:
+      type: object
+      description: Raw admin CRUD shape.
       properties:
         _id:
           type: string
         name:
           $ref: '#/components/schemas/LocalizedText'
+        description:
+          $ref: '#/components/schemas/LocalizedText'
+        imageUrl:
+          type: string
+        extraFeeHalala:
+          $ref: '#/components/schemas/HalalaAmount'
+        currency:
+          type: string
+          enum: [SAR]
+        isActive:
+          type: boolean
+        sortOrder:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Addon:
+      type: object
+      description: Public menu shape (localized fields already resolved to strings).
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        imageUrl:
+          type: string
+        priceHalala:
+          $ref: '#/components/schemas/HalalaAmount'
+        priceSar:
+          type: number
+          description: "priceHalala / 100"
+        currency:
+          type: string
+          enum: [SAR]
+        type:
+          type: string
+          enum: [subscription, one_time]
+      required: [id, name, description, imageUrl, currency, priceHalala, priceSar, type]
+
+    AddonAdmin:
+      type: object
+      description: Raw admin CRUD shape.
+      properties:
+        _id:
+          type: string
+        name:
+          $ref: '#/components/schemas/LocalizedText'
+        description:
+          $ref: '#/components/schemas/LocalizedText'
+        imageUrl:
+          type: string
+        priceHalala:
+          $ref: '#/components/schemas/HalalaAmount'
         price:
           type: number
+          description: Legacy SAR field kept for backward compatibility.
+        currency:
+          type: string
+          enum: [SAR]
         type:
           type: string
           enum: [subscription, one_time]
         isActive:
           type: boolean
+        sortOrder:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
 
     SaladIngredient:
       type: object
@@ -694,6 +1393,139 @@ components:
         type:
           type: string
 
+    DeliverySlot:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [delivery, pickup]
+        window:
+          type: string
+        slotId:
+          type: string
+
+    PremiumBalanceRow:
+      type: object
+      properties:
+        _id:
+          type: string
+        premiumMealId:
+          type: string
+        purchasedQty:
+          type: integer
+        remainingQty:
+          type: integer
+        unitExtraFeeHalala:
+          type: integer
+        currency:
+          type: string
+          example: SAR
+        purchasedAt:
+          type: string
+          format: date-time
+
+    AddonBalanceRow:
+      type: object
+      properties:
+        _id:
+          type: string
+        addonId:
+          type: string
+        purchasedQty:
+          type: integer
+        remainingQty:
+          type: integer
+        unitPriceHalala:
+          type: integer
+        currency:
+          type: string
+          example: SAR
+        purchasedAt:
+          type: string
+          format: date-time
+
+    PremiumSelectionRow:
+      type: object
+      properties:
+        _id:
+          type: string
+        dayId:
+          type: string
+          nullable: true
+        date:
+          type: string
+        baseSlotKey:
+          type: string
+        premiumMealId:
+          type: string
+        unitExtraFeeHalala:
+          type: integer
+        currency:
+          type: string
+          example: SAR
+        consumedAt:
+          type: string
+          format: date-time
+
+    AddonSelectionRow:
+      type: object
+      properties:
+        _id:
+          type: string
+        dayId:
+          type: string
+          nullable: true
+        date:
+          type: string
+        addonId:
+          type: string
+        qty:
+          type: integer
+        unitPriceHalala:
+          type: integer
+        currency:
+          type: string
+          example: SAR
+        consumedAt:
+          type: string
+          format: date-time
+
+    PremiumSummaryRow:
+      type: object
+      properties:
+        premiumMealId:
+          type: string
+        name:
+          type: string
+        purchasedQtyTotal:
+          type: integer
+        remainingQtyTotal:
+          type: integer
+        consumedQtyTotal:
+          type: integer
+        minUnitPriceHalala:
+          type: integer
+        maxUnitPriceHalala:
+          type: integer
+
+    AddonSummaryRow:
+      type: object
+      properties:
+        addonId:
+          type: string
+        name:
+          type: string
+        purchasedQtyTotal:
+          type: integer
+        remainingQtyTotal:
+          type: integer
+        consumedQtyTotal:
+          type: integer
+        minUnitPriceHalala:
+          type: integer
+        maxUnitPriceHalala:
+          type: integer
+
     Subscription:
       type: object
       properties:
@@ -724,12 +1556,39 @@ components:
           type: number
         premiumRemaining:
           type: number
+          description: Legacy compatibility field; derived from premiumBalance remaining quantities.
         premiumPrice:
           type: number
+          description: Legacy premium unit price in SAR.
         addonSubscriptions:
           type: array
           items:
             $ref: '#/components/schemas/SubscriptionAddonSnapshot'
+        selectedGrams:
+          type: integer
+        selectedMealsPerDay:
+          type: integer
+        basePlanPriceHalala:
+          type: integer
+        checkoutCurrency:
+          type: string
+          example: SAR
+        premiumBalance:
+          type: array
+          items:
+            $ref: '#/components/schemas/PremiumBalanceRow'
+        addonBalance:
+          type: array
+          items:
+            $ref: '#/components/schemas/AddonBalanceRow'
+        premiumSelections:
+          type: array
+          items:
+            $ref: '#/components/schemas/PremiumSelectionRow'
+        addonSelections:
+          type: array
+          items:
+            $ref: '#/components/schemas/AddonSelectionRow'
         deliveryMode:
           type: string
           enum: [delivery, pickup]
@@ -738,6 +1597,16 @@ components:
         deliveryWindow:
           type: string
           nullable: true
+        deliverySlot:
+          $ref: '#/components/schemas/DeliverySlot'
+        premiumSummary:
+          type: array
+          items:
+            $ref: '#/components/schemas/PremiumSummaryRow'
+        addonsSummary:
+          type: array
+          items:
+            $ref: '#/components/schemas/AddonSummaryRow'
         skippedCount:
           type: number
         expiryReminder3dSentAt:
@@ -779,6 +1648,40 @@ components:
           type: array
           items:
             type: string
+        premiumUpgradeSelections:
+          type: array
+          items:
+            type: object
+            properties:
+              baseSlotKey:
+                type: string
+              premiumMealId:
+                type: string
+              unitExtraFeeHalala:
+                type: integer
+              currency:
+                type: string
+                example: SAR
+              consumedAt:
+                type: string
+                format: date-time
+        addonCreditSelections:
+          type: array
+          items:
+            type: object
+            properties:
+              addonId:
+                type: string
+              qty:
+                type: integer
+              unitPriceHalala:
+                type: integer
+              currency:
+                type: string
+                example: SAR
+              consumedAt:
+                type: string
+                format: date-time
         assignedByKitchen:
           type: boolean
         pickupRequested:
@@ -831,7 +1734,7 @@ components:
           enum: [moyasar]
         type:
           type: string
-          enum: [premium_topup, one_time_addon, subscription_activation, one_time_order, custom_salad_day, custom_salad_order]
+          enum: [premium_topup, addon_topup, one_time_addon, subscription_activation, one_time_order, custom_salad_day, custom_salad_order]
         status:
           type: string
           enum: [initiated, paid, failed, canceled, expired, refunded]
@@ -1080,12 +1983,17 @@ paths:
         Public webhook endpoint.
 
         Security behavior in code:
-        - No signature header verification is implemented.
-        - If `MOYASAR_WEBHOOK_SECRET` is set, request body field `secret_token` must match.
+        - `MOYASAR_WEBHOOK_SECRET` is required and request body `secret_token` must match, otherwise `401 UNAUTHORIZED`.
+        - Webhook payload identifiers must match stored payment identifiers, amount, and currency (`409 MISMATCH` on any mismatch).
+
+        State machine behavior:
+        - Always persists latest recognized payment status (`initiated|paid|failed|canceled|expired|refunded`).
+        - Side effects are applied only when status is `paid` and `Payment.applied === false`.
+        - Non-paid terminal statuses (`failed|canceled|expired`) update checkout draft status when applicable.
 
         Idempotency behavior:
-        - Payment records are deduplicated by unique indexes on `(provider, providerInvoiceId)` and `(provider, providerPaymentId)`.
-        - Application side-effects are guarded by `Payment.applied` and an atomic claim update.
+        - Duplicate/repeated webhooks are safe.
+        - `Payment.applied` is claimed atomically; once applied, webhook returns `{ ok: true }` without re-applying credits/subscription creation.
       requestBody:
         required: true
         content:
@@ -1109,6 +2017,7 @@ paths:
                       type: string
                     status:
                       type: string
+                      enum: [initiated, paid, failed, canceled, cancelled, expired, refunded]
                     amount:
                       type: number
                     currency:
@@ -1128,13 +2037,9 @@ paths:
                 status: paid
                 amount: 5000
                 currency: SAR
-                metadata:
-                  type: one_time_order
-                  orderId: 65f0f01f1f1f1f1f1f1f1f1f
-                  userId: 65f0f01f1f1f1f1f1f1f1f20
       responses:
         '200':
-          description: Webhook accepted/processed.
+          description: Webhook accepted/processed (including duplicate or ignored events).
           content:
             application/json:
               schema:
@@ -1145,12 +2050,58 @@ paths:
                   message:
                     type: string
                     nullable: true
-              example:
-                ok: true
+              examples:
+                applied:
+                  value:
+                    ok: true
+                ignoredNonPaid:
+                  value:
+                    ok: true
+                    message: Ignored non-paid status
         '400':
-          $ref: '#/components/responses/BadRequest'
+          description: Invalid payload (missing payment identifiers).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error:
+                  code: INVALID
+                  message: Missing payment identifiers
         '401':
-          $ref: '#/components/responses/Unauthorized'
+          description: Invalid or missing webhook secret token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error:
+                  code: UNAUTHORIZED
+                  message: Invalid webhook token
+        '404':
+          description: Referenced payment not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error:
+                  code: NOT_FOUND
+                  message: Payment not found
+        '409':
+          description: Payload/payment mismatch (id/invoice/amount/currency).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error:
+                  code: MISMATCH
+                  message: Amount mismatch
         '500':
           $ref: '#/components/responses/Internal'
 
@@ -1354,6 +2305,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '423':
           description: Account temporarily locked.
           content:
@@ -1490,7 +2443,14 @@ paths:
     get:
       tags: [Plans]
       summary: List active plans
-      description: Requires auth. Returns plans with `name` resolved by `Accept-Language`.
+      description: |
+        Requires auth.
+        Returns active plans only.
+        Currency in response is always `SAR` (system currency). If non-SAR plan currency exists in database, checkout validation rejects it server-side.
+        Each plan includes active grams options and active meals options only, sorted by:
+        - plans: `sortOrder ASC`, then `createdAt DESC`
+        - grams options: `sortOrder ASC`, then `grams ASC`
+        - meals options: `sortOrder ASC`, then `mealsPerDay ASC`
       security:
         - bearerAuth: []
       parameters:
@@ -1508,18 +2468,28 @@ paths:
                   data:
                     type: array
                     items:
-                      $ref: '#/components/schemas/PlanResolved'
+                      $ref: '#/components/schemas/PlanPublic'
               example:
                 ok: true
                 data:
-                  - _id: 65f1000a1f1f1f1f1f1f1001
-                    name: High Protein
-                    daysCount: 20
-                    mealsPerDay: 2
-                    grams: 200
-                    price: 1800
-                    skipAllowance: 3
+                  - id: 65f1000a1f1f1f1f1f1f1001
+                    name: 26 Days
+                    daysCount: 26
+                    currency: SAR
                     isActive: true
+                    skipAllowanceCompensatedDays: 3
+                    freezePolicy:
+                      enabled: true
+                      maxDays: 31
+                      maxTimes: 1
+                    gramsOptions:
+                      - grams: 100
+                        mealsOptions:
+                          - mealsPerDay: 1
+                            priceHalala: 259900
+                            compareAtHalala: 289900
+                            priceSar: 2599
+                            compareAtSar: 2899
         '401':
           $ref: '#/components/responses/Unauthorized'
 
@@ -1527,7 +2497,10 @@ paths:
     get:
       tags: [Plans]
       summary: Get plan by id
-      description: Returns plan with localized `name` string.
+      description: |
+        Requires auth.
+        Returns one active plan only.
+        Inactive/missing plans return `404 NOT_FOUND`.
       security:
         - bearerAuth: []
       parameters:
@@ -1544,7 +2517,161 @@ paths:
                   ok:
                     type: boolean
                   data:
-                    $ref: '#/components/schemas/PlanResolved'
+                    $ref: '#/components/schemas/PlanPublic'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/premium-meals:
+    get:
+      tags: [Menu]
+      summary: List active premium meals
+      description: |
+        Returns active premium meals only, sorted by `sortOrder ASC`, then `createdAt DESC`.
+        Localized fields are resolved with `Accept-Language`.
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
+      responses:
+        '200':
+          description: Premium meals list.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PremiumMeal'
+              example:
+                ok: true
+                data:
+                  - id: 65f2000a1f1f1f1f1f1f2001
+                    name: Steak
+                    description: Premium upgrade
+                    imageUrl: https://cdn.example.com/steak.jpg
+                    currency: SAR
+                    extraFeeHalala: 1500
+                    extraFeeSar: 15
+
+  /api/addons:
+    get:
+      tags: [Menu]
+      summary: List active addons
+      description: |
+        Returns active addons only, sorted by `sortOrder ASC`, then `createdAt DESC`.
+        Localized fields are resolved with `Accept-Language`.
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
+      responses:
+        '200':
+          description: Addons list.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Addon'
+              example:
+                ok: true
+                data:
+                  - id: 65f2000a1f1f1f1f1f1f3001
+                    name: Protein Bar
+                    description: Snack addon
+                    imageUrl: ""
+                    currency: SAR
+                    priceHalala: 700
+                    priceSar: 7
+                    type: subscription
+
+  /api/subscriptions/quote:
+    post:
+      tags: [Subscriptions]
+      summary: Quote subscription checkout totals
+      description: |
+        Computes pricing server-side only. Client-provided totals or delivery fee are never trusted.
+
+        Pricing model:
+        - `basePlanPriceHalala` from selected active plan option (`planId + grams + mealsPerDay`)
+        - `premiumTotalHalala` from active premium meals
+        - `addonsTotalHalala` from active addons
+        - `deliveryFeeHalala` from server settings (`subscription_delivery_fee_halala`)
+        - optional `vatHalala` from `vat_percentage` setting
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubscriptionQuoteRequest'
+            example:
+              planId: 65f1000a1f1f1f1f1f1f1001
+              grams: 100
+              mealsPerDay: 2
+              startDate: "2026-03-10"
+              delivery:
+                type: delivery
+                address:
+                  city: Riyadh
+                  district: Al Olaya
+                  line1: Street 10
+                slot:
+                  type: delivery
+                  window: "12:00-15:00"
+                  slotId: "slot_1"
+              premiumItems:
+                - premiumMealId: 65f2000a1f1f1f1f1f1f2001
+                  qty: 2
+              addons:
+                - addonId: 65f2000a1f1f1f1f1f1f3001
+                  qty: 1
+      responses:
+        '200':
+          description: Quote breakdown.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionQuoteResponse'
+              example:
+                ok: true
+                data:
+                  breakdown:
+                    basePlanPriceHalala: 259900
+                    premiumTotalHalala: 3000
+                    addonsTotalHalala: 1400
+                    deliveryFeeHalala: 1000
+                    vatHalala: 0
+                    totalHalala: 265300
+                    currency: SAR
+                  totalSar: 2653
+        '400':
+          description: Validation/selection/configuration errors.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                validationError:
+                  value:
+                    ok: false
+                    error:
+                      code: VALIDATION_ERROR
+                      message: Server delivery fee configuration is missing
+                invalidSelection:
+                  value:
+                    ok: false
+                    error:
+                      code: INVALID
+                      message: Selected mealsPerDay option is not available
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
@@ -1553,8 +2680,8 @@ paths:
   /api/subscriptions/preview:
     post:
       tags: [Subscriptions]
-      summary: Preview subscription pricing
-      description: Computes total from selected plan, premium count, and add-ons.
+      summary: Preview subscription quote (alias)
+      description: Alias of `/api/subscriptions/quote` with identical validation and response shape.
       security:
         - bearerAuth: []
       requestBody:
@@ -1562,24 +2689,10 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              required: [planId]
-              properties:
-                planId:
-                  type: string
-                premiumCount:
-                  type: integer
-                  default: 0
-                addons:
-                  type: array
-                  items:
-                    type: object
-                    properties:
-                      addonId:
-                        type: string
+              additionalProperties: true
       responses:
         '200':
-          description: Preview output.
+          description: Quote breakdown.
           content:
             application/json:
               schema:
@@ -1590,19 +2703,27 @@ paths:
                   data:
                     type: object
                     properties:
-                      total:
-                        type: number
                       breakdown:
                         type: object
-                        additionalProperties: true
-              example:
-                ok: true
-                data:
-                  total: 2200
-                  breakdown:
-                    plan: 1800
-                    premium: 200
-                    addons: 200
+                        properties:
+                          basePlanPriceHalala:
+                            type: integer
+                          premiumTotalHalala:
+                            type: integer
+                          addonsTotalHalala:
+                            type: integer
+                          deliveryFeeHalala:
+                            type: integer
+                          vatHalala:
+                            type: integer
+                          totalHalala:
+                            type: integer
+                          currency:
+                            type: string
+                      totalSar:
+                        type: number
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
@@ -1612,72 +2733,113 @@ paths:
     post:
       tags: [Subscriptions]
       summary: Checkout subscription
-      description: Creates a `pending_payment` subscription and returns mock payment URL. Rate limited.
+      description: |
+        Initializes a checkout draft and payment invoice. Does **not** create a subscription yet.
+        Subscription and wallet credits are created **ONLY** by webhook when payment status becomes `paid`.
+
+        Safety rules:
+        - idempotency key is required (header `Idempotency-Key` or `X-Idempotency-Key`, or `body.idempotencyKey`)
+        - totals are recomputed server-side from current plan/menu/settings
+        - system currency is SAR only
       security:
         - bearerAuth: []
       parameters:
         - $ref: '#/components/parameters/AcceptLanguage'
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Required unless provided via `X-Idempotency-Key` header or `body.idempotencyKey`.
+        - name: X-Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Alias for `Idempotency-Key`.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              required: [planId, deliveryMode]
-              properties:
-                planId:
-                  type: string
-                premiumCount:
-                  type: integer
-                  default: 0
-                addons:
-                  type: array
-                  items:
-                    type: object
-                    properties:
-                      addonId:
-                        type: string
-                deliveryMode:
-                  type: string
-                  enum: [delivery, pickup]
-                deliveryAddress:
-                  $ref: '#/components/schemas/Address'
-                deliveryWindow:
-                  type: string
-                startDate:
-                  type: string
-                  format: date
+              $ref: '#/components/schemas/SubscriptionCheckoutRequest'
       responses:
-        '200':
-          description: Subscription checkout created.
+        '201':
+          description: Draft + initiated payment created.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  ok:
-                    type: boolean
-                  data:
-                    type: object
-                    properties:
-                      payment_url:
-                        type: string
-                      subscriptionId:
-                        type: string
-                      total:
-                        type: number
+                $ref: '#/components/schemas/SubscriptionCheckoutResponse'
               example:
                 ok: true
                 data:
-                  payment_url: https://mock-payment.com/65f1b6a0be3f7e2ea1234567
-                  subscriptionId: 65f1b6a0be3f7e2ea1234567
-                  total: 2200
+                  subscriptionId: null
+                  draftId: 65f1b6a0be3f7e2ea1234567
+                  paymentId: 65f1b6a0be3f7e2ea1234568
+                  payment_url: https://mysr.co/invoice/abc
+                  totals:
+                    basePlanPriceHalala: 259900
+                    premiumTotalHalala: 3000
+                    addonsTotalHalala: 1400
+                    deliveryFeeHalala: 1000
+                    vatHalala: 0
+                    totalHalala: 265300
+                    currency: SAR
+        '200':
+          description: Existing draft/payment reused for the same idempotency key or pending identical hash.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionCheckoutResponse'
+              example:
+                ok: true
+                data:
+                  subscriptionId: null
+                  draftId: 65f1b6a0be3f7e2ea1234567
+                  paymentId: 65f1b6a0be3f7e2ea1234568
+                  payment_url: https://mysr.co/invoice/abc
+                  totals:
+                    totalHalala: 265300
+                    currency: SAR
+                  reused: true
         '400':
-          $ref: '#/components/responses/BadRequest'
+          description: Validation error (including missing idempotency key).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                missingIdempotency:
+                  value:
+                    ok: false
+                    error:
+                      code: VALIDATION_ERROR
+                      message: idempotencyKey is required (Idempotency-Key header, X-Idempotency-Key header, or body.idempotencyKey)
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          description: Idempotency conflict or checkout still initializing.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                inProgress:
+                  value:
+                    ok: false
+                    error:
+                      code: CHECKOUT_IN_PROGRESS
+                      message: Checkout initialization is still in progress. Retry with the same idempotency key.
+                      details:
+                        draftId: 65f1b6a0be3f7e2ea1234567
+                conflict:
+                  value:
+                    ok: false
+                    error:
+                      code: IDEMPOTENCY_CONFLICT
+                      message: idempotencyKey is already used with a different checkout payload
         '429':
           $ref: '#/components/responses/TooManyRequests'
 
@@ -1685,7 +2847,9 @@ paths:
     post:
       tags: [Subscriptions]
       summary: Activate subscription (mock endpoint)
-      description: Transitions subscription to `active` and creates day records.
+      description: |
+        Development-only helper that transitions subscription to `active` and creates day records.
+        In production, this endpoint returns `403 FORBIDDEN`.
       security:
         - bearerAuth: []
       parameters:
@@ -1707,6 +2871,8 @@ paths:
                     $ref: '#/components/schemas/Subscription'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
 
@@ -1733,6 +2899,8 @@ paths:
                     $ref: '#/components/schemas/Subscription'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
 
@@ -1761,6 +2929,8 @@ paths:
                       $ref: '#/components/schemas/SubscriptionDay'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
 
   /api/subscriptions/{id}/today:
     get:
@@ -1785,6 +2955,8 @@ paths:
                     $ref: '#/components/schemas/SubscriptionDay'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
 
@@ -1812,6 +2984,8 @@ paths:
                     $ref: '#/components/schemas/SubscriptionDay'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
 
@@ -1867,6 +3041,8 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -1880,7 +3056,7 @@ paths:
     post:
       tags: [Subscriptions]
       summary: Skip one subscription day
-      description: Applies skip rules, credit deduction, and optional compensated extension day.
+      description: Applies skip rules and credit deduction for one day.
       security:
         - bearerAuth: []
       parameters:
@@ -1902,6 +3078,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -1915,7 +3093,9 @@ paths:
     post:
       tags: [Subscriptions]
       summary: Skip a date range
-      description: Attempts to skip `days` consecutive dates from `startDate`, returning per-date summary.
+      description: |
+        Attempts to skip `days` consecutive dates from `startDate`, returning per-date summary.
+        `compensatedDatesAdded` is currently returned as an empty list by runtime rules.
       security:
         - bearerAuth: []
       parameters:
@@ -1972,6 +3152,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '422':
@@ -2005,6 +3187,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -2017,8 +3201,10 @@ paths:
   /api/subscriptions/{id}/days/{date}/custom-salad:
     post:
       tags: [Subscriptions, Meals / Menu]
-      summary: Add custom salad to subscription day
-      description: Builds priced custom salad snapshot and appends it to the day.
+      summary: Initiate custom salad payment for subscription day
+      description: |
+        Builds priced custom salad snapshot and creates a payment invoice.
+        The salad is applied only after webhook confirms payment.
       security:
         - bearerAuth: []
       parameters:
@@ -2043,9 +3229,13 @@ paths:
                       quantity:
                         type: integer
                         minimum: 1
+                successUrl:
+                  type: string
+                backUrl:
+                  type: string
       responses:
         '200':
-          description: Updated day.
+          description: Payment invoice created.
           content:
             application/json:
               schema:
@@ -2054,11 +3244,24 @@ paths:
                   ok:
                     type: boolean
                   data:
-                    $ref: '#/components/schemas/SubscriptionDay'
+                    type: object
+                    properties:
+                      payment_url:
+                        type: string
+                      invoice_id:
+                        type: string
+                      payment_id:
+                        type: string
+                      total:
+                        type: integer
+                      currency:
+                        type: string
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -2105,6 +3308,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -2117,8 +3322,12 @@ paths:
   /api/subscriptions/{id}/premium/topup:
     post:
       tags: [Subscriptions]
-      summary: Purchase premium top-up
-      description: Creates Moyasar invoice/payment record for premium credits.
+      summary: Purchase premium top-up (legacy count or itemized)
+      description: |
+        Creates Moyasar invoice/payment for premium credits.
+        Compatibility endpoint:
+        - if body contains `items[]`, behaves like `/api/subscriptions/{id}/premium-credits/topup`
+        - otherwise uses legacy `count`.
       security:
         - bearerAuth: []
       parameters:
@@ -2129,11 +3338,21 @@ paths:
           application/json:
             schema:
               type: object
-              required: [count]
               properties:
                 count:
                   type: integer
                   minimum: 1
+                items:
+                  type: array
+                  items:
+                    type: object
+                    required: [premiumMealId, qty]
+                    properties:
+                      premiumMealId:
+                        type: string
+                      qty:
+                        type: integer
+                        minimum: 1
                 successUrl:
                   type: string
                 backUrl:
@@ -2157,6 +3376,9 @@ paths:
                         type: string
                       payment_id:
                         type: string
+                      totalHalala:
+                        type: integer
+                        nullable: true
               example:
                 ok: true
                 data:
@@ -2167,8 +3389,350 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '500':
+          $ref: '#/components/responses/Internal'
+
+  /api/subscriptions/{id}/premium-credits/topup:
+    post:
+      tags: [Wallet]
+      summary: Purchase itemized premium credits top-up
+      description: |
+        Creates Moyasar invoice/payment for itemized premium meal credits.
+        Wallet credits are applied only after webhook confirms payment status `paid`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PremiumTopupRequest'
+      responses:
+        '200':
+          description: Invoice created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TopupInitResponse'
+              example:
+                ok: true
+                data:
+                  payment_url: https://mysr.co/invoice/abc
+                  invoice_id: iv_abc
+                  payment_id: 65f2b6a0be3f7e2ea1234abc
+                  totalHalala: 4500
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '500':
+          $ref: '#/components/responses/Internal'
+
+  /api/subscriptions/{id}/addon-credits/topup:
+    post:
+      tags: [Wallet]
+      summary: Purchase itemized addon credits top-up
+      description: |
+        Creates Moyasar invoice/payment for itemized addon credits.
+        Wallet credits are applied only after webhook confirms payment status `paid`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddonTopupRequest'
+      responses:
+        '200':
+          description: Invoice created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TopupInitResponse'
+              example:
+                ok: true
+                data:
+                  payment_url: https://mysr.co/invoice/abc
+                  invoice_id: iv_abc
+                  payment_id: 65f2b6a0be3f7e2ea1234def
+                  totalHalala: 3200
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '500':
+          $ref: '#/components/responses/Internal'
+
+  /api/subscriptions/{id}/premium-selections:
+    post:
+      tags: [Wallet]
+      summary: Consume one premium wallet credit for a day slot
+      description: |
+        Upgrades one base slot to a premium meal.
+        Rules:
+        - subscription must be active and owned by caller
+        - day must be `open`
+        - `baseSlotKey` can be upgraded only once per day
+        - wallet deduction is FIFO by `purchasedAt`
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConsumePremiumSelectionRequest'
+            example:
+              date: "2026-03-12"
+              baseSlotKey: meal_slot_1
+              premiumMealId: 65f2000a1f1f1f1f1f1f2001
+      responses:
+        '200':
+          description: Premium credit consumed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsumePremiumSelectionResponse'
+              example:
+                ok: true
+                data:
+                  subscriptionId: 65f1b6a0be3f7e2ea1234567
+                  premiumMealId: 65f2000a1f1f1f1f1f1f2001
+                  remainingQtyTotal: 3
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Locked day, duplicate slot, or insufficient premium credits.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                locked:
+                  value:
+                    ok: false
+                    error:
+                      code: LOCKED
+                      message: Day is locked
+                insufficientPremium:
+                  value:
+                    ok: false
+                    error:
+                      code: INSUFFICIENT_PREMIUM
+                      message: Not enough premium credits
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '500':
+          $ref: '#/components/responses/Internal'
+    delete:
+      tags: [Wallet]
+      summary: Refund one premium selection
+      description: |
+        Refunds one premium selection by `(dayId|date + baseSlotKey)`.
+        Refund is allowed only when subscription is active and day status is `open`.
+        If original wallet bucket is missing or exceeds purchased quantity, returns `409 DATA_INTEGRITY_ERROR`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefundPremiumSelectionRequest'
+      responses:
+        '200':
+          description: Refunded.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      subscriptionId:
+                        type: string
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Locked day or wallet integrity conflict.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                locked:
+                  value:
+                    ok: false
+                    error:
+                      code: LOCKED
+                      message: Day is locked
+                integrity:
+                  value:
+                    ok: false
+                    error:
+                      code: DATA_INTEGRITY_ERROR
+                      message: Cannot refund premium credits because the original wallet bucket was not found
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '500':
+          $ref: '#/components/responses/Internal'
+
+  /api/subscriptions/{id}/addon-selections:
+    post:
+      tags: [Wallet]
+      summary: Consume addon wallet credits for a day
+      description: |
+        Consumes addon credits (`qty >= 1`) using FIFO.
+        Requires active subscription and open day.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConsumeAddonSelectionRequest'
+      responses:
+        '200':
+          description: Addon credits consumed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsumeAddonSelectionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Locked day, duplicate selection, or insufficient addon credits.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                locked:
+                  value:
+                    ok: false
+                    error:
+                      code: LOCKED
+                      message: Day is locked
+                insufficientAddon:
+                  value:
+                    ok: false
+                    error:
+                      code: INSUFFICIENT_ADDON
+                      message: Not enough addon credits
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '500':
+          $ref: '#/components/responses/Internal'
+    delete:
+      tags: [Wallet]
+      summary: Refund addon selections for a day/addon pair
+      description: |
+        Refunds all addon selection rows matching `(dayId|date + addonId)`.
+        Refund is allowed only when subscription is active and day status is `open`.
+        Missing bucket/overflow conflicts return `409 DATA_INTEGRITY_ERROR`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefundAddonSelectionRequest'
+      responses:
+        '200':
+          description: Refunded.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      subscriptionId:
+                        type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Locked day or wallet integrity conflict.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                locked:
+                  value:
+                    ok: false
+                    error:
+                      code: LOCKED
+                      message: Day is locked
+                integrity:
+                  value:
+                    ok: false
+                    error:
+                      code: DATA_INTEGRITY_ERROR
+                      message: Cannot refund addon credits because refund exceeds purchased quantity
         '422':
           $ref: '#/components/responses/Unprocessable'
         '500':
@@ -2224,6 +3788,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -3145,10 +4711,39 @@ paths:
           $ref: '#/components/responses/Conflict'
 
   /api/admin/plans:
+    get:
+      tags: [Admin (Dashboard), Plans]
+      summary: List plans (admin)
+      description: Returns all plans with nested grams/meals options, including inactive entries.
+      security:
+        - dashboardBearerAuth: []
+      responses:
+        '200':
+          description: Plan list.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Plan'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
     post:
       tags: [Admin (Dashboard), Plans]
       summary: Create plan
-      description: Admin-only.
+      description: |
+        Admin-only.
+        Creates a nested plan (`daysCount -> gramsOptions -> mealsOptions`).
+        Validation notes:
+        - all prices are integer halala values (`priceHalala`, `compareAtHalala`)
+        - currency must be `SAR`
       security:
         - dashboardBearerAuth: []
       requestBody:
@@ -3156,26 +4751,112 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              required: [name, daysCount, mealsPerDay, grams, price]
-              properties:
-                name:
-                  oneOf:
-                    - type: string
-                    - $ref: '#/components/schemas/LocalizedText'
-                daysCount:
-                  type: integer
-                mealsPerDay:
-                  type: integer
-                grams:
-                  type: integer
-                price:
-                  type: number
-                skipAllowance:
-                  type: integer
+              $ref: '#/components/schemas/PlanCreateRequest'
+            example:
+              name:
+                ar: "26 يوم"
+                en: "26 Days"
+              daysCount: 26
+              currency: SAR
+              sortOrder: 1
+              isActive: true
+              skipAllowanceCompensatedDays: 3
+              freezePolicy:
+                enabled: true
+                maxDays: 31
+                maxTimes: 1
+              gramsOptions:
+                - grams: 100
+                  sortOrder: 0
+                  isActive: true
+                  mealsOptions:
+                    - mealsPerDay: 1
+                      sortOrder: 0
+                      isActive: true
+                      priceHalala: 259900
+                      compareAtHalala: 289900
+                    - mealsPerDay: 2
+                      sortOrder: 1
+                      isActive: true
+                      priceHalala: 310000
+                      compareAtHalala: 300000
       responses:
         '201':
           description: Plan created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+        '400':
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error:
+                  code: VALIDATION_ERROR
+                  message: Invalid plan payload
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/admin/plans/{id}:
+    get:
+      tags: [Admin (Dashboard), Plans]
+      summary: Get plan (admin)
+      description: Returns a full plan payload with nested grams/meals options.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlanId'
+      responses:
+        '200':
+          description: Plan details.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Plan'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [Admin (Dashboard), Plans]
+      summary: Update plan
+      description: Replaces plan payload with the provided nested plan data.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlanId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlanCreateRequest'
+      responses:
+        '200':
+          description: Plan updated.
           content:
             application/json:
               schema:
@@ -3194,6 +4875,1212 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      tags: [Admin (Dashboard), Plans]
+      summary: Delete plan
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlanId'
+      responses:
+        '200':
+          description: Plan deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/admin/plans/{id}/toggle:
+    patch:
+      tags: [Admin (Dashboard), Plans]
+      summary: Toggle plan active state
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlanId'
+      responses:
+        '200':
+          description: Plan toggled.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      isActive:
+                        type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/admin/plans/{id}/sort:
+    patch:
+      tags: [Admin (Dashboard), Plans]
+      summary: Update plan sort order
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlanId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sortOrder]
+              properties:
+                sortOrder:
+                  type: integer
+                  minimum: 0
+      responses:
+        '200':
+          description: Sort order updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      sortOrder:
+                        type: integer
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/admin/plans/{id}/clone:
+    post:
+      tags: [Admin (Dashboard), Plans]
+      summary: Clone plan
+      description: Clones a plan with nested grams/meals options.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlanId'
+      responses:
+        '201':
+          description: Plan cloned.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/admin/plans/{id}/grams/clone:
+    post:
+      tags: [Admin (Dashboard), Plans]
+      summary: Clone grams row
+      description: Duplicates an existing grams option into a new grams value.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlanId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [grams, newGrams]
+              properties:
+                grams:
+                  type: integer
+                  minimum: 1
+                newGrams:
+                  type: integer
+                  minimum: 1
+      responses:
+        '201':
+          description: Grams row cloned.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/admin/plans/{id}/grams/{grams}:
+    delete:
+      tags: [Admin (Dashboard), Plans]
+      summary: Delete grams row
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlanId'
+        - name: grams
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Grams row deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/admin/plans/{id}/grams/{grams}/toggle:
+    patch:
+      tags: [Admin (Dashboard), Plans]
+      summary: Toggle grams row active state
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlanId'
+        - name: grams
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Grams row toggled.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      grams:
+                        type: integer
+                      isActive:
+                        type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/admin/plans/{id}/grams/{grams}/sort:
+    patch:
+      tags: [Admin (Dashboard), Plans]
+      summary: Update grams row sort order
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlanId'
+        - name: grams
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sortOrder]
+              properties:
+                sortOrder:
+                  type: integer
+                  minimum: 0
+      responses:
+        '200':
+          description: Grams sort order updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      grams:
+                        type: integer
+                      sortOrder:
+                        type: integer
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/admin/plans/{id}/grams/{grams}/meals/clone:
+    post:
+      tags: [Admin (Dashboard), Plans]
+      summary: Clone meals option within a grams row
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlanId'
+        - name: grams
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mealsPerDay, newMealsPerDay]
+              properties:
+                mealsPerDay:
+                  type: integer
+                  minimum: 1
+                newMealsPerDay:
+                  type: integer
+                  minimum: 1
+      responses:
+        '201':
+          description: Meals option cloned.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/admin/plans/{id}/grams/{grams}/meals/{mealsPerDay}:
+    delete:
+      tags: [Admin (Dashboard), Plans]
+      summary: Delete meals option from grams row
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlanId'
+        - name: grams
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+        - name: mealsPerDay
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Meals option deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/admin/plans/{id}/grams/{grams}/meals/{mealsPerDay}/toggle:
+    patch:
+      tags: [Admin (Dashboard), Plans]
+      summary: Toggle meals option active state
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlanId'
+        - name: grams
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+        - name: mealsPerDay
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Meals option toggled.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      grams:
+                        type: integer
+                      mealsPerDay:
+                        type: integer
+                      isActive:
+                        type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/admin/plans/{id}/grams/{grams}/meals/{mealsPerDay}/sort:
+    patch:
+      tags: [Admin (Dashboard), Plans]
+      summary: Update meals option sort order
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlanId'
+        - name: grams
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+        - name: mealsPerDay
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sortOrder]
+              properties:
+                sortOrder:
+                  type: integer
+                  minimum: 0
+      responses:
+        '200':
+          description: Meals option sort order updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      grams:
+                        type: integer
+                      mealsPerDay:
+                        type: integer
+                      sortOrder:
+                        type: integer
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/admin/premium-meals:
+    get:
+      tags: [Admin]
+      summary: List premium meals (admin)
+      description: |
+        Requires dashboard auth with `admin` role.
+        Returns all premium meals (active and inactive), sorted by `sortOrder ASC`, `createdAt DESC`.
+      security:
+        - dashboardBearerAuth: []
+      responses:
+        '200':
+          description: Premium meals list.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PremiumMealAdmin'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [Admin]
+      summary: Create premium meal
+      description: Requires dashboard auth with `admin` role.
+      security:
+        - dashboardBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, extraFeeHalala]
+              properties:
+                name:
+                  oneOf:
+                    - type: string
+                    - $ref: '#/components/schemas/LocalizedText'
+                description:
+                  oneOf:
+                    - type: string
+                    - $ref: '#/components/schemas/LocalizedText'
+                imageUrl:
+                  type: string
+                currency:
+                  type: string
+                  enum: [SAR]
+                extraFeeHalala:
+                  type: integer
+                  minimum: 0
+                isActive:
+                  type: boolean
+                sortOrder:
+                  type: integer
+                  minimum: 0
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/admin/premium-meals/{id}:
+    get:
+      tags: [Admin]
+      summary: Get premium meal (admin)
+      description: Requires dashboard auth with `admin` role.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Premium meal.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/PremiumMealAdmin'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [Admin]
+      summary: Update premium meal
+      description: Requires dashboard auth with `admin` role.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, extraFeeHalala]
+              properties:
+                name:
+                  oneOf:
+                    - type: string
+                    - $ref: '#/components/schemas/LocalizedText'
+                description:
+                  oneOf:
+                    - type: string
+                    - $ref: '#/components/schemas/LocalizedText'
+                imageUrl:
+                  type: string
+                currency:
+                  type: string
+                  enum: [SAR]
+                extraFeeHalala:
+                  type: integer
+                  minimum: 0
+                isActive:
+                  type: boolean
+                sortOrder:
+                  type: integer
+                  minimum: 0
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Admin]
+      summary: Delete premium meal
+      description: Requires dashboard auth with `admin` role.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/admin/premium-meals/{id}/toggle:
+    patch:
+      tags: [Admin]
+      summary: Toggle premium meal active state
+      description: Requires dashboard auth with `admin` role.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Toggled.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      isActive:
+                        type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/admin/premium-meals/{id}/sort:
+    patch:
+      tags: [Admin]
+      summary: Update premium meal sort order
+      description: Requires dashboard auth with `admin` role.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sortOrder]
+              properties:
+                sortOrder:
+                  type: integer
+                  minimum: 0
+      responses:
+        '200':
+          description: Sort order updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      sortOrder:
+                        type: integer
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/admin/premium-meals/{id}/clone:
+    post:
+      tags: [Admin]
+      summary: Clone premium meal
+      description: Requires dashboard auth with `admin` role.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '201':
+          description: Cloned.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/admin/addons:
+    get:
+      tags: [Admin]
+      summary: List addons (admin)
+      description: |
+        Requires dashboard auth with `admin` role.
+        Returns all addons (active and inactive), sorted by `sortOrder ASC`, `createdAt DESC`.
+      security:
+        - dashboardBearerAuth: []
+      responses:
+        '200':
+          description: Addons list.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AddonAdmin'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [Admin]
+      summary: Create addon
+      description: Requires dashboard auth with `admin` role.
+      security:
+        - dashboardBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, priceHalala]
+              properties:
+                name:
+                  oneOf:
+                    - type: string
+                    - $ref: '#/components/schemas/LocalizedText'
+                description:
+                  oneOf:
+                    - type: string
+                    - $ref: '#/components/schemas/LocalizedText'
+                imageUrl:
+                  type: string
+                priceHalala:
+                  type: integer
+                  minimum: 0
+                currency:
+                  type: string
+                  enum: [SAR]
+                type:
+                  type: string
+                  enum: [subscription, one_time]
+                isActive:
+                  type: boolean
+                sortOrder:
+                  type: integer
+                  minimum: 0
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/admin/addons/{id}:
+    get:
+      tags: [Admin]
+      summary: Get addon (admin)
+      description: Requires dashboard auth with `admin` role.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Addon.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/AddonAdmin'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [Admin]
+      summary: Update addon
+      description: Requires dashboard auth with `admin` role.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, priceHalala]
+              properties:
+                name:
+                  oneOf:
+                    - type: string
+                    - $ref: '#/components/schemas/LocalizedText'
+                description:
+                  oneOf:
+                    - type: string
+                    - $ref: '#/components/schemas/LocalizedText'
+                imageUrl:
+                  type: string
+                priceHalala:
+                  type: integer
+                  minimum: 0
+                currency:
+                  type: string
+                  enum: [SAR]
+                type:
+                  type: string
+                  enum: [subscription, one_time]
+                isActive:
+                  type: boolean
+                sortOrder:
+                  type: integer
+                  minimum: 0
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Admin]
+      summary: Delete addon
+      description: Requires dashboard auth with `admin` role.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/admin/addons/{id}/toggle:
+    patch:
+      tags: [Admin]
+      summary: Toggle addon active state
+      description: Requires dashboard auth with `admin` role.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Toggled.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      isActive:
+                        type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/admin/addons/{id}/sort:
+    patch:
+      tags: [Admin]
+      summary: Update addon sort order
+      description: Requires dashboard auth with `admin` role.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sortOrder]
+              properties:
+                sortOrder:
+                  type: integer
+                  minimum: 0
+      responses:
+        '200':
+          description: Sort order updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      sortOrder:
+                        type: integer
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/admin/addons/{id}/clone:
+    post:
+      tags: [Admin]
+      summary: Clone addon
+      description: Requires dashboard auth with `admin` role.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '201':
+          description: Cloned.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
   /api/admin/settings/cutoff:
     put:
@@ -3545,7 +6432,7 @@ paths:
 
   /api/admin/salad-ingredients:
     post:
-      tags: [Admin (Dashboard), Meals / Menu]
+      tags: [Admin]
       summary: Create salad ingredient
       description: Creates an ingredient; supports both new multilingual and legacy name fields.
       security:
@@ -3592,7 +6479,7 @@ paths:
 
   /api/admin/salad-ingredients/{id}:
     patch:
-      tags: [Admin (Dashboard), Meals / Menu]
+      tags: [Admin]
       summary: Update salad ingredient
       description: Partially updates ingredient fields, including per-language name keys.
       security:
@@ -3644,7 +6531,7 @@ paths:
 
   /api/admin/salad-ingredients/{id}/toggle:
     patch:
-      tags: [Admin (Dashboard), Meals / Menu]
+      tags: [Admin]
       summary: Toggle salad ingredient active state
       description: Flips ingredient `isActive` between true and false.
       security:
@@ -3671,10 +6558,36 @@ paths:
           $ref: '#/components/responses/NotFound'
 
   /api/dashboard/plans:
+    get:
+      tags: [Admin (Dashboard), Plans]
+      summary: List plans (dashboard alias)
+      description: Alias of `/api/admin/plans`.
+      security:
+        - dashboardBearerAuth: []
+      responses:
+        '200':
+          description: Plan list.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Plan'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
     post:
       tags: [Admin (Dashboard), Plans]
       summary: Create plan (dashboard alias)
-      description: Alias of `/api/admin/plans`.
+      description: |
+        Alias of `/api/admin/plans`.
+        Uses the same nested payload and validation rules.
       security:
         - dashboardBearerAuth: []
       requestBody:
@@ -3682,26 +6595,112 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              required: [name, daysCount, mealsPerDay, grams, price]
-              properties:
-                name:
-                  oneOf:
-                    - type: string
-                    - $ref: '#/components/schemas/LocalizedText'
-                daysCount:
-                  type: integer
-                mealsPerDay:
-                  type: integer
-                grams:
-                  type: integer
-                price:
-                  type: number
-                skipAllowance:
-                  type: integer
+              $ref: '#/components/schemas/PlanCreateRequest'
+            example:
+              name:
+                ar: "26 يوم"
+                en: "26 Days"
+              daysCount: 26
+              currency: SAR
+              sortOrder: 1
+              isActive: true
+              skipAllowanceCompensatedDays: 3
+              freezePolicy:
+                enabled: true
+                maxDays: 31
+                maxTimes: 1
+              gramsOptions:
+                - grams: 100
+                  sortOrder: 0
+                  isActive: true
+                  mealsOptions:
+                    - mealsPerDay: 1
+                      sortOrder: 0
+                      isActive: true
+                      priceHalala: 259900
+                      compareAtHalala: 289900
+                    - mealsPerDay: 2
+                      sortOrder: 1
+                      isActive: true
+                      priceHalala: 310000
+                      compareAtHalala: 300000
       responses:
         '201':
           description: Plan created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+        '400':
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                ok: false
+                error:
+                  code: VALIDATION_ERROR
+                  message: Invalid plan payload
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/dashboard/plans/{id}:
+    get:
+      tags: [Admin (Dashboard), Plans]
+      summary: Get plan (dashboard alias)
+      description: Alias of `/api/admin/plans/{id}`.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlanId'
+      responses:
+        '200':
+          description: Plan details.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Plan'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [Admin (Dashboard), Plans]
+      summary: Update plan (dashboard alias)
+      description: Alias of `/api/admin/plans/{id}`.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlanId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlanCreateRequest'
+      responses:
+        '200':
+          description: Plan updated.
           content:
             application/json:
               schema:
@@ -3720,6 +6719,1124 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      tags: [Admin (Dashboard), Plans]
+      summary: Delete plan (dashboard alias)
+      description: Alias of `/api/admin/plans/{id}`.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlanId'
+      responses:
+        '200':
+          description: Plan deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/dashboard/plans/{id}/toggle:
+    patch:
+      tags: [Admin (Dashboard), Plans]
+      summary: Toggle plan active state (dashboard alias)
+      description: Alias of `/api/admin/plans/{id}/toggle`.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlanId'
+      responses:
+        '200':
+          description: Plan toggled.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      isActive:
+                        type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/dashboard/plans/{id}/sort:
+    patch:
+      tags: [Admin (Dashboard), Plans]
+      summary: Update plan sort order (dashboard alias)
+      description: Alias of `/api/admin/plans/{id}/sort`.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlanId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sortOrder]
+              properties:
+                sortOrder:
+                  type: integer
+                  minimum: 0
+      responses:
+        '200':
+          description: Sort order updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      sortOrder:
+                        type: integer
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/dashboard/plans/{id}/clone:
+    post:
+      tags: [Admin (Dashboard), Plans]
+      summary: Clone plan (dashboard alias)
+      description: Alias of `/api/admin/plans/{id}/clone`.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlanId'
+      responses:
+        '201':
+          description: Plan cloned.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/dashboard/plans/{id}/grams/clone:
+    post:
+      tags: [Admin (Dashboard), Plans]
+      summary: Clone grams row (dashboard alias)
+      description: Alias of `/api/admin/plans/{id}/grams/clone`.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlanId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [grams, newGrams]
+              properties:
+                grams:
+                  type: integer
+                  minimum: 1
+                newGrams:
+                  type: integer
+                  minimum: 1
+      responses:
+        '201':
+          description: Grams row cloned.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/dashboard/plans/{id}/grams/{grams}:
+    delete:
+      tags: [Admin (Dashboard), Plans]
+      summary: Delete grams row (dashboard alias)
+      description: Alias of `/api/admin/plans/{id}/grams/{grams}`.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlanId'
+        - name: grams
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Grams row deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/dashboard/plans/{id}/grams/{grams}/toggle:
+    patch:
+      tags: [Admin (Dashboard), Plans]
+      summary: Toggle grams row active state (dashboard alias)
+      description: Alias of `/api/admin/plans/{id}/grams/{grams}/toggle`.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlanId'
+        - name: grams
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Grams row toggled.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      grams:
+                        type: integer
+                      isActive:
+                        type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/dashboard/plans/{id}/grams/{grams}/sort:
+    patch:
+      tags: [Admin (Dashboard), Plans]
+      summary: Update grams row sort order (dashboard alias)
+      description: Alias of `/api/admin/plans/{id}/grams/{grams}/sort`.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlanId'
+        - name: grams
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sortOrder]
+              properties:
+                sortOrder:
+                  type: integer
+                  minimum: 0
+      responses:
+        '200':
+          description: Grams sort order updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      grams:
+                        type: integer
+                      sortOrder:
+                        type: integer
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/dashboard/plans/{id}/grams/{grams}/meals/clone:
+    post:
+      tags: [Admin (Dashboard), Plans]
+      summary: Clone meals option within a grams row (dashboard alias)
+      description: Alias of `/api/admin/plans/{id}/grams/{grams}/meals/clone`.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlanId'
+        - name: grams
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mealsPerDay, newMealsPerDay]
+              properties:
+                mealsPerDay:
+                  type: integer
+                  minimum: 1
+                newMealsPerDay:
+                  type: integer
+                  minimum: 1
+      responses:
+        '201':
+          description: Meals option cloned.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/dashboard/plans/{id}/grams/{grams}/meals/{mealsPerDay}:
+    delete:
+      tags: [Admin (Dashboard), Plans]
+      summary: Delete meals option from grams row (dashboard alias)
+      description: Alias of `/api/admin/plans/{id}/grams/{grams}/meals/{mealsPerDay}`.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlanId'
+        - name: grams
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+        - name: mealsPerDay
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Meals option deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/dashboard/plans/{id}/grams/{grams}/meals/{mealsPerDay}/toggle:
+    patch:
+      tags: [Admin (Dashboard), Plans]
+      summary: Toggle meals option active state (dashboard alias)
+      description: Alias of `/api/admin/plans/{id}/grams/{grams}/meals/{mealsPerDay}/toggle`.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlanId'
+        - name: grams
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+        - name: mealsPerDay
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Meals option toggled.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      grams:
+                        type: integer
+                      mealsPerDay:
+                        type: integer
+                      isActive:
+                        type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/dashboard/plans/{id}/grams/{grams}/meals/{mealsPerDay}/sort:
+    patch:
+      tags: [Admin (Dashboard), Plans]
+      summary: Update meals option sort order (dashboard alias)
+      description: Alias of `/api/admin/plans/{id}/grams/{grams}/meals/{mealsPerDay}/sort`.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlanId'
+        - name: grams
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+        - name: mealsPerDay
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sortOrder]
+              properties:
+                sortOrder:
+                  type: integer
+                  minimum: 0
+      responses:
+        '200':
+          description: Meals option sort order updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      grams:
+                        type: integer
+                      mealsPerDay:
+                        type: integer
+                      sortOrder:
+                        type: integer
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/dashboard/premium-meals:
+    get:
+      tags: [Admin]
+      summary: List premium meals (dashboard alias)
+      description: Alias of `/api/admin/premium-meals`.
+      security:
+        - dashboardBearerAuth: []
+      responses:
+        '200':
+          description: Premium meals list.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PremiumMealAdmin'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [Admin]
+      summary: Create premium meal (dashboard alias)
+      description: Alias of `/api/admin/premium-meals`.
+      security:
+        - dashboardBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/dashboard/premium-meals/{id}:
+    get:
+      tags: [Admin]
+      summary: Get premium meal (dashboard alias)
+      description: Alias of `/api/admin/premium-meals/{id}`.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Premium meal.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/PremiumMealAdmin'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [Admin]
+      summary: Update premium meal (dashboard alias)
+      description: Alias of `/api/admin/premium-meals/{id}`.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Admin]
+      summary: Delete premium meal (dashboard alias)
+      description: Alias of `/api/admin/premium-meals/{id}`.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/dashboard/premium-meals/{id}/toggle:
+    patch:
+      tags: [Admin]
+      summary: Toggle premium meal (dashboard alias)
+      description: Alias of `/api/admin/premium-meals/{id}/toggle`.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Toggled.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      isActive:
+                        type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/dashboard/premium-meals/{id}/sort:
+    patch:
+      tags: [Admin]
+      summary: Sort premium meal (dashboard alias)
+      description: Alias of `/api/admin/premium-meals/{id}/sort`.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sortOrder]
+              properties:
+                sortOrder:
+                  type: integer
+                  minimum: 0
+      responses:
+        '200':
+          description: Sort updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      sortOrder:
+                        type: integer
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/dashboard/premium-meals/{id}/clone:
+    post:
+      tags: [Admin]
+      summary: Clone premium meal (dashboard alias)
+      description: Alias of `/api/admin/premium-meals/{id}/clone`.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '201':
+          description: Cloned.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/dashboard/addons:
+    get:
+      tags: [Admin]
+      summary: List addons (dashboard alias)
+      description: Alias of `/api/admin/addons`.
+      security:
+        - dashboardBearerAuth: []
+      responses:
+        '200':
+          description: Addons list.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AddonAdmin'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [Admin]
+      summary: Create addon (dashboard alias)
+      description: Alias of `/api/admin/addons`.
+      security:
+        - dashboardBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/dashboard/addons/{id}:
+    get:
+      tags: [Admin]
+      summary: Get addon (dashboard alias)
+      description: Alias of `/api/admin/addons/{id}`.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Addon.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/AddonAdmin'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [Admin]
+      summary: Update addon (dashboard alias)
+      description: Alias of `/api/admin/addons/{id}`.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Admin]
+      summary: Delete addon (dashboard alias)
+      description: Alias of `/api/admin/addons/{id}`.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/dashboard/addons/{id}/toggle:
+    patch:
+      tags: [Admin]
+      summary: Toggle addon (dashboard alias)
+      description: Alias of `/api/admin/addons/{id}/toggle`.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Toggled.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      isActive:
+                        type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/dashboard/addons/{id}/sort:
+    patch:
+      tags: [Admin]
+      summary: Sort addon (dashboard alias)
+      description: Alias of `/api/admin/addons/{id}/sort`.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sortOrder]
+              properties:
+                sortOrder:
+                  type: integer
+                  minimum: 0
+      responses:
+        '200':
+          description: Sort updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      sortOrder:
+                        type: integer
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/dashboard/addons/{id}/clone:
+    post:
+      tags: [Admin]
+      summary: Clone addon (dashboard alias)
+      description: Alias of `/api/admin/addons/{id}/clone`.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '201':
+          description: Cloned.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
   /api/dashboard/settings/cutoff:
     put:
@@ -4064,7 +8181,7 @@ paths:
 
   /api/dashboard/salad-ingredients:
     post:
-      tags: [Admin (Dashboard), Meals / Menu]
+      tags: [Admin]
       summary: Create salad ingredient (dashboard alias)
       description: Alias of `/api/admin/salad-ingredients`.
       security:
@@ -4109,7 +8226,7 @@ paths:
 
   /api/dashboard/salad-ingredients/{id}:
     patch:
-      tags: [Admin (Dashboard), Meals / Menu]
+      tags: [Admin]
       summary: Update salad ingredient (dashboard alias)
       description: Alias of `/api/admin/salad-ingredients/{id}`.
       security:
@@ -4146,7 +8263,7 @@ paths:
 
   /api/dashboard/salad-ingredients/{id}/toggle:
     patch:
-      tags: [Admin (Dashboard), Meals / Menu]
+      tags: [Admin]
       summary: Toggle salad ingredient state (dashboard alias)
       description: Alias of `/api/admin/salad-ingredients/{id}/toggle`.
       security:

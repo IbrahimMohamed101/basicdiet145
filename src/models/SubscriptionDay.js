@@ -20,6 +20,24 @@ const SubscriptionDaySchema = new mongoose.Schema(
     selections: [{ type: mongoose.Schema.Types.ObjectId, ref: "Meal" }],
     premiumSelections: [{ type: mongoose.Schema.Types.ObjectId, ref: "Meal" }],
     addonsOneTime: [{ type: mongoose.Schema.Types.ObjectId, ref: "Addon" }],
+    premiumUpgradeSelections: [
+      {
+        baseSlotKey: { type: String, required: true },
+        premiumMealId: { type: mongoose.Schema.Types.ObjectId, ref: "PremiumMeal", required: true },
+        unitExtraFeeHalala: { type: Number, min: 0, default: 0 },
+        currency: { type: String, default: "SAR" },
+        consumedAt: { type: Date, default: Date.now },
+      },
+    ],
+    addonCreditSelections: [
+      {
+        addonId: { type: mongoose.Schema.Types.ObjectId, ref: "Addon", required: true },
+        qty: { type: Number, min: 1, default: 1 },
+        unitPriceHalala: { type: Number, min: 0, default: 0 },
+        currency: { type: String, default: "SAR" },
+        consumedAt: { type: Date, default: Date.now },
+      },
+    ],
     assignedByKitchen: { type: Boolean, default: false },
     pickupRequested: { type: Boolean, default: false },
     creditsDeducted: { type: Boolean, default: false },

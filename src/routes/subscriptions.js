@@ -10,6 +10,7 @@ const router = Router();
 router.use(authMiddleware);
 
 router.post("/preview", asyncHandler(controller.previewSubscription));
+router.post("/quote", asyncHandler(controller.quoteSubscription));
 /**
  * @openapi
  * /subscriptions/checkout:
@@ -182,6 +183,12 @@ router.post("/:id/days/:date/pickup/prepare", asyncHandler(controller.preparePic
 router.post("/:id/days/:date/custom-salad", asyncHandler(customSaladController.addCustomSaladToSubscriptionDay));
 router.put("/:id/days/:date/delivery", asyncHandler(controller.updateDeliveryDetailsForDate));
 router.post("/:id/premium/topup", asyncHandler(controller.topupPremium));
+router.post("/:id/premium-credits/topup", asyncHandler(controller.topupPremiumCredits));
+router.post("/:id/addon-credits/topup", asyncHandler(controller.topupAddonCredits));
+router.post("/:id/premium-selections", asyncHandler(controller.consumePremiumSelection));
+router.delete("/:id/premium-selections", asyncHandler(controller.removePremiumSelection));
+router.post("/:id/addon-selections", asyncHandler(controller.consumeAddonSelection));
+router.delete("/:id/addon-selections", asyncHandler(controller.removeAddonSelection));
 router.post("/:id/addons/one-time", asyncHandler(controller.addOneTimeAddon));
 router.put("/:id/delivery", asyncHandler(controller.updateDeliveryDetails));
 

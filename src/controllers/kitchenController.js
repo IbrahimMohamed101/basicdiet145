@@ -7,6 +7,12 @@ const { canTransition } = require("../utils/state");
 const { writeLog } = require("../utils/log");
 const { notifyUser } = require("../utils/notify");
 const { getEffectiveDeliveryDetails } = require("../utils/delivery");
+const { resolveMealsPerDay, applyDayWalletSelections, resolveDayWalletSelections } = require("../utils/subscriptionDaySelectionSync");
+const {
+  sumPremiumRemainingFromBalance,
+  syncPremiumRemainingFromBalance,
+  ensureLegacyPremiumBalanceFromRemaining,
+} = require("../utils/premiumWallet");
 const { fulfillSubscriptionDay } = require("../services/fulfillmentService");
 const { logger } = require("../utils/logger");
 const validateObjectId = require("../utils/validateObjectId");
@@ -18,7 +24,7 @@ async function listDailyOrders(req, res) {
     .populate({ path: "addonsOneTime", select: "name price type" })
     .populate({
       path: "subscriptionId",
-      select: "addonSubscriptions userId deliveryMode deliveryAddress deliveryWindow planId"
+      select: "addonSubscriptions premiumSelections addonSelections userId deliveryMode deliveryAddress deliveryWindow planId selectedMealsPerDay totalMeals"
     })
     .lean();
 
@@ -33,6 +39,13 @@ async function listDailyOrders(req, res) {
       ? (d.deliveryWindowOverride || sub.deliveryWindow)
       : null;
     const customSaladsSnapshot = d.lockedSnapshot && d.lockedSnapshot.customSalads ? d.lockedSnapshot.customSalads : (d.customSalads || []);
+    const dayWalletSelections = resolveDayWalletSelections({ subscription: sub, day: d });
+    const premiumUpgradeSelections = d.lockedSnapshot && Array.isArray(d.lockedSnapshot.premiumUpgradeSelections)
+      ? d.lockedSnapshot.premiumUpgradeSelections
+      : dayWalletSelections.premiumUpgradeSelections;
+    const addonCreditSelections = d.lockedSnapshot && Array.isArray(d.lockedSnapshot.addonCreditSelections)
+      ? d.lockedSnapshot.addonCreditSelections
+      : dayWalletSelections.addonCreditSelections;
 
     return {
       ...d,
@@ -40,6 +53,8 @@ async function listDailyOrders(req, res) {
       effectiveAddress,
       effectiveWindow,
       customSalads: customSaladsSnapshot,
+      premiumUpgradeSelections,
+      addonCreditSelections,
       kitchenAddons: [...subscriptionAddons, ...(d.addonsOneTime || [])],
     };
   });
@@ -71,14 +86,15 @@ async function assignMeals(req, res) {
   const session = await mongoose.startSession();
   session.startTransaction();
   try {
-    const sub = await Subscription.findById(id).populate("planId").session(session).lean();
+    const sub = await Subscription.findById(id).populate("planId").session(session);
     if (!sub) {
       await session.abortTransaction();
       session.endSession();
       return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
     }
     const totalSelected = selections.length + premiumSelections.length;
-    if (totalSelected > sub.planId.mealsPerDay) {
+    const mealsPerDayLimit = resolveMealsPerDay(sub);
+    if (totalSelected > mealsPerDayLimit) {
       await session.abortTransaction();
       session.endSession();
       return errorResponse(res, 400, "DAILY_CAP", "Selections exceed meals per day");
@@ -96,9 +112,23 @@ async function assignMeals(req, res) {
     }
 
     const existingDay = await SubscriptionDay.findOne({ subscriptionId: id, date }).session(session);
+    // Premium accounting uses wallet balance as the source of truth.
+    const legacyUnitExtraFeeHalala =
+      Number.isFinite(Number(sub.premiumPrice)) && Number(sub.premiumPrice) >= 0
+        ? Math.round(Number(sub.premiumPrice) * 100)
+        : 0;
+    const migratedLegacyPremium = ensureLegacyPremiumBalanceFromRemaining(sub, {
+      unitExtraFeeHalala: legacyUnitExtraFeeHalala,
+      currency: "SAR",
+    });
+    if (migratedLegacyPremium) {
+      syncPremiumRemainingFromBalance(sub);
+      await sub.save({ session });
+    }
+
     // MEDIUM AUDIT FIX: Enforce premium entitlement when kitchen updates day selections.
     const previousPremiumCount = existingDay ? existingDay.premiumSelections.length : 0;
-    const premiumEntitlement = Number(sub.premiumRemaining || 0) + previousPremiumCount;
+    const premiumEntitlement = sumPremiumRemainingFromBalance(sub.premiumBalance || []) + previousPremiumCount;
     if (premiumSelections.length > premiumEntitlement) {
       await session.abortTransaction();
       session.endSession();
@@ -153,11 +183,17 @@ async function assignMeals(req, res) {
 
 async function ensureLockedSnapshot(sub, day, session) {
   if (day.lockedSnapshot) return;
+  const { premiumUpgradeSelections, addonCreditSelections } = applyDayWalletSelections({
+    subscription: sub,
+    day,
+  });
   const { address, deliveryWindow } = getEffectiveDeliveryDetails(sub, day);
   day.lockedSnapshot = {
     selections: day.selections,
     premiumSelections: day.premiumSelections,
     addonsOneTime: day.addonsOneTime,
+    premiumUpgradeSelections,
+    addonCreditSelections,
     customSalads: day.customSalads || [],
     subscriptionAddons: sub.addonSubscriptions || [],
     address,

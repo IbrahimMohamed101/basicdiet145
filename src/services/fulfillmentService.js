@@ -1,6 +1,7 @@
 const Subscription = require("../models/Subscription");
 const SubscriptionDay = require("../models/SubscriptionDay");
 const { canTransition } = require("../utils/state");
+const { resolveMealsPerDay, resolveDayWalletSelections } = require("../utils/subscriptionDaySelectionSync");
 
 async function fulfillSubscriptionDay({ subscriptionId, date, dayId, session }) {
   const dayQuery = dayId ? { _id: dayId } : { subscriptionId, date };
@@ -28,7 +29,11 @@ async function fulfillSubscriptionDay({ subscriptionId, date, dayId, session }) 
     return { ok: false, code: "NOT_FOUND", message: "Subscription not found" };
   }
 
-  const mealsToDeduct = sub.planId.mealsPerDay;
+  const mealsToDeduct = resolveMealsPerDay(sub);
+  const { premiumUpgradeSelections, addonCreditSelections } = resolveDayWalletSelections({
+    subscription: sub,
+    day,
+  });
 
   // CR-02 FIX: First update day to fulfilled with snapshot (idempotent)
   const updatedDay = await SubscriptionDay.findOneAndUpdate(
@@ -38,10 +43,14 @@ async function fulfillSubscriptionDay({ subscriptionId, date, dayId, session }) 
         status: "fulfilled",
         fulfilledAt: new Date(),
         creditsDeducted: true,
+        premiumUpgradeSelections,
+        addonCreditSelections,
         fulfilledSnapshot: {
           selections: day.selections,
           premiumSelections: day.premiumSelections,
           addonsOneTime: day.addonsOneTime,
+          premiumUpgradeSelections,
+          addonCreditSelections,
           deductedCredits: mealsToDeduct,
         },
       },

@@ -4,6 +4,7 @@ const { getTomorrowKSADate } = require("../utils/date");
 const { notifyUser } = require("../utils/notify");
 const { writeLog } = require("../utils/log");
 const { getEffectiveDeliveryDetails } = require("../utils/delivery");
+const { resolveMealsPerDay, applyDayWalletSelections } = require("../utils/subscriptionDaySelectionSync");
 const { logger } = require("../utils/logger");
 
 let isCutoffJobRunning = false;
@@ -33,7 +34,11 @@ async function processDailyCutoff() {
         const sub = day.subscriptionId;
         if (!sub || sub.status !== "active") continue;
 
-        const mealsPerDay = sub.planId ? sub.planId.mealsPerDay : 1;
+        const mealsPerDay = resolveMealsPerDay(sub);
+        const { premiumUpgradeSelections, addonCreditSelections } = applyDayWalletSelections({
+            subscription: sub,
+            day,
+        });
 
         // CR-08 FIX: Auto-assign meals if selections are empty
         // Use locked selections if available, otherwise create new
@@ -54,6 +59,8 @@ async function processDailyCutoff() {
             selections: day.selections,
             premiumSelections: day.premiumSelections,
             addonsOneTime: day.addonsOneTime || [],
+            premiumUpgradeSelections,
+            addonCreditSelections,
             customSalads: day.customSalads || [],
             subscriptionAddons: sub.addonSubscriptions || [],
             address,

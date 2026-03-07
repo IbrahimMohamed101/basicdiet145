@@ -5,7 +5,15 @@ const PaymentSchema = new mongoose.Schema(
     provider: { type: String, enum: ["moyasar"], required: true },
     type: {
       type: String,
-      enum: ["premium_topup", "one_time_addon", "subscription_activation", "one_time_order", "custom_salad_day", "custom_salad_order"],
+      enum: [
+        "premium_topup",
+        "addon_topup",
+        "one_time_addon",
+        "subscription_activation",
+        "one_time_order",
+        "custom_salad_day",
+        "custom_salad_order",
+      ],
       required: true,
     },
     status: {

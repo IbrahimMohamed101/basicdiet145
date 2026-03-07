@@ -1,6 +1,7 @@
 const Subscription = require("../models/Subscription");
 const SubscriptionDay = require("../models/SubscriptionDay");
 const Setting = require("../models/Setting");
+const { resolveMealsPerDay } = require("../utils/subscriptionDaySelectionSync");
 
 function normalizeSkipAllowance(value) {
   const parsed = Number(value);
@@ -89,7 +90,7 @@ async function applySkipForDate({ sub, date, session, allowLocked = false }) {
     await enforceSkipAllowanceOrThrow({ subscriptionId: sub._id, daysToSkip: 1, session });
   }
 
-  const mealsToDeduct = sub.planId.mealsPerDay;
+  const mealsToDeduct = resolveMealsPerDay(sub);
 
   // CR-01 FIX: Use atomic conditional update to prevent race condition
   // Only deduct if day was successfully marked as skipped
