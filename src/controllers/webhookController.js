@@ -34,23 +34,41 @@ function normalizePaymentStatus(payload, eventType) {
   return undefined;
 }
 
+function redactId(value) {
+  if (value === undefined || value === null) return undefined;
+  const text = String(value);
+  if (text.length <= 8) return text;
+  return `${text.slice(0, 4)}...${text.slice(-4)}`;
+}
+
 async function handleMoyasarWebhook(req, res) {
   const payload = req.body || {};
-  const secret = process.env.MOYASAR_WEBHOOK_SECRET;
-  // SECURITY FIX: Fail closed when webhook secret is missing or mismatched.
-  if (!secret || payload.secret_token !== secret) {
-    return errorResponse(res, 401, "UNAUTHORIZED", "Invalid webhook token" );
-  }
-
   const eventType = payload.type || payload.event;
   const data = payload.data || payload.payment || payload;
   const paymentStatus = normalizePaymentStatus(data, eventType);
   const isPaid = paymentStatus === "paid";
-
   const paymentId = data.id;
   const invoiceId = data.invoice_id || data.invoiceId;
+  const logContext = {
+    eventType: eventType || null,
+    paymentStatus: paymentStatus || null,
+    paymentId: redactId(paymentId),
+    invoiceId: redactId(invoiceId),
+    hasSecretToken: Boolean(payload.secret_token),
+  };
+
+  const secret = process.env.MOYASAR_WEBHOOK_SECRET;
+  // SECURITY FIX: Fail closed when webhook secret is missing or mismatched.
+  if (!secret || payload.secret_token !== secret) {
+    logger.warn("Moyasar webhook rejected: invalid token", {
+      ...logContext,
+      hasConfiguredSecret: Boolean(secret),
+    });
+    return errorResponse(res, 401, "UNAUTHORIZED", "Invalid webhook token" );
+  }
 
   if (!paymentId && !invoiceId) {
+    logger.warn("Moyasar webhook rejected: missing payment identifiers", logContext);
     return errorResponse(res, 400, "INVALID", "Missing payment identifiers" );
   }
 
@@ -69,17 +87,26 @@ async function handleMoyasarWebhook(req, res) {
     if (!payment) {
       await session.abortTransaction();
       session.endSession();
+      logger.warn("Moyasar webhook rejected: payment not found", logContext);
       return errorResponse(res, 404, "NOT_FOUND", "Payment not found" );
     }
 
     if (paymentId && payment.providerPaymentId && payment.providerPaymentId !== paymentId) {
       await session.abortTransaction();
       session.endSession();
+      logger.warn("Moyasar webhook rejected: payment id mismatch", {
+        ...logContext,
+        expectedPaymentId: redactId(payment.providerPaymentId),
+      });
       return errorResponse(res, 409, "MISMATCH", "Payment ID mismatch" );
     }
     if (invoiceId && payment.providerInvoiceId && payment.providerInvoiceId !== invoiceId) {
       await session.abortTransaction();
       session.endSession();
+      logger.warn("Moyasar webhook rejected: invoice id mismatch", {
+        ...logContext,
+        expectedInvoiceId: redactId(payment.providerInvoiceId),
+      });
       return errorResponse(res, 409, "MISMATCH", "Invoice ID mismatch" );
     }
     if (paymentId && !payment.providerPaymentId) payment.providerPaymentId = paymentId;
@@ -89,11 +116,21 @@ async function handleMoyasarWebhook(req, res) {
     if (data.amount !== undefined && Number(data.amount) !== Number(payment.amount)) {
       await session.abortTransaction();
       session.endSession();
+      logger.warn("Moyasar webhook rejected: amount mismatch", {
+        ...logContext,
+        receivedAmount: Number(data.amount),
+        expectedAmount: Number(payment.amount),
+      });
       return errorResponse(res, 409, "MISMATCH", "Amount mismatch" );
     }
     if (data.currency && String(data.currency).toUpperCase() !== String(payment.currency || "").toUpperCase()) {
       await session.abortTransaction();
       session.endSession();
+      logger.warn("Moyasar webhook rejected: currency mismatch", {
+        ...logContext,
+        receivedCurrency: String(data.currency).toUpperCase(),
+        expectedCurrency: String(payment.currency || "").toUpperCase(),
+      });
       return errorResponse(res, 409, "MISMATCH", "Currency mismatch" );
     }
 
@@ -106,6 +143,11 @@ async function handleMoyasarWebhook(req, res) {
     if (wasApplied) {
       await session.commitTransaction();
       session.endSession();
+      logger.info("Moyasar webhook ignored: payment already applied", {
+        ...logContext,
+        internalPaymentId: String(payment._id),
+        paymentType: payment.type,
+      });
       return res.status(200).json({ ok: true });
     }
 
@@ -129,6 +171,12 @@ async function handleMoyasarWebhook(req, res) {
       }
       await session.commitTransaction();
       session.endSession();
+      logger.info("Moyasar webhook processed: non-paid status", {
+        ...logContext,
+        internalPaymentId: String(payment._id),
+        paymentType: payment.type,
+        status: payment.status,
+      });
       return res.status(200).json({ ok: true, message: "Ignored non-paid status" });
     }
 
@@ -146,6 +194,11 @@ async function handleMoyasarWebhook(req, res) {
     if (!claim) {
       await session.commitTransaction();
       session.endSession();
+      logger.info("Moyasar webhook ignored: already claimed by another request", {
+        ...logContext,
+        internalPaymentId: String(payment._id),
+        paymentType: payment.type,
+      });
       return res.status(200).json({ ok: true });
     }
 
@@ -538,13 +591,24 @@ async function handleMoyasarWebhook(req, res) {
 
     await session.commitTransaction();
     session.endSession();
+    logger.info("Moyasar webhook processed", {
+      ...logContext,
+      internalPaymentId: String(payment._id),
+      paymentType: payment.type,
+      applied,
+      unappliedReason: unappliedReason || null,
+    });
     return res.status(200).json({ ok: true });
   } catch (err) {
     if (session.inTransaction()) {
       await session.abortTransaction();
     }
     session.endSession();
-    logger.error("webhookController.handleMoyasarWebhook failed", { error: err.message, stack: err.stack });
+    logger.error("webhookController.handleMoyasarWebhook failed", {
+      error: err.message,
+      stack: err.stack,
+      ...logContext,
+    });
     return errorResponse(res, 500, "INTERNAL", "Webhook processing failed");
   }
 }
