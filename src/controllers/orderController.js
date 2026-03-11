@@ -3,6 +3,7 @@ const { addDays } = require("date-fns");
 const Order = require("../models/Order");
 const Meal = require("../models/Meal");
 const Payment = require("../models/Payment");
+const Delivery = require("../models/Delivery");
 const Setting = require("../models/Setting");
 const {
   getTomorrowKSADate,
@@ -25,6 +26,80 @@ async function getSettingValue(key, fallback) {
 function addDaysToKSADateString(dateStr, days) {
   const base = new Date(`${dateStr}T00:00:00+03:00`);
   return toKSADateString(addDays(base, days));
+}
+
+function serializePaymentStatus(order, payment) {
+  const effectiveStatus = payment && payment.status ? payment.status : order.paymentStatus || null;
+  return {
+    orderId: String(order._id),
+    orderStatus: order.status,
+    paymentStatus: effectiveStatus,
+    orderPaymentStatus: order.paymentStatus || null,
+    payment: payment
+      ? {
+        id: String(payment._id),
+        provider: payment.provider,
+        type: payment.type,
+        status: payment.status,
+        amount: payment.amount,
+        currency: payment.currency,
+        providerInvoiceId: payment.providerInvoiceId || null,
+        providerPaymentId: payment.providerPaymentId || null,
+        paidAt: payment.paidAt || null,
+        createdAt: payment.createdAt || null,
+        updatedAt: payment.updatedAt || null,
+      }
+      : null,
+  };
+}
+
+async function cancelOrderForClient({ order, session, requireUnpaid = false }) {
+  if (order.status === "canceled") {
+    return { order, payment: null, idempotent: true };
+  }
+
+  if (!["created", "confirmed"].includes(order.status)) {
+    const err = new Error("Order cannot be canceled after preparation starts");
+    err.status = 409;
+    err.code = "INVALID_TRANSITION";
+    throw err;
+  }
+
+  let payment = null;
+  if (order.paymentId) {
+    payment = await Payment.findById(order.paymentId).session(session);
+  }
+  if (!payment) {
+    payment = await Payment.findOne({ orderId: order._id }).sort({ createdAt: -1 }).session(session);
+  }
+
+  const effectivePaymentStatus = payment && payment.status ? payment.status : order.paymentStatus || null;
+  if (requireUnpaid && effectivePaymentStatus && effectivePaymentStatus !== "initiated") {
+    const err = new Error("Adjusted delivery date can only be rejected before payment completes");
+    err.status = 409;
+    err.code = "INVALID_TRANSITION";
+    throw err;
+  }
+
+  order.status = "canceled";
+  order.canceledAt = new Date();
+  if (order.paymentStatus === "initiated") {
+    order.paymentStatus = "canceled";
+  }
+  await order.save({ session });
+
+  if (payment && payment.status === "initiated") {
+    payment.status = "canceled";
+    await payment.save({ session });
+  }
+
+  await Delivery.updateOne(
+    { orderId: order._id, status: { $ne: "delivered" } },
+    { $set: { status: "canceled" } },
+    { session }
+  );
+
+  return { order, payment, idempotent: false };
 }
 
 async function checkoutOrder(req, res) {
@@ -135,7 +210,9 @@ async function checkoutOrder(req, res) {
             userId: req.userId,
             status: "created",
             deliveryMode,
+            requestedDeliveryDate: requestedDate,
             deliveryDate: effectiveDate,
+            deliveryDateAdjusted: dateAdjusted,
             items,
             customSalads: customSaladSnapshots,
             pricing: {
@@ -170,7 +247,9 @@ async function checkoutOrder(req, res) {
               type: "one_time_order",
               orderId: String(order._id),
               userId: String(req.userId),
+              requestedDeliveryDate: requestedDate,
               deliveryDate: effectiveDate,
+              deliveryDateAdjusted: dateAdjusted,
             },
           },
         ],
@@ -196,6 +275,7 @@ async function checkoutOrder(req, res) {
         ok: true,
         data: {
           orderId: order._id,
+          requestedDeliveryDate: requestedDate,
           deliveryDate: effectiveDate,
           dateAdjusted,
           payment_url: `https://mock-payment.com/orders/${order._id}`,
@@ -305,9 +385,151 @@ async function getOrder(req, res) {
   return res.status(200).json({ ok: true, data: order });
 }
 
+async function cancelOrder(req, res) {
+  const { id } = req.params;
+  try {
+    validateObjectId(id, "orderId");
+  } catch (err) {
+    return errorResponse(res, err.status, err.code, err.message);
+  }
+
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  try {
+    const order = await Order.findOne({ _id: id, userId: req.userId }).session(session);
+    if (!order) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 404, "NOT_FOUND", "Order not found");
+    }
+
+    const result = await cancelOrderForClient({ order, session });
+
+    await session.commitTransaction();
+    session.endSession();
+
+    await writeLog({
+      entityType: "order",
+      entityId: order._id,
+      action: "order_canceled_by_client",
+      byUserId: req.userId,
+      byRole: "client",
+      meta: { orderId: String(order._id) },
+    });
+
+    return res.status(200).json({ ok: true, data: result.order, ...(result.idempotent ? { idempotent: true } : {}) });
+  } catch (err) {
+    if (session.inTransaction()) {
+      await session.abortTransaction();
+    }
+    session.endSession();
+    if (err && err.code && err.status) {
+      return errorResponse(res, err.status, err.code, err.message);
+    }
+    logger.error("orderController.cancelOrder failed", { error: err.message, stack: err.stack });
+    return errorResponse(res, 500, "INTERNAL", "Order cancellation failed");
+  }
+}
+
+async function rejectAdjustedDeliveryDate(req, res) {
+  const { id } = req.params;
+  try {
+    validateObjectId(id, "orderId");
+  } catch (err) {
+    return errorResponse(res, err.status, err.code, err.message);
+  }
+
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  try {
+    const order = await Order.findOne({ _id: id, userId: req.userId }).session(session);
+    if (!order) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 404, "NOT_FOUND", "Order not found");
+    }
+
+    const requestedDeliveryDate = String(order.requestedDeliveryDate || "").trim();
+    if (!order.deliveryDateAdjusted || !requestedDeliveryDate || requestedDeliveryDate === String(order.deliveryDate)) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 409, "INVALID_TRANSITION", "Order does not have an adjusted delivery date");
+    }
+
+    const result = await cancelOrderForClient({ order, session, requireUnpaid: true });
+
+    await session.commitTransaction();
+    session.endSession();
+
+    await writeLog({
+      entityType: "order",
+      entityId: order._id,
+      action: "order_adjusted_date_rejected_by_client",
+      byUserId: req.userId,
+      byRole: "client",
+      meta: {
+        orderId: String(order._id),
+        requestedDeliveryDate,
+        adjustedDeliveryDate: order.deliveryDate,
+      },
+    });
+
+    return res.status(200).json({
+      ok: true,
+      data: {
+        order: result.order,
+        requestedDeliveryDate,
+        adjustedDeliveryDate: order.deliveryDate,
+        rejected: true,
+      },
+      ...(result.idempotent ? { idempotent: true } : {}),
+    });
+  } catch (err) {
+    if (session.inTransaction()) {
+      await session.abortTransaction();
+    }
+    session.endSession();
+    if (err && err.code && err.status) {
+      return errorResponse(res, err.status, err.code, err.message);
+    }
+    logger.error("orderController.rejectAdjustedDeliveryDate failed", { error: err.message, stack: err.stack });
+    return errorResponse(res, 500, "INTERNAL", "Adjusted delivery date rejection failed");
+  }
+}
+
+async function getOrderPaymentStatus(req, res) {
+  const { id } = req.params;
+  try {
+    validateObjectId(id, "orderId");
+  } catch (err) {
+    return errorResponse(res, err.status, err.code, err.message);
+  }
+
+  const order = await Order.findOne({ _id: id, userId: req.userId }).lean();
+  if (!order) {
+    return errorResponse(res, 404, "NOT_FOUND", "Order not found");
+  }
+
+  let payment = null;
+  if (order.paymentId) {
+    payment = await Payment.findById(order.paymentId).lean();
+  }
+  if (!payment) {
+    payment = await Payment.findOne({ orderId: order._id }).sort({ createdAt: -1 }).lean();
+  }
+
+  return res.status(200).json({
+    ok: true,
+    data: serializePaymentStatus(order, payment),
+  });
+}
+
 module.exports = {
   checkoutOrder,
   confirmOrder,
   listOrders,
   getOrder,
+  cancelOrder,
+  rejectAdjustedDeliveryDate,
+  getOrderPaymentStatus,
 };

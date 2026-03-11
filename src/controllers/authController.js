@@ -53,6 +53,9 @@ async function verifyOtp(req, res) {
     if (!coreUser) {
       coreUser = await User.create({ phone, role: "client" });
     }
+    if (coreUser.isActive === false) {
+      return errorResponse(res, 403, "FORBIDDEN", "User account is inactive");
+    }
     if (!appUser.coreUserId || String(appUser.coreUserId) !== String(coreUser._id)) {
       appUser.coreUserId = coreUser._id;
       await appUser.save();
@@ -73,8 +76,13 @@ async function verifyOtp(req, res) {
   }
 }
 
+function normalizeDeviceToken(token) {
+  const normalized = String(token || "").trim();
+  return normalized || null;
+}
+
 async function updateDeviceToken(req, res) {
-  const { token } = req.body || {};
+  const token = normalizeDeviceToken((req.body || {}).token);
   if (!token) {
     return errorResponse(res, 400, "INVALID", "Missing token");
   }
@@ -82,4 +90,18 @@ async function updateDeviceToken(req, res) {
   return res.status(200).json({ ok: true });
 }
 
-module.exports = { requestOtp, verifyOtp, updateDeviceToken };
+async function deleteDeviceToken(req, res) {
+  const token = normalizeDeviceToken((req.body || {}).token);
+  if (!token) {
+    return errorResponse(res, 400, "INVALID", "Missing token");
+  }
+
+  await Promise.all([
+    User.findByIdAndUpdate(req.userId, { $pull: { fcmTokens: token } }),
+    AppUser.updateMany({ coreUserId: req.userId }, { $pull: { fcmTokens: token } }),
+  ]);
+
+  return res.status(200).json({ ok: true });
+}
+
+module.exports = { requestOtp, verifyOtp, updateDeviceToken, deleteDeviceToken };

@@ -71,6 +71,11 @@ async function listActiveIngredients(req, res) {
   return res.status(200).json({ ok: true, data: resolved });
 }
 
+async function listIngredientsAdmin(_req, res) {
+  const items = await SaladIngredient.find().sort({ createdAt: -1 }).lean();
+  return res.status(200).json({ ok: true, data: items });
+}
+
 async function createIngredient(req, res) {
   try {
     const { price, calories, maxQuantity } = req.body || {};
@@ -162,6 +167,7 @@ async function toggleIngredient(req, res) {
 
 module.exports = {
   listActiveIngredients,
+  listIngredientsAdmin,
   createIngredient,
   updateIngredient,
   toggleIngredient,

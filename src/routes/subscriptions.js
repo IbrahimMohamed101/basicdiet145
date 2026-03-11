@@ -9,8 +9,10 @@ const router = Router();
 
 router.use(authMiddleware);
 
-router.post("/preview", asyncHandler(controller.previewSubscription));
+router.get("/", asyncHandler(controller.listCurrentUserSubscriptions));
 router.post("/quote", asyncHandler(controller.quoteSubscription));
+router.get("/checkout-drafts/:draftId", asyncHandler(controller.getCheckoutDraftStatus));
+router.post("/checkout-drafts/:draftId/verify-payment", asyncHandler(controller.verifyCheckoutDraftPayment));
 /**
  * @openapi
  * /subscriptions/checkout:
@@ -46,8 +48,16 @@ router.post("/quote", asyncHandler(controller.quoteSubscription));
  *         description: Checkout initiated
  */
 router.post("/checkout", checkoutLimiter, asyncHandler(controller.checkoutSubscription));
-router.post("/:id/activate", asyncHandler(controller.activateSubscription)); // Mock activation — dev only
+if (process.env.NODE_ENV !== "production") {
+  router.post("/:id/activate", asyncHandler(controller.activateSubscription)); // Mock activation — dev only
+}
 router.get("/:id", asyncHandler(controller.getSubscription));
+router.get("/:id/wallet", asyncHandler(controller.getSubscriptionWallet));
+router.get("/:id/wallet/history", asyncHandler(controller.getSubscriptionWalletHistory));
+router.get("/:id/wallet/topups/:paymentId/status", asyncHandler(controller.getWalletTopupPaymentStatus));
+router.post("/:id/wallet/topups/:paymentId/verify", asyncHandler(controller.verifyWalletTopupPayment));
+router.post("/:id/freeze", asyncHandler(controller.freezeSubscription));
+router.post("/:id/unfreeze", asyncHandler(controller.unfreezeSubscription));
 router.get("/:id/days", authMiddleware, asyncHandler(controller.getSubscriptionDays));
 router.get("/:id/today", asyncHandler(controller.getSubscriptionToday));
 router.get("/:id/days/:date", asyncHandler(controller.getSubscriptionDay));
@@ -93,6 +103,7 @@ router.put("/:id/days/:date/selection", asyncHandler(controller.updateDaySelecti
  *         description: Day skipped
  */
 router.post("/:id/days/:date/skip", asyncHandler(controller.skipDay));
+router.post("/:id/days/:date/unskip", asyncHandler(controller.unskipDay));
 /**
  * @openapi
  * /subscriptions/{id}/skip-range:

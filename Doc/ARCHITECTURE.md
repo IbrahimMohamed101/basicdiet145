@@ -237,7 +237,7 @@ sequenceDiagram
     participant DB
 
     User->>Mobile: Top-up premium credits
-    Mobile->>API: POST /api/subscriptions/{id}/premium/topup
+    Mobile->>API: POST /api/subscriptions/{id}/premium-credits/topup
     API->>DB: Create Payment record<br/>status: initiated
     API->>Moyasar: Create payment URL
     Moyasar-->>API: {payment_url}
@@ -503,7 +503,7 @@ graph LR
     Subs --> SubsDetail["/:id"]
     Subs --> SubsDays["/:id/days"]
     Subs --> SubsDaySkip["/:id/days/:date/skip"]
-    Subs --> SubsPremium["/:id/premium/topup"]
+    Subs --> SubsPremium["/:id/premium-credits/topup"]
     
     Orders --> OrdersCheckout["/checkout"]
     Orders --> OrdersDetail["/:id"]

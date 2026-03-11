@@ -225,7 +225,9 @@ Premium meals consume **premium credits**.
 - Current enforcement is **soft**: selection allowed even if insufficient
 - API flags `requiresPremiumTopup` when balance is low
 
-**Endpoint:** `POST /api/subscriptions/{id}/premium/topup`
+**Endpoint:** `POST /api/subscriptions/{id}/premium-credits/topup`
+
+Legacy compatibility alias: `POST /api/subscriptions/{id}/premium/topup` is deprecated and scheduled for removal no earlier than `2026-06-30`.
 
 ---
 

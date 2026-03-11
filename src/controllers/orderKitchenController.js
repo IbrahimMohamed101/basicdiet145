@@ -23,7 +23,12 @@ async function transitionOrder(req, res, toStatus) {
     return errorResponse(res, 404, "NOT_FOUND", "Order not found");
   }
 
-  if (!canOrderTransition(order.status, toStatus)) {
+  const canDirectPickupFulfill =
+    toStatus === "fulfilled"
+    && order.deliveryMode === "pickup"
+    && ["preparing", "ready_for_pickup"].includes(order.status);
+
+  if (!canDirectPickupFulfill && !canOrderTransition(order.status, toStatus)) {
     return errorResponse(res, 409, "INVALID_TRANSITION", "Invalid state transition");
   }
 
@@ -32,6 +37,9 @@ async function transitionOrder(req, res, toStatus) {
   }
   if (toStatus === "ready_for_pickup" && order.deliveryMode !== "pickup") {
     return errorResponse(res, 400, "INVALID", "Order is not pickup");
+  }
+  if (toStatus === "fulfilled" && order.deliveryMode !== "pickup") {
+    return errorResponse(res, 400, "INVALID", "Only pickup orders can be fulfilled by kitchen");
   }
 
   const fromStatus = order.status;

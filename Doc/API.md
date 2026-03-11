@@ -5,6 +5,7 @@
 Base mount behavior from code:
 - App root endpoints: `/`, `/health`, `/api-docs`, `/api-docs/swagger.yaml`
 - API prefix for route modules: `/api`
+- Canonical admin contract is documented under `/api/admin/*`; `/api/dashboard/*` is a runtime alias to the same handlers except dashboard auth under `/api/dashboard/auth/*`
 
 ### Route files + handlers (complete)
 
@@ -23,26 +24,41 @@ Base mount behavior from code:
 | `src/routes/appAuth.js` | POST | `/api/app/register` | `appAuthController.register` (`authMiddleware`) |
 | `src/routes/plans.js` | GET | `/api/plans` | `planController.listPlans` (`authMiddleware`) |
 | `src/routes/plans.js` | GET | `/api/plans/:id` | `planController.getPlan` (`authMiddleware`) |
-| `src/routes/subscriptions.js` | POST | `/api/subscriptions/preview` | `subscriptionController.previewSubscription` (`authMiddleware`) |
+| `src/routes/meals.js` | GET | `/api/meals` | `mealController.listMeals` |
+| `src/routes/subscriptions.js` | GET | `/api/subscriptions` | `subscriptionController.listCurrentUserSubscriptions` (`authMiddleware`) |
+| `src/routes/subscriptions.js` | POST | `/api/subscriptions/quote` | `subscriptionController.quoteSubscription` (`authMiddleware`) |
+| `src/routes/subscriptions.js` | GET | `/api/subscriptions/checkout-drafts/:draftId` | `subscriptionController.getCheckoutDraftStatus` (`authMiddleware`) |
+| `src/routes/subscriptions.js` | POST | `/api/subscriptions/checkout-drafts/:draftId/verify-payment` | `subscriptionController.verifyCheckoutDraftPayment` (`authMiddleware`) |
 | `src/routes/subscriptions.js` | POST | `/api/subscriptions/checkout` | `subscriptionController.checkoutSubscription` (`authMiddleware`, `checkoutLimiter`) |
-| `src/routes/subscriptions.js` | POST | `/api/subscriptions/:id/activate` | `subscriptionController.activateSubscription` (`authMiddleware`) |
+| `src/routes/subscriptions.js` | POST | `/api/subscriptions/:id/activate` | `subscriptionController.activateSubscription` (`authMiddleware`, dev only; route not mounted in production) |
 | `src/routes/subscriptions.js` | GET | `/api/subscriptions/:id` | `subscriptionController.getSubscription` (`authMiddleware`) |
+| `src/routes/subscriptions.js` | GET | `/api/subscriptions/:id/wallet` | `subscriptionController.getSubscriptionWallet` (`authMiddleware`) |
+| `src/routes/subscriptions.js` | GET | `/api/subscriptions/:id/wallet/history` | `subscriptionController.getSubscriptionWalletHistory` (`authMiddleware`) |
+| `src/routes/subscriptions.js` | GET | `/api/subscriptions/:id/wallet/topups/:paymentId/status` | `subscriptionController.getWalletTopupPaymentStatus` (`authMiddleware`) |
+| `src/routes/subscriptions.js` | POST | `/api/subscriptions/:id/wallet/topups/:paymentId/verify` | `subscriptionController.verifyWalletTopupPayment` (`authMiddleware`) |
+| `src/routes/subscriptions.js` | POST | `/api/subscriptions/:id/freeze` | `subscriptionController.freezeSubscription` (`authMiddleware`) |
+| `src/routes/subscriptions.js` | POST | `/api/subscriptions/:id/unfreeze` | `subscriptionController.unfreezeSubscription` (`authMiddleware`) |
 | `src/routes/subscriptions.js` | GET | `/api/subscriptions/:id/days` | `subscriptionController.getSubscriptionDays` (`authMiddleware`) |
 | `src/routes/subscriptions.js` | GET | `/api/subscriptions/:id/today` | `subscriptionController.getSubscriptionToday` (`authMiddleware`) |
 | `src/routes/subscriptions.js` | GET | `/api/subscriptions/:id/days/:date` | `subscriptionController.getSubscriptionDay` (`authMiddleware`) |
 | `src/routes/subscriptions.js` | PUT | `/api/subscriptions/:id/days/:date/selection` | `subscriptionController.updateDaySelection` (`authMiddleware`) |
 | `src/routes/subscriptions.js` | POST | `/api/subscriptions/:id/days/:date/skip` | `subscriptionController.skipDay` (`authMiddleware`) |
+| `src/routes/subscriptions.js` | POST | `/api/subscriptions/:id/days/:date/unskip` | `subscriptionController.unskipDay` (`authMiddleware`) |
 | `src/routes/subscriptions.js` | POST | `/api/subscriptions/:id/skip-range` | `subscriptionController.skipRange` (`authMiddleware`) |
 | `src/routes/subscriptions.js` | POST | `/api/subscriptions/:id/days/:date/pickup/prepare` | `subscriptionController.preparePickup` (`authMiddleware`) |
 | `src/routes/subscriptions.js` | POST | `/api/subscriptions/:id/days/:date/custom-salad` | `customSaladController.addCustomSaladToSubscriptionDay` (`authMiddleware`) |
 | `src/routes/subscriptions.js` | PUT | `/api/subscriptions/:id/days/:date/delivery` | `subscriptionController.updateDeliveryDetailsForDate` (`authMiddleware`) |
-| `src/routes/subscriptions.js` | POST | `/api/subscriptions/:id/premium/topup` | `subscriptionController.topupPremium` (`authMiddleware`) |
+| `src/routes/subscriptions.js` | POST | `/api/subscriptions/:id/premium-credits/topup` | `subscriptionController.topupPremiumCredits` (`authMiddleware`) |
+| `src/routes/subscriptions.js` | POST | `/api/subscriptions/:id/premium/topup` | `subscriptionController.topupPremium` (`authMiddleware`, deprecated legacy alias; sunset no earlier than `2026-06-30`) |
 | `src/routes/subscriptions.js` | POST | `/api/subscriptions/:id/addons/one-time` | `subscriptionController.addOneTimeAddon` (`authMiddleware`) |
 | `src/routes/subscriptions.js` | PUT | `/api/subscriptions/:id/delivery` | `subscriptionController.updateDeliveryDetails` (`authMiddleware`) |
 | `src/routes/orders.js` | POST | `/api/orders/checkout` | `orderController.checkoutOrder` (`authMiddleware`, `checkoutLimiter`) |
 | `src/routes/orders.js` | POST | `/api/orders/:id/confirm` | `orderController.confirmOrder` (`authMiddleware`) |
+| `src/routes/orders.js` | GET | `/api/orders/:id/payment-status` | `orderController.getOrderPaymentStatus` (`authMiddleware`) |
+| `src/routes/orders.js` | POST | `/api/orders/:id/reject-adjusted-date` | `orderController.rejectAdjustedDeliveryDate` (`authMiddleware`) |
 | `src/routes/orders.js` | POST | `/api/orders/:id/items/custom-salad` | `customSaladController.addCustomSaladToOrder` (`authMiddleware`) |
 | `src/routes/orders.js` | GET | `/api/orders` | `orderController.listOrders` (`authMiddleware`) |
+| `src/routes/orders.js` | DELETE | `/api/orders/:id` | `orderController.cancelOrder` (`authMiddleware`) |
 | `src/routes/orders.js` | GET | `/api/orders/:id` | `orderController.getOrder` (`authMiddleware`) |
 | `src/routes/saladIngredients.js` | GET | `/api/salad-ingredients` | `saladIngredientController.listActiveIngredients` |
 | `src/routes/customSalads.js` | POST | `/api/custom-salads/price` | `customSaladController.previewCustomSaladPrice` (`authMiddleware`) |
@@ -54,8 +70,10 @@ Base mount behavior from code:
 | `src/routes/courier.js` | PUT | `/api/courier/orders/:id/delivered` | `orderCourierController.markDelivered` (`authMiddleware`, `roleMiddleware[courier,admin]`) |
 | `src/routes/courier.js` | PUT | `/api/courier/orders/:id/cancel` | `orderCourierController.markCancelled` (`authMiddleware`, `roleMiddleware[courier,admin]`) |
 | `src/routes/kitchen.js` | GET | `/api/kitchen/days/:date` | `kitchenController.listDailyOrders` (`authMiddleware`, `roleMiddleware[kitchen,admin]`) |
+| `src/routes/kitchen.js` | POST | `/api/kitchen/days/:date/lock` | `kitchenController.bulkLockDaysByDate` (`authMiddleware`, `roleMiddleware[kitchen,admin]`) |
 | `src/routes/kitchen.js` | PUT | `/api/kitchen/subscriptions/:id/days/:date/assign` | `kitchenController.assignMeals` (`authMiddleware`, `roleMiddleware[kitchen,admin]`) |
 | `src/routes/kitchen.js` | POST | `/api/kitchen/subscriptions/:id/days/:date/lock` | `kitchenController.transitionDay(..., \"locked\")` (`authMiddleware`, `roleMiddleware[kitchen,admin]`) |
+| `src/routes/kitchen.js` | POST | `/api/kitchen/subscriptions/:id/days/:date/reopen` | `kitchenController.reopenLockedDay` (`authMiddleware`, `roleMiddleware[kitchen,admin]`) |
 | `src/routes/kitchen.js` | POST | `/api/kitchen/subscriptions/:id/days/:date/in-preparation` | `kitchenController.transitionDay(..., \"in_preparation\")` (`authMiddleware`, `roleMiddleware[kitchen,admin]`) |
 | `src/routes/kitchen.js` | POST | `/api/kitchen/subscriptions/:id/days/:date/out-for-delivery` | `kitchenController.transitionDay(..., \"out_for_delivery\")` (`authMiddleware`, `roleMiddleware[kitchen,admin]`) |
 | `src/routes/kitchen.js` | POST | `/api/kitchen/subscriptions/:id/days/:date/ready-for-pickup` | `kitchenController.transitionDay(..., \"ready_for_pickup\")` (`authMiddleware`, `roleMiddleware[kitchen,admin]`) |
@@ -64,16 +82,46 @@ Base mount behavior from code:
 | `src/routes/kitchen.js` | POST | `/api/kitchen/orders/:id/preparing` | `orderKitchenController.transitionOrder(..., \"preparing\")` (`authMiddleware`, `roleMiddleware[kitchen,admin]`) |
 | `src/routes/kitchen.js` | POST | `/api/kitchen/orders/:id/out-for-delivery` | `orderKitchenController.transitionOrder(..., \"out_for_delivery\")` (`authMiddleware`, `roleMiddleware[kitchen,admin]`) |
 | `src/routes/kitchen.js` | POST | `/api/kitchen/orders/:id/ready-for-pickup` | `orderKitchenController.transitionOrder(..., \"ready_for_pickup\")` (`authMiddleware`, `roleMiddleware[kitchen,admin]`) |
+| `src/routes/kitchen.js` | POST | `/api/kitchen/orders/:id/fulfilled` | `orderKitchenController.transitionOrder(..., \"fulfilled\")` (`authMiddleware`, `roleMiddleware[kitchen,admin]`) |
 | `src/routes/admin.js` | POST | `/api/dashboard/plans` and `/api/admin/plans` | `adminController.createPlan` (`authMiddleware`, `roleMiddleware[admin]`) |
+| `src/routes/admin.js` | PATCH | `/api/dashboard/settings` and `/api/admin/settings` | `adminController.patchSettings` (`authMiddleware`, `roleMiddleware[admin]`) |
 | `src/routes/admin.js` | PUT | `/api/dashboard/settings/cutoff` and `/api/admin/settings/cutoff` | `adminController.updateCutoff` (`authMiddleware`, `roleMiddleware[admin]`) |
 | `src/routes/admin.js` | PUT | `/api/dashboard/settings/delivery-windows` and `/api/admin/settings/delivery-windows` | `adminController.updateDeliveryWindows` (`authMiddleware`, `roleMiddleware[admin]`) |
 | `src/routes/admin.js` | PUT | `/api/dashboard/settings/skip-allowance` and `/api/admin/settings/skip-allowance` | `adminController.updateSkipAllowance` (`authMiddleware`, `roleMiddleware[admin]`) |
 | `src/routes/admin.js` | PUT | `/api/dashboard/settings/premium-price` and `/api/admin/settings/premium-price` | `adminController.updatePremiumPrice` (`authMiddleware`, `roleMiddleware[admin]`) |
+| `src/routes/admin.js` | PUT | `/api/dashboard/settings/subscription-delivery-fee` and `/api/admin/settings/subscription-delivery-fee` | `adminController.updateSubscriptionDeliveryFee` (`authMiddleware`, `roleMiddleware[admin]`) |
+| `src/routes/admin.js` | PUT | `/api/dashboard/settings/vat-percentage` and `/api/admin/settings/vat-percentage` | `adminController.updateVatPercentage` (`authMiddleware`, `roleMiddleware[admin]`) |
+| `src/routes/admin.js` | PUT | `/api/dashboard/settings/custom-salad-base-price` and `/api/admin/settings/custom-salad-base-price` | `adminController.updateCustomSaladBasePrice` (`authMiddleware`, `roleMiddleware[admin]`) |
+| `src/routes/admin.js` | GET | `/api/dashboard/users` and `/api/admin/users` | `adminController.listAppUsers` (`authMiddleware`, `roleMiddleware[admin]`) |
+| `src/routes/admin.js` | GET | `/api/dashboard/users/:id/subscriptions` and `/api/admin/users/:id/subscriptions` | `adminController.listAppUserSubscriptions` (`authMiddleware`, `roleMiddleware[admin]`) |
+| `src/routes/admin.js` | GET | `/api/dashboard/users/:id` and `/api/admin/users/:id` | `adminController.getAppUser` (`authMiddleware`, `roleMiddleware[admin]`) |
+| `src/routes/admin.js` | PUT | `/api/dashboard/users/:id` and `/api/admin/users/:id` | `adminController.updateAppUser` (`authMiddleware`, `roleMiddleware[admin]`) |
+| `src/routes/admin.js` | GET | `/api/dashboard/subscriptions` and `/api/admin/subscriptions` | `adminController.listSubscriptionsAdmin` (`authMiddleware`, `roleMiddleware[admin]`) |
+| `src/routes/admin.js` | GET | `/api/dashboard/subscriptions/:id/days` and `/api/admin/subscriptions/:id/days` | `adminController.listSubscriptionDaysAdmin` (`authMiddleware`, `roleMiddleware[admin]`) |
+| `src/routes/admin.js` | GET | `/api/dashboard/subscriptions/:id` and `/api/admin/subscriptions/:id` | `adminController.getSubscriptionAdmin` (`authMiddleware`, `roleMiddleware[admin]`) |
+| `src/routes/admin.js` | POST | `/api/dashboard/subscriptions/:id/cancel` and `/api/admin/subscriptions/:id/cancel` | `adminController.cancelSubscriptionAdmin` (`authMiddleware`, `roleMiddleware[admin]`) |
+| `src/routes/admin.js` | PUT | `/api/dashboard/subscriptions/:id/extend` and `/api/admin/subscriptions/:id/extend` | `adminController.extendSubscriptionAdmin` (`authMiddleware`, `roleMiddleware[admin]`) |
+| `src/routes/admin.js` | GET | `/api/dashboard/orders` and `/api/admin/orders` | `adminController.listOrdersAdmin` (`authMiddleware`, `roleMiddleware[admin]`) |
+| `src/routes/admin.js` | GET | `/api/dashboard/orders/:id` and `/api/admin/orders/:id` | `adminController.getOrderAdmin` (`authMiddleware`, `roleMiddleware[admin]`) |
+| `src/routes/admin.js` | GET | `/api/dashboard/payments` and `/api/admin/payments` | `adminController.listPaymentsAdmin` (`authMiddleware`, `roleMiddleware[admin]`) |
+| `src/routes/admin.js` | GET | `/api/dashboard/payments/:id` and `/api/admin/payments/:id` | `adminController.getPaymentAdmin` (`authMiddleware`, `roleMiddleware[admin]`) |
+| `src/routes/admin.js` | POST | `/api/dashboard/payments/:id/verify` and `/api/admin/payments/:id/verify` | `adminController.verifyPaymentAdmin` (`authMiddleware`, `roleMiddleware[admin]`) |
+| `src/routes/admin.js` | GET | `/api/dashboard/meals` and `/api/admin/meals` | `mealController.listMealsAdmin` (`authMiddleware`, `roleMiddleware[admin]`) |
+| `src/routes/admin.js` | GET | `/api/dashboard/meals/:id` and `/api/admin/meals/:id` | `mealController.getMealAdmin` (`authMiddleware`, `roleMiddleware[admin]`) |
+| `src/routes/admin.js` | POST | `/api/dashboard/meals` and `/api/admin/meals` | `mealController.createMeal` (`authMiddleware`, `roleMiddleware[admin]`) |
+| `src/routes/admin.js` | PUT | `/api/dashboard/meals/:id` and `/api/admin/meals/:id` | `mealController.updateMeal` (`authMiddleware`, `roleMiddleware[admin]`) |
+| `src/routes/admin.js` | DELETE | `/api/dashboard/meals/:id` and `/api/admin/meals/:id` | `mealController.deleteMeal` (`authMiddleware`, `roleMiddleware[admin]`) |
+| `src/routes/admin.js` | PATCH | `/api/dashboard/meals/:id/toggle` and `/api/admin/meals/:id/toggle` | `mealController.toggleMealActive` (`authMiddleware`, `roleMiddleware[admin]`) |
 | `src/routes/admin.js` | GET | `/api/dashboard/dashboard-users` and `/api/admin/dashboard-users` | `adminController.listDashboardUsers` (`authMiddleware`, `roleMiddleware[admin]`) |
 | `src/routes/admin.js` | POST | `/api/dashboard/dashboard-users` and `/api/admin/dashboard-users` | `adminController.createDashboardUser` (`authMiddleware`, `roleMiddleware[admin]`) |
+| `src/routes/admin.js` | GET | `/api/dashboard/dashboard-users/:id` and `/api/admin/dashboard-users/:id` | `adminController.getDashboardUser` (`authMiddleware`, `roleMiddleware[admin]`) |
+| `src/routes/admin.js` | PUT | `/api/dashboard/dashboard-users/:id` and `/api/admin/dashboard-users/:id` | `adminController.updateDashboardUser` (`authMiddleware`, `roleMiddleware[admin]`) |
+| `src/routes/admin.js` | DELETE | `/api/dashboard/dashboard-users/:id` and `/api/admin/dashboard-users/:id` | `adminController.deleteDashboardUser` (`authMiddleware`, `roleMiddleware[admin]`) |
+| `src/routes/admin.js` | POST | `/api/dashboard/dashboard-users/:id/reset-password` and `/api/admin/dashboard-users/:id/reset-password` | `adminController.resetDashboardUserPassword` (`authMiddleware`, `roleMiddleware[admin]`) |
 | `src/routes/admin.js` | GET | `/api/dashboard/logs` and `/api/admin/logs` | `adminController.listActivityLogs` (`authMiddleware`, `roleMiddleware[admin]`) |
 | `src/routes/admin.js` | GET | `/api/dashboard/notification-logs` and `/api/admin/notification-logs` | `adminController.listNotificationLogs` (`authMiddleware`, `roleMiddleware[admin]`) |
 | `src/routes/admin.js` | POST | `/api/dashboard/trigger-cutoff` and `/api/admin/trigger-cutoff` | `adminController.triggerDailyCutoff` (`authMiddleware`, `roleMiddleware[admin]`) |
+| `src/routes/admin.js` | GET | `/api/dashboard/salad-ingredients` and `/api/admin/salad-ingredients` | `saladIngredientController.listIngredientsAdmin` (`authMiddleware`, `roleMiddleware[admin]`) |
 | `src/routes/admin.js` | POST | `/api/dashboard/salad-ingredients` and `/api/admin/salad-ingredients` | `saladIngredientController.createIngredient` (`authMiddleware`, `roleMiddleware[admin]`) |
 | `src/routes/admin.js` | PATCH | `/api/dashboard/salad-ingredients/:id` and `/api/admin/salad-ingredients/:id` | `saladIngredientController.updateIngredient` (`authMiddleware`, `roleMiddleware[admin]`) |
 | `src/routes/admin.js` | PATCH | `/api/dashboard/salad-ingredients/:id/toggle` and `/api/admin/salad-ingredients/:id/toggle` | `saladIngredientController.toggleIngredient` (`authMiddleware`, `roleMiddleware[admin]`) |
@@ -104,6 +152,7 @@ Base mount behavior from code:
 |---|---|---|
 | GET | `/api/plans` | Plans |
 | GET | `/api/plans/:id` | Plans |
+| GET | `/api/meals` | Meals / Menu |
 | GET | `/api/salad-ingredients` | Meals / Menu |
 | POST | `/api/custom-salads/price` | Meals / Menu |
 
@@ -111,20 +160,31 @@ Base mount behavior from code:
 
 | Method | Path | Tag |
 |---|---|---|
-| POST | `/api/subscriptions/preview` | Subscriptions |
+| GET | `/api/subscriptions` | Subscriptions |
+| POST | `/api/subscriptions/quote` | Subscriptions |
+| GET | `/api/subscriptions/checkout-drafts/:draftId` | Subscriptions |
+| POST | `/api/subscriptions/checkout-drafts/:draftId/verify-payment` | Subscriptions |
 | POST | `/api/subscriptions/checkout` | Subscriptions |
-| POST | `/api/subscriptions/:id/activate` | Subscriptions |
+| POST | `/api/subscriptions/:id/activate` | Subscriptions (dev only) |
 | GET | `/api/subscriptions/:id` | Subscriptions |
+| GET | `/api/subscriptions/:id/wallet` | Subscriptions, Wallet |
+| GET | `/api/subscriptions/:id/wallet/history` | Subscriptions, Wallet |
+| GET | `/api/subscriptions/:id/wallet/topups/:paymentId/status` | Subscriptions, Wallet |
+| POST | `/api/subscriptions/:id/wallet/topups/:paymentId/verify` | Subscriptions, Wallet |
+| POST | `/api/subscriptions/:id/freeze` | Subscriptions |
+| POST | `/api/subscriptions/:id/unfreeze` | Subscriptions |
 | GET | `/api/subscriptions/:id/days` | Subscriptions |
 | GET | `/api/subscriptions/:id/today` | Subscriptions |
 | GET | `/api/subscriptions/:id/days/:date` | Subscriptions |
 | PUT | `/api/subscriptions/:id/days/:date/selection` | Subscriptions |
 | POST | `/api/subscriptions/:id/days/:date/skip` | Subscriptions |
+| POST | `/api/subscriptions/:id/days/:date/unskip` | Subscriptions |
 | POST | `/api/subscriptions/:id/skip-range` | Subscriptions |
 | POST | `/api/subscriptions/:id/days/:date/pickup/prepare` | Subscriptions |
 | POST | `/api/subscriptions/:id/days/:date/custom-salad` | Subscriptions, Meals / Menu |
 | PUT | `/api/subscriptions/:id/days/:date/delivery` | Subscriptions |
-| POST | `/api/subscriptions/:id/premium/topup` | Subscriptions |
+| POST | `/api/subscriptions/:id/premium-credits/topup` | Subscriptions, Wallet |
+| POST | `/api/subscriptions/:id/premium/topup` | Subscriptions (deprecated legacy alias; sunset no earlier than `2026-06-30`) |
 | POST | `/api/subscriptions/:id/addons/one-time` | Subscriptions |
 | PUT | `/api/subscriptions/:id/delivery` | Subscriptions |
 
@@ -134,8 +194,11 @@ Base mount behavior from code:
 |---|---|---|
 | POST | `/api/orders/checkout` | Orders |
 | POST | `/api/orders/:id/confirm` | Orders |
+| GET | `/api/orders/:id/payment-status` | Orders |
+| POST | `/api/orders/:id/reject-adjusted-date` | Orders |
 | POST | `/api/orders/:id/items/custom-salad` | Orders, Meals / Menu |
 | GET | `/api/orders` | Orders |
+| DELETE | `/api/orders/:id` | Orders |
 | GET | `/api/orders/:id` | Orders |
 
 ### Webhooks
@@ -161,8 +224,10 @@ Base mount behavior from code:
 | Method | Path | Tag |
 |---|---|---|
 | GET | `/api/kitchen/days/:date` | Kitchen |
+| POST | `/api/kitchen/days/:date/lock` | Kitchen |
 | PUT | `/api/kitchen/subscriptions/:id/days/:date/assign` | Kitchen |
 | POST | `/api/kitchen/subscriptions/:id/days/:date/lock` | Kitchen |
+| POST | `/api/kitchen/subscriptions/:id/days/:date/reopen` | Kitchen |
 | POST | `/api/kitchen/subscriptions/:id/days/:date/in-preparation` | Kitchen |
 | POST | `/api/kitchen/subscriptions/:id/days/:date/out-for-delivery` | Kitchen |
 | POST | `/api/kitchen/subscriptions/:id/days/:date/ready-for-pickup` | Kitchen |
@@ -171,28 +236,58 @@ Base mount behavior from code:
 | POST | `/api/kitchen/orders/:id/preparing` | Kitchen, Orders |
 | POST | `/api/kitchen/orders/:id/out-for-delivery` | Kitchen, Orders |
 | POST | `/api/kitchen/orders/:id/ready-for-pickup` | Kitchen, Orders |
+| POST | `/api/kitchen/orders/:id/fulfilled` | Kitchen, Orders |
 
-### Admin (Dashboard base path)
+### Admin (Canonical base path)
 
 | Method | Path | Tag |
 |---|---|---|
-| POST | `/api/dashboard/plans` | Admin (Dashboard), Plans |
-| PUT | `/api/dashboard/settings/cutoff` | Admin (Dashboard) |
-| PUT | `/api/dashboard/settings/delivery-windows` | Admin (Dashboard) |
-| PUT | `/api/dashboard/settings/skip-allowance` | Admin (Dashboard) |
-| PUT | `/api/dashboard/settings/premium-price` | Admin (Dashboard) |
-| GET | `/api/dashboard/dashboard-users` | Admin (Dashboard), Users |
-| POST | `/api/dashboard/dashboard-users` | Admin (Dashboard), Users |
-| GET | `/api/dashboard/logs` | Admin (Dashboard) |
-| GET | `/api/dashboard/notification-logs` | Notifications, Admin (Dashboard) |
-| POST | `/api/dashboard/trigger-cutoff` | Admin (Dashboard) |
-| POST | `/api/dashboard/salad-ingredients` | Admin (Dashboard), Meals / Menu |
-| PATCH | `/api/dashboard/salad-ingredients/:id` | Admin (Dashboard), Meals / Menu |
-| PATCH | `/api/dashboard/salad-ingredients/:id/toggle` | Admin (Dashboard), Meals / Menu |
+| POST | `/api/admin/plans` | Admin (Dashboard), Plans |
+| PATCH | `/api/admin/settings` | Admin (Dashboard) |
+| PUT | `/api/admin/settings/cutoff` | Admin (Dashboard) |
+| PUT | `/api/admin/settings/delivery-windows` | Admin (Dashboard) |
+| PUT | `/api/admin/settings/skip-allowance` | Admin (Dashboard) |
+| PUT | `/api/admin/settings/premium-price` | Admin (Dashboard) |
+| PUT | `/api/admin/settings/subscription-delivery-fee` | Admin (Dashboard) |
+| PUT | `/api/admin/settings/vat-percentage` | Admin (Dashboard) |
+| PUT | `/api/admin/settings/custom-salad-base-price` | Admin (Dashboard) |
+| GET | `/api/admin/users` | Admin (Dashboard), Users |
+| GET | `/api/admin/users/:id/subscriptions` | Admin (Dashboard), Users, Subscriptions |
+| GET | `/api/admin/users/:id` | Admin (Dashboard), Users |
+| PUT | `/api/admin/users/:id` | Admin (Dashboard), Users |
+| GET | `/api/admin/subscriptions` | Admin (Dashboard), Subscriptions |
+| GET | `/api/admin/subscriptions/:id/days` | Admin (Dashboard), Subscriptions |
+| GET | `/api/admin/subscriptions/:id` | Admin (Dashboard), Subscriptions |
+| POST | `/api/admin/subscriptions/:id/cancel` | Admin (Dashboard), Subscriptions |
+| PUT | `/api/admin/subscriptions/:id/extend` | Admin (Dashboard), Subscriptions |
+| GET | `/api/admin/orders` | Admin (Dashboard), Orders |
+| GET | `/api/admin/orders/:id` | Admin (Dashboard), Orders |
+| GET | `/api/admin/payments` | Admin (Dashboard), Payments |
+| GET | `/api/admin/payments/:id` | Admin (Dashboard), Payments |
+| POST | `/api/admin/payments/:id/verify` | Admin (Dashboard), Payments |
+| GET | `/api/admin/meals` | Admin (Dashboard), Meals / Menu |
+| GET | `/api/admin/meals/:id` | Admin (Dashboard), Meals / Menu |
+| POST | `/api/admin/meals` | Admin (Dashboard), Meals / Menu |
+| PUT | `/api/admin/meals/:id` | Admin (Dashboard), Meals / Menu |
+| DELETE | `/api/admin/meals/:id` | Admin (Dashboard), Meals / Menu |
+| PATCH | `/api/admin/meals/:id/toggle` | Admin (Dashboard), Meals / Menu |
+| GET | `/api/admin/dashboard-users` | Admin (Dashboard), Users |
+| POST | `/api/admin/dashboard-users` | Admin (Dashboard), Users |
+| GET | `/api/admin/dashboard-users/:id` | Admin (Dashboard), Users |
+| PUT | `/api/admin/dashboard-users/:id` | Admin (Dashboard), Users |
+| DELETE | `/api/admin/dashboard-users/:id` | Admin (Dashboard), Users |
+| POST | `/api/admin/dashboard-users/:id/reset-password` | Admin (Dashboard), Users |
+| GET | `/api/admin/logs` | Admin (Dashboard) |
+| GET | `/api/admin/notification-logs` | Notifications, Admin (Dashboard) |
+| POST | `/api/admin/trigger-cutoff` | Admin (Dashboard) |
+| GET | `/api/admin/salad-ingredients` | Admin (Dashboard), Meals / Menu |
+| POST | `/api/admin/salad-ingredients` | Admin (Dashboard), Meals / Menu |
+| PATCH | `/api/admin/salad-ingredients/:id` | Admin (Dashboard), Meals / Menu |
+| PATCH | `/api/admin/salad-ingredients/:id/toggle` | Admin (Dashboard), Meals / Menu |
 
-### Admin (Admin base path alias)
-
-All 13 endpoints above are also mounted under `/api/admin/*` with identical behavior.
+Runtime alias:
+- All admin endpoints above are also available under `/api/dashboard/*` with identical behavior.
+- New integrations should prefer `/api/admin/*`; `/api/dashboard/*` is kept as a compatibility alias/proxy.
 
 ---
 
@@ -350,7 +445,7 @@ curl -X POST http://localhost:3000/api/kitchen/subscriptions/<subId>/days/2026-0
 List notification logs:
 
 ```bash
-curl 'http://localhost:3000/api/dashboard/notification-logs?page=1&limit=50' \
+curl 'http://localhost:3000/api/admin/notification-logs?page=1&limit=50' \
   -H 'Authorization: Bearer <ADMIN_TOKEN>'
 ```
 
@@ -379,7 +474,7 @@ curl -X POST http://localhost:3000/api/webhooks/moyasar \
 
 The backend stores many names as multilingual objects (for example `{ ar, en }`) in MongoDB.
 
-On app-facing endpoints that resolve names (`/api/plans`, `/api/plans/:id`, `/api/salad-ingredients`), runtime logic:
+On app-facing endpoints that resolve names (`/api/plans`, `/api/plans/:id`, `/api/meals`, `/api/salad-ingredients`), runtime logic:
 1. Parses `Accept-Language` (supports RFC-style lists too).
 2. Resolves to `ar` or `en`.
 3. Fallbacks in this order: requested language -> other supported language -> empty string.
@@ -392,11 +487,11 @@ Some write endpoints still accept legacy flat fields (`name_ar`, `name_en`) for 
 
 Explicit query parameters found in code:
 
-1. `GET /api/admin/logs` and `GET /api/dashboard/logs`
+1. `GET /api/admin/logs`
 - Filters: `entityType`, `entityId`, `action`, `from`, `to`, `byRole`
 - Pagination: `page` (default 1), `limit` (default 50, max 200)
 
-2. `GET /api/admin/notification-logs` and `GET /api/dashboard/notification-logs`
+2. `GET /api/admin/notification-logs`
 - Filters: `userId`, `from`, `to`
 - Pagination: `page` (default 1), `limit` (default 50, max 200)
 

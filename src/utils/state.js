@@ -1,5 +1,6 @@
 const transitions = {
-  open: ["locked", "skipped"],
+  open: ["locked", "skipped", "frozen"],
+  frozen: [],
   locked: ["in_preparation", "out_for_delivery", "ready_for_pickup"],
   in_preparation: ["out_for_delivery", "ready_for_pickup"],
   out_for_delivery: ["fulfilled"],

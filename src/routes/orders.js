@@ -11,6 +11,8 @@ router.use(authMiddleware);
 
 router.post("/checkout", checkoutLimiter, asyncHandler(controller.checkoutOrder));
 router.post("/:id/confirm", asyncHandler(controller.confirmOrder)); // Mock confirm — dev only
+router.get("/:id/payment-status", asyncHandler(controller.getOrderPaymentStatus));
+router.post("/:id/reject-adjusted-date", asyncHandler(controller.rejectAdjustedDeliveryDate));
 /**
  * @openapi
  * /orders/{id}/items/custom-salad:
@@ -47,6 +49,7 @@ router.post("/:id/confirm", asyncHandler(controller.confirmOrder)); // Mock conf
  */
 router.post("/:id/items/custom-salad", asyncHandler(customSaladController.addCustomSaladToOrder));
 router.get("/", asyncHandler(controller.listOrders));
+router.delete("/:id", asyncHandler(controller.cancelOrder));
 router.get("/:id", asyncHandler(controller.getOrder));
 
 module.exports = router;

@@ -3,6 +3,7 @@ const Subscription = require("../models/Subscription");
 const SubscriptionDay = require("../models/SubscriptionDay");
 const Delivery = require("../models/Delivery");
 const Meal = require("../models/Meal");
+const { isValidKSADateString } = require("../utils/date");
 const { canTransition } = require("../utils/state");
 const { writeLog } = require("../utils/log");
 const { notifyUser } = require("../utils/notify");
@@ -208,6 +209,78 @@ async function ensureLockedSnapshot(sub, day, session) {
   await day.save({ session });
 }
 
+async function bulkLockDaysByDate(req, res) {
+  const { date } = req.params;
+  if (!isValidKSADateString(date)) {
+    return errorResponse(res, 400, "INVALID_DATE", "Invalid date");
+  }
+
+  const session = await mongoose.startSession();
+  let lockedDayIds = [];
+  let summary;
+  try {
+    session.startTransaction();
+
+    const days = await SubscriptionDay.find({ date }).session(session);
+    const totalDays = days.length;
+    const openDays = days.filter((day) => day.status === "open");
+    const skippedDays = days.filter((day) => day.status !== "open");
+    const subscriptionIds = Array.from(new Set(openDays.map((day) => String(day.subscriptionId))));
+    const subscriptions = subscriptionIds.length
+      ? await Subscription.find({ _id: { $in: subscriptionIds } }).session(session).lean()
+      : [];
+    const subscriptionMap = new Map(subscriptions.map((sub) => [String(sub._id), sub]));
+
+    let lockedCount = 0;
+    let skippedMissingSubscriptionCount = 0;
+
+    for (const day of openDays) {
+      const sub = subscriptionMap.get(String(day.subscriptionId));
+      if (!sub) {
+        skippedMissingSubscriptionCount += 1;
+        continue;
+      }
+      await ensureLockedSnapshot(sub, day, session);
+      day.status = "locked";
+      await day.save({ session });
+      lockedCount += 1;
+      lockedDayIds.push(String(day._id));
+    }
+
+    summary = {
+      date,
+      totalDays,
+      lockedCount,
+      skippedCount: skippedDays.length + skippedMissingSubscriptionCount,
+      alreadyProcessedCount: skippedDays.length,
+      missingSubscriptionCount: skippedMissingSubscriptionCount,
+    };
+
+    await session.commitTransaction();
+    session.endSession();
+  } catch (err) {
+    await session.abortTransaction();
+    session.endSession();
+    logger.error("kitchenController.bulkLockDaysByDate failed", { date, error: err.message, stack: err.stack });
+    return errorResponse(res, 500, "INTERNAL", "Bulk lock failed");
+  }
+
+  await Promise.allSettled(
+    lockedDayIds.map((dayId) =>
+      writeLog({
+        entityType: "subscription_day",
+        entityId: dayId,
+        action: "bulk_lock",
+        byUserId: req.userId,
+        byRole: req.userRole,
+        meta: { date },
+      })
+    )
+  );
+
+  return res.status(200).json({ ok: true, data: summary });
+}
+
 async function transitionDay(req, res, toStatus) {
   const { id, date } = req.params;
   try {
@@ -312,6 +385,76 @@ async function transitionDay(req, res, toStatus) {
   return res.status(200).json({ ok: true, data: day });
 }
 
+async function reopenLockedDay(req, res) {
+  const { id, date } = req.params;
+  try {
+    validateObjectId(id, "subscriptionId");
+  } catch (err) {
+    return errorResponse(res, err.status, err.code, err.message);
+  }
+  if (!isValidKSADateString(date)) {
+    return errorResponse(res, 400, "INVALID_DATE", "Invalid date");
+  }
+
+  const session = await mongoose.startSession();
+  let day;
+  try {
+    session.startTransaction();
+
+    day = await SubscriptionDay.findOne({ subscriptionId: id, date }).session(session);
+    if (!day) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 404, "NOT_FOUND", "Day not found");
+    }
+    if (day.status !== "locked") {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 409, "INVALID_TRANSITION", "Only locked days can be reopened");
+    }
+    if (day.pickupRequested || day.creditsDeducted) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 409, "INVALID_TRANSITION", "Pickup-prepared days cannot be reopened");
+    }
+
+    await Delivery.deleteMany({ dayId: day._id }).session(session);
+
+    day.status = "open";
+    day.lockedSnapshot = undefined;
+    day.lockedAt = undefined;
+    await day.save({ session });
+
+    await session.commitTransaction();
+    session.endSession();
+  } catch (err) {
+    await session.abortTransaction();
+    session.endSession();
+    logger.error("kitchenController.reopenLockedDay failed", {
+      subscriptionId: id,
+      date,
+      error: err.message,
+      stack: err.stack,
+    });
+    return errorResponse(res, 500, "INTERNAL", "Reopen failed");
+  }
+
+  try {
+    await writeLog({
+      entityType: "subscription_day",
+      entityId: day._id,
+      action: "reopen",
+      byUserId: req.userId,
+      byRole: req.userRole,
+      meta: { date },
+    });
+  } catch (err) {
+    logger.error("Kitchen reopen log write failed", { error: err.message, stack: err.stack, dayId: String(day._id) });
+  }
+
+  return res.status(200).json({ ok: true, data: day });
+}
+
 async function fulfillPickup(req, res) {
   const { id, date } = req.params;
   try {
@@ -376,6 +519,8 @@ async function fulfillPickup(req, res) {
 module.exports = {
   listDailyOrders,
   assignMeals,
+  bulkLockDaysByDate,
   transitionDay,
+  reopenLockedDay,
   fulfillPickup,
 };

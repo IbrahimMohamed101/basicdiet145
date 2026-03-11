@@ -54,10 +54,11 @@ const SubscriptionSchema = new mongoose.Schema(
   {
     userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
     planId: { type: mongoose.Schema.Types.ObjectId, ref: "Plan", required: true },
-    status: { type: String, enum: ["pending_payment", "active", "expired"], default: "pending_payment" },
+    status: { type: String, enum: ["pending_payment", "active", "expired", "canceled"], default: "pending_payment" },
     startDate: { type: Date },
     endDate: { type: Date },
     validityEndDate: { type: Date },
+    canceledAt: { type: Date, default: null },
     totalMeals: { type: Number, required: true },
     remainingMeals: { type: Number, required: true },
     premiumRemaining: { type: Number, default: 0 },

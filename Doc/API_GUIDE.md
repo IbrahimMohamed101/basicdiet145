@@ -171,10 +171,10 @@ Authorization: Bearer {JWT}
 }
 ```
 
-#### Preview Subscription Price
+#### Quote Subscription Price
 
 ```http
-POST /api/subscriptions/preview
+POST /api/subscriptions/quote
 Authorization: Bearer {JWT}
 Content-Type: application/json
 
@@ -396,12 +396,14 @@ Content-Type: application/json
 ### 6. Top-Up Premium Credits
 
 ```http
-POST /api/subscriptions/{subscriptionId}/premium/topup
+POST /api/subscriptions/{subscriptionId}/premium-credits/topup
 Authorization: Bearer {JWT}
 Content-Type: application/json
 
 {
-  "count": 5,
+  "items": [
+    { "premiumMealId": "60d5ec49f1b2c8b1f8c4e8b1", "qty": 5 }
+  ],
   "successUrl": "https://yourapp.com/success",
   "backUrl": "https://yourapp.com/cancel"
 }
@@ -418,6 +420,8 @@ Content-Type: application/json
 ```
 
 > **Action:** Redirect user to `payment_url`.
+
+> Legacy compatibility alias: `POST /api/subscriptions/{subscriptionId}/premium/topup` is deprecated and scheduled for removal no earlier than `2026-06-30`.
 
 ---
 

@@ -98,7 +98,13 @@ async function applySkipForDate({ sub, date, session, allowLocked = false }) {
   if (!existingDay) {
     // Create new skipped day
     const created = await SubscriptionDay.create(
-      [{ subscriptionId: sub._id, date, status: "skipped", creditsDeducted: true }],
+      [{
+        subscriptionId: sub._id,
+        date,
+        status: "skipped",
+        skippedByUser: !allowLocked,
+        creditsDeducted: true,
+      }],
       { session }
     );
     dayUpdateResult = created[0];
@@ -112,7 +118,7 @@ async function applySkipForDate({ sub, date, session, allowLocked = false }) {
 
     dayUpdateResult = await SubscriptionDay.findOneAndUpdate(
       query,
-      { $set: { status: "skipped", creditsDeducted: true } },
+      { $set: { status: "skipped", skippedByUser: !allowLocked, creditsDeducted: true } },
       { new: true, session }
     );
     if (!dayUpdateResult) {
@@ -132,7 +138,13 @@ async function applySkipForDate({ sub, date, session, allowLocked = false }) {
     // Revert local writes and return a status so the controller can abort once in its own boundary.
     await SubscriptionDay.updateOne(
       { _id: dayUpdateResult._id },
-      { $set: { status: existingDay?.status || "open", creditsDeducted: false } },
+      {
+        $set: {
+          status: existingDay?.status || "open",
+          skippedByUser: existingDay?.skippedByUser || false,
+          creditsDeducted: false,
+        },
+      },
       { session }
     ).session(session);
     return { status: "insufficient_credits" };

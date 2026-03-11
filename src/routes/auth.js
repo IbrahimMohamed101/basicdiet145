@@ -1,5 +1,5 @@
 const { Router } = require("express");
-const { requestOtp, verifyOtp, updateDeviceToken } = require("../controllers/authController");
+const { requestOtp, verifyOtp, updateDeviceToken, deleteDeviceToken } = require("../controllers/authController");
 const { authMiddleware } = require("../middleware/auth");
 const { otpLimiter, otpVerifyLimiter } = require("../middleware/rateLimit");
 const asyncHandler = require("../middleware/asyncHandler");
@@ -50,5 +50,6 @@ router.post("/otp/request", otpLimiter, asyncHandler(requestOtp));
  */
 router.post("/otp/verify", otpVerifyLimiter, asyncHandler(verifyOtp));
 router.post("/device-token", authMiddleware, asyncHandler(updateDeviceToken));
+router.delete("/device-token", authMiddleware, asyncHandler(deleteDeviceToken));
 
 module.exports = router;

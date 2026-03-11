@@ -68,4 +68,31 @@ async function createInvoice({ amount, currency = "SAR", description, callbackUr
   return requestJson("/v1/invoices", "POST", body, apiKey);
 }
 
-module.exports = { createInvoice };
+async function getInvoice(invoiceId) {
+  const apiKey = process.env.MOYASAR_SECRET_KEY;
+  if (!apiKey) {
+    const err = new Error("Missing MOYASAR_SECRET_KEY");
+    err.code = "CONFIG";
+    throw err;
+  }
+
+  const id = String(invoiceId || "").trim();
+  if (!id) {
+    const err = new Error("invoiceId is required");
+    err.code = "VALIDATION_ERROR";
+    throw err;
+  }
+
+  const query = new URLSearchParams({ id }).toString();
+  const response = await requestJson(`/v1/invoices?${query}`, "GET", undefined, apiKey);
+  const invoices = Array.isArray(response && response.invoices) ? response.invoices : [];
+  const invoice = invoices.find((item) => item && String(item.id) === id);
+  if (!invoice) {
+    const err = new Error("Invoice not found");
+    err.code = "NOT_FOUND";
+    throw err;
+  }
+  return invoice;
+}
+
+module.exports = { createInvoice, getInvoice };

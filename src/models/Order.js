@@ -28,7 +28,9 @@ const OrderSchema = new mongoose.Schema(
       default: "created",
     },
     deliveryMode: { type: String, enum: ["delivery", "pickup"], required: true },
+    requestedDeliveryDate: { type: String, default: "" }, // YYYY-MM-DD (KSA) as requested by client
     deliveryDate: { type: String, required: true }, // YYYY-MM-DD (KSA)
+    deliveryDateAdjusted: { type: Boolean, default: false },
     items: { type: [OrderItemSchema], default: [] },
     customSalads: [
       {

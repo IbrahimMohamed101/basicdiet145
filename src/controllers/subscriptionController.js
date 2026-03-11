@@ -22,7 +22,7 @@ const {
 const { canTransition } = require("../utils/state");
 const { writeLog } = require("../utils/log");
 const { getEffectiveDeliveryDetails } = require("../utils/delivery");
-const { createInvoice } = require("../services/moyasarService");
+const { createInvoice, getInvoice } = require("../services/moyasarService");
 const { fulfillSubscriptionDay } = require("../services/fulfillmentService");
 const { applySkipForDate, enforceSkipAllowanceOrThrow } = require("../services/subscriptionService");
 const { logger } = require("../utils/logger");
@@ -30,6 +30,7 @@ const { getRequestLang, pickLang } = require("../utils/i18n");
 const { resolveMealsPerDay, applyDayWalletSelections } = require("../utils/subscriptionDaySelectionSync");
 const {
   LEGACY_PREMIUM_MEAL_BUCKET_ID,
+  sumPremiumRemainingFromBalance,
   syncPremiumRemainingFromBalance,
   ensureLegacyPremiumBalanceFromRemaining,
 } = require("../utils/premiumWallet");
@@ -38,6 +39,8 @@ const errorResponse = require("../utils/errorResponse");
 
 const SYSTEM_CURRENCY = "SAR";
 const LEGACY_DAY_PREMIUM_SLOT_PREFIX = "legacy_day_premium_slot_";
+const WALLET_TOPUP_PAYMENT_TYPES = new Set(["premium_topup", "addon_topup"]);
+const LEGACY_PREMIUM_TOPUP_SUNSET_HTTP_DATE = "Tue, 30 Jun 2026 23:59:59 GMT";
 
 async function getSettingValue(key, fallback) {
   const setting = await Setting.findOne({ key }).lean();
@@ -164,6 +167,492 @@ function isPendingCheckoutReusable(draft, payment) {
     && payment.applied !== true
     && hasPaymentUrl
   );
+}
+
+function normalizeProviderPaymentStatus(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return null;
+  if (normalized === "cancelled" || normalized === "voided") return "canceled";
+  if (normalized === "captured") return "paid";
+  if (["authorized", "verified", "on_hold"].includes(normalized)) return "initiated";
+  if (["initiated", "paid", "failed", "canceled", "expired", "refunded"].includes(normalized)) {
+    return normalized;
+  }
+  return null;
+}
+
+function pickProviderInvoicePayment(invoice, payment) {
+  const attempts = Array.isArray(invoice && invoice.payments)
+    ? invoice.payments.filter((item) => item && typeof item === "object")
+    : [];
+  if (!attempts.length) return null;
+
+  if (payment && payment.providerPaymentId) {
+    const matched = attempts.find((item) => String(item.id || "") === String(payment.providerPaymentId));
+    if (matched) return matched;
+  }
+
+  const paidAttempts = attempts.filter((item) => normalizeProviderPaymentStatus(item.status) === "paid");
+  if (paidAttempts.length) {
+    return paidAttempts[paidAttempts.length - 1];
+  }
+
+  return attempts[attempts.length - 1];
+}
+
+function serializeCheckoutPayment(payment) {
+  if (!payment) return null;
+  return {
+    id: String(payment._id),
+    provider: payment.provider,
+    type: payment.type,
+    status: payment.status,
+    amount: payment.amount,
+    currency: payment.currency,
+    providerInvoiceId: payment.providerInvoiceId || null,
+    providerPaymentId: payment.providerPaymentId || null,
+    applied: Boolean(payment.applied),
+    paidAt: payment.paidAt || null,
+    createdAt: payment.createdAt || null,
+    updatedAt: payment.updatedAt || null,
+  };
+}
+
+function isWalletTopupPaymentType(type) {
+  return WALLET_TOPUP_PAYMENT_TYPES.has(String(type || ""));
+}
+
+function resolveWalletTopupKind(type) {
+  return String(type || "") === "addon_topup" ? "addon" : "premium";
+}
+
+function buildProviderInvoicePayload(providerInvoice, fallbackUrl) {
+  if (!providerInvoice) return null;
+  const providerPayment = pickProviderInvoicePayment(providerInvoice, null);
+  const providerStatus = normalizeProviderPaymentStatus(
+    providerPayment && providerPayment.status ? providerPayment.status : providerInvoice.status
+  );
+  return {
+    id: providerInvoice.id || null,
+    status: providerStatus || String(providerInvoice.status || "").trim().toLowerCase() || null,
+    amount: Number.isFinite(Number(providerInvoice.amount)) ? Number(providerInvoice.amount) : null,
+    currency: providerInvoice.currency || null,
+    url: providerInvoice.url || fallbackUrl || "",
+    updatedAt: providerInvoice.updated_at || providerInvoice.updatedAt || null,
+    attemptsCount: Array.isArray(providerInvoice.payments) ? providerInvoice.payments.length : 0,
+  };
+}
+
+async function loadWalletCatalogMaps({ subscription = null, payments = [], lang }) {
+  const premiumIds = new Set();
+  const addonIds = new Set();
+
+  for (const payment of payments) {
+    const metadata = payment && payment.metadata && typeof payment.metadata === "object" ? payment.metadata : {};
+    if (Array.isArray(metadata.items)) {
+      for (const item of metadata.items) {
+        if (!item || typeof item !== "object") continue;
+        if (item.premiumMealId) premiumIds.add(String(item.premiumMealId));
+        if (item.addonId) addonIds.add(String(item.addonId));
+      }
+    }
+  }
+
+  if (subscription && typeof subscription === "object") {
+    for (const row of subscription.premiumBalance || []) {
+      if (row && row.premiumMealId) premiumIds.add(String(row.premiumMealId));
+    }
+    for (const row of subscription.premiumSelections || []) {
+      if (row && row.premiumMealId) premiumIds.add(String(row.premiumMealId));
+    }
+    for (const row of subscription.addonBalance || []) {
+      if (row && row.addonId) addonIds.add(String(row.addonId));
+    }
+    for (const row of subscription.addonSelections || []) {
+      if (row && row.addonId) addonIds.add(String(row.addonId));
+    }
+  }
+
+  premiumIds.delete(LEGACY_PREMIUM_MEAL_BUCKET_ID);
+
+  const [premiumDocs, addonDocs] = await Promise.all([
+    premiumIds.size
+      ? PremiumMeal.find({ _id: { $in: Array.from(premiumIds) } }).select("_id name").lean()
+      : Promise.resolve([]),
+    addonIds.size
+      ? Addon.find({ _id: { $in: Array.from(addonIds) } }).select("_id name").lean()
+      : Promise.resolve([]),
+  ]);
+
+  return {
+    premiumNames: new Map(premiumDocs.map((doc) => [String(doc._id), pickLang(doc.name, lang)])),
+    addonNames: new Map(addonDocs.map((doc) => [String(doc._id), pickLang(doc.name, lang)])),
+    legacyPremiumLabel: lang === "en" ? "Premium credits" : "رصيد بريميوم",
+  };
+}
+
+function buildWalletTopupItems(payment, catalog) {
+  const metadata = payment && payment.metadata && typeof payment.metadata === "object" ? payment.metadata : {};
+  const walletType = resolveWalletTopupKind(payment.type);
+
+  if (Array.isArray(metadata.items) && metadata.items.length) {
+    return metadata.items.map((item, index) => {
+      const qty = Number(item.qty || 0);
+      const isPremium = walletType === "premium";
+      const unitAmountHalala = isPremium
+        ? Number(item.unitExtraFeeHalala || 0)
+        : Number(item.unitPriceHalala || 0);
+      const itemId = isPremium
+        ? (item.premiumMealId ? String(item.premiumMealId) : null)
+        : (item.addonId ? String(item.addonId) : null);
+      const name = isPremium
+        ? (itemId ? catalog.premiumNames.get(itemId) || "" : catalog.legacyPremiumLabel)
+        : (itemId ? catalog.addonNames.get(itemId) || "" : "");
+
+      return {
+        id: `${payment._id}:${index}`,
+        walletType,
+        itemId,
+        name,
+        qty,
+        unitAmountHalala,
+        totalAmountHalala: qty * unitAmountHalala,
+        currency: item.currency || payment.currency || SYSTEM_CURRENCY,
+      };
+    });
+  }
+
+  if (walletType === "premium") {
+    const qty = Number(metadata.premiumCount || metadata.count || 0);
+    const unitAmountHalala = Number(metadata.unitExtraFeeHalala || 0);
+    if (qty > 0) {
+      return [{
+        id: String(payment._id),
+        walletType,
+        itemId: null,
+        name: catalog.legacyPremiumLabel,
+        qty,
+        unitAmountHalala,
+        totalAmountHalala: qty * unitAmountHalala,
+        currency: metadata.currency || payment.currency || SYSTEM_CURRENCY,
+      }];
+    }
+  }
+
+  return [{
+    id: String(payment._id),
+    walletType,
+    itemId: null,
+    name: "",
+    qty: 0,
+    unitAmountHalala: 0,
+    totalAmountHalala: Number(payment.amount || 0),
+    currency: payment.currency || SYSTEM_CURRENCY,
+  }];
+}
+
+function buildWalletTopupStatusPayload({ subscription, payment, catalog, providerInvoice = null }) {
+  const providerPayment = pickProviderInvoicePayment(providerInvoice, payment);
+  return {
+    subscriptionId: String(subscription._id),
+    paymentId: String(payment._id),
+    walletType: resolveWalletTopupKind(payment.type),
+    paymentStatus: payment.status,
+    isFinal: ["paid", "failed", "canceled", "expired", "refunded"].includes(payment.status),
+    amount: Number(payment.amount || 0),
+    currency: payment.currency || SYSTEM_CURRENCY,
+    applied: Boolean(payment.applied),
+    providerInvoiceId:
+      payment.providerInvoiceId
+      || (providerInvoice && providerInvoice.id)
+      || null,
+    providerPaymentId:
+      payment.providerPaymentId
+      || (providerPayment && providerPayment.id)
+      || null,
+    paidAt: payment.paidAt || null,
+    createdAt: payment.createdAt || null,
+    updatedAt: payment.updatedAt || null,
+    items: buildWalletTopupItems(payment, catalog),
+    payment: serializeCheckoutPayment(payment),
+    providerInvoice: buildProviderInvoicePayload(providerInvoice, null),
+  };
+}
+
+async function applyPremiumTopupPayment({ subscription, payment, session }) {
+  const metadata = payment && payment.metadata && typeof payment.metadata === "object" ? payment.metadata : {};
+  if (metadata.subscriptionId && String(metadata.subscriptionId) !== String(subscription._id)) {
+    return { applied: false, reason: "subscription_mismatch" };
+  }
+
+  subscription.premiumBalance = subscription.premiumBalance || [];
+  if (Array.isArray(metadata.items) && metadata.items.length) {
+    let addedCount = 0;
+    for (const item of metadata.items) {
+      const qty = parseInt(item.qty, 10);
+      const unitExtraFeeHalala = Number(item.unitExtraFeeHalala || 0);
+      if (!item.premiumMealId || !qty || qty <= 0) continue;
+      subscription.premiumBalance.push({
+        premiumMealId: item.premiumMealId,
+        purchasedQty: qty,
+        remainingQty: qty,
+        unitExtraFeeHalala,
+        currency: item.currency || SYSTEM_CURRENCY,
+      });
+      addedCount += qty;
+    }
+    if (addedCount <= 0) {
+      return { applied: false, reason: "invalid_items" };
+    }
+    syncPremiumRemainingFromBalance(subscription);
+    await subscription.save({ session });
+    return { applied: true, addedCount };
+  }
+
+  const count = parseInt(metadata.premiumCount || metadata.count || 0, 10);
+  if (count <= 0) {
+    return { applied: false, reason: "invalid_metadata" };
+  }
+
+  const configuredUnit = Number(metadata.unitExtraFeeHalala);
+  const fallbackUnit = Math.round(Number(payment.amount || 0) / count);
+  const unitExtraFeeHalala = Number.isInteger(configuredUnit) && configuredUnit >= 0
+    ? configuredUnit
+    : Number.isFinite(fallbackUnit) && fallbackUnit >= 0
+      ? fallbackUnit
+      : 0;
+
+  ensureLegacyPremiumBalanceFromRemaining(subscription, {
+    unitExtraFeeHalala,
+    currency: payment.currency || SYSTEM_CURRENCY,
+  });
+  subscription.premiumBalance.push({
+    premiumMealId: LEGACY_PREMIUM_MEAL_BUCKET_ID,
+    purchasedQty: count,
+    remainingQty: count,
+    unitExtraFeeHalala,
+    currency: payment.currency || SYSTEM_CURRENCY,
+  });
+  syncPremiumRemainingFromBalance(subscription);
+  await subscription.save({ session });
+  return { applied: true, addedCount: count };
+}
+
+async function applyAddonTopupPayment({ subscription, payment, session }) {
+  const metadata = payment && payment.metadata && typeof payment.metadata === "object" ? payment.metadata : {};
+  if (metadata.subscriptionId && String(metadata.subscriptionId) !== String(subscription._id)) {
+    return { applied: false, reason: "subscription_mismatch" };
+  }
+  if (!Array.isArray(metadata.items) || !metadata.items.length) {
+    return { applied: false, reason: "invalid_metadata" };
+  }
+
+  subscription.addonBalance = subscription.addonBalance || [];
+  let addedCount = 0;
+  for (const item of metadata.items) {
+    const qty = parseInt(item.qty, 10);
+    const unitPriceHalala = Number(item.unitPriceHalala || 0);
+    if (!item.addonId || !qty || qty <= 0) continue;
+    subscription.addonBalance.push({
+      addonId: item.addonId,
+      purchasedQty: qty,
+      remainingQty: qty,
+      unitPriceHalala,
+      currency: item.currency || SYSTEM_CURRENCY,
+    });
+    addedCount += qty;
+  }
+  if (addedCount <= 0) {
+    return { applied: false, reason: "invalid_items" };
+  }
+  await subscription.save({ session });
+  return { applied: true, addedCount };
+}
+
+async function applyWalletTopupPayment({ subscription, payment, session }) {
+  if (payment.type === "premium_topup") {
+    return applyPremiumTopupPayment({ subscription, payment, session });
+  }
+  if (payment.type === "addon_topup") {
+    return applyAddonTopupPayment({ subscription, payment, session });
+  }
+  return { applied: false, reason: "unsupported_payment_type" };
+}
+
+function buildSubscriptionCheckoutStatusPayload({ draft, payment, providerInvoice = null }) {
+  const providerPayment = pickProviderInvoicePayment(providerInvoice, payment);
+  const providerStatus = normalizeProviderPaymentStatus(
+    providerPayment && providerPayment.status ? providerPayment.status : providerInvoice && providerInvoice.status
+  );
+
+  return {
+    draftId: String(draft._id),
+    subscriptionId: draft.subscriptionId ? String(draft.subscriptionId) : null,
+    checkoutStatus: draft.status,
+    paymentStatus: payment && payment.status ? payment.status : null,
+    isFinal: ["completed", "failed", "canceled", "expired"].includes(draft.status),
+    paymentId: payment ? String(payment._id) : (draft.paymentId ? String(draft.paymentId) : null),
+    payment_url: draft.paymentUrl || "",
+    providerInvoiceId:
+      draft.providerInvoiceId
+      || (payment && payment.providerInvoiceId)
+      || (providerInvoice && providerInvoice.id)
+      || null,
+    providerPaymentId:
+      (payment && payment.providerPaymentId)
+      || (providerPayment && providerPayment.id)
+      || null,
+    totals: draft.breakdown || null,
+    failureReason: draft.failureReason || "",
+    completedAt: draft.completedAt || null,
+    failedAt: draft.failedAt || null,
+    createdAt: draft.createdAt || null,
+    updatedAt: draft.updatedAt || null,
+    payment: serializeCheckoutPayment(payment),
+    providerInvoice: providerInvoice
+      ? {
+        id: providerInvoice.id || null,
+        status: providerStatus || String(providerInvoice.status || "").trim().toLowerCase() || null,
+        amount: Number.isFinite(Number(providerInvoice.amount)) ? Number(providerInvoice.amount) : null,
+        currency: providerInvoice.currency || null,
+        url: providerInvoice.url || draft.paymentUrl || "",
+        updatedAt: providerInvoice.updated_at || providerInvoice.updatedAt || null,
+        attemptsCount: Array.isArray(providerInvoice.payments) ? providerInvoice.payments.length : 0,
+      }
+      : null,
+  };
+}
+
+async function finalizeSubscriptionDraftPayment({ draft, payment, session }) {
+  if (!draft) {
+    return { applied: false, reason: "draft_not_found" };
+  }
+  if (String(draft.userId) !== String(payment.userId)) {
+    return { applied: false, reason: "draft_user_mismatch" };
+  }
+
+  if (draft.subscriptionId) {
+    const existingSub = await Subscription.findById(draft.subscriptionId).session(session);
+    if (!existingSub) {
+      return { applied: false, reason: "draft_subscription_missing" };
+    }
+    if (draft.status !== "completed") {
+      draft.status = "completed";
+      draft.completedAt = draft.completedAt || new Date();
+      draft.paymentId = payment._id;
+      draft.providerInvoiceId = payment.providerInvoiceId || draft.providerInvoiceId;
+      draft.failureReason = "";
+      draft.failedAt = undefined;
+      await draft.save({ session });
+    }
+    if (!payment.subscriptionId) {
+      payment.subscriptionId = existingSub._id;
+      await payment.save({ session });
+    }
+    return { applied: true, subscriptionId: String(existingSub._id) };
+  }
+
+  if (!["pending_payment", "failed", "canceled", "expired"].includes(draft.status)) {
+    return { applied: false, reason: `draft_not_recoverable:${draft.status}` };
+  }
+
+  const daysCount = Number(draft.daysCount);
+  const mealsPerDay = Number(draft.mealsPerDay);
+  if (!Number.isInteger(daysCount) || daysCount < 1 || !Number.isInteger(mealsPerDay) || mealsPerDay < 1) {
+    return { applied: false, reason: "invalid_draft_dimensions" };
+  }
+
+  const start = draft.startDate ? new Date(draft.startDate) : new Date();
+  const end = addDays(start, daysCount - 1);
+  const totalMeals = daysCount * mealsPerDay;
+
+  const premiumBalanceRows = (draft.premiumItems || []).map((item) => ({
+    premiumMealId: item.premiumMealId,
+    purchasedQty: Number(item.qty || 0),
+    remainingQty: Number(item.qty || 0),
+    unitExtraFeeHalala: Number(item.unitExtraFeeHalala || 0),
+    currency: item.currency || SYSTEM_CURRENCY,
+  }));
+  const addonBalanceRows = (draft.addonItems || []).map((item) => ({
+    addonId: item.addonId,
+    purchasedQty: Number(item.qty || 0),
+    remainingQty: Number(item.qty || 0),
+    unitPriceHalala: Number(item.unitPriceHalala || 0),
+    currency: item.currency || SYSTEM_CURRENCY,
+  }));
+  const premiumRemaining = sumPremiumRemainingFromBalance(premiumBalanceRows);
+
+  const created = await Subscription.create(
+    [
+      {
+        userId: draft.userId,
+        planId: draft.planId,
+        status: "active",
+        startDate: start,
+        endDate: end,
+        validityEndDate: end,
+        totalMeals,
+        remainingMeals: totalMeals,
+        premiumRemaining,
+        selectedGrams: draft.grams,
+        selectedMealsPerDay: mealsPerDay,
+        basePlanPriceHalala:
+          draft.breakdown && Number.isFinite(Number(draft.breakdown.basePlanPriceHalala))
+            ? Number(draft.breakdown.basePlanPriceHalala)
+            : 0,
+        checkoutCurrency:
+          draft.breakdown && draft.breakdown.currency
+            ? String(draft.breakdown.currency)
+            : SYSTEM_CURRENCY,
+        premiumBalance: premiumBalanceRows,
+        addonBalance: addonBalanceRows,
+        addonSubscriptions: Array.isArray(draft.addonSubscriptions) ? draft.addonSubscriptions : [],
+        deliveryMode: draft.delivery && draft.delivery.type ? draft.delivery.type : "delivery",
+        deliveryAddress:
+          draft.delivery && Object.prototype.hasOwnProperty.call(draft.delivery, "address")
+            ? draft.delivery.address || undefined
+            : undefined,
+        deliveryWindow:
+          draft.delivery && draft.delivery.slot && draft.delivery.slot.window
+            ? draft.delivery.slot.window
+            : undefined,
+        deliverySlot:
+          draft.delivery && draft.delivery.slot
+            ? draft.delivery.slot
+            : { type: draft.delivery && draft.delivery.type ? draft.delivery.type : "delivery", window: "", slotId: "" },
+      },
+    ],
+    { session }
+  );
+  const sub = created[0];
+
+  const existingDays = await SubscriptionDay.countDocuments({ subscriptionId: sub._id }).session(session);
+  if (!existingDays) {
+    const dayEntries = [];
+    for (let i = 0; i < daysCount; i += 1) {
+      const currentDate = addDays(start, i);
+      dayEntries.push({
+        subscriptionId: sub._id,
+        date: toKSADateString(currentDate),
+        status: "open",
+      });
+    }
+    await SubscriptionDay.insertMany(dayEntries, { session });
+  }
+
+  draft.status = "completed";
+  draft.completedAt = new Date();
+  draft.paymentId = payment._id;
+  draft.providerInvoiceId = payment.providerInvoiceId || draft.providerInvoiceId;
+  draft.subscriptionId = sub._id;
+  draft.failureReason = "";
+  draft.failedAt = undefined;
+  await draft.save({ session });
+
+  payment.subscriptionId = sub._id;
+  await payment.save({ session });
+
+  return { applied: true, subscriptionId: String(sub._id) };
 }
 
 function resolveAddonUnitPriceHalala(addon) {
@@ -562,6 +1051,7 @@ function addDaysToKSADateString(dateStr, days) {
 function mapStatusForClient(status) {
   const map = {
     open: "open",
+    frozen: "frozen",
     locked: "preparing",
     in_preparation: "preparing",
     out_for_delivery: "on_the_way",
@@ -570,6 +1060,153 @@ function mapStatusForClient(status) {
     skipped: "skipped"
   };
   return map[status] || status;
+}
+
+function resolveFreezePolicy(planDoc) {
+  const source = planDoc && typeof planDoc === "object" && planDoc.freezePolicy && typeof planDoc.freezePolicy === "object"
+    ? planDoc.freezePolicy
+    : {};
+  return {
+    enabled: source.enabled === undefined ? true : Boolean(source.enabled),
+    maxDays: Number.isInteger(source.maxDays) && source.maxDays >= 1 ? source.maxDays : 31,
+    maxTimes: Number.isInteger(source.maxTimes) && source.maxTimes >= 0 ? source.maxTimes : 1,
+  };
+}
+
+function buildDateRangeOrThrow(startDate, days, fieldName = "days") {
+  if (!startDate || !isValidKSADateString(startDate)) {
+    const err = new Error("Invalid startDate");
+    err.code = "INVALID_DATE";
+    throw err;
+  }
+
+  const parsedDays = parsePositiveInteger(days);
+  if (!parsedDays) {
+    const err = new Error(`${fieldName} must be a positive integer`);
+    err.code = "INVALID";
+    throw err;
+  }
+
+  return Array.from({ length: parsedDays }, (_, index) => addDaysToKSADateString(startDate, index));
+}
+
+function countFrozenBlocks(dateStrings) {
+  const uniqueSorted = Array.from(new Set(dateStrings)).sort();
+  let blocks = 0;
+  let previousDate = null;
+
+  for (const date of uniqueSorted) {
+    if (!previousDate || addDaysToKSADateString(previousDate, 1) !== date) {
+      blocks += 1;
+    }
+    previousDate = date;
+  }
+
+  return blocks;
+}
+
+function isNonEmptyObject(value) {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length > 0);
+}
+
+function isRemovableExtensionDay(day) {
+  if (!day || day.status !== "open") return false;
+  if (Array.isArray(day.selections) && day.selections.length > 0) return false;
+  if (Array.isArray(day.premiumSelections) && day.premiumSelections.length > 0) return false;
+  if (Array.isArray(day.addonsOneTime) && day.addonsOneTime.length > 0) return false;
+  if (Array.isArray(day.customSalads) && day.customSalads.length > 0) return false;
+  if (Array.isArray(day.premiumUpgradeSelections) && day.premiumUpgradeSelections.length > 0) return false;
+  if (Array.isArray(day.addonCreditSelections) && day.addonCreditSelections.length > 0) return false;
+  if (day.assignedByKitchen || day.pickupRequested || day.creditsDeducted || day.skippedByUser) return false;
+  if (isNonEmptyObject(day.deliveryAddressOverride) || day.deliveryWindowOverride) return false;
+  if (day.lockedSnapshot || day.fulfilledSnapshot || day.lockedAt || day.fulfilledAt) return false;
+  return true;
+}
+
+async function ensureDateRangeDoesNotIncludeLockedTomorrow(dates) {
+  if (dates.includes(getTomorrowKSADate())) {
+    await enforceTomorrowCutoffOrThrow(getTomorrowKSADate());
+  }
+}
+
+function validateFreezeRangeOrThrow(sub, startDate, days) {
+  const baseEndDate = sub.endDate || sub.validityEndDate;
+  if (!baseEndDate) {
+    const err = new Error("Subscription has no base end date");
+    err.code = "INVALID";
+    throw err;
+  }
+
+  validateFutureDateOrThrow(startDate, sub, baseEndDate);
+  const targetDates = buildDateRangeOrThrow(startDate, days);
+  const lastDate = targetDates[targetDates.length - 1];
+  if (!isInSubscriptionRange(lastDate, baseEndDate)) {
+    const err = new Error("Requested freeze range exceeds the original subscription schedule");
+    err.code = "INVALID_DATE";
+    throw err;
+  }
+
+  return { targetDates, baseEndDate };
+}
+
+async function getFrozenDateStrings(subscriptionId, session) {
+  const frozenDays = await SubscriptionDay.find({ subscriptionId, status: "frozen" })
+    .select("date")
+    .sort({ date: 1 })
+    .session(session)
+    .lean();
+  return frozenDays.map((day) => day.date);
+}
+
+async function syncFrozenValidityOrThrow(sub, session) {
+  const baseEndDate = sub.endDate || sub.validityEndDate;
+  if (!baseEndDate) {
+    const err = new Error("Subscription has no base end date");
+    err.code = "INVALID";
+    throw err;
+  }
+
+  const baseEndStr = toKSADateString(baseEndDate);
+  const frozenDates = await getFrozenDateStrings(sub._id, session);
+  const desiredValidityEndDate = addDays(baseEndDate, frozenDates.length);
+  const desiredValidityEndStr = toKSADateString(desiredValidityEndDate);
+
+  const extensionDays = await SubscriptionDay.find({
+    subscriptionId: sub._id,
+    date: { $gt: baseEndStr },
+  })
+    .sort({ date: 1 })
+    .session(session);
+
+  const existingExtensionDates = new Set(extensionDays.map((day) => day.date));
+  const missingDays = [];
+  for (
+    let currentDate = addDaysToKSADateString(baseEndStr, 1);
+    currentDate <= desiredValidityEndStr;
+    currentDate = addDaysToKSADateString(currentDate, 1)
+  ) {
+    if (!existingExtensionDates.has(currentDate)) {
+      missingDays.push({ subscriptionId: sub._id, date: currentDate, status: "open" });
+    }
+  }
+  if (missingDays.length > 0) {
+    await SubscriptionDay.insertMany(missingDays, { session });
+  }
+
+  const extraDays = extensionDays.filter((day) => day.date > desiredValidityEndStr);
+  const blockedDay = extraDays.find((day) => !isRemovableExtensionDay(day));
+  if (blockedDay) {
+    const err = new Error(`Cannot shrink validity because replacement day ${blockedDay.date} already has data`);
+    err.code = "FREEZE_CONFLICT";
+    throw err;
+  }
+  if (extraDays.length > 0) {
+    await SubscriptionDay.deleteMany({ _id: { $in: extraDays.map((day) => day._id) } }).session(session);
+  }
+
+  sub.validityEndDate = desiredValidityEndDate;
+  await sub.save({ session });
+  return { frozenDates, validityEndDate: desiredValidityEndDate };
 }
 
 function sendValidationError(res, message) {
@@ -661,10 +1298,6 @@ async function quoteSubscription(req, res) {
     }
     throw err;
   }
-}
-
-async function previewSubscription(req, res) {
-  return quoteSubscription(req, res);
 }
 
 async function checkoutSubscription(req, res) {
@@ -887,6 +1520,287 @@ async function checkoutSubscription(req, res) {
   }
 }
 
+async function getCheckoutDraftStatus(req, res) {
+  const { draftId } = req.params;
+  try {
+    validateObjectId(draftId, "draftId");
+  } catch (err) {
+    return errorResponse(res, err.status, err.code, err.message);
+  }
+
+  const draft = await CheckoutDraft.findOne({ _id: draftId, userId: req.userId }).lean();
+  if (!draft) {
+    return errorResponse(res, 404, "NOT_FOUND", "Checkout draft not found");
+  }
+
+  let payment = null;
+  if (draft.paymentId) {
+    payment = await Payment.findOne({ _id: draft.paymentId, userId: req.userId }).lean();
+  }
+  if (!payment && draft.providerInvoiceId) {
+    payment = await Payment.findOne({
+      userId: req.userId,
+      provider: "moyasar",
+      providerInvoiceId: draft.providerInvoiceId,
+    }).sort({ createdAt: -1 }).lean();
+  }
+
+  return res.status(200).json({
+    ok: true,
+    data: {
+      ...buildSubscriptionCheckoutStatusPayload({ draft, payment }),
+      checkedProvider: false,
+      synchronized: false,
+    },
+  });
+}
+
+async function verifyCheckoutDraftPayment(req, res) {
+  const { draftId } = req.params;
+  try {
+    validateObjectId(draftId, "draftId");
+  } catch (err) {
+    return errorResponse(res, err.status, err.code, err.message);
+  }
+
+  const draft = await CheckoutDraft.findOne({ _id: draftId, userId: req.userId }).lean();
+  if (!draft) {
+    return errorResponse(res, 404, "NOT_FOUND", "Checkout draft not found");
+  }
+
+  let payment = null;
+  if (draft.paymentId) {
+    payment = await Payment.findOne({ _id: draft.paymentId, userId: req.userId }).lean();
+  }
+  if (!payment && draft.providerInvoiceId) {
+    payment = await Payment.findOne({
+      userId: req.userId,
+      provider: "moyasar",
+      providerInvoiceId: draft.providerInvoiceId,
+    }).sort({ createdAt: -1 }).lean();
+  }
+  if (!payment) {
+    return errorResponse(res, 409, "CHECKOUT_IN_PROGRESS", "Checkout payment is not initialized yet");
+  }
+  if (payment.type !== "subscription_activation") {
+    return errorResponse(res, 409, "INVALID", "Payment does not belong to a subscription checkout");
+  }
+  if (!payment.providerInvoiceId && !draft.providerInvoiceId) {
+    return errorResponse(res, 409, "CHECKOUT_IN_PROGRESS", "Checkout invoice is not initialized yet");
+  }
+
+  if (draft.status === "completed" && draft.subscriptionId) {
+    return res.status(200).json({
+      ok: true,
+      data: {
+        ...buildSubscriptionCheckoutStatusPayload({ draft, payment }),
+        checkedProvider: false,
+        synchronized: false,
+      },
+    });
+  }
+
+  let providerInvoice;
+  try {
+    providerInvoice = await getInvoice(payment.providerInvoiceId || draft.providerInvoiceId);
+  } catch (err) {
+    if (err.code === "CONFIG") {
+      return errorResponse(res, 500, "CONFIG", err.message);
+    }
+    if (err.code === "NOT_FOUND") {
+      return errorResponse(res, 502, "PAYMENT_PROVIDER_ERROR", "Invoice not found at payment provider");
+    }
+    logger.error("Subscription checkout verify failed to fetch invoice", {
+      draftId,
+      paymentId: String(payment._id),
+      error: err.message,
+      stack: err.stack,
+    });
+    return errorResponse(res, 502, "PAYMENT_PROVIDER_ERROR", "Failed to fetch payment status from provider");
+  }
+
+  const providerPayment = pickProviderInvoicePayment(providerInvoice, payment);
+  const normalizedStatus = normalizeProviderPaymentStatus(
+    providerPayment && providerPayment.status ? providerPayment.status : providerInvoice.status
+  );
+  if (!normalizedStatus) {
+    return errorResponse(res, 409, "PAYMENT_PROVIDER_ERROR", "Unsupported provider payment status");
+  }
+
+  const session = await mongoose.startSession();
+  let synchronized = false;
+  try {
+    session.startTransaction();
+
+    const draftInSession = await CheckoutDraft.findOne({ _id: draftId, userId: req.userId }).session(session);
+    if (!draftInSession) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 404, "NOT_FOUND", "Checkout draft not found");
+    }
+
+    let paymentInSession = await Payment.findOne({ _id: payment._id, userId: req.userId }).session(session);
+    if (!paymentInSession && draftInSession.paymentId) {
+      paymentInSession = await Payment.findOne({ _id: draftInSession.paymentId, userId: req.userId }).session(session);
+    }
+    if (!paymentInSession) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 404, "NOT_FOUND", "Payment not found");
+    }
+
+    const providerInvoiceId = providerInvoice && providerInvoice.id ? String(providerInvoice.id) : "";
+    if (providerInvoiceId && draftInSession.providerInvoiceId && String(draftInSession.providerInvoiceId) !== providerInvoiceId) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 409, "MISMATCH", "Invoice ID mismatch");
+    }
+    if (providerInvoiceId && paymentInSession.providerInvoiceId && String(paymentInSession.providerInvoiceId) !== providerInvoiceId) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 409, "MISMATCH", "Invoice ID mismatch");
+    }
+
+    if (providerPayment && providerPayment.id && paymentInSession.providerPaymentId && String(paymentInSession.providerPaymentId) !== String(providerPayment.id)) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 409, "MISMATCH", "Payment ID mismatch");
+    }
+
+    const providerAmount = Number(providerPayment && providerPayment.amount !== undefined ? providerPayment.amount : providerInvoice.amount);
+    if (Number.isFinite(providerAmount) && providerAmount !== Number(paymentInSession.amount)) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 409, "MISMATCH", "Amount mismatch");
+    }
+
+    const providerCurrency = normalizeCurrencyValue(
+      providerPayment && providerPayment.currency ? providerPayment.currency : providerInvoice.currency
+    );
+    if (providerCurrency !== normalizeCurrencyValue(paymentInSession.currency)) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 409, "MISMATCH", "Currency mismatch");
+    }
+
+    if (providerInvoiceId && !draftInSession.providerInvoiceId) {
+      draftInSession.providerInvoiceId = providerInvoiceId;
+      await draftInSession.save({ session });
+    }
+    if (providerInvoiceId && !paymentInSession.providerInvoiceId) {
+      paymentInSession.providerInvoiceId = providerInvoiceId;
+    }
+    if (providerPayment && providerPayment.id && !paymentInSession.providerPaymentId) {
+      paymentInSession.providerPaymentId = String(providerPayment.id);
+    }
+
+    paymentInSession.status = normalizedStatus;
+    if (normalizedStatus === "paid" && !paymentInSession.paidAt) {
+      paymentInSession.paidAt = new Date();
+    }
+    await paymentInSession.save({ session });
+
+    const terminalFailureStatuses = new Set(["failed", "canceled", "expired"]);
+    if (normalizedStatus !== "paid") {
+      if (
+        terminalFailureStatuses.has(normalizedStatus)
+        && !draftInSession.subscriptionId
+        && ["pending_payment", "failed", "canceled", "expired"].includes(draftInSession.status)
+      ) {
+        draftInSession.status = normalizedStatus === "canceled"
+          ? "canceled"
+          : normalizedStatus === "expired"
+            ? "expired"
+            : "failed";
+        draftInSession.failedAt = new Date();
+        draftInSession.failureReason = `payment_${draftInSession.status}`;
+        await draftInSession.save({ session });
+        synchronized = true;
+      }
+
+      await session.commitTransaction();
+      session.endSession();
+
+      const [latestDraft, latestPayment] = await Promise.all([
+        CheckoutDraft.findById(draftId).lean(),
+        Payment.findById(paymentInSession._id).lean(),
+      ]);
+
+      return res.status(200).json({
+        ok: true,
+        data: {
+          ...buildSubscriptionCheckoutStatusPayload({
+            draft: latestDraft,
+            payment: latestPayment,
+            providerInvoice,
+          }),
+          checkedProvider: true,
+          synchronized,
+        },
+      });
+    }
+
+    if (!paymentInSession.applied) {
+      const claimedPayment = await Payment.findOneAndUpdate(
+        { _id: paymentInSession._id, applied: false },
+        { $set: { applied: true, status: "paid" } },
+        { new: true, session }
+      );
+
+      if (claimedPayment) {
+        const result = await finalizeSubscriptionDraftPayment({
+          draft: draftInSession,
+          payment: claimedPayment,
+          session,
+        });
+        if (!result.applied) {
+          const metadata = Object.assign({}, claimedPayment.metadata || {}, { unappliedReason: result.reason });
+          await Payment.updateOne(
+            { _id: claimedPayment._id },
+            { $set: { applied: true, status: "paid", metadata } },
+            { session }
+          );
+        } else {
+          synchronized = true;
+        }
+      }
+    }
+
+    await session.commitTransaction();
+    session.endSession();
+
+    const [latestDraft, latestPayment] = await Promise.all([
+      CheckoutDraft.findById(draftId).lean(),
+      Payment.findById(paymentInSession._id).lean(),
+    ]);
+
+    return res.status(200).json({
+      ok: true,
+      data: {
+        ...buildSubscriptionCheckoutStatusPayload({
+          draft: latestDraft,
+          payment: latestPayment,
+          providerInvoice,
+        }),
+        checkedProvider: true,
+        synchronized,
+      },
+    });
+  } catch (err) {
+    if (session.inTransaction()) {
+      await session.abortTransaction();
+    }
+    session.endSession();
+    logger.error("Subscription checkout verification failed", {
+      draftId,
+      paymentId: String(payment._id),
+      error: err.message,
+      stack: err.stack,
+    });
+    return errorResponse(res, 500, "INTERNAL", "Checkout verification failed");
+  }
+}
+
 async function activateSubscription(req, res) {
   const { id } = req.params;
   // SECURITY FIX: Mock activation endpoint must be disabled in production.
@@ -1023,6 +1937,74 @@ async function buildSubscriptionSummaries(subscription, lang) {
   return { premiumSummary, addonsSummary };
 }
 
+async function buildSubscriptionWalletSnapshot(subscription, lang) {
+  const { premiumSummary, addonsSummary } = await buildSubscriptionSummaries(subscription, lang);
+  const premiumBalance = (Array.isArray(subscription.premiumBalance) ? subscription.premiumBalance : [])
+    .slice()
+    .sort((a, b) => new Date(a.purchasedAt || 0).getTime() - new Date(b.purchasedAt || 0).getTime())
+    .map((row) => ({
+      id: row._id ? String(row._id) : null,
+      premiumMealId: row.premiumMealId ? String(row.premiumMealId) : null,
+      purchasedQty: Number(row.purchasedQty || 0),
+      remainingQty: Number(row.remainingQty || 0),
+      unitExtraFeeHalala: Number(row.unitExtraFeeHalala || 0),
+      currency: row.currency || SYSTEM_CURRENCY,
+      purchasedAt: row.purchasedAt || null,
+    }));
+  const addonBalance = (Array.isArray(subscription.addonBalance) ? subscription.addonBalance : [])
+    .slice()
+    .sort((a, b) => new Date(a.purchasedAt || 0).getTime() - new Date(b.purchasedAt || 0).getTime())
+    .map((row) => ({
+      id: row._id ? String(row._id) : null,
+      addonId: row.addonId ? String(row.addonId) : null,
+      purchasedQty: Number(row.purchasedQty || 0),
+      remainingQty: Number(row.remainingQty || 0),
+      unitPriceHalala: Number(row.unitPriceHalala || 0),
+      currency: row.currency || SYSTEM_CURRENCY,
+      purchasedAt: row.purchasedAt || null,
+    }));
+
+  return {
+    subscriptionId: String(subscription._id),
+    premiumRemaining: premiumBalance.reduce((sum, row) => sum + row.remainingQty, 0),
+    premiumSummary,
+    addonsSummary,
+    premiumBalance,
+    addonBalance,
+    totals: {
+      premiumPurchasedQtyTotal: premiumBalance.reduce((sum, row) => sum + row.purchasedQty, 0),
+      premiumRemainingQtyTotal: premiumBalance.reduce((sum, row) => sum + row.remainingQty, 0),
+      addonPurchasedQtyTotal: addonBalance.reduce((sum, row) => sum + row.purchasedQty, 0),
+      addonRemainingQtyTotal: addonBalance.reduce((sum, row) => sum + row.remainingQty, 0),
+    },
+  };
+}
+
+async function serializeSubscriptionForClient(subscription, lang) {
+  const { premiumSummary, addonsSummary } = await buildSubscriptionSummaries(subscription, lang);
+  const deliverySlot = subscription.deliverySlot && typeof subscription.deliverySlot === "object"
+    ? subscription.deliverySlot
+    : {
+      type: subscription.deliveryMode,
+      window: subscription.deliveryWindow || "",
+      slotId: "",
+    };
+  const data = { ...subscription };
+  delete data.__v;
+  delete data.premiumBalance;
+  delete data.addonBalance;
+  delete data.premiumSelections;
+  delete data.addonSelections;
+
+  return {
+    ...data,
+    deliveryAddress: subscription.deliveryAddress || null,
+    deliverySlot,
+    premiumSummary,
+    addonsSummary,
+  };
+}
+
 async function getSubscription(req, res) {
   const { id } = req.params;
   // MEDIUM AUDIT FIX: Validate ObjectId up front to return 400 INVALID_ID instead of CastError 500.
@@ -1039,31 +2021,665 @@ async function getSubscription(req, res) {
     return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
   }
   const lang = getRequestLang(req);
-  const { premiumSummary, addonsSummary } = await buildSubscriptionSummaries(sub, lang);
-  const deliverySlot = sub.deliverySlot && typeof sub.deliverySlot === "object"
-    ? sub.deliverySlot
-    : {
-      type: sub.deliveryMode,
-      window: sub.deliveryWindow || "",
-      slotId: "",
-    };
-  const data = { ...sub };
-  delete data.__v;
-  delete data.premiumBalance;
-  delete data.addonBalance;
-  delete data.premiumSelections;
-  delete data.addonSelections;
+
+  return res.status(200).json({
+    ok: true,
+    data: await serializeSubscriptionForClient(sub, lang),
+  });
+}
+
+async function listCurrentUserSubscriptions(req, res) {
+  const subscriptions = await Subscription.find({ userId: req.userId }).sort({ createdAt: -1 }).lean();
+  const lang = getRequestLang(req);
+  const data = await Promise.all(subscriptions.map((subscription) => serializeSubscriptionForClient(subscription, lang)));
+  return res.status(200).json({ ok: true, data });
+}
+
+async function getSubscriptionWallet(req, res) {
+  const { id } = req.params;
+  try {
+    validateObjectId(id, "subscriptionId");
+  } catch (err) {
+    return errorResponse(res, err.status, err.code, err.message);
+  }
+
+  const sub = await Subscription.findById(id).lean();
+  if (!sub) {
+    return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
+  }
+  if (sub.userId.toString() !== req.userId.toString()) {
+    return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
+  }
+
+  const lang = getRequestLang(req);
+  return res.status(200).json({
+    ok: true,
+    data: await buildSubscriptionWalletSnapshot(sub, lang),
+  });
+}
+
+async function getSubscriptionWalletHistory(req, res) {
+  const { id } = req.params;
+  try {
+    validateObjectId(id, "subscriptionId");
+  } catch (err) {
+    return errorResponse(res, err.status, err.code, err.message);
+  }
+
+  const sub = await Subscription.findById(id).lean();
+  if (!sub) {
+    return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
+  }
+  if (sub.userId.toString() !== req.userId.toString()) {
+    return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
+  }
+
+  const payments = await Payment.find({
+    subscriptionId: id,
+    userId: req.userId,
+    type: { $in: Array.from(WALLET_TOPUP_PAYMENT_TYPES) },
+  }).sort({ createdAt: -1 }).lean();
+  const lang = getRequestLang(req);
+  const catalog = await loadWalletCatalogMaps({ subscription: sub, payments, lang });
+  const entries = [];
+
+  for (const payment of payments) {
+    const topupItems = buildWalletTopupItems(payment, catalog);
+    for (const item of topupItems) {
+      entries.push({
+        id: item.id,
+        source: "topup_payment",
+        direction: "credit",
+        walletType: item.walletType,
+        status: payment.status,
+        paymentId: String(payment._id),
+        providerInvoiceId: payment.providerInvoiceId || null,
+        providerPaymentId: payment.providerPaymentId || null,
+        itemId: item.itemId,
+        name: item.name,
+        qty: Number(item.qty || 0),
+        unitAmountHalala: Number(item.unitAmountHalala || 0),
+        totalAmountHalala: Number(item.totalAmountHalala || payment.amount || 0),
+        currency: item.currency || payment.currency || SYSTEM_CURRENCY,
+        applied: Boolean(payment.applied),
+        date: null,
+        dayId: null,
+        occurredAt: payment.paidAt || payment.createdAt || null,
+      });
+    }
+  }
+
+  for (const row of sub.premiumSelections || []) {
+    const itemId = row.premiumMealId ? String(row.premiumMealId) : null;
+    entries.push({
+      id: row._id ? String(row._id) : `${row.dayId || row.date || "premium"}:${row.baseSlotKey || "slot"}`,
+      source: "wallet_selection",
+      direction: "debit",
+      walletType: "premium",
+      status: "consumed",
+      paymentId: null,
+      providerInvoiceId: null,
+      providerPaymentId: null,
+      itemId,
+      name: itemId === LEGACY_PREMIUM_MEAL_BUCKET_ID ? catalog.legacyPremiumLabel : (itemId ? catalog.premiumNames.get(itemId) || "" : ""),
+      qty: 1,
+      unitAmountHalala: Number(row.unitExtraFeeHalala || 0),
+      totalAmountHalala: Number(row.unitExtraFeeHalala || 0),
+      currency: row.currency || SYSTEM_CURRENCY,
+      applied: true,
+      date: row.date || null,
+      dayId: row.dayId ? String(row.dayId) : null,
+      occurredAt: row.consumedAt || null,
+    });
+  }
+
+  for (const row of sub.addonSelections || []) {
+    const itemId = row.addonId ? String(row.addonId) : null;
+    const qty = Number(row.qty || 0);
+    const unitAmountHalala = Number(row.unitPriceHalala || 0);
+    entries.push({
+      id: row._id ? String(row._id) : `${row.dayId || row.date || "addon"}:${itemId || "item"}`,
+      source: "wallet_selection",
+      direction: "debit",
+      walletType: "addon",
+      status: "consumed",
+      paymentId: null,
+      providerInvoiceId: null,
+      providerPaymentId: null,
+      itemId,
+      name: itemId ? catalog.addonNames.get(itemId) || "" : "",
+      qty,
+      unitAmountHalala,
+      totalAmountHalala: qty * unitAmountHalala,
+      currency: row.currency || SYSTEM_CURRENCY,
+      applied: true,
+      date: row.date || null,
+      dayId: row.dayId ? String(row.dayId) : null,
+      occurredAt: row.consumedAt || null,
+    });
+  }
+
+  entries.sort((a, b) => {
+    const left = a.occurredAt ? new Date(a.occurredAt).getTime() : 0;
+    const right = b.occurredAt ? new Date(b.occurredAt).getTime() : 0;
+    return right - left;
+  });
 
   return res.status(200).json({
     ok: true,
     data: {
-      ...data,
-      deliveryAddress: sub.deliveryAddress || null,
-      deliverySlot,
-      premiumSummary,
-      addonsSummary,
+      subscriptionId: String(sub._id),
+      entries,
     },
   });
+}
+
+async function getWalletTopupPaymentStatus(req, res) {
+  const { id, paymentId } = req.params;
+  try {
+    validateObjectId(id, "subscriptionId");
+    validateObjectId(paymentId, "paymentId");
+  } catch (err) {
+    return errorResponse(res, err.status, err.code, err.message);
+  }
+
+  const sub = await Subscription.findById(id).lean();
+  if (!sub) {
+    return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
+  }
+  if (sub.userId.toString() !== req.userId.toString()) {
+    return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
+  }
+
+  const payment = await Payment.findOne({
+    _id: paymentId,
+    subscriptionId: id,
+    userId: req.userId,
+    type: { $in: Array.from(WALLET_TOPUP_PAYMENT_TYPES) },
+  }).lean();
+  if (!payment) {
+    return errorResponse(res, 404, "NOT_FOUND", "Top-up payment not found");
+  }
+
+  const lang = getRequestLang(req);
+  const catalog = await loadWalletCatalogMaps({ subscription: sub, payments: [payment], lang });
+  return res.status(200).json({
+    ok: true,
+    data: {
+      ...buildWalletTopupStatusPayload({ subscription: sub, payment, catalog }),
+      checkedProvider: false,
+      synchronized: false,
+    },
+  });
+}
+
+async function verifyWalletTopupPayment(req, res) {
+  const { id, paymentId } = req.params;
+  try {
+    validateObjectId(id, "subscriptionId");
+    validateObjectId(paymentId, "paymentId");
+  } catch (err) {
+    return errorResponse(res, err.status, err.code, err.message);
+  }
+
+  const sub = await Subscription.findById(id).lean();
+  if (!sub) {
+    return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
+  }
+  if (sub.userId.toString() !== req.userId.toString()) {
+    return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
+  }
+
+  const payment = await Payment.findOne({
+    _id: paymentId,
+    subscriptionId: id,
+    userId: req.userId,
+    type: { $in: Array.from(WALLET_TOPUP_PAYMENT_TYPES) },
+  }).lean();
+  if (!payment) {
+    return errorResponse(res, 404, "NOT_FOUND", "Top-up payment not found");
+  }
+  if (!payment.providerInvoiceId) {
+    return errorResponse(res, 409, "CHECKOUT_IN_PROGRESS", "Top-up invoice is not initialized yet");
+  }
+
+  if (payment.status === "paid" && payment.applied === true) {
+    const lang = getRequestLang(req);
+    const catalog = await loadWalletCatalogMaps({ subscription: sub, payments: [payment], lang });
+    return res.status(200).json({
+      ok: true,
+      data: {
+        ...buildWalletTopupStatusPayload({ subscription: sub, payment, catalog }),
+        checkedProvider: false,
+        synchronized: false,
+      },
+    });
+  }
+
+  let providerInvoice;
+  try {
+    providerInvoice = await getInvoice(payment.providerInvoiceId);
+  } catch (err) {
+    if (err.code === "CONFIG") {
+      return errorResponse(res, 500, "CONFIG", err.message);
+    }
+    if (err.code === "NOT_FOUND") {
+      return errorResponse(res, 502, "PAYMENT_PROVIDER_ERROR", "Invoice not found at payment provider");
+    }
+    logger.error("Wallet top-up verify failed to fetch invoice", {
+      subscriptionId: id,
+      paymentId,
+      error: err.message,
+      stack: err.stack,
+    });
+    return errorResponse(res, 502, "PAYMENT_PROVIDER_ERROR", "Failed to fetch payment status from provider");
+  }
+
+  const providerPayment = pickProviderInvoicePayment(providerInvoice, payment);
+  const normalizedStatus = normalizeProviderPaymentStatus(
+    providerPayment && providerPayment.status ? providerPayment.status : providerInvoice.status
+  );
+  if (!normalizedStatus) {
+    return errorResponse(res, 409, "PAYMENT_PROVIDER_ERROR", "Unsupported provider payment status");
+  }
+
+  const session = await mongoose.startSession();
+  let synchronized = false;
+  try {
+    session.startTransaction();
+
+    const subInSession = await Subscription.findOne({ _id: id, userId: req.userId }).session(session);
+    if (!subInSession) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
+    }
+
+    const paymentInSession = await Payment.findOne({
+      _id: paymentId,
+      subscriptionId: id,
+      userId: req.userId,
+      type: { $in: Array.from(WALLET_TOPUP_PAYMENT_TYPES) },
+    }).session(session);
+    if (!paymentInSession) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 404, "NOT_FOUND", "Top-up payment not found");
+    }
+
+    const providerInvoiceId = providerInvoice && providerInvoice.id ? String(providerInvoice.id) : "";
+    if (providerInvoiceId && paymentInSession.providerInvoiceId && String(paymentInSession.providerInvoiceId) !== providerInvoiceId) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 409, "MISMATCH", "Invoice ID mismatch");
+    }
+    if (providerPayment && providerPayment.id && paymentInSession.providerPaymentId && String(paymentInSession.providerPaymentId) !== String(providerPayment.id)) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 409, "MISMATCH", "Payment ID mismatch");
+    }
+
+    const providerAmount = Number(providerPayment && providerPayment.amount !== undefined ? providerPayment.amount : providerInvoice.amount);
+    if (Number.isFinite(providerAmount) && providerAmount !== Number(paymentInSession.amount)) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 409, "MISMATCH", "Amount mismatch");
+    }
+
+    const providerCurrency = normalizeCurrencyValue(
+      providerPayment && providerPayment.currency ? providerPayment.currency : providerInvoice.currency
+    );
+    if (providerCurrency !== normalizeCurrencyValue(paymentInSession.currency)) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 409, "MISMATCH", "Currency mismatch");
+    }
+
+    if (providerInvoiceId && !paymentInSession.providerInvoiceId) {
+      paymentInSession.providerInvoiceId = providerInvoiceId;
+    }
+    if (providerPayment && providerPayment.id && !paymentInSession.providerPaymentId) {
+      paymentInSession.providerPaymentId = String(providerPayment.id);
+    }
+    paymentInSession.status = normalizedStatus;
+    if (normalizedStatus === "paid" && !paymentInSession.paidAt) {
+      paymentInSession.paidAt = new Date();
+    }
+    await paymentInSession.save({ session });
+
+    if (normalizedStatus === "paid" && !paymentInSession.applied) {
+      const claimedPayment = await Payment.findOneAndUpdate(
+        { _id: paymentInSession._id, applied: false },
+        { $set: { applied: true, status: "paid" } },
+        { new: true, session }
+      );
+      if (claimedPayment) {
+        const result = await applyWalletTopupPayment({
+          subscription: subInSession,
+          payment: claimedPayment,
+          session,
+        });
+        if (result.applied) {
+          synchronized = true;
+        } else {
+          const metadata = Object.assign({}, claimedPayment.metadata || {}, { unappliedReason: result.reason });
+          await Payment.updateOne(
+            { _id: claimedPayment._id },
+            { $set: { applied: true, status: "paid", metadata } },
+            { session }
+          );
+        }
+      }
+    }
+
+    await session.commitTransaction();
+    session.endSession();
+  } catch (err) {
+    if (session.inTransaction()) {
+      await session.abortTransaction();
+    }
+    session.endSession();
+    logger.error("Wallet top-up verification failed", {
+      subscriptionId: id,
+      paymentId,
+      error: err.message,
+      stack: err.stack,
+    });
+    return errorResponse(res, 500, "INTERNAL", "Top-up verification failed");
+  }
+
+  const [latestSub, latestPayment] = await Promise.all([
+    Subscription.findById(id).lean(),
+    Payment.findById(paymentId).lean(),
+  ]);
+  const lang = getRequestLang(req);
+  const catalog = await loadWalletCatalogMaps({ subscription: latestSub, payments: [latestPayment], lang });
+  return res.status(200).json({
+    ok: true,
+    data: {
+      ...buildWalletTopupStatusPayload({
+        subscription: latestSub,
+        payment: latestPayment,
+        catalog,
+        providerInvoice,
+      }),
+      checkedProvider: true,
+      synchronized,
+    },
+  });
+}
+
+async function freezeSubscription(req, res) {
+  const { id } = req.params;
+  const { startDate, days } = req.body || {};
+
+  try {
+    validateObjectId(id, "subscriptionId");
+  } catch (err) {
+    return errorResponse(res, err.status, err.code, err.message);
+  }
+
+  const sub = await Subscription.findById(id).populate("planId");
+  if (!sub) {
+    return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
+  }
+  if (sub.userId.toString() !== req.userId.toString()) {
+    return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
+  }
+
+  const freezePolicy = resolveFreezePolicy(sub.planId);
+  if (!freezePolicy.enabled) {
+    return errorResponse(res, 422, "FREEZE_DISABLED", "Freeze is disabled for this plan");
+  }
+
+  let targetDates;
+  try {
+    ensureActive(sub, startDate);
+    ({ targetDates } = validateFreezeRangeOrThrow(sub, startDate, days));
+    await ensureDateRangeDoesNotIncludeLockedTomorrow(targetDates);
+  } catch (err) {
+    if (err.code === "FREEZE_DISABLED") {
+      return errorResponse(res, 422, err.code, err.message);
+    }
+    const status =
+      err.code === "SUB_INACTIVE" || err.code === "SUB_EXPIRED" ? 422 :
+        err.code === "INVALID_DATE" || err.code === "INVALID" || err.code === "LOCKED" ? 400 :
+          400;
+    return errorResponse(res, status, err.code || "INVALID", err.message);
+  }
+
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  try {
+    const subInSession = await Subscription.findById(id).populate("planId").session(session);
+    if (!subInSession) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
+    }
+
+    ensureActive(subInSession, startDate);
+    const policyInSession = resolveFreezePolicy(subInSession.planId);
+    if (!policyInSession.enabled) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 422, "FREEZE_DISABLED", "Freeze is disabled for this plan");
+    }
+
+    ({ targetDates } = validateFreezeRangeOrThrow(subInSession, startDate, days));
+    await ensureDateRangeDoesNotIncludeLockedTomorrow(targetDates);
+
+    const targetDays = await SubscriptionDay.find({
+      subscriptionId: subInSession._id,
+      date: { $in: targetDates },
+    }).session(session);
+    const targetDaysByDate = new Map(targetDays.map((day) => [day.date, day]));
+
+    const blockedDay = targetDates.find((date) => {
+      const day = targetDaysByDate.get(date);
+      return day && !["open", "frozen"].includes(day.status);
+    });
+    if (blockedDay) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 409, "LOCKED", `Day ${blockedDay} is not open for freeze`);
+    }
+
+    const currentFrozenDates = await getFrozenDateStrings(subInSession._id, session);
+    const prospectiveFrozenSet = new Set(currentFrozenDates);
+    const newlyFrozenDates = [];
+    const alreadyFrozen = [];
+
+    for (const date of targetDates) {
+      if (prospectiveFrozenSet.has(date)) {
+        alreadyFrozen.push(date);
+      } else {
+        prospectiveFrozenSet.add(date);
+        newlyFrozenDates.push(date);
+      }
+    }
+
+    if (prospectiveFrozenSet.size > policyInSession.maxDays) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(
+        res,
+        403,
+        "FREEZE_LIMIT_REACHED",
+        `Freeze days exceed plan limit of ${policyInSession.maxDays}`
+      );
+    }
+    if (countFrozenBlocks(Array.from(prospectiveFrozenSet)) > policyInSession.maxTimes) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(
+        res,
+        403,
+        "FREEZE_LIMIT_REACHED",
+        `Freeze periods exceed plan limit of ${policyInSession.maxTimes}`
+      );
+    }
+
+    for (const date of targetDates) {
+      const existingDay = targetDaysByDate.get(date);
+      if (existingDay) {
+        if (existingDay.status !== "frozen") {
+          existingDay.status = "frozen";
+          await existingDay.save({ session });
+        }
+      } else {
+        await SubscriptionDay.create([{ subscriptionId: subInSession._id, date, status: "frozen" }], { session });
+      }
+    }
+
+    const syncResult = await syncFrozenValidityOrThrow(subInSession, session);
+
+    await session.commitTransaction();
+    session.endSession();
+
+    await writeLogSafely({
+      entityType: "subscription",
+      entityId: subInSession._id,
+      action: "freeze",
+      byUserId: req.userId,
+      byRole: "client",
+      meta: { startDate, days: targetDates.length, frozenDates: targetDates },
+    }, { subscriptionId: id, startDate });
+
+    return res.status(200).json({
+      ok: true,
+      data: {
+        subscriptionId: subInSession.id,
+        frozenDates: targetDates,
+        newlyFrozenDates,
+        alreadyFrozen,
+        frozenDaysTotal: syncResult.frozenDates.length,
+        validityEndDate: toKSADateString(syncResult.validityEndDate),
+        freezePolicy: policyInSession,
+      },
+    });
+  } catch (err) {
+    await session.abortTransaction();
+    session.endSession();
+    if (err.code === "SUB_INACTIVE" || err.code === "SUB_EXPIRED") {
+      return errorResponse(res, 422, err.code, err.message);
+    }
+    if (err.code === "INVALID_DATE" || err.code === "INVALID" || err.code === "LOCKED") {
+      return errorResponse(res, 400, err.code, err.message);
+    }
+    if (err.code === "FREEZE_CONFLICT") {
+      return errorResponse(res, 409, err.code, err.message);
+    }
+    logger.error("Freeze subscription failed", { subscriptionId: id, error: err.message, stack: err.stack });
+    return errorResponse(res, 500, "INTERNAL", "Freeze failed");
+  }
+}
+
+async function unfreezeSubscription(req, res) {
+  const { id } = req.params;
+  const { startDate, days } = req.body || {};
+
+  try {
+    validateObjectId(id, "subscriptionId");
+  } catch (err) {
+    return errorResponse(res, err.status, err.code, err.message);
+  }
+
+  const sub = await Subscription.findById(id).populate("planId");
+  if (!sub) {
+    return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
+  }
+  if (sub.userId.toString() !== req.userId.toString()) {
+    return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
+  }
+
+  let targetDates;
+  try {
+    ensureActive(sub, startDate);
+    ({ targetDates } = validateFreezeRangeOrThrow(sub, startDate, days));
+    await ensureDateRangeDoesNotIncludeLockedTomorrow(targetDates);
+  } catch (err) {
+    const status =
+      err.code === "SUB_INACTIVE" || err.code === "SUB_EXPIRED" ? 422 :
+        err.code === "INVALID_DATE" || err.code === "INVALID" || err.code === "LOCKED" ? 400 :
+          400;
+    return errorResponse(res, status, err.code || "INVALID", err.message);
+  }
+
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  try {
+    const subInSession = await Subscription.findById(id).populate("planId").session(session);
+    if (!subInSession) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
+    }
+
+    ensureActive(subInSession, startDate);
+    ({ targetDates } = validateFreezeRangeOrThrow(subInSession, startDate, days));
+    await ensureDateRangeDoesNotIncludeLockedTomorrow(targetDates);
+
+    const targetDays = await SubscriptionDay.find({
+      subscriptionId: subInSession._id,
+      date: { $in: targetDates },
+    }).session(session);
+    const targetDaysByDate = new Map(targetDays.map((day) => [day.date, day]));
+
+    const unfrozenDates = [];
+    const notFrozen = [];
+    for (const date of targetDates) {
+      const day = targetDaysByDate.get(date);
+      if (!day || day.status !== "frozen") {
+        notFrozen.push(date);
+        continue;
+      }
+      day.status = "open";
+      await day.save({ session });
+      unfrozenDates.push(date);
+    }
+
+    const syncResult = await syncFrozenValidityOrThrow(subInSession, session);
+
+    await session.commitTransaction();
+    session.endSession();
+
+    if (unfrozenDates.length > 0) {
+      await writeLogSafely({
+        entityType: "subscription",
+        entityId: subInSession._id,
+        action: "unfreeze",
+        byUserId: req.userId,
+        byRole: "client",
+        meta: { startDate, days: targetDates.length, unfrozenDates },
+      }, { subscriptionId: id, startDate });
+    }
+
+    return res.status(200).json({
+      ok: true,
+      data: {
+        subscriptionId: subInSession.id,
+        unfrozenDates,
+        notFrozen,
+        frozenDaysTotal: syncResult.frozenDates.length,
+        validityEndDate: toKSADateString(syncResult.validityEndDate),
+      },
+    });
+  } catch (err) {
+    await session.abortTransaction();
+    session.endSession();
+    if (err.code === "SUB_INACTIVE" || err.code === "SUB_EXPIRED") {
+      return errorResponse(res, 422, err.code, err.message);
+    }
+    if (err.code === "INVALID_DATE" || err.code === "INVALID" || err.code === "LOCKED") {
+      return errorResponse(res, 400, err.code, err.message);
+    }
+    if (err.code === "FREEZE_CONFLICT") {
+      return errorResponse(res, 409, err.code, err.message);
+    }
+    logger.error("Unfreeze subscription failed", { subscriptionId: id, error: err.message, stack: err.stack });
+    return errorResponse(res, 500, "INTERNAL", "Unfreeze failed");
+  }
 }
 
 async function getSubscriptionDays(req, res) {
@@ -1431,6 +3047,116 @@ async function skipDay(req, res) {
     await session.abortTransaction();
     session.endSession();
     return errorResponse(res, 500, "INTERNAL", "Skip failed" );
+  }
+}
+
+async function unskipDay(req, res) {
+  const { id, date } = req.params;
+
+  try {
+    validateObjectId(id, "subscriptionId");
+  } catch (err) {
+    return errorResponse(res, err.status, err.code, err.message);
+  }
+
+  const sub = await Subscription.findById(id).populate("planId");
+  if (!sub) return errorResponse(res, 404, "NOT_FOUND", "Subscription not found" );
+  if (sub.userId.toString() !== req.userId.toString()) {
+    return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
+  }
+  try {
+    ensureActive(sub, date);
+    validateFutureDateOrThrow(date, sub);
+  } catch (err) {
+    const status = err.code === "SUB_INACTIVE" || err.code === "SUB_EXPIRED" ? 422 : 400;
+    return errorResponse(res, status, err.code || "INVALID_DATE", err.message );
+  }
+
+  try {
+    await enforceTomorrowCutoffOrThrow(date);
+  } catch (err) {
+    return errorResponse(res, 400, err.code || "LOCKED", err.message );
+  }
+
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  try {
+    const subInSession = await Subscription.findById(id).populate("planId").session(session);
+    if (!subInSession) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 404, "NOT_FOUND", "Subscription not found" );
+    }
+
+    ensureActive(subInSession, date);
+    validateFutureDateOrThrow(date, subInSession);
+
+    const day = await SubscriptionDay.findOne({ subscriptionId: id, date }).session(session);
+    if (!day) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 404, "NOT_FOUND", "Day not found" );
+    }
+    if (day.status !== "skipped") {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 409, "CONFLICT", "Day is not skipped" );
+    }
+    if (day.lockedSnapshot || day.fulfilledSnapshot || day.fulfilledAt || day.assignedByKitchen || day.pickupRequested) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 409, "CONFLICT", "Cannot unskip a processed day" );
+    }
+    if (!day.creditsDeducted) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 409, "CONFLICT", "Skipped day has no deducted credits to restore" );
+    }
+
+    const mealsToRestore = resolveMealsPerDay(subInSession);
+    const restoredSub = await Subscription.findOneAndUpdate(
+      {
+        _id: subInSession._id,
+        skippedCount: { $gte: 1 },
+        remainingMeals: { $lte: Number(subInSession.totalMeals || 0) - mealsToRestore },
+      },
+      { $inc: { remainingMeals: mealsToRestore, skippedCount: -1 } },
+      { new: true, session }
+    );
+    if (!restoredSub) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 409, "DATA_INTEGRITY_ERROR", "Cannot restore credits for this skipped day" );
+    }
+
+    day.status = "open";
+    day.skippedByUser = false;
+    day.creditsDeducted = false;
+    await day.save({ session });
+
+    await session.commitTransaction();
+    session.endSession();
+
+    await writeLogSafely({
+      entityType: "subscription_day",
+      entityId: day._id,
+      action: "unskip",
+      byUserId: req.userId,
+      byRole: "client",
+      meta: { date },
+    }, { subscriptionId: id, date });
+    return res.status(200).json({ ok: true, data: day });
+  } catch (err) {
+    await session.abortTransaction();
+    session.endSession();
+    if (err.code === "SUB_INACTIVE" || err.code === "SUB_EXPIRED") {
+      return errorResponse(res, 422, err.code, err.message);
+    }
+    if (err.code === "INVALID_DATE" || err.code === "LOCKED") {
+      return errorResponse(res, 400, err.code, err.message);
+    }
+    logger.error("Unskip failed", { subscriptionId: id, date, error: err.message, stack: err.stack });
+    return errorResponse(res, 500, "INTERNAL", "Unskip failed" );
   }
 }
 
@@ -2079,14 +3805,25 @@ async function removeAddonSelection(req, res) {
   }
 }
 
-async function topupPremium(_req, res) {
-  if (_req.body && Object.prototype.hasOwnProperty.call(_req.body, "items")) {
-    return topupPremiumCredits(_req, res);
+function applyLegacyPremiumTopupHeaders(res, subscriptionId) {
+  res.set("Deprecation", "true");
+  res.set("Sunset", LEGACY_PREMIUM_TOPUP_SUNSET_HTTP_DATE);
+  res.append(
+    "Link",
+    `</api/subscriptions/${subscriptionId}/premium-credits/topup>; rel="successor-version"`
+  );
+}
+
+async function topupPremium(req, res) {
+  applyLegacyPremiumTopupHeaders(res, req.params.id);
+
+  if (req.body && Object.prototype.hasOwnProperty.call(req.body, "items")) {
+    return topupPremiumCredits(req, res);
   }
 
   try {
-    const { id } = _req.params;
-    const { count, successUrl, backUrl } = _req.body || {};
+    const { id } = req.params;
+    const { count, successUrl, backUrl } = req.body || {};
     const premiumCount = parseInt(count, 10);
     if (!premiumCount || premiumCount <= 0) {
       return errorResponse(res, 400, "INVALID", "Invalid premium count" );
@@ -2741,16 +4478,29 @@ async function fulfillDay(req, res) {
 }
 
 module.exports = {
+  resolveCheckoutQuoteOrThrow,
   quoteSubscription,
-  previewSubscription,
   checkoutSubscription,
+  getCheckoutDraftStatus,
+  verifyCheckoutDraftPayment,
+  finalizeSubscriptionDraftPayment,
   activateSubscription,
   getSubscription,
+  listCurrentUserSubscriptions,
+  serializeSubscriptionForClient,
+  getSubscriptionWallet,
+  getSubscriptionWalletHistory,
+  getWalletTopupPaymentStatus,
+  verifyWalletTopupPayment,
+  applyWalletTopupPayment,
+  freezeSubscription,
+  unfreezeSubscription,
   getSubscriptionDays,
   getSubscriptionToday,
   getSubscriptionDay,
   updateDaySelection,
   skipDay,
+  unskipDay,
   skipRange,
   consumePremiumSelection,
   removePremiumSelection,

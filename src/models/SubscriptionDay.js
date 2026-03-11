@@ -8,6 +8,7 @@ const SubscriptionDaySchema = new mongoose.Schema(
       type: String,
       enum: [
         "open",
+        "frozen",
         "locked",
         "in_preparation",
         "out_for_delivery",
@@ -38,6 +39,7 @@ const SubscriptionDaySchema = new mongoose.Schema(
         consumedAt: { type: Date, default: Date.now },
       },
     ],
+    skippedByUser: { type: Boolean, default: false },
     assignedByKitchen: { type: Boolean, default: false },
     pickupRequested: { type: Boolean, default: false },
     creditsDeducted: { type: Boolean, default: false },
