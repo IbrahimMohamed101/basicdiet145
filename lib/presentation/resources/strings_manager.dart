@@ -35,4 +35,9 @@ class Strings {
   static const String verifyAndContinue = "Verify & Continue";
   static const String secureInfo = "Your information is secure and encrypted";
   static const String loading = "Loading";
+  static const String home = "Home";
+  static const String menu = "Menu";
+  static const String plans = "Plans";
+  static const String orders = "Orders";
+  static const String profile = "Profile";
 }
