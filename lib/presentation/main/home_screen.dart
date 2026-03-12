@@ -1,3 +1,4 @@
+import 'package:basic_diet/presentation/main/subscription_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -8,6 +9,7 @@ import 'package:basic_diet/presentation/resources/strings_manager.dart';
 import 'package:basic_diet/presentation/resources/styles_manager.dart';
 import 'package:basic_diet/presentation/resources/values_manager.dart';
 import 'package:gap/gap.dart';
+import 'package:go_router/go_router.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -24,7 +26,7 @@ class HomeScreen extends StatelessWidget {
             children: [
               _buildHeader(),
               Gap(AppSize.s30.h),
-              _buildCardsRow(),
+              _buildCardsRow(context),
               Gap(AppSize.s30.h),
               _buildQuickBrowseSection(),
               Gap(AppSize.s30.h),
@@ -135,12 +137,12 @@ class HomeScreen extends StatelessWidget {
     // );
   }
 
-  Widget _buildCardsRow() {
+  Widget _buildCardsRow(BuildContext context) {
     return IntrinsicHeight(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(child: _buildSubscribeCard()),
+          Expanded(child: _buildSubscribeCard(context)),
           Gap(AppSize.s16.w),
           Expanded(child: _buildImageCard()),
         ],
@@ -148,99 +150,102 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildSubscribeCard() {
-    return Container(
-      padding: EdgeInsetsDirectional.symmetric(
-        horizontal: AppPadding.p20.w,
-        vertical: AppPadding.p28.h,
-      ),
-      decoration: BoxDecoration(
-        color: ColorManager.greenDark,
-        borderRadius: BorderRadius.circular(AppSize.s16.r),
-        // gradient: LinearGradient(
-        //   colors: [ColorManager.greenPrimary, ColorManager.greenDark],
-        //   begin: Alignment.topLeft,
-        //   end: Alignment.bottomRight,
-        // ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding: EdgeInsetsDirectional.all(AppPadding.p12.w),
-                decoration: BoxDecoration(
-                  color: ColorManager.whiteColor.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(AppSize.s16.r),
-                ),
-                child: SvgPicture.asset(
-                  IconAssets.increase,
-                  colorFilter: const ColorFilter.mode(
-                    ColorManager.whiteColor,
-                    BlendMode.srcIn,
+  Widget _buildSubscribeCard(BuildContext context) {
+    return InkWell(
+      onTap: () => context.push(SubscriptionScreen.subscriptionRoute),
+      child: Container(
+        padding: EdgeInsetsDirectional.symmetric(
+          horizontal: AppPadding.p20.w,
+          vertical: AppPadding.p28.h,
+        ),
+        decoration: BoxDecoration(
+          color: ColorManager.greenDark,
+          borderRadius: BorderRadius.circular(AppSize.s16.r),
+          // gradient: LinearGradient(
+          //   colors: [ColorManager.greenPrimary, ColorManager.greenDark],
+          //   begin: Alignment.topLeft,
+          //   end: Alignment.bottomRight,
+          // ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: EdgeInsetsDirectional.all(AppPadding.p12.w),
+                  decoration: BoxDecoration(
+                    color: ColorManager.whiteColor.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(AppSize.s16.r),
                   ),
-                  width: AppSize.s24.w,
-                  height: AppSize.s24.h,
+                  child: SvgPicture.asset(
+                    IconAssets.increase,
+                    colorFilter: const ColorFilter.mode(
+                      ColorManager.whiteColor,
+                      BlendMode.srcIn,
+                    ),
+                    width: AppSize.s24.w,
+                    height: AppSize.s24.h,
+                  ),
                 ),
-              ),
-              Container(
-                height: AppSize.s45.h,
-                width: AppSize.s45.w,
-                padding: EdgeInsetsDirectional.all(AppPadding.p8.w),
-                decoration: BoxDecoration(
-                  color: ColorManager.whiteColor.withValues(alpha: 0.9),
-                  borderRadius: BorderRadius.circular(AppSize.s10.r),
+                Container(
+                  height: AppSize.s45.h,
+                  width: AppSize.s45.w,
+                  padding: EdgeInsetsDirectional.all(AppPadding.p8.w),
+                  decoration: BoxDecoration(
+                    color: ColorManager.whiteColor.withValues(alpha: 0.9),
+                    borderRadius: BorderRadius.circular(AppSize.s10.r),
+                  ),
+                  child: Text(
+                    Strings.save20,
+                    textAlign: TextAlign.center,
+                    style: getBoldTextStyle(
+                      fontSize: FontSizeManager.s10.sp,
+                      color: ColorManager.greenDark,
+                    ).copyWith(height: 1.2),
+                  ),
                 ),
-                child: Text(
-                  Strings.save20,
-                  textAlign: TextAlign.center,
-                  style: getBoldTextStyle(
-                    fontSize: FontSizeManager.s10.sp,
-                    color: ColorManager.greenDark,
-                  ).copyWith(height: 1.2),
-                ),
-              ),
-            ],
-          ),
-          Gap(AppSize.s20.h),
-          Text(
-            Strings.subscribeAndSave,
-            style: getBoldTextStyle(
-              fontSize: FontSizeManager.s18.sp,
-              color: ColorManager.whiteColor,
-            ).copyWith(height: 1.2),
-          ),
-          Gap(AppSize.s8.h),
-          Text(
-            Strings.personalizedDailyPlans,
-            style: getRegularTextStyle(
-              fontSize: FontSizeManager.s12.sp,
-              color: ColorManager.whiteColor.withValues(alpha: 0.8),
-            ).copyWith(height: 1.2),
-          ),
-          const Spacer(),
-          Gap(AppSize.s16.h),
-          Row(
-            children: [
-              Text(
-                Strings.viewPlans,
-                style: getBoldTextStyle(
-                  fontSize: FontSizeManager.s12.sp,
-                  color: ColorManager.whiteColor,
-                ).copyWith(letterSpacing: 1),
-              ),
-              Gap(AppSize.s4.w),
-              const Icon(
-                Icons.arrow_forward_rounded,
+              ],
+            ),
+            Gap(AppSize.s20.h),
+            Text(
+              Strings.subscribeAndSave,
+              style: getBoldTextStyle(
+                fontSize: FontSizeManager.s18.sp,
                 color: ColorManager.whiteColor,
-                size: AppSize.s16,
-              ),
-            ],
-          ),
-        ],
+              ).copyWith(height: 1.2),
+            ),
+            Gap(AppSize.s8.h),
+            Text(
+              Strings.personalizedDailyPlans,
+              style: getRegularTextStyle(
+                fontSize: FontSizeManager.s12.sp,
+                color: ColorManager.whiteColor.withValues(alpha: 0.8),
+              ).copyWith(height: 1.2),
+            ),
+            const Spacer(),
+            Gap(AppSize.s16.h),
+            Row(
+              children: [
+                Text(
+                  Strings.viewPlans,
+                  style: getBoldTextStyle(
+                    fontSize: FontSizeManager.s12.sp,
+                    color: ColorManager.whiteColor,
+                  ).copyWith(letterSpacing: 1),
+                ),
+                Gap(AppSize.s4.w),
+                const Icon(
+                  Icons.arrow_forward_rounded,
+                  color: ColorManager.whiteColor,
+                  size: AppSize.s16,
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
