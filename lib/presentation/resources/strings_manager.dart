@@ -40,4 +40,40 @@ class Strings {
   static const String plans = "Plans";
   static const String orders = "Orders";
   static const String profile = "Profile";
+
+  // Home Screen
+  static const String goodMorning = "Good Morning!";
+  static const String eatHealthyFeelGreat = "Eat healthy, feel great";
+  static const String subscribeAndSave = "Subscribe\n& Save";
+  static const String personalizedDailyPlans = "Personalized daily\nplans";
+  static const String viewPlans = "VIEW PLANS";
+  static const String quickBrowse = "Quick Browse";
+  static const String seeAll = "SEE ALL";
+  static const String readyMeals = "Ready Meals";
+  static const String snacksCategory = "Snacks";
+  static const String dessertsCategory = "Desserts";
+  static const String drinksCategory = "Drinks";
+  static const String save20 = "SAVE\n20%";
+
+  // Popular Packages section
+  static const String popularPackages = "Popular Packages";
+  static const String mostPopular = "MOST POPULAR";
+  static const String bestValue = "BEST VALUE";
+  static const String saveMost = "SAVE MOST";
+  static const String package7Days = "7 Days Package";
+  static const String package26Days = "26 Days Package";
+  static const String package30Days = "30 Days Package";
+  static const String mealsDesc = "2 meals/day • 150g portions • ";
+  static const String days7 = "7 days";
+  static const String days26 = "26 days";
+  static const String days30 = "30 days";
+  static const String sar280 = "280 SAR";
+  static const String sar320 = "320 SAR";
+  static const String save40Sar = "Save 40 SAR";
+  static const String sar980 = "980 SAR";
+  static const String sar1200 = "1200 SAR";
+  static const String save220Sar = "Save 220 SAR";
+  static const String sar1120 = "1120 SAR";
+  static const String sar1400 = "1400 SAR";
+  static const String save280Sar = "Save 280 SAR";
 }

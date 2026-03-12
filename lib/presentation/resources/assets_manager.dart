@@ -6,14 +6,22 @@ class ImageAssets {
   static const String splashLogo = '$imagesPath/splashLogo.png';
   static const String onBoarding1 = '$imagesPath/onBoarding1.png';
   static const String onBoarding2 = '$imagesPath/onBoarding2.png';
+  static const String salad = '$imagesPath/salad.jpeg';
+  static const String soup = '$imagesPath/soup.png';
+  static const String snacks = '$imagesPath/snacks.png';
+  static const String desserts = '$imagesPath/desserts.png';
+  static const String drinks = '$imagesPath/drinks.png';
 }
 
 class IconAssets {
   static const String home = '$iconsPath/home.svg';
+  static const String increase = '$iconsPath/increase.svg';
   static const String plans = '$iconsPath/plans.svg';
   static const String orders = '$iconsPath/orders.svg';
   static const String profile = '$iconsPath/profile.svg';
   static const String knife = '$iconsPath/knife.svg';
+  static const String notification = '$iconsPath/notification.svg';
+  static const String star = '$iconsPath/star.svg';
 }
 
 class JsonAssets {

@@ -18,4 +18,7 @@ class ColorManager {
   static const Color blackColor = Color(0xFF0A0A0A);
   static const Color grayColor = Color(0xFF717182);
   static const Color formFieldsBorderColor = Color(0xFFE5E7EB);
+  static const Color black101828 = Color(0xFF101828);
+  static const Color grey6A7282 = Color(0xFF6A7282);
+  static const Color orangeF54900 = Color(0xFFF54900);
 }
