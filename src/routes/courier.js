@@ -28,6 +28,7 @@ router.put("/deliveries/:id/delivered", asyncHandler(controller.markDelivered));
 router.put("/deliveries/:id/cancel", asyncHandler(controller.markCancelled));
 
 router.get("/orders/today", asyncHandler(orderController.listTodayOrders));
+router.put("/orders/:id/arriving-soon", asyncHandler(orderController.markArrivingSoon));
 router.put("/orders/:id/delivered", asyncHandler(orderController.markDelivered));
 router.put("/orders/:id/cancel", asyncHandler(orderController.markCancelled));
 

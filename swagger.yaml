@@ -1461,24 +1461,23 @@ components:
       properties:
         _id:
           type: string
+        id:
+          type: string
         name:
           $ref: '#/components/schemas/LocalizedText'
+        description:
+          $ref: '#/components/schemas/LocalizedText'
+        imageUrl:
+          type: string
         type:
           type: string
           enum: [regular, premium]
-        isActive:
+        availableForOrder:
           type: boolean
-
-    MealResolved:
-      type: object
-      properties:
-        _id:
-          type: string
-        name:
-          type: string
-        type:
-          type: string
-          enum: [regular]
+        availableForSubscription:
+          type: boolean
+        sortOrder:
+          type: integer
         isActive:
           type: boolean
         createdAt:
@@ -1487,6 +1486,130 @@ components:
         updatedAt:
           type: string
           format: date-time
+
+    MealResolved:
+      type: object
+      properties:
+        _id:
+          type: string
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        imageUrl:
+          type: string
+        type:
+          type: string
+          enum: [regular]
+        availableForOrder:
+          type: boolean
+        availableForSubscription:
+          type: boolean
+        sortOrder:
+          type: integer
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    MenuCustomSaladSupport:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        basePriceHalala:
+          $ref: '#/components/schemas/HalalaAmount'
+        basePriceSar:
+          type: number
+          description: "basePriceHalala / 100"
+        currency:
+          type: string
+          enum: [SAR]
+      required: [enabled, basePriceHalala, basePriceSar, currency]
+
+    OrderMenuMeal:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        imageUrl:
+          type: string
+        type:
+          type: string
+          enum: [regular, premium]
+        priceHalala:
+          $ref: '#/components/schemas/HalalaAmount'
+        priceSar:
+          type: number
+          description: "priceHalala / 100"
+        currency:
+          type: string
+          enum: [SAR]
+      required: [id, name, description, imageUrl, type, priceHalala, priceSar, currency]
+
+    SubscriptionRegularMenuMeal:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        imageUrl:
+          type: string
+        type:
+          type: string
+          enum: [regular]
+        pricingModel:
+          type: string
+          enum: [included]
+        priceHalala:
+          $ref: '#/components/schemas/HalalaAmount'
+        priceSar:
+          type: number
+          description: "priceHalala / 100"
+        currency:
+          type: string
+          enum: [SAR]
+      required: [id, name, description, imageUrl, type, pricingModel, priceHalala, priceSar, currency]
+
+    SubscriptionPremiumMenuMeal:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        imageUrl:
+          type: string
+        type:
+          type: string
+          enum: [premium]
+        pricingModel:
+          type: string
+          enum: [extra_fee]
+        priceHalala:
+          $ref: '#/components/schemas/HalalaAmount'
+        priceSar:
+          type: number
+          description: "priceHalala / 100"
+        currency:
+          type: string
+          enum: [SAR]
+      required: [id, name, description, imageUrl, type, pricingModel, priceHalala, priceSar, currency]
 
     PremiumMeal:
       type: object
@@ -3198,6 +3321,45 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /api/subscriptions/menu:
+    get:
+      tags: [Menu, Subscriptions]
+      summary: Get subscription meals menu
+      description: |
+        Returns the menu payload used by the subscription meal-selection experience.
+        The payload includes:
+        - `regularMeals`: regular meals included in the plan
+        - `premiumMeals`: premium upgrade catalog with extra fees
+        - `customSalad`: base pricing metadata for the custom salad builder
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
+      responses:
+        '200':
+          description: Subscription menu payload.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      currency:
+                        type: string
+                        enum: [SAR]
+                      customSalad:
+                        $ref: '#/components/schemas/MenuCustomSaladSupport'
+                      regularMeals:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/SubscriptionRegularMenuMeal'
+                      premiumMeals:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/SubscriptionPremiumMenuMeal'
+
   /api/subscriptions/quote:
     post:
       tags: [Subscriptions]
@@ -4812,6 +4974,39 @@ paths:
         '422':
           $ref: '#/components/responses/Unprocessable'
 
+  /api/orders/menu:
+    get:
+      tags: [Menu, Orders]
+      summary: Get one-time order menu
+      description: |
+        Returns the menu payload used by the one-time ordering experience.
+        The payload includes orderable meals with restaurant-style metadata and
+        the base pricing metadata for the custom salad builder.
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
+      responses:
+        '200':
+          description: One-time order menu payload.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      currency:
+                        type: string
+                        enum: [SAR]
+                      customSalad:
+                        $ref: '#/components/schemas/MenuCustomSaladSupport'
+                      meals:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/OrderMenuMeal'
+
   /api/orders/checkout:
     post:
       tags: [Orders]
@@ -4864,8 +5059,17 @@ paths:
                 deliveryDate:
                   type: string
                   pattern: '^\\d{4}-\\d{2}-\\d{2}$'
+                successUrl:
+                  type: string
+                  format: uri
+                backUrl:
+                  type: string
+                  format: uri
+                idempotencyKey:
+                  type: string
+                  maxLength: 128
       responses:
-        '200':
+        '201':
           description: Order checkout created.
           content:
             application/json:
@@ -4879,6 +5083,9 @@ paths:
                     properties:
                       orderId:
                         type: string
+                      paymentId:
+                        type: string
+                        nullable: true
                       requestedDeliveryDate:
                         type: string
                       deliveryDate:
@@ -4887,16 +5094,21 @@ paths:
                         type: boolean
                       payment_url:
                         type: string
+                      invoice_id:
+                        type: string
+                        nullable: true
                       pricing:
                         $ref: '#/components/schemas/OrderPricing'
               example:
                 ok: true
                 data:
                   orderId: 65f3b6a0be3f7e2ea12340aa
+                  paymentId: 65f3b6a0be3f7e2ea12340ab
                   requestedDeliveryDate: "2026-03-01"
                   deliveryDate: "2026-03-01"
                   dateAdjusted: false
-                  payment_url: https://mock-payment.com/orders/65f3b6a0be3f7e2ea12340aa
+                  payment_url: https://mysr.co/invoice/abc
+                  invoice_id: inv_abc123
                   pricing:
                     unitPrice: 2500
                     premiumUnitPrice: 3500
@@ -4905,6 +5117,8 @@ paths:
                     deliveryFee: 0
                     total: 5000
                     currency: SAR
+        '200':
+          description: Existing initiated or already-paid checkout reused.
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -4981,6 +5195,21 @@ paths:
                         type: string
                         enum: [initiated, paid, failed, canceled, expired, refunded]
                         nullable: true
+                      paymentUrl:
+                        type: string
+                      providerInvoiceId:
+                        type: string
+                        nullable: true
+                      providerPaymentId:
+                        type: string
+                        nullable: true
+                      checkedProvider:
+                        type: boolean
+                      synchronized:
+                        type: boolean
+                      providerInvoice:
+                        type: object
+                        nullable: true
                       payment:
                         type: object
                         nullable: true
@@ -4988,6 +5217,63 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+
+  /api/orders/{id}/verify-payment:
+    post:
+      tags: [Orders]
+      summary: Verify order payment with Moyasar
+      description: Fetches the current invoice state from Moyasar, synchronizes the local payment record, and confirms the one-time order when the provider marks the invoice as paid.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '200':
+          description: Provider payment status synchronized.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      orderId:
+                        type: string
+                      orderStatus:
+                        type: string
+                      paymentStatus:
+                        type: string
+                      orderPaymentStatus:
+                        type: string
+                      paymentUrl:
+                        type: string
+                      providerInvoiceId:
+                        type: string
+                        nullable: true
+                      providerPaymentId:
+                        type: string
+                        nullable: true
+                      checkedProvider:
+                        type: boolean
+                      synchronized:
+                        type: boolean
+                      providerInvoice:
+                        type: object
+                        nullable: true
+                      payment:
+                        type: object
+                        nullable: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/Internal'
 
   /api/orders/{id}/reject-adjusted-date:
     post:
@@ -5184,7 +5470,7 @@ paths:
     get:
       tags: [Meals / Menu]
       summary: List active regular meals
-      description: Returns localized regular meal names by `Accept-Language`.
+      description: Returns localized active regular meals with menu metadata by `Accept-Language`.
       parameters:
         - $ref: '#/components/parameters/AcceptLanguage'
       responses:
@@ -5421,6 +5707,36 @@ paths:
       responses:
         '200':
           description: Delivered.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/courier/orders/{id}/arriving-soon:
+    put:
+      tags: [Deliveries / Courier, Orders]
+      summary: Mark one-time order arriving soon
+      description: Sends the one-time order client an arriving-soon delivery notification once and stamps `arrivingSoonReminderSentAt`.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '200':
+          description: Arriving-soon notification processed.
           content:
             application/json:
               schema:
@@ -6950,7 +7266,7 @@ paths:
     post:
       tags: [Admin]
       summary: Create regular meal
-      description: Requires dashboard auth with `admin` role. Creates only `regular` meals.
+      description: Requires dashboard auth with `admin` role. Creates only `regular` meals with menu metadata.
       security:
         - dashboardBearerAuth: []
       requestBody:
@@ -6965,6 +7281,18 @@ paths:
                   oneOf:
                     - type: string
                     - $ref: '#/components/schemas/LocalizedText'
+                description:
+                  oneOf:
+                    - type: string
+                    - $ref: '#/components/schemas/LocalizedText'
+                imageUrl:
+                  type: string
+                availableForOrder:
+                  type: boolean
+                availableForSubscription:
+                  type: boolean
+                sortOrder:
+                  type: integer
                 isActive:
                   type: boolean
       responses:
@@ -7021,7 +7349,7 @@ paths:
     put:
       tags: [Admin]
       summary: Update regular meal
-      description: Requires dashboard auth with `admin` role. Updates only `regular` meals.
+      description: Requires dashboard auth with `admin` role. Updates only `regular` meals and their menu metadata.
       security:
         - dashboardBearerAuth: []
       parameters:
@@ -7037,6 +7365,18 @@ paths:
                   oneOf:
                     - type: string
                     - $ref: '#/components/schemas/LocalizedText'
+                description:
+                  oneOf:
+                    - type: string
+                    - $ref: '#/components/schemas/LocalizedText'
+                imageUrl:
+                  type: string
+                availableForOrder:
+                  type: boolean
+                availableForSubscription:
+                  type: boolean
+                sortOrder:
+                  type: integer
                 isActive:
                   type: boolean
       responses:

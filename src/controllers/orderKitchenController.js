@@ -1,5 +1,6 @@
 const Order = require("../models/Order");
 const Delivery = require("../models/Delivery");
+const { notifyOrderUser } = require("../services/orderNotificationService");
 const { canOrderTransition } = require("../utils/orderState");
 const { writeLog } = require("../utils/log");
 const validateObjectId = require("../utils/validateObjectId");
@@ -47,24 +48,31 @@ async function transitionOrder(req, res, toStatus) {
   if (toStatus === "confirmed" && !order.confirmedAt) order.confirmedAt = new Date();
   if (toStatus === "fulfilled" && !order.fulfilledAt) order.fulfilledAt = new Date();
   if (toStatus === "canceled" && !order.canceledAt) order.canceledAt = new Date();
-  
-  // CR-05 FIX: Create Delivery record for delivery orders going out_for_delivery
+  let delivery = null;
+
   if (toStatus === "out_for_delivery" && order.deliveryMode === "delivery") {
-    await Delivery.findOneAndUpdate(
+    const etaAt = req.body && req.body.etaAt ? new Date(req.body.etaAt) : null;
+    if (etaAt && Number.isNaN(etaAt.getTime())) {
+      return errorResponse(res, 400, "INVALID", "Invalid etaAt");
+    }
+
+    delivery = await Delivery.findOneAndUpdate(
       { orderId: order._id },
       {
-        $setOnInsert: {
-          orderId: order._id,
-          // One-time order deliveries are linked by orderId only.
+        $set: {
           address: order.deliveryAddress,
           window: order.deliveryWindow,
           status: "out_for_delivery",
-        }
+          ...(etaAt ? { etaAt } : {}),
+        },
+        $setOnInsert: {
+          orderId: order._id,
+        },
       },
-      { upsert: true }
+      { upsert: true, new: true, setDefaultsOnInsert: true }
     );
   }
-  
+
   await order.save();
 
   await writeLog({
@@ -75,6 +83,15 @@ async function transitionOrder(req, res, toStatus) {
     byRole: req.userRole,
     meta: { from: fromStatus, to: toStatus },
   });
+
+  if (["preparing", "out_for_delivery", "ready_for_pickup"].includes(toStatus)) {
+    await notifyOrderUser({
+      order,
+      type: toStatus,
+      deliveryId: delivery ? delivery._id : null,
+      scheduledFor: new Date(),
+    });
+  }
 
   return res.status(200).json({ ok: true, data: order });
 }

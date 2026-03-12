@@ -5,6 +5,7 @@ const Subscription = require("../models/Subscription");
 const SubscriptionDay = require("../models/SubscriptionDay");
 const { KSA_TIMEZONE, toKSADateString } = require("../utils/date");
 const { sendUserNotificationWithDedupe } = require("./notificationService");
+const { notifyOrderUser } = require("./orderNotificationService");
 const { logger } = require("../utils/logger");
 
 function hasSelectedMeals(day) {
@@ -25,24 +26,35 @@ async function processDueDeliveryArrivingSoon(now = new Date()) {
     status: { $nin: ["delivered", "canceled", "cancelled"] },
   })
     .populate({ path: "subscriptionId", select: "userId" })
+    .populate({ path: "orderId", select: "userId" })
     .lean();
 
   let processed = 0;
   for (const delivery of deliveries) {
     const subscription = delivery.subscriptionId;
-    if (!subscription || !subscription.userId) continue;
+    const order = delivery.orderId;
+    let dispatch = { status: "failed" };
 
-    const dispatch = await sendUserNotificationWithDedupe({
-      userId: subscription.userId,
-      title: "Delivery Update",
-      body: "Your order will arrive soon.",
-      data: { deliveryId: String(delivery._id) },
-      type: "arriving_soon_1h",
-      dedupeKey: `delivery:${delivery._id}:arriving_soon_1h`,
-      entityType: "delivery",
-      entityId: delivery._id,
-      scheduledFor: delivery.etaAt ? addHours(new Date(delivery.etaAt), -1) : null,
-    });
+    if (subscription && subscription.userId) {
+      dispatch = await sendUserNotificationWithDedupe({
+        userId: subscription.userId,
+        title: "Delivery Update",
+        body: "Your order will arrive soon.",
+        data: { deliveryId: String(delivery._id) },
+        type: "arriving_soon_1h",
+        dedupeKey: `delivery:${delivery._id}:arriving_soon_1h`,
+        entityType: "delivery",
+        entityId: delivery._id,
+        scheduledFor: delivery.etaAt ? addHours(new Date(delivery.etaAt), -1) : null,
+      });
+    } else if (order && order.userId) {
+      dispatch = await notifyOrderUser({
+        order,
+        type: "arriving_soon",
+        deliveryId: delivery._id,
+        scheduledFor: delivery.etaAt ? addHours(new Date(delivery.etaAt), -1) : null,
+      });
+    }
 
     if (!isProcessedDispatchStatus(dispatch.status)) continue;
 

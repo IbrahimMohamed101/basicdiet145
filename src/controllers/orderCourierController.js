@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 const Order = require("../models/Order");
 const Delivery = require("../models/Delivery");
+const { notifyOrderUser } = require("../services/orderNotificationService");
 const { getTodayKSADate } = require("../utils/date");
 const { canOrderTransition } = require("../utils/orderState");
 const { writeLog } = require("../utils/log");
@@ -12,6 +13,68 @@ async function listTodayOrders(_req, res) {
   const today = getTodayKSADate();
   const orders = await Order.find({ deliveryDate: today, deliveryMode: "delivery" }).sort({ createdAt: -1 }).lean();
   return res.status(200).json({ ok: true, data: orders });
+}
+
+async function markArrivingSoon(req, res) {
+  try {
+    validateObjectId(req.params.id, "orderId");
+  } catch (err) {
+    return errorResponse(res, err.status, err.code, err.message);
+  }
+
+  try {
+    const order = await Order.findById(req.params.id);
+    if (!order) {
+      return errorResponse(res, 404, "NOT_FOUND", "Order not found");
+    }
+    if (order.deliveryMode !== "delivery") {
+      return errorResponse(res, 400, "INVALID", "Order is not delivery");
+    }
+
+    const reminderSentAt = new Date();
+    const delivery = await Delivery.findOneAndUpdate(
+      {
+        orderId: order._id,
+        status: { $in: ["scheduled", "out_for_delivery"] },
+        arrivingSoonReminderSentAt: null,
+      },
+      {
+        $set: {
+          status: "out_for_delivery",
+          arrivingSoonReminderSentAt: reminderSentAt,
+        },
+      },
+      { new: true }
+    );
+
+    if (!delivery) {
+      return res.status(200).json({ ok: true, deduped: true });
+    }
+
+    await writeLog({
+      entityType: "delivery",
+      entityId: delivery._id,
+      action: "arriving_soon",
+      byUserId: req.userId,
+      byRole: req.userRole,
+      meta: { orderId: String(order._id), deliveryId: String(delivery._id) },
+    });
+
+    await notifyOrderUser({
+      order,
+      type: "arriving_soon",
+      deliveryId: delivery._id,
+      scheduledFor: delivery.etaAt || reminderSentAt,
+    });
+
+    return res.status(200).json({ ok: true });
+  } catch (err) {
+    logger.error("orderCourierController.markArrivingSoon failed", {
+      error: err.message,
+      stack: err.stack,
+    });
+    return errorResponse(res, 500, "INTERNAL", "Arriving soon update failed");
+  }
 }
 
 async function markDelivered(req, res) {
@@ -61,6 +124,8 @@ async function markDelivered(req, res) {
       byUserId: req.userId,
       byRole: req.userRole,
     });
+
+    await notifyOrderUser({ order, type: "delivered" });
     return res.status(200).json({ ok: true });
   } catch (err) {
     if (session.inTransaction()) {
@@ -114,6 +179,8 @@ async function markCancelled(req, res) {
       byUserId: req.userId,
       byRole: req.userRole,
     });
+
+    await notifyOrderUser({ order, type: "canceled" });
     return res.status(200).json({ ok: true });
   } catch (err) {
     if (session.inTransaction()) {
@@ -125,4 +192,4 @@ async function markCancelled(req, res) {
   }
 }
 
-module.exports = { listTodayOrders, markDelivered, markCancelled };
+module.exports = { listTodayOrders, markArrivingSoon, markDelivered, markCancelled };

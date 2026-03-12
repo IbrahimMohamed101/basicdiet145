@@ -73,6 +73,9 @@ const OrderSchema = new mongoose.Schema(
       enum: ["initiated", "paid", "failed", "canceled", "expired", "refunded"],
       default: "initiated",
     },
+    paymentUrl: { type: String, default: "" },
+    idempotencyKey: { type: String, trim: true, default: "" },
+    requestHash: { type: String, trim: true, default: "" },
     paymentId: { type: mongoose.Schema.Types.ObjectId, ref: "Payment" },
     providerInvoiceId: { type: String },
     providerPaymentId: { type: String },
@@ -85,5 +88,23 @@ const OrderSchema = new mongoose.Schema(
 
 OrderSchema.index({ userId: 1, createdAt: -1 });
 OrderSchema.index({ deliveryDate: 1 });
+OrderSchema.index(
+  { userId: 1, idempotencyKey: 1 },
+  {
+    unique: true,
+    sparse: true,
+    partialFilterExpression: { idempotencyKey: { $type: "string", $ne: "" } },
+  }
+);
+OrderSchema.index(
+  { userId: 1, requestHash: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      requestHash: { $type: "string", $ne: "" },
+      paymentStatus: "initiated",
+    },
+  }
+);
 
 module.exports = mongoose.model("Order", OrderSchema);

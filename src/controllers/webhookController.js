@@ -6,6 +6,7 @@ const CheckoutDraft = require("../models/CheckoutDraft");
 const Payment = require("../models/Payment");
 const Plan = require("../models/Plan");
 const Order = require("../models/Order");
+const { notifyOrderUser } = require("../services/orderNotificationService");
 const { writeLog } = require("../utils/log");
 const { logger } = require("../utils/logger");
 const { toKSADateString } = require("../utils/date");
@@ -169,6 +170,24 @@ async function handleMoyasarWebhook(req, res) {
           }
         }
       }
+      if (payment.type === "one_time_order" && terminalFailureStatuses.has(payment.status)) {
+        const nonPaidMetadata = payment.metadata || {};
+        if (nonPaidMetadata.orderId && mongoose.Types.ObjectId.isValid(String(nonPaidMetadata.orderId))) {
+          const order = await Order.findById(nonPaidMetadata.orderId).session(session);
+          const isCurrentAttempt = order && (!order.paymentId || String(order.paymentId) === String(payment._id));
+          if (order && isCurrentAttempt) {
+            order.paymentStatus = payment.status;
+            order.paymentId = payment._id;
+            if (payment.providerInvoiceId) order.providerInvoiceId = payment.providerInvoiceId;
+            if (payment.providerPaymentId) order.providerPaymentId = payment.providerPaymentId;
+            if (order.status === "created") {
+              order.status = "canceled";
+              order.canceledAt = order.canceledAt || new Date();
+            }
+            await order.save({ session });
+          }
+        }
+      }
       await session.commitTransaction();
       session.endSession();
       logger.info("Moyasar webhook processed: non-paid status", {
@@ -185,6 +204,7 @@ async function handleMoyasarWebhook(req, res) {
     const type = payment.type;
     let applied = false;
     let unappliedReason;
+    let orderNotification = null;
 
     const claim = await Payment.findOneAndUpdate(
       { _id: payment._id, applied: false },
@@ -544,23 +564,35 @@ async function handleMoyasarWebhook(req, res) {
         if (!order) {
           unappliedReason = "order_not_found";
         } else {
-          if (order.status === "created") {
-            order.status = "confirmed";
-            order.confirmedAt = new Date();
+          const isCurrentAttempt = !order.paymentId || String(order.paymentId) === String(payment._id);
+          if (!isCurrentAttempt && order.paymentStatus === "paid") {
+            unappliedReason = "stale_order_payment_attempt";
+          } else {
+            if (order.status === "created" || order.status === "canceled") {
+              order.status = "confirmed";
+              order.confirmedAt = order.confirmedAt || new Date();
+              order.canceledAt = undefined;
+            }
+            order.paymentStatus = "paid";
+            order.paymentId = payment._id;
+            if (payment.providerInvoiceId) order.providerInvoiceId = payment.providerInvoiceId;
+            if (payment.providerPaymentId) order.providerPaymentId = payment.providerPaymentId;
+            if (metadata.paymentUrl && !order.paymentUrl) order.paymentUrl = String(metadata.paymentUrl);
+            await order.save({ session });
+            applied = true;
+            orderNotification = {
+              orderId: order._id,
+              userId: order.userId,
+              paymentId: payment._id,
+            };
+            await writeLog({
+              entityType: "order",
+              entityId: order._id,
+              action: "order_payment_webhook",
+              byRole: "system",
+              meta: { orderId: String(order._id), paymentId },
+            });
           }
-          order.paymentStatus = "paid";
-          order.paymentId = payment._id;
-          if (payment.providerInvoiceId) order.providerInvoiceId = payment.providerInvoiceId;
-          if (payment.providerPaymentId) order.providerPaymentId = payment.providerPaymentId;
-          await order.save({ session });
-          applied = true;
-          await writeLog({
-            entityType: "order",
-            entityId: order._id,
-            action: "order_payment_webhook",
-            byRole: "system",
-            meta: { orderId: String(order._id), paymentId },
-          });
         }
       } else {
         unappliedReason = "invalid_metadata";
@@ -591,6 +623,13 @@ async function handleMoyasarWebhook(req, res) {
 
     await session.commitTransaction();
     session.endSession();
+    if (orderNotification) {
+      await notifyOrderUser({
+        order: { _id: orderNotification.orderId, userId: orderNotification.userId },
+        type: "paid",
+        paymentId: orderNotification.paymentId,
+      });
+    }
     logger.info("Moyasar webhook processed", {
       ...logContext,
       internalPaymentId: String(payment._id),

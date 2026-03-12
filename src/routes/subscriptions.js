@@ -1,11 +1,14 @@
 const { Router } = require("express");
 const controller = require("../controllers/subscriptionController");
 const customSaladController = require("../controllers/customSaladController");
+const menuController = require("../controllers/menuController");
 const { authMiddleware } = require("../middleware/auth");
 const { checkoutLimiter } = require("../middleware/rateLimit");
 const asyncHandler = require("../middleware/asyncHandler");
 
 const router = Router();
+
+router.get("/menu", asyncHandler(menuController.getSubscriptionMenu));
 
 router.use(authMiddleware);
 

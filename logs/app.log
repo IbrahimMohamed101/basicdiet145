@@ -271,3 +271,17 @@
 {"level":"info","message":"API listening","port":"3000","timestamp":"2026-03-11T04:07:30.365Z"}
 {"date":"2026-03-12","level":"info","message":"Automation cutoff start","timestamp":"2026-03-11T04:08:30.701Z"}
 {"count":0,"level":"info","message":"Automation cutoff finished","timestamp":"2026-03-11T04:08:30.828Z"}
+{"email":"superadmin@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"superadmin","timestamp":"2026-03-12T15:38:13.884Z"}
+{"email":"admin@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"admin","timestamp":"2026-03-12T15:38:14.365Z"}
+{"email":"kitchen@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"kitchen","timestamp":"2026-03-12T15:38:14.634Z"}
+{"email":"courier@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"courier","timestamp":"2026-03-12T15:38:14.777Z"}
+{"level":"info","message":"Jobs starting","timestamp":"2026-03-12T15:38:14.777Z"}
+{"level":"info","message":"API listening","port":"3000","timestamp":"2026-03-12T15:38:14.780Z"}
+{"email":"superadmin@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"superadmin","timestamp":"2026-03-12T23:26:37.282Z"}
+{"email":"admin@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"admin","timestamp":"2026-03-12T23:26:37.684Z"}
+{"email":"kitchen@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"kitchen","timestamp":"2026-03-12T23:26:37.817Z"}
+{"email":"courier@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"courier","timestamp":"2026-03-12T23:26:37.941Z"}
+{"level":"info","message":"Jobs starting","timestamp":"2026-03-12T23:26:37.943Z"}
+{"level":"info","message":"API listening","port":"3000","timestamp":"2026-03-12T23:26:37.950Z"}
+{"date":"2026-03-14","level":"info","message":"Automation cutoff start","timestamp":"2026-03-12T23:27:38.257Z"}
+{"count":0,"level":"info","message":"Automation cutoff finished","timestamp":"2026-03-12T23:27:38.433Z"}
