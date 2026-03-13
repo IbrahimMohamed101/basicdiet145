@@ -62,6 +62,7 @@ async function processDailyCutoff() {
             premiumUpgradeSelections,
             addonCreditSelections,
             customSalads: day.customSalads || [],
+            customMeals: day.customMeals || [],
             subscriptionAddons: sub.addonSubscriptions || [],
             address,
             deliveryWindow,

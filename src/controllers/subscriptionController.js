@@ -1115,6 +1115,7 @@ function isRemovableExtensionDay(day) {
   if (Array.isArray(day.premiumSelections) && day.premiumSelections.length > 0) return false;
   if (Array.isArray(day.addonsOneTime) && day.addonsOneTime.length > 0) return false;
   if (Array.isArray(day.customSalads) && day.customSalads.length > 0) return false;
+  if (Array.isArray(day.customMeals) && day.customMeals.length > 0) return false;
   if (Array.isArray(day.premiumUpgradeSelections) && day.premiumUpgradeSelections.length > 0) return false;
   if (Array.isArray(day.addonCreditSelections) && day.addonCreditSelections.length > 0) return false;
   if (day.assignedByKitchen || day.pickupRequested || day.creditsDeducted || day.skippedByUser) return false;
@@ -2949,6 +2950,7 @@ async function lockDaySnapshot(sub, day, session) {
     premiumUpgradeSelections,
     addonCreditSelections,
     customSalads: day.customSalads || [],
+    customMeals: day.customMeals || [],
     subscriptionAddons: sub.addonSubscriptions || [],
     address,
     deliveryWindow,

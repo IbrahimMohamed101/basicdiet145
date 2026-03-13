@@ -413,6 +413,49 @@ async function handleMoyasarWebhook(req, res) {
       } else {
         unappliedReason = "invalid_metadata";
       }
+    } else if (type === "custom_meal_day") {
+      const snapshot = metadata.snapshot;
+      if (metadata.subscriptionId && metadata.date && snapshot) {
+        const existingDay = await SubscriptionDay.findOne(
+          { subscriptionId: metadata.subscriptionId, date: metadata.date }
+        ).session(session);
+
+        let updatedDay;
+        if (!existingDay) {
+          const createdDay = await SubscriptionDay.create(
+            [
+              {
+                subscriptionId: metadata.subscriptionId,
+                date: metadata.date,
+                status: "open",
+                customMeals: [snapshot],
+              },
+            ],
+            { session }
+          );
+          updatedDay = createdDay[0];
+        } else if (existingDay.status === "open") {
+          existingDay.customMeals = existingDay.customMeals || [];
+          existingDay.customMeals.push(snapshot);
+          await existingDay.save({ session });
+          updatedDay = existingDay;
+        } else {
+          unappliedReason = `day_not_open:${existingDay.status}`;
+        }
+
+        if (updatedDay) {
+          applied = true;
+          await writeLog({
+            entityType: "subscription_day",
+            entityId: updatedDay._id,
+            action: "custom_meal_day_webhook",
+            byRole: "system",
+            meta: { date: metadata.date, paymentId },
+          });
+        }
+      } else {
+        unappliedReason = "invalid_metadata";
+      }
     } else if (type === "subscription_activation") {
       if (metadata.draftId && mongoose.Types.ObjectId.isValid(metadata.draftId)) {
         const draft = await CheckoutDraft.findById(metadata.draftId).session(session);

@@ -724,6 +724,9 @@ function buildOrderItemsSummary(order, lang) {
   if (Array.isArray(order && order.customSalads) && order.customSalads.length > 0) {
     names.push(lang === "ar" ? "سلطة مخصصة" : "Custom salad");
   }
+  if (Array.isArray(order && order.customMeals) && order.customMeals.length > 0) {
+    names.push(lang === "ar" ? "وجبة مخصصة" : "Custom meal");
+  }
 
   return names.slice(0, 3).join(lang === "ar" ? "، " : ", ") || null;
 }
@@ -2416,6 +2419,23 @@ function normalizeCustomSaladBasePriceOrThrow(price) {
   return parsed;
 }
 
+function normalizeCustomMealBasePriceOrThrow(price) {
+  if (price === undefined) {
+    throw createControlledError(400, "INVALID", "Missing price");
+  }
+  const parsed = Number(price);
+  if (!Number.isFinite(parsed)) {
+    throw createControlledError(400, "INVALID", "price must be a finite number");
+  }
+  if (parsed < 0) {
+    throw createControlledError(400, "INVALID", "price must be >= 0");
+  }
+  if (parsed > MAX_PREMIUM_PRICE) {
+    throw createControlledError(400, "INVALID", `price must be <= ${MAX_PREMIUM_PRICE}`);
+  }
+  return parsed;
+}
+
 async function persistNormalizedSettings(normalizedSettings) {
   const persisted = {};
   const operations = [];
@@ -2460,6 +2480,10 @@ async function persistNormalizedSettings(normalizedSettings) {
     operations.push(persistSettingValue("custom_salad_base_price", normalizedSettings.custom_salad_base_price));
     persisted.custom_salad_base_price = normalizedSettings.custom_salad_base_price;
   }
+  if (Object.prototype.hasOwnProperty.call(normalizedSettings, "custom_meal_base_price")) {
+    operations.push(persistSettingValue("custom_meal_base_price", normalizedSettings.custom_meal_base_price));
+    persisted.custom_meal_base_price = normalizedSettings.custom_meal_base_price;
+  }
 
   await Promise.all(operations);
   return persisted;
@@ -2478,6 +2502,7 @@ function normalizeSettingsPatchPayloadOrThrow(payload) {
     "subscription_delivery_fee_halala",
     "vat_percentage",
     "custom_salad_base_price",
+    "custom_meal_base_price",
   ]);
   const providedKeys = Object.keys(payload);
   if (!providedKeys.length) {
@@ -2512,6 +2537,9 @@ function normalizeSettingsPatchPayloadOrThrow(payload) {
   }
   if (Object.prototype.hasOwnProperty.call(payload, "custom_salad_base_price")) {
     normalized.custom_salad_base_price = normalizeCustomSaladBasePriceOrThrow(payload.custom_salad_base_price);
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, "custom_meal_base_price")) {
+    normalized.custom_meal_base_price = normalizeCustomMealBasePriceOrThrow(payload.custom_meal_base_price);
   }
 
   return normalized;
@@ -2609,6 +2637,21 @@ async function updateCustomSaladBasePrice(req, res) {
     const rawValue = body.price !== undefined ? body.price : body.custom_salad_base_price;
     const normalized = normalizeCustomSaladBasePriceOrThrow(rawValue);
     const persisted = await persistNormalizedSettings({ custom_salad_base_price: normalized });
+    return res.status(200).json({ ok: true, data: persisted });
+  } catch (err) {
+    if (isControlledError(err)) {
+      return errorResponse(res, err.status, err.code, err.message);
+    }
+    throw err;
+  }
+}
+
+async function updateCustomMealBasePrice(req, res) {
+  try {
+    const body = req.body || {};
+    const rawValue = body.price !== undefined ? body.price : body.custom_meal_base_price;
+    const normalized = normalizeCustomMealBasePriceOrThrow(rawValue);
+    const persisted = await persistNormalizedSettings({ custom_meal_base_price: normalized });
     return res.status(200).json({ ok: true, data: persisted });
   } catch (err) {
     if (isControlledError(err)) {
@@ -3668,6 +3711,47 @@ async function applyAdminPaymentSideEffects({ payment, session }) {
     return { applied: true, dayId: String(updatedDay._id) };
   }
 
+  if (payment.type === "custom_meal_day") {
+    const snapshot = metadata.snapshot;
+    if (
+      !metadata.subscriptionId
+      || !mongoose.Types.ObjectId.isValid(String(metadata.subscriptionId))
+      || !metadata.date
+      || !snapshot
+    ) {
+      return { applied: false, reason: "invalid_metadata" };
+    }
+
+    const existingDay = await SubscriptionDay.findOne(
+      { subscriptionId: metadata.subscriptionId, date: metadata.date }
+    ).session(session);
+
+    let updatedDay;
+    if (!existingDay) {
+      const created = await SubscriptionDay.create(
+        [
+          {
+            subscriptionId: metadata.subscriptionId,
+            date: metadata.date,
+            status: "open",
+            customMeals: [snapshot],
+          },
+        ],
+        { session }
+      );
+      updatedDay = created[0];
+    } else if (existingDay.status === "open") {
+      existingDay.customMeals = existingDay.customMeals || [];
+      existingDay.customMeals.push(snapshot);
+      await existingDay.save({ session });
+      updatedDay = existingDay;
+    } else {
+      return { applied: false, reason: `day_not_open:${existingDay.status}` };
+    }
+
+    return { applied: true, dayId: String(updatedDay._id) };
+  }
+
   if (payment.type === "one_time_order") {
     if (!metadata.orderId || !mongoose.Types.ObjectId.isValid(String(metadata.orderId))) {
       return { applied: false, reason: "invalid_metadata" };
@@ -4185,6 +4269,7 @@ module.exports = {
   updateSubscriptionDeliveryFee,
   updateVatPercentage,
   updateCustomSaladBasePrice,
+  updateCustomMealBasePrice,
   patchSettings,
   searchDashboard,
   getDashboardNotificationSummary,

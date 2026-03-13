@@ -70,6 +70,27 @@ const SubscriptionDaySchema = new mongoose.Schema(
         currency: { type: String, default: "SAR" },
       },
     ],
+    customMeals: [
+      {
+        items: [
+          {
+            ingredientId: { type: mongoose.Schema.Types.ObjectId, ref: "MealIngredient" },
+            name_en: { type: String },
+            name_ar: { type: String },
+            category: { type: String, default: "" },
+            unitPriceSar: { type: Number },
+            unitPrice: { type: Number }, // halalas
+            quantity: { type: Number },
+            calories: { type: Number },
+          },
+        ],
+        basePriceSar: { type: Number, default: 0 },
+        basePrice: { type: Number, default: 0 }, // halalas
+        totalPriceSar: { type: Number },
+        totalPrice: { type: Number }, // halalas
+        currency: { type: String, default: "SAR" },
+      },
+    ],
     lockedSnapshot: { type: mongoose.Schema.Types.Mixed },
     fulfilledSnapshot: { type: mongoose.Schema.Types.Mixed },
     lockedAt: { type: Date },

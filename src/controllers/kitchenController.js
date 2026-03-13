@@ -40,6 +40,7 @@ async function listDailyOrders(req, res) {
       ? (d.deliveryWindowOverride || sub.deliveryWindow)
       : null;
     const customSaladsSnapshot = d.lockedSnapshot && d.lockedSnapshot.customSalads ? d.lockedSnapshot.customSalads : (d.customSalads || []);
+    const customMealsSnapshot = d.lockedSnapshot && d.lockedSnapshot.customMeals ? d.lockedSnapshot.customMeals : (d.customMeals || []);
     const dayWalletSelections = resolveDayWalletSelections({ subscription: sub, day: d });
     const premiumUpgradeSelections = d.lockedSnapshot && Array.isArray(d.lockedSnapshot.premiumUpgradeSelections)
       ? d.lockedSnapshot.premiumUpgradeSelections
@@ -54,6 +55,7 @@ async function listDailyOrders(req, res) {
       effectiveAddress,
       effectiveWindow,
       customSalads: customSaladsSnapshot,
+      customMeals: customMealsSnapshot,
       premiumUpgradeSelections,
       addonCreditSelections,
       kitchenAddons: [...subscriptionAddons, ...(d.addonsOneTime || [])],
@@ -196,6 +198,7 @@ async function ensureLockedSnapshot(sub, day, session) {
     premiumUpgradeSelections,
     addonCreditSelections,
     customSalads: day.customSalads || [],
+    customMeals: day.customMeals || [],
     subscriptionAddons: sub.addonSubscriptions || [],
     address,
     deliveryWindow,

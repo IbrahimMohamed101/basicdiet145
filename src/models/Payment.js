@@ -13,6 +13,8 @@ const PaymentSchema = new mongoose.Schema(
         "one_time_order",
         "custom_salad_day",
         "custom_salad_order",
+        "custom_meal_day",
+        "custom_meal_order",
       ],
       required: true,
     },

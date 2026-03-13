@@ -19,6 +19,7 @@ async function getSettings(_req, res) {
     data.one_time_premium_price = data.one_time_premium_price ?? data.one_time_meal_price;
     data.one_time_delivery_fee = data.one_time_delivery_fee ?? 0;
     data.custom_salad_base_price = data.custom_salad_base_price ?? 0;
+    data.custom_meal_base_price = data.custom_meal_base_price ?? 0;
     delete data.skipAllowance;
 
     return res.status(200).json({ ok: true, data });

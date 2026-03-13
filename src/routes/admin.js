@@ -1,6 +1,7 @@
 const { Router } = require("express");
 const controller = require("../controllers/adminController");
 const saladController = require("../controllers/saladIngredientController");
+const mealIngredientController = require("../controllers/mealIngredientController");
 const mealController = require("../controllers/mealController");
 const premiumMealController = require("../controllers/premiumMealController");
 const addonController = require("../controllers/addonController");
@@ -74,6 +75,7 @@ router.put("/settings/premium-price", asyncHandler(controller.updatePremiumPrice
 router.put("/settings/subscription-delivery-fee", asyncHandler(controller.updateSubscriptionDeliveryFee));
 router.put("/settings/vat-percentage", asyncHandler(controller.updateVatPercentage));
 router.put("/settings/custom-salad-base-price", asyncHandler(controller.updateCustomSaladBasePrice));
+router.put("/settings/custom-meal-base-price", asyncHandler(controller.updateCustomMealBasePrice));
 router.get("/users", asyncHandler(controller.listAppUsers));
 router.post("/users", asyncHandler(controller.createAppUserAdmin));
 router.get("/users/:id/subscriptions", asyncHandler(controller.listAppUserSubscriptions));
@@ -178,5 +180,10 @@ router.patch("/salad-ingredients/:id", asyncHandler(saladController.updateIngred
  *         description: Toggled
  */
 router.patch("/salad-ingredients/:id/toggle", asyncHandler(saladController.toggleIngredient));
+
+router.get("/meal-ingredients", asyncHandler(mealIngredientController.listIngredientsAdmin));
+router.post("/meal-ingredients", asyncHandler(mealIngredientController.createIngredient));
+router.patch("/meal-ingredients/:id", asyncHandler(mealIngredientController.updateIngredient));
+router.patch("/meal-ingredients/:id/toggle", asyncHandler(mealIngredientController.toggleIngredient));
 
 module.exports = router;

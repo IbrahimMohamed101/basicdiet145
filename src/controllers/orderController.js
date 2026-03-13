@@ -9,6 +9,7 @@ const Setting = require("../models/Setting");
 const { createInvoice, getInvoice } = require("../services/moyasarService");
 const { notifyOrderUser } = require("../services/orderNotificationService");
 const { buildCustomSaladSnapshot } = require("../services/customSaladService");
+const { buildCustomMealSnapshot } = require("../services/customMealService");
 const {
   getTomorrowKSADate,
   isBeforeCutoff,
@@ -121,10 +122,17 @@ function canonicalizeCustomSalads(customSalads) {
     .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
 }
 
+function canonicalizeCustomMeals(customMeals) {
+  return (Array.isArray(customMeals) ? customMeals : [])
+    .map((meal) => canonicalizeIngredientItems(meal && (meal.ingredients || meal.items)))
+    .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+}
+
 function buildOrderCheckoutRequestHash({
   userId,
   meals,
   customSalads,
+  customMeals,
   deliveryMode,
   deliveryAddress,
   deliveryWindow,
@@ -151,6 +159,7 @@ function buildOrderCheckoutRequestHash({
     deliveryAddress: canonicalizeAddress(deliveryAddress),
     meals: canonicalMeals,
     customSalads: canonicalizeCustomSalads(customSalads),
+    customMeals: canonicalizeCustomMeals(customMeals),
   };
 
   return crypto.createHash("sha256").update(JSON.stringify(canonicalPayload)).digest("hex");
@@ -375,6 +384,7 @@ async function checkoutOrder(req, res) {
     const {
       meals = [],
       customSalads = [],
+      customMeals = [],
       deliveryMode,
       deliveryAddress,
       deliveryWindow,
@@ -389,8 +399,12 @@ async function checkoutOrder(req, res) {
       || body.idempotencyKey
     );
 
-    if ((!Array.isArray(meals) || meals.length === 0) && (!Array.isArray(customSalads) || customSalads.length === 0)) {
-      return errorResponse(res, 400, "INVALID", "Meals or Custom Salads are required");
+    if (
+      (!Array.isArray(meals) || meals.length === 0)
+      && (!Array.isArray(customSalads) || customSalads.length === 0)
+      && (!Array.isArray(customMeals) || customMeals.length === 0)
+    ) {
+      return errorResponse(res, 400, "INVALID", "Meals, Custom Salads, or Custom Meals are required");
     }
     if (!deliveryMode) {
       return errorResponse(res, 400, "INVALID", "Missing deliveryMode");
@@ -444,6 +458,7 @@ async function checkoutOrder(req, res) {
       userId: req.userId,
       meals,
       customSalads,
+      customMeals,
       deliveryMode,
       deliveryAddress,
       deliveryWindow,
@@ -563,6 +578,13 @@ async function checkoutOrder(req, res) {
       subtotal += snapshot.totalPrice;
     }
 
+    const customMealSnapshots = [];
+    for (const mealData of customMeals) {
+      const snapshot = await buildCustomMealSnapshot(mealData.ingredients || mealData.items || []);
+      customMealSnapshots.push(snapshot);
+      subtotal += snapshot.totalPrice;
+    }
+
     const total = subtotal + deliveryFee;
     const paymentMetadata = {
       type: "one_time_order",
@@ -582,6 +604,7 @@ async function checkoutOrder(req, res) {
       deliveryDateAdjusted: dateAdjusted,
       items,
       customSalads: customSaladSnapshots,
+      customMeals: customMealSnapshots,
       pricing: {
         unitPrice: regularUnit,
         premiumUnitPrice: premiumUnit,
@@ -603,7 +626,7 @@ async function checkoutOrder(req, res) {
     const invoice = await createInvoice({
       amount: total,
       currency: SYSTEM_CURRENCY,
-      description: `One-time order (${quantity + customSaladSnapshots.length} items)`,
+      description: `One-time order (${quantity + customSaladSnapshots.length + customMealSnapshots.length} items)`,
       callbackUrl: `${appUrl}/api/webhooks/moyasar`,
       successUrl: successUrl || `${appUrl}/payments/success`,
       backUrl: backUrl || `${appUrl}/payments/cancel`,

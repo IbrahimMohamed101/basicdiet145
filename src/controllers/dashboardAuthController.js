@@ -78,7 +78,7 @@ async function me(req, res) {
     isActive: true,
   }).lean();
   if (!user) {
-    return errorResponse(res, 404, "NOT_FOUND", "Dashboard user not found");
+    return res.status(200).json({ ok: true, user: null });
   }
   return res.status(200).json({ ok: true, user: sanitizeDashboardUser(user) });
 }

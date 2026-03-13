@@ -1,6 +1,7 @@
 const { Router } = require("express");
 const controller = require("../controllers/subscriptionController");
 const customSaladController = require("../controllers/customSaladController");
+const customMealController = require("../controllers/customMealController");
 const menuController = require("../controllers/menuController");
 const { authMiddleware } = require("../middleware/auth");
 const { checkoutLimiter } = require("../middleware/rateLimit");
@@ -195,6 +196,7 @@ router.post("/:id/days/:date/pickup/prepare", asyncHandler(controller.preparePic
  *         description: Custom salad added to day
  */
 router.post("/:id/days/:date/custom-salad", asyncHandler(customSaladController.addCustomSaladToSubscriptionDay));
+router.post("/:id/days/:date/custom-meal", asyncHandler(customMealController.addCustomMealToSubscriptionDay));
 router.put("/:id/days/:date/delivery", asyncHandler(controller.updateDeliveryDetailsForDate));
 router.post("/:id/premium/topup", asyncHandler(controller.topupPremium));
 router.post("/:id/premium-credits/topup", asyncHandler(controller.topupPremiumCredits));

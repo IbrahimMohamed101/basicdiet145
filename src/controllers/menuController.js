@@ -31,15 +31,28 @@ function resolveCustomSaladSupport(basePriceSar) {
   };
 }
 
+function resolveCustomMealSupport(basePriceSar) {
+  const normalizedBasePriceSar = Number.isFinite(Number(basePriceSar)) ? Number(basePriceSar) : 0;
+  const basePriceHalala = Math.max(0, Math.round(normalizedBasePriceSar * 100));
+
+  return {
+    enabled: true,
+    basePriceHalala,
+    basePriceSar: basePriceHalala / 100,
+    currency: SYSTEM_CURRENCY,
+  };
+}
+
 async function getOrderMenu(req, res) {
   const lang = getRequestLang(req);
-  const [meals, regularPriceSar, premiumPriceSar, customSaladBasePrice] = await Promise.all([
+  const [meals, regularPriceSar, premiumPriceSar, customSaladBasePrice, customMealBasePrice] = await Promise.all([
     Meal.find({ isActive: true, availableForOrder: { $ne: false } })
       .sort({ sortOrder: 1, createdAt: -1 })
       .lean(),
     getSettingValue("one_time_meal_price", 25),
     getSettingValue("one_time_premium_price", 25),
     getSettingValue("custom_salad_base_price", 0),
+    getSettingValue("custom_meal_base_price", 0),
   ]);
 
   const normalizedRegularPriceSar = Number.isFinite(Number(regularPriceSar)) ? Number(regularPriceSar) : 25;
@@ -52,6 +65,7 @@ async function getOrderMenu(req, res) {
     data: {
       currency: SYSTEM_CURRENCY,
       customSalad: resolveCustomSaladSupport(customSaladBasePrice),
+      customMeal: resolveCustomMealSupport(customMealBasePrice),
       meals: meals.map((meal) => {
         const priceSar = meal.type === "premium" ? normalizedPremiumPriceSar : normalizedRegularPriceSar;
         const priceHalala = Math.max(0, Math.round(priceSar * 100));
@@ -70,12 +84,13 @@ async function getOrderMenu(req, res) {
 
 async function getSubscriptionMenu(req, res) {
   const lang = getRequestLang(req);
-  const [regularMeals, premiumMeals, customSaladBasePrice] = await Promise.all([
+  const [regularMeals, premiumMeals, customSaladBasePrice, customMealBasePrice] = await Promise.all([
     Meal.find({ type: "regular", isActive: true, availableForSubscription: { $ne: false } })
       .sort({ sortOrder: 1, createdAt: -1 })
       .lean(),
     PremiumMeal.find({ isActive: true }).sort({ sortOrder: 1, createdAt: -1 }).lean(),
     getSettingValue("custom_salad_base_price", 0),
+    getSettingValue("custom_meal_base_price", 0),
   ]);
 
   return res.status(200).json({
@@ -83,6 +98,7 @@ async function getSubscriptionMenu(req, res) {
     data: {
       currency: SYSTEM_CURRENCY,
       customSalad: resolveCustomSaladSupport(customSaladBasePrice),
+      customMeal: resolveCustomMealSupport(customMealBasePrice),
       regularMeals: regularMeals.map((meal) => ({
         ...resolveMealCard(meal, lang),
         type: "regular",

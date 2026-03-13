@@ -1533,6 +1533,21 @@ components:
           enum: [SAR]
       required: [enabled, basePriceHalala, basePriceSar, currency]
 
+    MenuCustomMealSupport:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        basePriceHalala:
+          $ref: '#/components/schemas/HalalaAmount'
+        basePriceSar:
+          type: number
+          description: "basePriceHalala / 100"
+        currency:
+          type: string
+          enum: [SAR]
+      required: [enabled, basePriceHalala, basePriceSar, currency]
+
     OrderMenuMeal:
       type: object
       properties:
@@ -1752,6 +1767,42 @@ components:
             name:
               type: string
 
+    MealIngredient:
+      type: object
+      properties:
+        _id:
+          type: string
+        name:
+          $ref: '#/components/schemas/LocalizedText'
+        category:
+          type: string
+        price:
+          type: number
+        calories:
+          type: number
+          nullable: true
+        maxQuantity:
+          type: number
+          nullable: true
+        sortOrder:
+          type: integer
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    MealIngredientResolved:
+      allOf:
+        - $ref: '#/components/schemas/MealIngredient'
+        - type: object
+          properties:
+            name:
+              type: string
+
     CustomSaladItem:
       type: object
       properties:
@@ -1779,6 +1830,49 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/CustomSaladItem'
+        basePriceSar:
+          type: number
+        basePrice:
+          type: number
+          description: Minor units (halalas)
+        totalPriceSar:
+          type: number
+        totalPrice:
+          type: number
+          description: Minor units (halalas)
+        currency:
+          type: string
+          example: SAR
+
+    CustomMealItem:
+      type: object
+      properties:
+        ingredientId:
+          type: string
+        name_en:
+          type: string
+        name_ar:
+          type: string
+        category:
+          type: string
+        unitPriceSar:
+          type: number
+        unitPrice:
+          type: number
+          description: Minor units (halalas)
+        quantity:
+          type: number
+        calories:
+          type: number
+          nullable: true
+
+    CustomMealSnapshot:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CustomMealItem'
         basePriceSar:
           type: number
         basePrice:
@@ -1854,6 +1948,10 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/CustomSaladSnapshot'
+        customMeals:
+          type: array
+          items:
+            $ref: '#/components/schemas/CustomMealSnapshot'
         pricing:
           $ref: '#/components/schemas/OrderPricing'
         deliveryAddress:
@@ -2255,6 +2353,10 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/CustomSaladSnapshot'
+        customMeals:
+          type: array
+          items:
+            $ref: '#/components/schemas/CustomMealSnapshot'
         lockedSnapshot:
           type: object
           additionalProperties: true
@@ -2292,7 +2394,7 @@ components:
           enum: [moyasar]
         type:
           type: string
-          enum: [premium_topup, addon_topup, one_time_addon, subscription_activation, one_time_order, custom_salad_day, custom_salad_order]
+          enum: [premium_topup, addon_topup, one_time_addon, subscription_activation, one_time_order, custom_salad_day, custom_salad_order, custom_meal_day, custom_meal_order]
         status:
           type: string
           enum: [initiated, paid, failed, canceled, expired, refunded]
@@ -2433,6 +2535,7 @@ components:
         one_time_premium_price: 25
         one_time_delivery_fee: 0
         custom_salad_base_price: 0
+        custom_meal_base_price: 0
 
     AdminSettingsPatchRequest:
       type: object
@@ -2458,6 +2561,9 @@ components:
           minimum: 0
           maximum: 100
         custom_salad_base_price:
+          type: number
+          minimum: 0
+        custom_meal_base_price:
           type: number
           minimum: 0
 
@@ -3331,6 +3437,7 @@ paths:
         - `regularMeals`: regular meals included in the plan
         - `premiumMeals`: premium upgrade catalog with extra fees
         - `customSalad`: base pricing metadata for the custom salad builder
+        - `customMeal`: base pricing metadata for the custom meal builder
       parameters:
         - $ref: '#/components/parameters/AcceptLanguage'
       responses:
@@ -3351,6 +3458,8 @@ paths:
                         enum: [SAR]
                       customSalad:
                         $ref: '#/components/schemas/MenuCustomSaladSupport'
+                      customMeal:
+                        $ref: '#/components/schemas/MenuCustomMealSupport'
                       regularMeals:
                         type: array
                         items:
@@ -4378,6 +4487,79 @@ paths:
         '500':
           $ref: '#/components/responses/Internal'
 
+  /api/subscriptions/{id}/days/{date}/custom-meal:
+    post:
+      tags: [Subscriptions, Meals / Menu]
+      summary: Initiate custom meal payment for subscription day
+      description: |
+        Builds priced custom meal snapshot and creates a payment invoice.
+        The meal is applied only after webhook confirms payment.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+        - $ref: '#/components/parameters/KsaDate'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ingredients]
+              properties:
+                ingredients:
+                  type: array
+                  items:
+                    type: object
+                    required: [ingredientId]
+                    properties:
+                      ingredientId:
+                        type: string
+                      quantity:
+                        type: integer
+                        minimum: 1
+                successUrl:
+                  type: string
+                backUrl:
+                  type: string
+      responses:
+        '200':
+          description: Payment invoice created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      payment_url:
+                        type: string
+                      invoice_id:
+                        type: string
+                      payment_id:
+                        type: string
+                      total:
+                        type: integer
+                      currency:
+                        type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '500':
+          $ref: '#/components/responses/Internal'
+
   /api/subscriptions/{id}/days/{date}/delivery:
     put:
       tags: [Subscriptions]
@@ -4981,7 +5163,7 @@ paths:
       description: |
         Returns the menu payload used by the one-time ordering experience.
         The payload includes orderable meals with restaurant-style metadata and
-        the base pricing metadata for the custom salad builder.
+        the base pricing metadata for the custom salad and custom meal builders.
       parameters:
         - $ref: '#/components/parameters/AcceptLanguage'
       responses:
@@ -5002,6 +5184,8 @@ paths:
                         enum: [SAR]
                       customSalad:
                         $ref: '#/components/schemas/MenuCustomSaladSupport'
+                      customMeal:
+                        $ref: '#/components/schemas/MenuCustomMealSupport'
                       meals:
                         type: array
                         items:
@@ -5036,6 +5220,20 @@ paths:
                         type: integer
                         minimum: 1
                 customSalads:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      ingredients:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            ingredientId:
+                              type: string
+                            quantity:
+                              type: integer
+                customMeals:
                   type: array
                   items:
                     type: object
@@ -5383,6 +5581,57 @@ paths:
         '500':
           $ref: '#/components/responses/Internal'
 
+  /api/orders/{id}/items/custom-meal:
+    post:
+      tags: [Orders, Meals / Menu]
+      summary: Add custom meal item to order
+      description: Allowed only while order is `created` and payment is `initiated`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ingredients]
+              properties:
+                ingredients:
+                  type: array
+                  items:
+                    type: object
+                    required: [ingredientId]
+                    properties:
+                      ingredientId:
+                        type: string
+                      quantity:
+                        type: integer
+                        minimum: 1
+      responses:
+        '200':
+          description: Order updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Order'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/Internal'
+
   /api/orders:
     get:
       tags: [Orders]
@@ -5488,6 +5737,28 @@ paths:
                     items:
                       $ref: '#/components/schemas/MealResolved'
 
+  /api/meal-ingredients:
+    get:
+      tags: [Meals / Menu]
+      summary: List active meal ingredients
+      description: Returns localized ingredient name by `Accept-Language` for the custom meal builder.
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
+      responses:
+        '200':
+          description: Active meal ingredients.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MealIngredientResolved'
+
   /api/salad-ingredients:
     get:
       tags: [Meals / Menu]
@@ -5548,6 +5819,51 @@ paths:
                     type: boolean
                   data:
                     $ref: '#/components/schemas/CustomSaladSnapshot'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/custom-meals/price:
+    post:
+      tags: [Meals / Menu]
+      summary: Preview custom meal price
+      description: Calculates and returns a custom meal pricing snapshot from selected ingredients.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ingredients]
+              properties:
+                ingredients:
+                  type: array
+                  items:
+                    type: object
+                    required: [ingredientId]
+                    properties:
+                      ingredientId:
+                        type: string
+                      quantity:
+                        type: integer
+                        minimum: 1
+      responses:
+        '200':
+          description: Price snapshot.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/CustomMealSnapshot'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -8252,7 +8568,8 @@ paths:
       description: |
         Admin-only bulk settings update.
         Supported keys: `cutoff_time`, `delivery_windows`, `skip_allowance`, `premium_price`,
-        `subscription_delivery_fee_halala`, `vat_percentage`, `custom_salad_base_price`.
+        `subscription_delivery_fee_halala`, `vat_percentage`, `custom_salad_base_price`,
+        `custom_meal_base_price`.
       security:
         - dashboardBearerAuth: []
       requestBody:
@@ -8542,6 +8859,49 @@ paths:
                     type: object
                     properties:
                       custom_salad_base_price:
+                        type: number
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/admin/settings/custom-meal-base-price:
+    put:
+      tags: [Admin (Dashboard)]
+      summary: Update custom meal base price
+      description: Sets `custom_meal_base_price` used by custom meal pricing.
+      security:
+        - dashboardBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [price]
+              properties:
+                price:
+                  type: number
+                  minimum: 0
+                custom_meal_base_price:
+                  type: number
+                  minimum: 0
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      custom_meal_base_price:
                         type: number
         '400':
           $ref: '#/components/responses/BadRequest'
@@ -9795,6 +10155,163 @@ paths:
                     type: boolean
                   data:
                     $ref: '#/components/schemas/SaladIngredient'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/admin/meal-ingredients:
+    get:
+      tags: [Admin]
+      summary: List meal ingredients (admin)
+      description: Returns all meal ingredients, including inactive ones, for dashboard management.
+      security:
+        - dashboardBearerAuth: []
+      responses:
+        '200':
+          description: Meal ingredients list.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MealIngredient'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [Admin]
+      summary: Create meal ingredient
+      description: Creates an ingredient for the custom meal builder.
+      security:
+        - dashboardBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  $ref: '#/components/schemas/LocalizedText'
+                name_ar:
+                  type: string
+                name_en:
+                  type: string
+                category:
+                  type: string
+                price:
+                  type: number
+                calories:
+                  type: number
+                maxQuantity:
+                  type: number
+                sortOrder:
+                  type: integer
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/MealIngredient'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/admin/meal-ingredients/{id}:
+    patch:
+      tags: [Admin]
+      summary: Update meal ingredient
+      description: Partially updates custom meal ingredient fields, including multilingual names.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IngredientId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  $ref: '#/components/schemas/LocalizedText'
+                name_ar:
+                  type: string
+                name_en:
+                  type: string
+                category:
+                  type: string
+                price:
+                  type: number
+                calories:
+                  type: number
+                maxQuantity:
+                  type: number
+                  nullable: true
+                sortOrder:
+                  type: integer
+                isActive:
+                  type: boolean
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/MealIngredient'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/admin/meal-ingredients/{id}/toggle:
+    patch:
+      tags: [Admin]
+      summary: Toggle meal ingredient active state
+      description: Flips custom meal ingredient `isActive` between true and false.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IngredientId'
+      responses:
+        '200':
+          description: Toggled.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/MealIngredient'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
