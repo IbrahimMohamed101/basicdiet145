@@ -69,9 +69,9 @@ async function login(req, res) {
   try {
     const { phoneE164 } = req.body || {};
     await requestOtpForPhone(phoneE164);
-    return res.status(200).json({ ok: true });
+    return res.status(200).json({ status: true, message: "Your phone number is correct" });
   } catch (err) {
-    return handleError(res, err);
+    return res.status(400).json({ status: false, message: "Please make sure the phone number is correct" });
   }
 }
 
