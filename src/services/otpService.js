@@ -4,12 +4,34 @@ const { sendWhatsappMessage } = require("./twilioWhatsappService");
 const { ApiError } = require("../utils/apiError");
 
 const E164_REGEX = /^\+[1-9]\d{7,14}$/;
+const IS_NON_PRODUCTION = process.env.NODE_ENV !== "production";
 
 function getOtpConfig() {
   const ttlMinutes = Number(process.env.OTP_TTL_MINUTES) || 5;
   const cooldownSeconds = Number(process.env.OTP_COOLDOWN_SECONDS) || 30;
   const maxAttempts = Number(process.env.OTP_MAX_ATTEMPTS) || 5;
   return { ttlMinutes, cooldownSeconds, maxAttempts };
+}
+
+function getDevOtpBypassConfig() {
+  if (!IS_NON_PRODUCTION || process.env.DEV_OTP_BYPASS !== "true") {
+    return null;
+  }
+
+  const code = String(process.env.DEV_OTP_CODE || "").trim();
+  if (!/^\d{6}$/.test(code)) {
+    return null;
+  }
+
+  const phone = String(process.env.DEV_OTP_PHONE || "").trim();
+  if (phone && !E164_REGEX.test(phone)) {
+    return null;
+  }
+
+  return {
+    code,
+    phone: phone || null,
+  };
 }
 
 function normalizePhoneE164(phoneE164) {
@@ -53,9 +75,11 @@ async function requestOtpForPhone(phoneE164) {
   const phone = assertValidPhoneE164(phoneE164);
   const { ttlMinutes, cooldownSeconds, maxAttempts } = getOtpConfig();
   const now = new Date();
+  const devOtpBypass = getDevOtpBypassConfig();
+  const useDevOtpBypass = Boolean(devOtpBypass && (!devOtpBypass.phone || devOtpBypass.phone === phone));
 
   const existing = await Otp.findOne({ phone });
-  if (existing && existing.lastSentAt) {
+  if (!useDevOtpBypass && existing && existing.lastSentAt) {
     const nextAllowedAt = existing.lastSentAt.getTime() + cooldownSeconds * 1000;
     if (nextAllowedAt > now.getTime()) {
       const secondsRemaining = Math.ceil((nextAllowedAt - now.getTime()) / 1000);
@@ -68,13 +92,15 @@ async function requestOtpForPhone(phoneE164) {
     }
   }
 
-  const otp = generateOtpCode();
+  const otp = useDevOtpBypass ? devOtpBypass.code : generateOtpCode();
   const expiresAt = new Date(now.getTime() + ttlMinutes * 60 * 1000);
 
-  await sendWhatsappMessage({
-    toPhoneE164: phone,
-    body: `Your BasicDiet OTP is ${otp}. It expires in ${ttlMinutes} minutes.`,
-  });
+  if (!useDevOtpBypass) {
+    await sendWhatsappMessage({
+      toPhoneE164: phone,
+      body: `Your BasicDiet OTP is ${otp}. It expires in ${ttlMinutes} minutes.`,
+    });
+  }
 
   await Otp.findOneAndUpdate(
     { phone },
