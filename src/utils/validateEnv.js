@@ -17,9 +17,9 @@ function validateEnv() {
   const isProduction = process.env.NODE_ENV === "production";
   const devAuthBypass = process.env.DEV_AUTH_BYPASS === "true";
   const testOtpBypass = process.env.TEST_OTP_BYPASS === "true";
-  const devOtpBypass = !isProduction && process.env.DEV_OTP_BYPASS === "true";
+  const devOtpBypass = process.env.DEV_OTP_BYPASS === "true";
   const shouldRequireOtpProvider = isProduction
-    ? !testOtpBypass
+    ? !(testOtpBypass || devOtpBypass)
     : !(devAuthBypass || devOtpBypass || testOtpBypass);
   const missing = [];
   if (!hasMongoUri) missing.push("MONGO_URI or MONGODB_URI");

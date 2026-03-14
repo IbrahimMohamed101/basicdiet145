@@ -4,7 +4,6 @@ const { sendWhatsappMessage } = require("./twilioWhatsappService");
 const { ApiError } = require("../utils/apiError");
 
 const E164_REGEX = /^\+[1-9]\d{7,14}$/;
-const IS_NON_PRODUCTION = process.env.NODE_ENV !== "production";
 
 function resolveOtpBypassConfig({ enabled, code, phone }) {
   if (!enabled) {
@@ -44,7 +43,7 @@ function getTestOtpBypassConfig() {
 
 function getDevOtpBypassConfig() {
   return resolveOtpBypassConfig({
-    enabled: IS_NON_PRODUCTION && process.env.DEV_OTP_BYPASS === "true",
+    enabled: process.env.DEV_OTP_BYPASS === "true",
     code: process.env.DEV_OTP_CODE,
     phone: process.env.DEV_OTP_PHONE,
   });
