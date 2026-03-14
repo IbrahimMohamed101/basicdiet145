@@ -7,6 +7,18 @@ const swaggerUi = require("swagger-ui-express");
 const routes = require("./routes");
 const { logger } = require("./utils/logger");
 
+function normalizeTopLevelOkField(payload) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return payload;
+  }
+  if (!Object.prototype.hasOwnProperty.call(payload, "ok")) {
+    return payload;
+  }
+
+  const { ok, ...rest } = payload;
+  return { status: ok, ...rest };
+}
+
 function createApp() {
   const app = express();
 
@@ -38,6 +50,11 @@ function createApp() {
   app.options("*", cors(corsOptions));
 
   app.use(express.json({ limit: "1mb" }));
+  app.use((req, res, next) => {
+    const originalJson = res.json.bind(res);
+    res.json = (payload) => originalJson(normalizeTopLevelOkField(payload));
+    next();
+  });
 
   /**
    * @openapi
