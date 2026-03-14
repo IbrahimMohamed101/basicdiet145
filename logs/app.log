@@ -336,3 +336,18 @@
 {"date":"2026-03-15","level":"info","message":"Automation cutoff start","timestamp":"2026-03-14T14:44:57.636Z"}
 {"count":0,"level":"info","message":"Automation cutoff finished","timestamp":"2026-03-14T14:44:57.757Z"}
 {"activeSubscriptions":3,"level":"info","message":"Subscription expiry reminders finished","sent24h":0,"sent3d":0,"timestamp":"2026-03-14T14:44:57.884Z"}
+{"email":"superadmin@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"superadmin","timestamp":"2026-03-14T17:28:21.988Z"}
+{"email":"admin@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"admin","timestamp":"2026-03-14T17:28:22.477Z"}
+{"email":"kitchen@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"kitchen","timestamp":"2026-03-14T17:28:22.645Z"}
+{"email":"courier@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"courier","timestamp":"2026-03-14T17:28:22.774Z"}
+{"level":"info","message":"Jobs starting","timestamp":"2026-03-14T17:28:22.775Z"}
+{"level":"info","message":"API listening","port":"3000","timestamp":"2026-03-14T17:28:22.783Z"}
+{"date":"2026-03-15","level":"info","message":"Automation cutoff start","timestamp":"2026-03-14T17:29:23.230Z"}
+{"count":0,"level":"info","message":"Automation cutoff finished","timestamp":"2026-03-14T17:29:23.711Z"}
+{"activeSubscriptions":3,"level":"info","message":"Subscription expiry reminders finished","sent24h":0,"sent3d":0,"timestamp":"2026-03-14T17:29:23.846Z"}
+{"email":"superadmin@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"superadmin","timestamp":"2026-03-14T17:33:19.735Z"}
+{"email":"admin@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"admin","timestamp":"2026-03-14T17:33:20.327Z"}
+{"email":"kitchen@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"kitchen","timestamp":"2026-03-14T17:33:20.481Z"}
+{"email":"courier@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"courier","timestamp":"2026-03-14T17:33:20.609Z"}
+{"level":"info","message":"Jobs starting","timestamp":"2026-03-14T17:33:20.611Z"}
+{"level":"info","message":"API listening","port":"3000","timestamp":"2026-03-14T17:33:20.620Z"}

@@ -74,14 +74,14 @@ async function login(req, res) {
 
 async function me(req, res) {
   if (!req.dashboardUserId) {
-    return res.status(200).json(null);
+    return res.status(200).json({ ok: false, user: null });
   }
   const user = await DashboardUser.findOne({
     _id: req.dashboardUserId,
     isActive: true,
   }).lean();
   if (!user) {
-    return res.status(200).json(null);
+    return res.status(200).json({ ok: false, user: null });
   }
   return res.status(200).json({ ok: true, user: sanitizeDashboardUser(user) });
 }
