@@ -6,6 +6,27 @@ const { ApiError } = require("../utils/apiError");
 const E164_REGEX = /^\+[1-9]\d{7,14}$/;
 const IS_NON_PRODUCTION = process.env.NODE_ENV !== "production";
 
+function resolveOtpBypassConfig({ enabled, code, phone }) {
+  if (!enabled) {
+    return null;
+  }
+
+  const normalizedCode = String(code || "").trim();
+  if (!/^\d{6}$/.test(normalizedCode)) {
+    return null;
+  }
+
+  const normalizedPhone = String(phone || "").trim();
+  if (normalizedPhone && !E164_REGEX.test(normalizedPhone)) {
+    return null;
+  }
+
+  return {
+    code: normalizedCode,
+    phone: normalizedPhone || null,
+  };
+}
+
 function getOtpConfig() {
   const ttlMinutes = Number(process.env.OTP_TTL_MINUTES) || 5;
   const cooldownSeconds = Number(process.env.OTP_COOLDOWN_SECONDS) || 30;
@@ -13,25 +34,24 @@ function getOtpConfig() {
   return { ttlMinutes, cooldownSeconds, maxAttempts };
 }
 
+function getTestOtpBypassConfig() {
+  return resolveOtpBypassConfig({
+    enabled: process.env.TEST_OTP_BYPASS === "true",
+    code: process.env.TEST_OTP_CODE,
+    phone: process.env.TEST_OTP_PHONE,
+  });
+}
+
 function getDevOtpBypassConfig() {
-  if (!IS_NON_PRODUCTION || process.env.DEV_OTP_BYPASS !== "true") {
-    return null;
-  }
+  return resolveOtpBypassConfig({
+    enabled: IS_NON_PRODUCTION && process.env.DEV_OTP_BYPASS === "true",
+    code: process.env.DEV_OTP_CODE,
+    phone: process.env.DEV_OTP_PHONE,
+  });
+}
 
-  const code = String(process.env.DEV_OTP_CODE || "").trim();
-  if (!/^\d{6}$/.test(code)) {
-    return null;
-  }
-
-  const phone = String(process.env.DEV_OTP_PHONE || "").trim();
-  if (phone && !E164_REGEX.test(phone)) {
-    return null;
-  }
-
-  return {
-    code,
-    phone: phone || null,
-  };
+function getOtpBypassConfig() {
+  return getTestOtpBypassConfig() || getDevOtpBypassConfig();
 }
 
 function normalizePhoneE164(phoneE164) {
@@ -75,11 +95,11 @@ async function requestOtpForPhone(phoneE164) {
   const phone = assertValidPhoneE164(phoneE164);
   const { ttlMinutes, cooldownSeconds, maxAttempts } = getOtpConfig();
   const now = new Date();
-  const devOtpBypass = getDevOtpBypassConfig();
-  const useDevOtpBypass = Boolean(devOtpBypass && (!devOtpBypass.phone || devOtpBypass.phone === phone));
+  const otpBypass = getOtpBypassConfig();
+  const useOtpBypass = Boolean(otpBypass && (!otpBypass.phone || otpBypass.phone === phone));
 
   const existing = await Otp.findOne({ phone });
-  if (!useDevOtpBypass && existing && existing.lastSentAt) {
+  if (!useOtpBypass && existing && existing.lastSentAt) {
     const nextAllowedAt = existing.lastSentAt.getTime() + cooldownSeconds * 1000;
     if (nextAllowedAt > now.getTime()) {
       const secondsRemaining = Math.ceil((nextAllowedAt - now.getTime()) / 1000);
@@ -92,10 +112,10 @@ async function requestOtpForPhone(phoneE164) {
     }
   }
 
-  const otp = useDevOtpBypass ? devOtpBypass.code : generateOtpCode();
+  const otp = useOtpBypass ? otpBypass.code : generateOtpCode();
   const expiresAt = new Date(now.getTime() + ttlMinutes * 60 * 1000);
 
-  if (!useDevOtpBypass) {
+  if (!useOtpBypass) {
     await sendWhatsappMessage({
       toPhoneE164: phone,
       body: `Your BasicDiet OTP is ${otp}. It expires in ${ttlMinutes} minutes.`,

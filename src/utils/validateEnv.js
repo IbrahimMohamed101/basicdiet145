@@ -16,8 +16,11 @@ function validateEnv() {
   const hasMongoUri = Boolean(process.env.MONGO_URI || process.env.MONGODB_URI);
   const isProduction = process.env.NODE_ENV === "production";
   const devAuthBypass = process.env.DEV_AUTH_BYPASS === "true";
+  const testOtpBypass = process.env.TEST_OTP_BYPASS === "true";
   const devOtpBypass = !isProduction && process.env.DEV_OTP_BYPASS === "true";
-  const shouldRequireOtpProvider = isProduction || !(devAuthBypass || devOtpBypass);
+  const shouldRequireOtpProvider = isProduction
+    ? !testOtpBypass
+    : !(devAuthBypass || devOtpBypass || testOtpBypass);
   const missing = [];
   if (!hasMongoUri) missing.push("MONGO_URI or MONGODB_URI");
   addMissingIfEmpty(missing, "JWT_SECRET");
@@ -55,6 +58,13 @@ function validateEnv() {
   if (!Number.isFinite(otpVerifyWindowMs) || otpVerifyWindowMs <= 0) invalid.push("RATE_LIMIT_OTP_VERIFY_WINDOW_MS");
   const otpVerifyMax = Number(process.env.RATE_LIMIT_OTP_VERIFY_MAX || 10);
   if (!Number.isFinite(otpVerifyMax) || otpVerifyMax <= 0) invalid.push("RATE_LIMIT_OTP_VERIFY_MAX");
+  if (testOtpBypass) {
+    const testOtpCode = String(process.env.TEST_OTP_CODE || "").trim();
+    if (!/^\d{6}$/.test(testOtpCode)) invalid.push("TEST_OTP_CODE");
+
+    const testOtpPhone = String(process.env.TEST_OTP_PHONE || "").trim();
+    if (testOtpPhone && !/^\+[1-9]\d{7,14}$/.test(testOtpPhone)) invalid.push("TEST_OTP_PHONE");
+  }
   if (devOtpBypass) {
     const devOtpCode = String(process.env.DEV_OTP_CODE || "").trim();
     if (!/^\d{6}$/.test(devOtpCode)) invalid.push("DEV_OTP_CODE");

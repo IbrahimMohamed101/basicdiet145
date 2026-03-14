@@ -326,3 +326,13 @@
 {"level":"info","message":"API listening","port":"3000","timestamp":"2026-03-13T22:21:03.573Z"}
 {"date":"2026-03-15","level":"info","message":"Automation cutoff start","timestamp":"2026-03-13T22:22:03.841Z"}
 {"count":0,"level":"info","message":"Automation cutoff finished","timestamp":"2026-03-13T22:22:04.036Z"}
+{"email":"superadmin@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"superadmin","timestamp":"2026-03-14T14:43:56.512Z"}
+{"email":"admin@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"admin","timestamp":"2026-03-14T14:43:57.015Z"}
+{"email":"kitchen@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"kitchen","timestamp":"2026-03-14T14:43:57.257Z"}
+{"email":"courier@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"courier","timestamp":"2026-03-14T14:43:57.380Z"}
+{"level":"info","message":"Jobs starting","timestamp":"2026-03-14T14:43:57.382Z"}
+{"level":"info","message":"API listening","port":"3000","timestamp":"2026-03-14T14:43:57.390Z"}
+{"error":"Expected double-quoted property name in JSON at position 34 (line 3 column 1)","level":"error","message":"Unhandled error","stack":"SyntaxError: Expected double-quoted property name in JSON at position 34 (line 3 column 1)\n    at JSON.parse (<anonymous>)\n    at parse (/home/hema/Projects/basicdiet145/node_modules/body-parser/lib/types/json.js:92:19)\n    at /home/hema/Projects/basicdiet145/node_modules/body-parser/lib/read.js:128:18\n    at AsyncResource.runInAsyncScope (node:async_hooks:228:14)\n    at invokeCallback (/home/hema/Projects/basicdiet145/node_modules/raw-body/index.js:238:16)\n    at done (/home/hema/Projects/basicdiet145/node_modules/raw-body/index.js:227:7)\n    at IncomingMessage.onEnd (/home/hema/Projects/basicdiet145/node_modules/raw-body/index.js:287:7)\n    at IncomingMessage.emit (node:events:508:28)\n    at endReadableNT (node:internal/streams/readable:1729:12)\n    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)","timestamp":"2026-03-14T14:44:36.273Z"}
+{"date":"2026-03-15","level":"info","message":"Automation cutoff start","timestamp":"2026-03-14T14:44:57.636Z"}
+{"count":0,"level":"info","message":"Automation cutoff finished","timestamp":"2026-03-14T14:44:57.757Z"}
+{"activeSubscriptions":3,"level":"info","message":"Subscription expiry reminders finished","sent24h":0,"sent3d":0,"timestamp":"2026-03-14T14:44:57.884Z"}
