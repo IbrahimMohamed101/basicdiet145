@@ -1,3 +1,8 @@
+import 'package:basic_diet/app/dependency_injection.dart';
+import 'package:basic_diet/domain/model/plans_model.dart';
+import 'package:basic_diet/presentation/main/subscription/bloc/subscription_bloc.dart';
+import 'package:basic_diet/presentation/main/subscription/bloc/subscription_event.dart';
+import 'package:basic_diet/presentation/main/subscription/bloc/subscription_state.dart';
 import 'package:basic_diet/presentation/resources/assets_manager.dart';
 import 'package:basic_diet/presentation/resources/color_manager.dart';
 import 'package:basic_diet/presentation/resources/font_manager.dart';
@@ -5,132 +10,168 @@ import 'package:basic_diet/presentation/resources/strings_manager.dart';
 import 'package:basic_diet/presentation/resources/styles_manager.dart';
 import 'package:basic_diet/presentation/resources/values_manager.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:gap/gap.dart';
 
-class SubscriptionScreen extends StatefulWidget {
+class SubscriptionScreen extends StatelessWidget {
   static const String subscriptionRoute = '/subscription';
+
   const SubscriptionScreen({super.key});
 
   @override
-  State<SubscriptionScreen> createState() => _SubscriptionScreenState();
+  Widget build(BuildContext context) {
+    return BlocProvider(
+      create: (context) =>
+          instance<SubscriptionBloc>()..add(const GetPlansEvent()),
+      child: Scaffold(
+        backgroundColor: ColorManager.whiteColor,
+        appBar: AppBar(
+          backgroundColor: ColorManager.whiteColor,
+          elevation: 0,
+          centerTitle: false,
+          leading: IconButton(
+            onPressed: () => Navigator.pop(context),
+            icon: Icon(
+              Icons.keyboard_arrow_left,
+              color: ColorManager.blackColor,
+              size: AppSize.s30.sp,
+            ),
+          ),
+          title: Text(
+            Strings.subscriptionPackages,
+            style: getBoldTextStyle(
+              color: ColorManager.black101828,
+              fontSize: FontSizeManager.s20.sp,
+            ),
+          ),
+        ),
+        body: SafeArea(
+          child: Column(
+            children: [
+              Expanded(
+                child: BlocBuilder<SubscriptionBloc, SubscriptionState>(
+                  builder: (context, state) {
+                    if (state is SubscriptionLoading) {
+                      return const Center(
+                          child: CircularProgressIndicator(
+                        color: ColorManager.greenPrimary,
+                      ));
+                    } else if (state is SubscriptionSuccess) {
+                      return _SubscriptionContentView(
+                          plansModel: state.plansModel);
+                    } else if (state is SubscriptionError) {
+                      return Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(state.message),
+                            Gap(AppSize.s16.h),
+                            ElevatedButton(
+                              onPressed: () {
+                                context
+                                    .read<SubscriptionBloc>()
+                                    .add(const GetPlansEvent());
+                              },
+                              child: const Text("Try Again"),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+                    return const SizedBox.shrink();
+                  },
+                ),
+              ),
+              _buildProceedButton(),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProceedButton() {
+    return Container(
+      padding: EdgeInsetsDirectional.all(AppPadding.p20.w),
+      color: ColorManager.whiteColor,
+      child: ElevatedButton(
+        onPressed: () {},
+        style: ElevatedButton.styleFrom(
+          backgroundColor: ColorManager.greenPrimary,
+          minimumSize: Size(double.infinity, 56.h),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppSize.s16.r),
+          ),
+          elevation: 0,
+        ),
+        child: Text(
+          Strings.choosePackageProceed,
+          style: TextStyle(
+            fontFamily: 'Inter',
+            fontWeight: FontWeight.w700,
+            fontSize: FontSizeManager.s16.sp,
+            color: ColorManager.whiteColor,
+          ),
+        ),
+      ),
+    );
+  }
 }
 
-class _SubscriptionScreenState extends State<SubscriptionScreen> {
-  int _expandedIndex = -1;
+class _SubscriptionContentView extends StatefulWidget {
+  final PlansModel plansModel;
 
-  final List<Map<String, dynamic>> _packages = [
-    {
-      'title': Strings.daysWeekly,
-      'icon': Icons.calendar_today_outlined,
-      'isExpandable': true,
-      'sizes': [
-        {
-          'title': Strings.size100g,
-          'options': [
-            {'title': Strings.meal1, 'price': '150', 'oldPrice': '180'},
-            {'title': Strings.meals2, 'price': '280', 'oldPrice': '320'},
-            {'title': Strings.meals3, 'price': '400', 'oldPrice': '450'},
-            {'title': Strings.meals4, 'price': '520', 'oldPrice': '580'},
-            {'title': Strings.meals5, 'price': '630', 'oldPrice': '700'},
-          ],
-        },
-        {
-          'title': Strings.size150g,
-          'options': [
-            {'title': Strings.meal1, 'price': '195', 'oldPrice': '230'},
-            {'title': Strings.meals2, 'price': '350', 'oldPrice': '400'},
-            {'title': Strings.meals3, 'price': '490', 'oldPrice': '550'},
-            {'title': Strings.meals4, 'price': '630', 'oldPrice': '700'},
-            {'title': Strings.meals5, 'price': '750', 'oldPrice': '840'},
-          ],
-        },
-        {
-          'title': Strings.size200g,
-          'options': [
-            {'title': Strings.meal1, 'price': '240', 'oldPrice': '280'},
-            {'title': Strings.meals2, 'price': '420', 'oldPrice': '480'},
-            {'title': Strings.meals3, 'price': '580', 'oldPrice': '650'},
-            {'title': Strings.meals4, 'price': '740', 'oldPrice': '820'},
-            {'title': Strings.meals5, 'price': '870', 'oldPrice': '980'},
-          ],
-        },
-      ],
-    },
-  ];
+  const _SubscriptionContentView({required this.plansModel});
+
+  @override
+  State<_SubscriptionContentView> createState() =>
+      _SubscriptionContentViewState();
+}
+
+class _SubscriptionContentViewState extends State<_SubscriptionContentView> {
+  int _expandedIndex = -1;
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: ColorManager.whiteColor,
-      appBar: AppBar(
-        backgroundColor: ColorManager.whiteColor,
-        elevation: 0,
-        centerTitle: false,
-        leading: IconButton(
-          onPressed: () => Navigator.pop(context),
-          icon: Icon(
-            Icons.keyboard_arrow_left,
-            color: ColorManager.blackColor,
-            size: AppSize.s30.sp,
-          ),
-        ),
-        title: Text(
-          Strings.subscriptionPackages,
-          style: getBoldTextStyle(
-            color: ColorManager.black101828,
-            fontSize: FontSizeManager.s20.sp,
-          ),
-        ),
+    return ListView(
+      padding: EdgeInsetsDirectional.symmetric(
+        horizontal: AppPadding.p20.w,
       ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            Expanded(
-              child: ListView(
-                padding: EdgeInsetsDirectional.symmetric(
-                  horizontal: AppPadding.p20.w,
-                ),
-                children: [
-                  Gap(AppSize.s20.h),
-                  _buildImageBanner(),
-                  Gap(AppSize.s20.h),
-                  Center(
-                    child: Text(
-                      Strings.vatAndDelivery,
-                      style: getRegularTextStyle(
-                        color: ColorManager.grayColor,
-                        fontSize: FontSizeManager.s14.sp,
-                      ),
-                    ),
-                  ),
-                  Gap(AppSize.s8.h),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      _buildBenefitItem(Strings.dailyDelivery),
-                      Gap(AppSize.s8.w),
-                      _buildBenefitItem(Strings.variedMenu),
-                      Gap(AppSize.s8.w),
-                      _buildBenefitItem(Strings.guaranteedQuality),
-                    ],
-                  ),
-                  Gap(AppSize.s30.h),
-                  ...List.generate(_packages.length, (index) {
-                    return Padding(
-                      padding: EdgeInsetsDirectional.only(
-                        bottom: AppSize.s16.h,
-                      ),
-                      child: _buildPackageItem(index),
-                    );
-                  }),
-                ],
-              ),
+      children: [
+        Gap(AppSize.s20.h),
+        _buildImageBanner(),
+        Gap(AppSize.s20.h),
+        Center(
+          child: Text(
+            Strings.vatAndDelivery,
+            style: getRegularTextStyle(
+              color: ColorManager.grayColor,
+              fontSize: FontSizeManager.s14.sp,
             ),
-            _buildProceedButton(),
+          ),
+        ),
+        Gap(AppSize.s8.h),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _buildBenefitItem(Strings.dailyDelivery),
+            Gap(AppSize.s8.w),
+            _buildBenefitItem(Strings.variedMenu),
+            Gap(AppSize.s8.w),
+            _buildBenefitItem(Strings.guaranteedQuality),
           ],
         ),
-      ),
+        Gap(AppSize.s30.h),
+        ...List.generate(widget.plansModel.plans.length, (index) {
+          return Padding(
+            padding: EdgeInsetsDirectional.only(
+              bottom: AppSize.s16.h,
+            ),
+            child: _buildPackageItem(index, widget.plansModel.plans[index]),
+          );
+        }),
+      ],
     );
   }
 
@@ -218,49 +259,18 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     );
   }
 
-  Widget _buildProceedButton() {
-    return Container(
-      padding: EdgeInsetsDirectional.all(AppPadding.p20.w),
-      color: ColorManager.whiteColor,
-      child: ElevatedButton(
-        onPressed: () {},
-        style: ElevatedButton.styleFrom(
-          backgroundColor: ColorManager.greenPrimary,
-          minimumSize: Size(double.infinity, 56.h),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppSize.s16.r),
-          ),
-          elevation: 0,
-        ),
-        child: Text(
-          Strings.choosePackageProceed,
-          style: TextStyle(
-            fontFamily: 'Inter',
-            fontWeight: FontWeight.w700,
-            fontSize: FontSizeManager.s16.sp,
-            color: ColorManager.whiteColor,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPackageItem(int index) {
-    final package = _packages[index];
+  Widget _buildPackageItem(int index, PlanModel plan) {
     final bool isExpanded = _expandedIndex == index;
-    final bool isExpandable = package['isExpandable'];
 
     return GestureDetector(
       onTap: () {
-        if (isExpandable) {
-          setState(() {
-            if (_expandedIndex == index) {
-              _expandedIndex = -1; // Collapse if already expanded
-            } else {
-              _expandedIndex = index;
-            }
-          });
-        }
+        setState(() {
+          if (_expandedIndex == index) {
+            _expandedIndex = -1;
+          } else {
+            _expandedIndex = index;
+          }
+        });
       },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 300),
@@ -296,7 +306,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                       shape: BoxShape.circle,
                     ),
                     child: Icon(
-                      package['icon'],
+                      Icons.calendar_today_outlined,
                       color: ColorManager.greenPrimary,
                       size: AppSize.s20.w,
                     ),
@@ -307,7 +317,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          package['title'],
+                          plan.name,
                           style: TextStyle(
                             fontFamily: 'Inter',
                             fontWeight: FontWeight.w700,
@@ -328,27 +338,23 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                       ],
                     ),
                   ),
-                  if (isExpandable)
-                    Icon(
-                      isExpanded
-                          ? Icons.keyboard_arrow_up
-                          : Icons.keyboard_arrow_down,
-                      color: ColorManager.greenPrimary,
-                    ),
+                  Icon(
+                    isExpanded
+                        ? Icons.keyboard_arrow_up
+                        : Icons.keyboard_arrow_down,
+                    color: ColorManager.greenPrimary,
+                  ),
                 ],
               ),
             ),
-            if (isExpanded) _buildExpandedContent(package),
+            if (isExpanded) _buildExpandedContent(plan),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildExpandedContent(Map<String, dynamic> package) {
-    final sizes = package['sizes'] as List<Map<String, dynamic>>?;
-    final options = package['options'] as List<dynamic>?;
-
+  Widget _buildExpandedContent(PlanModel plan) {
     return Padding(
       padding: EdgeInsetsDirectional.only(
         start: AppPadding.p16.w,
@@ -385,16 +391,13 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
             ],
           ),
           Gap(AppSize.s20.h),
-          if (sizes != null)
-            ...sizes.map((size) => _buildSizeSection(size))
-          else if (options != null)
-            _buildOptionsGrid(options),
+          ...plan.gramsOptions.map((gramOption) => _buildSizeSection(gramOption)),
         ],
       ),
     );
   }
 
-  Widget _buildSizeSection(Map<String, dynamic> size) {
+  Widget _buildSizeSection(GramOptionModel gramOption) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -414,7 +417,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
             ),
             Gap(AppSize.s10.w),
             Text(
-              size['title'],
+              "${gramOption.grams}g Size",
               style: getBoldTextStyle(
                 color: ColorManager.black101828,
                 fontSize: FontSizeManager.s14.sp,
@@ -423,13 +426,13 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
           ],
         ),
         Gap(AppSize.s12.h),
-        _buildOptionsGrid(size['options']),
+        _buildOptionsGrid(gramOption.mealsOptions),
         Gap(AppSize.s24.h),
       ],
     );
   }
 
-  Widget _buildOptionsGrid(List<dynamic> options) {
+  Widget _buildOptionsGrid(List<MealOptionModel> options) {
     return Column(
       children: [
         for (int i = 0; i < options.length; i += 2)
@@ -453,7 +456,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     );
   }
 
-  Widget _buildMealOptionCard(Map<String, dynamic> option) {
+  Widget _buildMealOptionCard(MealOptionModel option) {
     return Container(
       padding: EdgeInsetsDirectional.all(AppPadding.p12.w),
       decoration: BoxDecoration(
@@ -465,7 +468,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            option['title'],
+            "${option.mealsPerDay} Meal${option.mealsPerDay > 1 ? 's' : ''}",
             style: TextStyle(
               fontFamily: 'Inter',
               fontWeight: FontWeight.w400,
@@ -479,13 +482,12 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
             textBaseline: TextBaseline.alphabetic,
             children: [
               Text(
-                option['price'],
+                option.priceSar.toStringAsFixed(0),
                 style: TextStyle(
                   fontFamily: 'Inter',
                   fontWeight: FontWeight.w700,
                   fontSize: FontSizeManager.s18.sp,
-                  color: ColorManager
-                      .greenPrimary, // Slightly different green on image
+                  color: ColorManager.greenPrimary,
                 ),
               ),
               Gap(AppSize.s4.w),
@@ -506,7 +508,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
             textBaseline: TextBaseline.alphabetic,
             children: [
               Text(
-                option['oldPrice'],
+                option.compareAtSar.toStringAsFixed(0),
                 style: TextStyle(
                   fontFamily: 'Inter',
                   fontWeight: FontWeight.w400,
