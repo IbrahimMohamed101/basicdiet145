@@ -1,3 +1,5 @@
+import 'package:basic_diet/app/toast_handeller.dart';
+import 'package:basic_diet/domain/usecase/login_usecase.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'login_event.dart';
 import 'login_state.dart';
@@ -11,10 +13,12 @@ import 'login_state.dart';
 //    Output: LoginState (What goes out?)
 
 class LoginBloc extends Bloc<LoginEvent, LoginState> {
+  final LoginUseCase _loginUseCase;
+
   // 1. Constructor & Initial State
   // We pass the initial state to the superclass.
   // We start with LoginFormInitialState because the screen should initially show an empty form.
-  LoginBloc() : super(const LoginFormInitialState()) {
+  LoginBloc(this._loginUseCase) : super(const LoginFormInitialState()) {
     // 2. Event Handlers (The "Recipes")
     // We register "Listeners" for each event.
     // "When you see LoginPhoneChanged, run this function..."
@@ -36,20 +40,26 @@ class LoginBloc extends Bloc<LoginEvent, LoginState> {
     LoginSubmitted event,
     Emitter<LoginState> emit,
   ) async {
-    // final error = _validatePhone(state.phone);
-    // if (error != null) {
-    //   emit(state.copyWith(phoneError: error));
-    //   return;
-    // }
+    final error = _validatePhone(state.phone);
+    if (error != null) {
+      emit(state.copyWith(phoneError: error));
+      return;
+    }
 
     emit(LoginLoadingState(phone: state.phone));
 
-    try {
-      await Future.delayed(const Duration(seconds: 1));
-      emit(LoginSuccessState(phone: state.phone));
-    } catch (e) {
-      emit(LoginErrorState("Something went wrong", phone: state.phone));
-    }
+    final result = await _loginUseCase.execute(state.phone);
+
+    result.fold(
+      (failure) {
+        emit(LoginErrorState(failure.message, phone: state.phone));
+        showToast(message: failure.message, state: ToastStates.error);
+      },
+      (data) {
+        emit(LoginSuccessState(phone: state.phone));
+        showToast(message: data.message, state: ToastStates.success);
+      },
+    );
   }
 
   String? _validatePhone(String phone) {

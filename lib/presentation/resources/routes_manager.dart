@@ -1,3 +1,4 @@
+import 'package:basic_diet/app/dependency_injection.dart';
 import 'package:basic_diet/app/functions.dart';
 import 'package:basic_diet/presentation/login/login_screen.dart';
 import 'package:basic_diet/presentation/main/main_screen.dart';
@@ -26,8 +27,10 @@ class GoRouterConfig {
       ),
       GoRoute(
         path: LoginScreen.loginRoute,
-        pageBuilder: (BuildContext context, GoRouterState state) =>
-            getCustomTransitionPage(state: state, child: LoginScreen()),
+        pageBuilder: (BuildContext context, GoRouterState state) {
+          initLoginModule();
+          return getCustomTransitionPage(state: state, child: LoginScreen());
+        },
       ),
       GoRoute(
         path: RegisterScreen.registerRoute,

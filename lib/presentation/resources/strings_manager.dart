@@ -101,4 +101,17 @@ class Strings {
   static const String subscriptionPricingMenu = "Subscription\nPricing Menu";
   static const String choosePackageHealthGoals =
       "Choose the package that fits your health goals";
+
+  // Common Errors and Messages for APIs and Exceptions
+  static const String success = "Success";
+  static const String noContent = "No Content";
+  static const String badRequestError = "Bad Request";
+  static const String unauthorizedError = "Unauthorized";
+  static const String forbiddenError = "Forbidden";
+  static const String internalServerError = "Internal Server Error";
+  static const String notFoundError = "Not Found";
+  static const String timeoutError = "Timeout";
+  static const String defaultError = "Something went wrong";
+  static const String cacheError = "Cache Error";
+  static const String noInternetError = "No Internet Connection";
 }

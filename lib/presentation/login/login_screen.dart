@@ -1,3 +1,4 @@
+import 'package:basic_diet/app/dependency_injection.dart';
 import 'package:basic_diet/presentation/register/register_screen.dart';
 import 'package:basic_diet/presentation/resources/color_manager.dart';
 import 'package:basic_diet/presentation/resources/font_manager.dart';
@@ -23,20 +24,14 @@ class LoginScreen extends StatelessWidget {
 
   late final TextEditingController _phoneController = TextEditingController();
 
-  // @override
   @override
   Widget build(BuildContext context) {
     return BlocProvider(
-      create: (_) => LoginBloc(),
+      create: (_) => instance<LoginBloc>(),
       child: BlocListener<LoginBloc, LoginState>(
         listener: (context, state) {
           if (state is LoginSuccessState) {
             context.push(VerifyScreen.verifyRoute, extra: state.phone);
-          }
-          if (state is LoginErrorState) {
-            ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(SnackBar(content: Text(state.message)));
           }
         },
         child: Scaffold(
