@@ -75,7 +75,7 @@ class VerifyBloc extends Bloc<VerifyEvent, VerifyState> {
       (data) async {
         // Store token
         if (data.token != null && data.token!.isNotEmpty) {
-          await _appPreferences.setUserToken("token", data.token!);
+          await _appPreferences.setUserToken("login", data.token!);
           showToast(message: "Success Otp", state: ToastStates.success);
           emit(
             VerifySuccessState(

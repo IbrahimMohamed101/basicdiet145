@@ -1,4 +1,4 @@
-import 'package:basic_diet/presentation/main/subscription_screen.dart';
+import 'package:basic_diet/presentation/main/subscription/subscription_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_svg/flutter_svg.dart';

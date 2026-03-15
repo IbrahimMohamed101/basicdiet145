@@ -23,42 +23,38 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     {
       'title': Strings.daysWeekly,
       'icon': Icons.calendar_today_outlined,
-      'isExpandable': false,
-    },
-    {
-      'title': Strings.size100g,
-      'icon': Icons.restaurant_menu, // Using placeholder icon
       'isExpandable': true,
-      'options': [
-        {'title': Strings.meal1, 'price': '150', 'oldPrice': '180'},
-        {'title': Strings.meals2, 'price': '280', 'oldPrice': '320'},
-        {'title': Strings.meals3, 'price': '400', 'oldPrice': '450'},
-        {'title': Strings.meals4, 'price': '520', 'oldPrice': '580'},
-        {'title': Strings.meals5, 'price': '630', 'oldPrice': '700'},
-      ],
-    },
-    {
-      'title': Strings.size150g,
-      'icon': Icons.restaurant_menu,
-      'isExpandable': true,
-      'options': [
-        {'title': Strings.meal1, 'price': '195', 'oldPrice': '230'},
-        {'title': Strings.meals2, 'price': '350', 'oldPrice': '400'},
-        {'title': Strings.meals3, 'price': '490', 'oldPrice': '550'},
-        {'title': Strings.meals4, 'price': '630', 'oldPrice': '700'},
-        {'title': Strings.meals5, 'price': '750', 'oldPrice': '840'},
-      ],
-    },
-    {
-      'title': Strings.size200g,
-      'icon': Icons.restaurant_menu,
-      'isExpandable': true,
-      'options': [
-        {'title': Strings.meal1, 'price': '240', 'oldPrice': '280'},
-        {'title': Strings.meals2, 'price': '420', 'oldPrice': '480'},
-        {'title': Strings.meals3, 'price': '580', 'oldPrice': '650'},
-        {'title': Strings.meals4, 'price': '740', 'oldPrice': '820'},
-        {'title': Strings.meals5, 'price': '870', 'oldPrice': '980'},
+      'sizes': [
+        {
+          'title': Strings.size100g,
+          'options': [
+            {'title': Strings.meal1, 'price': '150', 'oldPrice': '180'},
+            {'title': Strings.meals2, 'price': '280', 'oldPrice': '320'},
+            {'title': Strings.meals3, 'price': '400', 'oldPrice': '450'},
+            {'title': Strings.meals4, 'price': '520', 'oldPrice': '580'},
+            {'title': Strings.meals5, 'price': '630', 'oldPrice': '700'},
+          ],
+        },
+        {
+          'title': Strings.size150g,
+          'options': [
+            {'title': Strings.meal1, 'price': '195', 'oldPrice': '230'},
+            {'title': Strings.meals2, 'price': '350', 'oldPrice': '400'},
+            {'title': Strings.meals3, 'price': '490', 'oldPrice': '550'},
+            {'title': Strings.meals4, 'price': '630', 'oldPrice': '700'},
+            {'title': Strings.meals5, 'price': '750', 'oldPrice': '840'},
+          ],
+        },
+        {
+          'title': Strings.size200g,
+          'options': [
+            {'title': Strings.meal1, 'price': '240', 'oldPrice': '280'},
+            {'title': Strings.meals2, 'price': '420', 'oldPrice': '480'},
+            {'title': Strings.meals3, 'price': '580', 'oldPrice': '650'},
+            {'title': Strings.meals4, 'price': '740', 'oldPrice': '820'},
+            {'title': Strings.meals5, 'price': '870', 'oldPrice': '980'},
+          ],
+        },
       ],
     },
   ];
@@ -342,14 +338,17 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                 ],
               ),
             ),
-            if (isExpanded) _buildExpandedContent(package['options']),
+            if (isExpanded) _buildExpandedContent(package),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildExpandedContent(List<dynamic> options) {
+  Widget _buildExpandedContent(Map<String, dynamic> package) {
+    final sizes = package['sizes'] as List<Map<String, dynamic>>?;
+    final options = package['options'] as List<dynamic>?;
+
     return Padding(
       padding: EdgeInsetsDirectional.only(
         start: AppPadding.p16.w,
@@ -357,6 +356,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
         bottom: AppPadding.p16.h,
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -385,29 +385,71 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
             ],
           ),
           Gap(AppSize.s20.h),
-          Column(
-            children: [
-              for (int i = 0; i < options.length; i += 2)
-                Padding(
-                  padding: EdgeInsetsDirectional.only(
-                    bottom: (i + 2 < options.length || i + 1 < options.length)
-                        ? AppSize.s12.h
-                        : 0,
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(child: _buildMealOptionCard(options[i])),
-                      if (i + 1 < options.length) ...[
-                        Gap(AppSize.s12.w),
-                        Expanded(child: _buildMealOptionCard(options[i + 1])),
-                      ],
-                    ],
-                  ),
-                ),
-            ],
-          ),
+          if (sizes != null)
+            ...sizes.map((size) => _buildSizeSection(size))
+          else if (options != null)
+            _buildOptionsGrid(options),
         ],
       ),
+    );
+  }
+
+  Widget _buildSizeSection(Map<String, dynamic> size) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(
+              padding: EdgeInsetsDirectional.all(AppSize.s4.w),
+              decoration: BoxDecoration(
+                color: ColorManager.greenPrimary.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(AppSize.s8.r),
+              ),
+              child: Icon(
+                Icons.restaurant_menu,
+                color: ColorManager.greenPrimary,
+                size: AppSize.s14.sp,
+              ),
+            ),
+            Gap(AppSize.s10.w),
+            Text(
+              size['title'],
+              style: getBoldTextStyle(
+                color: ColorManager.black101828,
+                fontSize: FontSizeManager.s14.sp,
+              ),
+            ),
+          ],
+        ),
+        Gap(AppSize.s12.h),
+        _buildOptionsGrid(size['options']),
+        Gap(AppSize.s24.h),
+      ],
+    );
+  }
+
+  Widget _buildOptionsGrid(List<dynamic> options) {
+    return Column(
+      children: [
+        for (int i = 0; i < options.length; i += 2)
+          Padding(
+            padding: EdgeInsetsDirectional.only(
+              bottom: (i + 2 < options.length || i + 1 < options.length)
+                  ? AppSize.s12.h
+                  : 0,
+            ),
+            child: Row(
+              children: [
+                Expanded(child: _buildMealOptionCard(options[i])),
+                if (i + 1 < options.length) ...[
+                  Gap(AppSize.s12.w),
+                  Expanded(child: _buildMealOptionCard(options[i + 1])),
+                ],
+              ],
+            ),
+          ),
+      ],
     );
   }
 

@@ -29,26 +29,25 @@ class DioFactory {
 
     final dioInstance = Dio(baseDioOptions);
 
-    // dioInstance.interceptors.add(
-    //   InterceptorsWrapper(
-    //     onRequest:
-    //         (RequestOptions options, RequestInterceptorHandler handler) async {
-    //           await _addAuthorizationHeaderIfLoggedIn(options);
-    //           handler.next(options);
-    //         },
-    //     onError: (DioException error, ErrorInterceptorHandler handler) async {
-    //       if (_isUnauthorizedError(error)) {
-    //         if (_isSessionExpired(error)) {
-    //           await _handleUnauthorizedError(error, handler);
-    //         } else {
-    //           handler.next(error);
-    //         }
-    //       } else {
-    //         handler.next(error);
-    //       }
-    //     },
-    //   ),
-    // );
+    dioInstance.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) async {
+          await _addAuthorizationHeaderIfLoggedIn(options);
+          handler.next(options);
+        },
+        // onError: (DioException error, ErrorInterceptorHandler handler) async {
+        //   if (_isUnauthorizedError(error)) {
+        //     if (_isSessionExpired(error)) {
+        //       await _handleUnauthorizedError(error, handler);
+        //     } else {
+        //       handler.next(error);
+        //     }
+        //   } else {
+        //     handler.next(error);
+        //   }
+        // },
+      ),
+    );
 
     // Add pretty logging for development
     if (!kReleaseMode) {
@@ -64,4 +63,20 @@ class DioFactory {
 
     return dioInstance;
   }
+
+  Future<void> _addAuthorizationHeaderIfLoggedIn(RequestOptions options) async {
+    try {
+      final accessToken = await _appPreferences.getUserToken("login");
+
+      if (_isUserLoggedIn(accessToken)) {
+        options.headers["Authorization"] = "Bearer $accessToken";
+      } else {
+        options.headers.remove("Authorization");
+      }
+    } catch (error) {
+      debugPrint("⚠️ Failed to attach authorization header: $error");
+    }
+  }
+
+  bool _isUserLoggedIn(String token) => token.isNotEmpty;
 }
