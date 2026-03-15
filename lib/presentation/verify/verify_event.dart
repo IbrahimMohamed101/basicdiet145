@@ -16,7 +16,11 @@ class VerifyCodeChanged extends VerifyEvent {
 }
 
 class VerifySubmitted extends VerifyEvent {
-  const VerifySubmitted();
+  final String phone;
+  const VerifySubmitted(this.phone);
+
+  @override
+  List<Object?> get props => [phone];
 }
 
 class VerifyResendCode extends VerifyEvent {

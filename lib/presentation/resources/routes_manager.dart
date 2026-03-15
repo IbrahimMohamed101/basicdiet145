@@ -39,11 +39,13 @@ class GoRouterConfig {
       ),
       GoRoute(
         path: VerifyScreen.verifyRoute,
-        pageBuilder: (BuildContext context, GoRouterState state) =>
-            getCustomTransitionPage(
-              state: state,
-              child: VerifyScreen(phoneNumber: state.extra as String?),
-            ),
+        pageBuilder: (BuildContext context, GoRouterState state) {
+          initVerifyModule();
+          return getCustomTransitionPage(
+            state: state,
+            child: VerifyScreen(phoneNumber: state.extra as String?),
+          );
+        },
       ),
       GoRoute(
         path: MainScreen.mainRoute,

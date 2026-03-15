@@ -5,7 +5,9 @@ import 'package:basic_diet/data/network/dio_factory.dart';
 import 'package:basic_diet/data/repository/repository.dart';
 import 'package:basic_diet/domain/repository/repository.dart';
 import 'package:basic_diet/domain/usecase/login_usecase.dart';
+import 'package:basic_diet/domain/usecase/verify_otp_usecase.dart';
 import 'package:basic_diet/presentation/login/login_bloc.dart';
+import 'package:basic_diet/presentation/verify/verify_bloc.dart';
 import 'package:dio/dio.dart';
 import 'package:basic_diet/app/app_pref.dart';
 import 'package:get_it/get_it.dart';
@@ -47,5 +49,17 @@ initLoginModule() {
     // instance.registerFactory<LoginViewModel>(
     //   () => LoginViewModel(instance<LoginUseCase>()),
     // );
+  }
+}
+
+initVerifyModule() {
+  if (!GetIt.I.isRegistered<VerifyOtpUseCase>()) {
+    instance.registerFactory<VerifyOtpUseCase>(
+      () => VerifyOtpUseCase(instance<Repository>()),
+    );
+
+    instance.registerFactory<VerifyBloc>(
+      () => VerifyBloc(instance<VerifyOtpUseCase>(), instance<AppPreferences>()),
+    );
   }
 }

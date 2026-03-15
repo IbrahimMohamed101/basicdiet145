@@ -1,3 +1,4 @@
+import 'package:basic_diet/app/dependency_injection.dart';
 import 'package:basic_diet/presentation/main/main_screen.dart';
 import 'package:basic_diet/presentation/resources/color_manager.dart';
 import 'package:basic_diet/presentation/resources/font_manager.dart';
@@ -23,16 +24,11 @@ class VerifyScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BlocProvider(
-      create: (_) => VerifyBloc(),
+      create: (_) => instance<VerifyBloc>(),
       child: BlocListener<VerifyBloc, VerifyState>(
         listener: (context, state) {
           if (state is VerifySuccessState) {
             context.push(MainScreen.mainRoute);
-          }
-          if (state is VerifyErrorState) {
-            ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(SnackBar(content: Text(state.message)));
           }
         },
         child: Scaffold(
@@ -108,18 +104,18 @@ class VerifyScreen extends StatelessWidget {
     return Builder(
       builder: (context) {
         return OtpTextField(
-          numberOfFields: 4,
+          numberOfFields: 6,
           borderColor: ColorManager.greenPrimary,
           focusedBorderColor: ColorManager.greenPrimary,
           showFieldAsBox: true,
-          fieldWidth: AppSize.s70.w,
+          fieldWidth: AppSize.s50.w,
           fieldHeight: AppSize.s70.h,
           onCodeChanged: (String code) {
             context.read<VerifyBloc>().add(VerifyCodeChanged(code));
           },
           onSubmit: (String verificationCode) {
             context.read<VerifyBloc>().add(VerifyCodeChanged(verificationCode));
-            context.read<VerifyBloc>().add(const VerifySubmitted());
+            context.read<VerifyBloc>().add(VerifySubmitted(phoneNumber ?? ""));
           },
           borderRadius: BorderRadius.circular(AppSize.s16.r),
           filled: true,
