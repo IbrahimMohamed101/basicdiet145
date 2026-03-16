@@ -17,10 +17,38 @@ function serializeCoreUser(user) {
 }
 
 function handleError(res, err) {
+  if (err && err.code === 11000) {
+    const key = Object.keys(err.keyValue || err.keyPattern || {})[0] || "field";
+    return errorResponse(res, 409, "CONFLICT", `${key} already in use`);
+  }
   if (isApiError(err)) {
     return errorResponse(res, err.status, err.code, err.message, err.details);
   }
   return errorResponse(res, 500, "INTERNAL", "Unexpected error");
+}
+
+function applyPendingProfile(coreUser, appUser, pendingProfile) {
+  if (!pendingProfile || typeof pendingProfile !== "object") {
+    return false;
+  }
+
+  let changed = false;
+
+  if (Object.prototype.hasOwnProperty.call(pendingProfile, "fullName")) {
+    const fullName = String(pendingProfile.fullName || "").trim();
+    coreUser.name = fullName || undefined;
+    appUser.fullName = fullName || undefined;
+    changed = true;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(pendingProfile, "email")) {
+    const email = pendingProfile.email ? String(pendingProfile.email).trim().toLowerCase() : undefined;
+    coreUser.email = email;
+    appUser.email = email;
+    changed = true;
+  }
+
+  return changed;
 }
 
 async function requestOtp(req, res) {
@@ -36,7 +64,7 @@ async function requestOtp(req, res) {
 async function verifyOtp(req, res) {
   try {
     const { phoneE164, otp } = req.body || {};
-    const { phone } = await verifyOtpCode({ phoneE164, otp });
+    const { phone, pendingProfile } = await verifyOtpCode({ phoneE164, otp });
 
     let appUser = await AppUser.findOne({ phone });
     if (!appUser) {
@@ -56,10 +84,16 @@ async function verifyOtp(req, res) {
     if (coreUser.isActive === false) {
       return errorResponse(res, 403, "FORBIDDEN", "User account is inactive");
     }
+
+    const hasPendingProfile = applyPendingProfile(coreUser, appUser, pendingProfile);
+    if (hasPendingProfile) {
+      await coreUser.save();
+    }
+
     if (!appUser.coreUserId || String(appUser.coreUserId) !== String(coreUser._id)) {
       appUser.coreUserId = coreUser._id;
-      await appUser.save();
     }
+    await appUser.save();
     if (Array.isArray(appUser.fcmTokens) && appUser.fcmTokens.length > 0) {
       await User.findByIdAndUpdate(coreUser._id, { $addToSet: { fcmTokens: { $each: appUser.fcmTokens } } });
       appUser.fcmTokens = [];

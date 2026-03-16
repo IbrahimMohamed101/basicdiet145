@@ -4,6 +4,7 @@ const { sendWhatsappMessage } = require("./twilioWhatsappService");
 const { ApiError } = require("../utils/apiError");
 
 const E164_REGEX = /^\+[1-9]\d{7,14}$/;
+const OTP_CONTEXTS = new Set(["generic", "app_login", "app_register"]);
 
 function resolveOtpBypassConfig({ enabled, code, phone }) {
   if (!enabled) {
@@ -57,6 +58,32 @@ function normalizePhoneE164(phoneE164) {
   return String(phoneE164 || "").trim();
 }
 
+function normalizeOtpContext(context) {
+  const normalized = String(context || "").trim();
+  return OTP_CONTEXTS.has(normalized) ? normalized : "generic";
+}
+
+function normalizePendingProfile(profile) {
+  if (!profile || typeof profile !== "object" || Array.isArray(profile)) {
+    return null;
+  }
+
+  const normalized = {};
+  if (profile.fullName !== undefined) {
+    const fullName = String(profile.fullName || "").trim();
+    if (fullName) {
+      normalized.fullName = fullName;
+    }
+  }
+
+  if (profile.email !== undefined) {
+    const email = profile.email === null ? null : String(profile.email || "").trim().toLowerCase();
+    normalized.email = email || null;
+  }
+
+  return Object.keys(normalized).length > 0 ? normalized : null;
+}
+
 function assertValidPhoneE164(phoneE164) {
   const normalized = normalizePhoneE164(phoneE164);
   if (!E164_REGEX.test(normalized)) {
@@ -90,12 +117,14 @@ function hashOtp(phoneE164, otp) {
   return crypto.createHash("sha256").update(`${phoneE164}:${otp}:${secret}`).digest("hex");
 }
 
-async function requestOtpForPhone(phoneE164) {
+async function requestOtpForPhone(phoneE164, options = {}) {
   const phone = assertValidPhoneE164(phoneE164);
   const { ttlMinutes, cooldownSeconds, maxAttempts } = getOtpConfig();
   const now = new Date();
   const otpBypass = getOtpBypassConfig();
   const useOtpBypass = Boolean(otpBypass && (!otpBypass.phone || otpBypass.phone === phone));
+  const context = normalizeOtpContext(options.context);
+  const pendingProfile = normalizePendingProfile(options.pendingProfile);
 
   const existing = await Otp.findOne({ phone });
   if (!useOtpBypass && existing && existing.lastSentAt) {
@@ -121,15 +150,28 @@ async function requestOtpForPhone(phoneE164) {
     });
   }
 
+  const setPayload = {
+    phone,
+    codeHash: hashOtp(phone, otp),
+    expiresAt,
+    attemptsLeft: maxAttempts,
+    lastSentAt: now,
+    context,
+  };
+
+  if (pendingProfile) {
+    setPayload.pendingProfile = pendingProfile;
+    await Otp.findOneAndUpdate(
+      { phone },
+      { $set: setPayload },
+      { upsert: true, setDefaultsOnInsert: true }
+    );
+    return;
+  }
+
   await Otp.findOneAndUpdate(
     { phone },
-    {
-      phone,
-      codeHash: hashOtp(phone, otp),
-      expiresAt,
-      attemptsLeft: maxAttempts,
-      lastSentAt: now,
-    },
+    { $set: setPayload, $unset: { pendingProfile: 1 } },
     { upsert: true, setDefaultsOnInsert: true }
   );
 }
@@ -184,8 +226,10 @@ async function verifyOtpCode({ phoneE164, otp }) {
     });
   }
 
+  const context = normalizeOtpContext(otpRecord.context);
+  const pendingProfile = normalizePendingProfile(otpRecord.pendingProfile);
   await Otp.deleteOne({ _id: otpRecord._id });
-  return { phone };
+  return { phone, context, pendingProfile };
 }
 
 module.exports = {

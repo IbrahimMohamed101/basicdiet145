@@ -2,63 +2,70 @@
 
 ## Flow (text diagram)
 
-1. `POST /api/app/login` (or `POST /api/auth/otp/request`) with `phoneE164`
-2. Backend validates E.164, checks cooldown (30s), creates 6-digit OTP, hashes OTP, stores OTP with TTL (5m), sends WhatsApp OTP through Twilio.
-3. `POST /api/auth/otp/verify` with `phoneE164` + `otp`
+1. `POST /api/app/register` with `fullName` + `phoneE164` + optional `email`
+2. Backend validates E.164, validates the profile payload, checks cooldown (30s), creates 6-digit OTP, hashes OTP, stores OTP with TTL (5m), stores the pending profile temporarily with the OTP, and sends WhatsApp OTP through Twilio.
+3. `POST /api/app/verify` with `phoneE164` + `otp`
 4. Backend validates expiry + attempts (max 5), compares hash, and applies IP rate-limit for verify attempts.
-5. On valid OTP:
+5. On valid OTP for registration:
+   - Create or resolve both `AppUser` and core `User` (role=`client`) by phone.
+   - Apply the pending `fullName` and `email`.
    - Return app JWT (`tokenType=app_access`) + user profile.
-   - Auto-link/create both `AppUser` and core `User` (role=`client`) by phone.
-6. Optional: `POST /api/app/register` with profile fields (`fullName`, optional `email`) and bearer token from step 5.
+6. Existing-user sign-in remains:
+   - `POST /api/app/login` with `phoneE164`
+   - Then `POST /api/app/verify` with `phoneE164` + `otp`
 
 Dashboard/admin creation is not exposed in `/api/app/*` and app registration cannot assign admin/dashboard roles.
 
 ## Endpoints
 
-- `POST /api/auth/otp/request`
-  - Input: `{ "phoneE164": "+9665XXXXXXXX" }`
-  - Output: `{ "ok": true }`
-
-- `POST /api/auth/otp/verify`
-  - Input: `{ "phoneE164": "+9665XXXXXXXX", "otp": "123456" }`
-  - Output:
-    - `{ "ok": true, "token": "<app_jwt>", "user": { ... } }`
-
 - `POST /api/app/register`
   - Input:
     - `{ "fullName": "...", "phoneE164": "+966...", "email": "..." }`
   - Output:
-    - `{ "ok": true, "token": "<app_jwt>", "user": { ... } }`
+    - `{ "status": true, "message": "OTP sent successfully", "data": { "phoneE164": "+966...", "nextStep": "verify" } }`
 
 - `POST /api/app/login`
   - Input: `{ "phoneE164": "+966..." }`
-  - Output: `{ "ok": true }`
+  - Output: `{ "status": true, "message": "OTP sent successfully", "data": { "phoneE164": "+966...", "nextStep": "verify" } }`
+
+- `POST /api/app/verify`
+  - Input: `{ "phoneE164": "+966...", "otp": "123456" }`
+  - Output:
+    - `{ "status": true, "token": "<app_jwt>", "user": { ... } }`
+
+- `POST /api/auth/otp/request`
+  - Input: `{ "phoneE164": "+9665XXXXXXXX" }`
+  - Output: `{ "status": true }`
+
+- `POST /api/auth/otp/verify`
+  - Input: `{ "phoneE164": "+9665XXXXXXXX", "otp": "123456" }`
+  - Output:
+    - `{ "status": true, "token": "<app_jwt>", "user": { ... } }`
 
 ## cURL quick test
 
 ```bash
-curl -X POST http://localhost:3000/api/auth/otp/request \
-  -H "Content-Type: application/json" \
-  -d '{"phoneE164":"+9665XXXXXXXX"}'
-```
-
-```bash
-curl -X POST http://localhost:3000/api/auth/otp/verify \
-  -H "Content-Type: application/json" \
-  -d '{"phoneE164":"+9665XXXXXXXX","otp":"123456"}'
-```
-
-```bash
 curl -X POST http://localhost:3000/api/app/register \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <app_jwt>" \
   -d '{"fullName":"Jane Doe","phoneE164":"+9665XXXXXXXX","email":"jane@example.com"}'
+```
+
+```bash
+curl -X POST http://localhost:3000/api/app/verify \
+  -H "Content-Type: application/json" \
+  -d '{"phoneE164":"+9665XXXXXXXX","otp":"123456"}'
 ```
 
 ```bash
 curl -X POST http://localhost:3000/api/app/login \
   -H "Content-Type: application/json" \
   -d '{"phoneE164":"+9665XXXXXXXX"}'
+```
+
+```bash
+curl -X POST http://localhost:3000/api/app/verify \
+  -H "Content-Type: application/json" \
+  -d '{"phoneE164":"+9665XXXXXXXX","otp":"123456"}'
 ```
 
 ## Environment variables
@@ -97,4 +104,5 @@ Only switch operational config:
 - Cooldown blocks rapid re-request (default 30 seconds).
 - Wrong OTP attempts are limited (default 5), then OTP is invalidated.
 - OTP record is deleted after successful verification.
-- `POST /api/app/register` and other protected endpoints require bearer token.
+- `POST /api/app/profile`, `PUT /api/app/profile`, and other protected endpoints require bearer token.
+- `POST /api/app/register` no longer requires bearer token; it only starts the OTP-backed sign-up flow.

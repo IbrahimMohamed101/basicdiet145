@@ -2,7 +2,6 @@ const AppUser = require("../models/AppUser");
 const User = require("../models/User");
 const { isApiError, ApiError } = require("../utils/apiError");
 const { assertValidPhoneE164, requestOtpForPhone } = require("../services/otpService");
-const { issueAppAccessToken } = require("../services/appTokenService");
 const errorResponse = require("../utils/errorResponse");
 
 function serializeCoreUser(user) {
@@ -17,10 +16,26 @@ function serializeCoreUser(user) {
 }
 
 function handleError(res, err) {
+  if (err && err.code === 11000) {
+    const key = Object.keys(err.keyValue || err.keyPattern || {})[0] || "field";
+    return errorResponse(res, 409, "CONFLICT", `${key} already in use`);
+  }
   if (isApiError(err)) {
     return errorResponse(res, err.status, err.code, err.message, err.details);
   }
   return errorResponse(res, 500, "INTERNAL", "Unexpected error");
+}
+
+function normalizeRequiredFullName(fullName) {
+  const normalized = String(fullName || "").trim();
+  if (!normalized) {
+    throw new ApiError({
+      status: 400,
+      code: "INVALID_FULL_NAME",
+      message: "fullName is required",
+    });
+  }
+  return normalized;
 }
 
 function normalizeOptionalEmail(email) {
@@ -54,65 +69,77 @@ async function getAuthenticatedCoreUserOrThrow(userId) {
   return coreUser;
 }
 
+async function ensureRegistrationEmailAvailable(email, phone) {
+  if (!email) {
+    return;
+  }
+
+  const existingAppUser = await AppUser.findOne({ email }).lean();
+  if (existingAppUser && existingAppUser.phone !== phone) {
+    throw new ApiError({
+      status: 409,
+      code: "EMAIL_IN_USE",
+      message: "email is already in use",
+    });
+  }
+}
+
 async function ensureLinkedAppUser(coreUser) {
   let appUser = await AppUser.findOne({ phone: coreUser.phone });
   if (!appUser) {
-    appUser = await AppUser.create({ phone: coreUser.phone, coreUserId: coreUser._id });
+    appUser = new AppUser({ phone: coreUser.phone, coreUserId: coreUser._id });
   } else if (!appUser.coreUserId || String(appUser.coreUserId) !== String(coreUser._id)) {
     appUser.coreUserId = coreUser._id;
-    await appUser.save();
   }
+
+  appUser.fullName = coreUser.name ? String(coreUser.name).trim() : undefined;
+  appUser.email = coreUser.email ? String(coreUser.email).trim().toLowerCase() : undefined;
+  await appUser.save();
   return appUser;
 }
 
 async function login(req, res) {
   try {
     const { phoneE164 } = req.body || {};
-    await requestOtpForPhone(phoneE164);
-    return res.status(200).json({ status: true, message: "Your phone number is correct" });
+    const phone = assertValidPhoneE164(phoneE164);
+    await requestOtpForPhone(phone, { context: "app_login" });
+
+    return res.status(200).json({
+      ok: true,
+      message: "OTP sent successfully",
+      data: {
+        phoneE164: phone,
+        nextStep: "verify",
+      },
+    });
   } catch (err) {
-    return res.status(400).json({ status: false, message: "Please make sure the phone number is correct" });
+    return handleError(res, err);
   }
 }
 
 async function register(req, res) {
   try {
     const { fullName, phoneE164, email } = req.body || {};
-    if (!fullName || !String(fullName).trim()) {
-      throw new ApiError({
-        status: 400,
-        code: "INVALID_FULL_NAME",
-        message: "fullName is required",
-      });
-    }
-
-    const coreUser = await getAuthenticatedCoreUserOrThrow(req.userId);
-
-    if (phoneE164) {
-      const normalizedPhone = assertValidPhoneE164(phoneE164);
-      if (normalizedPhone !== coreUser.phone) {
-        throw new ApiError({
-          status: 403,
-          code: "PHONE_MISMATCH",
-          message: "phoneE164 does not match authenticated app user",
-        });
-      }
-    }
-
-    coreUser.name = String(fullName).trim();
+    const normalizedFullName = normalizeRequiredFullName(fullName);
+    const phone = assertValidPhoneE164(phoneE164);
     const normalizedEmail = normalizeOptionalEmail(email);
-    if (normalizedEmail === null) {
-      coreUser.email = undefined;
-    } else if (normalizedEmail !== undefined) {
-      coreUser.email = normalizedEmail;
-    }
-    await coreUser.save();
-    await ensureLinkedAppUser(coreUser);
+
+    await ensureRegistrationEmailAvailable(normalizedEmail, phone);
+    await requestOtpForPhone(phone, {
+      context: "app_register",
+      pendingProfile: {
+        fullName: normalizedFullName,
+        email: normalizedEmail,
+      },
+    });
 
     return res.status(200).json({
       ok: true,
-      token: issueAppAccessToken(coreUser),
-      user: serializeCoreUser(coreUser),
+      message: "OTP sent successfully",
+      data: {
+        phoneE164: phone,
+        nextStep: "verify",
+      },
     });
   } catch (err) {
     return handleError(res, err);
@@ -148,14 +175,7 @@ async function updateProfile(req, res) {
     const coreUser = await getAuthenticatedCoreUserOrThrow(req.userId);
 
     if (hasFullName) {
-      if (!String(fullName || "").trim()) {
-        throw new ApiError({
-          status: 400,
-          code: "INVALID_FULL_NAME",
-          message: "fullName cannot be empty",
-        });
-      }
-      coreUser.name = String(fullName).trim();
+      coreUser.name = normalizeRequiredFullName(fullName);
     }
 
     if (hasEmail) {
@@ -163,6 +183,7 @@ async function updateProfile(req, res) {
       if (normalizedEmail === null) {
         coreUser.email = undefined;
       } else {
+        await ensureRegistrationEmailAvailable(normalizedEmail, coreUser.phone);
         coreUser.email = normalizedEmail;
       }
     }

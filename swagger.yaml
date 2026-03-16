@@ -2668,6 +2668,87 @@ paths:
                   data:
                     $ref: '#/components/schemas/SettingsMap'
 
+  /api/popular_packages:
+    get:
+      tags: [Plans]
+      summary: Get popular packages
+      description: Returns up to three active plans from the database, each mapped to its first active grams option and first active meals option so it can be used directly for subscription checkout.
+      responses:
+        '200':
+          description: Popular packages list.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        planId:
+                          type: string
+                        name:
+                          type: string
+                        daysCount:
+                          type: integer
+                          example: 7
+                        mealsPerDay:
+                          type: integer
+                          example: 2
+                        grams:
+                          type: integer
+                          example: 150
+                        oldPrice:
+                          type: integer
+                          example: 280
+                        newPrice:
+                          type: integer
+                          example: 320
+                        moneySave:
+                          type: number
+                          example: 40
+                        currency:
+                          type: string
+                          example: SAR
+              example:
+                status: true
+                data:
+                  - id: 65f1000a1f1f1f1f1f1f1001
+                    planId: 65f1000a1f1f1f1f1f1f1001
+                    name: Basic Plan
+                    daysCount: 7
+                    mealsPerDay: 2
+                    grams: 150
+                    oldPrice: 320
+                    newPrice: 280
+                    moneySave: 40
+                    currency: SAR
+                  - id: 65f1000a1f1f1f1f1f1f1002
+                    planId: 65f1000a1f1f1f1f1f1f1002
+                    name: Fit Plan
+                    daysCount: 10
+                    mealsPerDay: 3
+                    grams: 200
+                    oldPrice: 450
+                    newPrice: 399
+                    moneySave: 51
+                    currency: SAR
+                  - id: 65f1000a1f1f1f1f1f1f1003
+                    planId: 65f1000a1f1f1f1f1f1f1003
+                    name: Premium Plan
+                    daysCount: 20
+                    mealsPerDay: 3
+                    grams: 250
+                    oldPrice: 800
+                    newPrice: 720
+                    moneySave: 80
+                    currency: SAR
+
   /api/webhooks/moyasar:
     post:
       tags: [Webhooks]
@@ -3090,7 +3171,7 @@ paths:
     post:
       tags: [Auth (App)]
       summary: App login step (request OTP)
-      description: Same OTP request behavior as `/api/auth/otp/request`.
+      description: Requests an OTP for an existing user sign-in flow. The next step is `POST /api/app/verify`.
       requestBody:
         required: true
         content:
@@ -3109,8 +3190,18 @@ paths:
               schema:
                 type: object
                 properties:
-                  ok:
+                  status:
                     type: boolean
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      phoneE164:
+                        type: string
+                      nextStep:
+                        type: string
+                        example: verify
         '400':
           $ref: '#/components/responses/BadRequest'
         '429':
@@ -3121,35 +3212,79 @@ paths:
   /api/app/register:
     post:
       tags: [Auth (App)]
-      summary: Complete app profile registration
-      description: Requires authenticated app token and returns a refreshed app access token.
-      security:
-        - bearerAuth: []
+      summary: App registration step (request OTP)
+      description: Starts a new app-user registration flow, stores the submitted profile data temporarily, and sends an OTP. The next step is `POST /api/app/verify`.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [fullName]
+              required: [fullName, phoneE164]
               properties:
                 fullName:
                   type: string
                 phoneE164:
                   type: string
-                  description: Optional; if present must match authenticated user phone.
                 email:
                   type: string
                   nullable: true
       responses:
         '200':
-          description: Profile registered.
+          description: OTP sent for registration verification.
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  ok:
+                  status:
+                    type: boolean
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      phoneE164:
+                        type: string
+                      nextStep:
+                        type: string
+                        example: verify
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/Internal'
+
+  /api/app/verify:
+    post:
+      tags: [Auth (App)]
+      summary: Verify app OTP and finish sign-in or sign-up
+      description: Verifies the OTP and returns an app access token. If the OTP was requested by `/api/app/register`, the pending full name and email are applied before issuing the token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phoneE164, otp]
+              properties:
+                phoneE164:
+                  type: string
+                otp:
+                  type: string
+                  description: 6-digit code
+      responses:
+        '200':
+          description: Verified.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
                     type: boolean
                   token:
                     type: string
@@ -3159,8 +3294,10 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '500':
           $ref: '#/components/responses/Internal'
 

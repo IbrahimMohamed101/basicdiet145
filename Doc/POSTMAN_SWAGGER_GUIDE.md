@@ -918,19 +918,38 @@
 ## /api/app/register
 
 ### POST /api/app/register
-- Summary: Complete app profile registration
-- Description: Requires authenticated app token and returns a refreshed app access token.
+- Summary: App registration step (request OTP)
+- Description: Starts a new app-user registration flow, stores the submitted profile temporarily, and sends an OTP. The next step is `POST /api/app/verify`.
 - Tags: `Auth (App)`
-- Auth: Bearer app token (`Authorization: Bearer <token>`)
+- Auth: None
 - Parameters: None
 - Request body required: yes
-- Required body fields: `fullName`
+- Required body fields: `fullName`, `phoneE164`
 - Body fields: `fullName`, `phoneE164`, `email`
 - Responses:
-  - `200`: Profile registered.
+  - `200`: OTP sent for registration verification.
   - `400`: Bad request. (ref: `BadRequest`)
-  - `401`: Missing or invalid token. (ref: `Unauthorized`)
-  - `403`: Authenticated but insufficient role/permissions. (ref: `Forbidden`)
+  - `409`: Conflict. (ref: `Conflict`)
+  - `429`: Too many OTP requests. (ref: `TooManyRequests`)
+  - `500`: Internal error. (ref: `Internal`)
+
+## /api/app/verify
+
+### POST /api/app/verify
+- Summary: Verify app OTP and finish sign-in or sign-up
+- Description: Verifies the OTP and returns an app access token. If the OTP was requested by `/api/app/register`, the pending full name and email are applied before issuing the token.
+- Tags: `Auth (App)`
+- Auth: None
+- Parameters: None
+- Request body required: yes
+- Required body fields: `phoneE164`, `otp`
+- Body fields: `phoneE164`, `otp`
+- Responses:
+  - `200`: Verified and token issued.
+  - `400`: Bad request. (ref: `BadRequest`)
+  - `401`: Missing or invalid OTP. (ref: `Unauthorized`)
+  - `409`: Conflict. (ref: `Conflict`)
+  - `429`: Too many OTP verification attempts. (ref: `TooManyRequests`)
   - `500`: Internal error. (ref: `Internal`)
 
 ## /api/auth/device-token

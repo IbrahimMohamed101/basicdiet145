@@ -21,7 +21,8 @@ Base mount behavior from code:
 | `src/routes/auth.js` | POST | `/api/auth/otp/verify` | `authController.verifyOtp` |
 | `src/routes/auth.js` | POST | `/api/auth/device-token` | `authController.updateDeviceToken` (`authMiddleware`) |
 | `src/routes/appAuth.js` | POST | `/api/app/login` | `appAuthController.login` (`otpLimiter`) |
-| `src/routes/appAuth.js` | POST | `/api/app/register` | `appAuthController.register` (`authMiddleware`) |
+| `src/routes/appAuth.js` | POST | `/api/app/register` | `appAuthController.register` (`otpLimiter`) |
+| `src/routes/appAuth.js` | POST | `/api/app/verify` | `authController.verifyOtp` (`otpVerifyLimiter`) |
 | `src/routes/plans.js` | GET | `/api/plans` | `planController.listPlans` (`authMiddleware`) |
 | `src/routes/plans.js` | GET | `/api/plans/:id` | `planController.getPlan` (`authMiddleware`) |
 | `src/routes/meals.js` | GET | `/api/meals` | `mealController.listMeals` |
@@ -145,6 +146,7 @@ Base mount behavior from code:
 | POST | `/api/auth/device-token` | Auth (App), Users |
 | POST | `/api/app/login` | Auth (App) |
 | POST | `/api/app/register` | Auth (App) |
+| POST | `/api/app/verify` | Auth (App) |
 
 ### Plans / Menu
 
@@ -329,11 +331,17 @@ Runtime alias:
 - Body: `{"phoneE164":"+9665XXXXXXXX","otp":"123456"}`
 - Returns app access token (`tokenType=app_access`) and user profile.
 
-3. Optional profile completion
-- `POST /api/app/register` (requires bearer token from step 2)
-- Body: `{"fullName":"...","email":"..."}`
+3. Register new app user
+- `POST /api/app/register`
+- Body: `{"fullName":"...","phoneE164":"+9665XXXXXXXX","email":"..."}`
+- Returns OTP send confirmation only.
 
-4. Save device token
+4. Verify app OTP
+- `POST /api/app/verify`
+- Body: `{"phoneE164":"+9665XXXXXXXX","otp":"123456"}`
+- Returns app access token (`tokenType=app_access`) and user profile.
+
+5. Save device token
 - `POST /api/auth/device-token` (requires bearer token)
 - Body: `{"token":"<fcm-token>"}`
 

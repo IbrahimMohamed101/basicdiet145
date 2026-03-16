@@ -7,6 +7,11 @@ const OtpSchema = new mongoose.Schema(
     expiresAt: { type: Date, required: true },
     attemptsLeft: { type: Number, required: true, min: 0 },
     lastSentAt: { type: Date, required: true },
+    context: { type: String, enum: ["generic", "app_login", "app_register"], default: "generic" },
+    pendingProfile: {
+      fullName: { type: String, trim: true },
+      email: { type: String, trim: true, lowercase: true },
+    },
   },
   { timestamps: true, collection: "otps" }
 );
