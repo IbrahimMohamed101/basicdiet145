@@ -1,5 +1,11 @@
+import 'package:basic_diet/app/dependency_injection.dart';
+import 'package:basic_diet/domain/model/popular_packages_model.dart';
+import 'package:basic_diet/presentation/main/home/bloc/home_bloc.dart';
+import 'package:basic_diet/presentation/main/home/bloc/home_event.dart';
+import 'package:basic_diet/presentation/main/home/bloc/home_state.dart';
 import 'package:basic_diet/presentation/main/subscription/subscription_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:basic_diet/presentation/resources/assets_manager.dart';
@@ -16,22 +22,49 @@ class HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: ColorManager.whiteColor,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: EdgeInsetsDirectional.all(AppPadding.p20.w),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildHeader(),
-              Gap(AppSize.s30.h),
-              _buildCardsRow(context),
-              Gap(AppSize.s30.h),
-              _buildQuickBrowseSection(),
-              Gap(AppSize.s30.h),
-              _buildPopularPackagesSection(),
-            ],
+    return BlocProvider(
+      create: (context) => instance<HomeBloc>()..add(GetPopularPackagesEvent()),
+      child: Scaffold(
+        backgroundColor: ColorManager.whiteColor,
+        body: SafeArea(
+          child: SingleChildScrollView(
+            padding: EdgeInsetsDirectional.all(AppPadding.p20.w),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildHeader(),
+                Gap(AppSize.s30.h),
+                _buildCardsRow(context),
+                Gap(AppSize.s30.h),
+                _buildQuickBrowseSection(),
+                Gap(AppSize.s30.h),
+                BlocBuilder<HomeBloc, HomeState>(
+                  builder: (context, state) {
+                    if (state is HomePopularPackagesSuccessState) {
+                      return _buildPopularPackagesSection(
+                          state.popularPackages.packages);
+                    } else if (state is HomeLoadingState) {
+                      return const Center(
+                        child: CircularProgressIndicator(
+                          color: ColorManager.greenPrimary,
+                        ),
+                      );
+                    } else if (state is HomeErrorState) {
+                      return Center(
+                        child: Text(
+                          state.message,
+                          style: getRegularTextStyle(
+                            color: ColorManager.errorColor,
+                            fontSize: FontSizeManager.s14.sp,
+                          ),
+                        ),
+                      );
+                    }
+                    return const SizedBox.shrink();
+                  },
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -96,45 +129,6 @@ class HomeScreen extends StatelessWidget {
         size: AppSize.s24,
       ),
     );
-    // return Stack(
-    //   clipBehavior: Clip.none,
-    //   children: [
-    //     Container(
-    //       padding: EdgeInsets.all(AppPadding.p8.w),
-    //       decoration: BoxDecoration(
-    //         color: ColorManager.greenPrimary,
-    //         shape: BoxShape.circle,
-    //       ),
-    //       child: const Icon(
-    //         Icons.shopping_cart_outlined,
-    //         color: ColorManager.whiteColor,
-    //         size: AppSize.s24,
-    //       ),
-    //     ),
-    //     Positioned(
-    //       top: -AppSize.s4,
-    //       right: -AppSize.s4,
-    //       child: Container(
-    //         padding: const EdgeInsets.all(AppSize.s4),
-    //         decoration: BoxDecoration(
-    //           color: ColorManager.greenPrimary,
-    //           shape: BoxShape.circle,
-    //           border: Border.all(
-    //             color: ColorManager.whiteColor,
-    //             width: AppSize.s2,
-    //           ),
-    //         ),
-    //         child: Text(
-    //           '2',
-    //           style: getBoldTextStyle(
-    //             fontSize: FontSizeManager.s12,
-    //             color: ColorManager.whiteColor,
-    //           ),
-    //         ),
-    //       ),
-    //     ),
-    //   ],
-    // );
   }
 
   Widget _buildCardsRow(BuildContext context) {
@@ -161,11 +155,6 @@ class HomeScreen extends StatelessWidget {
         decoration: BoxDecoration(
           color: ColorManager.greenDark,
           borderRadius: BorderRadius.circular(AppSize.s16.r),
-          // gradient: LinearGradient(
-          //   colors: [ColorManager.greenPrimary, ColorManager.greenDark],
-          //   begin: Alignment.topLeft,
-          //   end: Alignment.bottomRight,
-          // ),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -329,7 +318,7 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildPopularPackagesSection() {
+  Widget _buildPopularPackagesSection(List<PopularPackageModel> packages) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -353,32 +342,19 @@ class HomeScreen extends StatelessWidget {
           ],
         ),
         Gap(AppSize.s20.h),
-        _buildPackageCard(
-          title: Strings.package7Days,
-          tagText: Strings.mostPopular,
-          mealsDesc: Strings.mealsDesc + Strings.days7,
-          price: Strings.sar280,
-          originalPrice: Strings.sar320,
-          saveAmount: Strings.save40Sar,
-        ),
-        Gap(AppSize.s16.h),
-        _buildPackageCard(
-          title: Strings.package26Days,
-          tagText: Strings.bestValue,
-          mealsDesc: Strings.mealsDesc + Strings.days26,
-          price: Strings.sar980,
-          originalPrice: Strings.sar1200,
-          saveAmount: Strings.save220Sar,
-        ),
-        Gap(AppSize.s16.h),
-        _buildPackageCard(
-          title: Strings.package30Days,
-          tagText: Strings.saveMost,
-          mealsDesc: Strings.mealsDesc + Strings.days30,
-          price: Strings.sar1120,
-          originalPrice: Strings.sar1400,
-          saveAmount: Strings.save280Sar,
-        ),
+        ...packages.map((package) {
+          return Padding(
+            padding: EdgeInsets.only(bottom: AppSize.s16.h),
+            child: _buildPackageCard(
+              title: package.name,
+              tagText: Strings.mostPopular, // Default tag, could be dynamic
+              mealsDesc: "${package.mealsPerDay} meals per day - ${package.daysCount} days",
+              price: "${package.newPrice.toStringAsFixed(2)} ${package.currency}",
+              originalPrice: "${package.oldPrice.toStringAsFixed(2)} ${package.currency}",
+              saveAmount: "Save ${package.moneySave.toStringAsFixed(2)} ${package.currency}",
+            ),
+          );
+        }),
       ],
     );
   }

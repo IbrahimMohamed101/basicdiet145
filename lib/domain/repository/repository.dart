@@ -2,6 +2,7 @@ import 'package:basic_diet/data/network/failure.dart';
 import 'package:basic_diet/domain/model/auth_model.dart';
 import 'package:basic_diet/domain/model/base__model.dart';
 import 'package:basic_diet/domain/model/plans_model.dart';
+import 'package:basic_diet/domain/model/popular_packages_model.dart';
 import 'package:dartz/dartz.dart';
 
 abstract class Repository {
@@ -16,4 +17,5 @@ abstract class Repository {
     String? email,
   );
   Future<Either<Failure, PlansModel>> getPlans();
+  Future<Either<Failure, PopularPackagesModel>> getPopularPackages();
 }

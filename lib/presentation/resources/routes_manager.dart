@@ -51,8 +51,10 @@ class GoRouterConfig {
       ),
       GoRoute(
         path: MainScreen.mainRoute,
-        pageBuilder: (BuildContext context, GoRouterState state) =>
-            getCustomTransitionPage(state: state, child: MainScreen()),
+        pageBuilder: (BuildContext context, GoRouterState state) {
+          initHomeModule();
+          return getCustomTransitionPage(state: state, child: MainScreen());
+        },
       ),
       GoRoute(
         path: SubscriptionScreen.subscriptionRoute,

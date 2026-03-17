@@ -2,6 +2,7 @@ import 'package:basic_diet/data/network/app_api.dart';
 import 'package:basic_diet/data/response/auth_response.dart';
 import 'package:basic_diet/data/response/base_response/base_response.dart';
 import 'package:basic_diet/data/response/plans_response.dart';
+import 'package:basic_diet/data/response/popular_packages_response.dart';
 import 'remote_data_source.dart';
 
 class RemoteDataSourceImpl implements RemoteDataSource {
@@ -31,5 +32,10 @@ class RemoteDataSourceImpl implements RemoteDataSource {
   @override
   Future<PlansResponse> getPlans() {
     return _appServiceClient.getPlans();
+  }
+
+  @override
+  Future<PopularPackagesResponse> getPopularPackages() {
+    return _appServiceClient.getPopularPackages();
   }
 }
