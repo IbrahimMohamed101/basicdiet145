@@ -8,6 +8,8 @@ import 'package:basic_diet/presentation/widgets/button_widget.dart';
 import 'package:basic_diet/presentation/widgets/custom_back_button.dart';
 import 'package:basic_diet/presentation/widgets/custom_text_field_style.dart';
 import 'package:basic_diet/presentation/widgets/text_button_widget.dart';
+import 'package:basic_diet/app/dependency_injection.dart';
+import 'package:basic_diet/presentation/verify/verify_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -29,16 +31,11 @@ class RegisterScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BlocProvider(
-      create: (_) => RegisterBloc(),
+      create: (_) => instance<RegisterBloc>(),
       child: BlocListener<RegisterBloc, RegisterState>(
         listener: (context, state) {
           if (state is RegisterSuccessState) {
-            context.push(LoginScreen.loginRoute);
-          }
-          if (state is RegisterErrorState) {
-            ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(SnackBar(content: Text(state.message)));
+            context.push(VerifyScreen.verifyRoute, extra: state.phone);
           }
         },
         child: Scaffold(

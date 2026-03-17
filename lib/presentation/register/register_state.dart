@@ -98,7 +98,9 @@ class RegisterLoadingState extends RegisterState {
 }
 
 class RegisterSuccessState extends RegisterState {
-  const RegisterSuccessState({
+  final String message;
+  const RegisterSuccessState(
+    this.message, {
     super.fullName = '',
     super.fullNameError,
     super.phone = '',
@@ -117,6 +119,7 @@ class RegisterSuccessState extends RegisterState {
     String? emailError,
   }) {
     return RegisterSuccessState(
+      message,
       fullName: fullName ?? this.fullName,
       fullNameError: fullNameError,
       phone: phone ?? this.phone,
@@ -125,6 +128,17 @@ class RegisterSuccessState extends RegisterState {
       emailError: emailError,
     );
   }
+
+  @override
+  List<Object?> get props => [
+        fullName,
+        fullNameError ?? '',
+        phone,
+        phoneError ?? '',
+        email,
+        emailError ?? '',
+        message,
+      ];
 }
 
 class RegisterErrorState extends RegisterState {

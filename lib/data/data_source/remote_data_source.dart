@@ -5,5 +5,6 @@ import 'package:basic_diet/data/response/plans_response.dart';
 abstract class RemoteDataSource {
   Future<BaseResponse> login(String phone);
   Future<AuthenticationResponse> verifyOtp(String phone, String otp);
+  Future<BaseResponse> register(String fullName, String phone, String? email);
   Future<PlansResponse> getPlans();
 }

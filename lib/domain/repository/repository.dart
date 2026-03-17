@@ -10,5 +10,10 @@ abstract class Repository {
     String phone,
     String otp,
   );
+  Future<Either<Failure, BaseModel>> register(
+    String fullName,
+    String phone,
+    String? email,
+  );
   Future<Either<Failure, PlansModel>> getPlans();
 }

@@ -4,10 +4,13 @@ extension ErrorResponseMapper on Map<String, dynamic>? {
   String toDomain() {
     if (this == null) return Constants.empty;
 
-    // Check if there's an errors object with validation messages
-    final errors = this!['error'];
-    if (errors is Map<String, dynamic> && errors.isNotEmpty) {
-      return errors.values.first.toString();
+    // Check if there's an error object or validation messages
+    final errorData = this!['error'];
+    if (errorData is Map<String, dynamic> && errorData.isNotEmpty) {
+      if (errorData.containsKey('message')) {
+        return errorData['message'].toString();
+      }
+      return errorData.values.first.toString();
     }
 
     // Fallback to the message field

@@ -19,6 +19,13 @@ abstract class AppServiceClient {
     @Field("otp") String otp,
   );
 
+  @POST("/api/app/register")
+  Future<BaseResponse> register(
+    @Field("fullName") String fullName,
+    @Field("phoneE164") String phone,
+    @Field("email") String? email,
+  );
+
   @GET("/api/plans")
   Future<PlansResponse> getPlans();
 }

@@ -55,6 +55,24 @@ class RepositoryImpl implements Repository {
   }
 
   @override
+  Future<Either<Failure, BaseModel>> register(
+    String fullName,
+    String phone,
+    String? email,
+  ) async {
+    try {
+      final response = await _remoteDataSource.register(fullName, phone, email);
+      if (_isSuccessfulResponse(response)) {
+        return Right(response.toDomain());
+      } else {
+        return Left(_mapFailureFromResponse(response));
+      }
+    } catch (error) {
+      return _handleError(error);
+    }
+  }
+
+  @override
   Future<Either<Failure, AuthenticationModel>> verifyOtp(
     String phone,
     String otp,

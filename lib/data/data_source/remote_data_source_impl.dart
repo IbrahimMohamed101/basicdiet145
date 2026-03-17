@@ -20,6 +20,15 @@ class RemoteDataSourceImpl implements RemoteDataSource {
   }
 
   @override
+  Future<BaseResponse> register(
+    String fullName,
+    String phone,
+    String? email,
+  ) async {
+    return await _appServiceClient.register(fullName, phone, email);
+  }
+
+  @override
   Future<PlansResponse> getPlans() {
     return _appServiceClient.getPlans();
   }

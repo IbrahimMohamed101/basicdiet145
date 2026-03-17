@@ -1,4 +1,4 @@
-import 'package:basic_diet/presentation/login/login_screen.dart';
+import 'package:basic_diet/presentation/register/register_screen.dart';
 import 'package:basic_diet/presentation/resources/assets_manager.dart';
 import 'package:basic_diet/presentation/resources/color_manager.dart';
 import 'package:basic_diet/presentation/resources/strings_manager.dart';
@@ -72,7 +72,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   void _handleContinueButtonPressed() {
     if (_isLastPage) {
-      _navigateToLogin();
+      _navigateToRegister();
     } else {
       _navigateToNextPage();
     }
@@ -86,8 +86,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     );
   }
 
-  void _navigateToLogin() {
-    context.push(LoginScreen.loginRoute);
+  void _navigateToRegister() {
+    context.push(RegisterScreen.registerRoute);
   }
 
   String get _buttonText => _isLastPage

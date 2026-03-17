@@ -34,8 +34,10 @@ class GoRouterConfig {
       ),
       GoRoute(
         path: RegisterScreen.registerRoute,
-        pageBuilder: (BuildContext context, GoRouterState state) =>
-            getCustomTransitionPage(state: state, child: RegisterScreen()),
+        pageBuilder: (BuildContext context, GoRouterState state) {
+          initRegisterModule();
+          return getCustomTransitionPage(state: state, child: RegisterScreen());
+        },
       ),
       GoRoute(
         path: VerifyScreen.verifyRoute,

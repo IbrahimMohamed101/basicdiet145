@@ -1,9 +1,13 @@
+import 'package:basic_diet/app/toast_handeller.dart';
+import 'package:basic_diet/domain/usecase/register_usecase.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'register_event.dart';
 import 'register_state.dart';
 
 class RegisterBloc extends Bloc<RegisterEvent, RegisterState> {
-  RegisterBloc() : super(const RegisterFormInitialState()) {
+  final RegisterUseCase _registerUseCase;
+
+  RegisterBloc(this._registerUseCase) : super(const RegisterFormInitialState()) {
     on<RegisterFullNameChanged>(_onFullNameChanged);
     on<RegisterPhoneChanged>(_onPhoneChanged);
     on<RegisterEmailChanged>(_onEmailChanged);
@@ -46,25 +50,39 @@ class RegisterBloc extends Bloc<RegisterEvent, RegisterState> {
       ),
     );
 
-    try {
-      await Future.delayed(const Duration(seconds: 1));
-      emit(
-        RegisterSuccessState(
-          fullName: state.fullName,
-          phone: state.phone,
-          email: state.email,
-        ),
-      );
-    } catch (e) {
-      emit(
-        RegisterErrorState(
-          "Something went wrong",
-          fullName: state.fullName,
-          phone: state.phone,
-          email: state.email,
-        ),
-      );
-    }
+    final result = await _registerUseCase.execute(
+      RegisterUseCaseInput(
+        state.fullName,
+        state.phone,
+        state.email.isEmpty ? null : state.email,
+      ),
+    );
+
+    result.fold(
+      (failure) {
+        emit(
+          RegisterErrorState(
+            failure.message,
+            fullName: state.fullName,
+            phone: state.phone,
+            email: state.email,
+          ),
+        );
+        showToast(message: failure.message, state: ToastStates.error);
+      },
+      (baseModel) {
+        final message = baseModel.message ?? "OTP sent successfully";
+        emit(
+          RegisterSuccessState(
+            message,
+            fullName: state.fullName,
+            phone: state.phone,
+            email: state.email,
+          ),
+        );
+        showToast(message: message, state: ToastStates.success);
+      },
+    );
   }
 
   String? _validateFullName(String fullName) {
