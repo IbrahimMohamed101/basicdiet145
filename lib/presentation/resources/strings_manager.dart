@@ -63,14 +63,12 @@ class Strings {
   static const String mealsPerDay = "Meals per day";
   static const String days = "Days";
   static const String save = "Save";
+  static const String meals = "Meals";
+  static const String meal = "Meal";
 
   // Subscription Screen
   static const String choosePackageProceed = "Choose a Package & Proceed";
   static const String chooseDailyMealCount = "Choose daily meal count";
-  static const String daysWeekly = "7 Days (Weekly)";
-  static const String size100g = "100g Size";
-  static const String size150g = "150g Size";
-  static const String size200g = "200g Size";
   static const String perfectForTrying =
       "Perfect for trying our meal quality and diet program before a long-term commitment.";
   static const String meal1 = "1 Meal";
@@ -88,6 +86,9 @@ class Strings {
   static const String subscriptionPricingMenu = "Subscription\nPricing Menu";
   static const String choosePackageHealthGoals =
       "Choose the package that fits your health goals";
+  static const String size = "Size";
+
+  static const String tryAgain = "Try Again";
 
   // Common Errors and Messages for APIs and Exceptions
   static const String success = "Success";
