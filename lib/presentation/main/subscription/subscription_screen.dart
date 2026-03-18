@@ -54,12 +54,14 @@ class SubscriptionScreen extends StatelessWidget {
                   builder: (context, state) {
                     if (state is SubscriptionLoading) {
                       return const Center(
-                          child: CircularProgressIndicator(
-                        color: ColorManager.greenPrimary,
-                      ));
+                        child: CircularProgressIndicator(
+                          color: ColorManager.greenPrimary,
+                        ),
+                      );
                     } else if (state is SubscriptionSuccess) {
                       return _SubscriptionContentView(
-                          plansModel: state.plansModel);
+                        plansModel: state.plansModel,
+                      );
                     } else if (state is SubscriptionError) {
                       return Center(
                         child: Column(
@@ -69,9 +71,9 @@ class SubscriptionScreen extends StatelessWidget {
                             Gap(AppSize.s16.h),
                             ElevatedButton(
                               onPressed: () {
-                                context
-                                    .read<SubscriptionBloc>()
-                                    .add(const GetPlansEvent());
+                                context.read<SubscriptionBloc>().add(
+                                  const GetPlansEvent(),
+                                );
                               },
                               child: const Text("Try Again"),
                             ),
@@ -135,9 +137,7 @@ class _SubscriptionContentViewState extends State<_SubscriptionContentView> {
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: EdgeInsetsDirectional.symmetric(
-        horizontal: AppPadding.p20.w,
-      ),
+      padding: EdgeInsetsDirectional.symmetric(horizontal: AppPadding.p20.w),
       children: [
         Gap(AppSize.s20.h),
         _buildImageBanner(),
@@ -165,9 +165,7 @@ class _SubscriptionContentViewState extends State<_SubscriptionContentView> {
         Gap(AppSize.s30.h),
         ...List.generate(widget.plansModel.plans.length, (index) {
           return Padding(
-            padding: EdgeInsetsDirectional.only(
-              bottom: AppSize.s16.h,
-            ),
+            padding: EdgeInsetsDirectional.only(bottom: AppSize.s16.h),
             child: _buildPackageItem(index, widget.plansModel.plans[index]),
           );
         }),
@@ -391,7 +389,9 @@ class _SubscriptionContentViewState extends State<_SubscriptionContentView> {
             ],
           ),
           Gap(AppSize.s20.h),
-          ...plan.gramsOptions.map((gramOption) => _buildSizeSection(gramOption)),
+          ...plan.gramsOptions.map(
+            (gramOption) => _buildSizeSection(gramOption),
+          ),
         ],
       ),
     );

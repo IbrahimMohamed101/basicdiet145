@@ -1,0 +1,252 @@
+import 'package:basic_diet/app/dependency_injection.dart';
+import 'package:basic_diet/domain/model/popular_packages_model.dart';
+import 'package:basic_diet/presentation/main/home/bloc/home_bloc.dart';
+import 'package:basic_diet/presentation/main/home/bloc/home_event.dart';
+import 'package:basic_diet/presentation/main/home/bloc/home_state.dart';
+import 'package:basic_diet/presentation/main/home/widgets/category_item.dart';
+import 'package:basic_diet/presentation/main/home/widgets/header_icon_button.dart';
+import 'package:basic_diet/presentation/main/home/widgets/package_card.dart';
+import 'package:basic_diet/presentation/main/home/widgets/section_header.dart';
+import 'package:basic_diet/presentation/main/home/widgets/subscribe_card.dart';
+import 'package:basic_diet/presentation/resources/assets_manager.dart';
+import 'package:basic_diet/presentation/resources/color_manager.dart';
+import 'package:basic_diet/presentation/resources/font_manager.dart';
+import 'package:basic_diet/presentation/resources/strings_manager.dart';
+import 'package:basic_diet/presentation/resources/styles_manager.dart';
+import 'package:basic_diet/presentation/resources/values_manager.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:gap/gap.dart';
+
+class HomeScreen extends StatelessWidget {
+  const HomeScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocProvider(
+      create: (_) => instance<HomeBloc>()..add(GetPopularPackagesEvent()),
+      child: Scaffold(
+        backgroundColor: ColorManager.whiteColor,
+        body: SafeArea(
+          child: SingleChildScrollView(
+            padding: EdgeInsetsDirectional.all(AppPadding.p20.w),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const _HomeHeader(),
+                Gap(AppSize.s30.h),
+                const _CardsRow(),
+                Gap(AppSize.s30.h),
+                const _QuickBrowseSection(),
+                Gap(AppSize.s30.h),
+                const _PopularPackagesSection(),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── widgets/_HomeHeader ─────────────────────────────────────────────────────
+
+class _HomeHeader extends StatelessWidget {
+  const _HomeHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              Strings.goodMorning,
+              style: getBoldTextStyle(
+                fontSize: FontSizeManager.s24,
+                color: ColorManager.blackColor,
+              ),
+            ),
+            Gap(AppSize.s4.h),
+            Text(
+              Strings.eatHealthyFeelGreat,
+              style: getRegularTextStyle(
+                fontSize: FontSizeManager.s14,
+                color: ColorManager.grayColor,
+              ),
+            ),
+          ],
+        ),
+        const Spacer(),
+        HeaderIconButton(icon: IconAssets.notification),
+        Gap(AppSize.s12.w),
+        const _CartButton(),
+      ],
+    );
+  }
+}
+
+class _CartButton extends StatelessWidget {
+  const _CartButton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsetsDirectional.all(AppPadding.p8.w),
+      decoration: BoxDecoration(
+        color: ColorManager.greenDark,
+        borderRadius: BorderRadius.circular(AppSize.s16.r),
+      ),
+      child: const Icon(
+        Icons.shopping_cart_outlined,
+        color: ColorManager.whiteColor,
+        size: AppSize.s24,
+      ),
+    );
+  }
+}
+
+// ─── widgets/_CardsRow ───────────────────────────────────────────────────────
+
+class _CardsRow extends StatelessWidget {
+  const _CardsRow();
+
+  @override
+  Widget build(BuildContext context) {
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Expanded(child: SubscribeCard()),
+          Gap(AppSize.s16.w),
+          Expanded(child: _ImageCard()),
+        ],
+      ),
+    );
+  }
+}
+
+class _ImageCard extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(AppSize.s16),
+        image: const DecorationImage(
+          image: AssetImage(ImageAssets.salad),
+          fit: BoxFit.cover,
+        ),
+      ),
+    );
+  }
+}
+
+// ─── widgets/_QuickBrowseSection ─────────────────────────────────────────────
+
+// Define categories as data, not hard-coded widgets
+class _CategoryData {
+  const _CategoryData({required this.title, required this.imagePath});
+  final String title;
+  final String imagePath;
+}
+
+class _QuickBrowseSection extends StatelessWidget {
+  const _QuickBrowseSection();
+
+  static const _categories = [
+    _CategoryData(title: Strings.readyMeals, imagePath: ImageAssets.soup),
+    _CategoryData(title: Strings.snacksCategory, imagePath: ImageAssets.snacks),
+    _CategoryData(
+      title: Strings.dessertsCategory,
+      imagePath: ImageAssets.desserts,
+    ),
+    _CategoryData(title: Strings.drinksCategory, imagePath: ImageAssets.drinks),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        const SectionHeader(title: Strings.quickBrowse),
+        Gap(AppSize.s20.h),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: _categories
+              .map((c) => CategoryItem(title: c.title, imagePath: c.imagePath))
+              .toList(),
+        ),
+      ],
+    );
+  }
+}
+
+// ─── widgets/_PopularPackagesSection ─────────────────────────────────────────
+
+class _PopularPackagesSection extends StatelessWidget {
+  const _PopularPackagesSection();
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocBuilder<HomeBloc, HomeState>(
+      builder: (context, state) => switch (state) {
+        HomePopularPackagesSuccessState() => _PackageList(
+          state.popularPackages.packages,
+        ),
+        HomeLoadingState() => const _LoadingIndicator(),
+        HomeErrorState() => _ErrorMessage(state.message),
+        _ => const SizedBox.shrink(),
+      },
+    );
+  }
+}
+
+class _LoadingIndicator extends StatelessWidget {
+  const _LoadingIndicator();
+
+  @override
+  Widget build(BuildContext context) => const Center(
+    child: CircularProgressIndicator(color: ColorManager.greenPrimary),
+  );
+}
+
+class _ErrorMessage extends StatelessWidget {
+  const _ErrorMessage(this.message);
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Text(
+      message,
+      style: getRegularTextStyle(
+        color: ColorManager.errorColor,
+        fontSize: FontSizeManager.s14.sp,
+      ),
+    ),
+  );
+}
+
+class _PackageList extends StatelessWidget {
+  const _PackageList(this.packages);
+
+  final List<PopularPackageModel> packages;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SectionHeader(title: Strings.popularPackages),
+        Gap(AppSize.s20.h),
+        ...packages.map(
+          (package) => Padding(
+            padding: EdgeInsets.only(bottom: AppSize.s16.h),
+            child: PackageCard(package: package),
+          ),
+        ),
+      ],
+    );
+  }
+}

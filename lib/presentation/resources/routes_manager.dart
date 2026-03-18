@@ -61,7 +61,9 @@ class GoRouterConfig {
         pageBuilder: (BuildContext context, GoRouterState state) {
           initSubscriptionModule();
           return getCustomTransitionPage(
-              state: state, child: SubscriptionScreen());
+            state: state,
+            child: SubscriptionScreen(),
+          );
         },
       ),
     ],

@@ -60,22 +60,9 @@ class Strings {
   static const String mostPopular = "MOST POPULAR";
   static const String bestValue = "BEST VALUE";
   static const String saveMost = "SAVE MOST";
-  static const String package7Days = "7 Days Package";
-  static const String package26Days = "26 Days Package";
-  static const String package30Days = "30 Days Package";
-  static const String mealsDesc = "2 meals/day • 150g portions • ";
-  static const String days7 = "7 days";
-  static const String days26 = "26 days";
-  static const String days30 = "30 days";
-  static const String sar280 = "280 SAR";
-  static const String sar320 = "320 SAR";
-  static const String save40Sar = "Save 40 SAR";
-  static const String sar980 = "980 SAR";
-  static const String sar1200 = "1200 SAR";
-  static const String save220Sar = "Save 220 SAR";
-  static const String sar1120 = "1120 SAR";
-  static const String sar1400 = "1400 SAR";
-  static const String save280Sar = "Save 280 SAR";
+  static const String mealsPerDay = "Meals per day";
+  static const String days = "Days";
+  static const String save = "Save";
 
   // Subscription Screen
   static const String choosePackageProceed = "Choose a Package & Proceed";
