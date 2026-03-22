@@ -21,7 +21,6 @@ class PlanAccordionItem extends StatelessWidget {
   final bool isExpanded;
   final VoidCallback onTap;
 
-  // Named so it's easy to adjust in one place
   static const _borderColorCollapsed = Color(0xFFF2F4F7);
 
   @override

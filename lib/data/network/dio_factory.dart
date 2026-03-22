@@ -33,6 +33,7 @@ class DioFactory {
       InterceptorsWrapper(
         onRequest: (options, handler) async {
           await _addAuthorizationHeaderIfLoggedIn(options);
+          await _addLanguageHeader(options);
           handler.next(options);
         },
         // onError: (DioException error, ErrorInterceptorHandler handler) async {
@@ -79,4 +80,9 @@ class DioFactory {
   }
 
   bool _isUserLoggedIn(String token) => token.isNotEmpty;
+
+  Future<void> _addLanguageHeader(RequestOptions options) async {
+    final language = await _appPreferences.getAppLanguage();
+    options.headers[LANGUAGE] = language;
+  }
 }
