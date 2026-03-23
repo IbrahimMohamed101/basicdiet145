@@ -7,15 +7,23 @@ const Payment = require("../models/Payment");
 const Plan = require("../models/Plan");
 const Order = require("../models/Order");
 const { notifyOrderUser } = require("../services/orderNotificationService");
+const {
+  applyPaymentSideEffects,
+  SUPPORTED_PHASE1_SHARED_PAYMENT_TYPES,
+} = require("../services/paymentApplicationService");
 const { writeLog } = require("../utils/log");
 const { logger } = require("../utils/logger");
 const { toKSADateString } = require("../utils/date");
+const { isPhase1SharedPaymentDispatcherEnabled } = require("../utils/featureFlags");
 const {
   LEGACY_PREMIUM_MEAL_BUCKET_ID,
-  sumPremiumRemainingFromBalance,
   syncPremiumRemainingFromBalance,
   ensureLegacyPremiumBalanceFromRemaining,
 } = require("../utils/premiumWallet");
+const {
+  isGenericPremiumWalletMode,
+  appendGenericPremiumCredits,
+} = require("../services/genericPremiumWalletService");
 const errorResponse = require("../utils/errorResponse");
 
 function normalizePaymentStatus(payload, eventType) {
@@ -42,7 +50,26 @@ function redactId(value) {
   return `${text.slice(0, 4)}...${text.slice(-4)}`;
 }
 
-async function handleMoyasarWebhook(req, res) {
+async function handleMoyasarWebhook(req, res, runtimeOverrides = null) {
+  const startSessionFn = runtimeOverrides && runtimeOverrides.startSession
+    ? runtimeOverrides.startSession
+    : () => mongoose.startSession();
+  const applyPaymentSideEffectsFn = runtimeOverrides && runtimeOverrides.applyPaymentSideEffects
+    ? runtimeOverrides.applyPaymentSideEffects
+    : applyPaymentSideEffects;
+  const writeLogFn = runtimeOverrides && runtimeOverrides.writeLog
+    ? runtimeOverrides.writeLog
+    : writeLog;
+  const notifyOrderUserFn = runtimeOverrides && runtimeOverrides.notifyOrderUser
+    ? runtimeOverrides.notifyOrderUser
+    : notifyOrderUser;
+  const isSharedPaymentDispatcherEnabledFn = runtimeOverrides && runtimeOverrides.isPhase1SharedPaymentDispatcherEnabled
+    ? runtimeOverrides.isPhase1SharedPaymentDispatcherEnabled
+    : isPhase1SharedPaymentDispatcherEnabled;
+  const supportedSharedPaymentTypes = runtimeOverrides && runtimeOverrides.supportedPaymentTypes
+    ? runtimeOverrides.supportedPaymentTypes
+    : SUPPORTED_PHASE1_SHARED_PAYMENT_TYPES;
+
   const payload = req.body || {};
   const eventType = payload.type || payload.event;
   const data = payload.data || payload.payment || payload;
@@ -73,7 +100,7 @@ async function handleMoyasarWebhook(req, res) {
     return errorResponse(res, 400, "INVALID", "Missing payment identifiers" );
   }
 
-  const session = await mongoose.startSession();
+  const session = await startSessionFn();
   session.startTransaction();
   try {
     let payment = await Payment.findOne({
@@ -222,7 +249,23 @@ async function handleMoyasarWebhook(req, res) {
       return res.status(200).json({ ok: true });
     }
 
-    if (type === "premium_topup") {
+    const useSharedDispatcher =
+      supportedSharedPaymentTypes.has(String(type || ""))
+      && (
+        isSharedPaymentDispatcherEnabledFn()
+        || String(type || "") === "premium_overage_day"
+        || String(type || "") === "one_time_addon_day_planning"
+      );
+
+    if (useSharedDispatcher) {
+      const result = await applyPaymentSideEffectsFn({
+        payment: claim,
+        session,
+        source: "webhook",
+      });
+      applied = Boolean(result && result.applied);
+      unappliedReason = applied ? undefined : result.reason;
+    } else if (type === "premium_topup") {
       if (metadata.subscriptionId && Array.isArray(metadata.items) && metadata.items.length) {
         const sub = await Subscription.findById(metadata.subscriptionId).session(session);
         if (!sub) {
@@ -247,7 +290,7 @@ async function handleMoyasarWebhook(req, res) {
             syncPremiumRemainingFromBalance(sub);
             await sub.save({ session });
             applied = true;
-            await writeLog({
+            await writeLogFn({
               entityType: "subscription",
               entityId: metadata.subscriptionId,
               action: "premium_topup_webhook",
@@ -263,38 +306,63 @@ async function handleMoyasarWebhook(req, res) {
         if (count > 0 && metadata.subscriptionId) {
           const sub = await Subscription.findById(metadata.subscriptionId).session(session);
           if (sub) {
-            const configuredUnit = Number(metadata.unitExtraFeeHalala);
-            const fallbackUnit = Math.round(Number(payment.amount || 0) / count);
-            const unitExtraFeeHalala = Number.isInteger(configuredUnit) && configuredUnit >= 0
-              ? configuredUnit
-              : Number.isFinite(fallbackUnit) && fallbackUnit >= 0
-                ? fallbackUnit
-                : 0;
+            if (isGenericPremiumWalletMode(sub)) {
+              const configuredUnit = Number(metadata.unitCreditPriceHalala || metadata.unitExtraFeeHalala);
+              const fallbackUnit = Math.round(Number(payment.amount || 0) / count);
+              const unitCreditPriceHalala = Number.isInteger(configuredUnit) && configuredUnit >= 0
+                ? configuredUnit
+                : Number.isFinite(fallbackUnit) && fallbackUnit >= 0
+                  ? fallbackUnit
+                  : 0;
+              appendGenericPremiumCredits(sub, {
+                premiumCount: count,
+                unitCreditPriceHalala,
+                currency: payment.currency || "SAR",
+                source: "topup_payment",
+              });
+              await sub.save({ session });
+              applied = true;
+              await writeLogFn({
+                entityType: "subscription",
+                entityId: metadata.subscriptionId,
+                action: "premium_topup_webhook",
+                byRole: "system",
+                meta: { count, paymentId },
+              });
+            } else {
+              const configuredUnit = Number(metadata.unitExtraFeeHalala);
+              const fallbackUnit = Math.round(Number(payment.amount || 0) / count);
+              const unitExtraFeeHalala = Number.isInteger(configuredUnit) && configuredUnit >= 0
+                ? configuredUnit
+                : Number.isFinite(fallbackUnit) && fallbackUnit >= 0
+                  ? fallbackUnit
+                  : 0;
 
-            // Legacy compatibility: migrate old numeric credits into wallet rows once.
-            ensureLegacyPremiumBalanceFromRemaining(sub, {
-              unitExtraFeeHalala,
-              currency: payment.currency || "SAR",
-            });
+              // Legacy compatibility: migrate old numeric credits into wallet rows once.
+              ensureLegacyPremiumBalanceFromRemaining(sub, {
+                unitExtraFeeHalala,
+                currency: payment.currency || "SAR",
+              });
 
-            sub.premiumBalance = sub.premiumBalance || [];
-            sub.premiumBalance.push({
-              premiumMealId: LEGACY_PREMIUM_MEAL_BUCKET_ID,
-              purchasedQty: count,
-              remainingQty: count,
-              unitExtraFeeHalala,
-              currency: payment.currency || "SAR",
-            });
-            syncPremiumRemainingFromBalance(sub);
-            await sub.save({ session });
-            applied = true;
-            await writeLog({
-              entityType: "subscription",
-              entityId: metadata.subscriptionId,
-              action: "premium_topup_webhook",
-              byRole: "system",
-              meta: { count, paymentId },
-            });
+              sub.premiumBalance = sub.premiumBalance || [];
+              sub.premiumBalance.push({
+                premiumMealId: LEGACY_PREMIUM_MEAL_BUCKET_ID,
+                purchasedQty: count,
+                remainingQty: count,
+                unitExtraFeeHalala,
+                currency: payment.currency || "SAR",
+              });
+              syncPremiumRemainingFromBalance(sub);
+              await sub.save({ session });
+              applied = true;
+              await writeLogFn({
+                entityType: "subscription",
+                entityId: metadata.subscriptionId,
+                action: "premium_topup_webhook",
+                byRole: "system",
+                meta: { count, paymentId },
+              });
+            }
           } else {
             unappliedReason = "subscription_not_found";
           }
@@ -326,7 +394,7 @@ async function handleMoyasarWebhook(req, res) {
           if (addedCount > 0) {
             await sub.save({ session });
             applied = true;
-            await writeLog({
+            await writeLogFn({
               entityType: "subscription",
               entityId: metadata.subscriptionId,
               action: "addon_topup_webhook",
@@ -349,10 +417,10 @@ async function handleMoyasarWebhook(req, res) {
         );
         if (updatedDay) {
           applied = true;
-          await writeLog({
-            entityType: "subscription_day",
-            entityId: updatedDay._id,
-            action: "one_time_addon_webhook",
+            await writeLogFn({
+              entityType: "subscription_day",
+              entityId: updatedDay._id,
+              action: "one_time_addon_webhook",
             byRole: "system",
             meta: { addonId: metadata.addonId, date: metadata.date, paymentId },
           });
@@ -402,7 +470,7 @@ async function handleMoyasarWebhook(req, res) {
 
         if (updatedDay) {
           applied = true;
-          await writeLog({
+          await writeLogFn({
             entityType: "subscription_day",
             entityId: updatedDay._id,
             action: "custom_salad_day_webhook",
@@ -445,7 +513,7 @@ async function handleMoyasarWebhook(req, res) {
 
         if (updatedDay) {
           applied = true;
-          await writeLog({
+          await writeLogFn({
             entityType: "subscription_day",
             entityId: updatedDay._id,
             action: "custom_meal_day_webhook",
@@ -628,7 +696,7 @@ async function handleMoyasarWebhook(req, res) {
               userId: order.userId,
               paymentId: payment._id,
             };
-            await writeLog({
+            await writeLogFn({
               entityType: "order",
               entityId: order._id,
               action: "order_payment_webhook",
@@ -652,7 +720,7 @@ async function handleMoyasarWebhook(req, res) {
           { $set: { applied: true, status: "paid", metadata: mergedMetadata } },
           { session }
         );
-        await writeLog({
+        await writeLogFn({
           entityType: "payment",
           entityId: payment._id,
           action: "payment_unapplied",
@@ -667,7 +735,7 @@ async function handleMoyasarWebhook(req, res) {
     await session.commitTransaction();
     session.endSession();
     if (orderNotification) {
-      await notifyOrderUser({
+      await notifyOrderUserFn({
         order: { _id: orderNotification.orderId, userId: orderNotification.userId },
         type: "paid",
         paymentId: orderNotification.paymentId,

@@ -23,6 +23,11 @@ function getTomorrowKSADate() {
     return toKSADateString(addDays(getCurrentKSA(), 1));
 }
 
+function addDaysToKSADateString(dateStr, days) {
+    const base = new Date(`${dateStr}T00:00:00+03:00`);
+    return toKSADateString(addDays(base, days));
+}
+
 function isBeforeCutoff(cutoffTimeStr) {
     // CR-10 FIX: Validate cutoff format before parsing
     if (!/^\d{2}:\d{2}$/.test(cutoffTimeStr)) {
@@ -88,4 +93,5 @@ module.exports = {
     isValidKSADateString,
     isInSubscriptionRange,
     isOnOrAfterTodayKSADate,
+    addDaysToKSADateString,
 };

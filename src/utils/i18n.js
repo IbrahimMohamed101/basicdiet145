@@ -1,90 +1,121 @@
-/**
- * i18n utilities for multilingual content resolution.
- *
- * Supported languages: "ar" (Arabic, default) | "en" (English)
- *
- * Usage on read endpoints:
- *   const lang = getRequestLang(req);               // "ar" | "en"
- *   const name = pickLang(doc.name, lang);           // plain string
- */
+const ar = require("../locales/ar");
+const en = require("../locales/en");
 
 const SUPPORTED_LANGS = ["ar", "en"];
 const DEFAULT_LANG = "ar";
+const LOCALES = { ar, en };
 
-/**
- * Extract the preferred language from the request.
- * Reads the full `Accept-Language` header preference list and normalises
- * to "ar" or "en".
- * Defaults to "ar" when the header is absent or unrecognised.
- *
- * @param {import("express").Request} req
- * @returns {"ar"|"en"}
- */
-function getRequestLang(req) {
-  const raw = String(req.headers["accept-language"] || "").trim().toLowerCase();
-  if (!raw) return DEFAULT_LANG;
+function normalizeLanguageCandidate(value) {
+  if (typeof value !== "string") return "";
 
-  // Fix: parse RFC 7231 style language priorities (e.g. "de,de;q=0.9,en;q=0.8")
-  const preferences = raw
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return "";
+
+  const primary = normalized.split("-")[0];
+  return SUPPORTED_LANGS.includes(primary) ? primary : "";
+}
+
+function parseHeaderPreferences(headerValue) {
+  if (typeof headerValue !== "string" || !headerValue.trim()) {
+    return [];
+  }
+
+  return headerValue
     .split(",")
     .map((token, index) => {
-      const part = token.trim();
-      if (!part) return null;
+      const rawToken = token.trim();
+      if (!rawToken) return null;
 
-      const [range, ...params] = part.split(";").map((s) => s.trim());
-      const primary = range.split("-")[0];
-      if (!primary) return null;
+      const [range, ...params] = rawToken.split(";").map((part) => part.trim());
+      const lang = normalizeLanguageCandidate(range);
+      if (!lang) return null;
 
       let q = 1;
       for (const param of params) {
-        if (!param.startsWith("q=")) continue;
-        const qVal = Number(param.slice(2));
-        if (Number.isFinite(qVal)) {
-          q = Math.max(0, Math.min(1, qVal));
+        if (!param.toLowerCase().startsWith("q=")) continue;
+        const parsed = Number(param.slice(2));
+        if (Number.isFinite(parsed)) {
+          q = Math.max(0, Math.min(1, parsed));
         }
       }
 
-      return { primary, q, index };
+      return { lang, q, index };
     })
     .filter(Boolean)
     .sort((a, b) => {
       if (b.q !== a.q) return b.q - a.q;
       return a.index - b.index;
     });
+}
 
-  for (const pref of preferences) {
-    if (pref.q <= 0) continue;
-    if (SUPPORTED_LANGS.includes(pref.primary)) return pref.primary;
+function getRequestLang(req) {
+  const attachedLanguage = normalizeLanguageCandidate(req && req.language);
+  if (attachedLanguage) return attachedLanguage;
+
+  const attachedLang = normalizeLanguageCandidate(req && req.lang);
+  if (attachedLang) return attachedLang;
+
+  const queryLang = normalizeLanguageCandidate(req && req.query && req.query.lang);
+  if (queryLang) return queryLang;
+
+  const preferences = parseHeaderPreferences(req && req.headers && req.headers["accept-language"]);
+  for (const preference of preferences) {
+    if (preference.q > 0) return preference.lang;
   }
 
   return DEFAULT_LANG;
 }
 
-/**
- * Pick the correct language string from a multilingual field.
- *
- * Handles three shapes for backward compatibility:
- *   1. `{ ar: "...", en: "..." }` — the new standard shape
- *   2. A plain `string` — old single-language values; returned as-is
- *   3. `null` / `undefined` — returns ""
- *
- * Fallback order when the requested language is empty/missing:
- *   requested lang → the other lang → ""
- *
- * @param {Object|string|null|undefined} obj  Multilingual field value
- * @param {"ar"|"en"} lang                    Preferred language
- * @returns {string}
- */
-function pickLang(obj, lang) {
-  if (!obj) return "";
-  if (typeof obj === "string") return obj; // backward compat with old plain strings
+function localizeField(value, lang) {
+  if (value == null) return "";
+  if (typeof value === "string") return value;
+  if (typeof value !== "object") return "";
 
-  const preferred = obj[lang];
-  if (preferred) return preferred;
+  const preferredLang = normalizeLanguageCandidate(lang) || DEFAULT_LANG;
+  const preferredValue = value[preferredLang];
+  if (preferredValue) return preferredValue;
 
-  // Fallback to the other supported language
-  const fallback = SUPPORTED_LANGS.find((l) => l !== lang && obj[l]);
-  return fallback ? obj[fallback] : "";
+  const fallbackLang = SUPPORTED_LANGS.find((candidate) => candidate !== preferredLang && value[candidate]);
+  return fallbackLang ? value[fallbackLang] : "";
 }
 
-module.exports = { getRequestLang, pickLang, SUPPORTED_LANGS, DEFAULT_LANG };
+const pickLang = localizeField;
+
+function getNestedValue(target, path) {
+  if (!target || typeof target !== "object") return undefined;
+
+  return path.split(".").reduce((current, segment) => {
+    if (current == null || typeof current !== "object") return undefined;
+    return current[segment];
+  }, target);
+}
+
+function interpolate(template, params = {}) {
+  return template.replace(/\{\{\s*(\w+)\s*\}\}/g, (_match, key) =>
+    Object.prototype.hasOwnProperty.call(params, key) ? String(params[key]) : ""
+  );
+}
+
+function t(key, lang, params = {}) {
+  const preferredLang = normalizeLanguageCandidate(lang) || DEFAULT_LANG;
+  const preferredTemplate = getNestedValue(LOCALES[preferredLang], key);
+  const fallbackTemplate = getNestedValue(LOCALES[DEFAULT_LANG], key);
+  const template = typeof preferredTemplate === "string"
+    ? preferredTemplate
+    : typeof fallbackTemplate === "string"
+      ? fallbackTemplate
+      : key;
+
+  return interpolate(template, params);
+}
+
+module.exports = {
+  DEFAULT_LANG,
+  SUPPORTED_LANGS,
+  getRequestLang,
+  localizeField,
+  normalizeLanguageCandidate,
+  parseHeaderPreferences,
+  pickLang,
+  t,
+};

@@ -461,6 +461,9 @@ components:
           type: string
         slotId:
           type: string
+        locationId:
+          type: string
+          description: Optional pickup location identifier used by UI-driven pickup flows.
 
     DeliveryInput:
       type: object
@@ -473,6 +476,12 @@ components:
           type: object
           nullable: true
           additionalProperties: true
+        pickupLocationId:
+          type: string
+          description: Optional pickup location identifier. When provided for pickup, backend can resolve the stored pickup address.
+        locationId:
+          type: string
+          description: Alias of `pickupLocationId`.
         slot:
           $ref: '#/components/schemas/DeliverySlotInput'
 
@@ -560,6 +569,10 @@ components:
               $ref: '#/components/schemas/CheckoutBreakdown'
             totalSar:
               type: number
+            summary:
+              type: object
+              description: UI-ready summary of selected package, delivery choice, premium meals, add-ons, and line items.
+              additionalProperties: true
 
     SubscriptionCheckoutRequest:
       type: object
@@ -3571,8 +3584,12 @@ paths:
       description: |
         Returns the menu payload used by the subscription meal-selection experience.
         The payload includes:
+        - `plans`: subscription packages already shaped for package/size/meal-count pickers
         - `regularMeals`: regular meals included in the plan
         - `premiumMeals`: premium upgrade catalog with extra fees
+        - `addons` / `addonsByType`: add-on catalog for recurring and one-time extras
+        - `delivery`: delivery and pickup methods, time slots, and optional pickup locations
+        - `flow`: UI step metadata for the subscription funnel
         - `customSalad`: base pricing metadata for the custom salad builder
         - `customMeal`: base pricing metadata for the custom meal builder
       parameters:
@@ -3597,6 +3614,12 @@ paths:
                         $ref: '#/components/schemas/MenuCustomSaladSupport'
                       customMeal:
                         $ref: '#/components/schemas/MenuCustomMealSupport'
+                      plans:
+                        type: array
+                        description: UI-ready subscription plans with pricing, defaults, and nested grams/meals options.
+                        items:
+                          type: object
+                          additionalProperties: true
                       regularMeals:
                         type: array
                         items:
@@ -3605,6 +3628,22 @@ paths:
                         type: array
                         items:
                           $ref: '#/components/schemas/SubscriptionPremiumMenuMeal'
+                      addons:
+                        type: array
+                        items:
+                          type: object
+                          additionalProperties: true
+                      addonsByType:
+                        type: object
+                        additionalProperties: true
+                      delivery:
+                        type: object
+                        description: Delivery/pickup methods with windows, defaults, and pickup locations.
+                        additionalProperties: true
+                      flow:
+                        type: object
+                        description: Ordered step metadata for the subscription UI flow.
+                        additionalProperties: true
 
   /api/subscriptions/quote:
     post:
@@ -10147,6 +10186,65 @@ paths:
               example:
                 ok: false
                 message: Cutoff processing failed
+
+  /api/admin/uploads/image:
+    post:
+      tags: [Admin (Dashboard)]
+      summary: Upload an image to Cloudinary
+      description: Admin-only multipart endpoint that streams an image to Cloudinary and returns hosted metadata.
+      security:
+        - dashboardBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - image
+              properties:
+                image:
+                  type: string
+                  format: binary
+                folder:
+                  type: string
+                  description: Optional Cloudinary folder suffix under `basicdiet/`, for example `plans`, `meals`, or `addons`.
+      responses:
+        '201':
+          description: Uploaded.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      url:
+                        type: string
+                      secureUrl:
+                        type: string
+                      publicId:
+                        type: string
+                      resourceType:
+                        type: string
+              example:
+                ok: true
+                data:
+                  url: https://res.cloudinary.com/demo/image/upload/v1/basicdiet/plans/sample.png
+                  secureUrl: https://res.cloudinary.com/demo/image/upload/v1/basicdiet/plans/sample.png
+                  publicId: basicdiet/plans/sample
+                  resourceType: image
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/Internal'
 
   /api/admin/salad-ingredients:
     get:

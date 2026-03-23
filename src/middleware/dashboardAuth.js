@@ -1,14 +1,15 @@
 const jwt = require("jsonwebtoken");
 const { DASHBOARD_JWT_SECRET } = require("../services/dashboardTokenService");
+const errorResponse = require("../utils/errorResponse");
 
 function assignDashboardAuthContext(req, token) {
   try {
     const decoded = jwt.verify(token, DASHBOARD_JWT_SECRET);
     if (decoded.tokenType !== "dashboard_access") {
-      return { ok: false, error: { code: "UNAUTHORIZED", message: "Invalid dashboard token type" } };
+      return { ok: false, error: { code: "UNAUTHORIZED", messageKey: "errors.dashboardAuth.invalidTokenType" } };
     }
     if (!decoded.userId || !decoded.role) {
-      return { ok: false, error: { code: "UNAUTHORIZED", message: "Invalid dashboard token payload" } };
+      return { ok: false, error: { code: "UNAUTHORIZED", messageKey: "errors.dashboardAuth.invalidTokenPayload" } };
     }
 
     req.dashboardUserId = String(decoded.userId);
@@ -19,20 +20,20 @@ function assignDashboardAuthContext(req, token) {
     req.userRole = req.dashboardUserRole;
     return { ok: true };
   } catch (_err) {
-    return { ok: false, error: { code: "UNAUTHORIZED", message: "Invalid dashboard token" } };
+    return { ok: false, error: { code: "UNAUTHORIZED", messageKey: "errors.dashboardAuth.invalidToken" } };
   }
 }
 
 function dashboardAuthMiddleware(req, res, next) {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return res.status(401).json({ ok: false, error: { code: "UNAUTHORIZED", message: "Missing dashboard token" } });
+    return errorResponse(res, 401, "UNAUTHORIZED", { messageKey: "errors.dashboardAuth.missingToken" });
   }
 
   const token = authHeader.split(" ")[1];
   const result = assignDashboardAuthContext(req, token);
   if (!result.ok) {
-    return res.status(401).json({ ok: false, error: result.error });
+    return errorResponse(res, 401, result.error.code, result.error);
   }
   return next();
 }
@@ -52,13 +53,13 @@ function dashboardRoleMiddleware(allowedRoles) {
   return (req, res, next) => {
     const role = req.dashboardUserRole;
     if (!role) {
-      return res.status(401).json({ ok: false, error: { code: "UNAUTHORIZED", message: "Missing dashboard role" } });
+      return errorResponse(res, 401, "UNAUTHORIZED", { messageKey: "errors.dashboardAuth.missingRole" });
     }
     if (role === "superadmin") {
       return next();
     }
     if (!allowedRoles.includes(role)) {
-      return res.status(403).json({ ok: false, error: { code: "FORBIDDEN", message: "Insufficient dashboard permissions" } });
+      return errorResponse(res, 403, "FORBIDDEN", { messageKey: "errors.dashboardAuth.insufficientPermissions" });
     }
     return next();
   };

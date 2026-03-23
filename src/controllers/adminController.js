@@ -16,18 +16,44 @@ const ActivityLog = require("../models/ActivityLog");
 const NotificationLog = require("../models/NotificationLog");
 const { processDailyCutoff } = require("../services/automationService");
 const { getInvoice } = require("../services/moyasarService");
+const { buildPhase1SubscriptionContract } = require("../services/subscriptionContractService");
+const { activateSubscriptionFromCanonicalContract } = require("../services/subscriptionActivationService");
+const {
+  applyPaymentSideEffects,
+  SUPPORTED_PHASE1_SHARED_PAYMENT_TYPES,
+} = require("../services/paymentApplicationService");
 const {
   resolveCheckoutQuoteOrThrow,
   finalizeSubscriptionDraftPayment,
   applyWalletTopupPayment,
+  freezeSubscription,
+  unfreezeSubscription,
+  skipDay,
+  unskipDay,
 } = require("./subscriptionController");
 const { logger } = require("../utils/logger");
 const validateObjectId = require("../utils/validateObjectId");
 const errorResponse = require("../utils/errorResponse");
 const { getRequestLang, pickLang } = require("../utils/i18n");
-const { getTodayKSADate, toKSADateString } = require("../utils/date");
+const dateUtils = require("../utils/date");
 const { resolveMealsPerDay } = require("../utils/subscriptionDaySelectionSync");
 const { writeLog } = require("../utils/log");
+const {
+  isPhase1CanonicalAdminCreateEnabled,
+  isPhase1SharedPaymentDispatcherEnabled,
+  isPhase2GenericPremiumWalletEnabled,
+} = require("../utils/featureFlags");
+const { getSubscriptionContractReadView } = require("../services/subscriptionContractReadService");
+const {
+  LEGACY_PREMIUM_WALLET_MODE,
+  GENERIC_PREMIUM_WALLET_MODE,
+  isGenericPremiumWalletMode,
+  buildGenericPremiumBalanceRows,
+} = require("../services/genericPremiumWalletService");
+const {
+  buildRecurringAddonEntitlementsFromQuote,
+  buildProjectedDayEntry,
+} = require("../services/recurringAddonService");
 const {
   normalizeDashboardEmail,
   isValidEmailFormat,
@@ -47,6 +73,19 @@ const LEGACY_PLAN_FIELDS_TO_UNSET = {
 };
 const NON_TERMINAL_ORDER_STATUSES = ["created", "confirmed", "preparing", "out_for_delivery", "ready_for_pickup"];
 const DATE_ONLY_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+const sliceCAdminRuntime = {
+  resolveCheckoutQuoteOrThrow: (...args) => resolveCheckoutQuoteOrThrow(...args),
+  buildPhase1SubscriptionContract: (...args) => buildPhase1SubscriptionContract(...args),
+  activateSubscriptionFromCanonicalContract: (...args) => activateSubscriptionFromCanonicalContract(...args),
+  serializeSubscriptionAdmin: (...args) => serializeSubscriptionAdmin(...args),
+  writeActivityLogSafely: (...args) => writeActivityLogSafely(...args),
+  async findClientUserById(userId) {
+    return User.findOne({ _id: userId, role: "client" }).lean();
+  },
+  startSession() {
+    return mongoose.startSession();
+  },
+};
 
 function isPositiveInteger(value) {
   return Number.isInteger(value) && value >= 1;
@@ -75,6 +114,43 @@ function normalizeSortOrder(value, fieldName = "sortOrder") {
     throw createControlledError(400, "INVALID", `${fieldName} must be an integer >= 0`);
   }
   return parsed;
+}
+
+function hasNonEmptyValue(value) {
+  return value !== undefined && value !== null && String(value).trim() !== "";
+}
+
+function normalizeSarAmountToHalalaOrThrow(value, fieldName) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    throw createControlledError(400, "INVALID", `${fieldName} must be a number >= 0`);
+  }
+  return Math.round(parsed * 100);
+}
+
+function resolvePlanMoneyMinorUnitsOrThrow(rawObject, {
+  fieldPath,
+  halalaField,
+  sarField,
+  legacySarField,
+} = {}) {
+  if (rawObject && hasNonEmptyValue(rawObject[halalaField])) {
+    const amountHalala = Number(rawObject[halalaField]);
+    if (!isNonNegativeInteger(amountHalala)) {
+      throw createControlledError(400, "INVALID", `${fieldPath}.${halalaField} must be an integer >= 0`);
+    }
+    return amountHalala;
+  }
+
+  if (rawObject && hasNonEmptyValue(rawObject[sarField])) {
+    return normalizeSarAmountToHalalaOrThrow(rawObject[sarField], `${fieldPath}.${sarField}`);
+  }
+
+  if (legacySarField && rawObject && hasNonEmptyValue(rawObject[legacySarField])) {
+    return normalizeSarAmountToHalalaOrThrow(rawObject[legacySarField], `${fieldPath}.${legacySarField}`);
+  }
+
+  throw createControlledError(400, "INVALID", `${fieldPath}.${halalaField} must be an integer >= 0`);
 }
 
 function normalizeName(input) {
@@ -243,23 +319,19 @@ function validatePlanPayloadOrThrow(payload, { requireGramsOptions = true } = {}
       }
       mealsValues.add(mealsPerDay);
 
-      const priceHalala = Number(rawMealOption.priceHalala);
-      if (!isNonNegativeInteger(priceHalala)) {
-        throw createControlledError(
-          400,
-          "INVALID",
-          `gramsOptions[${gramsIndex}].mealsOptions[${mealIndex}].priceHalala must be an integer >= 0`
-        );
-      }
-
-      const compareAtHalala = Number(rawMealOption.compareAtHalala);
-      if (!isNonNegativeInteger(compareAtHalala)) {
-        throw createControlledError(
-          400,
-          "INVALID",
-          `gramsOptions[${gramsIndex}].mealsOptions[${mealIndex}].compareAtHalala must be an integer >= 0`
-        );
-      }
+      const fieldPath = `gramsOptions[${gramsIndex}].mealsOptions[${mealIndex}]`;
+      const priceHalala = resolvePlanMoneyMinorUnitsOrThrow(rawMealOption, {
+        fieldPath,
+        halalaField: "priceHalala",
+        sarField: "priceSar",
+        legacySarField: "price",
+      });
+      const compareAtHalala = resolvePlanMoneyMinorUnitsOrThrow(rawMealOption, {
+        fieldPath,
+        halalaField: "compareAtHalala",
+        sarField: "compareAtSar",
+        legacySarField: "compareAt",
+      });
 
       return {
         mealsPerDay,
@@ -309,15 +381,19 @@ function validateMealsOptionPayloadOrThrow(rawMealOption, fieldPath = "mealOptio
     throw createControlledError(400, "INVALID", `${fieldPath}.mealsPerDay must be a positive integer`);
   }
 
-  const priceHalala = Number(rawMealOption.priceHalala);
-  if (!isNonNegativeInteger(priceHalala)) {
-    throw createControlledError(400, "INVALID", `${fieldPath}.priceHalala must be an integer >= 0`);
-  }
+  const priceHalala = resolvePlanMoneyMinorUnitsOrThrow(rawMealOption, {
+    fieldPath,
+    halalaField: "priceHalala",
+    sarField: "priceSar",
+    legacySarField: "price",
+  });
 
-  const compareAtHalala = Number(rawMealOption.compareAtHalala);
-  if (!isNonNegativeInteger(compareAtHalala)) {
-    throw createControlledError(400, "INVALID", `${fieldPath}.compareAtHalala must be an integer >= 0`);
-  }
+  const compareAtHalala = resolvePlanMoneyMinorUnitsOrThrow(rawMealOption, {
+    fieldPath,
+    halalaField: "compareAtHalala",
+    sarField: "compareAtSar",
+    legacySarField: "compareAt",
+  });
 
   return {
     mealsPerDay,
@@ -439,6 +515,78 @@ function buildAdminPlanSummary(plans = []) {
     activePlans,
     inactivePlans,
     averageDaysCount: totalPlans ? Math.round((totalDaysCount / totalPlans) * 100) / 100 : 0,
+  };
+}
+
+function resolveNestedPlanSortValue(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function buildAdminPlanPricing(plan) {
+  const gramsOptions = Array.isArray(plan && plan.gramsOptions) ? [...plan.gramsOptions] : [];
+  gramsOptions.sort((a, b) => {
+    const sortDiff = resolveNestedPlanSortValue(a && a.sortOrder) - resolveNestedPlanSortValue(b && b.sortOrder);
+    if (sortDiff !== 0) {
+      return sortDiff;
+    }
+    return Number(a && a.grams) - Number(b && b.grams);
+  });
+
+  const preferredGramsOption = gramsOptions.find((option) => option && option.isActive !== false) || gramsOptions[0] || null;
+  const mealsOptions = Array.isArray(preferredGramsOption && preferredGramsOption.mealsOptions)
+    ? [...preferredGramsOption.mealsOptions]
+    : [];
+  mealsOptions.sort((a, b) => {
+    const sortDiff = resolveNestedPlanSortValue(a && a.sortOrder) - resolveNestedPlanSortValue(b && b.sortOrder);
+    if (sortDiff !== 0) {
+      return sortDiff;
+    }
+    return Number(a && a.mealsPerDay) - Number(b && b.mealsPerDay);
+  });
+
+  const preferredMealsOption = mealsOptions.find((option) => option && option.isActive !== false) || mealsOptions[0] || null;
+  const startsFromHalala = Number(preferredMealsOption && preferredMealsOption.priceHalala) || 0;
+  const compareAtStartsFromHalala = Number(preferredMealsOption && preferredMealsOption.compareAtHalala) || 0;
+
+  return {
+    startsFromHalala,
+    startsFromSar: minorUnitsToMajor(startsFromHalala),
+    compareAtStartsFromHalala,
+    compareAtStartsFromSar: minorUnitsToMajor(compareAtStartsFromHalala),
+  };
+}
+
+function serializeAdminPlan(plan) {
+  if (!plan || typeof plan !== "object") {
+    return plan;
+  }
+
+  const currency = normalizeCurrencyValue(plan.currency);
+  return {
+    ...plan,
+    currency,
+    gramsOptions: Array.isArray(plan.gramsOptions)
+      ? plan.gramsOptions.map((gramsOption) => ({
+        ...gramsOption,
+        mealsOptions: Array.isArray(gramsOption && gramsOption.mealsOptions)
+          ? gramsOption.mealsOptions.map((mealOption) => {
+            const priceHalala = Number(mealOption && mealOption.priceHalala) || 0;
+            const compareAtHalala = Number(mealOption && mealOption.compareAtHalala) || 0;
+            return {
+              ...mealOption,
+              priceHalala,
+              priceSar: minorUnitsToMajor(priceHalala),
+              price: minorUnitsToMajor(priceHalala),
+              compareAtHalala,
+              compareAtSar: minorUnitsToMajor(compareAtHalala),
+              compareAt: minorUnitsToMajor(compareAtHalala),
+            };
+          })
+          : [],
+      }))
+      : [],
+    pricing: buildAdminPlanPricing(plan),
   };
 }
 
@@ -781,7 +929,7 @@ function buildProviderInvoiceSummary(providerInvoice, payment) {
 }
 
 function addDaysToKSADateString(dateStr, days) {
-  return toKSADateString(addDays(new Date(`${dateStr}T00:00:00+03:00`), days));
+  return dateUtils.toKSADateString(addDays(new Date(`${dateStr}T00:00:00+03:00`), days));
 }
 
 function collectSubscriptionCatalogIds(subscriptions) {
@@ -829,6 +977,7 @@ async function loadSubscriptionSummaryCatalog(subscriptions, lang) {
   ]);
 
   return {
+    lang,
     premiumNames: new Map(premiumDocs.map((doc) => [String(doc._id), pickLang(doc.name, lang) || ""])),
     addonNames: new Map(addonDocs.map((doc) => [String(doc._id), pickLang(doc.name, lang) || ""])),
     planNames: new Map(planDocs.map((doc) => [String(doc._id), pickLang(doc.name, lang) || ""])),
@@ -836,6 +985,71 @@ async function loadSubscriptionSummaryCatalog(subscriptions, lang) {
 }
 
 function buildSubscriptionSummariesFromCatalog(subscription, catalog) {
+  if (isGenericPremiumWalletMode(subscription)) {
+    const premiumBalance = Array.isArray(subscription && subscription.genericPremiumBalance)
+      ? subscription.genericPremiumBalance
+      : [];
+    const addonBalance = Array.isArray(subscription && subscription.addonBalance) ? subscription.addonBalance : [];
+    const addonSelections = Array.isArray(subscription && subscription.addonSelections) ? subscription.addonSelections : [];
+    const addonNames = catalog && catalog.addonNames instanceof Map ? catalog.addonNames : new Map();
+    const premiumPurchasedQtyTotal = premiumBalance.reduce((sum, row) => sum + Number(row.purchasedQty || 0), 0);
+    const premiumRemainingQtyTotal = premiumBalance.reduce((sum, row) => sum + Number(row.remainingQty || 0), 0);
+    const premiumUnitValues = premiumBalance.map((row) => Number(row.unitCreditPriceHalala || 0));
+
+    const addonById = new Map();
+    for (const row of addonBalance) {
+      const key = String(row.addonId);
+      const current = addonById.get(key) || {
+        addonId: key,
+        purchasedQtyTotal: 0,
+        remainingQtyTotal: 0,
+        consumedQtyTotal: 0,
+        minUnitPriceHalala: null,
+        maxUnitPriceHalala: null,
+      };
+      current.purchasedQtyTotal += Number(row.purchasedQty || 0);
+      current.remainingQtyTotal += Number(row.remainingQty || 0);
+      const unit = Number(row.unitPriceHalala || 0);
+      current.minUnitPriceHalala = current.minUnitPriceHalala === null ? unit : Math.min(current.minUnitPriceHalala, unit);
+      current.maxUnitPriceHalala = current.maxUnitPriceHalala === null ? unit : Math.max(current.maxUnitPriceHalala, unit);
+      addonById.set(key, current);
+    }
+    for (const row of addonSelections) {
+      const key = String(row.addonId);
+      const current = addonById.get(key) || {
+        addonId: key,
+        purchasedQtyTotal: 0,
+        remainingQtyTotal: 0,
+        consumedQtyTotal: 0,
+        minUnitPriceHalala: Number(row.unitPriceHalala || 0),
+        maxUnitPriceHalala: Number(row.unitPriceHalala || 0),
+      };
+      current.consumedQtyTotal += Number(row.qty || 0);
+      addonById.set(key, current);
+    }
+
+    return {
+      premiumSummary: [{
+        premiumMealId: null,
+        name: catalog && catalog.lang === "en" ? "Premium credits" : "رصيد بريميوم",
+        purchasedQtyTotal: premiumPurchasedQtyTotal,
+        remainingQtyTotal: premiumRemainingQtyTotal,
+        consumedQtyTotal: Math.max(0, premiumPurchasedQtyTotal - premiumRemainingQtyTotal),
+        minUnitPriceHalala: premiumUnitValues.length ? Math.min(...premiumUnitValues) : 0,
+        maxUnitPriceHalala: premiumUnitValues.length ? Math.max(...premiumUnitValues) : 0,
+      }],
+      addonsSummary: Array.from(addonById.values()).map((row) => ({
+        addonId: row.addonId,
+        name: addonNames.get(row.addonId) || "",
+        purchasedQtyTotal: row.purchasedQtyTotal,
+        remainingQtyTotal: row.remainingQtyTotal,
+        consumedQtyTotal: row.consumedQtyTotal || Math.max(0, row.purchasedQtyTotal - row.remainingQtyTotal),
+        minUnitPriceHalala: row.minUnitPriceHalala || 0,
+        maxUnitPriceHalala: row.maxUnitPriceHalala || 0,
+      })),
+    };
+  }
+
   const premiumBalance = Array.isArray(subscription && subscription.premiumBalance) ? subscription.premiumBalance : [];
   const premiumSelections = Array.isArray(subscription && subscription.premiumSelections) ? subscription.premiumSelections : [];
   const addonBalance = Array.isArray(subscription && subscription.addonBalance) ? subscription.addonBalance : [];
@@ -929,7 +1143,7 @@ function buildSubscriptionSummariesFromCatalog(subscription, catalog) {
   };
 }
 
-function serializeSubscriptionForClientFromCatalog(subscription, catalog) {
+function serializeSubscriptionForClientFromCatalog(subscription, catalog, contractReadView = null) {
   const { premiumSummary, addonsSummary } = buildSubscriptionSummariesFromCatalog(subscription, catalog);
   const planNames = catalog && catalog.planNames instanceof Map ? catalog.planNames : new Map();
   const deliverySlot = subscription.deliverySlot && typeof subscription.deliverySlot === "object"
@@ -942,12 +1156,28 @@ function serializeSubscriptionForClientFromCatalog(subscription, catalog) {
   const data = { ...subscription };
   const id = subscription && subscription._id ? String(subscription._id) : null;
   const planId = subscription && subscription.planId ? String(subscription.planId) : null;
-  const planName = planId ? planNames.get(planId) || null : null;
+  const contractView = contractReadView || getSubscriptionContractReadView(subscription, {
+    audience: "client",
+    lang: catalog && catalog.lang ? catalog.lang : "ar",
+    livePlanName: planId ? planNames.get(planId) || null : null,
+    context: "admin_client_subscription_read",
+  });
+  const planName = contractView.planName || null;
   delete data.__v;
   delete data.premiumBalance;
+  delete data.genericPremiumBalance;
   delete data.addonBalance;
   delete data.premiumSelections;
   delete data.addonSelections;
+
+  // P2-S7-S3: Dynamic Status Serialization (Admin Parity)
+  // If subscription is "active" but today is past validityEndDate, reflect as "expired"
+  if (data.status === "active") {
+    const endDate = data.validityEndDate || data.endDate;
+    if (endDate && dateUtils.getTodayKSADate() > dateUtils.toKSADateString(endDate)) {
+      data.status = "expired";
+    }
+  }
 
   return {
     ...data,
@@ -959,12 +1189,22 @@ function serializeSubscriptionForClientFromCatalog(subscription, catalog) {
     deliverySlot,
     premiumSummary,
     addonsSummary,
+    contract: contractView.contract,
   };
 }
 
 function serializeSubscriptionAdminFromCatalog(subscription, userDoc, catalog) {
+  const planNames = catalog && catalog.planNames instanceof Map ? catalog.planNames : new Map();
+  const planId = subscription && subscription.planId ? String(subscription.planId) : null;
+  const contractReadView = getSubscriptionContractReadView(subscription, {
+    audience: "admin",
+    lang: catalog && catalog.lang ? catalog.lang : "ar",
+    livePlanName: planId ? planNames.get(planId) || null : null,
+    context: "admin_subscription_read",
+  });
   return {
-    ...serializeSubscriptionForClientFromCatalog(subscription, catalog),
+    ...serializeSubscriptionForClientFromCatalog(subscription, catalog, contractReadView),
+    contractMeta: contractReadView.contractMeta,
     user: serializeClientUserSummary(userDoc),
     userName: userDoc && userDoc.name ? userDoc.name : null,
   };
@@ -1238,14 +1478,15 @@ async function createAppUserAdmin(req, res) {
   }
 }
 
-async function createSubscriptionAdmin(req, res) {
+async function createSubscriptionAdmin(req, res, runtimeOverrides = null) {
+  const runtime = runtimeOverrides || sliceCAdminRuntime;
   const body = req.body || {};
   const { userId } = body;
   if (!validateObjectIdOrRespond(res, userId, "userId")) {
     return undefined;
   }
 
-  const user = await User.findOne({ _id: userId, role: "client" }).lean();
+  const user = await runtime.findClientUserById(userId);
   if (!user) {
     return errorResponse(res, 404, "NOT_FOUND", "App user not found");
   }
@@ -1254,15 +1495,21 @@ async function createSubscriptionAdmin(req, res) {
   }
 
   let quote;
+  const lang = getRequestLang(req);
   try {
-    quote = await resolveCheckoutQuoteOrThrow(body, { enforceActivePlan: true });
+    quote = await runtime.resolveCheckoutQuoteOrThrow(body, {
+      enforceActivePlan: true,
+      lang,
+      useGenericPremiumWallet:
+        isPhase1CanonicalAdminCreateEnabled()
+        && isPhase2GenericPremiumWalletEnabled(),
+    });
   } catch (err) {
     const mapped = mapSubscriptionQuoteError(err);
     return errorResponse(res, mapped.status, mapped.code, mapped.message);
   }
 
-  const lang = getRequestLang(req);
-  const session = await mongoose.startSession();
+  const session = await runtime.startSession();
 
   try {
     session.startTransaction();
@@ -1279,13 +1526,23 @@ async function createSubscriptionAdmin(req, res) {
     const endDate = addDays(startDate, daysCount - 1);
     const totalMeals = daysCount * mealsPerDay;
 
-    const premiumBalance = quote.premiumItems.map((item) => ({
-      premiumMealId: item.premiumMeal._id,
-      purchasedQty: Number(item.qty || 0),
-      remainingQty: Number(item.qty || 0),
-      unitExtraFeeHalala: Number(item.unitExtraFeeHalala || 0),
-      currency: item.currency || "SAR",
-    }));
+    const premiumBalance = quote.premiumWalletMode === GENERIC_PREMIUM_WALLET_MODE
+      ? []
+      : quote.premiumItems.map((item) => ({
+        premiumMealId: item.premiumMeal._id,
+        purchasedQty: Number(item.qty || 0),
+        remainingQty: Number(item.qty || 0),
+        unitExtraFeeHalala: Number(item.unitExtraFeeHalala || 0),
+        currency: item.currency || "SAR",
+      }));
+    const genericPremiumBalance = quote.premiumWalletMode === GENERIC_PREMIUM_WALLET_MODE
+      ? buildGenericPremiumBalanceRows({
+        premiumCount: Number(quote.premiumCount || 0),
+        unitCreditPriceHalala: Number(quote.premiumUnitPriceHalala || 0),
+        currency: "SAR",
+        source: "subscription_purchase",
+      })
+      : [];
     const addonBalance = quote.addonItems.map((item) => ({
       addonId: item.addon._id,
       purchasedQty: Number(item.qty || 0),
@@ -1293,61 +1550,107 @@ async function createSubscriptionAdmin(req, res) {
       unitPriceHalala: Number(item.unitPriceHalala || 0),
       currency: item.currency || "SAR",
     }));
-    const addonSubscriptions = quote.addonItems.map((item) => ({
-      addonId: item.addon._id,
-      name: pickLang(item.addon.name, lang) || null,
-      price: minorUnitsToMajor(item.unitPriceHalala),
-      type: item.addon.type || "subscription",
-    }));
-    const premiumRemaining = premiumBalance.reduce((sum, row) => sum + Number(row.remainingQty || 0), 0);
+    const addonSubscriptions = isPhase1CanonicalAdminCreateEnabled()
+      ? buildRecurringAddonEntitlementsFromQuote({ addonItems: quote.addonItems, lang })
+      : quote.addonItems.map((item) => ({
+        addonId: item.addon._id,
+        name: pickLang(item.addon.name, lang) || null,
+        price: minorUnitsToMajor(item.unitPriceHalala),
+        type: item.addon.type || "subscription",
+      }));
+    const premiumRemaining = quote.premiumWalletMode === GENERIC_PREMIUM_WALLET_MODE
+      ? genericPremiumBalance.reduce((sum, row) => sum + Number(row.remainingQty || 0), 0)
+      : premiumBalance.reduce((sum, row) => sum + Number(row.remainingQty || 0), 0);
 
-    const createdRows = await Subscription.create(
-      [{
+    let subscription;
+    if (isPhase1CanonicalAdminCreateEnabled()) {
+      const contract = runtime.buildPhase1SubscriptionContract({
+        payload: body,
+        resolvedQuote: quote,
+        actorContext: {
+          actorRole: "admin",
+          actorUserId: req.dashboardUserId || null,
+          adminOverrideMeta: {
+            createdByAdmin: true,
+            dashboardUserRole: req.dashboardUserRole || null,
+          },
+        },
+        source: "admin_create",
+        now: new Date(),
+      });
+
+      subscription = await runtime.activateSubscriptionFromCanonicalContract({
         userId: user._id,
         planId: quote.plan._id,
-        status: "active",
-        startDate,
-        endDate,
-        validityEndDate: endDate,
-        totalMeals,
-        remainingMeals: totalMeals,
-        premiumRemaining,
-        selectedGrams: quote.grams,
-        selectedMealsPerDay: mealsPerDay,
-        basePlanPriceHalala: Number(quote.breakdown.basePlanPriceHalala || 0),
-        checkoutCurrency: quote.breakdown.currency || "SAR",
-        premiumBalance,
-        addonBalance,
-        addonSubscriptions,
-        deliveryMode: quote.delivery.type,
-        deliveryAddress: quote.delivery.address || undefined,
-        deliveryWindow: quote.delivery.slot.window || undefined,
-        deliverySlot: quote.delivery.slot || {
-          type: quote.delivery.type,
-          window: quote.delivery.slot.window || "",
-          slotId: quote.delivery.slot.slotId || "",
+        contract,
+        legacyRuntimeData: {
+          premiumWalletMode: quote.premiumWalletMode || LEGACY_PREMIUM_WALLET_MODE,
+          premiumBalance,
+          genericPremiumBalance,
+          premiumPrice:
+            quote.premiumWalletMode === GENERIC_PREMIUM_WALLET_MODE
+              ? Number(quote.premiumUnitPriceHalala || 0) / 100
+              : 0,
+          addonBalance,
+          addonSubscriptions,
         },
-      }],
-      { session }
-    );
-    const subscription = createdRows[0];
-
-    const dayEntries = [];
-    for (let i = 0; i < daysCount; i += 1) {
-      dayEntries.push({
-        subscriptionId: subscription._id,
-        date: toKSADateString(addDays(startDate, i)),
-        status: "open",
+        session,
       });
-    }
-    if (dayEntries.length > 0) {
-      await SubscriptionDay.insertMany(dayEntries, { session });
+    } else {
+      const createdRows = await Subscription.create(
+        [{
+          userId: user._id,
+          planId: quote.plan._id,
+          status: "active",
+          startDate,
+          endDate,
+          validityEndDate: endDate,
+          totalMeals,
+          remainingMeals: totalMeals,
+          premiumRemaining,
+          premiumPrice:
+            quote.premiumWalletMode === GENERIC_PREMIUM_WALLET_MODE
+              ? Number(quote.premiumUnitPriceHalala || 0) / 100
+              : 0,
+          selectedGrams: quote.grams,
+          selectedMealsPerDay: mealsPerDay,
+          basePlanPriceHalala: Number(quote.breakdown.basePlanPriceHalala || 0),
+          checkoutCurrency: quote.breakdown.currency || "SAR",
+          premiumBalance,
+          premiumWalletMode: quote.premiumWalletMode || LEGACY_PREMIUM_WALLET_MODE,
+          genericPremiumBalance,
+          addonBalance,
+          addonSubscriptions,
+          deliveryMode: quote.delivery.type,
+          deliveryAddress: quote.delivery.address || undefined,
+          deliveryWindow: quote.delivery.slot.window || undefined,
+          deliverySlot: quote.delivery.slot || {
+            type: quote.delivery.type,
+            window: quote.delivery.slot.window || "",
+            slotId: quote.delivery.slot.slotId || "",
+          },
+        }],
+        { session }
+      );
+      subscription = createdRows[0];
+
+      const dayEntries = [];
+      for (let i = 0; i < daysCount; i += 1) {
+        dayEntries.push(buildProjectedDayEntry({
+          subscription,
+          date: dateUtils.toKSADateString(addDays(startDate, i)),
+          status: "open",
+        }));
+      }
+      if (dayEntries.length > 0) {
+        await SubscriptionDay.insertMany(dayEntries, { session });
+      }
     }
 
     await session.commitTransaction();
     session.endSession();
 
-    await writeActivityLogSafely({
+    await runtime.writeActivityLogSafely({
       entityType: "subscription",
       entityId: subscription._id,
       action: "subscription_created_by_admin",
@@ -1356,13 +1659,13 @@ async function createSubscriptionAdmin(req, res) {
       meta: {
         userId: String(user._id),
         planId: String(quote.plan._id),
-        startDate: toKSADateString(startDate),
+        startDate: dateUtils.toKSADateString(startDate),
       },
     }, { subscriptionId: String(subscription._id) });
 
     return res.status(201).json({
       ok: true,
-      data: await serializeSubscriptionAdmin(subscription.toObject(), lang, user),
+      data: await runtime.serializeSubscriptionAdmin(subscription.toObject(), lang, user),
       meta: {
         createdByAdmin: true,
       },
@@ -1372,6 +1675,9 @@ async function createSubscriptionAdmin(req, res) {
       await session.abortTransaction();
     }
     session.endSession();
+    if (err.code === "RECURRING_ADDON_CATEGORY_CONFLICT") {
+      return errorResponse(res, 400, "INVALID", err.message);
+    }
     logger.error("adminController.createSubscriptionAdmin failed", {
       error: err.message,
       stack: err.stack,
@@ -1555,7 +1861,7 @@ async function getDashboardNotificationSummary(req, res) {
 }
 
 async function getTodayReport(req, res) {
-  const today = getTodayKSADate();
+  const today = dateUtils.getTodayKSADate();
   const { start, end } = buildKsaDayUtcRange(today);
   const lang = getRequestLang(req);
 
@@ -1661,7 +1967,7 @@ async function getTodayReport(req, res) {
         userName: user ? user.name || null : null,
         planName: plan ? pickLang(plan.name, lang) || null : null,
         status: subscription.status,
-        startDate: subscription.startDate ? toKSADateString(subscription.startDate) : null,
+        startDate: subscription.startDate ? dateUtils.toKSADateString(subscription.startDate) : null,
         amountDisplay: formatAmountDisplay(subscription.basePlanPriceHalala, subscription.checkoutCurrency, lang),
       };
     }),
@@ -1678,7 +1984,7 @@ async function listPlansAdmin(req, res) {
   try {
     const filters = resolveAdminPlanFiltersOrThrow(req.query || {});
     const plans = await Plan.find().sort({ sortOrder: 1, createdAt: -1 }).lean();
-    const filteredPlans = filterAdminPlans(plans, filters);
+    const filteredPlans = filterAdminPlans(plans, filters).map((plan) => serializeAdminPlan(plan));
 
     return res.status(200).json({
       ok: true,
@@ -1708,7 +2014,7 @@ async function getPlanAdmin(req, res) {
   if (!plan) {
     return errorResponse(res, 404, "NOT_FOUND", "Plan not found");
   }
-  return res.status(200).json({ ok: true, data: plan });
+  return res.status(200).json({ ok: true, data: serializeAdminPlan(plan) });
 }
 
 async function createPlan(req, res) {
@@ -3058,7 +3364,7 @@ async function exportSubscriptionsAdmin(req, res) {
       { ...(req.query || {}), lang },
       { paginate: false, includeStatus: true }
     );
-    const today = getTodayKSADate();
+    const today = dateUtils.getTodayKSADate();
     res.setHeader("Content-Disposition", `attachment; filename=\"subscriptions-export-${today}.json\"`);
 
     return res.status(200).json({
@@ -3091,7 +3397,7 @@ async function getDashboardOverview(req, res) {
   }
 
   const lang = getRequestLang(req);
-  const today = getTodayKSADate();
+  const today = dateUtils.getTodayKSADate();
 
   const [
     activeSubscriptions,
@@ -3186,7 +3492,7 @@ async function getDashboardOverview(req, res) {
             : null,
           planName: plan ? pickLang(plan.name, lang) || null : null,
           status: subscription.status,
-          startDate: subscription.startDate ? toKSADateString(subscription.startDate) : null,
+          startDate: subscription.startDate ? dateUtils.toKSADateString(subscription.startDate) : null,
           amountMinorUnits,
           amount: minorUnitsToMajor(amountMinorUnits),
           amountDisplay: formatAmountDisplay(amountMinorUnits, currency, lang),
@@ -3300,7 +3606,7 @@ async function cancelSubscriptionAdmin(req, res) {
     let preservedCredits = 0;
     const previousStatus = subscription.status;
     if (subscription.status === "active") {
-      const today = getTodayKSADate();
+      const today = dateUtils.getTodayKSADate();
       const mealsPerDay = resolveMealsPerDay(subscription);
       const undeductedCommittedDays = await SubscriptionDay.countDocuments({
         subscriptionId: subscription._id,
@@ -3404,7 +3710,7 @@ async function extendSubscriptionAdmin(req, res) {
       return errorResponse(res, 409, "INVALID_STATE", "Subscription has no scheduled end date");
     }
 
-    if (toKSADateString(effectiveEndDate) < getTodayKSADate()) {
+    if (dateUtils.toKSADateString(effectiveEndDate) < dateUtils.getTodayKSADate()) {
       await session.abortTransaction();
       session.endSession();
       return errorResponse(res, 409, "SUB_EXPIRED", "Subscription validity has already passed");
@@ -3417,10 +3723,10 @@ async function extendSubscriptionAdmin(req, res) {
       status: "frozen",
     }).session(session);
 
-    const oldBaseEndStr = toKSADateString(baseEndDate);
+    const oldBaseEndStr = dateUtils.toKSADateString(baseEndDate);
     const newBaseEndDate = addDays(baseEndDate, days);
     const newValidityEndDate = addDays(newBaseEndDate, frozenDaysCount);
-    const newValidityEndStr = toKSADateString(newValidityEndDate);
+    const newValidityEndStr = dateUtils.toKSADateString(newValidityEndDate);
     const datesToEnsure = buildDateRangeInclusive(addDaysToKSADateString(oldBaseEndStr, 1), newValidityEndStr);
 
     if (datesToEnsure.length > 0) {
@@ -3435,8 +3741,8 @@ async function extendSubscriptionAdmin(req, res) {
       const existingDates = new Set(existingDays.map((day) => day.date));
       const missingDays = datesToEnsure
         .filter((date) => !existingDates.has(date))
-        .map((date) => ({
-          subscriptionId: subscription._id,
+        .map((date) => buildProjectedDayEntry({
+          subscription,
           date,
           status: "open",
         }));
@@ -3466,8 +3772,8 @@ async function extendSubscriptionAdmin(req, res) {
       meta: {
         days,
         addedMeals,
-        endDate: toKSADateString(subscription.endDate),
-        validityEndDate: toKSADateString(subscription.validityEndDate),
+        endDate: dateUtils.toKSADateString(subscription.endDate),
+        validityEndDate: dateUtils.toKSADateString(subscription.validityEndDate),
       },
     }, { subscriptionId: id });
 
@@ -3477,8 +3783,8 @@ async function extendSubscriptionAdmin(req, res) {
       meta: {
         days,
         addedMeals,
-        endDate: toKSADateString(subscription.endDate),
-        validityEndDate: toKSADateString(subscription.validityEndDate),
+        endDate: dateUtils.toKSADateString(subscription.endDate),
+        validityEndDate: dateUtils.toKSADateString(subscription.validityEndDate),
       },
     });
   } catch (err) {
@@ -3629,7 +3935,7 @@ async function applyAdminPaymentSideEffects({ payment, session }) {
         const currentDate = addDays(start, i);
         dayEntries.push({
           subscriptionId: subscription._id,
-          date: toKSADateString(currentDate),
+          date: dateUtils.toKSADateString(currentDate),
           status: "open",
         });
       }
@@ -3778,7 +4084,29 @@ async function applyAdminPaymentSideEffects({ payment, session }) {
   return { applied: false, reason: "unsupported_payment_type" };
 }
 
-async function verifyPaymentAdmin(req, res) {
+async function verifyPaymentAdmin(req, res, runtimeOverrides = null) {
+  const getInvoiceFn = runtimeOverrides && runtimeOverrides.getInvoice
+    ? runtimeOverrides.getInvoice
+    : getInvoice;
+  const startSessionFn = runtimeOverrides && runtimeOverrides.startSession
+    ? runtimeOverrides.startSession
+    : () => mongoose.startSession();
+  const applyPaymentSideEffectsFn = runtimeOverrides && runtimeOverrides.applyPaymentSideEffects
+    ? runtimeOverrides.applyPaymentSideEffects
+    : applyPaymentSideEffects;
+  const applyAdminPaymentSideEffectsFn = runtimeOverrides && runtimeOverrides.applyAdminPaymentSideEffects
+    ? runtimeOverrides.applyAdminPaymentSideEffects
+    : applyAdminPaymentSideEffects;
+  const writeActivityLogSafelyFn = runtimeOverrides && runtimeOverrides.writeActivityLogSafely
+    ? runtimeOverrides.writeActivityLogSafely
+    : writeActivityLogSafely;
+  const isSharedPaymentDispatcherEnabledFn = runtimeOverrides && runtimeOverrides.isPhase1SharedPaymentDispatcherEnabled
+    ? runtimeOverrides.isPhase1SharedPaymentDispatcherEnabled
+    : isPhase1SharedPaymentDispatcherEnabled;
+  const supportedSharedPaymentTypes = runtimeOverrides && runtimeOverrides.supportedPaymentTypes
+    ? runtimeOverrides.supportedPaymentTypes
+    : SUPPORTED_PHASE1_SHARED_PAYMENT_TYPES;
+
   const { id } = req.params;
   if (!validateObjectIdOrRespond(res, id, "id")) {
     return undefined;
@@ -3797,7 +4125,7 @@ async function verifyPaymentAdmin(req, res) {
 
   let providerInvoice;
   try {
-    providerInvoice = await getInvoice(payment.providerInvoiceId);
+    providerInvoice = await getInvoiceFn(payment.providerInvoiceId);
   } catch (err) {
     if (err.code === "CONFIG") {
       return errorResponse(res, 500, "CONFIG", err.message);
@@ -3821,7 +4149,7 @@ async function verifyPaymentAdmin(req, res) {
     return errorResponse(res, 409, "PAYMENT_PROVIDER_ERROR", "Unsupported provider payment status");
   }
 
-  const session = await mongoose.startSession();
+  const session = await startSessionFn();
   let synchronized = false;
   try {
     session.startTransaction();
@@ -3921,7 +4249,20 @@ async function verifyPaymentAdmin(req, res) {
       );
 
       if (claimedPayment) {
-        const result = await applyAdminPaymentSideEffects({ payment: claimedPayment, session });
+        const useSharedDispatcher =
+          supportedSharedPaymentTypes.has(String(claimedPayment.type || ""))
+          && (
+            isSharedPaymentDispatcherEnabledFn()
+            || String(claimedPayment.type || "") === "premium_overage_day"
+            || String(claimedPayment.type || "") === "one_time_addon_day_planning"
+          );
+        const result = useSharedDispatcher
+          ? await applyPaymentSideEffectsFn({
+            payment: claimedPayment,
+            session,
+            source: "admin_verify",
+          })
+          : await applyAdminPaymentSideEffectsFn({ payment: claimedPayment, session });
         if (result.applied) {
           synchronized = true;
         } else {
@@ -3953,7 +4294,7 @@ async function verifyPaymentAdmin(req, res) {
   const latestPayment = await Payment.findById(id).lean();
   const user = latestPayment && latestPayment.userId ? await User.findById(latestPayment.userId).lean() : null;
 
-  await writeActivityLogSafely({
+  await writeActivityLogSafelyFn({
     entityType: "payment",
     entityId: id,
     action: "payment_verified_by_admin",
@@ -4313,5 +4654,33 @@ module.exports = {
       logger.error("adminController.triggerDailyCutoff failed", { error: err.message, stack: err.stack });
       return errorResponse(res, 500, "INTERNAL", "Cutoff processing failed");
     }
+  },
+
+  freezeSubscriptionAdmin: async (req, res) => {
+    const sub = await Subscription.findById(req.params.id);
+    if (!sub) return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
+    req.userId = sub.userId; 
+    return freezeSubscription(req, res);
+  },
+
+  unfreezeSubscriptionAdmin: async (req, res) => {
+    const sub = await Subscription.findById(req.params.id);
+    if (!sub) return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
+    req.userId = sub.userId; 
+    return unfreezeSubscription(req, res);
+  },
+
+  skipSubscriptionDayAdmin: async (req, res) => {
+    const sub = await Subscription.findById(req.params.id);
+    if (!sub) return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
+    req.userId = sub.userId; 
+    return skipDay(req, res);
+  },
+
+  unskipSubscriptionDayAdmin: async (req, res) => {
+    const sub = await Subscription.findById(req.params.id);
+    if (!sub) return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
+    req.userId = sub.userId; 
+    return unskipDay(req, res);
   }
 };

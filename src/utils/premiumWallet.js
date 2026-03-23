@@ -1,4 +1,6 @@
 const LEGACY_PREMIUM_MEAL_BUCKET_ID = "000000000000000000000001";
+const LEGACY_PREMIUM_WALLET_MODE = "legacy_itemized";
+const GENERIC_PREMIUM_WALLET_MODE = "generic_v1";
 
 function normalizeNonNegativeInteger(value) {
   const parsed = Number(value);
@@ -57,6 +59,8 @@ function ensureLegacyPremiumBalanceFromRemaining(
 
 module.exports = {
   LEGACY_PREMIUM_MEAL_BUCKET_ID,
+  LEGACY_PREMIUM_WALLET_MODE,
+  GENERIC_PREMIUM_WALLET_MODE,
   sumPremiumRemainingFromBalance,
   syncPremiumRemainingFromBalance,
   ensureLegacyPremiumBalanceFromRemaining,

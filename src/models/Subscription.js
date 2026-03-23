@@ -1,4 +1,13 @@
 const mongoose = require("mongoose");
+const {
+  CONTRACT_MODES,
+  CONTRACT_COMPLETENESS_VALUES,
+  CONTRACT_SOURCES,
+} = require("../constants/phase1Contract");
+const {
+  LEGACY_PREMIUM_WALLET_MODE,
+  GENERIC_PREMIUM_WALLET_MODE,
+} = require("../utils/premiumWallet");
 
 const PremiumBalanceSchema = new mongoose.Schema(
   {
@@ -32,7 +41,24 @@ const PremiumSelectionSchema = new mongoose.Schema(
     premiumMealId: { type: mongoose.Schema.Types.ObjectId, ref: "PremiumMeal", required: true },
     unitExtraFeeHalala: { type: Number, min: 0, default: 0 },
     currency: { type: String, default: "SAR" },
+    premiumWalletMode: {
+      type: String,
+      enum: [LEGACY_PREMIUM_WALLET_MODE, GENERIC_PREMIUM_WALLET_MODE],
+    },
+    premiumWalletRowId: { type: mongoose.Schema.Types.ObjectId, default: null },
     consumedAt: { type: Date, default: Date.now },
+  },
+  { _id: true }
+);
+
+const GenericPremiumBalanceSchema = new mongoose.Schema(
+  {
+    purchasedQty: { type: Number, min: 0, default: 0 },
+    remainingQty: { type: Number, min: 0, default: 0 },
+    unitCreditPriceHalala: { type: Number, min: 0, default: 0 },
+    currency: { type: String, default: "SAR" },
+    source: { type: String, default: "purchase" },
+    purchasedAt: { type: Date, default: Date.now },
   },
   { _id: true }
 );
@@ -50,6 +76,19 @@ const AddonSelectionSchema = new mongoose.Schema(
   { _id: true }
 );
 
+const RecurringAddonEntitlementSchema = new mongoose.Schema(
+  {
+    addonId: { type: mongoose.Schema.Types.ObjectId, ref: "Addon" },
+    name: { type: String, default: "" },
+    price: { type: Number, default: 0 },
+    type: { type: String, default: "subscription" },
+    category: { type: String, default: "" },
+    entitlementMode: { type: String, default: "" },
+    maxPerDay: { type: Number, min: 0 },
+  },
+  { _id: false }
+);
+
 const SubscriptionSchema = new mongoose.Schema(
   {
     userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
@@ -63,14 +102,7 @@ const SubscriptionSchema = new mongoose.Schema(
     remainingMeals: { type: Number, required: true },
     premiumRemaining: { type: Number, default: 0 },
     premiumPrice: { type: Number, default: 0 },
-    addonSubscriptions: [
-      {
-        addonId: { type: mongoose.Schema.Types.ObjectId, ref: "Addon" },
-        name: { type: String },
-        price: { type: Number },
-        type: { type: String },
-      },
-    ],
+    addonSubscriptions: { type: [RecurringAddonEntitlementSchema], default: [] },
 
     selectedGrams: { type: Number },
     selectedMealsPerDay: { type: Number },
@@ -78,9 +110,22 @@ const SubscriptionSchema = new mongoose.Schema(
     checkoutCurrency: { type: String, default: "SAR" },
 
     premiumBalance: { type: [PremiumBalanceSchema], default: [] },
+    premiumWalletMode: {
+      type: String,
+      enum: [LEGACY_PREMIUM_WALLET_MODE, GENERIC_PREMIUM_WALLET_MODE],
+    },
+    genericPremiumBalance: { type: [GenericPremiumBalanceSchema], default: [] },
     addonBalance: { type: [AddonBalanceSchema], default: [] },
     premiumSelections: { type: [PremiumSelectionSchema], default: [] },
     addonSelections: { type: [AddonSelectionSchema], default: [] },
+
+    contractVersion: { type: String, trim: true },
+    contractMode: { type: String, enum: CONTRACT_MODES },
+    contractCompleteness: { type: String, enum: CONTRACT_COMPLETENESS_VALUES },
+    contractSource: { type: String, enum: CONTRACT_SOURCES },
+    contractHash: { type: String, trim: true },
+    contractSnapshot: { type: mongoose.Schema.Types.Mixed },
+    renewedFromSubscriptionId: { type: mongoose.Schema.Types.ObjectId, ref: "Subscription", default: null },
 
     deliveryMode: { type: String, enum: ["delivery", "pickup"], required: true },
     deliveryAddress: {
@@ -95,6 +140,9 @@ const SubscriptionSchema = new mongoose.Schema(
       lng: { type: Number },
       notes: { type: String },
     },
+    deliveryZoneId: { type: mongoose.Schema.Types.ObjectId, default: null },
+    deliveryZoneName: { type: String, default: "" },
+    deliveryFeeHalala: { type: Number, default: 0 },
     deliveryWindow: { type: String },
     deliverySlot: {
       type: {
@@ -113,6 +161,10 @@ const SubscriptionSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// Performance: Common queries filter by userId (client subscriptions list) and status (admin dashboards).
 SubscriptionSchema.index({ userId: 1 });
+SubscriptionSchema.index({ status: 1, createdAt: -1 });
+// Support efficient lookups for per-user subscription lists that may be filtered by status.
+SubscriptionSchema.index({ userId: 1, status: 1 });
 
 module.exports = mongoose.model("Subscription", SubscriptionSchema);

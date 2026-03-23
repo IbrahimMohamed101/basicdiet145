@@ -1,0 +1,2739 @@
+openapi: 3.0.3
+info:
+  title: Subscriptions API
+  version: "1.0.0"
+  description: |
+    Subscriptions-focused API specification for the BasicDiet backend.
+
+    This document covers:
+    - App / mobile subscription endpoints under `/api/subscriptions/*`
+    - Admin / dashboard subscription endpoints under `/api/admin/*`
+    - Dashboard aliases under `/api/dashboard/*`
+
+    Authentication:
+    - `GET /subscriptions/menu` is public.
+    - All other `/subscriptions/*` endpoints require an App bearer token.
+    - All `/admin/*` and `/dashboard/*` endpoints require a Dashboard bearer token.
+
+    Localization:
+    - Pass `?lang=en` or `?lang=ar`
+    - Or send `Accept-Language: en|ar`
+    - Precedence: query string > header > fallback
+    - Fallback language: `ar`
+
+    Response envelope:
+    - Most endpoints return `{ "status": true, "data": ... }`
+    - Errors return `{ "status": false, "error": { "code": "...", "message": "..." } }`
+    - A few legacy or development-only routes may return a `message` field instead of a full `data` object
+
+    Important frontend rules:
+    - Never use localized `*Label` fields for business logic
+    - Always use machine fields such as `status`, `paymentStatus`, `walletType`, `source`, and `error.code`
+    - Always call the relevant `verify-payment` endpoint after payment-provider redirects when such an endpoint exists
+    - Always send an `idempotencyKey` for checkout creation and reuse it on safe checkout retries
+    - Do not assume every payment-creation endpoint uses the same idempotency contract unless explicitly documented
+servers:
+  - url: http://localhost:3000/api
+    description: Local
+  - url: https://your-api-domain.com/api
+    description: Production
+tags:
+  - name: Menu
+  - name: Checkout
+  - name: Subscriptions
+  - name: Timeline & Days
+  - name: Day Planning
+  - name: Premium & Payments
+  - name: Operations
+  - name: Admin - Upload
+  - name: Admin - Subscriptions
+components:
+  securitySchemes:
+    AppBearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: App user bearer token
+    DashboardBearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Dashboard bearer token
+  parameters:
+    LangQuery:
+      name: lang
+      in: query
+      required: false
+      schema:
+        type: string
+        enum: [ar, en]
+      description: Optional language override. Takes precedence over `Accept-Language`.
+    SubscriptionId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        example: "65f000000000000000000200"
+    DateParam:
+      name: date
+      in: path
+      required: true
+      schema:
+        type: string
+        format: date
+        example: "2026-03-26"
+    DraftId:
+      name: draftId
+      in: path
+      required: true
+      schema:
+        type: string
+        example: "65f000000000000000000100"
+    PaymentId:
+      name: paymentId
+      in: path
+      required: true
+      schema:
+        type: string
+        example: "65f000000000000000000501"
+  schemas:
+    SuccessEnvelope:
+      type: object
+      properties:
+        status:
+          type: boolean
+          example: true
+        data:
+          type: object
+      required: [status]
+    ErrorEnvelope:
+      type: object
+      properties:
+        status:
+          type: boolean
+          example: false
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              example: INVALID
+            message:
+              type: string
+              example: Localized human-readable message
+            details:
+              type: object
+              additionalProperties: true
+          required: [code, message]
+      required: [status, error]
+    DeliveryAddress:
+      type: object
+      properties:
+        label:
+          type: string
+          example: Home
+        street:
+          type: string
+          example: Tahlia Street
+        lat:
+          type: number
+          example: 24.7136
+        lng:
+          type: number
+          example: 46.6753
+    DeliverySlot:
+      type: object
+      properties:
+        type:
+          type: string
+          example: delivery
+        window:
+          type: string
+          example: "09:00 - 12:00"
+        slotId:
+          type: string
+          example: ""
+    DeliveryPayload:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [delivery, pickup]
+        zoneId:
+          type: string
+        address:
+          $ref: '#/components/schemas/DeliveryAddress'
+        slot:
+          $ref: '#/components/schemas/DeliverySlot'
+        pickupLocationId:
+          type: string
+    QuoteRequestBody:
+      type: object
+      required: [planId, grams, mealsPerDay, delivery]
+      properties:
+        planId:
+          type: string
+          example: "65f000000000000000000001"
+        grams:
+          type: integer
+          example: 1200
+        mealsPerDay:
+          type: integer
+          example: 3
+        startDate:
+          type: string
+          format: date
+        premiumCount:
+          type: integer
+        premiumItems:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        addons:
+          type: array
+          items:
+            type: object
+            properties:
+              addonId:
+                type: string
+              qty:
+                type: integer
+        delivery:
+          $ref: '#/components/schemas/DeliveryPayload'
+    RenewRequestBody:
+      type: object
+      properties:
+        planId:
+          type: string
+        grams:
+          type: integer
+        mealsPerDay:
+          type: integer
+        startDate:
+          type: string
+          format: date
+        premiumItems:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        addons:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        delivery:
+          $ref: '#/components/schemas/DeliveryPayload'
+        idempotencyKey:
+          type: string
+        successUrl:
+          type: string
+        backUrl:
+          type: string
+    PriceTotals:
+      type: object
+      properties:
+        basePlanPriceHalala:
+          type: integer
+          example: 180000
+        premiumTotalHalala:
+          type: integer
+          example: 4000
+        addonsTotalHalala:
+          type: integer
+          example: 1500
+        deliveryFeeHalala:
+          type: integer
+          example: 1000
+        vatHalala:
+          type: integer
+          example: 27975
+        totalHalala:
+          type: integer
+          example: 214475
+        currency:
+          type: string
+          example: SAR
+    CloudinaryUploadResponse:
+      type: object
+      properties:
+        url:
+          type: string
+          description: Always normalized to the secure Cloudinary URL
+        secureUrl:
+          type: string
+          description: Kept for compatibility and matches `url`
+        publicId:
+          type: string
+        resourceType:
+          type: string
+          example: image
+    DaySelectionRequest:
+      type: object
+      properties:
+        selections:
+          type: array
+          items:
+            type: string
+        premiumSelections:
+          type: array
+          items:
+            type: string
+        oneTimeAddonSelections:
+          type: array
+          items:
+            type: string
+        addonsOneTime:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+paths:
+  /subscriptions/menu:
+    get:
+      tags: [Menu]
+      summary: Get subscription menu
+      description: Public catalog endpoint used to build the subscription purchase UI.
+      parameters:
+        - $ref: '#/components/parameters/LangQuery'
+      responses:
+        '200':
+          description: Subscription catalog returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+  /subscriptions:
+    get:
+      tags: [Subscriptions]
+      summary: List current user subscriptions
+      security:
+        - AppBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/LangQuery'
+      responses:
+        '200':
+          description: Subscriptions returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+  /subscriptions/quote:
+    post:
+      tags: [Checkout]
+      summary: Quote subscription checkout
+      description: Calculates the subscription price before checkout creation.
+      security:
+        - AppBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/LangQuery'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuoteRequestBody'
+      responses:
+        '200':
+          description: Quote calculated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '400':
+          description: VALIDATION_ERROR or INVALID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /subscriptions/checkout:
+    post:
+      tags: [Checkout]
+      summary: Create checkout draft
+      description: |
+        Creates a checkout draft and payment intent.
+        Send `idempotencyKey` through `Idempotency-Key`, `X-Idempotency-Key`, or `body.idempotencyKey`.
+      security:
+        - AppBearerAuth: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/QuoteRequestBody'
+                - type: object
+                  properties:
+                    idempotencyKey:
+                      type: string
+                    successUrl:
+                      type: string
+                    backUrl:
+                      type: string
+      responses:
+        '201':
+          description: Checkout draft created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '200':
+          description: Existing reusable draft returned for the same idempotency key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '400':
+          description: VALIDATION_ERROR or INVALID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: IDEMPOTENCY_CONFLICT or CHECKOUT_IN_PROGRESS
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /subscriptions/checkout-drafts/{draftId}:
+    get:
+      tags: [Checkout]
+      summary: Get checkout draft status
+      security:
+        - AppBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/DraftId'
+        - $ref: '#/components/parameters/LangQuery'
+      responses:
+        '200':
+          description: Draft status returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '400':
+          description: INVALID_ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /subscriptions/checkout-drafts/{draftId}/verify-payment:
+    post:
+      tags: [Checkout]
+      summary: Verify checkout draft payment
+      description: Always call this after payment-provider redirects for subscription checkout.
+      security:
+        - AppBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/DraftId'
+      responses:
+        '200':
+          description: Payment verified
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '400':
+          description: INVALID_ID or INVALID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: CHECKOUT_IN_PROGRESS
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: CONFIG
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '502':
+          description: PAYMENT_PROVIDER_ERROR
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /subscriptions/{id}/activate:
+    post:
+      tags: [Checkout]
+      summary: Development-only activate route
+      description: Present only when `NODE_ENV !== production`.
+      security:
+        - AppBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+      responses:
+        '200':
+          description: Development response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: boolean
+                  message:
+                    type: string
+  /subscriptions/{id}/renewal-seed:
+    get:
+      tags: [Subscriptions]
+      summary: Get renewal seed
+      security:
+        - AppBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+        - $ref: '#/components/parameters/LangQuery'
+      responses:
+        '200':
+          description: Renewal seed returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '400':
+          description: INVALID_ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: FORBIDDEN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: RENEWAL_UNAVAILABLE
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /subscriptions/{id}/renew:
+    post:
+      tags: [Subscriptions]
+      summary: Renew subscription
+      description: |
+        Starts a renewal checkout flow from the current subscription.
+        Use `idempotencyKey` for safe retries.
+      security:
+        - AppBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RenewRequestBody'
+      responses:
+        '201':
+          description: Renewal checkout created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '200':
+          description: Existing reusable checkout returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '400':
+          description: INVALID_ID or INVALID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: FORBIDDEN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: IDEMPOTENCY_CONFLICT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: RENEWAL_PREMATURE or RENEWAL_UNAVAILABLE
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /subscriptions/{id}:
+    get:
+      tags: [Subscriptions]
+      summary: Get subscription by id
+      security:
+        - AppBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+        - $ref: '#/components/parameters/LangQuery'
+      responses:
+        '200':
+          description: Subscription returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '400':
+          description: INVALID_ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: FORBIDDEN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /subscriptions/{id}/timeline:
+    get:
+      tags: [Timeline & Days]
+      summary: Get subscription timeline
+      security:
+        - AppBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+        - $ref: '#/components/parameters/LangQuery'
+      responses:
+        '200':
+          description: Timeline returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '400':
+          description: INVALID_ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: FORBIDDEN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /subscriptions/{id}/days:
+    get:
+      tags: [Timeline & Days]
+      summary: Get all subscription days
+      security:
+        - AppBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+        - $ref: '#/components/parameters/LangQuery'
+      responses:
+        '200':
+          description: Days returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '400':
+          description: INVALID_ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: FORBIDDEN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /subscriptions/{id}/today:
+    get:
+      tags: [Timeline & Days]
+      summary: Get today's subscription day
+      security:
+        - AppBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+        - $ref: '#/components/parameters/LangQuery'
+      responses:
+        '200':
+          description: Today returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '400':
+          description: INVALID_ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: FORBIDDEN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /subscriptions/{id}/days/{date}:
+    get:
+      tags: [Timeline & Days]
+      summary: Get subscription day by date
+      security:
+        - AppBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+        - $ref: '#/components/parameters/DateParam'
+        - $ref: '#/components/parameters/LangQuery'
+      responses:
+        '200':
+          description: Day returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '400':
+          description: INVALID_ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: FORBIDDEN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /subscriptions/{id}/days/{date}/selection:
+    put:
+      tags: [Day Planning]
+      summary: Save day selection
+      security:
+        - AppBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+        - $ref: '#/components/parameters/DateParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DaySelectionRequest'
+      responses:
+        '200':
+          description: Selection saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '400':
+          description: INVALID, INVALID_DATE, DAILY_CAP, or validation errors
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: FORBIDDEN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: LOCKED or DATA_INTEGRITY_ERROR
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: SUB_INACTIVE or SUB_EXPIRED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /subscriptions/{id}/days/{date}/confirm:
+    post:
+      tags: [Day Planning]
+      summary: Confirm day planning
+      security:
+        - AppBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+        - $ref: '#/components/parameters/DateParam'
+      responses:
+        '200':
+          description: Day confirmed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '400':
+          description: INVALID_DATE or LOCKED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: FORBIDDEN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: CANONICAL_DAY_PLANNING_DISABLED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: PLANNING_INCOMPLETE, PREMIUM_OVERAGE_PAYMENT_REQUIRED, ONE_TIME_ADDON_PAYMENT_REQUIRED, SUB_INACTIVE, or SUB_EXPIRED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /subscriptions/{id}/days/{date}/pickup/prepare:
+    post:
+      tags: [Day Planning]
+      summary: Prepare pickup day
+      security:
+        - AppBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+        - $ref: '#/components/parameters/DateParam'
+      responses:
+        '200':
+          description: Pickup prepared
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '400':
+          description: INVALID, INVALID_DATE, LOCKED, or INSUFFICIENT_CREDITS
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: FORBIDDEN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: INVALID_TRANSITION
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: SUB_INACTIVE or SUB_EXPIRED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /subscriptions/{id}/days/{date}/custom-salad:
+    post:
+      tags: [Day Planning]
+      summary: Create custom salad payment
+      security:
+        - AppBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+        - $ref: '#/components/parameters/DateParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ingredients]
+              properties:
+                ingredients:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      ingredientId:
+                        type: string
+                      quantity:
+                        type: integer
+                successUrl:
+                  type: string
+                backUrl:
+                  type: string
+      responses:
+        '200':
+          description: Payment created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '400':
+          description: INVALID, INVALID_DATE, LOCKED, or MAX_EXCEEDED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: FORBIDDEN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: SUB_INACTIVE or SUB_EXPIRED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /subscriptions/{id}/days/{date}/custom-meal:
+    post:
+      tags: [Day Planning]
+      summary: Create custom meal payment
+      security:
+        - AppBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+        - $ref: '#/components/parameters/DateParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ingredients]
+              properties:
+                ingredients:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      ingredientId:
+                        type: string
+                      quantity:
+                        type: integer
+                successUrl:
+                  type: string
+                backUrl:
+                  type: string
+      responses:
+        '200':
+          description: Payment created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '400':
+          description: INVALID, INVALID_DATE, LOCKED, or MAX_EXCEEDED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: FORBIDDEN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: SUB_INACTIVE or SUB_EXPIRED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /subscriptions/{id}/days/{date}/delivery:
+    put:
+      tags: [Day Planning]
+      summary: Override delivery for one day
+      security:
+        - AppBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+        - $ref: '#/components/parameters/DateParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                deliveryAddress:
+                  $ref: '#/components/schemas/DeliveryAddress'
+                deliveryWindow:
+                  type: string
+      responses:
+        '200':
+          description: Override saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '400':
+          description: INVALID or INVALID_DATE
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: FORBIDDEN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: LOCKED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: SUB_INACTIVE or SUB_EXPIRED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /subscriptions/{id}/delivery:
+    put:
+      tags: [Day Planning]
+      summary: Update subscription delivery defaults
+      security:
+        - AppBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                deliveryAddress:
+                  $ref: '#/components/schemas/DeliveryAddress'
+                deliveryWindow:
+                  type: string
+      responses:
+        '200':
+          description: Delivery defaults updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '400':
+          description: INVALID or LOCKED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: FORBIDDEN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: SUB_INACTIVE or SUB_EXPIRED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /subscriptions/{id}/wallet:
+    get:
+      tags: [Premium & Payments]
+      summary: Get subscription wallet
+      security:
+        - AppBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+        - $ref: '#/components/parameters/LangQuery'
+      responses:
+        '200':
+          description: Wallet snapshot returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '400':
+          description: INVALID_ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: FORBIDDEN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /subscriptions/{id}/wallet/history:
+    get:
+      tags: [Premium & Payments]
+      summary: Get wallet history
+      security:
+        - AppBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+        - $ref: '#/components/parameters/LangQuery'
+      responses:
+        '200':
+          description: Wallet history returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '400':
+          description: INVALID_ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: FORBIDDEN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /subscriptions/{id}/wallet/topups/{paymentId}/status:
+    get:
+      tags: [Premium & Payments]
+      summary: Get wallet topup status
+      security:
+        - AppBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+        - $ref: '#/components/parameters/PaymentId'
+        - $ref: '#/components/parameters/LangQuery'
+      responses:
+        '200':
+          description: Wallet topup status returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '400':
+          description: INVALID_ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: FORBIDDEN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /subscriptions/{id}/wallet/topups/{paymentId}/verify:
+    post:
+      tags: [Premium & Payments]
+      summary: Verify wallet topup
+      security:
+        - AppBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+        - $ref: '#/components/parameters/PaymentId'
+      responses:
+        '200':
+          description: Wallet topup verified
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '400':
+          description: INVALID_ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: FORBIDDEN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: CHECKOUT_IN_PROGRESS or MISMATCH
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: CONFIG or INTERNAL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '502':
+          description: PAYMENT_PROVIDER_ERROR
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /subscriptions/{id}/days/{date}/premium-overage/payments:
+    post:
+      tags: [Premium & Payments]
+      summary: Create premium overage day payment
+      security:
+        - AppBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+        - $ref: '#/components/parameters/DateParam'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                successUrl:
+                  type: string
+                backUrl:
+                  type: string
+      responses:
+        '200':
+          description: Premium overage payment created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '400':
+          description: INVALID_DATE or LOCKED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: FORBIDDEN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: PREMIUM_OVERAGE_NOT_SUPPORTED, NO_PENDING_OVERAGE, or OVERAGE_ALREADY_PAID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: SUB_INACTIVE or SUB_EXPIRED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /subscriptions/{id}/days/{date}/premium-overage/payments/{paymentId}/verify:
+    post:
+      tags: [Premium & Payments]
+      summary: Verify premium overage day payment
+      security:
+        - AppBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+        - $ref: '#/components/parameters/DateParam'
+        - $ref: '#/components/parameters/PaymentId'
+      responses:
+        '200':
+          description: Premium overage payment verified
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '400':
+          description: INVALID_ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: FORBIDDEN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: CHECKOUT_IN_PROGRESS or MISMATCH
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: CONFIG or INTERNAL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '502':
+          description: PAYMENT_PROVIDER_ERROR
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /subscriptions/{id}/days/{date}/one-time-addons/payments:
+    post:
+      tags: [Premium & Payments]
+      summary: Create one-time addon day payment
+      security:
+        - AppBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+        - $ref: '#/components/parameters/DateParam'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                successUrl:
+                  type: string
+                backUrl:
+                  type: string
+      responses:
+        '200':
+          description: One-time addon payment created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '400':
+          description: INVALID_DATE or LOCKED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: FORBIDDEN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: ONE_TIME_ADDON_PAYMENT_NOT_SUPPORTED, NO_PENDING_ONE_TIME_ADDONS, or ONE_TIME_ADDONS_ALREADY_PAID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: SUB_INACTIVE or SUB_EXPIRED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /subscriptions/{id}/days/{date}/one-time-addons/payments/{paymentId}/verify:
+    post:
+      tags: [Premium & Payments]
+      summary: Verify one-time addon day payment
+      security:
+        - AppBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+        - $ref: '#/components/parameters/DateParam'
+        - $ref: '#/components/parameters/PaymentId'
+      responses:
+        '200':
+          description: One-time addon payment verified
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '400':
+          description: INVALID_ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: FORBIDDEN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: CHECKOUT_IN_PROGRESS or MISMATCH
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: CONFIG or INTERNAL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '502':
+          description: PAYMENT_PROVIDER_ERROR
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /subscriptions/{id}/premium/topup:
+    post:
+      tags: [Premium & Payments]
+      summary: Deprecated premium topup
+      description: Legacy endpoint. Prefer `/subscriptions/{id}/premium-credits/topup`.
+      security:
+        - AppBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                count:
+                  type: integer
+                items:
+                  type: array
+                  items:
+                    type: object
+                    additionalProperties: true
+                successUrl:
+                  type: string
+                backUrl:
+                  type: string
+      responses:
+        '200':
+          description: Topup payment created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '400':
+          description: INVALID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: FORBIDDEN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: SUB_INACTIVE or SUB_EXPIRED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /subscriptions/{id}/premium-credits/topup:
+    post:
+      tags: [Premium & Payments]
+      summary: Create premium credits topup
+      security:
+        - AppBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [items]
+              properties:
+                items:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      premiumMealId:
+                        type: string
+                      qty:
+                        type: integer
+                successUrl:
+                  type: string
+                backUrl:
+                  type: string
+      responses:
+        '200':
+          description: Premium topup payment created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '400':
+          description: VALIDATION_ERROR
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: FORBIDDEN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: SUB_INACTIVE or SUB_EXPIRED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /subscriptions/{id}/addon-credits/topup:
+    post:
+      tags: [Premium & Payments]
+      summary: Create addon credits topup
+      security:
+        - AppBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [items]
+              properties:
+                items:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      addonId:
+                        type: string
+                      qty:
+                        type: integer
+                successUrl:
+                  type: string
+                backUrl:
+                  type: string
+      responses:
+        '200':
+          description: Addon topup payment created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '400':
+          description: VALIDATION_ERROR
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: FORBIDDEN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: SUB_INACTIVE or SUB_EXPIRED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /subscriptions/{id}/premium-selections:
+    post:
+      tags: [Premium & Payments]
+      summary: Consume premium slot upgrade
+      security:
+        - AppBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                dayId:
+                  type: string
+                date:
+                  type: string
+                  format: date
+                baseSlotKey:
+                  type: string
+                premiumMealId:
+                  type: string
+      responses:
+        '200':
+          description: Premium selection consumed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '400':
+          description: VALIDATION_ERROR or INSUFFICIENT_PREMIUM
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: FORBIDDEN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: LOCKED or CONFLICT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    delete:
+      tags: [Premium & Payments]
+      summary: Refund premium slot upgrade
+      security:
+        - AppBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                dayId:
+                  type: string
+                date:
+                  type: string
+                  format: date
+                baseSlotKey:
+                  type: string
+      responses:
+        '200':
+          description: Premium selection removed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '400':
+          description: VALIDATION_ERROR
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: FORBIDDEN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: LOCKED or DATA_INTEGRITY_ERROR
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /subscriptions/{id}/addon-selections:
+    post:
+      tags: [Premium & Payments]
+      summary: Consume addon credits
+      security:
+        - AppBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                dayId:
+                  type: string
+                date:
+                  type: string
+                  format: date
+                addonId:
+                  type: string
+                qty:
+                  type: integer
+      responses:
+        '200':
+          description: Addon selection consumed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '400':
+          description: VALIDATION_ERROR or INSUFFICIENT_ADDON
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: FORBIDDEN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: LOCKED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    delete:
+      tags: [Premium & Payments]
+      summary: Refund addon selection
+      security:
+        - AppBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                dayId:
+                  type: string
+                date:
+                  type: string
+                  format: date
+                addonId:
+                  type: string
+      responses:
+        '200':
+          description: Addon selection removed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '400':
+          description: VALIDATION_ERROR
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: FORBIDDEN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: LOCKED or DATA_INTEGRITY_ERROR
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /subscriptions/{id}/addons/one-time:
+    post:
+      tags: [Premium & Payments]
+      summary: Legacy one-time addon purchase
+      description: Legacy route. No dedicated verify endpoint exists for this flow.
+      security:
+        - AppBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [addonId, date]
+              properties:
+                addonId:
+                  type: string
+                date:
+                  type: string
+                  format: date
+                successUrl:
+                  type: string
+                backUrl:
+                  type: string
+      responses:
+        '200':
+          description: One-time addon payment created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '400':
+          description: INVALID or INVALID_DATE
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: FORBIDDEN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: LOCKED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: SUB_INACTIVE or SUB_EXPIRED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /subscriptions/{id}/freeze:
+    post:
+      tags: [Operations]
+      summary: Freeze subscription
+      security:
+        - AppBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [startDate, days]
+              properties:
+                startDate:
+                  type: string
+                  format: date
+                days:
+                  type: integer
+      responses:
+        '200':
+          description: Subscription frozen
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '400':
+          description: INVALID_DATE, INVALID, or LOCKED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: FREEZE_LIMIT_REACHED or FORBIDDEN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: FREEZE_CONFLICT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: FREEZE_DISABLED, SUB_INACTIVE, or SUB_EXPIRED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /subscriptions/{id}/unfreeze:
+    post:
+      tags: [Operations]
+      summary: Unfreeze subscription
+      security:
+        - AppBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [startDate, days]
+              properties:
+                startDate:
+                  type: string
+                  format: date
+                days:
+                  type: integer
+      responses:
+        '200':
+          description: Subscription unfrozen
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '400':
+          description: INVALID_DATE, INVALID, or LOCKED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: FORBIDDEN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: SUB_INACTIVE or SUB_EXPIRED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /subscriptions/{id}/days/{date}/skip:
+    post:
+      tags: [Operations]
+      summary: Skip one day
+      security:
+        - AppBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+        - $ref: '#/components/parameters/DateParam'
+      responses:
+        '200':
+          description: Day skipped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '400':
+          description: INVALID_DATE, LOCKED, or INSUFFICIENT_CREDITS
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: FORBIDDEN or SKIP_LIMIT_REACHED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: SUB_INACTIVE
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /subscriptions/{id}/days/{date}/unskip:
+    post:
+      tags: [Operations]
+      summary: Unskip one day
+      security:
+        - AppBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+        - $ref: '#/components/parameters/DateParam'
+      responses:
+        '200':
+          description: Day unskipped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '400':
+          description: INVALID_DATE or DATA_INTEGRITY_ERROR
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: FORBIDDEN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: LOCKED or CONFLICT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /subscriptions/{id}/skip-range:
+    post:
+      tags: [Operations]
+      summary: Skip a range of days
+      security:
+        - AppBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [startDate, days]
+              properties:
+                startDate:
+                  type: string
+                  format: date
+                days:
+                  type: integer
+      responses:
+        '200':
+          description: Range processed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '400':
+          description: INVALID_DATE or INVALID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: FORBIDDEN or SKIP_LIMIT_REACHED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: SUB_INACTIVE or SUB_EXPIRED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /admin/uploads/image:
+    post:
+      tags: [Admin - Upload]
+      summary: Upload image to Cloudinary
+      description: |
+        Admin-only upload endpoint. Also available through `/dashboard/uploads/image`.
+        Allowed folders: `plans`, `meals`, `addons`, `custom-meals`, `custom-salads`.
+      security:
+        - DashboardBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [image]
+              properties:
+                image:
+                  type: string
+                  format: binary
+                folder:
+                  type: string
+                  enum: [plans, meals, addons, custom-meals, custom-salads]
+      responses:
+        '201':
+          description: Image uploaded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/CloudinaryUploadResponse'
+        '400':
+          description: INVALID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '502':
+          description: UPLOAD_FAILED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /admin/subscriptions:
+    get:
+      tags: [Admin - Subscriptions]
+      summary: List subscriptions
+      description: Also available through `/dashboard/subscriptions`.
+      security:
+        - DashboardBearerAuth: []
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Admin subscriptions returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '400':
+          description: INVALID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    post:
+      tags: [Admin - Subscriptions]
+      summary: Create subscription directly from admin
+      description: Also available through `/dashboard/subscriptions`.
+      security:
+        - DashboardBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/QuoteRequestBody'
+                - type: object
+                  required: [userId]
+                  properties:
+                    userId:
+                      type: string
+      responses:
+        '201':
+          description: Subscription created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '400':
+          description: INVALID or INVALID_ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: INVALID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /admin/subscriptions/summary:
+    get:
+      tags: [Admin - Subscriptions]
+      summary: Get subscriptions summary
+      description: Also available through `/dashboard/subscriptions/summary`.
+      security:
+        - DashboardBearerAuth: []
+      responses:
+        '200':
+          description: Summary returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '400':
+          description: INVALID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /admin/subscriptions/export:
+    get:
+      tags: [Admin - Subscriptions]
+      summary: Export subscriptions
+      description: Also available through `/dashboard/subscriptions/export`.
+      security:
+        - DashboardBearerAuth: []
+      responses:
+        '200':
+          description: Export returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '400':
+          description: INVALID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /admin/subscriptions/{id}:
+    get:
+      tags: [Admin - Subscriptions]
+      summary: Get subscription by id
+      description: Also available through `/dashboard/subscriptions/{id}`.
+      security:
+        - DashboardBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+      responses:
+        '200':
+          description: Subscription returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '400':
+          description: INVALID_ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /admin/subscriptions/{id}/days:
+    get:
+      tags: [Admin - Subscriptions]
+      summary: Get raw subscription day rows
+      description: Also available through `/dashboard/subscriptions/{id}/days`.
+      security:
+        - DashboardBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+      responses:
+        '200':
+          description: Days returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '400':
+          description: INVALID_ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /admin/subscriptions/{id}/cancel:
+    post:
+      tags: [Admin - Subscriptions]
+      summary: Cancel subscription
+      description: Also available through `/dashboard/subscriptions/{id}/cancel`.
+      security:
+        - DashboardBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+      responses:
+        '200':
+          description: Subscription canceled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '400':
+          description: INVALID_ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: INVALID_TRANSITION
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /admin/subscriptions/{id}/extend:
+    put:
+      tags: [Admin - Subscriptions]
+      summary: Extend subscription
+      description: Also available through `/dashboard/subscriptions/{id}/extend`.
+      security:
+        - DashboardBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [days]
+              properties:
+                days:
+                  type: integer
+      responses:
+        '200':
+          description: Subscription extended
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '400':
+          description: INVALID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: INVALID_TRANSITION
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: SUB_EXPIRED or INVALID_STATE
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /admin/subscriptions/{id}/freeze:
+    post:
+      tags: [Admin - Subscriptions]
+      summary: Freeze subscription from admin
+      description: Also available through `/dashboard/subscriptions/{id}/freeze`.
+      security:
+        - DashboardBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [startDate, days]
+              properties:
+                startDate:
+                  type: string
+                  format: date
+                days:
+                  type: integer
+      responses:
+        '200':
+          description: Freeze applied
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '400':
+          description: INVALID_DATE, INVALID, or LOCKED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: FORBIDDEN or FREEZE_LIMIT_REACHED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: FREEZE_DISABLED, SUB_INACTIVE, or SUB_EXPIRED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /admin/subscriptions/{id}/unfreeze:
+    post:
+      tags: [Admin - Subscriptions]
+      summary: Unfreeze subscription from admin
+      description: Also available through `/dashboard/subscriptions/{id}/unfreeze`.
+      security:
+        - DashboardBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [startDate, days]
+              properties:
+                startDate:
+                  type: string
+                  format: date
+                days:
+                  type: integer
+      responses:
+        '200':
+          description: Unfreeze applied
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '400':
+          description: INVALID_DATE, INVALID, or LOCKED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: FORBIDDEN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: SUB_INACTIVE or SUB_EXPIRED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /admin/subscriptions/{id}/days/{date}/skip:
+    post:
+      tags: [Admin - Subscriptions]
+      summary: Skip subscription day from admin
+      description: Also available through `/dashboard/subscriptions/{id}/days/{date}/skip`.
+      security:
+        - DashboardBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+        - $ref: '#/components/parameters/DateParam'
+      responses:
+        '200':
+          description: Day skipped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '400':
+          description: INVALID_DATE, LOCKED, or INSUFFICIENT_CREDITS
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: FORBIDDEN or SKIP_LIMIT_REACHED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: SUB_INACTIVE
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /admin/subscriptions/{id}/days/{date}/unskip:
+    post:
+      tags: [Admin - Subscriptions]
+      summary: Unskip subscription day from admin
+      description: Also available through `/dashboard/subscriptions/{id}/days/{date}/unskip`.
+      security:
+        - DashboardBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+        - $ref: '#/components/parameters/DateParam'
+      responses:
+        '200':
+          description: Day unskipped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '400':
+          description: INVALID_DATE or DATA_INTEGRITY_ERROR
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: FORBIDDEN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: LOCKED or CONFLICT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'

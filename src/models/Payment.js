@@ -7,6 +7,8 @@ const PaymentSchema = new mongoose.Schema(
       type: String,
       enum: [
         "premium_topup",
+        "premium_overage_day",
+        "one_time_addon_day_planning",
         "addon_topup",
         "one_time_addon",
         "subscription_activation",
@@ -33,11 +35,15 @@ const PaymentSchema = new mongoose.Schema(
     metadata: { type: mongoose.Schema.Types.Mixed },
     applied: { type: Boolean, default: false },
     paidAt: { type: Date },
+    operationScope: { type: String, trim: true },
+    operationIdempotencyKey: { type: String, trim: true },
+    operationRequestHash: { type: String, trim: true },
   },
   { timestamps: true }
 );
 
 PaymentSchema.index({ provider: 1, providerInvoiceId: 1 }, { unique: true, sparse: true });
 PaymentSchema.index({ provider: 1, providerPaymentId: 1 }, { unique: true, sparse: true });
+PaymentSchema.index({ subscriptionId: 1, status: 1 });
 
 module.exports = mongoose.model("Payment", PaymentSchema);

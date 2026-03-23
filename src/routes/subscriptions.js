@@ -55,7 +55,10 @@ router.post("/checkout", checkoutLimiter, asyncHandler(controller.checkoutSubscr
 if (process.env.NODE_ENV !== "production") {
   router.post("/:id/activate", asyncHandler(controller.activateSubscription)); // Mock activation — dev only
 }
+router.get("/:id/renewal-seed", asyncHandler(controller.getSubscriptionRenewalSeed));
+router.post("/:id/renew", asyncHandler(controller.renewSubscription));
 router.get("/:id", asyncHandler(controller.getSubscription));
+router.get("/:id/timeline", asyncHandler(controller.getSubscriptionTimeline));
 router.get("/:id/wallet", asyncHandler(controller.getSubscriptionWallet));
 router.get("/:id/wallet/history", asyncHandler(controller.getSubscriptionWalletHistory));
 router.get("/:id/wallet/topups/:paymentId/status", asyncHandler(controller.getWalletTopupPaymentStatus));
@@ -87,6 +90,11 @@ router.get("/:id/days/:date", asyncHandler(controller.getSubscriptionDay));
  *         description: Updated selections
  */
 router.put("/:id/days/:date/selection", asyncHandler(controller.updateDaySelection));
+router.post("/:id/days/:date/confirm", asyncHandler(controller.confirmDayPlanning));
+router.post("/:id/days/:date/premium-overage/payments", asyncHandler(controller.createPremiumOverageDayPayment));
+router.post("/:id/days/:date/premium-overage/payments/:paymentId/verify", asyncHandler(controller.verifyPremiumOverageDayPayment));
+router.post("/:id/days/:date/one-time-addons/payments", asyncHandler(controller.createOneTimeAddonDayPlanningPayment));
+router.post("/:id/days/:date/one-time-addons/payments/:paymentId/verify", asyncHandler(controller.verifyOneTimeAddonDayPlanningPayment));
 /**
  * @openapi
  * /subscriptions/{id}/days/{date}/skip:

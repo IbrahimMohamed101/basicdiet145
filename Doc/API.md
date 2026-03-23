@@ -122,6 +122,7 @@ Base mount behavior from code:
 | `src/routes/admin.js` | GET | `/api/dashboard/logs` and `/api/admin/logs` | `adminController.listActivityLogs` (`authMiddleware`, `roleMiddleware[admin]`) |
 | `src/routes/admin.js` | GET | `/api/dashboard/notification-logs` and `/api/admin/notification-logs` | `adminController.listNotificationLogs` (`authMiddleware`, `roleMiddleware[admin]`) |
 | `src/routes/admin.js` | POST | `/api/dashboard/trigger-cutoff` and `/api/admin/trigger-cutoff` | `adminController.triggerDailyCutoff` (`authMiddleware`, `roleMiddleware[admin]`) |
+| `src/routes/admin.js` | POST | `/api/dashboard/uploads/image` and `/api/admin/uploads/image` | `uploadController.uploadAdminImage` (`dashboardAuthMiddleware`, `dashboardRoleMiddleware[admin]`, multipart image upload) |
 | `src/routes/admin.js` | GET | `/api/dashboard/salad-ingredients` and `/api/admin/salad-ingredients` | `saladIngredientController.listIngredientsAdmin` (`authMiddleware`, `roleMiddleware[admin]`) |
 | `src/routes/admin.js` | POST | `/api/dashboard/salad-ingredients` and `/api/admin/salad-ingredients` | `saladIngredientController.createIngredient` (`authMiddleware`, `roleMiddleware[admin]`) |
 | `src/routes/admin.js` | PATCH | `/api/dashboard/salad-ingredients/:id` and `/api/admin/salad-ingredients/:id` | `saladIngredientController.updateIngredient` (`authMiddleware`, `roleMiddleware[admin]`) |
@@ -282,6 +283,7 @@ Base mount behavior from code:
 | GET | `/api/admin/logs` | Admin (Dashboard) |
 | GET | `/api/admin/notification-logs` | Notifications, Admin (Dashboard) |
 | POST | `/api/admin/trigger-cutoff` | Admin (Dashboard) |
+| POST | `/api/admin/uploads/image` | Admin (Dashboard), Meals / Menu |
 | GET | `/api/admin/salad-ingredients` | Admin (Dashboard), Meals / Menu |
 | POST | `/api/admin/salad-ingredients` | Admin (Dashboard), Meals / Menu |
 | PATCH | `/api/admin/salad-ingredients/:id` | Admin (Dashboard), Meals / Menu |
@@ -464,6 +466,15 @@ curl -X POST http://localhost:3000/api/admin/trigger-cutoff \
   -H 'Authorization: Bearer <ADMIN_TOKEN>'
 ```
 
+Upload an image:
+
+```bash
+curl -X POST http://localhost:3000/api/admin/uploads/image \
+  -H 'Authorization: Bearer <ADMIN_TOKEN>' \
+  -F 'image=@./meal.jpg' \
+  -F 'folder=meals'
+```
+
 ### Webhooks
 
 ```bash
@@ -521,10 +532,12 @@ From `.env.example` and runtime code:
 - `PORT`
 - OTP: `OTP_TTL_MINUTES`, `OTP_COOLDOWN_SECONDS`, `OTP_MAX_ATTEMPTS`, `OTP_HASH_SECRET`
 - Twilio: `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM`
+- Cloudinary: `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`
 - Moyasar: `MOYASAR_SECRET_KEY`, `MOYASAR_WEBHOOK_SECRET`
 - URLs: `APP_URL`
 - Auth dev bypass: `DEV_AUTH_BYPASS`, `DEV_STATIC_TOKEN`, `DEV_STATIC_USER_ID`, `DEV_STATIC_ROLE`
 - Rate limit: `RATE_LIMIT_OTP_WINDOW_MS`, `RATE_LIMIT_OTP_MAX`, `RATE_LIMIT_CHECKOUT_WINDOW_MS`, `RATE_LIMIT_CHECKOUT_MAX`
+- Uploads: `IMAGE_UPLOAD_MAX_BYTES`
 - Infra/security: `TRUST_PROXY`, `CORS_ORIGINS`
 - Token TTL: `APP_ACCESS_TOKEN_TTL`
 

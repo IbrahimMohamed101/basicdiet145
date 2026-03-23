@@ -17,6 +17,8 @@ const {
 } = require("../utils/date");
 const { writeLog } = require("../utils/log");
 const { logger } = require("../utils/logger");
+const { getRequestLang } = require("../utils/i18n");
+const { buildPaymentDescription } = require("../utils/subscriptionWriteLocalization");
 const errorResponse = require("../utils/errorResponse");
 
 async function getSettingValue(key, fallback) {
@@ -184,6 +186,7 @@ async function addCustomSaladToSubscriptionDay(req, res) {
 
     const snapshot = await buildCustomSaladSnapshot(ingredients);
     const appUrl = process.env.APP_URL || "https://example.com";
+    const lang = getRequestLang(req);
 
     const checkoutMetadata = {
       type: "custom_salad_day",
@@ -194,7 +197,7 @@ async function addCustomSaladToSubscriptionDay(req, res) {
 
     const invoice = await createInvoice({
       amount: snapshot.totalPrice,
-      description: `Custom salad (${date})`,
+      description: buildPaymentDescription("customSalad", lang, { date }),
       callbackUrl: `${appUrl}/api/webhooks/moyasar`,
       successUrl: successUrl || `${appUrl}/payments/success`,
       backUrl: backUrl || `${appUrl}/payments/cancel`,

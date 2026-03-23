@@ -9,6 +9,20 @@ const { writeLog } = require("../utils/log");
 const { notifyUser } = require("../utils/notify");
 const { getEffectiveDeliveryDetails } = require("../utils/delivery");
 const { resolveMealsPerDay, applyDayWalletSelections, resolveDayWalletSelections } = require("../utils/subscriptionDaySelectionSync");
+const { isPhase2CanonicalDayPlanningEnabled } = require("../utils/featureFlags");
+const {
+  isCanonicalDayPlanningEligible,
+  applyCanonicalDraftPlanningToDay,
+  buildScopedCanonicalPlanningSnapshot,
+} = require("../services/subscriptionDayPlanningService");
+const {
+  isCanonicalRecurringAddonEligible,
+  resolveProjectedRecurringAddons,
+  applyRecurringAddonProjectionToDay,
+  buildScopedRecurringAddonSnapshot,
+} = require("../services/recurringAddonService");
+const { buildOneTimeAddonPlanningSnapshot } = require("../services/oneTimeAddonPlanningService");
+const { getRemainingPremiumCredits } = require("../services/genericPremiumWalletService");
 const {
   sumPremiumRemainingFromBalance,
   syncPremiumRemainingFromBalance,
@@ -33,6 +47,7 @@ async function listDailyOrders(req, res) {
   const enrichedDays = days.map(d => {
     const sub = d.subscriptionId;
     const subscriptionAddons = sub ? sub.addonSubscriptions || [] : [];
+    const recurringAddons = sub ? resolveProjectedRecurringAddons({ subscription: sub, day: d }) : [];
     const effectiveAddress = sub
       ? (d.deliveryAddressOverride && Object.keys(d.deliveryAddressOverride).length > 0 ? d.deliveryAddressOverride : sub.deliveryAddress)
       : null;
@@ -52,13 +67,14 @@ async function listDailyOrders(req, res) {
     return {
       ...d,
       subscriptionAddons,
+      recurringAddons,
       effectiveAddress,
       effectiveWindow,
       customSalads: customSaladsSnapshot,
       customMeals: customMealsSnapshot,
       premiumUpgradeSelections,
       addonCreditSelections,
-      kitchenAddons: [...subscriptionAddons, ...(d.addonsOneTime || [])],
+      kitchenAddons: [...(recurringAddons.length ? recurringAddons : subscriptionAddons), ...(d.addonsOneTime || [])],
     };
   });
 
@@ -131,7 +147,7 @@ async function assignMeals(req, res) {
 
     // MEDIUM AUDIT FIX: Enforce premium entitlement when kitchen updates day selections.
     const previousPremiumCount = existingDay ? existingDay.premiumSelections.length : 0;
-    const premiumEntitlement = sumPremiumRemainingFromBalance(sub.premiumBalance || []) + previousPremiumCount;
+    const premiumEntitlement = getRemainingPremiumCredits(sub) + previousPremiumCount;
     if (premiumSelections.length > premiumEntitlement) {
       await session.abortTransaction();
       session.endSession();
@@ -164,6 +180,25 @@ async function assignMeals(req, res) {
       }
     }
 
+    if (isCanonicalRecurringAddonEligible(sub)) {
+      applyRecurringAddonProjectionToDay({
+        subscription: sub,
+        day,
+      });
+    }
+    if (isCanonicalDayPlanningEligible(sub, {
+      flagEnabled: isPhase2CanonicalDayPlanningEnabled(),
+    })) {
+      applyCanonicalDraftPlanningToDay({
+        subscription: sub,
+        day,
+        selections,
+        premiumSelections,
+        assignmentSource: "kitchen",
+      });
+      await day.save({ session });
+    }
+
     await writeLog({
       entityType: "subscription_day",
       entityId: day._id,
@@ -190,6 +225,16 @@ async function ensureLockedSnapshot(sub, day, session) {
     subscription: sub,
     day,
   });
+  const planningSnapshot = buildScopedCanonicalPlanningSnapshot({
+    subscription: sub,
+    day,
+    flagEnabled: isPhase2CanonicalDayPlanningEnabled(),
+  });
+  const recurringAddonSnapshot = buildScopedRecurringAddonSnapshot({
+    subscription: sub,
+    day,
+  });
+  const oneTimeAddonSnapshot = buildOneTimeAddonPlanningSnapshot({ day });
   const { address, deliveryWindow } = getEffectiveDeliveryDetails(sub, day);
   day.lockedSnapshot = {
     selections: day.selections,
@@ -208,6 +253,15 @@ async function ensureLockedSnapshot(sub, day, session) {
       addons: sub.addonSubscriptions,
     },
   };
+  if (planningSnapshot) {
+    day.lockedSnapshot.planning = planningSnapshot;
+  }
+  if (recurringAddonSnapshot) {
+    day.lockedSnapshot.recurringAddons = recurringAddonSnapshot;
+  }
+  if (oneTimeAddonSnapshot) {
+    Object.assign(day.lockedSnapshot, oneTimeAddonSnapshot);
+  }
   day.lockedAt = new Date();
   await day.save({ session });
 }

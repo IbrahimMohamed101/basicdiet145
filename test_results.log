@@ -1,0 +1,542 @@
+Running test/adminCanonicalCreate.test.js...
+✔ createSubscriptionAdmin uses canonical contract activation when admin canonical flag is enabled (3.438373ms)
+✔ createSubscriptionAdmin forwards generic premium wallet data only for newly created canonical subscriptions when Phase 2 flag is enabled (0.798594ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 9.206507
+Running test/genericPremiumWalletService.test.js...
+✔ generic premium wallet builds rows and syncs premiumRemaining (0.910945ms)
+✔ generic premium wallet consumes FIFO and refunds back to the original row (0.385985ms)
+✔ generic premium wallet appendGenericPremiumCredits keeps legacy mode subscriptions opt-in only (0.116046ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 10.36379
+Running test/idempotencyService.test.js...
+✔ parseOperationIdempotencyKey reads headers first then body (0.573372ms)
+✔ parseOperationIdempotencyKey rejects keys longer than max (0.307517ms)
+✔ normalizeOperationScope preserves approved scopes and maps known legacy aliases (0.101156ms)
+✔ buildOperationRequestHash is scoped by user and operation (1.500894ms)
+✔ buildContractHash uses canonical business contract only (0.267887ms)
+✔ compareIdempotentRequest returns new, reuse, or conflict (0.09841ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 8.287908
+Running test/oneTimeAddonPlanningService.test.js...
+✔ normalizeOneTimeAddonSelections enforces one item per deterministic category (1.047123ms)
+✔ normalizeOneTimeAddonSelections rejects duplicate one-time addon categories (0.411619ms)
+✔ recomputeOneTimeAddonPlanningState fully replaces final selections and derived pending fields (0.587893ms)
+✔ resolveEffectiveOneTimeAddonPlanning prefers preserved snapshots (0.162187ms)
+✔ assertNoPendingOneTimeAddonPayment blocks confirmation until paid (0.151832ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 11.750462
+Running test/p2s2GenericPremiumIntegration.test.js...
+✔ resolveCheckoutQuoteOrThrow uses premiumCount and generic premium pricing for canonical generic premium mode (2.164616ms)
+✔ topupPremiumCredits normalizes generic premium topup items to a generic premium count for generic subscriptions (1.396906ms)
+✔ consumePremiumSelection and removePremiumSelection use the generic premium wallet for generic subscriptions (2.757818ms)
+✔ getSubscriptionWallet exposes generic premium wallet rows while keeping premiumRemaining as a compatibility mirror (0.820907ms)
+✔ grandfathered legacy subscriptions stay on legacy premium behavior even when the generic premium flag is enabled (1.283361ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 13.764815
+Running test/p2s3PremiumOverageIntegration.test.js...
+{"action":"day_selection_update","date":"2026-03-20","entityId":"69ba517ec44628bf40e0871c","entityType":"subscription_day","error":"Operation `activitylogs.insertOne()` buffering timed out after 10000ms","level":"error","message":"Activity log write failed","stack":"MongooseError: Operation `activitylogs.insertOne()` buffering timed out after 10000ms\n    at Timeout.<anonymous> (/home/hema/Projects/basicdiet145/node_modules/mongoose/lib/drivers/node-mongodb-native/collection.js:187:23)\n    at listOnTimeout (node:internal/timers:605:17)\n    at process.processTimers (node:internal/timers:541:7)","subscriptionId":"69ba517ec44628bf40e0871b","timestamp":"2026-03-18T07:17:28.433Z"}
+✔ updateDaySelection allows canonical generic premium overage and stores pending day overage state (10027.394645ms)
+{"action":"day_selection_update","date":"2026-03-20","entityId":"69ba5188c44628bf40e08725","entityType":"subscription_day","error":"Operation `activitylogs.insertOne()` buffering timed out after 10000ms","level":"error","message":"Activity log write failed","stack":"MongooseError: Operation `activitylogs.insertOne()` buffering timed out after 10000ms\n    at Timeout.<anonymous> (/home/hema/Projects/basicdiet145/node_modules/mongoose/lib/drivers/node-mongodb-native/collection.js:187:23)\n    at listOnTimeout (node:internal/timers:605:17)\n    at process.processTimers (node:internal/timers:541:7)","subscriptionId":"69ba5188c44628bf40e08727","timestamp":"2026-03-18T07:17:38.451Z"}
+✔ updateDaySelection recomputes final premium overage state on same requested selections after credits become available (10011.254867ms)
+✔ confirmDayPlanning blocks canonical generic days with unpaid premium overage (5.075018ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 20048.991818
+Running test/p2s3PremiumOveragePaymentIntegration.test.js...
+✔ createPremiumOverageDayPayment creates a day-scoped overage payment from authoritative day state (5.90573ms)
+✔ createPremiumOverageDayPayment returns idempotency conflict when the same key is reused with a different overage snapshot (0.993012ms)
+{"action":"day_plan_confirm","date":"2026-03-20","entityId":"69ba519220590cda0e49d854","entityType":"subscription_day","error":"Operation `activitylogs.insertOne()` buffering timed out after 10000ms","level":"error","message":"Activity log write failed","stack":"MongooseError: Operation `activitylogs.insertOne()` buffering timed out after 10000ms\n    at Timeout.<anonymous> (/home/hema/Projects/basicdiet145/node_modules/mongoose/lib/drivers/node-mongodb-native/collection.js:187:23)\n    at listOnTimeout (node:internal/timers:605:17)\n    at process.processTimers (node:internal/timers:541:7)","subscriptionId":"69ba519220590cda0e49d853","timestamp":"2026-03-18T07:17:48.754Z"}
+✔ verifyPremiumOverageDayPayment applies paid overage settlement and confirmDayPlanning succeeds afterward (10020.408345ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 10031.109314
+Running test/p2s4OneTimeAddonPaymentIntegration.test.js...
+✔ createOneTimeAddonDayPlanningPayment creates a day-scoped one-time add-on payment from authoritative day selections (10.792148ms)
+✔ createOneTimeAddonDayPlanningPayment returns idempotency conflict when the same key is reused with a changed day snapshot (1.108233ms)
+✔ verifyOneTimeAddonDayPlanningPayment applies paid day settlement and confirmDayPlanning succeeds afterward (2.345743ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 19.121003
+Running test/p2s4OneTimeAddonPlanningIntegration.test.js...
+{"date":"2026-03-19","level":"info","message":"Automation cutoff start","timestamp":"2026-03-18T07:17:49.325Z"}
+{"count":1,"level":"info","message":"Automation cutoff finished","timestamp":"2026-03-18T07:17:49.327Z"}
+{"date":"2026-03-19","level":"info","message":"Automation cutoff start","timestamp":"2026-03-18T07:17:49.328Z"}
+{"level":"info","message":"Automation auto-assign meals","subscriptionId":"69ba519d9185e8cbd7d151ed","timestamp":"2026-03-18T07:17:49.328Z"}
+{"count":1,"level":"info","message":"Automation cutoff finished","timestamp":"2026-03-18T07:17:49.328Z"}
+✔ updateDaySelection replaces one-time add-on planning state and recomputes pending fields for canonical subscriptions (7.485484ms)
+✔ updateDaySelection clears one-time add-on pending state when the final requested state is empty (1.369566ms)
+✔ updateDaySelection keeps legacy subscriptions unchanged even if oneTimeAddonSelections are provided (0.920924ms)
+✔ confirmDayPlanning validates meal count before premium overage and one-time add-ons (1.271246ms)
+✔ confirmDayPlanning validates premium overage before one-time add-ons (0.857431ms)
+✔ confirmDayPlanning blocks unpaid one-time add-ons after meal count and premium overage checks pass (0.643187ms)
+✔ automation and fulfillment snapshots preserve one-time add-on planning state without recomputation (2.875003ms)
+✔ legacy lock and fulfillment snapshots remain unchanged when no one-time add-on planning state exists (1.021509ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 21.8223
+Running test/p2s4RecurringAddonIntegration.test.js...
+{"action":"day_selection_update","date":"2026-03-22","entityId":"69ba519d23248e0642b193e2","entityType":"subscription_day","error":"Operation `activitylogs.insertOne()` buffering timed out after 10000ms","level":"error","message":"Activity log write failed","stack":"MongooseError: Operation `activitylogs.insertOne()` buffering timed out after 10000ms\n    at Timeout.<anonymous> (/home/hema/Projects/basicdiet145/node_modules/mongoose/lib/drivers/node-mongodb-native/collection.js:187:23)\n    at listOnTimeout (node:internal/timers:605:17)\n    at process.processTimers (node:internal/timers:541:7)","subscriptionId":"69ba519d23248e0642b193e0","timestamp":"2026-03-18T07:17:59.612Z"}
+{"date":"2026-03-19","level":"info","message":"Automation cutoff start","timestamp":"2026-03-18T07:17:59.622Z"}
+{"level":"info","message":"Automation auto-assign meals","subscriptionId":"69ba51a723248e0642b193f3","timestamp":"2026-03-18T07:17:59.622Z"}
+{"level":"info","message":"Automation auto-assign meals","subscriptionId":"69ba51a723248e0642b193f7","timestamp":"2026-03-18T07:17:59.624Z"}
+{"count":2,"level":"info","message":"Automation cutoff finished","timestamp":"2026-03-18T07:17:59.624Z"}
+✔ updateDaySelection projects recurring add-ons from subscription entitlements and ignores day-level input (10019.309106ms)
+✔ getSubscriptionDay keeps legacy subscriptions unchanged without recurring add-on projection (1.068453ms)
+✔ getSubscriptionDay prefers locked recurring add-on snapshot over recomputing from changed subscription state (0.873199ms)
+✔ automation lock snapshots include recurring add-ons only for canonical subscriptions (4.004878ms)
+✔ fulfilled snapshots include recurring add-ons only for canonical subscriptions (1.365139ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 10032.314423
+Running test/p2s5s1FallbackAlignment.test.js...
+{"date":"2026-03-19","level":"info","message":"Automation cutoff start","timestamp":"2026-03-18T07:18:00.166Z"}
+{"level":"info","message":"Automation auto-assign meals","subscriptionId":"69ba51a820087c5fa02cf615","timestamp":"2026-03-18T07:18:00.170Z"}
+{"count":1,"level":"info","message":"Automation cutoff finished","timestamp":"2026-03-18T07:18:00.172Z"}
+{"date":"2026-03-19","level":"info","message":"Automation cutoff start","timestamp":"2026-03-18T07:18:00.175Z"}
+{"count":1,"level":"info","message":"Automation cutoff finished","timestamp":"2026-03-18T07:18:00.176Z"}
+{"date":"2026-03-19","level":"info","message":"Automation cutoff start","timestamp":"2026-03-18T07:18:00.177Z"}
+{"count":1,"level":"info","message":"Automation cutoff finished","timestamp":"2026-03-18T07:18:00.178Z"}
+{"date":"2026-03-19","level":"info","message":"Automation cutoff start","timestamp":"2026-03-18T07:18:00.179Z"}
+{"count":1,"level":"info","message":"Automation cutoff finished","timestamp":"2026-03-18T07:18:00.181Z"}
+{"date":"2026-03-19","level":"info","message":"Automation cutoff start","timestamp":"2026-03-18T07:18:00.182Z"}
+{"count":1,"level":"info","message":"Automation cutoff finished","timestamp":"2026-03-18T07:18:00.183Z"}
+{"date":"2026-03-19","level":"info","message":"Automation cutoff start","timestamp":"2026-03-18T07:18:00.185Z"}
+{"count":1,"level":"info","message":"Automation cutoff finished","timestamp":"2026-03-18T07:18:00.186Z"}
+{"date":"2026-03-19","level":"info","message":"Automation cutoff start","timestamp":"2026-03-18T07:18:00.187Z"}
+{"count":1,"level":"info","message":"Automation cutoff finished","timestamp":"2026-03-18T07:18:00.188Z"}
+{"date":"2026-03-19","level":"info","message":"Automation cutoff start","timestamp":"2026-03-18T07:18:00.191Z"}
+{"level":"info","message":"Automation auto-assign meals","subscriptionId":"69ba51a820087c5fa02cf63d","timestamp":"2026-03-18T07:18:00.192Z"}
+{"count":1,"level":"info","message":"Automation cutoff finished","timestamp":"2026-03-18T07:18:00.192Z"}
+✔ automation fallback for canonical subscription assigns regular meals and confirms planning (11.924671ms)
+✔ automation fallback for canonical subscription does NOT run if selections already exist (2.608559ms)
+✔ automation fallback for canonical subscription does NOT run if premiumSelections already exist (2.041209ms)
+✔ automation fallback for canonical subscription does NOT run if premiumUpgradeSelections exist (2.325841ms)
+✔ automation fallback for canonical subscription does NOT run if addonCreditSelections exist (3.00491ms)
+✔ automation fallback for canonical subscription does NOT run if one-time addons exist (2.10853ms)
+✔ automation fallback for canonical subscription does NOT run if premium overage exists (3.762ms)
+✔ automation fallback for legacy subscription remains unchanged (no planning state) (2.473947ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 42.232819
+Running test/p2s5s2LockPathAlignment.test.js...
+{"date":"2026-03-19","level":"info","message":"Automation cutoff start","timestamp":"2026-03-18T07:18:00.591Z"}
+{"count":1,"level":"info","message":"Automation cutoff finished","timestamp":"2026-03-18T07:18:00.593Z"}
+{"date":"2026-03-19","level":"info","message":"Automation cutoff start","timestamp":"2026-03-18T07:18:00.595Z"}
+{"count":1,"level":"info","message":"Automation cutoff finished","timestamp":"2026-03-18T07:18:00.595Z"}
+{"date":"2026-03-19","level":"info","message":"Automation cutoff start","timestamp":"2026-03-18T07:18:00.596Z"}
+{"level":"info","message":"Automation auto-assign meals","subscriptionId":"69ba51a89a958dd96fbf6d12","timestamp":"2026-03-18T07:18:00.596Z"}
+{"count":1,"level":"info","message":"Automation cutoff finished","timestamp":"2026-03-18T07:18:00.596Z"}
+{"date":"2026-03-19","level":"info","message":"Automation cutoff start","timestamp":"2026-03-18T07:18:00.597Z"}
+{"count":1,"level":"info","message":"Automation cutoff finished","timestamp":"2026-03-18T07:18:00.597Z"}
+✔ automation lock for canonical subscription captures exhaustive state and read-path uses snapshot (5.860181ms)
+✔ automation lock for canonical subscription captures paid one-time addons status (1.044579ms)
+✔ automation lock for fallback canonical day has confirmed planning snapshot (1.149637ms)
+✔ automation lock for legacy subscription does not include canonical fields (0.913915ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 15.172494
+Running test/p2s6s1ZoneDeliveryFoundation.test.js...
+✔ CheckoutDraft stores delivery zone fields (4.081581ms)
+✔ Subscription activation captures zone details from canonical contract (2.946255ms)
+✔ Legacy activation (no zone) remains unaffected (0.691414ms)
+✔ Pickup subscriptions do not store zone data (0.619615ms)
+✔ resolveDeliveryInput propagates zone fields for delivery mode (0.19742ms)
+✔ resolveDeliveryInput gates zone fields for pickup mode (0.09493ms)
+✔ Subscription activation (Admin Flow) propagates zone details (0.915632ms)
+✔ Existing subscriptions remain untouched (no retrofit check) (0.611243ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 14.737146
+Running test/p2s6s2ZoneFeeSnapshot.test.js...
+▶ Zone Fee Snapshot and Renewal Handling (P2-S6-S2)
+  ✔ New delivery contract snapshots deliveryFeeHalala from active zone (3.944649ms)
+  ✔ Activation persists the snapshotted delivery fee onto the active subscription (1.058977ms)
+  ✔ Renewal uses current zone master fee and snapshot stability (1.626447ms)
+  ✔ Pickup subscriptions do not get zone pricing (0.318313ms)
+  ✔ Inactive zones block new subscriptions but allow renewals (0.540758ms)
+  ✔ Address updates do not trigger repricing (1.075058ms)
+✔ Zone Fee Snapshot and Renewal Handling (P2-S6-S2) (11.524278ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 15.159116
+Running test/p2s7s1FreezeSkipStateFoundation.test.js...
+▶ P2-S7-S1 — Canonical Freeze/Skip State Foundation
+  ✔ (1) SubscriptionDay schema accepts canonicalDayActionType:freeze (4.638281ms)
+  ✔ (2) SubscriptionDay schema accepts canonicalDayActionType:skip (0.634919ms)
+  ✔ (3) SubscriptionDay schema rejects invalid canonicalDayActionType (0.758552ms)
+  ✔ (4) SubscriptionDay schema allows absent canonicalDayActionType (0.416123ms)
+  ✔ (5) countAlreadySkippedDays yields correct count for status:skipped days (0.353811ms)
+  ✔ (6) canonicalDayActionType narrowing: skippedByUser:true without status:skipped is not counted (0.173946ms)
+  ✔ (7) A day with both status:skipped and skippedByUser:true counts as exactly 1 (0.18505ms)
+  ✔ (8) applySkipForDate sets canonicalDayActionType:skip on new day (create path) (0.422161ms)
+  ✔ (9) applySkipForDate sets canonicalDayActionType:skip on existing open day (update path) (0.303946ms)
+  ✔ (10) Freeze write path produces status:frozen + canonicalDayActionType:freeze (0.403691ms)
+  ✔ (11) $unset of canonicalDayActionType leaves field absent (unfreeze pattern) (0.751071ms)
+  ✔ (12) Frozen and skipped days are distinguishable via canonicalDayActionType (0.413621ms)
+  ✔ (13) CANONICAL_SKIP_POLICY_MODE is exported and equals canonical_v1 (0.05581ms)
+  ✔ (14) Serializer explicit mapping exposes canonicalDayActionType for canonical days (0.078664ms)
+  ✔ (15) Serializer explicit mapping omits canonicalDayActionType for legacy days (0.076826ms)
+  ✔ (16) Freeze write path overwrites stale canonicalDayActionType:skip to freeze (0.244198ms)
+✔ P2-S7-S1 — Canonical Freeze/Skip State Foundation (11.577113ms)
+ℹ tests 17
+ℹ suites 0
+ℹ pass 17
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 15.244718
+Running test/p2s7s2ValidityExtension.test.js...
+▶ P2-S7-S2 — Compensation & Validity Extension Logic
+  ✔ (1) Baseline: validityEndDate matches endDate (5.1134ms)
+  ✔ (2) Extension: Freezing 1 day moves validityEndDate forward by 1 (1.651234ms)
+  ✔ (3) Shrink Safety: Unfreezing never deletes days within base contract window (0.73628ms)
+  ✔ (4) Conflict: Cannot shrink if trailing day has selections (0.49933ms)
+  ✔ (5) Regression: validityEndDate = endDate + totalFrozenCount (mixed range) (0.600225ms)
+  ✔ (6) Transition: Frozen day becoming Locked reduces frozenCount and extension (0.50067ms)
+  ✔ (7) Regression: Skip/Unskip does NOT affect validityEndDate (0.461789ms)
+✔ P2-S7-S2 — Compensation & Validity Extension Logic (10.785468ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 14.34918
+Running test/p2s7s3LifecycleCompletion.test.js...
+▶ P2-S7-S3 — Freeze/Skip Compensation Completion
+  ✔ (1) Active Window: Sub beyond endDate but within validityEndDate remains active (1.698835ms)
+  ✔ (2) Operational Extension: Actions allowed on extension days (0.246137ms)
+  ✔ (3) Dynamic Serialization: Manual logic check (parity) (0.222376ms)
+✔ P2-S7-S3 — Freeze/Skip Compensation Completion (2.848808ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 7.495601
+Running test/p3f1Timeline.test.js...
+▶ Canonical Subscription Timeline — Phase 3 Feature 1
+  ✔ Case 1: Baseline (No freeze, no skip, all days present) (2.58967ms)
+  ✔ Case 2: Single freeze → 1 extension day (0.461461ms)
+  ✔ Case 3: Missing days in DB → handle as 'planned' (0.347269ms)
+  ✔ Case 4: Mixed freeze + skip (0.304896ms)
+  ✔ Case 5: Locked frozen day vs Regular frozen day (0.28285ms)
+  ✔ Case 6: Skip only (no extension) (0.270962ms)
+  ✔ Case 7: Multiple freezes -> multiple extension days (0.334685ms)
+  ✔ Case 8: Expired subscription (past validityEndDate) (0.253834ms)
+✔ Canonical Subscription Timeline — Phase 3 Feature 1 (6.662776ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 10.397971
+Running test/paymentApplicationService.test.js...
+✔ shared dispatcher supports only approved Phase 1 payment types (0.590124ms)
+✔ shared dispatcher routes subscription_activation draft payments through draft finalization (0.960749ms)
+✔ shared dispatcher routes legacy subscription_activation subscriptionId payments through pending-subscription activation (0.201371ms)
+✔ shared dispatcher applies premium_topup and writes webhook log only when source is webhook (0.476753ms)
+✔ shared dispatcher applies premium_topup to generic premium wallet subscriptions (0.307274ms)
+✔ shared dispatcher applies one_time_addon to an open day (0.198739ms)
+✔ shared dispatcher applies premium_overage_day by marking the matching day paid without mutating wallet balances (0.439792ms)
+✔ shared dispatcher rejects premium_overage_day when the current day overage no longer matches the payment snapshot (0.195724ms)
+✔ shared dispatcher applies one_time_addon_day_planning by marking the matching day paid without mutating wallets or recurring add-ons (1.123914ms)
+✔ shared dispatcher keeps one_time_order unsupported in Slice C (0.239029ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 18.781228
+Running test/phase1Models.test.js...
+✔ legacy-safe checkout draft still validates without Phase 1 fields (5.308384ms)
+✔ Phase 1 contract fields validate on checkout draft and subscription (2.977322ms)
+✔ Phase 1 idempotency fields validate on payment while remaining optional (0.512559ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 18.055817
+Running test/recurringAddonService.test.js...
+✔ buildRecurringAddonEntitlementsFromQuote normalizes recurring entitlements with one-per-category fields (1.300075ms)
+✔ normalizeRecurringAddonEntitlements rejects duplicate categories (0.341136ms)
+✔ buildProjectedDayEntry adds recurring add-ons only for canonical subscriptions (0.245512ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 10.673566
+Running test/sliceBIntegration.test.js...
+✔ checkoutSubscription with both flags off keeps legacy draft creation behavior unchanged (2.870629ms)
+✔ checkoutSubscription with canonical draft-write flag stores canonical contract fields and keeps response shape (0.800815ms)
+✔ finalizeSubscriptionDraftPayment uses canonical activation path only for canonical drafts when activation flag is on (0.442433ms)
+✔ finalizeSubscriptionDraftPayment falls back to legacy activation when activation flag is off even for canonical drafts (2.168029ms)
+✔ finalizeSubscriptionDraftPayment keeps legacy drafts on legacy activation even when activation flag is on (0.652314ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 12.135697
+Running test/sliceCVerifyIntegration.test.js...
+{"applied":true,"eventType":"payment_paid","hasSecretToken":true,"internalPaymentId":"69ba51ab8c9408063fec042f","invoiceId":"invo...rted","level":"info","message":"Moyasar webhook processed","paymentId":"prov...rted","paymentStatus":"paid","paymentType":"premium_topup","timestamp":"2026-03-18T07:18:03.273Z","unappliedReason":null}
+{"applied":false,"eventType":"payment_paid","hasSecretToken":true,"internalPaymentId":"69ba51ab8c9408063fec0432","invoiceId":"invo...rted","level":"info","message":"Moyasar webhook processed","paymentId":"prov...rted","paymentStatus":"paid","paymentType":"unsupported_type","timestamp":"2026-03-18T07:18:03.275Z","unappliedReason":"unsupported_payment_type"}
+✔ admin verify with dispatcher flag on falls back to legacy logic for unsupported payment types like one_time_order (1.91473ms)
+✔ admin verify with dispatcher flag on uses shared dispatcher for supported payment types (0.607881ms)
+✔ webhook with dispatcher flag on uses shared dispatcher for supported payment types (2.870532ms)
+✔ webhook with dispatcher flag on falls back to legacy logic for unsupported payment types (0.784604ms)
+✔ manual verify keeps supported subscription_activation on dispatcher path only when the dispatcher flag is enabled (1.248476ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 12.551678
+Running test/sliceDReadVisibilityIntegration.test.js...
+✔ getSubscription exposes only minimal additive contract fields for user APIs (2.868177ms)
+✔ getSubscriptionTimeline returns timeline payload and 200 status (2.381115ms)
+✔ getSubscriptionTimeline returns 404 if subscription not found (0.37426ms)
+✔ getSubscriptionTimeline forwards internal service errors via next (0.859723ms)
+✔ admin detail and list reads expose contractMeta and snapshot-first plan name for canonical subscriptions (1.683338ms)
+✔ freezeSubscription uses snapshot freeze policy for canonical subscriptions when snapshot-first reads are enabled (0.711164ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 14.151982
+Running test/sliceEIdempotencyIntegration.test.js...
+✔ topupPremiumCredits with flag off preserves legacy initiation behavior even when an idempotency key is provided (2.774898ms)
+✔ topupPremiumCredits reuses the same initiated payment for same key and same payload when the flag is enabled (0.70857ms)
+✔ topupPremiumCredits returns idempotency conflict for the same key with a different payload (0.583876ms)
+✔ topupAddonCredits uses same-hash dedupe across different idempotency keys for reusable initiated payments (0.724738ms)
+✔ addOneTimeAddon reuses the same initiated payment and preserves response shape (2.32725ms)
+✔ legacy topupPremium persists operation metadata and reuses the legacy response shape cleanly (0.650736ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 12.81489
+Running test/sliceFRenewalSeedIntegration.test.js...
+✔ getSubscriptionRenewalSeed returns a renewal seed for a canonical previous subscription owned by the user (1.41013ms)
+✔ getSubscriptionRenewalSeed forbids access to another user's subscription (0.242943ms)
+✔ getSubscriptionRenewalSeed returns renewal unavailable when safe legacy fields are insufficient (0.274914ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 7.057872
+Running test/sliceP2S1PlanningIntegration.test.js...
+{"action":"day_selection_update","date":"2026-03-20","entityId":"69ba51ac2de6696a5f34d125","entityType":"subscription_day","error":"Operation `activitylogs.insertOne()` buffering timed out after 10000ms","level":"error","message":"Activity log write failed","stack":"MongooseError: Operation `activitylogs.insertOne()` buffering timed out after 10000ms\n    at Timeout.<anonymous> (/home/hema/Projects/basicdiet145/node_modules/mongoose/lib/drivers/node-mongodb-native/collection.js:187:23)\n    at listOnTimeout (node:internal/timers:605:17)\n    at process.processTimers (node:internal/timers:541:7)","subscriptionId":"69ba51ac2de6696a5f34d124","timestamp":"2026-03-18T07:18:14.438Z"}
+✔ updateDaySelection stores canonical planning data for canonical subscriptions when the Phase 2 flag is enabled (10022.505026ms)
+{"action":"day_plan_confirm","date":"2026-03-20","entityId":"69ba51b62de6696a5f34d12b","entityType":"subscription_day","error":"Operation `activitylogs.insertOne()` buffering timed out after 10000ms","level":"error","message":"Activity log write failed","stack":"MongooseError: Operation `activitylogs.insertOne()` buffering timed out after 10000ms\n    at Timeout.<anonymous> (/home/hema/Projects/basicdiet145/node_modules/mongoose/lib/drivers/node-mongodb-native/collection.js:187:23)\n    at listOnTimeout (node:internal/timers:605:17)\n    at process.processTimers (node:internal/timers:541:7)","subscriptionId":"69ba51b62de6696a5f34d12a","timestamp":"2026-03-18T07:18:24.451Z"}
+✔ confirmDayPlanning confirms only exact-count canonical day plans (10009.785955ms)
+✔ confirmDayPlanning rejects under-selected canonical days and getSubscriptionDay keeps planning additive (4.646236ms)
+✔ getSubscriptionDay keeps legacy subscriptions on legacy response shape during coexistence (1.589006ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 20043.623451
+Running test/sliceP2S1SnapshotScopeIntegration.test.js...
+{"date":"2026-03-19","level":"info","message":"Automation cutoff start","timestamp":"2026-03-18T07:18:24.734Z"}
+{"level":"info","message":"Automation auto-assign meals","subscriptionId":"69ba51c0e5c6aac7c2e8f731","timestamp":"2026-03-18T07:18:24.735Z"}
+{"level":"info","message":"Automation auto-assign meals","subscriptionId":"69ba51c0e5c6aac7c2e8f734","timestamp":"2026-03-18T07:18:24.736Z"}
+{"count":2,"level":"info","message":"Automation cutoff finished","timestamp":"2026-03-18T07:18:24.736Z"}
+{"date":"2026-03-19","level":"info","message":"Automation cutoff start","timestamp":"2026-03-18T07:18:24.737Z"}
+{"level":"info","message":"Automation auto-assign meals","subscriptionId":"69ba51c0e5c6aac7c2e8f73f","timestamp":"2026-03-18T07:18:24.738Z"}
+{"count":1,"level":"info","message":"Automation cutoff finished","timestamp":"2026-03-18T07:18:24.738Z"}
+✔ kitchen assignMeals keeps canonical planning synchronized for canonical subscriptions (2.751365ms)
+✔ automation lock snapshot includes planning only for canonical subscriptions when the flag is enabled (5.227113ms)
+✔ automation lock snapshot keeps legacy behavior unchanged when the flag is off (1.328185ms)
+✔ fulfilled snapshots include planning only for canonical subscriptions when the flag is enabled (0.72708ms)
+✔ fulfilled snapshots keep legacy behavior unchanged when the flag is off (0.485136ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 15.818526
+Running test/subscriptionActivationService.test.js...
+✔ isCanonicalCheckoutDraft identifies authoritative canonical drafts (0.915907ms)
+✔ buildCanonicalSubscriptionActivationPayload copies canonical contract metadata and legacy runtime fields (1.802477ms)
+✔ activateSubscriptionFromCanonicalDraft persists subscription, days, and completion state (0.578097ms)
+✔ buildCanonicalSubscriptionActivationPayload supports generic premium wallet drafts (0.394591ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 7.42067
+Running test/subscriptionContractReadService.test.js...
+✔ getSubscriptionContractReadView returns minimal client contract fields and snapshot-first plan name for canonical subscriptions (1.763494ms)
+✔ getSubscriptionContractReadView exposes richer admin contractMeta and labels legacy subscriptions as grandfathered (0.200568ms)
+✔ resolveSubscriptionFreezePolicy uses canonical snapshot freeze policy only when snapshot-first reads are enabled (0.246042ms)
+✔ getSubscriptionContractDiagnostics reports mismatches and fallbacks for canonical subscriptions (0.15996ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 12.119223
+Running test/subscriptionContractService.test.js...
+✔ resolvePhase1StartDate defaults omitted startDate to tomorrow in KSA (2.486499ms)
+✔ resolvePhase1StartDate preserves explicit future date (0.455689ms)
+✔ resolvePhase1StartDate handles omitted startDate just before KSA midnight (0.174966ms)
+✔ resolvePhase1StartDate handles omitted startDate just after KSA midnight (0.226511ms)
+✔ resolvePhase1StartDate normalizes non-KSA timestamp inputs that cross KSA date boundaries (0.330108ms)
+✔ resolvePhase1StartDate rejects non-future dates (0.46171ms)
+✔ buildPhase1SubscriptionContract produces authoritative canonical snapshot (1.547617ms)
+✔ buildPhase1SubscriptionContract uses pricing values from resolved quote only (0.300968ms)
+✔ buildCanonicalDraftPersistenceFields keeps top-level draft startDate aligned with canonical contract (0.404703ms)
+✔ contract hash is stable across source and actor metadata changes (0.496374ms)
+✔ renewal delivery preference is recorded as seed-only metadata (0.315983ms)
+✔ buildPhase1SubscriptionContract captures generic premium entitlement details for canonical premium wallet mode (0.253937ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 12.148281
+Running test/subscriptionDayPlanningService.test.js...
+✔ applyCanonicalDraftPlanningToDay stores base meal slots while allowing partial drafts (1.135423ms)
+✔ confirmCanonicalDayPlanning succeeds only when total selected meals exactly match mealsPerDay (0.330713ms)
+✔ assertCanonicalPlanningExactCount rejects incomplete planning (0.33395ms)
+✔ buildCanonicalPlanningSnapshot preserves additive planning data for lock and fulfillment (0.224852ms)
+✔ applyPremiumOverageState recomputes overage from final requested vs wallet-backed consumed counts (0.131396ms)
+✔ assertNoPendingPremiumOverage blocks confirmation until overage is paid (0.13048ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 11.548371
+Running test/subscriptionRenewalService.test.js...
+✔ resolveRenewalSeedSource prefers canonical snapshot data (0.965855ms)
+✔ resolveRenewalSeedSource falls back to safe legacy subscription fields (0.198662ms)
+✔ validateRenewablePlanOption rejects plans whose same option is no longer sellable (0.385369ms)
+✔ buildSubscriptionRenewalSeed returns a narrow renewable seed only when the same option is still sellable (0.215298ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 10.955782
+ALL_TESTS_PASSED

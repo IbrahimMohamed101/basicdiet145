@@ -6,41 +6,178 @@ const PremiumMeal = require("../models/PremiumMeal");
 const Addon = require("../models/Addon");
 const CheckoutDraft = require("../models/CheckoutDraft");
 const Subscription = require("../models/Subscription");
+const Zone = require("../models/Zone");
 const SubscriptionDay = require("../models/SubscriptionDay");
 const Payment = require("../models/Payment");
 const Setting = require("../models/Setting");
-const {
-  getTodayKSADate,
-  getTomorrowKSADate,
-  isBeforeCutoff,
-  isInSubscriptionRange,
-  isOnOrAfterKSADate,
-  isOnOrAfterTodayKSADate,
-  isValidKSADateString,
-  toKSADateString,
-} = require("../utils/date");
+const dateUtils = require("../utils/date");
 const { canTransition } = require("../utils/state");
 const { writeLog } = require("../utils/log");
 const { getEffectiveDeliveryDetails } = require("../utils/delivery");
 const { createInvoice, getInvoice } = require("../services/moyasarService");
 const { fulfillSubscriptionDay } = require("../services/fulfillmentService");
-const { applySkipForDate, enforceSkipAllowanceOrThrow } = require("../services/subscriptionService");
+const {
+  applySkipForDate,
+  enforceSkipAllowanceOrThrow,
+  syncSubscriptionValidity,
+  buildSubscriptionTimeline,
+} = require("../services/subscriptionService");
+const {
+  buildPhase1SubscriptionContract,
+  buildCanonicalDraftPersistenceFields,
+} = require("../services/subscriptionContractService");
+const {
+  finalizeSubscriptionDraftPaymentFlow,
+  activateSubscriptionFromCanonicalDraft,
+  activateSubscriptionFromLegacyDraft,
+  isCanonicalCheckoutDraft,
+} = require("../services/subscriptionActivationService");
+const {
+  applyWalletTopupPayment: applyWalletTopupSideEffects,
+  applyPaymentSideEffects,
+} = require("../services/paymentApplicationService");
 const { logger } = require("../utils/logger");
 const { getRequestLang, pickLang } = require("../utils/i18n");
 const { resolveMealsPerDay, applyDayWalletSelections } = require("../utils/subscriptionDaySelectionSync");
+const { resolvePickupLocationSelection, resolveQuoteSummary } = require("../utils/subscriptionCatalog");
+const {
+  mapRawDayStatusToClientStatus,
+  resolveCatalogOrStoredName,
+} = require("../utils/subscriptionLocalizationCommon");
+const {
+  getGenericPremiumCreditsLabel,
+  localizeCheckoutDraftStatusReadPayload,
+  localizeSubscriptionDayReadPayload,
+  localizeSubscriptionReadPayload,
+  localizeTimelineReadPayload,
+  localizeRenewalSeedReadPayload,
+  localizeWalletHistoryEntries,
+  localizeWalletTopupStatusReadPayload,
+} = require("../utils/subscriptionReadLocalization");
+const {
+  buildPaymentDescription,
+  localizeSkipRangeSummary,
+  localizeWriteCheckoutStatusPayload,
+  localizeWriteDayPayload,
+  localizeWriteOneTimeAddonPaymentStatusPayload,
+  localizeWritePremiumOverageStatusPayload,
+  localizeWriteSubscriptionPayload,
+  localizeWriteWalletTopupStatusPayload,
+} = require("../utils/subscriptionWriteLocalization");
 const {
   LEGACY_PREMIUM_MEAL_BUCKET_ID,
+  LEGACY_PREMIUM_WALLET_MODE,
   sumPremiumRemainingFromBalance,
   syncPremiumRemainingFromBalance,
   ensureLegacyPremiumBalanceFromRemaining,
 } = require("../utils/premiumWallet");
+const {
+  GENERIC_PREMIUM_WALLET_MODE,
+  isGenericPremiumWalletMode,
+  syncPremiumRemainingFromActivePremiumWallet,
+  getRemainingPremiumCredits,
+  buildGenericPremiumBalanceRows,
+  appendGenericPremiumCredits,
+  consumeGenericPremiumCredits,
+  refundGenericPremiumSelectionRowsOrThrow,
+} = require("../services/genericPremiumWalletService");
 const validateObjectId = require("../utils/validateObjectId");
 const errorResponse = require("../utils/errorResponse");
+const {
+  isPhase1CanonicalCheckoutDraftWriteEnabled,
+  isPhase1SharedPaymentDispatcherEnabled,
+  isPhase1NonCheckoutPaidIdempotencyEnabled,
+  isPhase2CanonicalDayPlanningEnabled,
+  isPhase2GenericPremiumWalletEnabled,
+} = require("../utils/featureFlags");
+const {
+  getSubscriptionContractReadView,
+  resolveSubscriptionFreezePolicy,
+} = require("../services/subscriptionContractReadService");
+const { buildSubscriptionRenewalSeed } = require("../services/subscriptionRenewalService");
+const {
+  isCanonicalDayPlanningEligible,
+  applyCanonicalDraftPlanningToDay,
+  applyPremiumOverageState,
+  confirmCanonicalDayPlanning,
+  assertCanonicalPlanningExactCount,
+  assertNoPendingPremiumOverage,
+  buildCanonicalPlanningView,
+  buildScopedCanonicalPlanningSnapshot,
+  isCanonicalPremiumOverageEligible,
+} = require("../services/subscriptionDayPlanningService");
+const {
+  isCanonicalRecurringAddonEligible,
+  buildRecurringAddonEntitlementsFromQuote,
+  resolveProjectedRecurringAddons,
+  applyRecurringAddonProjectionToDay,
+  buildScopedRecurringAddonSnapshot,
+  buildProjectedDayEntry,
+} = require("../services/recurringAddonService");
+const {
+  normalizeOneTimeAddonSelections,
+  recomputeOneTimeAddonPlanningState,
+  resolveEffectiveOneTimeAddonPlanning,
+  buildOneTimeAddonPlanningSnapshot,
+  buildOneTimeAddonPaymentSnapshot,
+  matchesOneTimeAddonPaymentSnapshot,
+  assertNoPendingOneTimeAddonPayment,
+} = require("../services/oneTimeAddonPlanningService");
+const {
+  parseOperationIdempotencyKey,
+  buildOperationRequestHash,
+  compareIdempotentRequest,
+} = require("../services/idempotencyService");
 
 const SYSTEM_CURRENCY = "SAR";
 const LEGACY_DAY_PREMIUM_SLOT_PREFIX = "legacy_day_premium_slot_";
 const WALLET_TOPUP_PAYMENT_TYPES = new Set(["premium_topup", "addon_topup"]);
+const PREMIUM_OVERAGE_DAY_PAYMENT_TYPE = "premium_overage_day";
+const ONE_TIME_ADDON_DAY_PLANNING_PAYMENT_TYPE = "one_time_addon_day_planning";
 const LEGACY_PREMIUM_TOPUP_SUNSET_HTTP_DATE = "Tue, 30 Jun 2026 23:59:59 GMT";
+const sliceEDefaultRuntime = {
+  createInvoice: (...args) => createInvoice(...args),
+  parseOperationIdempotencyKey: (...args) => parseOperationIdempotencyKey(...args),
+  buildOperationRequestHash: (...args) => buildOperationRequestHash(...args),
+  compareIdempotentRequest: (...args) => compareIdempotentRequest(...args),
+  async findPaymentByOperationKey({ userId, operationScope, operationIdempotencyKey }) {
+    return Payment.findOne({
+      userId,
+      operationScope,
+      operationIdempotencyKey,
+    }).sort({ createdAt: -1 }).lean();
+  },
+  async findReusableInitiatedPaymentByHash({ userId, operationScope, operationRequestHash }) {
+    return Payment.findOne({
+      userId,
+      operationScope,
+      operationRequestHash,
+      status: "initiated",
+      applied: false,
+    }).sort({ createdAt: -1 }).lean();
+  },
+  async createPayment(payload) {
+    return Payment.create(payload);
+  },
+};
+const sliceP2S1DefaultRuntime = {
+  isCanonicalDayPlanningEligible: (...args) => isCanonicalDayPlanningEligible(...args),
+  isCanonicalPremiumOverageEligible: (...args) => isCanonicalPremiumOverageEligible(...args),
+  applyCanonicalDraftPlanningToDay: (...args) => applyCanonicalDraftPlanningToDay(...args),
+  applyPremiumOverageState: (...args) => applyPremiumOverageState(...args),
+  confirmCanonicalDayPlanning: (...args) => confirmCanonicalDayPlanning(...args),
+  assertCanonicalPlanningExactCount: (...args) => assertCanonicalPlanningExactCount(...args),
+  assertNoPendingPremiumOverage: (...args) => assertNoPendingPremiumOverage(...args),
+  assertNoPendingOneTimeAddonPayment: (...args) => assertNoPendingOneTimeAddonPayment(...args),
+  buildCanonicalPlanningView: (...args) => buildCanonicalPlanningView(...args),
+  isCanonicalRecurringAddonEligible: (...args) => isCanonicalRecurringAddonEligible(...args),
+  resolveProjectedRecurringAddons: (...args) => resolveProjectedRecurringAddons(...args),
+  applyRecurringAddonProjectionToDay: (...args) => applyRecurringAddonProjectionToDay(...args),
+  normalizeOneTimeAddonSelections: (...args) => normalizeOneTimeAddonSelections(...args),
+  recomputeOneTimeAddonPlanningState: (...args) => recomputeOneTimeAddonPlanningState(...args),
+  resolveEffectiveOneTimeAddonPlanning: (...args) => resolveEffectiveOneTimeAddonPlanning(...args),
+  buildOneTimeAddonPlanningSnapshot: (...args) => buildOneTimeAddonPlanningSnapshot(...args),
+};
 
 async function getSettingValue(key, fallback) {
   const setting = await Setting.findOne({ key }).lean();
@@ -61,6 +198,13 @@ function parseNonNegativeInteger(rawValue) {
     return null;
   }
   return parsed;
+}
+
+function parseOptionalNonNegativeInteger(rawValue) {
+  if (rawValue === undefined || rawValue === null || rawValue === "") {
+    return null;
+  }
+  return parseNonNegativeInteger(rawValue);
 }
 
 function normalizeCurrencyValue(value) {
@@ -129,9 +273,16 @@ function buildCheckoutRequestHash({ userId, quote }) {
         quote.delivery && quote.delivery.slot && quote.delivery.slot.slotId
           ? String(quote.delivery.slot.slotId)
           : "",
+      pickupLocationId:
+        quote.delivery && quote.delivery.pickupLocationId
+          ? String(quote.delivery.pickupLocationId)
+          : "",
       address: quote.delivery && quote.delivery.address ? quote.delivery.address : null,
     },
     premiumItems,
+    premiumWalletMode: quote.premiumWalletMode || LEGACY_PREMIUM_WALLET_MODE,
+    premiumCount: Number(quote.premiumCount || 0),
+    premiumUnitPriceHalala: Number(quote.premiumUnitPriceHalala || 0),
     addonItems,
     breakdown: {
       basePlanPriceHalala: Number(quote.breakdown.basePlanPriceHalala || 0),
@@ -144,6 +295,194 @@ function buildCheckoutRequestHash({ userId, quote }) {
   };
 
   return crypto.createHash("sha256").update(JSON.stringify(canonicalPayload)).digest("hex");
+}
+
+function sumCheckoutPremiumItemsQty(items) {
+  return (Array.isArray(items) ? items : []).reduce(
+    (sum, item) => sum + Number(item && item.qty ? item.qty : 0),
+    0
+  );
+}
+
+function normalizeOperationItemsForHash(items, idKey) {
+  return (Array.isArray(items) ? items : [])
+    .map((item) => ({
+      id: String(item && item[idKey] ? item[idKey] : item && item.id ? item.id : "").trim(),
+      qty: Number(item && item.qty ? item.qty : 0),
+    }))
+    .filter((item) => item.id && item.qty > 0)
+    .sort((a, b) => a.id.localeCompare(b.id) || a.qty - b.qty);
+}
+
+function getPaymentMetadata(payment) {
+  return payment && payment.metadata && typeof payment.metadata === "object" ? payment.metadata : {};
+}
+
+function isReusableInitiatedPayment(payment) {
+  const metadata = getPaymentMetadata(payment);
+  return Boolean(
+    payment
+    && payment.status === "initiated"
+    && payment.applied !== true
+    && payment.providerInvoiceId
+    && typeof metadata.paymentUrl === "string"
+    && metadata.paymentUrl.trim()
+  );
+}
+
+function buildNonCheckoutInitiationPayload(payment, fallbackResponseShape) {
+  const metadata = getPaymentMetadata(payment);
+  const responseShape = String(metadata.initiationResponseShape || fallbackResponseShape || "").trim();
+  const payload = {
+    payment_url: metadata.paymentUrl || "",
+    invoice_id: payment && payment.providerInvoiceId ? payment.providerInvoiceId : null,
+    payment_id: payment && payment.id ? payment.id : (payment && payment._id ? String(payment._id) : null),
+  };
+
+  if (
+    responseShape === "premium_credits_topup"
+    || responseShape === "addon_credits_topup"
+    || responseShape === "premium_overage_day"
+    || responseShape === "one_time_addon_day_planning"
+  ) {
+    payload.totalHalala = Number(
+      metadata.totalHalala !== undefined && metadata.totalHalala !== null
+        ? metadata.totalHalala
+        : payment && payment.amount !== undefined
+          ? payment.amount
+          : 0
+    );
+  }
+
+  return payload;
+}
+
+async function maybeHandleNonCheckoutIdempotency({
+  req,
+  res,
+  operationScope,
+  effectivePayload,
+  fallbackResponseShape,
+  runtime,
+}) {
+  if (!isPhase1NonCheckoutPaidIdempotencyEnabled()) {
+    return { shouldContinue: true, idempotencyKey: "", operationRequestHash: "" };
+  }
+
+  let operationIdempotencyKey = "";
+  try {
+    operationIdempotencyKey = runtime.parseOperationIdempotencyKey({
+      headers: req.headers || {},
+      body: req.body || {},
+    });
+  } catch (err) {
+    if (err.code === "VALIDATION_ERROR") {
+      return {
+        shouldContinue: false,
+        response: sendValidationError(res, err.message),
+      };
+    }
+    throw err;
+  }
+
+  if (!operationIdempotencyKey) {
+    return { shouldContinue: true, idempotencyKey: "", operationRequestHash: "" };
+  }
+
+  const operationRequestHash = runtime.buildOperationRequestHash({
+    scope: operationScope,
+    userId: req.userId,
+    effectivePayload,
+  });
+
+  const existingByKey = await runtime.findPaymentByOperationKey({
+    userId: req.userId,
+    operationScope,
+    operationIdempotencyKey,
+  });
+
+  if (existingByKey) {
+    if (!existingByKey.operationRequestHash) {
+      return {
+        shouldContinue: false,
+        response: errorResponse(
+          res,
+          409,
+          "IDEMPOTENCY_CONFLICT",
+          "idempotencyKey is already used by an incompatible payment initiation"
+        ),
+      };
+    }
+
+    const decision = runtime.compareIdempotentRequest({
+      existingRequestHash: existingByKey.operationRequestHash,
+      incomingRequestHash: operationRequestHash,
+    });
+
+    if (decision === "conflict") {
+      return {
+        shouldContinue: false,
+        response: errorResponse(
+          res,
+          409,
+          "IDEMPOTENCY_CONFLICT",
+          "idempotencyKey is already used with a different payment payload"
+        ),
+      };
+    }
+
+    if (decision === "reuse" && isReusableInitiatedPayment(existingByKey)) {
+      return {
+        shouldContinue: false,
+        response: res.status(200).json({
+          ok: true,
+          data: buildNonCheckoutInitiationPayload(existingByKey, fallbackResponseShape),
+        }),
+      };
+    }
+
+    return {
+      shouldContinue: false,
+      response: errorResponse(
+        res,
+        409,
+        "IDEMPOTENCY_CONFLICT",
+        "idempotencyKey is already used with a non-reusable payment initiation"
+      ),
+    };
+  }
+
+  const existingByHash = await runtime.findReusableInitiatedPaymentByHash({
+    userId: req.userId,
+    operationScope,
+    operationRequestHash,
+  });
+
+  if (existingByHash && isReusableInitiatedPayment(existingByHash)) {
+    return {
+      shouldContinue: false,
+      response: res.status(200).json({
+        ok: true,
+        data: buildNonCheckoutInitiationPayload(existingByHash, fallbackResponseShape),
+      }),
+    };
+  }
+
+  return {
+    shouldContinue: true,
+    idempotencyKey: operationIdempotencyKey,
+    operationRequestHash,
+  };
+}
+
+function buildPaymentMetadataWithInitiationFields(baseMetadata, { paymentUrl, responseShape, totalHalala }) {
+  const metadata = Object.assign({}, baseMetadata || {});
+  metadata.paymentUrl = paymentUrl || "";
+  metadata.initiationResponseShape = responseShape;
+  if (totalHalala !== undefined) {
+    metadata.totalHalala = Number(totalHalala || 0);
+  }
+  return metadata;
 }
 
 function buildCheckoutReusePayload(draft, payment) {
@@ -243,7 +582,7 @@ function buildProviderInvoicePayload(providerInvoice, fallbackUrl) {
   };
 }
 
-async function loadWalletCatalogMaps({ subscription = null, payments = [], lang }) {
+async function loadWalletCatalogMaps({ subscription = null, payments = [], days = [], lang }) {
   const premiumIds = new Set();
   const addonIds = new Set();
 
@@ -271,6 +610,64 @@ async function loadWalletCatalogMaps({ subscription = null, payments = [], lang 
     for (const row of subscription.addonSelections || []) {
       if (row && row.addonId) addonIds.add(String(row.addonId));
     }
+    for (const row of subscription.addonSubscriptions || []) {
+      if (row && row.addonId) addonIds.add(String(row.addonId));
+    }
+  }
+
+  for (const day of Array.isArray(days) ? days : []) {
+    for (const row of day && Array.isArray(day.recurringAddons) ? day.recurringAddons : []) {
+      const hasStoredName = Boolean(
+        row
+        && (
+          (typeof row.name === "string" && row.name.trim())
+          || (row.name && typeof row.name === "object")
+        )
+      );
+      const snapshotBacked = Boolean(day && (day.lockedSnapshot || day.fulfilledSnapshot));
+      if (row && row.addonId && !(snapshotBacked && hasStoredName)) {
+        addonIds.add(String(row.addonId));
+      }
+    }
+    for (const row of day && Array.isArray(day.oneTimeAddonSelections) ? day.oneTimeAddonSelections : []) {
+      const hasStoredName = Boolean(
+        row
+        && (
+          (typeof row.name === "string" && row.name.trim())
+          || (row.name && typeof row.name === "object")
+        )
+      );
+      const snapshotBacked = Boolean(day && (day.lockedSnapshot || day.fulfilledSnapshot));
+      if (row && row.addonId && !(snapshotBacked && hasStoredName)) {
+        addonIds.add(String(row.addonId));
+      }
+    }
+    const snapshots = [
+      day && day.lockedSnapshot && typeof day.lockedSnapshot === "object" ? day.lockedSnapshot : null,
+      day && day.fulfilledSnapshot && typeof day.fulfilledSnapshot === "object" ? day.fulfilledSnapshot : null,
+    ].filter(Boolean);
+    for (const snapshot of snapshots) {
+      for (const row of Array.isArray(snapshot.recurringAddons) ? snapshot.recurringAddons : []) {
+        const hasStoredName = Boolean(
+          row
+          && (
+            (typeof row.name === "string" && row.name.trim())
+            || (row.name && typeof row.name === "object")
+          )
+        );
+        if (row && row.addonId && !hasStoredName) addonIds.add(String(row.addonId));
+      }
+      for (const row of Array.isArray(snapshot.oneTimeAddonSelections) ? snapshot.oneTimeAddonSelections : []) {
+        const hasStoredName = Boolean(
+          row
+          && (
+            (typeof row.name === "string" && row.name.trim())
+            || (row.name && typeof row.name === "object")
+          )
+        );
+        if (row && row.addonId && !hasStoredName) addonIds.add(String(row.addonId));
+      }
+    }
   }
 
   premiumIds.delete(LEGACY_PREMIUM_MEAL_BUCKET_ID);
@@ -287,13 +684,46 @@ async function loadWalletCatalogMaps({ subscription = null, payments = [], lang 
   return {
     premiumNames: new Map(premiumDocs.map((doc) => [String(doc._id), pickLang(doc.name, lang)])),
     addonNames: new Map(addonDocs.map((doc) => [String(doc._id), pickLang(doc.name, lang)])),
-    legacyPremiumLabel: lang === "en" ? "Premium credits" : "رصيد بريميوم",
+    legacyPremiumLabel: getGenericPremiumCreditsLabel(lang),
   };
+}
+
+async function loadWalletCatalogMapsSafely(options = {}) {
+  try {
+    return await loadWalletCatalogMaps(options);
+  } catch (err) {
+    logger.warn("Wallet catalog localization fallback engaged", {
+      error: err.message,
+      context: options && options.context ? options.context : "unknown",
+    });
+    return {
+      premiumNames: new Map(),
+      addonNames: new Map(),
+      legacyPremiumLabel: getGenericPremiumCreditsLabel(options.lang),
+    };
+  }
 }
 
 function buildWalletTopupItems(payment, catalog) {
   const metadata = payment && payment.metadata && typeof payment.metadata === "object" ? payment.metadata : {};
   const walletType = resolveWalletTopupKind(payment.type);
+
+  if (walletType === "premium" && metadata.premiumWalletMode === GENERIC_PREMIUM_WALLET_MODE) {
+    const qty = Number(metadata.premiumCount || metadata.count || 0);
+    const unitAmountHalala = Number(metadata.unitCreditPriceHalala || 0);
+    if (qty > 0) {
+      return [{
+        id: String(payment._id),
+        walletType,
+        itemId: null,
+        name: catalog.legacyPremiumLabel,
+        qty,
+        unitAmountHalala,
+        totalAmountHalala: qty * unitAmountHalala,
+        currency: metadata.currency || payment.currency || SYSTEM_CURRENCY,
+      }];
+    }
+  }
 
   if (Array.isArray(metadata.items) && metadata.items.length) {
     return metadata.items.map((item, index) => {
@@ -379,10 +809,155 @@ function buildWalletTopupStatusPayload({ subscription, payment, catalog, provide
   };
 }
 
+function buildPremiumOveragePaymentStatusPayload({ subscription, day, payment, providerInvoice = null }) {
+  return {
+    subscriptionId: String(subscription._id),
+    dayId: day && day._id ? String(day._id) : null,
+    date: day && day.date ? day.date : null,
+    premiumOverageCount: Number(day && day.premiumOverageCount ? day.premiumOverageCount : 0),
+    premiumOverageStatus: day && day.premiumOverageStatus ? day.premiumOverageStatus : null,
+    paymentId: String(payment._id),
+    paymentStatus: payment.status,
+    isFinal: ["paid", "failed", "canceled", "expired", "refunded"].includes(payment.status),
+    amount: Number(payment.amount || 0),
+    currency: payment.currency || SYSTEM_CURRENCY,
+    applied: Boolean(payment.applied),
+    providerInvoiceId: payment.providerInvoiceId || null,
+    providerPaymentId: payment.providerPaymentId || null,
+    createdAt: payment.createdAt || null,
+    updatedAt: payment.updatedAt || null,
+    payment: serializeCheckoutPayment(payment),
+    providerInvoice: buildProviderInvoicePayload(providerInvoice, getPaymentMetadata(payment).paymentUrl || ""),
+  };
+}
+
+function buildOneTimeAddonDayPaymentStatusPayload({ subscription, day, payment, providerInvoice = null }) {
+  const effectivePlanning = resolveEffectiveOneTimeAddonPlanning({ day }) || {
+    oneTimeAddonSelections: [],
+    oneTimeAddonPendingCount: 0,
+    oneTimeAddonPaymentStatus: null,
+  };
+  return {
+    subscriptionId: String(subscription._id),
+    dayId: day && day._id ? String(day._id) : null,
+    date: day && day.date ? day.date : null,
+    oneTimeAddonSelections: effectivePlanning.oneTimeAddonSelections,
+    oneTimeAddonPendingCount: Number(effectivePlanning.oneTimeAddonPendingCount || 0),
+    oneTimeAddonPaymentStatus: effectivePlanning.oneTimeAddonPaymentStatus,
+    paymentId: String(payment._id),
+    paymentStatus: payment.status,
+    isFinal: ["paid", "failed", "canceled", "expired", "refunded"].includes(payment.status),
+    amount: Number(payment.amount || 0),
+    currency: payment.currency || SYSTEM_CURRENCY,
+    applied: Boolean(payment.applied),
+    providerInvoiceId: payment.providerInvoiceId || null,
+    providerPaymentId: payment.providerPaymentId || null,
+    createdAt: payment.createdAt || null,
+    updatedAt: payment.updatedAt || null,
+    payment: serializeCheckoutPayment(payment),
+    providerInvoice: buildProviderInvoicePayload(providerInvoice, getPaymentMetadata(payment).paymentUrl || ""),
+  };
+}
+
+function isCanonicalGenericPremiumOverageEligibleForDay(subscription, day) {
+  return Boolean(
+    day
+      && day.status === "open"
+      && isCanonicalPremiumOverageEligible(subscription, {
+        dayPlanningFlagEnabled: isPhase2CanonicalDayPlanningEnabled(),
+        genericPremiumWalletFlagEnabled: isPhase2GenericPremiumWalletEnabled(),
+      })
+  );
+}
+
+function isCanonicalOneTimeAddonPlanningPaymentEligibleForDay(subscription, day) {
+  return Boolean(
+    day
+      && day.status === "open"
+      && isCanonicalDayPlanningEligible(subscription, {
+        flagEnabled: isPhase2CanonicalDayPlanningEnabled(),
+      })
+  );
+}
+
+async function buildPricedOneTimeAddonPaymentSnapshot({ day } = {}) {
+  const snapshot = buildOneTimeAddonPaymentSnapshot({ day });
+  if (snapshot.oneTimeAddonCount <= 0) {
+    return {
+      oneTimeAddonSelections: [],
+      oneTimeAddonCount: 0,
+      pricedItems: [],
+      totalHalala: 0,
+      currency: SYSTEM_CURRENCY,
+    };
+  }
+
+  const addonDocs = await Addon.find({
+    _id: { $in: snapshot.oneTimeAddonSelections.map((item) => item.addonId) },
+  }).lean();
+  const addonById = new Map(addonDocs.map((doc) => [String(doc._id), doc]));
+
+  const pricedItems = snapshot.oneTimeAddonSelections.map((item) => {
+    const doc = addonById.get(String(item.addonId));
+    if (!doc) {
+      const err = new Error(`Add-on ${item.addonId} pricing not found`);
+      err.code = "ONE_TIME_ADDON_PRICING_NOT_FOUND";
+      throw err;
+    }
+
+    return {
+      addonId: String(item.addonId),
+      name: item.name,
+      category: item.category,
+      unitPriceHalala: buildAddonUnitFromDoc(doc),
+      currency: assertSystemCurrencyOrThrow(doc.currency || SYSTEM_CURRENCY, `Addon ${item.addonId} currency`),
+    };
+  });
+
+  return {
+    oneTimeAddonSelections: snapshot.oneTimeAddonSelections,
+    oneTimeAddonCount: snapshot.oneTimeAddonCount,
+    pricedItems,
+    totalHalala: pricedItems.reduce((sum, item) => sum + Number(item.unitPriceHalala || 0), 0),
+    currency: pricedItems[0] && pricedItems[0].currency ? pricedItems[0].currency : SYSTEM_CURRENCY,
+  };
+}
+
 async function applyPremiumTopupPayment({ subscription, payment, session }) {
   const metadata = payment && payment.metadata && typeof payment.metadata === "object" ? payment.metadata : {};
   if (metadata.subscriptionId && String(metadata.subscriptionId) !== String(subscription._id)) {
     return { applied: false, reason: "subscription_mismatch" };
+  }
+
+  if (isGenericPremiumWalletMode(subscription)) {
+    const count = parseInt(
+      metadata.premiumCount
+      || metadata.count
+      || (Array.isArray(metadata.items)
+        ? metadata.items.reduce((sum, item) => sum + parseInt(item && item.qty, 10), 0)
+        : 0),
+      10
+    );
+    if (count <= 0) {
+      return { applied: false, reason: "invalid_metadata" };
+    }
+
+    const configuredUnit = Number(metadata.unitCreditPriceHalala);
+    const fallbackUnit = Math.round(Number(payment.amount || 0) / count);
+    const unitCreditPriceHalala = Number.isInteger(configuredUnit) && configuredUnit >= 0
+      ? configuredUnit
+      : Number.isFinite(fallbackUnit) && fallbackUnit >= 0
+        ? fallbackUnit
+        : 0;
+
+    appendGenericPremiumCredits(subscription, {
+      premiumCount: count,
+      unitCreditPriceHalala,
+      currency: payment.currency || SYSTEM_CURRENCY,
+      source: "topup_payment",
+    });
+    await subscription.save({ session });
+    return { applied: true, addedCount: count };
   }
 
   subscription.premiumBalance = subscription.premiumBalance || [];
@@ -470,13 +1045,11 @@ async function applyAddonTopupPayment({ subscription, payment, session }) {
 }
 
 async function applyWalletTopupPayment({ subscription, payment, session }) {
-  if (payment.type === "premium_topup") {
-    return applyPremiumTopupPayment({ subscription, payment, session });
-  }
-  if (payment.type === "addon_topup") {
-    return applyAddonTopupPayment({ subscription, payment, session });
-  }
-  return { applied: false, reason: "unsupported_payment_type" };
+  return applyWalletTopupSideEffects({ payment, session, source: "client_manual_verify" }, {
+    async findSubscriptionById() {
+      return subscription;
+    },
+  });
 }
 
 function buildSubscriptionCheckoutStatusPayload({ draft, payment, providerInvoice = null }) {
@@ -523,136 +1096,18 @@ function buildSubscriptionCheckoutStatusPayload({ draft, payment, providerInvoic
   };
 }
 
-async function finalizeSubscriptionDraftPayment({ draft, payment, session }) {
-  if (!draft) {
-    return { applied: false, reason: "draft_not_found" };
-  }
-  if (String(draft.userId) !== String(payment.userId)) {
-    return { applied: false, reason: "draft_user_mismatch" };
-  }
-
-  if (draft.subscriptionId) {
-    const existingSub = await Subscription.findById(draft.subscriptionId).session(session);
-    if (!existingSub) {
-      return { applied: false, reason: "draft_subscription_missing" };
+async function finalizeSubscriptionDraftPayment({ draft, payment, session }, runtimeOverrides = null) {
+  const runtime = runtimeOverrides
+    ? {
+      isCanonicalCheckoutDraft:
+        runtimeOverrides.isCanonicalCheckoutDraft || sliceBDefaultRuntime().isCanonicalCheckoutDraft,
+      activateSubscriptionFromCanonicalDraft:
+        runtimeOverrides.activateSubscriptionFromCanonicalDraft || sliceBDefaultRuntime().activateSubscriptionFromCanonicalDraft,
+      activateSubscriptionFromLegacyDraft:
+        runtimeOverrides.activateSubscriptionFromLegacyDraft || sliceBDefaultRuntime().activateSubscriptionFromLegacyDraft,
     }
-    if (draft.status !== "completed") {
-      draft.status = "completed";
-      draft.completedAt = draft.completedAt || new Date();
-      draft.paymentId = payment._id;
-      draft.providerInvoiceId = payment.providerInvoiceId || draft.providerInvoiceId;
-      draft.failureReason = "";
-      draft.failedAt = undefined;
-      await draft.save({ session });
-    }
-    if (!payment.subscriptionId) {
-      payment.subscriptionId = existingSub._id;
-      await payment.save({ session });
-    }
-    return { applied: true, subscriptionId: String(existingSub._id) };
-  }
-
-  if (!["pending_payment", "failed", "canceled", "expired"].includes(draft.status)) {
-    return { applied: false, reason: `draft_not_recoverable:${draft.status}` };
-  }
-
-  const daysCount = Number(draft.daysCount);
-  const mealsPerDay = Number(draft.mealsPerDay);
-  if (!Number.isInteger(daysCount) || daysCount < 1 || !Number.isInteger(mealsPerDay) || mealsPerDay < 1) {
-    return { applied: false, reason: "invalid_draft_dimensions" };
-  }
-
-  const start = draft.startDate ? new Date(draft.startDate) : new Date();
-  const end = addDays(start, daysCount - 1);
-  const totalMeals = daysCount * mealsPerDay;
-
-  const premiumBalanceRows = (draft.premiumItems || []).map((item) => ({
-    premiumMealId: item.premiumMealId,
-    purchasedQty: Number(item.qty || 0),
-    remainingQty: Number(item.qty || 0),
-    unitExtraFeeHalala: Number(item.unitExtraFeeHalala || 0),
-    currency: item.currency || SYSTEM_CURRENCY,
-  }));
-  const addonBalanceRows = (draft.addonItems || []).map((item) => ({
-    addonId: item.addonId,
-    purchasedQty: Number(item.qty || 0),
-    remainingQty: Number(item.qty || 0),
-    unitPriceHalala: Number(item.unitPriceHalala || 0),
-    currency: item.currency || SYSTEM_CURRENCY,
-  }));
-  const premiumRemaining = sumPremiumRemainingFromBalance(premiumBalanceRows);
-
-  const created = await Subscription.create(
-    [
-      {
-        userId: draft.userId,
-        planId: draft.planId,
-        status: "active",
-        startDate: start,
-        endDate: end,
-        validityEndDate: end,
-        totalMeals,
-        remainingMeals: totalMeals,
-        premiumRemaining,
-        selectedGrams: draft.grams,
-        selectedMealsPerDay: mealsPerDay,
-        basePlanPriceHalala:
-          draft.breakdown && Number.isFinite(Number(draft.breakdown.basePlanPriceHalala))
-            ? Number(draft.breakdown.basePlanPriceHalala)
-            : 0,
-        checkoutCurrency:
-          draft.breakdown && draft.breakdown.currency
-            ? String(draft.breakdown.currency)
-            : SYSTEM_CURRENCY,
-        premiumBalance: premiumBalanceRows,
-        addonBalance: addonBalanceRows,
-        addonSubscriptions: Array.isArray(draft.addonSubscriptions) ? draft.addonSubscriptions : [],
-        deliveryMode: draft.delivery && draft.delivery.type ? draft.delivery.type : "delivery",
-        deliveryAddress:
-          draft.delivery && Object.prototype.hasOwnProperty.call(draft.delivery, "address")
-            ? draft.delivery.address || undefined
-            : undefined,
-        deliveryWindow:
-          draft.delivery && draft.delivery.slot && draft.delivery.slot.window
-            ? draft.delivery.slot.window
-            : undefined,
-        deliverySlot:
-          draft.delivery && draft.delivery.slot
-            ? draft.delivery.slot
-            : { type: draft.delivery && draft.delivery.type ? draft.delivery.type : "delivery", window: "", slotId: "" },
-      },
-    ],
-    { session }
-  );
-  const sub = created[0];
-
-  const existingDays = await SubscriptionDay.countDocuments({ subscriptionId: sub._id }).session(session);
-  if (!existingDays) {
-    const dayEntries = [];
-    for (let i = 0; i < daysCount; i += 1) {
-      const currentDate = addDays(start, i);
-      dayEntries.push({
-        subscriptionId: sub._id,
-        date: toKSADateString(currentDate),
-        status: "open",
-      });
-    }
-    await SubscriptionDay.insertMany(dayEntries, { session });
-  }
-
-  draft.status = "completed";
-  draft.completedAt = new Date();
-  draft.paymentId = payment._id;
-  draft.providerInvoiceId = payment.providerInvoiceId || draft.providerInvoiceId;
-  draft.subscriptionId = sub._id;
-  draft.failureReason = "";
-  draft.failedAt = undefined;
-  await draft.save({ session });
-
-  payment.subscriptionId = sub._id;
-  await payment.save({ session });
-
-  return { applied: true, subscriptionId: String(sub._id) };
+    : null;
+  return sliceBDefaultRuntime().finalizeSubscriptionDraftPaymentFlow({ draft, payment, session }, runtime);
 }
 
 function resolveAddonUnitPriceHalala(addon) {
@@ -698,6 +1153,82 @@ function getNextLegacyDayPremiumSlotIndex(existingRows) {
     return parsed > max ? parsed : max;
   }, -1);
   return maxIndex + 1;
+}
+
+function extractAddedPremiumSelectionIds(previousSelections, nextSelections, qty) {
+  const remainingCounts = new Map();
+  for (const mealId of Array.isArray(previousSelections) ? previousSelections : []) {
+    const key = String(mealId || "");
+    remainingCounts.set(key, (remainingCounts.get(key) || 0) + 1);
+  }
+
+  const added = [];
+  for (const mealId of Array.isArray(nextSelections) ? nextSelections : []) {
+    const key = String(mealId || "");
+    const existingCount = remainingCounts.get(key) || 0;
+    if (existingCount > 0) {
+      remainingCounts.set(key, existingCount - 1);
+      continue;
+    }
+    if (key) {
+      added.push(key);
+    }
+  }
+
+  return added.slice(0, qty);
+}
+
+function sortDayPremiumRowsByConsumedAt(rows) {
+  return (Array.isArray(rows) ? rows : [])
+    .slice()
+    .sort((a, b) => new Date(a && a.consumedAt ? a.consumedAt : 0).getTime() - new Date(b && b.consumedAt ? b.consumedAt : 0).getTime());
+}
+
+function reconcileWalletBackedPremiumRowsForRequestedSelections(currentRows, requestedPremiumSelections) {
+  const requestedCounts = new Map();
+  for (const mealId of Array.isArray(requestedPremiumSelections) ? requestedPremiumSelections : []) {
+    const key = String(mealId || "");
+    if (!key) continue;
+    requestedCounts.set(key, (requestedCounts.get(key) || 0) + 1);
+  }
+
+  const retainedRows = [];
+  const refundableRows = [];
+  for (const row of sortDayPremiumRowsByConsumedAt(currentRows)) {
+    const key = String(row && row.premiumMealId ? row.premiumMealId : "");
+    const remainingRequested = requestedCounts.get(key) || 0;
+    if (remainingRequested > 0) {
+      retainedRows.push(row);
+      requestedCounts.set(key, remainingRequested - 1);
+    } else {
+      refundableRows.push(row);
+    }
+  }
+
+  const retainedCounts = new Map();
+  for (const row of retainedRows) {
+    const key = String(row && row.premiumMealId ? row.premiumMealId : "");
+    retainedCounts.set(key, (retainedCounts.get(key) || 0) + 1);
+  }
+
+  const unmetRequestedMealIds = [];
+  for (const mealId of Array.isArray(requestedPremiumSelections) ? requestedPremiumSelections : []) {
+    const key = String(mealId || "");
+    const retainedCount = retainedCounts.get(key) || 0;
+    if (retainedCount > 0) {
+      retainedCounts.set(key, retainedCount - 1);
+      continue;
+    }
+    if (key) {
+      unmetRequestedMealIds.push(mealId);
+    }
+  }
+
+  return {
+    retainedRows,
+    refundableRows,
+    unmetRequestedMealIds,
+  };
 }
 
 function consumePremiumBalanceFifoRows(sub, qty) {
@@ -819,6 +1350,13 @@ function resolveDeliveryInput(payload = {}) {
     throw err;
   }
 
+  const pickupLocationId = String(
+    delivery.pickupLocationId
+    || delivery.locationId
+    || payload.pickupLocationId
+    || payload.locationId
+    || ""
+  ).trim();
   const address = delivery.address || payload.deliveryAddress || null;
   const slot = normalizeSlotInput(delivery.slot || { type: normalizedType, window: delivery.window || payload.deliveryWindow });
   if (!slot.type) {
@@ -827,10 +1365,21 @@ function resolveDeliveryInput(payload = {}) {
   if (slot.type !== normalizedType) {
     slot.type = normalizedType;
   }
-  return { type: normalizedType, address, slot };
+  const isDelivery = normalizedType === "delivery";
+  const zoneId = isDelivery && delivery.zoneId ? delivery.zoneId : null;
+  const zoneName = isDelivery && delivery.zoneName ? String(delivery.zoneName || "").trim() : "";
+
+  return { type: normalizedType, address, slot, pickupLocationId, zoneId, zoneName };
 }
 
-async function resolveCheckoutQuoteOrThrow(payload, { enforceActivePlan = true } = {}) {
+async function resolveCheckoutQuoteOrThrow(
+  payload,
+  {
+    enforceActivePlan = true,
+    lang = "ar",
+    useGenericPremiumWallet = false,
+  } = {}
+) {
   const planId = payload && payload.planId;
   try {
     validateObjectId(planId, "planId");
@@ -899,7 +1448,20 @@ async function resolveCheckoutQuoteOrThrow(payload, { enforceActivePlan = true }
   const premiumItems = normalizeCheckoutItemsOrThrow(payload.premiumItems, "premiumMealId", "premiumItems");
   const addonItems = normalizeCheckoutItemsOrThrow(payload.addons, "addonId", "addons");
 
-  const premiumIds = premiumItems.map((item) => item.id);
+  const premiumCountInput = parseOptionalNonNegativeInteger(payload.premiumCount);
+  const compatibilityPremiumCount = sumCheckoutPremiumItemsQty(premiumItems);
+  if (
+    useGenericPremiumWallet
+    && premiumCountInput !== null
+    && compatibilityPremiumCount > 0
+    && premiumCountInput !== compatibilityPremiumCount
+  ) {
+    const err = new Error("premiumCount must match the total qty of premiumItems when both are provided");
+    err.code = "VALIDATION_ERROR";
+    throw err;
+  }
+
+  const premiumIds = useGenericPremiumWallet ? [] : premiumItems.map((item) => item.id);
   const addonIds = addonItems.map((item) => item.id);
 
   const [premiumDocs, addonDocs] = await Promise.all([
@@ -911,23 +1473,39 @@ async function resolveCheckoutQuoteOrThrow(payload, { enforceActivePlan = true }
   const addonById = new Map(addonDocs.map((doc) => [String(doc._id), doc]));
 
   let premiumTotalHalala = 0;
-  const resolvedPremiumItems = [];
-  for (const item of premiumItems) {
-    const doc = premiumById.get(item.id);
-    if (!doc) {
-      const err = new Error(`Premium meal ${item.id} not found or inactive`);
-      err.code = "NOT_FOUND";
-      throw err;
+  let resolvedPremiumItems = [];
+  let premiumCount = 0;
+  let premiumUnitPriceHalala = 0;
+  let premiumWalletMode = LEGACY_PREMIUM_WALLET_MODE;
+  if (useGenericPremiumWallet) {
+    premiumCount = premiumCountInput !== null ? premiumCountInput : compatibilityPremiumCount;
+    const premiumPriceSar = Number(await getSettingValue("premium_price", 20));
+    premiumUnitPriceHalala =
+      Number.isFinite(premiumPriceSar) && premiumPriceSar >= 0
+        ? Math.round(premiumPriceSar * 100)
+        : 0;
+    premiumTotalHalala = premiumUnitPriceHalala * premiumCount;
+    premiumWalletMode = GENERIC_PREMIUM_WALLET_MODE;
+    resolvedPremiumItems = [];
+  } else {
+    for (const item of premiumItems) {
+      const doc = premiumById.get(item.id);
+      if (!doc) {
+        const err = new Error(`Premium meal ${item.id} not found or inactive`);
+        err.code = "NOT_FOUND";
+        throw err;
+      }
+      const unit = parseNonNegativeInteger(doc.extraFeeHalala);
+      if (unit === null) {
+        const err = new Error(`Premium meal ${item.id} has invalid price`);
+        err.code = "INVALID_SELECTION";
+        throw err;
+      }
+      assertSystemCurrencyOrThrow(doc.currency || SYSTEM_CURRENCY, `Premium meal ${item.id} currency`);
+      premiumTotalHalala += unit * item.qty;
+      resolvedPremiumItems.push({ premiumMeal: doc, qty: item.qty, unitExtraFeeHalala: unit, currency: SYSTEM_CURRENCY });
     }
-    const unit = parseNonNegativeInteger(doc.extraFeeHalala);
-    if (unit === null) {
-      const err = new Error(`Premium meal ${item.id} has invalid price`);
-      err.code = "INVALID_SELECTION";
-      throw err;
-    }
-    assertSystemCurrencyOrThrow(doc.currency || SYSTEM_CURRENCY, `Premium meal ${item.id} currency`);
-    premiumTotalHalala += unit * item.qty;
-    resolvedPremiumItems.push({ premiumMeal: doc, qty: item.qty, unitExtraFeeHalala: unit, currency: SYSTEM_CURRENCY });
+    premiumCount = compatibilityPremiumCount;
   }
 
   let addonsTotalHalala = 0;
@@ -951,6 +1529,21 @@ async function resolveCheckoutQuoteOrThrow(payload, { enforceActivePlan = true }
     err.code = "VALIDATION_ERROR";
     throw err;
   }
+  if (delivery.type === "pickup" && delivery.pickupLocationId && !delivery.address) {
+    const pickupLocations = await getSettingValue("pickup_locations", []);
+    const resolvedPickupLocation = resolvePickupLocationSelection(
+      pickupLocations,
+      delivery.pickupLocationId,
+      lang,
+      windows
+    );
+    if (!resolvedPickupLocation) {
+      const err = new Error("Invalid pickup location");
+      err.code = "VALIDATION_ERROR";
+      throw err;
+    }
+    delivery.address = resolvedPickupLocation.address || null;
+  }
   if (delivery.type === "delivery" && !delivery.address) {
     const err = new Error("Missing delivery address");
     err.code = "VALIDATION_ERROR";
@@ -959,14 +1552,27 @@ async function resolveCheckoutQuoteOrThrow(payload, { enforceActivePlan = true }
 
   let deliveryFeeHalala = 0;
   if (delivery.type === "delivery") {
-    const configuredFee = parseNonNegativeInteger(await getSettingValue("subscription_delivery_fee_halala", null));
-    if (configuredFee !== null) {
-      deliveryFeeHalala = configuredFee;
-    } else {
-      const err = new Error("Server delivery fee configuration is missing");
+    if (!delivery.zoneId) {
+      const err = new Error("Delivery zone is required for delivery subscriptions");
       err.code = "VALIDATION_ERROR";
       throw err;
     }
+
+    const zone = await Zone.findById(delivery.zoneId).lean();
+    if (!zone) {
+      const err = new Error("Delivery zone not found");
+      err.code = "NOT_FOUND";
+      throw err;
+    }
+
+    // BUSINESS RULE: Inactive zones block new subscriptions only.
+    if (!zone.isActive && !payload.renewedFromSubscriptionId) {
+      const err = new Error("Selected delivery zone is currently inactive for new subscriptions");
+      err.code = "INVALID_SELECTION";
+      throw err;
+    }
+
+    deliveryFeeHalala = Number(zone.deliveryFeeHalala || 0);
   }
 
   const subtotalHalala = basePlanPriceHalala + premiumTotalHalala + addonsTotalHalala + deliveryFeeHalala;
@@ -983,6 +1589,9 @@ async function resolveCheckoutQuoteOrThrow(payload, { enforceActivePlan = true }
     mealsPerDay,
     startDate: startValidation.value,
     delivery,
+    premiumWalletMode,
+    premiumCount,
+    premiumUnitPriceHalala,
     premiumItems: resolvedPremiumItems,
     addonItems: resolvedAddonItems,
     breakdown: {
@@ -997,28 +1606,39 @@ async function resolveCheckoutQuoteOrThrow(payload, { enforceActivePlan = true }
   };
 }
 
+const sliceBDefaultRuntime = () => ({
+  resolveCheckoutQuoteOrThrow,
+  createInvoice,
+  buildPhase1SubscriptionContract,
+  buildCanonicalDraftPersistenceFields,
+  finalizeSubscriptionDraftPaymentFlow,
+  activateSubscriptionFromCanonicalDraft,
+  activateSubscriptionFromLegacyDraft,
+  isCanonicalCheckoutDraft,
+});
+
 function validateFutureDateOrThrow(date, sub, endDateOverride) {
-  if (!isValidKSADateString(date)) {
+  if (!dateUtils.isValidKSADateString(date)) {
     const err = new Error("Invalid date format");
     err.code = "INVALID_DATE";
     throw err;
   }
 
   // CR-09 FIX: Add lower bound validation - date must be >= today
-  if (!isOnOrAfterTodayKSADate(date)) {
+  if (!dateUtils.isOnOrAfterTodayKSADate(date)) {
     const err = new Error("Date cannot be in the past");
     err.code = "INVALID_DATE";
     throw err;
   }
 
-  const tomorrow = getTomorrowKSADate();
-  if (!isOnOrAfterKSADate(date, tomorrow)) {
+  const tomorrow = dateUtils.getTomorrowKSADate();
+  if (!dateUtils.isOnOrAfterKSADate(date, tomorrow)) {
     const err = new Error("Date must be from tomorrow onward");
     err.code = "INVALID_DATE";
     throw err;
   }
   const endDate = endDateOverride || sub.validityEndDate || sub.endDate;
-  if (!isInSubscriptionRange(date, endDate)) {
+  if (!dateUtils.isInSubscriptionRange(date, endDate)) {
     const err = new Error("Date outside subscription validity");
     err.code = "INVALID_DATE";
     throw err;
@@ -1033,8 +1653,8 @@ function ensureActive(subscription, dateStr) {
   }
   const endDate = subscription.validityEndDate || subscription.endDate;
   if (endDate) {
-    const endStr = toKSADateString(endDate);
-    const compareTo = dateStr || getTodayKSADate();
+    const endStr = dateUtils.toKSADateString(endDate);
+    const compareTo = dateStr || dateUtils.getTodayKSADate();
     if (compareTo > endStr) {
       const err = new Error("Subscription expired");
       err.code = "SUB_EXPIRED";
@@ -1043,23 +1663,37 @@ function ensureActive(subscription, dateStr) {
   }
 }
 
-function addDaysToKSADateString(dateStr, days) {
-  const base = new Date(`${dateStr}T00:00:00+03:00`);
-  return toKSADateString(addDays(base, days));
-}
+function serializeSubscriptionDayForClient(subscription, day, runtime = sliceP2S1DefaultRuntime) {
+  const serializedDay = { ...day, status: mapRawDayStatusToClientStatus(day.status) };
 
-function mapStatusForClient(status) {
-  const map = {
-    open: "open",
-    frozen: "frozen",
-    locked: "preparing",
-    in_preparation: "preparing",
-    out_for_delivery: "on_the_way",
-    ready_for_pickup: "ready_for_pickup",
-    fulfilled: "fulfilled",
-    skipped: "skipped"
-  };
-  return map[status] || status;
+  // P2-S7-S1: Explicit mapping so the field is reliably included for canonical days
+  // and cleanly absent (not null) for legacy days, regardless of whether spread
+  // enumerates undefined Mongoose schema fields.
+  const actionType = day.canonicalDayActionType;
+  if (actionType !== undefined && actionType !== null) {
+    serializedDay.canonicalDayActionType = actionType;
+  } else {
+    delete serializedDay.canonicalDayActionType;
+  }
+
+  if (runtime.isCanonicalRecurringAddonEligible(subscription)) {
+    serializedDay.recurringAddons = runtime.resolveProjectedRecurringAddons({ subscription, day });
+  }
+  if (runtime.isCanonicalDayPlanningEligible(subscription, {
+    flagEnabled: isPhase2CanonicalDayPlanningEnabled(),
+  })) {
+    const oneTimeAddonPlanning = runtime.resolveEffectiveOneTimeAddonPlanning({ day });
+    if (oneTimeAddonPlanning) {
+      serializedDay.oneTimeAddonSelections = oneTimeAddonPlanning.oneTimeAddonSelections;
+      serializedDay.oneTimeAddonPendingCount = oneTimeAddonPlanning.oneTimeAddonPendingCount;
+      serializedDay.oneTimeAddonPaymentStatus = oneTimeAddonPlanning.oneTimeAddonPaymentStatus;
+    }
+    const planning = runtime.buildCanonicalPlanningView({ subscription, day });
+    if (planning) {
+      serializedDay.planning = planning;
+    }
+  }
+  return serializedDay;
 }
 
 function resolveFreezePolicy(planDoc) {
@@ -1074,7 +1708,7 @@ function resolveFreezePolicy(planDoc) {
 }
 
 function buildDateRangeOrThrow(startDate, days, fieldName = "days") {
-  if (!startDate || !isValidKSADateString(startDate)) {
+  if (!startDate || !dateUtils.isValidKSADateString(startDate)) {
     const err = new Error("Invalid startDate");
     err.code = "INVALID_DATE";
     throw err;
@@ -1103,111 +1737,6 @@ function countFrozenBlocks(dateStrings) {
   }
 
   return blocks;
-}
-
-function isNonEmptyObject(value) {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length > 0);
-}
-
-function isRemovableExtensionDay(day) {
-  if (!day || day.status !== "open") return false;
-  if (Array.isArray(day.selections) && day.selections.length > 0) return false;
-  if (Array.isArray(day.premiumSelections) && day.premiumSelections.length > 0) return false;
-  if (Array.isArray(day.addonsOneTime) && day.addonsOneTime.length > 0) return false;
-  if (Array.isArray(day.customSalads) && day.customSalads.length > 0) return false;
-  if (Array.isArray(day.customMeals) && day.customMeals.length > 0) return false;
-  if (Array.isArray(day.premiumUpgradeSelections) && day.premiumUpgradeSelections.length > 0) return false;
-  if (Array.isArray(day.addonCreditSelections) && day.addonCreditSelections.length > 0) return false;
-  if (day.assignedByKitchen || day.pickupRequested || day.creditsDeducted || day.skippedByUser) return false;
-  if (isNonEmptyObject(day.deliveryAddressOverride) || day.deliveryWindowOverride) return false;
-  if (day.lockedSnapshot || day.fulfilledSnapshot || day.lockedAt || day.fulfilledAt) return false;
-  return true;
-}
-
-async function ensureDateRangeDoesNotIncludeLockedTomorrow(dates) {
-  if (dates.includes(getTomorrowKSADate())) {
-    await enforceTomorrowCutoffOrThrow(getTomorrowKSADate());
-  }
-}
-
-function validateFreezeRangeOrThrow(sub, startDate, days) {
-  const baseEndDate = sub.endDate || sub.validityEndDate;
-  if (!baseEndDate) {
-    const err = new Error("Subscription has no base end date");
-    err.code = "INVALID";
-    throw err;
-  }
-
-  validateFutureDateOrThrow(startDate, sub, baseEndDate);
-  const targetDates = buildDateRangeOrThrow(startDate, days);
-  const lastDate = targetDates[targetDates.length - 1];
-  if (!isInSubscriptionRange(lastDate, baseEndDate)) {
-    const err = new Error("Requested freeze range exceeds the original subscription schedule");
-    err.code = "INVALID_DATE";
-    throw err;
-  }
-
-  return { targetDates, baseEndDate };
-}
-
-async function getFrozenDateStrings(subscriptionId, session) {
-  const frozenDays = await SubscriptionDay.find({ subscriptionId, status: "frozen" })
-    .select("date")
-    .sort({ date: 1 })
-    .session(session)
-    .lean();
-  return frozenDays.map((day) => day.date);
-}
-
-async function syncFrozenValidityOrThrow(sub, session) {
-  const baseEndDate = sub.endDate || sub.validityEndDate;
-  if (!baseEndDate) {
-    const err = new Error("Subscription has no base end date");
-    err.code = "INVALID";
-    throw err;
-  }
-
-  const baseEndStr = toKSADateString(baseEndDate);
-  const frozenDates = await getFrozenDateStrings(sub._id, session);
-  const desiredValidityEndDate = addDays(baseEndDate, frozenDates.length);
-  const desiredValidityEndStr = toKSADateString(desiredValidityEndDate);
-
-  const extensionDays = await SubscriptionDay.find({
-    subscriptionId: sub._id,
-    date: { $gt: baseEndStr },
-  })
-    .sort({ date: 1 })
-    .session(session);
-
-  const existingExtensionDates = new Set(extensionDays.map((day) => day.date));
-  const missingDays = [];
-  for (
-    let currentDate = addDaysToKSADateString(baseEndStr, 1);
-    currentDate <= desiredValidityEndStr;
-    currentDate = addDaysToKSADateString(currentDate, 1)
-  ) {
-    if (!existingExtensionDates.has(currentDate)) {
-      missingDays.push({ subscriptionId: sub._id, date: currentDate, status: "open" });
-    }
-  }
-  if (missingDays.length > 0) {
-    await SubscriptionDay.insertMany(missingDays, { session });
-  }
-
-  const extraDays = extensionDays.filter((day) => day.date > desiredValidityEndStr);
-  const blockedDay = extraDays.find((day) => !isRemovableExtensionDay(day));
-  if (blockedDay) {
-    const err = new Error(`Cannot shrink validity because replacement day ${blockedDay.date} already has data`);
-    err.code = "FREEZE_CONFLICT";
-    throw err;
-  }
-  if (extraDays.length > 0) {
-    await SubscriptionDay.deleteMany({ _id: { $in: extraDays.map((day) => day._id) } }).session(session);
-  }
-
-  sub.validityEndDate = desiredValidityEndDate;
-  await sub.save({ session });
-  return { frozenDates, validityEndDate: desiredValidityEndDate };
 }
 
 function sendValidationError(res, message) {
@@ -1250,9 +1779,9 @@ function parseFutureStartDate(rawValue) {
   if (Number.isNaN(parsed.getTime())) {
     return { ok: false, message: "startDate must be a valid date" };
   }
-  const parsedDate = toKSADateString(parsed);
-  const tomorrow = getTomorrowKSADate();
-  if (!isOnOrAfterKSADate(parsedDate, tomorrow)) {
+  const parsedDate = dateUtils.toKSADateString(parsed);
+  const tomorrow = dateUtils.getTomorrowKSADate();
+  if (!dateUtils.isOnOrAfterKSADate(parsedDate, tomorrow)) {
     return { ok: false, message: "startDate must be a future date" };
   }
   return { ok: true, value: parsed };
@@ -1261,8 +1790,8 @@ function parseFutureStartDate(rawValue) {
 async function enforceTomorrowCutoffOrThrow(dateStr) {
   // MEDIUM AUDIT FIX: Centralize tomorrow cutoff validation to avoid bypasses across endpoints.
   const cutoffTime = await getSettingValue("cutoff_time", "00:00");
-  const tomorrow = getTomorrowKSADate();
-  if (dateStr === tomorrow && !isBeforeCutoff(cutoffTime)) {
+  const tomorrow = dateUtils.getTomorrowKSADate();
+  if (dateStr === tomorrow && !dateUtils.isBeforeCutoff(cutoffTime)) {
     const err = new Error("Cutoff time passed for tomorrow");
     err.code = "LOCKED";
     throw err;
@@ -1277,19 +1806,32 @@ function hasDeliveryWindowOverride(day) {
   return Boolean(day && day.deliveryWindowOverride);
 }
 
-async function quoteSubscription(req, res) {
+async function quoteSubscription(req, res, runtimeOverrides = null) {
+  const runtime = runtimeOverrides
+    ? { resolveCheckoutQuoteOrThrow: runtimeOverrides.resolveCheckoutQuoteOrThrow || resolveCheckoutQuoteOrThrow }
+    : { resolveCheckoutQuoteOrThrow };
   try {
-    const quote = await resolveCheckoutQuoteOrThrow(req.body || {});
+    const lang = getRequestLang(req);
+    const quote = await runtime.resolveCheckoutQuoteOrThrow(req.body || {}, {
+      lang,
+      useGenericPremiumWallet:
+        isPhase2GenericPremiumWalletEnabled()
+        && isPhase1CanonicalCheckoutDraftWriteEnabled(),
+    });
     return res.status(200).json({
       ok: true,
       data: {
         breakdown: quote.breakdown,
         totalSar: quote.breakdown.totalHalala / 100,
+        summary: resolveQuoteSummary(quote, lang),
       },
     });
   } catch (err) {
     if (err.code === "VALIDATION_ERROR") {
       return sendValidationError(res, err.message);
+    }
+    if (err.code === "RECURRING_ADDON_CATEGORY_CONFLICT") {
+      return errorResponse(res, 400, "INVALID", err.message);
     }
     if (err.code === "NOT_FOUND") {
       return errorResponse(res, 404, "NOT_FOUND", err.message);
@@ -1301,10 +1843,12 @@ async function quoteSubscription(req, res) {
   }
 }
 
-async function checkoutSubscription(req, res) {
+async function checkoutSubscription(req, res, runtimeOverrides = null) {
+  const runtime = runtimeOverrides ? { ...sliceBDefaultRuntime(), ...runtimeOverrides } : sliceBDefaultRuntime();
   let draft;
   let idempotencyKey = "";
   let requestHash = "";
+  let canonicalContract = null;
   try {
     const body = req.body || {};
     idempotencyKey = parseIdempotencyKey(
@@ -1318,9 +1862,23 @@ async function checkoutSubscription(req, res) {
         "idempotencyKey is required (Idempotency-Key header, X-Idempotency-Key header, or body.idempotencyKey)"
       );
     }
-    const quote = await resolveCheckoutQuoteOrThrow(body);
-    requestHash = buildCheckoutRequestHash({ userId: req.userId, quote });
     const lang = getRequestLang(req);
+    const quote = await runtime.resolveCheckoutQuoteOrThrow(body, {
+      lang,
+      useGenericPremiumWallet:
+        isPhase2GenericPremiumWalletEnabled()
+        && isPhase1CanonicalCheckoutDraftWriteEnabled(),
+    });
+    if (isPhase1CanonicalCheckoutDraftWriteEnabled()) {
+      canonicalContract = runtime.buildPhase1SubscriptionContract({
+        payload: body,
+        resolvedQuote: quote,
+        actorContext: { actorRole: "client", actorUserId: req.userId },
+        source: "customer_checkout",
+        now: new Date(),
+      });
+    }
+    requestHash = buildCheckoutRequestHash({ userId: req.userId, quote });
 
     const existingByKey = await CheckoutDraft.findOne({
       userId: req.userId,
@@ -1387,12 +1945,14 @@ async function checkoutSubscription(req, res) {
       );
     }
 
-    const addonSubscriptions = quote.addonItems.map((item) => ({
-      addonId: item.addon._id,
-      name: pickLang(item.addon.name, lang),
-      price: item.unitPriceHalala / 100,
-      type: item.addon.type || "subscription",
-    }));
+    const addonSubscriptions = canonicalContract
+      ? buildRecurringAddonEntitlementsFromQuote({ addonItems: quote.addonItems, lang })
+      : quote.addonItems.map((item) => ({
+        addonId: item.addon._id,
+        name: pickLang(item.addon.name, lang),
+        price: item.unitPriceHalala / 100,
+        type: item.addon.type || "subscription",
+      }));
 
     draft = await CheckoutDraft.create({
       userId: req.userId,
@@ -1402,7 +1962,7 @@ async function checkoutSubscription(req, res) {
       daysCount: quote.plan.daysCount,
       grams: quote.grams,
       mealsPerDay: quote.mealsPerDay,
-      startDate: quote.startDate || undefined,
+      startDate: canonicalContract ? canonicalContract.resolvedStart.resolvedStartDate : (quote.startDate || undefined),
       delivery: quote.delivery,
       premiumItems: quote.premiumItems.map((item) => ({
         premiumMealId: item.premiumMeal._id,
@@ -1410,6 +1970,9 @@ async function checkoutSubscription(req, res) {
         unitExtraFeeHalala: item.unitExtraFeeHalala,
         currency: SYSTEM_CURRENCY,
       })),
+      premiumWalletMode: quote.premiumWalletMode || LEGACY_PREMIUM_WALLET_MODE,
+      premiumCount: Number(quote.premiumCount || 0),
+      premiumUnitPriceHalala: Number(quote.premiumUnitPriceHalala || 0),
       addonItems: quote.addonItems.map((item) => ({
         addonId: item.addon._id,
         qty: item.qty,
@@ -1418,12 +1981,15 @@ async function checkoutSubscription(req, res) {
       })),
       addonSubscriptions,
       breakdown: { ...quote.breakdown, currency: SYSTEM_CURRENCY },
+      ...(canonicalContract ? runtime.buildCanonicalDraftPersistenceFields({ contract: canonicalContract }) : {}),
     });
 
     const appUrl = process.env.APP_URL || "https://example.com";
-    const invoice = await createInvoice({
+    const invoice = await runtime.createInvoice({
       amount: quote.breakdown.totalHalala,
-      description: `Subscription checkout (${quote.plan.daysCount} days)`,
+      description: buildPaymentDescription("subscriptionCheckout", lang, {
+        daysCount: Number(quote.plan.daysCount || 0),
+      }),
       callbackUrl: `${appUrl}/api/webhooks/moyasar`,
       successUrl: body.successUrl || `${appUrl}/payments/success`,
       backUrl: body.backUrl || `${appUrl}/payments/cancel`,
@@ -1523,6 +2089,7 @@ async function checkoutSubscription(req, res) {
 
 async function getCheckoutDraftStatus(req, res) {
   const { draftId } = req.params;
+  const lang = getRequestLang(req);
   try {
     validateObjectId(draftId, "draftId");
   } catch (err) {
@@ -1548,16 +2115,30 @@ async function getCheckoutDraftStatus(req, res) {
 
   return res.status(200).json({
     ok: true,
-    data: {
+    data: localizeCheckoutDraftStatusReadPayload({
       ...buildSubscriptionCheckoutStatusPayload({ draft, payment }),
       checkedProvider: false,
       synchronized: false,
-    },
+    }, { lang, draft }),
   });
 }
 
-async function verifyCheckoutDraftPayment(req, res) {
+async function verifyCheckoutDraftPayment(req, res, runtimeOverrides = null) {
+  const getInvoiceFn = runtimeOverrides && runtimeOverrides.getInvoice
+    ? runtimeOverrides.getInvoice
+    : getInvoice;
+  const startSessionFn = runtimeOverrides && runtimeOverrides.startSession
+    ? runtimeOverrides.startSession
+    : () => mongoose.startSession();
+  const applyPaymentSideEffectsFn = runtimeOverrides && runtimeOverrides.applyPaymentSideEffects
+    ? runtimeOverrides.applyPaymentSideEffects
+    : applyPaymentSideEffects;
+  const finalizeSubscriptionDraftPaymentFn = runtimeOverrides && runtimeOverrides.finalizeSubscriptionDraftPayment
+    ? runtimeOverrides.finalizeSubscriptionDraftPayment
+    : finalizeSubscriptionDraftPayment;
+
   const { draftId } = req.params;
+  const lang = getRequestLang(req);
   try {
     validateObjectId(draftId, "draftId");
   } catch (err) {
@@ -1591,19 +2172,20 @@ async function verifyCheckoutDraftPayment(req, res) {
   }
 
   if (draft.status === "completed" && draft.subscriptionId) {
+    const payload = {
+      ...buildSubscriptionCheckoutStatusPayload({ draft, payment }),
+      checkedProvider: false,
+      synchronized: false,
+    };
     return res.status(200).json({
       ok: true,
-      data: {
-        ...buildSubscriptionCheckoutStatusPayload({ draft, payment }),
-        checkedProvider: false,
-        synchronized: false,
-      },
+      data: localizeWriteCheckoutStatusPayload(payload, { lang, draft }),
     });
   }
 
   let providerInvoice;
   try {
-    providerInvoice = await getInvoice(payment.providerInvoiceId || draft.providerInvoiceId);
+    providerInvoice = await getInvoiceFn(payment.providerInvoiceId || draft.providerInvoiceId);
   } catch (err) {
     if (err.code === "CONFIG") {
       return errorResponse(res, 500, "CONFIG", err.message);
@@ -1628,7 +2210,7 @@ async function verifyCheckoutDraftPayment(req, res) {
     return errorResponse(res, 409, "PAYMENT_PROVIDER_ERROR", "Unsupported provider payment status");
   }
 
-  const session = await mongoose.startSession();
+  const session = await startSessionFn();
   let synchronized = false;
   try {
     session.startTransaction();
@@ -1727,17 +2309,18 @@ async function verifyCheckoutDraftPayment(req, res) {
         Payment.findById(paymentInSession._id).lean(),
       ]);
 
+      const payload = {
+        ...buildSubscriptionCheckoutStatusPayload({
+          draft: latestDraft,
+          payment: latestPayment,
+          providerInvoice,
+        }),
+        checkedProvider: true,
+        synchronized,
+      };
       return res.status(200).json({
         ok: true,
-        data: {
-          ...buildSubscriptionCheckoutStatusPayload({
-            draft: latestDraft,
-            payment: latestPayment,
-            providerInvoice,
-          }),
-          checkedProvider: true,
-          synchronized,
-        },
+        data: localizeWriteCheckoutStatusPayload(payload, { lang, draft: latestDraft }),
       });
     }
 
@@ -1749,11 +2332,17 @@ async function verifyCheckoutDraftPayment(req, res) {
       );
 
       if (claimedPayment) {
-        const result = await finalizeSubscriptionDraftPayment({
-          draft: draftInSession,
-          payment: claimedPayment,
-          session,
-        });
+        const result = isPhase1SharedPaymentDispatcherEnabled()
+          ? await applyPaymentSideEffectsFn({
+            payment: claimedPayment,
+            session,
+            source: "client_manual_verify",
+          })
+          : await finalizeSubscriptionDraftPaymentFn({
+            draft: draftInSession,
+            payment: claimedPayment,
+            session,
+          });
         if (!result.applied) {
           const metadata = Object.assign({}, claimedPayment.metadata || {}, { unappliedReason: result.reason });
           await Payment.updateOne(
@@ -1775,17 +2364,19 @@ async function verifyCheckoutDraftPayment(req, res) {
       Payment.findById(paymentInSession._id).lean(),
     ]);
 
+    const payload = {
+      ...buildSubscriptionCheckoutStatusPayload({
+        draft: latestDraft,
+        payment: latestPayment,
+        providerInvoice,
+      }),
+      checkedProvider: true,
+      synchronized,
+    };
+
     return res.status(200).json({
       ok: true,
-      data: {
-        ...buildSubscriptionCheckoutStatusPayload({
-          draft: latestDraft,
-          payment: latestPayment,
-          providerInvoice,
-        }),
-        checkedProvider: true,
-        synchronized,
-      },
+      data: localizeWriteCheckoutStatusPayload(payload, { lang, draft: latestDraft }),
     });
   } catch (err) {
     if (session.inTransaction()) {
@@ -1825,11 +2416,11 @@ async function activateSubscription(req, res) {
   const dayEntries = [];
   for (let i = 0; i < sub.planId.daysCount; i++) {
     const currentDate = addDays(start, i);
-    dayEntries.push({
-      subscriptionId: sub._id,
-      date: toKSADateString(currentDate),
+    dayEntries.push(buildProjectedDayEntry({
+      subscription: sub,
+      date: dateUtils.toKSADateString(currentDate),
       status: "open",
-    });
+    }));
   }
   await SubscriptionDay.insertMany(dayEntries);
 
@@ -1837,6 +2428,73 @@ async function activateSubscription(req, res) {
 }
 
 async function buildSubscriptionSummaries(subscription, lang) {
+  if (isGenericPremiumWalletMode(subscription)) {
+    const genericRows = (Array.isArray(subscription.genericPremiumBalance) ? subscription.genericPremiumBalance : [])
+      .slice()
+      .sort((a, b) => new Date(a.purchasedAt || 0).getTime() - new Date(b.purchasedAt || 0).getTime());
+    const purchasedQtyTotal = genericRows.reduce((sum, row) => sum + Number(row.purchasedQty || 0), 0);
+    const remainingQtyTotal = genericRows.reduce((sum, row) => sum + Number(row.remainingQty || 0), 0);
+    const unitValues = genericRows.map((row) => Number(row.unitCreditPriceHalala || 0));
+    return {
+      premiumSummary: [{
+        premiumMealId: null,
+        name: getGenericPremiumCreditsLabel(lang),
+        purchasedQtyTotal,
+        remainingQtyTotal,
+        consumedQtyTotal: Math.max(0, purchasedQtyTotal - remainingQtyTotal),
+        minUnitPriceHalala: unitValues.length ? Math.min(...unitValues) : 0,
+        maxUnitPriceHalala: unitValues.length ? Math.max(...unitValues) : 0,
+      }],
+      addonsSummary: await (async () => {
+        const addonBalance = Array.isArray(subscription.addonBalance) ? subscription.addonBalance : [];
+        const addonSelections = Array.isArray(subscription.addonSelections) ? subscription.addonSelections : [];
+        const addonById = new Map();
+        for (const row of addonBalance) {
+          const key = String(row.addonId);
+          const current = addonById.get(key) || {
+            addonId: key,
+            purchasedQtyTotal: 0,
+            remainingQtyTotal: 0,
+            consumedQtyTotal: 0,
+            minUnitPriceHalala: null,
+            maxUnitPriceHalala: null,
+          };
+          current.purchasedQtyTotal += Number(row.purchasedQty || 0);
+          current.remainingQtyTotal += Number(row.remainingQty || 0);
+          const unit = Number(row.unitPriceHalala || 0);
+          current.minUnitPriceHalala = current.minUnitPriceHalala === null ? unit : Math.min(current.minUnitPriceHalala, unit);
+          current.maxUnitPriceHalala = current.maxUnitPriceHalala === null ? unit : Math.max(current.maxUnitPriceHalala, unit);
+          addonById.set(key, current);
+        }
+        for (const row of addonSelections) {
+          const key = String(row.addonId);
+          const current = addonById.get(key) || {
+            addonId: key,
+            purchasedQtyTotal: 0,
+            remainingQtyTotal: 0,
+            consumedQtyTotal: 0,
+            minUnitPriceHalala: Number(row.unitPriceHalala || 0),
+            maxUnitPriceHalala: Number(row.unitPriceHalala || 0),
+          };
+          current.consumedQtyTotal += Number(row.qty || 0);
+          addonById.set(key, current);
+        }
+        const addonIds = Array.from(addonById.keys());
+        const addonDocs = addonIds.length ? await Addon.find({ _id: { $in: addonIds } }).lean() : [];
+        const addonNames = new Map(addonDocs.map((doc) => [String(doc._id), pickLang(doc.name, lang)]));
+        return Array.from(addonById.values()).map((row) => ({
+          addonId: row.addonId,
+          name: addonNames.get(row.addonId) || "",
+          purchasedQtyTotal: row.purchasedQtyTotal,
+          remainingQtyTotal: row.remainingQtyTotal,
+          consumedQtyTotal: row.consumedQtyTotal || Math.max(0, row.purchasedQtyTotal - row.remainingQtyTotal),
+          minUnitPriceHalala: row.minUnitPriceHalala || 0,
+          maxUnitPriceHalala: row.maxUnitPriceHalala || 0,
+        }));
+      })(),
+    };
+  }
+
   const premiumBalance = Array.isArray(subscription.premiumBalance) ? subscription.premiumBalance : [];
   const addonBalance = Array.isArray(subscription.addonBalance) ? subscription.addonBalance : [];
   const premiumSelections = Array.isArray(subscription.premiumSelections) ? subscription.premiumSelections : [];
@@ -1940,18 +2598,43 @@ async function buildSubscriptionSummaries(subscription, lang) {
 
 async function buildSubscriptionWalletSnapshot(subscription, lang) {
   const { premiumSummary, addonsSummary } = await buildSubscriptionSummaries(subscription, lang);
-  const premiumBalance = (Array.isArray(subscription.premiumBalance) ? subscription.premiumBalance : [])
-    .slice()
-    .sort((a, b) => new Date(a.purchasedAt || 0).getTime() - new Date(b.purchasedAt || 0).getTime())
-    .map((row) => ({
-      id: row._id ? String(row._id) : null,
-      premiumMealId: row.premiumMealId ? String(row.premiumMealId) : null,
-      purchasedQty: Number(row.purchasedQty || 0),
-      remainingQty: Number(row.remainingQty || 0),
-      unitExtraFeeHalala: Number(row.unitExtraFeeHalala || 0),
-      currency: row.currency || SYSTEM_CURRENCY,
-      purchasedAt: row.purchasedAt || null,
-    }));
+  const catalog = await loadWalletCatalogMaps({ subscription, lang });
+  const premiumBalance = isGenericPremiumWalletMode(subscription)
+    ? (Array.isArray(subscription.genericPremiumBalance) ? subscription.genericPremiumBalance : [])
+      .slice()
+      .sort((a, b) => new Date(a.purchasedAt || 0).getTime() - new Date(b.purchasedAt || 0).getTime())
+      .map((row) => ({
+        id: row._id ? String(row._id) : null,
+        premiumMealId: null,
+        purchasedQty: Number(row.purchasedQty || 0),
+        remainingQty: Number(row.remainingQty || 0),
+        unitExtraFeeHalala: Number(row.unitCreditPriceHalala || 0),
+        currency: row.currency || SYSTEM_CURRENCY,
+        purchasedAt: row.purchasedAt || null,
+        walletMode: GENERIC_PREMIUM_WALLET_MODE,
+        name: catalog.legacyPremiumLabel,
+      }))
+    : (Array.isArray(subscription.premiumBalance) ? subscription.premiumBalance : [])
+      .slice()
+      .sort((a, b) => new Date(a.purchasedAt || 0).getTime() - new Date(b.purchasedAt || 0).getTime())
+      .map((row) => ({
+        id: row._id ? String(row._id) : null,
+        premiumMealId: row.premiumMealId ? String(row.premiumMealId) : null,
+        purchasedQty: Number(row.purchasedQty || 0),
+        remainingQty: Number(row.remainingQty || 0),
+        unitExtraFeeHalala: Number(row.unitExtraFeeHalala || 0),
+        currency: row.currency || SYSTEM_CURRENCY,
+        purchasedAt: row.purchasedAt || null,
+        walletMode: LEGACY_PREMIUM_WALLET_MODE,
+        name: row && row.premiumMealId && String(row.premiumMealId) !== LEGACY_PREMIUM_MEAL_BUCKET_ID
+          ? resolveCatalogOrStoredName({
+            id: String(row.premiumMealId),
+            liveName: catalog.premiumNames.get(String(row.premiumMealId)) || "",
+            storedName: "",
+            lang,
+          })
+          : catalog.legacyPremiumLabel,
+      }));
   const addonBalance = (Array.isArray(subscription.addonBalance) ? subscription.addonBalance : [])
     .slice()
     .sort((a, b) => new Date(a.purchasedAt || 0).getTime() - new Date(b.purchasedAt || 0).getTime())
@@ -1963,11 +2646,22 @@ async function buildSubscriptionWalletSnapshot(subscription, lang) {
       unitPriceHalala: Number(row.unitPriceHalala || 0),
       currency: row.currency || SYSTEM_CURRENCY,
       purchasedAt: row.purchasedAt || null,
+      name: row && row.addonId
+        ? resolveCatalogOrStoredName({
+          id: String(row.addonId),
+          liveName: catalog.addonNames.get(String(row.addonId)) || "",
+          storedName: "",
+          lang,
+        })
+        : "",
     }));
 
   return {
     subscriptionId: String(subscription._id),
-    premiumRemaining: premiumBalance.reduce((sum, row) => sum + row.remainingQty, 0),
+    premiumWalletMode: isGenericPremiumWalletMode(subscription)
+      ? GENERIC_PREMIUM_WALLET_MODE
+      : LEGACY_PREMIUM_WALLET_MODE,
+    premiumRemaining: getRemainingPremiumCredits(subscription),
     premiumSummary,
     addonsSummary,
     premiumBalance,
@@ -1983,6 +2677,12 @@ async function buildSubscriptionWalletSnapshot(subscription, lang) {
 
 async function serializeSubscriptionForClient(subscription, lang) {
   const { premiumSummary, addonsSummary } = await buildSubscriptionSummaries(subscription, lang);
+  const catalog = await loadWalletCatalogMaps({ subscription, lang });
+  const contractReadView = getSubscriptionContractReadView(subscription, {
+    audience: "client",
+    lang,
+    context: "client_subscription_read",
+  });
   const deliverySlot = subscription.deliverySlot && typeof subscription.deliverySlot === "object"
     ? subscription.deliverySlot
     : {
@@ -1993,17 +2693,32 @@ async function serializeSubscriptionForClient(subscription, lang) {
   const data = { ...subscription };
   delete data.__v;
   delete data.premiumBalance;
+  delete data.genericPremiumBalance;
   delete data.addonBalance;
   delete data.premiumSelections;
   delete data.addonSelections;
 
-  return {
+  // P2-S7-S3: Dynamic Status Serialization
+  // If subscription is "active" but today is past validityEndDate, reflect as "expired"
+  if (data.status === "active") {
+    const endDate = data.validityEndDate || data.endDate;
+    if (endDate && dateUtils.getTodayKSADate() > dateUtils.toKSADateString(endDate)) {
+      data.status = "expired";
+    }
+  }
+
+  return localizeSubscriptionReadPayload({
     ...data,
     deliveryAddress: subscription.deliveryAddress || null,
     deliverySlot,
     premiumSummary,
     addonsSummary,
-  };
+    contract: contractReadView.contract,
+  }, {
+    lang,
+    addonNames: catalog.addonNames,
+    planName: contractReadView.planName || "",
+  });
 }
 
 async function getSubscription(req, res) {
@@ -2029,11 +2744,328 @@ async function getSubscription(req, res) {
   });
 }
 
+async function getSubscriptionTimeline(req, res) {
+  const { id } = req.params;
+  const lang = getRequestLang(req);
+  try {
+    validateObjectId(id, "subscriptionId");
+  } catch (err) {
+    return errorResponse(res, err.status, err.code, err.message);
+  }
+
+  const sub = await Subscription.findById(id).lean();
+  if (!sub) {
+    return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
+  }
+
+  if (sub.userId.toString() !== req.userId.toString()) {
+    return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
+  }
+
+  const timeline = await buildSubscriptionTimeline(id);
+
+  return res.status(200).json({
+    ok: true,
+    data: localizeTimelineReadPayload(timeline, lang),
+  });
+}
+
 async function listCurrentUserSubscriptions(req, res) {
   const subscriptions = await Subscription.find({ userId: req.userId }).sort({ createdAt: -1 }).lean();
   const lang = getRequestLang(req);
   const data = await Promise.all(subscriptions.map((subscription) => serializeSubscriptionForClient(subscription, lang)));
   return res.status(200).json({ ok: true, data });
+}
+
+async function getSubscriptionRenewalSeed(req, res, runtimeOverrides = null) {
+  const defaultRuntime = {
+    async findSubscriptionById(subscriptionId) {
+      return Subscription.findById(subscriptionId).lean();
+    },
+    async findActivePlanById(planId) {
+      return Plan.findOne({ _id: planId, isActive: true }).lean();
+    },
+    buildSubscriptionRenewalSeed: (...args) => buildSubscriptionRenewalSeed(...args),
+  };
+  const runtime = runtimeOverrides ? { ...defaultRuntime, ...runtimeOverrides } : defaultRuntime;
+  const lang = getRequestLang(req);
+
+  const { id } = req.params;
+  try {
+    validateObjectId(id, "subscriptionId");
+  } catch (err) {
+    return errorResponse(res, err.status, err.code, err.message);
+  }
+
+  const previousSubscription = await runtime.findSubscriptionById(id);
+  if (!previousSubscription) {
+    return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
+  }
+  if (String(previousSubscription.userId) !== String(req.userId)) {
+    return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
+  }
+
+  const candidatePlanId = previousSubscription.contractSnapshot
+    && previousSubscription.contractSnapshot.plan
+    && previousSubscription.contractSnapshot.plan.planId
+    ? previousSubscription.contractSnapshot.plan.planId
+    : previousSubscription.planId;
+
+  if (!candidatePlanId) {
+    return errorResponse(res, 422, "RENEWAL_UNAVAILABLE", "Subscription does not have enough base configuration to renew");
+  }
+
+  const livePlan = await runtime.findActivePlanById(candidatePlanId);
+
+  try {
+    const renewalSeed = runtime.buildSubscriptionRenewalSeed({
+      previousSubscription,
+      livePlan,
+    });
+    return res.status(200).json({
+      ok: true,
+      data: localizeRenewalSeedReadPayload(renewalSeed, {
+        lang,
+        livePlan,
+        previousSubscription,
+      }),
+    });
+  } catch (err) {
+    return errorResponse(
+      res,
+      422,
+      err && err.code ? err.code : "RENEWAL_UNAVAILABLE",
+      err && err.message ? err.message : "Renewal is not available for this subscription"
+    );
+  }
+}
+
+async function renewSubscription(req, res, runtimeOverrides = null) {
+  const runtime = runtimeOverrides ? { ...sliceBDefaultRuntime(), ...runtimeOverrides } : sliceBDefaultRuntime();
+  const { id } = req.params;
+  const body = req.body || {};
+  const lang = getRequestLang(req);
+
+  try {
+    validateObjectId(id, "subscriptionId");
+  } catch (err) {
+    return errorResponse(res, err.status, err.code, err.message);
+  }
+
+  const previousSubscription = await Subscription.findById(id).lean();
+  if (!previousSubscription) {
+    return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
+  }
+  if (String(previousSubscription.userId) !== String(req.userId)) {
+    return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
+  }
+
+  // Verify subscription is eligible for renewal (either expired or in final stages)
+  const today = dateUtils.getTodayKSADate();
+  const endDate = previousSubscription.validityEndDate || previousSubscription.endDate;
+  const endDateStr = endDate ? dateUtils.toKSADateString(endDate) : null;
+  if (endDateStr && endDateStr > today) {
+    return errorResponse(res, 422, "RENEWAL_PREMATURE", "Cannot renew an active subscription");
+  }
+
+  // Extract renewal parameters from previous subscription or body
+  const candidatePlanId = previousSubscription.contractSnapshot
+    && previousSubscription.contractSnapshot.plan
+    && previousSubscription.contractSnapshot.plan.planId
+    ? previousSubscription.contractSnapshot.plan.planId
+    : previousSubscription.planId;
+
+  if (!candidatePlanId) {
+    return errorResponse(res, 422, "RENEWAL_UNAVAILABLE", "Subscription does not have enough base configuration to renew");
+  }
+
+  // Use previous parameters as defaults, allow overrides from body
+  const renewalPayload = {
+    planId: body.planId || candidatePlanId,
+    grams: body.grams !== undefined ? body.grams : (previousSubscription.selectedGrams || 1000),
+    mealsPerDay: body.mealsPerDay !== undefined ? body.mealsPerDay : (previousSubscription.selectedMealsPerDay || 1),
+    premiumItems: body.premiumItems || [],
+    addons: body.addons || [],
+    delivery: {
+      type: body.delivery && body.delivery.type ? body.delivery.type : (previousSubscription.deliveryMode || "delivery"),
+      address: body.delivery && body.delivery.address ? body.delivery.address : (previousSubscription.deliveryAddress || null),
+      slot: body.delivery && body.delivery.slot ? body.delivery.slot : (previousSubscription.deliverySlot || {}),
+      zoneId: body.delivery && body.delivery.zoneId ? body.delivery.zoneId : (previousSubscription.deliveryZoneId || null),
+      pickupLocationId: body.delivery && body.delivery.pickupLocationId ? body.delivery.pickupLocationId : null,
+    },
+    renewedFromSubscriptionId: id,
+    startDate: body.startDate || null,
+    idempotencyKey: parseIdempotencyKey(
+      req.get("Idempotency-Key")
+      || req.get("X-Idempotency-Key")
+      || body.idempotencyKey
+    ),
+  };
+
+  if (!renewalPayload.idempotencyKey) {
+    return sendValidationError(
+      res,
+      "idempotencyKey is required (Idempotency-Key header, X-Idempotency-Key header, or body.idempotencyKey)"
+    );
+  }
+
+  try {
+    // Use same checkout quote resolver with renewal context
+    const quote = await runtime.resolveCheckoutQuoteOrThrow(renewalPayload, {
+      lang,
+      useGenericPremiumWallet:
+        isPhase2GenericPremiumWalletEnabled()
+        && isPhase1CanonicalCheckoutDraftWriteEnabled(),
+      enforceActivePlan: true,
+    });
+
+    // Proceed with checkout (standard flow)
+    if (isPhase1CanonicalCheckoutDraftWriteEnabled()) {
+      const canonicalContract = runtime.buildPhase1SubscriptionContract({
+        payload: renewalPayload,
+        resolvedQuote: quote,
+        actorContext: { actorRole: "client", actorUserId: req.userId },
+        source: "customer_renewal",
+        now: new Date(),
+      });
+      renewalPayload.contractVersion = canonicalContract.contractVersion;
+      renewalPayload.contractMode = canonicalContract.contractMode;
+    }
+
+    const requestHash = buildCheckoutRequestHash({ userId: req.userId, quote });
+    const existingByKey = await CheckoutDraft.findOne({
+      userId: req.userId,
+      idempotencyKey: renewalPayload.idempotencyKey,
+    }).sort({ createdAt: -1 }).lean();
+
+    if (existingByKey) {
+      if (existingByKey.requestHash && existingByKey.requestHash !== requestHash) {
+        return errorResponse(
+          res,
+          409,
+          "IDEMPOTENCY_CONFLICT",
+          "idempotencyKey is already used with a different renewal payload"
+        );
+      }
+      const existingPayment = existingByKey.paymentId
+        ? await Payment.findById(existingByKey.paymentId).lean()
+        : null;
+      if (isPendingCheckoutReusable(existingByKey, existingPayment)) {
+        return res.status(200).json({ ok: true, data: buildCheckoutReusePayload(existingByKey, existingPayment) });
+      }
+      if (existingByKey.status === "completed" && existingByKey.subscriptionId) {
+        const newSub = await Subscription.findById(existingByKey.subscriptionId).lean();
+        return res.status(200).json({
+          ok: true,
+          data: await serializeSubscriptionForClient(newSub, lang),
+        });
+      }
+    }
+
+    // Create checkout draft - same as regular checkout
+    const draftPayload = {
+      userId: req.userId,
+      planId: quote.plan._id,
+      idempotencyKey: renewalPayload.idempotencyKey,
+      requestHash,
+      daysCount: quote.plan.daysCount,
+      grams: quote.grams,
+      mealsPerDay: quote.mealsPerDay,
+      startDate: quote.startDate || undefined,
+      delivery: quote.delivery,
+      premiumItems: quote.premiumItems.map((item) => ({
+        premiumMealId: item.premiumMeal._id,
+        qty: item.qty,
+        unitExtraFeeHalala: item.unitExtraFeeHalala,
+        currency: SYSTEM_CURRENCY,
+      })),
+      premiumWalletMode: quote.premiumWalletMode || LEGACY_PREMIUM_WALLET_MODE,
+      premiumCount: Number(quote.premiumCount || 0),
+      premiumUnitPriceHalala: Number(quote.premiumUnitPriceHalala || 0),
+      addonItems: quote.addonItems.map((item) => ({
+        addonId: item.addon._id,
+        qty: item.qty,
+        unitPriceHalala: item.unitPriceHalala,
+        currency: SYSTEM_CURRENCY,
+      })),
+      addonSubscriptions: buildRecurringAddonEntitlementsFromQuote({ addonItems: quote.addonItems, lang }),
+      breakdown: { ...quote.breakdown, currency: SYSTEM_CURRENCY },
+      renewedFromSubscriptionId: id,
+    };
+
+    if (isPhase1CanonicalCheckoutDraftWriteEnabled()) {
+      const canonicalContract = runtime.buildPhase1SubscriptionContract({
+        payload: renewalPayload,
+        resolvedQuote: quote,
+        actorContext: { actorRole: "client", actorUserId: req.userId },
+        source: "customer_renewal",
+        now: new Date(),
+      });
+      Object.assign(draftPayload, runtime.buildCanonicalDraftPersistenceFields({ contract: canonicalContract }));
+    }
+
+    const draft = await CheckoutDraft.create(draftPayload);
+
+    const appUrl = process.env.APP_URL || "https://example.com";
+    const invoice = await runtime.createInvoice({
+      amount: quote.breakdown.totalHalala,
+      description: buildPaymentDescription("subscriptionRenewal", lang, {
+        daysCount: Number(quote.plan.daysCount || 0),
+        previousSubscriptionId: id,
+      }),
+      callbackUrl: `${appUrl}/api/webhooks/moyasar`,
+      successUrl: body.successUrl || `${appUrl}/payments/success`,
+      backUrl: body.backUrl || `${appUrl}/payments/cancel`,
+      metadata: {
+        type: "subscription_renewal",
+        draftId: String(draft._id),
+        userId: String(req.userId),
+        renewedFromSubscriptionId: id,
+        grams: quote.grams,
+        mealsPerDay: quote.mealsPerDay,
+      },
+    });
+
+    const invoiceCurrency = assertSystemCurrencyOrThrow(invoice.currency || SYSTEM_CURRENCY, "Invoice currency");
+    const payment = await Payment.create({
+      provider: "moyasar",
+      type: "subscription_renewal",
+      status: "initiated",
+      amount: quote.breakdown.totalHalala,
+      currency: invoiceCurrency,
+      userId: req.userId,
+      providerInvoiceId: invoice.id,
+      metadata: invoice.metadata || {},
+    });
+
+    draft.paymentId = payment._id;
+    draft.providerInvoiceId = invoice.id;
+    draft.paymentUrl = invoice.url || "";
+    await draft.save();
+
+    return res.status(201).json({
+      ok: true,
+      data: {
+        draftId: draft.id,
+        paymentId: payment.id,
+        payment_url: draft.paymentUrl,
+        renewedFromSubscriptionId: id,
+        totals: quote.breakdown,
+      },
+    });
+  } catch (err) {
+    if (err.code === "VALIDATION_ERROR") {
+      return sendValidationError(res, err.message);
+    }
+    if (err.code === "NOT_FOUND") {
+      return errorResponse(res, 404, "NOT_FOUND", err.message);
+    }
+    if (err.code === "INVALID_SELECTION") {
+      return errorResponse(res, 400, "INVALID", err.message);
+    }
+    logger.error("Subscription renewal failed", { error: err.message, stack: err.stack });
+    return errorResponse(res, 500, "INTERNAL", "Renewal failed");
+  }
 }
 
 async function getSubscriptionWallet(req, res) {
@@ -2170,7 +3202,7 @@ async function getSubscriptionWalletHistory(req, res) {
     ok: true,
     data: {
       subscriptionId: String(sub._id),
-      entries,
+      entries: localizeWalletHistoryEntries(entries, lang),
     },
   });
 }
@@ -2204,18 +3236,20 @@ async function getWalletTopupPaymentStatus(req, res) {
 
   const lang = getRequestLang(req);
   const catalog = await loadWalletCatalogMaps({ subscription: sub, payments: [payment], lang });
+  const payload = buildWalletTopupStatusPayload({ subscription: sub, payment, catalog });
   return res.status(200).json({
     ok: true,
-    data: {
-      ...buildWalletTopupStatusPayload({ subscription: sub, payment, catalog }),
+    data: localizeWalletTopupStatusReadPayload({
+      ...payload,
       checkedProvider: false,
       synchronized: false,
-    },
+    }, lang),
   });
 }
 
 async function verifyWalletTopupPayment(req, res) {
   const { id, paymentId } = req.params;
+  const lang = getRequestLang(req);
   try {
     validateObjectId(id, "subscriptionId");
     validateObjectId(paymentId, "paymentId");
@@ -2245,15 +3279,20 @@ async function verifyWalletTopupPayment(req, res) {
   }
 
   if (payment.status === "paid" && payment.applied === true) {
-    const lang = getRequestLang(req);
-    const catalog = await loadWalletCatalogMaps({ subscription: sub, payments: [payment], lang });
+    const catalog = await loadWalletCatalogMapsSafely({
+      subscription: sub,
+      payments: [payment],
+      lang,
+      context: "verify_wallet_topup_paid_short_circuit",
+    });
+    const payload = {
+      ...buildWalletTopupStatusPayload({ subscription: sub, payment, catalog }),
+      checkedProvider: false,
+      synchronized: false,
+    };
     return res.status(200).json({
       ok: true,
-      data: {
-        ...buildWalletTopupStatusPayload({ subscription: sub, payment, catalog }),
-        checkedProvider: false,
-        synchronized: false,
-      },
+      data: localizeWriteWalletTopupStatusPayload(payload, { lang }),
     });
   }
 
@@ -2355,11 +3394,17 @@ async function verifyWalletTopupPayment(req, res) {
         { new: true, session }
       );
       if (claimedPayment) {
-        const result = await applyWalletTopupPayment({
-          subscription: subInSession,
-          payment: claimedPayment,
-          session,
-        });
+        const result = isPhase1SharedPaymentDispatcherEnabled()
+          ? await applyPaymentSideEffects({
+            payment: claimedPayment,
+            session,
+            source: "client_manual_verify",
+          })
+          : await applyWalletTopupPayment({
+            subscription: subInSession,
+            payment: claimedPayment,
+            session,
+          });
         if (result.applied) {
           synchronized = true;
         } else {
@@ -2393,20 +3438,866 @@ async function verifyWalletTopupPayment(req, res) {
     Subscription.findById(id).lean(),
     Payment.findById(paymentId).lean(),
   ]);
+  const catalog = await loadWalletCatalogMapsSafely({
+    subscription: latestSub,
+    payments: [latestPayment],
+    lang,
+    context: "verify_wallet_topup_result",
+  });
+  const payload = {
+    ...buildWalletTopupStatusPayload({
+      subscription: latestSub,
+      payment: latestPayment,
+      catalog,
+      providerInvoice,
+    }),
+    checkedProvider: true,
+    synchronized,
+  };
+  return res.status(200).json({
+    ok: true,
+    data: localizeWriteWalletTopupStatusPayload(payload, { lang }),
+  });
+}
+
+async function createPremiumOverageDayPayment(req, res, runtimeOverrides = null) {
+  const runtime = runtimeOverrides ? { ...sliceEDefaultRuntime, ...runtimeOverrides } : sliceEDefaultRuntime;
+  const { id, date } = req.params;
   const lang = getRequestLang(req);
-  const catalog = await loadWalletCatalogMaps({ subscription: latestSub, payments: [latestPayment], lang });
+
+  try {
+    validateObjectId(id, "subscriptionId");
+  } catch (err) {
+    return errorResponse(res, err.status, err.code, err.message);
+  }
+
+  const sub = await Subscription.findById(id).populate("planId");
+  if (!sub) {
+    return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
+  }
+  if (String(sub.userId) !== String(req.userId)) {
+    return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
+  }
+
+  try {
+    ensureActive(sub, date);
+    validateFutureDateOrThrow(date, sub);
+    await enforceTomorrowCutoffOrThrow(date);
+  } catch (err) {
+    const status = err.code === "SUB_INACTIVE" || err.code === "SUB_EXPIRED" ? 422 : 400;
+    return errorResponse(res, status, err.code || "INVALID_DATE", err.message);
+  }
+
+  const day = await SubscriptionDay.findOne({ subscriptionId: id, date });
+  if (!day) {
+    return errorResponse(res, 404, "NOT_FOUND", "Day not found");
+  }
+  if (!isCanonicalGenericPremiumOverageEligibleForDay(sub, day)) {
+    return errorResponse(res, 409, "PREMIUM_OVERAGE_NOT_SUPPORTED", "Premium overage payment is not enabled for this day");
+  }
+
+  const premiumOverageCount = Number(day.premiumOverageCount || 0);
+  if (premiumOverageCount <= 0) {
+    return errorResponse(res, 409, "NO_PENDING_OVERAGE", "This day has no unpaid premium overage");
+  }
+  if (day.premiumOverageStatus === "paid") {
+    return errorResponse(res, 409, "OVERAGE_ALREADY_PAID", "This day premium overage is already paid");
+  }
+
+  const premiumPriceSar = Number(await getSettingValue("premium_price", 20));
+  const unitOveragePriceHalala =
+    Number.isFinite(premiumPriceSar) && premiumPriceSar >= 0
+      ? Math.round(premiumPriceSar * 100)
+      : 0;
+  const amount = premiumOverageCount * unitOveragePriceHalala;
+
+  const idempotency = await maybeHandleNonCheckoutIdempotency({
+    req,
+    res,
+    operationScope: PREMIUM_OVERAGE_DAY_PAYMENT_TYPE,
+    effectivePayload: {
+      subscriptionId: String(sub._id),
+      dayId: String(day._id),
+      date: String(day.date),
+      premiumOverageCount,
+    },
+    fallbackResponseShape: "premium_overage_day",
+    runtime,
+  });
+  if (!idempotency.shouldContinue) {
+    return idempotency.response;
+  }
+
+  const appUrl = process.env.APP_URL || "https://example.com";
+  const successUrl = req.body && req.body.successUrl ? req.body.successUrl : `${appUrl}/payments/success`;
+  const backUrl = req.body && req.body.backUrl ? req.body.backUrl : `${appUrl}/payments/cancel`;
+  const invoice = await runtime.createInvoice({
+    amount,
+    description: buildPaymentDescription("premiumOverageSettlement", lang, {
+      count: premiumOverageCount,
+    }),
+    callbackUrl: `${appUrl}/api/webhooks/moyasar`,
+    successUrl,
+    backUrl,
+    metadata: {
+      type: PREMIUM_OVERAGE_DAY_PAYMENT_TYPE,
+      subscriptionId: String(sub._id),
+      userId: String(req.userId),
+      dayId: String(day._id),
+      date: String(day.date),
+      premiumOverageCount,
+      unitOveragePriceHalala,
+      currency: SYSTEM_CURRENCY,
+    },
+  });
+  const invoiceCurrency = assertSystemCurrencyOrThrow(invoice.currency || SYSTEM_CURRENCY, "Invoice currency");
+
+  const payment = await runtime.createPayment({
+    provider: "moyasar",
+    type: PREMIUM_OVERAGE_DAY_PAYMENT_TYPE,
+    status: "initiated",
+    amount,
+    currency: invoiceCurrency,
+    userId: req.userId,
+    subscriptionId: sub._id,
+    providerInvoiceId: invoice.id,
+    metadata: buildPaymentMetadataWithInitiationFields(invoice.metadata || {}, {
+      paymentUrl: invoice.url,
+      responseShape: "premium_overage_day",
+      totalHalala: amount,
+    }),
+    ...(idempotency.idempotencyKey
+      ? {
+        operationScope: PREMIUM_OVERAGE_DAY_PAYMENT_TYPE,
+        operationIdempotencyKey: idempotency.idempotencyKey,
+        operationRequestHash: idempotency.operationRequestHash,
+      }
+      : {}),
+  });
+
   return res.status(200).json({
     ok: true,
     data: {
-      ...buildWalletTopupStatusPayload({
-        subscription: latestSub,
-        payment: latestPayment,
-        catalog,
-        providerInvoice,
-      }),
-      checkedProvider: true,
-      synchronized,
+      payment_url: invoice.url,
+      invoice_id: invoice.id,
+      payment_id: payment.id,
+      totalHalala: amount,
     },
+  });
+}
+
+async function verifyPremiumOverageDayPayment(req, res, runtimeOverrides = null) {
+  const { id, date, paymentId } = req.params;
+  const lang = getRequestLang(req);
+  const getInvoiceFn = runtimeOverrides && runtimeOverrides.getInvoice
+    ? runtimeOverrides.getInvoice
+    : getInvoice;
+  const startSessionFn = runtimeOverrides && runtimeOverrides.startSession
+    ? runtimeOverrides.startSession
+    : () => mongoose.startSession();
+  const applyPaymentSideEffectsFn = runtimeOverrides && runtimeOverrides.applyPaymentSideEffects
+    ? runtimeOverrides.applyPaymentSideEffects
+    : applyPaymentSideEffects;
+
+  try {
+    validateObjectId(id, "subscriptionId");
+    validateObjectId(paymentId, "paymentId");
+  } catch (err) {
+    return errorResponse(res, err.status, err.code, err.message);
+  }
+
+  const sub = await Subscription.findById(id).lean();
+  if (!sub) {
+    return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
+  }
+  if (String(sub.userId) !== String(req.userId)) {
+    return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
+  }
+
+  const payment = await Payment.findOne({
+    _id: paymentId,
+    subscriptionId: id,
+    userId: req.userId,
+    type: PREMIUM_OVERAGE_DAY_PAYMENT_TYPE,
+  }).lean();
+  if (!payment) {
+    return errorResponse(res, 404, "NOT_FOUND", "Premium overage payment not found");
+  }
+  const paymentMetadata = getPaymentMetadata(payment);
+  if (String(paymentMetadata.date || "") !== String(date)) {
+    logger.warn("Premium overage payment mismatch", {
+      subscriptionId: id,
+      paymentId,
+      expectedDate: date,
+      paymentDate: paymentMetadata.date,
+      code: "MISMATCH",
+      message: "Payment day mismatch",
+    });
+    return errorResponse(res, 409, "MISMATCH", "Payment day mismatch");
+  }
+  if (!payment.providerInvoiceId) {
+    return errorResponse(res, 409, "CHECKOUT_IN_PROGRESS", "Premium overage invoice is not initialized yet");
+  }
+
+  let day = null;
+  if (paymentMetadata.dayId && mongoose.Types.ObjectId.isValid(String(paymentMetadata.dayId))) {
+    day = await SubscriptionDay.findById(paymentMetadata.dayId).lean();
+  } else {
+    day = await SubscriptionDay.findOne({ subscriptionId: id, date }).lean();
+  }
+  if (!day) {
+    return errorResponse(res, 404, "NOT_FOUND", "Day not found");
+  }
+
+  if (payment.status === "paid" && payment.applied === true) {
+    const payload = {
+      ...buildPremiumOveragePaymentStatusPayload({ subscription: sub, day, payment }),
+      checkedProvider: false,
+      synchronized: false,
+    };
+    return res.status(200).json({
+      ok: true,
+      data: localizeWritePremiumOverageStatusPayload(payload, { lang }),
+    });
+  }
+
+  let providerInvoice;
+  try {
+    providerInvoice = await getInvoiceFn(payment.providerInvoiceId);
+  } catch (err) {
+    if (err.code === "CONFIG") {
+      return errorResponse(res, 500, "CONFIG", err.message);
+    }
+    if (err.code === "NOT_FOUND") {
+      return errorResponse(res, 502, "PAYMENT_PROVIDER_ERROR", "Invoice not found at payment provider");
+    }
+    logger.error("Premium overage verify failed to fetch invoice", {
+      subscriptionId: id,
+      paymentId,
+      date,
+      error: err.message,
+      stack: err.stack,
+    });
+    return errorResponse(res, 502, "PAYMENT_PROVIDER_ERROR", "Failed to fetch payment status from provider");
+  }
+
+  const providerPayment = pickProviderInvoicePayment(providerInvoice, payment);
+  const normalizedStatus = normalizeProviderPaymentStatus(
+    providerPayment && providerPayment.status ? providerPayment.status : providerInvoice.status
+  );
+  if (!normalizedStatus) {
+    return errorResponse(res, 409, "PAYMENT_PROVIDER_ERROR", "Unsupported provider payment status");
+  }
+
+  const session = await startSessionFn();
+  let synchronized = false;
+  try {
+    session.startTransaction();
+
+    const subInSession = await Subscription.findOne({ _id: id, userId: req.userId }).session(session);
+    if (!subInSession) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
+    }
+
+    const paymentInSession = await Payment.findOne({
+      _id: paymentId,
+      subscriptionId: id,
+      userId: req.userId,
+      type: PREMIUM_OVERAGE_DAY_PAYMENT_TYPE,
+    }).session(session);
+    if (!paymentInSession) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 404, "NOT_FOUND", "Premium overage payment not found");
+    }
+
+    const metadataInSession = getPaymentMetadata(paymentInSession);
+    if (String(metadataInSession.date || "") !== String(date)) {
+      logger.warn("Premium overage payment mismatch", {
+        subscriptionId: id,
+        paymentId,
+        expectedDate: date,
+        paymentDate: metadataInSession.date,
+        code: "MISMATCH",
+        message: "Payment day mismatch",
+      });
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 409, "MISMATCH", "Payment day mismatch");
+    }
+
+    const providerInvoiceId = providerInvoice && providerInvoice.id ? String(providerInvoice.id) : "";
+    if (providerInvoiceId && paymentInSession.providerInvoiceId && String(paymentInSession.providerInvoiceId) !== providerInvoiceId) {
+      logger.warn("Premium overage payment mismatch", {
+        subscriptionId: id,
+        paymentId,
+        expectedInvoiceId: providerInvoiceId,
+        paymentInvoiceId: paymentInSession.providerInvoiceId,
+        code: "MISMATCH",
+        message: "Invoice ID mismatch",
+      });
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 409, "MISMATCH", "Invoice ID mismatch");
+    }
+    if (providerPayment && providerPayment.id && paymentInSession.providerPaymentId && String(paymentInSession.providerPaymentId) !== String(providerPayment.id)) {
+      logger.warn("Premium overage payment mismatch", {
+        subscriptionId: id,
+        paymentId,
+        expectedPaymentId: providerPayment.id,
+        paymentPaymentId: paymentInSession.providerPaymentId,
+        code: "MISMATCH",
+        message: "Payment ID mismatch",
+      });
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 409, "MISMATCH", "Payment ID mismatch");
+    }
+
+    const providerAmount = Number(providerPayment && providerPayment.amount !== undefined ? providerPayment.amount : providerInvoice.amount);
+    if (Number.isFinite(providerAmount) && providerAmount !== Number(paymentInSession.amount)) {
+      logger.warn("Premium overage payment mismatch", {
+        subscriptionId: id,
+        paymentId,
+        expectedAmount: providerAmount,
+        paymentAmount: paymentInSession.amount,
+        code: "MISMATCH",
+        message: "Amount mismatch",
+      });
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 409, "MISMATCH", "Amount mismatch");
+    }
+
+    const providerCurrency = normalizeCurrencyValue(
+      providerPayment && providerPayment.currency ? providerPayment.currency : providerInvoice.currency
+    );
+    if (providerCurrency !== normalizeCurrencyValue(paymentInSession.currency)) {
+      logger.warn("Premium overage payment mismatch", {
+        subscriptionId: id,
+        paymentId,
+        expectedCurrency: providerCurrency,
+        paymentCurrency: paymentInSession.currency,
+        code: "MISMATCH",
+        message: "Currency mismatch",
+      });
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 409, "MISMATCH", "Currency mismatch");
+    }
+
+    if (providerInvoiceId && !paymentInSession.providerInvoiceId) {
+      paymentInSession.providerInvoiceId = providerInvoiceId;
+    }
+    if (providerPayment && providerPayment.id && !paymentInSession.providerPaymentId) {
+      paymentInSession.providerPaymentId = String(providerPayment.id);
+    }
+    paymentInSession.status = normalizedStatus;
+    if (normalizedStatus === "paid" && !paymentInSession.paidAt) {
+      paymentInSession.paidAt = new Date();
+    }
+    await paymentInSession.save({ session });
+
+    if (normalizedStatus === "paid" && !paymentInSession.applied) {
+      const claimedPayment = await Payment.findOneAndUpdate(
+        { _id: paymentInSession._id, applied: false },
+        { $set: { applied: true, status: "paid" } },
+        { new: true, session }
+      );
+      if (claimedPayment) {
+        const result = await applyPaymentSideEffectsFn({
+          payment: claimedPayment,
+          session,
+          source: "client_manual_verify",
+        });
+        if (result.applied) {
+          synchronized = true;
+        } else {
+          const metadata = Object.assign({}, claimedPayment.metadata || {}, { unappliedReason: result.reason });
+          await Payment.updateOne(
+            { _id: claimedPayment._id },
+            { $set: { applied: true, status: "paid", metadata } },
+            { session }
+          );
+        }
+      }
+    }
+
+    await session.commitTransaction();
+    session.endSession();
+  } catch (err) {
+    if (session.inTransaction()) {
+      await session.abortTransaction();
+    }
+    session.endSession();
+    logger.error("Premium overage verification failed", {
+      subscriptionId: id,
+      paymentId,
+      date,
+      error: err.message,
+      stack: err.stack,
+    });
+    return errorResponse(res, 500, "INTERNAL", "Premium overage verification failed");
+  }
+
+  const [latestSub, latestPayment] = await Promise.all([
+    Subscription.findById(id).lean(),
+    Payment.findById(paymentId).lean(),
+  ]);
+  const latestPaymentMetadata = getPaymentMetadata(latestPayment);
+  const latestDay = latestPaymentMetadata.dayId && mongoose.Types.ObjectId.isValid(String(latestPaymentMetadata.dayId))
+    ? await SubscriptionDay.findById(latestPaymentMetadata.dayId).lean()
+    : await SubscriptionDay.findOne({ subscriptionId: id, date }).lean();
+
+  const payload = {
+    ...buildPremiumOveragePaymentStatusPayload({
+      subscription: latestSub,
+      day: latestDay,
+      payment: latestPayment,
+      providerInvoice,
+    }),
+    checkedProvider: true,
+    synchronized,
+  };
+
+  return res.status(200).json({
+    ok: true,
+    data: localizeWritePremiumOverageStatusPayload(payload, { lang }),
+  });
+}
+
+async function createOneTimeAddonDayPlanningPayment(req, res, runtimeOverrides = null) {
+  const runtime = runtimeOverrides ? { ...sliceEDefaultRuntime, ...runtimeOverrides } : sliceEDefaultRuntime;
+  const { id, date } = req.params;
+  const lang = getRequestLang(req);
+
+  try {
+    validateObjectId(id, "subscriptionId");
+  } catch (err) {
+    return errorResponse(res, err.status, err.code, err.message);
+  }
+
+  const sub = await Subscription.findById(id).populate("planId");
+  if (!sub) {
+    return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
+  }
+  if (String(sub.userId) !== String(req.userId)) {
+    return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
+  }
+
+  try {
+    ensureActive(sub, date);
+    validateFutureDateOrThrow(date, sub);
+    await enforceTomorrowCutoffOrThrow(date);
+  } catch (err) {
+    const status = err.code === "SUB_INACTIVE" || err.code === "SUB_EXPIRED" ? 422 : 400;
+    return errorResponse(res, status, err.code || "INVALID_DATE", err.message);
+  }
+
+  const day = await SubscriptionDay.findOne({ subscriptionId: id, date });
+  if (!day) {
+    return errorResponse(res, 404, "NOT_FOUND", "Day not found");
+  }
+  if (!isCanonicalOneTimeAddonPlanningPaymentEligibleForDay(sub, day)) {
+    return errorResponse(res, 409, "ONE_TIME_ADDON_PAYMENT_NOT_SUPPORTED", "One-time add-on payment is not enabled for this day");
+  }
+  if (Number(day.oneTimeAddonPendingCount || 0) <= 0) {
+    return errorResponse(res, 409, "NO_PENDING_ONE_TIME_ADDONS", "This day has no unpaid one-time add-ons");
+  }
+  if (day.oneTimeAddonPaymentStatus === "paid") {
+    return errorResponse(res, 409, "ONE_TIME_ADDONS_ALREADY_PAID", "This day one-time add-on selection is already paid");
+  }
+
+  let pricedSnapshot;
+  try {
+    pricedSnapshot = await buildPricedOneTimeAddonPaymentSnapshot({ day });
+  } catch (err) {
+    if (err.code === "ONE_TIME_ADDON_PRICING_NOT_FOUND") {
+      return errorResponse(res, 404, "NOT_FOUND", err.message);
+    }
+    if (err.code === "CONFIG" || err.code === "VALIDATION_ERROR") {
+      return errorResponse(res, 409, err.code, err.message);
+    }
+    throw err;
+  }
+
+  if (pricedSnapshot.oneTimeAddonCount <= 0) {
+    return errorResponse(res, 409, "NO_PENDING_ONE_TIME_ADDONS", "This day has no unpaid one-time add-ons");
+  }
+
+  const idempotency = await maybeHandleNonCheckoutIdempotency({
+    req,
+    res,
+    operationScope: ONE_TIME_ADDON_DAY_PLANNING_PAYMENT_TYPE,
+    effectivePayload: {
+      subscriptionId: String(sub._id),
+      dayId: String(day._id),
+      date: String(day.date),
+      oneTimeAddonSelections: pricedSnapshot.oneTimeAddonSelections,
+    },
+    fallbackResponseShape: "one_time_addon_day_planning",
+    runtime,
+  });
+  if (!idempotency.shouldContinue) {
+    return idempotency.response;
+  }
+
+  const appUrl = process.env.APP_URL || "https://example.com";
+  const successUrl = req.body && req.body.successUrl ? req.body.successUrl : `${appUrl}/payments/success`;
+  const backUrl = req.body && req.body.backUrl ? req.body.backUrl : `${appUrl}/payments/cancel`;
+  const invoice = await runtime.createInvoice({
+    amount: pricedSnapshot.totalHalala,
+    description: buildPaymentDescription("oneTimeAddons", lang, {
+      count: pricedSnapshot.oneTimeAddonCount,
+    }),
+    callbackUrl: `${appUrl}/api/webhooks/moyasar`,
+    successUrl,
+    backUrl,
+    metadata: {
+      type: ONE_TIME_ADDON_DAY_PLANNING_PAYMENT_TYPE,
+      subscriptionId: String(sub._id),
+      userId: String(req.userId),
+      dayId: String(day._id),
+      date: String(day.date),
+      oneTimeAddonSelections: pricedSnapshot.oneTimeAddonSelections,
+      oneTimeAddonCount: pricedSnapshot.oneTimeAddonCount,
+      pricedItems: pricedSnapshot.pricedItems,
+      currency: pricedSnapshot.currency,
+    },
+  });
+  const invoiceCurrency = assertSystemCurrencyOrThrow(invoice.currency || SYSTEM_CURRENCY, "Invoice currency");
+
+  const payment = await runtime.createPayment({
+    provider: "moyasar",
+    type: ONE_TIME_ADDON_DAY_PLANNING_PAYMENT_TYPE,
+    status: "initiated",
+    amount: pricedSnapshot.totalHalala,
+    currency: invoiceCurrency,
+    userId: req.userId,
+    subscriptionId: sub._id,
+    providerInvoiceId: invoice.id,
+    metadata: buildPaymentMetadataWithInitiationFields(invoice.metadata || {}, {
+      paymentUrl: invoice.url,
+      responseShape: "one_time_addon_day_planning",
+      totalHalala: pricedSnapshot.totalHalala,
+    }),
+    ...(idempotency.idempotencyKey
+      ? {
+        operationScope: ONE_TIME_ADDON_DAY_PLANNING_PAYMENT_TYPE,
+        operationIdempotencyKey: idempotency.idempotencyKey,
+        operationRequestHash: idempotency.operationRequestHash,
+      }
+      : {}),
+  });
+
+  return res.status(200).json({
+    ok: true,
+    data: {
+      payment_url: invoice.url,
+      invoice_id: invoice.id,
+      payment_id: payment.id,
+      totalHalala: pricedSnapshot.totalHalala,
+    },
+  });
+}
+
+async function verifyOneTimeAddonDayPlanningPayment(req, res, runtimeOverrides = null) {
+  const { id, date, paymentId } = req.params;
+  const lang = getRequestLang(req);
+  const getInvoiceFn = runtimeOverrides && runtimeOverrides.getInvoice
+    ? runtimeOverrides.getInvoice
+    : getInvoice;
+  const startSessionFn = runtimeOverrides && runtimeOverrides.startSession
+    ? runtimeOverrides.startSession
+    : () => mongoose.startSession();
+  const applyPaymentSideEffectsFn = runtimeOverrides && runtimeOverrides.applyPaymentSideEffects
+    ? runtimeOverrides.applyPaymentSideEffects
+    : applyPaymentSideEffects;
+
+  try {
+    validateObjectId(id, "subscriptionId");
+    validateObjectId(paymentId, "paymentId");
+  } catch (err) {
+    return errorResponse(res, err.status, err.code, err.message);
+  }
+
+  const sub = await Subscription.findById(id).lean();
+  if (!sub) {
+    return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
+  }
+  if (String(sub.userId) !== String(req.userId)) {
+    return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
+  }
+
+  const payment = await Payment.findOne({
+    _id: paymentId,
+    subscriptionId: id,
+    userId: req.userId,
+    type: ONE_TIME_ADDON_DAY_PLANNING_PAYMENT_TYPE,
+  }).lean();
+  if (!payment) {
+    return errorResponse(res, 404, "NOT_FOUND", "One-time add-on payment not found");
+  }
+  const paymentMetadata = getPaymentMetadata(payment);
+  if (String(paymentMetadata.date || "") !== String(date)) {
+    logger.warn("One-time add-on payment mismatch", {
+      subscriptionId: id,
+      paymentId,
+      expectedDate: date,
+      paymentDate: paymentMetadata.date,
+      code: "MISMATCH",
+      message: "Payment day mismatch",
+    });
+    return errorResponse(res, 409, "MISMATCH", "Payment day mismatch");
+  }
+  if (!payment.providerInvoiceId) {
+    return errorResponse(res, 409, "CHECKOUT_IN_PROGRESS", "One-time add-on invoice is not initialized yet");
+  }
+
+  let day = null;
+  if (paymentMetadata.dayId && mongoose.Types.ObjectId.isValid(String(paymentMetadata.dayId))) {
+    day = await SubscriptionDay.findById(paymentMetadata.dayId).lean();
+  } else {
+    day = await SubscriptionDay.findOne({ subscriptionId: id, date }).lean();
+  }
+  if (!day) {
+    return errorResponse(res, 404, "NOT_FOUND", "Day not found");
+  }
+
+  if (payment.status === "paid" && payment.applied === true) {
+    const catalog = await loadWalletCatalogMapsSafely({
+      days: [day],
+      lang,
+      context: "verify_one_time_addon_paid_short_circuit",
+    });
+    const payload = {
+      ...buildOneTimeAddonDayPaymentStatusPayload({ subscription: sub, day, payment }),
+      checkedProvider: false,
+      synchronized: false,
+    };
+    return res.status(200).json({
+      ok: true,
+      data: localizeWriteOneTimeAddonPaymentStatusPayload(payload, {
+        lang,
+        addonNames: catalog.addonNames,
+      }),
+    });
+  }
+
+  let providerInvoice;
+  try {
+    providerInvoice = await getInvoiceFn(payment.providerInvoiceId);
+  } catch (err) {
+    if (err.code === "CONFIG") {
+      return errorResponse(res, 500, "CONFIG", err.message);
+    }
+    if (err.code === "NOT_FOUND") {
+      return errorResponse(res, 502, "PAYMENT_PROVIDER_ERROR", "Invoice not found at payment provider");
+    }
+    logger.error("One-time add-on verify failed to fetch invoice", {
+      subscriptionId: id,
+      paymentId,
+      date,
+      error: err.message,
+      stack: err.stack,
+    });
+    return errorResponse(res, 502, "PAYMENT_PROVIDER_ERROR", "Failed to fetch payment status from provider");
+  }
+
+  const providerPayment = pickProviderInvoicePayment(providerInvoice, payment);
+  const normalizedStatus = normalizeProviderPaymentStatus(
+    providerPayment && providerPayment.status ? providerPayment.status : providerInvoice.status
+  );
+  if (!normalizedStatus) {
+    return errorResponse(res, 409, "PAYMENT_PROVIDER_ERROR", "Unsupported provider payment status");
+  }
+
+  const session = await startSessionFn();
+  let synchronized = false;
+  try {
+    session.startTransaction();
+
+    const subInSession = await Subscription.findOne({ _id: id, userId: req.userId }).session(session);
+    if (!subInSession) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
+    }
+
+    const paymentInSession = await Payment.findOne({
+      _id: paymentId,
+      subscriptionId: id,
+      userId: req.userId,
+      type: ONE_TIME_ADDON_DAY_PLANNING_PAYMENT_TYPE,
+    }).session(session);
+    if (!paymentInSession) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 404, "NOT_FOUND", "One-time add-on payment not found");
+    }
+
+    const metadataInSession = getPaymentMetadata(paymentInSession);
+    if (String(metadataInSession.date || "") !== String(date)) {
+      logger.warn("One-time add-on payment mismatch", {
+        subscriptionId: id,
+        paymentId,
+        expectedDate: date,
+        paymentDate: metadataInSession.date,
+        code: "MISMATCH",
+        message: "Payment day mismatch",
+      });
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 409, "MISMATCH", "Payment day mismatch");
+    }
+
+    const providerInvoiceId = providerInvoice && providerInvoice.id ? String(providerInvoice.id) : "";
+    if (providerInvoiceId && paymentInSession.providerInvoiceId && String(paymentInSession.providerInvoiceId) !== providerInvoiceId) {
+      logger.warn("One-time add-on payment mismatch", {
+        subscriptionId: id,
+        paymentId,
+        expectedInvoiceId: providerInvoiceId,
+        paymentInvoiceId: paymentInSession.providerInvoiceId,
+        code: "MISMATCH",
+        message: "Invoice ID mismatch",
+      });
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 409, "MISMATCH", "Invoice ID mismatch");
+    }
+    if (providerPayment && providerPayment.id && paymentInSession.providerPaymentId && String(paymentInSession.providerPaymentId) !== String(providerPayment.id)) {
+      logger.warn("One-time add-on payment mismatch", {
+        subscriptionId: id,
+        paymentId,
+        expectedPaymentId: providerPayment.id,
+        paymentPaymentId: paymentInSession.providerPaymentId,
+        code: "MISMATCH",
+        message: "Payment ID mismatch",
+      });
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 409, "MISMATCH", "Payment ID mismatch");
+    }
+
+    const providerAmount = Number(providerPayment && providerPayment.amount !== undefined ? providerPayment.amount : providerInvoice.amount);
+    if (Number.isFinite(providerAmount) && providerAmount !== Number(paymentInSession.amount)) {
+      logger.warn("One-time add-on payment mismatch", {
+        subscriptionId: id,
+        paymentId,
+        expectedAmount: providerAmount,
+        paymentAmount: paymentInSession.amount,
+        code: "MISMATCH",
+        message: "Amount mismatch",
+      });
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 409, "MISMATCH", "Amount mismatch");
+    }
+
+    const providerCurrency = normalizeCurrencyValue(
+      providerPayment && providerPayment.currency ? providerPayment.currency : providerInvoice.currency
+    );
+    if (providerCurrency !== normalizeCurrencyValue(paymentInSession.currency)) {
+      logger.warn("One-time add-on payment mismatch", {
+        subscriptionId: id,
+        paymentId,
+        expectedCurrency: providerCurrency,
+        paymentCurrency: paymentInSession.currency,
+        code: "MISMATCH",
+        message: "Currency mismatch",
+      });
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 409, "MISMATCH", "Currency mismatch");
+    }
+
+    if (providerInvoiceId && !paymentInSession.providerInvoiceId) {
+      paymentInSession.providerInvoiceId = providerInvoiceId;
+    }
+    if (providerPayment && providerPayment.id && !paymentInSession.providerPaymentId) {
+      paymentInSession.providerPaymentId = String(providerPayment.id);
+    }
+    paymentInSession.status = normalizedStatus;
+    if (normalizedStatus === "paid" && !paymentInSession.paidAt) {
+      paymentInSession.paidAt = new Date();
+    }
+    await paymentInSession.save({ session });
+
+    if (normalizedStatus === "paid" && !paymentInSession.applied) {
+      const claimedPayment = await Payment.findOneAndUpdate(
+        { _id: paymentInSession._id, applied: false },
+        { $set: { applied: true, status: "paid" } },
+        { new: true, session }
+      );
+      if (claimedPayment) {
+        const result = await applyPaymentSideEffectsFn({
+          payment: claimedPayment,
+          session,
+          source: "client_manual_verify",
+        });
+        if (result.applied) {
+          synchronized = true;
+        } else {
+          const metadata = Object.assign({}, claimedPayment.metadata || {}, { unappliedReason: result.reason });
+          await Payment.updateOne(
+            { _id: claimedPayment._id },
+            { $set: { applied: true, status: "paid", metadata } },
+            { session }
+          );
+        }
+      }
+    }
+
+    await session.commitTransaction();
+    session.endSession();
+  } catch (err) {
+    if (session.inTransaction()) {
+      await session.abortTransaction();
+    }
+    session.endSession();
+    logger.error("One-time add-on verification failed", {
+      subscriptionId: id,
+      paymentId,
+      date,
+      error: err.message,
+      stack: err.stack,
+    });
+    return errorResponse(res, 500, "INTERNAL", "One-time add-on verification failed");
+  }
+
+  const [latestSub, latestPayment] = await Promise.all([
+    Subscription.findById(id).lean(),
+    Payment.findById(paymentId).lean(),
+  ]);
+  const latestPaymentMetadata = getPaymentMetadata(latestPayment);
+  const latestDay = latestPaymentMetadata.dayId && mongoose.Types.ObjectId.isValid(String(latestPaymentMetadata.dayId))
+    ? await SubscriptionDay.findById(latestPaymentMetadata.dayId).lean()
+    : await SubscriptionDay.findOne({ subscriptionId: id, date }).lean();
+
+  const catalog = await loadWalletCatalogMapsSafely({
+    days: latestDay ? [latestDay] : [],
+    lang,
+    context: "verify_one_time_addon_result",
+  });
+  const payload = {
+    ...buildOneTimeAddonDayPaymentStatusPayload({
+      subscription: latestSub,
+      day: latestDay,
+      payment: latestPayment,
+      providerInvoice,
+    }),
+    checkedProvider: true,
+    synchronized,
+  };
+
+  return res.status(200).json({
+    ok: true,
+    data: localizeWriteOneTimeAddonPaymentStatusPayload(payload, {
+      lang,
+      addonNames: catalog.addonNames,
+    }),
   });
 }
 
@@ -2428,7 +4319,9 @@ async function freezeSubscription(req, res) {
     return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
   }
 
-  const freezePolicy = resolveFreezePolicy(sub.planId);
+  const freezePolicy = resolveSubscriptionFreezePolicy(sub, sub.planId, {
+    context: "freeze_subscription",
+  });
   if (!freezePolicy.enabled) {
     return errorResponse(res, 422, "FREEZE_DISABLED", "Freeze is disabled for this plan");
   }
@@ -2526,14 +4419,15 @@ async function freezeSubscription(req, res) {
       if (existingDay) {
         if (existingDay.status !== "frozen") {
           existingDay.status = "frozen";
+          existingDay.canonicalDayActionType = "freeze"; // P2-S7-S1: always overwrite (handles stale "skip" value)
           await existingDay.save({ session });
         }
       } else {
-        await SubscriptionDay.create([{ subscriptionId: subInSession._id, date, status: "frozen" }], { session });
+        await SubscriptionDay.create([{ subscriptionId: subInSession._id, date, status: "frozen", canonicalDayActionType: "freeze" }], { session }); // P2-S7-S1
       }
     }
 
-    const syncResult = await syncFrozenValidityOrThrow(subInSession, session);
+    const syncResult = await syncSubscriptionValidity(subInSession, session);
 
     await session.commitTransaction();
     session.endSession();
@@ -2554,8 +4448,8 @@ async function freezeSubscription(req, res) {
         frozenDates: targetDates,
         newlyFrozenDates,
         alreadyFrozen,
-        frozenDaysTotal: syncResult.frozenDates.length,
-        validityEndDate: toKSADateString(syncResult.validityEndDate),
+        frozenDaysTotal: syncResult.frozenCount,
+        validityEndDate: dateUtils.toKSADateString(syncResult.validityEndDate),
         freezePolicy: policyInSession,
       },
     });
@@ -2636,11 +4530,16 @@ async function unfreezeSubscription(req, res) {
         continue;
       }
       day.status = "open";
-      await day.save({ session });
+      // P2-S7-S1: clear canonical action type on unfreeze; absence is valid for legacy and open days
+      await SubscriptionDay.updateOne(
+        { _id: day._id },
+        { $set: { status: "open" }, $unset: { canonicalDayActionType: 1 } },
+        { session }
+      );
       unfrozenDates.push(date);
     }
 
-    const syncResult = await syncFrozenValidityOrThrow(subInSession, session);
+    const syncResult = await syncSubscriptionValidity(subInSession, session);
 
     await session.commitTransaction();
     session.endSession();
@@ -2662,8 +4561,8 @@ async function unfreezeSubscription(req, res) {
         subscriptionId: subInSession.id,
         unfrozenDates,
         notFrozen,
-        frozenDaysTotal: syncResult.frozenDates.length,
-        validityEndDate: toKSADateString(syncResult.validityEndDate),
+        frozenDaysTotal: syncResult.frozenCount,
+        validityEndDate: dateUtils.toKSADateString(syncResult.validityEndDate),
       },
     });
   } catch (err) {
@@ -2685,6 +4584,7 @@ async function unfreezeSubscription(req, res) {
 
 async function getSubscriptionDays(req, res) {
   const { id } = req.params;
+  const lang = getRequestLang(req);
   // MEDIUM AUDIT FIX: Validate ObjectId up front to return 400 INVALID_ID instead of CastError 500.
   try {
     validateObjectId(id, "subscriptionId");
@@ -2699,12 +4599,18 @@ async function getSubscriptionDays(req, res) {
     return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
   }
   const days = await SubscriptionDay.find({ subscriptionId: id }).sort({ date: 1 }).lean();
-  const mappedDays = days.map(d => ({ ...d, status: mapStatusForClient(d.status) }));
+  const serializedDays = days.map((day) => serializeSubscriptionDayForClient(sub, day));
+  const catalog = await loadWalletCatalogMaps({ days: serializedDays, lang });
+  const mappedDays = serializedDays.map((day) => localizeSubscriptionDayReadPayload(day, {
+    lang,
+    addonNames: catalog.addonNames,
+  }));
   return res.status(200).json({ ok: true, data: mappedDays });
 }
 
 async function getSubscriptionDay(req, res) {
   const { id, date } = req.params;
+  const lang = getRequestLang(req);
   // MEDIUM AUDIT FIX: Validate ObjectId up front to return 400 INVALID_ID instead of CastError 500.
   try {
     validateObjectId(id, "subscriptionId");
@@ -2722,12 +4628,20 @@ async function getSubscriptionDay(req, res) {
   if (!day) {
     return errorResponse(res, 404, "NOT_FOUND", "Day not found" );
   }
-  day.status = mapStatusForClient(day.status);
-  return res.status(200).json({ ok: true, data: day });
+  const serializedDay = serializeSubscriptionDayForClient(sub, day);
+  const catalog = await loadWalletCatalogMaps({ days: [serializedDay], lang });
+  return res.status(200).json({
+    ok: true,
+    data: localizeSubscriptionDayReadPayload(serializedDay, {
+      lang,
+      addonNames: catalog.addonNames,
+    }),
+  });
 }
 
 async function getSubscriptionToday(req, res) {
   const { id } = req.params;
+  const lang = getRequestLang(req);
   // MEDIUM AUDIT FIX: Validate ObjectId up front to return 400 INVALID_ID instead of CastError 500.
   try {
     validateObjectId(id, "subscriptionId");
@@ -2741,23 +4655,40 @@ async function getSubscriptionToday(req, res) {
   if (sub.userId.toString() !== req.userId.toString()) {
     return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
   }
-  const today = getTodayKSADate();
+  const today = dateUtils.getTodayKSADate();
   const day = await SubscriptionDay.findOne({ subscriptionId: id, date: today }).lean();
   if (!day) {
     return errorResponse(res, 404, "NOT_FOUND", "Day not found" );
   }
-  day.status = mapStatusForClient(day.status);
-  return res.status(200).json({ ok: true, data: day });
+  const serializedDay = serializeSubscriptionDayForClient(sub, day);
+  const catalog = await loadWalletCatalogMaps({ days: [serializedDay], lang });
+  return res.status(200).json({
+    ok: true,
+    data: localizeSubscriptionDayReadPayload(serializedDay, {
+      lang,
+      addonNames: catalog.addonNames,
+    }),
+  });
 }
 
-async function updateDaySelection(req, res) {
+async function updateDaySelection(req, res, runtimeOverrides = null) {
+  const runtime = runtimeOverrides ? { ...sliceP2S1DefaultRuntime, ...runtimeOverrides } : sliceP2S1DefaultRuntime;
   const body = req.body || {};
   const selections = body.selections || [];
   const premiumSelections = body.premiumSelections || [];
+  const requestedOneTimeAddonIds = body.oneTimeAddonSelections;
   const { id, date } = req.params;
 
   try {
     validateObjectId(id, "subscriptionId");
+    if (requestedOneTimeAddonIds !== undefined) {
+      if (!Array.isArray(requestedOneTimeAddonIds)) {
+        return sendValidationError(res, "oneTimeAddonSelections must be an array");
+      }
+      for (const addonId of requestedOneTimeAddonIds) {
+        validateObjectId(addonId, "addonId");
+      }
+    }
   } catch (err) {
     return errorResponse(res, err.status, err.code, err.message);
   }
@@ -2785,11 +4716,19 @@ async function updateDaySelection(req, res) {
   if (totalSelected > mealsPerDayLimit) {
     return errorResponse(res, 400, "DAILY_CAP", "Selections exceed meals per day");
   }
+  const useCanonicalPremiumOverage = runtime.isCanonicalPremiumOverageEligible(sub, {
+    dayPlanningFlagEnabled: isPhase2CanonicalDayPlanningEnabled(),
+    genericPremiumWalletFlagEnabled: isPhase2GenericPremiumWalletEnabled(),
+  });
+  const useCanonicalOneTimeAddonPlanning = runtime.isCanonicalDayPlanningEligible(sub, {
+    flagEnabled: isPhase2CanonicalDayPlanningEnabled(),
+  });
   const premiumPriceSar = Number(await getSettingValue("premium_price", 20));
   const legacyPremiumUnitHalala =
     Number.isFinite(premiumPriceSar) && premiumPriceSar >= 0
       ? Math.round(premiumPriceSar * 100)
       : 0;
+  const lang = getRequestLang(req);
 
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -2822,10 +4761,32 @@ async function updateDaySelection(req, res) {
 
       const setsEqual = (a, b) => a.size === b.size && [...a].every((value) => b.has(value));
 
-      if (setsEqual(existingRegSet, newRegSet) && setsEqual(existingPremSet, newPremSet)) {
+      if (
+        !useCanonicalPremiumOverage
+        && !(useCanonicalOneTimeAddonPlanning && requestedOneTimeAddonIds !== undefined)
+        && setsEqual(existingRegSet, newRegSet)
+        && setsEqual(existingPremSet, newPremSet)
+      ) {
         await session.commitTransaction();
         session.endSession();
-        return res.status(200).json({ ok: true, data: existingDay, idempotent: true });
+        const serializedDay = serializeSubscriptionDayForClient(
+          subInSession,
+          existingDay.toObject ? existingDay.toObject() : existingDay,
+          runtime
+        );
+        const catalog = await loadWalletCatalogMapsSafely({
+          days: [serializedDay],
+          lang,
+          context: "update_day_selection_idempotent",
+        });
+        return res.status(200).json({
+          ok: true,
+          data: localizeWriteDayPayload(serializedDay, {
+            lang,
+            addonNames: catalog.addonNames,
+          }),
+          idempotent: true,
+        });
       }
     }
 
@@ -2835,57 +4796,164 @@ async function updateDaySelection(req, res) {
       return errorResponse(res, 409, "LOCKED", "Day is locked" );
     }
 
-    // Compatibility bridge: migrate legacy numeric premiumRemaining into wallet rows once.
-    ensureLegacyPremiumBalanceFromRemaining(subInSession, {
-      unitExtraFeeHalala: legacyPremiumUnitHalala,
-      currency: SYSTEM_CURRENCY,
+    const useGenericPremiumWallet = isGenericPremiumWalletMode(subInSession);
+    const usePremiumOverageFlow = runtime.isCanonicalPremiumOverageEligible(subInSession, {
+      dayPlanningFlagEnabled: isPhase2CanonicalDayPlanningEnabled(),
+      genericPremiumWalletFlagEnabled: isPhase2GenericPremiumWalletEnabled(),
     });
+    if (!useGenericPremiumWallet) {
+      // Compatibility bridge: migrate legacy numeric premiumRemaining into wallet rows once.
+      ensureLegacyPremiumBalanceFromRemaining(subInSession, {
+        unitExtraFeeHalala: legacyPremiumUnitHalala,
+        currency: SYSTEM_CURRENCY,
+      });
+    }
 
     const currentLegacyRows = getLegacyDayPremiumSelections(subInSession, {
       dayId: existingDay ? existingDay._id : null,
       date,
     });
-    const diff = premiumSelections.length - currentLegacyRows.length;
-    const insertedSelectionIds = [];
+    const insertedSelectionRows = [];
+    let walletBackedConsumedCount = currentLegacyRows.length;
 
-    if (diff > 0) {
-      const consumedRows = consumePremiumBalanceFifoRows(subInSession, diff);
-      if (!consumedRows) {
-        await session.abortTransaction();
-        session.endSession();
-        return errorResponse(res, 400, "INSUFFICIENT_PREMIUM", "Not enough premium credits" );
+    if (usePremiumOverageFlow) {
+      const {
+        retainedRows,
+        refundableRows,
+        unmetRequestedMealIds,
+      } = reconcileWalletBackedPremiumRowsForRequestedSelections(currentLegacyRows, premiumSelections);
+
+      if (refundableRows.length > 0) {
+        refundGenericPremiumSelectionRowsOrThrow(subInSession, refundableRows);
+        const rowsToRemove = new Set(refundableRows);
+        subInSession.premiumSelections = (subInSession.premiumSelections || []).filter(
+          (row) => !rowsToRemove.has(row)
+        );
       }
-      let nextSlotIndex = getNextLegacyDayPremiumSlotIndex(currentLegacyRows);
-      for (const consumed of consumedRows) {
-        subInSession.premiumSelections = subInSession.premiumSelections || [];
-        subInSession.premiumSelections.push({
+
+      const availableCredits = getRemainingPremiumCredits(subInSession);
+      const consumeQty = Math.min(unmetRequestedMealIds.length, availableCredits);
+      const consumedRows = consumeQty > 0
+        ? consumeGenericPremiumCredits(subInSession, consumeQty)
+        : [];
+
+      if (consumeQty > 0 && (!consumedRows || consumedRows.length !== consumeQty)) {
+        const err = new Error("Generic premium wallet could not satisfy the requested partial consumption");
+        err.code = "DATA_INTEGRITY_ERROR";
+        throw err;
+      }
+
+      let nextSlotIndex = getNextLegacyDayPremiumSlotIndex(retainedRows);
+      for (let index = 0; index < consumeQty; index += 1) {
+        const consumed = consumedRows[index];
+        const insertedRow = {
           dayId: existingDay ? existingDay._id : undefined,
           date,
           baseSlotKey: `${LEGACY_DAY_PREMIUM_SLOT_PREFIX}${nextSlotIndex}`,
-          premiumMealId: consumed.premiumMealId,
-          unitExtraFeeHalala: consumed.unitExtraFeeHalala,
+          premiumMealId: unmetRequestedMealIds[index],
+          unitExtraFeeHalala: Number(consumed.unitCreditPriceHalala || 0),
           currency: consumed.currency || SYSTEM_CURRENCY,
-        });
-        insertedSelectionIds.push(String(subInSession.premiumSelections[subInSession.premiumSelections.length - 1]._id));
+          premiumWalletMode: GENERIC_PREMIUM_WALLET_MODE,
+          premiumWalletRowId: consumed.premiumWalletRowId || null,
+        };
+        subInSession.premiumSelections = subInSession.premiumSelections || [];
+        subInSession.premiumSelections.push(insertedRow);
+        insertedSelectionRows.push(insertedRow);
         nextSlotIndex += 1;
       }
-    } else if (diff < 0) {
-      const rowsToRefund = currentLegacyRows
-        .slice()
-        .sort((a, b) => new Date(b.consumedAt || 0).getTime() - new Date(a.consumedAt || 0).getTime())
-        .slice(0, -diff);
 
-      refundPremiumSelectionRowsToBalanceOrThrow(subInSession, rowsToRefund);
-
-      const removeIds = new Set(rowsToRefund.map((row) => String(row._id)));
-      subInSession.premiumSelections = (subInSession.premiumSelections || []).filter(
-        (row) => !removeIds.has(String(row._id))
+      walletBackedConsumedCount = retainedRows.length + consumeQty;
+    } else {
+      const diff = premiumSelections.length - currentLegacyRows.length;
+      const addedPremiumMealIds = extractAddedPremiumSelectionIds(
+        existingDay && Array.isArray(existingDay.premiumSelections) ? existingDay.premiumSelections : [],
+        premiumSelections,
+        diff > 0 ? diff : 0
       );
+
+      if (diff > 0) {
+        const consumedRows = useGenericPremiumWallet
+          ? consumeGenericPremiumCredits(subInSession, diff)
+          : consumePremiumBalanceFifoRows(subInSession, diff);
+        if (!consumedRows) {
+          await session.abortTransaction();
+          session.endSession();
+          return errorResponse(res, 400, "INSUFFICIENT_PREMIUM", "Not enough premium credits" );
+        }
+        let nextSlotIndex = getNextLegacyDayPremiumSlotIndex(currentLegacyRows);
+        const firstInsertedOffset = nextSlotIndex;
+        for (const consumed of consumedRows) {
+          const insertedOffset = nextSlotIndex - firstInsertedOffset;
+          const insertedRow = {
+            dayId: existingDay ? existingDay._id : undefined,
+            date,
+            baseSlotKey: `${LEGACY_DAY_PREMIUM_SLOT_PREFIX}${nextSlotIndex}`,
+            premiumMealId: addedPremiumMealIds[insertedOffset]
+              || premiumSelections[insertedOffset]
+              || consumed.premiumMealId,
+            unitExtraFeeHalala: useGenericPremiumWallet
+              ? Number(consumed.unitCreditPriceHalala || 0)
+              : Number(consumed.unitExtraFeeHalala || 0),
+            currency: consumed.currency || SYSTEM_CURRENCY,
+            premiumWalletMode: useGenericPremiumWallet ? GENERIC_PREMIUM_WALLET_MODE : LEGACY_PREMIUM_WALLET_MODE,
+            premiumWalletRowId:
+              useGenericPremiumWallet && consumed.premiumWalletRowId
+                ? consumed.premiumWalletRowId
+                : null,
+          };
+          subInSession.premiumSelections = subInSession.premiumSelections || [];
+          subInSession.premiumSelections.push(insertedRow);
+          insertedSelectionRows.push(insertedRow);
+          nextSlotIndex += 1;
+        }
+      } else if (diff < 0) {
+        const rowsToRefund = currentLegacyRows
+          .slice()
+          .sort((a, b) => new Date(b.consumedAt || 0).getTime() - new Date(a.consumedAt || 0).getTime())
+          .slice(0, -diff);
+
+        if (useGenericPremiumWallet) {
+          refundGenericPremiumSelectionRowsOrThrow(subInSession, rowsToRefund);
+        } else {
+          refundPremiumSelectionRowsToBalanceOrThrow(subInSession, rowsToRefund);
+        }
+
+        const rowsToRemove = new Set(rowsToRefund);
+        subInSession.premiumSelections = (subInSession.premiumSelections || []).filter(
+          (row) => !rowsToRemove.has(row)
+        );
+      }
+
+      walletBackedConsumedCount = getLegacyDayPremiumSelections(subInSession, {
+        dayId: existingDay ? existingDay._id : null,
+        date,
+      }).length;
+    }
+
+    let finalOneTimeAddonSelections;
+    if (useCanonicalOneTimeAddonPlanning) {
+      if (requestedOneTimeAddonIds !== undefined) {
+        const addonDocs = requestedOneTimeAddonIds.length
+          ? await Addon.find({ _id: { $in: requestedOneTimeAddonIds }, isActive: true }).session(session).lean()
+          : [];
+        finalOneTimeAddonSelections = runtime.normalizeOneTimeAddonSelections({
+          requestedAddonIds: requestedOneTimeAddonIds,
+          addonDocs,
+          lang,
+        });
+      } else {
+        finalOneTimeAddonSelections = Array.isArray(existingDay && existingDay.oneTimeAddonSelections)
+          ? existingDay.oneTimeAddonSelections
+          : [];
+      }
     }
 
     const update = { selections, premiumSelections };
     if (body.addonsOneTime !== undefined) {
       update.addonsOneTime = body.addonsOneTime;
+    }
+    if (useCanonicalOneTimeAddonPlanning && requestedOneTimeAddonIds !== undefined) {
+      update.oneTimeAddonSelections = finalOneTimeAddonSelections;
     }
 
     const day = await SubscriptionDay.findOneAndUpdate(
@@ -2894,17 +4962,45 @@ async function updateDaySelection(req, res) {
       { upsert: true, new: true, session }
     );
 
-    if (insertedSelectionIds.length > 0) {
-      const insertIdSet = new Set(insertedSelectionIds);
-      for (const row of subInSession.premiumSelections || []) {
-        if (!insertIdSet.has(String(row._id))) continue;
+    if (insertedSelectionRows.length > 0) {
+      for (const row of insertedSelectionRows) {
         row.dayId = day._id;
         row.date = day.date;
       }
     }
 
-    syncPremiumRemainingFromBalance(subInSession);
+    syncPremiumRemainingFromActivePremiumWallet(subInSession);
+    if (usePremiumOverageFlow) {
+      runtime.applyPremiumOverageState({
+        day,
+        requestedPremiumSelectionCount: premiumSelections.length,
+        walletBackedConsumedCount,
+      });
+    }
+    if (useCanonicalOneTimeAddonPlanning) {
+      runtime.recomputeOneTimeAddonPlanningState({
+        day,
+        selections: finalOneTimeAddonSelections,
+      });
+    }
     applyDayWalletSelections({ subscription: subInSession, day });
+    if (runtime.isCanonicalRecurringAddonEligible(subInSession)) {
+      runtime.applyRecurringAddonProjectionToDay({
+        subscription: subInSession,
+        day,
+      });
+    }
+    if (runtime.isCanonicalDayPlanningEligible(subInSession, {
+      flagEnabled: isPhase2CanonicalDayPlanningEnabled(),
+    })) {
+      runtime.applyCanonicalDraftPlanningToDay({
+        subscription: subInSession,
+        day,
+        selections,
+        premiumSelections,
+        assignmentSource: "client",
+      });
+    }
 
     await subInSession.save({ session });
     await day.save({ session });
@@ -2920,7 +5016,19 @@ async function updateDaySelection(req, res) {
       byRole: "client",
       meta: { date, selectionsCount: selections.length, premiumCount: premiumSelections.length },
     }, { subscriptionId: id, date });
-    return res.status(200).json({ ok: true, data: day });
+    const serializedDay = serializeSubscriptionDayForClient(subInSession, day.toObject ? day.toObject() : day, runtime);
+    const catalog = await loadWalletCatalogMapsSafely({
+      days: [serializedDay],
+      lang,
+      context: "update_day_selection_result",
+    });
+    return res.status(200).json({
+      ok: true,
+      data: localizeWriteDayPayload(serializedDay, {
+        lang,
+        addonNames: catalog.addonNames,
+      }),
+    });
   } catch (err) {
     await session.abortTransaction();
     session.endSession();
@@ -2932,7 +5040,160 @@ async function updateDaySelection(req, res) {
       });
       return errorResponse(res, 409, "DATA_INTEGRITY_ERROR", err.message);
     }
+    if (
+      err.code === "VALIDATION_ERROR"
+      || err.code === "INVALID_ONE_TIME_ADDON_SELECTION"
+      || err.code === "ONE_TIME_ADDON_CATEGORY_CONFLICT"
+    ) {
+      return errorResponse(res, 400, "INVALID", err.message);
+    }
     return errorResponse(res, 500, "INTERNAL", "Selection failed" );
+  }
+}
+
+async function confirmDayPlanning(req, res, runtimeOverrides = null) {
+  const runtime = runtimeOverrides ? { ...sliceP2S1DefaultRuntime, ...runtimeOverrides } : sliceP2S1DefaultRuntime;
+  const { id, date } = req.params;
+  const lang = getRequestLang(req);
+
+  try {
+    validateObjectId(id, "subscriptionId");
+  } catch (err) {
+    return errorResponse(res, err.status, err.code, err.message);
+  }
+
+  const sub = await Subscription.findById(id).populate("planId");
+  if (!sub) {
+    return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
+  }
+  if (String(sub.userId) !== String(req.userId)) {
+    return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
+  }
+  if (!runtime.isCanonicalDayPlanningEligible(sub, {
+    flagEnabled: isPhase2CanonicalDayPlanningEnabled(),
+  })) {
+    return errorResponse(res, 409, "CANONICAL_DAY_PLANNING_DISABLED", "Canonical day planning is not enabled for this subscription");
+  }
+
+  try {
+    validateFutureDateOrThrow(date, sub);
+    await enforceTomorrowCutoffOrThrow(date);
+  } catch (err) {
+    const status = err.code === "SUB_INACTIVE" || err.code === "SUB_EXPIRED" ? 422 : 400;
+    return errorResponse(res, status, err.code || "INVALID_DATE", err.message);
+  }
+
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  try {
+    const subInSession = await Subscription.findById(id).session(session);
+    if (!subInSession) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
+    }
+    if (!runtime.isCanonicalDayPlanningEligible(subInSession, {
+      flagEnabled: isPhase2CanonicalDayPlanningEnabled(),
+    })) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 409, "CANONICAL_DAY_PLANNING_DISABLED", "Canonical day planning is not enabled for this subscription");
+    }
+
+    ensureActive(subInSession, date);
+    validateFutureDateOrThrow(date, subInSession);
+    const day = await SubscriptionDay.findOne({ subscriptionId: id, date }).session(session);
+    if (!day) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 404, "NOT_FOUND", "Day not found");
+    }
+    if (day.status !== "open") {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 409, "LOCKED", "Day is locked");
+    }
+
+    try {
+      runtime.assertCanonicalPlanningExactCount({
+        subscription: subInSession,
+        day,
+      });
+      runtime.assertNoPendingPremiumOverage({
+        subscription: subInSession,
+        day,
+        overageEligible: runtime.isCanonicalPremiumOverageEligible(subInSession, {
+          dayPlanningFlagEnabled: isPhase2CanonicalDayPlanningEnabled(),
+          genericPremiumWalletFlagEnabled: isPhase2GenericPremiumWalletEnabled(),
+        }),
+      });
+      runtime.assertNoPendingOneTimeAddonPayment({ day });
+      runtime.confirmCanonicalDayPlanning({
+        subscription: subInSession,
+        day,
+        actorRole: "client",
+      });
+      runtime.applyRecurringAddonProjectionToDay({
+        subscription: subInSession,
+        day,
+      });
+    } catch (err) {
+      await session.abortTransaction();
+      session.endSession();
+      if (
+        err.code === "PLANNING_INCOMPLETE"
+        || err.code === "PREMIUM_OVERAGE_PAYMENT_REQUIRED"
+        || err.code === "ONE_TIME_ADDON_PAYMENT_REQUIRED"
+      ) {
+        // Operational visibility for failure modes that require user action or payment.
+        logger.warn("Confirm day planning blocked", {
+          subscriptionId: id,
+          date,
+          code: err.code,
+          message: err.message,
+        });
+        return errorResponse(res, 422, err.code, err.message);
+      }
+      throw err;
+    }
+
+    await day.save({ session });
+    await session.commitTransaction();
+    session.endSession();
+
+    await writeLogSafely({
+      entityType: "subscription_day",
+      entityId: day._id,
+      action: "day_plan_confirm",
+      byUserId: req.userId,
+      byRole: "client",
+      meta: { date },
+    }, { subscriptionId: id, date });
+    const serializedDay = serializeSubscriptionDayForClient(subInSession, day.toObject ? day.toObject() : day, runtime);
+    const catalog = await loadWalletCatalogMapsSafely({
+      days: [serializedDay],
+      lang,
+      context: "confirm_day_planning_result",
+    });
+
+    return res.status(200).json({
+      ok: true,
+      data: localizeWriteDayPayload(serializedDay, {
+        lang,
+        addonNames: catalog.addonNames,
+      }),
+    });
+  } catch (err) {
+    await session.abortTransaction();
+    session.endSession();
+    if (err.code === "SUB_INACTIVE" || err.code === "SUB_EXPIRED") {
+      return errorResponse(res, 422, err.code, err.message);
+    }
+    if (err.code === "INVALID_DATE" || err.code === "LOCKED") {
+      return errorResponse(res, 400, err.code, err.message);
+    }
+    logger.error("Confirm day planning failed", { subscriptionId: id, date, error: err.message, stack: err.stack });
+    return errorResponse(res, 500, "INTERNAL", "Day planning confirmation failed");
   }
 }
 
@@ -2942,6 +5203,16 @@ async function lockDaySnapshot(sub, day, session) {
     subscription: sub,
     day,
   });
+  const planningSnapshot = buildScopedCanonicalPlanningSnapshot({
+    subscription: sub,
+    day,
+    flagEnabled: isPhase2CanonicalDayPlanningEnabled(),
+  });
+  const recurringAddonSnapshot = buildScopedRecurringAddonSnapshot({
+    subscription: sub,
+    day,
+  });
+  const oneTimeAddonSnapshot = buildOneTimeAddonPlanningSnapshot({ day });
   const { address, deliveryWindow } = getEffectiveDeliveryDetails(sub, day);
   const snapshot = {
     selections: day.selections,
@@ -2961,6 +5232,15 @@ async function lockDaySnapshot(sub, day, session) {
     },
     mealsPerDay: resolveMealsPerDay(sub),
   };
+  if (planningSnapshot) {
+    snapshot.planning = planningSnapshot;
+  }
+  if (recurringAddonSnapshot) {
+    snapshot.recurringAddons = recurringAddonSnapshot;
+  }
+  if (oneTimeAddonSnapshot) {
+    Object.assign(snapshot, oneTimeAddonSnapshot);
+  }
   day.lockedSnapshot = snapshot;
   day.lockedAt = new Date();
   await day.save({ session });
@@ -2970,6 +5250,7 @@ async function lockDaySnapshot(sub, day, session) {
 
 async function skipDay(req, res) {
   const { id, date } = req.params;
+  const lang = getRequestLang(req);
   const sub = await Subscription.findById(id).populate("planId");
   if (!sub) return errorResponse(res, 404, "NOT_FOUND", "Subscription not found" );
   if (sub.userId.toString() !== req.userId.toString()) {
@@ -3010,7 +5291,10 @@ async function skipDay(req, res) {
     if (result.status === "already_skipped") {
       await session.commitTransaction();
       session.endSession();
-      return res.status(200).json({ ok: true, data: result.day });
+      return res.status(200).json({
+        ok: true,
+        data: localizeWriteDayPayload(result.day, { lang }),
+      });
     }
     if (result.status === "locked") {
       await session.abortTransaction();
@@ -3039,7 +5323,10 @@ async function skipDay(req, res) {
       // BUSINESS RULE: Skip operations never generate compensation days; log only the skipped date.
       meta: { date: result.day.date },
     }, { subscriptionId: id, date: result.day.date });
-    return res.status(200).json({ ok: true, data: result.day });
+    return res.status(200).json({
+      ok: true,
+      data: localizeWriteDayPayload(result.day, { lang }),
+    });
   } catch (err) {
     if (err.code === "SKIP_LIMIT_REACHED") {
       await session.abortTransaction();
@@ -3054,6 +5341,7 @@ async function skipDay(req, res) {
 
 async function unskipDay(req, res) {
   const { id, date } = req.params;
+  const lang = getRequestLang(req);
 
   try {
     validateObjectId(id, "subscriptionId");
@@ -3147,7 +5435,10 @@ async function unskipDay(req, res) {
       byRole: "client",
       meta: { date },
     }, { subscriptionId: id, date });
-    return res.status(200).json({ ok: true, data: day });
+    return res.status(200).json({
+      ok: true,
+      data: localizeWriteDayPayload(day, { lang }),
+    });
   } catch (err) {
     await session.abortTransaction();
     session.endSession();
@@ -3166,6 +5457,7 @@ async function skipRange(req, res) {
   const { id } = req.params;
   const { startDate, days } = req.body || {};
   const rangeDays = parseInt(days, 10);
+  const lang = getRequestLang(req);
 
   try {
     validateObjectId(id, "subscriptionId");
@@ -3173,7 +5465,7 @@ async function skipRange(req, res) {
     return errorResponse(res, err.status, err.code, err.message);
   }
 
-  if (!startDate || !isValidKSADateString(startDate)) {
+  if (!startDate || !dateUtils.isValidKSADateString(startDate)) {
     return errorResponse(res, 400, "INVALID_DATE", "Invalid startDate" );
   }
   if (!rangeDays || rangeDays <= 0) {
@@ -3191,8 +5483,8 @@ async function skipRange(req, res) {
     return errorResponse(res, 422, err.code, err.message );
   }
 
-  const tomorrow = getTomorrowKSADate();
-  if (!isOnOrAfterKSADate(startDate, tomorrow)) {
+  const tomorrow = dateUtils.getTomorrowKSADate();
+  if (!dateUtils.isOnOrAfterKSADate(startDate, tomorrow)) {
     return errorResponse(res, 400, "INVALID_DATE", "startDate must be from tomorrow onward" );
   }
 
@@ -3228,15 +5520,15 @@ async function skipRange(req, res) {
 
     for (let i = 0; i < rangeDays; i++) {
       const dateStr = addDaysToKSADateString(startDate, i);
-      if (!isOnOrAfterKSADate(dateStr, tomorrow)) {
+      if (!dateUtils.isOnOrAfterKSADate(dateStr, tomorrow)) {
         summary.rejected.push({ date: dateStr, reason: "BEFORE_TOMORROW" });
         continue;
       }
-      if (!isInSubscriptionRange(dateStr, baseEndDate)) {
+      if (!dateUtils.isInSubscriptionRange(dateStr, baseEndDate)) {
         summary.rejected.push({ date: dateStr, reason: "OUTSIDE_VALIDITY" });
         continue;
       }
-      if (dateStr === tomorrow && !isBeforeCutoff(cutoffTime)) {
+      if (dateStr === tomorrow && !dateUtils.isBeforeCutoff(cutoffTime)) {
         summary.rejected.push({ date: dateStr, reason: "CUTOFF_PASSED" });
         continue;
       }
@@ -3279,7 +5571,10 @@ async function skipRange(req, res) {
       }, { subscriptionId: id, date: item.date });
     }
 
-    return res.status(200).json({ ok: true, data: summary });
+    return res.status(200).json({
+      ok: true,
+      data: localizeSkipRangeSummary(summary, { lang }),
+    });
   } catch (err) {
     if (err.code === "SKIP_LIMIT_REACHED") {
       await session.abortTransaction();
@@ -3370,59 +5665,79 @@ async function consumePremiumSelection(req, res) {
       return errorResponse(res, 409, "CONFLICT", "baseSlotKey already upgraded for this day");
     }
 
-    const hasPremiumBalanceRows = Array.isArray(sub.premiumBalance) && sub.premiumBalance.length > 0;
-    const hasLegacyPremiumOnly = Number(sub.premiumRemaining || 0) > 0 && !hasPremiumBalanceRows;
-    if (hasLegacyPremiumOnly) {
-      const subPremiumPriceSar = Number(sub.premiumPrice);
-      const settingsPremiumPriceSar = Number(await getSettingValue("premium_price", 20));
-      const fallbackPremiumPriceSar = Number.isFinite(subPremiumPriceSar) && subPremiumPriceSar >= 0
-        ? subPremiumPriceSar
-        : Number.isFinite(settingsPremiumPriceSar) && settingsPremiumPriceSar >= 0
-          ? settingsPremiumPriceSar
-          : 0;
-      const legacyUnitExtraFeeHalala = Math.round(fallbackPremiumPriceSar * 100);
-      const migrated = ensureLegacyPremiumBalanceFromRemaining(sub, {
+    if (isGenericPremiumWalletMode(sub)) {
+      const consumedRows = consumeGenericPremiumCredits(sub, 1);
+      if (!consumedRows || !consumedRows.length) {
+        await session.abortTransaction();
+        session.endSession();
+        return errorResponse(res, 400, "INSUFFICIENT_PREMIUM", "Not enough premium credits");
+      }
+
+      sub.premiumSelections.push({
+        dayId: day._id,
+        date: day.date,
+        baseSlotKey: String(baseSlotKey),
         premiumMealId,
-        unitExtraFeeHalala: legacyUnitExtraFeeHalala,
-        currency: SYSTEM_CURRENCY,
+        unitExtraFeeHalala: Number(consumedRows[0].unitCreditPriceHalala || 0),
+        currency: consumedRows[0].currency || "SAR",
+        premiumWalletMode: GENERIC_PREMIUM_WALLET_MODE,
+        premiumWalletRowId: consumedRows[0].premiumWalletRowId || null,
       });
-      if (migrated) {
-        syncPremiumRemainingFromBalance(sub);
+      syncPremiumRemainingFromActivePremiumWallet(sub);
+    } else {
+      const hasPremiumBalanceRows = Array.isArray(sub.premiumBalance) && sub.premiumBalance.length > 0;
+      const hasLegacyPremiumOnly = Number(sub.premiumRemaining || 0) > 0 && !hasPremiumBalanceRows;
+      if (hasLegacyPremiumOnly) {
+        const subPremiumPriceSar = Number(sub.premiumPrice);
+        const settingsPremiumPriceSar = Number(await getSettingValue("premium_price", 20));
+        const fallbackPremiumPriceSar = Number.isFinite(subPremiumPriceSar) && subPremiumPriceSar >= 0
+          ? subPremiumPriceSar
+          : Number.isFinite(settingsPremiumPriceSar) && settingsPremiumPriceSar >= 0
+            ? settingsPremiumPriceSar
+            : 0;
+        const legacyUnitExtraFeeHalala = Math.round(fallbackPremiumPriceSar * 100);
+        const migrated = ensureLegacyPremiumBalanceFromRemaining(sub, {
+          premiumMealId,
+          unitExtraFeeHalala: legacyUnitExtraFeeHalala,
+          currency: SYSTEM_CURRENCY,
+        });
+        if (migrated) {
+          syncPremiumRemainingFromBalance(sub);
+        }
       }
-    }
 
-    // Legacy compatibility: if prior migration created a generic legacy bucket, bind it
-    // to the requested premium meal before itemized consumption.
-    const hasRequestedPremiumBucket = (sub.premiumBalance || []).some(
-      (row) => String(row.premiumMealId) === String(premiumMealId)
-    );
-    if (!hasRequestedPremiumBucket) {
-      for (const row of sub.premiumBalance || []) {
-        if (String(row.premiumMealId) !== LEGACY_PREMIUM_MEAL_BUCKET_ID) continue;
-        if (Number(row.remainingQty || 0) <= 0 && Number(row.purchasedQty || 0) <= 0) continue;
-        row.premiumMealId = premiumMealId;
+      const hasRequestedPremiumBucket = (sub.premiumBalance || []).some(
+        (row) => String(row.premiumMealId) === String(premiumMealId)
+      );
+      if (!hasRequestedPremiumBucket) {
+        for (const row of sub.premiumBalance || []) {
+          if (String(row.premiumMealId) !== LEGACY_PREMIUM_MEAL_BUCKET_ID) continue;
+          if (Number(row.remainingQty || 0) <= 0 && Number(row.purchasedQty || 0) <= 0) continue;
+          row.premiumMealId = premiumMealId;
+        }
       }
-    }
 
-    const candidates = (sub.premiumBalance || [])
-      .filter((row) => String(row.premiumMealId) === String(premiumMealId) && Number(row.remainingQty) > 0)
-      .sort((a, b) => new Date(a.purchasedAt).getTime() - new Date(b.purchasedAt).getTime());
-    if (!candidates.length) {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 400, "INSUFFICIENT_PREMIUM", "Not enough premium credits");
-    }
+      const candidates = (sub.premiumBalance || [])
+        .filter((row) => String(row.premiumMealId) === String(premiumMealId) && Number(row.remainingQty) > 0)
+        .sort((a, b) => new Date(a.purchasedAt).getTime() - new Date(b.purchasedAt).getTime());
+      if (!candidates.length) {
+        await session.abortTransaction();
+        session.endSession();
+        return errorResponse(res, 400, "INSUFFICIENT_PREMIUM", "Not enough premium credits");
+      }
 
-    candidates[0].remainingQty = Number(candidates[0].remainingQty) - 1;
-    sub.premiumSelections.push({
-      dayId: day._id,
-      date: day.date,
-      baseSlotKey: String(baseSlotKey),
-      premiumMealId,
-      unitExtraFeeHalala: Number(candidates[0].unitExtraFeeHalala || 0),
-      currency: candidates[0].currency || "SAR",
-    });
-    syncPremiumRemainingFromBalance(sub);
+      candidates[0].remainingQty = Number(candidates[0].remainingQty) - 1;
+      sub.premiumSelections.push({
+        dayId: day._id,
+        date: day.date,
+        baseSlotKey: String(baseSlotKey),
+        premiumMealId,
+        unitExtraFeeHalala: Number(candidates[0].unitExtraFeeHalala || 0),
+        currency: candidates[0].currency || "SAR",
+        premiumWalletMode: LEGACY_PREMIUM_WALLET_MODE,
+      });
+      syncPremiumRemainingFromActivePremiumWallet(sub);
+    }
     applyDayWalletSelections({ subscription: sub, day });
     await sub.save({ session });
     await day.save({ session });
@@ -3430,9 +5745,11 @@ async function consumePremiumSelection(req, res) {
     await session.commitTransaction();
     session.endSession();
 
-    const remainingQtyTotal = (sub.premiumBalance || [])
-      .filter((row) => String(row.premiumMealId) === String(premiumMealId))
-      .reduce((sum, row) => sum + Number(row.remainingQty || 0), 0);
+    const remainingQtyTotal = isGenericPremiumWalletMode(sub)
+      ? getRemainingPremiumCredits(sub)
+      : (sub.premiumBalance || [])
+        .filter((row) => String(row.premiumMealId) === String(premiumMealId))
+        .reduce((sum, row) => sum + Number(row.remainingQty || 0), 0);
 
     return res.status(200).json({
       ok: true,
@@ -3520,7 +5837,11 @@ async function removePremiumSelection(req, res) {
 
     const [removed] = rows.splice(index, 1);
     try {
-      refundPremiumSelectionRowsToBalanceOrThrow(sub, [removed]);
+      if (isGenericPremiumWalletMode(sub)) {
+        refundGenericPremiumSelectionRowsOrThrow(sub, [removed]);
+      } else {
+        refundPremiumSelectionRowsToBalanceOrThrow(sub, [removed]);
+      }
     } catch (err) {
       logWalletIntegrityError("premium_refund_remove_selection", {
         subscriptionId: id,
@@ -3541,7 +5862,7 @@ async function removePremiumSelection(req, res) {
       );
     }
 
-    syncPremiumRemainingFromBalance(sub);
+    syncPremiumRemainingFromActivePremiumWallet(sub);
     applyDayWalletSelections({ subscription: sub, day: targetDay });
     await sub.save({ session });
     await targetDay.save({ session });
@@ -3816,16 +6137,18 @@ function applyLegacyPremiumTopupHeaders(res, subscriptionId) {
   );
 }
 
-async function topupPremium(req, res) {
+async function topupPremium(req, res, runtimeOverrides = null) {
+  const runtime = runtimeOverrides ? { ...sliceEDefaultRuntime, ...runtimeOverrides } : sliceEDefaultRuntime;
   applyLegacyPremiumTopupHeaders(res, req.params.id);
 
   if (req.body && Object.prototype.hasOwnProperty.call(req.body, "items")) {
-    return topupPremiumCredits(req, res);
+    return topupPremiumCredits(req, res, runtime);
   }
 
   try {
     const { id } = req.params;
     const { count, successUrl, backUrl } = req.body || {};
+    const lang = getRequestLang(req);
     const premiumCount = parseInt(count, 10);
     if (!premiumCount || premiumCount <= 0) {
       return errorResponse(res, 400, "INVALID", "Invalid premium count" );
@@ -3833,7 +6156,7 @@ async function topupPremium(req, res) {
 
     const sub = await Subscription.findById(id);
     if (!sub) return errorResponse(res, 404, "NOT_FOUND", "Subscription not found" );
-    if (sub.userId.toString() !== _req.userId.toString()) {
+    if (sub.userId.toString() !== req.userId.toString()) {
       return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
     }
     try {
@@ -3842,38 +6165,73 @@ async function topupPremium(req, res) {
       return errorResponse(res, 422, err.code, err.message );
     }
 
+    const idempotency = await maybeHandleNonCheckoutIdempotency({
+      req,
+      res,
+      operationScope: "premium_topup",
+      effectivePayload: {
+        subscriptionId: String(sub._id),
+        premiumCount,
+      },
+      fallbackResponseShape: "legacy_premium_topup",
+      runtime,
+    });
+    if (!idempotency.shouldContinue) {
+      return idempotency.response;
+    }
+
     const premiumPrice = await getSettingValue("premium_price", 20);
     const amount = Math.round(premiumPrice * premiumCount * 100);
     const unitExtraFeeHalala = Math.round(Number(premiumPrice || 0) * 100);
     const appUrl = process.env.APP_URL || "https://example.com";
+    const genericTopup = isGenericPremiumWalletMode(sub);
 
-    const invoice = await createInvoice({
+    const invoice = await runtime.createInvoice({
       amount,
-      description: `Premium top-up (${premiumCount})`,
+      description: buildPaymentDescription("legacyPremiumTopup", lang, {
+        count: premiumCount,
+      }),
       callbackUrl: `${appUrl}/api/webhooks/moyasar`,
       successUrl: successUrl || `${appUrl}/payments/success`,
       backUrl: backUrl || `${appUrl}/payments/cancel`,
       metadata: {
         type: "premium_topup",
         subscriptionId: String(sub._id),
-        userId: String(_req.userId),
+        userId: String(req.userId),
         premiumCount,
-        unitExtraFeeHalala: unitExtraFeeHalala >= 0 ? unitExtraFeeHalala : 0,
+        ...(genericTopup
+          ? {
+            premiumWalletMode: GENERIC_PREMIUM_WALLET_MODE,
+            unitCreditPriceHalala: unitExtraFeeHalala >= 0 ? unitExtraFeeHalala : 0,
+          }
+          : {
+            unitExtraFeeHalala: unitExtraFeeHalala >= 0 ? unitExtraFeeHalala : 0,
+          }),
         currency: SYSTEM_CURRENCY,
       },
     });
     const invoiceCurrency = assertSystemCurrencyOrThrow(invoice.currency || SYSTEM_CURRENCY, "Invoice currency");
 
-    const payment = await Payment.create({
+    const payment = await runtime.createPayment({
       provider: "moyasar",
       type: "premium_topup",
       status: "initiated",
       amount,
       currency: invoiceCurrency,
-      userId: _req.userId,
+      userId: req.userId,
       subscriptionId: sub._id,
       providerInvoiceId: invoice.id,
-      metadata: invoice.metadata || {},
+      metadata: buildPaymentMetadataWithInitiationFields(invoice.metadata || {}, {
+        paymentUrl: invoice.url,
+        responseShape: "legacy_premium_topup",
+      }),
+      ...(idempotency.idempotencyKey
+        ? {
+          operationScope: "premium_topup",
+          operationIdempotencyKey: idempotency.idempotencyKey,
+          operationRequestHash: idempotency.operationRequestHash,
+        }
+        : {}),
     });
 
     return res.status(200).json({
@@ -3889,10 +6247,12 @@ async function topupPremium(req, res) {
   }
 }
 
-async function topupPremiumCredits(req, res) {
+async function topupPremiumCredits(req, res, runtimeOverrides = null) {
+  const runtime = runtimeOverrides ? { ...sliceEDefaultRuntime, ...runtimeOverrides } : sliceEDefaultRuntime;
   try {
     const { id } = req.params;
     const { items, successUrl, backUrl } = req.body || {};
+    const lang = getRequestLang(req);
     const normalizedItems = normalizeCheckoutItemsOrThrow(items, "premiumMealId", "items");
     if (!normalizedItems.length) {
       return sendValidationError(res, "items must contain at least one premium meal");
@@ -3905,34 +6265,67 @@ async function topupPremiumCredits(req, res) {
     }
     ensureActive(sub);
 
-    const premiumDocs = await PremiumMeal.find({
-      _id: { $in: normalizedItems.map((item) => item.id) },
-      isActive: true,
-    }).lean();
-    const premiumById = new Map(premiumDocs.map((doc) => [String(doc._id), doc]));
-
+    const genericTopup = isGenericPremiumWalletMode(sub);
     let amount = 0;
-    const itemsForPayment = [];
-    for (const item of normalizedItems) {
-      const doc = premiumById.get(item.id);
-      if (!doc) {
-        return errorResponse(res, 404, "NOT_FOUND", `Premium meal ${item.id} not found`);
+    let itemsForPayment = [];
+    let premiumCount = 0;
+    let unitCreditPriceHalala = 0;
+    if (genericTopup) {
+      premiumCount = normalizedItems.reduce((sum, item) => sum + Number(item.qty || 0), 0);
+      const premiumPriceSar = Number(await getSettingValue("premium_price", 20));
+      unitCreditPriceHalala =
+        Number.isFinite(premiumPriceSar) && premiumPriceSar >= 0
+          ? Math.round(premiumPriceSar * 100)
+          : 0;
+      amount = premiumCount * unitCreditPriceHalala;
+    } else {
+      const premiumDocs = await PremiumMeal.find({
+        _id: { $in: normalizedItems.map((item) => item.id) },
+        isActive: true,
+      }).lean();
+      const premiumById = new Map(premiumDocs.map((doc) => [String(doc._id), doc]));
+
+      for (const item of normalizedItems) {
+        const doc = premiumById.get(item.id);
+        if (!doc) {
+          return errorResponse(res, 404, "NOT_FOUND", `Premium meal ${item.id} not found`);
+        }
+        assertSystemCurrencyOrThrow(doc.currency || SYSTEM_CURRENCY, `Premium meal ${item.id} currency`);
+        const unit = Number(doc.extraFeeHalala || 0);
+        amount += unit * item.qty;
+        itemsForPayment.push({
+          premiumMealId: item.id,
+          qty: item.qty,
+          unitExtraFeeHalala: unit,
+          currency: SYSTEM_CURRENCY,
+        });
       }
-      assertSystemCurrencyOrThrow(doc.currency || SYSTEM_CURRENCY, `Premium meal ${item.id} currency`);
-      const unit = Number(doc.extraFeeHalala || 0);
-      amount += unit * item.qty;
-      itemsForPayment.push({
-        premiumMealId: item.id,
-        qty: item.qty,
-        unitExtraFeeHalala: unit,
-        currency: SYSTEM_CURRENCY,
-      });
+    }
+
+    const idempotency = await maybeHandleNonCheckoutIdempotency({
+      req,
+      res,
+      operationScope: "premium_topup",
+      effectivePayload: genericTopup
+        ? {
+          subscriptionId: String(sub._id),
+          premiumCount,
+        }
+        : {
+          subscriptionId: String(sub._id),
+          items: normalizeOperationItemsForHash(itemsForPayment, "premiumMealId"),
+        },
+      fallbackResponseShape: "premium_credits_topup",
+      runtime,
+    });
+    if (!idempotency.shouldContinue) {
+      return idempotency.response;
     }
 
     const appUrl = process.env.APP_URL || "https://example.com";
-    const invoice = await createInvoice({
+    const invoice = await runtime.createInvoice({
       amount,
-      description: "Premium credits top-up",
+      description: buildPaymentDescription("premiumCreditsTopup", lang),
       callbackUrl: `${appUrl}/api/webhooks/moyasar`,
       successUrl: successUrl || `${appUrl}/payments/success`,
       backUrl: backUrl || `${appUrl}/payments/cancel`,
@@ -3940,12 +6333,21 @@ async function topupPremiumCredits(req, res) {
         type: "premium_topup",
         subscriptionId: String(sub._id),
         userId: String(req.userId),
-        items: itemsForPayment,
+        ...(genericTopup
+          ? {
+            premiumWalletMode: GENERIC_PREMIUM_WALLET_MODE,
+            premiumCount,
+            unitCreditPriceHalala,
+            currency: SYSTEM_CURRENCY,
+          }
+          : {
+            items: itemsForPayment,
+          }),
       },
     });
     const invoiceCurrency = assertSystemCurrencyOrThrow(invoice.currency || SYSTEM_CURRENCY, "Invoice currency");
 
-    const payment = await Payment.create({
+    const payment = await runtime.createPayment({
       provider: "moyasar",
       type: "premium_topup",
       status: "initiated",
@@ -3954,7 +6356,18 @@ async function topupPremiumCredits(req, res) {
       userId: req.userId,
       subscriptionId: sub._id,
       providerInvoiceId: invoice.id,
-      metadata: invoice.metadata || {},
+      metadata: buildPaymentMetadataWithInitiationFields(invoice.metadata || {}, {
+        paymentUrl: invoice.url,
+        responseShape: "premium_credits_topup",
+        totalHalala: amount,
+      }),
+      ...(idempotency.idempotencyKey
+        ? {
+          operationScope: "premium_topup",
+          operationIdempotencyKey: idempotency.idempotencyKey,
+          operationRequestHash: idempotency.operationRequestHash,
+        }
+        : {}),
     });
 
     return res.status(200).json({
@@ -3978,10 +6391,12 @@ async function topupPremiumCredits(req, res) {
   }
 }
 
-async function topupAddonCredits(req, res) {
+async function topupAddonCredits(req, res, runtimeOverrides = null) {
+  const runtime = runtimeOverrides ? { ...sliceEDefaultRuntime, ...runtimeOverrides } : sliceEDefaultRuntime;
   try {
     const { id } = req.params;
     const { items, successUrl, backUrl } = req.body || {};
+    const lang = getRequestLang(req);
     const normalizedItems = normalizeCheckoutItemsOrThrow(items, "addonId", "items");
     if (!normalizedItems.length) {
       return sendValidationError(res, "items must contain at least one addon");
@@ -4018,10 +6433,25 @@ async function topupAddonCredits(req, res) {
       });
     }
 
+    const idempotency = await maybeHandleNonCheckoutIdempotency({
+      req,
+      res,
+      operationScope: "addon_topup",
+      effectivePayload: {
+        subscriptionId: String(sub._id),
+        items: normalizeOperationItemsForHash(itemsForPayment, "addonId"),
+      },
+      fallbackResponseShape: "addon_credits_topup",
+      runtime,
+    });
+    if (!idempotency.shouldContinue) {
+      return idempotency.response;
+    }
+
     const appUrl = process.env.APP_URL || "https://example.com";
-    const invoice = await createInvoice({
+    const invoice = await runtime.createInvoice({
       amount,
-      description: "Addon credits top-up",
+      description: buildPaymentDescription("addonCreditsTopup", lang),
       callbackUrl: `${appUrl}/api/webhooks/moyasar`,
       successUrl: successUrl || `${appUrl}/payments/success`,
       backUrl: backUrl || `${appUrl}/payments/cancel`,
@@ -4034,7 +6464,7 @@ async function topupAddonCredits(req, res) {
     });
     const invoiceCurrency = assertSystemCurrencyOrThrow(invoice.currency || SYSTEM_CURRENCY, "Invoice currency");
 
-    const payment = await Payment.create({
+    const payment = await runtime.createPayment({
       provider: "moyasar",
       type: "addon_topup",
       status: "initiated",
@@ -4043,7 +6473,18 @@ async function topupAddonCredits(req, res) {
       userId: req.userId,
       subscriptionId: sub._id,
       providerInvoiceId: invoice.id,
-      metadata: invoice.metadata || {},
+      metadata: buildPaymentMetadataWithInitiationFields(invoice.metadata || {}, {
+        paymentUrl: invoice.url,
+        responseShape: "addon_credits_topup",
+        totalHalala: amount,
+      }),
+      ...(idempotency.idempotencyKey
+        ? {
+          operationScope: "addon_topup",
+          operationIdempotencyKey: idempotency.idempotencyKey,
+          operationRequestHash: idempotency.operationRequestHash,
+        }
+        : {}),
     });
 
     return res.status(200).json({
@@ -4067,7 +6508,8 @@ async function topupAddonCredits(req, res) {
   }
 }
 
-async function addOneTimeAddon(_req, res) {
+async function addOneTimeAddon(_req, res, runtimeOverrides = null) {
+  const runtime = runtimeOverrides ? { ...sliceEDefaultRuntime, ...runtimeOverrides } : sliceEDefaultRuntime;
   try {
     const { id } = _req.params;
     const { addonId, date, successUrl, backUrl } = _req.body || {};
@@ -4105,15 +6547,32 @@ async function addOneTimeAddon(_req, res) {
       return errorResponse(res, 409, "LOCKED", "Day is locked" );
     }
 
+    const idempotency = await maybeHandleNonCheckoutIdempotency({
+      req: _req,
+      res,
+      operationScope: "one_time_addon",
+      effectivePayload: {
+        subscriptionId: String(sub._id),
+        addonId: String(addon._id),
+        date,
+      },
+      fallbackResponseShape: "one_time_addon",
+      runtime,
+    });
+    if (!idempotency.shouldContinue) {
+      return idempotency.response;
+    }
+
     const amount = buildAddonUnitFromDoc(addon);
     const appUrl = process.env.APP_URL || "https://example.com";
     const lang = getRequestLang(_req);
     const addonDisplayName = pickLang(addon.name, lang);
 
-    const invoice = await createInvoice({
+    const invoice = await runtime.createInvoice({
       amount,
-      // Fix: reuse the same language resolver used for persisted string names.
-      description: `Add-on (${addonDisplayName})`,
+      description: buildPaymentDescription("oneTimeAddon", lang, {
+        name: addonDisplayName,
+      }),
       callbackUrl: `${appUrl}/api/webhooks/moyasar`,
       successUrl: successUrl || `${appUrl}/payments/success`,
       backUrl: backUrl || `${appUrl}/payments/cancel`,
@@ -4127,7 +6586,7 @@ async function addOneTimeAddon(_req, res) {
     });
     const invoiceCurrency = assertSystemCurrencyOrThrow(invoice.currency || SYSTEM_CURRENCY, "Invoice currency");
 
-    const payment = await Payment.create({
+    const payment = await runtime.createPayment({
       provider: "moyasar",
       type: "one_time_addon",
       status: "initiated",
@@ -4136,7 +6595,17 @@ async function addOneTimeAddon(_req, res) {
       userId: _req.userId,
       subscriptionId: sub._id,
       providerInvoiceId: invoice.id,
-      metadata: invoice.metadata || {},
+      metadata: buildPaymentMetadataWithInitiationFields(invoice.metadata || {}, {
+        paymentUrl: invoice.url,
+        responseShape: "one_time_addon",
+      }),
+      ...(idempotency.idempotencyKey
+        ? {
+          operationScope: "one_time_addon",
+          operationIdempotencyKey: idempotency.idempotencyKey,
+          operationRequestHash: idempotency.operationRequestHash,
+        }
+        : {}),
     });
 
     return res.status(200).json({
@@ -4154,6 +6623,7 @@ async function addOneTimeAddon(_req, res) {
 
 async function preparePickup(req, res) {
   const { id, date } = req.params;
+  const lang = getRequestLang(req);
   const session = await mongoose.startSession();
   session.startTransaction();
   try {
@@ -4199,13 +6669,19 @@ async function preparePickup(req, res) {
     if (day && day.pickupRequested) {
       await session.commitTransaction();
       session.endSession();
-      return res.status(200).json({ ok: true, data: day });
+      return res.status(200).json({
+        ok: true,
+        data: localizeWriteDayPayload(day, { lang }),
+      });
     }
 
     if (day && day.creditsDeducted) {
       await session.commitTransaction();
       session.endSession();
-      return res.status(200).json({ ok: true, data: day });
+      return res.status(200).json({
+        ok: true,
+        data: localizeWriteDayPayload(day, { lang }),
+      });
     }
 
     if (day && !canTransition(day.status, "locked")) {
@@ -4272,7 +6748,10 @@ async function preparePickup(req, res) {
       byRole: "client",
       meta: { date: updatedDay.date, deductedCredits: mealsToDeduct },
     }, { subscriptionId: id, date: updatedDay.date });
-    return res.status(200).json({ ok: true, data: updatedDay });
+    return res.status(200).json({
+      ok: true,
+      data: localizeWriteDayPayload(updatedDay, { lang }),
+    });
   } catch (err) {
     await session.abortTransaction();
     session.endSession();
@@ -4284,6 +6763,7 @@ async function preparePickup(req, res) {
 async function updateDeliveryDetails(req, res) {
   const { id } = req.params;
   const { deliveryAddress, deliveryWindow } = req.body || {};
+  const lang = getRequestLang(req);
   if (deliveryAddress === undefined && deliveryWindow === undefined) {
     return errorResponse(res, 400, "INVALID", "Missing delivery update fields" );
   }
@@ -4316,9 +6796,9 @@ async function updateDeliveryDetails(req, res) {
 
   // MEDIUM AUDIT FIX: Global delivery updates must not mutate tomorrow's effective details after cutoff has passed.
   if (willChangeAddress || willChangeWindow) {
-    const tomorrow = getTomorrowKSADate();
+    const tomorrow = dateUtils.getTomorrowKSADate();
     const endDate = sub.validityEndDate || sub.endDate;
-    if (isInSubscriptionRange(tomorrow, endDate)) {
+    if (dateUtils.isInSubscriptionRange(tomorrow, endDate)) {
       const tomorrowDay = await SubscriptionDay.findOne({ subscriptionId: id, date: tomorrow }).lean();
       const isTomorrowEditable = !tomorrowDay || tomorrowDay.status === "open";
       const addressImpactsTomorrow = willChangeAddress && !hasDeliveryAddressOverride(tomorrowDay);
@@ -4344,12 +6824,16 @@ async function updateDeliveryDetails(req, res) {
     byRole: "client",
     meta: { deliveryWindow: sub.deliveryWindow },
   }, { subscriptionId: id });
-  return res.status(200).json({ ok: true, data: sub });
+  return res.status(200).json({
+    ok: true,
+    data: localizeWriteSubscriptionPayload(sub.toObject ? sub.toObject() : sub, { lang }),
+  });
 }
 
 async function updateDeliveryDetailsForDate(req, res) {
   const { id, date } = req.params;
   const { deliveryAddress, deliveryWindow } = req.body || {};
+  const lang = getRequestLang(req);
   if (deliveryAddress === undefined && deliveryWindow === undefined) {
     return errorResponse(res, 400, "INVALID", "Missing delivery update fields" );
   }
@@ -4406,7 +6890,10 @@ async function updateDeliveryDetailsForDate(req, res) {
     meta: { date, deliveryWindow: updatedDay.deliveryWindowOverride },
   }, { subscriptionId: id, date });
 
-  return res.status(200).json({ ok: true, data: updatedDay });
+  return res.status(200).json({
+    ok: true,
+    data: localizeWriteDayPayload(updatedDay, { lang }),
+  });
 }
 
 /** @unwired - NOT mounted on any route. Do not call without review. */
@@ -4488,12 +6975,19 @@ module.exports = {
   finalizeSubscriptionDraftPayment,
   activateSubscription,
   getSubscription,
+  getSubscriptionTimeline,
+  getSubscriptionRenewalSeed,
+  renewSubscription,
   listCurrentUserSubscriptions,
   serializeSubscriptionForClient,
   getSubscriptionWallet,
   getSubscriptionWalletHistory,
   getWalletTopupPaymentStatus,
   verifyWalletTopupPayment,
+  createPremiumOverageDayPayment,
+  verifyPremiumOverageDayPayment,
+  createOneTimeAddonDayPlanningPayment,
+  verifyOneTimeAddonDayPlanningPayment,
   applyWalletTopupPayment,
   freezeSubscription,
   unfreezeSubscription,
@@ -4501,6 +6995,7 @@ module.exports = {
   getSubscriptionToday,
   getSubscriptionDay,
   updateDaySelection,
+  confirmDayPlanning,
   skipDay,
   unskipDay,
   skipRange,
@@ -4517,4 +7012,5 @@ module.exports = {
   updateDeliveryDetailsForDate,
   transitionDay,
   fulfillDay,
+  ensureActive,
 };

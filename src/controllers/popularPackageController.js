@@ -1,61 +1,28 @@
 const Plan = require("../models/Plan");
-const { getRequestLang, pickLang } = require("../utils/i18n");
-
-function resolveSortValue(value) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function listActiveGramsOptions(plan) {
-  return Array.isArray(plan && plan.gramsOptions)
-    ? plan.gramsOptions
-      .filter((option) => option && option.isActive !== false)
-      .sort((a, b) => {
-        const orderDiff = resolveSortValue(a.sortOrder) - resolveSortValue(b.sortOrder);
-        if (orderDiff !== 0) return orderDiff;
-        return Number(a.grams) - Number(b.grams);
-      })
-    : [];
-}
-
-function listActiveMealsOptions(gramsOption) {
-  return Array.isArray(gramsOption && gramsOption.mealsOptions)
-    ? gramsOption.mealsOptions
-      .filter((option) => option && option.isActive !== false)
-      .sort((a, b) => {
-        const orderDiff = resolveSortValue(a.sortOrder) - resolveSortValue(b.sortOrder);
-        if (orderDiff !== 0) return orderDiff;
-        return Number(a.mealsPerDay) - Number(b.mealsPerDay);
-      })
-    : [];
-}
-
-function parseMoneyValue(halala) {
-  const normalized = Number(halala);
-  return Number.isFinite(normalized) ? normalized / 100 : 0;
-}
+const { getRequestLang } = require("../utils/i18n");
+const { resolvePlanCatalogEntry } = require("../utils/subscriptionCatalog");
 
 function resolvePopularPackage(plan, lang) {
-  const gramsOption = listActiveGramsOptions(plan)[0];
-  if (!gramsOption) return null;
-
-  const mealsOption = listActiveMealsOptions(gramsOption)[0];
-  if (!mealsOption) return null;
-
-  const oldPrice = parseMoneyValue(mealsOption.compareAtHalala);
-  const newPrice = parseMoneyValue(mealsOption.priceHalala);
+  const resolvedPlan = resolvePlanCatalogEntry(plan, lang);
+  const gramsOption = Array.isArray(resolvedPlan.gramsOptions) ? resolvedPlan.gramsOptions[0] : null;
+  const mealsOption = gramsOption && Array.isArray(gramsOption.mealsOptions) ? gramsOption.mealsOptions[0] : null;
+  if (!gramsOption || !mealsOption) return null;
 
   return {
-    id: String(plan._id),
-    planId: String(plan._id),
-    name: pickLang(plan.name, lang),
-    daysCount: Number(plan.daysCount || 0),
-    mealsPerDay: Number(mealsOption.mealsPerDay || 0),
-    grams: Number(gramsOption.grams || 0),
-    oldPrice,
-    newPrice,
-    moneySave: Math.max(0, oldPrice - newPrice),
-    currency: plan.currency || "SAR",
+    id: resolvedPlan.id,
+    planId: resolvedPlan.id,
+    name: resolvedPlan.name,
+    daysCount: resolvedPlan.daysCount,
+    daysLabel: resolvedPlan.daysLabel,
+    mealsPerDay: mealsOption.mealsPerDay,
+    grams: gramsOption.grams,
+    oldPrice: mealsOption.compareAtSar,
+    newPrice: mealsOption.priceSar,
+    moneySave: mealsOption.savingsSar,
+    currency: resolvedPlan.currency,
+    pricing: resolvedPlan.pricing,
+    defaultSelection: resolvedPlan.defaultSelection,
+    ui: resolvedPlan.ui,
   };
 }
 

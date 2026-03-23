@@ -1,5 +1,6 @@
 const PremiumMeal = require("../models/PremiumMeal");
-const { getRequestLang, pickLang } = require("../utils/i18n");
+const { getRequestLang } = require("../utils/i18n");
+const { resolvePremiumMealCatalogEntry } = require("../utils/subscriptionCatalog");
 const validateObjectId = require("../utils/validateObjectId");
 const errorResponse = require("../utils/errorResponse");
 
@@ -93,15 +94,7 @@ function validatePremiumMealPayloadOrThrow(payload) {
 async function listPremiumMeals(req, res) {
   const lang = getRequestLang(req);
   const rows = await PremiumMeal.find({ isActive: true }).sort({ sortOrder: 1, createdAt: -1 }).lean();
-  const mapped = rows.map((row) => ({
-    id: String(row._id),
-    name: pickLang(row.name, lang),
-    description: pickLang(row.description, lang),
-    imageUrl: row.imageUrl || "",
-    currency: row.currency || "SAR",
-    extraFeeHalala: row.extraFeeHalala,
-    extraFeeSar: Number(row.extraFeeHalala || 0) / 100,
-  }));
+  const mapped = rows.map((row) => resolvePremiumMealCatalogEntry(row, lang));
   return res.status(200).json({ ok: true, data: mapped });
 }
 

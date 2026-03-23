@@ -1,7 +1,15 @@
 const Meal = require("../models/Meal");
+const Plan = require("../models/Plan");
+const Addon = require("../models/Addon");
 const PremiumMeal = require("../models/PremiumMeal");
 const Setting = require("../models/Setting");
 const { getRequestLang, pickLang } = require("../utils/i18n");
+const {
+  resolvePlanCatalogEntry,
+  resolvePremiumMealCatalogEntry,
+  resolveAddonCatalogEntry,
+  resolveDeliveryCatalog,
+} = require("../utils/subscriptionCatalog");
 
 const SYSTEM_CURRENCY = "SAR";
 
@@ -84,14 +92,39 @@ async function getOrderMenu(req, res) {
 
 async function getSubscriptionMenu(req, res) {
   const lang = getRequestLang(req);
-  const [regularMeals, premiumMeals, customSaladBasePrice, customMealBasePrice] = await Promise.all([
+  const [
+    plans,
+    regularMeals,
+    premiumMeals,
+    addons,
+    deliveryWindows,
+    subscriptionDeliveryFeeHalala,
+    pickupLocations,
+    customSaladBasePrice,
+    customMealBasePrice,
+  ] = await Promise.all([
+    Plan.find({ isActive: true }).sort({ sortOrder: 1, createdAt: -1 }).lean(),
     Meal.find({ type: "regular", isActive: true, availableForSubscription: { $ne: false } })
       .sort({ sortOrder: 1, createdAt: -1 })
       .lean(),
     PremiumMeal.find({ isActive: true }).sort({ sortOrder: 1, createdAt: -1 }).lean(),
+    Addon.find({ isActive: true }).sort({ sortOrder: 1, createdAt: -1 }).lean(),
+    getSettingValue("delivery_windows", []),
+    getSettingValue("subscription_delivery_fee_halala", 0),
+    getSettingValue("pickup_locations", []),
     getSettingValue("custom_salad_base_price", 0),
     getSettingValue("custom_meal_base_price", 0),
   ]);
+
+  const mappedPlans = plans.map((plan) => resolvePlanCatalogEntry(plan, lang));
+  const mappedPremiumMeals = premiumMeals.map((meal) => resolvePremiumMealCatalogEntry(meal, lang));
+  const mappedAddons = addons.map((addon) => resolveAddonCatalogEntry(addon, lang));
+  const deliveryCatalog = resolveDeliveryCatalog({
+    lang,
+    windows: deliveryWindows,
+    deliveryFeeHalala: subscriptionDeliveryFeeHalala,
+    pickupLocations,
+  });
 
   return res.status(200).json({
     ok: true,
@@ -99,6 +132,7 @@ async function getSubscriptionMenu(req, res) {
       currency: SYSTEM_CURRENCY,
       customSalad: resolveCustomSaladSupport(customSaladBasePrice),
       customMeal: resolveCustomMealSupport(customMealBasePrice),
+      plans: mappedPlans,
       regularMeals: regularMeals.map((meal) => ({
         ...resolveMealCard(meal, lang),
         type: "regular",
@@ -106,18 +140,31 @@ async function getSubscriptionMenu(req, res) {
         priceHalala: 0,
         priceSar: 0,
         currency: SYSTEM_CURRENCY,
+        ui: {
+          title: pickLang(meal.name, lang),
+          subtitle: pickLang(meal.description, lang),
+        },
       })),
-      premiumMeals: premiumMeals.map((meal) => ({
-        id: String(meal._id),
-        name: pickLang(meal.name, lang),
-        description: pickLang(meal.description, lang),
-        imageUrl: meal.imageUrl || "",
+      premiumMeals: mappedPremiumMeals.map((meal) => ({
+        ...meal,
         type: "premium",
         pricingModel: "extra_fee",
-        priceHalala: Number(meal.extraFeeHalala || 0),
-        priceSar: Number(meal.extraFeeHalala || 0) / 100,
-        currency: meal.currency || SYSTEM_CURRENCY,
       })),
+      addons: mappedAddons,
+      addonsByType: {
+        subscription: mappedAddons.filter((addon) => addon.type === "subscription"),
+        oneTime: mappedAddons.filter((addon) => addon.type === "one_time"),
+      },
+      delivery: deliveryCatalog,
+      flow: {
+        steps: [
+          { id: "packages", title: lang === "en" ? "Subscription Packages" : "باقات الاشتراك" },
+          { id: "premiumMeals", title: lang === "en" ? "Premium Meals" : "الوجبات المميزة" },
+          { id: "addons", title: lang === "en" ? "Add-Ons" : "الإضافات" },
+          { id: "delivery", title: lang === "en" ? "Delivery Method" : "طريقة الاستلام" },
+          { id: "mealSelection", title: lang === "en" ? "Meal Selection" : "اختيار الوجبات" },
+        ],
+      },
     },
   });
 }

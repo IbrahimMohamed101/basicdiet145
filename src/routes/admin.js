@@ -5,12 +5,45 @@ const mealIngredientController = require("../controllers/mealIngredientControlle
 const mealController = require("../controllers/mealController");
 const premiumMealController = require("../controllers/premiumMealController");
 const addonController = require("../controllers/addonController");
+const uploadController = require("../controllers/uploadController");
 const { dashboardAuthMiddleware, dashboardRoleMiddleware } = require("../middleware/dashboardAuth");
 const asyncHandler = require("../middleware/asyncHandler");
+const { adminImageUploadMiddleware } = require("../middleware/imageUpload");
 
 const router = Router();
 
 router.use(dashboardAuthMiddleware, dashboardRoleMiddleware(["admin"]));
+
+/**
+ * @openapi
+ * /admin/uploads/image:
+ *   post:
+ *     summary: Upload an image to Cloudinary
+ *     tags: [Admin (Dashboard)]
+ *     security:
+ *       - dashboardBearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - image
+ *             properties:
+ *               image:
+ *                 type: string
+ *                 format: binary
+ *               folder:
+ *                 type: string
+ *                 description: Optional folder suffix under `basicdiet/`, for example `plans`, `meals`, or `addons`.
+ *     responses:
+ *       201:
+ *         description: Uploaded
+ *       400:
+ *         description: Missing file, invalid mime type, or file too large.
+ */
+router.post("/uploads/image", adminImageUploadMiddleware, asyncHandler(uploadController.uploadAdminImage));
 
 router.get("/overview", asyncHandler(controller.getDashboardOverview));
 router.get("/search", asyncHandler(controller.searchDashboard));
@@ -89,6 +122,10 @@ router.get("/subscriptions/:id/days", asyncHandler(controller.listSubscriptionDa
 router.get("/subscriptions/:id", asyncHandler(controller.getSubscriptionAdmin));
 router.post("/subscriptions/:id/cancel", asyncHandler(controller.cancelSubscriptionAdmin));
 router.put("/subscriptions/:id/extend", asyncHandler(controller.extendSubscriptionAdmin));
+router.post("/subscriptions/:id/freeze", asyncHandler(controller.freezeSubscriptionAdmin));
+router.post("/subscriptions/:id/unfreeze", asyncHandler(controller.unfreezeSubscriptionAdmin));
+router.post("/subscriptions/:id/days/:date/skip", asyncHandler(controller.skipSubscriptionDayAdmin));
+router.post("/subscriptions/:id/days/:date/unskip", asyncHandler(controller.unskipSubscriptionDayAdmin));
 router.get("/orders", asyncHandler(controller.listOrdersAdmin));
 router.get("/orders/:id", asyncHandler(controller.getOrderAdmin));
 router.get("/payments", asyncHandler(controller.listPaymentsAdmin));

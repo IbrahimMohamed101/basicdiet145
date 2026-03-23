@@ -1,4 +1,13 @@
 const mongoose = require("mongoose");
+const {
+  CONTRACT_MODES,
+  CONTRACT_COMPLETENESS_VALUES,
+  CONTRACT_SOURCES,
+} = require("../constants/phase1Contract");
+const {
+  LEGACY_PREMIUM_WALLET_MODE,
+  GENERIC_PREMIUM_WALLET_MODE,
+} = require("../utils/premiumWallet");
 
 const DraftPremiumItemSchema = new mongoose.Schema(
   {
@@ -26,6 +35,9 @@ const DraftAddonSubscriptionSchema = new mongoose.Schema(
     name: { type: String, default: "" },
     price: { type: Number, default: 0 },
     type: { type: String, default: "subscription" },
+    category: { type: String, default: "" },
+    entitlementMode: { type: String, default: "" },
+    maxPerDay: { type: Number, min: 0 },
   },
   { _id: false }
 );
@@ -54,6 +66,8 @@ const CheckoutDraftSchema = new mongoose.Schema(
         required: true,
       },
       address: { type: mongoose.Schema.Types.Mixed },
+      zoneId: { type: mongoose.Schema.Types.ObjectId, default: null },
+      zoneName: { type: String, default: "" },
       slot: {
         type: {
           type: String,
@@ -66,8 +80,22 @@ const CheckoutDraftSchema = new mongoose.Schema(
     },
 
     premiumItems: { type: [DraftPremiumItemSchema], default: [] },
+    premiumWalletMode: {
+      type: String,
+      enum: [LEGACY_PREMIUM_WALLET_MODE, GENERIC_PREMIUM_WALLET_MODE],
+    },
+    premiumCount: { type: Number, min: 0 },
+    premiumUnitPriceHalala: { type: Number, min: 0 },
     addonItems: { type: [DraftAddonItemSchema], default: [] },
     addonSubscriptions: { type: [DraftAddonSubscriptionSchema], default: [] },
+
+    contractVersion: { type: String, trim: true },
+    contractMode: { type: String, enum: CONTRACT_MODES },
+    contractCompleteness: { type: String, enum: CONTRACT_COMPLETENESS_VALUES },
+    contractSource: { type: String, enum: CONTRACT_SOURCES },
+    contractHash: { type: String, trim: true },
+    contractSnapshot: { type: mongoose.Schema.Types.Mixed },
+    renewedFromSubscriptionId: { type: mongoose.Schema.Types.ObjectId, ref: "Subscription", default: null },
 
     breakdown: {
       basePlanPriceHalala: { type: Number, min: 0, required: true },

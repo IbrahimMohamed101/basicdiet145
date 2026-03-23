@@ -5,6 +5,8 @@ const cors = require("cors");
 const mongoose = require("mongoose");
 const swaggerUi = require("swagger-ui-express");
 const routes = require("./routes");
+const requestLanguageMiddleware = require("./middleware/requestLanguage");
+const errorResponse = require("./utils/errorResponse");
 const { logger } = require("./utils/logger");
 
 function normalizeTopLevelOkField(payload) {
@@ -17,6 +19,23 @@ function normalizeTopLevelOkField(payload) {
 
   const { ok, ...rest } = payload;
   return { status: ok, ...rest };
+}
+
+function mountSwaggerUi(app, { uiPath, rawPath, filePath }) {
+  app.get(rawPath, (_req, res) => {
+    res.type("text/yaml");
+    res.sendFile(filePath);
+  });
+
+  app.use(
+    uiPath,
+    swaggerUi.serve,
+    swaggerUi.setup(null, {
+      swaggerOptions: {
+        url: rawPath,
+      },
+    })
+  );
 }
 
 function createApp() {
@@ -90,30 +109,28 @@ function createApp() {
   });
 
   const swaggerPath = path.join(__dirname, "..", "swagger.yaml");
-  app.get("/api-docs/swagger.yaml", (_req, res) => {
-    res.type("text/yaml");
-    res.sendFile(swaggerPath);
+  const subscriptionsSwaggerPath = path.join(__dirname, "..", "subscriptions.swagger.yaml");
+
+  mountSwaggerUi(app, {
+    uiPath: "/api-docs",
+    rawPath: "/api-docs/swagger.yaml",
+    filePath: swaggerPath,
+  });
+  mountSwaggerUi(app, {
+    uiPath: "/subscriptions-api-docs",
+    rawPath: "/subscriptions-api-docs/swagger.yaml",
+    filePath: subscriptionsSwaggerPath,
   });
 
-  app.use(
-    "/api-docs",
-    swaggerUi.serve,
-    swaggerUi.setup(null, {
-      swaggerOptions: {
-        url: "/api-docs/swagger.yaml",
-      },
-    })
-  );
-
-  app.use("/api", routes);
+  app.use("/api", requestLanguageMiddleware, routes);
 
   // Basic error handler to capture unhandled errors
   app.use((err, _req, res, _next) => {
     if (err && err.message === "Not allowed by CORS") {
-      return res.status(403).json({ ok: false, error: { code: "CORS", message: err.message } });
+      return errorResponse(res, 403, "CORS", "Not allowed by CORS");
     }
     logger.error("Unhandled error", { error: err.message, stack: err.stack });
-    res.status(500).json({ ok: false, error: { code: "INTERNAL", message: "Unexpected error" } });
+    return errorResponse(res, 500, "INTERNAL", "errors.common.unexpectedError");
   });
 
   return app;

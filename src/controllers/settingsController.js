@@ -10,6 +10,7 @@ async function getSettings(_req, res) {
     // Default values if not set
     data.cutoff_time = data.cutoff_time ?? "00:00";
     data.delivery_windows = data.delivery_windows ?? ["08:00-11:00", "12:00-15:00"];
+    data.pickup_locations = data.pickup_locations ?? [];
     data.skip_allowance = data.skip_allowance ?? data.skipAllowance;
     data.skip_allowance = data.skip_allowance ?? 3;
     data.premium_price = data.premium_price ?? 20;

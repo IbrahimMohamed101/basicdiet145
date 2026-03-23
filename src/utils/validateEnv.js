@@ -18,6 +18,12 @@ function validateEnv() {
   const devAuthBypass = process.env.DEV_AUTH_BYPASS === "true";
   const testOtpBypass = process.env.TEST_OTP_BYPASS === "true";
   const devOtpBypass = process.env.DEV_OTP_BYPASS === "true";
+  const cloudinaryKeys = [
+    "CLOUDINARY_CLOUD_NAME",
+    "CLOUDINARY_API_KEY",
+    "CLOUDINARY_API_SECRET",
+  ];
+  const providedCloudinaryKeys = cloudinaryKeys.filter((key) => Boolean(process.env[key]));
   const shouldRequireOtpProvider = isProduction
     ? !(testOtpBypass || devOtpBypass)
     : !(devAuthBypass || devOtpBypass || testOtpBypass);
@@ -25,10 +31,16 @@ function validateEnv() {
   if (!hasMongoUri) missing.push("MONGO_URI or MONGODB_URI");
   addMissingIfEmpty(missing, "JWT_SECRET");
   addMissingIfEmpty(missing, "DASHBOARD_JWT_SECRET");
+  addMissingIfEmpty(missing, "MOYASAR_SECRET_KEY");
   addMissingBypassAware(missing, "TWILIO_ACCOUNT_SID", shouldRequireOtpProvider);
   addMissingBypassAware(missing, "TWILIO_AUTH_TOKEN", shouldRequireOtpProvider);
   addMissingBypassAware(missing, "TWILIO_WHATSAPP_FROM", shouldRequireOtpProvider);
   addMissingBypassAware(missing, "OTP_HASH_SECRET", shouldRequireOtpProvider);
+  if (providedCloudinaryKeys.length > 0 && providedCloudinaryKeys.length < cloudinaryKeys.length) {
+    cloudinaryKeys
+      .filter((key) => !process.env[key])
+      .forEach((key) => missing.push(key));
+  }
 
   if (missing.length) {
     logger.error("Missing required environment variables", { missing });

@@ -1,5 +1,6 @@
 const Addon = require("../models/Addon");
-const { getRequestLang, pickLang } = require("../utils/i18n");
+const { getRequestLang } = require("../utils/i18n");
+const { resolveAddonCatalogEntry } = require("../utils/subscriptionCatalog");
 const validateObjectId = require("../utils/validateObjectId");
 const errorResponse = require("../utils/errorResponse");
 
@@ -98,16 +99,7 @@ function validateAddonPayloadOrThrow(payload) {
 async function listAddons(req, res) {
   const lang = getRequestLang(req);
   const rows = await Addon.find({ isActive: true }).sort({ sortOrder: 1, createdAt: -1 }).lean();
-  const mapped = rows.map((row) => ({
-    id: String(row._id),
-    name: pickLang(row.name, lang),
-    description: pickLang(row.description, lang),
-    imageUrl: row.imageUrl || "",
-    currency: row.currency || "SAR",
-    priceHalala: Number.isInteger(row.priceHalala) ? row.priceHalala : Math.max(0, Math.round(Number(row.price || 0) * 100)),
-    priceSar: Number.isInteger(row.priceHalala) ? row.priceHalala / 100 : Number(row.price || 0),
-    type: row.type,
-  }));
+  const mapped = rows.map((row) => resolveAddonCatalogEntry(row, lang));
   return res.status(200).json({ ok: true, data: mapped });
 }
 

@@ -1,5 +1,6 @@
 const SaladIngredient = require("../models/SaladIngredient");
 const Setting = require("../models/Setting");
+const { createLocalizedError } = require("../utils/errorLocalization");
 
 async function getSettingValue(key, fallback) {
   const setting = await Setting.findOne({ key }).lean();
@@ -22,17 +23,21 @@ function resolveIngredientName(ingredient, lang) {
 
 function normalizeSelections(selections) {
   if (!Array.isArray(selections) || selections.length === 0) {
-    const err = new Error("Ingredients are required");
-    err.code = "INVALID";
-    throw err;
+    throw createLocalizedError({
+      code: "INVALID",
+      key: "errors.ingredients.required",
+      fallbackMessage: "Ingredients are required",
+    });
   }
 
   const map = new Map();
   for (const item of selections) {
     if (!item || !item.ingredientId) {
-      const err = new Error("Each ingredient must include ingredientId");
-      err.code = "INVALID";
-      throw err;
+      throw createLocalizedError({
+        code: "INVALID",
+        key: "errors.ingredients.ingredientIdRequired",
+        fallbackMessage: "Each ingredient must include ingredientId",
+      });
     }
     const rawQty = parseInt(item.quantity || 1, 10);
     const qty = Number.isFinite(rawQty) && rawQty > 0 ? rawQty : 1;
@@ -48,9 +53,11 @@ async function buildCustomSaladSnapshot(selections) {
 
   const ingredients = await SaladIngredient.find({ _id: { $in: ids }, isActive: true }).lean();
   if (ingredients.length !== ids.length) {
-    const err = new Error("One or more ingredients not found or inactive");
-    err.code = "NOT_FOUND";
-    throw err;
+    throw createLocalizedError({
+      code: "NOT_FOUND",
+      key: "errors.ingredients.notFoundOrInactive",
+      fallbackMessage: "One or more ingredients not found or inactive",
+    });
   }
 
   const basePriceSar = Number(await getSettingValue("custom_salad_base_price", 0));
@@ -60,9 +67,12 @@ async function buildCustomSaladSnapshot(selections) {
   const items = ingredients.map((ing) => {
     const qty = map.get(String(ing._id)) || 0;
     if (ing.maxQuantity && qty > ing.maxQuantity) {
-      const err = new Error(`Quantity exceeds max for ingredient ${ing._id}`);
-      err.code = "MAX_EXCEEDED";
-      throw err;
+      throw createLocalizedError({
+        code: "MAX_EXCEEDED",
+        key: "errors.ingredients.maxExceeded",
+        params: { ingredientId: String(ing._id) },
+        fallbackMessage: `Quantity exceeds max for ingredient ${ing._id}`,
+      });
     }
     const unitPriceSar = Number(ing.price || 0);
     const unitPrice = Math.round(unitPriceSar * 100);

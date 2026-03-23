@@ -2,6 +2,10 @@ const Subscription = require("../models/Subscription");
 const SubscriptionDay = require("../models/SubscriptionDay");
 const { canTransition } = require("../utils/state");
 const { resolveMealsPerDay, resolveDayWalletSelections } = require("../utils/subscriptionDaySelectionSync");
+const { isPhase2CanonicalDayPlanningEnabled } = require("../utils/featureFlags");
+const { buildScopedCanonicalPlanningSnapshot } = require("./subscriptionDayPlanningService");
+const { buildScopedRecurringAddonSnapshot } = require("./recurringAddonService");
+const { buildOneTimeAddonPlanningSnapshot } = require("./oneTimeAddonPlanningService");
 
 async function fulfillSubscriptionDay({ subscriptionId, date, dayId, session }) {
   const dayQuery = dayId ? { _id: dayId } : { subscriptionId, date };
@@ -34,6 +38,33 @@ async function fulfillSubscriptionDay({ subscriptionId, date, dayId, session }) 
     subscription: sub,
     day,
   });
+  const planningSnapshot = buildScopedCanonicalPlanningSnapshot({
+    subscription: sub,
+    day,
+    flagEnabled: isPhase2CanonicalDayPlanningEnabled(),
+  });
+  const recurringAddonSnapshot = buildScopedRecurringAddonSnapshot({
+    subscription: sub,
+    day,
+  });
+  const oneTimeAddonSnapshot = buildOneTimeAddonPlanningSnapshot({ day });
+  const fulfilledSnapshot = {
+    selections: day.selections,
+    premiumSelections: day.premiumSelections,
+    addonsOneTime: day.addonsOneTime,
+    premiumUpgradeSelections,
+    addonCreditSelections,
+    deductedCredits: mealsToDeduct,
+  };
+  if (planningSnapshot) {
+    fulfilledSnapshot.planning = planningSnapshot;
+  }
+  if (recurringAddonSnapshot) {
+    fulfilledSnapshot.recurringAddons = recurringAddonSnapshot;
+  }
+  if (oneTimeAddonSnapshot) {
+    Object.assign(fulfilledSnapshot, oneTimeAddonSnapshot);
+  }
 
   // CR-02 FIX: First update day to fulfilled with snapshot (idempotent)
   const updatedDay = await SubscriptionDay.findOneAndUpdate(
@@ -45,14 +76,7 @@ async function fulfillSubscriptionDay({ subscriptionId, date, dayId, session }) 
         creditsDeducted: true,
         premiumUpgradeSelections,
         addonCreditSelections,
-        fulfilledSnapshot: {
-          selections: day.selections,
-          premiumSelections: day.premiumSelections,
-          addonsOneTime: day.addonsOneTime,
-          premiumUpgradeSelections,
-          addonCreditSelections,
-          deductedCredits: mealsToDeduct,
-        },
+        fulfilledSnapshot,
       },
     },
     { new: true, session }
