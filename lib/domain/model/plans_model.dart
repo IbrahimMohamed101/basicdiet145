@@ -1,18 +1,23 @@
-class PlansModel {
-  List<PlanModel> plans;
+import 'package:equatable/equatable.dart';
 
-  PlansModel({required this.plans});
+class PlansModel extends Equatable {
+  final List<PlanModel> plans;
+
+  const PlansModel({required this.plans});
+
+  @override
+  List<Object?> get props => [plans];
 }
 
-class PlanModel {
-  String id;
-  String name;
-  int daysCount;
-  String currency;
-  bool isActive;
-  List<GramOptionModel> gramsOptions;
+class PlanModel extends Equatable {
+  final String id;
+  final String name;
+  final int daysCount;
+  final String currency;
+  final bool isActive;
+  final List<GramOptionModel> gramsOptions;
 
-  PlanModel({
+  const PlanModel({
     required this.id,
     required this.name,
     required this.daysCount,
@@ -20,23 +25,39 @@ class PlanModel {
     required this.isActive,
     required this.gramsOptions,
   });
+
+  @override
+  List<Object?> get props => [
+    id,
+    name,
+    daysCount,
+    currency,
+    isActive,
+    gramsOptions,
+  ];
 }
 
-class GramOptionModel {
-  int grams;
-  List<MealOptionModel> mealsOptions;
+class GramOptionModel extends Equatable {
+  final int grams;
+  final List<MealOptionModel> mealsOptions;
 
-  GramOptionModel({required this.grams, required this.mealsOptions});
+  const GramOptionModel({required this.grams, required this.mealsOptions});
+
+  @override
+  List<Object?> get props => [grams, mealsOptions];
 }
 
-class MealOptionModel {
-  int mealsPerDay;
-  double priceSar;
-  double compareAtSar;
+class MealOptionModel extends Equatable {
+  final int mealsPerDay;
+  final double priceSar;
+  final double compareAtSar;
 
-  MealOptionModel({
+  const MealOptionModel({
     required this.mealsPerDay,
     required this.priceSar,
     required this.compareAtSar,
   });
+
+  @override
+  List<Object?> get props => [mealsPerDay, priceSar, compareAtSar];
 }

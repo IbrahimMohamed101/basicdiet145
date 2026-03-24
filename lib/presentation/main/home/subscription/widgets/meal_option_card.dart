@@ -9,9 +9,16 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:gap/gap.dart';
 
 class MealOptionCard extends StatelessWidget {
-  const MealOptionCard({super.key, required this.option});
+  const MealOptionCard({
+    super.key,
+    required this.option,
+    this.isSelected = false,
+    this.onTap,
+  });
 
   final MealOptionModel option;
+  final bool isSelected;
+  final VoidCallback? onTap;
 
   static const _borderColor = Color(0xFFF2F4F7);
 
@@ -23,40 +30,49 @@ class MealOptionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsetsDirectional.all(AppPadding.p12.w),
-      decoration: BoxDecoration(
-        color: ColorManager.whiteColor,
-        borderRadius: BorderRadius.circular(AppSize.s12.r),
-        border: Border.all(color: _borderColor),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            _mealLabel,
-            style: getRegularTextStyle(
-              fontSize: FontSizeManager.s12.sp,
-              color: ColorManager.grey6A7282,
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: EdgeInsetsDirectional.all(AppPadding.p12.w),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? ColorManager.greenPrimary.withValues(alpha: 0.05)
+              : ColorManager.whiteColor,
+          borderRadius: BorderRadius.circular(AppSize.s12.r),
+          border: Border.all(
+            color: isSelected ? ColorManager.greenPrimary : _borderColor,
+            width: isSelected ? 1.5 : 1.0,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              _mealLabel,
+              style: getRegularTextStyle(
+                fontSize: FontSizeManager.s12.sp,
+                color: ColorManager.grey6A7282,
+              ),
             ),
-          ),
-          Gap(AppSize.s8.h),
-          _PriceRow(
-            amount: option.priceSar.toStringAsFixed(0),
-            isStrikethrough: false,
-            color: ColorManager.greenPrimary,
-            amountFontSize: FontSizeManager.s18.sp,
-            labelFontSize: FontSizeManager.s10.sp,
-          ),
-          Gap(AppSize.s4.h),
-          _PriceRow(
-            amount: option.compareAtSar.toStringAsFixed(0),
-            isStrikethrough: true,
-            color: ColorManager.grayColor.withValues(alpha: 0.6),
-            amountFontSize: FontSizeManager.s12.sp,
-            labelFontSize: FontSizeManager.s10.sp,
-          ),
-        ],
+            Gap(AppSize.s8.h),
+            _PriceRow(
+              amount: option.priceSar.toStringAsFixed(0),
+              isStrikethrough: false,
+              color: ColorManager.greenPrimary,
+              amountFontSize: FontSizeManager.s18.sp,
+              labelFontSize: FontSizeManager.s10.sp,
+            ),
+            Gap(AppSize.s4.h),
+            _PriceRow(
+              amount: option.compareAtSar.toStringAsFixed(0),
+              isStrikethrough: true,
+              color: ColorManager.grayColor.withValues(alpha: 0.6),
+              amountFontSize: FontSizeManager.s12.sp,
+              labelFontSize: FontSizeManager.s10.sp,
+            ),
+          ],
+        ),
       ),
     );
   }

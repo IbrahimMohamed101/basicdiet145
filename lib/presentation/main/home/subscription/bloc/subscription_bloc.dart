@@ -8,6 +8,7 @@ class SubscriptionBloc extends Bloc<SubscriptionEvent, SubscriptionState> {
 
   SubscriptionBloc(this._getPlansUseCase) : super(const SubscriptionInitial()) {
     on<GetPlansEvent>(_onGetPlans);
+    on<SelectMealOptionEvent>(_onSelectMealOption);
   }
 
   Future<void> _onGetPlans(
@@ -20,5 +21,15 @@ class SubscriptionBloc extends Bloc<SubscriptionEvent, SubscriptionState> {
       (failure) => emit(SubscriptionError(failure.message)),
       (plansModel) => emit(SubscriptionSuccess(plansModel)),
     );
+  }
+
+  void _onSelectMealOption(
+    SelectMealOptionEvent event,
+    Emitter<SubscriptionState> emit,
+  ) {
+    if (state is SubscriptionSuccess) {
+      final successState = state as SubscriptionSuccess;
+      emit(successState.copyWith(selectedMealOption: event.option));
+    }
   }
 }

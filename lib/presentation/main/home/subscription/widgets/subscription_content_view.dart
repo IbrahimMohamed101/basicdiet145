@@ -1,4 +1,7 @@
 import 'package:basic_diet/domain/model/plans_model.dart';
+import 'package:basic_diet/presentation/main/home/subscription/bloc/subscription_bloc.dart';
+import 'package:basic_diet/presentation/main/home/subscription/bloc/subscription_event.dart';
+import 'package:basic_diet/presentation/main/home/subscription/bloc/subscription_state.dart';
 import 'package:basic_diet/presentation/main/home/subscription/widgets/plan_accordion_item.dart';
 import 'package:basic_diet/presentation/main/home/subscription/widgets/subscription_banner.dart';
 import 'package:basic_diet/presentation/resources/color_manager.dart';
@@ -7,6 +10,7 @@ import 'package:basic_diet/presentation/resources/strings_manager.dart';
 import 'package:basic_diet/presentation/resources/styles_manager.dart';
 import 'package:basic_diet/presentation/resources/values_manager.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:gap/gap.dart';
 
@@ -29,25 +33,41 @@ class _SubscriptionContentViewState extends State<SubscriptionContentView> {
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      padding: EdgeInsetsDirectional.symmetric(horizontal: AppPadding.p20.w),
-      children: [
-        Gap(AppSize.s20.h),
-        const SubscriptionBanner(),
-        Gap(AppSize.s20.h),
-        const _BenefitsRow(),
-        Gap(AppSize.s30.h),
-        ...List.generate(widget.plansModel.plans.length, (index) {
-          return Padding(
-            padding: EdgeInsetsDirectional.only(bottom: AppSize.s16.h),
-            child: PlanAccordionItem(
-              plan: widget.plansModel.plans[index],
-              isExpanded: _expandedIndex == index,
-              onTap: () => _onPlanTapped(index),
-            ),
-          );
-        }),
-      ],
+    return BlocBuilder<SubscriptionBloc, SubscriptionState>(
+      buildWhen: (previous, current) => current is SubscriptionSuccess,
+      builder: (context, state) {
+        final selectedMealOption =
+            state is SubscriptionSuccess ? state.selectedMealOption : null;
+
+        return ListView(
+          padding: EdgeInsetsDirectional.symmetric(
+            horizontal: AppPadding.p20.w,
+          ),
+          children: [
+            Gap(AppSize.s20.h),
+            const SubscriptionBanner(),
+            Gap(AppSize.s20.h),
+            const _BenefitsRow(),
+            Gap(AppSize.s30.h),
+            ...List.generate(widget.plansModel.plans.length, (index) {
+              return Padding(
+                padding: EdgeInsetsDirectional.only(bottom: AppSize.s16.h),
+                child: PlanAccordionItem(
+                  plan: widget.plansModel.plans[index],
+                  isExpanded: _expandedIndex == index,
+                  onTap: () => _onPlanTapped(index),
+                  selectedMealOption: selectedMealOption,
+                  onMealOptionTap: (option) {
+                    context.read<SubscriptionBloc>().add(
+                      SelectMealOptionEvent(option),
+                    );
+                  },
+                ),
+              );
+            }),
+          ],
+        );
+      },
     );
   }
 }

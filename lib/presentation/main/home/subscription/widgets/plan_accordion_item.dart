@@ -15,11 +15,15 @@ class PlanAccordionItem extends StatelessWidget {
     required this.plan,
     required this.isExpanded,
     required this.onTap,
+    this.selectedMealOption,
+    this.onMealOptionTap,
   });
 
   final PlanModel plan;
   final bool isExpanded;
   final VoidCallback onTap;
+  final MealOptionModel? selectedMealOption;
+  final ValueChanged<MealOptionModel>? onMealOptionTap;
 
   static const _borderColorCollapsed = Color(0xFFF2F4F7);
 
@@ -49,7 +53,12 @@ class PlanAccordionItem extends StatelessWidget {
         child: Column(
           children: [
             _PlanHeader(plan: plan, isExpanded: isExpanded),
-            if (isExpanded) _PlanExpandedContent(plan: plan),
+            if (isExpanded)
+              _PlanExpandedContent(
+                plan: plan,
+                selectedMealOption: selectedMealOption,
+                onMealOptionTap: onMealOptionTap,
+              ),
           ],
         ),
       ),
@@ -123,9 +132,15 @@ class _CalendarIconBadge extends StatelessWidget {
 }
 
 class _PlanExpandedContent extends StatelessWidget {
-  const _PlanExpandedContent({required this.plan});
+  const _PlanExpandedContent({
+    required this.plan,
+    this.selectedMealOption,
+    this.onMealOptionTap,
+  });
 
   final PlanModel plan;
+  final MealOptionModel? selectedMealOption;
+  final ValueChanged<MealOptionModel>? onMealOptionTap;
 
   // Semantic name beats magic number 50.h
   static final _descriptionBarHeight = 50.h;
@@ -158,7 +173,13 @@ class _PlanExpandedContent extends StatelessWidget {
             ],
           ),
           Gap(AppSize.s20.h),
-          ...plan.gramsOptions.map((g) => _GramSizeSection(gramOption: g)),
+          ...plan.gramsOptions.map(
+            (g) => _GramSizeSection(
+              gramOption: g,
+              selectedMealOption: selectedMealOption,
+              onMealOptionTap: onMealOptionTap,
+            ),
+          ),
         ],
       ),
     );
@@ -184,9 +205,15 @@ class _GreenVerticalBar extends StatelessWidget {
 }
 
 class _GramSizeSection extends StatelessWidget {
-  const _GramSizeSection({required this.gramOption});
+  const _GramSizeSection({
+    required this.gramOption,
+    this.selectedMealOption,
+    this.onMealOptionTap,
+  });
 
   final GramOptionModel gramOption;
+  final MealOptionModel? selectedMealOption;
+  final ValueChanged<MealOptionModel>? onMealOptionTap;
 
   @override
   Widget build(BuildContext context) {
@@ -207,7 +234,11 @@ class _GramSizeSection extends StatelessWidget {
           ],
         ),
         Gap(AppSize.s12.h),
-        _OptionsGrid(options: gramOption.mealsOptions),
+        _OptionsGrid(
+          options: gramOption.mealsOptions,
+          selectedMealOption: selectedMealOption,
+          onMealOptionTap: onMealOptionTap,
+        ),
         Gap(AppSize.s24.h),
       ],
     );
@@ -233,9 +264,15 @@ class _RestaurantIconBadge extends StatelessWidget {
 }
 
 class _OptionsGrid extends StatelessWidget {
-  const _OptionsGrid({required this.options});
+  const _OptionsGrid({
+    required this.options,
+    this.selectedMealOption,
+    this.onMealOptionTap,
+  });
 
   final List<MealOptionModel> options;
+  final MealOptionModel? selectedMealOption;
+  final ValueChanged<MealOptionModel>? onMealOptionTap;
 
   @override
   Widget build(BuildContext context) {
@@ -244,10 +281,22 @@ class _OptionsGrid extends StatelessWidget {
       rows.add(
         Row(
           children: [
-            Expanded(child: MealOptionCard(option: options[i])),
+            Expanded(
+              child: MealOptionCard(
+                option: options[i],
+                isSelected: selectedMealOption == options[i],
+                onTap: () => onMealOptionTap?.call(options[i]),
+              ),
+            ),
             if (i + 1 < options.length) ...[
               Gap(AppSize.s12.w),
-              Expanded(child: MealOptionCard(option: options[i + 1])),
+              Expanded(
+                child: MealOptionCard(
+                  option: options[i + 1],
+                  isSelected: selectedMealOption == options[i + 1],
+                  onTap: () => onMealOptionTap?.call(options[i + 1]),
+                ),
+              ),
             ],
           ],
         ),

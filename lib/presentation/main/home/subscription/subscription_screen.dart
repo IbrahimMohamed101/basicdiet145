@@ -121,33 +121,48 @@ class _ProceedButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsetsDirectional.all(AppPadding.p20.w),
-      color: ColorManager.whiteColor,
-      child: ElevatedButton(
-        onPressed: () {
-          initPremiumMealsModule();
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const PremiumMealsScreen()),
-          );
-        },
-        style: ElevatedButton.styleFrom(
-          backgroundColor: ColorManager.greenPrimary,
-          minimumSize: Size(double.infinity, 56.h),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppSize.s16.r),
+    return BlocBuilder<SubscriptionBloc, SubscriptionState>(
+      builder: (context, state) {
+        final isEnabled =
+            state is SubscriptionSuccess && state.selectedMealOption != null;
+
+        return Container(
+          padding: EdgeInsetsDirectional.all(AppPadding.p20.w),
+          color: ColorManager.whiteColor,
+          child: ElevatedButton(
+            onPressed:
+                isEnabled
+                    ? () {
+                      initPremiumMealsModule();
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const PremiumMealsScreen(),
+                        ),
+                      );
+                    }
+                    : null,
+            style: ElevatedButton.styleFrom(
+              backgroundColor:
+                  isEnabled
+                      ? ColorManager.greenPrimary
+                      : ColorManager.greenPrimary.withValues(alpha: 0.5),
+              minimumSize: Size(double.infinity, 56.h),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppSize.s16.r),
+              ),
+              elevation: 0,
+            ),
+            child: Text(
+              Strings.choosePackageProceed,
+              style: getBoldTextStyle(
+                fontSize: FontSizeManager.s16.sp,
+                color: ColorManager.whiteColor,
+              ),
+            ),
           ),
-          elevation: 0,
-        ),
-        child: Text(
-          Strings.choosePackageProceed,
-          style: getBoldTextStyle(
-            fontSize: FontSizeManager.s16.sp,
-            color: ColorManager.whiteColor,
-          ),
-        ),
-      ),
+        );
+      },
     );
   }
 }
