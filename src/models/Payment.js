@@ -12,6 +12,7 @@ const PaymentSchema = new mongoose.Schema(
         "addon_topup",
         "one_time_addon",
         "subscription_activation",
+        "subscription_renewal",
         "one_time_order",
         "custom_salad_day",
         "custom_salad_order",

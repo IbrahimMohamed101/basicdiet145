@@ -4,6 +4,7 @@ const mongoose = require("mongoose");
 
 const CheckoutDraft = require("../src/models/CheckoutDraft");
 const Subscription = require("../src/models/Subscription");
+const SubscriptionDay = require("../src/models/SubscriptionDay");
 const Payment = require("../src/models/Payment");
 const { PHASE1_CONTRACT_VERSION } = require("../src/constants/phase1Contract");
 
@@ -128,4 +129,28 @@ test("Phase 1 idempotency fields validate on payment while remaining optional", 
 
   assert.equal(legacyPayment.validateSync(), undefined);
   assert.equal(payment.validateSync(), undefined);
+});
+
+test("subscription day delivery override supports full checkout address fields", () => {
+  const day = new SubscriptionDay({
+    subscriptionId: objectId(),
+    date: "2026-03-25",
+    deliveryAddressOverride: {
+      line1: "King Fahd Road",
+      line2: "Building 78",
+      city: "Riyadh",
+      district: "Al Malqa",
+      street: "King Fahd Road",
+      building: "78",
+      apartment: "5",
+      lat: 24.8001,
+      lng: 46.6052,
+      notes: "Leave at the door",
+    },
+  });
+
+  assert.equal(day.validateSync(), undefined);
+  assert.equal(day.deliveryAddressOverride.district, "Al Malqa");
+  assert.equal(day.deliveryAddressOverride.building, "78");
+  assert.equal(day.deliveryAddressOverride.apartment, "5");
 });

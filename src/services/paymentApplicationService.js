@@ -34,6 +34,7 @@ const {
 
 const SUPPORTED_PHASE1_SHARED_PAYMENT_TYPES = new Set([
   "subscription_activation",
+  "subscription_renewal",
   "premium_topup",
   "premium_overage_day",
   "one_time_addon_day_planning",
@@ -585,6 +586,7 @@ async function applyPaymentSideEffects({ payment, session, source = "system" }, 
   let result;
   switch (String(payment.type)) {
     case "subscription_activation":
+    case "subscription_renewal":
       result = await applySubscriptionActivationPayment({ payment, session, source }, runtimeOverrides);
       break;
     case "premium_topup":

@@ -320,13 +320,81 @@ GET /api/subscriptions/menu?lang=en
       "oneTime": []
     },
     "delivery": {
-      "deliveryFeeHalala": 1000,
-      "windows": [
+      "methods": [
         {
-          "value": "09:00 - 12:00",
-          "label": "9:00 AM - 12:00 PM"
+          "id": "delivery",
+          "type": "delivery",
+          "title": "Home Delivery",
+          "subtitle": "Get your meals delivered to your doorstep",
+          "pricingMode": "zone_based",
+          "feeHalala": 0,
+          "feeSar": 0,
+          "feeLabel": "Depends on area",
+          "helperText": "Delivery fee depends on your area",
+          "areaSelectionRequired": true,
+          "requiresAddress": true,
+          "slots": [
+            {
+              "id": "delivery_09:00_-_12:00",
+              "type": "delivery",
+              "window": "09:00 - 12:00",
+              "label": "9:00 AM - 12:00 PM"
+            }
+          ]
+        },
+        {
+          "id": "pickup",
+          "type": "pickup",
+          "title": "Pickup",
+          "subtitle": "Pick up your order from an available location",
+          "feeHalala": 0,
+          "feeSar": 0,
+          "feeLabel": "Free",
+          "requiresAddress": false,
+          "slots": []
         }
-      ]
+      ],
+      "areas": [
+        {
+          "id": "65f000000000000000000040",
+          "zoneId": "65f000000000000000000040",
+          "name": "Al Malqa",
+          "label": "Al Malqa",
+          "feeHalala": 1500,
+          "feeSar": 15,
+          "feeLabel": "15 SAR",
+          "isActive": true,
+          "availability": "available",
+          "availabilityLabel": "Available"
+        },
+        {
+          "id": "65f000000000000000000041",
+          "zoneId": "65f000000000000000000041",
+          "name": "Al Kharj",
+          "label": "Al Kharj",
+          "feeHalala": 2500,
+          "feeSar": 25,
+          "feeLabel": "25 SAR",
+          "isActive": false,
+          "availability": "unavailable",
+          "availabilityLabel": "Not available"
+        }
+      ],
+      "pickupLocations": [
+        {
+          "id": "pickup-1",
+          "name": "Main Branch",
+          "label": "Main Branch"
+        }
+      ],
+      "defaults": {
+        "type": "delivery",
+        "slotId": "delivery_09:00_-_12:00",
+        "window": "09:00 - 12:00",
+        "zoneId": "",
+        "areaId": "",
+        "pickupLocationId": "pickup-1"
+      }
     },
     "flow": {
       "steps": [
@@ -340,9 +408,9 @@ GET /api/subscriptions/menu?lang=en
 }
 ```
 
-Machine fields: `type`, `pricingModel`, `currency`, `daysCount`, delivery slot `value`.
+Machine fields: `type`, `pricingModel`, `currency`, `daysCount`, `delivery.methods[].type`, `delivery.areas[].zoneId`, `delivery.areas[].availability`.
 
-Localized UI fields: `name`, `description`, `flow.steps[].title`, delivery slot `label`.
+Localized UI fields: `name`, `description`, `flow.steps[].title`, `delivery.methods[].title`, `delivery.methods[].feeLabel`, `delivery.areas[].availabilityLabel`, delivery slot `label`.
 
 **Errors:**
 
@@ -369,6 +437,13 @@ Recommended delivery payloads:
 - Delivery subscription: `delivery.type = "delivery"` with `zoneId`, `address`, and `slot.window`
 - Pickup subscription: `delivery.type = "pickup"` with `pickupLocationId` and `slot.window`
 
+Delivery UI mapping:
+
+- Build the delivery-type cards from `GET /api/subscriptions/menu -> data.delivery.methods`
+- Build the area selector from `GET /api/subscriptions/menu -> data.delivery.areas`
+- Send the selected `zoneId` back in `/quote` and `/checkout`
+- For unavailable areas, disable selection when `availability = "unavailable"`
+
 Example body:
 
 ```json
@@ -388,8 +463,12 @@ Example body:
     "type": "delivery",
     "zoneId": "65f000000000000000000040",
     "address": {
-      "label": "Home",
+      "city": "Riyadh",
+      "district": "Al Malqa",
       "street": "Tahlia Street",
+      "building": "42",
+      "apartment": "5",
+      "notes": "Leave at the door",
       "lat": 24.7136,
       "lng": 46.6753
     },
@@ -421,7 +500,15 @@ Example body:
     "summary": {
       "planName": "Lean Plan",
       "daysCount": 20,
-      "mealsPerDay": 3
+      "mealsPerDay": 3,
+      "delivery": {
+        "type": "delivery",
+        "zoneId": "65f000000000000000000040",
+        "zoneName": "Al Malqa",
+        "feeHalala": 1500,
+        "feeSar": 15,
+        "feeLabel": "15 SAR"
+      }
     }
   }
 }
@@ -472,8 +559,12 @@ Example body:
     "type": "delivery",
     "zoneId": "65f000000000000000000040",
     "address": {
-      "label": "Home",
-      "street": "Tahlia Street"
+      "city": "Riyadh",
+      "district": "Al Malqa",
+      "street": "Tahlia Street",
+      "building": "42",
+      "apartment": "5",
+      "notes": "Leave at the door"
     },
     "slot": {
       "type": "delivery",
@@ -1439,8 +1530,12 @@ Example body:
 ```json
 {
   "deliveryAddress": {
-    "label": "Office",
-    "street": "King Fahd Road"
+    "city": "Riyadh",
+    "district": "Al Malqa",
+    "street": "King Fahd Road",
+    "building": "78",
+    "apartment": "5",
+    "notes": "Call before delivery"
   },
   "deliveryWindow": "13:00 - 16:00"
 }
@@ -1456,7 +1551,11 @@ Example body:
     "status": "open",
     "statusLabel": "Open",
     "deliveryAddressOverride": {
-      "label": "Office"
+      "district": "Al Malqa",
+      "street": "King Fahd Road",
+      "building": "78",
+      "apartment": "5",
+      "notes": "Call before delivery"
     },
     "deliveryWindowOverride": "13:00 - 16:00"
   }
@@ -1493,8 +1592,12 @@ Example body:
 ```json
 {
   "deliveryAddress": {
-    "label": "New Home",
-    "street": "Olaya"
+    "city": "Riyadh",
+    "district": "Al Malqa",
+    "street": "Olaya",
+    "building": "42",
+    "apartment": "5",
+    "notes": "Leave at reception"
   },
   "deliveryWindow": "17:00 - 20:00"
 }
@@ -1512,7 +1615,11 @@ Example body:
     "deliveryMode": "delivery",
     "deliveryModeLabel": "Delivery",
     "deliveryAddress": {
-      "label": "New Home"
+      "district": "Al Malqa",
+      "street": "Olaya",
+      "building": "42",
+      "apartment": "5",
+      "notes": "Leave at reception"
     },
     "deliveryWindow": "17:00 - 20:00"
   }

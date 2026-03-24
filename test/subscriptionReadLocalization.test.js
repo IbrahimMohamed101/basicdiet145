@@ -9,6 +9,7 @@ const Meal = require("../src/models/Meal");
 const PremiumMeal = require("../src/models/PremiumMeal");
 const Addon = require("../src/models/Addon");
 const Setting = require("../src/models/Setting");
+const Zone = require("../src/models/Zone");
 const Subscription = require("../src/models/Subscription");
 const SubscriptionDay = require("../src/models/SubscriptionDay");
 const CheckoutDraft = require("../src/models/CheckoutDraft");
@@ -84,12 +85,14 @@ test("getSubscriptionMenu respects query language and falls back safely for inco
   const originalPremiumFind = PremiumMeal.find;
   const originalAddonFind = Addon.find;
   const originalSettingFindOne = Setting.findOne;
+  const originalZoneFind = Zone.find;
   t.after(() => {
     Plan.find = originalPlanFind;
     Meal.find = originalMealFind;
     PremiumMeal.find = originalPremiumFind;
     Addon.find = originalAddonFind;
     Setting.findOne = originalSettingFindOne;
+    Zone.find = originalZoneFind;
   });
 
   const planId = objectId();
@@ -122,6 +125,20 @@ test("getSubscriptionMenu respects query language and falls back safely for inco
   ]);
   PremiumMeal.find = () => createQueryStub([]);
   Addon.find = () => createQueryStub([]);
+  Zone.find = () => createQueryStub([
+    {
+      _id: objectId(),
+      name: "Al Malqa",
+      deliveryFeeHalala: 1500,
+      isActive: true,
+    },
+    {
+      _id: objectId(),
+      name: "Al Kharj",
+      deliveryFeeHalala: 2000,
+      isActive: false,
+    },
+  ]);
   Setting.findOne = ({ key }) => createQueryStub(
     key === "delivery_windows"
       ? { value: ["08:00-11:00"] }
@@ -145,6 +162,11 @@ test("getSubscriptionMenu respects query language and falls back safely for inco
   assert.equal(res.payload.data.plans[0].name, "الخطة الأساسية");
   assert.equal(res.payload.data.flow.steps[0].title, "Subscription Packages");
   assert.equal(res.payload.data.delivery.methods[0].title, "Home Delivery");
+  assert.equal(res.payload.data.delivery.methods[0].pricingMode, "zone_based");
+  assert.equal(res.payload.data.delivery.methods[0].feeLabel, "Depends on area");
+  assert.equal(res.payload.data.delivery.areas[0].name, "Al Malqa");
+  assert.equal(res.payload.data.delivery.areas[0].feeLabel, "15 SAR");
+  assert.equal(res.payload.data.delivery.areas[1].availability, "unavailable");
   assert.equal(res.payload.data.delivery.pickupLocations[0].name, "الفرع الرئيسي");
 });
 

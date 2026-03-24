@@ -3,6 +3,7 @@ const Plan = require("../models/Plan");
 const Addon = require("../models/Addon");
 const PremiumMeal = require("../models/PremiumMeal");
 const Setting = require("../models/Setting");
+const Zone = require("../models/Zone");
 const { getRequestLang, pickLang } = require("../utils/i18n");
 const {
   resolvePlanCatalogEntry,
@@ -99,6 +100,7 @@ async function getSubscriptionMenu(req, res) {
     addons,
     deliveryWindows,
     subscriptionDeliveryFeeHalala,
+    zones,
     pickupLocations,
     customSaladBasePrice,
     customMealBasePrice,
@@ -111,6 +113,7 @@ async function getSubscriptionMenu(req, res) {
     Addon.find({ isActive: true }).sort({ sortOrder: 1, createdAt: -1 }).lean(),
     getSettingValue("delivery_windows", []),
     getSettingValue("subscription_delivery_fee_halala", 0),
+    Zone.find({}).sort({ isActive: -1, sortOrder: 1, createdAt: -1 }).lean(),
     getSettingValue("pickup_locations", []),
     getSettingValue("custom_salad_base_price", 0),
     getSettingValue("custom_meal_base_price", 0),
@@ -123,6 +126,7 @@ async function getSubscriptionMenu(req, res) {
     lang,
     windows: deliveryWindows,
     deliveryFeeHalala: subscriptionDeliveryFeeHalala,
+    zones,
     pickupLocations,
   });
 

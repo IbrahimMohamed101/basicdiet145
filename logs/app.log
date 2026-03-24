@@ -2341,3 +2341,30 @@
 {"date":"2026-03-24","level":"info","message":"Automation cutoff start","timestamp":"2026-03-23T10:41:18.055Z"}
 {"count":0,"level":"info","message":"Automation cutoff finished","timestamp":"2026-03-23T10:41:18.177Z"}
 {"activeSubscriptions":3,"level":"info","message":"Subscription expiry reminders finished","sent24h":0,"sent3d":0,"timestamp":"2026-03-23T10:41:18.323Z"}
+{"email":"superadmin@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"superadmin","timestamp":"2026-03-24T05:36:24.650Z"}
+{"email":"admin@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"admin","timestamp":"2026-03-24T05:36:25.056Z"}
+{"email":"kitchen@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"kitchen","timestamp":"2026-03-24T05:36:25.256Z"}
+{"email":"courier@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"courier","timestamp":"2026-03-24T05:36:25.393Z"}
+{"level":"info","message":"Jobs starting","timestamp":"2026-03-24T05:36:25.394Z"}
+{"level":"info","message":"API listening","port":"3000","timestamp":"2026-03-24T05:36:25.401Z"}
+{"date":"2026-03-25","level":"info","message":"Automation cutoff start","timestamp":"2026-03-24T05:37:25.732Z"}
+{"count":0,"level":"info","message":"Automation cutoff finished","timestamp":"2026-03-24T05:37:25.934Z"}
+{"activeSubscriptions":3,"level":"info","message":"Subscription expiry reminders finished","sent24h":0,"sent3d":0,"timestamp":"2026-03-24T06:00:26.046Z"}
+{"action":"day_selection_update","date":"2026-03-26","entityId":"69c22e9024bae0a42064e614","entityType":"subscription_day","error":"Operation `activitylogs.insertOne()` buffering timed out after 10000ms","level":"error","message":"Activity log write failed","stack":"MongooseError: Operation `activitylogs.insertOne()` buffering timed out after 10000ms\n    at Timeout.<anonymous> (/home/hema/Projects/basicdiet145/node_modules/mongoose/lib/drivers/node-mongodb-native/collection.js:187:23)\n    at listOnTimeout (node:internal/timers:605:17)\n    at process.processTimers (node:internal/timers:541:7)","subscriptionId":"69c22e9024bae0a42064e613","timestamp":"2026-03-24T06:26:34.578Z"}
+{"error":"Operation `plans.find()` buffering timed out after 10000ms","level":"error","message":"Unhandled error","stack":"MongooseError: Operation `plans.find()` buffering timed out after 10000ms\n    at Timeout.<anonymous> (/home/hema/Projects/basicdiet145/node_modules/mongoose/lib/drivers/node-mongodb-native/collection.js:187:23)\n    at listOnTimeout (node:internal/timers:605:17)\n    at process.processTimers (node:internal/timers:541:7)","timestamp":"2026-03-24T06:26:35.619Z"}
+{"action":"day_selection_update","date":"2026-03-26","entityId":"69c22e9a24bae0a42064e622","entityType":"subscription_day","error":"Operation `activitylogs.insertOne()` buffering timed out after 10000ms","level":"error","message":"Activity log write failed","stack":"MongooseError: Operation `activitylogs.insertOne()` buffering timed out after 10000ms\n    at Timeout.<anonymous> (/home/hema/Projects/basicdiet145/node_modules/mongoose/lib/drivers/node-mongodb-native/collection.js:187:23)\n    at listOnTimeout (node:internal/timers:605:17)\n    at process.processTimers (node:internal/timers:541:7)","subscriptionId":"69c22e9a24bae0a42064e624","timestamp":"2026-03-24T06:26:44.588Z"}
+{"date":"2026-03-26","dayId":"69c22ea424bae0a42064e62f","level":"warn","message":"assertNoPendingPremiumOverage failed: unpaid premium overage","subscriptionId":"69c22ea424bae0a42064e62e","timestamp":"2026-03-24T06:26:44.594Z"}
+{"code":"PREMIUM_OVERAGE_PAYMENT_REQUIRED","date":"2026-03-26","level":"warn","message":"Confirm day planning blocked Premium overage payment is required before confirmation","subscriptionId":"69c22ea424bae0a42064e62e","timestamp":"2026-03-24T06:26:44.594Z"}
+{"error":"Operation `plans.find()` buffering timed out after 10000ms","level":"error","message":"Unhandled error","stack":"MongooseError: Operation `plans.find()` buffering timed out after 10000ms\n    at Timeout.<anonymous> (/home/hema/Projects/basicdiet145/node_modules/mongoose/lib/drivers/node-mongodb-native/collection.js:187:23)\n    at listOnTimeout (node:internal/timers:605:17)\n    at process.processTimers (node:internal/timers:541:7)","timestamp":"2026-03-24T06:26:45.635Z"}
+{"email":"superadmin@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"superadmin","timestamp":"2026-03-24T08:43:56.044Z"}
+{"email":"admin@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"admin","timestamp":"2026-03-24T08:43:57.245Z"}
+{"email":"kitchen@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"kitchen","timestamp":"2026-03-24T08:43:57.361Z"}
+{"email":"courier@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"courier","timestamp":"2026-03-24T08:43:57.509Z"}
+{"level":"info","message":"Jobs starting","timestamp":"2026-03-24T08:43:57.509Z"}
+{"level":"info","message":"API listening","port":"3000","timestamp":"2026-03-24T08:43:57.512Z"}
+{"date":"2026-03-25","level":"info","message":"Automation cutoff start","timestamp":"2026-03-24T08:44:57.885Z"}
+{"level":"info","message":"Automation auto-assign meals","subscriptionId":"69c24e6f5a17437956c74287","timestamp":"2026-03-24T08:44:58.888Z"}
+{"level":"info","message":"Automation auto-assign meals","subscriptionId":"69c24e715a17437956c742bb","timestamp":"2026-03-24T08:44:59.496Z"}
+{"level":"info","message":"Automation auto-assign meals","subscriptionId":"69c24e745a17437956c742f6","timestamp":"2026-03-24T08:45:00.342Z"}
+{"count":6,"level":"info","message":"Automation cutoff finished","timestamp":"2026-03-24T08:45:02.399Z"}
+{"activeSubscriptions":10,"level":"info","message":"Subscription expiry reminders finished","sent24h":0,"sent3d":0,"timestamp":"2026-03-24T08:45:02.523Z"}

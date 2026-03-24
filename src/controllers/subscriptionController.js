@@ -261,6 +261,14 @@ function buildCheckoutRequestHash({ userId, quote }) {
     startDate: quote.startDate ? new Date(quote.startDate).toISOString() : null,
     delivery: {
       type: quote.delivery && quote.delivery.type ? quote.delivery.type : "delivery",
+      zoneId:
+        quote.delivery && quote.delivery.zoneId
+          ? String(quote.delivery.zoneId)
+          : "",
+      zoneName:
+        quote.delivery && quote.delivery.zoneName
+          ? String(quote.delivery.zoneName)
+          : "",
       slotType:
         quote.delivery && quote.delivery.slot && quote.delivery.slot.type
           ? quote.delivery.slot.type
@@ -1572,6 +1580,7 @@ async function resolveCheckoutQuoteOrThrow(
       throw err;
     }
 
+    delivery.zoneName = pickLang(zone.name, lang) || "";
     deliveryFeeHalala = Number(zone.deliveryFeeHalala || 0);
   }
 
@@ -2164,7 +2173,7 @@ async function verifyCheckoutDraftPayment(req, res, runtimeOverrides = null) {
   if (!payment) {
     return errorResponse(res, 409, "CHECKOUT_IN_PROGRESS", "Checkout payment is not initialized yet");
   }
-  if (payment.type !== "subscription_activation") {
+  if (!["subscription_activation", "subscription_renewal"].includes(payment.type)) {
     return errorResponse(res, 409, "INVALID", "Payment does not belong to a subscription checkout");
   }
   if (!payment.providerInvoiceId && !draft.providerInvoiceId) {
@@ -2925,7 +2934,7 @@ async function renewSubscription(req, res, runtimeOverrides = null) {
         payload: renewalPayload,
         resolvedQuote: quote,
         actorContext: { actorRole: "client", actorUserId: req.userId },
-        source: "customer_renewal",
+        source: "renewal",
         now: new Date(),
       });
       renewalPayload.contractVersion = canonicalContract.contractVersion;
@@ -2998,7 +3007,7 @@ async function renewSubscription(req, res, runtimeOverrides = null) {
         payload: renewalPayload,
         resolvedQuote: quote,
         actorContext: { actorRole: "client", actorUserId: req.userId },
-        source: "customer_renewal",
+        source: "renewal",
         now: new Date(),
       });
       Object.assign(draftPayload, runtime.buildCanonicalDraftPersistenceFields({ contract: canonicalContract }));

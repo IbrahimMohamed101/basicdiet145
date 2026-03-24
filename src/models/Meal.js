@@ -11,6 +11,8 @@ const MealSchema = new mongoose.Schema(
       en: { type: String, default: "" },
     },
     imageUrl: { type: String, default: "" },
+    calories: { type: Number, default: 0, min: 0 },
+    category: { type: String, default: "" },
     type: { type: String, enum: ["regular", "premium"], default: "regular" },
     availableForOrder: { type: Boolean, default: true },
     availableForSubscription: { type: Boolean, default: true },

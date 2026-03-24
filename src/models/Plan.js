@@ -27,6 +27,10 @@ const PlanSchema = new mongoose.Schema(
       ar: { type: String, default: "" },
       en: { type: String, default: "" },
     },
+    description: {
+      ar: { type: String, default: "" },
+      en: { type: String, default: "" },
+    },
     daysCount: { type: Number, required: true },
     currency: { type: String, default: "SAR" },
     gramsOptions: { type: [GramsOptionSchema], default: [] },

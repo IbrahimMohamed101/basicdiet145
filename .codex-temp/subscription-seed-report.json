@@ -1,0 +1,115 @@
+{
+  "seedTag": "subscription_demo_v2",
+  "generatedAt": "2026-03-24T08:42:35.040Z",
+  "counts": {
+    "zones": 6,
+    "pickupBranches": 1,
+    "plans": 4,
+    "regularMeals": 20,
+    "premiumMeals": 12,
+    "addons": 16,
+    "users": 10,
+    "subscriptions": 9,
+    "subscriptionDays": 155,
+    "walletRows": 4,
+    "payments": 9,
+    "drafts": 3,
+    "dashboardUsers": 4
+  },
+  "sampleAccounts": {
+    "appUsers": [
+      {
+        "key": "new_user",
+        "email": "new.user@demo.basicdiet.sa",
+        "phone": "+966500000101",
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OWMyNGIyZmJiNWM2OWNhN2Q5MTdjOWIiLCJyb2xlIjoiY2xpZW50IiwidG9rZW5UeXBlIjoiYXBwX2FjY2VzcyIsImlhdCI6MTc3NDM0MTc1NSwiZXhwIjoxNzc3MDIwMTU1fQ._mLf-jOvR63FG_Qi9CVTQ_G8hSIUGAdkZw0xb87_aAE",
+        "useCase": "New app user without subscriptions for fresh purchase flow"
+      },
+      {
+        "key": "active_delivery",
+        "email": "delivery.active@demo.basicdiet.sa",
+        "phone": "+966500000102",
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OWMyNGIyZmJiNWM2OWNhN2Q5MTdjYTUiLCJyb2xlIjoiY2xpZW50IiwidG9rZW5UeXBlIjoiYXBwX2FjY2VzcyIsImlhdCI6MTc3NDM0MTc1NSwiZXhwIjoxNzc3MDIwMTU1fQ.PbwUS9b32IQ6XJKdwMplP1RNZxxYnSxMpN4X5j0SD1o",
+        "useCase": "Active delivery subscription with completed checkout and saved planning"
+      },
+      {
+        "key": "active_pickup",
+        "email": "pickup.active@demo.basicdiet.sa",
+        "phone": "+966500000103",
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OWMyNGIzMGJiNWM2OWNhN2Q5MTdjYjAiLCJyb2xlIjoiY2xpZW50IiwidG9rZW5UeXBlIjoiYXBwX2FjY2VzcyIsImlhdCI6MTc3NDM0MTc1NSwiZXhwIjoxNzc3MDIwMTU1fQ.bYB_J-cq8k-O5DvDkTgqGYwnoIEgcF1dnIkN-cXYB0k",
+        "useCase": "Active pickup subscription using the single branch flow"
+      },
+      {
+        "key": "expired_renewable",
+        "email": "renewal.expired@demo.basicdiet.sa",
+        "phone": "+966500000104",
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OWMyNGIzMGJiNWM2OWNhN2Q5MTdjYjkiLCJyb2xlIjoiY2xpZW50IiwidG9rZW5UeXBlIjoiYXBwX2FjY2VzcyIsImlhdCI6MTc3NDM0MTc1NSwiZXhwIjoxNzc3MDIwMTU1fQ.b9v1IpNuZ29MRxiEpyPM1oETpt8Dca7wZ4lqX7eKET8",
+        "useCase": "Expired subscription with preserved delivery preferences and renewal draft"
+      },
+      {
+        "key": "frozen_subscription",
+        "email": "freeze.active@demo.basicdiet.sa",
+        "phone": "+966500000105",
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OWMyNGIzMGJiNWM2OWNhN2Q5MTdjYzEiLCJyb2xlIjoiY2xpZW50IiwidG9rZW5UeXBlIjoiYXBwX2FjY2VzcyIsImlhdCI6MTc3NDM0MTc1NSwiZXhwIjoxNzc3MDIwMTU1fQ.uZ8fmUyJ3ltpE6q0HFEaxke4sE1nmq0lrt53ArzTXwY",
+        "useCase": "Active subscription with frozen day and extended validity window"
+      },
+      {
+        "key": "skipped_days",
+        "email": "skip.active@demo.basicdiet.sa",
+        "phone": "+966500000106",
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OWMyNGIzMGJiNWM2OWNhN2Q5MTdjYzkiLCJyb2xlIjoiY2xpZW50IiwidG9rZW5UeXBlIjoiYXBwX2FjY2VzcyIsImlhdCI6MTc3NDM0MTc1NSwiZXhwIjoxNzc3MDIwMTU1fQ.qeJt_fLliuaq5lloFlyaH4_GylpY1V28_5hYqOashzw",
+        "useCase": "Active subscription with skipped and unskipped planning history"
+      },
+      {
+        "key": "wallet_balance",
+        "email": "wallet.active@demo.basicdiet.sa",
+        "phone": "+966500000107",
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OWMyNGIzMWJiNWM2OWNhN2Q5MTdjZDEiLCJyb2xlIjoiY2xpZW50IiwidG9rZW5UeXBlIjoiYXBwX2FjY2VzcyIsImlhdCI6MTc3NDM0MTc1NSwiZXhwIjoxNzc3MDIwMTU1fQ.1Q1HKF17HeV7fjL_TMtB5hCZYARUzzZQ_NdXybD3W1s",
+        "useCase": "Active subscription with wallet balances, topups, and consumption history"
+      },
+      {
+        "key": "premium_overage",
+        "email": "premium.overage@demo.basicdiet.sa",
+        "phone": "+966500000108",
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OWMyNGIzMWJiNWM2OWNhN2Q5MTdjZDciLCJyb2xlIjoiY2xpZW50IiwidG9rZW5UeXBlIjoiYXBwX2FjY2VzcyIsImlhdCI6MTc3NDM0MTc1NSwiZXhwIjoxNzc3MDIwMTU1fQ.L6myvZRRiILswIUgVobAstRVCfIfcmfGN-pseZ0SMT0",
+        "useCase": "Active canonical subscription with pending premium overage"
+      },
+      {
+        "key": "addon_pending",
+        "email": "addon.pending@demo.basicdiet.sa",
+        "phone": "+966500000109",
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OWMyNGIzMWJiNWM2OWNhN2Q5MTdjZGQiLCJyb2xlIjoiY2xpZW50IiwidG9rZW5UeXBlIjoiYXBwX2FjY2VzcyIsImlhdCI6MTc3NDM0MTc1NSwiZXhwIjoxNzc3MDIwMTU1fQ.rHVGoGGur7ke5sZmKOBY7sy0ZfuTnZLy2QBatGMTeUk",
+        "useCase": "Active canonical subscription with one-time addon pending payment"
+      },
+      {
+        "key": "canceled_subscription",
+        "email": "canceled.user@demo.basicdiet.sa",
+        "phone": "+966500000110",
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OWMyNGIzMWJiNWM2OWNhN2Q5MTdjZTEiLCJyb2xlIjoiY2xpZW50IiwidG9rZW5UeXBlIjoiYXBwX2FjY2VzcyIsImlhdCI6MTc3NDM0MTc1NSwiZXhwIjoxNzc3MDIwMTU1fQ.mqPQUajgBMJY85uiMowWlrId-cS7lTBWhFAjsFQ5T6w",
+        "useCase": "Canceled subscription visible in app and admin subscription reads"
+      }
+    ],
+    "dashboardUsers": [
+      {
+        "email": "superadmin@basicdiet.sa",
+        "password": "StrongPass123",
+        "role": "superadmin"
+      },
+      {
+        "email": "admin@basicdiet.sa",
+        "password": "StrongPass123",
+        "role": "admin"
+      },
+      {
+        "email": "kitchen@basicdiet.sa",
+        "password": "StrongPass123",
+        "role": "kitchen"
+      },
+      {
+        "email": "courier@basicdiet.sa",
+        "password": "StrongPass123",
+        "role": "courier"
+      }
+    ]
+  }
+}

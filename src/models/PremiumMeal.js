@@ -11,6 +11,8 @@ const PremiumMealSchema = new mongoose.Schema(
       en: { type: String, default: "" },
     },
     imageUrl: { type: String, default: "" },
+    calories: { type: Number, default: 0, min: 0 },
+    category: { type: String, default: "" },
     currency: { type: String, default: "SAR" },
     extraFeeHalala: { type: Number, required: true, min: 0 },
     isActive: { type: Boolean, default: true },

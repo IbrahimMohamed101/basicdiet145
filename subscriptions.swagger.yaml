@@ -130,18 +130,36 @@ components:
     DeliveryAddress:
       type: object
       properties:
-        label:
+        line1:
           type: string
-          example: Home
+          example: King Fahd Road
+        line2:
+          type: string
+          example: Building 78
+        city:
+          type: string
+          example: Riyadh
+        district:
+          type: string
+          example: Al Malqa
         street:
           type: string
-          example: Tahlia Street
+          example: King Fahd Road
+        building:
+          type: string
+          example: "78"
+        apartment:
+          type: string
+          example: "5"
         lat:
           type: number
           example: 24.7136
         lng:
           type: number
           example: 46.6753
+        notes:
+          type: string
+          example: Leave at the door
     DeliverySlot:
       type: object
       properties:
@@ -163,12 +181,44 @@ components:
           enum: [delivery, pickup]
         zoneId:
           type: string
+        zoneName:
+          type: string
         address:
           $ref: '#/components/schemas/DeliveryAddress'
         slot:
           $ref: '#/components/schemas/DeliverySlot'
         pickupLocationId:
           type: string
+    DeliveryArea:
+      type: object
+      properties:
+        id:
+          type: string
+        zoneId:
+          type: string
+        name:
+          type: string
+          example: Al Malqa
+        label:
+          type: string
+          example: Al Malqa
+        feeHalala:
+          type: integer
+          example: 1500
+        feeSar:
+          type: number
+          example: 15
+        feeLabel:
+          type: string
+          example: 15 SAR
+        isActive:
+          type: boolean
+        availability:
+          type: string
+          enum: [available, unavailable]
+        availabilityLabel:
+          type: string
+          example: Available
     QuoteRequestBody:
       type: object
       required: [planId, grams, mealsPerDay, delivery]
@@ -306,6 +356,59 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SuccessEnvelope'
+              example:
+                status: true
+                data:
+                  currency: SAR
+                  delivery:
+                    methods:
+                      - id: delivery
+                        type: delivery
+                        title: Home Delivery
+                        subtitle: Get your meals delivered to your doorstep
+                        pricingMode: zone_based
+                        feeHalala: 0
+                        feeSar: 0
+                        feeLabel: Depends on area
+                        helperText: Delivery fee depends on your area
+                        areaSelectionRequired: true
+                        requiresAddress: true
+                        slots:
+                          - id: delivery_09:00_-_12:00
+                            type: delivery
+                            window: "09:00 - 12:00"
+                            label: 9:00 AM - 12:00 PM
+                      - id: pickup
+                        type: pickup
+                        title: Pickup
+                        subtitle: Pick up your order from an available location
+                        feeHalala: 0
+                        feeSar: 0
+                        feeLabel: Free
+                        requiresAddress: false
+                        slots: []
+                    areas:
+                      - id: 65f000000000000000000040
+                        zoneId: 65f000000000000000000040
+                        name: Al Malqa
+                        label: Al Malqa
+                        feeHalala: 1500
+                        feeSar: 15
+                        feeLabel: 15 SAR
+                        isActive: true
+                        availability: available
+                        availabilityLabel: Available
+                    pickupLocations:
+                      - id: pickup-1
+                        name: Main Branch
+                        label: Main Branch
+                    defaults:
+                      type: delivery
+                      slotId: delivery_09:00_-_12:00
+                      window: "09:00 - 12:00"
+                      zoneId: ""
+                      areaId: ""
+                      pickupLocationId: pickup-1
   /subscriptions:
     get:
       tags: [Subscriptions]

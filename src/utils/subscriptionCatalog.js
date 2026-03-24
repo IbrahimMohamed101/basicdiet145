@@ -304,38 +304,78 @@ function resolvePickupLocationEntry(rawLocation, index, lang, fallbackSlots) {
 
   const address = rawLocation.address && typeof rawLocation.address === "object" && !Array.isArray(rawLocation.address)
     ? {
-      line1: rawLocation.address.line1 || rawLocation.line1 || plainName,
-      line2: rawLocation.address.line2 || rawLocation.line2 || "",
+      line1:
+        pickLang(rawLocation.address.line1, lang)
+        || pickLang(rawLocation.line1, lang)
+        || pickLang({ ar: rawLocation.address.addressAr, en: rawLocation.address.addressEn }, lang)
+        || pickLang({ ar: rawLocation.address.labelAr, en: rawLocation.address.labelEn }, lang)
+        || plainName,
+      line2:
+        pickLang(rawLocation.address.line2, lang)
+        || pickLang(rawLocation.line2, lang)
+        || "",
       city: rawLocation.address.city || rawLocation.city || "",
-      district: rawLocation.address.district || rawLocation.district || "",
-      street: rawLocation.address.street || rawLocation.street || "",
+      district:
+        pickLang(rawLocation.address.district, lang)
+        || pickLang(rawLocation.district, lang)
+        || "",
+      street:
+        pickLang(rawLocation.address.street, lang)
+        || pickLang(rawLocation.street, lang)
+        || "",
       building: rawLocation.address.building || rawLocation.building || "",
       apartment: rawLocation.address.apartment || rawLocation.apartment || "",
       lat: rawLocation.address.lat !== undefined ? rawLocation.address.lat : rawLocation.lat,
       lng: rawLocation.address.lng !== undefined ? rawLocation.address.lng : rawLocation.lng,
-      notes: rawLocation.address.notes || rawLocation.notes || "",
+      notes:
+        pickLang(rawLocation.address.notes, lang)
+        || pickLang(rawLocation.notes, lang)
+        || "",
     }
     : {
-      line1: rawLocation.line1 || plainName,
-      line2: rawLocation.line2 || "",
+      line1:
+        pickLang(rawLocation.line1, lang)
+        || pickLang({ ar: rawLocation.addressAr, en: rawLocation.addressEn }, lang)
+        || plainName,
+      line2: pickLang(rawLocation.line2, lang) || "",
       city: rawLocation.city || "",
-      district: rawLocation.district || "",
-      street: rawLocation.street || "",
+      district: pickLang(rawLocation.district, lang) || "",
+      street: pickLang(rawLocation.street, lang) || "",
       building: rawLocation.building || "",
       apartment: rawLocation.apartment || "",
       lat: rawLocation.lat,
       lng: rawLocation.lng,
-      notes: rawLocation.notes || "",
+      notes: pickLang(rawLocation.notes, lang) || "",
     };
-
-  const slots = resolveDeliverySlots(rawLocation.windows || rawLocation.slots || [], lang, "pickup");
 
   return {
     id: String(rawLocation.id || rawLocation.locationId || `pickup_location_${index + 1}`),
     name: plainName,
     label: plainName,
     address,
-    slots: slots.length ? slots : fallbackSlots,
+    slots: [],
+  };
+}
+
+function resolveDeliveryAreaEntry(zone, lang) {
+  if (!zone || !zone._id || !zone.name) return null;
+
+  const fee = toMoneyParts(zone.deliveryFeeHalala);
+  const isActive = zone.isActive !== false;
+
+  return {
+    id: String(zone._id),
+    zoneId: String(zone._id),
+    name: pickLang(zone.name, lang),
+    label: pickLang(zone.name, lang),
+    feeHalala: fee.halala,
+    feeSar: fee.sar,
+    feeLabel: formatCurrencyLabel(fee.halala),
+    isActive,
+    availability: isActive ? "available" : "unavailable",
+    availabilityLabel: isActive
+      ? localizeText(lang, "متاح", "Available")
+      : localizeText(lang, "غير متاح", "Not available"),
   };
 }
 
@@ -344,13 +384,19 @@ function resolveDeliveryCatalog({
   windows,
   deliveryFeeHalala = 0,
   pickupLocations = [],
+  zones = [],
 }) {
   const deliverySlots = resolveDeliverySlots(windows, lang, "delivery");
-  const pickupSlots = resolveDeliverySlots(windows, lang, "pickup");
   const deliveryFee = toMoneyParts(deliveryFeeHalala);
+  const resolvedAreas = Array.isArray(zones)
+    ? zones
+      .map((zone) => resolveDeliveryAreaEntry(zone, lang))
+      .filter(Boolean)
+    : [];
+  const hasAreaPricing = resolvedAreas.length > 0;
   const resolvedPickupLocations = Array.isArray(pickupLocations)
     ? pickupLocations
-      .map((location, index) => resolvePickupLocationEntry(location, index, lang, pickupSlots))
+      .map((location, index) => resolvePickupLocationEntry(location, index, lang, []))
       .filter(Boolean)
     : [];
 
@@ -361,11 +407,18 @@ function resolveDeliveryCatalog({
         type: "delivery",
         title: localizeText(lang, "توصيل للمنزل", "Home Delivery"),
         subtitle: localizeText(lang, "نوصل وجباتك إلى باب المنزل", "Get your meals delivered to your doorstep"),
-        feeHalala: deliveryFee.halala,
-        feeSar: deliveryFee.sar,
-        feeLabel: deliveryFee.halala > 0
+        pricingMode: hasAreaPricing ? "zone_based" : "flat_fee",
+        feeHalala: hasAreaPricing ? 0 : deliveryFee.halala,
+        feeSar: hasAreaPricing ? 0 : deliveryFee.sar,
+        feeLabel: hasAreaPricing
+          ? localizeText(lang, "حسب المنطقة", "Depends on area")
+          : deliveryFee.halala > 0
           ? formatCurrencyLabel(deliveryFee.halala)
           : localizeText(lang, "مجاني", "Free"),
+        helperText: hasAreaPricing
+          ? localizeText(lang, "رسوم التوصيل تعتمد على منطقتك", "Delivery fee depends on your area")
+          : "",
+        areaSelectionRequired: hasAreaPricing,
         requiresAddress: true,
         slots: deliverySlots,
       },
@@ -373,19 +426,27 @@ function resolveDeliveryCatalog({
         id: "pickup",
         type: "pickup",
         title: localizeText(lang, "استلام من الفرع", "Pickup"),
-        subtitle: localizeText(lang, "استلم طلبك من أقرب موقع متاح", "Pick up your order from an available location"),
+        subtitle: localizeText(
+          lang,
+          "يمكنك استلام وجباتك من الفرع في أي وقت خلال ساعات العمل",
+          "Pick up your meals from the branch at any time during working hours"
+        ),
         feeHalala: 0,
         feeSar: 0,
         feeLabel: localizeText(lang, "مجاني", "Free"),
         requiresAddress: false,
-        slots: pickupSlots,
+        helperText: localizeText(lang, "لا يلزم اختيار وقت للاستلام", "No pickup time selection is required"),
+        slots: [],
       },
     ],
+    areas: resolvedAreas,
     pickupLocations: resolvedPickupLocations,
     defaults: {
       type: "delivery",
       slotId: deliverySlots[0] ? deliverySlots[0].id : "",
       window: deliverySlots[0] ? deliverySlots[0].window : "",
+      zoneId: "",
+      areaId: "",
       pickupLocationId: resolvedPickupLocations[0] ? resolvedPickupLocations[0].id : "",
     },
   };
@@ -395,10 +456,9 @@ function resolvePickupLocationSelection(pickupLocations, locationId, lang, windo
   const normalizedId = String(locationId || "").trim();
   if (!normalizedId) return null;
 
-  const fallbackSlots = resolveDeliverySlots(windows, lang, "pickup");
   const resolvedLocations = Array.isArray(pickupLocations)
     ? pickupLocations
-      .map((location, index) => resolvePickupLocationEntry(location, index, lang, fallbackSlots))
+      .map((location, index) => resolvePickupLocationEntry(location, index, lang, []))
       .filter(Boolean)
     : [];
 
@@ -490,6 +550,11 @@ function resolveQuoteSummary(quote, lang) {
     delivery: {
       type: deliveryType,
       label: deliveryLabel,
+      zoneId: quote.delivery ? quote.delivery.zoneId || null : null,
+      zoneName: quote.delivery ? quote.delivery.zoneName || "" : "",
+      feeHalala: quote.breakdown ? Number(quote.breakdown.deliveryFeeHalala || 0) : 0,
+      feeSar: quote.breakdown ? Number(quote.breakdown.deliveryFeeHalala || 0) / 100 : 0,
+      feeLabel: formatCurrencyLabel(quote.breakdown && quote.breakdown.deliveryFeeHalala),
       address: quote.delivery ? quote.delivery.address || null : null,
       slot: quote.delivery && quote.delivery.slot
         ? {
