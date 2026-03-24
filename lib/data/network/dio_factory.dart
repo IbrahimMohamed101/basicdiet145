@@ -8,7 +8,7 @@ const String APPLICATION_JSON = "application/json";
 const String CONTENT_TYPE = "content-type";
 const String ACCEPT = "accept";
 const String AUTHORIZATION = "authorization";
-const String LANGUAGE = "language";
+const String LANGUAGE = "Accept-Language";
 
 class DioFactory {
   final AppPreferences _appPreferences;

@@ -20,5 +20,8 @@ class ColorManager {
   static const Color formFieldsBorderColor = Color(0xFFE5E7EB);
   static const Color black101828 = Color(0xFF101828);
   static const Color grey6A7282 = Color(0xFF6A7282);
+  static const Color grey4A5565 = Color(0xFF4A5565);
   static const Color orangeF54900 = Color(0xFFF54900);
+  static const Color orangeFFF5EC = Color(0xFFFFF5EC);
+  static const Color greyF3F4F6 = Color(0xFFF3F4F6); // Grey background for plus/minus buttons
 }

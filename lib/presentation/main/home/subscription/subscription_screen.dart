@@ -1,8 +1,8 @@
 import 'package:basic_diet/app/dependency_injection.dart';
-import 'package:basic_diet/presentation/main/subscription/bloc/subscription_bloc.dart';
-import 'package:basic_diet/presentation/main/subscription/bloc/subscription_event.dart';
-import 'package:basic_diet/presentation/main/subscription/bloc/subscription_state.dart';
-import 'package:basic_diet/presentation/main/subscription/widgets/subscription_content_view.dart';
+import 'package:basic_diet/presentation/main/home/subscription/bloc/subscription_bloc.dart';
+import 'package:basic_diet/presentation/main/home/subscription/bloc/subscription_event.dart';
+import 'package:basic_diet/presentation/main/home/subscription/bloc/subscription_state.dart';
+import 'package:basic_diet/presentation/main/home/subscription/widgets/subscription_content_view.dart';
 import 'package:basic_diet/presentation/resources/color_manager.dart';
 import 'package:basic_diet/presentation/resources/font_manager.dart';
 import 'package:basic_diet/presentation/resources/strings_manager.dart';
@@ -10,6 +10,7 @@ import 'package:basic_diet/presentation/resources/styles_manager.dart';
 import 'package:basic_diet/presentation/resources/values_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:basic_diet/presentation/main/home/premium/premium_meals_screen.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:gap/gap.dart';
 
@@ -125,7 +126,10 @@ class _ProceedButton extends StatelessWidget {
       color: ColorManager.whiteColor,
       child: ElevatedButton(
         onPressed: () {
-          // TODO: dispatch proceed event via context.read<SubscriptionBloc>()
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const PremiumMealsScreen()),
+          );
         },
         style: ElevatedButton.styleFrom(
           backgroundColor: ColorManager.greenPrimary,

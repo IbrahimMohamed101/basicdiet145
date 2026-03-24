@@ -18,12 +18,10 @@ class PackageCard extends StatelessWidget {
   // Formatting helpers — keep presentation logic out of build()
   String get _mealsDesc =>
       '${package.mealsPerDay} ${Strings.mealsPerDay} - ${package.daysCount} ${Strings.days}';
-  String get _price =>
-      '${package.newPrice.toStringAsFixed(2)} ${package.currency}';
-  String get _originalPrice =>
-      '${package.oldPrice.toStringAsFixed(2)} ${package.currency}';
+  String get _price => '${package.newPrice} ${package.currency}';
+  String get _originalPrice => '${package.oldPrice} ${package.currency}';
   String get _saveAmount =>
-      '${Strings.save} ${package.moneySave.toStringAsFixed(2)} ${package.currency}';
+      '${Strings.save} ${package.moneySave} ${package.currency}';
 
   @override
   Widget build(BuildContext context) {

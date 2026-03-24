@@ -9,7 +9,7 @@ import 'package:basic_diet/domain/usecase/verify_otp_usecase.dart';
 import 'package:basic_diet/domain/usecase/get_plans_usecase.dart';
 import 'package:basic_diet/presentation/login/login_bloc.dart';
 import 'package:basic_diet/presentation/verify/verify_bloc.dart';
-import 'package:basic_diet/presentation/main/subscription/bloc/subscription_bloc.dart';
+import 'package:basic_diet/presentation/main/home/subscription/bloc/subscription_bloc.dart';
 import 'package:basic_diet/domain/usecase/register_usecase.dart';
 import 'package:basic_diet/domain/usecase/get_popular_packages_usecase.dart';
 import 'package:basic_diet/presentation/register/register_bloc.dart';

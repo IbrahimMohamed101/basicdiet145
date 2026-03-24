@@ -1,5 +1,5 @@
 import 'package:basic_diet/domain/model/plans_model.dart';
-import 'package:basic_diet/presentation/main/subscription/widgets/meal_option_card.dart';
+import 'package:basic_diet/presentation/main/home/subscription/widgets/meal_option_card.dart';
 import 'package:basic_diet/presentation/resources/color_manager.dart';
 import 'package:basic_diet/presentation/resources/font_manager.dart';
 import 'package:basic_diet/presentation/resources/strings_manager.dart';

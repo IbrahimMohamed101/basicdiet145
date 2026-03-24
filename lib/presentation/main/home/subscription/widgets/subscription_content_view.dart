@@ -1,6 +1,6 @@
 import 'package:basic_diet/domain/model/plans_model.dart';
-import 'package:basic_diet/presentation/main/subscription/widgets/plan_accordion_item.dart';
-import 'package:basic_diet/presentation/main/subscription/widgets/subscription_banner.dart';
+import 'package:basic_diet/presentation/main/home/subscription/widgets/plan_accordion_item.dart';
+import 'package:basic_diet/presentation/main/home/subscription/widgets/subscription_banner.dart';
 import 'package:basic_diet/presentation/resources/color_manager.dart';
 import 'package:basic_diet/presentation/resources/font_manager.dart';
 import 'package:basic_diet/presentation/resources/strings_manager.dart';

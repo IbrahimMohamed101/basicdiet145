@@ -102,4 +102,27 @@ class Strings {
   static const String defaultError = "Something went wrong";
   static const String cacheError = "Cache Error";
   static const String noInternetError = "No Internet Connection";
+
+  // Premium Meals Screen
+  static const String premiumMeals = "Premium Meals";
+  static const String exclusiveProteins = "Exclusive high-quality proteins";
+  static const String premiumProteinSelection = "Premium Protein Selection";
+  static const String premiumProteinDesc =
+      "Add premium meals to your subscription with an extra fee. Each meal is prepared with the finest ingredients for optimal nutrition and taste.";
+  static const String continueText = "Continue";
+  static const String skipThisStep = "Skip this step";
+
+  // Add-Ons Screen
+  static const String addOns = "Add-Ons";
+  static const String enhanceYourPlan = "Enhance Your Plan";
+  static const String addExtraItemsOptional = "Add extra items to complement your meals (optional)";
+  static const String dailySnacks = "Daily Snacks";
+  static const String healthySnacksToKeep = "Healthy snacks to keep";
+  static const String plus29SAR = "+29 SAR";
+  static const String freshJuicePack = "Fresh Juice Pack";
+  static const String dailyFreshPressedJuices = "Daily fresh-pressed juices";
+  static const String plus39SAR = "+39 SAR";
+  static const String extraSalad = "Extra Salad";
+  static const String addExtraSaladToPlan = "Add an extra salad to your plan";
+  static const String plus19SAR = "+19 SAR";
 }

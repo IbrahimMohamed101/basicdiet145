@@ -1,4 +1,4 @@
-import 'package:basic_diet/presentation/main/subscription/subscription_screen.dart';
+import 'package:basic_diet/presentation/main/home/subscription/subscription_screen.dart';
 import 'package:basic_diet/presentation/resources/assets_manager.dart';
 import 'package:basic_diet/presentation/resources/color_manager.dart';
 import 'package:basic_diet/presentation/resources/font_manager.dart';

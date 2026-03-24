@@ -2,7 +2,7 @@ import 'package:basic_diet/app/dependency_injection.dart';
 import 'package:basic_diet/app/functions.dart';
 import 'package:basic_diet/presentation/login/login_screen.dart';
 import 'package:basic_diet/presentation/main/main_screen.dart';
-import 'package:basic_diet/presentation/main/subscription/subscription_screen.dart';
+import 'package:basic_diet/presentation/main/home/subscription/subscription_screen.dart';
 import 'package:basic_diet/presentation/onboarding/on_boarding_screen.dart';
 import 'package:basic_diet/presentation/register/register_screen.dart';
 import 'package:basic_diet/presentation/splash/splash_screen.dart';
