@@ -134,10 +134,14 @@ class _ProceedButton extends StatelessWidget {
                 isEnabled
                     ? () {
                       initPremiumMealsModule();
+                      final subscriptionBloc = context.read<SubscriptionBloc>();
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => const PremiumMealsScreen(),
+                          builder: (_) => BlocProvider.value(
+                            value: subscriptionBloc,
+                            child: const PremiumMealsScreen(),
+                          ),
                         ),
                       );
                     }

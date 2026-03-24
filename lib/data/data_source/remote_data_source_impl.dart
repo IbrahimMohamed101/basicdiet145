@@ -1,10 +1,11 @@
 import 'package:basic_diet/data/network/app_api.dart';
+import 'package:basic_diet/data/data_source/remote_data_source.dart';
+import 'package:basic_diet/data/response/addons_response.dart';
 import 'package:basic_diet/data/response/auth_response.dart';
 import 'package:basic_diet/data/response/base_response/base_response.dart';
 import 'package:basic_diet/data/response/plans_response.dart';
 import 'package:basic_diet/data/response/popular_packages_response.dart';
 import 'package:basic_diet/data/response/premium_meals_response.dart';
-import 'remote_data_source.dart';
 
 class RemoteDataSourceImpl implements RemoteDataSource {
   final AppServiceClient _appServiceClient;
@@ -43,5 +44,10 @@ class RemoteDataSourceImpl implements RemoteDataSource {
   @override
   Future<PremiumMealsResponse> getPremiumMeals() {
     return _appServiceClient.getPremiumMeals();
+  }
+
+  @override
+  Future<AddOnsResponse> getAddOns() {
+    return _appServiceClient.getAddOns();
   }
 }

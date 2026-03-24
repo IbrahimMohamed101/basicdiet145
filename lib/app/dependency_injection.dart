@@ -16,6 +16,8 @@ import 'package:basic_diet/domain/usecase/get_premium_meals_usecase.dart';
 import 'package:basic_diet/presentation/register/register_bloc.dart';
 import 'package:basic_diet/presentation/main/home/bloc/home_bloc.dart';
 import 'package:basic_diet/presentation/main/home/premium/bloc/premium_meals_bloc.dart';
+import 'package:basic_diet/domain/usecase/get_addons_usecase.dart';
+import 'package:basic_diet/presentation/main/home/add-ons/bloc/add_ons_bloc.dart';
 import 'package:dio/dio.dart';
 import 'package:basic_diet/app/app_pref.dart';
 import 'package:get_it/get_it.dart';
@@ -117,6 +119,18 @@ initPremiumMealsModule() {
 
     instance.registerFactory<PremiumMealsBloc>(
       () => PremiumMealsBloc(instance<GetPremiumMealsUseCase>()),
+    );
+  }
+}
+
+initAddOnsModule() {
+  if (!GetIt.I.isRegistered<GetAddOnsUseCase>()) {
+    instance.registerFactory<GetAddOnsUseCase>(
+      () => GetAddOnsUseCase(instance<Repository>()),
+    );
+
+    instance.registerFactory<AddOnsBloc>(
+      () => AddOnsBloc(instance<GetAddOnsUseCase>()),
     );
   }
 }

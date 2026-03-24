@@ -1,3 +1,4 @@
+import 'package:basic_diet/data/response/addons_response.dart';
 import 'package:basic_diet/data/response/auth_response.dart';
 import 'package:basic_diet/data/response/base_response/base_response.dart';
 import 'package:basic_diet/data/response/plans_response.dart';
@@ -11,4 +12,5 @@ abstract class RemoteDataSource {
   Future<PlansResponse> getPlans();
   Future<PopularPackagesResponse> getPopularPackages();
   Future<PremiumMealsResponse> getPremiumMeals();
+  Future<AddOnsResponse> getAddOns();
 }

@@ -3,6 +3,7 @@ import 'package:basic_diet/domain/model/premium_meals_model.dart';
 import 'package:basic_diet/presentation/main/home/premium/bloc/premium_meals_bloc.dart';
 import 'package:basic_diet/presentation/main/home/premium/bloc/premium_meals_event.dart';
 import 'package:basic_diet/presentation/main/home/premium/bloc/premium_meals_state.dart';
+import 'package:basic_diet/presentation/main/home/subscription/bloc/subscription_bloc.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:basic_diet/presentation/resources/color_manager.dart';
 import 'package:basic_diet/presentation/resources/font_manager.dart';
@@ -397,9 +398,16 @@ class _BottomActions extends StatelessWidget {
         children: [
           ElevatedButton(
             onPressed: () {
+              initAddOnsModule();
+              final subscriptionBloc = context.read<SubscriptionBloc>();
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (context) => const AddOnsScreen()),
+                MaterialPageRoute(
+                  builder: (_) => BlocProvider.value(
+                    value: subscriptionBloc,
+                    child: const AddOnsScreen(),
+                  ),
+                ),
               );
             },
             style: ElevatedButton.styleFrom(
@@ -421,9 +429,16 @@ class _BottomActions extends StatelessWidget {
           Gap(AppSize.s12.h),
           TextButton(
             onPressed: () {
+              initAddOnsModule();
+              final subscriptionBloc = context.read<SubscriptionBloc>();
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (context) => const AddOnsScreen()),
+                MaterialPageRoute(
+                  builder: (_) => BlocProvider.value(
+                    value: subscriptionBloc,
+                    child: const AddOnsScreen(),
+                  ),
+                ),
               );
             },
             style: TextButton.styleFrom(
