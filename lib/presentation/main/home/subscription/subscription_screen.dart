@@ -126,6 +126,7 @@ class _ProceedButton extends StatelessWidget {
       color: ColorManager.whiteColor,
       child: ElevatedButton(
         onPressed: () {
+          initPremiumMealsModule();
           Navigator.push(
             context,
             MaterialPageRoute(builder: (context) => const PremiumMealsScreen()),

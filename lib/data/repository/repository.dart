@@ -3,6 +3,7 @@ import 'package:basic_diet/data/mappers/login_mapper.dart';
 import 'package:basic_diet/data/mappers/auth_mapper.dart';
 import 'package:basic_diet/data/mappers/plans_mapper.dart';
 import 'package:basic_diet/data/mappers/popular_packages_mapper.dart';
+import 'package:basic_diet/data/mappers/premium_meals_mapper.dart';
 import 'package:basic_diet/data/mappers/error_mapper.dart';
 import 'package:basic_diet/data/network/exception_handler.dart';
 import 'package:basic_diet/data/network/failure.dart';
@@ -11,6 +12,7 @@ import 'package:basic_diet/domain/model/auth_model.dart';
 import 'package:basic_diet/domain/model/base__model.dart';
 import 'package:basic_diet/domain/model/plans_model.dart';
 import 'package:basic_diet/domain/model/popular_packages_model.dart';
+import 'package:basic_diet/domain/model/premium_meals_model.dart';
 import 'package:basic_diet/domain/repository/repository.dart';
 import 'package:dartz/dartz.dart';
 
@@ -113,6 +115,22 @@ class RepositoryImpl implements Repository {
   Future<Either<Failure, PopularPackagesModel>> getPopularPackages() async {
     try {
       final response = await _remoteDataSource.getPopularPackages();
+      if (_isSuccessfulResponse(response)) {
+        return Right(response.toDomain());
+      } else {
+        return Left(
+          Failure(ApiInternalStatus.failure, ResponseMessage.defaultError),
+        );
+      }
+    } catch (error) {
+      return _handleError(error);
+    }
+  }
+
+  @override
+  Future<Either<Failure, PremiumMealsModel>> getPremiumMeals() async {
+    try {
+      final response = await _remoteDataSource.getPremiumMeals();
       if (_isSuccessfulResponse(response)) {
         return Right(response.toDomain());
       } else {

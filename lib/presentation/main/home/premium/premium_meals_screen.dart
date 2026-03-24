@@ -1,3 +1,9 @@
+import 'package:basic_diet/app/dependency_injection.dart';
+import 'package:basic_diet/domain/model/premium_meals_model.dart';
+import 'package:basic_diet/presentation/main/home/premium/bloc/premium_meals_bloc.dart';
+import 'package:basic_diet/presentation/main/home/premium/bloc/premium_meals_event.dart';
+import 'package:basic_diet/presentation/main/home/premium/bloc/premium_meals_state.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:basic_diet/presentation/resources/color_manager.dart';
 import 'package:basic_diet/presentation/resources/font_manager.dart';
 import 'package:basic_diet/presentation/resources/strings_manager.dart';
@@ -8,85 +14,80 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:gap/gap.dart';
 import 'package:basic_diet/presentation/main/home/add-ons/add_ons_screen.dart';
 
-class PremiumMealsScreen extends StatefulWidget {
+class PremiumMealsScreen extends StatelessWidget {
   static const String premiumRoute = '/premium_meals';
 
   const PremiumMealsScreen({super.key});
 
   @override
-  State<PremiumMealsScreen> createState() => _PremiumMealsScreenState();
-}
-
-class _PremiumMealsScreenState extends State<PremiumMealsScreen> {
-  // Local state for dummy counters
-  final Map<int, int> _mealCounters = {
-    1: 1, // ID 1 -> Quantity 1
-    2: 1, // ID 2 -> Quantity 1
-  };
-
-  void _incrementCounter(int id) {
-    setState(() {
-      _mealCounters[id] = (_mealCounters[id] ?? 0) + 1;
-    });
-  }
-
-  void _decrementCounter(int id) {
-    setState(() {
-      if ((_mealCounters[id] ?? 0) > 0) {
-        _mealCounters[id] = (_mealCounters[id] ?? 0) - 1;
-      }
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF9FAFB),
-      appBar: _buildAppBar(context),
-      body: SafeArea(
-        child: Column(
-          children: [
-            Expanded(
-              child: SingleChildScrollView(
-                padding: EdgeInsetsDirectional.symmetric(
-                  horizontal: AppPadding.p16.w,
-                  vertical: AppPadding.p20.h,
-                ),
-                child: Column(
+    return BlocProvider(
+      create: (context) => instance<PremiumMealsBloc>()..add(const GetPremiumMealsEvent()),
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF9FAFB),
+        appBar: _buildAppBar(context),
+        body: SafeArea(
+          child: BlocBuilder<PremiumMealsBloc, PremiumMealsState>(
+            builder: (context, state) {
+              if (state is PremiumMealsLoading) {
+                return const Center(
+                  child: CircularProgressIndicator(
+                    color: ColorManager.greenPrimary,
+                  ),
+                );
+              } else if (state is PremiumMealsError) {
+                return Center(
+                  child: Text(
+                    state.message,
+                    style: getRegularTextStyle(color: ColorManager.errorColor),
+                  ),
+                );
+              } else if (state is PremiumMealsSuccess) {
+                return Column(
                   children: [
-                    const _PremiumInfoBanner(),
-                    Gap(AppSize.s16.h),
-                    _PremiumMealCard(
-                      id: 1,
-                      title: "Grilled Salmon Steak",
-                      description:
-                          "Fresh Atlantic salmon, perfectly grilled with herbs and lemon",
-                      priceText: "65 SAR",
-                      imageUrl:
-                          "https://images.unsplash.com/photo-1467003909585-2f8a72700288?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80",
-                      quantity: _mealCounters[1] ?? 0,
-                      onIncrement: () => _incrementCounter(1),
-                      onDecrement: () => _decrementCounter(1),
+                    Expanded(
+                      child: SingleChildScrollView(
+                        padding: EdgeInsetsDirectional.symmetric(
+                          horizontal: AppPadding.p16.w,
+                          vertical: AppPadding.p20.h,
+                        ),
+                        child: Column(
+                          children: [
+                            const _PremiumInfoBanner(),
+                            Gap(AppSize.s16.h),
+                            ...state.premiumMealsModel.meals.map((meal) {
+                              final quantity = state.mealCounters[meal.id] ?? 0;
+                              return Padding(
+                                padding: EdgeInsets.only(bottom: AppSize.s16.h),
+                                child: _PremiumMealCard(
+                                  meal: meal,
+                                  quantity: quantity,
+                                  onIncrement: () {
+                                    context.read<PremiumMealsBloc>().add(
+                                      UpdateMealCounterEvent(meal.id, quantity + 1)
+                                    );
+                                  },
+                                  onDecrement: () {
+                                    if (quantity > 0) {
+                                      context.read<PremiumMealsBloc>().add(
+                                        UpdateMealCounterEvent(meal.id, quantity - 1)
+                                      );
+                                    }
+                                  },
+                                ),
+                              );
+                            }),
+                          ],
+                        ),
+                      ),
                     ),
-                    Gap(AppSize.s16.h),
-                    _PremiumMealCard(
-                      id: 2,
-                      title: "Jumbo Grilled Shrimp",
-                      description:
-                          "Large gulf shrimp marinated in garlic butter with fresh herbs",
-                      priceText: "65 SAR",
-                      imageUrl:
-                          "https://images.unsplash.com/photo-1467003909585-2f8a72700288?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80",
-                      quantity: _mealCounters[2] ?? 0,
-                      onIncrement: () => _incrementCounter(2),
-                      onDecrement: () => _decrementCounter(2),
-                    ),
+                    const _BottomActions(),
                   ],
-                ),
-              ),
-            ),
-            const _BottomActions(),
-          ],
+                );
+              }
+              return const SizedBox.shrink();
+            },
+          ),
         ),
       ),
     );
@@ -223,21 +224,13 @@ class _PremiumInfoBanner extends StatelessWidget {
 }
 
 class _PremiumMealCard extends StatelessWidget {
-  final int id;
-  final String title;
-  final String description;
-  final String priceText;
-  final String imageUrl;
+  final PremiumMealModel meal;
   final int quantity;
   final VoidCallback onIncrement;
   final VoidCallback onDecrement;
 
   const _PremiumMealCard({
-    required this.id,
-    required this.title,
-    required this.description,
-    required this.priceText,
-    required this.imageUrl,
+    required this.meal,
     required this.quantity,
     required this.onIncrement,
     required this.onDecrement,
@@ -264,7 +257,18 @@ class _PremiumMealCard extends StatelessWidget {
             borderRadius: BorderRadius.vertical(
               top: Radius.circular(AppSize.s16.r),
             ),
-            child: Image.network(imageUrl, height: 180.h, fit: BoxFit.cover),
+            child: Image.network(meal.imageUrl, height: 180.h, fit: BoxFit.cover, errorBuilder: (context, error, stackTrace) {
+              return Container(
+                height: 180.h,
+                color: ColorManager.greyF3F4F6,
+                child: Center(
+                  child: Icon(
+                    Icons.image_not_supported,
+                    color: ColorManager.grey6A7282,
+                  ),
+                ),
+              );
+            }),
           ),
           Padding(
             padding: EdgeInsetsDirectional.all(AppPadding.p16.w),
@@ -272,7 +276,7 @@ class _PremiumMealCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  title,
+                  meal.ui.title,
                   style: getBoldTextStyle(
                     color: ColorManager.black101828,
                     fontSize: FontSizeManager.s16.sp,
@@ -280,7 +284,7 @@ class _PremiumMealCard extends StatelessWidget {
                 ),
                 Gap(AppSize.s8.h),
                 Text(
-                  description,
+                  meal.ui.subtitle,
                   style: getRegularTextStyle(
                     color: ColorManager.grey4A5565,
                     fontSize: FontSizeManager.s14.sp,
@@ -291,7 +295,7 @@ class _PremiumMealCard extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      priceText,
+                      meal.priceLabel,
                       style: getBoldTextStyle(
                         color: ColorManager.greenDark,
                         fontSize: FontSizeManager.s24.sp,
