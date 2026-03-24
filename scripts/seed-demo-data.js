@@ -54,6 +54,7 @@ const {
 const { issueAppAccessToken } = require("../src/services/appTokenService");
 const { pickLang } = require("../src/utils/i18n");
 const dateUtils = require("../src/utils/date");
+const { resolveAddonChargeTotalHalala } = require("../src/utils/subscriptionCatalog");
 
 const {
   settings: demoSettings,
@@ -230,7 +231,12 @@ function buildQuote({
     0
   );
   const addonsTotalHalala = addonItems.reduce(
-    (sum, item) => sum + Number(item.unitPriceHalala || 0) * Number(item.qty || 0),
+    (sum, item) => sum + resolveAddonChargeTotalHalala({
+      unitPriceHalala: Number(item.unitPriceHalala || 0),
+      qty: Number(item.qty || 0),
+      daysCount: Number(plan && plan.daysCount ? plan.daysCount : 0),
+      type: item && item.addon && item.addon.type ? item.addon.type : "subscription",
+    }),
     0
   );
   const deliveryFeeHalala = delivery.type === "delivery" ? Number(delivery && delivery.zoneId ? delivery.zoneId.deliveryFeeHalala : 0) : 0;

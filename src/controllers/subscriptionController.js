@@ -39,7 +39,11 @@ const {
 const { logger } = require("../utils/logger");
 const { getRequestLang, pickLang } = require("../utils/i18n");
 const { resolveMealsPerDay, applyDayWalletSelections } = require("../utils/subscriptionDaySelectionSync");
-const { resolvePickupLocationSelection, resolveQuoteSummary } = require("../utils/subscriptionCatalog");
+const {
+  resolvePickupLocationSelection,
+  resolveQuoteSummary,
+  resolveAddonChargeTotalHalala,
+} = require("../utils/subscriptionCatalog");
 const {
   mapRawDayStatusToClientStatus,
   resolveCatalogOrStoredName,
@@ -1348,6 +1352,38 @@ function normalizeCheckoutItemsOrThrow(rawItems, idField, itemName) {
   return Array.from(byId.entries()).map(([id, qty]) => ({ id, qty }));
 }
 
+function normalizeCheckoutAddonSelectionsOrThrow(rawItems, itemName = "addons") {
+  if (rawItems === undefined || rawItems === null) {
+    return [];
+  }
+  if (!Array.isArray(rawItems)) {
+    const err = new Error(`${itemName} must be an array`);
+    err.code = "VALIDATION_ERROR";
+    throw err;
+  }
+
+  const selectedIds = new Set();
+  for (const item of rawItems) {
+    const addonId = typeof item === "string"
+      ? item
+      : item && typeof item === "object" && !Array.isArray(item)
+        ? item.addonId
+        : null;
+
+    try {
+      validateObjectId(addonId, "addonId");
+    } catch (_err) {
+      const err = new Error("addonId must be a valid ObjectId");
+      err.code = "VALIDATION_ERROR";
+      throw err;
+    }
+
+    selectedIds.add(String(addonId));
+  }
+
+  return Array.from(selectedIds.values()).map((id) => ({ id, qty: 1 }));
+}
+
 function resolveDeliveryInput(payload = {}) {
   const delivery = payload.delivery && typeof payload.delivery === "object" ? payload.delivery : {};
   const type = delivery.type || payload.deliveryMode || (delivery.slot && delivery.slot.type) || "delivery";
@@ -1454,7 +1490,7 @@ async function resolveCheckoutQuoteOrThrow(
   }
 
   const premiumItems = normalizeCheckoutItemsOrThrow(payload.premiumItems, "premiumMealId", "premiumItems");
-  const addonItems = normalizeCheckoutItemsOrThrow(payload.addons, "addonId", "addons");
+  const addonItems = normalizeCheckoutAddonSelectionsOrThrow(payload.addons, "addons");
 
   const premiumCountInput = parseOptionalNonNegativeInteger(payload.premiumCount);
   const compatibilityPremiumCount = sumCheckoutPremiumItemsQty(premiumItems);
@@ -1527,7 +1563,12 @@ async function resolveCheckoutQuoteOrThrow(
     }
     const unit = resolveAddonUnitPriceHalala(doc);
     assertSystemCurrencyOrThrow(doc.currency || SYSTEM_CURRENCY, `Addon ${item.id} currency`);
-    addonsTotalHalala += unit * item.qty;
+    addonsTotalHalala += resolveAddonChargeTotalHalala({
+      unitPriceHalala: unit,
+      qty: item.qty,
+      daysCount: plan.daysCount,
+      type: doc.type || "subscription",
+    });
     resolvedAddonItems.push({ addon: doc, qty: item.qty, unitPriceHalala: unit, currency: SYSTEM_CURRENCY });
   }
 
@@ -1956,12 +1997,16 @@ async function checkoutSubscription(req, res, runtimeOverrides = null) {
 
     const addonSubscriptions = canonicalContract
       ? buildRecurringAddonEntitlementsFromQuote({ addonItems: quote.addonItems, lang })
-      : quote.addonItems.map((item) => ({
-        addonId: item.addon._id,
-        name: pickLang(item.addon.name, lang),
-        price: item.unitPriceHalala / 100,
-        type: item.addon.type || "subscription",
-      }));
+      : quote.addonItems
+        .filter((item) => String(item && item.addon && item.addon.type ? item.addon.type : "subscription") !== "one_time")
+        .map((item) => ({
+          addonId: item.addon._id,
+          name: pickLang(item.addon.name, lang),
+          price: item.unitPriceHalala / 100,
+          type: item.addon.type || "subscription",
+          category: item.addon.category || "",
+          maxPerDay: 1,
+        }));
 
     draft = await CheckoutDraft.create({
       userId: req.userId,

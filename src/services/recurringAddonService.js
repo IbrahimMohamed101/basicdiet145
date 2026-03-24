@@ -40,7 +40,9 @@ function normalizeRecurringAddonEntitlements(addonSubscriptions = []) {
       type: "subscription",
       category: normalizeAddonCategory(row.category, row.addonId),
       entitlementMode: DAILY_RECURRING_ADDON_MODE,
-      maxPerDay: 1,
+      maxPerDay: Number.isInteger(Number(row.maxPerDay)) && Number(row.maxPerDay) > 0
+        ? Number(row.maxPerDay)
+        : 1,
     }));
 
   const seenCategories = new Set();
@@ -70,6 +72,8 @@ function buildRecurringAddonEntitlementsFromQuote({ addonItems = [], lang = "ar"
         price: Number(item.unitPriceHalala || 0) / 100,
         type: "subscription",
         category: normalizeAddonCategory(item.addon.category, item.addon._id),
+        // Purchase-flow recurring add-ons are selection-based only, so maxPerDay is implicit.
+        maxPerDay: 1,
       }))
   );
 }

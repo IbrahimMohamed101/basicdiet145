@@ -124,7 +124,26 @@ test("getSubscriptionMenu respects query language and falls back safely for inco
     },
   ]);
   PremiumMeal.find = () => createQueryStub([]);
-  Addon.find = () => createQueryStub([]);
+  Addon.find = () => createQueryStub([
+    {
+      _id: objectId(),
+      name: { ar: "العصير اليومي", en: "Daily Juice" },
+      description: { ar: "يضاف يوميًا", en: "Added daily" },
+      priceHalala: 1200,
+      currency: "SAR",
+      type: "subscription",
+      isActive: true,
+    },
+    {
+      _id: objectId(),
+      name: { ar: "تحلية", en: "Dessert" },
+      description: { ar: "مرة واحدة", en: "One-time" },
+      priceHalala: 700,
+      currency: "SAR",
+      type: "one_time",
+      isActive: true,
+    },
+  ]);
   Zone.find = () => createQueryStub([
     {
       _id: objectId(),
@@ -168,6 +187,9 @@ test("getSubscriptionMenu respects query language and falls back safely for inco
   assert.equal(res.payload.data.delivery.areas[0].feeLabel, "15 SAR");
   assert.equal(res.payload.data.delivery.areas[1].availability, "unavailable");
   assert.equal(res.payload.data.delivery.pickupLocations[0].name, "الفرع الرئيسي");
+  assert.equal(res.payload.data.addonsByType.subscription[0].priceLabel, "12 SAR / day");
+  assert.equal(res.payload.data.addonsByType.subscription[0].pricingModel, "daily_recurring");
+  assert.equal(res.payload.data.addonsByType.oneTime[0].priceLabel, "7 SAR");
 });
 
 test("getSubscription localizes plan and recurring add-on names while keeping machine fields stable", async (t) => {
@@ -259,7 +281,7 @@ test("getCheckoutDraftStatus adds localized read labels without changing checkou
     status: "pending_payment",
     paymentId,
     paymentUrl: "https://pay.test/checkout",
-    breakdown: { totalHalala: 11500, currency: "SAR" },
+    breakdown: { addonsTotalHalala: 12000, totalHalala: 22000, currency: "SAR" },
     contractSnapshot: {
       plan: {
         planName: { ar: "الخطة الذهبية", en: "Gold Plan" },
@@ -274,7 +296,7 @@ test("getCheckoutDraftStatus adds localized read labels without changing checkou
     _id: paymentId,
     userId,
     status: "initiated",
-    amount: 11500,
+    amount: 22000,
     currency: "SAR",
     provider: "moyasar",
     applied: false,
@@ -295,6 +317,8 @@ test("getCheckoutDraftStatus adds localized read labels without changing checkou
   assert.equal(res.payload.data.paymentStatusLabel, "مبدئي");
   assert.equal(res.payload.data.planName, "الخطة الذهبية");
   assert.equal(res.payload.data.deliveryModeLabel, "استلام");
+  assert.equal(res.payload.data.totals.addonsTotalHalala, 12000);
+  assert.equal(res.payload.data.totals.totalHalala, 22000);
 });
 
 test("getSubscriptionTimeline keeps machine fields stable and adds localized labels", async (t) => {

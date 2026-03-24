@@ -42,6 +42,37 @@ test("buildRecurringAddonEntitlementsFromQuote normalizes recurring entitlements
   ]);
 });
 
+test("buildRecurringAddonEntitlementsFromQuote keeps purchase-flow recurring add-ons at one per day", () => {
+  const addonId = objectId();
+  const entitlements = buildRecurringAddonEntitlementsFromQuote({
+    addonItems: [
+      {
+        addon: {
+          _id: addonId,
+          name: { ar: "عصير", en: "Juice" },
+          type: "subscription",
+          category: "beverage",
+        },
+        qty: 2,
+        unitPriceHalala: 1200,
+      },
+    ],
+    lang: "en",
+  });
+
+  assert.deepEqual(entitlements, [
+    {
+      addonId,
+      name: "Juice",
+      price: 12,
+      type: "subscription",
+      category: "beverage",
+      entitlementMode: "daily_recurring",
+      maxPerDay: 1,
+    },
+  ]);
+});
+
 test("normalizeRecurringAddonEntitlements rejects duplicate categories", () => {
   assert.throws(
     () => normalizeRecurringAddonEntitlements([

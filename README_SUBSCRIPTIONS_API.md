@@ -312,12 +312,39 @@ GET /api/subscriptions/menu?lang=en
       {
         "id": "65f000000000000000000030",
         "name": "Soup",
-        "type": "subscription"
+        "type": "subscription",
+        "pricingModel": "daily_recurring",
+        "billingUnit": "day",
+        "priceHalala": 1200,
+        "priceSar": 12,
+        "priceLabel": "12 SAR / day"
       }
     ],
     "addonsByType": {
-      "subscription": [],
-      "oneTime": []
+      "subscription": [
+        {
+          "id": "65f000000000000000000030",
+          "name": "Soup",
+          "type": "subscription",
+          "pricingModel": "daily_recurring",
+          "billingUnit": "day",
+          "priceHalala": 1200,
+          "priceSar": 12,
+          "priceLabel": "12 SAR / day"
+        }
+      ],
+      "oneTime": [
+        {
+          "id": "65f000000000000000000031",
+          "name": "Dessert",
+          "type": "one_time",
+          "pricingModel": "one_time",
+          "billingUnit": "item",
+          "priceHalala": 700,
+          "priceSar": 7,
+          "priceLabel": "7 SAR"
+        }
+      ]
     },
     "delivery": {
       "methods": [
@@ -432,6 +459,20 @@ Call this whenever the user changes plan, grams, meals per day, premium count, a
 - Optional fields: `startDate`, `premiumCount`, `premiumItems`, and `addons`.
 - Delivery is required through the `delivery` object.
 
+Purchase item contract:
+
+- `premiumItems`: array of `{ premiumMealId, qty }`
+- `addons`: array of recurring add-on ids only
+- Backend safely removes duplicate add-on ids
+- Each selected recurring add-on id implies `qty = 1`
+
+Recurring add-on pricing:
+
+- `type = "subscription"` means the add-on is billed daily across the full plan duration.
+- Formula: `addon_total_halala = unitPriceHalala × plan.daysCount`
+- Example: `12 SAR / day × 10 days = 120 SAR`
+- `type = "one_time"` remains one-time: `addon_total_halala = unitPriceHalala × qty`
+
 Recommended delivery payloads:
 
 - Delivery subscription: `delivery.type = "delivery"` with `zoneId`, `address`, and `slot.window`
@@ -452,12 +493,14 @@ Example body:
   "grams": 1200,
   "mealsPerDay": 3,
   "startDate": "2026-03-25",
-  "premiumCount": 2,
-  "addons": [
+  "premiumItems": [
     {
-      "addonId": "65f000000000000000000030",
-      "qty": 1
+      "premiumMealId": "65f000000000000000000020",
+      "qty": 2
     }
+  ],
+  "addons": [
+    "65f000000000000000000030"
   ],
   "delivery": {
     "type": "delivery",
@@ -490,25 +533,59 @@ Example body:
     "breakdown": {
       "basePlanPriceHalala": 180000,
       "premiumTotalHalala": 4000,
-      "addonsTotalHalala": 1500,
+      "addonsTotalHalala": 12000,
       "deliveryFeeHalala": 1000,
-      "vatHalala": 27975,
-      "totalHalala": 214475,
+      "vatHalala": 29550,
+      "totalHalala": 226550,
       "currency": "SAR"
     },
-    "totalSar": 2144.75,
+    "totalSar": 2265.5,
     "summary": {
-      "planName": "Lean Plan",
-      "daysCount": 20,
-      "mealsPerDay": 3,
+      "plan": {
+        "name": "Lean Plan",
+        "daysCount": 10,
+        "mealsPerDay": 3
+      },
+      "addons": [
+        {
+          "id": "65f000000000000000000030",
+          "name": "Daily Green Juice",
+          "qty": 1,
+          "type": "subscription",
+          "pricingModel": "daily_recurring",
+          "billingUnit": "day",
+          "durationDays": 10,
+          "unitPriceHalala": 1200,
+          "unitPriceSar": 12,
+          "unitPriceLabel": "12 SAR / day",
+          "formulaLabel": "12 SAR/day × 10 days",
+          "totalHalala": 12000,
+          "totalSar": 120,
+          "totalLabel": "120 SAR"
+        }
+      ],
       "delivery": {
         "type": "delivery",
         "zoneId": "65f000000000000000000040",
         "zoneName": "Al Malqa",
-        "feeHalala": 1500,
-        "feeSar": 15,
-        "feeLabel": "15 SAR"
-      }
+        "feeHalala": 1000,
+        "feeSar": 10,
+        "feeLabel": "10 SAR"
+      },
+      "lineItems": [
+        {
+          "kind": "addons",
+          "amountHalala": 12000,
+          "amountSar": 120,
+          "amountLabel": "120 SAR"
+        },
+        {
+          "kind": "total",
+          "amountHalala": 226550,
+          "amountSar": 2265.5,
+          "amountLabel": "2265.5 SAR"
+        }
+      ]
     }
   }
 }
@@ -516,7 +593,7 @@ Example body:
 
 Machine fields: `breakdown.*`, `currency`, numeric totals.
 
-Localized UI fields: `summary` content, plus any localized catalog names derived from your selected items.
+Localized UI fields: `summary` content, including per-day add-on labels such as `unitPriceLabel` and `formulaLabel`.
 
 **Errors:**
 
@@ -538,6 +615,8 @@ Call this after the user confirms the quote and is ready to pay.
 - `idempotencyKey` can be sent through `Idempotency-Key`, `X-Idempotency-Key`, or `body.idempotencyKey`
 - Optional `successUrl`
 - Optional `backUrl`
+- Recurring add-ons in checkout follow the same rule as quote:
+  `unitPriceHalala × plan.daysCount`
 
 Example body:
 
@@ -548,12 +627,14 @@ Example body:
   "grams": 1200,
   "mealsPerDay": 3,
   "startDate": "2026-03-25",
-  "premiumCount": 2,
-  "addons": [
+  "premiumItems": [
     {
-      "addonId": "65f000000000000000000030",
-      "qty": 1
+      "premiumMealId": "65f000000000000000000020",
+      "qty": 2
     }
+  ],
+  "addons": [
+    "65f000000000000000000030"
   ],
   "delivery": {
     "type": "delivery",
@@ -590,10 +671,10 @@ Example body:
     "totals": {
       "basePlanPriceHalala": 180000,
       "premiumTotalHalala": 4000,
-      "addonsTotalHalala": 1500,
+      "addonsTotalHalala": 12000,
       "deliveryFeeHalala": 1000,
-      "vatHalala": 27975,
-      "totalHalala": 214475,
+      "vatHalala": 29550,
+      "totalHalala": 226550,
       "currency": "SAR"
     }
   }
@@ -602,7 +683,7 @@ Example body:
 
 Machine fields: `draftId`, `paymentId`, `payment_url`, numeric totals.
 
-Localized UI fields: none in the top-level creation response.
+Localized UI fields: none in the top-level creation response. Render per-day add-on unit labels from catalog/quote metadata, not from `totals`.
 
 **Errors:**
 
@@ -648,7 +729,12 @@ Authorization: Bearer <app-token>
     "providerInvoiceId": "invoice_123",
     "providerPaymentId": null,
     "totals": {
-      "totalHalala": 214475,
+      "basePlanPriceHalala": 180000,
+      "premiumTotalHalala": 4000,
+      "addonsTotalHalala": 12000,
+      "deliveryFeeHalala": 1000,
+      "vatHalala": 29550,
+      "totalHalala": 226550,
       "currency": "SAR"
     },
     "checkedProvider": false,
@@ -923,26 +1009,35 @@ After the user confirms the renewal from the renewal seed (data loaded via `GET 
 - Path param: `id`
 - Body (optional, all fields optional to override seed defaults):
 
+Recurring add-on pricing in renewal follows the same rule as quote and checkout:
+
+- `type = "subscription"` => `addon_total_halala = unitPriceHalala × daysCount`
+- `type = "one_time"` => `addon_total_halala = unitPriceHalala × qty`
+
 ```json
 {
   "planId": "65f000000000000000000001",
   "grams": 1200,
   "mealsPerDay": 3,
-  "daysCount": 20,
-  "addons": [
+  "premiumItems": [
     {
-      "addonId": "65f000000000000000000005",
-      "available": 5
+      "premiumMealId": "65f000000000000000000020",
+      "qty": 2
     }
   ],
-  "premiumCount": 5,
-  "deliveryMode": "delivery",
-  "deliveryAddress": {
-    "label": "Home"
-  },
-  "slot": {
+  "addons": [
+    "65f000000000000000000005"
+  ],
+  "delivery": {
     "type": "delivery",
-    "window": "09:00 - 12:00"
+    "zoneId": "65f000000000000000000040",
+    "address": {
+      "label": "Home"
+    },
+    "slot": {
+      "type": "delivery",
+      "window": "09:00 - 12:00"
+    }
   },
   "idempotencyKey": "renewal-user123-sub456"
 }
@@ -959,10 +1054,12 @@ After the user confirms the renewal from the renewal seed (data loaded via `GET 
     "payment_url": "https://moyasar.com/invoice/...",
     "renewedFromSubscriptionId": "65f000000000000000000200",
     "totals": {
-      "subtotal": 1000,
-      "vat": 150,
-      "delivery": 25,
-      "total": 1175,
+      "basePlanPriceHalala": 180000,
+      "premiumTotalHalala": 4000,
+      "addonsTotalHalala": 24000,
+      "deliveryFeeHalala": 2500,
+      "vatHalala": 31575,
+      "totalHalala": 242075,
       "currency": "SAR"
     }
   }
@@ -975,7 +1072,7 @@ After the user confirms the renewal from the renewal seed (data loaded via `GET 
 - `paymentId`: Payment tracking ID
 - `payment_url`: URL to redirect customer to Moyasar invoice
 - `renewedFromSubscriptionId`: Original subscription ID, for audit trail
-- `totals`: Pricing summary including VAT and delivery
+- `totals`: Machine pricing breakdown in halala, aligned with checkout quote semantics
 
 **Errors:**
 
@@ -2957,7 +3054,7 @@ Use this for support-created subscriptions or manual admin enrollment.
 
 - Body field `userId` is required
 - The rest of the payload follows the same purchase structure used by `/api/subscriptions/quote`
-- Recommended fields: `planId`, `grams`, `mealsPerDay`, `startDate`, `premiumCount`, `addons`, `delivery`
+- Recommended fields: `planId`, `grams`, `mealsPerDay`, `startDate`, `premiumItems` or `premiumCount`, `addons`, `delivery`
 
 Example body:
 
@@ -2968,12 +3065,14 @@ Example body:
   "grams": 1200,
   "mealsPerDay": 3,
   "startDate": "2026-03-25",
-  "premiumCount": 2,
-  "addons": [
+  "premiumItems": [
     {
-      "addonId": "65f000000000000000000030",
-      "qty": 1
+      "premiumMealId": "65f000000000000000000020",
+      "qty": 2
     }
+  ],
+  "addons": [
+    "65f000000000000000000030"
   ],
   "delivery": {
     "type": "delivery",
@@ -3304,6 +3403,8 @@ Use this when support staff needs to reverse a skip for the user.
 - ALWAYS use `GET /api/subscriptions/:id/timeline` as the primary source for calendar/timeline UI.
 - ALWAYS treat `*Label` fields as UI-only.
 - ALWAYS send an idempotency key when creating payments and reuse the same key on safe retries.
+- For subscription add-ons, show the unit price as `SAR / day`, but treat the returned quote/checkout total as
+  `per-day × plan days × qty`. Never label the returned total as a per-day price.
 - Prefer the canonical `/api/admin/*` paths in dashboard code. `/api/dashboard/*` is an alias, not a different API.
 
 ---

@@ -495,6 +495,12 @@ components:
           type: integer
           minimum: 1
 
+    SubscriptionAddonSelectionId:
+      type: string
+      description: |
+        Recurring subscription add-on id for the purchase flow.
+        Each selected id implies qty = 1 per day across the full plan duration.
+
     AddonItemInput:
       type: object
       required: [addonId, qty]
@@ -552,8 +558,11 @@ components:
         addons:
           type: array
           items:
-            $ref: '#/components/schemas/AddonItemInput'
-      description: Quote input. Totals are always recomputed server-side.
+            $ref: '#/components/schemas/SubscriptionAddonSelectionId'
+      description: |
+        Quote input. Totals are always recomputed server-side.
+        Premium meals are explicit `{ premiumMealId, qty }` rows.
+        Recurring add-ons are selected ids only and price as `unitPriceHalala × plan.daysCount`.
 
     SubscriptionQuoteResponse:
       type: object
@@ -605,12 +614,14 @@ components:
         addons:
           type: array
           items:
-            $ref: '#/components/schemas/AddonItemInput'
+            $ref: '#/components/schemas/SubscriptionAddonSelectionId'
       description: |
         Idempotency key is required from either:
         - `Idempotency-Key` header
         - `X-Idempotency-Key` header
         - `body.idempotencyKey`
+        Premium meals are explicit `{ premiumMealId, qty }` rows.
+        Recurring add-ons are selected ids only and price as `unitPriceHalala × plan.daysCount`.
 
     SubscriptionCheckoutData:
       type: object
@@ -3655,9 +3666,10 @@ paths:
         Pricing model:
         - `basePlanPriceHalala` from selected active plan option (`planId + grams + mealsPerDay`)
         - `premiumTotalHalala` from active premium meals
-        - `addonsTotalHalala` from active addons
+        - `addonsTotalHalala` from active recurring add-on ids
         - `deliveryFeeHalala` from server settings (`subscription_delivery_fee_halala`)
         - optional `vatHalala` from `vat_percentage` setting
+        - recurring purchase-flow add-ons price as `unitPricePerDay × plan.daysCount`
       security:
         - bearerAuth: []
       requestBody:
@@ -3685,8 +3697,7 @@ paths:
                 - premiumMealId: 65f2000a1f1f1f1f1f1f2001
                   qty: 2
               addons:
-                - addonId: 65f2000a1f1f1f1f1f1f3001
-                  qty: 1
+                - 65f2000a1f1f1f1f1f1f3001
       responses:
         '200':
           description: Quote breakdown.
@@ -3700,12 +3711,12 @@ paths:
                   breakdown:
                     basePlanPriceHalala: 259900
                     premiumTotalHalala: 3000
-                    addonsTotalHalala: 1400
+                    addonsTotalHalala: 14000
                     deliveryFeeHalala: 1000
                     vatHalala: 0
-                    totalHalala: 265300
+                    totalHalala: 277900
                     currency: SAR
-                  totalSar: 2653
+                  totalSar: 2779
         '400':
           description: Validation/selection/configuration errors.
           content:
@@ -3766,6 +3777,27 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/SubscriptionCheckoutRequest'
+            example:
+              idempotencyKey: checkout-user-123-20260324-1
+              planId: 65f1000a1f1f1f1f1f1f1001
+              grams: 100
+              mealsPerDay: 2
+              startDate: "2026-03-10"
+              delivery:
+                type: delivery
+                address:
+                  city: Riyadh
+                  district: Al Olaya
+                  line1: Street 10
+                slot:
+                  type: delivery
+                  window: "12:00-15:00"
+                  slotId: "slot_1"
+              premiumItems:
+                - premiumMealId: 65f2000a1f1f1f1f1f1f2001
+                  qty: 2
+              addons:
+                - 65f2000a1f1f1f1f1f1f3001
       responses:
         '201':
           description: Draft + initiated payment created.
@@ -3783,10 +3815,10 @@ paths:
                   totals:
                     basePlanPriceHalala: 259900
                     premiumTotalHalala: 3000
-                    addonsTotalHalala: 1400
+                    addonsTotalHalala: 14000
                     deliveryFeeHalala: 1000
                     vatHalala: 0
-                    totalHalala: 265300
+                    totalHalala: 277900
                     currency: SAR
         '200':
           description: Existing draft/payment reused for the same idempotency key or pending identical hash.
@@ -3802,7 +3834,7 @@ paths:
                   paymentId: 65f1b6a0be3f7e2ea1234568
                   payment_url: https://mysr.co/invoice/abc
                   totals:
-                    totalHalala: 265300
+                    totalHalala: 277900
                     currency: SAR
                   reused: true
         '400':
@@ -9435,11 +9467,11 @@ paths:
                 premiumItems:
                   type: array
                   items:
-                    type: object
+                    $ref: '#/components/schemas/PremiumItemInput'
                 addons:
                   type: array
                   items:
-                    type: object
+                    $ref: '#/components/schemas/SubscriptionAddonSelectionId'
       responses:
         '201':
           description: Created subscription.

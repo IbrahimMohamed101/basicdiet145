@@ -34,15 +34,20 @@ router.post("/checkout-drafts/:draftId/verify-payment", asyncHandler(controller.
  *             properties:
  *               planId:
  *                 type: string
- *               premiumCount:
- *                 type: integer
- *               addons:
+ *               premiumItems:
  *                 type: array
  *                 items:
  *                   type: object
+ *                   required: [premiumMealId, qty]
  *                   properties:
- *                     addonId:
+ *                     premiumMealId:
  *                       type: string
+ *                     qty:
+ *                       type: integer
+ *               addons:
+ *                 type: array
+ *                 items:
+ *                   type: string
  *               deliveryMode:
  *                 type: string
  *               deliveryAddress:

@@ -241,16 +241,20 @@ components:
           type: array
           items:
             type: object
-            additionalProperties: true
-        addons:
-          type: array
-          items:
-            type: object
+            required: [premiumMealId, qty]
             properties:
-              addonId:
+              premiumMealId:
                 type: string
               qty:
                 type: integer
+                minimum: 1
+        addons:
+          type: array
+          items:
+            type: string
+          description: |
+            Recurring purchase-flow add-ons are sent as selected ids only.
+            Each selected id implies qty = 1 per day across the full subscription duration.
         delivery:
           $ref: '#/components/schemas/DeliveryPayload'
     RenewRequestBody:
@@ -269,12 +273,20 @@ components:
           type: array
           items:
             type: object
-            additionalProperties: true
+            required: [premiumMealId, qty]
+            properties:
+              premiumMealId:
+                type: string
+              qty:
+                type: integer
+                minimum: 1
         addons:
           type: array
           items:
-            type: object
-            additionalProperties: true
+            type: string
+          description: |
+            Recurring purchase-flow add-ons are sent as selected ids only.
+            Each selected id implies qty = 1 per day across the full subscription duration.
         delivery:
           $ref: '#/components/schemas/DeliveryPayload'
         idempotencyKey:
@@ -439,6 +451,32 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/QuoteRequestBody'
+            example:
+              planId: "65f000000000000000000001"
+              grams: 1200
+              mealsPerDay: 3
+              startDate: "2026-03-25"
+              premiumItems:
+                - premiumMealId: "65f000000000000000000020"
+                  qty: 2
+              addons:
+                - "65f000000000000000000030"
+              delivery:
+                type: delivery
+                zoneId: "65f000000000000000000040"
+                address:
+                  city: Riyadh
+                  district: Al Malqa
+                  street: Tahlia Street
+                  building: "42"
+                  apartment: "5"
+                  notes: Leave at the door
+                  lat: 24.7136
+                  lng: 46.6753
+                slot:
+                  type: delivery
+                  window: "09:00 - 12:00"
+                  slotId: ""
       responses:
         '200':
           description: Quote calculated
@@ -488,6 +526,33 @@ paths:
                       type: string
                     backUrl:
                       type: string
+            example:
+              idempotencyKey: "checkout-user-123-20260324-1"
+              planId: "65f000000000000000000001"
+              grams: 1200
+              mealsPerDay: 3
+              startDate: "2026-03-25"
+              premiumItems:
+                - premiumMealId: "65f000000000000000000020"
+                  qty: 2
+              addons:
+                - "65f000000000000000000030"
+              delivery:
+                type: delivery
+                zoneId: "65f000000000000000000040"
+                address:
+                  city: Riyadh
+                  district: Al Malqa
+                  street: Tahlia Street
+                  building: "42"
+                  apartment: "5"
+                  notes: Leave at the door
+                slot:
+                  type: delivery
+                  window: "09:00 - 12:00"
+                  slotId: ""
+              successUrl: "https://app.example.com/payments/success"
+              backUrl: "https://app.example.com/payments/cancel"
       responses:
         '201':
           description: Checkout draft created
@@ -676,6 +741,25 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/RenewRequestBody'
+            example:
+              planId: "65f000000000000000000001"
+              grams: 1200
+              mealsPerDay: 3
+              startDate: "2026-03-25"
+              premiumItems:
+                - premiumMealId: "65f000000000000000000020"
+                  qty: 2
+              addons:
+                - "65f000000000000000000030"
+              delivery:
+                type: delivery
+                zoneId: "65f000000000000000000040"
+                address:
+                  label: Home
+                slot:
+                  type: delivery
+                  window: "09:00 - 12:00"
+              idempotencyKey: "renewal-user123-sub456"
       responses:
         '201':
           description: Renewal checkout created

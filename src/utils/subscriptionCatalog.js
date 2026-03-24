@@ -31,6 +31,56 @@ function formatCurrencyLabel(halala, currency = SYSTEM_CURRENCY) {
   return `${formatCompactMoney(money.sar)} ${currency || SYSTEM_CURRENCY}`;
 }
 
+function isRecurringSubscriptionAddon(type) {
+  return String(type || "subscription") !== "one_time";
+}
+
+function resolveAddonDurationDays(type, daysCount) {
+  if (!isRecurringSubscriptionAddon(type)) return 1;
+
+  const parsedDays = Number(daysCount);
+  if (!Number.isFinite(parsedDays)) return 0;
+  return Math.max(0, Math.round(parsedDays));
+}
+
+function resolveAddonChargeTotalHalala({ unitPriceHalala, qty, daysCount, type } = {}) {
+  const unit = toMoneyParts(unitPriceHalala).halala;
+  const parsedQty = Number(qty);
+  const normalizedQty = Number.isFinite(parsedQty) ? Math.max(0, Math.round(parsedQty)) : 0;
+  const durationDays = resolveAddonDurationDays(type, daysCount);
+  return unit * normalizedQty * durationDays;
+}
+
+function formatAddonUnitLabel(halala, currency = SYSTEM_CURRENCY, type = "subscription", lang = "ar") {
+  const baseLabel = formatCurrencyLabel(halala, currency);
+  if (!isRecurringSubscriptionAddon(type)) return baseLabel;
+  return localizeText(lang, `${baseLabel} / يوم`, `${baseLabel} / day`);
+}
+
+function formatAddonFormulaLabel({ unitPriceHalala, currency = SYSTEM_CURRENCY, qty, daysCount, type = "subscription", lang = "ar" } = {}) {
+  const unit = toMoneyParts(unitPriceHalala);
+  const parsedQty = Number(qty);
+  const normalizedQty = Number.isFinite(parsedQty) ? Math.max(0, Math.round(parsedQty)) : 0;
+  if (normalizedQty <= 0) return "";
+
+  const compactUnitLabel = formatCompactMoney(unit.sar);
+  if (isRecurringSubscriptionAddon(type)) {
+    const durationDays = resolveAddonDurationDays(type, daysCount);
+    const unitPerDayLabel = localizeText(
+      lang,
+      `${compactUnitLabel} ${currency}/يوم`,
+      `${compactUnitLabel} ${currency}/day`
+    );
+    const daysLabel = localizeText(lang, `${durationDays} يوم`, `${durationDays} days`);
+    return normalizedQty > 1
+      ? `${unitPerDayLabel} × ${daysLabel} × ${normalizedQty}`
+      : `${unitPerDayLabel} × ${daysLabel}`;
+  }
+
+  const baseLabel = formatCurrencyLabel(unit.halala, currency);
+  return normalizedQty > 1 ? `${baseLabel} × ${normalizedQty}` : baseLabel;
+}
+
 function formatMealsLabel(mealsPerDay, lang, withPerDay = false) {
   const count = Number(mealsPerDay) || 0;
   if (lang === "en") {
@@ -239,8 +289,10 @@ function resolveAddonCatalogEntry(row, lang) {
     currency: row.currency || SYSTEM_CURRENCY,
     priceHalala: price.halala,
     priceSar: price.sar,
-    priceLabel: formatCurrencyLabel(price.halala, row.currency || SYSTEM_CURRENCY),
+    priceLabel: formatAddonUnitLabel(price.halala, row.currency || SYSTEM_CURRENCY, type, lang),
     type,
+    pricingModel: type === "subscription" ? "daily_recurring" : "one_time",
+    billingUnit: type === "subscription" ? "day" : "item",
     ui: {
       title: pickLang(row.name, lang),
       subtitle: pickLang(row.description, lang),
@@ -482,6 +534,11 @@ function resolveQuoteSummary(quote, lang) {
   const selectedMeals = selectedGrams && Array.isArray(selectedGrams.mealsOptions)
     ? selectedGrams.mealsOptions.find((item) => item.mealsPerDay === quote.mealsPerDay) || null
     : null;
+  const planDaysCount = Number(
+    quote && quote.plan && quote.plan.daysCount !== undefined
+      ? quote.plan.daysCount
+      : planEntry.daysCount
+  ) || 0;
   const deliveryType = quote.delivery && quote.delivery.type ? quote.delivery.type : "delivery";
   const deliveryLabel = deliveryType === "pickup"
     ? localizeText(lang, "استلام من الفرع", "Pickup")
@@ -521,14 +578,32 @@ function resolveQuoteSummary(quote, lang) {
 
   const addonItems = (quote.addonItems || []).map((item) => {
     const unit = toMoneyParts(item.unitPriceHalala);
-    const total = toMoneyParts(unit.halala * Number(item.qty || 0));
+    const addonType = item.addon && item.addon.type ? item.addon.type : "subscription";
+    const total = toMoneyParts(resolveAddonChargeTotalHalala({
+      unitPriceHalala: unit.halala,
+      qty: item.qty,
+      daysCount: planDaysCount,
+      type: addonType,
+    }));
     return {
       id: String(item.addon && item.addon._id ? item.addon._id : ""),
       name: pickLang(item.addon && item.addon.name, lang),
       qty: Number(item.qty || 0),
-      type: item.addon && item.addon.type ? item.addon.type : "subscription",
+      type: addonType,
+      pricingModel: addonType === "subscription" ? "daily_recurring" : "one_time",
+      billingUnit: addonType === "subscription" ? "day" : "item",
+      durationDays: resolveAddonDurationDays(addonType, planDaysCount),
       unitPriceHalala: unit.halala,
       unitPriceSar: unit.sar,
+      unitPriceLabel: formatAddonUnitLabel(unit.halala, item.currency || SYSTEM_CURRENCY, addonType, lang),
+      formulaLabel: formatAddonFormulaLabel({
+        unitPriceHalala: unit.halala,
+        currency: item.currency || SYSTEM_CURRENCY,
+        qty: item.qty,
+        daysCount: planDaysCount,
+        type: addonType,
+        lang,
+      }),
       totalHalala: total.halala,
       totalSar: total.sar,
       totalLabel: formatCurrencyLabel(total.halala),
@@ -613,6 +688,11 @@ module.exports = {
   resolvePlanCatalogEntry,
   resolvePremiumMealCatalogEntry,
   resolveAddonCatalogEntry,
+  isRecurringSubscriptionAddon,
+  resolveAddonDurationDays,
+  resolveAddonChargeTotalHalala,
+  formatAddonUnitLabel,
+  formatAddonFormulaLabel,
   resolveDeliveryCatalog,
   resolvePickupLocationSelection,
   resolveQuoteSummary,

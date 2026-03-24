@@ -164,7 +164,8 @@ Some older historical records still contain plain-string names instead of biling
   - `planId`: String. The ID of the subscription plan.
   - `deliveryAddress`: Object. `{ location: [lng, lat], line1: "Street" }`.
   - `premiumCount` (Optional): Integer. How many premium wallet credits they are buying upfront.
-  - `addons` (Optional): Array of `{ addonId }`. 
+  - `premiumItems` (Optional): Array of `{ premiumMealId, qty }`.
+  - `addons` (Optional): Array of add-on ids only. Each selected id means one recurring add-on per day across the full plan duration.
   - `deliveryMode` (Optional): `"delivery"` or `"pickup"`.
 - **Response:**
   - `draftId`: You MUST save this locally to verify the redirect later.

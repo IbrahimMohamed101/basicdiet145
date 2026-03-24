@@ -1552,12 +1552,16 @@ async function createSubscriptionAdmin(req, res, runtimeOverrides = null) {
     }));
     const addonSubscriptions = isPhase1CanonicalAdminCreateEnabled()
       ? buildRecurringAddonEntitlementsFromQuote({ addonItems: quote.addonItems, lang })
-      : quote.addonItems.map((item) => ({
-        addonId: item.addon._id,
-        name: pickLang(item.addon.name, lang) || null,
-        price: minorUnitsToMajor(item.unitPriceHalala),
-        type: item.addon.type || "subscription",
-      }));
+      : quote.addonItems
+        .filter((item) => String(item && item.addon && item.addon.type ? item.addon.type : "subscription") !== "one_time")
+        .map((item) => ({
+          addonId: item.addon._id,
+          name: pickLang(item.addon.name, lang) || null,
+          price: minorUnitsToMajor(item.unitPriceHalala),
+          type: item.addon.type || "subscription",
+          category: item.addon.category || "",
+          maxPerDay: 1,
+        }));
     const premiumRemaining = quote.premiumWalletMode === GENERIC_PREMIUM_WALLET_MODE
       ? genericPremiumBalance.reduce((sum, row) => sum + Number(row.remainingQty || 0), 0)
       : premiumBalance.reduce((sum, row) => sum + Number(row.remainingQty || 0), 0);

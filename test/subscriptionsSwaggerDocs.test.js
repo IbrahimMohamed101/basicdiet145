@@ -46,6 +46,12 @@ test("GET /subscriptions-api-docs/swagger.yaml serves a valid subscriptions Open
   assert.ok(doc.paths["/admin/subscriptions/{id}/extend"]);
   assert.ok(doc.components.securitySchemes.AppBearerAuth);
   assert.ok(doc.components.securitySchemes.DashboardBearerAuth);
+  assert.equal(doc.components.schemas.QuoteRequestBody.properties.addons.items.type, "string");
+  assert.deepEqual(
+    doc.components.schemas.QuoteRequestBody.properties.premiumItems.items.required,
+    ["premiumMealId", "qty"]
+  );
+  assert.equal(doc.components.schemas.RenewRequestBody.properties.addons.items.type, "string");
 });
 
 test("GET /subscriptions-api-docs/ serves the dedicated Swagger UI", async (t) => {
