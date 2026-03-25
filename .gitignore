@@ -1,2 +1,17 @@
 .env
 node_modules/
+
+# Documentation files
+Doc/
+README*.md
+*.txt
+*.patch
+
+# Logs
+logs/
+
+# Postman collections
+postman/
+
+# Scripts
+scripts/

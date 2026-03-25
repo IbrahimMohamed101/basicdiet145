@@ -116,14 +116,21 @@ Some older historical records still contain plain-string names instead of biling
 ### Flow 1: Purchase a Subscription
 *The user browses plans, builds their checkout basket, buys the subscription via Moyasar, and activates it.*
 
-1. **App calls `GET /api/subscriptions/menu`** (Optional) to show available plans.
-2. **App calls `POST /api/subscriptions/quote`** when the user selects a plan and configures days. The backend simulates the entire contract and returns precisely how much it will cost (base price + delivery zone fees).
-3. **User taps "Checkout"**.
-4. **App calls `POST /api/subscriptions/checkout`**. The backend securely creates a Checkout Draft and reaches out to Moyasar to create a payment intent. It returns a `draftId` and a `paymentUrl`.
-5. **App redirects the user to `paymentUrl`**. The user enters their 3DS OTP code on the bank gateway.
-6. **Moyasar redirects back to the App** (e.g., `myapp://checkout/success`).
-7. **App aggressively calls `POST /api/subscriptions/checkout-drafts/:draftId/verify-payment`**.
-8. The backend talks to Moyasar, confirms the payment, destroys the draft, and boots up a live, active subscription. The app routes the user to their dashboard.
+1. **App calls `GET /api/subscriptions/menu`** before rendering the builder screens.
+2. **Packages screen** reads `data.plans[]`, then uses each plan's `gramsOptions[]` and nested `mealsOptions[]` to drive the size/meals selectors.
+3. **Premium Meals screen** reads `data.premiumMeals[]`. Selected quantities are sent later as `premiumItems: [{ premiumMealId, qty }]`.
+4. **Add-ons screen** reads `data.addonsByType.subscription[]`. Selected recurring add-ons are sent later as `addons: [addonId]`.
+5. **Delivery Method screen** reads:
+   - `data.delivery.methods[]` for `Home Delivery` vs `Pickup`
+   - `data.delivery.areas[]` for the area list and zone fee
+   - `data.delivery.pickupLocations[]` for the branch selector or a dedicated `Pickup from Branch` card if your UI shows a single branch
+6. **App calls `POST /api/subscriptions/quote`** once the required delivery data is known. The backend requires `planId`, `grams`, `mealsPerDay`, and a nested `delivery` object.
+7. **User taps "Checkout"**.
+8. **App calls `POST /api/subscriptions/checkout`** with the exact same payload as `/quote` plus an `idempotencyKey`. The backend returns a `draftId` and `payment_url`.
+9. **App redirects the user to `payment_url`**. The user enters their 3DS OTP code on the bank gateway.
+10. **Moyasar redirects back to the App** (e.g., `myapp://checkout/success`).
+11. **App aggressively calls `POST /api/subscriptions/checkout-drafts/:draftId/verify-payment`**.
+12. The backend confirms the payment and returns checkout status plus `subscriptionId`. If the app needs the full subscription payload, it should immediately call `GET /api/subscriptions/:id`.
 
 ### Flow 2: Daily Planning & Premium Overages (The Loop)
 *The user views their upcoming delivery for Tuesday, selects their meals, realizes they accidentally picked premium items, pays the difference, and locks it in.*
@@ -156,21 +163,43 @@ Some older historical records still contain plain-string names instead of biling
 
 ### 📦 Core Subscription & Checkout
 
+#### `GET /api/subscriptions/menu`
+- **What this endpoint does:** Returns the entire catalog needed to build the purchase flow screens.
+- **Use it for these screens:**
+  - Packages: `plans[]`
+  - Premium meals: `premiumMeals[]`
+  - Add-ons: `addonsByType.subscription[]`
+  - Delivery method: `delivery.methods[]`, `delivery.areas[]`, `delivery.pickupLocations[]`
+- **Important frontend rule:** `pickupLocations[]` is where the `Pickup from Branch` UI comes from. It is **not** a separate `delivery.type`.
+
+#### `POST /api/subscriptions/quote`
+- **What this endpoint does:** Simulates the full checkout contract and returns the machine totals plus a localized summary.
+- **Why it exists:** The backend owns all pricing rules for plan size, meals/day, recurring add-ons, zone delivery fees, and VAT.
+- **When the frontend should call this:** After the user finishes selecting package options and delivery details, and again whenever one of those inputs changes.
+- **Required body fields:**
+  - `planId`: String
+  - `grams`: Integer
+  - `mealsPerDay`: Integer
+  - `delivery`: Object
+- **Delivery payloads:**
+  - Home delivery: `{"type":"delivery","zoneId":"...","address":{...},"slot":{"type":"delivery","window":"09:00-12:00"}}`
+  - Pickup: `{"type":"pickup","pickupLocationId":"pickup-1","slot":{"type":"pickup","window":"","slotId":"pickup-1"}}`
+- **Optional body fields:**
+  - `startDate`
+  - `premiumItems`: Array of `{ premiumMealId, qty }`
+  - `addons`: Array of recurring add-on ids
+
 #### `POST /api/subscriptions/checkout`
 - **What this endpoint does:** Safely constructs an intent to start a subscription without dirtying live transactional databases. It creates a temporary "Draft" and an unpaid invoice.
 - **Why it exists:** If a customer's payment fails or they abandon their cart, we don't want dead, unpaid subscriptions polluting the database. Drafts are safely garbage collected.
 - **When the frontend should call this:** When the user clicks the final "Pay Now" button on the cart summary.
 - **Important body fields:**
-  - `planId`: String. The ID of the subscription plan.
-  - `deliveryAddress`: Object. `{ location: [lng, lat], line1: "Street" }`.
-  - `premiumCount` (Optional): Integer. How many premium wallet credits they are buying upfront.
-  - `premiumItems` (Optional): Array of `{ premiumMealId, qty }`.
-  - `addons` (Optional): Array of add-on ids only. Each selected id means one recurring add-on per day across the full plan duration.
-  - `deliveryMode` (Optional): `"delivery"` or `"pickup"`.
+  - Same contract as `/quote`
+  - `idempotencyKey`: Required. Send it in `Idempotency-Key`, `X-Idempotency-Key`, or the request body.
 - **Response:**
   - `draftId`: You MUST save this locally to verify the redirect later.
   - `paymentId`: The internal database intent ID.
-  - `paymentUrl`: The 3DS redirection URL the user must explicitly visit.
+  - `payment_url`: The 3DS redirection URL the user must explicitly visit.
 - **Common Errors:** 
   - `INVALID_SELECTION`: Frontend sent an inactive add-on or bad plan.
 
@@ -178,7 +207,7 @@ Some older historical records still contain plain-string names instead of biling
 - **What this endpoint does:** Checks Moyasar for the payment status. If paid, it converts the Draft into a real Subscription.
 - **Why it exists:** Enforces trustless payment resolution. Completely independent of fragile webhooks.
 - **When to call this:** The millisecond the user is redirected back to the app from Moyasar.
-- **Important Response:** Returns the newly activated `Subscription` object with its official `_id`. Move the user to their dashboard using this ID.
+- **Important Response:** Returns checkout status plus `subscriptionId` when the payment succeeds. If the UI needs the full subscription object, follow it with `GET /api/subscriptions/:id`.
 - **Edge cases:** If the user presses "Back" perfectly during processing, the endpoint operates idempotently. It won't create two subscriptions.
 
 ### 📅 Day Planning & Selection

@@ -87,6 +87,14 @@ const sliceCAdminRuntime = {
   },
 };
 
+function resolveAdminRuntimeOverrides(defaultRuntime, nextOrRuntimeOverrides, explicitRuntimeOverrides = null) {
+  const candidate = explicitRuntimeOverrides || nextOrRuntimeOverrides;
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+    return defaultRuntime;
+  }
+  return { ...defaultRuntime, ...candidate };
+}
+
 function isPositiveInteger(value) {
   return Number.isInteger(value) && value >= 1;
 }
@@ -1478,8 +1486,12 @@ async function createAppUserAdmin(req, res) {
   }
 }
 
-async function createSubscriptionAdmin(req, res, runtimeOverrides = null) {
-  const runtime = runtimeOverrides || sliceCAdminRuntime;
+async function createSubscriptionAdmin(req, res, nextOrRuntimeOverrides = null, explicitRuntimeOverrides = null) {
+  const runtime = resolveAdminRuntimeOverrides(
+    sliceCAdminRuntime,
+    nextOrRuntimeOverrides,
+    explicitRuntimeOverrides
+  );
   const body = req.body || {};
   const { userId } = body;
   if (!validateObjectIdOrRespond(res, userId, "userId")) {

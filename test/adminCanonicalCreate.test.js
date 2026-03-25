@@ -241,3 +241,90 @@ test("createSubscriptionAdmin forwards generic premium wallet data only for newl
   assert.equal(res.statusCode, 201);
   assert.equal(res.payload.ok, true);
 });
+
+test("createSubscriptionAdmin ignores express next function and still uses explicit runtime overrides", async (t) => {
+  const originalFlag = process.env.PHASE1_CANONICAL_ADMIN_CREATE;
+  process.env.PHASE1_CANONICAL_ADMIN_CREATE = "true";
+  t.after(() => {
+    process.env.PHASE1_CANONICAL_ADMIN_CREATE = originalFlag;
+  });
+
+  const userId = String(objectId());
+  const activatedSubscriptionId = objectId();
+  const quote = {
+    plan: { _id: objectId(), daysCount: 7, currency: "SAR" },
+    grams: 100,
+    mealsPerDay: 2,
+    startDate: null,
+    delivery: {
+      type: "delivery",
+      address: { city: "Riyadh" },
+      slot: { type: "delivery", window: "09:00-12:00", slotId: "" },
+    },
+    premiumItems: [],
+    addonItems: [],
+    breakdown: {
+      basePlanPriceHalala: 15000,
+      currency: "SAR",
+    },
+  };
+
+  const fakeSession = {
+    active: false,
+    startTransaction() { this.active = true; },
+    async commitTransaction() { this.active = false; },
+    async abortTransaction() { this.active = false; },
+    endSession() {},
+    inTransaction() { return this.active; },
+  };
+
+  const { req, res } = createReqRes({
+    body: { userId },
+  });
+
+  let findClientCalls = 0;
+  const next = () => {};
+
+  await createSubscriptionAdmin(req, res, next, {
+    async findClientUserById(id) {
+      findClientCalls += 1;
+      assert.equal(String(id), userId);
+      return { _id: userId, role: "client", isActive: true };
+    },
+    async resolveCheckoutQuoteOrThrow() {
+      return quote;
+    },
+    startSession() {
+      return fakeSession;
+    },
+    buildPhase1SubscriptionContract() {
+      return {
+        contractVersion: "subscription_contract.v1",
+        contractMode: "canonical",
+        contractCompleteness: "authoritative",
+        contractSource: "admin_create",
+        contractHash: "admin-runtime-test",
+        contractSnapshot: {
+          meta: { version: "subscription_contract.v1" },
+        },
+      };
+    },
+    async activateSubscriptionFromCanonicalContract() {
+      return {
+        _id: activatedSubscriptionId,
+        toObject() {
+          return { _id: activatedSubscriptionId, userId };
+        },
+      };
+    },
+    async serializeSubscriptionAdmin(subscription) {
+      return subscription;
+    },
+    async writeActivityLogSafely() {},
+  });
+
+  assert.equal(findClientCalls, 1);
+  assert.equal(res.statusCode, 201);
+  assert.equal(res.payload.ok, true);
+  assert.equal(String(res.payload.data._id), String(activatedSubscriptionId));
+});

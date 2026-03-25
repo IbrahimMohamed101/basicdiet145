@@ -129,7 +129,7 @@ function createPlan({ _id = objectId(), daysCount }) {
   };
 }
 
-function installPricingModelStubs(t, { plans, addons, premiumMeals = [], vatPercentage = 0 }) {
+function installPricingModelStubs(t, { plans, addons, premiumMeals = [], vatPercentage = 0, pickupLocations = [] }) {
   const originalPlanFindOne = Plan.findOne;
   const originalAddonFind = Addon.find;
   const originalPremiumMealFind = PremiumMeal.find;
@@ -174,7 +174,7 @@ function installPricingModelStubs(t, { plans, addons, premiumMeals = [], vatPerc
       : key === "delivery_windows"
         ? { value: [] }
         : key === "pickup_locations"
-          ? { value: [] }
+          ? { value: pickupLocations }
           : key === "premium_price"
             ? { value: 20 }
             : null
@@ -260,6 +260,53 @@ test("quoteSubscription accepts premiumItems objects plus recurring add-on ids a
   assert.equal(res.payload.data.summary.addons[0].formulaLabel, "12 SAR/day × 10 days");
   assert.equal(res.payload.data.summary.addons[0].totalHalala, 12000);
   assert.equal(res.payload.data.summary.lineItems.find((item) => item.kind === "addons").amountHalala, 12000);
+});
+
+test("resolveCheckoutQuoteOrThrow resolves pickup branch address from pickupLocationId for the delivery-method screen", async (t) => {
+  const plan = createPlan({ daysCount: 10 });
+  installPricingModelStubs(t, {
+    plans: [plan],
+    addons: [],
+    pickupLocations: [
+      {
+        id: "pickup-1",
+        name: { en: "Main Branch", ar: "الفرع الرئيسي" },
+        address: {
+          line1: { en: "King Fahd Road", ar: "طريق الملك فهد" },
+          city: "Riyadh",
+          district: { en: "Al Malqa", ar: "الملقا" },
+        },
+      },
+    ],
+  });
+
+  const quote = await controller.resolveCheckoutQuoteOrThrow({
+    planId: String(plan._id),
+    grams: 150,
+    mealsPerDay: 3,
+    startDate: getFutureDate(3),
+    delivery: {
+      type: "pickup",
+      pickupLocationId: "pickup-1",
+      slot: { type: "pickup", window: "", slotId: "pickup-1" },
+    },
+  }, { lang: "en" });
+
+  assert.equal(quote.delivery.type, "pickup");
+  assert.equal(quote.delivery.pickupLocationId, "pickup-1");
+  assert.deepEqual(quote.delivery.address, {
+    line1: "King Fahd Road",
+    line2: "",
+    city: "Riyadh",
+    district: "Al Malqa",
+    street: "",
+    building: "",
+    apartment: "",
+    lat: undefined,
+    lng: undefined,
+    notes: "",
+  });
+  assert.equal(quote.breakdown.deliveryFeeHalala, 0);
 });
 
 test("resolveCheckoutQuoteOrThrow updates recurring add-on totals when the plan changes from 10 to 20 days", async (t) => {

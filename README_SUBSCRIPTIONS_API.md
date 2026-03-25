@@ -482,6 +482,8 @@ Delivery UI mapping:
 
 - Build the delivery-type cards from `GET /api/subscriptions/menu -> data.delivery.methods`
 - Build the area selector from `GET /api/subscriptions/menu -> data.delivery.areas`
+- Build the pickup branch selector or dedicated `Pickup from Branch` card from `GET /api/subscriptions/menu -> data.delivery.pickupLocations`
+- `Pickup from Branch` is still submitted as `delivery.type = "pickup"` with `pickupLocationId`
 - Send the selected `zoneId` back in `/quote` and `/checkout`
 - For unavailable areas, disable selection when `availability = "unavailable"`
 

@@ -2368,3 +2368,25 @@
 {"level":"info","message":"Automation auto-assign meals","subscriptionId":"69c24e745a17437956c742f6","timestamp":"2026-03-24T08:45:00.342Z"}
 {"count":6,"level":"info","message":"Automation cutoff finished","timestamp":"2026-03-24T08:45:02.399Z"}
 {"activeSubscriptions":10,"level":"info","message":"Subscription expiry reminders finished","sent24h":0,"sent3d":0,"timestamp":"2026-03-24T08:45:02.523Z"}
+{"email":"superadmin@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"superadmin","timestamp":"2026-03-25T04:18:23.193Z"}
+{"email":"admin@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"admin","timestamp":"2026-03-25T04:18:23.592Z"}
+{"email":"kitchen@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"kitchen","timestamp":"2026-03-25T04:18:23.791Z"}
+{"email":"courier@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"courier","timestamp":"2026-03-25T04:18:23.917Z"}
+{"level":"info","message":"Jobs starting","timestamp":"2026-03-25T04:18:23.918Z"}
+{"level":"info","message":"API listening","port":"3000","timestamp":"2026-03-25T04:18:23.922Z"}
+{"date":"2026-03-26","level":"info","message":"Automation cutoff start","timestamp":"2026-03-25T04:19:24.509Z"}
+{"level":"info","message":"Automation auto-assign meals","subscriptionId":"69c24e6f5a17437956c74287","timestamp":"2026-03-25T04:19:26.625Z"}
+{"level":"info","message":"Automation auto-assign meals","subscriptionId":"69c24e735a17437956c742dd","timestamp":"2026-03-25T04:19:27.307Z"}
+{"level":"info","message":"Automation auto-assign meals","subscriptionId":"69c24e745a17437956c742f6","timestamp":"2026-03-25T04:19:28.466Z"}
+{"count":6,"level":"info","message":"Automation cutoff finished","timestamp":"2026-03-25T04:19:30.225Z"}
+{"activeSubscriptions":10,"level":"info","message":"Subscription expiry reminders finished","sent24h":0,"sent3d":0,"timestamp":"2026-03-25T06:00:24.341Z"}
+{"error":"runtime.findClientUserById is not a function","level":"error","message":"Unhandled error","stack":"TypeError: runtime.findClientUserById is not a function\n    at createSubscriptionAdmin (/home/hema/Projects/basicdiet145/src/controllers/adminController.js:1489:30)\n    at /home/hema/Projects/basicdiet145/src/middleware/asyncHandler.js:2:19\n    at Layer.handle [as handle_request] (/home/hema/Projects/basicdiet145/node_modules/express/lib/router/layer.js:95:5)\n    at next (/home/hema/Projects/basicdiet145/node_modules/express/lib/router/route.js:149:13)\n    at Route.dispatch (/home/hema/Projects/basicdiet145/node_modules/express/lib/router/route.js:119:3)\n    at Layer.handle [as handle_request] (/home/hema/Projects/basicdiet145/node_modules/express/lib/router/layer.js:95:5)\n    at /home/hema/Projects/basicdiet145/node_modules/express/lib/router/index.js:284:15\n    at router.process_params (/home/hema/Projects/basicdiet145/node_modules/express/lib/router/index.js:346:12)\n    at next (/home/hema/Projects/basicdiet145/node_modules/express/lib/router/index.js:280:10)\n    at /home/hema/Projects/basicdiet145/src/middleware/dashboardAuth.js:59:14","timestamp":"2026-03-25T06:10:18.221Z"}
+{"email":"superadmin@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"superadmin","timestamp":"2026-03-25T06:14:59.241Z"}
+{"email":"admin@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"admin","timestamp":"2026-03-25T06:14:59.743Z"}
+{"email":"kitchen@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"kitchen","timestamp":"2026-03-25T06:15:00.159Z"}
+{"email":"courier@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"courier","timestamp":"2026-03-25T06:15:00.280Z"}
+{"level":"info","message":"Jobs starting","timestamp":"2026-03-25T06:15:00.281Z"}
+{"level":"info","message":"API listening","port":"3000","timestamp":"2026-03-25T06:15:00.285Z"}
+{"date":"2026-03-26","level":"info","message":"Automation cutoff start","timestamp":"2026-03-25T06:16:00.894Z"}
+{"count":0,"level":"info","message":"Automation cutoff finished","timestamp":"2026-03-25T06:16:01.286Z"}
+{"activeSubscriptions":10,"level":"info","message":"Subscription expiry reminders finished","sent24h":0,"sent3d":0,"timestamp":"2026-03-25T06:16:01.502Z"}
