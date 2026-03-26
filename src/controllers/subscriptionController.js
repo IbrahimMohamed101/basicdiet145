@@ -1955,7 +1955,16 @@ async function checkoutSubscription(req, res, runtimeOverrides = null) {
       }
 
       if (currentDraft.status === "completed") {
-        return res.status(200).json({ ok: true, data: buildCheckoutReusePayload(currentDraft, currentPayment) });
+        return res.status(200).json({
+          ok: true,
+          data: {
+            ...buildCheckoutReusePayload(currentDraft, currentPayment),
+            checkoutStatusLabel: resolveReadLabel("checkoutStatuses", "completed", lang),
+            paymentStatusLabel: resolveReadLabel("paymentStatuses", "paid", lang),
+            checkedProvider: true,
+            synchronized: true,
+          }
+        });
       }
 
       if (currentDraft.status === "pending_payment") {
@@ -2140,7 +2149,16 @@ async function checkoutSubscription(req, res, runtimeOverrides = null) {
         }
 
         if (existingDraft.status === "completed") {
-          return res.status(200).json({ ok: true, data: buildCheckoutReusePayload(existingDraft, existingPayment) });
+          return res.status(200).json({
+            ok: true,
+            data: {
+              ...buildCheckoutReusePayload(existingDraft, existingPayment),
+              checkoutStatusLabel: resolveReadLabel("checkoutStatuses", "completed", lang),
+              paymentStatusLabel: resolveReadLabel("paymentStatuses", "paid", lang),
+              checkedProvider: true,
+              synchronized: true,
+            }
+          });
         }
 
         return errorResponse(
@@ -2185,7 +2203,7 @@ async function getCheckoutDraftStatus(req, res) {
       data: localizeCheckoutDraftStatusReadPayload({
         ...buildSubscriptionCheckoutStatusPayload({ draft, payment, providerInvoice: invoice }),
         checkedProvider: Boolean(invoice),
-        synchronized: false,
+        synchronized: ["completed", "failed", "canceled", "expired"].includes(draft.status),
       }, { lang, draft }),
     });
   } catch (err) {
@@ -2241,7 +2259,11 @@ async function verifyCheckoutDraftPayment(req, res, runtimeOverrides = null) {
     });
     return res.status(200).json({
       ok: true,
-      data: localizeWriteCheckoutStatusPayload(payload, { lang, draft }),
+      data: localizeWriteCheckoutStatusPayload({
+        ...payload,
+        checkedProvider: Boolean(providerInvoice),
+        synchronized: true,
+      }, { lang, draft }),
     });
   }
 
@@ -2413,7 +2435,10 @@ async function verifyCheckoutDraftPayment(req, res, runtimeOverrides = null) {
         // We lost the race or it was already applied.
         // We will proceed to commit and re-read the state below to return the final result.
         logger.info("Subscription checkout verify: payment already applied or race lost", { draftId, paymentId: payment._id });
+        synchronized = true;
       }
+    } else {
+      synchronized = true;
     }
 
     await session.commitTransaction();
@@ -3302,7 +3327,7 @@ async function getWalletTopupPaymentStatus(req, res) {
     data: localizeWalletTopupStatusReadPayload({
       ...payload,
       checkedProvider: false,
-      synchronized: false,
+      synchronized: ["paid", "failed", "canceled", "expired", "refunded"].includes(payment.status),
     }, lang),
   });
 }
@@ -3348,7 +3373,7 @@ async function verifyWalletTopupPayment(req, res) {
     const payload = {
       ...buildWalletTopupStatusPayload({ subscription: sub, payment, catalog }),
       checkedProvider: false,
-      synchronized: false,
+      synchronized: ["paid", "failed", "canceled", "expired", "refunded"].includes(payment.status),
     };
     return res.status(200).json({
       ok: true,
@@ -3713,7 +3738,7 @@ async function verifyPremiumOverageDayPayment(req, res, runtimeOverrides = null)
     const payload = {
       ...buildPremiumOveragePaymentStatusPayload({ subscription: sub, day, payment }),
       checkedProvider: false,
-      synchronized: false,
+      synchronized: ["paid", "failed", "canceled", "expired", "refunded"].includes(payment.status),
     };
     return res.status(200).json({
       ok: true,
@@ -4135,7 +4160,7 @@ async function verifyOneTimeAddonDayPlanningPayment(req, res, runtimeOverrides =
     const payload = {
       ...buildOneTimeAddonDayPaymentStatusPayload({ subscription: sub, day, payment }),
       checkedProvider: false,
-      synchronized: false,
+      synchronized: ["paid", "failed", "canceled", "expired", "refunded"].includes(payment.status),
     };
     return res.status(200).json({
       ok: true,
