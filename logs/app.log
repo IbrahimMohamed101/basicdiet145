@@ -2390,3 +2390,16 @@
 {"date":"2026-03-26","level":"info","message":"Automation cutoff start","timestamp":"2026-03-25T06:16:00.894Z"}
 {"count":0,"level":"info","message":"Automation cutoff finished","timestamp":"2026-03-25T06:16:01.286Z"}
 {"activeSubscriptions":10,"level":"info","message":"Subscription expiry reminders finished","sent24h":0,"sent3d":0,"timestamp":"2026-03-25T06:16:01.502Z"}
+{"email":"superadmin@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"superadmin","timestamp":"2026-03-26T03:19:46.669Z"}
+{"email":"admin@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"admin","timestamp":"2026-03-26T03:19:48.206Z"}
+{"email":"kitchen@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"kitchen","timestamp":"2026-03-26T03:19:48.329Z"}
+{"email":"courier@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"courier","timestamp":"2026-03-26T03:19:48.477Z"}
+{"level":"info","message":"Jobs starting","timestamp":"2026-03-26T03:19:48.478Z"}
+{"level":"info","message":"API listening","port":"3000","timestamp":"2026-03-26T03:19:48.482Z"}
+{"date":"2026-03-27","level":"info","message":"Automation cutoff start","timestamp":"2026-03-26T03:20:48.752Z"}
+{"count":0,"level":"info","message":"Automation cutoff finished","timestamp":"2026-03-26T03:20:48.908Z"}
+{"activeSubscriptions":11,"level":"info","message":"Subscription expiry reminders finished","sent24h":0,"sent3d":0,"timestamp":"2026-03-26T06:00:49.021Z"}
+{"draftId":"69c4d98524d94c2a7d5b23a4","level":"info","message":"Healed orphaned payment link for checkout draft","paymentId":"69c4d98524d94c2a7d5b23a5","timestamp":"2026-03-26T07:00:21.076Z"}
+{"draftId":"69c4d9a9b1e9c4dca298d401","level":"info","message":"Healed orphaned payment link for checkout draft","paymentId":"69c4d9a9b1e9c4dca298d402","timestamp":"2026-03-26T07:00:57.551Z"}
+{"applied":true,"eventType":"payment_paid","hasSecretToken":true,"internalPaymentId":"69c4d9ca83e867db5e258183","invoiceId":"invo...rted","level":"info","message":"Moyasar webhook processed","paymentId":"prov...rted","paymentStatus":"paid","paymentType":"premium_topup","timestamp":"2026-03-26T07:01:30.767Z","unappliedReason":null}
+{"applied":false,"eventType":"payment_paid","hasSecretToken":true,"internalPaymentId":"69c4d9ca83e867db5e258186","invoiceId":"invo...rted","level":"info","message":"Moyasar webhook processed","paymentId":"prov...rted","paymentStatus":"paid","paymentType":"unsupported_type","timestamp":"2026-03-26T07:01:30.771Z","unappliedReason":"unsupported_payment_type"}

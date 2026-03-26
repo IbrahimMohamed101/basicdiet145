@@ -173,7 +173,36 @@ async function getSubscriptionMenu(req, res) {
   });
 }
 
+async function getDeliveryOptions(req, res) {
+  const lang = getRequestLang(req);
+  const [
+    deliveryWindows,
+    subscriptionDeliveryFeeHalala,
+    zones,
+    pickupLocations,
+  ] = await Promise.all([
+    getSettingValue("delivery_windows", []),
+    getSettingValue("subscription_delivery_fee_halala", 0),
+    Zone.find({}).sort({ isActive: -1, sortOrder: 1, createdAt: -1 }).lean(),
+    getSettingValue("pickup_locations", []),
+  ]);
+
+  const deliveryCatalog = resolveDeliveryCatalog({
+    lang,
+    windows: deliveryWindows,
+    deliveryFeeHalala: subscriptionDeliveryFeeHalala,
+    zones,
+    pickupLocations,
+  });
+
+  return res.status(200).json({
+    ok: true,
+    data: deliveryCatalog,
+  });
+}
+
 module.exports = {
   getOrderMenu,
   getSubscriptionMenu,
+  getDeliveryOptions,
 };

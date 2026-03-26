@@ -128,12 +128,13 @@ const {
   assertNoPendingOneTimeAddonPayment,
 } = require("../services/oneTimeAddonPlanningService");
 const {
-  parseOperationIdempotencyKey,
   buildOperationRequestHash,
   compareIdempotentRequest,
 } = require("../services/idempotencyService");
+const { reconcileCheckoutDraft, RECONCILE_MODES } = require("../services/reconciliationService");
 
 const SYSTEM_CURRENCY = "SAR";
+const STALE_DRAFT_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
 const LEGACY_DAY_PREMIUM_SLOT_PREFIX = "legacy_day_premium_slot_";
 const WALLET_TOPUP_PAYMENT_TYPES = new Set(["premium_topup", "addon_topup"]);
 const PREMIUM_OVERAGE_DAY_PAYMENT_TYPE = "premium_overage_day";
@@ -1945,33 +1946,40 @@ async function checkoutSubscription(req, res, runtimeOverrides = null) {
         );
       }
 
-      const existingPayment = existingByKey.paymentId
-        ? await Payment.findById(existingByKey.paymentId).lean()
-        : null;
-      if (isPendingCheckoutReusable(existingByKey, existingPayment)) {
-        return res.status(200).json({ ok: true, data: buildCheckoutReusePayload(existingByKey, existingPayment) });
+      const { draft: reconciledDraft, payment: reconciledPayment } = await reconcileCheckoutDraft(existingByKey._id, { mode: RECONCILE_MODES.PERSIST });
+      const currentDraft = reconciledDraft || existingByKey;
+      const currentPayment = reconciledPayment || existingPayment;
+
+      if (isPendingCheckoutReusable(currentDraft, currentPayment)) {
+        return res.status(200).json({ ok: true, data: buildCheckoutReusePayload(currentDraft, currentPayment) });
       }
 
-      if (existingByKey.status === "pending_payment") {
+      if (currentDraft.status === "completed") {
+        return res.status(200).json({ ok: true, data: buildCheckoutReusePayload(currentDraft, currentPayment) });
+      }
+
+      if (currentDraft.status === "pending_payment") {
+        const isStale = (new Date() - new Date(currentDraft.createdAt)) > STALE_DRAFT_THRESHOLD_MS;
+        if (isStale && !currentPayment) {
+          // It's a zombie. Mark as abandoned to allow retry.
+          await CheckoutDraft.updateOne({ _id: currentDraft._id }, { $set: { status: "failed", failureReason: "stale_abandoned" } });
+        } else {
+          return errorResponse(
+            res,
+            409,
+            "CHECKOUT_IN_PROGRESS",
+            "Checkout initialization is still in progress. Retry with the same idempotency key.",
+            { draftId: String(currentDraft._id) }
+          );
+        }
+      } else {
         return errorResponse(
           res,
           409,
-          "CHECKOUT_IN_PROGRESS",
-          "Checkout initialization is still in progress. Retry with the same idempotency key.",
-          { draftId: String(existingByKey._id) }
+          "IDEMPOTENCY_CONFLICT",
+          `idempotencyKey is already finalized with status ${currentDraft.status}`
         );
       }
-
-      if (existingByKey.status === "completed") {
-        return res.status(200).json({ ok: true, data: buildCheckoutReusePayload(existingByKey, existingPayment) });
-      }
-
-      return errorResponse(
-        res,
-        409,
-        "IDEMPOTENCY_CONFLICT",
-        `idempotencyKey is already finalized with status ${existingByKey.status}`
-      );
     }
 
     const existingByHash = await CheckoutDraft.findOne({
@@ -1981,18 +1989,31 @@ async function checkoutSubscription(req, res, runtimeOverrides = null) {
     }).sort({ createdAt: -1 }).lean();
 
     if (existingByHash) {
-      const existingPayment = existingByHash.paymentId ? await Payment.findById(existingByHash.paymentId).lean() : null;
-      if (isPendingCheckoutReusable(existingByHash, existingPayment)) {
-        return res.status(200).json({ ok: true, data: buildCheckoutReusePayload(existingByHash, existingPayment) });
+      const { draft: reconciledByHash, payment: reconciledPaymentByHash } = await reconcileCheckoutDraft(existingByHash._id, { mode: RECONCILE_MODES.PERSIST });
+      const currentDraft = reconciledByHash || existingByHash;
+      const currentPayment = reconciledPaymentByHash;
+
+      if (isPendingCheckoutReusable(currentDraft, currentPayment)) {
+        return res.status(200).json({ ok: true, data: buildCheckoutReusePayload(currentDraft, currentPayment) });
       }
 
-      return errorResponse(
-        res,
-        409,
-        "CHECKOUT_IN_PROGRESS",
-        "Checkout initialization is still in progress. Retry with the same idempotency key.",
-        { draftId: String(existingByHash._id) }
-      );
+      if (currentDraft.status === "completed") {
+        return res.status(200).json({ ok: true, data: buildCheckoutReusePayload(currentDraft, currentPayment) });
+      }
+
+      const isStale = (new Date() - new Date(currentDraft.createdAt)) > STALE_DRAFT_THRESHOLD_MS;
+      if (isStale && !currentPayment) {
+        // It's a zombie. Mark as abandoned to allow retry with new idempotency key/hash lock.
+        await CheckoutDraft.updateOne({ _id: currentDraft._id }, { $set: { status: "failed", failureReason: "stale_abandoned" } });
+      } else {
+        return errorResponse(
+          res,
+          409,
+          "CHECKOUT_IN_PROGRESS",
+          "Checkout initialization is still in progress. Retry with the same idempotency key.",
+          { draftId: String(currentDraft._id) }
+        );
+      }
     }
 
     const addonSubscriptions = canonicalContract
@@ -2150,31 +2171,27 @@ async function getCheckoutDraftStatus(req, res) {
     return errorResponse(res, err.status, err.code, err.message);
   }
 
-  const draft = await CheckoutDraft.findOne({ _id: draftId, userId: req.userId }).lean();
-  if (!draft) {
-    return errorResponse(res, 404, "NOT_FOUND", "Checkout draft not found");
-  }
+  try {
+    const { draft, payment, invoice } = await reconcileCheckoutDraft(draftId, { mode: RECONCILE_MODES.READ_ONLY });
+    if (!draft) {
+      return errorResponse(res, 404, "NOT_FOUND", "Checkout draft not found");
+    }
+    if (String(draft.userId) !== String(req.userId)) {
+      return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
+    }
 
-  let payment = null;
-  if (draft.paymentId) {
-    payment = await Payment.findOne({ _id: draft.paymentId, userId: req.userId }).lean();
+    return res.status(200).json({
+      ok: true,
+      data: localizeCheckoutDraftStatusReadPayload({
+        ...buildSubscriptionCheckoutStatusPayload({ draft, payment, providerInvoice: invoice }),
+        checkedProvider: Boolean(invoice),
+        synchronized: false,
+      }, { lang, draft }),
+    });
+  } catch (err) {
+    logger.error("Failed to get checkout draft status", { draftId, error: err.message });
+    return errorResponse(res, 500, "INTERNAL", "Failed to get checkout draft status");
   }
-  if (!payment && draft.providerInvoiceId) {
-    payment = await Payment.findOne({
-      userId: req.userId,
-      provider: "moyasar",
-      providerInvoiceId: draft.providerInvoiceId,
-    }).sort({ createdAt: -1 }).lean();
-  }
-
-  return res.status(200).json({
-    ok: true,
-    data: localizeCheckoutDraftStatusReadPayload({
-      ...buildSubscriptionCheckoutStatusPayload({ draft, payment }),
-      checkedProvider: false,
-      synchronized: false,
-    }, { lang, draft }),
-  });
 }
 
 async function verifyCheckoutDraftPayment(req, res, runtimeOverrides = null) {
@@ -2199,61 +2216,44 @@ async function verifyCheckoutDraftPayment(req, res, runtimeOverrides = null) {
     return errorResponse(res, err.status, err.code, err.message);
   }
 
-  const draft = await CheckoutDraft.findOne({ _id: draftId, userId: req.userId }).lean();
+  const {
+    draft,
+    payment,
+    invoice: providerInvoice,
+  } = await reconcileCheckoutDraft(draftId, {
+    mode: RECONCILE_MODES.PERSIST,
+    getInvoiceFn,
+  });
+
   if (!draft) {
     return errorResponse(res, 404, "NOT_FOUND", "Checkout draft not found");
   }
-
-  let payment = null;
-  if (draft.paymentId) {
-    payment = await Payment.findOne({ _id: draft.paymentId, userId: req.userId }).lean();
-  }
-  if (!payment && draft.providerInvoiceId) {
-    payment = await Payment.findOne({
-      userId: req.userId,
-      provider: "moyasar",
-      providerInvoiceId: draft.providerInvoiceId,
-    }).sort({ createdAt: -1 }).lean();
-  }
-  if (!payment) {
-    return errorResponse(res, 409, "CHECKOUT_IN_PROGRESS", "Checkout payment is not initialized yet");
-  }
-  if (!["subscription_activation", "subscription_renewal"].includes(payment.type)) {
-    return errorResponse(res, 409, "INVALID", "Payment does not belong to a subscription checkout");
-  }
-  if (!payment.providerInvoiceId && !draft.providerInvoiceId) {
-    return errorResponse(res, 409, "CHECKOUT_IN_PROGRESS", "Checkout invoice is not initialized yet");
+  if (String(draft.userId) !== String(req.userId)) {
+    return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
   }
 
-  if (draft.status === "completed" && draft.subscriptionId) {
-    const payload = {
-      ...buildSubscriptionCheckoutStatusPayload({ draft, payment }),
-      checkedProvider: false,
-      synchronized: false,
-    };
+  // Idempotency: Handle terminal states immediately
+  if (["completed", "failed", "canceled", "expired"].includes(draft.status)) {
+    const payload = buildSubscriptionCheckoutStatusPayload({
+      draft,
+      payment,
+      providerInvoice,
+    });
     return res.status(200).json({
       ok: true,
       data: localizeWriteCheckoutStatusPayload(payload, { lang, draft }),
     });
   }
 
-  let providerInvoice;
-  try {
-    providerInvoice = await getInvoiceFn(payment.providerInvoiceId || draft.providerInvoiceId);
-  } catch (err) {
-    if (err.code === "CONFIG") {
-      return errorResponse(res, 500, "CONFIG", err.message);
-    }
-    if (err.code === "NOT_FOUND") {
-      return errorResponse(res, 502, "PAYMENT_PROVIDER_ERROR", "Invoice not found at payment provider");
-    }
-    logger.error("Subscription checkout verify failed to fetch invoice", {
-      draftId,
-      paymentId: String(payment._id),
-      error: err.message,
-      stack: err.stack,
-    });
-    return errorResponse(res, 502, "PAYMENT_PROVIDER_ERROR", "Failed to fetch payment status from provider");
+  if (!payment) {
+    return errorResponse(res, 409, "CHECKOUT_IN_PROGRESS", "Checkout payment is not initialized yet");
+  }
+  if (!["subscription_activation", "subscription_renewal"].includes(payment.type)) {
+    return errorResponse(res, 409, "INVALID", "Payment does not belong to a subscription checkout");
+  }
+
+  if (!providerInvoice) {
+    return errorResponse(res, 409, "CHECKOUT_IN_PROGRESS", "Checkout invoice is not initialized yet");
   }
 
   const providerPayment = pickProviderInvoicePayment(providerInvoice, payment);
@@ -2379,6 +2379,7 @@ async function verifyCheckoutDraftPayment(req, res, runtimeOverrides = null) {
     }
 
     if (!paymentInSession.applied) {
+      // Atomic guard: exactly one process can transition applied from false to true
       const claimedPayment = await Payment.findOneAndUpdate(
         { _id: paymentInSession._id, applied: false },
         { $set: { applied: true, status: "paid" } },
@@ -2386,6 +2387,7 @@ async function verifyCheckoutDraftPayment(req, res, runtimeOverrides = null) {
       );
 
       if (claimedPayment) {
+        // We are the winner of the race. Apply side effects.
         const result = isPhase1SharedPaymentDispatcherEnabled()
           ? await applyPaymentSideEffectsFn({
             payment: claimedPayment,
@@ -2407,6 +2409,10 @@ async function verifyCheckoutDraftPayment(req, res, runtimeOverrides = null) {
         } else {
           synchronized = true;
         }
+      } else {
+        // We lost the race or it was already applied.
+        // We will proceed to commit and re-read the state below to return the final result.
+        logger.info("Subscription checkout verify: payment already applied or race lost", { draftId, paymentId: payment._id });
       }
     }
 
