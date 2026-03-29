@@ -155,15 +155,21 @@ async function applySkipForDate({ sub, date, session, allowLocked = false }) {
   if (!subUpdate.modifiedCount) {
     // MEDIUM AUDIT FIX: Never abort here; this helper is called inside caller-owned transactions.
     // Revert local writes and return a status so the controller can abort once in its own boundary.
+    const rollbackUpdate = {
+      $set: {
+        status: existingDay?.status || "open",
+        skippedByUser: existingDay?.skippedByUser || false,
+        creditsDeducted: existingDay?.creditsDeducted || false,
+      },
+    };
+    if (existingDay?.canonicalDayActionType !== undefined && existingDay?.canonicalDayActionType !== null) {
+      rollbackUpdate.$set.canonicalDayActionType = existingDay.canonicalDayActionType;
+    } else {
+      rollbackUpdate.$unset = { canonicalDayActionType: 1 };
+    }
     await SubscriptionDay.updateOne(
       { _id: dayUpdateResult._id },
-      {
-        $set: {
-          status: existingDay?.status || "open",
-          skippedByUser: existingDay?.skippedByUser || false,
-          creditsDeducted: false,
-        },
-      },
+      rollbackUpdate,
       { session }
     ).session(session);
     return { status: "insufficient_credits" };

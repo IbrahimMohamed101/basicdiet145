@@ -11,6 +11,7 @@ const SubscriptionDay = require("../models/SubscriptionDay");
 const Payment = require("../models/Payment");
 const Setting = require("../models/Setting");
 const dateUtils = require("../utils/date");
+const { addDaysToKSADateString } = dateUtils;
 const { canTransition } = require("../utils/state");
 const { writeLog } = require("../utils/log");
 const { getEffectiveDeliveryDetails } = require("../utils/delivery");
@@ -1773,6 +1774,45 @@ function buildDateRangeOrThrow(startDate, days, fieldName = "days") {
   }
 
   return Array.from({ length: parsedDays }, (_, index) => addDaysToKSADateString(startDate, index));
+}
+
+function validateFreezeRangeOrThrow(subscription, startDate, days) {
+  const targetDates = buildDateRangeOrThrow(startDate, days);
+  const baseEndDate = subscription.endDate || subscription.validityEndDate;
+
+  for (const date of targetDates) {
+    validateFutureDateOrThrow(date, subscription, baseEndDate);
+  }
+
+  return { targetDates };
+}
+
+async function ensureDateRangeDoesNotIncludeLockedTomorrow(dateStrings) {
+  if (!Array.isArray(dateStrings) || dateStrings.length === 0) {
+    return;
+  }
+
+  const tomorrow = dateUtils.getTomorrowKSADate();
+  if (!dateStrings.includes(tomorrow)) {
+    return;
+  }
+
+  await enforceTomorrowCutoffOrThrow(tomorrow);
+}
+
+async function getFrozenDateStrings(subscriptionId, session) {
+  const query = SubscriptionDay.find({
+    subscriptionId,
+    status: "frozen",
+  }).select("date");
+  if (session) {
+    query.session(session);
+  }
+  const frozenDays = await query.lean();
+  return frozenDays
+    .map((day) => day.date)
+    .filter((date) => typeof date === "string")
+    .sort();
 }
 
 function countFrozenBlocks(dateStrings) {
@@ -4438,7 +4478,9 @@ async function freezeSubscription(req, res) {
     }
 
     ensureActive(subInSession, startDate);
-    const policyInSession = resolveFreezePolicy(subInSession.planId);
+    const policyInSession = resolveSubscriptionFreezePolicy(subInSession, subInSession.planId, {
+      context: "freeze_subscription",
+    });
     if (!policyInSession.enabled) {
       await session.abortTransaction();
       session.endSession();
@@ -5507,7 +5549,20 @@ async function unskipDay(req, res) {
     day.status = "open";
     day.skippedByUser = false;
     day.creditsDeducted = false;
-    await day.save({ session });
+    await SubscriptionDay.updateOne(
+      { _id: day._id },
+      {
+        $set: {
+          status: "open",
+          skippedByUser: false,
+          creditsDeducted: false,
+        },
+        $unset: { canonicalDayActionType: 1 },
+      },
+      { session }
+    );
+    const responseDay = day.toObject ? day.toObject() : { ...day };
+    delete responseDay.canonicalDayActionType;
 
     await session.commitTransaction();
     session.endSession();
@@ -5522,7 +5577,7 @@ async function unskipDay(req, res) {
     }, { subscriptionId: id, date });
     return res.status(200).json({
       ok: true,
-      data: localizeWriteDayPayload(day, { lang }),
+      data: localizeWriteDayPayload(responseDay, { lang }),
     });
   } catch (err) {
     await session.abortTransaction();

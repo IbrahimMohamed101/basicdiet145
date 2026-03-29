@@ -23,6 +23,7 @@
  * 14. serializer logic: canonical day exposes canonicalDayActionType
  * 15. serializer logic: legacy day (no field) has absent key, not null
  * 16. Freeze path overwrites stale canonicalDayActionType:"skip" to "freeze"
+ * 17. Skip rollback clears canonicalDayActionType when credit deduction fails
  */
 
 const test = require("node:test");
@@ -333,6 +334,65 @@ test("P2-S7-S1 — Canonical Freeze/Skip State Foundation", async (t) => {
       SubscriptionDay.findOneAndUpdate = origFindOneAndUpdate;
       SubscriptionDay.countDocuments = origCountDocs;
       Subscription.updateOne = origSubUpdate;
+      Setting.findOne = origSettingFind;
+    }
+  });
+
+  await t.test("(17) applySkipForDate rollback clears canonicalDayActionType when credit deduction fails", async () => {
+    const subId = objectId();
+    const dayId = objectId();
+    let rollbackUpdate = null;
+
+    const origFindOne = SubscriptionDay.findOne;
+    const origFindOneAndUpdate = SubscriptionDay.findOneAndUpdate;
+    const origCountDocs = SubscriptionDay.countDocuments;
+    const origSubUpdate = Subscription.updateOne;
+    const origDayUpdate = SubscriptionDay.updateOne;
+    const origSettingFind = Setting.findOne;
+
+    const existingDay = {
+      _id: dayId,
+      subscriptionId: subId,
+      date: "2026-07-03",
+      status: "open",
+      skippedByUser: false,
+      creditsDeducted: false,
+    };
+    SubscriptionDay.findOne = (_q) => queryStub(existingDay);
+    SubscriptionDay.findOneAndUpdate = async (_q, update, _opts) => ({ ...existingDay, ...update.$set });
+    SubscriptionDay.countDocuments = (_q) => countStub(0);
+    Subscription.updateOne = async () => ({ modifiedCount: 0 });
+    SubscriptionDay.updateOne = (_q, update) => {
+      rollbackUpdate = update;
+      return {
+        session() { return this; },
+        then(res, rej) { return Promise.resolve({ modifiedCount: 1 }).then(res, rej); },
+      };
+    };
+    Setting.findOne = () => queryStub({ key: "skipAllowance", value: 10 });
+
+    const sub = {
+      _id: subId,
+      selectedMealsPerDay: 1,
+      totalMeals: 30,
+      remainingMeals: 0,
+      skippedCount: 0,
+      save: async () => {},
+    };
+
+    try {
+      const session = makeSession();
+      session.startTransaction();
+      const result = await applySkipForDate({ sub, date: "2026-07-03", session });
+      assert.equal(result.status, "insufficient_credits");
+      assert.equal(rollbackUpdate && rollbackUpdate.$unset && rollbackUpdate.$unset.canonicalDayActionType, 1,
+        "Skip rollback must unset canonicalDayActionType when reverting to a non-canonical open day");
+    } finally {
+      SubscriptionDay.findOne = origFindOne;
+      SubscriptionDay.findOneAndUpdate = origFindOneAndUpdate;
+      SubscriptionDay.countDocuments = origCountDocs;
+      Subscription.updateOne = origSubUpdate;
+      SubscriptionDay.updateOne = origDayUpdate;
       Setting.findOne = origSettingFind;
     }
   });
