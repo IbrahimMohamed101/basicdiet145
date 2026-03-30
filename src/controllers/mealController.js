@@ -1,20 +1,32 @@
 const Meal = require("../models/Meal");
+const MealCategory = require("../models/MealCategory");
 const { getRequestLang, pickLang } = require("../utils/i18n");
 const validateObjectId = require("../utils/validateObjectId");
 const errorResponse = require("../utils/errorResponse");
+const {
+  normalizeCategoryKey,
+  buildMealCategoryMap,
+  resolveMealCategoryForKey,
+} = require("../utils/mealCategoryCatalog");
 
 function resolveSortValue(value) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function resolveMeal(doc, lang) {
+function resolveMeal(doc, lang, categoryMap = null) {
+  const category = categoryMap ? resolveMealCategoryForKey(doc.category, categoryMap, lang) : null;
+  const categoryKey = normalizeCategoryKey(doc.category);
+
   return {
     ...doc,
     id: String(doc._id),
     name: pickLang(doc.name, lang),
     description: pickLang(doc.description, lang),
     imageUrl: doc.imageUrl || "",
+    category: categoryKey,
+    categoryKey,
+    categoryMeta: category,
     availableForOrder: doc.availableForOrder !== false,
     availableForSubscription: doc.availableForSubscription !== false,
     sortOrder: resolveSortValue(doc.sortOrder),
@@ -74,6 +86,21 @@ function normalizeSortOrder(value, fieldName = "sortOrder") {
   return parsed;
 }
 
+async function resolveValidatedCategoryKey(rawValue, { allowEmpty = true } = {}) {
+  const categoryKey = normalizeCategoryKey(rawValue);
+  if (!categoryKey) {
+    if (allowEmpty) return "";
+    throw { status: 400, code: "INVALID", message: "categoryKey must be a non-empty string" };
+  }
+
+  const category = await MealCategory.findOne({ key: categoryKey }).lean();
+  if (!category) {
+    throw { status: 400, code: "INVALID_CATEGORY", message: "Meal category not found" };
+  }
+
+  return categoryKey;
+}
+
 function assertRegularType(body) {
   if (body && body.type !== undefined && body.type !== "regular") {
     return { ok: false, message: "Only regular meals are supported by this endpoint" };
@@ -83,13 +110,24 @@ function assertRegularType(body) {
 
 async function listMeals(req, res) {
   const lang = getRequestLang(req);
-  const meals = await Meal.find({ type: "regular", isActive: true }).sort({ sortOrder: 1, createdAt: -1 }).lean();
-  return res.status(200).json({ ok: true, data: meals.map((meal) => resolveMeal(meal, lang)) });
+  const [meals, categories] = await Promise.all([
+    Meal.find({ type: "regular", isActive: true }).sort({ sortOrder: 1, createdAt: -1 }).lean(),
+    MealCategory.find({}).sort({ sortOrder: 1, createdAt: -1 }).lean(),
+  ]);
+  const categoryMap = buildMealCategoryMap(categories, lang);
+  return res.status(200).json({ ok: true, data: meals.map((meal) => resolveMeal(meal, lang, categoryMap)) });
 }
 
 async function listMealsAdmin(_req, res) {
   const meals = await Meal.find({ type: "regular" }).sort({ sortOrder: 1, createdAt: -1 }).lean();
-  return res.status(200).json({ ok: true, data: meals });
+  return res.status(200).json({
+    ok: true,
+    data: meals.map((meal) => ({
+      ...meal,
+      id: String(meal._id),
+      categoryKey: normalizeCategoryKey(meal.category),
+    })),
+  });
 }
 
 async function getMealAdmin(req, res) {
@@ -105,7 +143,14 @@ async function getMealAdmin(req, res) {
     return errorResponse(res, 404, "NOT_FOUND", "Meal not found");
   }
 
-  return res.status(200).json({ ok: true, data: meal });
+  return res.status(200).json({
+    ok: true,
+    data: {
+      ...meal,
+      id: String(meal._id),
+      categoryKey: normalizeCategoryKey(meal.category),
+    },
+  });
 }
 
 async function createMeal(req, res) {
@@ -120,10 +165,19 @@ async function createMeal(req, res) {
   }
 
   try {
+    const categoryKey = Object.prototype.hasOwnProperty.call(req.body || {}, "categoryKey")
+      || Object.prototype.hasOwnProperty.call(req.body || {}, "category")
+      ? await resolveValidatedCategoryKey(
+        Object.prototype.hasOwnProperty.call(req.body || {}, "categoryKey") ? req.body.categoryKey : req.body.category,
+        { allowEmpty: true }
+      )
+      : "";
+
     const meal = await Meal.create({
       name,
       description: parseLocalizedFieldFromBody(req.body || {}, "description", { allowString: true }) || { ar: "", en: "" },
       imageUrl: normalizeImageUrl(req.body && req.body.imageUrl),
+      category: categoryKey,
       type: "regular",
       availableForOrder:
         req.body && req.body.availableForOrder !== undefined ? Boolean(req.body.availableForOrder) : true,
@@ -177,6 +231,13 @@ async function updateMeal(req, res) {
     if (req.body && Object.prototype.hasOwnProperty.call(req.body, "imageUrl")) {
       update.imageUrl = normalizeImageUrl(req.body.imageUrl);
     }
+    if (req.body && (Object.prototype.hasOwnProperty.call(req.body, "categoryKey")
+      || Object.prototype.hasOwnProperty.call(req.body, "category"))) {
+      update.category = await resolveValidatedCategoryKey(
+        Object.prototype.hasOwnProperty.call(req.body, "categoryKey") ? req.body.categoryKey : req.body.category,
+        { allowEmpty: true }
+      );
+    }
     if (req.body && req.body.isActive !== undefined) {
       update.isActive = Boolean(req.body.isActive);
     }
@@ -195,7 +256,7 @@ async function updateMeal(req, res) {
         res,
         400,
         "INVALID",
-        "At least one of name, description, imageUrl, availability flags, sortOrder, or isActive is required"
+        "At least one of name, description, imageUrl, categoryKey, availability flags, sortOrder, or isActive is required"
       );
     }
 

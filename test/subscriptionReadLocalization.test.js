@@ -6,6 +6,7 @@ const menuController = require("../src/controllers/menuController");
 const subscriptionController = require("../src/controllers/subscriptionController");
 const Plan = require("../src/models/Plan");
 const Meal = require("../src/models/Meal");
+const MealCategory = require("../src/models/MealCategory");
 const PremiumMeal = require("../src/models/PremiumMeal");
 const Addon = require("../src/models/Addon");
 const Setting = require("../src/models/Setting");
@@ -82,6 +83,7 @@ function createQueryStub(result) {
 test("getSubscriptionMenu respects query language and falls back safely for incomplete bilingual data", async (t) => {
   const originalPlanFind = Plan.find;
   const originalMealFind = Meal.find;
+  const originalMealCategoryFind = MealCategory.find;
   const originalPremiumFind = PremiumMeal.find;
   const originalAddonFind = Addon.find;
   const originalSettingFindOne = Setting.findOne;
@@ -89,6 +91,7 @@ test("getSubscriptionMenu respects query language and falls back safely for inco
   t.after(() => {
     Plan.find = originalPlanFind;
     Meal.find = originalMealFind;
+    MealCategory.find = originalMealCategoryFind;
     PremiumMeal.find = originalPremiumFind;
     Addon.find = originalAddonFind;
     Setting.findOne = originalSettingFindOne;
@@ -121,6 +124,30 @@ test("getSubscriptionMenu respects query language and falls back safely for inco
       name: { ar: "وجبة اليوم", en: "Meal of the Day" },
       description: { ar: "وجبة لذيذة", en: "Tasty meal" },
       imageUrl: "",
+      category: "hot_meals",
+    },
+    {
+      _id: objectId(),
+      name: { ar: "سلطة الكينوا", en: "Quinoa Salad" },
+      description: { ar: "خيار خفيف", en: "Light option" },
+      imageUrl: "",
+      category: "salads",
+    },
+  ]);
+  MealCategory.find = () => createQueryStub([
+    {
+      _id: objectId(),
+      key: "hot_meals",
+      name: { ar: "الأكل الساخن", en: "Hot Meals" },
+      sortOrder: 1,
+      isActive: true,
+    },
+    {
+      _id: objectId(),
+      key: "salads",
+      name: { ar: "السلطات", en: "Salads" },
+      sortOrder: 2,
+      isActive: true,
     },
   ]);
   PremiumMeal.find = () => createQueryStub([]);
@@ -190,6 +217,86 @@ test("getSubscriptionMenu respects query language and falls back safely for inco
   assert.equal(res.payload.data.addonsByType.subscription[0].priceLabel, "12 SAR / day");
   assert.equal(res.payload.data.addonsByType.subscription[0].pricingModel, "daily_recurring");
   assert.equal(res.payload.data.addonsByType.oneTime[0].priceLabel, "7 SAR");
+  assert.equal(res.payload.data.mealCategories[0].key, "hot_meals");
+  assert.equal(res.payload.data.mealCategories[0].name, "Hot Meals");
+  assert.equal(res.payload.data.mealSections[0].items[0].categoryKey, "hot_meals");
+  assert.equal(res.payload.data.mealSections[1].category.name, "Salads");
+});
+
+test("getOrderMenu groups one-time meals into meal sections while preserving the flat meals array", async (t) => {
+  const originalMealFind = Meal.find;
+  const originalMealCategoryFind = MealCategory.find;
+  const originalSettingFindOne = Setting.findOne;
+  t.after(() => {
+    Meal.find = originalMealFind;
+    MealCategory.find = originalMealCategoryFind;
+    Setting.findOne = originalSettingFindOne;
+  });
+
+  Meal.find = () => createQueryStub([
+    {
+      _id: objectId(),
+      name: { ar: "دجاج مشروم", en: "Mushroom Chicken" },
+      description: { ar: "طبق رئيسي", en: "Main dish" },
+      imageUrl: "",
+      category: "mushrooms",
+      type: "regular",
+    },
+    {
+      _id: objectId(),
+      name: { ar: "شوربة مشروم", en: "Mushroom Soup" },
+      description: { ar: "شوربة", en: "Soup" },
+      imageUrl: "",
+      category: "mushrooms",
+      type: "regular",
+    },
+    {
+      _id: objectId(),
+      name: { ar: "لازانيا", en: "Lasagna" },
+      description: { ar: "وجبة ساخنة", en: "Hot meal" },
+      imageUrl: "",
+      category: "hot_food",
+      type: "regular",
+    },
+  ]);
+  MealCategory.find = () => createQueryStub([
+    {
+      _id: objectId(),
+      key: "mushrooms",
+      name: { ar: "المشرومات", en: "Mushrooms" },
+      sortOrder: 1,
+      isActive: true,
+    },
+    {
+      _id: objectId(),
+      key: "hot_food",
+      name: { ar: "الأكل الساخن", en: "Hot Food" },
+      sortOrder: 2,
+      isActive: true,
+    },
+  ]);
+  Setting.findOne = ({ key }) => createQueryStub(
+    key === "one_time_meal_price"
+      ? { value: 25 }
+      : key === "one_time_premium_price"
+        ? { value: 40 }
+        : key === "custom_salad_base_price" || key === "custom_meal_base_price"
+          ? { value: 0 }
+          : null
+  );
+
+  const { req, res } = createReqRes({
+    headers: { "accept-language": "en" },
+  });
+
+  await menuController.getOrderMenu(req, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.payload.data.meals.length, 3);
+  assert.equal(res.payload.data.mealSections.length, 2);
+  assert.equal(res.payload.data.mealSections[0].category.name, "Mushrooms");
+  assert.equal(res.payload.data.mealSections[0].items.length, 2);
+  assert.equal(res.payload.data.mealSections[1].items[0].categoryKey, "hot_food");
 });
 
 test("getSubscription localizes plan and recurring add-on names while keeping machine fields stable", async (t) => {
