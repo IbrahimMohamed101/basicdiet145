@@ -15,6 +15,8 @@ class PlanAccordionItem extends StatelessWidget {
     required this.plan,
     required this.isExpanded,
     required this.onTap,
+    this.selectedPlan,
+    this.selectedGramOption,
     this.selectedMealOption,
     this.onMealOptionTap,
   });
@@ -22,8 +24,10 @@ class PlanAccordionItem extends StatelessWidget {
   final PlanModel plan;
   final bool isExpanded;
   final VoidCallback onTap;
+  final PlanModel? selectedPlan;
+  final GramOptionModel? selectedGramOption;
   final MealOptionModel? selectedMealOption;
-  final ValueChanged<MealOptionModel>? onMealOptionTap;
+  final void Function(PlanModel, GramOptionModel, MealOptionModel)? onMealOptionTap;
 
   static const _borderColorCollapsed = Color(0xFFF2F4F7);
 
@@ -56,6 +60,8 @@ class PlanAccordionItem extends StatelessWidget {
             if (isExpanded)
               _PlanExpandedContent(
                 plan: plan,
+                selectedPlan: selectedPlan,
+                selectedGramOption: selectedGramOption,
                 selectedMealOption: selectedMealOption,
                 onMealOptionTap: onMealOptionTap,
               ),
@@ -134,13 +140,17 @@ class _CalendarIconBadge extends StatelessWidget {
 class _PlanExpandedContent extends StatelessWidget {
   const _PlanExpandedContent({
     required this.plan,
+    this.selectedPlan,
+    this.selectedGramOption,
     this.selectedMealOption,
     this.onMealOptionTap,
   });
 
   final PlanModel plan;
+  final PlanModel? selectedPlan;
+  final GramOptionModel? selectedGramOption;
   final MealOptionModel? selectedMealOption;
-  final ValueChanged<MealOptionModel>? onMealOptionTap;
+  final void Function(PlanModel, GramOptionModel, MealOptionModel)? onMealOptionTap;
 
   // Semantic name beats magic number 50.h
   static final _descriptionBarHeight = 50.h;
@@ -175,7 +185,10 @@ class _PlanExpandedContent extends StatelessWidget {
           Gap(AppSize.s20.h),
           ...plan.gramsOptions.map(
             (g) => _GramSizeSection(
+              plan: plan,
               gramOption: g,
+              selectedPlan: selectedPlan,
+              selectedGramOption: selectedGramOption,
               selectedMealOption: selectedMealOption,
               onMealOptionTap: onMealOptionTap,
             ),
@@ -206,14 +219,20 @@ class _GreenVerticalBar extends StatelessWidget {
 
 class _GramSizeSection extends StatelessWidget {
   const _GramSizeSection({
+    required this.plan,
     required this.gramOption,
+    this.selectedPlan,
+    this.selectedGramOption,
     this.selectedMealOption,
     this.onMealOptionTap,
   });
 
+  final PlanModel plan;
   final GramOptionModel gramOption;
+  final PlanModel? selectedPlan;
+  final GramOptionModel? selectedGramOption;
   final MealOptionModel? selectedMealOption;
-  final ValueChanged<MealOptionModel>? onMealOptionTap;
+  final void Function(PlanModel, GramOptionModel, MealOptionModel)? onMealOptionTap;
 
   @override
   Widget build(BuildContext context) {
@@ -235,7 +254,11 @@ class _GramSizeSection extends StatelessWidget {
         ),
         Gap(AppSize.s12.h),
         _OptionsGrid(
+          plan: plan,
+          gramOption: gramOption,
           options: gramOption.mealsOptions,
+          selectedPlan: selectedPlan,
+          selectedGramOption: selectedGramOption,
           selectedMealOption: selectedMealOption,
           onMealOptionTap: onMealOptionTap,
         ),
@@ -265,17 +288,31 @@ class _RestaurantIconBadge extends StatelessWidget {
 
 class _OptionsGrid extends StatelessWidget {
   const _OptionsGrid({
+    required this.plan,
+    required this.gramOption,
     required this.options,
+    this.selectedPlan,
+    this.selectedGramOption,
     this.selectedMealOption,
     this.onMealOptionTap,
   });
 
+  final PlanModel plan;
+  final GramOptionModel gramOption;
   final List<MealOptionModel> options;
+  final PlanModel? selectedPlan;
+  final GramOptionModel? selectedGramOption;
   final MealOptionModel? selectedMealOption;
-  final ValueChanged<MealOptionModel>? onMealOptionTap;
+  final void Function(PlanModel, GramOptionModel, MealOptionModel)? onMealOptionTap;
 
   @override
   Widget build(BuildContext context) {
+    bool isOptionSelected(MealOptionModel option) {
+      return selectedPlan?.id == plan.id &&
+          selectedGramOption?.grams == gramOption.grams &&
+          selectedMealOption == option;
+    }
+
     final rows = <Widget>[];
     for (int i = 0; i < options.length; i += 2) {
       rows.add(
@@ -284,8 +321,8 @@ class _OptionsGrid extends StatelessWidget {
             Expanded(
               child: MealOptionCard(
                 option: options[i],
-                isSelected: selectedMealOption == options[i],
-                onTap: () => onMealOptionTap?.call(options[i]),
+                isSelected: isOptionSelected(options[i]),
+                onTap: () => onMealOptionTap?.call(plan, gramOption, options[i]),
               ),
             ),
             if (i + 1 < options.length) ...[
@@ -293,8 +330,9 @@ class _OptionsGrid extends StatelessWidget {
               Expanded(
                 child: MealOptionCard(
                   option: options[i + 1],
-                  isSelected: selectedMealOption == options[i + 1],
-                  onTap: () => onMealOptionTap?.call(options[i + 1]),
+                  isSelected: isOptionSelected(options[i + 1]),
+                  onTap:
+                      () => onMealOptionTap?.call(plan, gramOption, options[i + 1]),
                 ),
               ),
             ],

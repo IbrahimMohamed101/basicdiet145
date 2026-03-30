@@ -1,3 +1,13 @@
+import 'package:basic_diet/app/dependency_injection.dart';
+import 'package:basic_diet/domain/model/delivery_options_model.dart';
+import 'package:basic_diet/domain/model/subscription_quote_model.dart';
+import 'package:basic_diet/presentation/main/home/delivery/bloc/delivery_options_bloc.dart';
+import 'package:basic_diet/presentation/main/home/delivery/bloc/delivery_options_event.dart';
+import 'package:basic_diet/presentation/main/home/delivery/bloc/delivery_options_state.dart';
+import 'package:basic_diet/presentation/main/home/subscription-details/subscription_details.dart';
+import 'package:basic_diet/presentation/main/home/subscription/bloc/subscription_bloc.dart';
+import 'package:basic_diet/presentation/main/home/subscription/bloc/subscription_event.dart';
+import 'package:basic_diet/presentation/main/home/subscription/bloc/subscription_state.dart';
 import 'package:basic_diet/presentation/resources/color_manager.dart';
 import 'package:basic_diet/presentation/resources/font_manager.dart';
 import 'package:basic_diet/presentation/resources/strings_manager.dart';
@@ -6,15 +16,8 @@ import 'package:basic_diet/presentation/resources/values_manager.dart';
 import 'package:basic_diet/presentation/widgets/button_widget.dart';
 import 'package:basic_diet/presentation/widgets/custom_text_field_style.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-
-class AreaModel {
-  final String name;
-  final double? price;
-  final bool isAvailable;
-
-  AreaModel({required this.name, this.price, this.isAvailable = true});
-}
 
 class DeliveryMethodScreen extends StatefulWidget {
   static const String deliveryMethodRoute = '/delivery_method';
@@ -29,31 +32,15 @@ enum DeliveryType { home, pickup }
 
 class _DeliveryMethodScreenState extends State<DeliveryMethodScreen> {
   DeliveryType _selectedType = DeliveryType.home;
-  AreaModel? _selectedArea;
-  String? _selectedTime;
+  DeliveryAreaModel? _selectedArea;
+  DeliverySlotModel? _selectedTime;
+  PickupLocationModel? _selectedPickupLocation;
+  bool _didApplyDefaults = false;
 
   final TextEditingController _streetController = TextEditingController();
   final TextEditingController _buildingController = TextEditingController();
   final TextEditingController _apartmentController = TextEditingController();
   final TextEditingController _notesController = TextEditingController();
-
-  final List<AreaModel> _areas = [
-    AreaModel(name: "Al Malqa", price: 15),
-    AreaModel(name: "Al Yasmin", price: 20),
-    AreaModel(name: "Al Narjis", price: 18),
-    AreaModel(name: "Al Olaya", price: 25),
-    AreaModel(name: "Al Sahafa", price: 22),
-    AreaModel(name: "Al Kharj", isAvailable: false),
-  ];
-
-  final List<String> _times = [
-    "9 AM - 11 AM",
-    "11 AM - 1 PM",
-    "1 PM - 3 PM",
-    "3 PM - 5 PM",
-    "5 PM - 7 PM",
-    "7 PM - 9 PM",
-  ];
 
   bool get _isFormValid {
     if (_selectedType == DeliveryType.home) {
@@ -66,176 +53,406 @@ class _DeliveryMethodScreenState extends State<DeliveryMethodScreen> {
   }
 
   @override
+  void dispose() {
+    _streetController.dispose();
+    _buildingController.dispose();
+    _apartmentController.dispose();
+    _notesController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        title: Text(
-          Strings.deliveryMethod,
-          style: getBoldTextStyle(
-            color: ColorManager.black101828,
-            fontSize: FontSizeManager.s20.sp,
+    initDeliveryOptionsModule();
+    return BlocProvider(
+      create:
+          (_) =>
+              instance<DeliveryOptionsBloc>()..add(const GetDeliveryOptionsEvent()),
+      child: MultiBlocListener(
+        listeners: [
+          BlocListener<SubscriptionBloc, SubscriptionState>(
+            listenWhen: (previous, current) {
+              final previousStatus =
+                  previous is SubscriptionSuccess
+                      ? previous.quoteStatus
+                      : SubscriptionQuoteStatus.initial;
+              final currentStatus =
+                  current is SubscriptionSuccess
+                      ? current.quoteStatus
+                      : SubscriptionQuoteStatus.initial;
+              return previousStatus != currentStatus;
+            },
+            listener: (context, state) {
+              if (state is! SubscriptionSuccess) return;
+
+              if (state.quoteStatus == SubscriptionQuoteStatus.failure &&
+                  state.quoteErrorMessage != null &&
+                  state.quoteErrorMessage!.isNotEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(state.quoteErrorMessage!)),
+                );
+              }
+
+              if (state.quoteStatus == SubscriptionQuoteStatus.success &&
+                  state.subscriptionQuote != null) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder:
+                        (_) => SubscriptionDetails(quote: state.subscriptionQuote!),
+                  ),
+                );
+              }
+            },
           ),
-        ),
-        bottom: PreferredSize(
-          preferredSize: Size.fromHeight(40.h),
-          child: Padding(
-            padding: EdgeInsetsDirectional.only(
-              start: AppPadding.p16.w,
-              bottom: AppPadding.p16.h,
-            ),
-            child: Align(
-              alignment: AlignmentDirectional.centerStart,
-              child: Text(
-                Strings.howWouldYouLikeToReceiveYourMeals,
-                style: getRegularTextStyle(
-                  color: ColorManager.grey6A7282,
-                  fontSize: FontSizeManager.s14.sp,
-                ),
-              ),
-            ),
+          BlocListener<DeliveryOptionsBloc, DeliveryOptionsState>(
+            listener: (context, state) {
+              if (state is DeliveryOptionsSuccess) {
+                _applyDeliveryOptionsDefaults(state.deliveryOptionsModel);
+              }
+            },
           ),
-        ),
-        elevation: 0,
-        backgroundColor: Colors.white,
-        leading: const BackButton(color: Colors.black),
-      ),
-      body: SingleChildScrollView(
-        child: Padding(
-          padding: EdgeInsetsDirectional.all(AppPadding.p16.w),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                Strings.chooseDeliveryType,
-                style: getBoldTextStyle(
-                  color: ColorManager.black101828,
-                  fontSize: FontSizeManager.s16.sp,
+        ],
+        child: Scaffold(
+          backgroundColor: Colors.white,
+          appBar: AppBar(
+            title: Text(
+              Strings.deliveryMethod,
+              style: getBoldTextStyle(
+                color: ColorManager.black101828,
+                fontSize: FontSizeManager.s20.sp,
+              ),
+            ),
+            bottom: PreferredSize(
+              preferredSize: Size.fromHeight(40.h),
+              child: Padding(
+                padding: EdgeInsetsDirectional.only(
+                  start: AppPadding.p16.w,
+                  bottom: AppPadding.p16.h,
+                ),
+                child: Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: Text(
+                    Strings.howWouldYouLikeToReceiveYourMeals,
+                    style: getRegularTextStyle(
+                      color: ColorManager.grey6A7282,
+                      fontSize: FontSizeManager.s14.sp,
+                    ),
+                  ),
                 ),
               ),
-              SizedBox(height: AppSize.s16.h),
+            ),
+            elevation: 0,
+            backgroundColor: Colors.white,
+            leading: const BackButton(color: Colors.black),
+          ),
+          body: BlocBuilder<DeliveryOptionsBloc, DeliveryOptionsState>(
+            builder: (context, deliveryState) {
+              if (deliveryState is DeliveryOptionsLoading ||
+                  deliveryState is DeliveryOptionsInitial) {
+                return const Center(
+                  child: CircularProgressIndicator(
+                    color: ColorManager.greenPrimary,
+                  ),
+                );
+              }
 
-              // Delivery Type Selection
-              _buildSelectionCard(
-                type: DeliveryType.home,
-                title: Strings.homeDelivery,
-                subtitle: Strings.getYourMealsDeliveredToYourAddress,
-                footer: Strings.deliveryFeeDependsOnYourArea,
-                icon: Icons.local_shipping_outlined,
-              ),
-              SizedBox(height: AppSize.s16.h),
-              _buildSelectionCard(
-                type: DeliveryType.pickup,
-                title: Strings.pickup,
-                subtitle: Strings.pickUpFromOurBranch,
-                footer: Strings.free,
-                icon: Icons.location_on_outlined,
-              ),
+              if (deliveryState is DeliveryOptionsError) {
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(deliveryState.message),
+                      SizedBox(height: AppSize.s16.h),
+                      ElevatedButton(
+                        onPressed:
+                            () => context.read<DeliveryOptionsBloc>().add(
+                              const GetDeliveryOptionsEvent(),
+                            ),
+                        child: const Text(Strings.tryAgain),
+                      ),
+                    ],
+                  ),
+                );
+              }
 
-              if (_selectedType == DeliveryType.home) ...[
-                SizedBox(height: AppSize.s24.h),
-                Text(
-                  Strings.deliveryArea,
-                  style: getBoldTextStyle(
-                    color: ColorManager.black101828,
-                    fontSize: FontSizeManager.s16.sp,
-                  ),
-                ),
-                SizedBox(height: AppSize.s12.h),
-                _buildAreaSelector(),
-                SizedBox(height: AppSize.s8.h),
-                Text(
-                  Strings.deliveryFeeDependsOnYourArea,
-                  style: getRegularTextStyle(
-                    color: ColorManager.grey6A7282,
-                    fontSize: FontSizeManager.s12.sp,
-                  ),
-                ),
-                SizedBox(height: AppSize.s24.h),
-                Text(
-                  Strings.deliveryAddress,
-                  style: getBoldTextStyle(
-                    color: ColorManager.black101828,
-                    fontSize: FontSizeManager.s16.sp,
-                  ),
-                ),
-                SizedBox(height: AppSize.s16.h),
-                _buildLabelledField(
-                  Strings.streetName,
-                  Strings.streetHint,
-                  _streetController,
-                  isRequired: true,
-                ),
-                _buildLabelledField(
-                  Strings.buildingNumber,
-                  Strings.buildingHint,
-                  _buildingController,
-                  isRequired: true,
-                ),
-                _buildLabelledField(
-                  Strings.apartmentOptional,
-                  Strings.apartmentHint,
-                  _apartmentController,
-                ),
-                SizedBox(height: AppSize.s24.h),
-                Text(
-                  Strings.deliverySchedule,
-                  style: getBoldTextStyle(
-                    color: ColorManager.black101828,
-                    fontSize: FontSizeManager.s16.sp,
-                  ),
-                ),
-                SizedBox(height: AppSize.s12.h),
-                _buildTimeSelector(),
-                SizedBox(height: AppSize.s16.h),
-                _buildLabelledField(
-                  Strings.notesOptional,
-                  Strings.notesHint,
-                  _notesController,
-                ),
-              ] else ...[
-                SizedBox(height: AppSize.s24.h),
-                _buildBranchCard(),
-                SizedBox(height: AppSize.s16.h),
-                _buildLabelledField(
-                  Strings.notesOptional,
-                  Strings.notesHint,
-                  _notesController,
-                ),
-              ],
+              final deliveryOptions = (deliveryState as DeliveryOptionsSuccess)
+                  .deliveryOptionsModel;
+              final selectedMethod = _getSelectedMethod(deliveryOptions);
 
-              SizedBox(height: AppSize.s24.h),
-              // _buildSummary(),
-              // SizedBox(height: AppSize.s24.h),
-              ButtonWidget(
-                radius: AppSize.s12.r,
-                text: Strings.getYourPrice,
-                color: _isFormValid
-                    ? ColorManager.greenPrimary
-                    : ColorManager.greyF3F4F6,
-                textColor: _isFormValid
-                    ? Colors.white
-                    : ColorManager.grey6A7282,
-                onTap: _isFormValid
-                    ? () {
-                        // TODO: Navigate to next screen
-                      }
-                    : null,
-              ),
-            ],
+              return SingleChildScrollView(
+                child: Padding(
+                  padding: EdgeInsetsDirectional.all(AppPadding.p16.w),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        Strings.chooseDeliveryType,
+                        style: getBoldTextStyle(
+                          color: ColorManager.black101828,
+                          fontSize: FontSizeManager.s16.sp,
+                        ),
+                      ),
+                      SizedBox(height: AppSize.s16.h),
+                      ...deliveryOptions.methods.map(
+                        (method) => Padding(
+                          padding: EdgeInsets.only(bottom: AppSize.s16.h),
+                          child: _buildSelectionCard(
+                            method: method,
+                            icon:
+                                method.type == 'pickup'
+                                    ? Icons.location_on_outlined
+                                    : Icons.local_shipping_outlined,
+                          ),
+                        ),
+                      ),
+                      if (_selectedType == DeliveryType.home &&
+                          selectedMethod != null) ...[
+                        SizedBox(height: AppSize.s24.h),
+                        Text(
+                          Strings.deliveryArea,
+                          style: getBoldTextStyle(
+                            color: ColorManager.black101828,
+                            fontSize: FontSizeManager.s16.sp,
+                          ),
+                        ),
+                        SizedBox(height: AppSize.s12.h),
+                        _buildAreaSelector(deliveryOptions.areas),
+                        SizedBox(height: AppSize.s8.h),
+                        Text(
+                          selectedMethod.helperText,
+                          style: getRegularTextStyle(
+                            color: ColorManager.grey6A7282,
+                            fontSize: FontSizeManager.s12.sp,
+                          ),
+                        ),
+                        SizedBox(height: AppSize.s24.h),
+                        Text(
+                          Strings.deliveryAddress,
+                          style: getBoldTextStyle(
+                            color: ColorManager.black101828,
+                            fontSize: FontSizeManager.s16.sp,
+                          ),
+                        ),
+                        SizedBox(height: AppSize.s16.h),
+                        _buildLabelledField(
+                          Strings.streetName,
+                          Strings.streetHint,
+                          _streetController,
+                          isRequired: true,
+                        ),
+                        _buildLabelledField(
+                          Strings.buildingNumber,
+                          Strings.buildingHint,
+                          _buildingController,
+                          isRequired: true,
+                        ),
+                        _buildLabelledField(
+                          Strings.apartmentOptional,
+                          Strings.apartmentHint,
+                          _apartmentController,
+                        ),
+                        SizedBox(height: AppSize.s24.h),
+                        Text(
+                          Strings.deliverySchedule,
+                          style: getBoldTextStyle(
+                            color: ColorManager.black101828,
+                            fontSize: FontSizeManager.s16.sp,
+                          ),
+                        ),
+                        SizedBox(height: AppSize.s12.h),
+                        _buildTimeSelector(selectedMethod.slots),
+                        SizedBox(height: AppSize.s16.h),
+                        _buildLabelledField(
+                          Strings.notesOptional,
+                          Strings.notesHint,
+                          _notesController,
+                        ),
+                      ] else ...[
+                        SizedBox(height: AppSize.s24.h),
+                        _buildBranchCard(_selectedPickupLocation),
+                        SizedBox(height: AppSize.s16.h),
+                        _buildLabelledField(
+                          Strings.notesOptional,
+                          Strings.notesHint,
+                          _notesController,
+                        ),
+                      ],
+                      SizedBox(height: AppSize.s24.h),
+                      BlocBuilder<SubscriptionBloc, SubscriptionState>(
+                        builder: (context, state) {
+                          final successState =
+                              state is SubscriptionSuccess ? state : null;
+                          final isQuoteLoading =
+                              successState?.quoteStatus ==
+                              SubscriptionQuoteStatus.loading;
+                          final hasPlanSelection =
+                              successState?.selectedPlan != null &&
+                              successState?.selectedGramOption != null &&
+                              successState?.selectedMealOption != null;
+                          final isEnabled =
+                              _isFormValid && hasPlanSelection && !isQuoteLoading;
+
+                          return ButtonWidget(
+                            radius: AppSize.s12.r,
+                            text:
+                                isQuoteLoading
+                                    ? Strings.loading
+                                    : Strings.getYourPrice,
+                            color:
+                                isEnabled || isQuoteLoading
+                                    ? ColorManager.greenPrimary
+                                    : ColorManager.greyF3F4F6,
+                            textColor:
+                                isEnabled || isQuoteLoading
+                                    ? Colors.white
+                                    : ColorManager.grey6A7282,
+                            onTap:
+                                isEnabled && successState != null
+                                    ? () => _submitQuote(context, successState)
+                                    : null,
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
           ),
         ),
       ),
     );
   }
 
+  void _applyDeliveryOptionsDefaults(DeliveryOptionsModel deliveryOptions) {
+    if (_didApplyDefaults) return;
+
+    final defaultType = deliveryOptions.defaults.type;
+    final defaultMethod =
+        deliveryOptions.methods
+            .where((method) => method.type == defaultType)
+            .cast<DeliveryMethodModel?>()
+            .firstWhere(
+              (method) => method != null,
+              orElse:
+                  () =>
+                      deliveryOptions.methods.isNotEmpty
+                          ? deliveryOptions.methods.first
+                          : null,
+            );
+
+    final defaultArea =
+        deliveryOptions.areas
+            .where(
+              (area) =>
+                  area.id == deliveryOptions.defaults.areaId ||
+                  area.zoneId == deliveryOptions.defaults.zoneId,
+            )
+            .cast<DeliveryAreaModel?>()
+            .firstWhere((area) => area != null, orElse: () => null);
+
+    final methodSlots = defaultMethod?.slots ?? [];
+    final defaultSlot =
+        methodSlots
+            .where((slot) => slot.id == deliveryOptions.defaults.slotId)
+            .cast<DeliverySlotModel?>()
+            .firstWhere(
+              (slot) => slot != null,
+              orElse: () => methodSlots.isNotEmpty ? methodSlots.first : null,
+            );
+
+    final defaultPickupLocation =
+        deliveryOptions.pickupLocations
+            .where(
+              (location) =>
+                  location.id == deliveryOptions.defaults.pickupLocationId,
+            )
+            .cast<PickupLocationModel?>()
+            .firstWhere(
+              (location) => location != null,
+              orElse:
+                  () =>
+                      deliveryOptions.pickupLocations.isNotEmpty
+                          ? deliveryOptions.pickupLocations.first
+                          : null,
+            );
+
+    setState(() {
+      _selectedType =
+          defaultMethod?.type == 'pickup'
+              ? DeliveryType.pickup
+              : DeliveryType.home;
+      _selectedArea = defaultArea;
+      _selectedTime = defaultSlot;
+      _selectedPickupLocation = defaultPickupLocation;
+      _didApplyDefaults = true;
+    });
+  }
+
+  DeliveryMethodModel? _getSelectedMethod(DeliveryOptionsModel deliveryOptions) {
+    final selectedType = _selectedType == DeliveryType.home ? 'delivery' : 'pickup';
+    return deliveryOptions.methods
+        .where((method) => method.type == selectedType)
+        .cast<DeliveryMethodModel?>()
+        .firstWhere((method) => method != null, orElse: () => null);
+  }
+
+  void _submitQuote(BuildContext context, SubscriptionSuccess state) {
+    if (_selectedType == DeliveryType.home && _selectedArea == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please choose a delivery area first.'),
+        ),
+      );
+      return;
+    }
+
+    final request = SubscriptionQuoteRequestModel(
+      planId: state.selectedPlan!.id,
+      grams: state.selectedGramOption!.grams,
+      mealsPerDay: state.selectedMealOption!.mealsPerDay,
+      premiumItems:
+          state.selectedPremiumMealCounters.entries
+              .map(
+                (entry) => SubscriptionQuotePremiumItemRequestModel(
+                  premiumMealId: entry.key,
+                  qty: entry.value,
+                ),
+              )
+              .toList(),
+      addons: state.selectedAddOns.map((addOn) => addOn.id).toList(),
+      delivery:
+          _selectedType == DeliveryType.home
+              ? SubscriptionQuoteDeliveryRequestModel(
+                type: 'delivery',
+                zoneId: _selectedArea!.zoneId,
+                slotId: _selectedTime!.id,
+                address: SubscriptionAddressModel(
+                  street: _streetController.text.trim(),
+                  building: _buildingController.text.trim(),
+                  apartment: _apartmentController.text.trim(),
+                  notes: _notesController.text.trim(),
+                  district: _selectedArea!.label,
+                  city:
+                      _selectedPickupLocation?.address.city.isNotEmpty == true
+                          ? _selectedPickupLocation!.address.city
+                          : 'Riyadh',
+                ),
+              )
+              : SubscriptionQuoteDeliveryRequestModel(
+                type: 'pickup',
+              ),
+    );
+
+    context.read<SubscriptionBloc>().add(GetSubscriptionQuoteEvent(request));
+  }
+
   Widget _buildSelectionCard({
-    required DeliveryType type,
-    required String title,
-    required String subtitle,
-    required String footer,
+    required DeliveryMethodModel method,
     required IconData icon,
   }) {
+    final type = method.type == 'pickup' ? DeliveryType.pickup : DeliveryType.home;
     bool isSelected = _selectedType == type;
     return InkWell(
       onTap: () => setState(() => _selectedType = type),
@@ -243,7 +460,7 @@ class _DeliveryMethodScreenState extends State<DeliveryMethodScreen> {
         padding: EdgeInsetsDirectional.all(AppPadding.p16.w),
         decoration: BoxDecoration(
           color: isSelected
-              ? ColorManager.greenPrimary.withOpacity(0.05)
+              ? ColorManager.greenPrimary.withValues(alpha: 0.05)
               : Colors.white,
           borderRadius: BorderRadius.circular(AppSize.s16.r),
           border: Border.all(
@@ -274,14 +491,14 @@ class _DeliveryMethodScreenState extends State<DeliveryMethodScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    title,
+                    method.title,
                     style: getBoldTextStyle(
                       color: ColorManager.black101828,
                       fontSize: FontSizeManager.s18.sp,
                     ),
                   ),
                   Text(
-                    subtitle,
+                    method.subtitle,
                     style: getRegularTextStyle(
                       color: ColorManager.grey6A7282,
                       fontSize: FontSizeManager.s14.sp,
@@ -289,7 +506,9 @@ class _DeliveryMethodScreenState extends State<DeliveryMethodScreen> {
                   ),
                   SizedBox(height: AppSize.s8.h),
                   Text(
-                    footer,
+                    method.feeLabel.isNotEmpty
+                        ? method.feeLabel
+                        : method.helperText,
                     style: getRegularTextStyle(
                       color: isSelected
                           ? ColorManager.greenPrimary
@@ -308,9 +527,9 @@ class _DeliveryMethodScreenState extends State<DeliveryMethodScreen> {
     );
   }
 
-  Widget _buildAreaSelector() {
+  Widget _buildAreaSelector(List<DeliveryAreaModel> areas) {
     return InkWell(
-      onTap: _showAreaSelectionModal,
+      onTap: () => _showAreaSelectionModal(areas),
       child: Container(
         padding: EdgeInsetsDirectional.symmetric(
           horizontal: AppPadding.p16.w,
@@ -324,7 +543,7 @@ class _DeliveryMethodScreenState extends State<DeliveryMethodScreen> {
           children: [
             Expanded(
               child: Text(
-                _selectedArea?.name ?? Strings.selectYourArea,
+                _selectedArea?.label ?? Strings.selectYourArea,
                 style: getRegularTextStyle(
                   color: _selectedArea != null
                       ? ColorManager.black101828
@@ -344,9 +563,9 @@ class _DeliveryMethodScreenState extends State<DeliveryMethodScreen> {
     );
   }
 
-  Widget _buildTimeSelector() {
+  Widget _buildTimeSelector(List<DeliverySlotModel> slots) {
     return InkWell(
-      onTap: _showTimeSelectionModal,
+      onTap: () => _showTimeSelectionModal(slots),
       child: Container(
         padding: EdgeInsetsDirectional.symmetric(
           horizontal: AppPadding.p16.w,
@@ -360,7 +579,7 @@ class _DeliveryMethodScreenState extends State<DeliveryMethodScreen> {
           children: [
             Expanded(
               child: Text(
-                _selectedTime ?? Strings.selectPreferredTime,
+                _selectedTime?.window ?? Strings.selectPreferredTime,
                 style: getRegularTextStyle(
                   color: _selectedTime != null
                       ? ColorManager.black101828
@@ -380,8 +599,8 @@ class _DeliveryMethodScreenState extends State<DeliveryMethodScreen> {
     );
   }
 
-  void _showTimeSelectionModal() {
-    String? tempSelected = _selectedTime;
+  void _showTimeSelectionModal(List<DeliverySlotModel> slots) {
+    DeliverySlotModel? tempSelected = _selectedTime;
 
     showModalBottomSheet(
       context: context,
@@ -421,7 +640,7 @@ class _DeliveryMethodScreenState extends State<DeliveryMethodScreen> {
                     ),
                     Divider(color: ColorManager.formFieldsBorderColor),
                     Column(
-                      children: _times
+                      children: slots
                           .map(
                             (time) =>
                                 _buildTimeTile(time, tempSelected, (selected) {
@@ -458,11 +677,11 @@ class _DeliveryMethodScreenState extends State<DeliveryMethodScreen> {
   }
 
   Widget _buildTimeTile(
-    String time,
-    String? currentSelected,
-    ValueChanged<String> onSelected,
+    DeliverySlotModel time,
+    DeliverySlotModel? currentSelected,
+    ValueChanged<DeliverySlotModel> onSelected,
   ) {
-    bool isSelected = currentSelected == time;
+    bool isSelected = currentSelected?.id == time.id;
 
     return Padding(
       padding: EdgeInsetsDirectional.only(bottom: AppPadding.p12.h),
@@ -472,7 +691,7 @@ class _DeliveryMethodScreenState extends State<DeliveryMethodScreen> {
           padding: EdgeInsetsDirectional.all(AppPadding.p14.w),
           decoration: BoxDecoration(
             color: isSelected
-                ? ColorManager.greenPrimary.withOpacity(0.05)
+                ? ColorManager.greenPrimary.withValues(alpha: 0.05)
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(AppSize.s12.r),
             border: Border.all(
@@ -494,7 +713,7 @@ class _DeliveryMethodScreenState extends State<DeliveryMethodScreen> {
               SizedBox(width: AppSize.s12.w),
               Expanded(
                 child: Text(
-                  time,
+                  time.window,
                   style: getBoldTextStyle(
                     color: ColorManager.black101828,
                     fontSize: FontSizeManager.s16.sp,
@@ -543,20 +762,22 @@ class _DeliveryMethodScreenState extends State<DeliveryMethodScreen> {
     );
   }
 
-  Widget _buildBranchCard() {
+  Widget _buildBranchCard(PickupLocationModel? pickupLocation) {
     return Container(
       padding: EdgeInsetsDirectional.all(AppPadding.p16.w),
       decoration: BoxDecoration(
-        color: ColorManager.greenPrimary.withOpacity(0.05),
+        color: ColorManager.greenPrimary.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(AppSize.s12.r),
-        border: Border.all(color: ColorManager.greenPrimary.withOpacity(0.2)),
+        border: Border.all(
+          color: ColorManager.greenPrimary.withValues(alpha: 0.2),
+        ),
       ),
       child: Row(
         children: [
           Container(
             padding: EdgeInsetsDirectional.all(AppPadding.p8.w),
             decoration: BoxDecoration(
-              color: ColorManager.greenPrimary.withOpacity(0.1),
+              color: ColorManager.greenPrimary.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(AppSize.s8.r),
             ),
             child: Icon(Icons.location_on, color: ColorManager.greenPrimary),
@@ -567,14 +788,18 @@ class _DeliveryMethodScreenState extends State<DeliveryMethodScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  Strings.pickupFromBranch,
+                  pickupLocation?.label.isNotEmpty == true
+                      ? pickupLocation!.label
+                      : Strings.pickupFromBranch,
                   style: getBoldTextStyle(
                     color: ColorManager.greenDark,
                     fontSize: FontSizeManager.s16.sp,
                   ),
                 ),
                 Text(
-                  Strings.pickUpAnytimeFromBranch,
+                  pickupLocation?.address.line1.isNotEmpty == true
+                      ? pickupLocation!.address.line1
+                      : Strings.pickUpAnytimeFromBranch,
                   style: getRegularTextStyle(
                     color: ColorManager.greenPrimary,
                     fontSize: FontSizeManager.s12.sp,
@@ -588,8 +813,8 @@ class _DeliveryMethodScreenState extends State<DeliveryMethodScreen> {
     );
   }
 
-  void _showAreaSelectionModal() {
-    AreaModel? tempSelected = _selectedArea;
+  void _showAreaSelectionModal(List<DeliveryAreaModel> areas) {
+    DeliveryAreaModel? tempSelected = _selectedArea;
 
     showModalBottomSheet(
       context: context,
@@ -629,7 +854,7 @@ class _DeliveryMethodScreenState extends State<DeliveryMethodScreen> {
                     ),
                     Divider(color: ColorManager.formFieldsBorderColor),
                     Column(
-                      children: _areas
+                      children: areas
                           .map(
                             (area) =>
                                 _buildAreaTile(area, tempSelected, (selected) {
@@ -666,11 +891,11 @@ class _DeliveryMethodScreenState extends State<DeliveryMethodScreen> {
   }
 
   Widget _buildAreaTile(
-    AreaModel area,
-    AreaModel? currentSelected,
-    ValueChanged<AreaModel> onSelected,
+    DeliveryAreaModel area,
+    DeliveryAreaModel? currentSelected,
+    ValueChanged<DeliveryAreaModel> onSelected,
   ) {
-    bool isSelected = currentSelected?.name == area.name;
+    bool isSelected = currentSelected?.id == area.id;
     bool isAvailable = area.isAvailable;
 
     return Padding(
@@ -681,14 +906,14 @@ class _DeliveryMethodScreenState extends State<DeliveryMethodScreen> {
           padding: EdgeInsetsDirectional.all(AppPadding.p14.w),
           decoration: BoxDecoration(
             color: isSelected
-                ? ColorManager.greenPrimary.withOpacity(0.05)
+                ? ColorManager.greenPrimary.withValues(alpha: 0.05)
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(AppSize.s12.r),
             border: Border.all(
               color: isSelected
                   ? ColorManager.greenPrimary
-                  : ColorManager.formFieldsBorderColor.withOpacity(
-                      isAvailable ? 1 : 0.5,
+                  : ColorManager.formFieldsBorderColor.withValues(
+                      alpha: isAvailable ? 1 : 0.5,
                     ),
             ),
           ),
@@ -700,18 +925,18 @@ class _DeliveryMethodScreenState extends State<DeliveryMethodScreen> {
                     : Icons.radio_button_unchecked,
                 color: isSelected
                     ? ColorManager.greenPrimary
-                    : ColorManager.formFieldsBorderColor.withOpacity(
-                        isAvailable ? 1 : 0.5,
+                    : ColorManager.formFieldsBorderColor.withValues(
+                        alpha: isAvailable ? 1 : 0.5,
                       ),
               ),
               SizedBox(width: AppSize.s12.w),
               Expanded(
                 child: Text(
-                  area.name,
+                  area.label,
                   style: getBoldTextStyle(
                     color: isAvailable
                         ? ColorManager.black101828
-                        : ColorManager.grey6A7282.withOpacity(0.5),
+                        : ColorManager.grey6A7282.withValues(alpha: 0.5),
                     fontSize: FontSizeManager.s16.sp,
                   ),
                 ),
@@ -723,20 +948,22 @@ class _DeliveryMethodScreenState extends State<DeliveryMethodScreen> {
                     vertical: AppPadding.p4.h,
                   ),
                   decoration: BoxDecoration(
-                    color: ColorManager.errorColor.withOpacity(0.1),
+                    color: ColorManager.errorColor.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(AppSize.s12.r),
                   ),
                   child: Text(
-                    Strings.notAvailable,
+                    area.availabilityLabel.isNotEmpty
+                        ? area.availabilityLabel
+                        : Strings.notAvailable,
                     style: getRegularTextStyle(
                       color: ColorManager.errorColor,
                       fontSize: FontSizeManager.s10.sp,
                     ),
                   ),
                 )
-              else if (area.price != null)
+              else if (area.feeLabel.isNotEmpty)
                 Text(
-                  "${area.price} ${Strings.sar}",
+                  area.feeLabel,
                   style: getRegularTextStyle(
                     color: ColorManager.grey6A7282,
                     fontSize: FontSizeManager.s14.sp,

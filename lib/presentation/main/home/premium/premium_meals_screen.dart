@@ -4,6 +4,7 @@ import 'package:basic_diet/presentation/main/home/premium/bloc/premium_meals_blo
 import 'package:basic_diet/presentation/main/home/premium/bloc/premium_meals_event.dart';
 import 'package:basic_diet/presentation/main/home/premium/bloc/premium_meals_state.dart';
 import 'package:basic_diet/presentation/main/home/subscription/bloc/subscription_bloc.dart';
+import 'package:basic_diet/presentation/main/home/subscription/bloc/subscription_event.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:basic_diet/presentation/resources/color_manager.dart';
 import 'package:basic_diet/presentation/resources/font_manager.dart';
@@ -243,9 +244,9 @@ class _PremiumMealCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: ColorManager.whiteColor,
         borderRadius: BorderRadius.circular(AppSize.s16.r),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.03),
+          boxShadow: [
+            BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -364,12 +365,15 @@ class _CounterButton extends StatelessWidget {
         decoration: BoxDecoration(
           color: onPressed != null
               ? backgroundColor
-              : backgroundColor.withOpacity(0.5),
+              : backgroundColor.withValues(alpha: 0.5),
           borderRadius: BorderRadius.circular(AppSize.s10.r),
         ),
         child: Icon(
           icon,
-          color: onPressed != null ? iconColor : iconColor.withOpacity(0.5),
+          color:
+              onPressed != null
+                  ? iconColor
+                  : iconColor.withValues(alpha: 0.5),
           size: AppSize.s20.sp,
         ),
       ),
@@ -400,6 +404,12 @@ class _BottomActions extends StatelessWidget {
             onPressed: () {
               initAddOnsModule();
               final subscriptionBloc = context.read<SubscriptionBloc>();
+              final premiumMealsState = context.read<PremiumMealsBloc>().state;
+              if (premiumMealsState is PremiumMealsSuccess) {
+                subscriptionBloc.add(
+                  SavePremiumMealsSelectionEvent(premiumMealsState.mealCounters),
+                );
+              }
               Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -431,6 +441,12 @@ class _BottomActions extends StatelessWidget {
             onPressed: () {
               initAddOnsModule();
               final subscriptionBloc = context.read<SubscriptionBloc>();
+              final premiumMealsState = context.read<PremiumMealsBloc>().state;
+              if (premiumMealsState is PremiumMealsSuccess) {
+                subscriptionBloc.add(
+                  SavePremiumMealsSelectionEvent(premiumMealsState.mealCounters),
+                );
+              }
               Navigator.push(
                 context,
                 MaterialPageRoute(

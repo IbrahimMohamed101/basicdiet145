@@ -7,6 +7,8 @@ import 'package:basic_diet/domain/repository/repository.dart';
 import 'package:basic_diet/domain/usecase/login_usecase.dart';
 import 'package:basic_diet/domain/usecase/verify_otp_usecase.dart';
 import 'package:basic_diet/domain/usecase/get_plans_usecase.dart';
+import 'package:basic_diet/domain/usecase/get_delivery_options_usecase.dart';
+import 'package:basic_diet/domain/usecase/get_subscription_quote_usecase.dart';
 import 'package:basic_diet/presentation/login/login_bloc.dart';
 import 'package:basic_diet/presentation/verify/verify_bloc.dart';
 import 'package:basic_diet/presentation/main/home/subscription/bloc/subscription_bloc.dart';
@@ -18,6 +20,7 @@ import 'package:basic_diet/presentation/main/home/bloc/home_bloc.dart';
 import 'package:basic_diet/presentation/main/home/premium/bloc/premium_meals_bloc.dart';
 import 'package:basic_diet/domain/usecase/get_addons_usecase.dart';
 import 'package:basic_diet/presentation/main/home/add-ons/bloc/add_ons_bloc.dart';
+import 'package:basic_diet/presentation/main/home/delivery/bloc/delivery_options_bloc.dart';
 import 'package:dio/dio.dart';
 import 'package:basic_diet/app/app_pref.dart';
 import 'package:get_it/get_it.dart';
@@ -46,7 +49,7 @@ Future<void> initAppModule() async {
 }
 
 // This function has all the dependencies that are used in the login module.
-initLoginModule() {
+void initLoginModule() {
   if (!GetIt.I.isRegistered<LoginUseCase>()) {
     instance.registerFactory<LoginUseCase>(
       () => LoginUseCase(instance<Repository>()),
@@ -62,7 +65,7 @@ initLoginModule() {
   }
 }
 
-initRegisterModule() {
+void initRegisterModule() {
   if (!GetIt.I.isRegistered<RegisterUseCase>()) {
     instance.registerFactory<RegisterUseCase>(
       () => RegisterUseCase(instance<Repository>()),
@@ -74,7 +77,7 @@ initRegisterModule() {
   }
 }
 
-initVerifyModule() {
+void initVerifyModule() {
   if (!GetIt.I.isRegistered<VerifyOtpUseCase>()) {
     instance.registerFactory<VerifyOtpUseCase>(
       () => VerifyOtpUseCase(instance<Repository>()),
@@ -87,19 +90,26 @@ initVerifyModule() {
   }
 }
 
-initSubscriptionModule() {
+void initSubscriptionModule() {
   if (!GetIt.I.isRegistered<GetPlansUseCase>()) {
     instance.registerFactory<GetPlansUseCase>(
       () => GetPlansUseCase(instance<Repository>()),
     );
 
+    instance.registerFactory<GetSubscriptionQuoteUseCase>(
+      () => GetSubscriptionQuoteUseCase(instance<Repository>()),
+    );
+
     instance.registerFactory<SubscriptionBloc>(
-      () => SubscriptionBloc(instance<GetPlansUseCase>()),
+      () => SubscriptionBloc(
+        instance<GetPlansUseCase>(),
+        instance<GetSubscriptionQuoteUseCase>(),
+      ),
     );
   }
 }
 
-initHomeModule() {
+void initHomeModule() {
   if (!GetIt.I.isRegistered<GetPopularPackagesUseCase>()) {
     instance.registerFactory<GetPopularPackagesUseCase>(
       () => GetPopularPackagesUseCase(instance<Repository>()),
@@ -111,7 +121,7 @@ initHomeModule() {
   }
 }
 
-initPremiumMealsModule() {
+void initPremiumMealsModule() {
   if (!GetIt.I.isRegistered<GetPremiumMealsUseCase>()) {
     instance.registerFactory<GetPremiumMealsUseCase>(
       () => GetPremiumMealsUseCase(instance<Repository>()),
@@ -123,7 +133,7 @@ initPremiumMealsModule() {
   }
 }
 
-initAddOnsModule() {
+void initAddOnsModule() {
   if (!GetIt.I.isRegistered<GetAddOnsUseCase>()) {
     instance.registerFactory<GetAddOnsUseCase>(
       () => GetAddOnsUseCase(instance<Repository>()),
@@ -131,6 +141,18 @@ initAddOnsModule() {
 
     instance.registerFactory<AddOnsBloc>(
       () => AddOnsBloc(instance<GetAddOnsUseCase>()),
+    );
+  }
+}
+
+void initDeliveryOptionsModule() {
+  if (!GetIt.I.isRegistered<GetDeliveryOptionsUseCase>()) {
+    instance.registerFactory<GetDeliveryOptionsUseCase>(
+      () => GetDeliveryOptionsUseCase(instance<Repository>()),
+    );
+
+    instance.registerFactory<DeliveryOptionsBloc>(
+      () => DeliveryOptionsBloc(instance<GetDeliveryOptionsUseCase>()),
     );
   }
 }

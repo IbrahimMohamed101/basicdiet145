@@ -36,6 +36,10 @@ class _SubscriptionContentViewState extends State<SubscriptionContentView> {
     return BlocBuilder<SubscriptionBloc, SubscriptionState>(
       buildWhen: (previous, current) => current is SubscriptionSuccess,
       builder: (context, state) {
+        final selectedPlan =
+            state is SubscriptionSuccess ? state.selectedPlan : null;
+        final selectedGramOption =
+            state is SubscriptionSuccess ? state.selectedGramOption : null;
         final selectedMealOption =
             state is SubscriptionSuccess ? state.selectedMealOption : null;
 
@@ -56,10 +60,16 @@ class _SubscriptionContentViewState extends State<SubscriptionContentView> {
                   plan: widget.plansModel.plans[index],
                   isExpanded: _expandedIndex == index,
                   onTap: () => _onPlanTapped(index),
+                  selectedPlan: selectedPlan,
+                  selectedGramOption: selectedGramOption,
                   selectedMealOption: selectedMealOption,
-                  onMealOptionTap: (option) {
+                  onMealOptionTap: (plan, gramOption, option) {
                     context.read<SubscriptionBloc>().add(
-                      SelectMealOptionEvent(option),
+                      SelectMealOptionEvent(
+                        plan: plan,
+                        gramOption: gramOption,
+                        option: option,
+                      ),
                     );
                   },
                 ),

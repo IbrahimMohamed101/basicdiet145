@@ -5,6 +5,7 @@ import 'package:basic_diet/presentation/main/home/add-ons/bloc/add_ons_event.dar
 import 'package:basic_diet/presentation/main/home/add-ons/bloc/add_ons_state.dart';
 import 'package:basic_diet/presentation/main/home/delivery/delivery_method_screen.dart';
 import 'package:basic_diet/presentation/main/home/subscription/bloc/subscription_bloc.dart';
+import 'package:basic_diet/presentation/main/home/subscription/bloc/subscription_event.dart';
 import 'package:basic_diet/presentation/main/home/subscription/bloc/subscription_state.dart';
 import 'package:basic_diet/presentation/resources/color_manager.dart';
 import 'package:basic_diet/presentation/resources/font_manager.dart';
@@ -15,7 +16,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:gap/gap.dart';
-import 'package:go_router/go_router.dart';
 
 class AddOnsScreen extends StatelessWidget {
   static const String addOnsRoute = '/add_ons';
@@ -312,11 +312,26 @@ class _BottomActions extends StatelessWidget {
           children: [
             const _SummaryContainer(),
             Gap(AppSize.s12.h),
-            ElevatedButton(
-              onPressed: () {
-                context.push(DeliveryMethodScreen.deliveryMethodRoute);
-              },
-              style: ElevatedButton.styleFrom(
+          ElevatedButton(
+            onPressed: () {
+              final subscriptionBloc = context.read<SubscriptionBloc>();
+              final addOnsState = context.read<AddOnsBloc>().state;
+              if (addOnsState is AddOnsSuccess) {
+                subscriptionBloc.add(
+                  SaveAddOnsSelectionEvent(addOnsState.selectedAddOns),
+                );
+              }
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => BlocProvider.value(
+                    value: subscriptionBloc,
+                    child: const DeliveryMethodScreen(),
+                  ),
+                ),
+              );
+            },
+            style: ElevatedButton.styleFrom(
                 backgroundColor: ColorManager.greenPrimary,
                 minimumSize: Size(double.infinity, 56.h),
                 shape: RoundedRectangleBorder(
@@ -335,7 +350,22 @@ class _BottomActions extends StatelessWidget {
             Gap(AppSize.s8.h),
             TextButton(
               onPressed: () {
-                context.push(DeliveryMethodScreen.deliveryMethodRoute);
+                final subscriptionBloc = context.read<SubscriptionBloc>();
+                final addOnsState = context.read<AddOnsBloc>().state;
+                if (addOnsState is AddOnsSuccess) {
+                  subscriptionBloc.add(
+                    SaveAddOnsSelectionEvent(addOnsState.selectedAddOns),
+                  );
+                }
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => BlocProvider.value(
+                      value: subscriptionBloc,
+                      child: const DeliveryMethodScreen(),
+                    ),
+                  ),
+                );
               },
               style: TextButton.styleFrom(
                 minimumSize: Size(double.infinity, 40.h),
@@ -362,23 +392,10 @@ class _SummaryContainer extends StatelessWidget {
   Widget build(BuildContext context) {
     return BlocBuilder<SubscriptionBloc, SubscriptionState>(
       builder: (context, subscriptionState) {
-        // Assuming subscription screen has a selected plan
-        int daysCount = 1;
-        if (subscriptionState is SubscriptionSuccess) {
-          // I need to find which plan was selected.
-          // Since the previous request added selectedMealOption, I should find which plan contains that option.
-          final selectedMealOption = subscriptionState.selectedMealOption;
-          if (selectedMealOption != null) {
-            for (var plan in subscriptionState.plansModel.plans) {
-              for (var gram in plan.gramsOptions) {
-                if (gram.mealsOptions.contains(selectedMealOption)) {
-                  daysCount = plan.daysCount;
-                  break;
-                }
-              }
-            }
-          }
-        }
+        final daysCount =
+            subscriptionState is SubscriptionSuccess
+                ? subscriptionState.selectedPlan?.daysCount ?? 1
+                : 1;
 
         return BlocBuilder<AddOnsBloc, AddOnsState>(
           builder: (context, addOnsState) {

@@ -4,15 +4,18 @@ import 'package:basic_diet/data/mappers/auth_mapper.dart';
 import 'package:basic_diet/data/mappers/plans_mapper.dart';
 import 'package:basic_diet/data/mappers/popular_packages_mapper.dart';
 import 'package:basic_diet/data/mappers/premium_meals_mapper.dart';
+import 'package:basic_diet/data/mappers/delivery_options_mapper.dart';
+import 'package:basic_diet/data/mappers/subscription_quote_mapper.dart';
 import 'package:basic_diet/data/mappers/error_mapper.dart';
 import 'package:basic_diet/data/network/exception_handler.dart';
 import 'package:basic_diet/data/network/failure.dart';
-import 'package:basic_diet/data/response/base_response/base_response.dart';
 import 'package:basic_diet/domain/model/auth_model.dart';
 import 'package:basic_diet/domain/model/base__model.dart';
+import 'package:basic_diet/domain/model/delivery_options_model.dart';
 import 'package:basic_diet/domain/model/plans_model.dart';
 import 'package:basic_diet/domain/model/popular_packages_model.dart';
 import 'package:basic_diet/domain/model/premium_meals_model.dart';
+import 'package:basic_diet/domain/model/subscription_quote_model.dart';
 import 'package:basic_diet/domain/repository/repository.dart';
 import 'package:dartz/dartz.dart';
 
@@ -26,7 +29,7 @@ class RepositoryImpl implements Repository {
 
   bool _isSuccessfulResponse(dynamic response) => response.status == true;
 
-  Failure _mapFailureFromResponse(BaseResponse response) {
+  Failure _mapFailureFromResponse(dynamic response) {
     return Failure(
       ApiInternalStatus.failure,
       response.message ?? ResponseMessage.defaultError,
@@ -156,6 +159,38 @@ class RepositoryImpl implements Repository {
         return Left(
           Failure(ApiInternalStatus.failure, ResponseMessage.defaultError),
         );
+      }
+    } catch (error) {
+      return _handleError(error);
+    }
+  }
+
+  @override
+  Future<Either<Failure, DeliveryOptionsModel>> getDeliveryOptions() async {
+    try {
+      final response = await _remoteDataSource.getDeliveryOptions();
+      if (_isSuccessfulResponse(response)) {
+        return Right(response.toDomain());
+      } else {
+        return Left(_mapFailureFromResponse(response));
+      }
+    } catch (error) {
+      return _handleError(error);
+    }
+  }
+
+  @override
+  Future<Either<Failure, SubscriptionQuoteModel>> getSubscriptionQuote(
+    SubscriptionQuoteRequestModel request,
+  ) async {
+    try {
+      final response = await _remoteDataSource.getSubscriptionQuote(
+        request.toRequest(),
+      );
+      if (_isSuccessfulResponse(response)) {
+        return Right(response.toDomain());
+      } else {
+        return Left(_mapFailureFromResponse(response));
       }
     } catch (error) {
       return _handleError(error);
