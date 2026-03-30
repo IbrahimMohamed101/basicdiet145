@@ -139,6 +139,7 @@ module.exports = {
       idempotencyRequired: "idempotencyKey مطلوب (من خلال ترويسة Idempotency-Key أو X-Idempotency-Key أو body.idempotencyKey)",
       idempotencyMaxLength: "يجب ألا يزيد idempotencyKey عن 128 حرفًا",
       oneTimeAddonSelectionsArray: "يجب أن تكون oneTimeAddonSelections مصفوفة",
+      invalidJsonBody: "يجب أن يكون جسم الطلب JSON صالحًا",
       arrayRequired: "يجب أن يكون {{itemName}} مصفوفة",
       objectArrayRequired: "يجب أن تحتوي {{itemName}} على كائنات",
       qtyPositiveIntegerForList: "يجب أن تكون qty عددًا صحيحًا موجبًا لـ {{itemName}}",

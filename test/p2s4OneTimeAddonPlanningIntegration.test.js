@@ -512,7 +512,7 @@ test("confirmDayPlanning blocks unpaid one-time add-ons after meal count and pre
   assert.equal(res.payload.error.code, "ONE_TIME_ADDON_PAYMENT_REQUIRED");
 });
 
-test("automation and fulfillment snapshots preserve one-time add-on planning state without recomputation", async (t) => {
+test("automation fallback clears unpaid one-time add-ons while fulfillment snapshots stay stable", async (t) => {
   const originalPlanningFlag = process.env.PHASE2_CANONICAL_DAY_PLANNING;
   process.env.PHASE2_CANONICAL_DAY_PLANNING = "true";
   t.after(() => {
@@ -576,9 +576,10 @@ test("automation and fulfillment snapshots preserve one-time add-on planning sta
   await processDailyCutoff();
 
   assert.ok(canonicalDay.lockedSnapshot);
-  assert.equal(canonicalDay.lockedSnapshot.oneTimeAddonSelections.length, 1);
-  assert.equal(canonicalDay.lockedSnapshot.oneTimeAddonPendingCount, 1);
-  assert.equal(canonicalDay.lockedSnapshot.oneTimeAddonPaymentStatus, "pending");
+  assert.equal(canonicalDay.lockedSnapshot.oneTimeAddonSelections.length, 0);
+  assert.equal(canonicalDay.lockedSnapshot.oneTimeAddonPendingCount, 0);
+  assert.equal(canonicalDay.lockedSnapshot.oneTimeAddonPaymentStatus, null);
+  assert.equal(canonicalDay.lockedSnapshot.planningSource, "system");
 
   const fulfillmentDay = {
     _id: objectId(),

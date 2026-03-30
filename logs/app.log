@@ -2409,3 +2409,12 @@
 {"date":"2026-03-28","dayId":"69c4e164a824d96c552b3982","level":"warn","message":"assertNoPendingPremiumOverage failed: unpaid premium overage","subscriptionId":"69c4e164a824d96c552b3981","timestamp":"2026-03-26T07:33:56.955Z"}
 {"code":"PREMIUM_OVERAGE_PAYMENT_REQUIRED","date":"2026-03-28","level":"warn","message":"Confirm day planning blocked Premium overage payment is required before confirmation","subscriptionId":"69c4e164a824d96c552b3981","timestamp":"2026-03-26T07:33:56.955Z"}
 {"error":"Operation `plans.find()` buffering timed out after 10000ms","level":"error","message":"Unhandled error","stack":"MongooseError: Operation `plans.find()` buffering timed out after 10000ms\n    at Timeout.<anonymous> (/home/hema/Projects/basicdiet145/node_modules/mongoose/lib/drivers/node-mongodb-native/collection.js:187:23)\n    at listOnTimeout (node:internal/timers:605:17)\n    at process.processTimers (node:internal/timers:541:7)","timestamp":"2026-03-26T07:33:57.955Z"}
+{"email":"superadmin@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"superadmin","timestamp":"2026-03-30T12:16:04.085Z"}
+{"email":"admin@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"admin","timestamp":"2026-03-30T12:16:04.489Z"}
+{"email":"kitchen@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"kitchen","timestamp":"2026-03-30T12:16:04.776Z"}
+{"email":"courier@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"courier","timestamp":"2026-03-30T12:16:04.952Z"}
+{"level":"info","message":"Jobs starting","timestamp":"2026-03-30T12:16:04.952Z"}
+{"level":"info","message":"API listening","port":"3000","timestamp":"2026-03-30T12:16:04.959Z"}
+{"date":"2026-03-31","level":"info","message":"Automation cutoff start","timestamp":"2026-03-30T12:17:05.209Z"}
+{"count":0,"level":"info","message":"Automation cutoff finished","timestamp":"2026-03-30T12:17:05.338Z"}
+{"activeSubscriptions":12,"level":"info","message":"Subscription expiry reminders finished","sent24h":0,"sent3d":0,"timestamp":"2026-03-30T12:17:05.465Z"}

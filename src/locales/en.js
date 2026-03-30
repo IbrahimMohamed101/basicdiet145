@@ -138,6 +138,7 @@ module.exports = {
       idempotencyRequired: "idempotencyKey is required (Idempotency-Key header, X-Idempotency-Key header, or body.idempotencyKey)",
       idempotencyMaxLength: "idempotencyKey must be at most 128 characters",
       oneTimeAddonSelectionsArray: "oneTimeAddonSelections must be an array",
+      invalidJsonBody: "Request body must be valid JSON",
       arrayRequired: "{{itemName}} must be an array",
       objectArrayRequired: "{{itemName}} must contain objects",
       qtyPositiveIntegerForList: "qty must be a positive integer for {{itemName}}",

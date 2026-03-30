@@ -33,6 +33,23 @@ function stubAutomationDependencies({ notifyUser, writeLog }) {
   return require("../src/services/automationService");
 }
 
+function createAutomationQueryStub(result) {
+  return {
+    sort() {
+      return this;
+    },
+    limit() {
+      return this;
+    },
+    lean() {
+      return Promise.resolve(result);
+    },
+    then(resolve, reject) {
+      return Promise.resolve(result).then(resolve, reject);
+    },
+  };
+}
+
 // -----------------------------------------------------------------------------
 // 1) Premium overage enforcement (confirmDayPlanning safety invariant)
 // -----------------------------------------------------------------------------
@@ -105,6 +122,7 @@ test("processDailyCutoff does not consume premium credits and includes recurring
     addonSubscriptions: [
       { addonId: "addon1", name: { ar: "سلطة", en: "Salad" }, price: 10, category: "salad", type: "subscription" },
     ],
+    save: async function () { return this; },
   };
 
   const tomorrow = require("../src/utils/date").getTomorrowKSADate();
@@ -126,15 +144,11 @@ test("processDailyCutoff does not consume premium credits and includes recurring
   const originalMealFind = Meal.find;
   const originalDayFind = SubscriptionDay.find;
 
-  Meal.find = () => ({
-    limit() {
-      return {
-        lean() {
-          return Promise.resolve([{ _id: "m1" }, { _id: "m2" }]);
-        },
-      };
-    },
-  });
+  let capturedMealQuery = null;
+  Meal.find = (query) => {
+    capturedMealQuery = query;
+    return createAutomationQueryStub([{ _id: "m1" }, { _id: "m2" }]);
+  };
 
   SubscriptionDay.find = () => ({
     populate() {
@@ -153,8 +167,14 @@ test("processDailyCutoff does not consume premium credits and includes recurring
   assert.equal(day.selections.length, 2, "Auto-assignment should assign the correct number of meals");
   assert.equal(day.premiumSelections.length, 0, "Auto-assignment should not consume premium selections");
   assert.equal(day.assignedByKitchen, true, "Day should be marked as assigned by kitchen");
+  assert.deepEqual(capturedMealQuery, {
+    type: "regular",
+    isActive: true,
+    availableForSubscription: { $ne: false },
+  });
   assert.ok(Array.isArray(day.lockedSnapshot.recurringAddons), "Locked snapshot should include recurring add-ons");
   assert.equal(day.lockedSnapshot.recurringAddons.length, 1, "Recurring add-ons should be projected into the locked snapshot");
+  assert.equal(day.lockedSnapshot.planningSource, "system", "Fallback snapshot should mark system planning");
 
   Meal.find = originalMealFind;
   SubscriptionDay.find = originalDayFind;

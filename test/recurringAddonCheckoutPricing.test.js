@@ -129,7 +129,10 @@ function createPlan({ _id = objectId(), daysCount }) {
   };
 }
 
-function installPricingModelStubs(t, { plans, addons, premiumMeals = [], vatPercentage = 0, pickupLocations = [] }) {
+function installPricingModelStubs(
+  t,
+  { plans, addons, premiumMeals = [], vatPercentage = 0, pickupLocations = [], zones = [] }
+) {
   const originalPlanFindOne = Plan.findOne;
   const originalAddonFind = Addon.find;
   const originalPremiumMealFind = PremiumMeal.find;
@@ -147,6 +150,7 @@ function installPricingModelStubs(t, { plans, addons, premiumMeals = [], vatPerc
   const planMap = new Map(plans.map((plan) => [String(plan._id), plan]));
   const addonMap = new Map(addons.map((addon) => [String(addon._id), addon]));
   const premiumMap = new Map(premiumMeals.map((premiumMeal) => [String(premiumMeal._id), premiumMeal]));
+  const zoneMap = new Map(zones.map((zone) => [String(zone._id), zone]));
 
   Plan.findOne = (query = {}) => createQueryStub(planMap.get(String(query._id)) || null);
   Addon.find = (query = {}) => {
@@ -167,7 +171,7 @@ function installPricingModelStubs(t, { plans, addons, premiumMeals = [], vatPerc
       .filter((row) => row && row.isActive !== false);
     return createQueryStub(rows);
   };
-  Zone.findById = () => createQueryStub(null);
+  Zone.findById = (id) => createQueryStub(zoneMap.get(String(id)) || null);
   Setting.findOne = ({ key }) => createQueryStub(
     key === "vat_percentage"
       ? { value: vatPercentage }
@@ -260,6 +264,46 @@ test("quoteSubscription accepts premiumItems objects plus recurring add-on ids a
   assert.equal(res.payload.data.summary.addons[0].formulaLabel, "12 SAR/day × 10 days");
   assert.equal(res.payload.data.summary.addons[0].totalHalala, 12000);
   assert.equal(res.payload.data.summary.lineItems.find((item) => item.kind === "addons").amountHalala, 12000);
+});
+
+test("quoteSubscription prices zone delivery without requiring a final address and normalizes slot shorthand", async (t) => {
+  const plan = createPlan({ daysCount: 10 });
+  const zoneId = objectId();
+  installPricingModelStubs(t, {
+    plans: [plan],
+    addons: [],
+    zones: [{
+      _id: zoneId,
+      isActive: true,
+      name: { en: "North Zone" },
+      deliveryFeeHalala: 1500,
+    }],
+  });
+
+  const { req, res } = createReqRes({
+    query: { lang: "en" },
+    body: {
+      planId: String(plan._id),
+      grams: 150,
+      mealsPerDay: 3,
+      startDate: getFutureDate(3),
+      delivery: {
+        type: "delivery",
+        zoneId: String(zoneId),
+        slotId: "delivery_slot_3",
+      },
+    },
+  });
+
+  await controller.quoteSubscription(req, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.payload.data.breakdown.deliveryFeeHalala, 1500);
+  assert.equal(res.payload.data.summary.delivery.zoneId, String(zoneId));
+  assert.equal(res.payload.data.summary.delivery.zoneName, "North Zone");
+  assert.equal(res.payload.data.summary.delivery.address, null);
+  assert.equal(res.payload.data.summary.delivery.slot.type, "delivery");
+  assert.equal(res.payload.data.summary.delivery.slot.slotId, "delivery_slot_3");
 });
 
 test("resolveCheckoutQuoteOrThrow resolves pickup branch address from pickupLocationId for the delivery-method screen", async (t) => {

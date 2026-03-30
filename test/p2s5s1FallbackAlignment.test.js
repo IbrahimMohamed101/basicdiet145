@@ -55,6 +55,9 @@ function createCanonicalSubscription(overrides = {}) {
     contractSnapshot: { meta: { version: "subscription_contract.v1" } },
     premiumSelections: [],
     addonSelections: [],
+    async save() {
+      return this;
+    },
     ...overrides,
   };
 }
@@ -65,6 +68,9 @@ function createLegacySubscription(overrides = {}) {
     userId: objectId(),
     status: "active",
     selectedMealsPerDay: 3,
+    async save() {
+      return this;
+    },
     ...overrides,
   };
 }
@@ -113,12 +119,16 @@ test("automation fallback for canonical subscription assigns regular meals and c
     },
   });
 
+  let capturedMealQuery = null;
   const regularMeals = [
     { _id: objectId(), type: "regular" },
     { _id: objectId(), type: "regular" },
     { _id: objectId(), type: "regular" },
   ];
-  Meal.find = () => createQueryStub(regularMeals);
+  Meal.find = (query) => {
+    capturedMealQuery = query;
+    return createQueryStub(regularMeals);
+  };
 
   await processDailyCutoff();
 
@@ -126,14 +136,19 @@ test("automation fallback for canonical subscription assigns regular meals and c
   assert.equal(day.selections.length, 3);
   assert.equal(day.planningState, "confirmed");
   assert.equal(day.baseMealSlots.length, 3);
-  assert.equal(day.baseMealSlots[0].assignmentSource, "system_auto_assign");
+  assert.equal(day.baseMealSlots[0].assignmentSource, "cutoff_fallback");
+  assert.deepEqual(capturedMealQuery, {
+    type: "regular",
+    isActive: true,
+    availableForSubscription: { $ne: false },
+  });
   
   // Verify premium/one-time are cleared
   assert.equal(day.premiumSelections.length, 0);
   assert.equal(day.premiumUpgradeSelections.length, 0);
   assert.equal(day.addonCreditSelections.length, 0);
-  assert.equal(day.oneTimeAddonSelections.length, 0);
-  assert.equal(day.oneTimeAddonPendingCount, 0);
+  assert.equal(day.oneTimeAddonSelections, undefined);
+  assert.equal(day.oneTimeAddonPendingCount, undefined);
   assert.equal(day.oneTimeAddonPaymentStatus, undefined);
 
   // Verify recurring addons are applied
@@ -142,6 +157,8 @@ test("automation fallback for canonical subscription assigns regular meals and c
   
   // Verify snapshot
   assert.ok(day.lockedSnapshot);
+  assert.equal(day.lockedSnapshot.planningSource, "system");
+  assert.equal(day.lockedSnapshot.assignmentSource, "cutoff_fallback");
   assert.equal(day.lockedSnapshot.planning.state, "confirmed");
   assert.equal(day.lockedSnapshot.recurringAddons.length, 1);
 });
@@ -191,10 +208,12 @@ test("automation fallback for canonical subscription does NOT run if selections 
 
   assert.equal(day.status, "locked");
   assert.equal(day.selections.length, 3); // Untouched
-  assert.equal(day.planningState, undefined); // No fallback run
+  assert.equal(day.planningState, "confirmed");
+  assert.equal(day.lockedSnapshot.planningSource, "user");
+  assert.equal(day.lockedSnapshot.assignmentSource, undefined);
 });
 
-test("automation fallback for canonical subscription does NOT run if premiumSelections already exist", async (t) => {
+test("automation cutoff keeps valid canonical premium selections and confirms the plan", async (t) => {
   const originalDayFind = SubscriptionDay.find;
   const originalMealFind = Meal.find;
   const originalLogCreate = ActivityLog.create;
@@ -240,10 +259,11 @@ test("automation fallback for canonical subscription does NOT run if premiumSele
   assert.equal(day.status, "locked");
   assert.equal(day.selections.length, 2); // Untouched
   assert.equal(day.premiumSelections.length, 1); // Untouched
-  assert.equal(day.planningState, undefined);
+  assert.equal(day.planningState, "confirmed");
+  assert.equal(day.lockedSnapshot.planningSource, "user");
 });
 
-test("automation fallback for canonical subscription does NOT run if premiumUpgradeSelections exist", async (t) => {
+test("automation cutoff fallback refunds premium wallet intent and replaces it with regular meals", async (t) => {
   const originalDayFind = SubscriptionDay.find;
   const originalMealFind = Meal.find;
   const originalLogCreate = ActivityLog.create;
@@ -262,8 +282,25 @@ test("automation fallback for canonical subscription does NOT run if premiumUpgr
   NotificationLog.create = async () => ({});
   User.findById = () => createQueryStub({ _id: objectId(), fcmTokens: [] });
 
+  const premiumWalletRowId = objectId();
   const sub = createCanonicalSubscription({
-    premiumSelections: [{ baseSlotKey: "base_slot_1", premiumMealId: objectId(), date: "2026-03-18" }]
+    premiumWalletMode: "generic_v1",
+    genericPremiumBalance: [{
+      _id: premiumWalletRowId,
+      purchasedQty: 1,
+      remainingQty: 0,
+      unitCreditPriceHalala: 500,
+      currency: "SAR",
+      purchasedAt: new Date("2026-03-01T00:00:00.000Z"),
+    }],
+    premiumSelections: [{
+      baseSlotKey: "base_slot_1",
+      premiumMealId: objectId(),
+      date: "2026-03-18",
+      premiumWalletRowId,
+      unitExtraFeeHalala: 500,
+      currency: "SAR",
+    }],
   });
 
   const day = {
@@ -284,16 +321,25 @@ test("automation fallback for canonical subscription does NOT run if premiumUpgr
     },
   });
 
-  Meal.find = () => createQueryStub([{ _id: objectId(), type: "regular" }]);
+  Meal.find = () => createQueryStub([
+    { _id: objectId(), type: "regular" },
+    { _id: objectId(), type: "regular" },
+    { _id: objectId(), type: "regular" },
+  ]);
 
   await processDailyCutoff();
 
   assert.equal(day.status, "locked");
-  assert.equal(day.selections.length, 0); // Fallback skipped
-  assert.equal(day.planningState, undefined);
+  assert.equal(day.selections.length, 3);
+  assert.equal(day.premiumSelections.length, 0);
+  assert.equal(day.premiumUpgradeSelections.length, 0);
+  assert.equal(day.planningState, "confirmed");
+  assert.equal(sub.premiumSelections.length, 0);
+  assert.equal(sub.genericPremiumBalance[0].remainingQty, 1);
+  assert.equal(day.lockedSnapshot.planningSource, "system");
 });
 
-test("automation fallback for canonical subscription does NOT run if addonCreditSelections exist", async (t) => {
+test("automation cutoff fallback refunds addon wallet intent and replaces it with regular meals", async (t) => {
   const originalDayFind = SubscriptionDay.find;
   const originalMealFind = Meal.find;
   const originalLogCreate = ActivityLog.create;
@@ -313,8 +359,22 @@ test("automation fallback for canonical subscription does NOT run if addonCredit
   User.findById = () => createQueryStub({ _id: objectId(), fcmTokens: [] });
 
   const sub = createCanonicalSubscription({
-    addonSelections: [{ addonId: objectId(), qty: 1, date: "2026-03-18" }]
+    addonBalance: [{
+      addonId: objectId(),
+      purchasedQty: 1,
+      remainingQty: 0,
+      unitPriceHalala: 250,
+      currency: "SAR",
+      purchasedAt: new Date("2026-03-01T00:00:00.000Z"),
+    }],
   });
+  sub.addonSelections = [{
+    addonId: sub.addonBalance[0].addonId,
+    qty: 1,
+    date: "2026-03-18",
+    unitPriceHalala: 250,
+    currency: "SAR",
+  }];
 
   const day = {
     _id: objectId(),
@@ -334,16 +394,23 @@ test("automation fallback for canonical subscription does NOT run if addonCredit
     },
   });
 
-  Meal.find = () => createQueryStub([{ _id: objectId(), type: "regular" }]);
+  Meal.find = () => createQueryStub([
+    { _id: objectId(), type: "regular" },
+    { _id: objectId(), type: "regular" },
+    { _id: objectId(), type: "regular" },
+  ]);
 
   await processDailyCutoff();
 
   assert.equal(day.status, "locked");
-  assert.equal(day.selections.length, 0); // Fallback skipped
-  assert.equal(day.planningState, undefined);
+  assert.equal(day.selections.length, 3);
+  assert.equal(day.addonCreditSelections.length, 0);
+  assert.equal(day.planningState, "confirmed");
+  assert.equal(sub.addonSelections.length, 0);
+  assert.equal(sub.addonBalance[0].remainingQty, 1);
 });
 
-test("automation fallback for canonical subscription does NOT run if one-time addons exist", async (t) => {
+test("automation cutoff fallback clears unpaid one-time add-ons and locks a safe regular plan", async (t) => {
   const originalDayFind = SubscriptionDay.find;
   const originalMealFind = Meal.find;
   const originalLogCreate = ActivityLog.create;
@@ -383,18 +450,23 @@ test("automation fallback for canonical subscription does NOT run if one-time ad
     },
   });
 
-  Meal.find = () => createQueryStub([{ _id: objectId(), type: "regular" }]);
+  Meal.find = () => createQueryStub([
+    { _id: objectId(), type: "regular" },
+    { _id: objectId(), type: "regular" },
+    { _id: objectId(), type: "regular" },
+  ]);
 
   await processDailyCutoff();
 
   assert.equal(day.status, "locked");
-  // Selections should remain empty because fallback didn't run
-  assert.equal(day.selections.length, 0);
-  assert.equal(day.oneTimeAddonSelections.length, 1);
-  assert.equal(day.planningState, undefined);
+  assert.equal(day.selections.length, 3);
+  assert.equal(day.oneTimeAddonSelections.length, 0);
+  assert.equal(day.oneTimeAddonPendingCount, 0);
+  assert.equal(day.oneTimeAddonPaymentStatus, undefined);
+  assert.equal(day.planningState, "confirmed");
 });
 
-test("automation fallback for canonical subscription does NOT run if premium overage exists", async (t) => {
+test("automation cutoff fallback clears unpaid premium overage and locks a safe regular plan", async (t) => {
   const originalDayFind = SubscriptionDay.find;
   const originalMealFind = Meal.find;
   const originalLogCreate = ActivityLog.create;
@@ -435,14 +507,19 @@ test("automation fallback for canonical subscription does NOT run if premium ove
     },
   });
 
-  Meal.find = () => createQueryStub([{ _id: objectId(), type: "regular" }]);
+  Meal.find = () => createQueryStub([
+    { _id: objectId(), type: "regular" },
+    { _id: objectId(), type: "regular" },
+    { _id: objectId(), type: "regular" },
+  ]);
 
   await processDailyCutoff();
 
   assert.equal(day.status, "locked");
-  assert.equal(day.selections.length, 0);
-  assert.equal(day.premiumOverageCount, 2);
-  assert.equal(day.planningState, undefined);
+  assert.equal(day.selections.length, 3);
+  assert.equal(day.premiumOverageCount, 0);
+  assert.equal(day.premiumOverageStatus, undefined);
+  assert.equal(day.planningState, "confirmed");
 });
 
 test("automation fallback for legacy subscription remains unchanged (no planning state)", async (t) => {
@@ -498,4 +575,57 @@ test("automation fallback for legacy subscription remains unchanged (no planning
   // Planning state should NOT be set for legacy
   assert.equal(day.planningState, undefined);
   assert.equal(day.baseMealSlots, undefined);
+  assert.equal(day.lockedSnapshot.planningSource, "system");
+});
+
+test("automation cutoff fallback rejects catalog shortage instead of locking an invalid day", async (t) => {
+  const originalDayFind = SubscriptionDay.find;
+  const originalMealFind = Meal.find;
+  const originalLogCreate = ActivityLog.create;
+  const originalUserFindById = User.findById;
+  const originalNotificationLogCreate = NotificationLog.create;
+
+  t.after(() => {
+    SubscriptionDay.find = originalDayFind;
+    Meal.find = originalMealFind;
+    ActivityLog.create = originalLogCreate;
+    User.findById = originalUserFindById;
+    NotificationLog.create = originalNotificationLogCreate;
+  });
+
+  ActivityLog.create = async () => ({});
+  NotificationLog.create = async () => ({});
+  User.findById = () => createQueryStub({ _id: objectId(), fcmTokens: [] });
+
+  const sub = createCanonicalSubscription();
+  const day = {
+    _id: objectId(),
+    date: "2026-03-18",
+    status: "open",
+    selections: [],
+    premiumSelections: [],
+    subscriptionId: sub,
+    async save() {
+      return this;
+    },
+  };
+
+  SubscriptionDay.find = () => ({
+    populate() {
+      return Promise.resolve([day]);
+    },
+  });
+
+  Meal.find = () => createQueryStub([
+    { _id: objectId(), type: "regular" },
+    { _id: objectId(), type: "regular" },
+  ]);
+
+  await assert.rejects(
+    () => processDailyCutoff(),
+    (err) => err && err.code === "SUBSCRIPTION_CUTOFF_CATALOG_SHORTAGE"
+  );
+
+  assert.equal(day.status, "open");
+  assert.equal(day.lockedSnapshot, undefined);
 });

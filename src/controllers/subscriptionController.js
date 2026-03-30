@@ -1404,7 +1404,13 @@ function resolveDeliveryInput(payload = {}) {
     || ""
   ).trim();
   const address = delivery.address || payload.deliveryAddress || null;
-  const slot = normalizeSlotInput(delivery.slot || { type: normalizedType, window: delivery.window || payload.deliveryWindow });
+  const slot = normalizeSlotInput(
+    delivery.slot || {
+      type: normalizedType,
+      window: delivery.window || payload.deliveryWindow || "",
+      slotId: delivery.slotId || payload.deliverySlotId || payload.slotId || "",
+    }
+  );
   if (!slot.type) {
     slot.type = normalizedType;
   }
@@ -1424,6 +1430,7 @@ async function resolveCheckoutQuoteOrThrow(
     enforceActivePlan = true,
     lang = "ar",
     useGenericPremiumWallet = false,
+    allowMissingDeliveryAddress = false,
   } = {}
 ) {
   const planId = payload && payload.planId;
@@ -1595,7 +1602,7 @@ async function resolveCheckoutQuoteOrThrow(
     }
     delivery.address = resolvedPickupLocation.address || null;
   }
-  if (delivery.type === "delivery" && !delivery.address) {
+  if (delivery.type === "delivery" && !delivery.address && !allowMissingDeliveryAddress) {
     const err = new Error("Missing delivery address");
     err.code = "VALIDATION_ERROR";
     throw err;
@@ -1908,6 +1915,7 @@ async function quoteSubscription(req, res, runtimeOverrides = null) {
       useGenericPremiumWallet:
         isPhase2GenericPremiumWalletEnabled()
         && isPhase1CanonicalCheckoutDraftWriteEnabled(),
+      allowMissingDeliveryAddress: true,
     });
     return res.status(200).json({
       ok: true,

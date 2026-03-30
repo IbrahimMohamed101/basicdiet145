@@ -129,6 +129,13 @@ function createApp() {
     if (err && err.message === "Not allowed by CORS") {
       return errorResponse(res, 403, "CORS", "Not allowed by CORS");
     }
+    if (
+      err instanceof SyntaxError
+      && err.status === 400
+      && Object.prototype.hasOwnProperty.call(err, "body")
+    ) {
+      return errorResponse(res, 400, "VALIDATION_ERROR", "errors.validation.invalidJsonBody");
+    }
     logger.error("Unhandled error", { error: err.message, stack: err.stack });
     return errorResponse(res, 500, "INTERNAL", "errors.common.unexpectedError");
   });
