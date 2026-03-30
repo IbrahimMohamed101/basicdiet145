@@ -111,11 +111,13 @@ class Strings {
       "Add premium meals to your subscription with an extra fee. Each meal is prepared with the finest ingredients for optimal nutrition and taste.";
   static const String continueText = "Continue";
   static const String skipThisStep = "Skip this step";
+  static const String getYourPrice = "Get Your Price";
 
   // Add-Ons Screen
   static const String addOns = "Add-Ons";
   static const String enhanceYourPlan = "Enhance Your Plan";
-  static const String addExtraItemsOptional = "Add extra items to complement your meals (optional)";
+  static const String addExtraItemsOptional =
+      "Add extra items to complement your meals (optional)";
   static const String dailySnacks = "Daily Snacks";
   static const String healthySnacksToKeep = "Healthy snacks to keep";
   static const String plus29SAR = "+29 SAR";
@@ -125,4 +127,42 @@ class Strings {
   static const String extraSalad = "Extra Salad";
   static const String addExtraSaladToPlan = "Add an extra salad to your plan";
   static const String plus19SAR = "+19 SAR";
+
+  // Delivery Method Screen
+  static const String deliveryMethod = "Delivery Method";
+  static const String howWouldYouLikeToReceiveYourMeals =
+      "How would you like to receive your meals?";
+  static const String chooseDeliveryType = "Choose delivery type";
+  static const String homeDelivery = "Home Delivery";
+  static const String getYourMealsDeliveredToYourAddress =
+      "Get your meals delivered to your address";
+  static const String deliveryFeeDependsOnYourArea =
+      "Delivery fee depends on your area";
+  static const String pickup = "Pickup";
+  static const String pickUpFromOurBranch = "Pick up from our branch";
+  static const String free = "Free";
+  static const String deliveryArea = "Delivery Area";
+  static const String selectYourArea = "Select Your Area";
+  static const String deliveryAddress = "Delivery Address";
+  static const String streetName = "Street Name";
+  static const String buildingNumber = "Building Number";
+  static const String apartmentOptional = "Apartment / Floor (Optional)";
+  static const String notesOptional = "Notes (Optional)";
+  static const String streetHint = "e.g. King Fahd Road";
+  static const String buildingHint = "e.g. 42";
+  static const String apartmentHint = "e.g. Apt 5, Floor 2";
+  static const String notesHint =
+      "e.g. Leave at the door, call before delivery";
+  static const String summary = "Summary";
+  static const String subscription = "Subscription";
+  static const String delivery = "Delivery";
+  static const String total = "Total";
+  static const String confirm = "Confirm";
+  static const String notAvailable = "Not available";
+  static const String pickupFromBranch = "Pickup from Branch";
+  static const String pickUpAnytimeFromBranch =
+      "You can pick up your meals anytime from our branch";
+  static const String deliverySchedule = "Daily Delivery Schedule";
+  static const String selectPreferredTime = "Please select your preferred delivery time";
+  static const String chooseDeliveryTime = "Choose Delivery Time";
 }

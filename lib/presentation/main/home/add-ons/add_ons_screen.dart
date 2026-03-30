@@ -3,6 +3,7 @@ import 'package:basic_diet/domain/model/add_ons_model.dart';
 import 'package:basic_diet/presentation/main/home/add-ons/bloc/add_ons_bloc.dart';
 import 'package:basic_diet/presentation/main/home/add-ons/bloc/add_ons_event.dart';
 import 'package:basic_diet/presentation/main/home/add-ons/bloc/add_ons_state.dart';
+import 'package:basic_diet/presentation/main/home/delivery/delivery_method_screen.dart';
 import 'package:basic_diet/presentation/main/home/subscription/bloc/subscription_bloc.dart';
 import 'package:basic_diet/presentation/main/home/subscription/bloc/subscription_state.dart';
 import 'package:basic_diet/presentation/resources/color_manager.dart';
@@ -14,6 +15,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:gap/gap.dart';
+import 'package:go_router/go_router.dart';
 
 class AddOnsScreen extends StatelessWidget {
   static const String addOnsRoute = '/add_ons';
@@ -312,7 +314,7 @@ class _BottomActions extends StatelessWidget {
             Gap(AppSize.s12.h),
             ElevatedButton(
               onPressed: () {
-                // TODO: Continue action
+                context.push(DeliveryMethodScreen.deliveryMethodRoute);
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: ColorManager.greenPrimary,
@@ -333,7 +335,7 @@ class _BottomActions extends StatelessWidget {
             Gap(AppSize.s8.h),
             TextButton(
               onPressed: () {
-                // TODO: Skip action
+                context.push(DeliveryMethodScreen.deliveryMethodRoute);
               },
               style: TextButton.styleFrom(
                 minimumSize: Size(double.infinity, 40.h),
