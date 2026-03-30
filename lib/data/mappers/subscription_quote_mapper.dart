@@ -9,6 +9,7 @@ extension SubscriptionQuoteRequestMapper on SubscriptionQuoteRequestModel {
       planId: planId,
       grams: grams,
       mealsPerDay: mealsPerDay,
+      startDate: startDate,
       premiumItems: premiumItems.map((item) => item.toRequest()).toList(),
       addons: addons,
       delivery: delivery.toRequest(),

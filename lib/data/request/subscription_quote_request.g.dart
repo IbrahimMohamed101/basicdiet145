@@ -12,6 +12,7 @@ SubscriptionQuoteRequest _$SubscriptionQuoteRequestFromJson(
   planId: json['planId'] as String,
   grams: (json['grams'] as num).toInt(),
   mealsPerDay: (json['mealsPerDay'] as num).toInt(),
+  startDate: json['startDate'] as String,
   premiumItems: (json['premiumItems'] as List<dynamic>)
       .map(
         (e) => SubscriptionQuotePremiumItemRequest.fromJson(
@@ -31,6 +32,7 @@ Map<String, dynamic> _$SubscriptionQuoteRequestToJson(
   'planId': instance.planId,
   'grams': instance.grams,
   'mealsPerDay': instance.mealsPerDay,
+  'startDate': instance.startDate,
   'premiumItems': instance.premiumItems.map((e) => e.toJson()).toList(),
   'addons': instance.addons,
   'delivery': instance.delivery.toJson(),

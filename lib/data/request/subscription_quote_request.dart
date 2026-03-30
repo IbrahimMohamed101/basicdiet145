@@ -10,6 +10,8 @@ class SubscriptionQuoteRequest {
   final int grams;
   @JsonKey(name: 'mealsPerDay')
   final int mealsPerDay;
+  @JsonKey(name: 'startDate')
+  final String startDate;
   @JsonKey(name: 'premiumItems')
   final List<SubscriptionQuotePremiumItemRequest> premiumItems;
   @JsonKey(name: 'addons')
@@ -21,6 +23,7 @@ class SubscriptionQuoteRequest {
     required this.planId,
     required this.grams,
     required this.mealsPerDay,
+    required this.startDate,
     required this.premiumItems,
     required this.addons,
     required this.delivery,

@@ -162,6 +162,9 @@ class Strings {
   static const String pickupFromBranch = "Pickup from Branch";
   static const String pickUpAnytimeFromBranch =
       "You can pick up your meals anytime from our branch";
+  static const String subscriptionStartDate = "Subscription Start Date";
+  static const String selectStartDate = "Please select your preferred start date";
+  static const String chooseStartDate = "Choose Start Date";
   static const String deliverySchedule = "Daily Delivery Schedule";
   static const String selectPreferredTime = "Please select your preferred delivery time";
   static const String chooseDeliveryTime = "Choose Delivery Time";
