@@ -129,6 +129,7 @@ const {
   assertNoPendingOneTimeAddonPayment,
 } = require("../services/oneTimeAddonPlanningService");
 const {
+  parseOperationIdempotencyKey,
   buildOperationRequestHash,
   compareIdempotentRequest,
 } = require("../services/idempotencyService");

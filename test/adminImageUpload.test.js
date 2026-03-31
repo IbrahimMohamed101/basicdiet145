@@ -142,7 +142,7 @@ test("POST /api/admin/uploads/image rejects folders outside the safe whitelist",
   assert.equal(payload.error.code, "INVALID");
   assert.equal(
     payload.error.message,
-    "folder must be one of: plans, meals, addons, custom-meals, custom-salads"
+    "folder must be one of: plans, meals, premium-meals, addons, custom-meals, custom-salads"
   );
 });
 
@@ -215,10 +215,11 @@ test("createAdminImageUploadMiddleware rejects files above the configured size l
 
 test("normalizeRequestedFolder allows only the fixed safe folder list", () => {
   assert.equal(uploadService.normalizeRequestedFolder("plans"), "basicdiet/plans");
+  assert.equal(uploadService.normalizeRequestedFolder("premium-meals"), "basicdiet/premium-meals");
   assert.equal(uploadService.normalizeRequestedFolder("basicdiet/custom-salads"), "basicdiet/custom-salads");
   assert.equal(uploadService.normalizeRequestedFolder(undefined), "basicdiet/uploads");
   assert.throws(
     () => uploadService.normalizeRequestedFolder("marketing-assets"),
-    /folder must be one of: plans, meals, addons, custom-meals, custom-salads/
+    /folder must be one of: plans, meals, premium-meals, addons, custom-meals, custom-salads/
   );
 });

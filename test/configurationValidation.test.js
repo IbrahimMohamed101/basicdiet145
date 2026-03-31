@@ -6,7 +6,7 @@
  * This prevents runtime failures due to missing payment provider config
  */
 
-const { expect } = require("chai");
+const assert = require("node:assert/strict");
 
 describe("Configuration Validation", () => {
   before(() => {
@@ -20,44 +20,44 @@ describe("Configuration Validation", () => {
   describe("Environment Variables at Startup", () => {
     it("MOYASAR_SECRET_KEY must be defined", () => {
       const secretKey = process.env.MOYASAR_SECRET_KEY;
-      expect(secretKey).to.exist;
-      expect(secretKey).to.be.a("string");
-      expect(secretKey.length).to.be.greaterThan(0);
+      assert.ok(secretKey);
+      assert.equal(typeof secretKey, "string");
+      assert.ok(secretKey.length > 0);
     });
 
     it("JWT_SECRET must be defined", () => {
       const secret = process.env.JWT_SECRET;
-      expect(secret).to.exist;
-      expect(secret).to.be.a("string");
-      expect(secret.length).to.be.greaterThan(0);
+      assert.ok(secret);
+      assert.equal(typeof secret, "string");
+      assert.ok(secret.length > 0);
     });
 
     it("DASHBOARD_JWT_SECRET must be defined", () => {
       const secret = process.env.DASHBOARD_JWT_SECRET;
-      expect(secret).to.exist;
-      expect(secret).to.be.a("string");
-      expect(secret.length).to.be.greaterThan(0);
+      assert.ok(secret);
+      assert.equal(typeof secret, "string");
+      assert.ok(secret.length > 0);
     });
 
     it("MONGODB_URI or MONGO_URI must be defined", () => {
       const uri = process.env.MONGODB_URI || process.env.MONGO_URI;
-      expect(uri).to.exist;
-      expect(uri).to.include("mongodb");
+      assert.ok(uri);
+      assert.ok(uri.includes("mongodb"));
     });
   });
 
   describe("Moyasar Configuration Validation", () => {
     it("MOYASAR_SECRET_KEY should not be empty or placeholder", () => {
       const key = process.env.MOYASAR_SECRET_KEY;
-      expect(key).to.not.equal("your_moyasar_secret_here");
-      expect(key).to.not.equal("placeholder");
-      expect(key).to.not.equal("test");
+      assert.notEqual(key, "your_moyasar_secret_here");
+      assert.notEqual(key, "placeholder");
+      assert.notEqual(key, "test");
     });
 
     it("MOYASAR_SECRET_KEY should have reasonable length", () => {
       const key = process.env.MOYASAR_SECRET_KEY;
       // Real Moyasar keys are typically 20+ characters
-      expect(key.length).to.be.greaterThanOrEqual(20);
+      assert.ok(key.length >= 20);
     });
   });
 
@@ -65,16 +65,16 @@ describe("Configuration Validation", () => {
     it("moyasarService should be loadable", () => {
       // This test verifies the payment service can be imported
       const moyasarService = require("../src/services/moyasarService");
-      expect(moyasarService).to.exist;
-      expect(moyasarService.createInvoice).to.be.a("function");
-      expect(moyasarService.getInvoice).to.be.a("function");
+      assert.ok(moyasarService);
+      assert.equal(typeof moyasarService.createInvoice, "function");
+      assert.equal(typeof moyasarService.getInvoice, "function");
     });
 
     it("checkoutController should reference payment service", () => {
       // This test verifies controllers have access to payment functions
       const controller = require("../src/controllers/subscriptionController");
-      expect(controller).to.exist;
-      expect(controller.checkoutSubscription).to.be.a("function");
+      assert.ok(controller);
+      assert.equal(typeof controller.checkoutSubscription, "function");
     });
   });
 
@@ -83,13 +83,13 @@ describe("Configuration Validation", () => {
       // This is verified by checking validateEnv.js was called
       // If validation passed, MOYASAR_SECRET_KEY was present
       const hasError = !process.env.MOYASAR_SECRET_KEY;
-      expect(hasError).to.be.false;
+      assert.equal(hasError, false);
     });
 
     it("app should not start without payment config", () => {
       // This is ensured by validateEnv.js being called in app initialization
       // If we got here, validation passed
-      expect(true).to.be.true;
+      assert.ok(true);
     });
   });
 
@@ -97,13 +97,13 @@ describe("Configuration Validation", () => {
     it("should handle missing optional OTP provider gracefully", () => {
       // TWILIO credentials are optional
       // App should not crash if missing
-      expect(true).to.be.true;
+      assert.ok(true);
     });
 
     it("should handle missing optional Cloudinary gracefully", () => {
       // Cloudinary is optional
       // App should not crash if missing
-      expect(true).to.be.true;
+      assert.ok(true);
     });
   });
 
@@ -111,17 +111,17 @@ describe("Configuration Validation", () => {
     it("should identify production vs development", () => {
       const isDev = process.env.NODE_ENV !== "production";
       // Both states are valid - we just need to know the current state
-      expect(isDev).to.be.a("boolean");
+      assert.equal(typeof isDev, "boolean");
     });
 
     it("should enforce production checks appropriately", () => {
       // Production restricts dev-only endpoints
       if (process.env.NODE_ENV === "production") {
         // POST /activate should be blocked (tested in integration tests)
-        expect(true).to.be.true;
+        assert.ok(true);
       } else {
         // Dev environment allows more access for testing
-        expect(true).to.be.true;
+        assert.ok(true);
       }
     });
   });
@@ -131,12 +131,12 @@ describe("Configuration Validation", () => {
       const uri = process.env.MONGODB_URI || process.env.MONGO_URI;
       
       // Basic validation - should contain mongodb protocol
-      expect(uri).to.include("mongodb");
+      assert.ok(uri.includes("mongodb"));
       
       // Should not be a placeholder
-      expect(uri).to.not.include("YOUR_");
-      expect(uri).to.not.include("your_");
-      expect(uri).to.not.include("INSERT_");
+      assert.ok(!uri.includes("YOUR_"));
+      assert.ok(!uri.includes("your_"));
+      assert.ok(!uri.includes("INSERT_"));
     });
 
     it("MongoDB URI should have authentication", () => {
@@ -146,7 +146,7 @@ describe("Configuration Validation", () => {
       // - Basic auth: mongodb://user:pass@host
       // - SRV: mongodb+srv://user:pass@host
       const hasAuth = uri.includes("://") && uri.includes("@");
-      expect(hasAuth || uri.includes("+srv")).to.be.true;
+      assert.ok(hasAuth || uri.includes("+srv"));
     });
   });
 
@@ -170,10 +170,10 @@ describe("Configuration Validation", () => {
       const hasDashboardJWT = process.env.DASHBOARD_JWT_SECRET;
       const hasDB = process.env.MONGODB_URI || process.env.MONGO_URI;
 
-      expect(hasPayment).to.exist;
-      expect(hasJWT).to.exist;
-      expect(hasDashboardJWT).to.exist;
-      expect(hasDB).to.exist;
+      assert.ok(hasPayment);
+      assert.ok(hasJWT);
+      assert.ok(hasDashboardJWT);
+      assert.ok(hasDB);
     });
   });
 });

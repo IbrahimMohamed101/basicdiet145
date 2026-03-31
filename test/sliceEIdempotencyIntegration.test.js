@@ -9,6 +9,7 @@ const Payment = require("../src/models/Payment");
 const PremiumMeal = require("../src/models/PremiumMeal");
 const Addon = require("../src/models/Addon");
 const Setting = require("../src/models/Setting");
+const dateUtils = require("../src/utils/date");
 
 function objectId() {
   return new mongoose.Types.ObjectId();
@@ -345,14 +346,15 @@ test("addOneTimeAddon reuses the same initiated payment and preserves response s
   const subscriptionId = objectId();
   const addonId = objectId();
   const userId = objectId();
+  const addonDate = dateUtils.addDaysToKSADateString(dateUtils.getTomorrowKSADate(), 1);
 
   Subscription.findById = () => createQueryStub({
     _id: subscriptionId,
     userId,
     status: "active",
     planId: { _id: objectId() },
-    endDate: new Date("2026-04-01T21:00:00.000Z"),
-    validityEndDate: new Date("2026-04-01T21:00:00.000Z"),
+    endDate: new Date("2099-12-31T21:00:00.000Z"),
+    validityEndDate: new Date("2099-12-31T21:00:00.000Z"),
   });
   Addon.findById = () => createQueryStub({
     _id: addonId,
@@ -385,7 +387,7 @@ test("addOneTimeAddon reuses the same initiated payment and preserves response s
     params: { id: String(subscriptionId) },
     userId,
     headers: { "Idempotency-Key": "day-addon-key" },
-    body: { addonId: String(addonId), date: "2026-03-25" },
+    body: { addonId: String(addonId), date: addonDate },
   });
 
   await controller.addOneTimeAddon(req, res, {

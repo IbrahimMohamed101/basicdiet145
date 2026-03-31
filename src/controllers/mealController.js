@@ -8,6 +8,10 @@ const {
   buildMealCategoryMap,
   resolveMealCategoryForKey,
 } = require("../utils/mealCategoryCatalog");
+const { resolveManagedImageFromRequest } = require("../services/adminImageService");
+const { parseBooleanField, parseLocalizedFieldFromBody } = require("../utils/requestFields");
+
+const MEAL_IMAGE_FOLDER = "meals";
 
 function resolveSortValue(value) {
   const parsed = Number(value);
@@ -31,51 +35,6 @@ function resolveMeal(doc, lang, categoryMap = null) {
     availableForSubscription: doc.availableForSubscription !== false,
     sortOrder: resolveSortValue(doc.sortOrder),
   };
-}
-
-function parseLocalizedFieldFromBody(body, fieldName, { preserveMissing = false, allowString = false } = {}) {
-  const hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
-  const directValue = body ? body[fieldName] : undefined;
-
-  if (allowString && typeof directValue === "string") {
-    const value = directValue.trim();
-    return value ? { ar: "", en: value } : { ar: "", en: "" };
-  }
-
-  if (directValue && typeof directValue === "object" && !Array.isArray(directValue)) {
-    const parsed = {};
-    if (hasOwn(directValue, "ar")) parsed.ar = directValue.ar || "";
-    if (hasOwn(directValue, "en")) parsed.en = directValue.en || "";
-
-    if (!preserveMissing) {
-      if (!hasOwn(parsed, "ar")) parsed.ar = "";
-      if (!hasOwn(parsed, "en")) parsed.en = "";
-    }
-
-    return Object.keys(parsed).length ? parsed : null;
-  }
-
-  const flatArKey = `${fieldName}_ar`;
-  const flatEnKey = `${fieldName}_en`;
-  if (body && (body[flatArKey] !== undefined || body[flatEnKey] !== undefined)) {
-    const parsed = {};
-    if (body[flatArKey] !== undefined) parsed.ar = body[flatArKey] || "";
-    if (body[flatEnKey] !== undefined) parsed.en = body[flatEnKey] || "";
-
-    if (!preserveMissing) {
-      if (!hasOwn(parsed, "ar")) parsed.ar = "";
-      if (!hasOwn(parsed, "en")) parsed.en = "";
-    }
-
-    return Object.keys(parsed).length ? parsed : null;
-  }
-
-  return null;
-}
-
-function normalizeImageUrl(value) {
-  if (value === undefined || value === null) return "";
-  return String(value).trim();
 }
 
 function normalizeSortOrder(value, fieldName = "sortOrder") {
@@ -173,20 +132,26 @@ async function createMeal(req, res) {
       )
       : "";
 
+    const imageState = await resolveManagedImageFromRequest({
+      body: req.body,
+      file: req.file,
+      folder: MEAL_IMAGE_FOLDER,
+    });
+
     const meal = await Meal.create({
       name,
       description: parseLocalizedFieldFromBody(req.body || {}, "description", { allowString: true }) || { ar: "", en: "" },
-      imageUrl: normalizeImageUrl(req.body && req.body.imageUrl),
+      imageUrl: imageState.imageUrl,
       category: categoryKey,
       type: "regular",
-      availableForOrder:
-        req.body && req.body.availableForOrder !== undefined ? Boolean(req.body.availableForOrder) : true,
-      availableForSubscription:
-        req.body && req.body.availableForSubscription !== undefined
-          ? Boolean(req.body.availableForSubscription)
-          : true,
+      availableForOrder: parseBooleanField(req.body && req.body.availableForOrder, "availableForOrder", { defaultValue: true }),
+      availableForSubscription: parseBooleanField(
+        req.body && req.body.availableForSubscription,
+        "availableForSubscription",
+        { defaultValue: true }
+      ),
       sortOrder: req.body && req.body.sortOrder !== undefined ? normalizeSortOrder(req.body.sortOrder) : 0,
-      isActive: req.body && req.body.isActive !== undefined ? Boolean(req.body.isActive) : true,
+      isActive: parseBooleanField(req.body && req.body.isActive, "isActive", { defaultValue: true }),
     });
 
     return res.status(201).json({ ok: true, data: { id: meal.id } });
@@ -212,6 +177,11 @@ async function updateMeal(req, res) {
   }
 
   try {
+    const meal = await Meal.findOne({ _id: id, type: "regular" });
+    if (!meal) {
+      return errorResponse(res, 404, "NOT_FOUND", "Meal not found");
+    }
+
     const update = {};
     const name = parseLocalizedFieldFromBody(req.body || {}, "name", { preserveMissing: true, allowString: true });
     if (name) {
@@ -228,8 +198,14 @@ async function updateMeal(req, res) {
       if (Object.prototype.hasOwnProperty.call(description, "en")) update["description.en"] = description.en;
     }
 
-    if (req.body && Object.prototype.hasOwnProperty.call(req.body, "imageUrl")) {
-      update.imageUrl = normalizeImageUrl(req.body.imageUrl);
+    const imageState = await resolveManagedImageFromRequest({
+      body: req.body,
+      file: req.file,
+      folder: MEAL_IMAGE_FOLDER,
+      currentImageUrl: meal.imageUrl,
+    });
+    if (imageState.changed) {
+      update.imageUrl = imageState.imageUrl;
     }
     if (req.body && (Object.prototype.hasOwnProperty.call(req.body, "categoryKey")
       || Object.prototype.hasOwnProperty.call(req.body, "category"))) {
@@ -239,13 +215,16 @@ async function updateMeal(req, res) {
       );
     }
     if (req.body && req.body.isActive !== undefined) {
-      update.isActive = Boolean(req.body.isActive);
+      update.isActive = parseBooleanField(req.body.isActive, "isActive");
     }
     if (req.body && req.body.availableForOrder !== undefined) {
-      update.availableForOrder = Boolean(req.body.availableForOrder);
+      update.availableForOrder = parseBooleanField(req.body.availableForOrder, "availableForOrder");
     }
     if (req.body && req.body.availableForSubscription !== undefined) {
-      update.availableForSubscription = Boolean(req.body.availableForSubscription);
+      update.availableForSubscription = parseBooleanField(
+        req.body.availableForSubscription,
+        "availableForSubscription"
+      );
     }
     if (req.body && req.body.sortOrder !== undefined) {
       update.sortOrder = normalizeSortOrder(req.body.sortOrder);
@@ -256,18 +235,12 @@ async function updateMeal(req, res) {
         res,
         400,
         "INVALID",
-        "At least one of name, description, imageUrl, categoryKey, availability flags, sortOrder, or isActive is required"
+        "At least one of name, description, image file, removeImage, categoryKey, availability flags, sortOrder, or isActive is required"
       );
     }
 
-    const meal = await Meal.findOneAndUpdate(
-      { _id: id, type: "regular" },
-      update,
-      { new: true, runValidators: true }
-    );
-    if (!meal) {
-      return errorResponse(res, 404, "NOT_FOUND", "Meal not found");
-    }
+    meal.set(update);
+    await meal.save();
 
     return res.status(200).json({ ok: true, data: { id: meal.id } });
   } catch (err) {

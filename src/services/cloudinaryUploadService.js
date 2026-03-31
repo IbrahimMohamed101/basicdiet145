@@ -8,6 +8,7 @@ const DEFAULT_IMAGE_FOLDER = `${BASE_UPLOAD_FOLDER}/uploads`;
 const ALLOWED_UPLOAD_FOLDER_KEYS = Object.freeze([
   "plans",
   "meals",
+  "premium-meals",
   "addons",
   "custom-meals",
   "custom-salads",

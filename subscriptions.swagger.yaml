@@ -2425,7 +2425,7 @@ paths:
       summary: Upload image to Cloudinary
       description: |
         Admin-only upload endpoint. Also available through `/dashboard/uploads/image`.
-        Allowed folders: `plans`, `meals`, `addons`, `custom-meals`, `custom-salads`.
+        Allowed folders: `plans`, `meals`, `premium-meals`, `addons`, `custom-meals`, `custom-salads`.
       security:
         - DashboardBearerAuth: []
       requestBody:
@@ -2441,7 +2441,7 @@ paths:
                   format: binary
                 folder:
                   type: string
-                  enum: [plans, meals, addons, custom-meals, custom-salads]
+                  enum: [plans, meals, premium-meals, addons, custom-meals, custom-salads]
       responses:
         '201':
           description: Image uploaded

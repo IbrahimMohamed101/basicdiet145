@@ -68,12 +68,12 @@ function createApp() {
   app.use(cors(corsOptions));
   app.options("*", cors(corsOptions));
 
-  app.use(express.json({ limit: "1mb" }));
   app.use((req, res, next) => {
     const originalJson = res.json.bind(res);
     res.json = (payload) => originalJson(normalizeTopLevelOkField(payload));
     next();
   });
+  app.use(express.json({ limit: "1mb" }));
 
   /**
    * @openapi

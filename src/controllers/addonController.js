@@ -3,8 +3,15 @@ const { getRequestLang } = require("../utils/i18n");
 const { resolveAddonCatalogEntry } = require("../utils/subscriptionCatalog");
 const validateObjectId = require("../utils/validateObjectId");
 const errorResponse = require("../utils/errorResponse");
+const { resolveManagedImageFromRequest } = require("../services/adminImageService");
+const {
+  normalizeOptionalString,
+  parseBooleanField,
+  parseLocalizedFieldFromBody,
+} = require("../utils/requestFields");
 
 const SYSTEM_CURRENCY = "SAR";
+const ADDON_IMAGE_FOLDER = "addons";
 
 function isNonNegativeInteger(value) {
   return Number.isInteger(value) && value >= 0;
@@ -58,13 +65,13 @@ function validateAddonPayloadOrThrow(payload) {
     throw { status: 400, code: "INVALID", message: "Request body must be an object" };
   }
 
-  const name = normalizeName(payload.name);
-  const description = normalizeLocalizedOptional(payload.description);
-  const imageUrl = payload.imageUrl === undefined || payload.imageUrl === null ? "" : String(payload.imageUrl).trim();
+  const name = normalizeName(parseLocalizedFieldFromBody(payload, "name", { allowString: true }) ?? payload.name);
+  const description = normalizeLocalizedOptional(
+    parseLocalizedFieldFromBody(payload, "description", { allowString: true }) ?? payload.description
+  );
+  const imageUrl = normalizeOptionalString(payload.imageUrl);
 
-  const currency = payload.currency === undefined
-    ? SYSTEM_CURRENCY
-    : String(payload.currency).trim().toUpperCase();
+  const currency = payload.currency === undefined ? SYSTEM_CURRENCY : normalizeOptionalString(payload.currency).toUpperCase();
   if (!currency) {
     throw { status: 400, code: "INVALID", message: "currency must be a non-empty string" };
   }
@@ -77,7 +84,7 @@ function validateAddonPayloadOrThrow(payload) {
     throw { status: 400, code: "INVALID", message: "priceHalala must be an integer >= 0" };
   }
 
-  const isActive = payload.isActive === undefined ? true : Boolean(payload.isActive);
+  const isActive = parseBooleanField(payload.isActive, "isActive", { defaultValue: true });
   const sortOrder = payload.sortOrder === undefined ? 0 : normalizeSortOrder(payload.sortOrder, "sortOrder");
   const type = payload.type && ["subscription", "one_time"].includes(payload.type)
     ? payload.type
@@ -126,7 +133,16 @@ async function getAddonAdmin(req, res) {
 async function createAddon(req, res) {
   try {
     const payload = validateAddonPayloadOrThrow(req.body || {});
-    const row = await Addon.create(payload);
+    const imageState = await resolveManagedImageFromRequest({
+      body: req.body,
+      file: req.file,
+      folder: ADDON_IMAGE_FOLDER,
+    });
+
+    const row = await Addon.create({
+      ...payload,
+      imageUrl: imageState.imageUrl,
+    });
     return res.status(201).json({ ok: true, data: { id: row.id } });
   } catch (err) {
     if (err && err.status) {
@@ -146,11 +162,25 @@ async function updateAddon(req, res) {
 
   try {
     const payload = validateAddonPayloadOrThrow(req.body || {});
-    const updated = await Addon.findByIdAndUpdate(id, payload, { new: true, runValidators: true });
-    if (!updated) {
+    const existing = await Addon.findById(id);
+    if (!existing) {
       return errorResponse(res, 404, "NOT_FOUND", "Addon not found");
     }
-    return res.status(200).json({ ok: true, data: { id: updated.id } });
+
+    const imageState = await resolveManagedImageFromRequest({
+      body: req.body,
+      file: req.file,
+      folder: ADDON_IMAGE_FOLDER,
+      currentImageUrl: existing.imageUrl,
+    });
+
+    existing.set({
+      ...payload,
+      imageUrl: imageState.imageUrl,
+    });
+    await existing.save();
+
+    return res.status(200).json({ ok: true, data: { id: existing.id } });
   } catch (err) {
     if (err && err.status) {
       return errorResponse(res, err.status, err.code, err.message);

@@ -79,8 +79,8 @@ router.patch(
 
 router.get("/premium-meals", asyncHandler(premiumMealController.listPremiumMealsAdmin));
 router.get("/premium-meals/:id", asyncHandler(premiumMealController.getPremiumMealAdmin));
-router.post("/premium-meals", asyncHandler(premiumMealController.createPremiumMeal));
-router.put("/premium-meals/:id", asyncHandler(premiumMealController.updatePremiumMeal));
+router.post("/premium-meals", adminImageUploadMiddleware, asyncHandler(premiumMealController.createPremiumMeal));
+router.put("/premium-meals/:id", adminImageUploadMiddleware, asyncHandler(premiumMealController.updatePremiumMeal));
 router.delete("/premium-meals/:id", asyncHandler(premiumMealController.deletePremiumMeal));
 router.patch("/premium-meals/:id/toggle", asyncHandler(premiumMealController.togglePremiumMealActive));
 router.patch("/premium-meals/:id/sort", asyncHandler(premiumMealController.updatePremiumMealSortOrder));
@@ -88,8 +88,8 @@ router.post("/premium-meals/:id/clone", asyncHandler(premiumMealController.clone
 
 router.get("/addons", asyncHandler(addonController.listAddonsAdmin));
 router.get("/addons/:id", asyncHandler(addonController.getAddonAdmin));
-router.post("/addons", asyncHandler(addonController.createAddon));
-router.put("/addons/:id", asyncHandler(addonController.updateAddon));
+router.post("/addons", adminImageUploadMiddleware, asyncHandler(addonController.createAddon));
+router.put("/addons/:id", adminImageUploadMiddleware, asyncHandler(addonController.updateAddon));
 router.delete("/addons/:id", asyncHandler(addonController.deleteAddon));
 router.patch("/addons/:id/toggle", asyncHandler(addonController.toggleAddonActive));
 router.patch("/addons/:id/sort", asyncHandler(addonController.updateAddonSortOrder));
@@ -103,8 +103,8 @@ router.patch("/meal-categories/:id/toggle", asyncHandler(mealCategoryController.
 router.patch("/meal-categories/:id/sort", asyncHandler(mealCategoryController.updateMealCategorySortOrder));
 router.get("/meals", asyncHandler(mealController.listMealsAdmin));
 router.get("/meals/:id", asyncHandler(mealController.getMealAdmin));
-router.post("/meals", asyncHandler(mealController.createMeal));
-router.put("/meals/:id", asyncHandler(mealController.updateMeal));
+router.post("/meals", adminImageUploadMiddleware, asyncHandler(mealController.createMeal));
+router.put("/meals/:id", adminImageUploadMiddleware, asyncHandler(mealController.updateMeal));
 router.delete("/meals/:id", asyncHandler(mealController.deleteMeal));
 router.patch("/meals/:id/toggle", asyncHandler(mealController.toggleMealActive));
 

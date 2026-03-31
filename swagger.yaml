@@ -7714,21 +7714,24 @@ paths:
       requestBody:
         required: true
         content:
-          application/json:
+          multipart/form-data:
             schema:
               type: object
               required: [name, extraFeeHalala]
               properties:
                 name:
+                  description: Localized name. Send as a JSON string or flat fields like `name.ar` / `name.en`.
                   oneOf:
                     - type: string
                     - $ref: '#/components/schemas/LocalizedText'
                 description:
+                  description: Localized description. Send as a JSON string or flat fields like `description.ar` / `description.en`.
                   oneOf:
                     - type: string
                     - $ref: '#/components/schemas/LocalizedText'
-                imageUrl:
+                image:
                   type: string
+                  format: binary
                 currency:
                   type: string
                   enum: [SAR]
@@ -7796,21 +7799,24 @@ paths:
       requestBody:
         required: true
         content:
-          application/json:
+          multipart/form-data:
             schema:
               type: object
               required: [name]
               properties:
                 name:
+                  description: Localized name. Send as a JSON string or flat fields like `name.ar` / `name.en`.
                   oneOf:
                     - type: string
                     - $ref: '#/components/schemas/LocalizedText'
                 description:
+                  description: Localized description. Send as a JSON string or flat fields like `description.ar` / `description.en`.
                   oneOf:
                     - type: string
                     - $ref: '#/components/schemas/LocalizedText'
-                imageUrl:
+                image:
                   type: string
+                  format: binary
                 availableForOrder:
                   type: boolean
                 availableForSubscription:
@@ -7881,20 +7887,26 @@ paths:
       requestBody:
         required: true
         content:
-          application/json:
+          multipart/form-data:
             schema:
               type: object
               properties:
                 name:
+                  description: Localized name. Send as a JSON string or flat fields like `name.ar` / `name.en`.
                   oneOf:
                     - type: string
                     - $ref: '#/components/schemas/LocalizedText'
                 description:
+                  description: Localized description. Send as a JSON string or flat fields like `description.ar` / `description.en`.
                   oneOf:
                     - type: string
                     - $ref: '#/components/schemas/LocalizedText'
-                imageUrl:
+                image:
                   type: string
+                  format: binary
+                removeImage:
+                  type: boolean
+                  description: Clears the stored image when true and no new `image` file is provided.
                 availableForOrder:
                   type: boolean
                 availableForSubscription:
@@ -8038,21 +8050,27 @@ paths:
       requestBody:
         required: true
         content:
-          application/json:
+          multipart/form-data:
             schema:
               type: object
               required: [name, extraFeeHalala]
               properties:
                 name:
+                  description: Localized name. Send as a JSON string or flat fields like `name.ar` / `name.en`.
                   oneOf:
                     - type: string
                     - $ref: '#/components/schemas/LocalizedText'
                 description:
+                  description: Localized description. Send as a JSON string or flat fields like `description.ar` / `description.en`.
                   oneOf:
                     - type: string
                     - $ref: '#/components/schemas/LocalizedText'
-                imageUrl:
+                image:
                   type: string
+                  format: binary
+                removeImage:
+                  type: boolean
+                  description: Clears the stored image when true and no new `image` file is provided.
                 currency:
                   type: string
                   enum: [SAR]
@@ -8280,21 +8298,24 @@ paths:
       requestBody:
         required: true
         content:
-          application/json:
+          multipart/form-data:
             schema:
               type: object
               required: [name, priceHalala]
               properties:
                 name:
+                  description: Localized name. Send as a JSON string or flat fields like `name.ar` / `name.en`.
                   oneOf:
                     - type: string
                     - $ref: '#/components/schemas/LocalizedText'
                 description:
+                  description: Localized description. Send as a JSON string or flat fields like `description.ar` / `description.en`.
                   oneOf:
                     - type: string
                     - $ref: '#/components/schemas/LocalizedText'
-                imageUrl:
+                image:
                   type: string
+                  format: binary
                 priceHalala:
                   type: integer
                   minimum: 0
@@ -8379,21 +8400,27 @@ paths:
       requestBody:
         required: true
         content:
-          application/json:
+          multipart/form-data:
             schema:
               type: object
               required: [name, priceHalala]
               properties:
                 name:
+                  description: Localized name. Send as a JSON string or flat fields like `name.ar` / `name.en`.
                   oneOf:
                     - type: string
                     - $ref: '#/components/schemas/LocalizedText'
                 description:
+                  description: Localized description. Send as a JSON string or flat fields like `description.ar` / `description.en`.
                   oneOf:
                     - type: string
                     - $ref: '#/components/schemas/LocalizedText'
-                imageUrl:
+                image:
                   type: string
+                  format: binary
+                removeImage:
+                  type: boolean
+                  description: Clears the stored image when true and no new `image` file is provided.
                 priceHalala:
                   type: integer
                   minimum: 0
@@ -10240,7 +10267,7 @@ paths:
                   format: binary
                 folder:
                   type: string
-                  description: Optional Cloudinary folder suffix under `basicdiet/`, for example `plans`, `meals`, or `addons`.
+                  description: Optional Cloudinary folder suffix under `basicdiet/`, for example `plans`, `meals`, `premium-meals`, or `addons`.
       responses:
         '201':
           description: Uploaded.

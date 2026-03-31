@@ -10,7 +10,7 @@
  */
 
 const request = require("supertest");
-const { expect } = require("chai");
+const assert = require("node:assert/strict");
 const { createApp } = require("../src/app");
 const { clearDatabase, seedDatabase } = require("./helpers/database");
 
@@ -36,26 +36,26 @@ describe("Production Validation Suite", function () {
   describe("Configuration Checks", () => {
     it("should have MOYASAR_SECRET_KEY defined in environment", () => {
       const secret = process.env.MOYASAR_SECRET_KEY;
-      expect(secret).to.exist;
-      expect(secret).to.not.be.empty;
+      assert.ok(secret);
+      assert.notEqual(secret, "");
     });
 
     it("should have JWT_SECRET defined in environment", () => {
       const secret = process.env.JWT_SECRET;
-      expect(secret).to.exist;
-      expect(secret).to.not.be.empty;
+      assert.ok(secret);
+      assert.notEqual(secret, "");
     });
 
     it("should have DASHBOARD_JWT_SECRET defined in environment", () => {
       const secret = process.env.DASHBOARD_JWT_SECRET;
-      expect(secret).to.exist;
-      expect(secret).to.not.be.empty;
+      assert.ok(secret);
+      assert.notEqual(secret, "");
     });
 
     it("should have MONGODB_URI or MONGO_URI defined", () => {
       const uri = process.env.MONGODB_URI || process.env.MONGO_URI;
-      expect(uri).to.exist;
-      expect(uri).to.include("mongodb");
+      assert.ok(uri);
+      assert.ok(uri.includes("mongodb"));
     });
   });
 
@@ -68,8 +68,8 @@ describe("Production Validation Suite", function () {
         .set("Authorization", "Bearer invalid");
       
       // Accept 400, 401, 404 subscription not found - but NOT routing error
-      expect([400, 401, 404]).to.include(res.status);
-      expect(res.status).to.not.equal(404);
+      assert.ok([400, 401, 404].includes(res.status));
+      assert.notEqual(res.status, 404);
     });
 
     it("/subscriptions/:id/renew requires authentication", async () => {
@@ -77,7 +77,7 @@ describe("Production Validation Suite", function () {
         .post("/api/subscriptions/any-id/renew");
       
       // Should reject unauthenticated requests
-      expect(res.status).to.equal(401);
+      assert.equal(res.status, 401);
     });
   });
 
@@ -92,14 +92,14 @@ describe("Production Validation Suite", function () {
       // res.headers["sunset"] === "Tue, 30 Jun 2026 23:59:59 GMT"
       
       // This is a manual verification step documented here for completeness
-      expect(true).to.be.true; // Placeholder for actual implementation test
+      assert.ok(true); // Placeholder for actual implementation test
     });
   });
 
   describe("Payment Provider Integration", () => {
     it("should initialize without payment provider errors", async () => {
       // Simple smoke test - if app loads, payment config is OK
-      expect(app).to.exist;
+      assert.ok(app);
     });
 
     it("checkout endpoint should be rate-limited", async () => {
@@ -111,7 +111,7 @@ describe("Production Validation Suite", function () {
       
       // Should either be rate-limited or have a response
       // Not a 404 route error
-      expect(res.status).to.not.equal(404);
+      assert.notEqual(res.status, 404);
     });
   });
 
@@ -121,7 +121,7 @@ describe("Production Validation Suite", function () {
         .get("/api/subscriptions/menu");
       
       // Should not be 401 (unauthorized)
-      expect(res.status).to.not.equal(401);
+      assert.notEqual(res.status, 401);
     });
 
     it("GET /subscriptions should require auth", async () => {
@@ -129,7 +129,7 @@ describe("Production Validation Suite", function () {
         .get("/api/subscriptions");
       
       // Should be 401 (no bearer token)
-      expect(res.status).to.equal(401);
+      assert.equal(res.status, 401);
     });
 
     it("POST /activate should be unavailable in production", async () => {
@@ -140,7 +140,7 @@ describe("Production Validation Suite", function () {
           .set("Authorization", "Bearer any-token");
         
         // Should be 404 since route doesn't exist
-        expect(res.status).to.equal(404);
+        assert.equal(res.status, 404);
       }
     });
   });
@@ -151,9 +151,10 @@ describe("Production Validation Suite", function () {
         .get("/api/subscriptions")
         .set("Authorization", "Bearer invalid");
 
-      expect(res.body).to.be.an("object");
-      expect(res.body).to.have.property("status");
-      expect(res.body).to.have.any.keys("error", "message", "errors");
+      assert.equal(typeof res.body, "object");
+      assert.ok(res.body && !Array.isArray(res.body));
+      assert.ok(Object.prototype.hasOwnProperty.call(res.body, "status"));
+      assert.ok(["error", "message", "errors"].some((key) => Object.prototype.hasOwnProperty.call(res.body, key)));
     });
 
     it("should localize error messages", async () => {
@@ -163,7 +164,7 @@ describe("Production Validation Suite", function () {
         .set("Accept-Language", "en");
 
       if (res.status === 404) {
-        expect(res.body.error).to.exist;
+        assert.ok(res.body.error);
         // Error message should be in English (not-localized means it might be in AR)
       }
     });
@@ -176,9 +177,9 @@ describe("Production Validation Suite", function () {
       const res = await request(app)
         .get("/api/subscriptions/menu");
       
-      expect(res.body).to.have.property("status");
+      assert.ok(Object.prototype.hasOwnProperty.call(res.body, "status"));
       if (res.status === 200) {
-        expect(res.body).to.have.property("data");
+        assert.ok(Object.prototype.hasOwnProperty.call(res.body, "data"));
       }
     });
   });
@@ -193,7 +194,7 @@ describe("Production Validation Suite", function () {
       
       // Accept various responses but NOT routing error
       // Could be 404 (not found), 400 (bad request), 401 (bad token)
-      expect([400, 401, 404]).to.include(res.status);
+      assert.ok([400, 401, 404].includes(res.status));
     });
 
     it("renewal endpoint should accept idempotencyKey in request", async () => {
@@ -204,7 +205,7 @@ describe("Production Validation Suite", function () {
         .send({ idempotencyKey: "test-key-123" });
       
       // Not a routing error
-      expect(res.status).to.not.equal(404);
+      assert.notEqual(res.status, 404);
     });
   });
 });
