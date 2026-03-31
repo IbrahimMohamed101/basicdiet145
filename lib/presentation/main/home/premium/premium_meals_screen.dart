@@ -24,7 +24,8 @@ class PremiumMealsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BlocProvider(
-      create: (context) => instance<PremiumMealsBloc>()..add(const GetPremiumMealsEvent()),
+      create: (context) =>
+          instance<PremiumMealsBloc>()..add(const GetPremiumMealsEvent()),
       child: Scaffold(
         backgroundColor: const Color(0xFFF9FAFB),
         appBar: _buildAppBar(context),
@@ -60,19 +61,27 @@ class PremiumMealsScreen extends StatelessWidget {
                             ...state.premiumMealsModel.meals.map((meal) {
                               final quantity = state.mealCounters[meal.id] ?? 0;
                               return Padding(
-                                padding: EdgeInsets.only(bottom: AppSize.s16.h),
+                                padding: EdgeInsetsDirectional.only(
+                                  bottom: AppSize.s16.h,
+                                ),
                                 child: _PremiumMealCard(
                                   meal: meal,
                                   quantity: quantity,
                                   onIncrement: () {
                                     context.read<PremiumMealsBloc>().add(
-                                      UpdateMealCounterEvent(meal.id, quantity + 1)
+                                      UpdateMealCounterEvent(
+                                        meal.id,
+                                        quantity + 1,
+                                      ),
                                     );
                                   },
                                   onDecrement: () {
                                     if (quantity > 0) {
                                       context.read<PremiumMealsBloc>().add(
-                                        UpdateMealCounterEvent(meal.id, quantity - 1)
+                                        UpdateMealCounterEvent(
+                                          meal.id,
+                                          quantity - 1,
+                                        ),
                                       );
                                     }
                                   },
@@ -244,8 +253,8 @@ class _PremiumMealCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: ColorManager.whiteColor,
         borderRadius: BorderRadius.circular(AppSize.s16.r),
-          boxShadow: [
-            BoxShadow(
+        boxShadow: [
+          BoxShadow(
             color: Colors.black.withValues(alpha: 0.03),
             blurRadius: 10,
             offset: const Offset(0, 4),
@@ -259,18 +268,23 @@ class _PremiumMealCard extends StatelessWidget {
             borderRadius: BorderRadius.vertical(
               top: Radius.circular(AppSize.s16.r),
             ),
-            child: Image.network(meal.imageUrl, height: 180.h, fit: BoxFit.cover, errorBuilder: (context, error, stackTrace) {
-              return Container(
-                height: 180.h,
-                color: ColorManager.greyF3F4F6,
-                child: Center(
-                  child: Icon(
-                    Icons.image_not_supported,
-                    color: ColorManager.grey6A7282,
+            child: Image.network(
+              meal.imageUrl,
+              height: 180.h,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) {
+                return Container(
+                  height: 180.h,
+                  color: ColorManager.greyF3F4F6,
+                  child: Center(
+                    child: Icon(
+                      Icons.image_not_supported,
+                      color: ColorManager.grey6A7282,
+                    ),
                   ),
-                ),
-              );
-            }),
+                );
+              },
+            ),
           ),
           Padding(
             padding: EdgeInsetsDirectional.all(AppPadding.p16.w),
@@ -370,10 +384,9 @@ class _CounterButton extends StatelessWidget {
         ),
         child: Icon(
           icon,
-          color:
-              onPressed != null
-                  ? iconColor
-                  : iconColor.withValues(alpha: 0.5),
+          color: onPressed != null
+              ? iconColor
+              : iconColor.withValues(alpha: 0.5),
           size: AppSize.s20.sp,
         ),
       ),
@@ -407,7 +420,9 @@ class _BottomActions extends StatelessWidget {
               final premiumMealsState = context.read<PremiumMealsBloc>().state;
               if (premiumMealsState is PremiumMealsSuccess) {
                 subscriptionBloc.add(
-                  SavePremiumMealsSelectionEvent(premiumMealsState.mealCounters),
+                  SavePremiumMealsSelectionEvent(
+                    premiumMealsState.mealCounters,
+                  ),
                 );
               }
               Navigator.push(
@@ -444,7 +459,9 @@ class _BottomActions extends StatelessWidget {
               final premiumMealsState = context.read<PremiumMealsBloc>().state;
               if (premiumMealsState is PremiumMealsSuccess) {
                 subscriptionBloc.add(
-                  SavePremiumMealsSelectionEvent(premiumMealsState.mealCounters),
+                  SavePremiumMealsSelectionEvent(
+                    premiumMealsState.mealCounters,
+                  ),
                 );
               }
               Navigator.push(

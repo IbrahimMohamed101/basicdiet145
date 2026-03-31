@@ -121,7 +121,7 @@ class _CardsRow extends StatelessWidget {
         children: [
           const Expanded(child: SubscribeCard()),
           Gap(AppSize.s16.w),
-          Expanded(child: _ImageCard()),
+          const Expanded(child: _ImageCard()),
         ],
       ),
     );
@@ -129,15 +129,77 @@ class _CardsRow extends StatelessWidget {
 }
 
 class _ImageCard extends StatelessWidget {
+  const _ImageCard();
+
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(AppSize.s16),
-        image: const DecorationImage(
-          image: AssetImage(ImageAssets.salad),
-          fit: BoxFit.cover,
-        ),
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(AppSize.s16.r),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          const Image(image: AssetImage(ImageAssets.salad), fit: BoxFit.cover),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
+                colors: [
+                  ColorManager.blackColor.withValues(alpha: 0.8),
+                  ColorManager.blackColor.withValues(alpha: 0.4),
+                  ColorManager.blackColor.withValues(alpha: 0.0),
+                ],
+                stops: const [0.0, 0.6, 1.0],
+              ),
+            ),
+          ),
+          Padding(
+            padding: EdgeInsetsDirectional.fromSTEB(
+              AppPadding.p20.w,
+              AppPadding.p40.h,
+              AppPadding.p16.w,
+              AppPadding.p20.h,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  Strings.buildYourOwnMeal,
+                  style: getBoldTextStyle(
+                    fontSize: FontSizeManager.s24.sp,
+                    color: ColorManager.whiteColor,
+                  ).copyWith(height: 1.05),
+                ),
+                Gap(AppSize.s12.h),
+                Text(
+                  Strings.totalControlOverNutrition,
+                  style: getRegularTextStyle(
+                    fontSize: FontSizeManager.s14.sp,
+                    color: ColorManager.whiteColor.withValues(alpha: 0.78),
+                  ).copyWith(height: 1.25),
+                ),
+                const Spacer(),
+                Row(
+                  children: [
+                    Text(
+                      Strings.explore,
+                      style: getBoldTextStyle(
+                        fontSize: FontSizeManager.s16.sp,
+                        color: ColorManager.orangePrimary,
+                      ).copyWith(letterSpacing: 1.2),
+                    ),
+                    Gap(AppSize.s4.w),
+                    Icon(
+                      Icons.arrow_forward_rounded,
+                      color: ColorManager.orangePrimary,
+                      size: AppSize.s20.w,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -242,7 +304,7 @@ class _PackageList extends StatelessWidget {
         Gap(AppSize.s20.h),
         ...packages.map(
           (package) => Padding(
-            padding: EdgeInsets.only(bottom: AppSize.s16.h),
+            padding: EdgeInsetsDirectional.only(bottom: AppSize.s16.h),
             child: PackageCard(package: package),
           ),
         ),

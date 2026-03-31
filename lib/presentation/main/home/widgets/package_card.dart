@@ -15,13 +15,19 @@ class PackageCard extends StatelessWidget {
 
   final PopularPackageModel package;
 
+  String _formatAmount(num value) {
+    final formattedValue = value.toStringAsFixed(2);
+    return formattedValue.replaceFirst(RegExp(r'\.?0+$'), '');
+  }
+
   // Formatting helpers — keep presentation logic out of build()
   String get _mealsDesc =>
       '${package.mealsPerDay} ${Strings.mealsPerDay} - ${package.daysCount} ${Strings.days}';
-  String get _price => '${package.newPrice} ${package.currency}';
-  String get _originalPrice => '${package.oldPrice} ${package.currency}';
+  String get _price => '${_formatAmount(package.newPrice)} ${package.currency}';
+  String get _originalPrice =>
+      '${_formatAmount(package.oldPrice)} ${package.currency}';
   String get _saveAmount =>
-      '${Strings.save} ${package.moneySave} ${package.currency}';
+      '${Strings.save} ${_formatAmount(package.moneySave)} ${package.currency}';
 
   @override
   Widget build(BuildContext context) {

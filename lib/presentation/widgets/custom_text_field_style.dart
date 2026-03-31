@@ -96,7 +96,7 @@ class AppTextField extends StatelessWidget {
         //   color: ColorManager.greyColor,
         //   fontSize: AppSize.s8.sp,
         // ),
-        contentPadding: EdgeInsets.symmetric(
+        contentPadding: EdgeInsetsDirectional.symmetric(
           vertical: AppPadding.p18.h,
           horizontal: AppPadding.p12.w,
         ),
@@ -140,18 +140,18 @@ class AppTextField extends StatelessWidget {
   }
 }
 
-  // // 🔹 Password constructor
-  // factory AppTextField.password({
-  //   required TextEditingController controller,
-  //   String? errorText,
-  // }) {
-  //   return AppTextField._(
-  //     hintText: "Password",
-  //     controller: controller,
-  //     keyboardType: TextInputType.visiblePassword,
-  //     obscureText: true,
-  //     textInputAction: TextInputAction.done,
-  //     prefixIcon: Icon(Icons.lock),
-  //     errorText: errorText,
-  //   );
-  // }
+// // 🔹 Password constructor
+// factory AppTextField.password({
+//   required TextEditingController controller,
+//   String? errorText,
+// }) {
+//   return AppTextField._(
+//     hintText: "Password",
+//     controller: controller,
+//     keyboardType: TextInputType.visiblePassword,
+//     obscureText: true,
+//     textInputAction: TextInputAction.done,
+//     prefixIcon: Icon(Icons.lock),
+//     errorText: errorText,
+//   );
+// }

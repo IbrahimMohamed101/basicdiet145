@@ -133,7 +133,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   Widget _buildContinueButton() {
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: AppPadding.p20.w),
+      padding: EdgeInsetsDirectional.symmetric(horizontal: AppPadding.p20.w),
       child: ButtonWidget(
         radius: AppSize.s12,
         text: _buttonText,
@@ -180,7 +180,7 @@ class _PageIndicatorDot extends StatelessWidget {
   Widget build(BuildContext context) {
     return AnimatedContainer(
       duration: _animationDuration,
-      margin: EdgeInsets.symmetric(horizontal: AppSize.s4.w),
+      margin: EdgeInsetsDirectional.symmetric(horizontal: AppSize.s4.w),
       height: _inactiveSize.h,
       width: isActive ? _activeWidth.w : _inactiveSize.w,
       decoration: BoxDecoration(
@@ -216,7 +216,7 @@ class OnboardingPageView extends StatelessWidget {
 
   Widget _buildPageImage() {
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: AppPadding.p20.w),
+      padding: EdgeInsetsDirectional.symmetric(horizontal: AppPadding.p20.w),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(AppSize.s20),
         child: Image.asset(pageContent.imagePath),
@@ -237,7 +237,7 @@ class OnboardingPageView extends StatelessWidget {
 
   Widget _buildSubtitle() {
     return Padding(
-      padding: EdgeInsets.all(AppPadding.p8.w),
+      padding: EdgeInsetsDirectional.all(AppPadding.p8.w),
       child: Text(
         pageContent.subtitle,
         textAlign: TextAlign.center,

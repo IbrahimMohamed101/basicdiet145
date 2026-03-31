@@ -35,7 +35,9 @@ class VerifyScreen extends StatelessWidget {
           backgroundColor: ColorManager.whiteColor,
           body: SafeArea(
             child: SingleChildScrollView(
-              padding: EdgeInsets.symmetric(horizontal: AppPadding.p20.w),
+              padding: EdgeInsetsDirectional.symmetric(
+                horizontal: AppPadding.p20.w,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -196,7 +198,7 @@ class VerifyScreen extends StatelessWidget {
 
   Widget _buildSecurityInfo() {
     return Container(
-      padding: EdgeInsets.all(AppPadding.p12.w),
+      padding: EdgeInsetsDirectional.all(AppPadding.p12.w),
       decoration: BoxDecoration(
         color: ColorManager.greenLight.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(AppSize.s8.r),

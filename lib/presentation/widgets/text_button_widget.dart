@@ -20,7 +20,7 @@ class TextButtonWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     return TextButton(
       style: TextButton.styleFrom(
-        padding: EdgeInsets.zero,
+        padding: EdgeInsetsDirectional.zero,
         minimumSize: Size.zero,
       ),
       onPressed: onPressed,

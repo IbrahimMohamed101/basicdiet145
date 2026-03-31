@@ -17,7 +17,7 @@ class CustomBackButton extends StatelessWidget {
       onTap: () => context.pop(),
       borderRadius: BorderRadius.circular(AppSize.s8.r),
       child: Padding(
-        padding: EdgeInsets.symmetric(
+        padding: EdgeInsetsDirectional.symmetric(
           vertical: AppPadding.p8.h,
           horizontal: AppPadding.p8.w,
         ),

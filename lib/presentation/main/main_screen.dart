@@ -152,7 +152,7 @@ class BottomNavBar extends StatelessWidget {
   Widget _buildIcon({required String assetPath, required bool isSelected}) {
     if (isSelected) {
       return Container(
-        padding: EdgeInsets.all(AppPadding.p8.r),
+        padding: EdgeInsetsDirectional.all(AppPadding.p8.r),
         decoration: const BoxDecoration(
           color: ColorManager.greenPrimary,
           shape: BoxShape.circle,
@@ -169,7 +169,7 @@ class BottomNavBar extends StatelessWidget {
       );
     } else {
       return Padding(
-        padding: EdgeInsets.all(AppPadding.p8.r),
+        padding: EdgeInsetsDirectional.all(AppPadding.p8.r),
         child: SvgPicture.asset(
           assetPath,
           colorFilter: const ColorFilter.mode(

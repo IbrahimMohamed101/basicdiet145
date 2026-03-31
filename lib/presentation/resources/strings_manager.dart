@@ -54,6 +54,10 @@ class Strings {
   static const String dessertsCategory = "Desserts";
   static const String drinksCategory = "Drinks";
   static const String save20 = "SAVE\n20%";
+  static const String buildYourOwnMeal = "Build Your\nOwn Meal";
+  static const String totalControlOverNutrition =
+      "Total control over\nyour nutrition.";
+  static const String explore = "EXPLORE";
 
   // Popular Packages section
   static const String popularPackages = "Popular Packages";
@@ -163,9 +167,32 @@ class Strings {
   static const String pickUpAnytimeFromBranch =
       "You can pick up your meals anytime from our branch";
   static const String subscriptionStartDate = "Subscription Start Date";
-  static const String selectStartDate = "Please select your preferred start date";
+  static const String selectStartDate =
+      "Please select your preferred start date";
   static const String chooseStartDate = "Choose Start Date";
   static const String deliverySchedule = "Daily Delivery Schedule";
-  static const String selectPreferredTime = "Please select your preferred delivery time";
+  static const String selectPreferredTime =
+      "Please select your preferred delivery time";
   static const String chooseDeliveryTime = "Choose Delivery Time";
+
+  // Subscription Details Screen
+  static const String orderSummary = "Order Summary";
+  static const String reviewYourOrder = "Review Your Order";
+  static const String confirmSubscriptionDetailsBelow =
+      "Please confirm your subscription details below";
+  static const String subscriptionPlan = "Subscription Plan";
+  static const String basePrice = "Base price";
+  static const String premiumTag = "Premium";
+  static const String deliveryDetails = "Delivery Details";
+  static const String deliveryZone = "Delivery Zone";
+  static const String address = "Address";
+  static const String deliveryFee = "Delivery Fee";
+  static const String startDate = "Start Date";
+  static const String endDate = "End Date";
+  static const String firstDelivery = "First delivery";
+  static const String lastDelivery = "Last delivery";
+  static const String timeSlot = "Time Slot";
+  static const String priceBreakdown = "Price Breakdown";
+  static const String deliveryNotes = "Delivery Notes";
+  static const String confirmAndPay = "Confirm & Pay";
 }

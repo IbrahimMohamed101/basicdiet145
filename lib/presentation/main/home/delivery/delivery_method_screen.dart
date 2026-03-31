@@ -18,6 +18,7 @@ import 'package:basic_diet/presentation/widgets/custom_text_field_style.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:gap/gap.dart';
 
 class DeliveryMethodScreen extends StatefulWidget {
   static const String deliveryMethodRoute = '/delivery_method';
@@ -163,7 +164,7 @@ class _DeliveryMethodScreenState extends State<DeliveryMethodScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(deliveryState.message),
-                      SizedBox(height: AppSize.s16.h),
+                      Gap(AppSize.s16.h),
                       ElevatedButton(
                         onPressed: () => context
                             .read<DeliveryOptionsBloc>()
@@ -192,10 +193,12 @@ class _DeliveryMethodScreenState extends State<DeliveryMethodScreen> {
                           fontSize: FontSizeManager.s16.sp,
                         ),
                       ),
-                      SizedBox(height: AppSize.s16.h),
+                      Gap(AppSize.s16.h),
                       ...deliveryOptions.methods.map(
                         (method) => Padding(
-                          padding: EdgeInsets.only(bottom: AppSize.s16.h),
+                          padding: EdgeInsetsDirectional.only(
+                            bottom: AppSize.s16.h,
+                          ),
                           child: _buildSelectionCard(
                             method: method,
                             icon: method.type == 'pickup'
@@ -204,7 +207,7 @@ class _DeliveryMethodScreenState extends State<DeliveryMethodScreen> {
                           ),
                         ),
                       ),
-                      SizedBox(height: AppSize.s8.h),
+                      Gap(AppSize.s8.h),
                       Text(
                         Strings.subscriptionStartDate,
                         style: getBoldTextStyle(
@@ -212,11 +215,11 @@ class _DeliveryMethodScreenState extends State<DeliveryMethodScreen> {
                           fontSize: FontSizeManager.s16.sp,
                         ),
                       ),
-                      SizedBox(height: AppSize.s12.h),
+                      Gap(AppSize.s12.h),
                       _buildStartDateSelector(),
                       if (_selectedType == DeliveryType.home &&
                           selectedMethod != null) ...[
-                        SizedBox(height: AppSize.s24.h),
+                        Gap(AppSize.s24.h),
                         Text(
                           Strings.deliveryArea,
                           style: getBoldTextStyle(
@@ -224,9 +227,9 @@ class _DeliveryMethodScreenState extends State<DeliveryMethodScreen> {
                             fontSize: FontSizeManager.s16.sp,
                           ),
                         ),
-                        SizedBox(height: AppSize.s12.h),
+                        Gap(AppSize.s12.h),
                         _buildAreaSelector(deliveryOptions.areas),
-                        SizedBox(height: AppSize.s8.h),
+                        Gap(AppSize.s8.h),
                         Text(
                           selectedMethod.helperText,
                           style: getRegularTextStyle(
@@ -234,7 +237,7 @@ class _DeliveryMethodScreenState extends State<DeliveryMethodScreen> {
                             fontSize: FontSizeManager.s12.sp,
                           ),
                         ),
-                        SizedBox(height: AppSize.s24.h),
+                        Gap(AppSize.s24.h),
                         Text(
                           Strings.deliveryAddress,
                           style: getBoldTextStyle(
@@ -242,7 +245,7 @@ class _DeliveryMethodScreenState extends State<DeliveryMethodScreen> {
                             fontSize: FontSizeManager.s16.sp,
                           ),
                         ),
-                        SizedBox(height: AppSize.s16.h),
+                        Gap(AppSize.s16.h),
                         _buildLabelledField(
                           Strings.streetName,
                           Strings.streetHint,
@@ -260,7 +263,7 @@ class _DeliveryMethodScreenState extends State<DeliveryMethodScreen> {
                           Strings.apartmentHint,
                           _apartmentController,
                         ),
-                        SizedBox(height: AppSize.s24.h),
+                        Gap(AppSize.s24.h),
                         Text(
                           Strings.deliverySchedule,
                           style: getBoldTextStyle(
@@ -268,25 +271,25 @@ class _DeliveryMethodScreenState extends State<DeliveryMethodScreen> {
                             fontSize: FontSizeManager.s16.sp,
                           ),
                         ),
-                        SizedBox(height: AppSize.s12.h),
+                        Gap(AppSize.s12.h),
                         _buildTimeSelector(selectedMethod.slots),
-                        SizedBox(height: AppSize.s16.h),
+                        Gap(AppSize.s16.h),
                         _buildLabelledField(
                           Strings.notesOptional,
                           Strings.notesHint,
                           _notesController,
                         ),
                       ] else ...[
-                        SizedBox(height: AppSize.s24.h),
+                        Gap(AppSize.s24.h),
                         _buildBranchCard(_selectedPickupLocation),
-                        SizedBox(height: AppSize.s16.h),
+                        Gap(AppSize.s16.h),
                         _buildLabelledField(
                           Strings.notesOptional,
                           Strings.notesHint,
                           _notesController,
                         ),
                       ],
-                      SizedBox(height: AppSize.s24.h),
+                      Gap(AppSize.s24.h),
                       BlocBuilder<SubscriptionBloc, SubscriptionState>(
                         builder: (context, state) {
                           final successState = state is SubscriptionSuccess
@@ -530,7 +533,9 @@ class _DeliveryMethodScreenState extends State<DeliveryMethodScreen> {
                           }
 
                           return Padding(
-                            padding: EdgeInsets.only(bottom: AppSize.s20.h),
+                            padding: EdgeInsetsDirectional.only(
+                              bottom: AppSize.s20.h,
+                            ),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -541,7 +546,7 @@ class _DeliveryMethodScreenState extends State<DeliveryMethodScreen> {
                                     fontSize: FontSizeManager.s16.sp,
                                   ),
                                 ),
-                                SizedBox(height: AppSize.s12.h),
+                                Gap(AppSize.s12.h),
                                 Wrap(
                                   spacing: AppSize.s8.w,
                                   runSpacing: AppSize.s8.h,
@@ -595,7 +600,7 @@ class _DeliveryMethodScreenState extends State<DeliveryMethodScreen> {
                                                     FontSizeManager.s18.sp,
                                               ),
                                             ),
-                                            SizedBox(height: AppSize.s4.h),
+                                            Gap(AppSize.s4.h),
                                             Text(
                                               _formatShortWeekday(date),
                                               style: getRegularTextStyle(
@@ -618,7 +623,7 @@ class _DeliveryMethodScreenState extends State<DeliveryMethodScreen> {
                         },
                       ),
                     ),
-                    SizedBox(height: AppSize.s12.h),
+                    Gap(AppSize.s12.h),
                     ButtonWidget(
                       radius: AppSize.s12,
                       text: Strings.confirm,
@@ -685,7 +690,7 @@ class _DeliveryMethodScreenState extends State<DeliveryMethodScreen> {
                 size: AppSize.s18.w,
               ),
             ),
-            SizedBox(width: AppSize.s12.w),
+            Gap(AppSize.s12.w),
             Expanded(
               child: Text(
                 hasValue
@@ -795,7 +800,7 @@ class _DeliveryMethodScreenState extends State<DeliveryMethodScreen> {
                 color: isSelected ? Colors.white : ColorManager.grey6A7282,
               ),
             ),
-            SizedBox(width: AppSize.s16.w),
+            Gap(AppSize.s16.w),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -814,7 +819,7 @@ class _DeliveryMethodScreenState extends State<DeliveryMethodScreen> {
                       fontSize: FontSizeManager.s14.sp,
                     ),
                   ),
-                  SizedBox(height: AppSize.s8.h),
+                  Gap(AppSize.s8.h),
                   Text(
                     method.feeLabel.isNotEmpty
                         ? method.feeLabel
@@ -959,7 +964,7 @@ class _DeliveryMethodScreenState extends State<DeliveryMethodScreen> {
                           )
                           .toList(),
                     ),
-                    SizedBox(height: AppSize.s24.h),
+                    Gap(AppSize.s24.h),
                     ButtonWidget(
                       radius: AppSize.s12,
                       text: Strings.confirm,
@@ -1020,7 +1025,7 @@ class _DeliveryMethodScreenState extends State<DeliveryMethodScreen> {
                     ? ColorManager.greenPrimary
                     : ColorManager.formFieldsBorderColor,
               ),
-              SizedBox(width: AppSize.s12.w),
+              Gap(AppSize.s12.w),
               Expanded(
                 child: Text(
                   time.window,
@@ -1056,18 +1061,18 @@ class _DeliveryMethodScreenState extends State<DeliveryMethodScreen> {
               ),
             ),
             if (isRequired) ...[
-              SizedBox(width: 4.w),
+              Gap(4.w),
               Text("*", style: TextStyle(color: ColorManager.errorColor)),
             ],
           ],
         ),
-        SizedBox(height: AppSize.s8.h),
+        Gap(AppSize.s8.h),
         AppTextField.normal(
           hintText: hint,
           controller: controller,
           onChanged: (_) => setState(() {}),
         ),
-        SizedBox(height: AppSize.s16.h),
+        Gap(AppSize.s16.h),
       ],
     );
   }
@@ -1092,7 +1097,7 @@ class _DeliveryMethodScreenState extends State<DeliveryMethodScreen> {
             ),
             child: Icon(Icons.location_on, color: ColorManager.greenPrimary),
           ),
-          SizedBox(width: AppSize.s12.w),
+          Gap(AppSize.s12.w),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1173,7 +1178,7 @@ class _DeliveryMethodScreenState extends State<DeliveryMethodScreen> {
                           )
                           .toList(),
                     ),
-                    SizedBox(height: AppSize.s24.h),
+                    Gap(AppSize.s24.h),
                     ButtonWidget(
                       radius: AppSize.s12,
                       text: Strings.confirm,
@@ -1239,7 +1244,7 @@ class _DeliveryMethodScreenState extends State<DeliveryMethodScreen> {
                         alpha: isAvailable ? 1 : 0.5,
                       ),
               ),
-              SizedBox(width: AppSize.s12.w),
+              Gap(AppSize.s12.w),
               Expanded(
                 child: Text(
                   area.label,
