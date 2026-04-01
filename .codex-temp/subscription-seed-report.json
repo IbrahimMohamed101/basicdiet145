@@ -1,6 +1,6 @@
 {
   "seedTag": "subscription_demo_v2",
-  "generatedAt": "2026-03-24T08:42:35.040Z",
+  "generatedAt": "2026-04-01T03:55:46.522Z",
   "counts": {
     "zones": 6,
     "pickupBranches": 1,
@@ -22,70 +22,70 @@
         "key": "new_user",
         "email": "new.user@demo.basicdiet.sa",
         "phone": "+966500000101",
-        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OWMyNGIyZmJiNWM2OWNhN2Q5MTdjOWIiLCJyb2xlIjoiY2xpZW50IiwidG9rZW5UeXBlIjoiYXBwX2FjY2VzcyIsImlhdCI6MTc3NDM0MTc1NSwiZXhwIjoxNzc3MDIwMTU1fQ._mLf-jOvR63FG_Qi9CVTQ_G8hSIUGAdkZw0xb87_aAE",
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OWNjOTcyZjdjMjlhNjU1NjljOTFhMjciLCJyb2xlIjoiY2xpZW50IiwidG9rZW5UeXBlIjoiYXBwX2FjY2VzcyIsImlhdCI6MTc3NTAxNTc0NiwiZXhwIjoxNzc3Njk0MTQ2fQ.WLb8-XbI6ZL1c5ZHl_J-twh_Oii3MJAo55IuuSJjb8g",
         "useCase": "New app user without subscriptions for fresh purchase flow"
       },
       {
         "key": "active_delivery",
         "email": "delivery.active@demo.basicdiet.sa",
         "phone": "+966500000102",
-        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OWMyNGIyZmJiNWM2OWNhN2Q5MTdjYTUiLCJyb2xlIjoiY2xpZW50IiwidG9rZW5UeXBlIjoiYXBwX2FjY2VzcyIsImlhdCI6MTc3NDM0MTc1NSwiZXhwIjoxNzc3MDIwMTU1fQ.PbwUS9b32IQ6XJKdwMplP1RNZxxYnSxMpN4X5j0SD1o",
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OWNjOTcyZjdjMjlhNjU1NjljOTFhMzEiLCJyb2xlIjoiY2xpZW50IiwidG9rZW5UeXBlIjoiYXBwX2FjY2VzcyIsImlhdCI6MTc3NTAxNTc0NiwiZXhwIjoxNzc3Njk0MTQ2fQ.jph6OVM_BGNfUfL-xXIUi-5koHzJvY4CIgHm30RmjGc",
         "useCase": "Active delivery subscription with completed checkout and saved planning"
       },
       {
         "key": "active_pickup",
         "email": "pickup.active@demo.basicdiet.sa",
         "phone": "+966500000103",
-        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OWMyNGIzMGJiNWM2OWNhN2Q5MTdjYjAiLCJyb2xlIjoiY2xpZW50IiwidG9rZW5UeXBlIjoiYXBwX2FjY2VzcyIsImlhdCI6MTc3NDM0MTc1NSwiZXhwIjoxNzc3MDIwMTU1fQ.bYB_J-cq8k-O5DvDkTgqGYwnoIEgcF1dnIkN-cXYB0k",
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OWNjOTcyZjdjMjlhNjU1NjljOTFhM2EiLCJyb2xlIjoiY2xpZW50IiwidG9rZW5UeXBlIjoiYXBwX2FjY2VzcyIsImlhdCI6MTc3NTAxNTc0NiwiZXhwIjoxNzc3Njk0MTQ2fQ.JCEjAHO59ZWpjLsZ5ooqMeSpR0DzXfXyWsBw7e-7amQ",
         "useCase": "Active pickup subscription using the single branch flow"
       },
       {
         "key": "expired_renewable",
         "email": "renewal.expired@demo.basicdiet.sa",
         "phone": "+966500000104",
-        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OWMyNGIzMGJiNWM2OWNhN2Q5MTdjYjkiLCJyb2xlIjoiY2xpZW50IiwidG9rZW5UeXBlIjoiYXBwX2FjY2VzcyIsImlhdCI6MTc3NDM0MTc1NSwiZXhwIjoxNzc3MDIwMTU1fQ.b9v1IpNuZ29MRxiEpyPM1oETpt8Dca7wZ4lqX7eKET8",
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OWNjOTczMDdjMjlhNjU1NjljOTFhNDMiLCJyb2xlIjoiY2xpZW50IiwidG9rZW5UeXBlIjoiYXBwX2FjY2VzcyIsImlhdCI6MTc3NTAxNTc0NiwiZXhwIjoxNzc3Njk0MTQ2fQ.EVrScjbqyFCB19vPD5aLlhCNOU5JSFxoz-372XikyMs",
         "useCase": "Expired subscription with preserved delivery preferences and renewal draft"
       },
       {
         "key": "frozen_subscription",
         "email": "freeze.active@demo.basicdiet.sa",
         "phone": "+966500000105",
-        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OWMyNGIzMGJiNWM2OWNhN2Q5MTdjYzEiLCJyb2xlIjoiY2xpZW50IiwidG9rZW5UeXBlIjoiYXBwX2FjY2VzcyIsImlhdCI6MTc3NDM0MTc1NSwiZXhwIjoxNzc3MDIwMTU1fQ.uZ8fmUyJ3ltpE6q0HFEaxke4sE1nmq0lrt53ArzTXwY",
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OWNjOTczMDdjMjlhNjU1NjljOTFhNDkiLCJyb2xlIjoiY2xpZW50IiwidG9rZW5UeXBlIjoiYXBwX2FjY2VzcyIsImlhdCI6MTc3NTAxNTc0NiwiZXhwIjoxNzc3Njk0MTQ2fQ.FNreZcyQBdd-SylwSYGJWAli1yh65dqpxhCuE6gCLSk",
         "useCase": "Active subscription with frozen day and extended validity window"
       },
       {
         "key": "skipped_days",
         "email": "skip.active@demo.basicdiet.sa",
         "phone": "+966500000106",
-        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OWMyNGIzMGJiNWM2OWNhN2Q5MTdjYzkiLCJyb2xlIjoiY2xpZW50IiwidG9rZW5UeXBlIjoiYXBwX2FjY2VzcyIsImlhdCI6MTc3NDM0MTc1NSwiZXhwIjoxNzc3MDIwMTU1fQ.qeJt_fLliuaq5lloFlyaH4_GylpY1V28_5hYqOashzw",
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OWNjOTczMDdjMjlhNjU1NjljOTFhNGUiLCJyb2xlIjoiY2xpZW50IiwidG9rZW5UeXBlIjoiYXBwX2FjY2VzcyIsImlhdCI6MTc3NTAxNTc0NiwiZXhwIjoxNzc3Njk0MTQ2fQ.CjnGedPF8IUCBbQhYAPb7aVYhKEvILAjwTOd9CWVUTQ",
         "useCase": "Active subscription with skipped and unskipped planning history"
       },
       {
         "key": "wallet_balance",
         "email": "wallet.active@demo.basicdiet.sa",
         "phone": "+966500000107",
-        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OWMyNGIzMWJiNWM2OWNhN2Q5MTdjZDEiLCJyb2xlIjoiY2xpZW50IiwidG9rZW5UeXBlIjoiYXBwX2FjY2VzcyIsImlhdCI6MTc3NDM0MTc1NSwiZXhwIjoxNzc3MDIwMTU1fQ.1Q1HKF17HeV7fjL_TMtB5hCZYARUzzZQ_NdXybD3W1s",
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OWNjOTczMDdjMjlhNjU1NjljOTFhNTIiLCJyb2xlIjoiY2xpZW50IiwidG9rZW5UeXBlIjoiYXBwX2FjY2VzcyIsImlhdCI6MTc3NTAxNTc0NiwiZXhwIjoxNzc3Njk0MTQ2fQ.Aj4CG5-r3RdTve1BcRiRahmFfSJwrYVE74yb6Mv-u2E",
         "useCase": "Active subscription with wallet balances, topups, and consumption history"
       },
       {
         "key": "premium_overage",
         "email": "premium.overage@demo.basicdiet.sa",
         "phone": "+966500000108",
-        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OWMyNGIzMWJiNWM2OWNhN2Q5MTdjZDciLCJyb2xlIjoiY2xpZW50IiwidG9rZW5UeXBlIjoiYXBwX2FjY2VzcyIsImlhdCI6MTc3NDM0MTc1NSwiZXhwIjoxNzc3MDIwMTU1fQ.L6myvZRRiILswIUgVobAstRVCfIfcmfGN-pseZ0SMT0",
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OWNjOTczMTdjMjlhNjU1NjljOTFhNTUiLCJyb2xlIjoiY2xpZW50IiwidG9rZW5UeXBlIjoiYXBwX2FjY2VzcyIsImlhdCI6MTc3NTAxNTc0NiwiZXhwIjoxNzc3Njk0MTQ2fQ.2T9DBROoZvUZZP6woa40s6oxdcullCbZ4R-0TpwYj3E",
         "useCase": "Active canonical subscription with pending premium overage"
       },
       {
         "key": "addon_pending",
         "email": "addon.pending@demo.basicdiet.sa",
         "phone": "+966500000109",
-        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OWMyNGIzMWJiNWM2OWNhN2Q5MTdjZGQiLCJyb2xlIjoiY2xpZW50IiwidG9rZW5UeXBlIjoiYXBwX2FjY2VzcyIsImlhdCI6MTc3NDM0MTc1NSwiZXhwIjoxNzc3MDIwMTU1fQ.rHVGoGGur7ke5sZmKOBY7sy0ZfuTnZLy2QBatGMTeUk",
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OWNjOTczMTdjMjlhNjU1NjljOTFhNTciLCJyb2xlIjoiY2xpZW50IiwidG9rZW5UeXBlIjoiYXBwX2FjY2VzcyIsImlhdCI6MTc3NTAxNTc0NiwiZXhwIjoxNzc3Njk0MTQ2fQ.-J6tz7wRLJgI86JA6HiTAbpj1oIp1eqD4lfu5WmcY8s",
         "useCase": "Active canonical subscription with one-time addon pending payment"
       },
       {
         "key": "canceled_subscription",
         "email": "canceled.user@demo.basicdiet.sa",
         "phone": "+966500000110",
-        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OWMyNGIzMWJiNWM2OWNhN2Q5MTdjZTEiLCJyb2xlIjoiY2xpZW50IiwidG9rZW5UeXBlIjoiYXBwX2FjY2VzcyIsImlhdCI6MTc3NDM0MTc1NSwiZXhwIjoxNzc3MDIwMTU1fQ.mqPQUajgBMJY85uiMowWlrId-cS7lTBWhFAjsFQ5T6w",
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OWNjOTczMjdjMjlhNjU1NjljOTFhNTkiLCJyb2xlIjoiY2xpZW50IiwidG9rZW5UeXBlIjoiYXBwX2FjY2VzcyIsImlhdCI6MTc3NTAxNTc0NiwiZXhwIjoxNzc3Njk0MTQ2fQ.2mcz_qg2Uja1jAP6Q2RB2Ie67tKfPfm6II5z2NJLoZE",
         "useCase": "Canceled subscription visible in app and admin subscription reads"
       }
     ],
