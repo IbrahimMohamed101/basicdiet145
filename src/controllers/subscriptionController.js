@@ -136,7 +136,7 @@ const {
 const { reconcileCheckoutDraft, RECONCILE_MODES } = require("../services/reconciliationService");
 
 const SYSTEM_CURRENCY = "SAR";
-const STALE_DRAFT_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
+const STALE_DRAFT_THRESHOLD_MS = 30 * 1000; // 30 seconds - reduced for faster recovery
 const LEGACY_DAY_PREMIUM_SLOT_PREFIX = "legacy_day_premium_slot_";
 const WALLET_TOPUP_PAYMENT_TYPES = new Set(["premium_topup", "addon_topup"]);
 const PREMIUM_OVERAGE_DAY_PAYMENT_TYPE = "premium_overage_day";
@@ -2022,13 +2022,58 @@ async function checkoutSubscription(req, res, runtimeOverrides = null) {
           // It's a zombie. Mark as abandoned to allow retry.
           await CheckoutDraft.updateOne({ _id: currentDraft._id }, { $set: { status: "failed", failureReason: "stale_abandoned" } });
         } else {
-          return errorResponse(
-            res,
-            409,
-            "CHECKOUT_IN_PROGRESS",
-            "Checkout initialization is still in progress. Retry with the same idempotency key.",
-            { draftId: String(currentDraft._id) }
-          );
+          // Before returning 409, check if the invoice has a resolved status
+          if (currentPayment && currentPayment.providerInvoiceId) {
+            try {
+              const invoice = await getInvoice(currentPayment.providerInvoiceId);
+              const invoiceStatus = (invoice && invoice.status || "").toLowerCase();
+              
+              // If invoice is paid, we can reuse this draft
+              if (invoiceStatus === "paid" || invoiceStatus === "captured") {
+                return res.status(200).json({ ok: true, data: buildCheckoutReusePayload(currentDraft, currentPayment) });
+              }
+              
+              // If invoice is failed/expired/canceled, mark draft as failed and allow new checkout
+              if (["failed", "expired", "canceled"].includes(invoiceStatus)) {
+                await CheckoutDraft.updateOne(
+                  { _id: currentDraft._id },
+                  { $set: { status: "failed", failureReason: `invoice_${invoiceStatus}` } }
+                );
+                // Continue to create new draft below
+              } else {
+                // Invoice is still pending, return 409
+                return errorResponse(
+                  res,
+                  409,
+                  "CHECKOUT_IN_PROGRESS",
+                  "Checkout initialization is still in progress. Retry with the same idempotency key.",
+                  { draftId: String(currentDraft._id) }
+                );
+              }
+            } catch (err) {
+              // If we can't fetch invoice status, be conservative and return 409
+              logger.warn("Failed to fetch invoice status during checkout reconciliation", { 
+                draftId: String(currentDraft._id),
+                error: err.message
+              });
+              return errorResponse(
+                res,
+                409,
+                "CHECKOUT_IN_PROGRESS",
+                "Checkout initialization is still in progress. Retry with the same idempotency key.",
+                { draftId: String(currentDraft._id) }
+              );
+            }
+          } else {
+            // No payment info, return 409
+            return errorResponse(
+              res,
+              409,
+              "CHECKOUT_IN_PROGRESS",
+              "Checkout initialization is still in progress. Retry with the same idempotency key.",
+              { draftId: String(currentDraft._id) }
+            );
+          }
         }
       } else {
         return errorResponse(
@@ -2064,13 +2109,58 @@ async function checkoutSubscription(req, res, runtimeOverrides = null) {
         // It's a zombie. Mark as abandoned to allow retry with new idempotency key/hash lock.
         await CheckoutDraft.updateOne({ _id: currentDraft._id }, { $set: { status: "failed", failureReason: "stale_abandoned" } });
       } else {
-        return errorResponse(
-          res,
-          409,
-          "CHECKOUT_IN_PROGRESS",
-          "Checkout initialization is still in progress. Retry with the same idempotency key.",
-          { draftId: String(currentDraft._id) }
-        );
+        // Before returning 409, check if the invoice has a resolved status
+        if (currentPayment && currentPayment.providerInvoiceId) {
+          try {
+            const invoice = await getInvoice(currentPayment.providerInvoiceId);
+            const invoiceStatus = (invoice && invoice.status || "").toLowerCase();
+            
+            // If invoice is paid, we can reuse this draft
+            if (invoiceStatus === "paid" || invoiceStatus === "captured") {
+              return res.status(200).json({ ok: true, data: buildCheckoutReusePayload(currentDraft, currentPayment) });
+            }
+            
+            // If invoice is failed/expired/canceled, mark draft as failed and allow new checkout
+            if (["failed", "expired", "canceled"].includes(invoiceStatus)) {
+              await CheckoutDraft.updateOne(
+                { _id: currentDraft._id },
+                { $set: { status: "failed", failureReason: `invoice_${invoiceStatus}` } }
+              );
+              // Continue to create new draft below
+            } else {
+              // Invoice is still pending, return 409
+              return errorResponse(
+                res,
+                409,
+                "CHECKOUT_IN_PROGRESS",
+                "Checkout initialization is still in progress. Retry with the same idempotency key.",
+                { draftId: String(currentDraft._id) }
+              );
+            }
+          } catch (err) {
+            // If we can't fetch invoice status, be conservative and return 409
+            logger.warn("Failed to fetch invoice status during checkout reconciliation (by hash)", { 
+              draftId: String(currentDraft._id),
+              error: err.message
+            });
+            return errorResponse(
+              res,
+              409,
+              "CHECKOUT_IN_PROGRESS",
+              "Checkout initialization is still in progress. Retry with the same idempotency key.",
+              { draftId: String(currentDraft._id) }
+            );
+          }
+        } else {
+          // No payment info, return 409
+          return errorResponse(
+            res,
+            409,
+            "CHECKOUT_IN_PROGRESS",
+            "Checkout initialization is still in progress. Retry with the same idempotency key.",
+            { draftId: String(currentDraft._id) }
+          );
+        }
       }
     }
 
