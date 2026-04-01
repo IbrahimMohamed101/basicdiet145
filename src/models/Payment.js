@@ -1,5 +1,11 @@
 const mongoose = require("mongoose");
 
+function normalizeOptionalProviderIdentifier(value) {
+  if (value === undefined || value === null) return undefined;
+  const normalized = String(value).trim();
+  return normalized || undefined;
+}
+
 const PaymentSchema = new mongoose.Schema(
   {
     provider: { type: String, enum: ["moyasar"], required: true },
@@ -31,8 +37,8 @@ const PaymentSchema = new mongoose.Schema(
     userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     subscriptionId: { type: mongoose.Schema.Types.ObjectId, ref: "Subscription" },
     orderId: { type: mongoose.Schema.Types.ObjectId, ref: "Order" },
-    providerInvoiceId: { type: String },
-    providerPaymentId: { type: String },
+    providerInvoiceId: { type: String, set: normalizeOptionalProviderIdentifier },
+    providerPaymentId: { type: String, set: normalizeOptionalProviderIdentifier },
     metadata: { type: mongoose.Schema.Types.Mixed },
     applied: { type: Boolean, default: false },
     paidAt: { type: Date },
@@ -43,8 +49,32 @@ const PaymentSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-PaymentSchema.index({ provider: 1, providerInvoiceId: 1 }, { unique: true, sparse: true });
-PaymentSchema.index({ provider: 1, providerPaymentId: 1 }, { unique: true, sparse: true });
+PaymentSchema.pre("validate", function normalizeProviderIdentifiersBeforeValidate(next) {
+  this.providerInvoiceId = normalizeOptionalProviderIdentifier(this.providerInvoiceId);
+  this.providerPaymentId = normalizeOptionalProviderIdentifier(this.providerPaymentId);
+  next();
+});
+
+PaymentSchema.index(
+  { provider: 1, providerInvoiceId: 1 },
+  {
+    name: "provider_1_providerInvoiceId_1",
+    unique: true,
+    partialFilterExpression: {
+      providerInvoiceId: { $type: "string" },
+    },
+  }
+);
+PaymentSchema.index(
+  { provider: 1, providerPaymentId: 1 },
+  {
+    name: "provider_1_providerPaymentId_1",
+    unique: true,
+    partialFilterExpression: {
+      providerPaymentId: { $type: "string" },
+    },
+  }
+);
 PaymentSchema.index({ subscriptionId: 1, status: 1 });
 
 module.exports = mongoose.model("Payment", PaymentSchema);

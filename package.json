@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node src/index.js",
     "diagnose:mongo": "node scripts/diagnose-mongo.js",
+    "fix:payment-indexes": "node scripts/fix-payment-indexes.js",
     "test": "node scripts/run-tests.js",
     "seed": "node scripts/seed-demo-data.js",
     "seed:clear": "node scripts/seed-demo-data.js --clear",
