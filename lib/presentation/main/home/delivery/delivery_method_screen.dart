@@ -4,7 +4,7 @@ import 'package:basic_diet/domain/model/subscription_quote_model.dart';
 import 'package:basic_diet/presentation/main/home/delivery/bloc/delivery_options_bloc.dart';
 import 'package:basic_diet/presentation/main/home/delivery/bloc/delivery_options_event.dart';
 import 'package:basic_diet/presentation/main/home/delivery/bloc/delivery_options_state.dart';
-import 'package:basic_diet/presentation/main/home/subscription-details/subscription_details.dart';
+import 'package:basic_diet/presentation/main/home/subscription-details/subscription_details_screen.dart';
 import 'package:basic_diet/presentation/main/home/subscription/bloc/subscription_bloc.dart';
 import 'package:basic_diet/presentation/main/home/subscription/bloc/subscription_event.dart';
 import 'package:basic_diet/presentation/main/home/subscription/bloc/subscription_state.dart';
