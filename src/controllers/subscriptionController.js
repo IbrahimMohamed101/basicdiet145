@@ -2087,6 +2087,7 @@ async function checkoutSubscription(req, res, runtimeOverrides = null) {
           maxPerDay: 1,
         }));
 
+    logger.info(`[DEBUG-CHECKOUT] Creating draft for userId ${req.userId}, idempotencyKey: ${idempotencyKey}`);
     draft = await CheckoutDraft.create({
       userId: req.userId,
       planId: quote.plan._id,
@@ -2117,7 +2118,9 @@ async function checkoutSubscription(req, res, runtimeOverrides = null) {
       ...(canonicalContract ? runtime.buildCanonicalDraftPersistenceFields({ contract: canonicalContract }) : {}),
     });
 
+    logger.info(`[DEBUG-CHECKOUT] Draft created successfully with ID: ${draft._id}`);
     const appUrl = process.env.APP_URL || "https://example.com";
+    logger.info(`[DEBUG-CHECKOUT] Calling createInvoice for draft ID: ${draft._id}`);
     const invoice = await runtime.createInvoice({
       amount: quote.breakdown.totalHalala,
       description: buildPaymentDescription("subscriptionCheckout", lang, {
@@ -2134,8 +2137,10 @@ async function checkoutSubscription(req, res, runtimeOverrides = null) {
         mealsPerDay: quote.mealsPerDay,
       },
     });
+    logger.info(`[DEBUG-CHECKOUT] Invoice returned for draft ID: ${draft._id}, invoice ID: ${invoice ? invoice.id : 'undefined'}, invoiceURL: ${invoice ? invoice.url : 'undefined'}`);
     const invoiceCurrency = assertSystemCurrencyOrThrow(invoice.currency || SYSTEM_CURRENCY, "Invoice currency");
 
+    logger.info(`[DEBUG-CHECKOUT] Creating payment record for draft ID: ${draft._id}`);
     const payment = await Payment.create({
       provider: "moyasar",
       type: "subscription_activation",
@@ -2146,10 +2151,14 @@ async function checkoutSubscription(req, res, runtimeOverrides = null) {
       providerInvoiceId: invoice.id,
       metadata: invoice.metadata || {},
     });
+    logger.info(`[DEBUG-CHECKOUT] Payment record created with ID: ${payment._id}`);
     draft.paymentId = payment._id;
     draft.providerInvoiceId = invoice.id;
     draft.paymentUrl = invoice.url || "";
+    draft.updatedAt = new Date();
+    logger.info(`[DEBUG-CHECKOUT] Assigned paymentUrl: ${draft.paymentUrl}`);
     await draft.save();
+    logger.info(`[DEBUG-CHECKOUT] Draft saved successfully with paymentUrl`);
 
     return res.status(201).json({
       ok: true,
@@ -2221,8 +2230,17 @@ async function checkoutSubscription(req, res, runtimeOverrides = null) {
     if (draft && draft.status === "pending_payment") {
       draft.status = "failed";
       draft.failedAt = new Date();
-      draft.failureReason = err && err.code ? String(err.code) : "checkout_init_failed";
-      await draft.save().catch(() => {});
+      const rawReason = err && err.code ? String(err.code) : (err && err.message ? err.message : "checkout_init_failed");
+      draft.failureReason = rawReason.substring(0, 200);
+      draft.updatedAt = new Date();
+      
+      logger.info(`[DEBUG-CHECKOUT] Invoice or initialization failed. Catch block executing for draft ID: ${draft._id}, Reason: ${draft.failureReason}`);
+      try {
+        await draft.save();
+        logger.info(`[DEBUG-CHECKOUT] Draft marked as failed successfully.`);
+      } catch (saveErr) {
+        logger.error(`[DEBUG-CHECKOUT] FATAL: Failed to save draft as failed!`, { error: saveErr.message });
+      }
     }
     logger.error("Subscription checkout failed", { error: err.message, stack: err.stack });
     return errorResponse(res, 500, "INTERNAL", "Checkout failed");
