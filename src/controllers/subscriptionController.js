@@ -666,6 +666,37 @@ async function persistCheckoutInitializationFailure(draft, err, { stage, provide
   }
 }
 
+async function releaseCheckoutDraftIdempotencyKey(draft, { stage, failureReason } = {}) {
+  if (!draft || !draft._id) return;
+
+  const currentKey = String(draft.idempotencyKey || "").trim();
+  if (!currentKey) return;
+
+  const status = String(draft.status || "").trim();
+  if (!["failed", "canceled", "expired"].includes(status)) return;
+
+  const update = {
+    idempotencyKey: "",
+    updatedAt: new Date(),
+  };
+  if (failureReason !== undefined) {
+    update.failureReason = failureReason;
+  }
+
+  await CheckoutDraft.updateOne({ _id: draft._id }, { $set: update });
+  draft.idempotencyKey = "";
+  if (failureReason !== undefined) {
+    draft.failureReason = failureReason;
+  }
+
+  logger.info("[DEBUG-CHECKOUT] Released terminal draft idempotency key", {
+    draftId: String(draft._id),
+    stage: String(stage || "unknown"),
+    status,
+    failureReason: failureReason !== undefined ? failureReason : (draft.failureReason || ""),
+  });
+}
+
 function buildCheckoutReusePayload(draft, payment) {
   const paymentMetadata = getPaymentMetadata(payment);
   return {
@@ -2316,7 +2347,16 @@ async function checkoutSubscription(req, res, runtimeOverrides = null) {
         const isStale = (new Date() - new Date(currentDraft.createdAt)) > STALE_DRAFT_THRESHOLD_MS;
         if (isStale) {
           // It's a zombie. Mark as abandoned to allow retry.
-          await CheckoutDraft.updateOne({ _id: currentDraft._id }, { $set: { status: "failed", failureReason: "stale_abandoned" } });
+          await CheckoutDraft.updateOne(
+            { _id: currentDraft._id },
+            { $set: { status: "failed", failureReason: "stale_abandoned", updatedAt: new Date() } }
+          );
+          currentDraft.status = "failed";
+          currentDraft.failureReason = "stale_abandoned";
+          await releaseCheckoutDraftIdempotencyKey(currentDraft, {
+            stage: "existing_by_key_stale",
+            failureReason: "stale_abandoned",
+          });
         } else {
           // Before returning 409, check if the invoice has a resolved status
           if (currentPayment && currentPayment.providerInvoiceId) {
@@ -2333,8 +2373,14 @@ async function checkoutSubscription(req, res, runtimeOverrides = null) {
               if (["failed", "expired", "canceled"].includes(invoiceStatus)) {
                 await CheckoutDraft.updateOne(
                   { _id: currentDraft._id },
-                  { $set: { status: "failed", failureReason: `invoice_${invoiceStatus}` } }
+                  { $set: { status: "failed", failureReason: `invoice_${invoiceStatus}`, updatedAt: new Date() } }
                 );
+                currentDraft.status = "failed";
+                currentDraft.failureReason = `invoice_${invoiceStatus}`;
+                await releaseCheckoutDraftIdempotencyKey(currentDraft, {
+                  stage: "existing_by_key_invoice_terminal",
+                  failureReason: `invoice_${invoiceStatus}`,
+                });
                 // Continue to create new draft below
               } else {
                 // Invoice is still pending, return 409
@@ -2371,6 +2417,10 @@ async function checkoutSubscription(req, res, runtimeOverrides = null) {
             );
           }
         }
+      } else if (["failed", "canceled", "expired"].includes(String(currentDraft.status || "").trim())) {
+        await releaseCheckoutDraftIdempotencyKey(currentDraft, {
+          stage: "existing_by_key_terminal_retry",
+        });
       } else {
         return errorResponse(
           res,
@@ -3548,7 +3598,16 @@ async function renewSubscription(req, res, runtimeOverrides = null) {
       if (currentDraft.status === "pending_payment") {
         const isStale = (new Date() - new Date(currentDraft.createdAt)) > STALE_DRAFT_THRESHOLD_MS;
         if (isStale) {
-          await CheckoutDraft.updateOne({ _id: currentDraft._id }, { $set: { status: "failed", failureReason: "stale_abandoned" } });
+          await CheckoutDraft.updateOne(
+            { _id: currentDraft._id },
+            { $set: { status: "failed", failureReason: "stale_abandoned", updatedAt: new Date() } }
+          );
+          currentDraft.status = "failed";
+          currentDraft.failureReason = "stale_abandoned";
+          await releaseCheckoutDraftIdempotencyKey(currentDraft, {
+            stage: "renewal_existing_by_key_stale",
+            failureReason: "stale_abandoned",
+          });
         } else if (currentPayment && currentPayment.providerInvoiceId) {
           try {
             const invoice = await getInvoice(currentPayment.providerInvoiceId);
@@ -3561,8 +3620,14 @@ async function renewSubscription(req, res, runtimeOverrides = null) {
             if (["failed", "expired", "canceled"].includes(invoiceStatus)) {
               await CheckoutDraft.updateOne(
                 { _id: currentDraft._id },
-                { $set: { status: "failed", failureReason: `invoice_${invoiceStatus}` } }
+                { $set: { status: "failed", failureReason: `invoice_${invoiceStatus}`, updatedAt: new Date() } }
               );
+              currentDraft.status = "failed";
+              currentDraft.failureReason = `invoice_${invoiceStatus}`;
+              await releaseCheckoutDraftIdempotencyKey(currentDraft, {
+                stage: "renewal_existing_by_key_invoice_terminal",
+                failureReason: `invoice_${invoiceStatus}`,
+              });
             } else {
               return errorResponse(
                 res,
@@ -3594,6 +3659,10 @@ async function renewSubscription(req, res, runtimeOverrides = null) {
             { draftId: String(currentDraft._id) }
           );
         }
+      } else if (["failed", "canceled", "expired"].includes(String(currentDraft.status || "").trim())) {
+        await releaseCheckoutDraftIdempotencyKey(currentDraft, {
+          stage: "renewal_existing_by_key_terminal_retry",
+        });
       } else {
         return errorResponse(
           res,

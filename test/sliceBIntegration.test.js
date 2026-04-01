@@ -512,6 +512,86 @@ test("checkoutSubscription recovers a reusable payment from persisted draft invo
   assert.equal(existingDraft.paymentId, recoveredPayment._id);
 });
 
+test("checkoutSubscription allows retrying a failed idempotency key by releasing the terminal draft key", async (t) => {
+  const originalWriteFlag = process.env.PHASE1_CANONICAL_CHECKOUT_DRAFT_WRITE;
+  const originalFindOne = CheckoutDraft.findOne;
+  const originalCreateDraft = CheckoutDraft.create;
+  const originalUpdateOne = CheckoutDraft.updateOne;
+  const originalPaymentCreate = Payment.create;
+  const originalPaymentFindById = Payment.findById;
+  const originalPaymentFindOne = Payment.findOne;
+
+  delete process.env.PHASE1_CANONICAL_CHECKOUT_DRAFT_WRITE;
+
+  t.after(() => {
+    process.env.PHASE1_CANONICAL_CHECKOUT_DRAFT_WRITE = originalWriteFlag;
+    CheckoutDraft.findOne = originalFindOne;
+    CheckoutDraft.create = originalCreateDraft;
+    CheckoutDraft.updateOne = originalUpdateOne;
+    Payment.create = originalPaymentCreate;
+    Payment.findById = originalPaymentFindById;
+    Payment.findOne = originalPaymentFindOne;
+  });
+
+  const userId = objectId();
+  const failedDraft = createDraftRecord({
+    userId,
+    status: "failed",
+    idempotencyKey: "retry-failed-key",
+    requestHash: "",
+    failureReason: "payment_create:11000",
+  });
+  const createdDraft = createDraftRecord({ userId, idempotencyKey: "retry-failed-key" });
+  const createdPayment = createPaymentRecord({
+    metadata: { draftId: String(createdDraft._id), paymentUrl: "https://pay.test/retry-failed-key" },
+  });
+
+  let createCalls = 0;
+  CheckoutDraft.findOne = (query) => {
+    if (query && query.idempotencyKey === "retry-failed-key") {
+      return createQueryStub(failedDraft);
+    }
+    return createQueryStub(null);
+  };
+  CheckoutDraft.updateOne = async (_filter, update) => {
+    if (update && update.$set) {
+      Object.assign(failedDraft, update.$set);
+    }
+    return { acknowledged: true, modifiedCount: 1 };
+  };
+  CheckoutDraft.create = async (payload) => {
+    createCalls += 1;
+    return Object.assign(createdDraft, payload);
+  };
+  Payment.findById = () => createQueryStub(null);
+  Payment.findOne = () => createQueryStub(null);
+  Payment.create = async (payload) => createPaymentRecord({
+    ...payload,
+    metadata: { ...(payload.metadata || {}), paymentUrl: "https://pay.test/retry-failed-key" },
+  });
+
+  const quote = createCheckoutQuote();
+  const { req, res } = createReqRes({
+    userId,
+    body: { idempotencyKey: "retry-failed-key" },
+  });
+
+  await controller.checkoutSubscription(req, res, {
+    resolveCheckoutQuoteOrThrow: async () => quote,
+    createInvoice: async () => ({
+      id: "invoice-retry-failed-key",
+      url: "https://pay.test/retry-failed-key",
+      currency: "SAR",
+      metadata: { type: "subscription_activation", draftId: String(createdDraft._id) },
+    }),
+  });
+
+  assert.equal(res.statusCode, 201);
+  assert.equal(createCalls, 1);
+  assert.equal(failedDraft.idempotencyKey, "");
+  assert.equal(res.payload.data.payment_url, "https://pay.test/retry-failed-key");
+});
+
 test("renewSubscription marks the draft failed when payment creation fails after invoice creation", async (t) => {
   const originalWriteFlag = process.env.PHASE1_CANONICAL_CHECKOUT_DRAFT_WRITE;
   const originalSubscriptionFindById = Subscription.findById;
@@ -681,6 +761,105 @@ test("renewSubscription recovers a reusable payment from persisted draft invoice
   assert.equal(res.payload.data.paymentId, recoveredPayment.id);
   assert.equal(res.payload.data.payment_url, "https://pay.test/renew-recovered-retry");
   assert.equal(existingDraft.paymentId, recoveredPayment._id);
+});
+
+test("renewSubscription allows retrying a failed idempotency key by releasing the terminal draft key", async (t) => {
+  const originalWriteFlag = process.env.PHASE1_CANONICAL_CHECKOUT_DRAFT_WRITE;
+  const originalSubscriptionFindById = Subscription.findById;
+  const originalFindOne = CheckoutDraft.findOne;
+  const originalCreateDraft = CheckoutDraft.create;
+  const originalUpdateOne = CheckoutDraft.updateOne;
+  const originalPaymentCreate = Payment.create;
+  const originalPaymentFindById = Payment.findById;
+  const originalPaymentFindOne = Payment.findOne;
+
+  delete process.env.PHASE1_CANONICAL_CHECKOUT_DRAFT_WRITE;
+
+  t.after(() => {
+    process.env.PHASE1_CANONICAL_CHECKOUT_DRAFT_WRITE = originalWriteFlag;
+    Subscription.findById = originalSubscriptionFindById;
+    CheckoutDraft.findOne = originalFindOne;
+    CheckoutDraft.create = originalCreateDraft;
+    CheckoutDraft.updateOne = originalUpdateOne;
+    Payment.create = originalPaymentCreate;
+    Payment.findById = originalPaymentFindById;
+    Payment.findOne = originalPaymentFindOne;
+  });
+
+  const userId = objectId();
+  const previousSubscriptionId = objectId();
+  const failedDraft = createDraftRecord({
+    userId,
+    status: "failed",
+    renewedFromSubscriptionId: previousSubscriptionId,
+    idempotencyKey: "renew-retry-failed-key",
+    requestHash: "",
+    failureReason: "payment_create:11000",
+  });
+  const createdDraft = createDraftRecord({
+    userId,
+    renewedFromSubscriptionId: previousSubscriptionId,
+    idempotencyKey: "renew-retry-failed-key",
+  });
+
+  let createCalls = 0;
+  Subscription.findById = () => createQueryStub({
+    _id: previousSubscriptionId,
+    userId,
+    planId: objectId(),
+    selectedGrams: 150,
+    selectedMealsPerDay: 3,
+    deliveryMode: "delivery",
+    deliveryAddress: { city: "Riyadh" },
+    deliverySlot: { type: "delivery", window: "8 AM - 11 AM", slotId: "slot-1" },
+    deliveryZoneId: objectId(),
+    validityEndDate: new Date("2020-01-01T00:00:00.000Z"),
+    endDate: new Date("2020-01-01T00:00:00.000Z"),
+  });
+  CheckoutDraft.findOne = (query) => {
+    if (query && query.idempotencyKey === "renew-retry-failed-key") {
+      return createQueryStub(failedDraft);
+    }
+    return createQueryStub(null);
+  };
+  CheckoutDraft.updateOne = async (_filter, update) => {
+    if (update && update.$set) {
+      Object.assign(failedDraft, update.$set);
+    }
+    return { acknowledged: true, modifiedCount: 1 };
+  };
+  CheckoutDraft.create = async (payload) => {
+    createCalls += 1;
+    return Object.assign(createdDraft, payload);
+  };
+  Payment.findById = () => createQueryStub(null);
+  Payment.findOne = () => createQueryStub(null);
+  Payment.create = async (payload) => createPaymentRecord({
+    ...payload,
+    metadata: { ...(payload.metadata || {}), paymentUrl: "https://pay.test/renew-retry-failed-key" },
+  });
+
+  const quote = createCheckoutQuote();
+  const { req, res } = createReqRes({
+    params: { id: String(previousSubscriptionId) },
+    userId,
+    body: { idempotencyKey: "renew-retry-failed-key" },
+  });
+
+  await controller.renewSubscription(req, res, {
+    resolveCheckoutQuoteOrThrow: async () => quote,
+    createInvoice: async () => ({
+      id: "invoice-renew-retry-failed-key",
+      url: "https://pay.test/renew-retry-failed-key",
+      currency: "SAR",
+      metadata: { type: "subscription_renewal", draftId: String(createdDraft._id) },
+    }),
+  });
+
+  assert.equal(res.statusCode, 201);
+  assert.equal(createCalls, 1);
+  assert.equal(failedDraft.idempotencyKey, "");
+  assert.equal(res.payload.data.payment_url, "https://pay.test/renew-retry-failed-key");
 });
 
 test("finalizeSubscriptionDraftPayment uses canonical activation path only for canonical drafts when activation flag is on", async (t) => {
