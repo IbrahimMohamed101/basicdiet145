@@ -1,11 +1,16 @@
 const https = require("https");
 
 const MOYASAR_HOST = "api.moyasar.com";
+const DEFAULT_MOYASAR_TIMEOUT_MS = 15000;
 
 function requestJson(path, method, body, apiKey) {
   return new Promise((resolve, reject) => {
     const payload = body ? JSON.stringify(body) : undefined;
     const auth = Buffer.from(`${apiKey}:`).toString("base64");
+    const timeoutMsRaw = Number(process.env.MOYASAR_REQUEST_TIMEOUT_MS || DEFAULT_MOYASAR_TIMEOUT_MS);
+    const timeoutMs = Number.isFinite(timeoutMsRaw) && timeoutMsRaw > 0
+      ? timeoutMsRaw
+      : DEFAULT_MOYASAR_TIMEOUT_MS;
     const req = https.request(
       {
         hostname: MOYASAR_HOST,
@@ -42,6 +47,11 @@ function requestJson(path, method, body, apiKey) {
     );
 
     req.on("error", reject);
+    req.setTimeout(timeoutMs, () => {
+      const err = new Error(`Moyasar request timed out after ${timeoutMs}ms`);
+      err.code = "PAYMENT_PROVIDER_TIMEOUT";
+      req.destroy(err);
+    });
     if (payload) req.write(payload);
     req.end();
   });

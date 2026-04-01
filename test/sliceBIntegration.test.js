@@ -280,6 +280,146 @@ test("checkoutSubscription with canonical draft-write flag stores canonical cont
   assert.deepEqual(createdDraftPayload.contractSnapshot, contract.contractSnapshot);
 });
 
+test("checkoutSubscription marks the draft failed when payment creation fails after invoice creation", async (t) => {
+  const originalWriteFlag = process.env.PHASE1_CANONICAL_CHECKOUT_DRAFT_WRITE;
+  const originalFindOne = CheckoutDraft.findOne;
+  const originalCreateDraft = CheckoutDraft.create;
+  const originalPaymentCreate = Payment.create;
+  const originalPaymentFindById = Payment.findById;
+
+  delete process.env.PHASE1_CANONICAL_CHECKOUT_DRAFT_WRITE;
+
+  t.after(() => {
+    process.env.PHASE1_CANONICAL_CHECKOUT_DRAFT_WRITE = originalWriteFlag;
+    CheckoutDraft.findOne = originalFindOne;
+    CheckoutDraft.create = originalCreateDraft;
+    Payment.create = originalPaymentCreate;
+    Payment.findById = originalPaymentFindById;
+  });
+
+  const saveSnapshots = [];
+  const trackedDraft = {
+    _id: objectId(),
+    id: String(objectId()),
+    status: "pending_payment",
+    paymentUrl: "",
+    failureReason: "",
+    async save() {
+      saveSnapshots.push({
+        status: this.status,
+        paymentUrl: this.paymentUrl,
+        providerInvoiceId: this.providerInvoiceId,
+        paymentId: this.paymentId ? String(this.paymentId) : "",
+        failureReason: this.failureReason,
+      });
+      return this;
+    },
+  };
+
+  CheckoutDraft.findOne = () => createQueryStub(null);
+  CheckoutDraft.create = async () => trackedDraft;
+  Payment.findById = () => createQueryStub(null);
+  Payment.create = async () => {
+    const err = new Error("E11000 duplicate key error collection: payments index: provider_1_providerInvoiceId_1 dup key");
+    err.code = 11000;
+    err.keyPattern = { providerInvoiceId: 1 };
+    throw err;
+  };
+
+  const quote = createCheckoutQuote();
+  const { req, res } = createReqRes({
+    userId: objectId(),
+    body: { idempotencyKey: "payment-create-failure-key" },
+  });
+
+  await controller.checkoutSubscription(req, res, {
+    resolveCheckoutQuoteOrThrow: async () => quote,
+    createInvoice: async () => ({
+      id: "invoice-payment-create-failure",
+      url: "https://pay.test/invoice-payment-create-failure",
+      currency: "SAR",
+      metadata: { type: "subscription_activation", draftId: String(trackedDraft._id) },
+    }),
+  });
+
+  assert.equal(res.statusCode, 500);
+  assert.equal(res.payload.error.code, "INTERNAL");
+  assert.equal(trackedDraft.providerInvoiceId, "invoice-payment-create-failure");
+  assert.equal(trackedDraft.paymentUrl, "https://pay.test/invoice-payment-create-failure");
+  assert.equal(trackedDraft.status, "failed");
+  assert.match(trackedDraft.failureReason, /^payment_create:/);
+  assert.equal(saveSnapshots.length, 2);
+  assert.deepEqual(saveSnapshots[0], {
+    status: "pending_payment",
+    paymentUrl: "https://pay.test/invoice-payment-create-failure",
+    providerInvoiceId: "invoice-payment-create-failure",
+    paymentId: "",
+    failureReason: "",
+  });
+  assert.equal(saveSnapshots[1].status, "failed");
+  assert.equal(saveSnapshots[1].paymentUrl, "https://pay.test/invoice-payment-create-failure");
+});
+
+test("checkoutSubscription fails the draft when invoice response is missing paymentUrl", async (t) => {
+  const originalWriteFlag = process.env.PHASE1_CANONICAL_CHECKOUT_DRAFT_WRITE;
+  const originalFindOne = CheckoutDraft.findOne;
+  const originalCreateDraft = CheckoutDraft.create;
+  const originalPaymentCreate = Payment.create;
+  const originalPaymentFindById = Payment.findById;
+
+  delete process.env.PHASE1_CANONICAL_CHECKOUT_DRAFT_WRITE;
+
+  t.after(() => {
+    process.env.PHASE1_CANONICAL_CHECKOUT_DRAFT_WRITE = originalWriteFlag;
+    CheckoutDraft.findOne = originalFindOne;
+    CheckoutDraft.create = originalCreateDraft;
+    Payment.create = originalPaymentCreate;
+    Payment.findById = originalPaymentFindById;
+  });
+
+  const trackedDraft = {
+    _id: objectId(),
+    id: String(objectId()),
+    status: "pending_payment",
+    paymentUrl: "",
+    failureReason: "",
+    async save() {
+      return this;
+    },
+  };
+
+  let paymentCreateCalls = 0;
+  CheckoutDraft.findOne = () => createQueryStub(null);
+  CheckoutDraft.create = async () => trackedDraft;
+  Payment.findById = () => createQueryStub(null);
+  Payment.create = async () => {
+    paymentCreateCalls += 1;
+    return createPaymentRecord();
+  };
+
+  const quote = createCheckoutQuote();
+  const { req, res } = createReqRes({
+    userId: objectId(),
+    body: { idempotencyKey: "missing-payment-url-key" },
+  });
+
+  await controller.checkoutSubscription(req, res, {
+    resolveCheckoutQuoteOrThrow: async () => quote,
+    createInvoice: async () => ({
+      id: "invoice-missing-payment-url",
+      currency: "SAR",
+      metadata: { type: "subscription_activation", draftId: String(trackedDraft._id) },
+    }),
+  });
+
+  assert.equal(res.statusCode, 500);
+  assert.equal(res.payload.error.code, "INTERNAL");
+  assert.equal(paymentCreateCalls, 0);
+  assert.equal(trackedDraft.status, "failed");
+  assert.equal(trackedDraft.paymentUrl, "");
+  assert.match(trackedDraft.failureReason, /^invoice_create:PAYMENT_PROVIDER_INVALID_RESPONSE$/);
+});
+
 test("finalizeSubscriptionDraftPayment uses canonical activation path only for canonical drafts when activation flag is on", async (t) => {
   const originalActivationFlag = process.env.PHASE1_CANONICAL_DRAFT_ACTIVATION;
   process.env.PHASE1_CANONICAL_DRAFT_ACTIVATION = "true";

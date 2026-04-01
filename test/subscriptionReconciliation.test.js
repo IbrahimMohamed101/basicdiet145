@@ -105,4 +105,47 @@ test("Subscription Reconciliation Service (Mocked)", async (t) => {
     CheckoutDraft.findById = originalDraftFindById;
     Payment.findById = originalPaymentFindById;
   });
+
+  await t.test("should recover paymentUrl from payment metadata before provider fetch", async () => {
+    const mockDraft = {
+      _id: draftId,
+      userId,
+      status: "pending_payment",
+      paymentId,
+      paymentUrl: "",
+      save: async () => {},
+      session: function() { return this; }
+    };
+
+    const mockPayment = {
+      _id: paymentId,
+      userId,
+      amount: 100,
+      currency: "SAR",
+      type: "subscription_activation",
+      provider: "moyasar",
+      status: "initiated",
+      metadata: { paymentUrl: "https://pay.test/recovered-from-metadata" },
+      save: async () => {},
+      session: function() { return this; }
+    };
+
+    const originalDraftFindById = CheckoutDraft.findById;
+    const originalPaymentFindById = Payment.findById;
+
+    CheckoutDraft.findById = () => ({ session: () => Promise.resolve(mockDraft) });
+    Payment.findById = () => ({ session: () => Promise.resolve(mockPayment) });
+
+    const result = await reconcileCheckoutDraft(draftId, {
+      mode: RECONCILE_MODES.PERSIST,
+      getInvoiceFn: async () => {
+        throw new Error("provider should not be required for paymentUrl recovery");
+      },
+    });
+
+    assert.equal(result.draft.paymentUrl, "https://pay.test/recovered-from-metadata");
+
+    CheckoutDraft.findById = originalDraftFindById;
+    Payment.findById = originalPaymentFindById;
+  });
 });

@@ -22,6 +22,10 @@ async function reconcileCheckoutDraft(draftId, { mode = RECONCILE_MODES.READ_ONL
     payment = await Payment.findById(draft.paymentId).session(session);
   }
 
+  const paymentMetadata = payment && payment.metadata && typeof payment.metadata === "object"
+    ? payment.metadata
+    : {};
+
   // Orphan recovery: Search by metadata.draftId if not linked
   if (!payment) {
     payment = await Payment.findOne({
@@ -37,6 +41,18 @@ async function reconcileCheckoutDraft(draftId, { mode = RECONCILE_MODES.READ_ONL
       }
       await draft.save({ session });
       logger.info("Healed orphaned payment link for checkout draft", { draftId, paymentId: payment._id });
+    }
+  }
+
+  const resolvedPaymentMetadata = payment && payment.metadata && typeof payment.metadata === "object"
+    ? payment.metadata
+    : paymentMetadata;
+
+  if (!draft.paymentUrl && typeof resolvedPaymentMetadata.paymentUrl === "string" && resolvedPaymentMetadata.paymentUrl.trim()) {
+    draft.paymentUrl = resolvedPaymentMetadata.paymentUrl.trim();
+    if (mode === RECONCILE_MODES.PERSIST) {
+      await draft.save({ session });
+      logger.info("Recovered checkout payment URL from payment metadata", { draftId, paymentId: payment ? payment._id : null });
     }
   }
 

@@ -500,6 +500,172 @@ function buildPaymentMetadataWithInitiationFields(baseMetadata, { paymentUrl, re
   return metadata;
 }
 
+function normalizeCheckoutDeliveryForPersistence(delivery = {}) {
+  const normalizedType = delivery && delivery.type === "pickup" ? "pickup" : "delivery";
+  const slot = delivery && delivery.slot && typeof delivery.slot === "object" ? delivery.slot : {};
+
+  return {
+    type: normalizedType,
+    address: delivery && delivery.address ? delivery.address : null,
+    zoneId: normalizedType === "delivery" ? (delivery && delivery.zoneId ? delivery.zoneId : null) : null,
+    zoneName:
+      normalizedType === "delivery"
+        ? String(delivery && delivery.zoneName ? delivery.zoneName : "").trim()
+        : "",
+    slot: {
+      type: normalizedType,
+      window: slot && slot.window ? String(slot.window) : "",
+      slotId: slot && slot.slotId ? String(slot.slotId) : "",
+    },
+  };
+}
+
+function summarizeCheckoutDeliveryForDebug(delivery = {}) {
+  const normalized = normalizeCheckoutDeliveryForPersistence(delivery);
+  return {
+    type: normalized.type,
+    hasAddress: Boolean(normalized.address),
+    zoneId: normalized.zoneId ? String(normalized.zoneId) : null,
+    zoneName: normalized.zoneName || "",
+    slotType: normalized.slot.type,
+    slotId: normalized.slot.slotId || "",
+    window: normalized.slot.window || "",
+  };
+}
+
+function getInvoiceResponseId(invoice) {
+  if (!invoice || typeof invoice !== "object") return "";
+  return String(invoice.id || invoice.invoice_id || invoice.invoiceId || "").trim();
+}
+
+function getInvoiceResponseUrl(invoice) {
+  if (!invoice || typeof invoice !== "object") return "";
+  return String(invoice.url || invoice.payment_url || invoice.paymentUrl || "").trim();
+}
+
+function buildCheckoutInitFailureReason(stage, err) {
+  const normalizedStage = String(stage || "checkout_init").trim() || "checkout_init";
+  const detail = err && err.code
+    ? String(err.code).trim()
+    : err && err.message
+      ? String(err.message).trim()
+      : "unknown_error";
+  return `${normalizedStage}:${detail || "unknown_error"}`.slice(0, 200);
+}
+
+function isCheckoutDraftDuplicateKeyError(err) {
+  if (!err || err.code !== 11000) return false;
+
+  const keyNames = Object.keys(err.keyPattern || err.keyValue || {});
+  if (keyNames.some((key) => key === "idempotencyKey" || key === "requestHash")) {
+    return true;
+  }
+
+  const message = String(err.message || "");
+  return message.includes("idempotencyKey") || message.includes("requestHash");
+}
+
+async function persistCheckoutDraftUpdate(draft, changes, { stage } = {}) {
+  if (!draft) return;
+
+  const persistedChanges = Object.fromEntries(
+    Object.entries({
+      ...changes,
+      updatedAt: new Date(),
+    }).filter(([, value]) => value !== undefined)
+  );
+
+  logger.info("[DEBUG-CHECKOUT] Persisting draft update", {
+    draftId: String(draft._id),
+    stage: String(stage || "unknown"),
+    status: persistedChanges.status !== undefined ? persistedChanges.status : draft.status,
+    providerInvoiceId:
+      persistedChanges.providerInvoiceId !== undefined
+        ? persistedChanges.providerInvoiceId
+        : (draft.providerInvoiceId || ""),
+    paymentId:
+      persistedChanges.paymentId !== undefined
+        ? String(persistedChanges.paymentId || "")
+        : (draft.paymentId ? String(draft.paymentId) : ""),
+    hasPaymentUrl:
+      persistedChanges.paymentUrl !== undefined
+        ? Boolean(String(persistedChanges.paymentUrl || "").trim())
+        : Boolean(String(draft.paymentUrl || "").trim()),
+    failureReason:
+      persistedChanges.failureReason !== undefined
+        ? persistedChanges.failureReason
+        : (draft.failureReason || ""),
+  });
+
+  Object.assign(draft, persistedChanges);
+
+  try {
+    await draft.save();
+    logger.info("[DEBUG-CHECKOUT] Draft update saved", {
+      draftId: String(draft._id),
+      stage: String(stage || "unknown"),
+    });
+  } catch (saveErr) {
+    logger.error("[DEBUG-CHECKOUT] Draft save failed; attempting updateOne fallback", {
+      draftId: String(draft._id),
+      stage: String(stage || "unknown"),
+      error: saveErr.message,
+    });
+
+    try {
+      await CheckoutDraft.updateOne({ _id: draft._id }, { $set: persistedChanges });
+      Object.assign(draft, persistedChanges);
+      logger.warn("[DEBUG-CHECKOUT] Draft update persisted via updateOne fallback", {
+        draftId: String(draft._id),
+        stage: String(stage || "unknown"),
+      });
+    } catch (updateErr) {
+      logger.error("[DEBUG-CHECKOUT] Draft updateOne fallback failed", {
+        draftId: String(draft._id),
+        stage: String(stage || "unknown"),
+        error: updateErr.message,
+      });
+      throw saveErr;
+    }
+  }
+}
+
+async function persistCheckoutInitializationFailure(draft, err, { stage, providerInvoiceId, paymentUrl } = {}) {
+  if (!draft) return;
+
+  const failureReason = buildCheckoutInitFailureReason(stage, err);
+  logger.error("[DEBUG-CHECKOUT] Checkout initialization failed", {
+    draftId: String(draft._id),
+    stage: String(stage || "unknown"),
+    error: err && err.message ? err.message : "Unknown error",
+    code: err && err.code ? err.code : null,
+    providerInvoiceId: providerInvoiceId || draft.providerInvoiceId || "",
+    hasPaymentUrl: Boolean(String(paymentUrl !== undefined ? paymentUrl : draft.paymentUrl || "").trim()),
+    failureReason,
+  });
+
+  try {
+    await persistCheckoutDraftUpdate(
+      draft,
+      {
+        status: "failed",
+        failedAt: new Date(),
+        failureReason,
+        ...(providerInvoiceId ? { providerInvoiceId } : {}),
+        ...(paymentUrl !== undefined ? { paymentUrl } : {}),
+      },
+      { stage: `${String(stage || "unknown")}_failure` }
+    );
+  } catch (persistErr) {
+    logger.error("[DEBUG-CHECKOUT] Failed to persist checkout initialization failure", {
+      draftId: String(draft._id),
+      stage: String(stage || "unknown"),
+      error: persistErr.message,
+      originalError: err && err.message ? err.message : "Unknown error",
+    });
+  }
+}
+
 function buildCheckoutReusePayload(draft, payment) {
   return {
     subscriptionId: draft.subscriptionId ? String(draft.subscriptionId) : null,
@@ -1949,6 +2115,9 @@ async function checkoutSubscription(req, res, runtimeOverrides = null) {
   let idempotencyKey = "";
   let requestHash = "";
   let canonicalContract = null;
+  let checkoutStage = "pre_draft";
+  let providerInvoiceId = "";
+  let paymentUrl = "";
   try {
     const body = req.body || {};
     idempotencyKey = parseIdempotencyKey(
@@ -1969,6 +2138,7 @@ async function checkoutSubscription(req, res, runtimeOverrides = null) {
         isPhase2GenericPremiumWalletEnabled()
         && isPhase1CanonicalCheckoutDraftWriteEnabled(),
     });
+    const normalizedDelivery = normalizeCheckoutDeliveryForPersistence(quote.delivery);
     if (isPhase1CanonicalCheckoutDraftWriteEnabled()) {
       canonicalContract = runtime.buildPhase1SubscriptionContract({
         payload: body,
@@ -2178,6 +2348,7 @@ async function checkoutSubscription(req, res, runtimeOverrides = null) {
         }));
 
     logger.info(`[DEBUG-CHECKOUT] Creating draft for userId ${req.userId}, idempotencyKey: ${idempotencyKey}`);
+    checkoutStage = "draft_create";
     draft = await CheckoutDraft.create({
       userId: req.userId,
       planId: quote.plan._id,
@@ -2187,7 +2358,7 @@ async function checkoutSubscription(req, res, runtimeOverrides = null) {
       grams: quote.grams,
       mealsPerDay: quote.mealsPerDay,
       startDate: canonicalContract ? canonicalContract.resolvedStart.resolvedStartDate : (quote.startDate || undefined),
-      delivery: quote.delivery,
+      delivery: normalizedDelivery,
       premiumItems: quote.premiumItems.map((item) => ({
         premiumMealId: item.premiumMeal._id,
         qty: item.qty,
@@ -2210,7 +2381,14 @@ async function checkoutSubscription(req, res, runtimeOverrides = null) {
 
     logger.info(`[DEBUG-CHECKOUT] Draft created successfully with ID: ${draft._id}`);
     const appUrl = process.env.APP_URL || "https://example.com";
-    logger.info(`[DEBUG-CHECKOUT] Calling createInvoice for draft ID: ${draft._id}`);
+    checkoutStage = "invoice_create";
+    logger.info("[DEBUG-CHECKOUT] Calling createInvoice", {
+      draftId: String(draft._id),
+      userId: String(req.userId),
+      idempotencyKey,
+      totalHalala: Number(quote && quote.breakdown && quote.breakdown.totalHalala || 0),
+      delivery: summarizeCheckoutDeliveryForDebug(normalizedDelivery),
+    });
     const invoice = await runtime.createInvoice({
       amount: quote.breakdown.totalHalala,
       description: buildPaymentDescription("subscriptionCheckout", lang, {
@@ -2227,10 +2405,39 @@ async function checkoutSubscription(req, res, runtimeOverrides = null) {
         mealsPerDay: quote.mealsPerDay,
       },
     });
-    logger.info(`[DEBUG-CHECKOUT] Invoice returned for draft ID: ${draft._id}, invoice ID: ${invoice ? invoice.id : 'undefined'}, invoiceURL: ${invoice ? invoice.url : 'undefined'}`);
+    providerInvoiceId = getInvoiceResponseId(invoice);
+    paymentUrl = getInvoiceResponseUrl(invoice);
+    logger.info("[DEBUG-CHECKOUT] createInvoice returned", {
+      draftId: String(draft._id),
+      providerInvoiceId,
+      hasPaymentUrl: Boolean(paymentUrl),
+    });
+
+    if (!providerInvoiceId || !paymentUrl) {
+      const invalidInvoiceErr = new Error("Invoice response missing required payment fields");
+      invalidInvoiceErr.code = "PAYMENT_PROVIDER_INVALID_RESPONSE";
+      throw invalidInvoiceErr;
+    }
+
     const invoiceCurrency = assertSystemCurrencyOrThrow(invoice.currency || SYSTEM_CURRENCY, "Invoice currency");
 
-    logger.info(`[DEBUG-CHECKOUT] Creating payment record for draft ID: ${draft._id}`);
+    checkoutStage = "draft_invoice_persist";
+    await persistCheckoutDraftUpdate(
+      draft,
+      {
+        providerInvoiceId,
+        paymentUrl,
+        failureReason: "",
+      },
+      { stage: checkoutStage }
+    );
+
+    checkoutStage = "payment_create";
+    logger.info("[DEBUG-CHECKOUT] Creating payment record", {
+      draftId: String(draft._id),
+      providerInvoiceId,
+      hasPaymentUrl: Boolean(paymentUrl),
+    });
     const payment = await Payment.create({
       provider: "moyasar",
       type: "subscription_activation",
@@ -2238,17 +2445,30 @@ async function checkoutSubscription(req, res, runtimeOverrides = null) {
       amount: quote.breakdown.totalHalala,
       currency: invoiceCurrency,
       userId: req.userId,
-      providerInvoiceId: invoice.id,
-      metadata: invoice.metadata || {},
+      providerInvoiceId,
+      metadata: buildPaymentMetadataWithInitiationFields(invoice.metadata || {}, {
+        paymentUrl,
+        responseShape: "subscription_checkout",
+        totalHalala: quote.breakdown.totalHalala,
+      }),
     });
-    logger.info(`[DEBUG-CHECKOUT] Payment record created with ID: ${payment._id}`);
-    draft.paymentId = payment._id;
-    draft.providerInvoiceId = invoice.id;
-    draft.paymentUrl = invoice.url || "";
-    draft.updatedAt = new Date();
-    logger.info(`[DEBUG-CHECKOUT] Assigned paymentUrl: ${draft.paymentUrl}`);
-    await draft.save();
-    logger.info(`[DEBUG-CHECKOUT] Draft saved successfully with paymentUrl`);
+    logger.info("[DEBUG-CHECKOUT] Payment record created", {
+      draftId: String(draft._id),
+      paymentId: String(payment._id),
+      providerInvoiceId,
+    });
+
+    checkoutStage = "draft_payment_link_persist";
+    await persistCheckoutDraftUpdate(
+      draft,
+      {
+        paymentId: payment._id,
+        providerInvoiceId,
+        paymentUrl,
+        failureReason: "",
+      },
+      { stage: checkoutStage }
+    );
 
     return res.status(201).json({
       ok: true,
@@ -2261,16 +2481,16 @@ async function checkoutSubscription(req, res, runtimeOverrides = null) {
       },
     });
   } catch (err) {
-    if (err.code === "VALIDATION_ERROR") {
+    if (!draft && err.code === "VALIDATION_ERROR") {
       return sendValidationError(res, err.message);
     }
-    if (err.code === "NOT_FOUND") {
+    if (!draft && err.code === "NOT_FOUND") {
       return errorResponse(res, 404, "NOT_FOUND", err.message);
     }
-    if (err.code === "INVALID_SELECTION") {
+    if (!draft && err.code === "INVALID_SELECTION") {
       return errorResponse(res, 400, "INVALID", err.message);
     }
-    if (err && err.code === 11000) {
+    if (!draft && isCheckoutDraftDuplicateKeyError(err)) {
       let existingDraft = null;
       existingDraft = await CheckoutDraft.findOne({ userId: req.userId, idempotencyKey }).lean();
       if (!existingDraft && requestHash) {
@@ -2317,21 +2537,11 @@ async function checkoutSubscription(req, res, runtimeOverrides = null) {
         );
       }
     }
-    if (draft && draft.status === "pending_payment") {
-      draft.status = "failed";
-      draft.failedAt = new Date();
-      const rawReason = err && err.code ? String(err.code) : (err && err.message ? err.message : "checkout_init_failed");
-      draft.failureReason = rawReason.substring(0, 200);
-      draft.updatedAt = new Date();
-      
-      logger.info(`[DEBUG-CHECKOUT] Invoice or initialization failed. Catch block executing for draft ID: ${draft._id}, Reason: ${draft.failureReason}`);
-      try {
-        await draft.save();
-        logger.info(`[DEBUG-CHECKOUT] Draft marked as failed successfully.`);
-      } catch (saveErr) {
-        logger.error(`[DEBUG-CHECKOUT] FATAL: Failed to save draft as failed!`, { error: saveErr.message });
-      }
-    }
+    await persistCheckoutInitializationFailure(draft, err, {
+      stage: checkoutStage,
+      providerInvoiceId,
+      paymentUrl,
+    });
     logger.error("Subscription checkout failed", { error: err.message, stack: err.stack });
     return errorResponse(res, 500, "INTERNAL", "Checkout failed");
   }
