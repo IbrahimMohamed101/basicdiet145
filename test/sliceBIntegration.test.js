@@ -13,23 +13,32 @@ function objectId() {
 }
 
 function createQueryStub(result) {
-  return {
+  const query = {
     sort() {
-      return this;
+      return query;
+    },
+    session() {
+      return query;
     },
     lean() {
       return Promise.resolve(result);
     },
+    then(resolve, reject) {
+      return Promise.resolve(result).then(resolve, reject);
+    },
   };
+  return query;
 }
 
-function createReqRes({ body = {}, userId = objectId(), headers = {} } = {}) {
+function createReqRes({ params = {}, body = {}, query = {}, userId = objectId(), headers = {} } = {}) {
   const normalizedHeaders = Object.fromEntries(
     Object.entries(headers).map(([key, value]) => [String(key).toLowerCase(), value])
   );
 
   const req = {
+    params,
     body,
+    query,
     userId,
     headers: normalizedHeaders,
     get(name) {
@@ -83,9 +92,10 @@ function createCheckoutQuote({ startDate = new Date("2026-03-20T00:00:00+03:00")
 }
 
 function createDraftRecord(payload = {}) {
+  const _id = objectId();
   return {
-    _id: objectId(),
-    id: String(objectId()),
+    _id,
+    id: String(_id),
     status: "pending_payment",
     paymentUrl: "",
     ...payload,
@@ -96,9 +106,10 @@ function createDraftRecord(payload = {}) {
 }
 
 function createPaymentRecord(payload = {}) {
+  const _id = objectId();
   return {
-    _id: objectId(),
-    id: String(objectId()),
+    _id,
+    id: String(_id),
     status: "initiated",
     applied: false,
     ...payload,
@@ -163,11 +174,13 @@ test("checkoutSubscription with both flags off keeps legacy draft creation behav
   const originalCreateDraft = CheckoutDraft.create;
   const originalPaymentCreate = Payment.create;
   const originalPaymentFindById = Payment.findById;
+  const originalPaymentFindOne = Payment.findOne;
   t.after(() => {
     CheckoutDraft.findOne = originalFindOne;
     CheckoutDraft.create = originalCreateDraft;
     Payment.create = originalPaymentCreate;
     Payment.findById = originalPaymentFindById;
+    Payment.findOne = originalPaymentFindOne;
   });
 
   let createdDraftPayload = null;
@@ -177,6 +190,7 @@ test("checkoutSubscription with both flags off keeps legacy draft creation behav
     return createDraftRecord(payload);
   };
   Payment.findById = () => createQueryStub(null);
+  Payment.findOne = () => createQueryStub(null);
   Payment.create = async (payload) => createPaymentRecord(payload);
 
   const quote = createCheckoutQuote();
@@ -216,11 +230,13 @@ test("checkoutSubscription with canonical draft-write flag stores canonical cont
   const originalCreateDraft = CheckoutDraft.create;
   const originalPaymentCreate = Payment.create;
   const originalPaymentFindById = Payment.findById;
+  const originalPaymentFindOne = Payment.findOne;
   t.after(() => {
     CheckoutDraft.findOne = originalFindOne;
     CheckoutDraft.create = originalCreateDraft;
     Payment.create = originalPaymentCreate;
     Payment.findById = originalPaymentFindById;
+    Payment.findOne = originalPaymentFindOne;
   });
 
   let createdDraftPayload = null;
@@ -230,6 +246,7 @@ test("checkoutSubscription with canonical draft-write flag stores canonical cont
     return createDraftRecord(payload);
   };
   Payment.findById = () => createQueryStub(null);
+  Payment.findOne = () => createQueryStub(null);
   Payment.create = async (payload) => createPaymentRecord(payload);
 
   const canonicalResolvedStart = new Date("2026-03-19T21:00:00.000Z");
@@ -286,6 +303,7 @@ test("checkoutSubscription marks the draft failed when payment creation fails af
   const originalCreateDraft = CheckoutDraft.create;
   const originalPaymentCreate = Payment.create;
   const originalPaymentFindById = Payment.findById;
+  const originalPaymentFindOne = Payment.findOne;
 
   delete process.env.PHASE1_CANONICAL_CHECKOUT_DRAFT_WRITE;
 
@@ -295,6 +313,7 @@ test("checkoutSubscription marks the draft failed when payment creation fails af
     CheckoutDraft.create = originalCreateDraft;
     Payment.create = originalPaymentCreate;
     Payment.findById = originalPaymentFindById;
+    Payment.findOne = originalPaymentFindOne;
   });
 
   const saveSnapshots = [];
@@ -319,6 +338,7 @@ test("checkoutSubscription marks the draft failed when payment creation fails af
   CheckoutDraft.findOne = () => createQueryStub(null);
   CheckoutDraft.create = async () => trackedDraft;
   Payment.findById = () => createQueryStub(null);
+  Payment.findOne = () => createQueryStub(null);
   Payment.create = async () => {
     const err = new Error("E11000 duplicate key error collection: payments index: provider_1_providerInvoiceId_1 dup key");
     err.code = 11000;
@@ -366,6 +386,7 @@ test("checkoutSubscription fails the draft when invoice response is missing paym
   const originalCreateDraft = CheckoutDraft.create;
   const originalPaymentCreate = Payment.create;
   const originalPaymentFindById = Payment.findById;
+  const originalPaymentFindOne = Payment.findOne;
 
   delete process.env.PHASE1_CANONICAL_CHECKOUT_DRAFT_WRITE;
 
@@ -375,6 +396,7 @@ test("checkoutSubscription fails the draft when invoice response is missing paym
     CheckoutDraft.create = originalCreateDraft;
     Payment.create = originalPaymentCreate;
     Payment.findById = originalPaymentFindById;
+    Payment.findOne = originalPaymentFindOne;
   });
 
   const trackedDraft = {
@@ -392,6 +414,7 @@ test("checkoutSubscription fails the draft when invoice response is missing paym
   CheckoutDraft.findOne = () => createQueryStub(null);
   CheckoutDraft.create = async () => trackedDraft;
   Payment.findById = () => createQueryStub(null);
+  Payment.findOne = () => createQueryStub(null);
   Payment.create = async () => {
     paymentCreateCalls += 1;
     return createPaymentRecord();
@@ -418,6 +441,246 @@ test("checkoutSubscription fails the draft when invoice response is missing paym
   assert.equal(trackedDraft.status, "failed");
   assert.equal(trackedDraft.paymentUrl, "");
   assert.match(trackedDraft.failureReason, /^invoice_create:PAYMENT_PROVIDER_INVALID_RESPONSE$/);
+});
+
+test("checkoutSubscription recovers a reusable payment from persisted draft invoice data on retry", async (t) => {
+  const originalWriteFlag = process.env.PHASE1_CANONICAL_CHECKOUT_DRAFT_WRITE;
+  const originalFindOne = CheckoutDraft.findOne;
+  const originalFindById = CheckoutDraft.findById;
+  const originalPaymentCreate = Payment.create;
+  const originalPaymentFindById = Payment.findById;
+  const originalPaymentFindOne = Payment.findOne;
+
+  delete process.env.PHASE1_CANONICAL_CHECKOUT_DRAFT_WRITE;
+
+  t.after(() => {
+    process.env.PHASE1_CANONICAL_CHECKOUT_DRAFT_WRITE = originalWriteFlag;
+    CheckoutDraft.findOne = originalFindOne;
+    CheckoutDraft.findById = originalFindById;
+    Payment.create = originalPaymentCreate;
+    Payment.findById = originalPaymentFindById;
+    Payment.findOne = originalPaymentFindOne;
+  });
+
+  const userId = objectId();
+  const existingDraft = createDraftRecord({
+    userId,
+    requestHash: "",
+    providerInvoiceId: "invoice-recovered-retry",
+    paymentUrl: "https://pay.test/recovered-retry",
+    breakdown: {
+      basePlanPriceHalala: 10000,
+      premiumTotalHalala: 0,
+      addonsTotalHalala: 0,
+      deliveryFeeHalala: 2000,
+      vatHalala: 1800,
+      totalHalala: 13800,
+      currency: "SAR",
+    },
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
+  const recoveredPayment = createPaymentRecord({
+    providerInvoiceId: "invoice-recovered-retry",
+    metadata: { draftId: String(existingDraft._id), paymentUrl: existingDraft.paymentUrl },
+  });
+
+  let paymentCreateCalls = 0;
+  CheckoutDraft.findOne = () => createQueryStub(existingDraft);
+  CheckoutDraft.findById = () => createQueryStub(existingDraft);
+  Payment.findById = () => createQueryStub(null);
+  Payment.findOne = () => createQueryStub(null);
+  Payment.create = async () => {
+    paymentCreateCalls += 1;
+    return recoveredPayment;
+  };
+
+  const quote = createCheckoutQuote();
+  const { req, res } = createReqRes({
+    userId,
+    body: { idempotencyKey: "recover-existing-draft-key" },
+  });
+
+  await controller.checkoutSubscription(req, res, {
+    resolveCheckoutQuoteOrThrow: async () => quote,
+  });
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(paymentCreateCalls, 1);
+  assert.equal(res.payload.data.paymentId, recoveredPayment.id);
+  assert.equal(res.payload.data.payment_url, "https://pay.test/recovered-retry");
+  assert.equal(existingDraft.paymentId, recoveredPayment._id);
+});
+
+test("renewSubscription marks the draft failed when payment creation fails after invoice creation", async (t) => {
+  const originalWriteFlag = process.env.PHASE1_CANONICAL_CHECKOUT_DRAFT_WRITE;
+  const originalSubscriptionFindById = Subscription.findById;
+  const originalFindOne = CheckoutDraft.findOne;
+  const originalCreateDraft = CheckoutDraft.create;
+  const originalPaymentCreate = Payment.create;
+  const originalPaymentFindById = Payment.findById;
+  const originalPaymentFindOne = Payment.findOne;
+
+  delete process.env.PHASE1_CANONICAL_CHECKOUT_DRAFT_WRITE;
+
+  t.after(() => {
+    process.env.PHASE1_CANONICAL_CHECKOUT_DRAFT_WRITE = originalWriteFlag;
+    Subscription.findById = originalSubscriptionFindById;
+    CheckoutDraft.findOne = originalFindOne;
+    CheckoutDraft.create = originalCreateDraft;
+    Payment.create = originalPaymentCreate;
+    Payment.findById = originalPaymentFindById;
+    Payment.findOne = originalPaymentFindOne;
+  });
+
+  const userId = objectId();
+  const previousSubscriptionId = objectId();
+  const trackedDraft = {
+    _id: objectId(),
+    id: String(objectId()),
+    status: "pending_payment",
+    paymentUrl: "",
+    failureReason: "",
+    renewedFromSubscriptionId: previousSubscriptionId,
+    async save() {
+      return this;
+    },
+  };
+
+  Subscription.findById = () => createQueryStub({
+    _id: previousSubscriptionId,
+    userId,
+    planId: objectId(),
+    selectedGrams: 150,
+    selectedMealsPerDay: 3,
+    deliveryMode: "delivery",
+    deliveryAddress: { city: "Riyadh" },
+    deliverySlot: { type: "delivery", window: "8 AM - 11 AM", slotId: "slot-1" },
+    deliveryZoneId: objectId(),
+    validityEndDate: new Date("2020-01-01T00:00:00.000Z"),
+    endDate: new Date("2020-01-01T00:00:00.000Z"),
+  });
+  CheckoutDraft.findOne = () => createQueryStub(null);
+  CheckoutDraft.create = async () => trackedDraft;
+  Payment.findById = () => createQueryStub(null);
+  Payment.findOne = () => createQueryStub(null);
+  Payment.create = async () => {
+    const err = new Error("E11000 duplicate key error collection: payments index: provider_1_providerInvoiceId_1 dup key");
+    err.code = 11000;
+    err.keyPattern = { providerInvoiceId: 1 };
+    throw err;
+  };
+
+  const quote = createCheckoutQuote();
+  const { req, res } = createReqRes({
+    params: { id: String(previousSubscriptionId) },
+    userId,
+    body: { idempotencyKey: "renew-payment-create-failure" },
+  });
+
+  await controller.renewSubscription(req, res, {
+    resolveCheckoutQuoteOrThrow: async () => quote,
+    createInvoice: async () => ({
+      id: "invoice-renew-payment-create-failure",
+      url: "https://pay.test/renew-payment-create-failure",
+      currency: "SAR",
+      metadata: { type: "subscription_renewal", draftId: String(trackedDraft._id) },
+    }),
+  });
+
+  assert.equal(res.statusCode, 500);
+  assert.equal(res.payload.error.code, "INTERNAL");
+  assert.equal(trackedDraft.providerInvoiceId, "invoice-renew-payment-create-failure");
+  assert.equal(trackedDraft.paymentUrl, "https://pay.test/renew-payment-create-failure");
+  assert.equal(trackedDraft.status, "failed");
+  assert.match(trackedDraft.failureReason, /^payment_create:/);
+});
+
+test("renewSubscription recovers a reusable payment from persisted draft invoice data on retry", async (t) => {
+  const originalWriteFlag = process.env.PHASE1_CANONICAL_CHECKOUT_DRAFT_WRITE;
+  const originalSubscriptionFindById = Subscription.findById;
+  const originalFindOne = CheckoutDraft.findOne;
+  const originalFindById = CheckoutDraft.findById;
+  const originalPaymentCreate = Payment.create;
+  const originalPaymentFindById = Payment.findById;
+  const originalPaymentFindOne = Payment.findOne;
+
+  delete process.env.PHASE1_CANONICAL_CHECKOUT_DRAFT_WRITE;
+
+  t.after(() => {
+    process.env.PHASE1_CANONICAL_CHECKOUT_DRAFT_WRITE = originalWriteFlag;
+    Subscription.findById = originalSubscriptionFindById;
+    CheckoutDraft.findOne = originalFindOne;
+    CheckoutDraft.findById = originalFindById;
+    Payment.create = originalPaymentCreate;
+    Payment.findById = originalPaymentFindById;
+    Payment.findOne = originalPaymentFindOne;
+  });
+
+  const userId = objectId();
+  const previousSubscriptionId = objectId();
+  const existingDraft = createDraftRecord({
+    userId,
+    renewedFromSubscriptionId: previousSubscriptionId,
+    providerInvoiceId: "invoice-renew-recovered-retry",
+    paymentUrl: "https://pay.test/renew-recovered-retry",
+    breakdown: {
+      basePlanPriceHalala: 10000,
+      premiumTotalHalala: 0,
+      addonsTotalHalala: 0,
+      deliveryFeeHalala: 2000,
+      vatHalala: 1800,
+      totalHalala: 13800,
+      currency: "SAR",
+    },
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
+  const recoveredPayment = createPaymentRecord({
+    type: "subscription_renewal",
+    providerInvoiceId: "invoice-renew-recovered-retry",
+    metadata: { draftId: String(existingDraft._id), paymentUrl: existingDraft.paymentUrl },
+  });
+
+  let paymentCreateCalls = 0;
+  Subscription.findById = () => createQueryStub({
+    _id: previousSubscriptionId,
+    userId,
+    planId: objectId(),
+    selectedGrams: 150,
+    selectedMealsPerDay: 3,
+    deliveryMode: "delivery",
+    deliveryAddress: { city: "Riyadh" },
+    deliverySlot: { type: "delivery", window: "8 AM - 11 AM", slotId: "slot-1" },
+    deliveryZoneId: objectId(),
+    validityEndDate: new Date("2020-01-01T00:00:00.000Z"),
+    endDate: new Date("2020-01-01T00:00:00.000Z"),
+  });
+  CheckoutDraft.findOne = () => createQueryStub(existingDraft);
+  CheckoutDraft.findById = () => createQueryStub(existingDraft);
+  Payment.findById = () => createQueryStub(null);
+  Payment.findOne = () => createQueryStub(null);
+  Payment.create = async () => {
+    paymentCreateCalls += 1;
+    return recoveredPayment;
+  };
+
+  const quote = createCheckoutQuote();
+  const { req, res } = createReqRes({
+    params: { id: String(previousSubscriptionId) },
+    userId,
+    body: { idempotencyKey: "renew-recover-existing-draft-key" },
+  });
+
+  await controller.renewSubscription(req, res, {
+    resolveCheckoutQuoteOrThrow: async () => quote,
+  });
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(paymentCreateCalls, 1);
+  assert.equal(res.payload.data.paymentId, recoveredPayment.id);
+  assert.equal(res.payload.data.payment_url, "https://pay.test/renew-recovered-retry");
+  assert.equal(existingDraft.paymentId, recoveredPayment._id);
 });
 
 test("finalizeSubscriptionDraftPayment uses canonical activation path only for canonical drafts when activation flag is on", async (t) => {

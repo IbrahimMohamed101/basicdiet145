@@ -77,9 +77,10 @@ function createQueryStub(result) {
 }
 
 function createDraftRecord(payload = {}) {
+  const _id = objectId();
   return {
-    _id: objectId(),
-    id: String(objectId()),
+    _id,
+    id: String(_id),
     status: "pending_payment",
     paymentUrl: "",
     async save() {
@@ -90,9 +91,10 @@ function createDraftRecord(payload = {}) {
 }
 
 function createPaymentRecord(payload = {}) {
+  const _id = objectId();
   return {
-    _id: objectId(),
-    id: String(objectId()),
+    _id,
+    id: String(_id),
     status: "initiated",
     applied: false,
     async save() {
@@ -126,6 +128,7 @@ test("checkoutSubscription localizes the checkout invoice description in Arabic 
   const originalCreate = CheckoutDraft.create;
   const originalPaymentFindById = Payment.findById;
   const originalPaymentCreate = Payment.create;
+  const originalPaymentFindOne = Payment.findOne;
 
   delete process.env.PHASE1_CANONICAL_CHECKOUT_DRAFT_WRITE;
 
@@ -135,11 +138,13 @@ test("checkoutSubscription localizes the checkout invoice description in Arabic 
     CheckoutDraft.create = originalCreate;
     Payment.findById = originalPaymentFindById;
     Payment.create = originalPaymentCreate;
+    Payment.findOne = originalPaymentFindOne;
   });
 
   CheckoutDraft.findOne = () => createQueryStub(null);
   CheckoutDraft.create = async (payload) => createDraftRecord(payload);
   Payment.findById = () => createQueryStub(null);
+  Payment.findOne = () => createQueryStub(null);
   Payment.create = async (payload) => createPaymentRecord(payload);
 
   const startDate = new Date(`${getFutureDate(3)}T00:00:00+03:00`);

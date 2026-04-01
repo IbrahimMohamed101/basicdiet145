@@ -667,18 +667,23 @@ async function persistCheckoutInitializationFailure(draft, err, { stage, provide
 }
 
 function buildCheckoutReusePayload(draft, payment) {
+  const paymentMetadata = getPaymentMetadata(payment);
   return {
     subscriptionId: draft.subscriptionId ? String(draft.subscriptionId) : null,
     draftId: String(draft._id),
     paymentId: payment ? String(payment._id) : (draft.paymentId ? String(draft.paymentId) : null),
-    payment_url: draft.paymentUrl || "",
+    payment_url: draft.paymentUrl || paymentMetadata.paymentUrl || "",
     totals: draft.breakdown,
     reused: true,
   };
 }
 
 function isPendingCheckoutReusable(draft, payment) {
-  const hasPaymentUrl = Boolean(draft && draft.paymentUrl && String(draft.paymentUrl).trim());
+  const metadata = getPaymentMetadata(payment);
+  const hasPaymentUrl = Boolean(
+    (draft && draft.paymentUrl && String(draft.paymentUrl).trim())
+    || (typeof metadata.paymentUrl === "string" && metadata.paymentUrl.trim())
+  );
   return Boolean(
     draft
     && draft.status === "pending_payment"
@@ -687,6 +692,127 @@ function isPendingCheckoutReusable(draft, payment) {
     && payment.applied !== true
     && hasPaymentUrl
   );
+}
+
+function resolveSubscriptionCheckoutPaymentType({ renewedFromSubscriptionId } = {}) {
+  return renewedFromSubscriptionId ? "subscription_renewal" : "subscription_activation";
+}
+
+function resolveSubscriptionCheckoutResponseShape(paymentType) {
+  return paymentType === "subscription_renewal" ? "subscription_renewal" : "subscription_checkout";
+}
+
+function buildSubscriptionCheckoutPaymentMetadata({
+  draft,
+  paymentType,
+  providerInvoiceId,
+  paymentUrl,
+  totalHalala,
+}) {
+  const metadata = {
+    type: paymentType,
+    draftId: String(draft && draft._id ? draft._id : ""),
+    userId: String(draft && draft.userId ? draft.userId : ""),
+    grams: Number(draft && draft.grams ? draft.grams : 0),
+    mealsPerDay: Number(draft && draft.mealsPerDay ? draft.mealsPerDay : 0),
+    paymentUrl: paymentUrl || "",
+    initiationResponseShape: resolveSubscriptionCheckoutResponseShape(paymentType),
+    totalHalala: Number(totalHalala || 0),
+  };
+
+  if (providerInvoiceId) {
+    metadata.providerInvoiceId = providerInvoiceId;
+  }
+  if (draft && draft.renewedFromSubscriptionId) {
+    metadata.renewedFromSubscriptionId = String(draft.renewedFromSubscriptionId);
+  }
+
+  return metadata;
+}
+
+async function findSubscriptionCheckoutPayment({ draft, paymentType, providerInvoiceId }) {
+  if (!draft) return null;
+
+  let payment = draft.paymentId ? await Payment.findById(draft.paymentId) : null;
+  if (!payment && providerInvoiceId) {
+    payment = await Payment.findOne({
+      provider: "moyasar",
+      providerInvoiceId,
+    }).sort({ createdAt: -1 });
+  }
+  if (!payment) {
+    payment = await Payment.findOne({
+      userId: draft.userId,
+      type: paymentType,
+      "metadata.draftId": String(draft._id),
+    }).sort({ createdAt: -1 });
+  }
+
+  return payment;
+}
+
+async function ensureSubscriptionCheckoutPayment({
+  draft,
+  paymentType,
+  totalHalala,
+  invoiceCurrency,
+  providerInvoiceId,
+  paymentUrl,
+}) {
+  if (!draft) return null;
+
+  const paymentMetadata = buildSubscriptionCheckoutPaymentMetadata({
+    draft,
+    paymentType,
+    providerInvoiceId,
+    paymentUrl,
+    totalHalala,
+  });
+
+  let payment = await findSubscriptionCheckoutPayment({ draft, paymentType, providerInvoiceId });
+
+  if (!payment) {
+    try {
+      payment = await Payment.create({
+        provider: "moyasar",
+        type: paymentType,
+        status: "initiated",
+        amount: totalHalala,
+        currency: invoiceCurrency,
+        userId: draft.userId,
+        providerInvoiceId,
+        metadata: paymentMetadata,
+      });
+    } catch (err) {
+      if (!err || err.code !== 11000) {
+        throw err;
+      }
+      payment = await findSubscriptionCheckoutPayment({ draft, paymentType, providerInvoiceId });
+      if (!payment) {
+        throw err;
+      }
+    }
+  }
+
+  let paymentChanged = false;
+  if (!payment.providerInvoiceId && providerInvoiceId) {
+    payment.providerInvoiceId = providerInvoiceId;
+    paymentChanged = true;
+  }
+  const mergedMetadata = Object.assign({}, payment.metadata || {}, paymentMetadata);
+  if (JSON.stringify(mergedMetadata) !== JSON.stringify(payment.metadata || {})) {
+    payment.metadata = mergedMetadata;
+    paymentChanged = true;
+  }
+  if (!payment.currency && invoiceCurrency) {
+    payment.currency = invoiceCurrency;
+    paymentChanged = true;
+  }
+  if (paymentChanged) {
+    await payment.save();
+  }
+
+  return payment;
 }
 
 function normalizeProviderPaymentStatus(value) {
@@ -2420,6 +2546,15 @@ async function checkoutSubscription(req, res, runtimeOverrides = null) {
     }
 
     const invoiceCurrency = assertSystemCurrencyOrThrow(invoice.currency || SYSTEM_CURRENCY, "Invoice currency");
+    const paymentType = resolveSubscriptionCheckoutPaymentType({ renewedFromSubscriptionId: null });
+    const paymentPromise = ensureSubscriptionCheckoutPayment({
+      draft,
+      paymentType,
+      totalHalala: quote.breakdown.totalHalala,
+      invoiceCurrency,
+      providerInvoiceId,
+      paymentUrl,
+    });
 
     checkoutStage = "draft_invoice_persist";
     await persistCheckoutDraftUpdate(
@@ -2438,20 +2573,7 @@ async function checkoutSubscription(req, res, runtimeOverrides = null) {
       providerInvoiceId,
       hasPaymentUrl: Boolean(paymentUrl),
     });
-    const payment = await Payment.create({
-      provider: "moyasar",
-      type: "subscription_activation",
-      status: "initiated",
-      amount: quote.breakdown.totalHalala,
-      currency: invoiceCurrency,
-      userId: req.userId,
-      providerInvoiceId,
-      metadata: buildPaymentMetadataWithInitiationFields(invoice.metadata || {}, {
-        paymentUrl,
-        responseShape: "subscription_checkout",
-        totalHalala: quote.breakdown.totalHalala,
-      }),
-    });
+    const payment = await paymentPromise;
     logger.info("[DEBUG-CHECKOUT] Payment record created", {
       draftId: String(draft._id),
       paymentId: String(payment._id),
@@ -3297,6 +3419,11 @@ async function renewSubscription(req, res, runtimeOverrides = null) {
   const { id } = req.params;
   const body = req.body || {};
   const lang = getRequestLang(req);
+  let draft;
+  let requestHash = "";
+  let renewalStage = "pre_draft";
+  let providerInvoiceId = "";
+  let paymentUrl = "";
 
   try {
     validateObjectId(id, "subscriptionId");
@@ -3370,6 +3497,7 @@ async function renewSubscription(req, res, runtimeOverrides = null) {
         && isPhase1CanonicalCheckoutDraftWriteEnabled(),
       enforceActivePlan: true,
     });
+    const normalizedDelivery = normalizeCheckoutDeliveryForPersistence(quote.delivery);
 
     // Proceed with checkout (standard flow)
     if (isPhase1CanonicalCheckoutDraftWriteEnabled()) {
@@ -3384,7 +3512,7 @@ async function renewSubscription(req, res, runtimeOverrides = null) {
       renewalPayload.contractMode = canonicalContract.contractMode;
     }
 
-    const requestHash = buildCheckoutRequestHash({ userId: req.userId, quote });
+    requestHash = buildCheckoutRequestHash({ userId: req.userId, quote });
     const existingByKey = await CheckoutDraft.findOne({
       userId: req.userId,
       idempotencyKey: renewalPayload.idempotencyKey,
@@ -3399,18 +3527,80 @@ async function renewSubscription(req, res, runtimeOverrides = null) {
           "idempotencyKey is already used with a different renewal payload"
         );
       }
-      const existingPayment = existingByKey.paymentId
-        ? await Payment.findById(existingByKey.paymentId).lean()
-        : null;
-      if (isPendingCheckoutReusable(existingByKey, existingPayment)) {
-        return res.status(200).json({ ok: true, data: buildCheckoutReusePayload(existingByKey, existingPayment) });
+
+      const { draft: reconciledDraft, payment: reconciledPayment } = await reconcileCheckoutDraft(existingByKey._id, {
+        mode: RECONCILE_MODES.PERSIST,
+      });
+      const currentDraft = reconciledDraft || existingByKey;
+      const currentPayment = reconciledPayment;
+
+      if (isPendingCheckoutReusable(currentDraft, currentPayment)) {
+        return res.status(200).json({ ok: true, data: buildCheckoutReusePayload(currentDraft, currentPayment) });
       }
-      if (existingByKey.status === "completed" && existingByKey.subscriptionId) {
-        const newSub = await Subscription.findById(existingByKey.subscriptionId).lean();
+      if (currentDraft.status === "completed" && currentDraft.subscriptionId) {
+        const newSub = await Subscription.findById(currentDraft.subscriptionId).lean();
         return res.status(200).json({
           ok: true,
           data: await serializeSubscriptionForClient(newSub, lang),
         });
+      }
+
+      if (currentDraft.status === "pending_payment") {
+        const isStale = (new Date() - new Date(currentDraft.createdAt)) > STALE_DRAFT_THRESHOLD_MS;
+        if (isStale) {
+          await CheckoutDraft.updateOne({ _id: currentDraft._id }, { $set: { status: "failed", failureReason: "stale_abandoned" } });
+        } else if (currentPayment && currentPayment.providerInvoiceId) {
+          try {
+            const invoice = await getInvoice(currentPayment.providerInvoiceId);
+            const invoiceStatus = String(invoice && invoice.status || "").toLowerCase();
+
+            if (invoiceStatus === "paid" || invoiceStatus === "captured") {
+              return res.status(200).json({ ok: true, data: buildCheckoutReusePayload(currentDraft, currentPayment) });
+            }
+
+            if (["failed", "expired", "canceled"].includes(invoiceStatus)) {
+              await CheckoutDraft.updateOne(
+                { _id: currentDraft._id },
+                { $set: { status: "failed", failureReason: `invoice_${invoiceStatus}` } }
+              );
+            } else {
+              return errorResponse(
+                res,
+                409,
+                "CHECKOUT_IN_PROGRESS",
+                "Checkout initialization is still in progress. Retry with the same idempotency key.",
+                { draftId: String(currentDraft._id) }
+              );
+            }
+          } catch (err) {
+            logger.warn("Failed to fetch renewal invoice status during checkout reconciliation", {
+              draftId: String(currentDraft._id),
+              error: err.message,
+            });
+            return errorResponse(
+              res,
+              409,
+              "CHECKOUT_IN_PROGRESS",
+              "Checkout initialization is still in progress. Retry with the same idempotency key.",
+              { draftId: String(currentDraft._id) }
+            );
+          }
+        } else {
+          return errorResponse(
+            res,
+            409,
+            "CHECKOUT_IN_PROGRESS",
+            "Checkout initialization is still in progress. Retry with the same idempotency key.",
+            { draftId: String(currentDraft._id) }
+          );
+        }
+      } else {
+        return errorResponse(
+          res,
+          409,
+          "IDEMPOTENCY_CONFLICT",
+          `idempotencyKey is already finalized with status ${currentDraft.status}`
+        );
       }
     }
 
@@ -3424,7 +3614,7 @@ async function renewSubscription(req, res, runtimeOverrides = null) {
       grams: quote.grams,
       mealsPerDay: quote.mealsPerDay,
       startDate: quote.startDate || undefined,
-      delivery: quote.delivery,
+      delivery: normalizedDelivery,
       premiumItems: quote.premiumItems.map((item) => ({
         premiumMealId: item.premiumMeal._id,
         qty: item.qty,
@@ -3456,9 +3646,18 @@ async function renewSubscription(req, res, runtimeOverrides = null) {
       Object.assign(draftPayload, runtime.buildCanonicalDraftPersistenceFields({ contract: canonicalContract }));
     }
 
-    const draft = await CheckoutDraft.create(draftPayload);
+    renewalStage = "draft_create";
+    draft = await CheckoutDraft.create(draftPayload);
 
     const appUrl = process.env.APP_URL || "https://example.com";
+    renewalStage = "invoice_create";
+    logger.info("[DEBUG-CHECKOUT] Calling renewal createInvoice", {
+      draftId: String(draft._id),
+      userId: String(req.userId),
+      idempotencyKey: renewalPayload.idempotencyKey,
+      totalHalala: Number(quote && quote.breakdown && quote.breakdown.totalHalala || 0),
+      delivery: summarizeCheckoutDeliveryForDebug(normalizedDelivery),
+    });
     const invoice = await runtime.createInvoice({
       amount: quote.breakdown.totalHalala,
       description: buildPaymentDescription("subscriptionRenewal", lang, {
@@ -3478,22 +3677,60 @@ async function renewSubscription(req, res, runtimeOverrides = null) {
       },
     });
 
-    const invoiceCurrency = assertSystemCurrencyOrThrow(invoice.currency || SYSTEM_CURRENCY, "Invoice currency");
-    const payment = await Payment.create({
-      provider: "moyasar",
-      type: "subscription_renewal",
-      status: "initiated",
-      amount: quote.breakdown.totalHalala,
-      currency: invoiceCurrency,
-      userId: req.userId,
-      providerInvoiceId: invoice.id,
-      metadata: invoice.metadata || {},
+    providerInvoiceId = getInvoiceResponseId(invoice);
+    paymentUrl = getInvoiceResponseUrl(invoice);
+    logger.info("[DEBUG-CHECKOUT] Renewal createInvoice returned", {
+      draftId: String(draft._id),
+      providerInvoiceId,
+      hasPaymentUrl: Boolean(paymentUrl),
     });
 
-    draft.paymentId = payment._id;
-    draft.providerInvoiceId = invoice.id;
-    draft.paymentUrl = invoice.url || "";
-    await draft.save();
+    if (!providerInvoiceId || !paymentUrl) {
+      const invalidInvoiceErr = new Error("Invoice response missing required payment fields");
+      invalidInvoiceErr.code = "PAYMENT_PROVIDER_INVALID_RESPONSE";
+      throw invalidInvoiceErr;
+    }
+
+    const invoiceCurrency = assertSystemCurrencyOrThrow(invoice.currency || SYSTEM_CURRENCY, "Invoice currency");
+    const paymentPromise = ensureSubscriptionCheckoutPayment({
+      draft,
+      paymentType: resolveSubscriptionCheckoutPaymentType({ renewedFromSubscriptionId: id }),
+      totalHalala: quote.breakdown.totalHalala,
+      invoiceCurrency,
+      providerInvoiceId,
+      paymentUrl,
+    });
+
+    renewalStage = "draft_invoice_persist";
+    await persistCheckoutDraftUpdate(
+      draft,
+      {
+        providerInvoiceId,
+        paymentUrl,
+        failureReason: "",
+      },
+      { stage: renewalStage }
+    );
+
+    renewalStage = "payment_create";
+    logger.info("[DEBUG-CHECKOUT] Creating renewal payment record", {
+      draftId: String(draft._id),
+      providerInvoiceId,
+      hasPaymentUrl: Boolean(paymentUrl),
+    });
+    const payment = await paymentPromise;
+
+    renewalStage = "draft_payment_link_persist";
+    await persistCheckoutDraftUpdate(
+      draft,
+      {
+        paymentId: payment._id,
+        providerInvoiceId,
+        paymentUrl,
+        failureReason: "",
+      },
+      { stage: renewalStage }
+    );
 
     return res.status(201).json({
       ok: true,
@@ -3506,15 +3743,71 @@ async function renewSubscription(req, res, runtimeOverrides = null) {
       },
     });
   } catch (err) {
-    if (err.code === "VALIDATION_ERROR") {
+    if (!draft && err.code === "VALIDATION_ERROR") {
       return sendValidationError(res, err.message);
     }
-    if (err.code === "NOT_FOUND") {
+    if (!draft && err.code === "NOT_FOUND") {
       return errorResponse(res, 404, "NOT_FOUND", err.message);
     }
-    if (err.code === "INVALID_SELECTION") {
+    if (!draft && err.code === "INVALID_SELECTION") {
       return errorResponse(res, 400, "INVALID", err.message);
     }
+    if (!draft && isCheckoutDraftDuplicateKeyError(err)) {
+      let existingDraft = await CheckoutDraft.findOne({
+        userId: req.userId,
+        idempotencyKey: renewalPayload.idempotencyKey,
+      }).sort({ createdAt: -1 }).lean();
+
+      if (!existingDraft && requestHash) {
+        existingDraft = await CheckoutDraft.findOne({
+          userId: req.userId,
+          requestHash,
+          status: "pending_payment",
+        }).sort({ createdAt: -1 }).lean();
+      }
+
+      if (existingDraft) {
+        const { draft: reconciledDraft, payment: reconciledPayment } = await reconcileCheckoutDraft(existingDraft._id, {
+          mode: RECONCILE_MODES.PERSIST,
+        });
+        const currentDraft = reconciledDraft || existingDraft;
+        const currentPayment = reconciledPayment;
+
+        if (isPendingCheckoutReusable(currentDraft, currentPayment)) {
+          return res.status(200).json({ ok: true, data: buildCheckoutReusePayload(currentDraft, currentPayment) });
+        }
+
+        if (currentDraft.status === "completed" && currentDraft.subscriptionId) {
+          const newSub = await Subscription.findById(currentDraft.subscriptionId).lean();
+          return res.status(200).json({
+            ok: true,
+            data: await serializeSubscriptionForClient(newSub, lang),
+          });
+        }
+
+        if (currentDraft.status === "pending_payment") {
+          return errorResponse(
+            res,
+            409,
+            "CHECKOUT_IN_PROGRESS",
+            "Checkout initialization is still in progress. Retry with the same idempotency key.",
+            { draftId: String(currentDraft._id) }
+          );
+        }
+
+        return errorResponse(
+          res,
+          409,
+          "IDEMPOTENCY_CONFLICT",
+          `idempotencyKey is already finalized with status ${currentDraft.status}`
+        );
+      }
+    }
+    await persistCheckoutInitializationFailure(draft, err, {
+      stage: renewalStage,
+      providerInvoiceId,
+      paymentUrl,
+    });
     logger.error("Subscription renewal failed", { error: err.message, stack: err.stack });
     return errorResponse(res, 500, "INTERNAL", "Renewal failed");
   }
