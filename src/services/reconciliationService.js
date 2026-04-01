@@ -46,6 +46,13 @@ async function reconcileCheckoutDraft(draftId, { mode = RECONCILE_MODES.READ_ONL
     try {
       invoice = await getInvoiceFn(providerInvoiceId);
       
+      if (invoice && invoice.url && !draft.paymentUrl) {
+        draft.paymentUrl = invoice.url;
+        if (mode === RECONCILE_MODES.PERSIST) {
+          await draft.save({ session });
+        }
+      }
+
       // Optional: Sync payment status if we have the record and it's not terminal
       if (payment && invoice && !["paid", "failed", "canceled", "expired"].includes(payment.status)) {
         const providerStatus = (invoice.status || "").toLowerCase();

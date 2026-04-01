@@ -1997,7 +1997,7 @@ async function checkoutSubscription(req, res, runtimeOverrides = null) {
 
       const { draft: reconciledDraft, payment: reconciledPayment } = await reconcileCheckoutDraft(existingByKey._id, { mode: RECONCILE_MODES.PERSIST });
       const currentDraft = reconciledDraft || existingByKey;
-      const currentPayment = reconciledPayment || existingPayment;
+      const currentPayment = reconciledPayment;
 
       if (isPendingCheckoutReusable(currentDraft, currentPayment)) {
         return res.status(200).json({ ok: true, data: buildCheckoutReusePayload(currentDraft, currentPayment) });
@@ -2018,7 +2018,7 @@ async function checkoutSubscription(req, res, runtimeOverrides = null) {
 
       if (currentDraft.status === "pending_payment") {
         const isStale = (new Date() - new Date(currentDraft.createdAt)) > STALE_DRAFT_THRESHOLD_MS;
-        if (isStale && !currentPayment) {
+        if (isStale) {
           // It's a zombie. Mark as abandoned to allow retry.
           await CheckoutDraft.updateOne({ _id: currentDraft._id }, { $set: { status: "failed", failureReason: "stale_abandoned" } });
         } else {
@@ -2060,7 +2060,7 @@ async function checkoutSubscription(req, res, runtimeOverrides = null) {
       }
 
       const isStale = (new Date() - new Date(currentDraft.createdAt)) > STALE_DRAFT_THRESHOLD_MS;
-      if (isStale && !currentPayment) {
+      if (isStale) {
         // It's a zombie. Mark as abandoned to allow retry with new idempotency key/hash lock.
         await CheckoutDraft.updateOne({ _id: currentDraft._id }, { $set: { status: "failed", failureReason: "stale_abandoned" } });
       } else {

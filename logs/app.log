@@ -2853,3 +2853,12 @@
 {"code":"PLANNING_INCOMPLETE","date":"2026-04-02","level":"warn","message":"Confirm day planning blocked Day must contain exactly mealsPerDay total meal selections before confirmation","subscriptionId":"69cb8e36df9019d21f033518","timestamp":"2026-03-31T09:04:54.975Z"}
 {"error":"Operation `settings.findOne()` buffering timed out after 10000ms","level":"error","message":"Unhandled error","stack":"MongooseError: Operation `settings.findOne()` buffering timed out after 10000ms\n    at Timeout.<anonymous> (/home/hema/Projects/basicdiet145/node_modules/mongoose/lib/drivers/node-mongodb-native/collection.js:187:23)\n    at listOnTimeout (node:internal/timers:569:17)\n    at process.processTimers (node:internal/timers:512:7)","timestamp":"2026-03-31T09:05:07.427Z"}
 {"error":"Operation `settings.findOne()` buffering timed out after 10000ms","level":"error","message":"Unhandled error","stack":"MongooseError: Operation `settings.findOne()` buffering timed out after 10000ms\n    at Timeout.<anonymous> (/home/hema/Projects/basicdiet145/node_modules/mongoose/lib/drivers/node-mongodb-native/collection.js:187:23)\n    at listOnTimeout (node:internal/timers:569:17)\n    at process.processTimers (node:internal/timers:512:7)","timestamp":"2026-03-31T09:05:17.475Z"}
+{"email":"superadmin@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"superadmin","timestamp":"2026-04-01T13:04:39.490Z"}
+{"email":"admin@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"admin","timestamp":"2026-04-01T13:04:40.176Z"}
+{"email":"kitchen@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"kitchen","timestamp":"2026-04-01T13:04:40.337Z"}
+{"email":"courier@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"courier","timestamp":"2026-04-01T13:04:40.488Z"}
+{"level":"info","message":"Jobs starting","timestamp":"2026-04-01T13:04:40.489Z"}
+{"level":"info","message":"API listening","port":"3000","timestamp":"2026-04-01T13:04:40.495Z"}
+{"date":"2026-04-02","level":"info","message":"Automation cutoff start","timestamp":"2026-04-01T13:05:40.854Z"}
+{"count":0,"level":"info","message":"Automation cutoff finished","timestamp":"2026-04-01T13:05:40.998Z"}
+{"activeSubscriptions":7,"level":"info","message":"Subscription expiry reminders finished","sent24h":0,"sent3d":0,"timestamp":"2026-04-01T13:05:41.163Z"}
