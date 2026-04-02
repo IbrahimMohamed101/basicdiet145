@@ -5,6 +5,7 @@ import 'package:basic_diet/domain/model/delivery_options_model.dart';
 import 'package:basic_diet/domain/model/plans_model.dart';
 import 'package:basic_diet/domain/model/popular_packages_model.dart';
 import 'package:basic_diet/domain/model/premium_meals_model.dart';
+import 'package:basic_diet/domain/model/subscription_checkout_model.dart';
 import 'package:basic_diet/domain/model/subscription_quote_model.dart';
 import 'package:dartz/dartz.dart';
 
@@ -28,5 +29,8 @@ abstract class Repository {
   Future<Either<Failure, DeliveryOptionsModel>> getDeliveryOptions();
   Future<Either<Failure, SubscriptionQuoteModel>> getSubscriptionQuote(
     SubscriptionQuoteRequestModel request,
+  );
+  Future<Either<Failure, SubscriptionCheckoutModel>> checkoutSubscription(
+    SubscriptionCheckoutRequestModel request,
   );
 }

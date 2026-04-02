@@ -95,12 +95,18 @@ class _DeliveryMethodScreenState extends State<DeliveryMethodScreen> {
               }
 
               if (state.quoteStatus == SubscriptionQuoteStatus.success &&
-                  state.subscriptionQuote != null) {
+                  state.subscriptionQuote != null &&
+                  state.lastQuoteRequest != null) {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) =>
-                        SubscriptionDetails(quote: state.subscriptionQuote!),
+                    builder: (_) => BlocProvider.value(
+                      value: context.read<SubscriptionBloc>(),
+                      child: SubscriptionDetails(
+                        quote: state.subscriptionQuote!,
+                        quoteRequest: state.lastQuoteRequest!,
+                      ),
+                    ),
                   ),
                 );
               }

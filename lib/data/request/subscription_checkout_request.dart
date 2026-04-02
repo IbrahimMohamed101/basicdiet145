@@ -1,9 +1,11 @@
 import 'package:json_annotation/json_annotation.dart';
 
-part 'subscription_quote_request.g.dart';
+part 'subscription_checkout_request.g.dart';
 
 @JsonSerializable(explicitToJson: true)
-class SubscriptionQuoteRequest {
+class SubscriptionCheckoutRequest {
+  @JsonKey(name: 'idempotencyKey')
+  final String idempotencyKey;
   @JsonKey(name: 'planId')
   final String planId;
   @JsonKey(name: 'grams')
@@ -13,13 +15,18 @@ class SubscriptionQuoteRequest {
   @JsonKey(name: 'startDate')
   final String startDate;
   @JsonKey(name: 'premiumItems')
-  final List<SubscriptionQuotePremiumItemRequest> premiumItems;
+  final List<SubscriptionCheckoutPremiumItemRequest> premiumItems;
   @JsonKey(name: 'addons')
   final List<String> addons;
   @JsonKey(name: 'delivery')
-  final SubscriptionQuoteDeliveryRequest delivery;
+  final SubscriptionCheckoutDeliveryRequest delivery;
+  @JsonKey(name: 'successUrl')
+  final String successUrl;
+  @JsonKey(name: 'backUrl')
+  final String backUrl;
 
-  const SubscriptionQuoteRequest({
+  const SubscriptionCheckoutRequest({
+    required this.idempotencyKey,
     required this.planId,
     required this.grams,
     required this.mealsPerDay,
@@ -27,36 +34,38 @@ class SubscriptionQuoteRequest {
     required this.premiumItems,
     required this.addons,
     required this.delivery,
+    required this.successUrl,
+    required this.backUrl,
   });
 
-  factory SubscriptionQuoteRequest.fromJson(Map<String, dynamic> json) =>
-      _$SubscriptionQuoteRequestFromJson(json);
+  factory SubscriptionCheckoutRequest.fromJson(Map<String, dynamic> json) =>
+      _$SubscriptionCheckoutRequestFromJson(json);
 
-  Map<String, dynamic> toJson() => _$SubscriptionQuoteRequestToJson(this);
+  Map<String, dynamic> toJson() => _$SubscriptionCheckoutRequestToJson(this);
 }
 
 @JsonSerializable()
-class SubscriptionQuotePremiumItemRequest {
+class SubscriptionCheckoutPremiumItemRequest {
   @JsonKey(name: 'premiumMealId')
   final String premiumMealId;
   @JsonKey(name: 'qty')
   final int qty;
 
-  const SubscriptionQuotePremiumItemRequest({
+  const SubscriptionCheckoutPremiumItemRequest({
     required this.premiumMealId,
     required this.qty,
   });
 
-  factory SubscriptionQuotePremiumItemRequest.fromJson(
+  factory SubscriptionCheckoutPremiumItemRequest.fromJson(
     Map<String, dynamic> json,
-  ) => _$SubscriptionQuotePremiumItemRequestFromJson(json);
+  ) => _$SubscriptionCheckoutPremiumItemRequestFromJson(json);
 
   Map<String, dynamic> toJson() =>
-      _$SubscriptionQuotePremiumItemRequestToJson(this);
+      _$SubscriptionCheckoutPremiumItemRequestToJson(this);
 }
 
 @JsonSerializable(explicitToJson: true)
-class SubscriptionQuoteDeliveryRequest {
+class SubscriptionCheckoutDeliveryRequest {
   @JsonKey(name: 'type')
   final String type;
   @JsonKey(name: 'zoneId')
@@ -64,25 +73,25 @@ class SubscriptionQuoteDeliveryRequest {
   @JsonKey(name: 'slotId')
   final String? slotId;
   @JsonKey(name: 'address')
-  final SubscriptionQuoteAddressRequest? address;
+  final SubscriptionCheckoutAddressRequest? address;
 
-  const SubscriptionQuoteDeliveryRequest({
+  const SubscriptionCheckoutDeliveryRequest({
     required this.type,
     this.zoneId,
     this.slotId,
     this.address,
   });
 
-  factory SubscriptionQuoteDeliveryRequest.fromJson(
+  factory SubscriptionCheckoutDeliveryRequest.fromJson(
     Map<String, dynamic> json,
-  ) => _$SubscriptionQuoteDeliveryRequestFromJson(json);
+  ) => _$SubscriptionCheckoutDeliveryRequestFromJson(json);
 
   Map<String, dynamic> toJson() =>
-      _$SubscriptionQuoteDeliveryRequestToJson(this);
+      _$SubscriptionCheckoutDeliveryRequestToJson(this);
 }
 
 @JsonSerializable()
-class SubscriptionQuoteAddressRequest {
+class SubscriptionCheckoutAddressRequest {
   @JsonKey(name: 'street')
   final String street;
   @JsonKey(name: 'building')
@@ -96,7 +105,7 @@ class SubscriptionQuoteAddressRequest {
   @JsonKey(name: 'city')
   final String city;
 
-  const SubscriptionQuoteAddressRequest({
+  const SubscriptionCheckoutAddressRequest({
     required this.street,
     required this.building,
     required this.apartment,
@@ -105,9 +114,10 @@ class SubscriptionQuoteAddressRequest {
     required this.city,
   });
 
-  factory SubscriptionQuoteAddressRequest.fromJson(Map<String, dynamic> json) =>
-      _$SubscriptionQuoteAddressRequestFromJson(json);
+  factory SubscriptionCheckoutAddressRequest.fromJson(
+    Map<String, dynamic> json,
+  ) => _$SubscriptionCheckoutAddressRequestFromJson(json);
 
   Map<String, dynamic> toJson() =>
-      _$SubscriptionQuoteAddressRequestToJson(this);
+      _$SubscriptionCheckoutAddressRequestToJson(this);
 }

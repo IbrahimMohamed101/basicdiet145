@@ -312,26 +312,26 @@ class _BottomActions extends StatelessWidget {
           children: [
             const _SummaryContainer(),
             Gap(AppSize.s12.h),
-          ElevatedButton(
-            onPressed: () {
-              final subscriptionBloc = context.read<SubscriptionBloc>();
-              final addOnsState = context.read<AddOnsBloc>().state;
-              if (addOnsState is AddOnsSuccess) {
-                subscriptionBloc.add(
-                  SaveAddOnsSelectionEvent(addOnsState.selectedAddOns),
-                );
-              }
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => BlocProvider.value(
-                    value: subscriptionBloc,
-                    child: const DeliveryMethodScreen(),
+            ElevatedButton(
+              onPressed: () {
+                final subscriptionBloc = context.read<SubscriptionBloc>();
+                final addOnsState = context.read<AddOnsBloc>().state;
+                if (addOnsState is AddOnsSuccess) {
+                  subscriptionBloc.add(
+                    SaveAddOnsSelectionEvent(addOnsState.selectedAddOns),
+                  );
+                }
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => BlocProvider.value(
+                      value: subscriptionBloc,
+                      child: const DeliveryMethodScreen(),
+                    ),
                   ),
-                ),
-              );
-            },
-            style: ElevatedButton.styleFrom(
+                );
+              },
+              style: ElevatedButton.styleFrom(
                 backgroundColor: ColorManager.greenPrimary,
                 minimumSize: Size(double.infinity, 56.h),
                 shape: RoundedRectangleBorder(
@@ -392,10 +392,9 @@ class _SummaryContainer extends StatelessWidget {
   Widget build(BuildContext context) {
     return BlocBuilder<SubscriptionBloc, SubscriptionState>(
       builder: (context, subscriptionState) {
-        final daysCount =
-            subscriptionState is SubscriptionSuccess
-                ? subscriptionState.selectedPlan?.daysCount ?? 1
-                : 1;
+        final daysCount = subscriptionState is SubscriptionSuccess
+            ? subscriptionState.selectedPlan?.daysCount ?? 1
+            : 1;
 
         return BlocBuilder<AddOnsBloc, AddOnsState>(
           builder: (context, addOnsState) {

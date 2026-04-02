@@ -7,7 +7,7 @@ class PremiumMealsBloc extends Bloc<PremiumMealsEvent, PremiumMealsState> {
   final GetPremiumMealsUseCase _getPremiumMealsUseCase;
 
   PremiumMealsBloc(this._getPremiumMealsUseCase)
-      : super(const PremiumMealsInitial()) {
+    : super(const PremiumMealsInitial()) {
     on<GetPremiumMealsEvent>(_onGetPremiumMeals);
     on<UpdateMealCounterEvent>(_onUpdateMealCounter);
   }
@@ -18,16 +18,17 @@ class PremiumMealsBloc extends Bloc<PremiumMealsEvent, PremiumMealsState> {
   ) async {
     emit(const PremiumMealsLoading());
     final result = await _getPremiumMealsUseCase.execute(null);
-    result.fold(
-      (failure) => emit(PremiumMealsError(failure.message)),
-      (premiumMealsModel) {
-        final initialCounters = <String, int>{};
-        for (var meal in premiumMealsModel.meals) {
-          initialCounters[meal.id] = 0;
-        }
-        emit(PremiumMealsSuccess(premiumMealsModel, mealCounters: initialCounters));
-      },
-    );
+    result.fold((failure) => emit(PremiumMealsError(failure.message)), (
+      premiumMealsModel,
+    ) {
+      final initialCounters = <String, int>{};
+      for (var meal in premiumMealsModel.meals) {
+        initialCounters[meal.id] = 0;
+      }
+      emit(
+        PremiumMealsSuccess(premiumMealsModel, mealCounters: initialCounters),
+      );
+    });
   }
 
   void _onUpdateMealCounter(

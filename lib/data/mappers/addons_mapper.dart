@@ -21,13 +21,9 @@ extension AddOnResponseMapper on AddOnResponse? {
       priceSar: this?.priceSar.orZero() ?? 0,
       priceLabel: this?.priceLabel.orEmpty() ?? "",
       type: this?.type.orEmpty() ?? "",
-      ui: this?.ui.toDomain() ??
-          const AddOnUiModel(
-            title: "",
-            subtitle: "",
-            ctaLabel: "",
-            badge: "",
-          ),
+      ui:
+          this?.ui.toDomain() ??
+          const AddOnUiModel(title: "", subtitle: "", ctaLabel: "", badge: ""),
     );
   }
 }

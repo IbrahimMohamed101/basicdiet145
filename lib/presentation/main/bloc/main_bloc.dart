@@ -3,7 +3,8 @@ import 'main_event.dart';
 import 'main_state.dart';
 
 class MainBloc extends Bloc<MainEvent, MainState> {
-  MainBloc() : super(const MainInitialState()) {
+  MainBloc({int initialIndex = 0})
+    : super(MainInitialState(currentIndex: initialIndex)) {
     on<ChangeBottomNavIndexEvent>(_onChangeBottomNavIndex);
   }
 

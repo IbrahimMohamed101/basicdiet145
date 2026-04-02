@@ -66,7 +66,7 @@ class AppPreferences {
       final expiryTime = int.tryParse(expiryTimestamp);
       if (expiryTime != null) {
         final currentTime = DateTime.now().millisecondsSinceEpoch;
-        
+
         // If token is expired, remove it from cache
         if (currentTime >= expiryTime) {
           await logOut(); // Clear all cached data including token

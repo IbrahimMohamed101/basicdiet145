@@ -5,7 +5,8 @@ import 'package:basic_diet/domain/usecase/base_usecase.dart';
 import 'package:dartz/dartz.dart';
 
 class GetSubscriptionQuoteUseCase
-    implements BaseUseCase<SubscriptionQuoteRequestModel, SubscriptionQuoteModel> {
+    implements
+        BaseUseCase<SubscriptionQuoteRequestModel, SubscriptionQuoteModel> {
   final Repository _repository;
 
   GetSubscriptionQuoteUseCase(this._repository);

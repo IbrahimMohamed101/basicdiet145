@@ -79,7 +79,14 @@ class SubscriptionAddressModel extends Equatable {
   });
 
   @override
-  List<Object?> get props => [street, building, apartment, notes, district, city];
+  List<Object?> get props => [
+    street,
+    building,
+    apartment,
+    notes,
+    district,
+    city,
+  ];
 }
 
 class SubscriptionQuoteModel extends Equatable {

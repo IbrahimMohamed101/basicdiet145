@@ -4,7 +4,8 @@ import 'package:basic_diet/domain/repository/repository.dart';
 import 'package:basic_diet/domain/usecase/base_usecase.dart';
 import 'package:dartz/dartz.dart';
 
-class GetPopularPackagesUseCase implements BaseUseCase<void, PopularPackagesModel> {
+class GetPopularPackagesUseCase
+    implements BaseUseCase<void, PopularPackagesModel> {
   final Repository _repository;
 
   GetPopularPackagesUseCase(this._repository);

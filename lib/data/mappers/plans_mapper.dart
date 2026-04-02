@@ -5,9 +5,7 @@ import 'package:basic_diet/domain/model/plans_model.dart';
 extension PlansResponseMapper on PlansResponse? {
   PlansModel toDomain() {
     return PlansModel(
-      plans:
-          this?.data?.map((plan) => plan.toDomain()).toList() ??
-          [],
+      plans: this?.data?.map((plan) => plan.toDomain()).toList() ?? [],
     );
   }
 }

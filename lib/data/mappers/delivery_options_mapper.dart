@@ -5,7 +5,9 @@ import 'package:basic_diet/domain/model/delivery_options_model.dart';
 extension DeliveryOptionsResponseMapper on DeliveryOptionsResponse? {
   DeliveryOptionsModel toDomain() {
     return DeliveryOptionsModel(
-      methods: this?.data?.methods?.map((method) => method.toDomain()).toList() ?? [],
+      methods:
+          this?.data?.methods?.map((method) => method.toDomain()).toList() ??
+          [],
       areas: this?.data?.areas?.map((area) => area.toDomain()).toList() ?? [],
       pickupLocations:
           this?.data?.pickupLocations
@@ -96,7 +98,8 @@ extension PickupLocationResponseMapper on PickupLocationResponse? {
   }
 }
 
-extension PickupLocationAddressResponseMapper on PickupLocationAddressResponse? {
+extension PickupLocationAddressResponseMapper
+    on PickupLocationAddressResponse? {
   PickupLocationAddressModel toDomain() {
     return PickupLocationAddressModel(
       line1: this?.line1 ?? Constants.empty,

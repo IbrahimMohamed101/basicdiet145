@@ -29,7 +29,10 @@ class PremiumMealsSuccess extends PremiumMealsState {
   final PremiumMealsModel premiumMealsModel;
   final Map<String, int> mealCounters;
 
-  const PremiumMealsSuccess(this.premiumMealsModel, {this.mealCounters = const {}});
+  const PremiumMealsSuccess(
+    this.premiumMealsModel, {
+    this.mealCounters = const {},
+  });
 
   PremiumMealsSuccess copyWith({
     PremiumMealsModel? premiumMealsModel,

@@ -10,7 +10,7 @@ abstract class MainState extends Equatable {
 }
 
 class MainInitialState extends MainState {
-  const MainInitialState() : super(currentIndex: 0);
+  const MainInitialState({super.currentIndex = 0});
 }
 
 class MainIndexChangedState extends MainState {

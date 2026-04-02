@@ -36,12 +36,15 @@ class _SubscriptionContentViewState extends State<SubscriptionContentView> {
     return BlocBuilder<SubscriptionBloc, SubscriptionState>(
       buildWhen: (previous, current) => current is SubscriptionSuccess,
       builder: (context, state) {
-        final selectedPlan =
-            state is SubscriptionSuccess ? state.selectedPlan : null;
-        final selectedGramOption =
-            state is SubscriptionSuccess ? state.selectedGramOption : null;
-        final selectedMealOption =
-            state is SubscriptionSuccess ? state.selectedMealOption : null;
+        final selectedPlan = state is SubscriptionSuccess
+            ? state.selectedPlan
+            : null;
+        final selectedGramOption = state is SubscriptionSuccess
+            ? state.selectedGramOption
+            : null;
+        final selectedMealOption = state is SubscriptionSuccess
+            ? state.selectedMealOption
+            : null;
 
         return ListView(
           padding: EdgeInsetsDirectional.symmetric(

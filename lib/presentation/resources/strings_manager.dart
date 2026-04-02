@@ -195,4 +195,13 @@ class Strings {
   static const String priceBreakdown = "Price Breakdown";
   static const String deliveryNotes = "Delivery Notes";
   static const String confirmAndPay = "Confirm & Pay";
+  static const String openingPayment = "Opening Payment...";
+  static const String securePayment = "Secure Payment";
+  static const String paymentCancelled =
+      "Payment was cancelled. You can review your order and try again.";
+  static const String paymentSuccessful = "Payment Successful!";
+  static const String paymentSuccessfulSubtitle =
+      "Your subscription has been activated. Get ready to enjoy healthy meals!";
+  static const String viewMyPlan = "View My Plan";
+  static const String goToHome = "Go to Home";
 }

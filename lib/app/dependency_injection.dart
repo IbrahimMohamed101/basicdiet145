@@ -6,6 +6,7 @@ import 'package:basic_diet/data/repository/repository.dart';
 import 'package:basic_diet/domain/repository/repository.dart';
 import 'package:basic_diet/domain/usecase/login_usecase.dart';
 import 'package:basic_diet/domain/usecase/verify_otp_usecase.dart';
+import 'package:basic_diet/domain/usecase/checkout_subscription_usecase.dart';
 import 'package:basic_diet/domain/usecase/get_plans_usecase.dart';
 import 'package:basic_diet/domain/usecase/get_delivery_options_usecase.dart';
 import 'package:basic_diet/domain/usecase/get_subscription_quote_usecase.dart';
@@ -100,10 +101,15 @@ void initSubscriptionModule() {
       () => GetSubscriptionQuoteUseCase(instance<Repository>()),
     );
 
+    instance.registerFactory<CheckoutSubscriptionUseCase>(
+      () => CheckoutSubscriptionUseCase(instance<Repository>()),
+    );
+
     instance.registerFactory<SubscriptionBloc>(
       () => SubscriptionBloc(
         instance<GetPlansUseCase>(),
         instance<GetSubscriptionQuoteUseCase>(),
+        instance<CheckoutSubscriptionUseCase>(),
       ),
     );
   }

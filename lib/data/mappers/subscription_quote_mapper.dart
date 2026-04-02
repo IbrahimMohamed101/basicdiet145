@@ -112,7 +112,8 @@ extension SubscriptionQuoteBreakdownResponseMapper
   }
 }
 
-extension SubscriptionQuoteSummaryResponseMapper on SubscriptionQuoteSummaryResponse? {
+extension SubscriptionQuoteSummaryResponseMapper
+    on SubscriptionQuoteSummaryResponse? {
   SubscriptionQuoteSummaryModel toDomain() {
     return SubscriptionQuoteSummaryModel(
       plan:
@@ -141,8 +142,7 @@ extension SubscriptionQuoteSummaryResponseMapper on SubscriptionQuoteSummaryResp
       premiumItems:
           this?.premiumItems?.map((item) => item.toDomain()).toList() ?? [],
       addons: this?.addons?.map((item) => item.toDomain()).toList() ?? [],
-      lineItems:
-          this?.lineItems?.map((item) => item.toDomain()).toList() ?? [],
+      lineItems: this?.lineItems?.map((item) => item.toDomain()).toList() ?? [],
     );
   }
 }
@@ -181,7 +181,8 @@ extension SubscriptionQuoteDeliverySummaryResponseMapper
   }
 }
 
-extension SubscriptionAddressResponseMapper on SubscriptionQuoteAddressResponse? {
+extension SubscriptionAddressResponseMapper
+    on SubscriptionQuoteAddressResponse? {
   SubscriptionAddressModel toDomain() {
     return SubscriptionAddressModel(
       street: this?.street ?? Constants.empty,
@@ -222,7 +223,8 @@ extension SubscriptionQuotePremiumItemResponseMapper
   }
 }
 
-extension SubscriptionQuoteAddonResponseMapper on SubscriptionQuoteAddonResponse? {
+extension SubscriptionQuoteAddonResponseMapper
+    on SubscriptionQuoteAddonResponse? {
   SubscriptionQuoteAddonModel toDomain() {
     return SubscriptionQuoteAddonModel(
       id: this?.id ?? Constants.empty,
@@ -243,7 +245,8 @@ extension SubscriptionQuoteAddonResponseMapper on SubscriptionQuoteAddonResponse
   }
 }
 
-extension SubscriptionQuoteLineItemResponseMapper on SubscriptionQuoteLineItemResponse? {
+extension SubscriptionQuoteLineItemResponseMapper
+    on SubscriptionQuoteLineItemResponse? {
   SubscriptionQuoteLineItemModel toDomain() {
     return SubscriptionQuoteLineItemModel(
       kind: this?.kind ?? Constants.empty,

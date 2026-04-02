@@ -71,9 +71,9 @@ class GoRouterConfig {
         path: DeliveryMethodScreen.deliveryMethodRoute,
         pageBuilder: (BuildContext context, GoRouterState state) =>
             getCustomTransitionPage(
-          state: state,
-          child: const DeliveryMethodScreen(),
-        ),
+              state: state,
+              child: const DeliveryMethodScreen(),
+            ),
       ),
     ],
   );

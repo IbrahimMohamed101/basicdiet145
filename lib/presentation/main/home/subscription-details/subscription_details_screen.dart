@@ -1,4 +1,9 @@
+import 'package:basic_diet/domain/model/subscription_checkout_model.dart';
 import 'package:basic_diet/domain/model/subscription_quote_model.dart';
+import 'package:basic_diet/presentation/main/home/payment_webview_screen.dart';
+import 'package:basic_diet/presentation/main/home/subscription/bloc/subscription_bloc.dart';
+import 'package:basic_diet/presentation/main/home/subscription/bloc/subscription_event.dart';
+import 'package:basic_diet/presentation/main/home/subscription/bloc/subscription_state.dart';
 import 'package:basic_diet/presentation/resources/color_manager.dart';
 import 'package:basic_diet/presentation/resources/font_manager.dart';
 import 'package:basic_diet/presentation/resources/strings_manager.dart';
@@ -6,13 +11,20 @@ import 'package:basic_diet/presentation/resources/styles_manager.dart';
 import 'package:basic_diet/presentation/resources/values_manager.dart';
 import 'package:basic_diet/presentation/widgets/button_widget.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:gap/gap.dart';
+import 'package:uuid/uuid.dart';
 
 class SubscriptionDetails extends StatelessWidget {
   final SubscriptionQuoteModel quote;
+  final SubscriptionQuoteRequestModel quoteRequest;
 
-  const SubscriptionDetails({super.key, required this.quote});
+  const SubscriptionDetails({
+    super.key,
+    required this.quote,
+    required this.quoteRequest,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -23,52 +35,106 @@ class SubscriptionDetails extends StatelessWidget {
     );
     final deliveryNotes = quote.summary.delivery.address?.notes.trim() ?? '';
 
-    return Scaffold(
-      backgroundColor: ColorManager.greyF3F4F6,
-      appBar: _buildAppBar(context),
-      bottomNavigationBar: _BottomActionBar(
-        totalLabel: _displayAmount(
-          label: totalItem?.amountLabel,
-          fallbackAmount: totalItem?.amountSar ?? quote.totalSar,
-        ),
-      ),
-      body: SafeArea(
-        top: false,
-        child: SingleChildScrollView(
-          padding: EdgeInsetsDirectional.fromSTEB(
-            AppPadding.p16.w,
-            AppPadding.p16.h,
-            AppPadding.p16.w,
-            AppSize.s140.h,
-          ),
-          child: Column(
-            children: [
-              const _HeroBanner(),
-              Gap(AppSize.s16.h),
-              _PlanSection(quote: quote),
-              if (quote.summary.premiumItems.isNotEmpty) ...[
-                Gap(AppSize.s16.h),
-                _PremiumMealsSection(quote: quote),
-              ],
-              if (quote.summary.addons.isNotEmpty) ...[
-                Gap(AppSize.s16.h),
-                _AddOnsSection(quote: quote),
-              ],
-              Gap(AppSize.s16.h),
-              _DeliveryDetailsSection(quote: quote),
-              Gap(AppSize.s16.h),
-              _DeliveryScheduleSection(
-                quote: quote,
-                startDate: startDate,
-                endDate: endDate,
+    return BlocListener<SubscriptionBloc, SubscriptionState>(
+      listenWhen: (previous, current) {
+        final previousStatus = previous is SubscriptionSuccess
+            ? previous.checkoutStatus
+            : SubscriptionCheckoutStatus.initial;
+        final currentStatus = current is SubscriptionSuccess
+            ? current.checkoutStatus
+            : SubscriptionCheckoutStatus.initial;
+        return previousStatus != currentStatus;
+      },
+      listener: (context, state) async {
+        if (state is! SubscriptionSuccess) return;
+
+        if (state.checkoutStatus == SubscriptionCheckoutStatus.failure &&
+            state.checkoutErrorMessage != null &&
+            state.checkoutErrorMessage!.isNotEmpty) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(state.checkoutErrorMessage!)));
+        }
+
+        if (state.checkoutStatus == SubscriptionCheckoutStatus.success &&
+            state.subscriptionCheckout != null) {
+          final result = await Navigator.push<PaymentWebViewResult>(
+            context,
+            MaterialPageRoute(
+              builder: (_) => PaymentWebViewScreen(
+                paymentUrl: state.subscriptionCheckout!.paymentUrl,
+                successUrl: _paymentSuccessUrl,
+                backUrl: _paymentCancelUrl,
               ),
-              Gap(AppSize.s16.h),
-              _PriceBreakdownSection(quote: quote),
-              if (deliveryNotes.isNotEmpty) ...[
+            ),
+          );
+
+          if (!context.mounted) return;
+
+          if (result == PaymentWebViewResult.cancelled) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text(Strings.paymentCancelled)),
+            );
+          }
+        }
+      },
+      child: Scaffold(
+        backgroundColor: ColorManager.greyF3F4F6,
+        appBar: _buildAppBar(context),
+        bottomNavigationBar: BlocBuilder<SubscriptionBloc, SubscriptionState>(
+          builder: (context, state) {
+            final isCheckoutLoading =
+                state is SubscriptionSuccess &&
+                state.checkoutStatus == SubscriptionCheckoutStatus.loading;
+
+            return _BottomActionBar(
+              totalLabel: _displayAmount(
+                label: totalItem?.amountLabel,
+                fallbackAmount: totalItem?.amountSar ?? quote.totalSar,
+              ),
+              isLoading: isCheckoutLoading,
+              onTap: isCheckoutLoading ? null : () => _submitCheckout(context),
+            );
+          },
+        ),
+        body: SafeArea(
+          top: false,
+          child: SingleChildScrollView(
+            padding: EdgeInsetsDirectional.fromSTEB(
+              AppPadding.p16.w,
+              AppPadding.p16.h,
+              AppPadding.p16.w,
+              AppSize.s140.h,
+            ),
+            child: Column(
+              children: [
+                const _HeroBanner(),
                 Gap(AppSize.s16.h),
-                _DeliveryNotesSection(notes: deliveryNotes),
+                _PlanSection(quote: quote),
+                if (quote.summary.premiumItems.isNotEmpty) ...[
+                  Gap(AppSize.s16.h),
+                  _PremiumMealsSection(quote: quote),
+                ],
+                if (quote.summary.addons.isNotEmpty) ...[
+                  Gap(AppSize.s16.h),
+                  _AddOnsSection(quote: quote),
+                ],
+                Gap(AppSize.s16.h),
+                _DeliveryDetailsSection(quote: quote),
+                Gap(AppSize.s16.h),
+                _DeliveryScheduleSection(
+                  quote: quote,
+                  startDate: startDate,
+                  endDate: endDate,
+                ),
+                Gap(AppSize.s16.h),
+                _PriceBreakdownSection(quote: quote),
+                if (deliveryNotes.isNotEmpty) ...[
+                  Gap(AppSize.s16.h),
+                  _DeliveryNotesSection(notes: deliveryNotes),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),
@@ -100,6 +166,12 @@ class SubscriptionDetails extends StatelessWidget {
         child: Container(height: 1, color: ColorManager.formFieldsBorderColor),
       ),
     );
+  }
+
+  void _submitCheckout(BuildContext context) {
+    final request = _buildCheckoutRequest(quoteRequest);
+    debugPrint('Checkout idempotencyKey: ${request.idempotencyKey}');
+    context.read<SubscriptionBloc>().add(CheckoutSubscriptionEvent(request));
   }
 }
 
@@ -812,8 +884,14 @@ class _DeliveryNotesSection extends StatelessWidget {
 
 class _BottomActionBar extends StatelessWidget {
   final String totalLabel;
+  final bool isLoading;
+  final VoidCallback? onTap;
 
-  const _BottomActionBar({required this.totalLabel});
+  const _BottomActionBar({
+    required this.totalLabel,
+    required this.isLoading,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -841,8 +919,10 @@ class _BottomActionBar extends StatelessWidget {
         top: false,
         child: ButtonWidget(
           radius: AppSize.s16,
-          text: '${Strings.confirmAndPay} - $totalLabel',
-          onTap: () {},
+          text: isLoading
+              ? Strings.openingPayment
+              : '${Strings.confirmAndPay} - $totalLabel',
+          onTap: onTap,
         ),
       ),
     );
@@ -1214,4 +1294,41 @@ String _buildAddressSummary(SubscriptionAddressModel? address) {
     address.district,
     address.city,
   ]);
+}
+
+const String _paymentSuccessUrl = 'https://app.example.com/payments/success';
+const String _paymentCancelUrl = 'https://app.example.com/payments/cancel';
+const Uuid _uuid = Uuid();
+
+SubscriptionCheckoutRequestModel _buildCheckoutRequest(
+  SubscriptionQuoteRequestModel request,
+) {
+  return SubscriptionCheckoutRequestModel(
+    idempotencyKey: _buildIdempotencyKey(request),
+    planId: request.planId,
+    grams: request.grams,
+    mealsPerDay: request.mealsPerDay,
+    startDate: request.startDate,
+    premiumItems: request.premiumItems
+        .map(
+          (item) => SubscriptionCheckoutPremiumItemRequestModel(
+            premiumMealId: item.premiumMealId,
+            qty: item.qty,
+          ),
+        )
+        .toList(),
+    addons: request.addons,
+    delivery: SubscriptionCheckoutDeliveryRequestModel(
+      type: request.delivery.type,
+      zoneId: request.delivery.zoneId,
+      slotId: request.delivery.slotId,
+      address: request.delivery.address,
+    ),
+    successUrl: _paymentSuccessUrl,
+    backUrl: _paymentCancelUrl,
+  );
+}
+
+String _buildIdempotencyKey(SubscriptionQuoteRequestModel request) {
+  return 'checkout-${_uuid.v4()}';
 }

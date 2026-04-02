@@ -67,7 +67,8 @@ class SubscriptionQuoteBreakdownResponse {
     Map<String, dynamic> json,
   ) => _$SubscriptionQuoteBreakdownResponseFromJson(json);
 
-  Map<String, dynamic> toJson() => _$SubscriptionQuoteBreakdownResponseToJson(this);
+  Map<String, dynamic> toJson() =>
+      _$SubscriptionQuoteBreakdownResponseToJson(this);
 }
 
 @JsonSerializable(explicitToJson: true)
@@ -91,10 +92,12 @@ class SubscriptionQuoteSummaryResponse {
     this.lineItems,
   });
 
-  factory SubscriptionQuoteSummaryResponse.fromJson(Map<String, dynamic> json) =>
-      _$SubscriptionQuoteSummaryResponseFromJson(json);
+  factory SubscriptionQuoteSummaryResponse.fromJson(
+    Map<String, dynamic> json,
+  ) => _$SubscriptionQuoteSummaryResponseFromJson(json);
 
-  Map<String, dynamic> toJson() => _$SubscriptionQuoteSummaryResponseToJson(this);
+  Map<String, dynamic> toJson() =>
+      _$SubscriptionQuoteSummaryResponseToJson(this);
 }
 
 @JsonSerializable()
@@ -134,7 +137,8 @@ class SubscriptionQuotePlanSummaryResponse {
     Map<String, dynamic> json,
   ) => _$SubscriptionQuotePlanSummaryResponseFromJson(json);
 
-  Map<String, dynamic> toJson() => _$SubscriptionQuotePlanSummaryResponseToJson(this);
+  Map<String, dynamic> toJson() =>
+      _$SubscriptionQuotePlanSummaryResponseToJson(this);
 }
 
 @JsonSerializable(explicitToJson: true)
@@ -202,10 +206,12 @@ class SubscriptionQuoteAddressResponse {
     this.city,
   });
 
-  factory SubscriptionQuoteAddressResponse.fromJson(Map<String, dynamic> json) =>
-      _$SubscriptionQuoteAddressResponseFromJson(json);
+  factory SubscriptionQuoteAddressResponse.fromJson(
+    Map<String, dynamic> json,
+  ) => _$SubscriptionQuoteAddressResponseFromJson(json);
 
-  Map<String, dynamic> toJson() => _$SubscriptionQuoteAddressResponseToJson(this);
+  Map<String, dynamic> toJson() =>
+      _$SubscriptionQuoteAddressResponseToJson(this);
 }
 
 @JsonSerializable()
@@ -230,7 +236,8 @@ class SubscriptionQuoteSlotSummaryResponse {
     Map<String, dynamic> json,
   ) => _$SubscriptionQuoteSlotSummaryResponseFromJson(json);
 
-  Map<String, dynamic> toJson() => _$SubscriptionQuoteSlotSummaryResponseToJson(this);
+  Map<String, dynamic> toJson() =>
+      _$SubscriptionQuoteSlotSummaryResponseToJson(this);
 }
 
 @JsonSerializable()
@@ -267,7 +274,8 @@ class SubscriptionQuotePremiumItemResponse {
     Map<String, dynamic> json,
   ) => _$SubscriptionQuotePremiumItemResponseFromJson(json);
 
-  Map<String, dynamic> toJson() => _$SubscriptionQuotePremiumItemResponseToJson(this);
+  Map<String, dynamic> toJson() =>
+      _$SubscriptionQuotePremiumItemResponseToJson(this);
 }
 
 @JsonSerializable()
@@ -345,8 +353,10 @@ class SubscriptionQuoteLineItemResponse {
     this.amountLabel,
   });
 
-  factory SubscriptionQuoteLineItemResponse.fromJson(Map<String, dynamic> json) =>
-      _$SubscriptionQuoteLineItemResponseFromJson(json);
+  factory SubscriptionQuoteLineItemResponse.fromJson(
+    Map<String, dynamic> json,
+  ) => _$SubscriptionQuoteLineItemResponseFromJson(json);
 
-  Map<String, dynamic> toJson() => _$SubscriptionQuoteLineItemResponseToJson(this);
+  Map<String, dynamic> toJson() =>
+      _$SubscriptionQuoteLineItemResponseToJson(this);
 }

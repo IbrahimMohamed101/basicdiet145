@@ -7,7 +7,8 @@ import 'register_state.dart';
 class RegisterBloc extends Bloc<RegisterEvent, RegisterState> {
   final RegisterUseCase _registerUseCase;
 
-  RegisterBloc(this._registerUseCase) : super(const RegisterFormInitialState()) {
+  RegisterBloc(this._registerUseCase)
+    : super(const RegisterFormInitialState()) {
     on<RegisterFullNameChanged>(_onFullNameChanged);
     on<RegisterPhoneChanged>(_onPhoneChanged);
     on<RegisterEmailChanged>(_onEmailChanged);

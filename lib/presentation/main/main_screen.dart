@@ -18,13 +18,17 @@ import 'profile_screen.dart';
 
 class MainScreen extends StatelessWidget {
   static const String mainRoute = "/main";
+  static const int homeTabIndex = 0;
+  static const int plansTabIndex = 2;
 
-  const MainScreen({super.key});
+  final int initialIndex;
+
+  const MainScreen({super.key, this.initialIndex = homeTabIndex});
 
   @override
   Widget build(BuildContext context) {
     return BlocProvider(
-      create: (context) => MainBloc(),
+      create: (context) => MainBloc(initialIndex: initialIndex),
       child: const _MainScreenContent(),
     );
   }

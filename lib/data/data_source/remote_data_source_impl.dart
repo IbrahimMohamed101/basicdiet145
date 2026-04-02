@@ -1,5 +1,6 @@
 import 'package:basic_diet/data/network/app_api.dart';
 import 'package:basic_diet/data/data_source/remote_data_source.dart';
+import 'package:basic_diet/data/request/subscription_checkout_request.dart';
 import 'package:basic_diet/data/request/subscription_quote_request.dart';
 import 'package:basic_diet/data/response/addons_response.dart';
 import 'package:basic_diet/data/response/auth_response.dart';
@@ -8,6 +9,7 @@ import 'package:basic_diet/data/response/delivery_options_response.dart';
 import 'package:basic_diet/data/response/plans_response.dart';
 import 'package:basic_diet/data/response/popular_packages_response.dart';
 import 'package:basic_diet/data/response/premium_meals_response.dart';
+import 'package:basic_diet/data/response/subscription_checkout_response.dart';
 import 'package:basic_diet/data/response/subscription_quote_response.dart';
 
 class RemoteDataSourceImpl implements RemoteDataSource {
@@ -64,5 +66,12 @@ class RemoteDataSourceImpl implements RemoteDataSource {
     SubscriptionQuoteRequest request,
   ) {
     return _appServiceClient.getSubscriptionQuote(request);
+  }
+
+  @override
+  Future<SubscriptionCheckoutResponse> checkoutSubscription(
+    SubscriptionCheckoutRequest request,
+  ) {
+    return _appServiceClient.checkoutSubscription(request);
   }
 }

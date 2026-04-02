@@ -130,27 +130,25 @@ class _ProceedButton extends StatelessWidget {
           padding: EdgeInsetsDirectional.all(AppPadding.p20.w),
           color: ColorManager.whiteColor,
           child: ElevatedButton(
-            onPressed:
-                isEnabled
-                    ? () {
-                      initPremiumMealsModule();
-                      final subscriptionBloc = context.read<SubscriptionBloc>();
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => BlocProvider.value(
-                            value: subscriptionBloc,
-                            child: const PremiumMealsScreen(),
-                          ),
+            onPressed: isEnabled
+                ? () {
+                    initPremiumMealsModule();
+                    final subscriptionBloc = context.read<SubscriptionBloc>();
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => BlocProvider.value(
+                          value: subscriptionBloc,
+                          child: const PremiumMealsScreen(),
                         ),
-                      );
-                    }
-                    : null,
+                      ),
+                    );
+                  }
+                : null,
             style: ElevatedButton.styleFrom(
-              backgroundColor:
-                  isEnabled
-                      ? ColorManager.greenPrimary
-                      : ColorManager.greenPrimary.withValues(alpha: 0.5),
+              backgroundColor: isEnabled
+                  ? ColorManager.greenPrimary
+                  : ColorManager.greenPrimary.withValues(alpha: 0.5),
               minimumSize: Size(double.infinity, 56.h),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(AppSize.s16.r),

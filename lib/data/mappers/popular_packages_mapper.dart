@@ -5,8 +5,7 @@ import 'package:basic_diet/domain/model/popular_packages_model.dart';
 extension PopularPackagesResponseMapper on PopularPackagesResponse? {
   PopularPackagesModel toDomain() {
     return PopularPackagesModel(
-      packages:
-          this?.data?.map((package) => package.toDomain()).toList() ?? [],
+      packages: this?.data?.map((package) => package.toDomain()).toList() ?? [],
     );
   }
 }

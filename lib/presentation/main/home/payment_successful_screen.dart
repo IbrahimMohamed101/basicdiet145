@@ -1,0 +1,143 @@
+import 'package:basic_diet/presentation/main/main_screen.dart';
+import 'package:basic_diet/presentation/resources/color_manager.dart';
+import 'package:basic_diet/presentation/resources/font_manager.dart';
+import 'package:basic_diet/presentation/resources/strings_manager.dart';
+import 'package:basic_diet/presentation/resources/styles_manager.dart';
+import 'package:basic_diet/presentation/resources/values_manager.dart';
+import 'package:basic_diet/presentation/widgets/button_widget.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:gap/gap.dart';
+
+class PaymentSuccessfulScreen extends StatelessWidget {
+  static const String routeName = '/payment_successful';
+
+  const PaymentSuccessfulScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: false,
+      child: Scaffold(
+        backgroundColor: ColorManager.whiteColor,
+        body: SafeArea(
+          child: Padding(
+            padding: EdgeInsetsDirectional.fromSTEB(
+              AppPadding.p20.w,
+              AppPadding.p24.h,
+              AppPadding.p20.w,
+              AppPadding.p24.h,
+            ),
+            child: Column(
+              children: [
+                const Spacer(flex: 3),
+                const _SuccessBadge(),
+                Gap(AppSize.s28.h),
+                Text(
+                  Strings.paymentSuccessful,
+                  textAlign: TextAlign.center,
+                  style: getBoldTextStyle(
+                    color: ColorManager.black101828,
+                    fontSize: FontSizeManager.s30.sp,
+                  ),
+                ),
+                Gap(AppSize.s12.h),
+                Padding(
+                  padding: EdgeInsetsDirectional.symmetric(
+                    horizontal: AppPadding.p12.w,
+                  ),
+                  child: Text(
+                    Strings.paymentSuccessfulSubtitle,
+                    textAlign: TextAlign.center,
+                    style: getRegularTextStyle(
+                      color: ColorManager.grey6A7282,
+                      fontSize: FontSizeManager.s16.sp,
+                    ).copyWith(height: 1.45),
+                  ),
+                ),
+                const Spacer(flex: 2),
+                ButtonWidget(
+                  radius: AppSize.s14,
+                  text: Strings.viewMyPlan,
+                  onTap: () =>
+                      _openMainScreen(context, MainScreen.plansTabIndex),
+                ),
+                Gap(AppSize.s14.h),
+                OutlinedButton(
+                  onPressed: () =>
+                      _openMainScreen(context, MainScreen.homeTabIndex),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: Size(double.infinity, AppSize.s50.h),
+                    side: const BorderSide(
+                      color: ColorManager.formFieldsBorderColor,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppSize.s14.r),
+                    ),
+                    backgroundColor: ColorManager.whiteColor,
+                  ),
+                  child: Text(
+                    Strings.goToHome,
+                    style: getBoldTextStyle(
+                      color: ColorManager.black101828,
+                      fontSize: FontSizeManager.s16.sp,
+                    ),
+                  ),
+                ),
+                const Spacer(flex: 3),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _openMainScreen(BuildContext context, int initialIndex) {
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => MainScreen(initialIndex: initialIndex)),
+      (route) => false,
+    );
+  }
+}
+
+class _SuccessBadge extends StatelessWidget {
+  const _SuccessBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: AppSize.s120.w,
+      height: AppSize.s120.w,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: ColorManager.greenPrimary.withValues(alpha: 0.10),
+      ),
+      child: Center(
+        child: Container(
+          width: AppSize.s60.w,
+          height: AppSize.s60.w,
+          decoration: const BoxDecoration(
+            shape: BoxShape.circle,
+            color: ColorManager.whiteColor,
+          ),
+          child: Center(
+            child: Container(
+              width: AppSize.s48.w,
+              height: AppSize.s48.w,
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                color: ColorManager.greenDark,
+              ),
+              child: Icon(
+                Icons.check_rounded,
+                color: ColorManager.whiteColor,
+                size: AppSize.s28,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

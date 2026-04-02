@@ -131,14 +131,14 @@ class RegisterSuccessState extends RegisterState {
 
   @override
   List<Object?> get props => [
-        fullName,
-        fullNameError ?? '',
-        phone,
-        phoneError ?? '',
-        email,
-        emailError ?? '',
-        message,
-      ];
+    fullName,
+    fullNameError ?? '',
+    phone,
+    phoneError ?? '',
+    email,
+    emailError ?? '',
+    message,
+  ];
 }
 
 class RegisterErrorState extends RegisterState {

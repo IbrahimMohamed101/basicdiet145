@@ -1,5 +1,6 @@
 import 'package:basic_diet/domain/model/add_ons_model.dart';
 import 'package:basic_diet/domain/model/plans_model.dart';
+import 'package:basic_diet/domain/model/subscription_checkout_model.dart';
 import 'package:basic_diet/domain/model/subscription_quote_model.dart';
 import 'package:equatable/equatable.dart';
 
@@ -51,6 +52,15 @@ class GetSubscriptionQuoteEvent extends SubscriptionEvent {
   final SubscriptionQuoteRequestModel request;
 
   const GetSubscriptionQuoteEvent(this.request);
+
+  @override
+  List<Object> get props => [request];
+}
+
+class CheckoutSubscriptionEvent extends SubscriptionEvent {
+  final SubscriptionCheckoutRequestModel request;
+
+  const CheckoutSubscriptionEvent(this.request);
 
   @override
   List<Object> get props => [request];
