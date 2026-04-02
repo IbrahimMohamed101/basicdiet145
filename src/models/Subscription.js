@@ -143,6 +143,7 @@ const SubscriptionSchema = new mongoose.Schema(
     deliveryZoneId: { type: mongoose.Schema.Types.ObjectId, default: null },
     deliveryZoneName: { type: String, default: "" },
     deliveryFeeHalala: { type: Number, default: 0 },
+    pickupLocationId: { type: String, default: "" },
     deliveryWindow: { type: String },
     deliverySlot: {
       type: {

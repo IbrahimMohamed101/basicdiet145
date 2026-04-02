@@ -172,6 +172,7 @@ function buildCanonicalActivationPayload({
     },
     deliveryZoneId: delivery.zoneId || null,
     deliveryZoneName: delivery.zoneName || "",
+    pickupLocationId: delivery.pickupLocationId ? String(delivery.pickupLocationId) : "",
     deliveryFeeHalala: Number(pricing.deliveryFeeHalala || 0),
     contractVersion,
     contractMode,

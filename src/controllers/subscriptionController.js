@@ -134,6 +134,13 @@ const {
   compareIdempotentRequest,
 } = require("../services/idempotencyService");
 const { reconcileCheckoutDraft, RECONCILE_MODES } = require("../services/reconciliationService");
+const { cancelSubscriptionDomain } = require("../services/subscriptionCancellationService");
+const {
+  resolveEffectiveSubscriptionStatus,
+  buildSubscriptionOperationsMeta,
+  buildFreezePreview,
+} = require("../services/subscriptionOperationsReadService");
+const { resolveSubscriptionDeliveryDefaultsUpdate } = require("../services/subscriptionDeliveryUpdateService");
 
 const SYSTEM_CURRENCY = "SAR";
 const STALE_DRAFT_THRESHOLD_MS = 30 * 1000; // 30 seconds - reduced for faster recovery
@@ -185,6 +192,41 @@ const sliceP2S1DefaultRuntime = {
   resolveEffectiveOneTimeAddonPlanning: (...args) => resolveEffectiveOneTimeAddonPlanning(...args),
   buildOneTimeAddonPlanningSnapshot: (...args) => buildOneTimeAddonPlanningSnapshot(...args),
 };
+const cancelSubscriptionDefaultRuntime = {
+  cancelSubscriptionDomain: (...args) => cancelSubscriptionDomain(...args),
+  findSubscriptionById(subscriptionId) {
+    return Subscription.findById(subscriptionId).lean();
+  },
+  serializeSubscriptionForClient: (...args) => serializeSubscriptionForClient(...args),
+  writeLogSafely: (...args) => writeLogSafely(...args),
+};
+const subscriptionOperationsMetaDefaultRuntime = {
+  buildSubscriptionOperationsMeta: (...args) => buildSubscriptionOperationsMeta(...args),
+};
+const subscriptionFreezePreviewDefaultRuntime = {
+  buildFreezePreview: (...args) => buildFreezePreview(...args),
+};
+
+function resolveCancelSubscriptionRuntime(runtimeOverrides = null) {
+  if (!runtimeOverrides || typeof runtimeOverrides !== "object" || Array.isArray(runtimeOverrides)) {
+    return cancelSubscriptionDefaultRuntime;
+  }
+  return { ...cancelSubscriptionDefaultRuntime, ...runtimeOverrides };
+}
+
+function resolveOperationsMetaRuntime(runtimeOverrides = null) {
+  if (!runtimeOverrides || typeof runtimeOverrides !== "object" || Array.isArray(runtimeOverrides)) {
+    return subscriptionOperationsMetaDefaultRuntime;
+  }
+  return { ...subscriptionOperationsMetaDefaultRuntime, ...runtimeOverrides };
+}
+
+function resolveFreezePreviewRuntime(runtimeOverrides = null) {
+  if (!runtimeOverrides || typeof runtimeOverrides !== "object" || Array.isArray(runtimeOverrides)) {
+    return subscriptionFreezePreviewDefaultRuntime;
+  }
+  return { ...subscriptionFreezePreviewDefaultRuntime, ...runtimeOverrides };
+}
 
 async function getSettingValue(key, fallback) {
   const setting = await Setting.findOne({ key }).lean();
@@ -2107,6 +2149,66 @@ function buildDateRangeOrThrow(startDate, days, fieldName = "days") {
   return Array.from({ length: parsedDays }, (_, index) => addDaysToKSADateString(startDate, index));
 }
 
+function buildDateRangeFromStartAndEndOrThrow(startDate, endDate) {
+  if (!startDate || !dateUtils.isValidKSADateString(startDate)) {
+    const err = new Error("Invalid startDate");
+    err.code = "INVALID_DATE";
+    throw err;
+  }
+  if (!endDate || !dateUtils.isValidKSADateString(endDate)) {
+    const err = new Error("Invalid endDate");
+    err.code = "INVALID_DATE";
+    throw err;
+  }
+  if (!dateUtils.isOnOrAfterKSADate(endDate, startDate)) {
+    const err = new Error("endDate must be on or after startDate");
+    err.code = "INVALID_DATE";
+    throw err;
+  }
+
+  const targetDates = [];
+  for (let current = startDate; ; current = addDaysToKSADateString(current, 1)) {
+    targetDates.push(current);
+    if (current === endDate) {
+      break;
+    }
+  }
+  return targetDates;
+}
+
+function resolveSkipRangeInputOrThrow({ startDate, days, endDate }) {
+  const hasDays = days !== undefined && days !== null && String(days).trim() !== "";
+  const hasEndDate = endDate !== undefined && endDate !== null && String(endDate).trim() !== "";
+
+  if (!hasDays && !hasEndDate) {
+    const err = new Error("Either days or endDate is required");
+    err.code = "INVALID";
+    throw err;
+  }
+
+  let targetDates;
+  if (hasEndDate) {
+    targetDates = buildDateRangeFromStartAndEndOrThrow(startDate, String(endDate).trim());
+    if (hasDays) {
+      const expectedDays = parseInt(days, 10);
+      if (!expectedDays || expectedDays <= 0 || expectedDays !== targetDates.length) {
+        const err = new Error("days must match the inclusive range from startDate to endDate");
+        err.code = "INVALID";
+        throw err;
+      }
+    }
+  } else {
+    targetDates = buildDateRangeOrThrow(startDate, days);
+  }
+
+  return {
+    startDate,
+    endDate: targetDates[targetDates.length - 1],
+    days: targetDates.length,
+    targetDates,
+  };
+}
+
 function validateFreezeRangeOrThrow(subscription, startDate, days) {
   const targetDates = buildDateRangeOrThrow(startDate, days);
   const baseEndDate = subscription.endDate || subscription.validityEndDate;
@@ -3322,14 +3424,7 @@ async function serializeSubscriptionForClient(subscription, lang) {
   delete data.premiumSelections;
   delete data.addonSelections;
 
-  // P2-S7-S3: Dynamic Status Serialization
-  // If subscription is "active" but today is past validityEndDate, reflect as "expired"
-  if (data.status === "active") {
-    const endDate = data.validityEndDate || data.endDate;
-    if (endDate && dateUtils.getTodayKSADate() > dateUtils.toKSADateString(endDate)) {
-      data.status = "expired";
-    }
-  }
+  data.status = resolveEffectiveSubscriptionStatus(data, dateUtils.getTodayKSADate()) || data.status;
 
   return localizeSubscriptionReadPayload({
     ...data,
@@ -3365,6 +3460,239 @@ async function getSubscription(req, res) {
   return res.status(200).json({
     ok: true,
     data: await serializeSubscriptionForClient(sub, lang),
+  });
+}
+
+async function getCurrentSubscriptionOverview(req, res) {
+  const userId = req.userId;
+  const lang = getRequestLang(req);
+
+  try {
+    // Find active or pending_payment subscription, most recent first
+    const sub = await Subscription.findOne(
+      {
+        userId,
+        status: { $in: ["active", "pending_payment"] },
+      },
+      null,
+      { sort: { createdAt: -1 } }
+    ).lean();
+
+    if (!sub) {
+      return res.status(200).json({
+        ok: true,
+        data: null,
+      });
+    }
+
+    return res.status(200).json({
+      ok: true,
+      data: await serializeSubscriptionForClient(sub, lang),
+    });
+  } catch (err) {
+    logger.error("subscriptionController.getCurrentSubscriptionOverview failed", {
+      error: err.message,
+      stack: err.stack,
+      userId: userId ? String(userId) : undefined,
+    });
+    return errorResponse(res, 500, "INTERNAL", "Failed to retrieve current subscription");
+  }
+}
+
+async function cancelSubscription(req, res, runtimeOverrides = null) {
+  const { id } = req.params;
+  const runtime = resolveCancelSubscriptionRuntime(runtimeOverrides);
+
+  try {
+    validateObjectId(id, "subscriptionId");
+  } catch (err) {
+    return errorResponse(res, err.status, err.code, err.message);
+  }
+
+  let result;
+  try {
+    result = await runtime.cancelSubscriptionDomain({
+      subscriptionId: id,
+      actor: { kind: "client", userId: req.userId },
+    });
+  } catch (err) {
+    logger.error("subscriptionController.cancelSubscription failed", {
+      error: err.message,
+      stack: err.stack,
+      subscriptionId: id,
+      userId: req.userId ? String(req.userId) : undefined,
+    });
+    return errorResponse(res, 500, "INTERNAL", "Subscription cancellation failed");
+  }
+
+  if (result.outcome === "not_found") {
+    return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
+  }
+
+  if (result.outcome === "forbidden") {
+    return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
+  }
+
+  if (result.outcome === "invalid_transition") {
+    return errorResponse(
+      res,
+      409,
+      "INVALID_TRANSITION",
+      "Only pending_payment or active subscriptions can be canceled"
+    );
+  }
+
+  if (!["canceled", "already_canceled"].includes(result.outcome)) {
+    logger.error("subscriptionController.cancelSubscription received unsupported outcome", {
+      outcome: result.outcome,
+      subscriptionId: id,
+      userId: req.userId ? String(req.userId) : undefined,
+    });
+    return errorResponse(res, 500, "INTERNAL", "Subscription cancellation failed");
+  }
+
+  const subscription = await runtime.findSubscriptionById(result.subscriptionId || id);
+  if (!subscription) {
+    return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
+  }
+
+  const serialized = await runtime.serializeSubscriptionForClient(subscription, getRequestLang(req));
+
+  if (result.outcome === "already_canceled") {
+    return res.status(200).json({
+      ok: true,
+      data: serialized,
+      idempotent: true,
+    });
+  }
+
+  await runtime.writeLogSafely({
+    entityType: "subscription",
+    entityId: result.subscriptionId || id,
+    action: "subscription_canceled_by_client",
+    byUserId: req.userId,
+    byRole: "client",
+    meta: result.mutation,
+  }, {
+    subscriptionId: id,
+    userId: req.userId ? String(req.userId) : undefined,
+  });
+
+  return res.status(200).json({
+    ok: true,
+    data: serialized,
+  });
+}
+
+async function getSubscriptionOperationsMeta(req, res, runtimeOverrides = null) {
+  const { id } = req.params;
+  const runtime = resolveOperationsMetaRuntime(runtimeOverrides);
+
+  try {
+    validateObjectId(id, "subscriptionId");
+  } catch (err) {
+    return errorResponse(res, err.status, err.code, err.message);
+  }
+
+  try {
+    const result = await runtime.buildSubscriptionOperationsMeta({
+      subscriptionId: id,
+      actor: { kind: "client", userId: req.userId },
+    });
+
+    if (result.outcome === "not_found") {
+      return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
+    }
+    if (result.outcome === "forbidden") {
+      return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
+    }
+    if (result.outcome !== "success") {
+      logger.error("subscriptionController.getSubscriptionOperationsMeta received unsupported outcome", {
+        outcome: result.outcome,
+        subscriptionId: id,
+        userId: req.userId ? String(req.userId) : undefined,
+      });
+      return errorResponse(res, 500, "INTERNAL", "Failed to load operations metadata");
+    }
+
+    return res.status(200).json({
+      ok: true,
+      data: result.data,
+    });
+  } catch (err) {
+    logger.error("subscriptionController.getSubscriptionOperationsMeta failed", {
+      error: err.message,
+      stack: err.stack,
+      subscriptionId: id,
+      userId: req.userId ? String(req.userId) : undefined,
+    });
+    return errorResponse(res, 500, "INTERNAL", "Failed to load operations metadata");
+  }
+}
+
+async function getSubscriptionFreezePreview(req, res, runtimeOverrides = null) {
+  const { id } = req.params;
+  const { startDate, days } = req.query || {};
+  const runtime = resolveFreezePreviewRuntime(runtimeOverrides);
+
+  try {
+    validateObjectId(id, "subscriptionId");
+  } catch (err) {
+    return errorResponse(res, err.status, err.code, err.message);
+  }
+
+  try {
+    const result = await runtime.buildFreezePreview({
+      subscriptionId: id,
+      actor: { kind: "client", userId: req.userId },
+      startDate,
+      days,
+    });
+
+    if (result.outcome === "not_found") {
+      return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
+    }
+    if (result.outcome === "forbidden") {
+      return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
+    }
+    if (result.outcome === "error") {
+      return errorResponse(res, result.status, result.code, result.message);
+    }
+    if (result.outcome !== "success") {
+      logger.error("subscriptionController.getSubscriptionFreezePreview received unsupported outcome", {
+        outcome: result.outcome,
+        subscriptionId: id,
+        userId: req.userId ? String(req.userId) : undefined,
+      });
+      return errorResponse(res, 500, "INTERNAL", "Failed to build freeze preview");
+    }
+
+    return res.status(200).json({
+      ok: true,
+      data: result.data,
+    });
+  } catch (err) {
+    logger.error("subscriptionController.getSubscriptionFreezePreview failed", {
+      error: err.message,
+      stack: err.stack,
+      subscriptionId: id,
+      userId: req.userId ? String(req.userId) : undefined,
+    });
+    return errorResponse(res, 500, "INTERNAL", "Failed to build freeze preview");
+  }
+}
+
+async function getSubscriptionPaymentMethods(_req, res) {
+  return res.status(200).json({
+    ok: true,
+    data: {
+      supported: false,
+      canManage: false,
+      provider: "moyasar",
+      mode: "invoice_only",
+      reasonCode: "PROVIDER_TOKENIZATION_UNAVAILABLE",
+      methods: [],
+    },
   });
 }
 
@@ -6284,8 +6612,7 @@ async function unskipDay(req, res) {
 
 async function skipRange(req, res) {
   const { id } = req.params;
-  const { startDate, days } = req.body || {};
-  const rangeDays = parseInt(days, 10);
+  const { startDate, days, endDate } = req.body || {};
   const lang = getRequestLang(req);
 
   try {
@@ -6294,11 +6621,12 @@ async function skipRange(req, res) {
     return errorResponse(res, err.status, err.code, err.message);
   }
 
-  if (!startDate || !dateUtils.isValidKSADateString(startDate)) {
-    return errorResponse(res, 400, "INVALID_DATE", "Invalid startDate" );
-  }
-  if (!rangeDays || rangeDays <= 0) {
-    return errorResponse(res, 400, "INVALID", "Invalid days count" );
+  let rangeRequest;
+  try {
+    rangeRequest = resolveSkipRangeInputOrThrow({ startDate, days, endDate });
+  } catch (err) {
+    const status = err.code === "INVALID_DATE" ? 400 : 400;
+    return errorResponse(res, status, err.code || "INVALID", err.message);
   }
 
   const sub = await Subscription.findById(id).populate("planId");
@@ -6319,6 +6647,11 @@ async function skipRange(req, res) {
 
   const cutoffTime = await getSettingValue("cutoff_time", "00:00");
   const summary = {
+    requestedRange: {
+      startDate: rangeRequest.startDate,
+      endDate: rangeRequest.endDate,
+      days: rangeRequest.days,
+    },
     skippedDates: [],
     // BUSINESS RULE: Compensation is disabled for all skips, so this list remains empty.
     compensatedDatesAdded: [],
@@ -6344,11 +6677,10 @@ async function skipRange(req, res) {
       return errorResponse(res, 422, err.code, err.message);
     }
     // BUSINESS RULE: Reject the entire request if requested skip count exceeds remaining global allowance.
-    await enforceSkipAllowanceOrThrow({ subscriptionId: subInSession._id, daysToSkip: rangeDays, session });
+    await enforceSkipAllowanceOrThrow({ subscriptionId: subInSession._id, daysToSkip: rangeRequest.days, session });
     const baseEndDate = subInSession.validityEndDate || subInSession.endDate;
 
-    for (let i = 0; i < rangeDays; i++) {
-      const dateStr = addDaysToKSADateString(startDate, i);
+    for (const dateStr of rangeRequest.targetDates) {
       if (!dateUtils.isOnOrAfterKSADate(dateStr, tomorrow)) {
         summary.rejected.push({ date: dateStr, reason: "BEFORE_TOMORROW" });
         continue;
@@ -7589,13 +7921,9 @@ async function preparePickup(req, res) {
   }
 }
 
-async function updateDeliveryDetails(req, res) {
+async function updateDeliveryDetails(req, res, runtimeOverrides = null) {
   const { id } = req.params;
-  const { deliveryAddress, deliveryWindow } = req.body || {};
   const lang = getRequestLang(req);
-  if (deliveryAddress === undefined && deliveryWindow === undefined) {
-    return errorResponse(res, 400, "INVALID", "Missing delivery update fields" );
-  }
 
   const sub = await Subscription.findById(id);
   if (!sub) return errorResponse(res, 404, "NOT_FOUND", "Subscription not found" );
@@ -7607,31 +7935,29 @@ async function updateDeliveryDetails(req, res) {
   } catch (err) {
     return errorResponse(res, 422, err.code, err.message );
   }
-  if (sub.deliveryMode !== "delivery") {
-    return errorResponse(res, 400, "INVALID", "Delivery mode is not delivery" );
-  }
 
-  const windows = await getSettingValue("delivery_windows", []);
-  if (deliveryWindow && windows.length && !windows.includes(deliveryWindow)) {
-    return errorResponse(res, 400, "INVALID", "Invalid delivery window" );
+  let resolvedUpdate;
+  try {
+    resolvedUpdate = await resolveSubscriptionDeliveryDefaultsUpdate({
+      subscription: sub.toObject ? sub.toObject() : sub,
+      payload: req.body || {},
+      lang,
+      allowModeChange: false,
+      runtime: runtimeOverrides,
+    });
+  } catch (err) {
+    return errorResponse(res, err.status || 400, err.code || "INVALID", err.message);
   }
-
-  const willChangeAddress =
-    deliveryAddress !== undefined &&
-    JSON.stringify(deliveryAddress) !== JSON.stringify(sub.deliveryAddress || null);
-  const willChangeWindow =
-    deliveryWindow !== undefined &&
-    deliveryWindow !== (sub.deliveryWindow || null);
 
   // MEDIUM AUDIT FIX: Global delivery updates must not mutate tomorrow's effective details after cutoff has passed.
-  if (willChangeAddress || willChangeWindow) {
+  if (resolvedUpdate.willChangeAddress || resolvedUpdate.willChangeWindow) {
     const tomorrow = dateUtils.getTomorrowKSADate();
     const endDate = sub.validityEndDate || sub.endDate;
     if (dateUtils.isInSubscriptionRange(tomorrow, endDate)) {
       const tomorrowDay = await SubscriptionDay.findOne({ subscriptionId: id, date: tomorrow }).lean();
       const isTomorrowEditable = !tomorrowDay || tomorrowDay.status === "open";
-      const addressImpactsTomorrow = willChangeAddress && !hasDeliveryAddressOverride(tomorrowDay);
-      const windowImpactsTomorrow = willChangeWindow && !hasDeliveryWindowOverride(tomorrowDay);
+      const addressImpactsTomorrow = resolvedUpdate.willChangeAddress && !hasDeliveryAddressOverride(tomorrowDay);
+      const windowImpactsTomorrow = resolvedUpdate.willChangeWindow && !hasDeliveryWindowOverride(tomorrowDay);
       if (isTomorrowEditable && (addressImpactsTomorrow || windowImpactsTomorrow)) {
         try {
           await enforceTomorrowCutoffOrThrow(tomorrow);
@@ -7642,8 +7968,7 @@ async function updateDeliveryDetails(req, res) {
     }
   }
 
-  if (deliveryAddress !== undefined) sub.deliveryAddress = deliveryAddress;
-  if (deliveryWindow !== undefined) sub.deliveryWindow = deliveryWindow;
+  Object.assign(sub, resolvedUpdate.patch);
   await sub.save();
   await writeLogSafely({
     entityType: "subscription",
@@ -7651,7 +7976,7 @@ async function updateDeliveryDetails(req, res) {
     action: "delivery_update",
     byUserId: req.userId,
     byRole: "client",
-    meta: { deliveryWindow: sub.deliveryWindow },
+    meta: resolvedUpdate.logMeta,
   }, { subscriptionId: id });
   return res.status(200).json({
     ok: true,
@@ -7804,6 +8129,11 @@ module.exports = {
   finalizeSubscriptionDraftPayment,
   activateSubscription,
   getSubscription,
+  getCurrentSubscriptionOverview,
+  cancelSubscription,
+  getSubscriptionOperationsMeta,
+  getSubscriptionFreezePreview,
+  getSubscriptionPaymentMethods,
   getSubscriptionTimeline,
   getSubscriptionRenewalSeed,
   renewSubscription,

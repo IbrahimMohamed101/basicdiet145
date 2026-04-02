@@ -61,6 +61,7 @@ const {
   hashDashboardPassword,
 } = require("../services/dashboardPasswordService");
 const { assertValidPhoneE164 } = require("../services/otpService");
+const { cancelSubscriptionDomain } = require("../services/subscriptionCancellationService");
 
 const MAX_PREMIUM_PRICE = 10000;
 const MAX_VAT_PERCENTAGE = 100;
@@ -84,6 +85,17 @@ const sliceCAdminRuntime = {
   },
   startSession() {
     return mongoose.startSession();
+  },
+};
+const cancelSubscriptionAdminDefaultRuntime = {
+  cancelSubscriptionDomain: (...args) => cancelSubscriptionDomain(...args),
+  serializeSubscriptionAdmin: (...args) => serializeSubscriptionAdmin(...args),
+  writeActivityLogSafely: (...args) => writeActivityLogSafely(...args),
+  findSubscriptionByIdLean(subscriptionId) {
+    return Subscription.findById(subscriptionId).lean();
+  },
+  findUserByIdLean(userId) {
+    return User.findById(userId).lean();
   },
 };
 
@@ -3577,39 +3589,30 @@ async function listSubscriptionDaysAdmin(req, res) {
   return res.status(200).json({ ok: true, data: days });
 }
 
-async function cancelSubscriptionAdmin(req, res) {
+async function cancelSubscriptionAdmin(req, res, runtimeOverrides = null) {
   const { id } = req.params;
   if (!validateObjectIdOrRespond(res, id, "id")) {
     return undefined;
   }
 
   const lang = getRequestLang(req);
-  const session = await mongoose.startSession();
-  session.startTransaction();
+  const runtime = resolveAdminRuntimeOverrides(cancelSubscriptionAdminDefaultRuntime, runtimeOverrides);
 
   try {
-    const subscription = await Subscription.findById(id).session(session);
-    if (!subscription) {
-      await session.abortTransaction();
-      session.endSession();
+    const result = await runtime.cancelSubscriptionDomain({
+      subscriptionId: id,
+      actor: {
+        kind: "admin",
+        dashboardUserId: req.dashboardUserId,
+        dashboardUserRole: req.dashboardUserRole,
+      },
+    });
+
+    if (result.outcome === "not_found") {
       return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
     }
 
-    const user = subscription.userId ? await User.findById(subscription.userId).session(session).lean() : null;
-
-    if (subscription.status === "canceled") {
-      await session.commitTransaction();
-      session.endSession();
-      return res.status(200).json({
-        ok: true,
-        data: await serializeSubscriptionAdmin(subscription.toObject(), lang, user),
-        idempotent: true,
-      });
-    }
-
-    if (!["pending_payment", "active"].includes(subscription.status)) {
-      await session.abortTransaction();
-      session.endSession();
+    if (result.outcome === "invalid_transition") {
       return errorResponse(
         res,
         409,
@@ -3618,61 +3621,46 @@ async function cancelSubscriptionAdmin(req, res) {
       );
     }
 
-    let removedFutureDays = 0;
-    let preservedCredits = 0;
-    const previousStatus = subscription.status;
-    if (subscription.status === "active") {
-      const today = dateUtils.getTodayKSADate();
-      const mealsPerDay = resolveMealsPerDay(subscription);
-      const undeductedCommittedDays = await SubscriptionDay.countDocuments({
-        subscriptionId: subscription._id,
-        status: { $in: ["locked", "in_preparation", "out_for_delivery", "ready_for_pickup"] },
-        creditsDeducted: { $ne: true },
-      }).session(session);
-
-      preservedCredits = Math.min(
-        Number(subscription.remainingMeals || 0),
-        Number(undeductedCommittedDays || 0) * mealsPerDay
-      );
-
-      const deleteResult = await SubscriptionDay.deleteMany({
-        subscriptionId: subscription._id,
-        date: { $gte: today },
-        status: { $in: ["open", "frozen"] },
-      }).session(session);
-      removedFutureDays = Number(deleteResult.deletedCount || 0);
-      subscription.remainingMeals = preservedCredits;
-    } else {
-      subscription.remainingMeals = 0;
+    if (result.outcome === "forbidden") {
+      return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
     }
 
-    subscription.status = "canceled";
-    subscription.canceledAt = new Date();
-    await subscription.save({ session });
+    if (!["canceled", "already_canceled"].includes(result.outcome)) {
+      logger.error("adminController.cancelSubscriptionAdmin received unsupported outcome", {
+        outcome: result.outcome,
+        subscriptionId: id,
+      });
+      return errorResponse(res, 500, "INTERNAL", "Subscription cancellation failed");
+    }
 
-    await session.commitTransaction();
-    session.endSession();
+    const subscription = await runtime.findSubscriptionByIdLean(result.subscriptionId || id);
+    if (!subscription) {
+      return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
+    }
+    const user = subscription.userId ? await runtime.findUserByIdLean(subscription.userId) : null;
 
-    await writeActivityLogSafely({
+    if (result.outcome === "already_canceled") {
+      return res.status(200).json({
+        ok: true,
+        data: await runtime.serializeSubscriptionAdmin(subscription, lang, user),
+        idempotent: true,
+      });
+    }
+
+    await runtime.writeActivityLogSafely({
       entityType: "subscription",
-      entityId: subscription._id,
+      entityId: result.subscriptionId || id,
       action: "subscription_canceled_by_admin",
       byUserId: req.dashboardUserId,
       byRole: req.dashboardUserRole,
-      meta: {
-        removedFutureDays,
-        preservedCredits,
-        previousStatus,
-      },
+      meta: result.mutation,
     }, { subscriptionId: id });
 
     return res.status(200).json({
       ok: true,
-      data: await serializeSubscriptionAdmin(subscription.toObject(), lang, user),
+      data: await runtime.serializeSubscriptionAdmin(subscription, lang, user),
     });
   } catch (err) {
-    await session.abortTransaction();
-    session.endSession();
     logger.error("adminController.cancelSubscriptionAdmin failed", {
       error: err.message,
       stack: err.stack,

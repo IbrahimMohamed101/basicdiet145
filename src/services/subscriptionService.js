@@ -387,6 +387,8 @@ async function buildSubscriptionTimeline(subscriptionId) {
 module.exports = {
   applySkipForDate,
   enforceSkipAllowanceOrThrow,
+  getGlobalSkipAllowance,
+  countAlreadySkippedDays,
   syncSubscriptionValidity,
   countFrozenDays,
   buildSubscriptionTimeline,

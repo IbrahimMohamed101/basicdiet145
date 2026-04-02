@@ -88,7 +88,7 @@ function extractLegacyRenewalSeed(previousSubscription) {
             slotId: "",
           }
           : null),
-      pickupLocationId: null,
+      pickupLocationId: previousSubscription.pickupLocationId ? String(previousSubscription.pickupLocationId) : null,
       zoneId: previousSubscription.deliveryZoneId ? String(previousSubscription.deliveryZoneId) : null,
       zoneName: previousSubscription.deliveryZoneName ? String(previousSubscription.deliveryZoneName) : "",
       seedOnly: true,

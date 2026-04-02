@@ -15,6 +15,8 @@ router.get("/delivery-options", asyncHandler(menuController.getDeliveryOptions))
 router.use(authMiddleware);
 
 router.get("/", asyncHandler(controller.listCurrentUserSubscriptions));
+router.get("/payment-methods", asyncHandler(controller.getSubscriptionPaymentMethods));
+router.get("/current/overview", asyncHandler(controller.getCurrentSubscriptionOverview));
 router.post("/quote", asyncHandler(controller.quoteSubscription));
 router.get("/checkout-drafts/:draftId", asyncHandler(controller.getCheckoutDraftStatus));
 router.post("/checkout-drafts/:draftId/verify-payment", asyncHandler(controller.verifyCheckoutDraftPayment));
@@ -64,6 +66,9 @@ if (process.env.NODE_ENV !== "production") {
 router.get("/:id/renewal-seed", asyncHandler(controller.getSubscriptionRenewalSeed));
 router.post("/:id/renew", asyncHandler(controller.renewSubscription));
 router.get("/:id", asyncHandler(controller.getSubscription));
+router.get("/:id/operations-meta", asyncHandler(controller.getSubscriptionOperationsMeta));
+router.get("/:id/freeze-preview", asyncHandler(controller.getSubscriptionFreezePreview));
+router.post("/:id/cancel", asyncHandler(controller.cancelSubscription));
 router.get("/:id/timeline", asyncHandler(controller.getSubscriptionTimeline));
 router.get("/:id/wallet", asyncHandler(controller.getSubscriptionWallet));
 router.get("/:id/wallet/history", asyncHandler(controller.getSubscriptionWalletHistory));

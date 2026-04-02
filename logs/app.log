@@ -3383,3 +3383,23 @@
 {"draftId":"69cd5a5aa6927b075bcffc7b","failureReason":"","hasPaymentUrl":true,"level":"info","message":"[DEBUG-CHECKOUT] Persisting draft update","paymentId":"69cd5a5aa6927b075bcffc7c","providerInvoiceId":"invoice-checkout-ar","stage":"draft_payment_link_persist","status":"pending_payment","timestamp":"2026-04-01T17:48:10.756Z"}
 {"draftId":"69cd5a5aa6927b075bcffc7b","level":"info","message":"[DEBUG-CHECKOUT] Draft update saved","stage":"draft_payment_link_persist","timestamp":"2026-04-01T17:48:10.757Z"}
 {"draftId":"69cd5a5aa6927b075bcffc86","error":"Missing MOYASAR_SECRET_KEY","level":"warn","message":"Reconciliation failed to fetch provider invoice","providerInvoiceId":"invoice-status-1","timestamp":"2026-04-01T17:48:10.773Z"}
+{"action":"delivery_update","entityId":"69ce0e0fadc0cce26c52b5e6","entityType":"subscription","error":"Operation `activitylogs.insertOne()` buffering timed out after 10000ms","level":"error","message":"Activity log write failed","stack":"MongooseError: Operation `activitylogs.insertOne()` buffering timed out after 10000ms\n    at Timeout.<anonymous> (/home/hema/Projects/basicdiet145/node_modules/mongoose/lib/drivers/node-mongodb-native/collection.js:187:23)\n    at listOnTimeout (node:internal/timers:569:17)\n    at process.processTimers (node:internal/timers:512:7)","subscriptionId":"69ce0e0fadc0cce26c52b5e6","timestamp":"2026-04-02T06:35:05.337Z"}
+{"action":"delivery_update","entityId":"69ce0e19adc0cce26c52b5ed","entityType":"subscription","error":"Operation `activitylogs.insertOne()` buffering timed out after 10000ms","level":"error","message":"Activity log write failed","stack":"MongooseError: Operation `activitylogs.insertOne()` buffering timed out after 10000ms\n    at Timeout.<anonymous> (/home/hema/Projects/basicdiet145/node_modules/mongoose/lib/drivers/node-mongodb-native/collection.js:187:23)\n    at listOnTimeout (node:internal/timers:569:17)\n    at process.processTimers (node:internal/timers:512:7)","subscriptionId":"69ce0e19adc0cce26c52b5ed","timestamp":"2026-04-02T06:35:15.353Z"}
+{"level":"info","message":"Normalized stored provider identifiers for payments","providerInvoiceIdModified":0,"providerPaymentIdModified":0,"timestamp":"2026-04-02T07:25:21.795Z"}
+{"email":"superadmin@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"superadmin","timestamp":"2026-04-02T07:25:22.690Z"}
+{"email":"admin@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"admin","timestamp":"2026-04-02T07:25:22.836Z"}
+{"email":"kitchen@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"kitchen","timestamp":"2026-04-02T07:25:22.985Z"}
+{"email":"courier@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"courier","timestamp":"2026-04-02T07:25:23.136Z"}
+{"level":"info","message":"Jobs starting","timestamp":"2026-04-02T07:25:23.137Z"}
+{"level":"info","message":"API listening","port":"3000","timestamp":"2026-04-02T07:25:23.141Z"}
+{"date":"2026-04-03","level":"info","message":"Automation cutoff start","timestamp":"2026-04-02T07:26:23.454Z"}
+{"date":"2026-04-03","dayId":"69ce192e19253ff935ded4dd","level":"info","message":"Automation cutoff fallback auto-assign meals","subscriptionId":"69ce192e19253ff935ded4da","timestamp":"2026-04-02T07:26:23.932Z"}
+{"count":1,"level":"info","message":"Automation cutoff finished","timestamp":"2026-04-02T07:26:24.746Z"}
+{"activeSubscriptions":10,"level":"info","message":"Subscription expiry reminders finished","sent24h":0,"sent3d":0,"timestamp":"2026-04-02T07:26:24.899Z"}
+{"level":"info","message":"Normalized stored provider identifiers for payments","providerInvoiceIdModified":0,"providerPaymentIdModified":0,"timestamp":"2026-04-02T07:39:12.408Z"}
+{"email":"superadmin@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"superadmin","timestamp":"2026-04-02T07:39:14.143Z"}
+{"email":"admin@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"admin","timestamp":"2026-04-02T07:39:14.291Z"}
+{"email":"kitchen@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"kitchen","timestamp":"2026-04-02T07:39:14.513Z"}
+{"email":"courier@example.com","level":"info","message":"Default dashboard user already exists. Skipping.","role":"courier","timestamp":"2026-04-02T07:39:14.732Z"}
+{"level":"info","message":"Jobs starting","timestamp":"2026-04-02T07:39:14.733Z"}
+{"level":"info","message":"API listening","port":"3000","timestamp":"2026-04-02T07:39:14.738Z"}
