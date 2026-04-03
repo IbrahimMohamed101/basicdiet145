@@ -204,4 +204,16 @@ class Strings {
       "Your subscription has been activated. Get ready to enjoy healthy meals!";
   static const String viewMyPlan = "View My Plan";
   static const String goToHome = "Go to Home";
+  static const String mySubscription = "My Subscription";
+  static const String subscriptionPlanText = "Subscription Plan";
+  static const String active = "Active";
+  static const String regularMealsRemaining = "Regular Meals Remaining";
+  static const String premiumMealsText = "Premium Meals";
+  static const String available = "available";
+  static const String purchased = "Purchased";
+  static const String consumed = "Consumed";
+  static const String addOnsIncluded = "Add-ons Included";
+  static const String viewTimeline = "View Timeline";
+  static const String todaysMeals = "Today's Meals";
+  static const String subscriptionPeriodText = "Subscription Period";
 }

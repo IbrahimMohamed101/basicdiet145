@@ -10,6 +10,7 @@ import 'package:basic_diet/data/response/premium_meals_response.dart';
 import 'package:basic_diet/data/response/addons_response.dart';
 import 'package:basic_diet/data/response/subscription_checkout_response.dart';
 import 'package:basic_diet/data/response/subscription_quote_response.dart';
+import 'package:basic_diet/data/response/current_subscription_overview_response.dart';
 import 'package:retrofit/retrofit.dart';
 import 'package:dio/dio.dart';
 part 'app_api.g.dart';
@@ -58,4 +59,7 @@ abstract class AppServiceClient {
   Future<SubscriptionCheckoutResponse> checkoutSubscription(
     @Body() SubscriptionCheckoutRequest request,
   );
+
+  @GET("/api/subscriptions/current/overview")
+  Future<CurrentSubscriptionOverviewResponse> getCurrentSubscriptionOverview();
 }

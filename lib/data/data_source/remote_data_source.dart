@@ -9,6 +9,7 @@ import 'package:basic_diet/data/response/popular_packages_response.dart';
 import 'package:basic_diet/data/response/premium_meals_response.dart';
 import 'package:basic_diet/data/response/subscription_checkout_response.dart';
 import 'package:basic_diet/data/response/subscription_quote_response.dart';
+import 'package:basic_diet/data/response/current_subscription_overview_response.dart';
 
 abstract class RemoteDataSource {
   Future<BaseResponse> login(String phone);
@@ -25,4 +26,5 @@ abstract class RemoteDataSource {
   Future<SubscriptionCheckoutResponse> checkoutSubscription(
     SubscriptionCheckoutRequest request,
   );
+  Future<CurrentSubscriptionOverviewResponse> getCurrentSubscriptionOverview();
 }

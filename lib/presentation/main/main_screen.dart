@@ -13,8 +13,8 @@ import 'bloc/main_state.dart';
 import 'home/home_screen.dart';
 import 'menu/menu_screen.dart';
 import 'orders/orders_screen.dart';
-import 'plans_screen.dart';
-import 'profile_screen.dart';
+import '../plans/plans_screen.dart';
+import 'profile/profile_screen.dart';
 
 class MainScreen extends StatelessWidget {
   static const String mainRoute = "/main";

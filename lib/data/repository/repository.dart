@@ -27,6 +27,8 @@ import 'package:dio/dio.dart';
 
 import 'package:basic_diet/data/mappers/addons_mapper.dart';
 import 'package:basic_diet/domain/model/add_ons_model.dart';
+import 'package:basic_diet/data/mappers/current_subscription_overview_mapper.dart';
+import 'package:basic_diet/domain/model/current_subscription_overview_model.dart';
 
 class RepositoryImpl implements Repository {
   final RemoteDataSource _remoteDataSource;
@@ -256,6 +258,20 @@ class RepositoryImpl implements Repository {
   ) async {
     try {
       final response = await _checkoutWithRetry(request);
+      if (_isSuccessfulResponse(response)) {
+        return Right(response.toDomain());
+      } else {
+        return Left(_mapFailureFromResponse(response));
+      }
+    } catch (error) {
+      return _handleError(error);
+    }
+  }
+
+  @override
+  Future<Either<Failure, CurrentSubscriptionOverviewModel>> getCurrentSubscriptionOverview() async {
+    try {
+      final response = await _remoteDataSource.getCurrentSubscriptionOverview();
       if (_isSuccessfulResponse(response)) {
         return Right(response.toDomain());
       } else {

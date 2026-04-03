@@ -10,6 +10,7 @@ import 'package:basic_diet/domain/model/subscription_quote_model.dart';
 import 'package:dartz/dartz.dart';
 
 import 'package:basic_diet/domain/model/add_ons_model.dart';
+import 'package:basic_diet/domain/model/current_subscription_overview_model.dart';
 
 abstract class Repository {
   Future<Either<Failure, BaseModel>> login(String phone);
@@ -33,4 +34,5 @@ abstract class Repository {
   Future<Either<Failure, SubscriptionCheckoutModel>> checkoutSubscription(
     SubscriptionCheckoutRequestModel request,
   );
+  Future<Either<Failure, CurrentSubscriptionOverviewModel>> getCurrentSubscriptionOverview();
 }

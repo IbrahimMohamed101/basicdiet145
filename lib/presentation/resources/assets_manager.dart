@@ -23,6 +23,7 @@ class IconAssets {
   static const String knife = '$iconsPath/knife.svg';
   static const String notification = '$iconsPath/notification.svg';
   static const String star = '$iconsPath/star.svg';
+  static const String wave = '$iconsPath/wave.svg';
 }
 
 class JsonAssets {

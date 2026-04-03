@@ -24,6 +24,8 @@ import 'package:basic_diet/presentation/main/home/add-ons/bloc/add_ons_bloc.dart
 import 'package:basic_diet/presentation/main/home/delivery/bloc/delivery_options_bloc.dart';
 import 'package:dio/dio.dart';
 import 'package:basic_diet/app/app_pref.dart';
+import 'package:basic_diet/domain/usecase/get_current_subscription_overview_usecase.dart';
+import 'package:basic_diet/presentation/plans/plans_bloc.dart';
 import 'package:get_it/get_it.dart';
 
 final instance = GetIt.instance; // Singleton instance of GetIt
@@ -159,6 +161,18 @@ void initDeliveryOptionsModule() {
 
     instance.registerFactory<DeliveryOptionsBloc>(
       () => DeliveryOptionsBloc(instance<GetDeliveryOptionsUseCase>()),
+    );
+  }
+}
+
+void initPlansModule() {
+  if (!GetIt.I.isRegistered<GetCurrentSubscriptionOverviewUseCase>()) {
+    instance.registerFactory<GetCurrentSubscriptionOverviewUseCase>(
+      () => GetCurrentSubscriptionOverviewUseCase(instance<Repository>()),
+    );
+
+    instance.registerFactory<PlansBloc>(
+      () => PlansBloc(instance<GetCurrentSubscriptionOverviewUseCase>()),
     );
   }
 }

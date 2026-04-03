@@ -11,6 +11,7 @@ import 'package:basic_diet/data/response/popular_packages_response.dart';
 import 'package:basic_diet/data/response/premium_meals_response.dart';
 import 'package:basic_diet/data/response/subscription_checkout_response.dart';
 import 'package:basic_diet/data/response/subscription_quote_response.dart';
+import 'package:basic_diet/data/response/current_subscription_overview_response.dart';
 
 class RemoteDataSourceImpl implements RemoteDataSource {
   final AppServiceClient _appServiceClient;
@@ -73,5 +74,10 @@ class RemoteDataSourceImpl implements RemoteDataSource {
     SubscriptionCheckoutRequest request,
   ) {
     return _appServiceClient.checkoutSubscription(request);
+  }
+
+  @override
+  Future<CurrentSubscriptionOverviewResponse> getCurrentSubscriptionOverview() {
+    return _appServiceClient.getCurrentSubscriptionOverview();
   }
 }
