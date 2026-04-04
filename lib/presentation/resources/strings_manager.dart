@@ -216,4 +216,20 @@ class Strings {
   static const String viewTimeline = "View Timeline";
   static const String todaysMeals = "Today's Meals";
   static const String subscriptionPeriodText = "Subscription Period";
+
+  // Manage Subscription Screen
+  static const String manageSubscription = "Manage Subscription";
+  static const String premiumMonthlyPlan = "Premium Monthly Plan";
+  static const String activeUntil = "Active until";
+  static const String deliveryMode = "Delivery mode";
+  static const String subscriptionActions = "Subscription Actions";
+  static const String freezeSubscription = "Freeze Subscription";
+  static const String freezeSubscriptionDesc = "Pause your subscription temporarily";
+  static const String skipDays = "Skip Days";
+  static const String skipDaysDesc = "Skip specific days or date range";
+  static const String deliverySettings = "Delivery Settings";
+  static const String deliverySettingsDesc = "Update address and delivery time";
+  static const String dangerZone = "Danger Zone";
+  static const String dangerZoneDesc = "Canceling your subscription will stop all future deliveries";
+  static const String cancelSubscription = "Cancel Subscription";
 }

@@ -10,6 +10,9 @@ import 'package:basic_diet/presentation/plans/plans_bloc.dart';
 import 'package:basic_diet/presentation/plans/plans_event.dart';
 import 'package:basic_diet/presentation/plans/plans_state.dart';
 import 'package:basic_diet/domain/model/current_subscription_overview_model.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:gap/gap.dart';
+import 'package:basic_diet/presentation/plans/manage_subscription/manage_subscription_screen.dart';
 
 class PlansScreen extends StatelessWidget {
   const PlansScreen({super.key});
@@ -48,12 +51,12 @@ class PlansScreen extends StatelessWidget {
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _buildSubscriptionPlanCard(data),
-                          const SizedBox(height: AppSize.s16),
+                          _buildSubscriptionPlanCard(context, data),
+                          Gap(AppSize.s16.h),
                           _buildActionButtons(),
-                          const SizedBox(height: AppSize.s16),
+                          Gap(AppSize.s16.h),
                           _buildSubscriptionPeriodCard(data),
-                          const SizedBox(height: AppSize.s24),
+                          Gap(AppSize.s24.h),
                         ],
                       );
                     }
@@ -79,35 +82,35 @@ class PlansScreen extends StatelessWidget {
               Strings.mySubscription,
               style: getBoldTextStyle(
                 color: ColorManager.black101828,
-                fontSize: FontSizeManager.s22,
+                fontSize: FontSizeManager.s22.sp,
               ),
             ),
-            const SizedBox(height: AppSize.s4),
+            Gap(AppSize.s4.h),
             Text(
               Strings.welcomeBack,
               style: getRegularTextStyle(
                 color: ColorManager.grey6A7282,
-                fontSize: FontSizeManager.s14,
+                fontSize: FontSizeManager.s14.sp,
               ),
             ),
           ],
         ),
         Container(
-          padding: const EdgeInsets.all(AppPadding.p8),
+          padding: const EdgeInsetsDirectional.all(AppPadding.p8),
           decoration: BoxDecoration(
-            color: ColorManager.greenPrimary.withOpacity(0.1),
+            color: ColorManager.greenPrimary.withValues(alpha: 0.1),
             shape: BoxShape.circle,
           ),
-          child: const Text(
-            '👋',
-            style: TextStyle(fontSize: FontSizeManager.s20),
-          ),
+          child: Text('👋', style: TextStyle(fontSize: FontSizeManager.s20.sp)),
         ),
       ],
     );
   }
 
-  Widget _buildSubscriptionPlanCard(CurrentSubscriptionOverviewDataModel data) {
+  Widget _buildSubscriptionPlanCard(
+    BuildContext context,
+    CurrentSubscriptionOverviewDataModel data,
+  ) {
     double progressValue = data.totalMeals > 0
         ? (data.remainingMeals / data.totalMeals)
         : 0.0;
@@ -119,13 +122,13 @@ class PlansScreen extends StatelessWidget {
         border: Border.all(color: ColorManager.formFieldsBorderColor),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.02),
+            color: Colors.black.withValues(alpha: 0.02),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
         ],
       ),
-      padding: const EdgeInsets.all(AppPadding.p16),
+      padding: const EdgeInsetsDirectional.all(AppPadding.p16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -136,35 +139,49 @@ class PlansScreen extends StatelessWidget {
                 Strings.subscriptionPlanText,
                 style: getBoldTextStyle(
                   color: ColorManager.black101828,
-                  fontSize: FontSizeManager.s18,
+                  fontSize: FontSizeManager.s18.sp,
                 ),
               ),
-              const Icon(
-                Icons.settings_outlined,
-                color: ColorManager.grey6A7282,
-                size: AppSize.s20,
+              InkWell(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => ManageSubscriptionScreen(
+                        selectedMealsPerDay: data.selectedMealsPerDay,
+                        deliveryModeLabel: data.deliveryModeLabel,
+                        validityEndDate: data.endDate,
+                      ),
+                    ),
+                  );
+                },
+                child: const Icon(
+                  Icons.settings_outlined,
+                  color: ColorManager.grey6A7282,
+                  size: AppSize.s20,
+                ),
               ),
             ],
           ),
-          const SizedBox(height: AppSize.s16),
+          Gap(AppSize.s16.h),
           Container(
-            padding: const EdgeInsets.symmetric(
+            padding: const EdgeInsetsDirectional.symmetric(
               horizontal: AppPadding.p12,
               vertical: AppPadding.p6,
             ),
             decoration: BoxDecoration(
-              color: ColorManager.greenPrimary.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(AppSize.s20),
+              color: ColorManager.greenPrimary.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(AppSize.s20.r),
             ),
             child: Text(
               data.statusLabel.isNotEmpty ? data.statusLabel : Strings.active,
               style: getBoldTextStyle(
                 color: ColorManager.greenPrimary,
-                fontSize: FontSizeManager.s12,
+                fontSize: FontSizeManager.s12.sp,
               ),
             ),
           ),
-          const SizedBox(height: AppSize.s24),
+          Gap(AppSize.s24.h),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -172,19 +189,19 @@ class PlansScreen extends StatelessWidget {
                 Strings.regularMealsRemaining,
                 style: getRegularTextStyle(
                   color: ColorManager.grey6A7282,
-                  fontSize: FontSizeManager.s14,
+                  fontSize: FontSizeManager.s14.sp,
                 ),
               ),
               Text(
                 "${data.remainingMeals} / ${data.totalMeals}",
                 style: getBoldTextStyle(
                   color: ColorManager.black101828,
-                  fontSize: FontSizeManager.s16,
+                  fontSize: FontSizeManager.s16.sp,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: AppSize.s8),
+          Gap(AppSize.s8.h),
           ClipRRect(
             borderRadius: BorderRadius.circular(AppSize.s4),
             child: LinearProgressIndicator(
@@ -196,9 +213,9 @@ class PlansScreen extends StatelessWidget {
               minHeight: AppSize.s8,
             ),
           ),
-          const SizedBox(height: AppSize.s24),
+          Gap(AppSize.s24.h),
           Container(height: 1, color: ColorManager.formFieldsBorderColor),
-          const SizedBox(height: AppSize.s20),
+          Gap(AppSize.s20.h),
 
           if (data.premiumSummary.isNotEmpty) ...[
             ...data.premiumSummary.map(
@@ -208,9 +225,11 @@ class PlansScreen extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Container(
-                        padding: const EdgeInsets.all(AppPadding.p8),
+                        padding: const EdgeInsetsDirectional.all(AppPadding.p8),
                         decoration: BoxDecoration(
-                          color: ColorManager.orangePrimary.withOpacity(0.1),
+                          color: ColorManager.orangePrimary.withValues(
+                            alpha: 0.1,
+                          ),
                           shape: BoxShape.circle,
                         ),
                         child: const Icon(
@@ -219,7 +238,7 @@ class PlansScreen extends StatelessWidget {
                           size: AppSize.s18,
                         ),
                       ),
-                      const SizedBox(width: AppSize.s12),
+                      Gap(AppSize.s12.w),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -231,24 +250,24 @@ class PlansScreen extends StatelessWidget {
                                   Strings.premiumMealsText,
                                   style: getRegularTextStyle(
                                     color: ColorManager.grey6A7282,
-                                    fontSize: FontSizeManager.s14,
+                                    fontSize: FontSizeManager.s14.sp,
                                   ),
                                 ),
                                 Text(
                                   "${premium.remainingQtyTotal} ${Strings.available}",
                                   style: getBoldTextStyle(
                                     color: ColorManager.grey4A5565,
-                                    fontSize: FontSizeManager.s14,
+                                    fontSize: FontSizeManager.s14.sp,
                                   ),
                                 ),
                               ],
                             ),
-                            const SizedBox(height: AppSize.s4),
+                            Gap(AppSize.s4.h),
                             Text(
                               "${Strings.purchased} ${premium.purchasedQtyTotal} • ${Strings.consumed} ${premium.consumedQtyTotal}",
                               style: getRegularTextStyle(
                                 color: ColorManager.grey6A7282,
-                                fontSize: FontSizeManager.s12,
+                                fontSize: FontSizeManager.s12.sp,
                               ),
                             ),
                           ],
@@ -256,7 +275,7 @@ class PlansScreen extends StatelessWidget {
                       ),
                     ],
                   ),
-                  const SizedBox(height: AppSize.s24),
+                  Gap(AppSize.s24.h),
                 ],
               ),
             ),
@@ -267,16 +286,16 @@ class PlansScreen extends StatelessWidget {
               Strings.addOnsIncluded,
               style: getRegularTextStyle(
                 color: ColorManager.grey6A7282,
-                fontSize: FontSizeManager.s12,
+                fontSize: FontSizeManager.s12.sp,
               ),
             ),
-            const SizedBox(height: AppSize.s8),
+            Gap(AppSize.s8.h),
             Wrap(
               spacing: AppSize.s8,
               runSpacing: AppSize.s8,
               children: data.addonSubscriptions.map((addon) {
                 return Container(
-                  padding: const EdgeInsets.symmetric(
+                  padding: const EdgeInsetsDirectional.symmetric(
                     horizontal: AppPadding.p12,
                     vertical: AppPadding.p8,
                   ),
@@ -296,7 +315,7 @@ class PlansScreen extends StatelessWidget {
                 );
               }).toList(),
             ),
-            const SizedBox(height: AppSize.s20),
+            Gap(AppSize.s20.h),
           ],
 
           Row(
@@ -313,10 +332,10 @@ class PlansScreen extends StatelessWidget {
                     : Strings.pickup,
                 style: getRegularTextStyle(
                   color: ColorManager.grey6A7282,
-                  fontSize: FontSizeManager.s14,
+                  fontSize: FontSizeManager.s14.sp,
                 ),
               ),
-              const SizedBox(width: AppSize.s16),
+              Gap(AppSize.s16.w),
               const Icon(
                 Icons.access_time_outlined,
                 color: ColorManager.grey6A7282,
@@ -359,28 +378,30 @@ class PlansScreen extends StatelessWidget {
                   color: Colors.white,
                   size: AppSize.s18,
                 ),
-                const SizedBox(width: AppSize.s8),
+                Gap(AppSize.s8.w),
                 Text(
                   Strings.viewTimeline,
                   style: getRegularTextStyle(
                     color: Colors.white,
-                    fontSize: FontSizeManager.s14,
+                    fontSize: FontSizeManager.s14.sp,
                   ),
                 ),
               ],
             ),
           ),
         ),
-        const SizedBox(width: AppSize.s12),
+        Gap(AppSize.s12.w),
         Expanded(
           child: OutlinedButton(
             onPressed: () {},
             style: OutlinedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: AppPadding.p16),
+              padding: const EdgeInsetsDirectional.symmetric(
+                vertical: AppPadding.p16,
+              ),
               foregroundColor: ColorManager.black101828,
               side: const BorderSide(color: ColorManager.formFieldsBorderColor),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(AppSize.s12),
+                borderRadius: BorderRadius.circular(AppSize.s12.r),
               ),
             ),
             child: Row(
@@ -391,12 +412,12 @@ class PlansScreen extends StatelessWidget {
                   color: ColorManager.black101828,
                   size: AppSize.s18,
                 ),
-                const SizedBox(width: AppSize.s8),
+                Gap(AppSize.s8.w),
                 Text(
                   Strings.todaysMeals,
                   style: getRegularTextStyle(
                     color: ColorManager.black101828,
-                    fontSize: FontSizeManager.s14,
+                    fontSize: FontSizeManager.s14.sp,
                   ),
                 ),
               ],
@@ -417,17 +438,17 @@ class PlansScreen extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: ColorManager.whiteColor,
-        borderRadius: BorderRadius.circular(AppSize.s16),
+        borderRadius: BorderRadius.circular(AppSize.s16.r),
         border: Border.all(color: ColorManager.formFieldsBorderColor),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.02),
+            color: Colors.black.withValues(alpha: 0.02),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
         ],
       ),
-      padding: const EdgeInsets.all(AppPadding.p16),
+      padding: const EdgeInsetsDirectional.all(AppPadding.p16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -435,10 +456,10 @@ class PlansScreen extends StatelessWidget {
             Strings.subscriptionPeriodText,
             style: getRegularTextStyle(
               color: ColorManager.black101828,
-              fontSize: FontSizeManager.s16,
+              fontSize: FontSizeManager.s16.sp,
             ),
           ),
-          const SizedBox(height: AppSize.s16),
+          Gap(AppSize.s16.h),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -449,15 +470,15 @@ class PlansScreen extends StatelessWidget {
                     Strings.startDate,
                     style: getRegularTextStyle(
                       color: ColorManager.grey6A7282,
-                      fontSize: FontSizeManager.s12,
+                      fontSize: FontSizeManager.s12.sp,
                     ),
                   ),
-                  const SizedBox(height: AppSize.s4),
+                  Gap(AppSize.s4.h),
                   Text(
                     startDateFormatted,
                     style: getRegularTextStyle(
                       color: ColorManager.black101828,
-                      fontSize: FontSizeManager.s14,
+                      fontSize: FontSizeManager.s14.sp,
                     ),
                   ),
                 ],
@@ -469,15 +490,15 @@ class PlansScreen extends StatelessWidget {
                     Strings.endDate,
                     style: getRegularTextStyle(
                       color: ColorManager.grey6A7282,
-                      fontSize: FontSizeManager.s12,
+                      fontSize: FontSizeManager.s12.sp,
                     ),
                   ),
-                  const SizedBox(height: AppSize.s4),
+                  Gap(AppSize.s4.h),
                   Text(
                     endDateFormatted,
                     style: getRegularTextStyle(
                       color: ColorManager.black101828,
-                      fontSize: FontSizeManager.s14,
+                      fontSize: FontSizeManager.s14.sp,
                     ),
                   ),
                 ],
