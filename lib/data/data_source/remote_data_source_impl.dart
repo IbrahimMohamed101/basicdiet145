@@ -14,6 +14,8 @@ import 'package:basic_diet/data/response/subscription_quote_response.dart';
 import 'package:basic_diet/data/response/current_subscription_overview_response.dart';
 import 'package:basic_diet/data/request/freeze_subscription_request.dart';
 import 'package:basic_diet/data/response/freeze_subscription_response.dart';
+import 'package:basic_diet/data/request/skip_days_request.dart';
+import 'package:basic_diet/data/response/skip_days_response.dart';
 
 class RemoteDataSourceImpl implements RemoteDataSource {
   final AppServiceClient _appServiceClient;
@@ -89,5 +91,21 @@ class RemoteDataSourceImpl implements RemoteDataSource {
     FreezeSubscriptionRequest request,
   ) {
     return _appServiceClient.freezeSubscription(id, request);
+  }
+
+  @override
+  Future<SkipDaysResponse> skipDay(
+    String id,
+    SkipDayRequest request,
+  ) {
+    return _appServiceClient.skipDay(id, request);
+  }
+
+  @override
+  Future<SkipDaysResponse> skipDateRange(
+    String id,
+    SkipDateRangeRequest request,
+  ) {
+    return _appServiceClient.skipDateRange(id, request);
   }
 }

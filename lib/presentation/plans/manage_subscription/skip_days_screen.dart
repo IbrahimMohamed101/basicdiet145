@@ -1,22 +1,29 @@
+import 'package:basic_diet/app/dependency_injection.dart';
 import 'package:flutter/material.dart';
 import 'package:basic_diet/presentation/resources/color_manager.dart';
 import 'package:basic_diet/presentation/resources/font_manager.dart';
 import 'package:basic_diet/presentation/resources/strings_manager.dart';
 import 'package:basic_diet/presentation/resources/styles_manager.dart';
 import 'package:basic_diet/presentation/resources/values_manager.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:gap/gap.dart';
 import 'package:intl/intl.dart';
+import 'package:basic_diet/presentation/plans/manage_subscription/bloc/skip_days_bloc.dart';
+import 'package:basic_diet/presentation/plans/manage_subscription/bloc/skip_days_event.dart';
+import 'package:basic_diet/presentation/plans/manage_subscription/bloc/skip_days_state.dart';
 
 enum SkipTypeSelection { singleDay, dateRange }
 
 class SkipDaysScreen extends StatefulWidget {
+  final String subscriptionId;
   final int skipDaysUsed;
   final int skipDaysLimit;
   final int remainingSkipDays;
 
   const SkipDaysScreen({
     super.key,
+    required this.subscriptionId,
     required this.skipDaysUsed,
     required this.skipDaysLimit,
     required this.remainingSkipDays,
@@ -28,54 +35,82 @@ class SkipDaysScreen extends StatefulWidget {
 
 class _SkipDaysScreenState extends State<SkipDaysScreen> {
   SkipTypeSelection _skipType = SkipTypeSelection.dateRange;
-  
+
   DateTime? _startDate;
   DateTime? _endDate;
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        centerTitle: false,
-        titleSpacing: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        title: Text(
-          Strings.skipDays,
-          style: getRegularTextStyle(
-            color: Colors.black,
-            fontSize: FontSizeManager.s20.sp,
-          ),
-        ),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1.0),
-          child: Container(
-            color: ColorManager.formFieldsBorderColor,
-            height: 1.0,
-          ),
-        ),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(AppPadding.p16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildLimitInfoCard(),
-            Gap(AppSize.s16.h),
-            _buildSkipTypeSelection(),
-            Gap(AppSize.s16.h),
-            _buildDateSelection(),
-            Gap(AppSize.s16.h),
-            _buildImportantInfoCard(),
-            Gap(AppSize.s24.h),
-            _buildActionButtons(context),
-          ],
-        ),
+    return BlocProvider(
+      create: (context) {
+        initSkipDaysModule();
+        return instance<SkipDaysBloc>();
+      },
+      child: BlocConsumer<SkipDaysBloc, SkipDaysState>(
+        listener: (context, state) {
+          if (state is SkipDaysSuccess) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(state.message),
+                backgroundColor: ColorManager.greenPrimary,
+              ),
+            );
+            Navigator.of(context).pop();
+          } else if (state is SkipDaysError) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(state.message),
+                backgroundColor: ColorManager.errorColor,
+              ),
+            );
+          }
+        },
+        builder: (context, state) {
+          return Scaffold(
+            backgroundColor: Colors.white,
+            appBar: AppBar(
+              backgroundColor: Colors.white,
+              elevation: 0,
+              centerTitle: false,
+              titleSpacing: 0,
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back, color: Colors.black),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+              title: Text(
+                Strings.skipDays,
+                style: getRegularTextStyle(
+                  color: Colors.black,
+                  fontSize: FontSizeManager.s20.sp,
+                ),
+              ),
+              bottom: PreferredSize(
+                preferredSize: const Size.fromHeight(1.0),
+                child: Container(
+                  color: ColorManager.formFieldsBorderColor,
+                  height: 1.0,
+                ),
+              ),
+            ),
+            body: SingleChildScrollView(
+              padding: const EdgeInsets.all(AppPadding.p16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildLimitInfoCard(),
+                  Gap(AppSize.s16.h),
+                  _buildSkipTypeSelection(),
+                  Gap(AppSize.s16.h),
+                  _buildDateSelection(),
+                  Gap(AppSize.s16.h),
+                  _buildImportantInfoCard(),
+                  Gap(AppSize.s24.h),
+                  _buildActionButtons(context, state),
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -84,8 +119,8 @@ class _SkipDaysScreenState extends State<SkipDaysScreen> {
     return Container(
       padding: const EdgeInsets.all(AppPadding.p16),
       decoration: BoxDecoration(
-        color: const Color(0xFFEFF6FF), // Light blue background
-        border: Border.all(color: const Color(0xFFBFDBFE)), // Light blue border
+        color: const Color(0xFFEFF6FF),
+        border: Border.all(color: const Color(0xFFBFDBFE)),
         borderRadius: BorderRadius.circular(AppSize.s12),
       ),
       child: Row(
@@ -104,7 +139,7 @@ class _SkipDaysScreenState extends State<SkipDaysScreen> {
                 Text(
                   "${Strings.skipLimit} ${widget.skipDaysUsed}/${widget.skipDaysLimit}",
                   style: getRegularTextStyle(
-                    color: const Color(0xFF1E3A8A), // Dark blue
+                    color: const Color(0xFF1E3A8A),
                     fontSize: FontSizeManager.s14.sp,
                   ),
                 ),
@@ -112,7 +147,7 @@ class _SkipDaysScreenState extends State<SkipDaysScreen> {
                 Text(
                   "You have ${widget.remainingSkipDays} ${Strings.skipsRemaining}",
                   style: getRegularTextStyle(
-                    color: const Color(0xFF3B82F6), // Slightly lighter blue text
+                    color: const Color(0xFF3B82F6),
                     fontSize: FontSizeManager.s14.sp,
                   ),
                 ),
@@ -181,11 +216,18 @@ class _SkipDaysScreenState extends State<SkipDaysScreen> {
       },
       borderRadius: BorderRadius.circular(AppSize.s12),
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: AppPadding.p16, horizontal: AppPadding.p8),
+        padding: const EdgeInsets.symmetric(
+          vertical: AppPadding.p16,
+          horizontal: AppPadding.p8,
+        ),
         decoration: BoxDecoration(
-          color: isSelected ? ColorManager.greenPrimary.withValues(alpha: 0.05) : Colors.white,
+          color: isSelected
+              ? ColorManager.greenPrimary.withValues(alpha: 0.05)
+              : Colors.white,
           border: Border.all(
-            color: isSelected ? ColorManager.greenPrimary : ColorManager.formFieldsBorderColor,
+            color: isSelected
+                ? ColorManager.greenPrimary
+                : ColorManager.formFieldsBorderColor,
           ),
           borderRadius: BorderRadius.circular(AppSize.s12),
         ),
@@ -227,7 +269,7 @@ class _SkipDaysScreenState extends State<SkipDaysScreen> {
         children: [
           if (_skipType == SkipTypeSelection.singleDay) ...[
             Text(
-              Strings.startDate, // Reusing Start Date string for standard Date label
+              Strings.startDate,
               style: getRegularTextStyle(
                 color: Colors.black,
                 fontSize: FontSizeManager.s16.sp,
@@ -269,7 +311,7 @@ class _SkipDaysScreenState extends State<SkipDaysScreen> {
               onDateChanged: (date) {
                 setState(() => _endDate = date);
               },
-              firstDate: _startDate, // End date cannot be before start date
+              firstDate: _startDate,
             ),
           ],
         ],
@@ -302,7 +344,7 @@ class _SkipDaysScreenState extends State<SkipDaysScreen> {
         decoration: BoxDecoration(
           color: ColorManager.greyF3F4F6,
           borderRadius: BorderRadius.circular(AppSize.s8),
-          border: Border.all(color: ColorManager.formFieldsBorderColor), // subtle border like in image
+          border: Border.all(color: ColorManager.formFieldsBorderColor),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -329,7 +371,7 @@ class _SkipDaysScreenState extends State<SkipDaysScreen> {
     return Container(
       padding: const EdgeInsets.all(AppPadding.p16),
       decoration: BoxDecoration(
-        color: const Color(0xFFFAFAFA), // slightly greyish or just white, wait the image is white with border
+        color: const Color(0xFFFAFAFA),
         border: Border.all(color: ColorManager.formFieldsBorderColor),
         borderRadius: BorderRadius.circular(AppSize.s12),
       ),
@@ -364,12 +406,13 @@ class _SkipDaysScreenState extends State<SkipDaysScreen> {
     );
   }
 
-  Widget _buildActionButtons(BuildContext context) {
+  Widget _buildActionButtons(BuildContext context, SkipDaysState state) {
+    final isLoading = state is SkipDaysLoading;
     return Row(
       children: [
         Expanded(
           child: OutlinedButton(
-            onPressed: () => Navigator.of(context).pop(),
+            onPressed: isLoading ? null : () => Navigator.of(context).pop(),
             style: OutlinedButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: AppPadding.p16),
               side: const BorderSide(color: ColorManager.formFieldsBorderColor),
@@ -389,24 +432,64 @@ class _SkipDaysScreenState extends State<SkipDaysScreen> {
         Gap(AppSize.s12.w),
         Expanded(
           child: ElevatedButton(
-            onPressed: () {
-              // TODO: Integrate endpoint
-            },
+            onPressed: isLoading
+                ? null
+                : () {
+                    if (_skipType == SkipTypeSelection.singleDay) {
+                      if (_startDate != null) {
+                        context.read<SkipDaysBloc>().add(
+                          SkipSingleDayEvent(
+                            widget.subscriptionId,
+                            DateFormat('yyyy-MM-dd').format(_startDate!),
+                          ),
+                        );
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text("Please select a date")),
+                        );
+                      }
+                    } else {
+                      if (_startDate != null && _endDate != null) {
+                        context.read<SkipDaysBloc>().add(
+                          SkipDateRangeEvent(
+                            widget.subscriptionId,
+                            DateFormat('yyyy-MM-dd').format(_startDate!),
+                            DateFormat('yyyy-MM-dd').format(_endDate!),
+                          ),
+                        );
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text("Please select start and end dates"),
+                          ),
+                        );
+                      }
+                    }
+                  },
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF86E2BB), // A lighter mint green color matching the image vs Freeze Button
+              backgroundColor: const Color(0xFF86E2BB),
               padding: const EdgeInsets.symmetric(vertical: AppPadding.p16),
               elevation: 0,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(AppSize.s12),
               ),
             ),
-            child: Text(
-              Strings.skipDays,
-              style: getRegularTextStyle(
-                color: Colors.white,
-                fontSize: FontSizeManager.s16.sp,
-              ),
-            ),
+            child: isLoading
+                ? SizedBox(
+                    height: AppSize.s20.h,
+                    width: AppSize.s20.w,
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 2,
+                    ),
+                  )
+                : Text(
+                    Strings.skipDays,
+                    style: getRegularTextStyle(
+                      color: Colors.white,
+                      fontSize: FontSizeManager.s16.sp,
+                    ),
+                  ),
           ),
         ),
       ],

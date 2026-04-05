@@ -28,6 +28,9 @@ import 'package:basic_diet/domain/usecase/get_current_subscription_overview_usec
 import 'package:basic_diet/presentation/plans/plans_bloc.dart';
 import 'package:basic_diet/domain/usecase/freeze_subscription_usecase.dart';
 import 'package:basic_diet/presentation/plans/manage_subscription/bloc/freeze_subscription_bloc.dart';
+import 'package:basic_diet/presentation/plans/manage_subscription/bloc/skip_days_bloc.dart';
+import 'package:basic_diet/domain/usecase/skip_day_usecase.dart';
+import 'package:basic_diet/domain/usecase/skip_date_range_usecase.dart';
 import 'package:get_it/get_it.dart';
 
 final instance = GetIt.instance; // Singleton instance of GetIt
@@ -188,5 +191,17 @@ void initFreezeSubscriptionModule() {
     instance.registerFactory<FreezeSubscriptionBloc>(
       () => FreezeSubscriptionBloc(instance<FreezeSubscriptionUseCase>()),
     );
+  }
+}
+
+void initSkipDaysModule() {
+  if (!GetIt.I.isRegistered<SkipDayUseCase>()) {
+    instance.registerFactory<SkipDayUseCase>(() => SkipDayUseCase(instance()));
+  }
+  if (!GetIt.I.isRegistered<SkipDateRangeUseCase>()) {
+    instance.registerFactory<SkipDateRangeUseCase>(() => SkipDateRangeUseCase(instance()));
+  }
+  if (!GetIt.I.isRegistered<SkipDaysBloc>()) {
+    instance.registerFactory<SkipDaysBloc>(() => SkipDaysBloc(instance(), instance()));
   }
 }

@@ -12,6 +12,8 @@ import 'package:dartz/dartz.dart';
 import 'package:basic_diet/domain/model/add_ons_model.dart';
 import 'package:basic_diet/domain/model/current_subscription_overview_model.dart';
 import 'package:basic_diet/domain/model/freeze_subscription_model.dart';
+import 'package:basic_diet/data/request/skip_days_request.dart';
+import 'package:basic_diet/data/response/skip_days_response.dart';
 
 abstract class Repository {
   Future<Either<Failure, BaseModel>> login(String phone);
@@ -39,5 +41,13 @@ abstract class Repository {
   Future<Either<Failure, FreezeSubscriptionModel>> freezeSubscription(
     String id,
     FreezeSubscriptionRequestModel request,
+  );
+  Future<Either<Failure, SkipDaysResponse>> skipDay(
+    String id,
+    SkipDayRequest request,
+  );
+  Future<Either<Failure, SkipDaysResponse>> skipDateRange(
+    String id,
+    SkipDateRangeRequest request,
   );
 }

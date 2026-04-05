@@ -107,6 +107,7 @@ class ManageSubscriptionScreen extends StatelessWidget {
                 Navigator.of(context).push(
                   MaterialPageRoute(
                     builder: (context) => SkipDaysScreen(
+                      subscriptionId: subscriptionId,
                       skipDaysUsed: skipDaysUsed,
                       skipDaysLimit: skipDaysLimit,
                       remainingSkipDays: remainingSkipDays,

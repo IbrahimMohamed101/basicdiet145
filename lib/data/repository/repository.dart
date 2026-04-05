@@ -29,6 +29,8 @@ import 'package:basic_diet/data/mappers/addons_mapper.dart';
 import 'package:basic_diet/domain/model/add_ons_model.dart';
 import 'package:basic_diet/data/mappers/current_subscription_overview_mapper.dart';
 import 'package:basic_diet/domain/model/current_subscription_overview_model.dart';
+import 'package:basic_diet/data/request/skip_days_request.dart';
+import 'package:basic_diet/data/response/skip_days_response.dart';
 import 'package:basic_diet/data/mappers/freeze_subscription_mapper.dart';
 import 'package:basic_diet/domain/model/freeze_subscription_model.dart';
 
@@ -296,6 +298,40 @@ class RepositoryImpl implements Repository {
       );
       if (_isSuccessfulResponse(response)) {
         return Right(response.toDomain());
+      } else {
+        return Left(_mapFailureFromResponse(response));
+      }
+    } catch (error) {
+      return _handleError(error);
+    }
+  }
+
+  @override
+  Future<Either<Failure, SkipDaysResponse>> skipDay(
+    String id,
+    SkipDayRequest request,
+  ) async {
+    try {
+      final response = await _remoteDataSource.skipDay(id, request);
+      if (_isSuccessfulResponse(response)) {
+        return Right(response);
+      } else {
+        return Left(_mapFailureFromResponse(response));
+      }
+    } catch (error) {
+      return _handleError(error);
+    }
+  }
+
+  @override
+  Future<Either<Failure, SkipDaysResponse>> skipDateRange(
+    String id,
+    SkipDateRangeRequest request,
+  ) async {
+    try {
+      final response = await _remoteDataSource.skipDateRange(id, request);
+      if (_isSuccessfulResponse(response)) {
+        return Right(response);
       } else {
         return Left(_mapFailureFromResponse(response));
       }
