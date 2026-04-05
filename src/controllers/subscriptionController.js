@@ -2129,6 +2129,18 @@ function resolveSkipRemainingDays(skipPolicy, subscription) {
   );
 }
 
+function resolveRequestedDate(req) {
+  const bodyDate = req && req.body && typeof req.body.date === "string"
+    ? req.body.date.trim()
+    : "";
+  if (bodyDate) {
+    return bodyDate;
+  }
+  return req && req.params && typeof req.params.date === "string"
+    ? req.params.date.trim()
+    : "";
+}
+
 function isPopulatedPlanDocument(plan) {
   return Boolean(
     plan
@@ -6470,7 +6482,8 @@ async function lockDaySnapshot(sub, day, session) {
 
 
 async function skipDay(req, res) {
-  const { id, date } = req.params;
+  const { id } = req.params;
+  const date = resolveRequestedDate(req);
   const lang = getRequestLang(req);
   const sub = await Subscription.findById(id).populate("planId");
   if (!sub) return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");

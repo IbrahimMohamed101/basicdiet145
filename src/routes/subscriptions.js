@@ -109,7 +109,7 @@ router.post("/:id/days/:date/one-time-addons/payments", asyncHandler(controller.
 router.post("/:id/days/:date/one-time-addons/payments/:paymentId/verify", asyncHandler(controller.verifyOneTimeAddonDayPlanningPayment));
 /**
  * @openapi
- * /subscriptions/{id}/days/{date}/skip:
+ * /subscriptions/{id}/days/skip:
  *   post:
  *     summary: Skip a day
  *     tags: [Subscriptions]
@@ -119,13 +119,22 @@ router.post("/:id/days/:date/one-time-addons/payments/:paymentId/verify", asyncH
  *       - name: id
  *         in: path
  *         required: true
- *       - name: date
- *         in: path
- *         required: true
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [date]
+ *             properties:
+ *               date:
+ *                 type: string
+ *                 example: 2026-04-10
  *     responses:
  *       200:
  *         description: Day skipped
  */
+router.post("/:id/days/skip", asyncHandler(controller.skipDay));
 router.post("/:id/days/:date/skip", asyncHandler(controller.skipDay));
 router.post("/:id/days/:date/unskip", asyncHandler(controller.unskipDay));
 /**

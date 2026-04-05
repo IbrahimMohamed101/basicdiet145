@@ -2684,7 +2684,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
-  /subscriptions/{id}/days/{date}/skip:
+  /subscriptions/{id}/days/skip:
     post:
       tags: [Operations]
       summary: Apply one limited compensated skip day
@@ -2695,7 +2695,17 @@ paths:
         - AppBearerAuth: []
       parameters:
         - $ref: '#/components/parameters/SubscriptionId'
-        - $ref: '#/components/parameters/DateParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [date]
+              properties:
+                date:
+                  type: string
+                  format: date
       responses:
         '200':
           description: Skip result summary
