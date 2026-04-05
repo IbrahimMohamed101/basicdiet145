@@ -8,8 +8,21 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:gap/gap.dart';
 import 'package:intl/intl.dart';
 
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:basic_diet/app/dependency_injection.dart';
+import 'package:basic_diet/presentation/plans/manage_subscription/bloc/freeze_subscription_bloc.dart';
+import 'package:basic_diet/presentation/plans/manage_subscription/bloc/freeze_subscription_event.dart';
+import 'package:basic_diet/presentation/plans/manage_subscription/bloc/freeze_subscription_state.dart';
+
 class FreezeSubscriptionScreen extends StatefulWidget {
-  const FreezeSubscriptionScreen({super.key});
+  final String subscriptionId;
+  final String validityEndDate;
+
+  const FreezeSubscriptionScreen({
+    super.key,
+    required this.subscriptionId,
+    required this.validityEndDate,
+  });
 
   @override
   State<FreezeSubscriptionScreen> createState() =>
@@ -17,54 +30,95 @@ class FreezeSubscriptionScreen extends StatefulWidget {
 }
 
 class _FreezeSubscriptionScreenState extends State<FreezeSubscriptionScreen> {
-  DateTime _startDate = DateTime.now();
+  late DateTime _startDate;
   int _days = 5;
+  late DateTime _currentEndDate;
+
+  @override
+  void initState() {
+    super.initState();
+    final now = DateTime.now();
+    _startDate = DateTime(now.year, now.month, now.day).add(const Duration(days: 1));
+
+    try {
+      _currentEndDate = DateTime.parse(widget.validityEndDate);
+    } catch (e) {
+      _currentEndDate = now.add(const Duration(days: 30));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final currentEndDate = DateTime(2026, 3, 31); // Hardcoded based on image
-    final newEndDate = currentEndDate.add(Duration(days: _days));
+    final newEndDate = _currentEndDate.add(Duration(days: _days));
 
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        centerTitle: false,
-        titleSpacing: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        title: Text(
-          Strings.freezeSubscription,
-          style: getRegularTextStyle(
-            color: Colors.black,
-            fontSize: FontSizeManager.s20.sp,
-          ),
-        ),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1.0),
-          child: Container(
-            color: ColorManager.formFieldsBorderColor,
-            height: 1.0,
-          ),
-        ),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(AppPadding.p16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildInfoCard(),
-            Gap(AppSize.s16.h),
-            _buildSelectionCard(),
-            Gap(AppSize.s16.h),
-            _buildImpactSummaryCard(currentEndDate, newEndDate),
-            Gap(AppSize.s24.h),
-            _buildActionButtons(context),
-          ],
-        ),
+    return BlocProvider(
+      create: (context) {
+        initFreezeSubscriptionModule();
+        return instance<FreezeSubscriptionBloc>();
+      },
+      child: BlocConsumer<FreezeSubscriptionBloc, FreezeSubscriptionState>(
+        listener: (context, state) {
+          if (state is FreezeSubscriptionSuccess) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Subscription frozen successfully!'),
+                backgroundColor: ColorManager.greenPrimary,
+              ),
+            );
+            Navigator.of(context).pop();
+          } else if (state is FreezeSubscriptionError) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(state.message),
+                backgroundColor: ColorManager.errorColor,
+              ),
+            );
+          }
+        },
+        builder: (context, state) {
+          return Scaffold(
+            backgroundColor: Colors.white,
+            appBar: AppBar(
+              backgroundColor: Colors.white,
+              elevation: 0,
+              centerTitle: false,
+              titleSpacing: 0,
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back, color: Colors.black),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+              title: Text(
+                Strings.freezeSubscription,
+                style: getRegularTextStyle(
+                  color: Colors.black,
+                  fontSize: FontSizeManager.s20.sp,
+                ),
+              ),
+              bottom: PreferredSize(
+                preferredSize: const Size.fromHeight(1.0),
+                child: Container(
+                  color: ColorManager.formFieldsBorderColor,
+                  height: 1.0,
+                ),
+              ),
+            ),
+            body: SingleChildScrollView(
+              padding: const EdgeInsets.all(AppPadding.p16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildInfoCard(),
+                  Gap(AppSize.s16.h),
+                  _buildSelectionCard(),
+                  Gap(AppSize.s16.h),
+                  _buildImpactSummaryCard(_currentEndDate, newEndDate),
+                  Gap(AppSize.s24.h),
+                  _buildActionButtons(context, state),
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -145,7 +199,7 @@ class _FreezeSubscriptionScreenState extends State<FreezeSubscriptionScreen> {
               final date = await showDatePicker(
                 context: context,
                 initialDate: _startDate,
-                firstDate: DateTime.now(),
+                firstDate: DateTime.now().add(const Duration(days: 1)),
                 lastDate: DateTime.now().add(const Duration(days: 365)),
               );
               if (date != null) {
@@ -235,7 +289,7 @@ class _FreezeSubscriptionScreenState extends State<FreezeSubscriptionScreen> {
               _buildCounterButton(
                 icon: Icons.add,
                 onTap: () {
-                  setState(() => _days++);
+                  if (_days < 30) setState(() => _days++);
                 },
               ),
             ],
@@ -349,7 +403,9 @@ class _FreezeSubscriptionScreenState extends State<FreezeSubscriptionScreen> {
     );
   }
 
-  Widget _buildActionButtons(BuildContext context) {
+  Widget _buildActionButtons(BuildContext context, FreezeSubscriptionState state) {
+    final isLoading = state is FreezeSubscriptionLoading;
+
     return Row(
       children: [
         Expanded(
@@ -374,8 +430,16 @@ class _FreezeSubscriptionScreenState extends State<FreezeSubscriptionScreen> {
         Gap(AppSize.s12.w),
         Expanded(
           child: ElevatedButton(
-            onPressed: () {
-              // TODO: Integrate the endpoint
+            onPressed: isLoading ? null : () {
+              final formattedDate =
+                  "${_startDate.year}-${_startDate.month.toString().padLeft(2, '0')}-${_startDate.day.toString().padLeft(2, '0')}";
+              context.read<FreezeSubscriptionBloc>().add(
+                    SubmitFreezeSubscriptionEvent(
+                      subscriptionId: widget.subscriptionId,
+                      startDate: formattedDate,
+                      days: _days,
+                    ),
+                  );
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: ColorManager.greenPrimary,
@@ -385,13 +449,19 @@ class _FreezeSubscriptionScreenState extends State<FreezeSubscriptionScreen> {
                 borderRadius: BorderRadius.circular(AppSize.s12),
               ),
             ),
-            child: Text(
-              Strings.freezeSubscription,
-              style: getRegularTextStyle(
-                color: Colors.white,
-                fontSize: FontSizeManager.s16.sp,
-              ),
-            ),
+            child: isLoading
+                ? const SizedBox(
+                    width: AppSize.s24,
+                    height: AppSize.s24,
+                    child: CircularProgressIndicator(color: Colors.white),
+                  )
+                : Text(
+                    Strings.freezeSubscription,
+                    style: getRegularTextStyle(
+                      color: Colors.white,
+                      fontSize: FontSizeManager.s16.sp,
+                    ),
+                  ),
           ),
         ),
       ],

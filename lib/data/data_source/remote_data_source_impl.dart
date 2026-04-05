@@ -12,6 +12,8 @@ import 'package:basic_diet/data/response/premium_meals_response.dart';
 import 'package:basic_diet/data/response/subscription_checkout_response.dart';
 import 'package:basic_diet/data/response/subscription_quote_response.dart';
 import 'package:basic_diet/data/response/current_subscription_overview_response.dart';
+import 'package:basic_diet/data/request/freeze_subscription_request.dart';
+import 'package:basic_diet/data/response/freeze_subscription_response.dart';
 
 class RemoteDataSourceImpl implements RemoteDataSource {
   final AppServiceClient _appServiceClient;
@@ -79,5 +81,13 @@ class RemoteDataSourceImpl implements RemoteDataSource {
   @override
   Future<CurrentSubscriptionOverviewResponse> getCurrentSubscriptionOverview() {
     return _appServiceClient.getCurrentSubscriptionOverview();
+  }
+
+  @override
+  Future<FreezeSubscriptionResponse> freezeSubscription(
+    String id,
+    FreezeSubscriptionRequest request,
+  ) {
+    return _appServiceClient.freezeSubscription(id, request);
   }
 }

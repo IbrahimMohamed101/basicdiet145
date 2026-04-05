@@ -29,6 +29,8 @@ import 'package:basic_diet/data/mappers/addons_mapper.dart';
 import 'package:basic_diet/domain/model/add_ons_model.dart';
 import 'package:basic_diet/data/mappers/current_subscription_overview_mapper.dart';
 import 'package:basic_diet/domain/model/current_subscription_overview_model.dart';
+import 'package:basic_diet/data/mappers/freeze_subscription_mapper.dart';
+import 'package:basic_diet/domain/model/freeze_subscription_model.dart';
 
 class RepositoryImpl implements Repository {
   final RemoteDataSource _remoteDataSource;
@@ -272,6 +274,26 @@ class RepositoryImpl implements Repository {
   Future<Either<Failure, CurrentSubscriptionOverviewModel>> getCurrentSubscriptionOverview() async {
     try {
       final response = await _remoteDataSource.getCurrentSubscriptionOverview();
+      if (_isSuccessfulResponse(response)) {
+        return Right(response.toDomain());
+      } else {
+        return Left(_mapFailureFromResponse(response));
+      }
+    } catch (error) {
+      return _handleError(error);
+    }
+  }
+
+  @override
+  Future<Either<Failure, FreezeSubscriptionModel>> freezeSubscription(
+    String id,
+    FreezeSubscriptionRequestModel request,
+  ) async {
+    try {
+      final response = await _remoteDataSource.freezeSubscription(
+        id,
+        request.toRequest(),
+      );
       if (_isSuccessfulResponse(response)) {
         return Right(response.toDomain());
       } else {

@@ -11,6 +11,8 @@ import 'package:basic_diet/data/response/addons_response.dart';
 import 'package:basic_diet/data/response/subscription_checkout_response.dart';
 import 'package:basic_diet/data/response/subscription_quote_response.dart';
 import 'package:basic_diet/data/response/current_subscription_overview_response.dart';
+import 'package:basic_diet/data/response/freeze_subscription_response.dart';
+import 'package:basic_diet/data/request/freeze_subscription_request.dart';
 import 'package:retrofit/retrofit.dart';
 import 'package:dio/dio.dart';
 part 'app_api.g.dart';
@@ -62,4 +64,10 @@ abstract class AppServiceClient {
 
   @GET("/api/subscriptions/current/overview")
   Future<CurrentSubscriptionOverviewResponse> getCurrentSubscriptionOverview();
+
+  @POST("/api/subscriptions/{id}/freeze")
+  Future<FreezeSubscriptionResponse> freezeSubscription(
+    @Path("id") String id,
+    @Body() FreezeSubscriptionRequest request,
+  );
 }

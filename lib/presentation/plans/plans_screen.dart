@@ -148,6 +148,7 @@ class PlansScreen extends StatelessWidget {
                     context,
                     MaterialPageRoute(
                       builder: (context) => ManageSubscriptionScreen(
+                        subscriptionId: data.id,
                         selectedMealsPerDay: data.selectedMealsPerDay,
                         deliveryModeLabel: data.deliveryModeLabel,
                         validityEndDate: data.endDate,

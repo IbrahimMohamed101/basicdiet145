@@ -14,12 +14,14 @@ import 'package:basic_diet/presentation/plans/manage_subscription/skip_days.dart
 import 'package:basic_diet/presentation/plans/manage_subscription/delivery_settings.dart';
 
 class ManageSubscriptionScreen extends StatelessWidget {
+  final String subscriptionId;
   final int selectedMealsPerDay;
   final String deliveryModeLabel;
   final String validityEndDate;
 
   const ManageSubscriptionScreen({
     super.key,
+    required this.subscriptionId,
     required this.selectedMealsPerDay,
     required this.deliveryModeLabel,
     required this.validityEndDate,
@@ -82,7 +84,10 @@ class ManageSubscriptionScreen extends StatelessWidget {
               onTap: () {
                 Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (context) => const FreezeSubscriptionScreen(),
+                    builder: (context) => FreezeSubscriptionScreen(
+                      subscriptionId: subscriptionId,
+                      validityEndDate: validityEndDate,
+                    ),
                   ),
                 );
               },

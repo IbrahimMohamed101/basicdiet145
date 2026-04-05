@@ -26,6 +26,8 @@ import 'package:dio/dio.dart';
 import 'package:basic_diet/app/app_pref.dart';
 import 'package:basic_diet/domain/usecase/get_current_subscription_overview_usecase.dart';
 import 'package:basic_diet/presentation/plans/plans_bloc.dart';
+import 'package:basic_diet/domain/usecase/freeze_subscription_usecase.dart';
+import 'package:basic_diet/presentation/plans/manage_subscription/bloc/freeze_subscription_bloc.dart';
 import 'package:get_it/get_it.dart';
 
 final instance = GetIt.instance; // Singleton instance of GetIt
@@ -173,6 +175,18 @@ void initPlansModule() {
 
     instance.registerFactory<PlansBloc>(
       () => PlansBloc(instance<GetCurrentSubscriptionOverviewUseCase>()),
+    );
+  }
+}
+
+void initFreezeSubscriptionModule() {
+  if (!GetIt.I.isRegistered<FreezeSubscriptionUseCase>()) {
+    instance.registerFactory<FreezeSubscriptionUseCase>(
+      () => FreezeSubscriptionUseCase(instance<Repository>()),
+    );
+
+    instance.registerFactory<FreezeSubscriptionBloc>(
+      () => FreezeSubscriptionBloc(instance<FreezeSubscriptionUseCase>()),
     );
   }
 }
