@@ -76,25 +76,35 @@ const LEGACY_BYPASS_FLAGS = [
 
 /* ── OTP test mode ────────────────────────────────────────────────────── */
 
-function isTestAuthEnabled() {
-  if (process.env.NODE_ENV === "production") {
-    return false;
-  }
+function isUnifiedTestAuthEnabled() {
   return (
     process.env.OTP_TEST_MODE === "true" &&
     process.env.ALLOW_TEST_AUTH === "true"
   );
 }
 
+function isLegacyTestAuthEnabled() {
+  return process.env.TEST_OTP_BYPASS === "true";
+}
+
+function isTestAuthEnabled() {
+  if (process.env.NODE_ENV === "production") {
+    return false;
+  }
+  // Keep supporting the old TEST_OTP_* envs in non-production so older
+  // local .env files continue to work after the unified flag migration.
+  return isUnifiedTestAuthEnabled() || isLegacyTestAuthEnabled();
+}
+
 function getTestOtpCode() {
   if (!isTestAuthEnabled()) return null;
-  const code = String(process.env.OTP_TEST_CODE || "000000").trim();
+  const code = String(process.env.OTP_TEST_CODE || process.env.TEST_OTP_CODE || "000000").trim();
   return /^\d{6}$/.test(code) ? code : "000000";
 }
 
 function getTestOtpPhone() {
   if (!isTestAuthEnabled()) return null;
-  const phone = String(process.env.OTP_TEST_PHONE || "").trim();
+  const phone = String(process.env.OTP_TEST_PHONE || process.env.TEST_OTP_PHONE || "").trim();
   return /^\+[1-9]\d{7,14}$/.test(phone) ? phone : null;
 }
 
