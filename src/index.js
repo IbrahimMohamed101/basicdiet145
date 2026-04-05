@@ -21,7 +21,7 @@ const server = createServer(app);
 
 const envCheck = validateEnv();
 if (!envCheck.ok) {
-  process.exit(1);
+  console.error(envCheck); process.exit(1);
 }
 
 console.log(`Resolved PORT: ${PORT} (env.PORT: ${process.env.PORT || 'undefined'})`);
