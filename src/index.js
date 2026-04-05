@@ -9,6 +9,11 @@ const { logger } = require("./utils/logger");
 
 const PORT = process.env.PORT || 3000;
 
+if (process.env.NODE_ENV === 'production' && !process.env.PORT) {
+  console.error('PORT environment variable is required in production');
+  process.exit(1);
+}
+
 const app = createApp();
 const server = createServer(app);
 
@@ -17,10 +22,7 @@ if (!envCheck.ok) {
   process.exit(1);
 }
 
-logger.info("Resolved runtime port", {
-  envPort: process.env.PORT,
-  defaultPort: PORT,
-});
+console.log(`Resolved PORT: ${PORT} (env.PORT: ${process.env.PORT || 'undefined'})`);
 
 connectDb()
   .then(async () => {
