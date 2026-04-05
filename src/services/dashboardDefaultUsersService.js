@@ -7,6 +7,7 @@ const {
   hashDashboardPassword,
 } = require("./dashboardPasswordService");
 const { logger } = require("../utils/logger");
+const { WEAK_DEFAULT_PASSWORDS } = require("../utils/security");
 
 function parseBoolean(value, fallback = true) {
   if (value === undefined || value === null || value === "") return fallback;
@@ -46,6 +47,12 @@ function collectDefaultDashboardUsersFromEnv() {
 }
 
 async function ensureDefaultDashboardUsers() {
+  // SECURITY: Never auto-seed in production
+  if (process.env.NODE_ENV === "production") {
+    logger.warn("ensureDefaultDashboardUsers: skipped in production. Use 'npm run seed:dashboard-users' with strong, unique passwords.");
+    return;
+  }
+
   const seedUsers = collectDefaultDashboardUsersFromEnv();
   if (seedUsers.length === 0) {
     logger.info("No default dashboard users found in env. Skipping bootstrap seed.");
@@ -55,7 +62,17 @@ async function ensureDefaultDashboardUsers() {
   for (const user of seedUsers) {
     const normalizedEmail = normalizeDashboardEmail(user.email);
     if (!isValidEmailFormat(normalizedEmail)) {
-      logger.warn("Skipping default dashboard user with invalid email", { role: user.role, email: user.email });
+      logger.warn("Skipping default dashboard user with invalid email", { role: user.role });
+      continue;
+    }
+
+    // SECURITY: Reject well-known weak/default passwords
+    if (WEAK_DEFAULT_PASSWORDS.has(user.password)) {
+      logger.warn("Skipping default dashboard user with weak/default password", {
+        role: user.role,
+        email: normalizedEmail,
+        reason: "Password matches a known weak default. Change it in .env.",
+      });
       continue;
     }
 

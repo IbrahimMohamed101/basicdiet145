@@ -11,9 +11,9 @@
  * 2.  SubscriptionDay schema field: canonicalDayActionType:"skip" valid
  * 3.  SubscriptionDay schema field: invalid enum value rejected
  * 4.  SubscriptionDay schema field: absent (optional) — valid
- * 5.  countAlreadySkippedDays counts only status:"skipped" days
- * 6.  countAlreadySkippedDays does NOT count skippedByUser:true + status!="skipped"
- * 7.  countAlreadySkippedDays counts status:"skipped"+skippedByUser:true exactly once
+ * 5.  countAlreadySkippedDays counts only compensated skipped days
+ * 6.  countAlreadySkippedDays does NOT count legacy skipped rows without skipCompensated
+ * 7.  countAlreadySkippedDays counts compensated skipped rows exactly once
  * 8.  applySkipForDate sets canonicalDayActionType:"skip" on created day
  * 9.  applySkipForDate sets canonicalDayActionType:"skip" on existing open day
  * 10. Freeze write path sets status:"frozen" + canonicalDayActionType:"freeze"
@@ -32,8 +32,7 @@ const mongoose = require("mongoose");
 
 const SubscriptionDay = require("../src/models/SubscriptionDay");
 const Subscription = require("../src/models/Subscription");
-const Setting = require("../src/models/Setting");
-const { applySkipForDate } = require("../src/services/subscriptionService");
+const { applySkipForDate, countAlreadySkippedDays } = require("../src/services/subscriptionService");
 const {
   CANONICAL_SKIP_POLICY_MODE,
 } = require("../src/constants/phase1Contract");
@@ -142,10 +141,8 @@ test("P2-S7-S1 — Canonical Freeze/Skip State Foundation", async (t) => {
     assert.equal(doc.canonicalDayActionType, undefined);
   });
 
-  // ── 5. countAlreadySkippedDays: counts only status:"skipped" ──────────────
-  // We test the canonical narrowing by verifying that the underlying query
-  // filter used is { status: "skipped" } — no longer includes skippedByUser.
-  await t.test("(5) countAlreadySkippedDays yields correct count for status:skipped days", async () => {
+  // ── 5. countAlreadySkippedDays: counts only compensated skips ─────────────
+  await t.test("(5) countAlreadySkippedDays yields correct count for compensated skipped days", async () => {
     const subId = objectId();
     const originalCount = SubscriptionDay.countDocuments;
     let capturedFilter = null;
@@ -156,84 +153,59 @@ test("P2-S7-S1 — Canonical Freeze/Skip State Foundation", async (t) => {
     };
 
     try {
-      // enforceSkipAllowanceOrThrow -> countAlreadySkippedDays -> SubscriptionDay.countDocuments
-      const originalSettingFindOne = Setting.findOne;
-      Setting.findOne = () => queryStub({ key: "skipAllowance", value: 10 });
-      try {
-        const { enforceSkipAllowanceOrThrow } = require("../src/services/subscriptionService");
-        // 3 already skipped + 0 new = 3 <= 10, so no throw
-        await enforceSkipAllowanceOrThrow({ subscriptionId: subId, daysToSkip: 0, session: null });
-      } finally {
-        Setting.findOne = originalSettingFindOne;
-      }
+      const count = await countAlreadySkippedDays(subId, null);
+      assert.equal(count, 3);
     } finally {
       SubscriptionDay.countDocuments = originalCount;
     }
 
-    // P2-S7-S1 canonical narrowing: the filter must be { subscriptionId, status:"skipped" }
-    // NOT { $or: [{ status:"skipped" }, { skippedByUser: true }] }
     assert.ok(capturedFilter, "countDocuments must have been called");
     assert.equal(capturedFilter.status, "skipped", "Filter must use status:skipped only");
-    assert.equal(capturedFilter.$or, undefined, "Filter must NOT use $or (old legacy path)");
+    assert.equal(capturedFilter.skipCompensated, true, "Filter must count compensated skips only");
+    assert.equal(capturedFilter.$or, undefined, "Filter must NOT use the legacy $or path");
   });
 
-  // ── 6. Canonical narrowing: skippedByUser:true + status!="skipped" NOT counted
-  await t.test("(6) canonicalDayActionType narrowing: skippedByUser:true without status:skipped is not counted", async () => {
+  // ── 6. Legacy skipped rows without compensation are excluded ──────────────
+  await t.test("(6) countAlreadySkippedDays excludes legacy skipped rows without skipCompensated", async () => {
     const subId = objectId();
     const originalCount = SubscriptionDay.countDocuments;
     let capturedFilter = null;
 
     SubscriptionDay.countDocuments = (filter) => {
       capturedFilter = filter;
-      // Return 0 — simulating that only-skippedByUser rows don't match status:"skipped"
+      // Return 0 — simulating that legacy non-compensated skips no longer match.
       return countStub(0);
     };
 
     try {
-      const originalSettingFindOne = Setting.findOne;
-      Setting.findOne = () => queryStub({ key: "skipAllowance", value: 10 });
-      try {
-        const { enforceSkipAllowanceOrThrow } = require("../src/services/subscriptionService");
-        await enforceSkipAllowanceOrThrow({ subscriptionId: subId, daysToSkip: 0, session: null });
-      } finally {
-        Setting.findOne = originalSettingFindOne;
-      }
+      const count = await countAlreadySkippedDays(subId, null);
+      assert.equal(count, 0);
     } finally {
       SubscriptionDay.countDocuments = originalCount;
     }
 
-    // Intentional canonical narrowing (P2-S7-S1):
-    // Malformed legacy-only rows (skippedByUser:true but status!="skipped") will NO LONGER
-    // be counted — that is acceptable because we improve canonical correctness without backfill.
     assert.ok(!capturedFilter.$or, "The $or skippedByUser clause must be absent");
     assert.equal(capturedFilter.status, "skipped");
+    assert.equal(capturedFilter.skipCompensated, true);
   });
 
-  // ── 7. Counting: status:skipped + skippedByUser:true = counted once ───────
-  await t.test("(7) A day with both status:skipped and skippedByUser:true counts as exactly 1", async () => {
+  // ── 7. Compensated skip is counted exactly once ───────────────────────────
+  await t.test("(7) A compensated skipped day counts as exactly 1", async () => {
     const subId = objectId();
     const originalCount = SubscriptionDay.countDocuments;
     let callCount = 0;
 
-    // Pure query: { subscriptionId, status:"skipped" } — a day with both flags still
-    // matches status:"skipped" once, not twice.
     SubscriptionDay.countDocuments = (filter) => {
       callCount++;
-      // The filter has no $or — so a doc with both flags matches or not based on status alone
       assert.equal(filter.status, "skipped");
+      assert.equal(filter.skipCompensated, true);
       assert.equal(filter.$or, undefined);
-      return countStub(1); // 1 day matches
+      return countStub(1);
     };
 
     try {
-      const originalSettingFindOne = Setting.findOne;
-      Setting.findOne = () => queryStub({ key: "skipAllowance", value: 10 });
-      try {
-        const { enforceSkipAllowanceOrThrow } = require("../src/services/subscriptionService");
-        await enforceSkipAllowanceOrThrow({ subscriptionId: subId, daysToSkip: 0, session: null });
-      } finally {
-        Setting.findOne = originalSettingFindOne;
-      }
+      const count = await countAlreadySkippedDays(subId, null);
+      assert.equal(count, 1);
     } finally {
       SubscriptionDay.countDocuments = originalCount;
     }
@@ -248,46 +220,42 @@ test("P2-S7-S1 — Canonical Freeze/Skip State Foundation", async (t) => {
 
     const origFindOne = SubscriptionDay.findOne;
     const origCreate = SubscriptionDay.create;
-    const origCountDocs = SubscriptionDay.countDocuments;
-    const origSubUpdate = Subscription.updateOne;
-    const origSettingFind = Setting.findOne;
+    const origSubFindOneAndUpdate = Subscription.findOneAndUpdate;
 
-    // Stub: no existing day
     SubscriptionDay.findOne = (_q) => queryStub(null);
-    // Stub: capture what create() is called with
     SubscriptionDay.create = async ([doc], _opts) => {
       createdPayload = { ...doc };
       return [{ ...doc, _id: objectId() }];
     };
-    // Stub: skip allowance enforcement — 0 already skipped, allowance 10
-    SubscriptionDay.countDocuments = (_q) => countStub(0);
-    // Stub: subscription credit deduction succeeds
-    Subscription.updateOne = async () => ({ modifiedCount: 1 });
-    // Stub: settings
-    Setting.findOne = () => queryStub({ key: "skipAllowance", value: 10 });
+    Subscription.findOneAndUpdate = async () => ({ _id: subId, skipDaysUsed: 1 });
 
     const sub = {
       _id: subId,
-      selectedMealsPerDay: 1,
-      totalMeals: 30,
-      remainingMeals: 30,
-      skippedCount: 0,
+      planId: { skipPolicy: { enabled: true, maxDays: 3 } },
+      endDate: new Date("2026-07-30T00:00:00+03:00"),
+      validityEndDate: new Date("2026-07-30T00:00:00+03:00"),
+      skipDaysUsed: 0,
       save: async () => {},
     };
 
     try {
       const session = makeSession();
       session.startTransaction();
-      const result = await applySkipForDate({ sub, date: "2026-07-01", session });
+      const result = await applySkipForDate({
+        sub,
+        date: "2026-07-01",
+        session,
+        syncValidityAfterApply: false,
+      });
       assert.equal(result.status, "skipped", "Result must be skipped");
       assert.equal(createdPayload && createdPayload.canonicalDayActionType, "skip",
         "applySkipForDate must pass canonicalDayActionType:skip in the SubscriptionDay.create payload");
+      assert.equal(createdPayload && createdPayload.skipCompensated, true);
+      assert.equal(createdPayload && createdPayload.creditsDeducted, false);
     } finally {
       SubscriptionDay.findOne = origFindOne;
       SubscriptionDay.create = origCreate;
-      SubscriptionDay.countDocuments = origCountDocs;
-      Subscription.updateOne = origSubUpdate;
-      Setting.findOne = origSettingFind;
+      Subscription.findOneAndUpdate = origSubFindOneAndUpdate;
     }
   });
 
@@ -299,9 +267,7 @@ test("P2-S7-S1 — Canonical Freeze/Skip State Foundation", async (t) => {
 
     const origFindOne = SubscriptionDay.findOne;
     const origFindOneAndUpdate = SubscriptionDay.findOneAndUpdate;
-    const origCountDocs = SubscriptionDay.countDocuments;
-    const origSubUpdate = Subscription.updateOne;
-    const origSettingFind = Setting.findOne;
+    const origSubFindOneAndUpdate = Subscription.findOneAndUpdate;
 
     const existingDay = { _id: dayId, subscriptionId: subId, date: "2026-07-02", status: "open", skippedByUser: false };
     SubscriptionDay.findOne = (_q) => queryStub(existingDay);
@@ -309,46 +275,47 @@ test("P2-S7-S1 — Canonical Freeze/Skip State Foundation", async (t) => {
       capturedSet = update.$set;
       return { ...existingDay, ...update.$set };
     };
-    SubscriptionDay.countDocuments = (_q) => countStub(0);
-    Subscription.updateOne = async () => ({ modifiedCount: 1 });
-    Setting.findOne = () => queryStub({ key: "skipAllowance", value: 10 });
+    Subscription.findOneAndUpdate = async () => ({ _id: subId, skipDaysUsed: 1 });
 
     const sub = {
       _id: subId,
-      selectedMealsPerDay: 1,
-      totalMeals: 30,
-      remainingMeals: 30,
-      skippedCount: 0,
+      planId: { skipPolicy: { enabled: true, maxDays: 3 } },
+      endDate: new Date("2026-07-30T00:00:00+03:00"),
+      validityEndDate: new Date("2026-07-30T00:00:00+03:00"),
+      skipDaysUsed: 0,
       save: async () => {},
     };
 
     try {
       const session = makeSession();
       session.startTransaction();
-      const result = await applySkipForDate({ sub, date: "2026-07-02", session });
+      const result = await applySkipForDate({
+        sub,
+        date: "2026-07-02",
+        session,
+        syncValidityAfterApply: false,
+      });
       assert.equal(result.status, "skipped", "Result must be skipped");
       assert.equal(capturedSet && capturedSet.canonicalDayActionType, "skip",
         "applySkipForDate must include canonicalDayActionType:skip in findOneAndUpdate $set");
+      assert.equal(capturedSet && capturedSet.skipCompensated, true);
+      assert.equal(capturedSet && capturedSet.creditsDeducted, false);
     } finally {
       SubscriptionDay.findOne = origFindOne;
       SubscriptionDay.findOneAndUpdate = origFindOneAndUpdate;
-      SubscriptionDay.countDocuments = origCountDocs;
-      Subscription.updateOne = origSubUpdate;
-      Setting.findOne = origSettingFind;
+      Subscription.findOneAndUpdate = origSubFindOneAndUpdate;
     }
   });
 
-  await t.test("(17) applySkipForDate rollback clears canonicalDayActionType when credit deduction fails", async () => {
+  await t.test("(17) applySkipForDate rollback clears canonicalDayActionType when plan-limit bump fails", async () => {
     const subId = objectId();
     const dayId = objectId();
     let rollbackUpdate = null;
 
     const origFindOne = SubscriptionDay.findOne;
     const origFindOneAndUpdate = SubscriptionDay.findOneAndUpdate;
-    const origCountDocs = SubscriptionDay.countDocuments;
-    const origSubUpdate = Subscription.updateOne;
+    const origSubFindOneAndUpdate = Subscription.findOneAndUpdate;
     const origDayUpdate = SubscriptionDay.updateOne;
-    const origSettingFind = Setting.findOne;
 
     const existingDay = {
       _id: dayId,
@@ -360,8 +327,7 @@ test("P2-S7-S1 — Canonical Freeze/Skip State Foundation", async (t) => {
     };
     SubscriptionDay.findOne = (_q) => queryStub(existingDay);
     SubscriptionDay.findOneAndUpdate = async (_q, update, _opts) => ({ ...existingDay, ...update.$set });
-    SubscriptionDay.countDocuments = (_q) => countStub(0);
-    Subscription.updateOne = async () => ({ modifiedCount: 0 });
+    Subscription.findOneAndUpdate = async () => null;
     SubscriptionDay.updateOne = (_q, update) => {
       rollbackUpdate = update;
       return {
@@ -369,31 +335,33 @@ test("P2-S7-S1 — Canonical Freeze/Skip State Foundation", async (t) => {
         then(res, rej) { return Promise.resolve({ modifiedCount: 1 }).then(res, rej); },
       };
     };
-    Setting.findOne = () => queryStub({ key: "skipAllowance", value: 10 });
 
     const sub = {
       _id: subId,
-      selectedMealsPerDay: 1,
-      totalMeals: 30,
-      remainingMeals: 0,
-      skippedCount: 0,
+      planId: { skipPolicy: { enabled: true, maxDays: 1 } },
+      endDate: new Date("2026-07-30T00:00:00+03:00"),
+      validityEndDate: new Date("2026-07-30T00:00:00+03:00"),
+      skipDaysUsed: 1,
       save: async () => {},
     };
 
     try {
       const session = makeSession();
       session.startTransaction();
-      const result = await applySkipForDate({ sub, date: "2026-07-03", session });
-      assert.equal(result.status, "insufficient_credits");
+      const result = await applySkipForDate({
+        sub,
+        date: "2026-07-03",
+        session,
+        syncValidityAfterApply: false,
+      });
+      assert.equal(result.status, "limit_reached");
       assert.equal(rollbackUpdate && rollbackUpdate.$unset && rollbackUpdate.$unset.canonicalDayActionType, 1,
         "Skip rollback must unset canonicalDayActionType when reverting to a non-canonical open day");
     } finally {
       SubscriptionDay.findOne = origFindOne;
       SubscriptionDay.findOneAndUpdate = origFindOneAndUpdate;
-      SubscriptionDay.countDocuments = origCountDocs;
-      Subscription.updateOne = origSubUpdate;
+      Subscription.findOneAndUpdate = origSubFindOneAndUpdate;
       SubscriptionDay.updateOne = origDayUpdate;
-      Setting.findOne = origSettingFind;
     }
   });
 

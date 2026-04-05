@@ -1,4 +1,5 @@
 const { pickLang } = require("./i18n");
+const { withDefaultMealNutrition } = require("./mealNutrition");
 
 const SYSTEM_CURRENCY = "SAR";
 
@@ -194,6 +195,7 @@ function resolvePlanCatalogEntry(plan, lang) {
   const startsFromHalala = defaultMealsOption ? defaultMealsOption.priceHalala : 0;
   const compareAtStartsFromHalala = defaultMealsOption ? defaultMealsOption.compareAtHalala : 0;
   const savingsStartsFromHalala = resolveSavings(compareAtStartsFromHalala, startsFromHalala);
+  const skipPolicy = plan && plan.skipPolicy && typeof plan.skipPolicy === "object" ? plan.skipPolicy : {};
 
   return {
     id: String(plan._id),
@@ -202,10 +204,10 @@ function resolvePlanCatalogEntry(plan, lang) {
     daysLabel: formatDaysLabel(plan.daysCount, lang),
     currency: plan.currency || SYSTEM_CURRENCY,
     isActive: Boolean(plan.isActive),
-    skipAllowanceCompensatedDays:
-      Number.isInteger(plan.skipAllowanceCompensatedDays) && plan.skipAllowanceCompensatedDays >= 0
-        ? plan.skipAllowanceCompensatedDays
-        : 0,
+    skipPolicy: {
+      enabled: skipPolicy.enabled === undefined ? true : Boolean(skipPolicy.enabled),
+      maxDays: Number.isInteger(skipPolicy.maxDays) && skipPolicy.maxDays >= 0 ? skipPolicy.maxDays : 0,
+    },
     freezePolicy: {
       enabled: plan && plan.freezePolicy && plan.freezePolicy.enabled !== undefined
         ? Boolean(plan.freezePolicy.enabled)
@@ -251,22 +253,26 @@ function resolvePlanCatalogEntry(plan, lang) {
 }
 
 function resolvePremiumMealCatalogEntry(row, lang) {
-  const extraFee = toMoneyParts(row && row.extraFeeHalala);
+  const normalizedRow = withDefaultMealNutrition(row);
+  const extraFee = toMoneyParts(normalizedRow && normalizedRow.extraFeeHalala);
 
   return {
-    id: String(row._id),
-    name: pickLang(row.name, lang),
-    description: pickLang(row.description, lang),
-    imageUrl: row.imageUrl || "",
-    currency: row.currency || SYSTEM_CURRENCY,
+    id: String(normalizedRow._id),
+    name: pickLang(normalizedRow.name, lang),
+    description: pickLang(normalizedRow.description, lang),
+    imageUrl: normalizedRow.imageUrl || "",
+    currency: normalizedRow.currency || SYSTEM_CURRENCY,
     extraFeeHalala: extraFee.halala,
     extraFeeSar: extraFee.sar,
     priceHalala: extraFee.halala,
     priceSar: extraFee.sar,
-    priceLabel: formatCurrencyLabel(extraFee.halala, row.currency || SYSTEM_CURRENCY),
+    priceLabel: formatCurrencyLabel(extraFee.halala, normalizedRow.currency || SYSTEM_CURRENCY),
+    proteinGrams: normalizedRow.proteinGrams,
+    carbGrams: normalizedRow.carbGrams,
+    fatGrams: normalizedRow.fatGrams,
     ui: {
-      title: pickLang(row.name, lang),
-      subtitle: pickLang(row.description, lang),
+      title: pickLang(normalizedRow.name, lang),
+      subtitle: pickLang(normalizedRow.description, lang),
       ctaLabel: localizeText(lang, "أضف", "Add"),
       selectionStyle: "stepper",
     },

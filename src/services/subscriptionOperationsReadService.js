@@ -5,11 +5,10 @@ const SubscriptionDay = require("../models/SubscriptionDay");
 const Setting = require("../models/Setting");
 const dateUtils = require("../utils/date");
 const { addDaysToKSADateString } = dateUtils;
-const { resolveSubscriptionFreezePolicy } = require("./subscriptionContractReadService");
 const {
-  getGlobalSkipAllowance,
-  countAlreadySkippedDays,
-} = require("./subscriptionService");
+  resolveSubscriptionFreezePolicy,
+  resolveSubscriptionSkipPolicy,
+} = require("./subscriptionContractReadService");
 
 function resolveEffectiveSubscriptionStatus(subscription, today = dateUtils.getTodayKSADate()) {
   if (!subscription || typeof subscription !== "object") {
@@ -69,12 +68,6 @@ const defaultRuntime = {
       subscriptionId,
       date: { $in: targetDates },
     }).select("date status").lean();
-  },
-  async getSkipAllowance() {
-    return getGlobalSkipAllowance();
-  },
-  async countSkippedDays(subscriptionId) {
-    return countAlreadySkippedDays(subscriptionId);
   },
   async getCutoffTime() {
     const setting = await Setting.findOne({ key: "cutoff_time" }).lean();
@@ -155,11 +148,12 @@ async function buildSubscriptionOperationsMeta({ subscriptionId, actor, runtime:
   const freezePolicy = resolveSubscriptionFreezePolicy(subscription, livePlan, {
     context: "subscription_operations_meta",
   });
+  const skipPolicy = resolveSubscriptionSkipPolicy(subscription, livePlan, {
+    context: "subscription_operations_meta",
+  });
 
-  const [frozenDays, skipAllowance, skippedCount] = await Promise.all([
+  const [frozenDays] = await Promise.all([
     runtime.findFrozenDays(subscriptionId),
-    runtime.getSkipAllowance(),
-    runtime.countSkippedDays(subscriptionId),
   ]);
 
   const frozenDateStrings = frozenDays
@@ -169,6 +163,8 @@ async function buildSubscriptionOperationsMeta({ subscriptionId, actor, runtime:
   const frozenDaysUsed = frozenDateStrings.length;
   const frozenBlocksUsed = countFrozenBlocks(frozenDateStrings);
   const activeWriteEligible = effectiveStatus === "active" && subscription.status === "active";
+  const skipDaysUsed = Number(subscription.skipDaysUsed || 0);
+  const skipDaysRemaining = Math.max(Number(skipPolicy.maxDays || 0) - skipDaysUsed, 0);
 
   return {
     outcome: "success",
@@ -207,20 +203,25 @@ async function buildSubscriptionOperationsMeta({ subscriptionId, actor, runtime:
         },
         skip: {
           supported: true,
-          canSubmit: activeWriteEligible,
-          reasonCode: activeWriteEligible
-            ? null
-            : effectiveStatus === "expired"
-              ? "SUB_EXPIRED"
-              : "SUB_INACTIVE",
+          canSubmit: skipPolicy.enabled && activeWriteEligible && skipDaysRemaining > 0,
+          reasonCode: !skipPolicy.enabled
+            ? "SKIP_DISABLED"
+            : !activeWriteEligible
+              ? effectiveStatus === "expired"
+                ? "SUB_EXPIRED"
+                : "SUB_INACTIVE"
+              : skipDaysRemaining > 0
+                ? null
+                : "SKIP_LIMIT_REACHED",
           policy: {
-            allowanceScope: "global_setting",
-            skipAllowance: Number(skipAllowance || 0),
-            compensationMode: "none",
+            allowanceScope: "plan_policy_snapshot",
+            enabled: skipPolicy.enabled,
+            maxDays: Number(skipPolicy.maxDays || 0),
+            compensationMode: "validity_extension",
           },
           usage: {
-            skippedCount: Number(skippedCount || 0),
-            skipRemaining: Math.max(Number(skipAllowance || 0) - Number(skippedCount || 0), 0),
+            usedDays: skipDaysUsed,
+            remainingDays: skipDaysRemaining,
           },
         },
         delivery: {

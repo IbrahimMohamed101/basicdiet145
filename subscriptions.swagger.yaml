@@ -353,12 +353,84 @@ components:
           items:
             type: object
             additionalProperties: true
+    TimelineDay:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+          example: "2026-03-21"
+        status:
+          type: string
+          enum: [planned, locked, delivered, frozen, skipped, extension]
+        statusLabel:
+          type: string
+          example: Planned
+        source:
+          type: string
+          enum: [base, freeze_compensation, skip_compensation]
+        sourceLabel:
+          type: string
+          example: Base
+        locked:
+          type: boolean
+        isExtension:
+          type: boolean
+        meals:
+          type: object
+          properties:
+            selected:
+              type: integer
+              example: 3
+            required:
+              type: integer
+              example: 3
+            isSatisfied:
+              type: boolean
+              example: true
+    SubscriptionTimeline:
+      type: object
+      properties:
+        subscriptionId:
+          type: string
+        validity:
+          type: object
+          properties:
+            startDate:
+              type: string
+              format: date
+            endDate:
+              type: string
+              format: date
+            validityEndDate:
+              type: string
+              format: date
+            compensationDays:
+              type: integer
+            freezeCompensationDays:
+              type: integer
+            skipCompensationDays:
+              type: integer
+        days:
+          type: array
+          items:
+            $ref: '#/components/schemas/TimelineDay'
+    SubscriptionTimelineResponse:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/SubscriptionTimeline'
 paths:
   /subscriptions/menu:
     get:
       tags: [Menu]
       summary: Get subscription menu
-      description: Public catalog endpoint used to build the subscription purchase UI.
+      description: |
+        Public catalog endpoint used to build the subscription purchase UI.
+        Meal objects inside `regularMeals` and `premiumMeals` include nutrition fields:
+        `proteinGrams`, `carbGrams`, and `fatGrams`.
       parameters:
         - $ref: '#/components/parameters/LangQuery'
       responses:
@@ -372,6 +444,36 @@ paths:
                 ok: true
                 data:
                   currency: SAR
+                  regularMeals:
+                    - id: 65f000000000000000000301
+                      name: Grilled Chicken
+                      description: Included regular meal
+                      imageUrl: https://cdn.example.com/chicken.jpg
+                      category: Chicken
+                      categoryKey: chicken
+                      proteinGrams: 33
+                      carbGrams: 37
+                      fatGrams: 19
+                      type: regular
+                      pricingModel: included
+                      priceHalala: 0
+                      priceSar: 0
+                      currency: SAR
+                  premiumMeals:
+                    - id: 65f000000000000000000020
+                      name: Steak
+                      description: Premium upgrade
+                      imageUrl: https://cdn.example.com/steak.jpg
+                      proteinGrams: 33
+                      carbGrams: 37
+                      fatGrams: 19
+                      type: premium
+                      pricingModel: extra_fee
+                      priceHalala: 1500
+                      priceSar: 15
+                      extraFeeHalala: 1500
+                      extraFeeSar: 15
+                      currency: SAR
                   delivery:
                     methods:
                       - id: delivery
@@ -976,12 +1078,13 @@ paths:
                       canSubmit: true
                       reasonCode: null
                       policy:
-                        allowanceScope: global_setting
-                        skipAllowance: 5
-                        compensationMode: none
+                        allowanceScope: plan_policy_snapshot
+                        enabled: true
+                        maxDays: 5
+                        compensationMode: validity_extension
                       usage:
-                        skippedCount: 2
-                        skipRemaining: 3
+                        usedDays: 2
+                        remainingDays: 3
                     delivery:
                       supported: true
                       canSubmit: true
@@ -1028,7 +1131,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SuccessEnvelope'
+                $ref: '#/components/schemas/SubscriptionTimelineResponse'
         '400':
           description: INVALID_ID
           content:
@@ -2584,7 +2687,10 @@ paths:
   /subscriptions/{id}/days/{date}/skip:
     post:
       tags: [Operations]
-      summary: Skip one day
+      summary: Apply one limited compensated skip day
+      description: |
+        Applies one short-form compensated skip when the day is still eligible.
+        When no allowance remains, the endpoint returns `200` with `appliedDays: 0` instead of a hard limit error.
       security:
         - AppBearerAuth: []
       parameters:
@@ -2592,19 +2698,32 @@ paths:
         - $ref: '#/components/parameters/DateParam'
       responses:
         '200':
-          description: Day skipped
+          description: Skip result summary
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/SuccessEnvelope'
+              example:
+                ok: true
+                data:
+                  day:
+                    date: "2026-04-10"
+                    status: skipped
+                    statusLabel: Skipped
+                    canonicalDayActionType: skip
+                  requestedDays: 1
+                  appliedDays: 1
+                  remainingSkipDays: 2
+                  compensatedDaysAdded: 1
+                  message: 1 day applied
         '400':
-          description: INVALID_DATE, LOCKED, or INSUFFICIENT_CREDITS
+          description: INVALID_DATE
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '403':
-          description: FORBIDDEN or SKIP_LIMIT_REACHED
+          description: FORBIDDEN
           content:
             application/json:
               schema:
@@ -2615,8 +2734,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: FROZEN or LOCKED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
         '422':
-          description: SUB_INACTIVE
+          description: SUB_INACTIVE, SUB_EXPIRED, or SKIP_DISABLED
           content:
             application/json:
               schema:
@@ -2664,7 +2789,10 @@ paths:
   /subscriptions/{id}/skip-range:
     post:
       tags: [Operations]
-      summary: Skip a range of days
+      summary: Apply limited compensated skip to a date range
+      description: |
+        Evaluates each requested date, applies skips to eligible days only, and stops naturally at the remaining plan allowance.
+        The endpoint supports partial execution and returns a detailed summary.
       security:
         - AppBearerAuth: []
       parameters:
@@ -2706,6 +2834,28 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SuccessEnvelope'
+              example:
+                ok: true
+                data:
+                  requestedRange:
+                    startDate: "2026-04-10"
+                    endDate: "2026-04-14"
+                    days: 5
+                  requestedDays: 5
+                  appliedDays: 3
+                  remainingSkipDays: 0
+                  compensatedDaysAdded: 3
+                  message: Only 3 days applied due to plan limit
+                  appliedDates:
+                    - "2026-04-10"
+                    - "2026-04-11"
+                    - "2026-04-12"
+                  alreadySkipped: []
+                  rejected:
+                    - date: "2026-04-13"
+                      reason: FROZEN
+                    - date: "2026-04-14"
+                      reason: PLAN_LIMIT_REACHED
         '400':
           description: INVALID_DATE or INVALID
           content:
@@ -2713,7 +2863,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '403':
-          description: FORBIDDEN or SKIP_LIMIT_REACHED
+          description: FORBIDDEN
           content:
             application/json:
               schema:
@@ -2725,7 +2875,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '422':
-          description: SUB_INACTIVE or SUB_EXPIRED
+          description: SUB_INACTIVE, SUB_EXPIRED, or SKIP_DISABLED
           content:
             application/json:
               schema:
@@ -3157,8 +3307,10 @@ paths:
   /admin/subscriptions/{id}/days/{date}/skip:
     post:
       tags: [Admin - Subscriptions]
-      summary: Skip subscription day from admin
-      description: Also available through `/dashboard/subscriptions/{id}/days/{date}/skip`.
+      summary: Apply one limited compensated skip day from admin
+      description: |
+        Also available through `/dashboard/subscriptions/{id}/days/{date}/skip`.
+        Admin uses the same business rules and partial/no-op semantics as the client endpoint.
       security:
         - DashboardBearerAuth: []
       parameters:
@@ -3166,19 +3318,19 @@ paths:
         - $ref: '#/components/parameters/DateParam'
       responses:
         '200':
-          description: Day skipped
+          description: Skip result summary
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/SuccessEnvelope'
         '400':
-          description: INVALID_DATE, LOCKED, or INSUFFICIENT_CREDITS
+          description: INVALID_DATE
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '403':
-          description: FORBIDDEN or SKIP_LIMIT_REACHED
+          description: FORBIDDEN
           content:
             application/json:
               schema:
@@ -3189,8 +3341,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: FROZEN or LOCKED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
         '422':
-          description: SUB_INACTIVE
+          description: SUB_INACTIVE, SUB_EXPIRED, or SKIP_DISABLED
           content:
             application/json:
               schema:

@@ -34,7 +34,10 @@ const PlanSchema = new mongoose.Schema(
     daysCount: { type: Number, required: true },
     currency: { type: String, default: "SAR" },
     gramsOptions: { type: [GramsOptionSchema], default: [] },
-    skipAllowanceCompensatedDays: { type: Number, default: 0 },
+    skipPolicy: {
+      enabled: { type: Boolean, default: true },
+      maxDays: { type: Number, default: 0, min: 0 },
+    },
     freezePolicy: {
       enabled: { type: Boolean, default: true },
       maxDays: { type: Number, default: 31 },

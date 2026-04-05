@@ -362,6 +362,77 @@ components:
               message: Amount mismatch
 
   schemas:
+    TimelineDay:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+          example: "2026-03-21"
+        status:
+          type: string
+          enum: [planned, locked, delivered, frozen, skipped, extension]
+        statusLabel:
+          type: string
+          example: Planned
+        source:
+          type: string
+          enum: [base, freeze_compensation, skip_compensation]
+        sourceLabel:
+          type: string
+          example: Base
+        locked:
+          type: boolean
+        isExtension:
+          type: boolean
+        meals:
+          type: object
+          properties:
+            selected:
+              type: integer
+              example: 3
+            required:
+              type: integer
+              example: 3
+            isSatisfied:
+              type: boolean
+              example: true
+    SubscriptionTimeline:
+      type: object
+      properties:
+        subscriptionId:
+          type: string
+        validity:
+          type: object
+          properties:
+            startDate:
+              type: string
+              format: date
+            endDate:
+              type: string
+              format: date
+            validityEndDate:
+              type: string
+              format: date
+            compensationDays:
+              type: integer
+            freezeCompensationDays:
+              type: integer
+            skipCompensationDays:
+              type: integer
+        days:
+          type: array
+          items:
+            $ref: '#/components/schemas/TimelineDay'
+    SubscriptionTimelineResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          $ref: '#/components/schemas/SubscriptionTimeline'
     ErrorObject:
       type: object
       required:
@@ -1302,6 +1373,14 @@ components:
         maxTimes:
           type: integer
 
+    PlanSkipPolicy:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        maxDays:
+          type: integer
+
     PlanMealsOption:
       type: object
       description: Public meals option shape returned by `/api/plans` endpoints.
@@ -1396,9 +1475,8 @@ components:
         isActive:
           type: boolean
           default: true
-        skipAllowanceCompensatedDays:
-          type: integer
-          minimum: 0
+        skipPolicy:
+          $ref: '#/components/schemas/PlanSkipPolicy'
         freezePolicy:
           $ref: '#/components/schemas/PlanFreezePolicy'
         gramsOptions:
@@ -1426,8 +1504,8 @@ components:
           example: SAR
         isActive:
           type: boolean
-        skipAllowanceCompensatedDays:
-          type: integer
+        skipPolicy:
+          $ref: '#/components/schemas/PlanSkipPolicy'
         freezePolicy:
           $ref: '#/components/schemas/PlanFreezePolicy'
         gramsOptions:
@@ -1435,7 +1513,7 @@ components:
           items:
             $ref: '#/components/schemas/PlanGramsOption'
       required:
-        [id, name, daysCount, currency, isActive, skipAllowanceCompensatedDays, freezePolicy, gramsOptions]
+        [id, name, daysCount, currency, isActive, skipPolicy, freezePolicy, gramsOptions]
 
     Plan:
       type: object
@@ -1453,8 +1531,8 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/PlanCreateGramsOption'
-        skipAllowanceCompensatedDays:
-          type: integer
+        skipPolicy:
+          $ref: '#/components/schemas/PlanSkipPolicy'
         freezePolicy:
           $ref: '#/components/schemas/PlanFreezePolicy'
         isActive:
@@ -1493,6 +1571,15 @@ components:
           $ref: '#/components/schemas/LocalizedText'
         imageUrl:
           type: string
+        proteinGrams:
+          type: number
+          example: 33
+        carbGrams:
+          type: number
+          example: 37
+        fatGrams:
+          type: number
+          example: 19
         type:
           type: string
           enum: [regular, premium]
@@ -1524,6 +1611,15 @@ components:
           type: string
         imageUrl:
           type: string
+        proteinGrams:
+          type: number
+          example: 33
+        carbGrams:
+          type: number
+          example: 37
+        fatGrams:
+          type: number
+          example: 19
         type:
           type: string
           enum: [regular]
@@ -1583,6 +1679,15 @@ components:
           type: string
         imageUrl:
           type: string
+        proteinGrams:
+          type: number
+          example: 33
+        carbGrams:
+          type: number
+          example: 37
+        fatGrams:
+          type: number
+          example: 19
         type:
           type: string
           enum: [regular, premium]
@@ -1594,7 +1699,7 @@ components:
         currency:
           type: string
           enum: [SAR]
-      required: [id, name, description, imageUrl, type, priceHalala, priceSar, currency]
+      required: [id, name, description, imageUrl, proteinGrams, carbGrams, fatGrams, type, priceHalala, priceSar, currency]
 
     SubscriptionRegularMenuMeal:
       type: object
@@ -1607,6 +1712,15 @@ components:
           type: string
         imageUrl:
           type: string
+        proteinGrams:
+          type: number
+          example: 33
+        carbGrams:
+          type: number
+          example: 37
+        fatGrams:
+          type: number
+          example: 19
         type:
           type: string
           enum: [regular]
@@ -1621,7 +1735,7 @@ components:
         currency:
           type: string
           enum: [SAR]
-      required: [id, name, description, imageUrl, type, pricingModel, priceHalala, priceSar, currency]
+      required: [id, name, description, imageUrl, proteinGrams, carbGrams, fatGrams, type, pricingModel, priceHalala, priceSar, currency]
 
     SubscriptionPremiumMenuMeal:
       type: object
@@ -1634,6 +1748,15 @@ components:
           type: string
         imageUrl:
           type: string
+        proteinGrams:
+          type: number
+          example: 33
+        carbGrams:
+          type: number
+          example: 37
+        fatGrams:
+          type: number
+          example: 19
         type:
           type: string
           enum: [premium]
@@ -1648,7 +1771,7 @@ components:
         currency:
           type: string
           enum: [SAR]
-      required: [id, name, description, imageUrl, type, pricingModel, priceHalala, priceSar, currency]
+      required: [id, name, description, imageUrl, proteinGrams, carbGrams, fatGrams, type, pricingModel, priceHalala, priceSar, currency]
 
     PremiumMeal:
       type: object
@@ -1662,6 +1785,15 @@ components:
           type: string
         imageUrl:
           type: string
+        proteinGrams:
+          type: number
+          example: 33
+        carbGrams:
+          type: number
+          example: 37
+        fatGrams:
+          type: number
+          example: 19
         extraFeeHalala:
           $ref: '#/components/schemas/HalalaAmount'
         extraFeeSar:
@@ -1670,7 +1802,7 @@ components:
         currency:
           type: string
           enum: [SAR]
-      required: [id, name, description, imageUrl, currency, extraFeeHalala, extraFeeSar]
+      required: [id, name, description, imageUrl, proteinGrams, carbGrams, fatGrams, currency, extraFeeHalala, extraFeeSar]
 
     PremiumMealAdmin:
       type: object
@@ -1684,6 +1816,15 @@ components:
           $ref: '#/components/schemas/LocalizedText'
         imageUrl:
           type: string
+        proteinGrams:
+          type: number
+          example: 33
+        carbGrams:
+          type: number
+          example: 37
+        fatGrams:
+          type: number
+          example: 19
         extraFeeHalala:
           $ref: '#/components/schemas/HalalaAmount'
         currency:
@@ -3449,7 +3590,9 @@ paths:
                     daysCount: 26
                     currency: SAR
                     isActive: true
-                    skipAllowanceCompensatedDays: 3
+                    skipPolicy:
+                      enabled: true
+                      maxDays: 3
                     freezePolicy:
                       enabled: true
                       maxDays: 31
@@ -3502,6 +3645,7 @@ paths:
       description: |
         Returns active premium meals only, sorted by `sortOrder ASC`, then `createdAt DESC`.
         Localized fields are resolved with `Accept-Language`.
+        Each meal also includes nutrition fields: `proteinGrams`, `carbGrams`, and `fatGrams`.
       parameters:
         - $ref: '#/components/parameters/AcceptLanguage'
       responses:
@@ -3525,6 +3669,9 @@ paths:
                     name: Steak
                     description: Premium upgrade
                     imageUrl: https://cdn.example.com/steak.jpg
+                    proteinGrams: 33
+                    carbGrams: 37
+                    fatGrams: 19
                     currency: SAR
                     extraFeeHalala: 1500
                     extraFeeSar: 15
@@ -3598,6 +3745,7 @@ paths:
         - `plans`: subscription packages already shaped for package/size/meal-count pickers
         - `regularMeals`: regular meals included in the plan
         - `premiumMeals`: premium upgrade catalog with extra fees
+        - Meal entries include nutrition fields: `proteinGrams`, `carbGrams`, and `fatGrams`
         - `addons` / `addonsByType`: add-on catalog for recurring and one-time extras
         - `delivery`: delivery and pickup methods, time slots, and optional pickup locations
         - `flow`: UI step metadata for the subscription funnel
@@ -4291,6 +4439,35 @@ paths:
         '422':
           $ref: '#/components/responses/Unprocessable'
 
+  /api/subscriptions/{id}/timeline:
+    get:
+      tags: [Subscriptions]
+      summary: Get subscription timeline
+      description: Returns a comprehensive timeline of the subscription including status, source, and meal summary for each day.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+        - name: lang
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [ar, en]
+      responses:
+        '200':
+          description: Timeline returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionTimelineResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /api/subscriptions/{id}/days:
     get:
       tags: [Subscriptions]
@@ -4443,7 +4620,9 @@ paths:
     post:
       tags: [Subscriptions]
       summary: Skip one subscription day
-      description: Applies skip rules and credit deduction for one day.
+      description: |
+        Applies one limited compensated skip day.
+        This operation extends subscription validity, does not consume meals, and still returns `200` with summary data when no skip allowance remains.
       security:
         - bearerAuth: []
       parameters:
@@ -4451,7 +4630,7 @@ paths:
         - $ref: '#/components/parameters/KsaDate'
       responses:
         '200':
-          description: Skipped or already skipped.
+          description: Skip result summary.
           content:
             application/json:
               schema:
@@ -4460,7 +4639,20 @@ paths:
                   ok:
                     type: boolean
                   data:
-                    $ref: '#/components/schemas/SubscriptionDay'
+                    type: object
+                    properties:
+                      day:
+                        $ref: '#/components/schemas/SubscriptionDay'
+                      requestedDays:
+                        type: integer
+                      appliedDays:
+                        type: integer
+                      remainingSkipDays:
+                        type: integer
+                      compensatedDaysAdded:
+                        type: integer
+                      message:
+                        type: string
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -4518,8 +4710,8 @@ paths:
       tags: [Subscriptions]
       summary: Skip a date range
       description: |
-        Attempts to skip `days` consecutive dates from `startDate`, returning per-date summary.
-        `compensatedDatesAdded` is currently returned as an empty list by runtime rules.
+        Applies limited compensated skips across the requested range.
+        Each date is evaluated independently, eligible dates are applied first, and the result reports partial execution details.
       security:
         - bearerAuth: []
       parameters:
@@ -4551,11 +4743,24 @@ paths:
                   data:
                     type: object
                     properties:
-                      skippedDates:
-                        type: array
-                        items:
-                          type: string
-                      compensatedDatesAdded:
+                      requestedRange:
+                        type: object
+                        properties:
+                          startDate:
+                            type: string
+                          endDate:
+                            type: string
+                          days:
+                            type: integer
+                      requestedDays:
+                        type: integer
+                      appliedDays:
+                        type: integer
+                      remainingSkipDays:
+                        type: integer
+                      compensatedDaysAdded:
+                        type: integer
+                      appliedDates:
                         type: array
                         items:
                           type: string
@@ -4572,6 +4777,8 @@ paths:
                               type: string
                             reason:
                               type: string
+                      message:
+                        type: string
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -5927,7 +6134,9 @@ paths:
     get:
       tags: [Meals / Menu]
       summary: List active regular meals
-      description: Returns localized active regular meals with menu metadata by `Accept-Language`.
+      description: |
+        Returns localized active regular meals with menu metadata by `Accept-Language`.
+        Each meal includes `proteinGrams`, `carbGrams`, and `fatGrams`.
       parameters:
         - $ref: '#/components/parameters/AcceptLanguage'
       responses:
@@ -6897,7 +7106,9 @@ paths:
               currency: SAR
               sortOrder: 1
               isActive: true
-              skipAllowanceCompensatedDays: 3
+              skipPolicy:
+                enabled: true
+                maxDays: 3
               freezePolicy:
                 enabled: true
                 maxDays: 31
@@ -7738,6 +7949,18 @@ paths:
                 extraFeeHalala:
                   type: integer
                   minimum: 0
+                proteinGrams:
+                  type: number
+                  minimum: 0
+                  example: 33
+                carbGrams:
+                  type: number
+                  minimum: 0
+                  example: 37
+                fatGrams:
+                  type: number
+                  minimum: 0
+                  example: 19
                 isActive:
                   type: boolean
                 sortOrder:
@@ -7821,6 +8044,18 @@ paths:
                   type: boolean
                 availableForSubscription:
                   type: boolean
+                proteinGrams:
+                  type: number
+                  minimum: 0
+                  example: 33
+                carbGrams:
+                  type: number
+                  minimum: 0
+                  example: 37
+                fatGrams:
+                  type: number
+                  minimum: 0
+                  example: 19
                 sortOrder:
                   type: integer
                 isActive:
@@ -7911,6 +8146,18 @@ paths:
                   type: boolean
                 availableForSubscription:
                   type: boolean
+                proteinGrams:
+                  type: number
+                  minimum: 0
+                  example: 33
+                carbGrams:
+                  type: number
+                  minimum: 0
+                  example: 37
+                fatGrams:
+                  type: number
+                  minimum: 0
+                  example: 19
                 sortOrder:
                   type: integer
                 isActive:
@@ -8077,6 +8324,18 @@ paths:
                 extraFeeHalala:
                   type: integer
                   minimum: 0
+                proteinGrams:
+                  type: number
+                  minimum: 0
+                  example: 33
+                carbGrams:
+                  type: number
+                  minimum: 0
+                  example: 37
+                fatGrams:
+                  type: number
+                  minimum: 0
+                  example: 19
                 isActive:
                   type: boolean
                 sortOrder:
@@ -8802,7 +9061,7 @@ paths:
       summary: Partially update multiple settings
       description: |
         Admin-only bulk settings update.
-        Supported keys: `cutoff_time`, `delivery_windows`, `skip_allowance`, `premium_price`,
+        Supported keys: `cutoff_time`, `delivery_windows`, `skip_allowance` (legacy, no longer used for subscription skip runtime), `premium_price`,
         `subscription_delivery_fee_halala`, `vat_percentage`, `custom_salad_base_price`,
         `custom_meal_base_price`.
       security:

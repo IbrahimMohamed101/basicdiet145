@@ -6,6 +6,7 @@ const MealCategory = require("../models/MealCategory");
 const Setting = require("../models/Setting");
 const Zone = require("../models/Zone");
 const { getRequestLang, pickLang } = require("../utils/i18n");
+const { withDefaultMealNutrition } = require("../utils/mealNutrition");
 const {
   buildMealSections,
   buildMealCategoryMap,
@@ -27,14 +28,18 @@ async function getSettingValue(key, fallback) {
 }
 
 function resolveMealCard(doc, lang, category = null) {
-  const categoryKey = normalizeCategoryKey(doc.category);
+  const normalizedDoc = withDefaultMealNutrition(doc);
+  const categoryKey = normalizeCategoryKey(normalizedDoc.category);
   return {
-    id: String(doc._id),
-    name: pickLang(doc.name, lang),
-    description: pickLang(doc.description, lang),
-    imageUrl: doc.imageUrl || "",
+    id: String(normalizedDoc._id),
+    name: pickLang(normalizedDoc.name, lang),
+    description: pickLang(normalizedDoc.description, lang),
+    imageUrl: normalizedDoc.imageUrl || "",
     category: category || null,
     categoryKey,
+    proteinGrams: normalizedDoc.proteinGrams,
+    carbGrams: normalizedDoc.carbGrams,
+    fatGrams: normalizedDoc.fatGrams,
   };
 }
 
@@ -59,6 +64,88 @@ function resolveCustomMealSupport(basePriceSar) {
     basePriceHalala,
     basePriceSar: basePriceHalala / 100,
     currency: SYSTEM_CURRENCY,
+  };
+}
+
+function buildSubscriptionMealCatalog({
+  lang,
+  regularMeals,
+  mealCategories,
+  premiumMeals,
+  addons,
+  customSaladBasePrice,
+  customMealBasePrice,
+} = {}) {
+  const mappedPremiumMeals = premiumMeals.map((meal) => resolvePremiumMealCatalogEntry(meal, lang));
+  const mappedAddons = addons.map((addon) => resolveAddonCatalogEntry(addon, lang));
+  const mealCategoryMap = buildMealCategoryMap(mealCategories, lang);
+  const resolvedRegularMeals = regularMeals.map((meal) => {
+    const category = resolveMealCategoryForKey(meal.category, mealCategoryMap, lang);
+    return {
+      ...resolveMealCard(meal, lang, category),
+      type: "regular",
+      pricingModel: "included",
+      priceHalala: 0,
+      priceSar: 0,
+      currency: SYSTEM_CURRENCY,
+      ui: {
+        title: pickLang(meal.name, lang),
+        subtitle: pickLang(meal.description, lang),
+      },
+    };
+  });
+  const resolvedRegularMealsById = new Map(resolvedRegularMeals.map((meal) => [meal.id, meal]));
+  const mealSections = buildMealSections({
+    meals: regularMeals,
+    categoryDocs: mealCategories,
+    lang,
+    itemResolver: (meal, category) => resolvedRegularMealsById.get(String(meal._id)) || {
+      ...resolveMealCard(meal, lang, category),
+      type: "regular",
+    },
+  });
+  const mealCategoriesPayload = mealSections.map((section) => section.category);
+  const premiumMealsPayload = mappedPremiumMeals.map((meal) => ({
+    ...meal,
+    type: "premium",
+    pricingModel: "extra_fee",
+  }));
+  const subscriptionAddons = mappedAddons.filter((addon) => addon.type === "subscription");
+  const oneTimeAddons = mappedAddons.filter((addon) => addon.type === "one_time");
+
+  return {
+    currency: SYSTEM_CURRENCY,
+    customSalad: resolveCustomSaladSupport(customSaladBasePrice),
+    customMeal: resolveCustomMealSupport(customMealBasePrice),
+    regularMeals: resolvedRegularMeals,
+    mealCategories: mealCategoriesPayload,
+    mealSections,
+    premiumMeals: premiumMealsPayload,
+    addons: mappedAddons,
+    addonsByType: {
+      subscription: subscriptionAddons,
+      oneTime: oneTimeAddons,
+    },
+    mealPlanner: {
+      regularMeals: {
+        items: resolvedRegularMeals,
+        categories: mealCategoriesPayload,
+        sections: mealSections,
+        totalCount: resolvedRegularMeals.length,
+      },
+      premiumMeals: {
+        items: premiumMealsPayload,
+        totalCount: premiumMealsPayload.length,
+      },
+      addons: {
+        items: mappedAddons,
+        byType: {
+          subscription: subscriptionAddons,
+          oneTime: oneTimeAddons,
+        },
+        totalCount: mappedAddons.length,
+      },
+    },
   };
 }
 
@@ -150,9 +237,6 @@ async function getSubscriptionMenu(req, res) {
   ]);
 
   const mappedPlans = plans.map((plan) => resolvePlanCatalogEntry(plan, lang));
-  const mappedPremiumMeals = premiumMeals.map((meal) => resolvePremiumMealCatalogEntry(meal, lang));
-  const mappedAddons = addons.map((addon) => resolveAddonCatalogEntry(addon, lang));
-  const mealCategoryMap = buildMealCategoryMap(mealCategories, lang);
   const deliveryCatalog = resolveDeliveryCatalog({
     lang,
     windows: deliveryWindows,
@@ -160,52 +244,21 @@ async function getSubscriptionMenu(req, res) {
     zones,
     pickupLocations,
   });
-  const resolvedRegularMeals = regularMeals.map((meal) => {
-    const category = resolveMealCategoryForKey(meal.category, mealCategoryMap, lang);
-    return {
-      ...resolveMealCard(meal, lang, category),
-      type: "regular",
-      pricingModel: "included",
-      priceHalala: 0,
-      priceSar: 0,
-      currency: SYSTEM_CURRENCY,
-      ui: {
-        title: pickLang(meal.name, lang),
-        subtitle: pickLang(meal.description, lang),
-      },
-    };
-  });
-  const resolvedRegularMealsById = new Map(resolvedRegularMeals.map((meal) => [meal.id, meal]));
-  const mealSections = buildMealSections({
-    meals: regularMeals,
-    categoryDocs: mealCategories,
+  const mealCatalog = buildSubscriptionMealCatalog({
     lang,
-    itemResolver: (meal, category) => resolvedRegularMealsById.get(String(meal._id)) || {
-      ...resolveMealCard(meal, lang, category),
-      type: "regular",
-    },
+    regularMeals,
+    mealCategories,
+    premiumMeals,
+    addons,
+    customSaladBasePrice,
+    customMealBasePrice,
   });
 
   return res.status(200).json({
     ok: true,
     data: {
-      currency: SYSTEM_CURRENCY,
-      customSalad: resolveCustomSaladSupport(customSaladBasePrice),
-      customMeal: resolveCustomMealSupport(customMealBasePrice),
+      ...mealCatalog,
       plans: mappedPlans,
-      regularMeals: resolvedRegularMeals,
-      mealCategories: mealSections.map((section) => section.category),
-      mealSections,
-      premiumMeals: mappedPremiumMeals.map((meal) => ({
-        ...meal,
-        type: "premium",
-        pricingModel: "extra_fee",
-      })),
-      addons: mappedAddons,
-      addonsByType: {
-        subscription: mappedAddons.filter((addon) => addon.type === "subscription"),
-        oneTime: mappedAddons.filter((addon) => addon.type === "one_time"),
-      },
       delivery: deliveryCatalog,
       flow: {
         steps: [
@@ -216,6 +269,35 @@ async function getSubscriptionMenu(req, res) {
           { id: "mealSelection", title: lang === "en" ? "Meal Selection" : "اختيار الوجبات" },
         ],
       },
+    },
+  });
+}
+
+async function getSubscriptionMealPlannerMenu(req, res) {
+  const lang = getRequestLang(req);
+  const [regularMeals, mealCategories, premiumMeals, addons] = await Promise.all([
+    Meal.find({ type: "regular", isActive: true, availableForSubscription: { $ne: false } })
+      .sort({ sortOrder: 1, createdAt: -1 })
+      .lean(),
+    MealCategory.find({}).sort({ sortOrder: 1, createdAt: -1 }).lean(),
+    PremiumMeal.find({ isActive: true }).sort({ sortOrder: 1, createdAt: -1 }).lean(),
+    Addon.find({ isActive: true }).sort({ sortOrder: 1, createdAt: -1 }).lean(),
+  ]);
+  const mealCatalog = buildSubscriptionMealCatalog({
+    lang,
+    regularMeals,
+    mealCategories,
+    premiumMeals,
+    addons,
+  });
+
+  return res.status(200).json({
+    ok: true,
+    data: {
+      currency: mealCatalog.currency,
+      regularMeals: mealCatalog.mealPlanner.regularMeals,
+      premiumMeals: mealCatalog.mealPlanner.premiumMeals,
+      addons: mealCatalog.mealPlanner.addons,
     },
   });
 }
@@ -251,5 +333,6 @@ async function getDeliveryOptions(req, res) {
 module.exports = {
   getOrderMenu,
   getSubscriptionMenu,
+  getSubscriptionMealPlannerMenu,
   getDeliveryOptions,
 };

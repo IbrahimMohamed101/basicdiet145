@@ -1,4 +1,5 @@
 const { logger } = require("./logger");
+const { assertNoTestFlagsInProduction, isTestAuthEnabled } = require("./security");
 
 function addMissingIfEmpty(missing, key) {
   if (!process.env[key]) {
@@ -15,18 +16,27 @@ function addMissingBypassAware(missing, key, shouldRequire) {
 function validateEnv() {
   const hasMongoUri = Boolean(process.env.MONGO_URI || process.env.MONGODB_URI);
   const isProduction = process.env.NODE_ENV === "production";
-  const devAuthBypass = process.env.DEV_AUTH_BYPASS === "true";
-  const testOtpBypass = process.env.TEST_OTP_BYPASS === "true";
-  const devOtpBypass = process.env.DEV_OTP_BYPASS === "true";
+
+  /* ── PRODUCTION HARD FAIL: reject any test/bypass flags ───────────── */
+  const securityCheck = assertNoTestFlagsInProduction();
+  if (!securityCheck.ok) {
+    for (const v of securityCheck.violations) {
+      logger.error(`SECURITY: ${v}`);
+    }
+    return { ok: false, securityViolations: securityCheck.violations };
+  }
+
+  /* ── OTP provider requirement ─────────────────────────────────────── */
+  const testAuthActive = isTestAuthEnabled();
+  const shouldRequireOtpProvider = isProduction ? true : !testAuthActive;
+
   const cloudinaryKeys = [
     "CLOUDINARY_CLOUD_NAME",
     "CLOUDINARY_API_KEY",
     "CLOUDINARY_API_SECRET",
   ];
   const providedCloudinaryKeys = cloudinaryKeys.filter((key) => Boolean(process.env[key]));
-  const shouldRequireOtpProvider = isProduction
-    ? !(testOtpBypass || devOtpBypass)
-    : !(devAuthBypass || devOtpBypass || testOtpBypass);
+
   const missing = [];
   if (!hasMongoUri) missing.push("MONGO_URI or MONGODB_URI");
   addMissingIfEmpty(missing, "JWT_SECRET");
@@ -70,19 +80,14 @@ function validateEnv() {
   if (!Number.isFinite(otpVerifyWindowMs) || otpVerifyWindowMs <= 0) invalid.push("RATE_LIMIT_OTP_VERIFY_WINDOW_MS");
   const otpVerifyMax = Number(process.env.RATE_LIMIT_OTP_VERIFY_MAX || 10);
   if (!Number.isFinite(otpVerifyMax) || otpVerifyMax <= 0) invalid.push("RATE_LIMIT_OTP_VERIFY_MAX");
-  if (testOtpBypass) {
-    const testOtpCode = String(process.env.TEST_OTP_CODE || "").trim();
-    if (!/^\d{6}$/.test(testOtpCode)) invalid.push("TEST_OTP_CODE");
 
-    const testOtpPhone = String(process.env.TEST_OTP_PHONE || "").trim();
-    if (testOtpPhone && !/^\+[1-9]\d{7,14}$/.test(testOtpPhone)) invalid.push("TEST_OTP_PHONE");
-  }
-  if (devOtpBypass) {
-    const devOtpCode = String(process.env.DEV_OTP_CODE || "").trim();
-    if (!/^\d{6}$/.test(devOtpCode)) invalid.push("DEV_OTP_CODE");
+  // Validate unified test OTP code if test mode is active
+  if (testAuthActive) {
+    const testOtpCode = String(process.env.OTP_TEST_CODE || "000000").trim();
+    if (!/^\d{6}$/.test(testOtpCode)) invalid.push("OTP_TEST_CODE");
 
-    const devOtpPhone = String(process.env.DEV_OTP_PHONE || "").trim();
-    if (devOtpPhone && !/^\+[1-9]\d{7,14}$/.test(devOtpPhone)) invalid.push("DEV_OTP_PHONE");
+    const testOtpPhone = String(process.env.OTP_TEST_PHONE || "").trim();
+    if (testOtpPhone && !/^\+[1-9]\d{7,14}$/.test(testOtpPhone)) invalid.push("OTP_TEST_PHONE");
   }
 
   const checkoutWindowMs = Number(process.env.RATE_LIMIT_CHECKOUT_WINDOW_MS || 5 * 60 * 1000);

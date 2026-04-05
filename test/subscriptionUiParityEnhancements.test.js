@@ -112,6 +112,8 @@ function createSubscriptionDoc({
   pickupLocationId = "",
   endDate = new Date("2026-04-30T00:00:00+03:00"),
   validityEndDate = new Date("2026-05-03T00:00:00+03:00"),
+  skipDaysUsed = 0,
+  skipPolicy = { enabled: true, maxDays: 5 },
 } = {}) {
   return {
     _id,
@@ -120,6 +122,7 @@ function createSubscriptionDoc({
     planId: {
       _id: objectId(),
       freezePolicy: { enabled: true, maxDays: 31, maxTimes: 1 },
+      skipPolicy,
     },
     status,
     startDate: new Date("2026-04-01T00:00:00+03:00"),
@@ -130,6 +133,7 @@ function createSubscriptionDoc({
     selectedMealsPerDay,
     selectedGrams: 1200,
     skippedCount: 0,
+    skipDaysUsed,
     deliveryMode,
     deliveryAddress,
     deliveryWindow,
@@ -162,6 +166,7 @@ function createSubscriptionDoc({
         selectedMealsPerDay: this.selectedMealsPerDay,
         selectedGrams: this.selectedGrams,
         skippedCount: this.skippedCount,
+        skipDaysUsed: this.skipDaysUsed,
         deliveryMode: this.deliveryMode,
         deliveryAddress: this.deliveryAddress,
         deliveryWindow: this.deliveryWindow,
@@ -179,6 +184,7 @@ test("buildSubscriptionOperationsMeta exposes UI-safe operations metadata", asyn
   const subscription = createSubscriptionDoc({
     endDate: new Date("2026-03-20T00:00:00+03:00"),
     validityEndDate: new Date("2026-03-22T00:00:00+03:00"),
+    skipDaysUsed: 2,
   });
 
   const result = await buildSubscriptionOperationsMeta({
@@ -190,12 +196,6 @@ test("buildSubscriptionOperationsMeta exposes UI-safe operations metadata", asyn
       },
       async findFrozenDays() {
         return [{ date: "2026-04-05" }, { date: "2026-04-06" }, { date: "2026-04-08" }];
-      },
-      async getSkipAllowance() {
-        return 5;
-      },
-      async countSkippedDays() {
-        return 2;
       },
       getTodayKSADate() {
         return "2026-04-02";
@@ -209,8 +209,10 @@ test("buildSubscriptionOperationsMeta exposes UI-safe operations metadata", asyn
   assert.equal(result.data.operations.cancel.canSubmit, true);
   assert.equal(result.data.operations.freeze.usage.frozenDaysUsed, 3);
   assert.equal(result.data.operations.freeze.usage.frozenBlocksUsed, 2);
-  assert.equal(result.data.operations.skip.usage.skippedCount, 2);
-  assert.equal(result.data.operations.skip.usage.skipRemaining, 3);
+  assert.equal(result.data.operations.skip.policy.allowanceScope, "plan_policy_snapshot");
+  assert.equal(result.data.operations.skip.policy.compensationMode, "validity_extension");
+  assert.equal(result.data.operations.skip.usage.usedDays, 2);
+  assert.equal(result.data.operations.skip.usage.remainingDays, 3);
   assert.equal(result.data.operations.paymentMethods.supported, false);
 });
 
@@ -263,21 +265,23 @@ test("getSubscriptionPaymentMethods returns capability response", async () => {
 test("skipRange accepts endDate in addition to legacy days", async (t) => {
   const originalStartSession = mongoose.startSession;
   const originalSubscriptionFindById = Subscription.findById;
-  const originalSubscriptionUpdateOne = SubscriptionModel.updateOne;
+  const originalSubscriptionFindOneAndUpdate = SubscriptionModel.findOneAndUpdate;
   const originalSettingFindOne = Setting.findOne;
   const originalSubscriptionDayFindOne = SubscriptionDay.findOne;
-  const originalSubscriptionDayCountDocuments = SubscriptionDay.countDocuments;
+  const originalSubscriptionDayFind = SubscriptionDay.find;
   const originalSubscriptionDayCreate = SubscriptionDay.create;
+  const originalSubscriptionDayInsertMany = SubscriptionDay.insertMany;
   const originalActivityLogCreate = ActivityLog.create;
 
   t.after(() => {
     mongoose.startSession = originalStartSession;
     Subscription.findById = originalSubscriptionFindById;
-    SubscriptionModel.updateOne = originalSubscriptionUpdateOne;
+    SubscriptionModel.findOneAndUpdate = originalSubscriptionFindOneAndUpdate;
     Setting.findOne = originalSettingFindOne;
     SubscriptionDay.findOne = originalSubscriptionDayFindOne;
-    SubscriptionDay.countDocuments = originalSubscriptionDayCountDocuments;
+    SubscriptionDay.find = originalSubscriptionDayFind;
     SubscriptionDay.create = originalSubscriptionDayCreate;
+    SubscriptionDay.insertMany = originalSubscriptionDayInsertMany;
     ActivityLog.create = originalActivityLogCreate;
   });
 
@@ -291,19 +295,50 @@ test("skipRange accepts endDate in addition to legacy days", async (t) => {
 
   mongoose.startSession = async () => createSessionStub();
   Subscription.findById = () => createQueryStub(subscription);
-  SubscriptionModel.updateOne = async () => ({ modifiedCount: 1 });
+  SubscriptionModel.findOneAndUpdate = async (_query, update) => {
+    subscription.skipDaysUsed = Number(subscription.skipDaysUsed || 0) + Number(update.$inc?.skipDaysUsed || 0);
+    return {
+      ...subscription,
+      skipDaysUsed: subscription.skipDaysUsed,
+    };
+  };
   Setting.findOne = (query) => {
     if (query.key === "cutoff_time") {
       return createQueryStub({ key: "cutoff_time", value: "23:59" }, { leanResult: { key: "cutoff_time", value: "23:59" } });
     }
-    if (query.key === "skipAllowance") {
-      return createQueryStub({ key: "skipAllowance", value: 10 }, { leanResult: { key: "skipAllowance", value: 10 } });
-    }
     return createQueryStub(null, { leanResult: null });
   };
-  SubscriptionDay.findOne = () => createQueryStub(null);
-  SubscriptionDay.countDocuments = () => createQueryStub(0);
-  SubscriptionDay.create = async (rows) => rows.map((row) => ({ _id: objectId(), ...row }));
+  const dayStore = [];
+  SubscriptionDay.findOne = (query) => createQueryStub(
+    dayStore.find((day) => String(day.subscriptionId) === String(query.subscriptionId) && day.date === query.date) || null
+  );
+  SubscriptionDay.find = (query) => {
+    const rows = dayStore.filter((day) => {
+      if (String(day.subscriptionId) !== String(query.subscriptionId)) {
+        return false;
+      }
+      if (query.$or) {
+        return query.$or.some((condition) => (
+          Object.entries(condition).every(([key, value]) => day[key] === value)
+        ));
+      }
+      if (query.date && query.date.$gt !== undefined && query.date.$lte !== undefined) {
+        return day.date > query.date.$gt && day.date <= query.date.$lte;
+      }
+      return true;
+    });
+    return createQueryStub(rows);
+  };
+  SubscriptionDay.create = async (rows) => rows.map((row) => {
+    const created = { _id: objectId(), ...row };
+    dayStore.push(created);
+    return created;
+  });
+  SubscriptionDay.insertMany = async (rows) => rows.map((row) => {
+    const created = { _id: objectId(), ...row };
+    dayStore.push(created);
+    return created;
+  });
   ActivityLog.create = async () => ({});
 
   const { req, res } = createReqRes({
@@ -324,7 +359,11 @@ test("skipRange accepts endDate in addition to legacy days", async (t) => {
     endDate,
     days: 2,
   });
-  assert.deepEqual(res.payload.data.skippedDates, [tomorrow, endDate]);
+  assert.equal(res.payload.data.requestedDays, 2);
+  assert.equal(res.payload.data.appliedDays, 2);
+  assert.equal(res.payload.data.compensatedDaysAdded, 2);
+  assert.equal(res.payload.data.remainingSkipDays, 3);
+  assert.deepEqual(res.payload.data.appliedDates, [tomorrow, endDate]);
 });
 
 test("updateDeliveryDetails supports delivery zone updates and pickup location defaults", async (t) => {

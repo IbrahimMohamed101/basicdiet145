@@ -15,6 +15,14 @@ function normalizeFreezePolicy(source) {
   };
 }
 
+function normalizeSkipPolicy(source) {
+  const value = source && typeof source === "object" ? source : {};
+  return {
+    enabled: value.enabled === undefined ? true : Boolean(value.enabled),
+    maxDays: Number.isInteger(value.maxDays) && value.maxDays >= 0 ? value.maxDays : 0,
+  };
+}
+
 function normalizeDateComparable(value) {
   if (!value) return null;
   const parsed = value instanceof Date ? value : new Date(value);
@@ -126,6 +134,18 @@ function getSubscriptionContractDiagnostics(subscription, {
     const normalizedLiveFreezePolicy = normalizeFreezePolicy(livePlan.freezePolicy);
     if (JSON.stringify(normalizedSnapshotFreezePolicy) !== JSON.stringify(normalizedLiveFreezePolicy)) {
       mismatches.push("freezePolicy");
+    }
+  }
+
+  const snapshotSkipPolicy = snapshot.policySnapshot && snapshot.policySnapshot.skipPolicy;
+  if (snapshotFirstReadsEnabled && canonical && !snapshotSkipPolicy) {
+    fallbacks.push("skipPolicy");
+  }
+  if (snapshotSkipPolicy && livePlan && typeof livePlan === "object") {
+    const normalizedSnapshotSkipPolicy = normalizeSkipPolicy(snapshotSkipPolicy);
+    const normalizedLiveSkipPolicy = normalizeSkipPolicy(livePlan.skipPolicy);
+    if (JSON.stringify(normalizedSnapshotSkipPolicy) !== JSON.stringify(normalizedLiveSkipPolicy)) {
+      mismatches.push("skipPolicy");
     }
   }
 
@@ -262,10 +282,42 @@ function resolveSubscriptionFreezePolicy(subscription, livePlan, {
   return normalizeFreezePolicy(livePlan && typeof livePlan === "object" ? livePlan.freezePolicy : {});
 }
 
+function resolveSubscriptionSkipPolicy(subscription, livePlan, {
+  context = "skip_policy",
+  snapshotFirstReadsEnabled = isPhase1SnapshotFirstReadsEnabled(),
+  compatLoggingEnabled = isPhase1CompatLoggingEnabled(),
+  loggerOverride = logger,
+} = {}) {
+  const canonical = isCanonicalSubscriptionContract(subscription);
+  const snapshot = getSnapshot(subscription);
+  const snapshotSkipPolicy = snapshot
+    && snapshot.policySnapshot
+    && typeof snapshot.policySnapshot === "object"
+    ? snapshot.policySnapshot.skipPolicy
+    : null;
+
+  if (canonical && snapshotFirstReadsEnabled && snapshotSkipPolicy) {
+    const diagnostics = getSubscriptionContractDiagnostics(subscription, {
+      livePlan,
+      snapshotFirstReadsEnabled,
+    });
+    maybeLogContractDiagnostics(subscription, diagnostics, {
+      audience: "system",
+      context,
+      compatLoggingEnabled,
+      loggerOverride,
+    });
+    return normalizeSkipPolicy(snapshotSkipPolicy);
+  }
+
+  return normalizeSkipPolicy(livePlan && typeof livePlan === "object" ? livePlan.skipPolicy : {});
+}
+
 module.exports = {
   isCanonicalSubscriptionContract,
   isGrandfatheredSubscriptionContract,
   getSubscriptionContractDiagnostics,
   getSubscriptionContractReadView,
   resolveSubscriptionFreezePolicy,
+  resolveSubscriptionSkipPolicy,
 };

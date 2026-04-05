@@ -4,6 +4,7 @@ const mongoose = require("mongoose");
 
 const mealCategoryController = require("../src/controllers/mealCategoryController");
 const mealController = require("../src/controllers/mealController");
+const premiumMealController = require("../src/controllers/premiumMealController");
 const MealCategory = require("../src/models/MealCategory");
 const Meal = require("../src/models/Meal");
 
@@ -197,6 +198,9 @@ test("createMeal validates and stores a normalized category key", async (t) => {
 
   assert.equal(res.statusCode, 201);
   assert.equal(createdPayload.category, "hot_food");
+  assert.equal(createdPayload.proteinGrams, 33);
+  assert.equal(createdPayload.carbGrams, 37);
+  assert.equal(createdPayload.fatGrams, 19);
 });
 
 test("createMeal rejects unknown category keys to keep meal assignments valid", async (t) => {
@@ -218,4 +222,16 @@ test("createMeal rejects unknown category keys to keep meal assignments valid", 
 
   assert.equal(res.statusCode, 400);
   assert.equal(res.payload.error.code, "INVALID_CATEGORY");
+});
+
+test("validatePremiumMealPayloadOrThrow assigns default nutrition values when omitted", () => {
+  const payload = premiumMealController.validatePremiumMealPayloadOrThrow({
+    name: { en: "Premium Bowl" },
+    description: { en: "Extra meal" },
+    extraFeeHalala: 1500,
+  });
+
+  assert.equal(payload.proteinGrams, 33);
+  assert.equal(payload.carbGrams, 37);
+  assert.equal(payload.fatGrams, 19);
 });

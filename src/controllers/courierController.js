@@ -7,7 +7,7 @@ const { writeLog } = require("../utils/log");
 const { notifyUser } = require("../utils/notify");
 const { sendUserNotificationWithDedupe } = require("../services/notificationService");
 const { fulfillSubscriptionDay } = require("../services/fulfillmentService");
-const { applySkipForDate } = require("../services/subscriptionService");
+const { applyOperationalSkipForDate } = require("../services/subscriptionService");
 const { logger } = require("../utils/logger");
 const validateObjectId = require("../utils/validateObjectId");
 const errorResponse = require("../utils/errorResponse");
@@ -217,13 +217,19 @@ async function markCancelled(req, res) {
         return errorResponse(res, 404, "NOT_FOUND", "Day not found");
       }
 
-      // Rule 4: Delivery cancellation by courier must behave exactly like a skip
-      result = await applySkipForDate({ sub, date: day.date, session, allowLocked: true });
+      // Delivery cancellation remains an operational consumed cancellation, not a compensated client skip.
+      result = await applyOperationalSkipForDate({ sub, date: day.date, session });
 
       if (result.status === "fulfilled") {
         await session.abortTransaction();
         session.endSession();
         return errorResponse(res, 400, "ALREADY_FULFILLED", "Cannot cancel fulfilled order");
+      }
+
+      if (result.status === "frozen") {
+        await session.abortTransaction();
+        session.endSession();
+        return errorResponse(res, 409, "FROZEN", "Day is frozen");
       }
 
       if (result.status === "insufficient_credits") {

@@ -6,7 +6,7 @@ export type TimelineDayStatus =
   | "skipped"
   | "extension";
 
-export type TimelineDaySource = "base" | "freeze_compensation";
+export type TimelineDaySource = "base" | "freeze_compensation" | "skip_compensation";
 
 export type TimelineDay = {
   date: string;

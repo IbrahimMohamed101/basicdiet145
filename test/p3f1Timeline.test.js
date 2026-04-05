@@ -15,6 +15,24 @@ function objectId() {
   return new mongoose.Types.ObjectId();
 }
 
+function createFindQuery(result) {
+  const query = {
+    select() {
+      return query;
+    },
+    session() {
+      return query;
+    },
+    lean() {
+      return Promise.resolve(typeof result === "function" ? result() : result);
+    },
+    then(resolve, reject) {
+      return Promise.resolve(typeof result === "function" ? result() : result).then(resolve, reject);
+    },
+  };
+  return query;
+}
+
 test("Canonical Subscription Timeline — Phase 3 Feature 1", async (t) => {
   const originalSubFindById = Subscription.findById;
   const originalDayFind = SubscriptionDay.find;
@@ -37,17 +55,13 @@ test("Canonical Subscription Timeline — Phase 3 Feature 1", async (t) => {
   };
 
   await t.test("Case 1: Baseline (No freeze, no skip, all days present)", async () => {
-    Subscription.findById = () => ({
-      lean: () => Promise.resolve(mockSubscription)
-    });
-    
-    SubscriptionDay.find = () => ({
-      lean: () => Promise.resolve([
+    Subscription.findById = () => createFindQuery(mockSubscription);
+
+    SubscriptionDay.find = () => createFindQuery([
         { date: "2026-03-21", status: "open" },
         { date: "2026-03-22", status: "locked", lockedAt: new Date(), lockedSnapshot: {} },
         { date: "2026-03-23", status: "fulfilled" },
-      ])
-    });
+      ]);
 
     const timeline = await buildSubscriptionTimeline(subId);
 
@@ -58,6 +72,7 @@ test("Canonical Subscription Timeline — Phase 3 Feature 1", async (t) => {
     assert.equal(timeline.days[1].locked, true);
     assert.equal(timeline.days[2].status, "delivered");
     assert.deepEqual(timeline.days.map((d) => d.source), ["base", "base", "base"]);
+    assert.deepEqual(timeline.days[0].meals, { selected: 0, required: 0, isSatisfied: false });
   });
 
   await t.test("Case 2: Single freeze → 1 extension day", async () => {
@@ -66,18 +81,14 @@ test("Canonical Subscription Timeline — Phase 3 Feature 1", async (t) => {
       validityEndDate: new Date("2026-03-23T21:00:00.000Z") // 2026-03-24 KSA
     };
     
-    Subscription.findById = () => ({
-      lean: () => Promise.resolve(extendedSub)
-    });
-    
-    SubscriptionDay.find = () => ({
-      lean: () => Promise.resolve([
+    Subscription.findById = () => createFindQuery(extendedSub);
+
+    SubscriptionDay.find = () => createFindQuery([
         { date: "2026-03-21", status: "frozen", canonicalDayActionType: "freeze" },
         { date: "2026-03-22", status: "open" },
         { date: "2026-03-23", status: "open" },
         { date: "2026-03-24", status: "open" }, // Extension day created by sync
-      ])
-    });
+      ]);
 
     const timeline = await buildSubscriptionTimeline(subId);
 
@@ -90,13 +101,9 @@ test("Canonical Subscription Timeline — Phase 3 Feature 1", async (t) => {
   });
 
   await t.test("Case 3: Missing days in DB → handle as 'planned'", async () => {
-    Subscription.findById = () => ({
-      lean: () => Promise.resolve(mockSubscription)
-    });
-    
-    SubscriptionDay.find = () => ({
-      lean: () => Promise.resolve([]) // No days in DB
-    });
+    Subscription.findById = () => createFindQuery(mockSubscription);
+
+    SubscriptionDay.find = () => createFindQuery([]); // No days in DB
 
     const timeline = await buildSubscriptionTimeline(subId);
 
@@ -107,65 +114,62 @@ test("Canonical Subscription Timeline — Phase 3 Feature 1", async (t) => {
   await t.test("Case 4: Mixed freeze + skip", async () => {
     const extendedSub = { 
       ...mockSubscription, 
-      validityEndDate: new Date("2026-03-23T21:00:00.000Z") // 2026-03-24 KSA
+      validityEndDate: new Date("2026-03-24T21:00:00.000Z") // 2026-03-25 KSA
     };
     
-    Subscription.findById = () => ({
-      lean: () => Promise.resolve(extendedSub)
-    });
-    
-    SubscriptionDay.find = () => ({
-      lean: () => Promise.resolve([
+    Subscription.findById = () => createFindQuery(extendedSub);
+
+    SubscriptionDay.find = () => createFindQuery([
         { date: "2026-03-21", status: "frozen", canonicalDayActionType: "freeze" },
-        { date: "2026-03-22", status: "skipped", canonicalDayActionType: "skip" },
+        { date: "2026-03-22", status: "skipped", canonicalDayActionType: "skip", skipCompensated: true },
         { date: "2026-03-23", status: "open" },
-      ])
-    });
+        { date: "2026-03-24", status: "open" },
+        { date: "2026-03-25", status: "open" },
+      ]);
 
     const timeline = await buildSubscriptionTimeline(subId);
 
-    assert.equal(timeline.days.length, 4);
-    assert.equal(timeline.validity.compensationDays, 1);
+    assert.equal(timeline.days.length, 5);
+    assert.equal(timeline.validity.compensationDays, 2);
+    assert.equal(timeline.validity.freezeCompensationDays, 1);
+    assert.equal(timeline.validity.skipCompensationDays, 1);
     assert.equal(timeline.days[0].status, "frozen");
     assert.equal(timeline.days[1].status, "skipped");
     assert.equal(timeline.days[1].isExtension, false);
-    assert.equal(timeline.days[3].status, "extension"); // Derived extension
+    assert.equal(timeline.days[3].status, "extension");
+    assert.equal(timeline.days[3].source, "freeze_compensation");
+    assert.equal(timeline.days[4].status, "extension");
+    assert.equal(timeline.days[4].source, "skip_compensation");
   });
 
   await t.test("Case 5: Locked frozen day vs Regular frozen day", async () => {
-    Subscription.findById = () => ({
-      lean: () => Promise.resolve(mockSubscription)
-    });
-    
-    SubscriptionDay.find = () => ({
-      lean: () => Promise.resolve([
+    Subscription.findById = () => createFindQuery(mockSubscription);
+
+    SubscriptionDay.find = () => createFindQuery([
         { 
           date: "2026-03-21", 
           status: "frozen", 
           canonicalDayActionType: "freeze", 
-          lockedSnapshot: { note: "locked even if frozen" } 
+          lockedSnapshot: { note: "locked even if frozen" },
+          planningMeta: { selectedTotalMealCount: 2, requiredMealCount: 3, isExactCountSatisfied: false }
         },
-      ])
-    });
+      ]);
 
     const timeline = await buildSubscriptionTimeline(subId);
 
     assert.equal(timeline.days[0].status, "frozen");
     assert.equal(timeline.days[0].locked, true);
+    assert.deepEqual(timeline.days[0].meals, { selected: 2, required: 3, isSatisfied: false });
   });
 
-  await t.test("Case 6: Skip only (no extension)", async () => {
-    Subscription.findById = () => ({
-      lean: () => Promise.resolve(mockSubscription)
-    });
+  await t.test("Case 6: Legacy skip only (no extension)", async () => {
+    Subscription.findById = () => createFindQuery(mockSubscription);
 
-    SubscriptionDay.find = () => ({
-      lean: () => Promise.resolve([
+    SubscriptionDay.find = () => createFindQuery([
         { date: "2026-03-21", status: "skipped", canonicalDayActionType: "skip" },
         { date: "2026-03-22", status: "open" },
         { date: "2026-03-23", status: "fulfilled" },
-      ])
-    });
+      ]);
 
     const timeline = await buildSubscriptionTimeline(subId);
 
@@ -175,22 +179,41 @@ test("Canonical Subscription Timeline — Phase 3 Feature 1", async (t) => {
     assert.equal(timeline.days[2].status, "delivered");
   });
 
+  await t.test("Case 6b: Compensated skip adds skip extension days only", async () => {
+    const extendedSub = {
+      ...mockSubscription,
+      validityEndDate: new Date("2026-03-23T21:00:00.000Z"), // 2026-03-24 KSA
+    };
+    Subscription.findById = () => createFindQuery(extendedSub);
+
+    SubscriptionDay.find = () => createFindQuery([
+        { date: "2026-03-21", status: "skipped", canonicalDayActionType: "skip", skipCompensated: true },
+        { date: "2026-03-22", status: "open" },
+        { date: "2026-03-23", status: "fulfilled" },
+        { date: "2026-03-24", status: "open" },
+      ]);
+
+    const timeline = await buildSubscriptionTimeline(subId);
+
+    assert.equal(timeline.days.length, 4);
+    assert.equal(timeline.validity.compensationDays, 1);
+    assert.equal(timeline.validity.skipCompensationDays, 1);
+    assert.equal(timeline.days[3].status, "extension");
+    assert.equal(timeline.days[3].source, "skip_compensation");
+  });
+
   await t.test("Case 7: Multiple freezes -> multiple extension days", async () => {
     const extendedSub = { 
       ...mockSubscription, 
       validityEndDate: new Date("2026-03-24T21:00:00.000Z") // 2026-03-25 KSA
     };
-    Subscription.findById = () => ({
-      lean: () => Promise.resolve(extendedSub)
-    });
+    Subscription.findById = () => createFindQuery(extendedSub);
 
-    SubscriptionDay.find = () => ({
-      lean: () => Promise.resolve([
+    SubscriptionDay.find = () => createFindQuery([
         { date: "2026-03-21", status: "frozen", canonicalDayActionType: "freeze" },
         { date: "2026-03-22", status: "frozen", canonicalDayActionType: "freeze" },
         { date: "2026-03-23", status: "open" },
-      ])
-    });
+      ]);
 
     const timeline = await buildSubscriptionTimeline(subId);
 
@@ -212,13 +235,9 @@ test("Canonical Subscription Timeline — Phase 3 Feature 1", async (t) => {
       validityEndDate: pastDate,
     };
 
-    Subscription.findById = () => ({
-      lean: () => Promise.resolve(expiredSub)
-    });
-    
-    SubscriptionDay.find = () => ({
-      lean: () => Promise.resolve([])
-    });
+    Subscription.findById = () => createFindQuery(expiredSub);
+
+    SubscriptionDay.find = () => createFindQuery([]);
 
     const timeline = await buildSubscriptionTimeline(subId);
 

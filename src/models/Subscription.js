@@ -156,6 +156,7 @@ const SubscriptionSchema = new mongoose.Schema(
     },
 
     skippedCount: { type: Number, default: 0 },
+    skipDaysUsed: { type: Number, default: 0 },
     expiryReminder3dSentAt: { type: Date, default: null },
     expiryReminder24hSentAt: { type: Date, default: null },
   },

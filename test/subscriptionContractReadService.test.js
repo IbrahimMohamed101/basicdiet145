@@ -5,6 +5,7 @@ const mongoose = require("mongoose");
 const {
   getSubscriptionContractReadView,
   resolveSubscriptionFreezePolicy,
+  resolveSubscriptionSkipPolicy,
   getSubscriptionContractDiagnostics,
 } = require("../src/services/subscriptionContractReadService");
 
@@ -43,6 +44,7 @@ function createCanonicalSubscription(overrides = {}) {
       },
       policySnapshot: {
         freezePolicy: { enabled: false, maxDays: 2, maxTimes: 1 },
+        skipPolicy: { enabled: true, maxDays: 3 },
       },
     },
     ...overrides,
@@ -130,6 +132,31 @@ test("resolveSubscriptionFreezePolicy uses canonical snapshot freeze policy only
   });
 });
 
+test("resolveSubscriptionSkipPolicy uses canonical snapshot skip policy only when snapshot-first reads are enabled", () => {
+  const subscription = createCanonicalSubscription();
+  const livePlan = {
+    skipPolicy: { enabled: false, maxDays: 0 },
+  };
+
+  const snapshotPolicy = resolveSubscriptionSkipPolicy(subscription, livePlan, {
+    snapshotFirstReadsEnabled: true,
+    compatLoggingEnabled: false,
+  });
+  assert.deepEqual(snapshotPolicy, {
+    enabled: true,
+    maxDays: 3,
+  });
+
+  const legacyPolicy = resolveSubscriptionSkipPolicy(subscription, livePlan, {
+    snapshotFirstReadsEnabled: false,
+    compatLoggingEnabled: false,
+  });
+  assert.deepEqual(legacyPolicy, {
+    enabled: false,
+    maxDays: 0,
+  });
+});
+
 test("getSubscriptionContractDiagnostics reports mismatches and fallbacks for canonical subscriptions", () => {
   const subscription = createCanonicalSubscription({
     selectedGrams: 200,
@@ -139,7 +166,10 @@ test("getSubscriptionContractDiagnostics reports mismatches and fallbacks for ca
   const diagnostics = getSubscriptionContractDiagnostics(subscription, {
     lang: "en",
     livePlanName: "Legacy Plan Name",
-    livePlan: { freezePolicy: { enabled: true, maxDays: 31, maxTimes: 1 } },
+    livePlan: {
+      freezePolicy: { enabled: true, maxDays: 31, maxTimes: 1 },
+      skipPolicy: { enabled: false, maxDays: 0 },
+    },
     snapshotFirstReadsEnabled: true,
   });
 
@@ -147,4 +177,5 @@ test("getSubscriptionContractDiagnostics reports mismatches and fallbacks for ca
   assert.equal(diagnostics.readMode, "snapshot_first");
   assert.equal(diagnostics.mismatches.includes("selectedGrams"), true);
   assert.equal(diagnostics.mismatches.includes("freezePolicy"), true);
+  assert.equal(diagnostics.mismatches.includes("skipPolicy"), true);
 });

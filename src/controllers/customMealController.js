@@ -20,6 +20,7 @@ const { logger } = require("../utils/logger");
 const { getRequestLang } = require("../utils/i18n");
 const { buildPaymentDescription } = require("../utils/subscriptionWriteLocalization");
 const errorResponse = require("../utils/errorResponse");
+const { validateRedirectUrl } = require("../utils/security");
 
 async function getSettingValue(key, fallback) {
   const setting = await Setting.findOne({ key }).lean();
@@ -196,8 +197,8 @@ async function addCustomMealToSubscriptionDay(req, res) {
       amount: snapshot.totalPrice,
       description: buildPaymentDescription("customMeal", lang, { date }),
       callbackUrl: `${appUrl}/api/webhooks/moyasar`,
-      successUrl: successUrl || `${appUrl}/payments/success`,
-      backUrl: backUrl || `${appUrl}/payments/cancel`,
+      successUrl: validateRedirectUrl(successUrl, `${appUrl}/payments/success`),
+      backUrl: validateRedirectUrl(backUrl, `${appUrl}/payments/cancel`),
       metadata: checkoutMetadata,
     });
 

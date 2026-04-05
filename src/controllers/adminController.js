@@ -71,6 +71,7 @@ const LEGACY_PLAN_FIELDS_TO_UNSET = {
   grams: "",
   price: "",
   skipAllowance: "",
+  skipAllowanceCompensatedDays: "",
 };
 const NON_TERMINAL_ORDER_STATUSES = ["created", "confirmed", "preparing", "out_for_delivery", "ready_for_pickup"];
 const DATE_ONLY_REGEX = /^\d{4}-\d{2}-\d{2}$/;
@@ -243,12 +244,23 @@ function validatePlanPayloadOrThrow(payload, { requireGramsOptions = true } = {}
     throw createControlledError(400, "INVALID", "currency must be a non-empty string");
   }
 
-  const skipAllowanceCompensatedDays =
-    payload.skipAllowanceCompensatedDays === undefined
-      ? 0
-      : Number(payload.skipAllowanceCompensatedDays);
-  if (!isNonNegativeInteger(skipAllowanceCompensatedDays)) {
-    throw createControlledError(400, "INVALID", "skipAllowanceCompensatedDays must be an integer >= 0");
+  const rawSkipPolicy = payload.skipPolicy === undefined ? {} : payload.skipPolicy;
+  if (!rawSkipPolicy || typeof rawSkipPolicy !== "object" || Array.isArray(rawSkipPolicy)) {
+    throw createControlledError(400, "INVALID", "skipPolicy must be an object");
+  }
+
+  const skipPolicy = {
+    enabled:
+      rawSkipPolicy.enabled === undefined
+        ? true
+        : Boolean(rawSkipPolicy.enabled),
+    maxDays:
+      rawSkipPolicy.maxDays === undefined
+        ? 0
+        : Number(rawSkipPolicy.maxDays),
+  };
+  if (!isNonNegativeInteger(skipPolicy.maxDays)) {
+    throw createControlledError(400, "INVALID", "skipPolicy.maxDays must be an integer >= 0");
   }
 
   const rawFreezePolicy = payload.freezePolicy === undefined ? {} : payload.freezePolicy;
@@ -384,7 +396,7 @@ function validatePlanPayloadOrThrow(payload, { requireGramsOptions = true } = {}
     daysCount,
     currency,
     gramsOptions,
-    skipAllowanceCompensatedDays,
+    skipPolicy,
     freezePolicy,
     isActive,
     sortOrder,
@@ -583,9 +595,22 @@ function serializeAdminPlan(plan) {
   }
 
   const currency = normalizeCurrencyValue(plan.currency);
+  const {
+    skipAllowanceCompensatedDays: _legacySkipAllowanceCompensatedDays,
+    ...rest
+  } = plan;
   return {
-    ...plan,
+    ...rest,
     currency,
+    skipPolicy: {
+      enabled: plan.skipPolicy && plan.skipPolicy.enabled !== undefined
+        ? Boolean(plan.skipPolicy.enabled)
+        : true,
+      maxDays:
+        plan.skipPolicy && Number.isInteger(plan.skipPolicy.maxDays) && plan.skipPolicy.maxDays >= 0
+          ? plan.skipPolicy.maxDays
+          : 0,
+    },
     gramsOptions: Array.isArray(plan.gramsOptions)
       ? plan.gramsOptions.map((gramsOption) => ({
         ...gramsOption,
@@ -2158,7 +2183,7 @@ async function clonePlan(req, res) {
         daysCount: existing.daysCount,
         currency: existing.currency,
         gramsOptions: existing.gramsOptions,
-        skipAllowanceCompensatedDays: existing.skipAllowanceCompensatedDays,
+        skipPolicy: existing.skipPolicy,
         freezePolicy: existing.freezePolicy,
         isActive: existing.isActive,
         sortOrder: existing.sortOrder,

@@ -77,7 +77,7 @@ test("buildContractHash uses canonical business contract only", () => {
     start: { requestedStartDate: null, resolvedStartDate: "2026-03-18T00:00:00.000Z", defaultedToTomorrow: true, timezone: "Asia/Riyadh" },
     pricing: { basePlanPriceHalala: 10000, deliveryFeeHalala: 0, vatPercentage: 15, vatHalala: 1500, totalHalala: 11500, currency: "SAR" },
     delivery: { mode: "delivery", pricingMode: "flat_legacy", seedOnlyFromPreviousPreference: false, slot: { type: "delivery", window: "", slotId: "" }, address: { city: "Riyadh" }, pickupLocationId: null },
-    policySnapshot: { freezePolicy: { enabled: true, maxDays: 31, maxTimes: 1 }, skipPolicyMode: "legacy_current", fallbackMode: "legacy_current", premiumAutoConsume: false, oneTimeAddonRequiresPaymentBeforeConfirmation: false },
+    policySnapshot: { freezePolicy: { enabled: true, maxDays: 31, maxTimes: 1 }, skipPolicy: { enabled: true, maxDays: 3 }, fallbackMode: "legacy_current", premiumAutoConsume: false, oneTimeAddonRequiresPaymentBeforeConfirmation: false },
   };
   const contractB = {
     ...contractA,

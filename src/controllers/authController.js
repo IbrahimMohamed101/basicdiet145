@@ -64,7 +64,7 @@ async function requestOtp(req, res) {
 async function verifyOtp(req, res) {
   try {
     const { phoneE164, otp } = req.body || {};
-    const { phone, pendingProfile } = await verifyOtpCode({ phoneE164, otp });
+    const { phone, context, pendingProfile } = await verifyOtpCode({ phoneE164, otp });
 
     let appUser = await AppUser.findOne({ phone });
     if (!appUser) {
@@ -85,7 +85,12 @@ async function verifyOtp(req, res) {
       return errorResponse(res, 403, "FORBIDDEN", "User account is inactive");
     }
 
-    const hasPendingProfile = applyPendingProfile(coreUser, appUser, pendingProfile);
+    // SECURITY FIX: Only apply pendingProfile when the OTP flow was a
+    // registration (context === "app_register").  This prevents profile
+    // injection via the generic or login OTP flows.
+    const hasPendingProfile = context === "app_register"
+      ? applyPendingProfile(coreUser, appUser, pendingProfile)
+      : false;
     if (hasPendingProfile) {
       await coreUser.save();
     }

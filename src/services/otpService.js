@@ -2,30 +2,12 @@ const crypto = require("crypto");
 const Otp = require("../models/Otp");
 const { sendWhatsappMessage } = require("./twilioWhatsappService");
 const { ApiError } = require("../utils/apiError");
+const { isTestAuthEnabled, getTestOtpCode, getTestOtpPhone } = require("../utils/security");
 
 const E164_REGEX = /^\+[1-9]\d{7,14}$/;
 const OTP_CONTEXTS = new Set(["generic", "app_login", "app_register"]);
 
-function resolveOtpBypassConfig({ enabled, code, phone }) {
-  if (!enabled) {
-    return null;
-  }
-
-  const normalizedCode = String(code || "").trim();
-  if (!/^\d{6}$/.test(normalizedCode)) {
-    return null;
-  }
-
-  const normalizedPhone = String(phone || "").trim();
-  if (normalizedPhone && !E164_REGEX.test(normalizedPhone)) {
-    return null;
-  }
-
-  return {
-    code: normalizedCode,
-    phone: normalizedPhone || null,
-  };
-}
+/* ── OTP configuration ────────────────────────────────────────────────── */
 
 function getOtpConfig() {
   const ttlMinutes = Number(process.env.OTP_TTL_MINUTES) || 5;
@@ -34,25 +16,30 @@ function getOtpConfig() {
   return { ttlMinutes, cooldownSeconds, maxAttempts };
 }
 
-function getTestOtpBypassConfig() {
-  return resolveOtpBypassConfig({
-    enabled: process.env.TEST_OTP_BYPASS === "true",
-    code: process.env.TEST_OTP_CODE,
-    phone: process.env.TEST_OTP_PHONE,
-  });
+/* ── Unified OTP test mode ────────────────────────────────────────────── */
+
+/**
+ * Returns { code, phone } when the unified test auth mode is active
+ * AND the target phone is allowed, or `null` otherwise.
+ *
+ * Replaces the old DEV_OTP_BYPASS + TEST_OTP_BYPASS dual-path logic
+ * with ONE mechanism gated by:
+ *   NODE_ENV !== "production" && OTP_TEST_MODE === "true" && ALLOW_TEST_AUTH === "true"
+ */
+function resolveTestOtpForPhone(phoneE164) {
+  if (!isTestAuthEnabled()) return null;
+
+  const testCode = getTestOtpCode();
+  if (!testCode) return null;
+
+  const testPhone = getTestOtpPhone();
+  // If a specific test phone is configured, only that phone gets the bypass
+  if (testPhone && testPhone !== phoneE164) return null;
+
+  return { code: testCode };
 }
 
-function getDevOtpBypassConfig() {
-  return resolveOtpBypassConfig({
-    enabled: process.env.DEV_OTP_BYPASS === "true",
-    code: process.env.DEV_OTP_CODE,
-    phone: process.env.DEV_OTP_PHONE,
-  });
-}
-
-function getOtpBypassConfig() {
-  return getTestOtpBypassConfig() || getDevOtpBypassConfig();
-}
+/* ── normalisation helpers ────────────────────────────────────────────── */
 
 function normalizePhoneE164(phoneE164) {
   return String(phoneE164 || "").trim();
@@ -117,17 +104,19 @@ function hashOtp(phoneE164, otp) {
   return crypto.createHash("sha256").update(`${phoneE164}:${otp}:${secret}`).digest("hex");
 }
 
+/* ── core OTP operations ──────────────────────────────────────────────── */
+
 async function requestOtpForPhone(phoneE164, options = {}) {
   const phone = assertValidPhoneE164(phoneE164);
   const { ttlMinutes, cooldownSeconds, maxAttempts } = getOtpConfig();
   const now = new Date();
-  const otpBypass = getOtpBypassConfig();
-  const useOtpBypass = Boolean(otpBypass && (!otpBypass.phone || otpBypass.phone === phone));
+  const testOtp = resolveTestOtpForPhone(phone);
+  const useTestMode = Boolean(testOtp);
   const context = normalizeOtpContext(options.context);
   const pendingProfile = normalizePendingProfile(options.pendingProfile);
 
   const existing = await Otp.findOne({ phone });
-  if (!useOtpBypass && existing && existing.lastSentAt) {
+  if (!useTestMode && existing && existing.lastSentAt) {
     const nextAllowedAt = existing.lastSentAt.getTime() + cooldownSeconds * 1000;
     if (nextAllowedAt > now.getTime()) {
       const secondsRemaining = Math.ceil((nextAllowedAt - now.getTime()) / 1000);
@@ -140,10 +129,10 @@ async function requestOtpForPhone(phoneE164, options = {}) {
     }
   }
 
-  const otp = useOtpBypass ? otpBypass.code : generateOtpCode();
+  const otp = useTestMode ? testOtp.code : generateOtpCode();
   const expiresAt = new Date(now.getTime() + ttlMinutes * 60 * 1000);
 
-  if (!useOtpBypass) {
+  if (!useTestMode) {
     await sendWhatsappMessage({
       toPhoneE164: phone,
       body: `Your BasicDiet OTP is ${otp}. It expires in ${ttlMinutes} minutes.`,

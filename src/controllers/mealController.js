@@ -8,6 +8,7 @@ const {
   buildMealCategoryMap,
   resolveMealCategoryForKey,
 } = require("../utils/mealCategoryCatalog");
+const { parseMealNutritionFromBody, withDefaultMealNutrition } = require("../utils/mealNutrition");
 const { resolveManagedImageFromRequest } = require("../services/adminImageService");
 const { parseBooleanField, parseLocalizedFieldFromBody } = require("../utils/requestFields");
 
@@ -19,21 +20,22 @@ function resolveSortValue(value) {
 }
 
 function resolveMeal(doc, lang, categoryMap = null) {
-  const category = categoryMap ? resolveMealCategoryForKey(doc.category, categoryMap, lang) : null;
-  const categoryKey = normalizeCategoryKey(doc.category);
+  const normalizedDoc = withDefaultMealNutrition(doc);
+  const category = categoryMap ? resolveMealCategoryForKey(normalizedDoc.category, categoryMap, lang) : null;
+  const categoryKey = normalizeCategoryKey(normalizedDoc.category);
 
   return {
-    ...doc,
-    id: String(doc._id),
-    name: pickLang(doc.name, lang),
-    description: pickLang(doc.description, lang),
-    imageUrl: doc.imageUrl || "",
+    ...normalizedDoc,
+    id: String(normalizedDoc._id),
+    name: pickLang(normalizedDoc.name, lang),
+    description: pickLang(normalizedDoc.description, lang),
+    imageUrl: normalizedDoc.imageUrl || "",
     category: categoryKey,
     categoryKey,
     categoryMeta: category,
-    availableForOrder: doc.availableForOrder !== false,
-    availableForSubscription: doc.availableForSubscription !== false,
-    sortOrder: resolveSortValue(doc.sortOrder),
+    availableForOrder: normalizedDoc.availableForOrder !== false,
+    availableForSubscription: normalizedDoc.availableForSubscription !== false,
+    sortOrder: resolveSortValue(normalizedDoc.sortOrder),
   };
 }
 
@@ -81,11 +83,14 @@ async function listMealsAdmin(_req, res) {
   const meals = await Meal.find({ type: "regular" }).sort({ sortOrder: 1, createdAt: -1 }).lean();
   return res.status(200).json({
     ok: true,
-    data: meals.map((meal) => ({
-      ...meal,
-      id: String(meal._id),
-      categoryKey: normalizeCategoryKey(meal.category),
-    })),
+    data: meals.map((meal) => {
+      const normalizedMeal = withDefaultMealNutrition(meal);
+      return {
+        ...normalizedMeal,
+        id: String(normalizedMeal._id),
+        categoryKey: normalizeCategoryKey(normalizedMeal.category),
+      };
+    }),
   });
 }
 
@@ -105,7 +110,7 @@ async function getMealAdmin(req, res) {
   return res.status(200).json({
     ok: true,
     data: {
-      ...meal,
+      ...withDefaultMealNutrition(meal),
       id: String(meal._id),
       categoryKey: normalizeCategoryKey(meal.category),
     },
@@ -137,6 +142,7 @@ async function createMeal(req, res) {
       file: req.file,
       folder: MEAL_IMAGE_FOLDER,
     });
+    const nutrition = parseMealNutritionFromBody(req.body || {});
 
     const meal = await Meal.create({
       name,
@@ -152,6 +158,7 @@ async function createMeal(req, res) {
       ),
       sortOrder: req.body && req.body.sortOrder !== undefined ? normalizeSortOrder(req.body.sortOrder) : 0,
       isActive: parseBooleanField(req.body && req.body.isActive, "isActive", { defaultValue: true }),
+      ...nutrition,
     });
 
     return res.status(201).json({ ok: true, data: { id: meal.id } });
@@ -229,13 +236,17 @@ async function updateMeal(req, res) {
     if (req.body && req.body.sortOrder !== undefined) {
       update.sortOrder = normalizeSortOrder(req.body.sortOrder);
     }
+    const nutrition = parseMealNutritionFromBody(req.body || {}, { preserveMissing: true });
+    if (nutrition) {
+      Object.assign(update, nutrition);
+    }
 
     if (Object.keys(update).length === 0) {
       return errorResponse(
         res,
         400,
         "INVALID",
-        "At least one of name, description, image file, removeImage, categoryKey, availability flags, sortOrder, or isActive is required"
+        "At least one of name, description, image file, removeImage, categoryKey, availability flags, sortOrder, isActive, or nutrition fields is required"
       );
     }
 

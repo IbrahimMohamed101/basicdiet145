@@ -223,6 +223,91 @@ test("getSubscriptionMenu respects query language and falls back safely for inco
   assert.equal(res.payload.data.mealSections[1].category.name, "Salads");
 });
 
+test("getSubscriptionMealPlannerMenu returns only meal planner catalog data", async (t) => {
+  const originalMealFind = Meal.find;
+  const originalMealCategoryFind = MealCategory.find;
+  const originalPremiumFind = PremiumMeal.find;
+  const originalAddonFind = Addon.find;
+  t.after(() => {
+    Meal.find = originalMealFind;
+    MealCategory.find = originalMealCategoryFind;
+    PremiumMeal.find = originalPremiumFind;
+    Addon.find = originalAddonFind;
+  });
+
+  Meal.find = () => createQueryStub([
+    {
+      _id: objectId(),
+      name: { ar: "دجاج مشوي", en: "Grilled Chicken" },
+      description: { ar: "وجبة رئيسية", en: "Main meal" },
+      imageUrl: "",
+      category: "lunch",
+      type: "regular",
+    },
+  ]);
+  MealCategory.find = () => createQueryStub([
+    {
+      _id: objectId(),
+      key: "lunch",
+      name: { ar: "الغداء", en: "Lunch" },
+      sortOrder: 1,
+      isActive: true,
+    },
+  ]);
+  PremiumMeal.find = () => createQueryStub([
+    {
+      _id: objectId(),
+      name: { ar: "سلمون", en: "Salmon" },
+      description: { ar: "وجبة مميزة", en: "Premium meal" },
+      imageUrl: "",
+      extraFeeHalala: 2200,
+      currency: "SAR",
+      isActive: true,
+    },
+  ]);
+  Addon.find = () => createQueryStub([
+    {
+      _id: objectId(),
+      name: { ar: "عصير", en: "Juice" },
+      description: { ar: "إضافة يومية", en: "Daily add-on" },
+      priceHalala: 1200,
+      currency: "SAR",
+      type: "subscription",
+      isActive: true,
+    },
+    {
+      _id: objectId(),
+      name: { ar: "تحلية", en: "Dessert" },
+      description: { ar: "إضافة مرة واحدة", en: "One-time add-on" },
+      priceHalala: 700,
+      currency: "SAR",
+      type: "one_time",
+      isActive: true,
+    },
+  ]);
+
+  const { req, res } = createReqRes({
+    query: { lang: "en" },
+  });
+
+  await menuController.getSubscriptionMealPlannerMenu(req, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.payload.data.currency, "SAR");
+  assert.equal(res.payload.data.regularMeals.items.length, 1);
+  assert.equal(res.payload.data.regularMeals.sections.length, 1);
+  assert.equal(res.payload.data.premiumMeals.items.length, 1);
+  assert.equal(res.payload.data.addons.items.length, 2);
+  assert.equal(res.payload.data.regularMeals.totalCount, 1);
+  assert.equal(res.payload.data.premiumMeals.totalCount, 1);
+  assert.equal(res.payload.data.addons.byType.subscription.length, 1);
+  assert.equal(res.payload.data.addons.byType.oneTime.length, 1);
+  assert.equal("plans" in res.payload.data, false);
+  assert.equal("delivery" in res.payload.data, false);
+  assert.equal("flow" in res.payload.data, false);
+  assert.equal("mealPlanner" in res.payload.data, false);
+});
+
 test("getOrderMenu groups one-time meals into meal sections while preserving the flat meals array", async (t) => {
   const originalMealFind = Meal.find;
   const originalMealCategoryFind = MealCategory.find;

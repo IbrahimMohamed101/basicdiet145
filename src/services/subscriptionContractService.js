@@ -50,6 +50,14 @@ function resolveFreezePolicy(plan) {
   };
 }
 
+function resolveSkipPolicy(plan) {
+  const source = plan && typeof plan.skipPolicy === "object" ? plan.skipPolicy : {};
+  return {
+    enabled: source.enabled === undefined ? true : Boolean(source.enabled),
+    maxDays: Number.isInteger(source.maxDays) && source.maxDays >= 0 ? source.maxDays : 0,
+  };
+}
+
 function ensureAllowedValue(value, allowed, fieldName) {
   if (!allowed.includes(value)) {
     const err = new Error(`Unsupported ${fieldName}`);
@@ -229,7 +237,7 @@ function buildPhase1SubscriptionContract({
     },
     policySnapshot: {
       freezePolicy: resolveFreezePolicy(plan),
-      skipPolicyMode: "legacy_current",
+      skipPolicy: resolveSkipPolicy(plan),
       fallbackMode: "legacy_current",
       premiumAutoConsume: false,
       oneTimeAddonRequiresPaymentBeforeConfirmation: false,
@@ -244,7 +252,7 @@ function buildPhase1SubscriptionContract({
       usesLegacyPremiumRuntime: premiumWalletMode !== GENERIC_PREMIUM_WALLET_MODE,
       usesLegacyAddonRuntime: true,
       usesLegacyDeliveryRuntime: true,
-      usesLegacySkipRuntime: true,
+      usesLegacySkipRuntime: false,
     },
   };
 

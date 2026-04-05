@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 
+// WARNING: This script must NEVER write tokens, passwords,
+// or credentials to disk. Use placeholders only.
+
 require("dotenv").config();
 
 const fs = require("fs");
@@ -14,6 +17,7 @@ const Setting = require("../src/models/Setting");
 const Zone = require("../src/models/Zone");
 const Plan = require("../src/models/Plan");
 const Meal = require("../src/models/Meal");
+const MealCategory = require("../src/models/MealCategory");
 const PremiumMeal = require("../src/models/PremiumMeal");
 const Addon = require("../src/models/Addon");
 const Subscription = require("../src/models/Subscription");
@@ -61,6 +65,7 @@ const {
   deliveryZones,
   pickupLocations,
   plans: planFixtures,
+  mealCategories: mealCategoryFixtures,
   regularMeals,
   dashboardUsers,
   demoUsers,
@@ -417,6 +422,19 @@ async function upsertCatalogDocs(Model, docs) {
   return savedDocs;
 }
 
+async function upsertMealCategories(docs) {
+  const savedDocs = [];
+  for (const doc of docs) {
+    const saved = await MealCategory.findOneAndUpdate(
+      { key: doc.key },
+      { $set: doc },
+      { new: true, upsert: true, setDefaultsOnInsert: true }
+    );
+    savedDocs.push(saved.toObject ? saved.toObject() : saved);
+  }
+  return savedDocs;
+}
+
 async function upsertDashboardUsers() {
   const saved = [];
   for (const user of dashboardUsers) {
@@ -485,6 +503,7 @@ async function clearManagedCatalogs() {
     Setting.deleteMany({ key: { $in: MANAGED_SETTING_KEYS } }),
     Zone.deleteMany({}),
     Plan.deleteMany({}),
+    MealCategory.deleteMany({}),
     Meal.deleteMany({}),
     PremiumMeal.deleteMany({}),
     Addon.deleteMany({}),
@@ -859,9 +878,8 @@ async function seedScenarioData({ usersByKey, plansByName, mealsByName, premiumM
   const addonCheesecake = addonsByName.get("Mini Healthy Cheesecake");
   const addonHummus = addonsByName.get("Hummus Snack Box");
 
-  const premiumSalmon = premiumMealsByName.get("Citrus Herb Salmon");
-  const premiumShrimp = premiumMealsByName.get("Grilled Shrimp Rice Bowl");
-  const premiumSteak = premiumMealsByName.get("Black Pepper Steak");
+  const premiumLobster = premiumMealsByName.get("Lobster Tail Dinner");
+  const premiumPrawns = premiumMealsByName.get("Garlic Butter King Prawns");
 
   const today = dateUtils.getTodayKSADate();
 
@@ -892,9 +910,9 @@ async function seedScenarioData({ usersByKey, plansByName, mealsByName, premiumM
     subscription: activeDelivery.subscription,
     day: activeDeliveryFulfilledDay,
     baseMealIds: selectMealIds(mealsByName, [
-      "Lemon Grilled Chicken",
-      "Teriyaki Chicken Rice Bowl",
-      "Mediterranean Quinoa Salad",
+      "Grilled Chicken Salad",
+      "Quinoa Power Bowl",
+      "Turkey Club Sandwich",
     ]),
     confirmed: true,
     now: new Date(`${activeDeliveryFulfilledDay.date}T08:00:00+03:00`),
@@ -906,9 +924,9 @@ async function seedScenarioData({ usersByKey, plansByName, mealsByName, premiumM
     subscription: activeDelivery.subscription,
     day: activeDeliveryLockedDay,
     baseMealIds: selectMealIds(mealsByName, [
-      "Chicken Fajita Plate",
-      "Healthy Chicken Burger",
-      "High-Protein Tuna Salad",
+      "Teriyaki Chicken Bowl",
+      "Lemon Herb Chicken Plate",
+      "Mediterranean Quinoa Salad",
     ]),
     confirmed: true,
     now: new Date(`${activeDeliveryLockedDay.date}T08:30:00+03:00`),
@@ -920,9 +938,9 @@ async function seedScenarioData({ usersByKey, plansByName, mealsByName, premiumM
     subscription: activeDelivery.subscription,
     day: activeDeliveryToday,
     baseMealIds: selectMealIds(mealsByName, [
-      "Chicken and Broccoli Rice",
-      "Healthy Chicken Shawarma",
-      "Avocado Chicken Salad",
+      "Spicy Beef Burrito Bowl",
+      "Garlic Beef Rice Plate",
+      "Avocado Turkey Salad",
     ]),
     confirmed: true,
     now: new Date(`${today}T09:00:00+03:00`),
@@ -936,9 +954,9 @@ async function seedScenarioData({ usersByKey, plansByName, mealsByName, premiumM
     subscription: activeDelivery.subscription,
     day: activeDeliveryTomorrow,
     baseMealIds: selectMealIds(mealsByName, [
-      "Herb Chicken with Quinoa",
-      "Spinach Stuffed Chicken",
-      "Chicken Caesar Salad",
+      "Buddha Bowl",
+      "Mushroom Chicken Pasta",
+      "Citrus Kale Crunch Salad",
     ]),
     confirmed: true,
     now: new Date(`${activeDeliveryTomorrow.date}T09:15:00+03:00`),
@@ -949,9 +967,9 @@ async function seedScenarioData({ usersByKey, plansByName, mealsByName, premiumM
     subscription: activeDelivery.subscription,
     day: activeDeliveryDraftDay,
     baseMealIds: selectMealIds(mealsByName, [
-      "Vegetable Rice with Chicken",
-      "Chickpea Green Salad",
-      "Roasted Turkey Breast",
+      "Moroccan Chicken Couscous",
+      "Hummus Veggie Wrap",
+      "Roast Beef Ciabatta",
     ]),
     confirmed: false,
     now: new Date(`${activeDeliveryDraftDay.date}T09:20:00+03:00`),
@@ -1004,8 +1022,8 @@ async function seedScenarioData({ usersByKey, plansByName, mealsByName, premiumM
     subscription: activePickup.subscription,
     day: pickupFulfilledDay,
     baseMealIds: selectMealIds(mealsByName, [
-      "Light Chicken Alfredo Pasta",
-      "Avocado Chicken Salad",
+      "Mushroom Chicken Pasta",
+      "Avocado Turkey Salad",
     ]),
     confirmed: true,
     now: new Date(`${pickupFulfilledDay.date}T08:00:00+03:00`),
@@ -1043,8 +1061,8 @@ async function seedScenarioData({ usersByKey, plansByName, mealsByName, premiumM
     subscription: expiredRenewable.subscription,
     day: expiredFirstDay,
     baseMealIds: selectMealIds(mealsByName, [
-      "Chicken Caesar Salad",
-      "Chicken Fajita Plate",
+      "Grilled Chicken Salad",
+      "Pesto Chicken Sandwich",
     ]),
     confirmed: true,
     now: new Date(`${expiredFirstDay.date}T08:00:00+03:00`),
@@ -1107,8 +1125,8 @@ async function seedScenarioData({ usersByKey, plansByName, mealsByName, premiumM
     subscription: frozenSub.subscription,
     day: frozenPastDay,
     baseMealIds: selectMealIds(mealsByName, [
-      "Beef Kofta with Potatoes",
-      "Chickpea Green Salad",
+      "Garlic Beef Rice Plate",
+      "Citrus Kale Crunch Salad",
     ]),
     confirmed: true,
     now: new Date(`${frozenPastDay.date}T08:00:00+03:00`),
@@ -1150,8 +1168,8 @@ async function seedScenarioData({ usersByKey, plansByName, mealsByName, premiumM
     subscription: skippedSub.subscription,
     day: skippedPastDay,
     baseMealIds: selectMealIds(mealsByName, [
-      "Healthy Chicken Shawarma",
-      "Healthy Chicken Burger",
+      "Lemon Herb Chicken Plate",
+      "Turkey Club Sandwich",
     ]),
     confirmed: true,
     now: new Date(`${skippedPastDay.date}T08:00:00+03:00`),
@@ -1198,10 +1216,10 @@ async function seedScenarioData({ usersByKey, plansByName, mealsByName, premiumM
     subscription: walletSubscription.subscription,
     day: walletHistoryDay,
     baseMealIds: selectMealIds(mealsByName, [
-      "Lemon Grilled Chicken",
+      "Quinoa Power Bowl",
       "Mediterranean Quinoa Salad",
     ]),
-    premiumMealIds: selectPremiumIds(premiumMealsByName, ["Citrus Herb Salmon"]),
+    premiumMealIds: selectPremiumIds(premiumMealsByName, ["Lobster Tail Dinner"]),
     confirmed: true,
     now: new Date(`${walletHistoryDay.date}T08:00:00+03:00`),
   });
@@ -1220,8 +1238,8 @@ async function seedScenarioData({ usersByKey, plansByName, mealsByName, premiumM
       dayId: walletHistoryDay._id,
       date: walletHistoryDay.date,
       baseSlotKey: "base_slot_3",
-      premiumMealId: premiumSalmon._id,
-      unitExtraFeeHalala: 2400,
+      premiumMealId: premiumLobster._id,
+      unitExtraFeeHalala: Number(premiumLobster.extraFeeHalala || 0),
       currency: SYSTEM_CURRENCY,
       premiumWalletMode: GENERIC_PREMIUM_WALLET_MODE,
       premiumWalletRowId: walletSubscription.subscription.genericPremiumBalance[0]._id,
@@ -1231,8 +1249,8 @@ async function seedScenarioData({ usersByKey, plansByName, mealsByName, premiumM
       dayId: walletHistoryDay._id,
       date: walletHistoryDay.date,
       baseSlotKey: "base_slot_2",
-      premiumMealId: premiumShrimp._id,
-      unitExtraFeeHalala: 2400,
+      premiumMealId: premiumPrawns._id,
+      unitExtraFeeHalala: Number(premiumPrawns.extraFeeHalala || 0),
       currency: SYSTEM_CURRENCY,
       premiumWalletMode: GENERIC_PREMIUM_WALLET_MODE,
       premiumWalletRowId: walletSubscription.subscription.genericPremiumBalance[1]._id,
@@ -1332,8 +1350,8 @@ async function seedScenarioData({ usersByKey, plansByName, mealsByName, premiumM
   await applyPlanningState({
     subscription: premiumOverageSub.subscription,
     day: overagePendingDay,
-    baseMealIds: selectMealIds(mealsByName, ["Chicken and Broccoli Rice"]),
-    premiumMealIds: selectPremiumIds(premiumMealsByName, ["Black Pepper Steak"]),
+    baseMealIds: selectMealIds(mealsByName, ["Teriyaki Chicken Bowl"]),
+    premiumMealIds: selectPremiumIds(premiumMealsByName, ["Wagyu Ribeye"]),
     confirmed: false,
     now: new Date(`${overagePendingDay.date}T09:00:00+03:00`),
   });
@@ -1348,8 +1366,8 @@ async function seedScenarioData({ usersByKey, plansByName, mealsByName, premiumM
   await applyPlanningState({
     subscription: premiumOverageSub.subscription,
     day: overagePaidDay,
-    baseMealIds: selectMealIds(mealsByName, ["Herb Chicken with Quinoa"]),
-    premiumMealIds: selectPremiumIds(premiumMealsByName, ["Grilled Shrimp Rice Bowl"]),
+    baseMealIds: selectMealIds(mealsByName, ["Buddha Bowl"]),
+    premiumMealIds: selectPremiumIds(premiumMealsByName, ["Garlic Butter King Prawns"]),
     confirmed: false,
     now: new Date(`${overagePaidDay.date}T09:00:00+03:00`),
   });
@@ -1394,7 +1412,7 @@ async function seedScenarioData({ usersByKey, plansByName, mealsByName, premiumM
   await applyPlanningState({
     subscription: addonPendingSub.subscription,
     day: addonPendingDay,
-    baseMealIds: selectMealIds(mealsByName, ["Healthy Chicken Burger", "Chicken Caesar Salad"]),
+    baseMealIds: selectMealIds(mealsByName, ["Pesto Chicken Sandwich", "Grilled Chicken Salad"]),
     confirmed: false,
     now: new Date(`${addonPendingDay.date}T09:00:00+03:00`),
   });
@@ -1411,7 +1429,7 @@ async function seedScenarioData({ usersByKey, plansByName, mealsByName, premiumM
   await applyPlanningState({
     subscription: addonPendingSub.subscription,
     day: addonPaidDay,
-    baseMealIds: selectMealIds(mealsByName, ["Chicken Fajita Plate", "Chickpea Green Salad"]),
+    baseMealIds: selectMealIds(mealsByName, ["Turkey Club Sandwich", "Citrus Kale Crunch Salad"]),
     confirmed: false,
     now: new Date(`${addonPaidDay.date}T09:00:00+03:00`),
   });
@@ -1460,7 +1478,7 @@ async function seedScenarioData({ usersByKey, plansByName, mealsByName, premiumM
   await applyPlanningState({
     subscription: canceledSub.subscription,
     day: canceledDay,
-    baseMealIds: selectMealIds(mealsByName, ["Lemon Grilled Chicken", "Chicken Caesar Salad"]),
+    baseMealIds: selectMealIds(mealsByName, ["Grilled Chicken Salad", "Avocado Turkey Salad"]),
     confirmed: true,
     now: new Date(`${canceledDay.date}T08:00:00+03:00`),
   });
@@ -1479,7 +1497,7 @@ async function seedScenarioData({ usersByKey, plansByName, mealsByName, premiumM
       window: demoSettings.delivery_windows[0],
     }), zoneHittin),
     premiumItems: createPremiumQuoteItems([
-      { premiumMeal: premiumSalmon, qty: 1 },
+      { premiumMeal: premiumLobster, qty: 1 },
     ]),
     addonItems: createAddonQuoteItems([
       { addon: recurringGreenJuice, qty: 1 },
@@ -1524,13 +1542,13 @@ async function writeReport({ users, dashboardDocs, subscriptions, drafts, paymen
         key: demoMeta ? demoMeta.key : user.phone,
         email: user.email || null,
         phone: user.phone,
-        token: issueAppAccessToken(user),
+        token: '[TOKEN_REDACTED — generate via /auth/login]',
         useCase: demoMeta ? demoMeta.useCase : "",
       };
     }),
     dashboardUsers: dashboardDocs.map((user) => ({
       email: user.email,
-      password: DASHBOARD_PASSWORD,
+      password: '[SEE .env DASHBOARD_PASSWORD]',
       role: user.role,
     })),
   };
@@ -1541,6 +1559,7 @@ async function writeReport({ users, dashboardDocs, subscriptions, drafts, paymen
     counts: {
       zones: deliveryZones.length,
       pickupBranches: pickupLocations.length,
+      mealCategories: mealCategoryFixtures.length,
       plans: planFixtures.length,
       regularMeals: regularMeals.length,
       premiumMeals: premiumMealFixtures.length,
@@ -1578,8 +1597,9 @@ async function main() {
     }
 
     await upsertSettings();
-    const [zones, plans, meals, premiumMeals, addons, dashboardDocs, { users }] = await Promise.all([
+    const [zones, _mealCategories, plans, meals, premiumMeals, addons, dashboardDocs, { users }] = await Promise.all([
       upsertCatalogDocs(Zone, deliveryZones),
+      upsertMealCategories(mealCategoryFixtures),
       upsertCatalogDocs(Plan, planFixtures),
       upsertCatalogDocs(Meal, regularMeals),
       upsertCatalogDocs(PremiumMeal, premiumMealFixtures),

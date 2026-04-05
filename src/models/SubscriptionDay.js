@@ -67,6 +67,7 @@ const SubscriptionDaySchema = new mongoose.Schema(
       },
     ],
     skippedByUser: { type: Boolean, default: false },
+    skipCompensated: { type: Boolean, default: false },
     canonicalDayActionType: {
       type: String,
       enum: ["freeze", "skip"],
@@ -171,6 +172,7 @@ const SubscriptionDaySchema = new mongoose.Schema(
 // Performance: Frequent queries filter by subscriptionId, status (e.g. counting frozen days)
 // and/or date. A compound index supports these access patterns without requiring full collection scans.
 SubscriptionDaySchema.index({ subscriptionId: 1, status: 1, date: 1 });
+SubscriptionDaySchema.index({ subscriptionId: 1, canonicalDayActionType: 1, skipCompensated: 1, date: 1 });
 
 // Unique index to quickly lookup or upsert per-subscription per-day rows.
 SubscriptionDaySchema.index({ subscriptionId: 1, date: 1 }, { unique: true });

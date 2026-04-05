@@ -1,5 +1,6 @@
 const PremiumMeal = require("../models/PremiumMeal");
 const { getRequestLang } = require("../utils/i18n");
+const { parseMealNutritionFromBody, withDefaultMealNutrition } = require("../utils/mealNutrition");
 const { resolvePremiumMealCatalogEntry } = require("../utils/subscriptionCatalog");
 const validateObjectId = require("../utils/validateObjectId");
 const errorResponse = require("../utils/errorResponse");
@@ -83,6 +84,7 @@ function validatePremiumMealPayloadOrThrow(payload) {
   if (!isNonNegativeInteger(extraFeeHalala)) {
     throw { status: 400, code: "INVALID", message: "extraFeeHalala must be an integer >= 0" };
   }
+  const nutrition = parseMealNutritionFromBody(payload);
 
   const isActive = parseBooleanField(payload.isActive, "isActive", { defaultValue: true });
   const sortOrder = payload.sortOrder === undefined ? 0 : normalizeSortOrder(payload.sortOrder, "sortOrder");
@@ -95,6 +97,7 @@ function validatePremiumMealPayloadOrThrow(payload) {
     extraFeeHalala,
     isActive,
     sortOrder,
+    ...nutrition,
   };
 }
 
@@ -107,7 +110,7 @@ async function listPremiumMeals(req, res) {
 
 async function listPremiumMealsAdmin(_req, res) {
   const rows = await PremiumMeal.find().sort({ sortOrder: 1, createdAt: -1 }).lean();
-  return res.status(200).json({ ok: true, data: rows });
+  return res.status(200).json({ ok: true, data: rows.map((row) => withDefaultMealNutrition(row)) });
 }
 
 async function getPremiumMealAdmin(req, res) {
@@ -121,7 +124,7 @@ async function getPremiumMealAdmin(req, res) {
   if (!row) {
     return errorResponse(res, 404, "NOT_FOUND", "Premium meal not found");
   }
-  return res.status(200).json({ ok: true, data: row });
+  return res.status(200).json({ ok: true, data: withDefaultMealNutrition(row) });
 }
 
 async function createPremiumMeal(req, res) {
@@ -254,6 +257,9 @@ async function clonePremiumMeal(req, res) {
     imageUrl: row.imageUrl,
     currency: row.currency,
     extraFeeHalala: row.extraFeeHalala,
+    proteinGrams: row.proteinGrams,
+    carbGrams: row.carbGrams,
+    fatGrams: row.fatGrams,
     isActive: row.isActive,
     sortOrder: row.sortOrder,
   });

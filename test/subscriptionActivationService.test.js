@@ -72,7 +72,7 @@ function createCanonicalDraft() {
       },
       policySnapshot: {
         freezePolicy: { enabled: true, maxDays: 31, maxTimes: 1 },
-        skipPolicyMode: "legacy_current",
+        skipPolicy: { enabled: true, maxDays: 3 },
         fallbackMode: "legacy_current",
         premiumAutoConsume: false,
         oneTimeAddonRequiresPaymentBeforeConfirmation: false,
@@ -81,7 +81,7 @@ function createCanonicalDraft() {
         usesLegacyPremiumRuntime: true,
         usesLegacyAddonRuntime: true,
         usesLegacyDeliveryRuntime: true,
-        usesLegacySkipRuntime: true,
+        usesLegacySkipRuntime: false,
       },
     },
     premiumItems: [
@@ -125,7 +125,7 @@ test("isCanonicalCheckoutDraft identifies authoritative canonical drafts", () =>
   assert.equal(isCanonicalCheckoutDraft({ contractVersion: PHASE1_CONTRACT_VERSION, contractMode: "canonical" }), false);
 });
 
-test("buildCanonicalSubscriptionActivationPayload copies canonical contract metadata and legacy runtime fields", () => {
+test("buildCanonicalSubscriptionActivationPayload copies canonical contract metadata and runtime flags", () => {
   const draft = createCanonicalDraft();
   const result = buildCanonicalSubscriptionActivationPayload({ draft });
 

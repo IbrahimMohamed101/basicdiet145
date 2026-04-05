@@ -22,6 +22,7 @@ const { writeLog } = require("../utils/log");
 const { logger } = require("../utils/logger");
 const validateObjectId = require("../utils/validateObjectId");
 const errorResponse = require("../utils/errorResponse");
+const { validateRedirectUrl } = require("../utils/security");
 
 const SYSTEM_CURRENCY = "SAR";
 const TERMINAL_PAYMENT_FAILURE_STATUSES = new Set(["failed", "canceled", "expired"]);
@@ -628,8 +629,8 @@ async function checkoutOrder(req, res) {
       currency: SYSTEM_CURRENCY,
       description: `One-time order (${quantity + customSaladSnapshots.length + customMealSnapshots.length} items)`,
       callbackUrl: `${appUrl}/api/webhooks/moyasar`,
-      successUrl: successUrl || `${appUrl}/payments/success`,
-      backUrl: backUrl || `${appUrl}/payments/cancel`,
+      successUrl: validateRedirectUrl(successUrl, `${appUrl}/payments/success`),
+      backUrl: validateRedirectUrl(backUrl, `${appUrl}/payments/cancel`),
       metadata: {
         ...paymentMetadata,
         orderId: String(createdOrder._id),
