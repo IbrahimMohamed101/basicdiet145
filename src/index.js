@@ -17,6 +17,11 @@ if (!envCheck.ok) {
   process.exit(1);
 }
 
+logger.info("Resolved runtime port", {
+  envPort: process.env.PORT,
+  defaultPort: PORT,
+});
+
 connectDb()
   .then(async () => {
     startJobs();
