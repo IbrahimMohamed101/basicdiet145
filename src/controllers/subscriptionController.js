@@ -1243,21 +1243,21 @@ function buildOneTimeAddonDayPaymentStatusPayload({ subscription, day, payment, 
 function isCanonicalGenericPremiumOverageEligibleForDay(subscription, day) {
   return Boolean(
     day
-      && day.status === "open"
-      && isCanonicalPremiumOverageEligible(subscription, {
-        dayPlanningFlagEnabled: isPhase2CanonicalDayPlanningEnabled(),
-        genericPremiumWalletFlagEnabled: isPhase2GenericPremiumWalletEnabled(),
-      })
+    && day.status === "open"
+    && isCanonicalPremiumOverageEligible(subscription, {
+      dayPlanningFlagEnabled: isPhase2CanonicalDayPlanningEnabled(),
+      genericPremiumWalletFlagEnabled: isPhase2GenericPremiumWalletEnabled(),
+    })
   );
 }
 
 function isCanonicalOneTimeAddonPlanningPaymentEligibleForDay(subscription, day) {
   return Boolean(
     day
-      && day.status === "open"
-      && isCanonicalDayPlanningEligible(subscription, {
-        flagEnabled: isPhase2CanonicalDayPlanningEnabled(),
-      })
+    && day.status === "open"
+    && isCanonicalDayPlanningEligible(subscription, {
+      flagEnabled: isPhase2CanonicalDayPlanningEnabled(),
+    })
   );
 }
 
@@ -1651,7 +1651,7 @@ function refundPremiumSelectionRowsToBalanceOrThrow(sub, selections) {
           String(row.premiumMealId) === String(selection.premiumMealId)
           && Number(row.unitExtraFeeHalala || 0) === Number(selection.unitExtraFeeHalala || 0)
           && String(row.currency || SYSTEM_CURRENCY).toUpperCase()
-            === String(selection.currency || SYSTEM_CURRENCY).toUpperCase()
+          === String(selection.currency || SYSTEM_CURRENCY).toUpperCase()
       );
     if (!match) {
       const err = new Error("Cannot refund premium credits because the original wallet bucket was not found");
@@ -2129,6 +2129,39 @@ function resolveSkipRemainingDays(skipPolicy, subscription) {
   );
 }
 
+function isPopulatedPlanDocument(plan) {
+  return Boolean(
+    plan
+    && typeof plan === "object"
+    && !Array.isArray(plan)
+    && (
+      Object.prototype.hasOwnProperty.call(plan, "skipPolicy")
+      || Object.prototype.hasOwnProperty.call(plan, "freezePolicy")
+      || Object.prototype.hasOwnProperty.call(plan, "name")
+    )
+  );
+}
+
+async function buildSubscriptionOverviewSkipUsage(subscription) {
+  let livePlan = null;
+
+  if (subscription && subscription.planId) {
+    livePlan = isPopulatedPlanDocument(subscription.planId)
+      ? subscription.planId
+      : await Plan.findById(subscription.planId).lean();
+  }
+
+  const skipPolicy = resolveSubscriptionSkipPolicy(subscription, livePlan, {
+    context: "current_subscription_overview",
+  });
+
+  return {
+    skipDaysUsed: Number(subscription && subscription.skipDaysUsed ? subscription.skipDaysUsed : 0),
+    skipDaysLimit: Number(skipPolicy && skipPolicy.maxDays ? skipPolicy.maxDays : 0),
+    remainingSkipDays: resolveSkipRemainingDays(skipPolicy, subscription),
+  };
+}
+
 function buildProjectedOpenDayForClient(subscription, date, runtime = sliceP2S1DefaultRuntime) {
   return serializeSubscriptionDayForClient(
     subscription,
@@ -2516,12 +2549,12 @@ async function checkoutSubscription(req, res, runtimeOverrides = null) {
             try {
               const invoice = await getInvoice(currentPayment.providerInvoiceId);
               const invoiceStatus = (invoice && invoice.status || "").toLowerCase();
-              
+
               // If invoice is paid, we can reuse this draft
               if (invoiceStatus === "paid" || invoiceStatus === "captured") {
                 return res.status(200).json({ ok: true, data: buildCheckoutReusePayload(currentDraft, currentPayment) });
               }
-              
+
               // If invoice is failed/expired/canceled, mark draft as failed and allow new checkout
               if (["failed", "expired", "canceled"].includes(invoiceStatus)) {
                 await CheckoutDraft.updateOne(
@@ -2547,7 +2580,7 @@ async function checkoutSubscription(req, res, runtimeOverrides = null) {
               }
             } catch (err) {
               // If we can't fetch invoice status, be conservative and return 409
-              logger.warn("Failed to fetch invoice status during checkout reconciliation", { 
+              logger.warn("Failed to fetch invoice status during checkout reconciliation", {
                 draftId: String(currentDraft._id),
                 error: err.message
               });
@@ -2613,12 +2646,12 @@ async function checkoutSubscription(req, res, runtimeOverrides = null) {
           try {
             const invoice = await getInvoice(currentPayment.providerInvoiceId);
             const invoiceStatus = (invoice && invoice.status || "").toLowerCase();
-            
+
             // If invoice is paid, we can reuse this draft
             if (invoiceStatus === "paid" || invoiceStatus === "captured") {
               return res.status(200).json({ ok: true, data: buildCheckoutReusePayload(currentDraft, currentPayment) });
             }
-            
+
             // If invoice is failed/expired/canceled, mark draft as failed and allow new checkout
             if (["failed", "expired", "canceled"].includes(invoiceStatus)) {
               await CheckoutDraft.updateOne(
@@ -2638,7 +2671,7 @@ async function checkoutSubscription(req, res, runtimeOverrides = null) {
             }
           } catch (err) {
             // If we can't fetch invoice status, be conservative and return 409
-            logger.warn("Failed to fetch invoice status during checkout reconciliation (by hash)", { 
+            logger.warn("Failed to fetch invoice status during checkout reconciliation (by hash)", {
               draftId: String(currentDraft._id),
               error: err.message
             });
@@ -3170,7 +3203,7 @@ async function activateSubscription(req, res) {
     return errorResponse(res, 403, "FORBIDDEN", "Mock activation is disabled in production");
   }
   const sub = await Subscription.findById(id).populate("planId");
-  if (!sub) return errorResponse(res, 404, "NOT_FOUND", "Subscription not found" );
+  if (!sub) return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
   if (sub.userId.toString() !== req.userId.toString()) {
     return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
   }
@@ -3494,7 +3527,7 @@ async function getSubscription(req, res) {
   }
   const sub = await Subscription.findById(id).lean();
   if (!sub) {
-    return errorResponse(res, 404, "NOT_FOUND", "Subscription not found" );
+    return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
   }
   if (sub.userId.toString() !== req.userId.toString()) {
     return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
@@ -3529,9 +3562,15 @@ async function getCurrentSubscriptionOverview(req, res) {
       });
     }
 
+    const serializedSubscription = await serializeSubscriptionForClient(sub, lang);
+    const skipUsage = await buildSubscriptionOverviewSkipUsage(sub);
+
     return res.status(200).json({
       ok: true,
-      data: await serializeSubscriptionForClient(sub, lang),
+      data: {
+        ...serializedSubscription,
+        ...skipUsage,
+      },
     });
   } catch (err) {
     logger.error("subscriptionController.getCurrentSubscriptionOverview failed", {
@@ -5775,7 +5814,7 @@ async function getSubscriptionDays(req, res) {
   }
   const sub = await Subscription.findById(id).lean();
   if (!sub) {
-    return errorResponse(res, 404, "NOT_FOUND", "Subscription not found" );
+    return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
   }
   if (sub.userId.toString() !== req.userId.toString()) {
     return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
@@ -5801,14 +5840,14 @@ async function getSubscriptionDay(req, res) {
   }
   const sub = await Subscription.findById(id).lean();
   if (!sub) {
-    return errorResponse(res, 404, "NOT_FOUND", "Subscription not found" );
+    return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
   }
   if (sub.userId.toString() !== req.userId.toString()) {
     return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
   }
   const day = await SubscriptionDay.findOne({ subscriptionId: id, date }).lean();
   if (!day) {
-    return errorResponse(res, 404, "NOT_FOUND", "Day not found" );
+    return errorResponse(res, 404, "NOT_FOUND", "Day not found");
   }
   const serializedDay = serializeSubscriptionDayForClient(sub, day);
   const catalog = await loadWalletCatalogMaps({ days: [serializedDay], lang });
@@ -5832,7 +5871,7 @@ async function getSubscriptionToday(req, res) {
   }
   const sub = await Subscription.findById(id).lean();
   if (!sub) {
-    return errorResponse(res, 404, "NOT_FOUND", "Subscription not found" );
+    return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
   }
   if (sub.userId.toString() !== req.userId.toString()) {
     return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
@@ -5840,7 +5879,7 @@ async function getSubscriptionToday(req, res) {
   const today = dateUtils.getTodayKSADate();
   const day = await SubscriptionDay.findOne({ subscriptionId: id, date: today }).lean();
   if (!day) {
-    return errorResponse(res, 404, "NOT_FOUND", "Day not found" );
+    return errorResponse(res, 404, "NOT_FOUND", "Day not found");
   }
   const serializedDay = serializeSubscriptionDayForClient(sub, day);
   const catalog = await loadWalletCatalogMaps({ days: [serializedDay], lang });
@@ -5876,7 +5915,7 @@ async function updateDaySelection(req, res, runtimeOverrides = null) {
   }
 
   const sub = await Subscription.findById(id).populate("planId");
-  if (!sub) return errorResponse(res, 404, "NOT_FOUND", "Subscription not found" );
+  if (!sub) return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
   if (sub.userId.toString() !== req.userId.toString()) {
     return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
   }
@@ -5884,13 +5923,13 @@ async function updateDaySelection(req, res, runtimeOverrides = null) {
     validateFutureDateOrThrow(date, sub);
   } catch (err) {
     const status = err.code === "SUB_INACTIVE" || err.code === "SUB_EXPIRED" ? 422 : 400;
-    return errorResponse(res, status, err.code || "INVALID_DATE", err.message );
+    return errorResponse(res, status, err.code || "INVALID_DATE", err.message);
   }
 
   try {
     await enforceTomorrowCutoffOrThrow(date);
   } catch (err) {
-    return errorResponse(res, 400, err.code || "LOCKED", err.message );
+    return errorResponse(res, 400, err.code || "LOCKED", err.message);
   }
 
   const totalSelected = selections.length + premiumSelections.length;
@@ -5919,7 +5958,7 @@ async function updateDaySelection(req, res, runtimeOverrides = null) {
     if (!subInSession) {
       await session.abortTransaction();
       session.endSession();
-      return errorResponse(res, 404, "NOT_FOUND", "Subscription not found" );
+      return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
     }
     try {
       ensureActive(subInSession, date);
@@ -5975,7 +6014,7 @@ async function updateDaySelection(req, res, runtimeOverrides = null) {
     if (existingDay && existingDay.status !== "open") {
       await session.abortTransaction();
       session.endSession();
-      return errorResponse(res, 409, "LOCKED", "Day is locked" );
+      return errorResponse(res, 409, "LOCKED", "Day is locked");
     }
 
     const useGenericPremiumWallet = isGenericPremiumWalletMode(subInSession);
@@ -6060,7 +6099,7 @@ async function updateDaySelection(req, res, runtimeOverrides = null) {
         if (!consumedRows) {
           await session.abortTransaction();
           session.endSession();
-          return errorResponse(res, 400, "INSUFFICIENT_PREMIUM", "Not enough premium credits" );
+          return errorResponse(res, 400, "INSUFFICIENT_PREMIUM", "Not enough premium credits");
         }
         let nextSlotIndex = getNextLegacyDayPremiumSlotIndex(currentLegacyRows);
         const firstInsertedOffset = nextSlotIndex;
@@ -6229,7 +6268,7 @@ async function updateDaySelection(req, res, runtimeOverrides = null) {
     ) {
       return errorResponse(res, 400, "INVALID", err.message);
     }
-    return errorResponse(res, 500, "INTERNAL", "Selection failed" );
+    return errorResponse(res, 500, "INTERNAL", "Selection failed");
   }
 }
 
@@ -6434,7 +6473,7 @@ async function skipDay(req, res) {
   const { id, date } = req.params;
   const lang = getRequestLang(req);
   const sub = await Subscription.findById(id).populate("planId");
-  if (!sub) return errorResponse(res, 404, "NOT_FOUND", "Subscription not found" );
+  if (!sub) return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
   if (sub.userId.toString() !== req.userId.toString()) {
     return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
   }
@@ -6443,13 +6482,13 @@ async function skipDay(req, res) {
     validateFutureDateOrThrow(date, sub);
   } catch (err) {
     const status = err.code === "SUB_INACTIVE" || err.code === "SUB_EXPIRED" ? 422 : 400;
-    return errorResponse(res, status, err.code || "INVALID_DATE", err.message );
+    return errorResponse(res, status, err.code || "INVALID_DATE", err.message);
   }
 
   try {
     await enforceTomorrowCutoffOrThrow(date);
   } catch (err) {
-    return errorResponse(res, 400, err.code || "LOCKED", err.message );
+    return errorResponse(res, 400, err.code || "LOCKED", err.message);
   }
 
   const session = await mongoose.startSession();
@@ -6459,12 +6498,12 @@ async function skipDay(req, res) {
     if (!subInSession) {
       await session.abortTransaction();
       session.endSession();
-      return errorResponse(res, 404, "NOT_FOUND", "Subscription not found" );
+      return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
     }
     if (subInSession.status !== "active") {
       await session.abortTransaction();
       session.endSession();
-      return errorResponse(res, 422, "SUB_INACTIVE", "Subscription not active" );
+      return errorResponse(res, 422, "SUB_INACTIVE", "Subscription not active");
     }
 
     const result = await applySkipForDate({ sub: subInSession, date, session });
@@ -6501,7 +6540,7 @@ async function skipDay(req, res) {
     if (result.status === "locked") {
       await session.abortTransaction();
       session.endSession();
-      return errorResponse(res, 409, "LOCKED", "Cannot skip after lock" );
+      return errorResponse(res, 409, "LOCKED", "Cannot skip after lock");
     }
     if (result.status === "limit_reached") {
       await session.commitTransaction();
@@ -6524,7 +6563,7 @@ async function skipDay(req, res) {
     if (result.status !== "skipped") {
       await session.abortTransaction();
       session.endSession();
-      return errorResponse(res, 400, "INVALID", "Skip failed" );
+      return errorResponse(res, 400, "INVALID", "Skip failed");
     }
 
     await session.commitTransaction();
@@ -6555,7 +6594,7 @@ async function skipDay(req, res) {
   } catch (err) {
     await session.abortTransaction();
     session.endSession();
-    return errorResponse(res, 500, "INTERNAL", "Skip failed" );
+    return errorResponse(res, 500, "INTERNAL", "Skip failed");
   }
 }
 
@@ -6570,7 +6609,7 @@ async function unskipDay(req, res) {
   }
 
   const sub = await Subscription.findById(id).populate("planId");
-  if (!sub) return errorResponse(res, 404, "NOT_FOUND", "Subscription not found" );
+  if (!sub) return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
   if (sub.userId.toString() !== req.userId.toString()) {
     return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
   }
@@ -6579,13 +6618,13 @@ async function unskipDay(req, res) {
     validateFutureDateOrThrow(date, sub);
   } catch (err) {
     const status = err.code === "SUB_INACTIVE" || err.code === "SUB_EXPIRED" ? 422 : 400;
-    return errorResponse(res, status, err.code || "INVALID_DATE", err.message );
+    return errorResponse(res, status, err.code || "INVALID_DATE", err.message);
   }
 
   try {
     await enforceTomorrowCutoffOrThrow(date);
   } catch (err) {
-    return errorResponse(res, 400, err.code || "LOCKED", err.message );
+    return errorResponse(res, 400, err.code || "LOCKED", err.message);
   }
 
   const session = await mongoose.startSession();
@@ -6595,7 +6634,7 @@ async function unskipDay(req, res) {
     if (!subInSession) {
       await session.abortTransaction();
       session.endSession();
-      return errorResponse(res, 404, "NOT_FOUND", "Subscription not found" );
+      return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
     }
 
     ensureActive(subInSession, date);
@@ -6605,17 +6644,17 @@ async function unskipDay(req, res) {
     if (!day) {
       await session.abortTransaction();
       session.endSession();
-      return errorResponse(res, 404, "NOT_FOUND", "Day not found" );
+      return errorResponse(res, 404, "NOT_FOUND", "Day not found");
     }
     if (day.status !== "skipped") {
       await session.abortTransaction();
       session.endSession();
-      return errorResponse(res, 409, "CONFLICT", "Day is not skipped" );
+      return errorResponse(res, 409, "CONFLICT", "Day is not skipped");
     }
     if (day.lockedSnapshot || day.fulfilledSnapshot || day.fulfilledAt || day.assignedByKitchen || day.pickupRequested) {
       await session.abortTransaction();
       session.endSession();
-      return errorResponse(res, 409, "CONFLICT", "Cannot unskip a processed day" );
+      return errorResponse(res, 409, "CONFLICT", "Cannot unskip a processed day");
     }
     const isCompensatedSkip = Boolean(day.skipCompensated);
 
@@ -6631,7 +6670,7 @@ async function unskipDay(req, res) {
       if (!updatedSubscription) {
         await session.abortTransaction();
         session.endSession();
-        return errorResponse(res, 409, "DATA_INTEGRITY_ERROR", "Cannot restore credits for this skipped day" );
+        return errorResponse(res, 409, "DATA_INTEGRITY_ERROR", "Cannot restore credits for this skipped day");
       }
 
       subInSession.skipDaysUsed = Number(updatedSubscription.skipDaysUsed || 0);
@@ -6657,7 +6696,7 @@ async function unskipDay(req, res) {
       if (!day.creditsDeducted) {
         await session.abortTransaction();
         session.endSession();
-        return errorResponse(res, 409, "CONFLICT", "Skipped day has no deducted credits to restore" );
+        return errorResponse(res, 409, "CONFLICT", "Skipped day has no deducted credits to restore");
       }
 
       const mealsToRestore = resolveMealsPerDay(subInSession);
@@ -6673,7 +6712,7 @@ async function unskipDay(req, res) {
       if (!restoredSub) {
         await session.abortTransaction();
         session.endSession();
-        return errorResponse(res, 409, "DATA_INTEGRITY_ERROR", "Cannot restore credits for this skipped day" );
+        return errorResponse(res, 409, "DATA_INTEGRITY_ERROR", "Cannot restore credits for this skipped day");
       }
 
       day.status = "open";
@@ -6722,7 +6761,7 @@ async function unskipDay(req, res) {
       return errorResponse(res, 400, err.code, err.message);
     }
     logger.error("Unskip failed", { subscriptionId: id, date, error: err.message, stack: err.stack });
-    return errorResponse(res, 500, "INTERNAL", "Unskip failed" );
+    return errorResponse(res, 500, "INTERNAL", "Unskip failed");
   }
 }
 
@@ -6746,19 +6785,19 @@ async function skipRange(req, res) {
   }
 
   const sub = await Subscription.findById(id).populate("planId");
-  if (!sub) return errorResponse(res, 404, "NOT_FOUND", "Subscription not found" );
+  if (!sub) return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
   if (sub.userId.toString() !== req.userId.toString()) {
     return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
   }
   try {
     ensureActive(sub);
   } catch (err) {
-    return errorResponse(res, 422, err.code, err.message );
+    return errorResponse(res, 422, err.code, err.message);
   }
 
   const tomorrow = dateUtils.getTomorrowKSADate();
   if (!dateUtils.isOnOrAfterKSADate(startDate, tomorrow)) {
-    return errorResponse(res, 400, "INVALID_DATE", "startDate must be from tomorrow onward" );
+    return errorResponse(res, 400, "INVALID_DATE", "startDate must be from tomorrow onward");
   }
 
   const cutoffTime = await getSettingValue("cutoff_time", "00:00");
@@ -6786,7 +6825,7 @@ async function skipRange(req, res) {
     if (!subInSession) {
       await session.abortTransaction();
       session.endSession();
-      return errorResponse(res, 404, "NOT_FOUND", "Subscription not found" );
+      return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
     }
     try {
       ensureActive(subInSession, startDate);
@@ -6882,7 +6921,7 @@ async function skipRange(req, res) {
   } catch (err) {
     await session.abortTransaction();
     session.endSession();
-    return errorResponse(res, 500, "INTERNAL", "Skip range failed" );
+    return errorResponse(res, 500, "INTERNAL", "Skip range failed");
   }
 }
 
@@ -7450,18 +7489,18 @@ async function topupPremium(req, res, runtimeOverrides = null) {
     const lang = getRequestLang(req);
     const premiumCount = parseInt(count, 10);
     if (!premiumCount || premiumCount <= 0) {
-      return errorResponse(res, 400, "INVALID", "Invalid premium count" );
+      return errorResponse(res, 400, "INVALID", "Invalid premium count");
     }
 
     const sub = await Subscription.findById(id);
-    if (!sub) return errorResponse(res, 404, "NOT_FOUND", "Subscription not found" );
+    if (!sub) return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
     if (sub.userId.toString() !== req.userId.toString()) {
       return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
     }
     try {
       ensureActive(sub);
     } catch (err) {
-      return errorResponse(res, 422, err.code, err.message );
+      return errorResponse(res, 422, err.code, err.message);
     }
 
     const idempotency = await maybeHandleNonCheckoutIdempotency({
@@ -7542,7 +7581,7 @@ async function topupPremium(req, res, runtimeOverrides = null) {
       return sendValidationError(res, err.message);
     }
     logger.error("Topup error", { error: err.message, stack: err.stack });
-    return errorResponse(res, 500, "INTERNAL", "Top-up failed" );
+    return errorResponse(res, 500, "INTERNAL", "Top-up failed");
   }
 }
 
@@ -7813,11 +7852,11 @@ async function addOneTimeAddon(_req, res, runtimeOverrides = null) {
     const { id } = _req.params;
     const { addonId, date, successUrl, backUrl } = _req.body || {};
     if (!addonId || !date) {
-      return errorResponse(res, 400, "INVALID", "Missing addonId or date" );
+      return errorResponse(res, 400, "INVALID", "Missing addonId or date");
     }
 
     const sub = await Subscription.findById(id).populate("planId");
-    if (!sub) return errorResponse(res, 404, "NOT_FOUND", "Subscription not found" );
+    if (!sub) return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
     if (sub.userId.toString() !== _req.userId.toString()) {
       return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
     }
@@ -7826,24 +7865,24 @@ async function addOneTimeAddon(_req, res, runtimeOverrides = null) {
       validateFutureDateOrThrow(date, sub);
     } catch (err) {
       const status = err.code === "SUB_INACTIVE" || err.code === "SUB_EXPIRED" ? 422 : 400;
-      return errorResponse(res, status, err.code || "INVALID_DATE", err.message );
+      return errorResponse(res, status, err.code || "INVALID_DATE", err.message);
     }
     // MEDIUM AUDIT FIX: One-time add-on purchases must obey the same tomorrow cutoff guard as meal edits.
     try {
       await enforceTomorrowCutoffOrThrow(date);
     } catch (err) {
-      return errorResponse(res, 400, err.code || "LOCKED", err.message );
+      return errorResponse(res, 400, err.code || "LOCKED", err.message);
     }
 
     const addon = await Addon.findById(addonId).lean();
     if (!addon || addon.type !== "one_time" || addon.isActive === false) {
-      return errorResponse(res, 404, "NOT_FOUND", "Addon not found" );
+      return errorResponse(res, 404, "NOT_FOUND", "Addon not found");
     }
     assertSystemCurrencyOrThrow(addon.currency || SYSTEM_CURRENCY, `Addon ${addonId} currency`);
 
     const day = await SubscriptionDay.findOne({ subscriptionId: id, date }).lean();
     if (day && day.status !== "open") {
-      return errorResponse(res, 409, "LOCKED", "Day is locked" );
+      return errorResponse(res, 409, "LOCKED", "Day is locked");
     }
 
     const idempotency = await maybeHandleNonCheckoutIdempotency({
@@ -7916,7 +7955,7 @@ async function addOneTimeAddon(_req, res, runtimeOverrides = null) {
       return sendValidationError(res, err.message);
     }
     logger.error("Addon error", { error: err.message, stack: err.stack });
-    return errorResponse(res, 500, "INTERNAL", "Addon purchase failed" );
+    return errorResponse(res, 500, "INTERNAL", "Addon purchase failed");
   }
 }
 
@@ -7930,7 +7969,7 @@ async function preparePickup(req, res) {
     if (!sub) {
       await session.abortTransaction();
       session.endSession();
-      return errorResponse(res, 404, "NOT_FOUND", "Subscription not found" );
+      return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
     }
     if (sub.userId.toString() !== req.userId.toString()) {
       await session.abortTransaction();
@@ -7945,7 +7984,7 @@ async function preparePickup(req, res) {
       await session.abortTransaction();
       session.endSession();
       const status = err.code === "SUB_INACTIVE" || err.code === "SUB_EXPIRED" ? 422 : 400;
-      return errorResponse(res, status, err.code || "INVALID_DATE", err.message );
+      return errorResponse(res, status, err.code || "INVALID_DATE", err.message);
     }
 
     try {
@@ -7953,13 +7992,13 @@ async function preparePickup(req, res) {
     } catch (err) {
       await session.abortTransaction();
       session.endSession();
-      return errorResponse(res, 400, err.code || "LOCKED", err.message );
+      return errorResponse(res, 400, err.code || "LOCKED", err.message);
     }
 
     if (sub.deliveryMode !== "pickup") {
       await session.abortTransaction();
       session.endSession();
-      return errorResponse(res, 400, "INVALID", "Delivery mode is not pickup" );
+      return errorResponse(res, 400, "INVALID", "Delivery mode is not pickup");
     }
 
     const day = await SubscriptionDay.findOne({ subscriptionId: id, date }).session(session);
@@ -7986,7 +8025,7 @@ async function preparePickup(req, res) {
     if (day && !canTransition(day.status, "locked")) {
       await session.abortTransaction();
       session.endSession();
-      return errorResponse(res, 409, "INVALID_TRANSITION", "Invalid state transition" );
+      return errorResponse(res, 409, "INVALID_TRANSITION", "Invalid state transition");
     }
 
     const mealsToDeduct = resolveMealsPerDay(sub);
@@ -8010,7 +8049,7 @@ async function preparePickup(req, res) {
       if (!updatedDay) {
         await session.abortTransaction();
         session.endSession();
-        return errorResponse(res, 409, "LOCKED", "Day already locked" );
+        return errorResponse(res, 409, "LOCKED", "Day already locked");
       }
     }
 
@@ -8033,7 +8072,7 @@ async function preparePickup(req, res) {
       );
       await session.abortTransaction();
       session.endSession();
-      return errorResponse(res, 400, "INSUFFICIENT_CREDITS", "Not enough credits" );
+      return errorResponse(res, 400, "INSUFFICIENT_CREDITS", "Not enough credits");
     }
 
     await session.commitTransaction();
@@ -8055,7 +8094,7 @@ async function preparePickup(req, res) {
     await session.abortTransaction();
     session.endSession();
     logger.error("Pickup prepare failed", { error: err.message, stack: err.stack });
-    return errorResponse(res, 500, "INTERNAL", "Pickup prepare failed" );
+    return errorResponse(res, 500, "INTERNAL", "Pickup prepare failed");
   }
 }
 
@@ -8064,14 +8103,14 @@ async function updateDeliveryDetails(req, res, runtimeOverrides = null) {
   const lang = getRequestLang(req);
 
   const sub = await Subscription.findById(id);
-  if (!sub) return errorResponse(res, 404, "NOT_FOUND", "Subscription not found" );
+  if (!sub) return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
   if (sub.userId.toString() !== req.userId.toString()) {
     return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
   }
   try {
     ensureActive(sub);
   } catch (err) {
-    return errorResponse(res, 422, err.code, err.message );
+    return errorResponse(res, 422, err.code, err.message);
   }
 
   let resolvedUpdate;
@@ -8100,7 +8139,7 @@ async function updateDeliveryDetails(req, res, runtimeOverrides = null) {
         try {
           await enforceTomorrowCutoffOrThrow(tomorrow);
         } catch (err) {
-          return errorResponse(res, 400, err.code || "LOCKED", err.message );
+          return errorResponse(res, 400, err.code || "LOCKED", err.message);
         }
       }
     }
@@ -8127,11 +8166,11 @@ async function updateDeliveryDetailsForDate(req, res) {
   const { deliveryAddress, deliveryWindow } = req.body || {};
   const lang = getRequestLang(req);
   if (deliveryAddress === undefined && deliveryWindow === undefined) {
-    return errorResponse(res, 400, "INVALID", "Missing delivery update fields" );
+    return errorResponse(res, 400, "INVALID", "Missing delivery update fields");
   }
 
   const sub = await Subscription.findById(id);
-  if (!sub) return errorResponse(res, 404, "NOT_FOUND", "Subscription not found" );
+  if (!sub) return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
   if (sub.userId.toString() !== req.userId.toString()) {
     return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
   }
@@ -8140,27 +8179,27 @@ async function updateDeliveryDetailsForDate(req, res) {
     validateFutureDateOrThrow(date, sub);
   } catch (err) {
     const status = err.code === "SUB_INACTIVE" || err.code === "SUB_EXPIRED" ? 422 : 400;
-    return errorResponse(res, status, err.code || "INVALID_DATE", err.message );
+    return errorResponse(res, status, err.code || "INVALID_DATE", err.message);
   }
 
   try {
     await enforceTomorrowCutoffOrThrow(date);
   } catch (err) {
-    return errorResponse(res, 400, err.code || "LOCKED", err.message );
+    return errorResponse(res, 400, err.code || "LOCKED", err.message);
   }
 
   if (sub.deliveryMode !== "delivery") {
-    return errorResponse(res, 400, "INVALID", "Delivery mode is not delivery" );
+    return errorResponse(res, 400, "INVALID", "Delivery mode is not delivery");
   }
 
   const windows = await getSettingValue("delivery_windows", []);
   if (deliveryWindow && windows.length && !windows.includes(deliveryWindow)) {
-    return errorResponse(res, 400, "INVALID", "Invalid delivery window" );
+    return errorResponse(res, 400, "INVALID", "Invalid delivery window");
   }
 
   const day = await SubscriptionDay.findOne({ subscriptionId: id, date }).lean();
   if (day && day.status !== "open") {
-    return errorResponse(res, 409, "LOCKED", "Day is locked" );
+    return errorResponse(res, 409, "LOCKED", "Day is locked");
   }
 
   const update = {};
@@ -8198,19 +8237,19 @@ async function transitionDay(req, res, toStatus) {
     if (!day) {
       await session.abortTransaction();
       session.endSession();
-      return errorResponse(res, 404, "NOT_FOUND", "Day not found" );
+      return errorResponse(res, 404, "NOT_FOUND", "Day not found");
     }
     if (!canTransition(day.status, toStatus)) {
       await session.abortTransaction();
       session.endSession();
-      return errorResponse(res, 409, "INVALID_TRANSITION", "Invalid state transition" );
+      return errorResponse(res, 409, "INVALID_TRANSITION", "Invalid state transition");
     }
 
     const sub = await Subscription.findById(id).populate("planId").session(session);
     if (!sub) {
       await session.abortTransaction();
       session.endSession();
-      return errorResponse(res, 404, "NOT_FOUND", "Subscription not found" );
+      return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
     }
 
     if (toStatus === "locked") {
@@ -8226,7 +8265,7 @@ async function transitionDay(req, res, toStatus) {
   } catch (err) {
     await session.abortTransaction();
     session.endSession();
-    return errorResponse(res, 500, "INTERNAL", "Transition failed" );
+    return errorResponse(res, 500, "INTERNAL", "Transition failed");
   }
 }
 
@@ -8245,7 +8284,7 @@ async function fulfillDay(req, res) {
           result.code === "INSUFFICIENT_CREDITS" ? 400 :
             result.code === "INVALID_TRANSITION" ? 409 :
               400;
-      return errorResponse(res, status, result.code, result.message );
+      return errorResponse(res, status, result.code, result.message);
     }
 
     await session.commitTransaction();
@@ -8254,7 +8293,7 @@ async function fulfillDay(req, res) {
   } catch (err) {
     await session.abortTransaction();
     session.endSession();
-    return errorResponse(res, 500, "INTERNAL", "Fulfillment failed" );
+    return errorResponse(res, 500, "INTERNAL", "Fulfillment failed");
   }
 }
 

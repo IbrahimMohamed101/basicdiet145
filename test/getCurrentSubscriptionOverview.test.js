@@ -56,7 +56,7 @@ function createQueryStub(result) {
   };
 }
 
-function createCanonicalSubscriptionDoc(userId, status = "active", createdAt = new Date()) {
+function createCanonicalSubscriptionDoc(userId, status = "active", createdAt = new Date(), { skipDaysUsed = 0, skipDaysLimit = 3 } = {}) {
   const planId = objectId();
   return {
     _id: objectId(),
@@ -74,6 +74,7 @@ function createCanonicalSubscriptionDoc(userId, status = "active", createdAt = n
     deliveryWindow: "8 AM - 11 AM",
     deliveryAddress: { city: "Riyadh" },
     deliverySlot: { type: "delivery", window: "8 AM - 11 AM", slotId: "slot-1" },
+    skipDaysUsed,
     premiumBalance: [],
     addonBalance: [],
     premiumSelections: [],
@@ -98,18 +99,30 @@ function createCanonicalSubscriptionDoc(userId, status = "active", createdAt = n
       },
       policySnapshot: {
         freezePolicy: { enabled: false, maxDays: 2, maxTimes: 1 },
+        skipPolicy: { enabled: true, maxDays: skipDaysLimit },
       },
     },
   };
 }
 
+function createPlanDoc({ skipDaysLimit = 3 } = {}) {
+  return {
+    _id: objectId(),
+    name: { ar: "الخطة الذهبية", en: "Gold Plan" },
+    skipPolicy: { enabled: true, maxDays: skipDaysLimit },
+    freezePolicy: { enabled: false, maxDays: 2, maxTimes: 1 },
+  };
+}
+
 test("getCurrentSubscriptionOverview - user has active subscription", async (t) => {
   const originalFindOne = Subscription.findOne;
+  const originalPlanFindById = Plan.findById;
   const originalFind = PremiumMeal.find;
   const originalAddonFind = Addon.find;
   
   t.after(() => {
     Subscription.findOne = originalFindOne;
+    Plan.findById = originalPlanFindById;
     PremiumMeal.find = originalFind;
     Addon.find = originalAddonFind;
   });
@@ -118,6 +131,7 @@ test("getCurrentSubscriptionOverview - user has active subscription", async (t) 
   const subscription = createCanonicalSubscriptionDoc(userId, "active");
   
   Subscription.findOne = () => createQueryStub(subscription);
+  Plan.findById = () => createQueryStub(createPlanDoc());
   PremiumMeal.find = () => createQueryStub([]);
   Addon.find = () => createQueryStub([]);
 
@@ -131,13 +145,50 @@ test("getCurrentSubscriptionOverview - user has active subscription", async (t) 
   assert.equal(res.payload.data.status, "active");
 });
 
+test("getCurrentSubscriptionOverview - includes skip usage fields for mobile overview", async (t) => {
+  const originalFindOne = Subscription.findOne;
+  const originalPlanFindById = Plan.findById;
+  const originalFind = PremiumMeal.find;
+  const originalAddonFind = Addon.find;
+
+  t.after(() => {
+    Subscription.findOne = originalFindOne;
+    Plan.findById = originalPlanFindById;
+    PremiumMeal.find = originalFind;
+    Addon.find = originalAddonFind;
+  });
+
+  const userId = objectId();
+  const subscription = createCanonicalSubscriptionDoc(userId, "active", new Date(), {
+    skipDaysUsed: 2,
+    skipDaysLimit: 5,
+  });
+
+  Subscription.findOne = () => createQueryStub(subscription);
+  Plan.findById = () => createQueryStub(createPlanDoc({ skipDaysLimit: 5 }));
+  PremiumMeal.find = () => createQueryStub([]);
+  Addon.find = () => createQueryStub([]);
+
+  const { req, res } = createReqRes({ userId });
+
+  await subscriptionController.getCurrentSubscriptionOverview(req, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.payload.ok, true);
+  assert.equal(res.payload.data.skipDaysUsed, 2);
+  assert.equal(res.payload.data.skipDaysLimit, 5);
+  assert.equal(res.payload.data.remainingSkipDays, 3);
+});
+
 test("getCurrentSubscriptionOverview - user has pending_payment subscription", async (t) => {
   const originalFindOne = Subscription.findOne;
+  const originalPlanFindById = Plan.findById;
   const originalFind = PremiumMeal.find;
   const originalAddonFind = Addon.find;
   
   t.after(() => {
     Subscription.findOne = originalFindOne;
+    Plan.findById = originalPlanFindById;
     PremiumMeal.find = originalFind;
     Addon.find = originalAddonFind;
   });
@@ -146,6 +197,7 @@ test("getCurrentSubscriptionOverview - user has pending_payment subscription", a
   const subscription = createCanonicalSubscriptionDoc(userId, "pending_payment");
   
   Subscription.findOne = () => createQueryStub(subscription);
+  Plan.findById = () => createQueryStub(createPlanDoc());
   PremiumMeal.find = () => createQueryStub([]);
   Addon.find = () => createQueryStub([]);
 
@@ -181,11 +233,13 @@ test("getCurrentSubscriptionOverview - user has no subscription", async (t) => {
 
 test("getCurrentSubscriptionOverview - multiple subscriptions returns most recent active", async (t) => {
   const originalFindOne = Subscription.findOne;
+  const originalPlanFindById = Plan.findById;
   const originalFind = PremiumMeal.find;
   const originalAddonFind = Addon.find;
   
   t.after(() => {
     Subscription.findOne = originalFindOne;
+    Plan.findById = originalPlanFindById;
     PremiumMeal.find = originalFind;
     Addon.find = originalAddonFind;
   });
@@ -198,6 +252,7 @@ test("getCurrentSubscriptionOverview - multiple subscriptions returns most recen
   const subscription = createCanonicalSubscriptionDoc(userId, "active", newerCreatedAt);
   
   Subscription.findOne = () => createQueryStub(subscription);
+  Plan.findById = () => createQueryStub(createPlanDoc());
   PremiumMeal.find = () => createQueryStub([]);
   Addon.find = () => createQueryStub([]);
 
@@ -234,11 +289,13 @@ test("getCurrentSubscriptionOverview - skips canceled/expired subscriptions", as
 
 test("getCurrentSubscriptionOverview - response structure conforms to standard envelope", async (t) => {
   const originalFindOne = Subscription.findOne;
+  const originalPlanFindById = Plan.findById;
   const originalFind = PremiumMeal.find;
   const originalAddonFind = Addon.find;
   
   t.after(() => {
     Subscription.findOne = originalFindOne;
+    Plan.findById = originalPlanFindById;
     PremiumMeal.find = originalFind;
     Addon.find = originalAddonFind;
   });
@@ -247,6 +304,7 @@ test("getCurrentSubscriptionOverview - response structure conforms to standard e
   const subscription = createCanonicalSubscriptionDoc(userId, "active");
   
   Subscription.findOne = () => createQueryStub(subscription);
+  Plan.findById = () => createQueryStub(createPlanDoc());
   PremiumMeal.find = () => createQueryStub([]);
   Addon.find = () => createQueryStub([]);
 
