@@ -7,6 +7,8 @@ const { startJobs } = require("./jobs");
 const { validateEnv } = require("./utils/validateEnv");
 const { logger } = require("./utils/logger");
 
+console.log(`NODE_ENV: ${process.env.NODE_ENV}, PORT: ${process.env.PORT}`);
+
 const PORT = process.env.PORT || 3000;
 
 if (process.env.NODE_ENV === 'production' && !process.env.PORT) {
