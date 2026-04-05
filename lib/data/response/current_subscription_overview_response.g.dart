@@ -90,6 +90,10 @@ _$CurrentSubscriptionOverviewDataResponseFromJson(Map<String, dynamic> json) =>
           .toList(),
       json['statusLabel'] as String?,
       json['deliveryModeLabel'] as String?,
+      json['validityEndDate'] as String?,
+      (json['skipDaysUsed'] as num?)?.toInt(),
+      (json['skipDaysLimit'] as num?)?.toInt(),
+      (json['remainingSkipDays'] as num?)?.toInt(),
     );
 
 Map<String, dynamic> _$CurrentSubscriptionOverviewDataResponseToJson(
@@ -109,6 +113,10 @@ Map<String, dynamic> _$CurrentSubscriptionOverviewDataResponseToJson(
   'addonsSummary': instance.addonsSummary,
   'statusLabel': instance.statusLabel,
   'deliveryModeLabel': instance.deliveryModeLabel,
+  'validityEndDate': instance.validityEndDate,
+  'skipDaysUsed': instance.skipDaysUsed,
+  'skipDaysLimit': instance.skipDaysLimit,
+  'remainingSkipDays': instance.remainingSkipDays,
 };
 
 CurrentSubscriptionOverviewResponse

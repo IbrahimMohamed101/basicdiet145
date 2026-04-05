@@ -104,6 +104,14 @@ class CurrentSubscriptionOverviewDataResponse {
   String? statusLabel;
   @JsonKey(name: "deliveryModeLabel")
   String? deliveryModeLabel;
+  @JsonKey(name: "validityEndDate")
+  String? validityEndDate;
+  @JsonKey(name: "skipDaysUsed")
+  int? skipDaysUsed;
+  @JsonKey(name: "skipDaysLimit")
+  int? skipDaysLimit;
+  @JsonKey(name: "remainingSkipDays")
+  int? remainingSkipDays;
 
   CurrentSubscriptionOverviewDataResponse(
     this.id,
@@ -120,6 +128,10 @@ class CurrentSubscriptionOverviewDataResponse {
     this.addonsSummary,
     this.statusLabel,
     this.deliveryModeLabel,
+    this.validityEndDate,
+    this.skipDaysUsed,
+    this.skipDaysLimit,
+    this.remainingSkipDays,
   );
 
   factory CurrentSubscriptionOverviewDataResponse.fromJson(Map<String, dynamic> json) =>
@@ -138,5 +150,6 @@ class CurrentSubscriptionOverviewResponse extends BaseResponse {
   factory CurrentSubscriptionOverviewResponse.fromJson(Map<String, dynamic> json) =>
       _$CurrentSubscriptionOverviewResponseFromJson(json);
 
+  @override
   Map<String, dynamic> toJson() => _$CurrentSubscriptionOverviewResponseToJson(this);
 }

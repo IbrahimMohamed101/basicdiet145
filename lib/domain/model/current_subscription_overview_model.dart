@@ -53,6 +53,10 @@ class CurrentSubscriptionOverviewDataModel {
   List<AddonSummaryModel> addonsSummary;
   String statusLabel;
   String deliveryModeLabel;
+  String validityEndDate;
+  int skipDaysUsed;
+  int skipDaysLimit;
+  int remainingSkipDays;
 
   CurrentSubscriptionOverviewDataModel(
     this.id,
@@ -69,6 +73,10 @@ class CurrentSubscriptionOverviewDataModel {
     this.addonsSummary,
     this.statusLabel,
     this.deliveryModeLabel,
+    this.validityEndDate,
+    this.skipDaysUsed,
+    this.skipDaysLimit,
+    this.remainingSkipDays,
   );
 }
 

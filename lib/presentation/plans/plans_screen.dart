@@ -151,7 +151,10 @@ class PlansScreen extends StatelessWidget {
                         subscriptionId: data.id,
                         selectedMealsPerDay: data.selectedMealsPerDay,
                         deliveryModeLabel: data.deliveryModeLabel,
-                        validityEndDate: data.endDate,
+                        validityEndDate: data.validityEndDate,
+                        skipDaysUsed: data.skipDaysUsed,
+                        skipDaysLimit: data.skipDaysLimit,
+                        remainingSkipDays: data.remainingSkipDays,
                       ),
                     ),
                   );

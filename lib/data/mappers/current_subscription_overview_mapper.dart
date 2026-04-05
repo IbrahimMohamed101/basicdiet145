@@ -54,6 +54,10 @@ extension CurrentSubscriptionOverviewDataResponseMapper on CurrentSubscriptionOv
       (this?.addonsSummary?.map((e) => e.toDomain()) ?? const Iterable.empty()).cast<AddonSummaryModel>().toList(),
       this?.statusLabel.orEmpty() ?? Constants.empty,
       this?.deliveryModeLabel.orEmpty() ?? Constants.empty,
+      this?.validityEndDate.orEmpty() ?? Constants.empty,
+      this?.skipDaysUsed.orZero() ?? Constants.zero,
+      this?.skipDaysLimit.orZero() ?? Constants.zero,
+      this?.remainingSkipDays.orZero() ?? Constants.zero,
     );
   }
 }
@@ -77,6 +81,10 @@ extension CurrentSubscriptionOverviewResponseMapper on CurrentSubscriptionOvervi
             [],
             Constants.empty,
             Constants.empty,
+            Constants.empty,
+            Constants.zero,
+            Constants.zero,
+            Constants.zero,
           ),
     );
   }

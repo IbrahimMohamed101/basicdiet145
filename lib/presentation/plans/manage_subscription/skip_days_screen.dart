@@ -11,7 +11,16 @@ import 'package:intl/intl.dart';
 enum SkipTypeSelection { singleDay, dateRange }
 
 class SkipDaysScreen extends StatefulWidget {
-  const SkipDaysScreen({super.key});
+  final int skipDaysUsed;
+  final int skipDaysLimit;
+  final int remainingSkipDays;
+
+  const SkipDaysScreen({
+    super.key,
+    required this.skipDaysUsed,
+    required this.skipDaysLimit,
+    required this.remainingSkipDays,
+  });
 
   @override
   State<SkipDaysScreen> createState() => _SkipDaysScreenState();
@@ -93,7 +102,7 @@ class _SkipDaysScreenState extends State<SkipDaysScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  Strings.skipLimit,
+                  "${Strings.skipLimit} ${widget.skipDaysUsed}/${widget.skipDaysLimit}",
                   style: getRegularTextStyle(
                     color: const Color(0xFF1E3A8A), // Dark blue
                     fontSize: FontSizeManager.s14.sp,
@@ -101,7 +110,7 @@ class _SkipDaysScreenState extends State<SkipDaysScreen> {
                 ),
                 Gap(AppSize.s4.h),
                 Text(
-                  Strings.skipsRemaining,
+                  "You have ${widget.remainingSkipDays} ${Strings.skipsRemaining}",
                   style: getRegularTextStyle(
                     color: const Color(0xFF3B82F6), // Slightly lighter blue text
                     fontSize: FontSizeManager.s14.sp,

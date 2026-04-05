@@ -252,8 +252,8 @@ class Strings {
   static const String cancel = "Cancel";
 
   // Skip Days Screen
-  static const String skipLimit = "Skip Limit: 2/5";
-  static const String skipsRemaining = "You have 3 skips remaining this month";
+  static const String skipLimit = "Skip Limit:";
+  static const String skipsRemaining = "skips remaining this month";
   static const String skipType = "Skip Type";
   static const String singleDay = "Single Day";
   static const String skipOneDay = "Skip one day";

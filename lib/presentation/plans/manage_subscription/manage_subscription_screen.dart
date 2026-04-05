@@ -10,7 +10,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:gap/gap.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:basic_diet/presentation/plans/manage_subscription/freeze_subscription.dart';
-import 'package:basic_diet/presentation/plans/manage_subscription/skip_days.dart';
+import 'package:basic_diet/presentation/plans/manage_subscription/skip_days_screen.dart';
 import 'package:basic_diet/presentation/plans/manage_subscription/delivery_settings.dart';
 
 class ManageSubscriptionScreen extends StatelessWidget {
@@ -18,6 +18,9 @@ class ManageSubscriptionScreen extends StatelessWidget {
   final int selectedMealsPerDay;
   final String deliveryModeLabel;
   final String validityEndDate;
+  final int skipDaysUsed;
+  final int skipDaysLimit;
+  final int remainingSkipDays;
 
   const ManageSubscriptionScreen({
     super.key,
@@ -25,6 +28,9 @@ class ManageSubscriptionScreen extends StatelessWidget {
     required this.selectedMealsPerDay,
     required this.deliveryModeLabel,
     required this.validityEndDate,
+    required this.skipDaysUsed,
+    required this.skipDaysLimit,
+    required this.remainingSkipDays,
   });
 
   @override
@@ -100,7 +106,11 @@ class ManageSubscriptionScreen extends StatelessWidget {
               onTap: () {
                 Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (context) => const SkipDaysScreen(),
+                    builder: (context) => SkipDaysScreen(
+                      skipDaysUsed: skipDaysUsed,
+                      skipDaysLimit: skipDaysLimit,
+                      remainingSkipDays: remainingSkipDays,
+                    ),
                   ),
                 );
               },
