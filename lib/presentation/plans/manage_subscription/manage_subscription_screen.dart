@@ -9,6 +9,9 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:gap/gap.dart';
 import 'package:easy_localization/easy_localization.dart';
+import 'package:basic_diet/presentation/plans/manage_subscription/freeze_subscription.dart';
+import 'package:basic_diet/presentation/plans/manage_subscription/skip_days.dart';
+import 'package:basic_diet/presentation/plans/manage_subscription/delivery_settings.dart';
 
 class ManageSubscriptionScreen extends StatelessWidget {
   final int selectedMealsPerDay;
@@ -76,21 +79,39 @@ class ManageSubscriptionScreen extends StatelessWidget {
               icon: IconAssets.freeze,
               title: Strings.freezeSubscription,
               subtitle: Strings.freezeSubscriptionDesc,
-              onTap: () {},
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => const FreezeSubscriptionScreen(),
+                  ),
+                );
+              },
             ),
             Gap(AppSize.s12.h),
             _buildActionItem(
               icon: IconAssets.skip,
               title: Strings.skipDays,
               subtitle: Strings.skipDaysDesc,
-              onTap: () {},
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => const SkipDaysScreen(),
+                  ),
+                );
+              },
             ),
             Gap(AppSize.s12.h),
             _buildActionItem(
               icon: IconAssets.delivery,
               title: Strings.deliverySettings,
               subtitle: Strings.deliverySettingsDesc,
-              onTap: () {},
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => const DeliverySettingsScreen(),
+                  ),
+                );
+              },
             ),
             Gap(AppSize.s24.h),
             _buildDangerZone(),

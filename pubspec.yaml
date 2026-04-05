@@ -26,6 +26,7 @@ dependencies:
   get_it: ^9.2.1
   go_router: any
   internet_connection_checker: ^3.0.1
+  intl: ^0.20.2
   json_annotation: ^4.11.0
   pretty_dio_logger: ^1.4.0
   retrofit: ^4.9.2

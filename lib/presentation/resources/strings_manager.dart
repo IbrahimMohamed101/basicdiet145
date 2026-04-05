@@ -224,12 +224,56 @@ class Strings {
   static const String deliveryMode = "Delivery mode";
   static const String subscriptionActions = "Subscription Actions";
   static const String freezeSubscription = "Freeze Subscription";
-  static const String freezeSubscriptionDesc = "Pause your subscription temporarily";
+  static const String freezeSubscriptionDesc =
+      "Pause your subscription temporarily";
   static const String skipDays = "Skip Days";
   static const String skipDaysDesc = "Skip specific days or date range";
   static const String deliverySettings = "Delivery Settings";
   static const String deliverySettingsDesc = "Update address and delivery time";
   static const String dangerZone = "Danger Zone";
-  static const String dangerZoneDesc = "Canceling your subscription will stop all future deliveries";
+  static const String dangerZoneDesc =
+      "Canceling your subscription will stop all future deliveries";
   static const String cancelSubscription = "Cancel Subscription";
+
+  // Freeze Subscription Screen
+  static const String freezingYourSubscriptionWill =
+      "Freezing your subscription will:";
+  static const String pauseAllMealDeliveries =
+      "• Pause all meal deliveries during the freeze period";
+  static const String extendYourSubscriptionEndDate =
+      "• Extend your subscription end date automatically";
+  static const String keepYourMealCreditsIntact =
+      "• Keep your meal credits intact";
+  static const String numberOfDays = "Number of Days";
+  static const String impactSummary = "Impact Summary";
+  static const String freezePeriod = "Freeze period";
+  static const String currentEndDate = "Current end date";
+  static const String newEndDate = "New end date";
+  static const String cancel = "Cancel";
+
+  // Skip Days Screen
+  static const String skipLimit = "Skip Limit: 2/5";
+  static const String skipsRemaining = "You have 3 skips remaining this month";
+  static const String skipType = "Skip Type";
+  static const String singleDay = "Single Day";
+  static const String skipOneDay = "Skip one day";
+  static const String dateRange = "Date Range";
+  static const String skipMultipleDays = "Skip multiple days";
+  static const String importantInformation = "Important Information";
+  static const String skipInfo1 =
+      "• Skipped days don't count towards your meal quota";
+  static const String skipInfo2 =
+      "• Your subscription end date will not be extended";
+  static const String skipInfo3 =
+      "• You can unskip days before they are locked";
+
+  // Delivery Settings Screen
+  static const String streetAddressLabel = "Street Address";
+  static const String areaLabel = "Area";
+  static const String cityLabel = "City";
+  static const String useCurrentLocation = "Use Current Location";
+  static const String deliveryTimePreference = "Delivery Time Preference";
+  static const String deliveryInstructionsOptional = "Delivery Instructions (Optional)";
+  static const String deliveryInstructionsHint = "e.g., Ring the doorbell, Leave at door, etc.";
+  static const String saveChanges = "Save Changes";
 }
