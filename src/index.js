@@ -20,8 +20,8 @@ if (!envCheck.ok) {
 connectDb()
   .then(async () => {
     startJobs();
-    server.listen(PORT, () => {
-      logger.info("API listening", { port: PORT });
+    server.listen(PORT, "0.0.0.0", () => {
+      logger.info("API listening", { port: PORT, host: "0.0.0.0" });
     });
   })
   .catch((err) => {
