@@ -9,12 +9,12 @@ const { logger } = require("./utils/logger");
 
 console.log(`NODE_ENV: ${process.env.NODE_ENV}, PORT: ${process.env.PORT}`);
 
-const PORT = process.env.PORT || 3000;
-
-if (process.env.NODE_ENV === 'production' && !process.env.PORT) {
-  console.error('PORT environment variable is required in production');
+if (!process.env.PORT) {
+  console.error('PORT environment variable is required');
   process.exit(1);
 }
+
+const PORT = process.env.PORT;
 
 const app = createApp();
 const server = createServer(app);
