@@ -38,15 +38,31 @@ function mountSwaggerUi(app, { uiPath, rawPath, filePath }) {
   );
 }
 
+function resolveTrustProxySetting() {
+  const raw = String(process.env.TRUST_PROXY || "").trim();
+  if (raw) {
+    if (raw === "true") return 1;
+    if (raw === "false") return false;
+    const numeric = Number(raw);
+    if (!Number.isNaN(numeric)) {
+      return numeric;
+    }
+  }
+
+  const isRender = process.env.RENDER === "true" || Boolean(process.env.RENDER_EXTERNAL_URL);
+  if (isRender) {
+    return 1;
+  }
+
+  return null;
+}
+
 function createApp() {
   const app = express();
 
-  const trustProxy = process.env.TRUST_PROXY;
-  if (trustProxy) {
-    const value = trustProxy === "true" ? 1 : Number(trustProxy);
-    if (!Number.isNaN(value)) {
-      app.set("trust proxy", value);
-    }
+  const trustProxySetting = resolveTrustProxySetting();
+  if (trustProxySetting !== null) {
+    app.set("trust proxy", trustProxySetting);
   }
 
   app.use(helmet());

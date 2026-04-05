@@ -28,7 +28,7 @@ function validateEnv() {
 
   /* ── OTP provider requirement ─────────────────────────────────────── */
   const testAuthActive = isTestAuthEnabled();
-  const shouldRequireOtpProvider = isProduction ? true : !testAuthActive;
+  const shouldRequireOtpProvider = !testAuthActive;
 
   const cloudinaryKeys = [
     "CLOUDINARY_CLOUD_NAME",
@@ -87,6 +87,7 @@ function validateEnv() {
     if (!/^\d{6}$/.test(testOtpCode)) invalid.push("OTP_TEST_CODE");
 
     const testOtpPhone = String(process.env.OTP_TEST_PHONE || "").trim();
+    if (!testOtpPhone) invalid.push("OTP_TEST_PHONE");
     if (testOtpPhone && !/^\+[1-9]\d{7,14}$/.test(testOtpPhone)) invalid.push("OTP_TEST_PHONE");
   }
 

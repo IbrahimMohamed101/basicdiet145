@@ -3,6 +3,7 @@ const Otp = require("../models/Otp");
 const { sendWhatsappMessage } = require("./twilioWhatsappService");
 const { ApiError } = require("../utils/apiError");
 const { isTestAuthEnabled, getTestOtpCode, getTestOtpPhone } = require("../utils/security");
+const { logger } = require("../utils/logger");
 
 const E164_REGEX = /^\+[1-9]\d{7,14}$/;
 const OTP_CONTEXTS = new Set(["generic", "app_login", "app_register"]);
@@ -22,9 +23,11 @@ function getOtpConfig() {
  * Returns { code, phone } when the unified test auth mode is active
  * AND the target phone is allowed, or `null` otherwise.
  *
- * Replaces the old DEV_OTP_BYPASS + TEST_OTP_BYPASS dual-path logic
- * with ONE mechanism gated by:
- *   NODE_ENV !== "production" && OTP_TEST_MODE === "true" && ALLOW_TEST_AUTH === "true"
+ * Test auth is only allowed when:
+ *   OTP_TEST_MODE === "true" &&
+ *   ALLOW_TEST_AUTH === "true" &&
+ *   (NODE_ENV !== "production" || ALLOW_STAGING_TEST_AUTH === "true")
+ * and only for the single configured OTP_TEST_PHONE.
  */
 function resolveTestOtpForPhone(phoneE164) {
   if (!isTestAuthEnabled()) return null;
@@ -33,10 +36,22 @@ function resolveTestOtpForPhone(phoneE164) {
   if (!testCode) return null;
 
   const testPhone = getTestOtpPhone();
-  // If a specific test phone is configured, only that phone gets the bypass
-  if (testPhone && testPhone !== phoneE164) return null;
+  if (!testPhone || testPhone !== phoneE164) return null;
 
   return { code: testCode };
+}
+
+function matchesConfiguredTestOtp(phoneE164, otp) {
+  const testOtp = resolveTestOtpForPhone(phoneE164);
+  if (!testOtp) return false;
+  return testOtp.code === otp;
+}
+
+function logTestOtpUse(phoneE164, context) {
+  logger.warn("⚠️ TEST OTP MODE ACTIVE (STAGING ONLY)", {
+    phoneE164,
+    context,
+  });
 }
 
 /* ── normalisation helpers ────────────────────────────────────────────── */
@@ -132,6 +147,10 @@ async function requestOtpForPhone(phoneE164, options = {}) {
   const otp = useTestMode ? testOtp.code : generateOtpCode();
   const expiresAt = new Date(now.getTime() + ttlMinutes * 60 * 1000);
 
+  if (useTestMode) {
+    logTestOtpUse(phone, "request");
+  }
+
   if (!useTestMode) {
     await sendWhatsappMessage({
       toPhoneE164: phone,
@@ -170,6 +189,10 @@ async function verifyOtpCode({ phoneE164, otp }) {
   const code = assertValidOtpCode(otp);
 
   const otpRecord = await Otp.findOne({ phone });
+  if (!otpRecord && matchesConfiguredTestOtp(phone, code)) {
+    logTestOtpUse(phone, "verify");
+    return { phone, context: "generic", pendingProfile: null };
+  }
   if (!otpRecord) {
     throw new ApiError({
       status: 400,
@@ -199,6 +222,14 @@ async function verifyOtpCode({ phoneE164, otp }) {
 
   const candidateHash = hashOtp(phone, code);
   if (candidateHash !== otpRecord.codeHash) {
+    if (matchesConfiguredTestOtp(phone, code)) {
+      logTestOtpUse(phone, "verify");
+      const context = normalizeOtpContext(otpRecord.context);
+      const pendingProfile = normalizePendingProfile(otpRecord.pendingProfile);
+      await Otp.deleteOne({ _id: otpRecord._id });
+      return { phone, context, pendingProfile };
+    }
+
     const attemptsLeft = Math.max(otpRecord.attemptsLeft - 1, 0);
     if (attemptsLeft === 0) {
       await Otp.deleteOne({ _id: otpRecord._id });

@@ -76,35 +76,36 @@ const LEGACY_BYPASS_FLAGS = [
 
 /* ── OTP test mode ────────────────────────────────────────────────────── */
 
-function isUnifiedTestAuthEnabled() {
+function isStagingTestAuthAllowed() {
+  return process.env.ALLOW_STAGING_TEST_AUTH === "true";
+}
+
+function hasRequiredTestAuthFlags() {
   return (
     process.env.OTP_TEST_MODE === "true" &&
     process.env.ALLOW_TEST_AUTH === "true"
   );
 }
 
-function isLegacyTestAuthEnabled() {
-  return process.env.TEST_OTP_BYPASS === "true";
-}
-
 function isTestAuthEnabled() {
-  if (process.env.NODE_ENV === "production") {
-    return false;
-  }
-  // Keep supporting the old TEST_OTP_* envs in non-production so older
-  // local .env files continue to work after the unified flag migration.
-  return isUnifiedTestAuthEnabled() || isLegacyTestAuthEnabled();
+  return (
+    hasRequiredTestAuthFlags() &&
+    (
+      process.env.NODE_ENV !== "production" ||
+      isStagingTestAuthAllowed()
+    )
+  );
 }
 
 function getTestOtpCode() {
   if (!isTestAuthEnabled()) return null;
-  const code = String(process.env.OTP_TEST_CODE || process.env.TEST_OTP_CODE || "000000").trim();
+  const code = String(process.env.OTP_TEST_CODE || "").trim();
   return /^\d{6}$/.test(code) ? code : "000000";
 }
 
 function getTestOtpPhone() {
   if (!isTestAuthEnabled()) return null;
-  const phone = String(process.env.OTP_TEST_PHONE || process.env.TEST_OTP_PHONE || "").trim();
+  const phone = String(process.env.OTP_TEST_PHONE || "").trim();
   return /^\+[1-9]\d{7,14}$/.test(phone) ? phone : null;
 }
 
@@ -116,15 +117,29 @@ function assertNoTestFlagsInProduction() {
   }
 
   const violations = [];
-  if (process.env.OTP_TEST_MODE === "true") {
-    violations.push("OTP_TEST_MODE must not be 'true' in production");
+  const stagingAllowed = isStagingTestAuthAllowed();
+  if (!stagingAllowed && process.env.OTP_TEST_MODE === "true") {
+    violations.push("OTP_TEST_MODE must not be 'true' in production without ALLOW_STAGING_TEST_AUTH");
   }
-  if (process.env.ALLOW_TEST_AUTH === "true") {
-    violations.push("ALLOW_TEST_AUTH must not be 'true' in production");
+  if (!stagingAllowed && process.env.ALLOW_TEST_AUTH === "true") {
+    violations.push("ALLOW_TEST_AUTH must not be 'true' in production without ALLOW_STAGING_TEST_AUTH");
   }
+
   for (const flag of LEGACY_BYPASS_FLAGS) {
-    if (process.env[flag] === "true") {
+    if (process.env[flag]) {
       violations.push(`Legacy flag ${flag} must not be set in production`);
+    }
+  }
+
+  if (isTestAuthEnabled()) {
+    const testCode = String(process.env.OTP_TEST_CODE || "").trim();
+    if (!/^\d{6}$/.test(testCode)) {
+      violations.push("Staging test auth requires a valid 6-digit OTP_TEST_CODE");
+    }
+
+    const testPhone = String(process.env.OTP_TEST_PHONE || "").trim();
+    if (!/^\+[1-9]\d{7,14}$/.test(testPhone)) {
+      violations.push("Staging test auth requires a valid OTP_TEST_PHONE");
     }
   }
 
@@ -174,6 +189,7 @@ module.exports = {
   WEAK_DEFAULT_PASSWORDS,
   LEGACY_BYPASS_FLAGS,
   isTestAuthEnabled,
+  isStagingTestAuthAllowed,
   getTestOtpCode,
   getTestOtpPhone,
   assertNoTestFlagsInProduction,
