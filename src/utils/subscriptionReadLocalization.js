@@ -145,13 +145,23 @@ function localizeTimelineReadPayload(timeline, lang) {
   if (!timeline || typeof timeline !== "object") return timeline;
 
   return {
-    ...timeline,
+    subscriptionId: timeline.subscriptionId,
+    dailyMealsRequired: timeline.dailyMealsConfig?.required || 3,
     days: Array.isArray(timeline.days)
-      ? timeline.days.map((day) => ({
-        ...day,
-        statusLabel: resolveReadLabel("timelineStatuses", day.status, lang),
-        sourceLabel: resolveReadLabel("timelineSources", day.source, lang),
-      }))
+      ? timeline.days.map((day) => {
+        const weekdayShort = day.calendar?.weekday?.shortLabels?.[lang] || "";
+        const monthShort = day.calendar?.month?.shortLabels?.[lang] || "";
+        
+        return {
+          date: day.date,
+          day: weekdayShort,
+          month: monthShort,
+          dayNumber: day.calendar?.dayOfMonth || 0,
+          status: day.status,
+          selectedMeals: day.meals?.selected || 0,
+          requiredMeals: day.meals?.required || 0,
+        };
+      })
       : [],
   };
 }

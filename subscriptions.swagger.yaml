@@ -362,10 +362,10 @@ components:
           example: "2026-03-21"
         status:
           type: string
-          enum: [planned, locked, delivered, frozen, skipped, extension]
+          enum: [open, planned, locked, delivered, frozen, skipped, extension]
         statusLabel:
           type: string
-          example: Planned
+          example: Open
         source:
           type: string
           enum: [base, freeze_compensation, skip_compensation]
@@ -376,6 +376,87 @@ components:
           type: boolean
         isExtension:
           type: boolean
+        calendar:
+          type: object
+          properties:
+            year:
+              type: integer
+              example: 2026
+            dayOfMonth:
+              type: integer
+              example: 21
+            weekday:
+              type: object
+              properties:
+                index:
+                  type: integer
+                  example: 6
+                key:
+                  type: string
+                  example: saturday
+                labels:
+                  type: object
+                  properties:
+                    ar:
+                      type: string
+                      example: السبت
+                    en:
+                      type: string
+                      example: Saturday
+                shortLabels:
+                  type: object
+                  properties:
+                    ar:
+                      type: string
+                      example: السبت
+                    en:
+                      type: string
+                      example: Sat
+            month:
+              type: object
+              properties:
+                number:
+                  type: integer
+                  example: 3
+                key:
+                  type: string
+                  example: march
+                labels:
+                  type: object
+                  properties:
+                    ar:
+                      type: string
+                      example: مارس
+                    en:
+                      type: string
+                      example: March
+                shortLabels:
+                  type: object
+                  properties:
+                    ar:
+                      type: string
+                      example: مارس
+                    en:
+                      type: string
+                      example: MAR
+            monthYearLabels:
+              type: object
+              properties:
+                ar:
+                  type: string
+                  example: مارس 2026
+                en:
+                  type: string
+                  example: March 2026
+            fullDateLabels:
+              type: object
+              properties:
+                ar:
+                  type: string
+                  example: السبت، ٢١ مارس ٢٠٢٦
+                en:
+                  type: string
+                  example: Saturday, March 21, 2026
         meals:
           type: object
           properties:
@@ -388,6 +469,48 @@ components:
             isSatisfied:
               type: boolean
               example: true
+        dailyMeals:
+          type: object
+          properties:
+            selected:
+              type: integer
+              example: 1
+            required:
+              type: integer
+              example: 2
+            remaining:
+              type: integer
+              example: 1
+            isComplete:
+              type: boolean
+              example: false
+            titleLabels:
+              type: object
+              properties:
+                ar:
+                  type: string
+                  example: الوجبات اليومية
+                en:
+                  type: string
+                  example: Daily Meals
+            requiredLabels:
+              type: object
+              properties:
+                ar:
+                  type: string
+                  example: 2 وجبات يوميا
+                en:
+                  type: string
+                  example: 2 meals/day
+            summaryLabels:
+              type: object
+              properties:
+                ar:
+                  type: string
+                  example: 1 من 2 مختارة
+                en:
+                  type: string
+                  example: 1 of 2 selected
     SubscriptionTimeline:
       type: object
       properties:
@@ -411,6 +534,80 @@ components:
               type: integer
             skipCompensationDays:
               type: integer
+        months:
+          type: array
+          items:
+            type: object
+            properties:
+              key:
+                type: string
+                example: "2026-03"
+              year:
+                type: integer
+                example: 2026
+              month:
+                type: object
+                properties:
+                  number:
+                    type: integer
+                    example: 3
+                  key:
+                    type: string
+                    example: march
+                  labels:
+                    type: object
+                    properties:
+                      ar:
+                        type: string
+                        example: مارس
+                      en:
+                        type: string
+                        example: March
+                  shortLabels:
+                    type: object
+                    properties:
+                      ar:
+                        type: string
+                        example: مارس
+                      en:
+                        type: string
+                        example: MAR
+              monthYearLabels:
+                type: object
+                properties:
+                  ar:
+                    type: string
+                    example: مارس 2026
+                  en:
+                    type: string
+                    example: March 2026
+              dayCount:
+                type: integer
+                example: 11
+        dailyMealsConfig:
+          type: object
+          properties:
+            required:
+              type: integer
+              example: 3
+            labels:
+              type: object
+              properties:
+                ar:
+                  type: string
+                  example: 3 وجبات يوميا
+                en:
+                  type: string
+                  example: 3 meals/day
+            titleLabels:
+              type: object
+              properties:
+                ar:
+                  type: string
+                  example: الوجبات اليومية
+                en:
+                  type: string
+                  example: Daily Meals
         days:
           type: array
           items:

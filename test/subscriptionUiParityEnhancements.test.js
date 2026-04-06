@@ -4,6 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const mongoose = require("mongoose");
 
+const dateUtils = require("../src/utils/date");
 const subscriptionController = require("../src/controllers/subscriptionController");
 const {
   buildSubscriptionOperationsMeta,
@@ -14,7 +15,6 @@ const SubscriptionDay = require("../src/models/SubscriptionDay");
 const SubscriptionModel = require("../src/models/Subscription");
 const Setting = require("../src/models/Setting");
 const ActivityLog = require("../src/models/ActivityLog");
-const dateUtils = require("../src/utils/date");
 
 function objectId() {
   return new mongoose.Types.ObjectId();
@@ -237,8 +237,14 @@ test("buildFreezePreview matches freeze write semantics without mutation", async
       async getCutoffTime() {
         return "23:59";
       },
+      getTodayKSADate() {
+        return "2026-04-02";
+      },
       getTomorrowKSADate() {
         return "2026-04-03";
+      },
+      isOnOrAfterTodayKSADate(value) {
+        return dateUtils.isOnOrAfterKSADate(value, this.getTodayKSADate());
       },
     },
   });

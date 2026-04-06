@@ -1,6 +1,5 @@
 const crypto = require("crypto");
 const mongoose = require("mongoose");
-const { addDays } = require("date-fns");
 const Order = require("../models/Order");
 const Meal = require("../models/Meal");
 const Payment = require("../models/Payment");
@@ -11,6 +10,7 @@ const { notifyOrderUser } = require("../services/orderNotificationService");
 const { buildCustomSaladSnapshot } = require("../services/customSaladService");
 const { buildCustomMealSnapshot } = require("../services/customMealService");
 const {
+  addDaysToKSADateString,
   getTomorrowKSADate,
   isBeforeCutoff,
   isOnOrAfterKSADate,
@@ -30,11 +30,6 @@ const TERMINAL_PAYMENT_FAILURE_STATUSES = new Set(["failed", "canceled", "expire
 async function getSettingValue(key, fallback) {
   const setting = await Setting.findOne({ key }).lean();
   return setting ? setting.value : fallback;
-}
-
-function addDaysToKSADateString(dateStr, days) {
-  const base = new Date(`${dateStr}T00:00:00+03:00`);
-  return toKSADateString(addDays(base, days));
 }
 
 function normalizeCurrencyValue(value) {

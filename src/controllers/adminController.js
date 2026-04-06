@@ -708,7 +708,7 @@ function normalizeOptionalFullName(value) {
 
 function buildKsaDayUtcRange(dateStr) {
   const start = new Date(`${dateStr}T00:00:00+03:00`);
-  const end = new Date(`${addDaysToKSADateString(dateStr, 1)}T00:00:00+03:00`);
+  const end = new Date(`${dateUtils.addDaysToKSADateString(dateStr, 1)}T00:00:00+03:00`);
   return { start, end };
 }
 
@@ -787,7 +787,7 @@ function parseDateFilterOrNull(value, { bound = "start" } = {}) {
   if (bound === "end" && DATE_ONLY_REGEX.test(normalized)) {
     return {
       operator: "$lt",
-      value: new Date(`${addDaysToKSADateString(normalized, 1)}T00:00:00+03:00`),
+      value: new Date(`${dateUtils.addDaysToKSADateString(normalized, 1)}T00:00:00+03:00`),
     };
   }
   return {
@@ -971,10 +971,6 @@ function buildProviderInvoiceSummary(providerInvoice, payment) {
     updatedAt: providerInvoice.updated_at || providerInvoice.updatedAt || null,
     attemptsCount: Array.isArray(providerInvoice.payments) ? providerInvoice.payments.length : 0,
   };
-}
-
-function addDaysToKSADateString(dateStr, days) {
-  return dateUtils.toKSADateString(addDays(new Date(`${dateStr}T00:00:00+03:00`), days));
 }
 
 function collectSubscriptionCatalogIds(subscriptions) {
@@ -1328,7 +1324,7 @@ function buildDateRangeInclusive(startDate, endDate) {
   }
 
   const dates = [];
-  for (let current = startDate; current <= endDate; current = addDaysToKSADateString(current, 1)) {
+  for (let current = startDate; current <= endDate; current = dateUtils.addDaysToKSADateString(current, 1)) {
     dates.push(current);
   }
   return dates;
@@ -3756,7 +3752,7 @@ async function extendSubscriptionAdmin(req, res) {
     const newBaseEndDate = addDays(baseEndDate, days);
     const newValidityEndDate = addDays(newBaseEndDate, frozenDaysCount);
     const newValidityEndStr = dateUtils.toKSADateString(newValidityEndDate);
-    const datesToEnsure = buildDateRangeInclusive(addDaysToKSADateString(oldBaseEndStr, 1), newValidityEndStr);
+    const datesToEnsure = buildDateRangeInclusive(dateUtils.addDaysToKSADateString(oldBaseEndStr, 1), newValidityEndStr);
 
     if (datesToEnsure.length > 0) {
       const existingDays = await SubscriptionDay.find({

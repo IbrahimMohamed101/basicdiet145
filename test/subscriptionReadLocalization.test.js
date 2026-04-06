@@ -513,7 +513,7 @@ test("getCheckoutDraftStatus adds localized read labels without changing checkou
   assert.equal(res.payload.data.totals.totalHalala, 22000);
 });
 
-test("getSubscriptionTimeline keeps machine fields stable and adds localized labels", async (t) => {
+test("getSubscriptionTimeline returns UI-ready statuses with localized labels", async (t) => {
   const originalSubscriptionFindById = Subscription.findById;
   const originalSubscriptionDayFind = SubscriptionDay.find;
   t.after(() => {
@@ -529,10 +529,20 @@ test("getSubscriptionTimeline keeps machine fields stable and adds localized lab
     startDate: new Date("2026-03-19T21:00:00.000Z"),
     endDate: new Date("2026-03-22T21:00:00.000Z"),
     validityEndDate: new Date("2026-03-22T21:00:00.000Z"),
+    selectedMealsPerDay: 2,
   });
   SubscriptionDay.find = () => createQueryStub([
-    { date: "2026-03-21", status: "open" },
-    { date: "2026-03-22", status: "fulfilled" },
+    {
+      date: "2026-03-21",
+      status: "open",
+      planningMeta: {
+        selectedTotalMealCount: 1,
+        requiredMealCount: 2,
+        isExactCountSatisfied: false,
+      },
+    },
+    { date: "2026-03-22", status: "open" },
+    { date: "2026-03-23", status: "fulfilled" },
   ]);
 
   const { req, res } = createReqRes({
@@ -544,10 +554,9 @@ test("getSubscriptionTimeline keeps machine fields stable and adds localized lab
   await subscriptionController.getSubscriptionTimeline(req, res);
 
   assert.equal(res.statusCode, 200);
-  assert.equal(res.payload.data.days[0].status, "planned");
-  assert.equal(res.payload.data.days[0].statusLabel, "مخطط");
-  assert.equal(res.payload.data.days[0].source, "base");
-  assert.equal(res.payload.data.days[0].sourceLabel, "أساسي");
+  assert.equal(res.payload.data.days[0].status, "open");
+  assert.equal(res.payload.data.days[1].status, "planned");
+  assert.equal(res.payload.data.days[2].status, "fulfilled");
 });
 
 test("getSubscriptionRenewalSeed adds localized display companions with safe fallback", async () => {

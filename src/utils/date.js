@@ -23,9 +23,25 @@ function getTomorrowKSADate() {
     return toKSADateString(addDays(getCurrentKSA(), 1));
 }
 
+function buildUtcDateFromKsaDateString(dateStr) {
+    const [year, month, day] = String(dateStr || "").split("-").map(Number);
+    return new Date(Date.UTC(year, month - 1, day));
+}
+
+function formatUtcDateAsDateString(date) {
+    const year = date.getUTCFullYear();
+    const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+    const day = String(date.getUTCDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+}
+
 function addDaysToKSADateString(dateStr, days) {
-    const base = new Date(`${dateStr}T00:00:00+03:00`);
-    return toKSADateString(addDays(base, days));
+    const base = buildUtcDateFromKsaDateString(dateStr);
+    if (Number.isNaN(base.getTime())) {
+        return "";
+    }
+    base.setUTCDate(base.getUTCDate() + Number(days || 0));
+    return formatUtcDateAsDateString(base);
 }
 
 function isBeforeCutoff(cutoffTimeStr) {

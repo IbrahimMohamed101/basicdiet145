@@ -22,6 +22,7 @@ module.exports = {
       skipped: "Skipped",
     },
     timelineStatuses: {
+      open: "Open",
       planned: "Planned",
       locked: "Locked",
       delivered: "Delivered",

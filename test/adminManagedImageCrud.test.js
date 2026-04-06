@@ -159,13 +159,16 @@ test("POST /api/admin/premium-meals uploads the image file and stores the hosted
   assert.equal(payload.status, true);
   assert.deepEqual(payload.data, { id: "premium-1" });
   assert.deepEqual(capturedPayload, {
-    name: { en: "Garlic Butter Salmon", ar: "سلمون بالزبدة والثوم" },
-    description: { en: "Premium salmon meal", ar: "وجبة سلمون بريميوم" },
+    name: { ar: "سلمون بالزبدة والثوم", en: "Garlic Butter Salmon" },
+    description: { ar: "وجبة سلمون بريميوم", en: "Premium salmon meal" },
     imageUrl: "https://res.cloudinary.com/demo/image/upload/v1/basicdiet/premium-meals/salmon.png",
     currency: "SAR",
     extraFeeHalala: 2500,
     isActive: false,
     sortOrder: 7,
+    proteinGrams: 33,
+    carbGrams: 37,
+    fatGrams: 19,
   });
   assert.equal(uploadInput.folder, "premium-meals");
   assert.equal(uploadInput.originalFilename, "salmon.png");

@@ -178,11 +178,8 @@ test("getSubscriptionTimeline returns timeline payload and 200 status", async (t
   assert.equal(res.statusCode, 200);
   assert.equal(res.payload.ok, true);
   assert.equal(res.payload.data.subscriptionId, String(subscription._id));
-  // Dates are normalized to KSA timezone (UTC+3)
-  assert.equal(res.payload.data.validity.startDate, "2026-03-20");
-  assert.equal(res.payload.data.validity.endDate, "2026-03-23");
   assert.equal(res.payload.data.days.length, 4);
-  assert.equal(res.payload.data.days[0].status, "planned");
+  assert.equal(res.payload.data.days[0].status, "open");
   assert.equal(res.payload.data.days[2].status, "delivered");
 });
 

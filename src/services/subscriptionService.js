@@ -4,6 +4,7 @@ const SubscriptionDay = require("../models/SubscriptionDay");
 const { createLocalizedError } = require("../utils/errorLocalization");
 const { toKSADateString, addDaysToKSADateString } = require("../utils/date");
 const { resolveMealsPerDay } = require("../utils/subscriptionDaySelectionSync");
+const { formatMealsLabel } = require("../utils/subscriptionCatalog");
 const { buildProjectedDayEntry } = require("./recurringAddonService");
 const { resolveSubscriptionSkipPolicy } = require("./subscriptionContractReadService");
 
@@ -435,6 +436,199 @@ async function applyOperationalSkipForDate({ sub, date, session }) {
   return { status: "skipped", day: dayUpdateResult };
 }
 
+const WEEKDAY_KEYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+const MONTH_KEYS = [
+  "january",
+  "february",
+  "march",
+  "april",
+  "may",
+  "june",
+  "july",
+  "august",
+  "september",
+  "october",
+  "november",
+  "december",
+];
+
+const DATE_LABEL_FORMATTERS = {
+  ar: {
+    weekdayLong: new Intl.DateTimeFormat("ar-EG-u-ca-gregory", { weekday: "long", timeZone: "UTC" }),
+    weekdayShort: new Intl.DateTimeFormat("ar-EG-u-ca-gregory", { weekday: "short", timeZone: "UTC" }),
+    monthLong: new Intl.DateTimeFormat("ar-EG-u-ca-gregory", { month: "long", timeZone: "UTC" }),
+    monthShort: new Intl.DateTimeFormat("ar-EG-u-ca-gregory", { month: "short", timeZone: "UTC" }),
+    fullDate: new Intl.DateTimeFormat("ar-EG-u-ca-gregory", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+      timeZone: "UTC",
+    }),
+  },
+  en: {
+    weekdayLong: new Intl.DateTimeFormat("en-US", { weekday: "long", timeZone: "UTC" }),
+    weekdayShort: new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: "UTC" }),
+    monthLong: new Intl.DateTimeFormat("en-US", { month: "long", timeZone: "UTC" }),
+    monthShort: new Intl.DateTimeFormat("en-US", { month: "short", timeZone: "UTC" }),
+    fullDate: new Intl.DateTimeFormat("en-US", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+      timeZone: "UTC",
+    }),
+  },
+};
+
+function buildUtcDateFromDateString(dateStr) {
+  const [year, month, day] = String(dateStr || "").split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day));
+}
+
+function buildTimelineCalendar(dateStr) {
+  const date = buildUtcDateFromDateString(dateStr);
+  const weekdayIndex = date.getUTCDay();
+  const monthIndex = date.getUTCMonth();
+  const year = date.getUTCFullYear();
+
+  const weekday = {
+    index: weekdayIndex,
+    key: WEEKDAY_KEYS[weekdayIndex],
+    labels: {
+      ar: DATE_LABEL_FORMATTERS.ar.weekdayLong.format(date),
+      en: DATE_LABEL_FORMATTERS.en.weekdayLong.format(date),
+    },
+    shortLabels: {
+      ar: DATE_LABEL_FORMATTERS.ar.weekdayShort.format(date),
+      en: DATE_LABEL_FORMATTERS.en.weekdayShort.format(date),
+    },
+  };
+
+  const month = {
+    number: monthIndex + 1,
+    key: MONTH_KEYS[monthIndex],
+    labels: {
+      ar: DATE_LABEL_FORMATTERS.ar.monthLong.format(date),
+      en: DATE_LABEL_FORMATTERS.en.monthLong.format(date),
+    },
+    shortLabels: {
+      ar: DATE_LABEL_FORMATTERS.ar.monthShort.format(date),
+      en: DATE_LABEL_FORMATTERS.en.monthShort.format(date).toUpperCase(),
+    },
+  };
+
+  return {
+    year,
+    dayOfMonth: date.getUTCDate(),
+    weekday,
+    month,
+    monthYearLabels: {
+      ar: `${month.labels.ar} ${year}`,
+      en: `${month.labels.en} ${year}`,
+    },
+    fullDateLabels: {
+      ar: DATE_LABEL_FORMATTERS.ar.fullDate.format(date),
+      en: DATE_LABEL_FORMATTERS.en.fullDate.format(date),
+    },
+  };
+}
+
+function normalizeTimelineStatus(rawStatus) {
+  switch (rawStatus) {
+    case "open":
+      return "open";
+    case "fulfilled":
+      return "delivered";
+    case "locked":
+    case "in_preparation":
+    case "out_for_delivery":
+    case "ready_for_pickup":
+      return "locked";
+    case "frozen":
+      return "frozen";
+    case "skipped":
+      return "skipped";
+    default:
+      return "open";
+  }
+}
+
+function buildTimelineMeals(subscription, dbDay) {
+  const fallbackRequired = resolveMealsPerDay(subscription);
+  const required = Number.isInteger(dbDay?.planningMeta?.requiredMealCount) && dbDay.planningMeta.requiredMealCount > 0
+    ? dbDay.planningMeta.requiredMealCount
+    : fallbackRequired;
+  const selected = Number.isInteger(dbDay?.planningMeta?.selectedTotalMealCount) && dbDay.planningMeta.selectedTotalMealCount >= 0
+    ? dbDay.planningMeta.selectedTotalMealCount
+    : (Array.isArray(dbDay?.selections) ? dbDay.selections.length : 0)
+      + (Array.isArray(dbDay?.premiumSelections) ? dbDay.premiumSelections.length : 0);
+  const isSatisfied = typeof dbDay?.planningMeta?.isExactCountSatisfied === "boolean"
+    ? dbDay.planningMeta.isExactCountSatisfied
+    : selected > 0 && selected === required;
+
+  return {
+    selected,
+    required,
+    isSatisfied,
+  };
+}
+
+function buildTimelineDailyMeals(meals) {
+  const selected = Number(meals && meals.selected) || 0;
+  const required = Number(meals && meals.required) || 0;
+  const isComplete = Boolean(meals && meals.isSatisfied);
+  const remaining = Math.max(0, required - selected);
+
+  return {
+    selected,
+    required,
+    remaining,
+    isComplete,
+    titleLabels: {
+      ar: "الوجبات اليومية",
+      en: "Daily Meals",
+    },
+    requiredLabels: {
+      ar: formatMealsLabel(required, "ar", true),
+      en: formatMealsLabel(required, "en", true),
+    },
+    summaryLabels: {
+      ar: `${selected} من ${required} مختارة`,
+      en: `${selected} of ${required} selected`,
+    },
+  };
+}
+
+function buildTimelineMonthSummary(days = []) {
+  const byMonth = new Map();
+
+  for (const day of days) {
+    const calendar = day && day.calendar;
+    if (!calendar || !calendar.month || !calendar.month.key) continue;
+
+    const monthKey = `${calendar.year}-${String(calendar.month.number).padStart(2, "0")}`;
+    if (!byMonth.has(monthKey)) {
+      byMonth.set(monthKey, {
+        key: monthKey,
+        year: calendar.year,
+        month: {
+          number: calendar.month.number,
+          key: calendar.month.key,
+          labels: { ...calendar.month.labels },
+          shortLabels: { ...calendar.month.shortLabels },
+        },
+        monthYearLabels: { ...calendar.monthYearLabels },
+        dayCount: 0,
+      });
+    }
+
+    byMonth.get(monthKey).dayCount += 1;
+  }
+
+  return Array.from(byMonth.values());
+}
+
 async function buildSubscriptionTimeline(subscriptionId) {
   const subscription = await Subscription.findById(subscriptionId).lean();
   if (!subscription) {
@@ -454,19 +648,7 @@ async function buildSubscriptionTimeline(subscriptionId) {
   ]);
   const dayMap = new Map(days.map((day) => [day.date, day]));
   const extensionSourceMap = buildExtensionSourceMap(compensation.tokens, endDateStr);
-
-  const normalizeStatus = (rawStatus) => {
-    switch (rawStatus) {
-      case "open":
-        return "planned";
-      case "fulfilled":
-        return "delivered";
-      case "locked":
-        return "locked";
-      default:
-        return rawStatus;
-    }
-  };
+  const requiredMealsPerDay = resolveMealsPerDay(subscription);
 
   const timelineDays = [];
 
@@ -477,31 +659,32 @@ async function buildSubscriptionTimeline(subscriptionId) {
   ) {
     const dbDay = dayMap.get(currentDate);
     const isExtension = currentDate > endDateStr;
+    const meals = buildTimelineMeals(subscription, dbDay);
+    const calendar = buildTimelineCalendar(currentDate);
 
     let status;
     if (isExtension) {
       status = "extension";
     } else if (!dbDay) {
-      status = "planned";
+      status = "open";
     } else if (dbDay.canonicalDayActionType === "freeze") {
       status = "frozen";
     } else if (dbDay.canonicalDayActionType === "skip") {
       status = "skipped";
     } else {
-      status = normalizeStatus(dbDay.status);
+      const normalizedStatus = normalizeTimelineStatus(dbDay.status);
+      status = normalizedStatus === "open" && meals.selected > 0 ? "planned" : normalizedStatus;
     }
 
     timelineDays.push({
       date: currentDate,
       status,
       source: isExtension ? (extensionSourceMap.get(currentDate) || "freeze_compensation") : "base",
-      locked: !!(dbDay && dbDay.lockedSnapshot),
+      locked: Boolean(dbDay && (dbDay.lockedSnapshot || status === "locked")),
       isExtension,
-      meals: {
-        selected: dbDay?.planningMeta?.selectedTotalMealCount || 0,
-        required: dbDay?.planningMeta?.requiredMealCount || 0,
-        isSatisfied: dbDay?.planningMeta?.isExactCountSatisfied || false,
-      },
+      calendar,
+      meals,
+      dailyMeals: buildTimelineDailyMeals(meals),
     });
   }
 
@@ -514,6 +697,18 @@ async function buildSubscriptionTimeline(subscriptionId) {
       compensationDays: compensation.totalCount,
       freezeCompensationDays: compensation.freezeCount,
       skipCompensationDays: compensation.skipCount,
+    },
+    months: buildTimelineMonthSummary(timelineDays),
+    dailyMealsConfig: {
+      required: requiredMealsPerDay,
+      labels: {
+        ar: formatMealsLabel(requiredMealsPerDay, "ar", true),
+        en: formatMealsLabel(requiredMealsPerDay, "en", true),
+      },
+      titleLabels: {
+        ar: "الوجبات اليومية",
+        en: "Daily Meals",
+      },
     },
     days: timelineDays,
   };
