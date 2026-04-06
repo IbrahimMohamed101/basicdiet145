@@ -65,27 +65,7 @@ extension CurrentSubscriptionOverviewDataResponseMapper on CurrentSubscriptionOv
 extension CurrentSubscriptionOverviewResponseMapper on CurrentSubscriptionOverviewResponse? {
   CurrentSubscriptionOverviewModel toDomain() {
     return CurrentSubscriptionOverviewModel(
-      this?.data.toDomain() ??
-          CurrentSubscriptionOverviewDataModel(
-            Constants.empty,
-            Constants.empty,
-            Constants.empty,
-            Constants.empty,
-            Constants.zero,
-            Constants.zero,
-            Constants.zero,
-            [],
-            Constants.zero,
-            Constants.empty,
-            [],
-            [],
-            Constants.empty,
-            Constants.empty,
-            Constants.empty,
-            Constants.zero,
-            Constants.zero,
-            Constants.zero,
-          ),
+      this?.data?.toDomain(),
     );
   }
 }

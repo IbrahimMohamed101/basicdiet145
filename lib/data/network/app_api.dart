@@ -15,6 +15,7 @@ import 'package:basic_diet/data/response/freeze_subscription_response.dart';
 import 'package:basic_diet/data/request/freeze_subscription_request.dart';
 import 'package:basic_diet/data/request/skip_days_request.dart';
 import 'package:basic_diet/data/response/skip_days_response.dart';
+import 'package:basic_diet/data/response/timeline_response.dart';
 import 'package:retrofit/retrofit.dart';
 import 'package:dio/dio.dart';
 part 'app_api.g.dart';
@@ -84,4 +85,7 @@ abstract class AppServiceClient {
     @Path("id") String id,
     @Body() SkipDateRangeRequest request,
   );
+
+  @GET("/api/subscriptions/{id}/timeline")
+  Future<TimelineResponse> getSubscriptionTimeline(@Path("id") String id);
 }

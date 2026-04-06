@@ -1,14 +1,15 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:basic_diet/domain/usecase/freeze_subscription_usecase.dart';
 import 'package:basic_diet/domain/model/freeze_subscription_model.dart';
-import 'package:basic_diet/presentation/plans/manage_subscription/bloc/freeze_subscription_event.dart';
-import 'package:basic_diet/presentation/plans/manage_subscription/bloc/freeze_subscription_state.dart';
+import 'package:basic_diet/presentation/plans/manage_subscription/freeze/freeze_subscription_event.dart';
+import 'package:basic_diet/presentation/plans/manage_subscription/freeze/freeze_subscription_state.dart';
 
-class FreezeSubscriptionBloc extends Bloc<FreezeSubscriptionEvent, FreezeSubscriptionState> {
+class FreezeSubscriptionBloc
+    extends Bloc<FreezeSubscriptionEvent, FreezeSubscriptionState> {
   final FreezeSubscriptionUseCase _freezeSubscriptionUseCase;
 
   FreezeSubscriptionBloc(this._freezeSubscriptionUseCase)
-      : super(FreezeSubscriptionInitial()) {
+    : super(FreezeSubscriptionInitial()) {
     on<SubmitFreezeSubscriptionEvent>(_onSubmitFreezeSubscription);
   }
 

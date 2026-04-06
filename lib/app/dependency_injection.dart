@@ -25,12 +25,14 @@ import 'package:basic_diet/presentation/main/home/delivery/bloc/delivery_options
 import 'package:dio/dio.dart';
 import 'package:basic_diet/app/app_pref.dart';
 import 'package:basic_diet/domain/usecase/get_current_subscription_overview_usecase.dart';
-import 'package:basic_diet/presentation/plans/plans_bloc.dart';
+import 'package:basic_diet/presentation/plans/bloc/plans_bloc.dart';
 import 'package:basic_diet/domain/usecase/freeze_subscription_usecase.dart';
-import 'package:basic_diet/presentation/plans/manage_subscription/bloc/freeze_subscription_bloc.dart';
-import 'package:basic_diet/presentation/plans/manage_subscription/bloc/skip_days_bloc.dart';
+import 'package:basic_diet/presentation/plans/manage_subscription/freeze/freeze_subscription_bloc.dart';
+import 'package:basic_diet/presentation/plans/manage_subscription/skip/skip_days_bloc.dart';
 import 'package:basic_diet/domain/usecase/skip_day_usecase.dart';
 import 'package:basic_diet/domain/usecase/skip_date_range_usecase.dart';
+import 'package:basic_diet/domain/usecase/get_timeline_usecase.dart';
+import 'package:basic_diet/presentation/plans/timeline/bloc/timeline_bloc.dart';
 import 'package:get_it/get_it.dart';
 
 final instance = GetIt.instance; // Singleton instance of GetIt
@@ -199,9 +201,27 @@ void initSkipDaysModule() {
     instance.registerFactory<SkipDayUseCase>(() => SkipDayUseCase(instance()));
   }
   if (!GetIt.I.isRegistered<SkipDateRangeUseCase>()) {
-    instance.registerFactory<SkipDateRangeUseCase>(() => SkipDateRangeUseCase(instance()));
+    instance.registerFactory<SkipDateRangeUseCase>(
+      () => SkipDateRangeUseCase(instance()),
+    );
   }
   if (!GetIt.I.isRegistered<SkipDaysBloc>()) {
-    instance.registerFactory<SkipDaysBloc>(() => SkipDaysBloc(instance(), instance()));
+    instance.registerFactory<SkipDaysBloc>(
+      () => SkipDaysBloc(instance(), instance()),
+    );
+  }
+}
+
+void initTimelineModule() {
+  if (!GetIt.I.isRegistered<GetTimelineUseCase>()) {
+    instance.registerFactory<GetTimelineUseCase>(
+      () => GetTimelineUseCase(instance<Repository>()),
+    );
+  }
+
+  if (!GetIt.I.isRegistered<TimelineBloc>()) {
+    instance.registerFactory<TimelineBloc>(
+      () => TimelineBloc(instance<GetTimelineUseCase>()),
+    );
   }
 }

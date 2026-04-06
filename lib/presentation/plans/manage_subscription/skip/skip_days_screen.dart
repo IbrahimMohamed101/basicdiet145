@@ -9,9 +9,9 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:gap/gap.dart';
 import 'package:intl/intl.dart';
-import 'package:basic_diet/presentation/plans/manage_subscription/bloc/skip_days_bloc.dart';
-import 'package:basic_diet/presentation/plans/manage_subscription/bloc/skip_days_event.dart';
-import 'package:basic_diet/presentation/plans/manage_subscription/bloc/skip_days_state.dart';
+import 'package:basic_diet/presentation/plans/manage_subscription/skip/skip_days_bloc.dart';
+import 'package:basic_diet/presentation/plans/manage_subscription/skip/skip_days_event.dart';
+import 'package:basic_diet/presentation/plans/manage_subscription/skip/skip_days_state.dart';
 
 enum SkipTypeSelection { singleDay, dateRange }
 

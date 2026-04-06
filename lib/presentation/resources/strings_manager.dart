@@ -276,4 +276,21 @@ class Strings {
   static const String deliveryInstructionsOptional = "Delivery Instructions (Optional)";
   static const String deliveryInstructionsHint = "e.g., Ring the doorbell, Leave at door, etc.";
   static const String saveChanges = "Save Changes";
+
+  // Meal Timeline Screen
+  static const String mealTimeline = "Meal Timeline";
+  static const String tapOnAnyDay = "Tap on any day to view or plan your meals";
+  static const String locked = "Locked";
+  static const String planned = "Planned";
+  static const String open = "Open";
+  static const String skipped = "Skipped";
+  static const String frozen = "Frozen";
+  static const String extension = "Extension";
+  static const String statusLegend = "Status Legend";
+  static const String extensionDay = "Extension Day";
+
+  // Empty States
+  static const String noSubscriptionTitle = "No Active Subscription";
+  static const String noSubscriptionSubtitle = "It looks like you don't have an active subscription yet. Start your journey today!";
+  static const String exploreOurPlans = "Explore Our Plans";
 }

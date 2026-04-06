@@ -23,7 +23,8 @@ class ColorManager {
   static const Color grey4A5565 = Color(0xFF4A5565);
   static const Color orangeF54900 = Color(0xFFF54900);
   static const Color orangeFFF5EC = Color(0xFFFFF5EC);
-  static const Color greyF3F4F6 = Color(
-    0xFFF3F4F6,
-  ); // Grey background for plus/minus buttons
+  static const Color greyF3F4F6 = Color(0xFFF3F4F6); // Grey background for plus/minus buttons
+  static const Color bluePrimary = Color(0xFF3B82F6);
+  static const Color purplePrimary = Color(0xFF8B5CF6);
+  static const Color grey9CA3AF = Color(0xFF9CA3AF);
 }

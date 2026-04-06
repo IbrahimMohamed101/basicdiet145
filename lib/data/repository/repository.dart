@@ -33,6 +33,8 @@ import 'package:basic_diet/data/request/skip_days_request.dart';
 import 'package:basic_diet/data/response/skip_days_response.dart';
 import 'package:basic_diet/data/mappers/freeze_subscription_mapper.dart';
 import 'package:basic_diet/domain/model/freeze_subscription_model.dart';
+import 'package:basic_diet/data/mappers/timeline_mapper.dart';
+import 'package:basic_diet/domain/model/timeline_model.dart';
 
 class RepositoryImpl implements Repository {
   final RemoteDataSource _remoteDataSource;
@@ -332,6 +334,22 @@ class RepositoryImpl implements Repository {
       final response = await _remoteDataSource.skipDateRange(id, request);
       if (_isSuccessfulResponse(response)) {
         return Right(response);
+      } else {
+        return Left(_mapFailureFromResponse(response));
+      }
+    } catch (error) {
+      return _handleError(error);
+    }
+  }
+
+  @override
+  Future<Either<Failure, TimelineModel>> getSubscriptionTimeline(
+    String id,
+  ) async {
+    try {
+      final response = await _remoteDataSource.getSubscriptionTimeline(id);
+      if (_isSuccessfulResponse(response)) {
+        return Right(response.toDomain());
       } else {
         return Left(_mapFailureFromResponse(response));
       }

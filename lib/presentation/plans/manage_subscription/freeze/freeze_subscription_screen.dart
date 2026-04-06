@@ -10,9 +10,9 @@ import 'package:intl/intl.dart';
 
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:basic_diet/app/dependency_injection.dart';
-import 'package:basic_diet/presentation/plans/manage_subscription/bloc/freeze_subscription_bloc.dart';
-import 'package:basic_diet/presentation/plans/manage_subscription/bloc/freeze_subscription_event.dart';
-import 'package:basic_diet/presentation/plans/manage_subscription/bloc/freeze_subscription_state.dart';
+import 'package:basic_diet/presentation/plans/manage_subscription/freeze/freeze_subscription_bloc.dart';
+import 'package:basic_diet/presentation/plans/manage_subscription/freeze/freeze_subscription_event.dart';
+import 'package:basic_diet/presentation/plans/manage_subscription/freeze/freeze_subscription_state.dart';
 
 class FreezeSubscriptionScreen extends StatefulWidget {
   final String subscriptionId;
@@ -38,7 +38,11 @@ class _FreezeSubscriptionScreenState extends State<FreezeSubscriptionScreen> {
   void initState() {
     super.initState();
     final now = DateTime.now();
-    _startDate = DateTime(now.year, now.month, now.day).add(const Duration(days: 1));
+    _startDate = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    ).add(const Duration(days: 1));
 
     try {
       _currentEndDate = DateTime.parse(widget.validityEndDate);
@@ -403,7 +407,10 @@ class _FreezeSubscriptionScreenState extends State<FreezeSubscriptionScreen> {
     );
   }
 
-  Widget _buildActionButtons(BuildContext context, FreezeSubscriptionState state) {
+  Widget _buildActionButtons(
+    BuildContext context,
+    FreezeSubscriptionState state,
+  ) {
     final isLoading = state is FreezeSubscriptionLoading;
 
     return Row(
@@ -430,17 +437,19 @@ class _FreezeSubscriptionScreenState extends State<FreezeSubscriptionScreen> {
         Gap(AppSize.s12.w),
         Expanded(
           child: ElevatedButton(
-            onPressed: isLoading ? null : () {
-              final formattedDate =
-                  "${_startDate.year}-${_startDate.month.toString().padLeft(2, '0')}-${_startDate.day.toString().padLeft(2, '0')}";
-              context.read<FreezeSubscriptionBloc>().add(
-                    SubmitFreezeSubscriptionEvent(
-                      subscriptionId: widget.subscriptionId,
-                      startDate: formattedDate,
-                      days: _days,
-                    ),
-                  );
-            },
+            onPressed: isLoading
+                ? null
+                : () {
+                    final formattedDate =
+                        "${_startDate.year}-${_startDate.month.toString().padLeft(2, '0')}-${_startDate.day.toString().padLeft(2, '0')}";
+                    context.read<FreezeSubscriptionBloc>().add(
+                      SubmitFreezeSubscriptionEvent(
+                        subscriptionId: widget.subscriptionId,
+                        startDate: formattedDate,
+                        days: _days,
+                      ),
+                    );
+                  },
             style: ElevatedButton.styleFrom(
               backgroundColor: ColorManager.greenPrimary,
               padding: const EdgeInsets.symmetric(vertical: AppPadding.p16),

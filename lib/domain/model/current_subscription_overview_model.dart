@@ -81,7 +81,7 @@ class CurrentSubscriptionOverviewDataModel {
 }
 
 class CurrentSubscriptionOverviewModel {
-  CurrentSubscriptionOverviewDataModel data;
+  CurrentSubscriptionOverviewDataModel? data;
 
   CurrentSubscriptionOverviewModel(this.data);
 }

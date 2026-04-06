@@ -1,3 +1,4 @@
+import 'package:basic_diet/presentation/main/home/subscription/subscription_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:basic_diet/presentation/resources/color_manager.dart';
 import 'package:basic_diet/presentation/resources/font_manager.dart';
@@ -6,13 +7,18 @@ import 'package:basic_diet/presentation/resources/styles_manager.dart';
 import 'package:basic_diet/presentation/resources/values_manager.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:basic_diet/app/dependency_injection.dart';
-import 'package:basic_diet/presentation/plans/plans_bloc.dart';
-import 'package:basic_diet/presentation/plans/plans_event.dart';
-import 'package:basic_diet/presentation/plans/plans_state.dart';
+import 'package:basic_diet/presentation/plans/bloc/plans_bloc.dart';
+import 'package:basic_diet/presentation/plans/bloc/plans_event.dart';
+import 'package:basic_diet/presentation/plans/bloc/plans_state.dart';
 import 'package:basic_diet/domain/model/current_subscription_overview_model.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:gap/gap.dart';
 import 'package:basic_diet/presentation/plans/manage_subscription/manage_subscription_screen.dart';
+import 'package:basic_diet/presentation/plans/time_line_screen.dart';
+import 'package:go_router/go_router.dart';
+
+import 'package:basic_diet/presentation/main/main_screen.dart';
+import 'package:basic_diet/presentation/resources/assets_manager.dart';
 
 class PlansScreen extends StatelessWidget {
   const PlansScreen({super.key});
@@ -48,12 +54,17 @@ class PlansScreen extends StatelessWidget {
                       return Center(child: Text(state.message));
                     } else if (state is CurrentSubscriptionOverviewLoaded) {
                       final data = state.currentSubscriptionOverviewModel.data;
+
+                      if (data == null) {
+                        return _buildNoSubscriptionState(context);
+                      }
+
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           _buildSubscriptionPlanCard(context, data),
                           Gap(AppSize.s16.h),
-                          _buildActionButtons(),
+                          _buildActionButtons(context, data),
                           Gap(AppSize.s16.h),
                           _buildSubscriptionPeriodCard(data),
                           Gap(AppSize.s24.h),
@@ -360,12 +371,22 @@ class PlansScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildActionButtons() {
+  Widget _buildActionButtons(
+    BuildContext context,
+    CurrentSubscriptionOverviewDataModel data,
+  ) {
     return Row(
       children: [
         Expanded(
           child: ElevatedButton(
-            onPressed: () {},
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => TimeLineScreen(subscriptionId: data.id),
+                ),
+              );
+            },
             style: ElevatedButton.styleFrom(
               backgroundColor: ColorManager.greenPrimary,
               padding: const EdgeInsets.symmetric(vertical: AppPadding.p16),
@@ -510,6 +531,84 @@ class PlansScreen extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildNoSubscriptionState(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: AppPadding.p24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Gap(AppSize.s60.h),
+            Container(
+              height: 220.h,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(AppSize.s24.r),
+                boxShadow: [
+                  BoxShadow(
+                    color: ColorManager.greenPrimary.withValues(alpha: 0.1),
+                    blurRadius: 40,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(AppSize.s24.r),
+                child: Image.asset(
+                  ImageAssets.noSubscription,
+                  fit: BoxFit.contain,
+                ),
+              ),
+            ),
+            Gap(AppSize.s40.h),
+            Text(
+              Strings.noSubscriptionTitle,
+              textAlign: TextAlign.center,
+              style: getBoldTextStyle(
+                color: ColorManager.black101828,
+                fontSize: FontSizeManager.s22.sp,
+              ),
+            ),
+            Gap(AppSize.s12.h),
+            Text(
+              Strings.noSubscriptionSubtitle,
+              textAlign: TextAlign.center,
+              style: getRegularTextStyle(
+                color: ColorManager.grey6A7282,
+                fontSize: FontSizeManager.s15.sp,
+              ),
+            ),
+            Gap(AppSize.s40.h),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () {
+                  // Navigate to plans selection using GoRouter
+                  context.pushReplacement(SubscriptionScreen.subscriptionRoute);
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: ColorManager.greenPrimary,
+                  padding: const EdgeInsets.symmetric(vertical: AppPadding.p18),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(AppSize.s16.r),
+                  ),
+                  elevation: 4,
+                  shadowColor: ColorManager.greenPrimary.withValues(alpha: 0.3),
+                ),
+                child: Text(
+                  Strings.exploreOurPlans,
+                  style: getBoldTextStyle(
+                    color: Colors.white,
+                    fontSize: FontSizeManager.s16.sp,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

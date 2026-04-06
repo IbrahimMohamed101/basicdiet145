@@ -12,6 +12,7 @@ class ImageAssets {
   static const String desserts = '$imagesPath/desserts.png';
   static const String drinks = '$imagesPath/drinks.png';
   static const String subscription = '$imagesPath/subscription.png';
+  static const String noSubscription = '$imagesPath/no_subscription.png';
 }
 
 class IconAssets {
