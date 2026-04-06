@@ -1,4 +1,5 @@
 import 'package:basic_diet/presentation/main/home/subscription/subscription_screen.dart';
+import 'package:basic_diet/presentation/plans/timeline/time_line_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:basic_diet/presentation/resources/color_manager.dart';
 import 'package:basic_diet/presentation/resources/font_manager.dart';
@@ -14,11 +15,8 @@ import 'package:basic_diet/domain/model/current_subscription_overview_model.dart
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:gap/gap.dart';
 import 'package:basic_diet/presentation/plans/manage_subscription/manage_subscription_screen.dart';
-import 'package:basic_diet/presentation/plans/time_line_screen.dart';
-import 'package:go_router/go_router.dart';
-
-import 'package:basic_diet/presentation/main/main_screen.dart';
 import 'package:basic_diet/presentation/resources/assets_manager.dart';
+import 'package:go_router/go_router.dart';
 
 class PlansScreen extends StatelessWidget {
   const PlansScreen({super.key});

@@ -293,4 +293,25 @@ class Strings {
   static const String noSubscriptionTitle = "No Active Subscription";
   static const String noSubscriptionSubtitle = "It looks like you don't have an active subscription yet. Start your journey today!";
   static const String exploreOurPlans = "Explore Our Plans";
+
+  // Meal Planner Screen
+  static const String mealPlanner = "Meal Planner";
+  static const String planMealsWeekAhead = "Plan your meals for the week ahead";
+  static const String dailyMeals = "Daily Meals";
+  static const String of = "of";
+  static const String selected = "selected";
+  static const String complete = "Complete";
+  static const String mealLimitReached = "You've reached your meal limit for this day. Unselect a meal to choose a different one.";
+  static const String premiumMealsRemaining = "Premium meals remaining";
+  static const String left = "left";
+  static const String lunch = "Lunch";
+  static const String dinner = "Dinner";
+  static const String snacks = "Snacks";
+  static const String premiumMealsAvailable = "Premium Meals Available";
+  static const String youHave = "You have";
+  static const String remainingSelectPremium = "remaining. Select from our exclusive premium collection below.";
+  static const String noChangesToSave = "No Changes to Save";
+  static const String mealAdded = "Meal added";
+  static const String addedTo = "added to";
+  static const String planningFor = "Planning for";
 }

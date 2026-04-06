@@ -12,6 +12,7 @@ import 'package:basic_diet/presentation/resources/values_manager.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:gap/gap.dart';
+import 'package:basic_diet/presentation/plans/timeline/meal_planner/meal_planner_screen.dart';
 
 class TimeLineScreen extends StatelessWidget {
   final String subscriptionId;
@@ -75,7 +76,7 @@ class TimeLineScreen extends StatelessWidget {
                     ...days.map((day) {
                       return Padding(
                         padding: EdgeInsets.only(bottom: AppSize.s16.h),
-                        child: _buildDayItem(day),
+                        child: _buildDayItem(context, day),
                       );
                     }),
                     Gap(AppSize.s16.h),
@@ -115,7 +116,7 @@ class TimeLineScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildDayItem(TimelineDayModel day) {
+  Widget _buildDayItem(BuildContext context, TimelineDayModel day) {
     Color color;
     Color bgColor;
     Color? borderColor;
@@ -168,15 +169,28 @@ class TimeLineScreen extends StatelessWidget {
         break;
     }
 
-    return Container(
-      padding: EdgeInsets.all(AppPadding.p16.w),
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(AppSize.s16.r),
-        border: borderColor != null
-            ? Border.all(color: borderColor)
-            : Border.all(color: Colors.transparent),
-      ),
+    bool isClickable = day.status.toLowerCase() == 'open' ||
+        day.status.toLowerCase() == 'planned' ||
+        day.status.toLowerCase() == 'extension';
+
+    return GestureDetector(
+      onTap: isClickable ? () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const MealPlannerScreen(),
+          ),
+        );
+      } : null,
+      child: Container(
+        padding: EdgeInsets.all(AppPadding.p16.w),
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(AppSize.s16.r),
+          border: borderColor != null
+              ? Border.all(color: borderColor)
+              : Border.all(color: Colors.transparent),
+        ),
       child: Row(
         children: [
           SizedBox(
@@ -247,6 +261,7 @@ class TimeLineScreen extends StatelessWidget {
           ),
           if (icon != null) Icon(icon, color: color, size: AppSize.s24.w),
         ],
+      ),
       ),
     );
   }
