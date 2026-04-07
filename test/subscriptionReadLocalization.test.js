@@ -555,8 +555,11 @@ test("getSubscriptionTimeline returns UI-ready statuses with localized labels", 
 
   assert.equal(res.statusCode, 200);
   assert.equal(res.payload.data.days[0].status, "open");
+  assert.equal(res.payload.data.days[0].statusLabel, "مفتوح");
   assert.equal(res.payload.data.days[1].status, "planned");
-  assert.equal(res.payload.data.days[2].status, "fulfilled");
+  assert.equal(res.payload.data.days[1].statusLabel, "مخطط له");
+  assert.equal(res.payload.data.days[3].status, "delivered");
+  assert.equal(res.payload.data.days[3].statusLabel, "تم التوصيل");
 });
 
 test("getSubscriptionRenewalSeed adds localized display companions with safe fallback", async () => {

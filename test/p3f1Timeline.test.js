@@ -156,6 +156,31 @@ test("Canonical Subscription Timeline — Phase 3 Feature 1", async (t) => {
     assert.equal(timeline.days[0].dailyMeals.summaryLabels.en, "1 of 2 selected");
   });
 
+  await t.test("Case 3c: Open day with canonical slot data is exposed as 'planned' for the UI", async () => {
+    Subscription.findById = () => createFindQuery(mockSubscription);
+
+    SubscriptionDay.find = () => createFindQuery([
+      {
+        date: "2026-03-21",
+        status: "open",
+        baseMealSlots: [
+          { slotKey: "base_slot_1", mealId: objectId() },
+        ],
+        premiumUpgradeSelections: [
+          { baseSlotKey: "base_slot_2", premiumMealId: objectId() },
+        ],
+      },
+      { date: "2026-03-22", status: "open" },
+      { date: "2026-03-23", status: "fulfilled" },
+    ]);
+
+    const timeline = await buildSubscriptionTimeline(subId);
+
+    assert.equal(timeline.days[0].status, "planned");
+    assert.deepEqual(timeline.days[0].meals, { selected: 2, required: 2, isSatisfied: true });
+    assert.equal(timeline.days[0].dailyMeals.remaining, 0);
+  });
+
   await t.test("Case 4: Mixed freeze + skip", async () => {
     const extendedSub = { 
       ...mockSubscription, 

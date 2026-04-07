@@ -171,6 +171,77 @@ test("updateDaySelection stores canonical planning data for canonical subscripti
   assert.equal(res.payload.data.baseMealSlots.length, 1);
 });
 
+test("updateDaySelection accepts legacy meals payload as selections alias", async (t) => {
+  const originalFlag = process.env.PHASE2_CANONICAL_DAY_PLANNING;
+  process.env.PHASE2_CANONICAL_DAY_PLANNING = "true";
+  t.after(() => {
+    process.env.PHASE2_CANONICAL_DAY_PLANNING = originalFlag;
+  });
+
+  const originalStartSession = mongoose.startSession;
+  const originalFindById = Subscription.findById;
+  const originalDayFindOne = SubscriptionDay.findOne;
+  const originalDayFindOneAndUpdate = SubscriptionDay.findOneAndUpdate;
+  const originalSettingFindOne = Setting.findOne;
+  t.after(() => {
+    mongoose.startSession = originalStartSession;
+    Subscription.findById = originalFindById;
+    SubscriptionDay.findOne = originalDayFindOne;
+    SubscriptionDay.findOneAndUpdate = originalDayFindOneAndUpdate;
+    Setting.findOne = originalSettingFindOne;
+  });
+
+  mongoose.startSession = async () => createSessionStub();
+
+  const userId = objectId();
+  const subscription = createSubscriptionDoc(userId);
+  Subscription.findById = () => createQueryStub(subscription);
+
+  const targetDate = getFutureDate(3);
+  const mealIdOne = objectId();
+  const mealIdTwo = objectId();
+  const dayDoc = {
+    _id: objectId(),
+    subscriptionId: subscription._id,
+    date: targetDate,
+    status: "open",
+    selections: [],
+    premiumSelections: [],
+    addonsOneTime: [],
+    async save() {
+      return this;
+    },
+    toObject() {
+      return { ...this };
+    },
+  };
+
+  SubscriptionDay.findOne = () => createQueryStub(null);
+  SubscriptionDay.findOneAndUpdate = async (_query, update) => {
+    dayDoc.selections = update.selections || [];
+    dayDoc.premiumSelections = update.premiumSelections || [];
+    return dayDoc;
+  };
+  Setting.findOne = () => createQueryStub(null);
+
+  const { req, res } = createReqRes({
+    params: { id: String(subscription._id), date: targetDate },
+    body: { meals: [mealIdOne, mealIdTwo] },
+    userId,
+  });
+
+  await controller.updateDaySelection(req, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.payload.idempotent, undefined);
+  assert.equal(res.payload.data.selections.length, 2);
+  assert.deepEqual(
+    res.payload.data.selections.map((value) => String(value)),
+    [String(mealIdOne), String(mealIdTwo)]
+  );
+  assert.equal(res.payload.data.planning.selectedTotalMealCount, 2);
+});
+
 test("confirmDayPlanning confirms only exact-count canonical day plans", async (t) => {
   const originalFlag = process.env.PHASE2_CANONICAL_DAY_PLANNING;
   process.env.PHASE2_CANONICAL_DAY_PLANNING = "true";

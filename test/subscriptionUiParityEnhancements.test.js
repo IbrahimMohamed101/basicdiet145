@@ -26,6 +26,7 @@ function createReqRes({
   query = {},
   userId = objectId(),
   headers = {},
+  stringifyJson = false,
 } = {}) {
   const normalizedHeaders = Object.fromEntries(
     Object.entries(headers).map(([key, value]) => [String(key).toLowerCase(), value])
@@ -43,6 +44,7 @@ function createReqRes({
   };
 
   const res = {
+    req,
     statusCode: 200,
     payload: null,
     status(code) {
@@ -50,6 +52,9 @@ function createReqRes({
       return this;
     },
     json(payload) {
+      if (stringifyJson) {
+        JSON.stringify(payload);
+      }
       this.payload = payload;
       return this;
     },
@@ -463,6 +468,114 @@ test("skipDay accepts date from request body", async (t) => {
   assert.equal(res.payload.data.day.date, targetDate);
   assert.equal(res.payload.data.appliedDays, 1);
   assert.equal(res.payload.data.remainingSkipDays, 4);
+});
+
+test("skipDay returns a JSON-serializable payload for mongoose-style day documents", async (t) => {
+  const originalStartSession = mongoose.startSession;
+  const originalSubscriptionFindById = Subscription.findById;
+  const originalSubscriptionFindOneAndUpdate = SubscriptionModel.findOneAndUpdate;
+  const originalSettingFindOne = Setting.findOne;
+  const originalSubscriptionDayFindOne = SubscriptionDay.findOne;
+  const originalSubscriptionDayFind = SubscriptionDay.find;
+  const originalSubscriptionDayCreate = SubscriptionDay.create;
+  const originalSubscriptionDayInsertMany = SubscriptionDay.insertMany;
+  const originalActivityLogCreate = ActivityLog.create;
+
+  t.after(() => {
+    mongoose.startSession = originalStartSession;
+    Subscription.findById = originalSubscriptionFindById;
+    SubscriptionModel.findOneAndUpdate = originalSubscriptionFindOneAndUpdate;
+    Setting.findOne = originalSettingFindOne;
+    SubscriptionDay.findOne = originalSubscriptionDayFindOne;
+    SubscriptionDay.find = originalSubscriptionDayFind;
+    SubscriptionDay.create = originalSubscriptionDayCreate;
+    SubscriptionDay.insertMany = originalSubscriptionDayInsertMany;
+    ActivityLog.create = originalActivityLogCreate;
+  });
+
+  const targetDate = dateUtils.getTomorrowKSADate();
+  const subscription = createSubscriptionDoc({
+    status: "active",
+    endDate: new Date("2026-05-10T00:00:00+03:00"),
+    validityEndDate: new Date("2026-05-10T00:00:00+03:00"),
+  });
+
+  function createDocumentLikeDay(row) {
+    const created = { _id: objectId(), ...row };
+    const internal = {};
+    internal.self = internal;
+    return {
+      ...created,
+      $__: internal,
+      _doc: created,
+      toObject() {
+        return { ...created };
+      },
+    };
+  }
+
+  mongoose.startSession = async () => createSessionStub();
+  Subscription.findById = () => createQueryStub(subscription);
+  SubscriptionModel.findOneAndUpdate = async (_query, update) => {
+    subscription.skipDaysUsed = Number(subscription.skipDaysUsed || 0) + Number(update.$inc?.skipDaysUsed || 0);
+    return {
+      ...subscription,
+      skipDaysUsed: subscription.skipDaysUsed,
+    };
+  };
+  Setting.findOne = (query) => {
+    if (query.key === "cutoff_time") {
+      return createQueryStub({ key: "cutoff_time", value: "23:59" }, { leanResult: { key: "cutoff_time", value: "23:59" } });
+    }
+    return createQueryStub(null, { leanResult: null });
+  };
+  const dayStore = [];
+  SubscriptionDay.findOne = (query) => createQueryStub(
+    dayStore.find((day) => String(day.subscriptionId) === String(query.subscriptionId) && day.date === query.date) || null
+  );
+  SubscriptionDay.find = (query) => {
+    const rows = dayStore.filter((day) => {
+      if (String(day.subscriptionId) !== String(query.subscriptionId)) {
+        return false;
+      }
+      if (query.$or) {
+        return query.$or.some((condition) => (
+          Object.entries(condition).every(([key, value]) => day[key] === value)
+        ));
+      }
+      if (query.date && query.date.$gt !== undefined && query.date.$lte !== undefined) {
+        return day.date > query.date.$gt && day.date <= query.date.$lte;
+      }
+      return true;
+    });
+    return createQueryStub(rows);
+  };
+  SubscriptionDay.create = async (rows) => rows.map((row) => {
+    const created = createDocumentLikeDay(row);
+    dayStore.push(created.toObject());
+    return created;
+  });
+  SubscriptionDay.insertMany = async (rows) => rows.map((row) => {
+    const created = { _id: objectId(), ...row };
+    dayStore.push(created);
+    return created;
+  });
+  ActivityLog.create = async () => ({});
+
+  const { req, res } = createReqRes({
+    params: { id: String(subscription._id) },
+    body: { date: targetDate },
+    userId: subscription.userId,
+    stringifyJson: true,
+  });
+
+  await subscriptionController.skipDay(req, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.payload.ok, true);
+  assert.equal(res.payload.data.day.date, targetDate);
+  assert.equal(res.payload.data.day.status, "skipped");
+  assert.equal("__$" in res.payload.data.day, false);
 });
 
 test("updateDeliveryDetails supports delivery zone updates and pickup location defaults", async (t) => {

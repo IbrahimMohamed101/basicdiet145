@@ -554,15 +554,48 @@ function normalizeTimelineStatus(rawStatus) {
   }
 }
 
+function normalizeTimelineCount(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) return null;
+  return Math.floor(parsed);
+}
+
+function countSelectedBaseMeals(dbDay) {
+  const planningCount = normalizeTimelineCount(dbDay?.planningMeta?.selectedBaseMealCount);
+  if (planningCount !== null) return planningCount;
+
+  const slotCount = Array.isArray(dbDay?.baseMealSlots)
+    ? dbDay.baseMealSlots.filter((slot) => slot && slot.mealId).length
+    : 0;
+  if (slotCount > 0) return slotCount;
+
+  return Array.isArray(dbDay?.selections) ? dbDay.selections.filter(Boolean).length : 0;
+}
+
+function countSelectedPremiumMeals(dbDay) {
+  const planningCount = normalizeTimelineCount(dbDay?.planningMeta?.selectedPremiumMealCount);
+  if (planningCount !== null) return planningCount;
+
+  const directPremiumCount = Array.isArray(dbDay?.premiumSelections)
+    ? dbDay.premiumSelections.filter(Boolean).length
+    : 0;
+  if (directPremiumCount > 0) return directPremiumCount;
+
+  return Array.isArray(dbDay?.premiumUpgradeSelections)
+    ? dbDay.premiumUpgradeSelections.filter((selection) => selection && selection.premiumMealId).length
+    : 0;
+}
+
 function buildTimelineMeals(subscription, dbDay) {
   const fallbackRequired = resolveMealsPerDay(subscription);
-  const required = Number.isInteger(dbDay?.planningMeta?.requiredMealCount) && dbDay.planningMeta.requiredMealCount > 0
-    ? dbDay.planningMeta.requiredMealCount
+  const requiredPlanningCount = normalizeTimelineCount(dbDay?.planningMeta?.requiredMealCount);
+  const required = requiredPlanningCount && requiredPlanningCount > 0
+    ? requiredPlanningCount
     : fallbackRequired;
-  const selected = Number.isInteger(dbDay?.planningMeta?.selectedTotalMealCount) && dbDay.planningMeta.selectedTotalMealCount >= 0
-    ? dbDay.planningMeta.selectedTotalMealCount
-    : (Array.isArray(dbDay?.selections) ? dbDay.selections.length : 0)
-      + (Array.isArray(dbDay?.premiumSelections) ? dbDay.premiumSelections.length : 0);
+  const selectedPlanningCount = normalizeTimelineCount(dbDay?.planningMeta?.selectedTotalMealCount);
+  const selected = selectedPlanningCount !== null
+    ? selectedPlanningCount
+    : countSelectedBaseMeals(dbDay) + countSelectedPremiumMeals(dbDay);
   const isSatisfied = typeof dbDay?.planningMeta?.isExactCountSatisfied === "boolean"
     ? dbDay.planningMeta.isExactCountSatisfied
     : selected > 0 && selected === required;

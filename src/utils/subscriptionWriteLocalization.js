@@ -18,13 +18,22 @@ function buildPaymentDescription(key, lang, params = {}) {
   return translated || t(`write.paymentDescriptions.${key}`, "en", params);
 }
 
-function localizeWriteDayPayload(day, { lang, addonNames = new Map() } = {}) {
-  if (!day || typeof day !== "object") return day;
+function toPlainObject(value) {
+  if (!value || typeof value !== "object") return value;
+  if (typeof value.toObject === "function") {
+    return value.toObject();
+  }
+  return value;
+}
 
-  const originalStatus = day.status;
+function localizeWriteDayPayload(day, { lang, addonNames = new Map() } = {}) {
+  const normalizedDay = toPlainObject(day);
+  if (!normalizedDay || typeof normalizedDay !== "object") return normalizedDay;
+
+  const originalStatus = normalizedDay.status;
   const statusForLabels = mapRawDayStatusToClientStatus(originalStatus);
   const localized = localizeSubscriptionDayReadPayload(
-    { ...day, status: statusForLabels },
+    { ...normalizedDay, status: statusForLabels },
     { lang, addonNames }
   );
 

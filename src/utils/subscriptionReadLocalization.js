@@ -151,6 +151,7 @@ function localizeTimelineReadPayload(timeline, lang) {
       ? timeline.days.map((day) => {
         const weekdayShort = day.calendar?.weekday?.shortLabels?.[lang] || "";
         const monthShort = day.calendar?.month?.shortLabels?.[lang] || "";
+        const statusLabel = resolveReadLabel("timelineStatuses", day.status, lang);
         
         return {
           date: day.date,
@@ -158,6 +159,7 @@ function localizeTimelineReadPayload(timeline, lang) {
           month: monthShort,
           dayNumber: day.calendar?.dayOfMonth || 0,
           status: day.status,
+          statusLabel,
           selectedMeals: day.meals?.selected || 0,
           requiredMeals: day.meals?.required || 0,
         };

@@ -5907,7 +5907,7 @@ async function getSubscriptionToday(req, res) {
 async function updateDaySelection(req, res, runtimeOverrides = null) {
   const runtime = runtimeOverrides ? { ...sliceP2S1DefaultRuntime, ...runtimeOverrides } : sliceP2S1DefaultRuntime;
   const body = req.body || {};
-  const selections = body.selections || [];
+  const selections = body.selections || body.meals || [];
   const premiumSelections = body.premiumSelections || [];
   const requestedOneTimeAddonIds = body.oneTimeAddonSelections;
   const { id, date } = req.params;
@@ -6605,8 +6605,11 @@ async function skipDay(req, res) {
       },
     });
   } catch (err) {
-    await session.abortTransaction();
+    if (typeof session.inTransaction !== "function" || session.inTransaction()) {
+      await session.abortTransaction();
+    }
     session.endSession();
+    logger.error("Skip failed", { subscriptionId: id, date, error: err.message, stack: err.stack });
     return errorResponse(res, 500, "INTERNAL", "Skip failed");
   }
 }
