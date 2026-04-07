@@ -270,6 +270,26 @@ function validateRedirectUrl(url, fallback) {
   return buildSafeFallbackRedirect(fallback);
 }
 
+function resolveProviderRedirectUrl(url, fallback) {
+  const validated = validateRedirectUrl(url, fallback);
+  try {
+    const parsed = new URL(validated);
+    const protocol = String(parsed.protocol || "").toLowerCase();
+    if (protocol === "https:" || protocol === "http:") {
+      return validated;
+    }
+
+    // Payment providers commonly reject custom schemes.
+    // Bridge custom/mobile schemes through a safe HTTPS URL while preserving
+    // the intended deep link target in query params for client-side detection.
+    const bridge = new URL(buildSafeFallbackRedirect(fallback));
+    bridge.searchParams.set("redirect_url", validated);
+    return bridge.toString();
+  } catch {
+    return buildSafeFallbackRedirect(fallback);
+  }
+}
+
 module.exports = {
   SENSITIVE_LOG_KEYS,
   REDACTED,
@@ -281,5 +301,6 @@ module.exports = {
   getTestOtpPhone,
   assertNoTestFlagsInProduction,
   validateRedirectUrl,
+  resolveProviderRedirectUrl,
   sanitizeLogData,
 };

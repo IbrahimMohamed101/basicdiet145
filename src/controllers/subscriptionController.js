@@ -135,7 +135,7 @@ const {
 } = require("../services/idempotencyService");
 const { reconcileCheckoutDraft, RECONCILE_MODES } = require("../services/reconciliationService");
 const { cancelSubscriptionDomain } = require("../services/subscriptionCancellationService");
-const { validateRedirectUrl } = require("../utils/security");
+const { validateRedirectUrl, resolveProviderRedirectUrl } = require("../utils/security");
 const {
   resolveEffectiveSubscriptionStatus,
   buildSubscriptionOperationsMeta,
@@ -2766,8 +2766,8 @@ async function checkoutSubscription(req, res, runtimeOverrides = null) {
         daysCount: Number(quote.plan.daysCount || 0),
       }),
       callbackUrl: `${appUrl}/api/webhooks/moyasar`,
-      successUrl: validateRedirectUrl(body.successUrl, `${appUrl}/payments/success`),
-      backUrl: validateRedirectUrl(body.backUrl, `${appUrl}/payments/cancel`),
+      successUrl: resolveProviderRedirectUrl(body.successUrl, `${appUrl}/payments/success`),
+      backUrl: resolveProviderRedirectUrl(body.backUrl, `${appUrl}/payments/cancel`),
       metadata: {
         type: "subscription_activation",
         draftId: String(draft._id),
@@ -4154,8 +4154,8 @@ async function renewSubscription(req, res, runtimeOverrides = null) {
         previousSubscriptionId: id,
       }),
       callbackUrl: `${appUrl}/api/webhooks/moyasar`,
-      successUrl: validateRedirectUrl(body.successUrl, `${appUrl}/payments/success`),
-      backUrl: validateRedirectUrl(body.backUrl, `${appUrl}/payments/cancel`),
+      successUrl: resolveProviderRedirectUrl(body.successUrl, `${appUrl}/payments/success`),
+      backUrl: resolveProviderRedirectUrl(body.backUrl, `${appUrl}/payments/cancel`),
       metadata: {
         type: "subscription_renewal",
         draftId: String(draft._id),
