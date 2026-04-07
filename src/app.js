@@ -125,7 +125,6 @@ function createApp() {
   });
 
   const swaggerPath = path.join(__dirname, "..", "swagger.yaml");
-  const subscriptionsSwaggerPath = path.join(__dirname, "..", "subscriptions.swagger.yaml");
 
   mountSwaggerUi(app, {
     uiPath: "/api-docs",
@@ -135,7 +134,7 @@ function createApp() {
   mountSwaggerUi(app, {
     uiPath: "/subscriptions-api-docs",
     rawPath: "/subscriptions-api-docs/swagger.yaml",
-    filePath: subscriptionsSwaggerPath,
+    filePath: swaggerPath,
   });
 
   app.use("/api", requestLanguageMiddleware, routes);

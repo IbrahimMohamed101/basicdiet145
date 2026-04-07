@@ -2,6 +2,8 @@ openapi: 3.0.3
 info:
   title: basicdiet145 Backend API
   version: 1.0.0
+  contact:
+    name: BasicDiet Backend Team
   description: |
     Code-inspected OpenAPI spec for the Node.js + Express + MongoDB backend.
 
@@ -14,6 +16,9 @@ info:
     Admin routing:
     - Canonical admin endpoints are documented under `/api/admin/*`.
     - `/api/dashboard/*` (except `/api/dashboard/auth/*`) is a runtime alias/proxy to the same handlers and is intentionally omitted from the main path inventory to avoid duplicate endpoint contracts.
+
+    Documentation routing:
+    - `/api-docs/*` and `/subscriptions-api-docs/*` both serve the same unified OpenAPI file.
 
     Localization:
     - Some endpoints resolve multilingual fields using `Accept-Language`.
@@ -54,6 +59,8 @@ tags:
     description: Admin settings and dashboard management endpoints.
   - name: Notifications
     description: Notification-log endpoints.
+  - name: Payments
+    description: Payment verification and payment-status endpoints.
   - name: Menu
     description: Public premium meals and addons menu endpoints.
   - name: Wallet
@@ -2802,11 +2809,37 @@ paths:
               schema:
                 type: string
 
+  /subscriptions-api-docs:
+    get:
+      tags: [System]
+      summary: Subscriptions Swagger UI alias
+      description: Serves the same unified Swagger UI using `/subscriptions-api-docs/swagger.yaml` as the raw document URL.
+      responses:
+        '200':
+          description: HTML page.
+          content:
+            text/html:
+              schema:
+                type: string
+
   /api-docs/swagger.yaml:
     get:
       tags: [System]
       summary: Raw Swagger YAML
       description: Serves the OpenAPI spec file used by Swagger UI.
+      responses:
+        '200':
+          description: YAML document.
+          content:
+            text/yaml:
+              schema:
+                type: string
+
+  /subscriptions-api-docs/swagger.yaml:
+    get:
+      tags: [System]
+      summary: Unified Swagger YAML alias
+      description: Serves the same unified OpenAPI spec file as `/api-docs/swagger.yaml`.
       responses:
         '200':
           description: YAML document.
@@ -3735,6 +3768,93 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /api/subscriptions/current/overview:
+    get:
+      tags: [Subscriptions]
+      summary: Get current subscription overview
+      description: |
+        Returns the most recent subscription for the authenticated user whose status is `active` or `pending_payment`.
+        When the user has no current subscription, the endpoint returns `data: null`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
+      responses:
+        '200':
+          description: Current subscription overview or `null`.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    nullable: true
+                    oneOf:
+                      - $ref: '#/components/schemas/Subscription'
+                      - type: object
+                        properties:
+                          skipDaysUsed:
+                            type: integer
+                          skipDaysLimit:
+                            type: integer
+                          remainingSkipDays:
+                            type: integer
+                        additionalProperties: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/Internal'
+
+  /api/subscriptions/payment-methods:
+    get:
+      tags: [Subscriptions]
+      summary: Get payment-method capabilities
+      description: Returns the current app-facing payment-method capability flags for subscriptions.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Payment-method capability snapshot.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      supported:
+                        type: boolean
+                      canManage:
+                        type: boolean
+                      provider:
+                        type: string
+                      mode:
+                        type: string
+                      reasonCode:
+                        type: string
+                        nullable: true
+                      methods:
+                        type: array
+                        items:
+                          type: object
+                          additionalProperties: true
+              example:
+                ok: true
+                data:
+                  supported: false
+                  canManage: false
+                  provider: moyasar
+                  mode: invoice_only
+                  reasonCode: PROVIDER_TOKENIZATION_UNAVAILABLE
+                  methods: []
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /api/subscriptions/menu:
     get:
       tags: [Menu, Subscriptions]
@@ -3803,6 +3923,62 @@ paths:
                         type: object
                         description: Ordered step metadata for the subscription UI flow.
                         additionalProperties: true
+
+  /api/subscriptions/meal-planner-menu:
+    get:
+      tags: [Menu, Subscriptions]
+      summary: Get meal-planner menu
+      description: |
+        Returns the subscription meal-planner catalog only, without packages or delivery flow metadata.
+        The payload is optimized for day-planning screens that need regular meals, premium meals, and add-ons.
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
+      responses:
+        '200':
+          description: Meal-planner catalog payload.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      currency:
+                        type: string
+                        enum: [SAR]
+                      regularMeals:
+                        type: object
+                        additionalProperties: true
+                      premiumMeals:
+                        type: object
+                        additionalProperties: true
+                      addons:
+                        type: object
+                        additionalProperties: true
+
+  /api/subscriptions/delivery-options:
+    get:
+      tags: [Menu, Subscriptions]
+      summary: Get delivery and pickup options
+      description: Returns the public delivery catalog used by subscription checkout and delivery-settings flows.
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
+      responses:
+        '200':
+          description: Delivery catalog payload.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    additionalProperties: true
 
   /api/subscriptions/quote:
     post:
@@ -4170,6 +4346,112 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /api/subscriptions/{id}/renewal-seed:
+    get:
+      tags: [Subscriptions]
+      summary: Get renewal seed
+      description: |
+        Returns a renewal seed derived from the previous subscription and the current active plan state.
+        The payload is used to prefill a renewal checkout experience.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+        - $ref: '#/components/parameters/AcceptLanguage'
+      responses:
+        '200':
+          description: Renewal seed payload.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+
+  /api/subscriptions/{id}/renew:
+    post:
+      tags: [Subscriptions]
+      summary: Renew subscription
+      description: |
+        Starts a renewal checkout flow from an existing subscription.
+        Reuse `Idempotency-Key` on safe retries to receive the same draft/payment intent when appropriate.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                planId:
+                  type: string
+                grams:
+                  type: integer
+                  minimum: 1
+                mealsPerDay:
+                  type: integer
+                  minimum: 1
+                startDate:
+                  type: string
+                  format: date
+                premiumItems:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/PremiumItemInput'
+                addons:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/SubscriptionAddonSelectionId'
+                delivery:
+                  $ref: '#/components/schemas/DeliveryInput'
+                idempotencyKey:
+                  type: string
+                successUrl:
+                  type: string
+                backUrl:
+                  type: string
+      responses:
+        '200':
+          description: Existing reusable renewal checkout returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkResponse'
+        '201':
+          description: Renewal checkout created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/IdempotencyConflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+
   /api/subscriptions/{id}:
     get:
       tags: [Subscriptions]
@@ -4197,6 +4479,115 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+
+  /api/subscriptions/{id}/operations-meta:
+    get:
+      tags: [Subscriptions]
+      summary: Get subscription operations metadata
+      description: |
+        Returns capability flags and policy metadata used by mobile screens such as manage subscription,
+        freeze, skip, delivery settings, and payment-method gating.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+      responses:
+        '200':
+          description: Operations metadata payload.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/Internal'
+
+  /api/subscriptions/{id}/freeze-preview:
+    get:
+      tags: [Subscriptions]
+      summary: Preview freeze impact
+      description: |
+        Read-only helper for the freeze flow.
+        Returns the projected effect of freezing a requested future date range before the write is submitted.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+        - name: startDate
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: days
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Freeze preview payload.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/LockedConflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+
+  /api/subscriptions/{id}/cancel:
+    post:
+      tags: [Subscriptions]
+      summary: Cancel subscription
+      description: |
+        Cancels a subscription from the client application.
+        Repeating the request for an already canceled subscription returns `200` with `idempotent: true`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+      responses:
+        '200':
+          description: Subscription canceled or already canceled.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  idempotent:
+                    type: boolean
+                    nullable: true
+                  data:
+                    $ref: '#/components/schemas/Subscription'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
 
   /api/subscriptions/{id}/wallet:
     get:
@@ -4616,6 +5007,180 @@ paths:
         '500':
           $ref: '#/components/responses/Internal'
 
+  /api/subscriptions/{id}/days/{date}/confirm:
+    post:
+      tags: [Subscriptions]
+      summary: Confirm day planning
+      description: Finalizes the current meal-planning state for the selected subscription day.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+        - $ref: '#/components/parameters/KsaDate'
+      responses:
+        '200':
+          description: Day planning confirmed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+
+  /api/subscriptions/{id}/days/{date}/premium-overage/payments:
+    post:
+      tags: [Subscriptions, Wallet]
+      summary: Create premium-overage day payment
+      description: Creates a payment intent for premium overage charges required by a subscription day plan.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+        - $ref: '#/components/parameters/KsaDate'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                successUrl:
+                  type: string
+                backUrl:
+                  type: string
+      responses:
+        '200':
+          description: Premium-overage payment created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+
+  /api/subscriptions/{id}/days/{date}/premium-overage/payments/{paymentId}/verify:
+    post:
+      tags: [Subscriptions, Wallet]
+      summary: Verify premium-overage day payment
+      description: Verifies and synchronizes the provider status for a premium-overage day payment.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+        - $ref: '#/components/parameters/KsaDate'
+        - $ref: '#/components/parameters/PaymentId'
+      responses:
+        '200':
+          description: Premium-overage payment verified.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/MismatchConflict'
+        '500':
+          $ref: '#/components/responses/Internal'
+
+  /api/subscriptions/{id}/days/{date}/one-time-addons/payments:
+    post:
+      tags: [Subscriptions, Wallet]
+      summary: Create one-time-addon day payment
+      description: Creates a payment intent for pending one-time add-ons attached to a subscription day plan.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+        - $ref: '#/components/parameters/KsaDate'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                successUrl:
+                  type: string
+                backUrl:
+                  type: string
+      responses:
+        '200':
+          description: One-time-addon payment created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+
+  /api/subscriptions/{id}/days/{date}/one-time-addons/payments/{paymentId}/verify:
+    post:
+      tags: [Subscriptions, Wallet]
+      summary: Verify one-time-addon day payment
+      description: Verifies and synchronizes the provider status for a one-time-addon day payment.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+        - $ref: '#/components/parameters/KsaDate'
+        - $ref: '#/components/parameters/PaymentId'
+      responses:
+        '200':
+          description: One-time-addon payment verified.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/MismatchConflict'
+        '500':
+          $ref: '#/components/responses/Internal'
+
   /api/subscriptions/{id}/days/skip:
     post:
       tags: [Subscriptions]
@@ -4663,6 +5228,40 @@ paths:
                         type: integer
                       message:
                         type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '500':
+          $ref: '#/components/responses/Internal'
+
+  /api/subscriptions/{id}/days/{date}/skip:
+    post:
+      tags: [Subscriptions]
+      summary: Skip one subscription day by path date
+      description: |
+        Applies one limited compensated skip day using the date provided in the route path.
+        This is the path-parameter variant of `/api/subscriptions/{id}/days/skip`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+        - $ref: '#/components/parameters/KsaDate'
+      responses:
+        '200':
+          description: Skip result summary.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -8884,6 +9483,257 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /api/admin/meal-categories:
+    get:
+      tags: [Admin]
+      summary: List meal categories
+      description: Returns all meal categories for dashboard administration, including localized display data.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
+      responses:
+        '200':
+          description: Meal-category list.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        key:
+                          type: string
+                        name:
+                          $ref: '#/components/schemas/LocalizedText'
+                        description:
+                          $ref: '#/components/schemas/LocalizedText'
+                        isActive:
+                          type: boolean
+                        sortOrder:
+                          type: integer
+                        localized:
+                          type: object
+                          additionalProperties: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [Admin]
+      summary: Create meal category
+      description: Creates a new meal category for subscription and menu grouping.
+      security:
+        - dashboardBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  oneOf:
+                    - type: string
+                    - $ref: '#/components/schemas/LocalizedText'
+                description:
+                  oneOf:
+                    - type: string
+                    - $ref: '#/components/schemas/LocalizedText'
+                key:
+                  type: string
+                categoryKey:
+                  type: string
+                  description: Alias of `key`.
+                isActive:
+                  type: boolean
+                sortOrder:
+                  type: integer
+                  minimum: 0
+      responses:
+        '201':
+          description: Meal category created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/admin/meal-categories/{id}:
+    get:
+      tags: [Admin]
+      summary: Get meal category
+      description: Returns one meal category by id for dashboard administration.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Meal category payload.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [Admin]
+      summary: Update meal category
+      description: Updates meal-category localized labels, key, active state, and sort order.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  oneOf:
+                    - type: string
+                    - $ref: '#/components/schemas/LocalizedText'
+                description:
+                  oneOf:
+                    - type: string
+                    - $ref: '#/components/schemas/LocalizedText'
+                key:
+                  type: string
+                categoryKey:
+                  type: string
+                isActive:
+                  type: boolean
+                sortOrder:
+                  type: integer
+                  minimum: 0
+      responses:
+        '200':
+          description: Meal category updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      tags: [Admin]
+      summary: Delete meal category
+      description: Deletes a meal category when it is not assigned to any existing meal.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Meal category deleted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/admin/meal-categories/{id}/toggle:
+    patch:
+      tags: [Admin]
+      summary: Toggle meal category active state
+      description: Flips the active state of a meal category.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Meal category toggled.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/admin/meal-categories/{id}/sort:
+    patch:
+      tags: [Admin]
+      summary: Update meal-category sort order
+      description: Updates the numeric `sortOrder` for a meal category.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sortOrder]
+              properties:
+                sortOrder:
+                  type: integer
+                  minimum: 0
+      responses:
+        '200':
+          description: Sort order updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /api/admin/overview:
     get:
       tags: [Admin (Dashboard)]
@@ -10054,6 +10904,154 @@ paths:
                         type: string
                       validityEndDate:
                         type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/admin/subscriptions/{id}/freeze:
+    post:
+      tags: [Admin (Dashboard), Subscriptions]
+      summary: Freeze subscription
+      description: |
+        Applies an admin freeze request to a subscription.
+        The same handler is also reachable at `/api/dashboard/subscriptions/{id}/freeze`.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [startDate, days]
+              properties:
+                startDate:
+                  type: string
+                  format: date
+                days:
+                  type: integer
+                  minimum: 1
+      responses:
+        '200':
+          description: Freeze applied.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+
+  /api/admin/subscriptions/{id}/unfreeze:
+    post:
+      tags: [Admin (Dashboard), Subscriptions]
+      summary: Unfreeze subscription
+      description: |
+        Reopens previously frozen days for a subscription from the dashboard.
+        The same handler is also reachable at `/api/dashboard/subscriptions/{id}/unfreeze`.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [startDate, days]
+              properties:
+                startDate:
+                  type: string
+                  format: date
+                days:
+                  type: integer
+                  minimum: 1
+      responses:
+        '200':
+          description: Unfreeze applied.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+
+  /api/admin/subscriptions/{id}/days/{date}/skip:
+    post:
+      tags: [Admin (Dashboard), Subscriptions]
+      summary: Skip subscription day
+      description: |
+        Applies one compensated skip day from the dashboard.
+        The same handler is also reachable at `/api/dashboard/subscriptions/{id}/days/{date}/skip`.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/KsaDate'
+      responses:
+        '200':
+          description: Skip result summary.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+
+  /api/admin/subscriptions/{id}/days/{date}/unskip:
+    post:
+      tags: [Admin (Dashboard), Subscriptions]
+      summary: Unskip subscription day
+      description: |
+        Reverses a previously skipped day from the dashboard.
+        The same handler is also reachable at `/api/dashboard/subscriptions/{id}/days/{date}/unskip`.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/KsaDate'
+      responses:
+        '200':
+          description: Day unskipped.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':

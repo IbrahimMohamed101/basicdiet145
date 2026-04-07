@@ -74,6 +74,83 @@ const LEGACY_BYPASS_FLAGS = [
   "DEV_AUTH_BYPASS",
 ];
 
+const DEFAULT_MOBILE_REDIRECT_SCHEMES = ["basicdiet"];
+
+function parseAllowedMobileRedirectSchemes() {
+  const raw = String(process.env.MOBILE_REDIRECT_SCHEMES || "").trim();
+  if (!raw) {
+    return new Set(DEFAULT_MOBILE_REDIRECT_SCHEMES);
+  }
+  return new Set(
+    raw
+      .split(",")
+      .map((entry) => entry.trim().toLowerCase())
+      .filter(Boolean)
+  );
+}
+
+function isLocalHostname(hostname) {
+  const normalized = String(hostname || "").trim().toLowerCase();
+  return normalized === "localhost" || normalized === "127.0.0.1";
+}
+
+function isAllowedMobileRedirectScheme(protocol) {
+  const scheme = String(protocol || "").trim().toLowerCase().replace(/:$/, "");
+  if (!scheme) return false;
+  return parseAllowedMobileRedirectSchemes().has(scheme);
+}
+
+function isValidClientRedirectUrl(parsedUrl) {
+  if (!parsedUrl || typeof parsedUrl !== "object") return false;
+  const protocol = String(parsedUrl.protocol || "").toLowerCase();
+  if (protocol === "https:") {
+    return true;
+  }
+  if (isAllowedMobileRedirectScheme(protocol)) {
+    return true;
+  }
+  if (process.env.NODE_ENV !== "production" && protocol === "http:" && isLocalHostname(parsedUrl.hostname)) {
+    return true;
+  }
+  return false;
+}
+
+function resolveSafeAppOrigin() {
+  const raw = String(process.env.APP_URL || "").trim();
+  if (!raw) return "";
+  try {
+    const parsed = new URL(raw);
+    if (String(parsed.protocol || "").toLowerCase() !== "https:") {
+      return "";
+    }
+    return parsed.origin;
+  } catch {
+    return "";
+  }
+}
+
+function buildSafeFallbackRedirect(fallback) {
+  const fallbackValue = String(fallback || "").trim();
+  if (!fallbackValue) {
+    return "https://example.com/payments/success";
+  }
+  try {
+    const parsedFallback = new URL(fallbackValue);
+    if (isValidClientRedirectUrl(parsedFallback)) {
+      return fallbackValue;
+    }
+
+    // Never return localhost/http fallback in production.
+    const safeOrigin = resolveSafeAppOrigin();
+    if (safeOrigin) {
+      return `${safeOrigin}${parsedFallback.pathname || "/payments/success"}${parsedFallback.search || ""}`;
+    }
+  } catch {
+    // Invalid fallback URL; continue to hard fallback.
+  }
+  return "https://example.com/payments/success";
+}
+
 /* ── OTP test mode ────────────────────────────────────────────────────── */
 
 function isStagingTestAuthAllowed() {
@@ -156,31 +233,41 @@ function assertNoTestFlagsInProduction() {
     }
   }
 
+  const appUrl = String(process.env.APP_URL || "").trim();
+  if (!appUrl) {
+    violations.push("APP_URL must be set in production");
+  } else {
+    try {
+      const parsedAppUrl = new URL(appUrl);
+      if (String(parsedAppUrl.protocol || "").toLowerCase() !== "https:") {
+        violations.push("APP_URL must use HTTPS in production");
+      }
+      if (isLocalHostname(parsedAppUrl.hostname)) {
+        violations.push("APP_URL must not point to localhost in production");
+      }
+    } catch {
+      violations.push("APP_URL must be a valid absolute URL in production");
+    }
+  }
+
   return violations.length > 0 ? { ok: false, violations } : { ok: true };
 }
 
 /* ── redirect URL validation ──────────────────────────────────────────── */
 
 function validateRedirectUrl(url, fallback) {
-  if (!url || typeof url !== "string") return fallback;
-
-  try {
-    const parsed = new URL(url);
-    if (parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1") {
-      return url;
+  if (url && typeof url === "string") {
+    try {
+      const parsed = new URL(url);
+      if (isValidClientRedirectUrl(parsed)) {
+        return url;
+      }
+    } catch {
+      // Invalid client-provided URL; fall back below.
     }
-    const appUrl = process.env.APP_URL;
-    if (appUrl) {
-      try {
-        const appParsed = new URL(appUrl);
-        if (parsed.origin === appParsed.origin) {
-          return url;
-        }
-      } catch {}
-    }
-  } catch {}
+  }
 
-  return fallback;
+  return buildSafeFallbackRedirect(fallback);
 }
 
 module.exports = {

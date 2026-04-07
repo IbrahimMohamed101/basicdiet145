@@ -20,3 +20,4 @@ scripts/
 scripts/*
 !scripts/backfill-meal-categories.js
 !scripts/fix-payment-indexes.js
+echo "mobile_app-main/" >> .gitignoremobile_app-main/

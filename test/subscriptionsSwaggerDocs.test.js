@@ -25,33 +25,40 @@ async function stopServer(server) {
   });
 }
 
-test("GET /subscriptions-api-docs/swagger.yaml serves a valid subscriptions OpenAPI document", async (t) => {
+test("GET /subscriptions-api-docs/swagger.yaml serves the unified OpenAPI document", async (t) => {
   const { server, baseUrl } = await startServer(createApp());
   t.after(async () => {
     await stopServer(server);
   });
 
-  const response = await fetch(`${baseUrl}/subscriptions-api-docs/swagger.yaml`);
-  assert.equal(response.status, 200);
-  assert.match(response.headers.get("content-type") || "", /yaml|text\/plain/i);
+  const [subscriptionsResponse, apiDocsResponse] = await Promise.all([
+    fetch(`${baseUrl}/subscriptions-api-docs/swagger.yaml`),
+    fetch(`${baseUrl}/api-docs/swagger.yaml`),
+  ]);
+  assert.equal(subscriptionsResponse.status, 200);
+  assert.equal(apiDocsResponse.status, 200);
+  assert.match(subscriptionsResponse.headers.get("content-type") || "", /yaml|text\/plain/i);
+  assert.match(apiDocsResponse.headers.get("content-type") || "", /yaml|text\/plain/i);
 
-  const source = await response.text();
-  const doc = yaml.load(source);
+  const [subscriptionsSource, apiDocsSource] = await Promise.all([
+    subscriptionsResponse.text(),
+    apiDocsResponse.text(),
+  ]);
+  assert.equal(subscriptionsSource, apiDocsSource);
+
+  const doc = yaml.load(subscriptionsSource);
 
   assert.equal(doc.openapi, "3.0.3");
-  assert.ok(doc.paths["/subscriptions/menu"]);
-  assert.ok(doc.paths["/subscriptions/checkout"]);
-  assert.ok(doc.paths["/subscriptions/{id}/renew"]);
-  assert.ok(doc.paths["/admin/uploads/image"]);
-  assert.ok(doc.paths["/admin/subscriptions/{id}/extend"]);
-  assert.ok(doc.components.securitySchemes.AppBearerAuth);
-  assert.ok(doc.components.securitySchemes.DashboardBearerAuth);
-  assert.equal(doc.components.schemas.QuoteRequestBody.properties.addons.items.type, "string");
-  assert.deepEqual(
-    doc.components.schemas.QuoteRequestBody.properties.premiumItems.items.required,
-    ["premiumMealId", "qty"]
-  );
-  assert.equal(doc.components.schemas.RenewRequestBody.properties.addons.items.type, "string");
+  assert.ok(doc.paths["/api/subscriptions/menu"]);
+  assert.ok(doc.paths["/api/subscriptions/current/overview"]);
+  assert.ok(doc.paths["/api/subscriptions/{id}/renew"]);
+  assert.ok(doc.paths["/api/subscriptions/{id}/days/{date}/premium-overage/payments"]);
+  assert.ok(doc.paths["/api/admin/uploads/image"]);
+  assert.ok(doc.paths["/api/admin/subscriptions/{id}/extend"]);
+  assert.ok(doc.paths["/api/admin/meal-categories"]);
+  assert.ok(doc.paths["/subscriptions-api-docs/swagger.yaml"]);
+  assert.ok(doc.components.securitySchemes.bearerAuth);
+  assert.ok(doc.components.securitySchemes.dashboardBearerAuth);
 });
 
 test("GET /subscriptions-api-docs/ serves the dedicated Swagger UI", async (t) => {
