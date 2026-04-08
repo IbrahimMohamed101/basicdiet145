@@ -234,41 +234,35 @@ class _MealPlannerScreenState extends State<MealPlannerScreen> {
 
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: ColorManager.black101828),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
-      body: Stack(
-        children: [
-          SingleChildScrollView(
-            padding: EdgeInsets.only(bottom: 120.h),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildHeader(),
-                Gap(AppSize.s16.h),
-                _buildDateSelector(),
-                Gap(AppSize.s16.h),
-                _buildBlueBanner(),
-                Gap(AppSize.s16.h),
-                _buildProgressSection(),
-                Gap(AppSize.s16.h),
-                _buildPremiumBanner(),
-                Gap(AppSize.s16.h),
-                _buildCategorySelector(),
-                Gap(AppSize.s16.h),
-                if (isPremiumCategory) _buildPremiumMealsAvailableBanner(),
-                _buildMealList(activeMeals),
-              ],
+      body: SafeArea(
+        child: Stack(
+          children: [
+            SingleChildScrollView(
+              padding: EdgeInsets.only(bottom: 120.h),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildHeader(),
+                  Gap(AppSize.s16.h),
+                  _buildDateSelector(),
+                  Gap(AppSize.s16.h),
+                  _buildBlueBanner(),
+                  Gap(AppSize.s16.h),
+                  _buildProgressSection(),
+                  Gap(AppSize.s16.h),
+                  _buildPremiumBanner(),
+                  Gap(AppSize.s16.h),
+                  _buildCategorySelector(),
+                  Gap(AppSize.s16.h),
+                  if (isPremiumCategory) _buildPremiumMealsAvailableBanner(),
+                  _buildMealList(activeMeals),
+                ],
+              ),
             ),
-          ),
-          _buildBottomAction(),
-          _buildTopNotificationBanner(),
-        ],
+            _buildBottomAction(),
+            _buildTopNotificationBanner(),
+          ],
+        ),
       ),
     );
   }
@@ -872,158 +866,196 @@ class _MealPlannerScreenState extends State<MealPlannerScreen> {
     bool isSelected =
         _selectedMealsPerDay[_selectedDayIndex]?.contains(meal['id']) ?? false;
     bool isPremium = meal['isPremium'];
-    bool isNotAvailable = meal['notAvailable'] == true;
+
+    bool isMaxReached =
+        (_selectedMealsPerDay[_selectedDayIndex]?.length ?? 0) >= _maxMeals;
+    bool isNotAvailable =
+        meal['notAvailable'] == true || (isMaxReached && !isSelected);
 
     return GestureDetector(
-      onTap: () => _toggleMeal(meal),
-      child: Container(
-        decoration: BoxDecoration(
-          color: isSelected
-              ? ColorManager.greenPrimary.withValues(alpha: 0.05)
-              : Colors.white,
-          borderRadius: BorderRadius.circular(AppSize.s16.r),
-          border: Border.all(
+      onTap: isNotAvailable ? null : () => _toggleMeal(meal),
+      child: Opacity(
+        opacity: isNotAvailable ? 0.5 : 1.0,
+        child: Container(
+          decoration: BoxDecoration(
             color: isSelected
-                ? ColorManager.greenPrimary
-                : ColorManager.formFieldsBorderColor,
-            width: isSelected ? 2 : 1,
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Stack(
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.vertical(
-                    top: Radius.circular(AppSize.s14.r),
-                  ),
-                  child: Image.asset(
-                    meal['image'],
-                    height: 150.h,
-                    width: double.infinity,
-                    fit: BoxFit.cover,
-                  ),
-                ),
-                if (isPremium)
-                  Positioned(
-                    top: 12.h,
-                    left: 12.w,
-                    child: Container(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 8.w,
-                        vertical: 4.h,
-                      ),
-                      decoration: BoxDecoration(
-                        color: ColorManager.orangePrimary,
-                        borderRadius: BorderRadius.circular(16.r),
-                      ),
-                      child: Text(
-                        "PREMIUM",
-                        style: getBoldTextStyle(
-                          color: Colors.white,
-                          fontSize: FontSizeManager.s10.sp,
-                        ),
-                      ),
-                    ),
-                  ),
-                if (isSelected)
-                  Positioned(
-                    top: 12.h,
-                    right: 12.w,
-                    child: Container(
-                      decoration: const BoxDecoration(
-                        color: Colors.white,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        Icons.check_circle,
-                        color: ColorManager.greenPrimary,
-                        size: 28.w,
-                      ),
-                    ),
-                  ),
-              ],
+                ? ColorManager.greenPrimary.withValues(alpha: 0.05)
+                : const Color(0xFFFFFFFF),
+            borderRadius: BorderRadius.circular(14.r),
+            border: Border.all(
+              color: isSelected
+                  ? ColorManager.greenPrimary
+                  : const Color(0xFFE5E7EB),
+              width: 1.25.w,
             ),
-            Padding(
-              padding: EdgeInsets.all(AppPadding.p16.w),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Stack(
                 children: [
-                  Text(
-                    meal['name'],
-                    style: getBoldTextStyle(
-                      color: ColorManager.black101828,
-                      fontSize: FontSizeManager.s16.sp,
+                  ClipRRect(
+                    borderRadius: BorderRadius.vertical(
+                      top: Radius.circular(AppSize.s14.r),
+                    ),
+                    child: Image.asset(
+                      meal['image'],
+                      height: 150.h,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
                     ),
                   ),
-                  Gap(AppSize.s8.h),
-                  Text(
-                    meal['description'],
-                    style: getRegularTextStyle(
-                      color: ColorManager.grey6A7282,
-                      fontSize: FontSizeManager.s12.sp,
-                    ),
-                  ),
-                  Gap(AppSize.s12.h),
-                  Row(
-                    children: [
-                      _buildMacroItem(
-                        ColorManager.bluePrimary,
-                        "${meal['protein']} protein",
-                      ),
-                      Gap(AppSize.s12.w),
-                      _buildMacroItem(
-                        ColorManager.orangePrimary,
-                        "${meal['carbs']} carbs",
-                      ),
-                      Gap(AppSize.s12.w),
-                      _buildMacroItem(
-                        ColorManager.greenPrimary,
-                        "${meal['fat']} fat",
-                      ),
-                    ],
-                  ),
-                  Gap(AppSize.s16.h),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        meal['price'],
-                        style: getBoldTextStyle(
-                          color: ColorManager.black101828,
-                          fontSize: FontSizeManager.s16.sp,
+                  if (isPremium)
+                    Positioned(
+                      top: 12.h,
+                      left: 12.w,
+                      child: Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 8.w,
+                          vertical: 4.h,
                         ),
-                      ),
-                      if (isNotAvailable)
-                        Text(
-                          Strings.notAvailable,
-                          style: getRegularTextStyle(
-                            color: ColorManager.errorColor,
-                            fontSize: FontSizeManager.s12.sp,
+                        decoration: BoxDecoration(
+                          color: ColorManager.orangePrimary,
+                          borderRadius: BorderRadius.circular(16.r),
+                        ),
+                        child: Text(
+                          "PREMIUM",
+                          style: getBoldTextStyle(
+                            color: Colors.white,
+                            fontSize: FontSizeManager.s10.sp,
                           ),
                         ),
-                    ],
-                  ),
+                      ),
+                    ),
+                  if (isSelected)
+                    Positioned(
+                      top: 12.h,
+                      right: 12.w,
+                      child: Container(
+                        decoration: const BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.check_circle,
+                          color: ColorManager.greenPrimary,
+                          size: 28.w,
+                        ),
+                      ),
+                    ),
                 ],
               ),
-            ),
-          ],
+              Padding(
+                padding: EdgeInsets.all(AppPadding.p16.w),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      meal['name'],
+                      style: TextStyle(
+                        fontFamily: 'Inter',
+                        fontWeight: FontWeight.w600,
+                        fontSize: 16.sp,
+                        height: 24 / 16,
+                        color: const Color(0xFF101828),
+                      ),
+                    ),
+                    Gap(AppSize.s8.h),
+                    Text(
+                      meal['description'],
+                      style: TextStyle(
+                        fontFamily: 'Inter',
+                        fontWeight: FontWeight.w400,
+                        fontSize: 14.sp,
+                        height: 20 / 14,
+                        color: const Color(0xFF4A5565),
+                      ),
+                    ),
+                    Gap(AppSize.s12.h),
+                    Row(
+                      children: [
+                        _buildMacroItem(
+                          ColorManager.bluePrimary,
+                          "${meal['protein']}",
+                          "protein",
+                        ),
+                        Gap(AppSize.s12.w),
+                        _buildMacroItem(
+                          ColorManager.orangePrimary,
+                          "${meal['carbs']}",
+                          "carbs",
+                        ),
+                        Gap(AppSize.s12.w),
+                        _buildMacroItem(
+                          ColorManager.greenPrimary,
+                          "${meal['fat']}",
+                          "fat",
+                        ),
+                      ],
+                    ),
+                    Gap(AppSize.s16.h),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          meal['price'],
+                          style: TextStyle(
+                            fontFamily: 'Inter',
+                            fontWeight: FontWeight.w700,
+                            fontSize: 18.sp,
+                            height: 28 / 18,
+                            color: const Color(0xFF101828),
+                          ),
+                        ),
+                        if (isNotAvailable)
+                          Text(
+                            Strings.notAvailable,
+                            style: getRegularTextStyle(
+                              color: ColorManager.errorColor,
+                              fontSize: FontSizeManager.s12.sp,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildMacroItem(Color color, String text) {
+  Widget _buildMacroItem(Color color, String value, String label) {
     return Row(
       children: [
         Icon(Icons.circle, color: color, size: 6.w),
         Gap(4.w),
-        Text(
-          text,
-          style: getRegularTextStyle(
-            color: ColorManager.grey6A7282,
-            fontSize: FontSizeManager.s10.sp,
+        RichText(
+          text: TextSpan(
+            children: [
+              TextSpan(
+                text: value,
+                style: TextStyle(
+                  fontFamily: 'Inter',
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12.sp,
+                  height: 16 / 12,
+                  color: const Color(0xFF4A5565),
+                ),
+              ),
+              TextSpan(
+                text: " $label",
+                style: TextStyle(
+                  fontFamily: 'Inter',
+                  fontWeight: FontWeight.w400,
+                  fontSize: 12.sp,
+                  height: 16 / 12,
+                  color: const Color(0xFF4A5565),
+                ),
+              ),
+            ],
           ),
         ),
       ],
