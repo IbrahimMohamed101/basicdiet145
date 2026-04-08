@@ -298,40 +298,56 @@ async function updateMeal(req, res) {
 
 async function listCategoriesWithMeals(req, res) {
   const lang = getRequestLang(req);
-  const activeOnly = String(req.query.activeOnly || "").toLowerCase() !== "false";
-  const [categories, meals] = await Promise.all([
-    MealCategory.find(activeOnly ? { isActive: true } : {}).sort({ sortOrder: 1, createdAt: -1 }).lean(),
-    Meal.find({
-      type: "regular",
-      ...(activeOnly ? { isActive: true } : {}),
-      categoryId: { $ne: null },
-    }).sort({ sortOrder: 1, createdAt: -1 }).lean(),
-  ]);
 
-  const byId = new Map(categories.map((category) => [String(category._id), category]));
+  const categories = await MealCategory.aggregate([
+    { $match: { isActive: true } },
+    { $sort: { sortOrder: 1, createdAt: -1 } },
+    {
+      $lookup: {
+        from: "meals",
+        let: { catId: "$_id" },
+        pipeline: [
+          {
+            $match: {
+              $expr: {
+                $and: [
+                  { $eq: ["$categoryId", "$$catId"] },
+                  { $eq: ["$isActive", true] },
+                ],
+              },
+            },
+          },
+          { $sort: { sortOrder: 1, createdAt: -1 } },
+        ],
+        as: "categoryMeals",
+      },
+    },
+    { $match: { categoryMeals: { $ne: [] } } },
+  ]);
 
   const data = categories.map((category) => ({
     id: String(category._id),
     name: pickLang(category.name, lang) || "",
     slug: String(category.key || "").trim().toLowerCase(),
-    meals: [],
-  }));
-  const dataById = new Map(data.map((category) => [category.id, category]));
-
-  for (const meal of meals) {
-    const mealCategoryId = meal.categoryId ? String(meal.categoryId) : "";
-    const resolvedCategory = mealCategoryId && byId.get(mealCategoryId);
-    if (!resolvedCategory) continue;
-    const target = dataById.get(String(resolvedCategory._id));
-
-    target.meals.push({
+    sortOrder: resolveSortValue(category.sortOrder),
+    meals: category.categoryMeals.map((meal) => ({
       id: String(meal._id),
       name: pickLang(meal.name, lang) || "",
-      categoryId: String(resolvedCategory._id),
-    });
-  }
+      description: pickLang(meal.description, lang) || "",
+      imageUrl: meal.imageUrl || "",
+      price: Number(meal.price) || 0,
+      calories: Number(meal.calories) || 0,
+      proteinGrams: Number(meal.proteinGrams) || 33,
+      carbGrams: Number(meal.carbGrams) || 37,
+      fatGrams: Number(meal.fatGrams) || 19,
+      availableForOrder: meal.availableForOrder !== false,
+      availableForSubscription: meal.availableForSubscription !== false,
+      type: meal.type || "regular",
+      sortOrder: resolveSortValue(meal.sortOrder),
+    })),
+  }));
 
-  return res.status(200).json({ ok: true, data });
+  return res.status(200).json({ status: true, data });
 }
 
 async function deleteMeal(req, res) {

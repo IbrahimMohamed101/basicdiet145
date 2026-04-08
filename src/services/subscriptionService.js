@@ -7,6 +7,7 @@ const { resolveMealsPerDay } = require("../utils/subscriptionDaySelectionSync");
 const { formatMealsLabel } = require("../utils/subscriptionCatalog");
 const { buildProjectedDayEntry } = require("./recurringAddonService");
 const { resolveSubscriptionSkipPolicy } = require("./subscriptionContractReadService");
+const { getRemainingPremiumCredits } = require("../services/genericPremiumWalletService");
 
 /**
  * @typedef {import("../types/subscriptionTimeline").TimelineDay} TimelineDay
@@ -749,6 +750,7 @@ async function buildSubscriptionTimeline(subscriptionId) {
         en: "Daily Meals",
       },
     },
+    premiumMealsRemaining: getRemainingPremiumCredits(subscription),
     days: timelineDays,
   };
 }

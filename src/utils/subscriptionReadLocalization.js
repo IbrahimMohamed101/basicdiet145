@@ -147,6 +147,7 @@ function localizeTimelineReadPayload(timeline, lang) {
   return {
     subscriptionId: timeline.subscriptionId,
     dailyMealsRequired: timeline.dailyMealsConfig?.required || 3,
+    premiumMealsRemaining: timeline.premiumMealsRemaining || 0,
     days: Array.isArray(timeline.days)
       ? timeline.days.map((day) => {
         const weekdayShort = day.calendar?.weekday?.shortLabels?.[lang] || "";

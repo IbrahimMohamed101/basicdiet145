@@ -19,6 +19,7 @@ const MealSchema = new mongoose.Schema(
     type: { type: String, enum: ["regular", "premium"], default: "regular" },
     availableForOrder: { type: Boolean, default: true },
     availableForSubscription: { type: Boolean, default: true },
+    price: { type: Number, default: 0, min: 0 },
     sortOrder: { type: Number, default: 0 },
     isActive: { type: Boolean, default: true },
   },
