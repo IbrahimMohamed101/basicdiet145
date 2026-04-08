@@ -1,4 +1,8 @@
 import 'dart:async';
+import 'package:basic_diet/app/app_pref.dart';
+import 'package:basic_diet/app/dependency_injection.dart';
+import 'package:basic_diet/presentation/login/login_screen.dart';
+import 'package:basic_diet/presentation/main/main_screen.dart';
 import 'package:basic_diet/presentation/onboarding/on_boarding_screen.dart';
 import 'package:basic_diet/presentation/resources/assets_manager.dart';
 import 'package:basic_diet/presentation/resources/color_manager.dart';
@@ -16,6 +20,7 @@ class SplashScreen extends StatefulWidget {
 
 class _SplashScreenState extends State<SplashScreen> {
   Timer? _timer;
+  final AppPreferences _appPreferences = instance<AppPreferences>();
 
   @override
   void initState() {
@@ -26,12 +31,24 @@ class _SplashScreenState extends State<SplashScreen> {
   void _startDelay() {
     _timer = Timer(
       const Duration(seconds: AppConstants.splashDelay),
-      _navigateToHome,
+      _goNext,
     );
   }
 
-  void _navigateToHome() {
-    context.go(OnboardingScreen.routeName);
+  void _goNext() async {
+    bool isUserLoggedIn = await _appPreferences.isUserLoggedIn("login");
+    bool isOnboardingScreenViewed =
+        await _appPreferences.isOnboardingScreenViewed();
+
+    if (mounted) {
+      if (isUserLoggedIn) {
+        context.go(MainScreen.mainRoute);
+      } else if (isOnboardingScreenViewed) {
+        context.go(LoginScreen.loginRoute);
+      } else {
+        context.go(OnboardingScreen.routeName);
+      }
+    }
   }
 
   @override

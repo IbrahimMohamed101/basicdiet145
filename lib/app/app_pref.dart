@@ -90,4 +90,12 @@ class AppPreferences {
   Future<String> getTokenExpiry() async {
     return await _secureStorage.read(key: 'expiresAt') ?? "";
   }
+
+  Future<void> setOnboardingScreenViewed() async {
+    await _secureStorage.write(key: 'PREFS_KEY_ONBOARDING_SCREEN_VIEWED', value: 'true');
+  }
+
+  Future<bool> isOnboardingScreenViewed() async {
+    return (await _secureStorage.read(key: 'PREFS_KEY_ONBOARDING_SCREEN_VIEWED')) == 'true';
+  }
 }

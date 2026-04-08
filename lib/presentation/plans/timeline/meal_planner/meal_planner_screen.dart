@@ -18,7 +18,7 @@ class MealPlannerScreen extends StatefulWidget {
 class _MealPlannerScreenState extends State<MealPlannerScreen> {
   int _selectedDayIndex = 0;
   int _selectedCategoryIndex = 0;
-  int _maxMeals = 2;
+  final int _maxMeals = 2;
   bool _showSavedBanner = false;
   String _lastAddedMealName = "";
 
@@ -49,6 +49,7 @@ class _MealPlannerScreenState extends State<MealPlannerScreen> {
   final List<Map<String, dynamic>> _days = [
     {
       "name": "Mon",
+      "fullName": "Monday",
       "date": "Apr 6",
       "status": "Planned",
       "locked": false,
@@ -56,6 +57,7 @@ class _MealPlannerScreenState extends State<MealPlannerScreen> {
     },
     {
       "name": "Tue",
+      "fullName": "Tuesday",
       "date": "Apr 7",
       "status": "Planned",
       "locked": false,
@@ -63,6 +65,7 @@ class _MealPlannerScreenState extends State<MealPlannerScreen> {
     },
     {
       "name": "Wed",
+      "fullName": "Wednesday",
       "date": "Apr 8",
       "status": "Planned",
       "locked": false,
@@ -70,6 +73,7 @@ class _MealPlannerScreenState extends State<MealPlannerScreen> {
     },
     {
       "name": "Thu",
+      "fullName": "Thursday",
       "date": "Apr 9",
       "status": "Locked",
       "locked": true,
@@ -345,7 +349,7 @@ class _MealPlannerScreenState extends State<MealPlannerScreen> {
                       ),
                     ),
                     Text(
-                      "$_lastAddedMealName ${Strings.addedTo} ${_days[_selectedDayIndex]['name']}",
+                      "$_lastAddedMealName ${Strings.addedTo} ${_days[_selectedDayIndex]['fullName']}",
                       style: getRegularTextStyle(
                         color: const Color(0xFF166534),
                         fontSize: FontSizeManager.s14.sp,
@@ -511,7 +515,7 @@ class _MealPlannerScreenState extends State<MealPlannerScreen> {
                   ),
                 ),
                 Text(
-                  "Monday, Apr 6", // static for mockup
+                  "${_days[_selectedDayIndex]['fullName']}, ${_days[_selectedDayIndex]['date']}",
                   style: getBoldTextStyle(
                     color: Colors.white,
                     fontSize: FontSizeManager.s14.sp,
