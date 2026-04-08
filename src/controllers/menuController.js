@@ -11,7 +11,6 @@ const {
   buildMealSections,
   buildMealCategoryMap,
   resolveMealCategoryForKey,
-  normalizeCategoryKey,
 } = require("../utils/mealCategoryCatalog");
 const {
   resolvePlanCatalogEntry,
@@ -29,14 +28,13 @@ async function getSettingValue(key, fallback) {
 
 function resolveMealCard(doc, lang, category = null) {
   const normalizedDoc = withDefaultMealNutrition(doc);
-  const categoryKey = normalizeCategoryKey(normalizedDoc.category);
   return {
     id: String(normalizedDoc._id),
     name: pickLang(normalizedDoc.name, lang),
     description: pickLang(normalizedDoc.description, lang),
     imageUrl: normalizedDoc.imageUrl || "",
+    categoryId: normalizedDoc.categoryId ? String(normalizedDoc.categoryId) : null,
     category: category || null,
-    categoryKey,
     proteinGrams: normalizedDoc.proteinGrams,
     carbGrams: normalizedDoc.carbGrams,
     fatGrams: normalizedDoc.fatGrams,
@@ -80,7 +78,7 @@ function buildSubscriptionMealCatalog({
   const mappedAddons = addons.map((addon) => resolveAddonCatalogEntry(addon, lang));
   const mealCategoryMap = buildMealCategoryMap(mealCategories, lang);
   const resolvedRegularMeals = regularMeals.map((meal) => {
-    const category = resolveMealCategoryForKey(meal.category, mealCategoryMap, lang);
+    const category = resolveMealCategoryForKey(meal.categoryId, mealCategoryMap, lang);
     return {
       ...resolveMealCard(meal, lang, category),
       type: "regular",
@@ -152,7 +150,7 @@ function buildSubscriptionMealCatalog({
 async function getOrderMenu(req, res) {
   const lang = getRequestLang(req);
   const [meals, categories, regularPriceSar, premiumPriceSar, customSaladBasePrice, customMealBasePrice] = await Promise.all([
-    Meal.find({ isActive: true, availableForOrder: { $ne: false } })
+    Meal.find({ isActive: true, availableForOrder: { $ne: false }, categoryId: { $ne: null } })
       .sort({ sortOrder: 1, createdAt: -1 })
       .lean(),
     MealCategory.find({}).sort({ sortOrder: 1, createdAt: -1 }).lean(),
@@ -171,7 +169,7 @@ async function getOrderMenu(req, res) {
   const resolvedMeals = meals.map((meal) => {
     const priceSar = meal.type === "premium" ? normalizedPremiumPriceSar : normalizedRegularPriceSar;
     const priceHalala = Math.max(0, Math.round(priceSar * 100));
-    const category = resolveMealCategoryForKey(meal.category, categoryMap, lang);
+    const category = resolveMealCategoryForKey(meal.categoryId, categoryMap, lang);
 
     return {
       ...resolveMealCard(meal, lang, category),
@@ -222,7 +220,7 @@ async function getSubscriptionMenu(req, res) {
     customMealBasePrice,
   ] = await Promise.all([
     Plan.find({ isActive: true }).sort({ sortOrder: 1, createdAt: -1 }).lean(),
-    Meal.find({ type: "regular", isActive: true, availableForSubscription: { $ne: false } })
+    Meal.find({ type: "regular", isActive: true, availableForSubscription: { $ne: false }, categoryId: { $ne: null } })
       .sort({ sortOrder: 1, createdAt: -1 })
       .lean(),
     MealCategory.find({}).sort({ sortOrder: 1, createdAt: -1 }).lean(),
@@ -276,7 +274,7 @@ async function getSubscriptionMenu(req, res) {
 async function getSubscriptionMealPlannerMenu(req, res) {
   const lang = getRequestLang(req);
   const [regularMeals, mealCategories, premiumMeals, addons] = await Promise.all([
-    Meal.find({ type: "regular", isActive: true, availableForSubscription: { $ne: false } })
+    Meal.find({ type: "regular", isActive: true, availableForSubscription: { $ne: false }, categoryId: { $ne: null } })
       .sort({ sortOrder: 1, createdAt: -1 })
       .lean(),
     MealCategory.find({}).sort({ sortOrder: 1, createdAt: -1 }).lean(),

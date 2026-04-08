@@ -34,7 +34,10 @@ async function buildRoutingReadModel(date, { zoneId, session } = {}) {
 }
 
 async function buildKitchenBatchReadModel(date, { session } = {}) {
-  const query = { date: String(date), status: { $in: ["locked", "fulfilled"] } };
+  const query = {
+    date: String(date),
+    status: { $in: ["locked", "in_preparation", "out_for_delivery", "ready_for_pickup", "fulfilled"] },
+  };
   const days = await SubscriptionDay.find(query).session(session).lean();
   
   const batchCounts = {
@@ -43,9 +46,9 @@ async function buildKitchenBatchReadModel(date, { session } = {}) {
   };
   
   for (const day of days) {
-    const planning = day.lockedSnapshot && day.lockedSnapshot.planning 
-      ? day.lockedSnapshot.planning 
-      : { baseMealSlots: (day.baseMealSlots || []).map(s => ({ mealId: s.mealId })) };
+    const snapshot = day.lockedSnapshot || day.fulfilledSnapshot || null;
+    if (!snapshot || !snapshot.planning) continue;
+    const planning = snapshot.planning;
       
     const meals = (planning.baseMealSlots || []).map(s => String(s.mealId));
     for (const mealId of meals) {

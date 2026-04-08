@@ -3,6 +3,7 @@ export type TimelineDayStatus =
   | "planned"
   | "locked"
   | "delivered"
+  | "delivery_canceled"
   | "frozen"
   | "skipped"
   | "extension";

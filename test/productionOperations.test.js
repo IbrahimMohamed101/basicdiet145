@@ -23,7 +23,8 @@ test("Production Operations / Phase B Smoke Tests", async (t) => {
       session: () => ({
         lean: () => Promise.resolve([
           { date: "2026-05-10", status: "locked", lockedSnapshot: { planning: { baseMealSlots: [{ mealId: "meal1" }, { mealId: "meal2" }] } } },
-          { date: "2026-05-10", status: "fulfilled", baseMealSlots: [{ mealId: "meal1" }] }
+          { date: "2026-05-10", status: "fulfilled", fulfilledSnapshot: { planning: { baseMealSlots: [{ mealId: "meal1" }] } } },
+          { date: "2026-05-10", status: "ready_for_pickup", baseMealSlots: [{ mealId: "meal3" }] }
         ])
       })
     });

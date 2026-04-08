@@ -18,6 +18,7 @@ const adminRoutes = require("./admin");
 const courierRoutes = require("./courier");
 const kitchenRoutes = require("./kitchen");
 const { getSettings } = require("../controllers/settingsController");
+const { listCategoriesWithMeals } = require("../controllers/mealController");
 const asyncHandler = require("../middleware/asyncHandler");
 
 const webhookRoutes = require("./webhooks");
@@ -43,6 +44,7 @@ router.use("/dashboard", adminRoutes);
 router.use("/admin", adminRoutes);
 router.use("/courier", courierRoutes);
 router.use("/kitchen", kitchenRoutes);
+router.get("/categories-with-meals", asyncHandler(listCategoriesWithMeals));
 router.get("/settings", asyncHandler(getSettings));
 
 module.exports = router;

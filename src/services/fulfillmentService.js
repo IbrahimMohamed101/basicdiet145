@@ -55,6 +55,10 @@ async function fulfillSubscriptionDay({ subscriptionId, date, dayId, session }) 
     premiumUpgradeSelections,
     addonCreditSelections,
     deductedCredits: mealsToDeduct,
+    pickupCode: day.pickupCode || null,
+    pickupVerifiedAt: day.pickupVerifiedAt || null,
+    pickupVerifiedByDashboardUserId: day.pickupVerifiedByDashboardUserId || null,
+    pickupNoShowAt: day.pickupNoShowAt || null,
   };
   if (planningSnapshot) {
     fulfilledSnapshot.planning = planningSnapshot;
@@ -73,6 +77,7 @@ async function fulfillSubscriptionDay({ subscriptionId, date, dayId, session }) 
       $set: {
         status: "fulfilled",
         fulfilledAt: new Date(),
+        pickupRequested: false,
         creditsDeducted: true,
         premiumUpgradeSelections,
         addonCreditSelections,

@@ -253,7 +253,7 @@ function isRemovableExtensionDay(day) {
   if (Array.isArray(day.addonCreditSelections) && day.addonCreditSelections.length > 0) return false;
   if (day.assignedByKitchen || day.pickupRequested || day.creditsDeducted || day.skippedByUser) return false;
   if (day.lockedSnapshot || day.fulfilledSnapshot || day.lockedAt || day.fulfilledAt) return false;
-  if (["locked", "fulfilled"].includes(day.status)) return false;
+  if (["locked", "fulfilled", "delivery_canceled"].includes(day.status)) return false;
   return true;
 }
 
@@ -540,6 +540,12 @@ function normalizeTimelineStatus(rawStatus) {
       return "open";
     case "fulfilled":
       return "delivered";
+    case "delivery_canceled":
+      return "delivery_canceled";
+    case "canceled_at_branch":
+      return "canceled_at_branch";
+    case "no_show":
+      return "no_show";
     case "locked":
     case "in_preparation":
     case "out_for_delivery":

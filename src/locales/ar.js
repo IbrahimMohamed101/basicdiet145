@@ -20,6 +20,9 @@ module.exports = {
       on_the_way: "في الطريق",
       ready_for_pickup: "جاهز للاستلام",
       fulfilled: "مكتمل",
+      delivery_canceled: "أُلغي التوصيل",
+      canceled_at_branch: "أُلغي من الفرع",
+      no_show: "لم يحضر للاستلام",
       skipped: "متخطى",
     },
     timelineStatuses: {
@@ -27,6 +30,9 @@ module.exports = {
       planned: "مخطط له",
       locked: "مغلق",
       delivered: "تم التوصيل",
+      delivery_canceled: "أُلغي التوصيل",
+      canceled_at_branch: "أُلغي من الفرع",
+      no_show: "لم يحضر للاستلام",
       frozen: "مجمد",
       skipped: "تم التخطي",
       extension: "تمديد",
@@ -76,6 +82,17 @@ module.exports = {
     renewalSeedSources: {
       snapshot: "لقطة محفوظة",
       legacy: "سجل قديم",
+    },
+    cancellationReasons: {
+      customer_not_available: "العميل غير متاح",
+      customer_not_answering: "العميل لا يجيب",
+      customer_refused_delivery: "العميل رفض الاستلام",
+      invalid_customer_address: "عنوان العميل غير صحيح",
+      customer_requested_cancellation: "العميل طلب الإلغاء",
+      courier_issue: "مشكلة في المندوب",
+      operational_delay: "تأخير تشغيلي",
+      internal_delivery_problem: "مشكلة توصيل داخلية",
+      order_operational_issue: "مشكلة تشغيلية في الطلب",
     },
   },
   write: {

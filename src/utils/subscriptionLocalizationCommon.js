@@ -8,6 +8,9 @@ const RAW_DAY_STATUS_TO_CLIENT_STATUS = {
   out_for_delivery: "on_the_way",
   ready_for_pickup: "ready_for_pickup",
   fulfilled: "fulfilled",
+  delivery_canceled: "delivery_canceled",
+  canceled_at_branch: "canceled_at_branch",
+  no_show: "no_show",
   skipped: "skipped",
 };
 

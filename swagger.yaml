@@ -1587,6 +1587,10 @@ components:
         fatGrams:
           type: number
           example: 19
+        categoryId:
+          type: string
+          nullable: true
+          description: Canonical category reference (ObjectId).
         type:
           type: string
           enum: [regular, premium]
@@ -1627,6 +1631,10 @@ components:
         fatGrams:
           type: number
           example: 19
+        categoryId:
+          type: string
+          nullable: true
+          description: Canonical category reference (ObjectId).
         type:
           type: string
           enum: [regular]
@@ -2171,12 +2179,9 @@ components:
           type: string
         dayId:
           type: string
-        courierId:
-          type: string
-          nullable: true
         status:
           type: string
-          enum: [scheduled, out_for_delivery, delivered, canceled, cancelled]
+          enum: [scheduled, out_for_delivery, delivered, canceled]
         address:
           $ref: '#/components/schemas/Address'
         window:
@@ -2463,7 +2468,7 @@ components:
           type: string
         status:
           type: string
-          enum: [open, frozen, locked, in_preparation, out_for_delivery, ready_for_pickup, fulfilled, skipped]
+          enum: [open, frozen, locked, in_preparation, out_for_delivery, ready_for_pickup, fulfilled, canceled_at_branch, no_show, skipped]
         selections:
           type: array
           items:
@@ -3582,6 +3587,60 @@ paths:
                       $ref: '#/components/schemas/Subscription'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/Internal'
+
+  /api/app/today-pickup:
+    get:
+      tags: [Auth (App), Subscriptions]
+      summary: Get today's pickup status for current app user
+      description: |
+        Returns today's pickup execution status for the authenticated app user.
+        This endpoint is optimized for pickup UI cards (status, branch, window, and pickup code).
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Today's pickup payload.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                        enum:
+                          - open
+                          - locked
+                          - in_preparation
+                          - ready_for_pickup
+                          - fulfilled
+                          - no_show
+                          - canceled_at_branch
+                      branchName:
+                        type: string
+                      pickupWindow:
+                        type: string
+                        nullable: true
+                      code:
+                        type: string
+                        description: 6-digit pickup code; populated when status is ready_for_pickup.
+              example:
+                ok: true
+                data:
+                  status: ready_for_pickup
+                  branchName: فرع مدينة نصر
+                  pickupWindow: 2pm - 5pm
+                  code: "123456"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/Internal'
 
@@ -6763,6 +6822,68 @@ paths:
                     items:
                       $ref: '#/components/schemas/MealResolved'
 
+  /api/categories-with-meals:
+    get:
+      tags: [Meals / Menu]
+      summary: List categories with nested meals
+      description: |
+        Returns menu categories with nested regular meals directly in a frontend-ready shape.
+        Meals are grouped server-side as `category -> meals` to avoid client-side grouping.
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
+        - name: activeOnly
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: true
+          description: When false, includes inactive categories and meals.
+      responses:
+        '200':
+          description: Category list with nested meals.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                        slug:
+                          type: string
+                        meals:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              id:
+                                type: string
+                              name:
+                                type: string
+                              categoryId:
+                                type: string
+              example:
+                ok: true
+                data:
+                  - id: "cat1"
+                    name: "Breakfast"
+                    slug: "breakfast"
+                    meals:
+                      - id: "meal1"
+                        name: "Omelette"
+                        categoryId: "cat1"
+                      - id: "meal2"
+                        name: "Pancakes"
+                        categoryId: "cat1"
+
   /api/meal-ingredients:
     get:
       tags: [Meals / Menu]
@@ -6985,11 +7106,37 @@ paths:
     put:
       tags: [Deliveries / Courier]
       summary: Cancel delivery
-      description: Applies skip compensation rules for linked subscription day.
+      description: >
+        Cancels a dispatched delivery with a required cancellation reason and optional note.
+        The reason is classified as either `customer_issue` or `delivery_issue` and stored for audit/admin review.
+        This endpoint does not apply automatic compensation, refund, or wallet credit.
       security:
         - dashboardBearerAuth: []
       parameters:
         - $ref: '#/components/parameters/DeliveryId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason:
+                  type: string
+                  enum:
+                    - customer_not_available
+                    - customer_not_answering
+                    - customer_refused_delivery
+                    - invalid_customer_address
+                    - customer_requested_cancellation
+                    - courier_issue
+                    - operational_delay
+                    - internal_delivery_problem
+                    - order_operational_issue
+                note:
+                  type: string
+                  maxLength: 500
       responses:
         '200':
           description: Cancelled.
@@ -7101,11 +7248,37 @@ paths:
     put:
       tags: [Deliveries / Courier, Orders]
       summary: Cancel one-time order
-      description: Transitions one-time order to `canceled` when transition rules allow.
+      description: >
+        Cancels a dispatched one-time delivery order with a required cancellation reason and optional note.
+        Cancellation details are recorded for manual admin follow-up.
+        This endpoint does not perform automatic refund or wallet-credit logic.
       security:
         - dashboardBearerAuth: []
       parameters:
         - $ref: '#/components/parameters/OrderId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason:
+                  type: string
+                  enum:
+                    - customer_not_available
+                    - customer_not_answering
+                    - customer_refused_delivery
+                    - invalid_customer_address
+                    - customer_requested_cancellation
+                    - courier_issue
+                    - operational_delay
+                    - internal_delivery_problem
+                    - order_operational_issue
+                note:
+                  type: string
+                  maxLength: 500
       responses:
         '200':
           description: Cancelled.
@@ -7154,11 +7327,39 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
 
+  /api/kitchen/today-pickup:
+    get:
+      tags: [Kitchen]
+      summary: List today's pickup queue
+      description: Returns today's pickup execution queue for kitchen dashboard.
+      security:
+        - dashboardBearerAuth: []
+      responses:
+        '200':
+          description: Pickup queue for today.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
   /api/kitchen/subscriptions/{id}/days/{date}/assign:
     put:
       tags: [Kitchen]
       summary: Assign meals for subscription day
       description: Assigns regular and premium selections with meals-per-day cap enforcement.
+      deprecated: true
       security:
         - dashboardBearerAuth: []
       parameters:
@@ -8634,7 +8835,7 @@ paths:
           multipart/form-data:
             schema:
               type: object
-              required: [name]
+              required: [name, categoryId]
               properties:
                 name:
                   description: Localized name. Send as a JSON string or flat fields like `name.ar` / `name.en`.
@@ -8649,6 +8850,9 @@ paths:
                 image:
                   type: string
                   format: binary
+                categoryId:
+                  type: string
+                  description: Required category reference (ObjectId).
                 availableForOrder:
                   type: boolean
                 availableForSubscription:
@@ -8751,6 +8955,9 @@ paths:
                 removeImage:
                   type: boolean
                   description: Clears the stored image when true and no new `image` file is provided.
+                categoryId:
+                  type: string
+                  description: Category reference (ObjectId).
                 availableForOrder:
                   type: boolean
                 availableForSubscription:
@@ -9550,9 +9757,6 @@ paths:
                     - $ref: '#/components/schemas/LocalizedText'
                 key:
                   type: string
-                categoryKey:
-                  type: string
-                  description: Alias of `key`.
                 isActive:
                   type: boolean
                 sortOrder:
@@ -9622,8 +9826,6 @@ paths:
                     - type: string
                     - $ref: '#/components/schemas/LocalizedText'
                 key:
-                  type: string
-                categoryKey:
                   type: string
                 isActive:
                   type: boolean

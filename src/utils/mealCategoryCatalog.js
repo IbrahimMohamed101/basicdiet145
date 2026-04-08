@@ -82,19 +82,19 @@ function buildMealCategoryMap(categoryDocs = [], lang = "ar") {
 
   for (const doc of Array.isArray(categoryDocs) ? categoryDocs : []) {
     const entry = resolveMealCategoryEntry(doc, lang);
-    if (!entry || !entry.key) continue;
-    map.set(entry.key, entry);
+    if (!entry || !entry.id) continue;
+    map.set(String(entry.id), entry);
   }
 
   return map;
 }
 
-function resolveMealCategoryForKey(categoryKey, categoryMap, lang = "ar") {
-  const normalizedKey = normalizeCategoryKey(categoryKey);
-  if (normalizedKey && categoryMap && categoryMap.has(normalizedKey)) {
-    return categoryMap.get(normalizedKey);
+function resolveMealCategoryForKey(categoryId, categoryMap, lang = "ar") {
+  const normalizedId = categoryId ? String(categoryId) : "";
+  if (normalizedId && categoryMap && categoryMap.has(normalizedId)) {
+    return categoryMap.get(normalizedId);
   }
-  return buildFallbackMealCategoryEntry(normalizedKey, lang);
+  return null;
 }
 
 function sortMealSectionEntries(a, b) {
@@ -112,7 +112,8 @@ function buildMealSections({ meals = [], categoryDocs = [], lang = "ar", itemRes
   const sectionsByKey = new Map();
 
   for (const meal of Array.isArray(meals) ? meals : []) {
-    const category = resolveMealCategoryForKey(meal && meal.category, categoryMap, lang);
+    const category = resolveMealCategoryForKey(meal && meal.categoryId, categoryMap, lang);
+    if (!category) continue;
     if (!sectionsByKey.has(category.key)) {
       sectionsByKey.set(category.key, { category, items: [] });
     }

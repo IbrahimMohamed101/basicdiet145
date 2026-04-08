@@ -15,7 +15,7 @@ const MealSchema = new mongoose.Schema(
     proteinGrams: { type: Number, default: 33, min: 0 },
     carbGrams: { type: Number, default: 37, min: 0 },
     fatGrams: { type: Number, default: 19, min: 0 },
-    category: { type: String, default: "" },
+    categoryId: { type: mongoose.Schema.Types.ObjectId, ref: "MealCategory", default: null, index: true },
     type: { type: String, enum: ["regular", "premium"], default: "regular" },
     availableForOrder: { type: Boolean, default: true },
     availableForSubscription: { type: Boolean, default: true },
@@ -24,5 +24,7 @@ const MealSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+MealSchema.index({ categoryId: 1, sortOrder: 1, createdAt: -1 });
 
 module.exports = mongoose.model("Meal", MealSchema);

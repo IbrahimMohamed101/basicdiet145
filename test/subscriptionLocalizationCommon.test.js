@@ -98,6 +98,7 @@ test("localizeStatusObject and mapRawDayStatusToClientStatus keep machine fields
   assert.equal(localized.statusLabel, "مدفوع");
   assert.equal(mapRawDayStatusToClientStatus("locked"), "preparing");
   assert.equal(mapRawDayStatusToClientStatus("ready_for_pickup"), "ready_for_pickup");
+  assert.equal(mapRawDayStatusToClientStatus("no_show"), "no_show");
 });
 
 test("read and write day localizers stay aligned for addon names, labels, and historical custom item fallback", () => {

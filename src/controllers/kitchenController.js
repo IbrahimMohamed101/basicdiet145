@@ -1,37 +1,186 @@
+const crypto = require("node:crypto");
 const mongoose = require("mongoose");
+const Setting = require("../models/Setting");
 const Subscription = require("../models/Subscription");
 const SubscriptionDay = require("../models/SubscriptionDay");
 const Delivery = require("../models/Delivery");
 const Meal = require("../models/Meal");
-const { isValidKSADateString } = require("../utils/date");
+const { isValidKSADateString, getTodayKSADate } = require("../utils/date");
 const { canTransition } = require("../utils/state");
 const { writeLog } = require("../utils/log");
 const { notifyUser } = require("../utils/notify");
-const { getEffectiveDeliveryDetails } = require("../utils/delivery");
-const { resolveMealsPerDay, applyDayWalletSelections, resolveDayWalletSelections } = require("../utils/subscriptionDaySelectionSync");
+const { resolveMealsPerDay, resolveDayWalletSelections } = require("../utils/subscriptionDaySelectionSync");
 const { isPhase2CanonicalDayPlanningEnabled } = require("../utils/featureFlags");
 const {
   isCanonicalDayPlanningEligible,
   applyCanonicalDraftPlanningToDay,
-  buildScopedCanonicalPlanningSnapshot,
 } = require("../services/subscriptionDayPlanningService");
 const {
   isCanonicalRecurringAddonEligible,
   resolveProjectedRecurringAddons,
   applyRecurringAddonProjectionToDay,
-  buildScopedRecurringAddonSnapshot,
 } = require("../services/recurringAddonService");
-const { buildOneTimeAddonPlanningSnapshot } = require("../services/oneTimeAddonPlanningService");
 const { getRemainingPremiumCredits } = require("../services/genericPremiumWalletService");
+const { buildLockedDaySnapshot } = require("../services/subscriptionDayOperationalSnapshotService");
 const {
   sumPremiumRemainingFromBalance,
   syncPremiumRemainingFromBalance,
   ensureLegacyPremiumBalanceFromRemaining,
 } = require("../utils/premiumWallet");
 const { fulfillSubscriptionDay } = require("../services/fulfillmentService");
+const {
+  validateDayBeforeLockOrPrepare,
+  resolveDayExecutionValidationErrorStatus,
+} = require("../services/subscriptionDayExecutionValidationService");
 const { logger } = require("../utils/logger");
 const validateObjectId = require("../utils/validateObjectId");
 const errorResponse = require("../utils/errorResponse");
+
+async function getPickupLocationsSetting() {
+  const setting = await Setting.findOne({ key: "pickup_locations" }).lean();
+  return Array.isArray(setting && setting.value) ? setting.value : [];
+}
+
+async function getPickupNoShowRestoreCreditsSetting() {
+  const setting = await Setting.findOne({ key: "pickup_no_show_restore_credits" }).lean();
+  return Boolean(setting && setting.value);
+}
+
+function generateSixDigitPickupCode() {
+  return String(crypto.randomInt(0, 1000000)).padStart(6, "0");
+}
+
+function normalizePickupCode(value) {
+  return String(value || "").trim();
+}
+
+function appendOperationAudit(day, { action, actor }) {
+  if (!day || !action) return;
+  if (!Array.isArray(day.operationAuditLog)) {
+    day.operationAuditLog = [];
+  }
+  day.operationAuditLog.push({
+    action: String(action),
+    by: String(actor || ""),
+    at: new Date(),
+  });
+}
+
+async function issuePickupCode(day, { session } = {}) {
+  const query = {
+    _id: day._id,
+    status: day.status,
+    $or: [
+      { pickupCode: { $exists: false } },
+      { pickupCode: null },
+      { pickupCode: "" },
+    ],
+  };
+  const pickupCode = generateSixDigitPickupCode();
+  const updatedDay = await SubscriptionDay.findOneAndUpdate(
+    query,
+    {
+      $set: {
+        pickupCode,
+        pickupCodeIssuedAt: new Date(),
+        pickupVerifiedAt: null,
+        pickupVerifiedByDashboardUserId: null,
+        pickupNoShowAt: null,
+      },
+    },
+    { new: true, session }
+  );
+
+  if (updatedDay) {
+    return updatedDay;
+  }
+
+  const persistedDay = await SubscriptionDay.findById(day._id).session(session);
+  return persistedDay || day;
+}
+
+function buildPickupQueueMeals(snapshot = null) {
+  if (!snapshot || typeof snapshot !== "object") {
+    return [];
+  }
+
+  const meals = [];
+  const planning = snapshot.planning && typeof snapshot.planning === "object"
+    ? snapshot.planning
+    : null;
+
+  if (planning && Array.isArray(planning.baseMealSlots)) {
+    planning.baseMealSlots.forEach((slot) => {
+      if (!slot || !slot.mealId) return;
+      meals.push({
+        kind: "base",
+        slotKey: slot.slotKey || "",
+        mealId: String(slot.mealId),
+      });
+    });
+  } else if (Array.isArray(snapshot.selections)) {
+    snapshot.selections.forEach((mealId, index) => {
+      if (!mealId) return;
+      meals.push({
+        kind: "base",
+        slotKey: `base_slot_${index + 1}`,
+        mealId: String(mealId),
+      });
+    });
+  }
+
+  if (Array.isArray(snapshot.premiumSelections)) {
+    snapshot.premiumSelections.forEach((mealId, index) => {
+      if (!mealId) return;
+      meals.push({
+        kind: "premium",
+        slotKey: `premium_slot_${index + 1}`,
+        mealId: String(mealId),
+      });
+    });
+  }
+
+  return meals;
+}
+
+function buildPickupQueueRow(day) {
+  const snapshot = day.lockedSnapshot || day.fulfilledSnapshot || null;
+  if (!snapshot) return null;
+
+  return {
+    subscriptionDayId: String(day._id),
+    customerName: String(snapshot.customerName || snapshot.customerPhone || ""),
+    meals: buildPickupQueueMeals(snapshot),
+    status: String(day.status || ""),
+    pickupWindow: snapshot.deliveryWindow || null,
+    isReady: day.status === "ready_for_pickup",
+    pickupCode: day.status === "ready_for_pickup" ? normalizePickupCode(day.pickupCode) || null : null,
+    verified: Boolean(day.pickupVerifiedAt),
+    pickupLocationId: snapshot.pickupLocationId || null,
+    pickupLocationName: snapshot.pickupLocationName || "",
+    pickupAddress: snapshot.pickupAddress || null,
+    verifiedAt: day.pickupVerifiedAt || null,
+  };
+}
+
+function resolvePickupQueueStatusOrder(status) {
+  switch (status) {
+    case "ready_for_pickup":
+      return 0;
+    case "in_preparation":
+      return 1;
+    case "locked":
+      return 2;
+    case "fulfilled":
+      return 3;
+    case "no_show":
+      return 4;
+    case "canceled_at_branch":
+      return 5;
+    default:
+      return 99;
+  }
+}
 
 async function listDailyOrders(req, res) {
   const { date } = req.params;
@@ -46,22 +195,54 @@ async function listDailyOrders(req, res) {
   // Transform to include subscription add-ons explicitly if needed
   const enrichedDays = days.map(d => {
     const sub = d.subscriptionId;
-    const subscriptionAddons = sub ? sub.addonSubscriptions || [] : [];
-    const recurringAddons = sub ? resolveProjectedRecurringAddons({ subscription: sub, day: d }) : [];
-    const effectiveAddress = sub
-      ? (d.deliveryAddressOverride && Object.keys(d.deliveryAddressOverride).length > 0 ? d.deliveryAddressOverride : sub.deliveryAddress)
+    const operationalSnapshot = d.lockedSnapshot || d.fulfilledSnapshot || null;
+    const subscriptionAddons = operationalSnapshot && Array.isArray(operationalSnapshot.subscriptionAddons)
+      ? operationalSnapshot.subscriptionAddons
+      : (sub ? sub.addonSubscriptions || [] : []);
+    const recurringAddons = operationalSnapshot && Array.isArray(operationalSnapshot.recurringAddons)
+      ? operationalSnapshot.recurringAddons
+      : (sub ? resolveProjectedRecurringAddons({ subscription: sub, day: d }) : []);
+    // Kitchen UI needs to reliably display customer delivery notes.
+    // Some edge flows might have incomplete snapshots, so we fallback to
+    // client-provided overrides (day) or subscription defaults.
+    const fallbackAddress =
+      (d.deliveryAddressOverride && Object.keys(d.deliveryAddressOverride).length > 0)
+        ? d.deliveryAddressOverride
+        : (sub && sub.deliveryAddress ? sub.deliveryAddress : null);
+    const fallbackWindow =
+      d.deliveryWindowOverride
+        ? d.deliveryWindowOverride
+        : (sub && sub.deliveryWindow ? sub.deliveryWindow : null);
+
+    let effectiveAddress = operationalSnapshot
+      ? (operationalSnapshot.pickupAddress || operationalSnapshot.address || null)
       : null;
-    const effectiveWindow = sub
-      ? (d.deliveryWindowOverride || sub.deliveryWindow)
+    let effectiveWindow = operationalSnapshot
+      ? (operationalSnapshot.deliveryWindow || null)
       : null;
-    const customSaladsSnapshot = d.lockedSnapshot && d.lockedSnapshot.customSalads ? d.lockedSnapshot.customSalads : (d.customSalads || []);
-    const customMealsSnapshot = d.lockedSnapshot && d.lockedSnapshot.customMeals ? d.lockedSnapshot.customMeals : (d.customMeals || []);
+
+    if (!effectiveAddress) effectiveAddress = fallbackAddress;
+    if (!effectiveWindow) effectiveWindow = fallbackWindow;
+
+    // Ensure `effectiveAddress.notes` is populated for UI rendering.
+    if (
+      effectiveAddress
+      && typeof effectiveAddress === "object"
+      && fallbackAddress
+      && typeof fallbackAddress === "object"
+      && (effectiveAddress.notes === undefined || effectiveAddress.notes === null || effectiveAddress.notes === "")
+      && fallbackAddress.notes !== undefined
+    ) {
+      effectiveAddress = { ...effectiveAddress, notes: fallbackAddress.notes };
+    }
+    const customSaladsSnapshot = operationalSnapshot && operationalSnapshot.customSalads ? operationalSnapshot.customSalads : (d.customSalads || []);
+    const customMealsSnapshot = operationalSnapshot && operationalSnapshot.customMeals ? operationalSnapshot.customMeals : (d.customMeals || []);
     const dayWalletSelections = resolveDayWalletSelections({ subscription: sub, day: d });
-    const premiumUpgradeSelections = d.lockedSnapshot && Array.isArray(d.lockedSnapshot.premiumUpgradeSelections)
-      ? d.lockedSnapshot.premiumUpgradeSelections
+    const premiumUpgradeSelections = operationalSnapshot && Array.isArray(operationalSnapshot.premiumUpgradeSelections)
+      ? operationalSnapshot.premiumUpgradeSelections
       : dayWalletSelections.premiumUpgradeSelections;
-    const addonCreditSelections = d.lockedSnapshot && Array.isArray(d.lockedSnapshot.addonCreditSelections)
-      ? d.lockedSnapshot.addonCreditSelections
+    const addonCreditSelections = operationalSnapshot && Array.isArray(operationalSnapshot.addonCreditSelections)
+      ? operationalSnapshot.addonCreditSelections
       : dayWalletSelections.addonCreditSelections;
 
     return {
@@ -69,7 +250,11 @@ async function listDailyOrders(req, res) {
       subscriptionAddons,
       recurringAddons,
       effectiveAddress,
+      deliveryNotes: effectiveAddress && typeof effectiveAddress === "object" ? (effectiveAddress.notes || null) : null,
       effectiveWindow,
+      pickupLocationId: operationalSnapshot ? operationalSnapshot.pickupLocationId || null : null,
+      pickupLocationName: operationalSnapshot ? operationalSnapshot.pickupLocationName || "" : "",
+      pickupAddress: operationalSnapshot ? operationalSnapshot.pickupAddress || null : null,
       customSalads: customSaladsSnapshot,
       customMeals: customMealsSnapshot,
       premiumUpgradeSelections,
@@ -79,6 +264,43 @@ async function listDailyOrders(req, res) {
   });
 
   return res.status(200).json({ ok: true, data: enrichedDays });
+}
+
+async function listPickupsByDate(req, res) {
+  const { date } = req.params;
+  if (!isValidKSADateString(date)) {
+    return errorResponse(res, 400, "INVALID_DATE", "Invalid date");
+  }
+
+  const days = await SubscriptionDay.find({
+    date,
+    status: { $in: ["locked", "in_preparation", "ready_for_pickup", "fulfilled", "canceled_at_branch", "no_show"] },
+  })
+    .populate({ path: "subscriptionId", select: "deliveryMode" })
+    .lean();
+
+  const rows = days
+    .filter((day) => {
+      const snapshot = day.lockedSnapshot || day.fulfilledSnapshot || null;
+      if (!snapshot) return false;
+      const deliveryMode = snapshot.deliveryMode || (day.subscriptionId && day.subscriptionId.deliveryMode) || null;
+      return deliveryMode === "pickup";
+    })
+    .map((day) => buildPickupQueueRow(day))
+    .filter(Boolean)
+    .sort((left, right) => {
+      const statusDelta = resolvePickupQueueStatusOrder(left.status) - resolvePickupQueueStatusOrder(right.status);
+      if (statusDelta !== 0) return statusDelta;
+      return String(left.subscriptionDayId).localeCompare(String(right.subscriptionDayId));
+    });
+
+  return res.status(200).json({ ok: true, data: rows });
+}
+
+async function listTodayPickups(req, res) {
+  // Dashboard-friendly alias: no need to pass a date param.
+  req.params = { ...(req.params || {}), date: getTodayKSADate() };
+  return listPickupsByDate(req, res);
 }
 
 async function assignMeals(req, res) {
@@ -219,49 +441,14 @@ async function assignMeals(req, res) {
   }
 }
 
-async function ensureLockedSnapshot(sub, day, session) {
+async function ensureLockedSnapshot(sub, day, session, { pickupLocations = [] } = {}) {
   if (day.lockedSnapshot) return;
-  const { premiumUpgradeSelections, addonCreditSelections } = applyDayWalletSelections({
+  day.lockedSnapshot = await buildLockedDaySnapshot({
     subscription: sub,
     day,
+    pickupLocations,
+    session,
   });
-  const planningSnapshot = buildScopedCanonicalPlanningSnapshot({
-    subscription: sub,
-    day,
-    flagEnabled: isPhase2CanonicalDayPlanningEnabled(),
-  });
-  const recurringAddonSnapshot = buildScopedRecurringAddonSnapshot({
-    subscription: sub,
-    day,
-  });
-  const oneTimeAddonSnapshot = buildOneTimeAddonPlanningSnapshot({ day });
-  const { address, deliveryWindow } = getEffectiveDeliveryDetails(sub, day);
-  day.lockedSnapshot = {
-    selections: day.selections,
-    premiumSelections: day.premiumSelections,
-    addonsOneTime: day.addonsOneTime,
-    premiumUpgradeSelections,
-    addonCreditSelections,
-    customSalads: day.customSalads || [],
-    customMeals: day.customMeals || [],
-    subscriptionAddons: sub.addonSubscriptions || [],
-    address,
-    deliveryWindow,
-    pricing: {
-      planId: sub.planId,
-      premiumPrice: sub.premiumPrice,
-      addons: sub.addonSubscriptions,
-    },
-  };
-  if (planningSnapshot) {
-    day.lockedSnapshot.planning = planningSnapshot;
-  }
-  if (recurringAddonSnapshot) {
-    day.lockedSnapshot.recurringAddons = recurringAddonSnapshot;
-  }
-  if (oneTimeAddonSnapshot) {
-    Object.assign(day.lockedSnapshot, oneTimeAddonSnapshot);
-  }
   day.lockedAt = new Date();
   await day.save({ session });
 }
@@ -278,6 +465,7 @@ async function bulkLockDaysByDate(req, res) {
   try {
     session.startTransaction();
 
+    const pickupLocations = await getPickupLocationsSetting();
     const days = await SubscriptionDay.find({ date }).session(session);
     const totalDays = days.length;
     const openDays = days.filter((day) => day.status === "open");
@@ -290,6 +478,7 @@ async function bulkLockDaysByDate(req, res) {
 
     let lockedCount = 0;
     let skippedMissingSubscriptionCount = 0;
+    const invalidDays = [];
 
     for (const day of openDays) {
       const sub = subscriptionMap.get(String(day.subscriptionId));
@@ -297,7 +486,18 @@ async function bulkLockDaysByDate(req, res) {
         skippedMissingSubscriptionCount += 1;
         continue;
       }
-      await ensureLockedSnapshot(sub, day, session);
+      try {
+        validateDayBeforeLockOrPrepare({ subscription: sub, day });
+      } catch (err) {
+        invalidDays.push({
+          subscriptionId: String(day.subscriptionId),
+          dayId: String(day._id),
+          date: day.date,
+          code: err.code || "INVALID",
+        });
+        continue;
+      }
+      await ensureLockedSnapshot(sub, day, session, { pickupLocations });
       day.status = "locked";
       await day.save({ session });
       lockedCount += 1;
@@ -308,9 +508,11 @@ async function bulkLockDaysByDate(req, res) {
       date,
       totalDays,
       lockedCount,
-      skippedCount: skippedDays.length + skippedMissingSubscriptionCount,
+      skippedCount: skippedDays.length + skippedMissingSubscriptionCount + invalidDays.length,
       alreadyProcessedCount: skippedDays.length,
       missingSubscriptionCount: skippedMissingSubscriptionCount,
+      invalidCount: invalidDays.length,
+      invalidDays,
     };
 
     await session.commitTransaction();
@@ -349,6 +551,7 @@ async function transitionDay(req, res, toStatus) {
   let day;
   let sub;
   let fromStatus;
+  let issuedPickupCode = "";
   try {
     session.startTransaction();
     day = await SubscriptionDay.findOne({ subscriptionId: id, date }).session(session);
@@ -362,9 +565,22 @@ async function transitionDay(req, res, toStatus) {
       session.endSession();
       return errorResponse(res, 409, "INVALID_TRANSITION", "Invalid state transition");
     }
+    if (toStatus === "fulfilled") {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 409, "PICKUP_VERIFICATION_REQUIRED", "Use pickup verification before fulfillment");
+    }
     sub = await Subscription.findById(id).session(session).lean();
     if (toStatus === "locked" && sub) {
-      await ensureLockedSnapshot(sub, day, session);
+      try {
+        validateDayBeforeLockOrPrepare({ subscription: sub, day });
+      } catch (err) {
+        await session.abortTransaction();
+        session.endSession();
+        return errorResponse(res, resolveDayExecutionValidationErrorStatus(err), err.code || "INVALID", err.message);
+      }
+      const pickupLocations = await getPickupLocationsSetting();
+      await ensureLockedSnapshot(sub, day, session, { pickupLocations });
     }
     if (toStatus === "out_for_delivery") {
       if (sub && sub.deliveryMode !== "delivery") {
@@ -373,9 +589,15 @@ async function transitionDay(req, res, toStatus) {
         return errorResponse(res, 400, "INVALID", "Not a delivery subscription");
       }
       if (sub) {
-        const effective = day.lockedSnapshot
-          ? { address: day.lockedSnapshot.address || null, deliveryWindow: day.lockedSnapshot.deliveryWindow || null }
-          : getEffectiveDeliveryDetails(sub, day);
+        if (!day.lockedSnapshot) {
+          await session.abortTransaction();
+          session.endSession();
+          return errorResponse(res, 409, "INVALID_TRANSITION", "Day snapshot is required before dispatch");
+        }
+        const effective = {
+          address: day.lockedSnapshot.address || null,
+          deliveryWindow: day.lockedSnapshot.deliveryWindow || null,
+        };
         await Delivery.updateOne(
           { dayId: day._id },
           {
@@ -404,7 +626,15 @@ async function transitionDay(req, res, toStatus) {
     }
     fromStatus = day.status;
     day.status = toStatus;
+    appendOperationAudit(day, {
+      action: toStatus,
+      actor: req.dashboardUserId || req.userId,
+    });
     await day.save({ session });
+    if (toStatus === "ready_for_pickup") {
+      day = await issuePickupCode(day, { session });
+      issuedPickupCode = normalizePickupCode(day && day.pickupCode);
+    }
 
     await session.commitTransaction();
     session.endSession();
@@ -433,7 +663,11 @@ async function transitionDay(req, res, toStatus) {
       await notifyUser(sub.userId, {
         title: "الطلب جاهز للاستلام",
         body: "طلبك أصبح جاهزًا للاستلام من المطعم",
-        data: { subscriptionId: String(sub._id), date: day.date },
+        data: {
+          subscriptionId: String(sub._id),
+          date: day.date,
+          ...(issuedPickupCode ? { pickupCode: issuedPickupCode } : {}),
+        },
       });
     }
   } catch (err) {
@@ -536,6 +770,18 @@ async function fulfillPickup(req, res) {
       return errorResponse(res, 400, "INVALID", "Not a pickup subscription");
     }
 
+    const day = await SubscriptionDay.findOne({ subscriptionId: id, date }).session(session);
+    if (!day) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 404, "NOT_FOUND", "Day not found");
+    }
+    if (normalizePickupCode(day.pickupCode) && !day.pickupVerifiedAt) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 409, "PICKUP_VERIFICATION_REQUIRED", "Pickup verification is required before fulfillment");
+    }
+
     result = await fulfillSubscriptionDay({ subscriptionId: id, date, session });
     if (!result.ok) {
       await session.abortTransaction();
@@ -547,6 +793,11 @@ async function fulfillPickup(req, res) {
               400;
       return errorResponse(res, status, result.code, result.message);
     }
+    appendOperationAudit(result.day, {
+      action: "fulfilled",
+      actor: req.dashboardUserId || req.userId,
+    });
+    await result.day.save({ session });
 
     await session.commitTransaction();
     session.endSession();
@@ -573,11 +824,335 @@ async function fulfillPickup(req, res) {
   return res.status(200).json({ ok: true, data: result.day, alreadyFulfilled: result.alreadyFulfilled });
 }
 
+async function verifyPickup(req, res) {
+  const { dayId } = req.params;
+  const submittedCode = normalizePickupCode(req.body && req.body.code);
+
+  try {
+    validateObjectId(dayId, "subscriptionDayId");
+  } catch (err) {
+    return errorResponse(res, err.status, err.code, err.message);
+  }
+  if (!/^\d{6}$/.test(submittedCode)) {
+    return errorResponse(res, 400, "INVALID_PICKUP_CODE", "Pickup code must be a 6-digit value");
+  }
+
+  const session = await mongoose.startSession();
+  let result;
+  try {
+    session.startTransaction();
+
+    const day = await SubscriptionDay.findById(dayId).session(session);
+    if (!day) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 404, "NOT_FOUND", "Day not found");
+    }
+    if (day.status === "fulfilled" && day.pickupVerifiedAt) {
+      await session.commitTransaction();
+      session.endSession();
+      return res.status(200).json({ ok: true, data: day, verified: true, idempotent: true });
+    }
+    if (day.status !== "ready_for_pickup") {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 409, "INVALID_TRANSITION", "Only ready pickup days can be verified");
+    }
+
+    const expectedCode = normalizePickupCode(day.pickupCode);
+    if (!expectedCode) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 409, "PICKUP_CODE_NOT_ISSUED", "Pickup code has not been issued yet");
+    }
+    if (submittedCode !== expectedCode) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 422, "PICKUP_CODE_MISMATCH", "Pickup code does not match");
+    }
+
+    const sub = await Subscription.findById(day.subscriptionId).session(session).lean();
+    if (!sub) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
+    }
+    if (sub.deliveryMode !== "pickup") {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 400, "INVALID", "Not a pickup subscription");
+    }
+
+    day.pickupVerifiedAt = new Date();
+    day.pickupVerifiedByDashboardUserId = req.dashboardUserId || req.userId || null;
+    appendOperationAudit(day, {
+      action: "pickup_verified",
+      actor: req.dashboardUserId || req.userId,
+    });
+    await day.save({ session });
+
+    result = await fulfillSubscriptionDay({ dayId, session });
+    if (!result.ok) {
+      await session.abortTransaction();
+      session.endSession();
+      const status =
+        result.code === "NOT_FOUND" ? 404 :
+          result.code === "INSUFFICIENT_CREDITS" ? 400 :
+            result.code === "INVALID_TRANSITION" ? 409 :
+              400;
+      return errorResponse(res, status, result.code, result.message);
+    }
+    appendOperationAudit(result.day, {
+      action: "fulfilled",
+      actor: req.dashboardUserId || req.userId,
+    });
+    await result.day.save({ session });
+
+    await session.commitTransaction();
+    session.endSession();
+  } catch (err) {
+    await session.abortTransaction();
+    session.endSession();
+    logger.error("kitchenController.verifyPickup failed", { dayId, error: err.message, stack: err.stack });
+    return errorResponse(res, 500, "INTERNAL", "Pickup verification failed");
+  }
+
+  try {
+    await writeLog({
+      entityType: "subscription_day",
+      entityId: result.day._id,
+      action: "pickup_verified",
+      byUserId: req.userId,
+      byRole: req.userRole,
+      meta: {
+        deductedCredits: result.deductedCredits,
+        verifiedAt: result.day.pickupVerifiedAt,
+      },
+    });
+  } catch (err) {
+    logger.error("Kitchen pickup verification log write failed", { error: err.message, stack: err.stack, dayId });
+  }
+
+  return res.status(200).json({
+    ok: true,
+    data: result.day,
+    verified: true,
+    alreadyFulfilled: result.alreadyFulfilled,
+  });
+}
+
+async function markPickupNoShow(req, res) {
+  const { dayId } = req.params;
+  try {
+    validateObjectId(dayId, "subscriptionDayId");
+  } catch (err) {
+    return errorResponse(res, err.status, err.code, err.message);
+  }
+
+  const restoreCreditsPolicy = await getPickupNoShowRestoreCreditsSetting();
+  const session = await mongoose.startSession();
+  let day;
+  let restoredCredits = 0;
+  try {
+    session.startTransaction();
+
+    day = await SubscriptionDay.findById(dayId).session(session);
+    if (!day) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 404, "NOT_FOUND", "Day not found");
+    }
+    if (day.status === "no_show") {
+      await session.commitTransaction();
+      session.endSession();
+      return res.status(200).json({
+        ok: true,
+        data: day,
+        restoredCredits: 0,
+        restoreCreditsPolicy,
+        idempotent: true,
+      });
+    }
+    if (day.status !== "ready_for_pickup") {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 409, "INVALID_TRANSITION", "Only ready pickup days can be marked as no-show");
+    }
+
+    const sub = await Subscription.findById(day.subscriptionId).session(session).lean();
+    if (!sub) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
+    }
+    if (sub.deliveryMode !== "pickup") {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 400, "INVALID", "Not a pickup subscription");
+    }
+
+    if (restoreCreditsPolicy && day.creditsDeducted) {
+      restoredCredits = Number(day.lockedSnapshot && day.lockedSnapshot.mealsPerDay)
+        || resolveMealsPerDay(sub);
+      if (restoredCredits > 0) {
+        await Subscription.updateOne(
+          { _id: sub._id },
+          { $inc: { remainingMeals: restoredCredits } },
+          { session }
+        );
+      }
+      day.creditsDeducted = false;
+    }
+
+    day.status = "no_show";
+    day.pickupRequested = false;
+    day.pickupNoShowAt = new Date();
+    appendOperationAudit(day, {
+      action: "no_show",
+      actor: req.dashboardUserId || req.userId,
+    });
+    await day.save({ session });
+
+    await session.commitTransaction();
+    session.endSession();
+  } catch (err) {
+    await session.abortTransaction();
+    session.endSession();
+    logger.error("kitchenController.markPickupNoShow failed", { dayId, error: err.message, stack: err.stack });
+    return errorResponse(res, 500, "INTERNAL", "Pickup no-show update failed");
+  }
+
+  try {
+    await writeLog({
+      entityType: "subscription_day",
+      entityId: day._id,
+      action: "pickup_no_show",
+      byUserId: req.userId,
+      byRole: req.userRole,
+      meta: {
+        restoredCredits,
+        restoreCreditsPolicy,
+      },
+    });
+  } catch (err) {
+    logger.error("Kitchen pickup no-show log write failed", { error: err.message, stack: err.stack, dayId });
+  }
+
+  return res.status(200).json({
+    ok: true,
+    data: day,
+    restoredCredits,
+    restoreCreditsPolicy,
+  });
+}
+
+async function cancelAtBranch(req, res) {
+  const { id, date } = req.params;
+  try {
+    validateObjectId(id, "subscriptionId");
+  } catch (err) {
+    return errorResponse(res, err.status, err.code, err.message);
+  }
+  if (!isValidKSADateString(date)) {
+    return errorResponse(res, 400, "INVALID_DATE", "Invalid date");
+  }
+
+  const session = await mongoose.startSession();
+  let day;
+  let restoredCredits = 0;
+  try {
+    session.startTransaction();
+
+    const sub = await Subscription.findById(id).session(session).lean();
+    if (!sub) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
+    }
+    if (sub.deliveryMode !== "pickup") {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 400, "INVALID", "Not a pickup subscription");
+    }
+
+    day = await SubscriptionDay.findOne({ subscriptionId: id, date }).session(session);
+    if (!day) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 404, "NOT_FOUND", "Day not found");
+    }
+    if (day.status === "canceled_at_branch") {
+      await session.commitTransaction();
+      session.endSession();
+      return res.status(200).json({ ok: true, data: day, restoredCredits: 0, idempotent: true });
+    }
+    if (day.status === "fulfilled") {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 409, "INVALID_TRANSITION", "Invalid state transition");
+    }
+    if (!["locked", "in_preparation", "ready_for_pickup"].includes(day.status)) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 409, "INVALID_TRANSITION", "Invalid state transition");
+    }
+
+    if (day.creditsDeducted) {
+      restoredCredits = Number(day.lockedSnapshot && day.lockedSnapshot.mealsPerDay)
+        || resolveMealsPerDay(sub);
+      if (restoredCredits > 0) {
+        await Subscription.updateOne(
+          { _id: sub._id },
+          { $inc: { remainingMeals: restoredCredits } },
+          { session }
+        );
+      }
+      day.creditsDeducted = false;
+    }
+
+    day.status = "canceled_at_branch";
+    day.pickupRequested = false;
+    appendOperationAudit(day, {
+      action: "canceled_at_branch",
+      actor: req.dashboardUserId || req.userId,
+    });
+    await day.save({ session });
+
+    await session.commitTransaction();
+    session.endSession();
+  } catch (err) {
+    await session.abortTransaction();
+    session.endSession();
+    logger.error("kitchenController.cancelAtBranch failed", { subscriptionId: id, date, error: err.message, stack: err.stack });
+    return errorResponse(res, 500, "INTERNAL", "Cancel at branch failed");
+  }
+
+  try {
+    await writeLog({
+      entityType: "subscription_day",
+      entityId: day._id,
+      action: "cancel_at_branch",
+      byUserId: req.userId,
+      byRole: req.userRole,
+      meta: { date, restoredCredits },
+    });
+  } catch (err) {
+    logger.error("Kitchen cancel-at-branch log write failed", { error: err.message, stack: err.stack, dayId: String(day._id) });
+  }
+
+  return res.status(200).json({ ok: true, data: day, restoredCredits });
+}
+
 module.exports = {
   listDailyOrders,
+  listPickupsByDate,
+  listTodayPickups,
   assignMeals,
   bulkLockDaysByDate,
   transitionDay,
   reopenLockedDay,
   fulfillPickup,
+  verifyPickup,
+  markPickupNoShow,
+  cancelAtBranch,
 };

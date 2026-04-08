@@ -105,14 +105,12 @@ test("createMealCategory normalizes the category key and persists localized data
   assert.equal(createdPayload.sortOrder, 2);
 });
 
-test("updateMealCategory renames assigned meals when the category key changes", async (t) => {
+test("updateMealCategory updates only category metadata when key changes", async (t) => {
   const originalFindById = MealCategory.findById;
   const originalFindOne = MealCategory.findOne;
-  const originalUpdateMany = Meal.updateMany;
   t.after(() => {
     MealCategory.findById = originalFindById;
     MealCategory.findOne = originalFindOne;
-    Meal.updateMany = originalUpdateMany;
   });
 
   const categoryDoc = {
@@ -122,14 +120,8 @@ test("updateMealCategory renames assigned meals when the category key changes", 
       return this;
     },
   };
-  let updateManyArgs = null;
-
   MealCategory.findById = async () => categoryDoc;
   MealCategory.findOne = () => createQueryStub(null);
-  Meal.updateMany = async (query, update) => {
-    updateManyArgs = { query, update };
-    return { acknowledged: true };
-  };
 
   const { req, res } = createReqRes({
     params: { id: String(categoryDoc._id) },
@@ -140,10 +132,6 @@ test("updateMealCategory renames assigned meals when the category key changes", 
 
   assert.equal(res.statusCode, 200);
   assert.equal(categoryDoc.key, "mushrooms");
-  assert.deepEqual(updateManyArgs, {
-    query: { category: "hot_food" },
-    update: { $set: { category: "mushrooms" } },
-  });
 });
 
 test("deleteMealCategory refuses to delete a category that is still assigned to meals", async (t) => {
@@ -168,18 +156,17 @@ test("deleteMealCategory refuses to delete a category that is still assigned to 
   assert.equal(res.payload.error.code, "CATEGORY_IN_USE");
 });
 
-test("createMeal validates and stores a normalized category key", async (t) => {
-  const originalFindOne = MealCategory.findOne;
+test("createMeal requires categoryId and stores relation via categoryId", async (t) => {
+  const originalFindById = MealCategory.findById;
   const originalCreate = Meal.create;
   t.after(() => {
-    MealCategory.findOne = originalFindOne;
+    MealCategory.findById = originalFindById;
     Meal.create = originalCreate;
   });
 
   let createdPayload = null;
-  MealCategory.findOne = ({ key }) => createQueryStub(
-    key === "hot_food" ? { _id: objectId(), key: "hot_food" } : null
-  );
+  const categoryId = objectId();
+  MealCategory.findById = () => createQueryStub({ _id: categoryId, key: "hot_food" });
   Meal.create = async (payload) => {
     createdPayload = payload;
     return { id: String(objectId()) };
@@ -188,7 +175,7 @@ test("createMeal validates and stores a normalized category key", async (t) => {
   const { req, res } = createReqRes({
     body: {
       name: { ar: "لازانيا", en: "Lasagna" },
-      categoryKey: "Hot Food",
+      categoryId: String(categoryId),
       availableForOrder: true,
       availableForSubscription: true,
     },
@@ -197,24 +184,52 @@ test("createMeal validates and stores a normalized category key", async (t) => {
   await mealController.createMeal(req, res);
 
   assert.equal(res.statusCode, 201);
-  assert.equal(createdPayload.category, "hot_food");
+  assert.equal(String(createdPayload.categoryId), String(categoryId));
   assert.equal(createdPayload.proteinGrams, 33);
   assert.equal(createdPayload.carbGrams, 37);
   assert.equal(createdPayload.fatGrams, 19);
 });
 
-test("createMeal rejects unknown category keys to keep meal assignments valid", async (t) => {
-  const originalFindOne = MealCategory.findOne;
-  t.after(() => {
-    MealCategory.findOne = originalFindOne;
+test("createMeal rejects deprecated categoryKey/category write fields", async () => {
+  const { req, res } = createReqRes({
+    body: {
+      name: { en: "Soup" },
+      categoryKey: "legacy",
+    },
   });
 
-  MealCategory.findOne = () => createQueryStub(null);
+  await mealController.createMeal(req, res);
+
+  assert.equal(res.statusCode, 400);
+  assert.equal(res.payload.error.code, "INVALID");
+});
+
+test("updateMeal rejects deprecated categoryKey/category write fields", async () => {
+  const { req, res } = createReqRes({
+    params: { id: String(objectId()) },
+    body: {
+      category: "legacy",
+    },
+  });
+
+  await mealController.updateMeal(req, res);
+
+  assert.equal(res.statusCode, 400);
+  assert.equal(res.payload.error.code, "INVALID");
+});
+
+test("createMeal rejects unknown categoryId values", async (t) => {
+  const originalFindById = MealCategory.findById;
+  t.after(() => {
+    MealCategory.findById = originalFindById;
+  });
+
+  MealCategory.findById = () => createQueryStub(null);
 
   const { req, res } = createReqRes({
     body: {
       name: { en: "Soup" },
-      categoryKey: "Unknown Category",
+      categoryId: String(objectId()),
     },
   });
 
@@ -222,6 +237,44 @@ test("createMeal rejects unknown category keys to keep meal assignments valid", 
 
   assert.equal(res.statusCode, 400);
   assert.equal(res.payload.error.code, "INVALID_CATEGORY");
+});
+
+test("listCategoriesWithMeals returns grouped payload with slug and categoryId only", async (t) => {
+  const originalCategoryFind = MealCategory.find;
+  const originalMealFind = Meal.find;
+  t.after(() => {
+    MealCategory.find = originalCategoryFind;
+    Meal.find = originalMealFind;
+  });
+
+  const categoryId = objectId();
+  MealCategory.find = () => createQueryStub([
+    {
+      _id: categoryId,
+      key: "breakfast",
+      name: { en: "Breakfast", ar: "فطور" },
+      sortOrder: 1,
+      isActive: true,
+    },
+  ]);
+  Meal.find = () => createQueryStub([
+    {
+      _id: objectId(),
+      name: { en: "Omelette", ar: "عجة" },
+      categoryId,
+      sortOrder: 1,
+      isActive: true,
+    },
+  ]);
+
+  const { req, res } = createReqRes({ headers: { "accept-language": "en" } });
+  await mealController.listCategoriesWithMeals(req, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(Array.isArray(res.payload.data), true);
+  assert.equal(res.payload.data[0].slug, "breakfast");
+  assert.equal(res.payload.data[0].meals[0].categoryId, String(categoryId));
+  assert.equal("key" in res.payload.data[0], false);
 });
 
 test("validatePremiumMealPayloadOrThrow assigns default nutrition values when omitted", () => {

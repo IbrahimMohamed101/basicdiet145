@@ -8,8 +8,7 @@ const DeliverySchema = new mongoose.Schema(
     subscriptionId: { type: mongoose.Schema.Types.ObjectId, ref: "Subscription" },
     dayId: { type: mongoose.Schema.Types.ObjectId, ref: "SubscriptionDay" },
     orderId: { type: mongoose.Schema.Types.ObjectId, ref: "Order" },
-    courierId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-    status: { type: String, enum: ["scheduled", "out_for_delivery", "delivered", "canceled", "cancelled"], default: "scheduled" },
+    status: { type: String, enum: ["scheduled", "out_for_delivery", "delivered", "canceled"], default: "scheduled" },
     address: {
       line1: { type: String },
       line2: { type: String },
@@ -21,6 +20,12 @@ const DeliverySchema = new mongoose.Schema(
     arrivingSoonReminderSentAt: { type: Date, default: null },
     deliveredNotificationSentAt: { type: Date, default: null },
     deliveredAt: { type: Date },
+    canceledAt: { type: Date, default: null },
+    cancellationReason: { type: String, trim: true, default: null },
+    cancellationCategory: { type: String, enum: ["customer_issue", "delivery_issue"], default: null },
+    cancellationNote: { type: String, trim: true, default: null },
+    canceledByRole: { type: String, trim: true, default: null },
+    canceledByUserId: { type: mongoose.Schema.Types.ObjectId, default: null },
   },
   { timestamps: true }
 );

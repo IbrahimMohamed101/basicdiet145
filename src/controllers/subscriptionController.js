@@ -14,9 +14,9 @@ const dateUtils = require("../utils/date");
 const { addDaysToKSADateString } = dateUtils;
 const { canTransition } = require("../utils/state");
 const { writeLog } = require("../utils/log");
-const { getEffectiveDeliveryDetails } = require("../utils/delivery");
 const { createInvoice, getInvoice } = require("../services/moyasarService");
 const { fulfillSubscriptionDay } = require("../services/fulfillmentService");
+const { buildLockedDaySnapshot } = require("../services/subscriptionDayOperationalSnapshotService");
 const {
   applySkipForDate,
   syncSubscriptionValidity,
@@ -108,7 +108,6 @@ const {
   assertCanonicalPlanningExactCount,
   assertNoPendingPremiumOverage,
   buildCanonicalPlanningView,
-  buildScopedCanonicalPlanningSnapshot,
   isCanonicalPremiumOverageEligible,
 } = require("../services/subscriptionDayPlanningService");
 const {
@@ -116,7 +115,6 @@ const {
   buildRecurringAddonEntitlementsFromQuote,
   resolveProjectedRecurringAddons,
   applyRecurringAddonProjectionToDay,
-  buildScopedRecurringAddonSnapshot,
   buildProjectedDayEntry,
 } = require("../services/recurringAddonService");
 const {
@@ -135,6 +133,10 @@ const {
 } = require("../services/idempotencyService");
 const { reconcileCheckoutDraft, RECONCILE_MODES } = require("../services/reconciliationService");
 const { cancelSubscriptionDomain } = require("../services/subscriptionCancellationService");
+const {
+  validateDayBeforeLockOrPrepare,
+  resolveDayExecutionValidationErrorStatus,
+} = require("../services/subscriptionDayExecutionValidationService");
 const { validateRedirectUrl, resolveProviderRedirectUrl } = require("../utils/security");
 const {
   resolveEffectiveSubscriptionStatus,
@@ -6432,48 +6434,13 @@ async function confirmDayPlanning(req, res, runtimeOverrides = null) {
 
 async function lockDaySnapshot(sub, day, session) {
   if (day.lockedSnapshot) return day.lockedSnapshot;
-  const { premiumUpgradeSelections, addonCreditSelections } = applyDayWalletSelections({
+  const pickupLocations = await getSettingValue("pickup_locations", []);
+  const snapshot = await buildLockedDaySnapshot({
     subscription: sub,
     day,
+    pickupLocations,
+    session,
   });
-  const planningSnapshot = buildScopedCanonicalPlanningSnapshot({
-    subscription: sub,
-    day,
-    flagEnabled: isPhase2CanonicalDayPlanningEnabled(),
-  });
-  const recurringAddonSnapshot = buildScopedRecurringAddonSnapshot({
-    subscription: sub,
-    day,
-  });
-  const oneTimeAddonSnapshot = buildOneTimeAddonPlanningSnapshot({ day });
-  const { address, deliveryWindow } = getEffectiveDeliveryDetails(sub, day);
-  const snapshot = {
-    selections: day.selections,
-    premiumSelections: day.premiumSelections,
-    addonsOneTime: day.addonsOneTime,
-    premiumUpgradeSelections,
-    addonCreditSelections,
-    customSalads: day.customSalads || [],
-    customMeals: day.customMeals || [],
-    subscriptionAddons: sub.addonSubscriptions || [],
-    address,
-    deliveryWindow,
-    pricing: {
-      planId: sub.planId,
-      premiumPrice: sub.premiumPrice,
-      addons: sub.addonSubscriptions,
-    },
-    mealsPerDay: resolveMealsPerDay(sub),
-  };
-  if (planningSnapshot) {
-    snapshot.planning = planningSnapshot;
-  }
-  if (recurringAddonSnapshot) {
-    snapshot.recurringAddons = recurringAddonSnapshot;
-  }
-  if (oneTimeAddonSnapshot) {
-    Object.assign(snapshot, oneTimeAddonSnapshot);
-  }
   day.lockedSnapshot = snapshot;
   day.lockedAt = new Date();
   await day.save({ session });
@@ -8018,6 +7985,11 @@ async function preparePickup(req, res) {
     }
 
     const day = await SubscriptionDay.findOne({ subscriptionId: id, date }).session(session);
+    if (!day) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 404, "NOT_FOUND", "Day not found");
+    }
 
     // CR-03 FIX: Check if already processed (idempotency)
     if (day && day.pickupRequested) {
@@ -8038,35 +8010,24 @@ async function preparePickup(req, res) {
       });
     }
 
-    if (day && !canTransition(day.status, "locked")) {
+    try {
+      validateDayBeforeLockOrPrepare({ subscription: sub, day });
+    } catch (err) {
       await session.abortTransaction();
       session.endSession();
-      return errorResponse(res, 409, "INVALID_TRANSITION", "Invalid state transition");
+      return errorResponse(res, resolveDayExecutionValidationErrorStatus(err), err.code || "INVALID", err.message);
     }
 
     const mealsToDeduct = resolveMealsPerDay(sub);
-
-    let updatedDay;
-    if (!day) {
-      const created = await SubscriptionDay.create([{
-        subscriptionId: id,
-        date,
-        pickupRequested: true,
-        status: "locked",
-        creditsDeducted: true
-      }], { session });
-      updatedDay = created[0];
-    } else {
-      updatedDay = await SubscriptionDay.findOneAndUpdate(
-        { _id: day._id, status: { $in: ["open", null] } },
-        { $set: { pickupRequested: true, status: "locked", creditsDeducted: true } },
-        { new: true, session }
-      );
-      if (!updatedDay) {
-        await session.abortTransaction();
-        session.endSession();
-        return errorResponse(res, 409, "LOCKED", "Day already locked");
-      }
+    const updatedDay = await SubscriptionDay.findOneAndUpdate(
+      { _id: day._id, status: { $in: ["open", null] } },
+      { $set: { pickupRequested: true, status: "locked", creditsDeducted: true } },
+      { new: true, session }
+    );
+    if (!updatedDay) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 409, "LOCKED", "Day already locked");
     }
 
     // Capture Snapshot (Rule requirement)

@@ -131,13 +131,12 @@ async function getMealCategoryAdmin(req, res) {
 
 async function createMealCategory(req, res) {
   try {
+    if (hasOwn(req.body || {}, "categoryKey")) {
+      return errorResponse(res, 400, "INVALID", "categoryKey is deprecated. Use key instead.");
+    }
     const name = normalizeLocalizedRequired(req.body && req.body.name, "name");
     const description = normalizeLocalizedOptional(req.body && req.body.description, "description");
-    const rawKey = hasOwn(req.body || {}, "key")
-      ? req.body.key
-      : hasOwn(req.body || {}, "categoryKey")
-        ? req.body.categoryKey
-        : name.en || name.ar;
+    const rawKey = hasOwn(req.body || {}, "key") ? req.body.key : name.en || name.ar;
     const key = assertValidCategoryKeyOrThrow(rawKey);
 
     await ensureUniqueKeyOrThrow(key);
@@ -168,6 +167,9 @@ async function updateMealCategory(req, res) {
   }
 
   try {
+    if (hasOwn(req.body || {}, "categoryKey")) {
+      return errorResponse(res, 400, "INVALID", "categoryKey is deprecated. Use key instead.");
+    }
     const row = await MealCategory.findById(id);
     if (!row) {
       return errorResponse(res, 404, "NOT_FOUND", "Meal category not found");
@@ -179,17 +181,11 @@ async function updateMealCategory(req, res) {
     if (hasOwn(req.body, "description")) {
       row.description = normalizeLocalizedOptional(req.body.description, "description");
     }
-    if (hasOwn(req.body, "key") || hasOwn(req.body, "categoryKey")) {
-      const nextKey = assertValidCategoryKeyOrThrow(
-        hasOwn(req.body, "key") ? req.body.key : req.body.categoryKey
-      );
+    if (hasOwn(req.body, "key")) {
+      const nextKey = assertValidCategoryKeyOrThrow(req.body.key);
 
       if (nextKey !== normalizeCategoryKey(row.key)) {
         await ensureUniqueKeyOrThrow(nextKey, { excludeId: row._id });
-        await Meal.updateMany(
-          { category: normalizeCategoryKey(row.key) },
-          { $set: { category: nextKey } }
-        );
         row.key = nextKey;
       }
     }
@@ -223,8 +219,7 @@ async function deleteMealCategory(req, res) {
     return errorResponse(res, 404, "NOT_FOUND", "Meal category not found");
   }
 
-  const categoryKey = normalizeCategoryKey(row.key);
-  const assignedMealsCount = await Meal.countDocuments({ category: categoryKey });
+  const assignedMealsCount = await Meal.countDocuments({ categoryId: row._id });
   if (assignedMealsCount > 0) {
     return errorResponse(res, 409, "CATEGORY_IN_USE", "Meal category is assigned to one or more meals");
   }

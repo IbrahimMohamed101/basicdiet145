@@ -19,6 +19,9 @@ module.exports = {
       on_the_way: "On the way",
       ready_for_pickup: "Ready for pickup",
       fulfilled: "Fulfilled",
+      delivery_canceled: "Delivery canceled",
+      canceled_at_branch: "Canceled at branch",
+      no_show: "No-show",
       skipped: "Skipped",
     },
     timelineStatuses: {
@@ -26,6 +29,9 @@ module.exports = {
       planned: "Planned",
       locked: "Locked",
       delivered: "Delivered",
+      delivery_canceled: "Delivery canceled",
+      canceled_at_branch: "Canceled at branch",
+      no_show: "No-show",
       frozen: "Frozen",
       skipped: "Skipped",
       extension: "Extension",
@@ -75,6 +81,17 @@ module.exports = {
     renewalSeedSources: {
       snapshot: "Snapshot",
       legacy: "Legacy",
+    },
+    cancellationReasons: {
+      customer_not_available: "Customer not available",
+      customer_not_answering: "Customer not answering",
+      customer_refused_delivery: "Customer refused delivery",
+      invalid_customer_address: "Invalid customer address",
+      customer_requested_cancellation: "Customer requested cancellation",
+      courier_issue: "Courier issue",
+      operational_delay: "Operational delay",
+      internal_delivery_problem: "Internal delivery problem",
+      order_operational_issue: "Order operational issue",
     },
   },
   write: {

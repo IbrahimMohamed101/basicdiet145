@@ -1,13 +1,9 @@
 const Meal = require("../models/Meal");
 const MealCategory = require("../models/MealCategory");
+const mongoose = require("mongoose");
 const { getRequestLang, pickLang } = require("../utils/i18n");
 const validateObjectId = require("../utils/validateObjectId");
 const errorResponse = require("../utils/errorResponse");
-const {
-  normalizeCategoryKey,
-  buildMealCategoryMap,
-  resolveMealCategoryForKey,
-} = require("../utils/mealCategoryCatalog");
 const { parseMealNutritionFromBody, withDefaultMealNutrition } = require("../utils/mealNutrition");
 const { resolveManagedImageFromRequest } = require("../services/adminImageService");
 const { parseBooleanField, parseLocalizedFieldFromBody } = require("../utils/requestFields");
@@ -21,8 +17,17 @@ function resolveSortValue(value) {
 
 function resolveMeal(doc, lang, categoryMap = null) {
   const normalizedDoc = withDefaultMealNutrition(doc);
-  const category = categoryMap ? resolveMealCategoryForKey(normalizedDoc.category, categoryMap, lang) : null;
-  const categoryKey = normalizeCategoryKey(normalizedDoc.category);
+  const categoryId = normalizedDoc.categoryId ? String(normalizedDoc.categoryId) : null;
+  const categoryDoc = categoryMap && categoryId ? categoryMap.get(categoryId) : null;
+  const category = categoryDoc
+    ? {
+      id: String(categoryDoc._id),
+      name: pickLang(categoryDoc.name, lang) || "",
+      slug: String(categoryDoc.key || "").trim().toLowerCase(),
+      sortOrder: Number.isFinite(Number(categoryDoc.sortOrder)) ? Number(categoryDoc.sortOrder) : 0,
+      isActive: categoryDoc.isActive !== false,
+    }
+    : null;
 
   return {
     ...normalizedDoc,
@@ -30,13 +35,23 @@ function resolveMeal(doc, lang, categoryMap = null) {
     name: pickLang(normalizedDoc.name, lang),
     description: pickLang(normalizedDoc.description, lang),
     imageUrl: normalizedDoc.imageUrl || "",
-    category: categoryKey,
-    categoryKey,
+    categoryId,
     categoryMeta: category,
     availableForOrder: normalizedDoc.availableForOrder !== false,
     availableForSubscription: normalizedDoc.availableForSubscription !== false,
     sortOrder: resolveSortValue(normalizedDoc.sortOrder),
   };
+}
+
+function buildCategoryLookupMaps(categories = []) {
+  const categoryMapById = new Map();
+
+  for (const category of categories) {
+    if (!category || !category._id) continue;
+    categoryMapById.set(String(category._id), category);
+  }
+
+  return { categoryMapById };
 }
 
 function normalizeSortOrder(value, fieldName = "sortOrder") {
@@ -47,19 +62,23 @@ function normalizeSortOrder(value, fieldName = "sortOrder") {
   return parsed;
 }
 
-async function resolveValidatedCategoryKey(rawValue, { allowEmpty = true } = {}) {
-  const categoryKey = normalizeCategoryKey(rawValue);
-  if (!categoryKey) {
-    if (allowEmpty) return "";
-    throw { status: 400, code: "INVALID", message: "categoryKey must be a non-empty string" };
+async function resolveValidatedCategoryId(rawValue, { allowEmpty = true } = {}) {
+  if (rawValue === undefined || rawValue === null || String(rawValue).trim() === "") {
+    if (allowEmpty) return null;
+    throw { status: 400, code: "INVALID", message: "categoryId must be a non-empty ObjectId" };
   }
 
-  const category = await MealCategory.findOne({ key: categoryKey }).lean();
+  const value = String(rawValue).trim();
+  if (!mongoose.Types.ObjectId.isValid(value)) {
+    throw { status: 400, code: "INVALID", message: "categoryId must be a valid ObjectId" };
+  }
+
+  const category = await MealCategory.findById(value).lean();
   if (!category) {
     throw { status: 400, code: "INVALID_CATEGORY", message: "Meal category not found" };
   }
 
-  return categoryKey;
+  return String(category._id);
 }
 
 function assertRegularType(body) {
@@ -75,8 +94,9 @@ async function listMeals(req, res) {
     Meal.find({ type: "regular", isActive: true }).sort({ sortOrder: 1, createdAt: -1 }).lean(),
     MealCategory.find({}).sort({ sortOrder: 1, createdAt: -1 }).lean(),
   ]);
-  const categoryMap = buildMealCategoryMap(categories, lang);
-  return res.status(200).json({ ok: true, data: meals.map((meal) => resolveMeal(meal, lang, categoryMap)) });
+  const { categoryMapById } = buildCategoryLookupMaps(categories);
+  const data = meals.map((meal) => resolveMeal(meal, lang, categoryMapById));
+  return res.status(200).json({ ok: true, data });
 }
 
 async function listMealsAdmin(_req, res) {
@@ -88,7 +108,7 @@ async function listMealsAdmin(_req, res) {
       return {
         ...normalizedMeal,
         id: String(normalizedMeal._id),
-        categoryKey: normalizeCategoryKey(normalizedMeal.category),
+        categoryId: normalizedMeal.categoryId ? String(normalizedMeal.categoryId) : null,
       };
     }),
   });
@@ -112,7 +132,7 @@ async function getMealAdmin(req, res) {
     data: {
       ...withDefaultMealNutrition(meal),
       id: String(meal._id),
-      categoryKey: normalizeCategoryKey(meal.category),
+      categoryId: meal.categoryId ? String(meal.categoryId) : null,
     },
   });
 }
@@ -128,14 +148,21 @@ async function createMeal(req, res) {
     return errorResponse(res, 400, "INVALID", "Missing meal name (provide name.ar and/or name.en)");
   }
 
+  if (Object.prototype.hasOwnProperty.call(req.body || {}, "categoryKey")
+    || Object.prototype.hasOwnProperty.call(req.body || {}, "category")) {
+    return errorResponse(
+      res,
+      400,
+      "INVALID",
+      "categoryKey/category is deprecated for writes. Use categoryId instead."
+    );
+  }
+
   try {
-    const categoryKey = Object.prototype.hasOwnProperty.call(req.body || {}, "categoryKey")
-      || Object.prototype.hasOwnProperty.call(req.body || {}, "category")
-      ? await resolveValidatedCategoryKey(
-        Object.prototype.hasOwnProperty.call(req.body || {}, "categoryKey") ? req.body.categoryKey : req.body.category,
-        { allowEmpty: true }
-      )
-      : "";
+    if (!Object.prototype.hasOwnProperty.call(req.body || {}, "categoryId")) {
+      return errorResponse(res, 400, "INVALID", "categoryId is required");
+    }
+    const categoryId = await resolveValidatedCategoryId(req.body.categoryId, { allowEmpty: false });
 
     const imageState = await resolveManagedImageFromRequest({
       body: req.body,
@@ -148,7 +175,7 @@ async function createMeal(req, res) {
       name,
       description: parseLocalizedFieldFromBody(req.body || {}, "description", { allowString: true }) || { ar: "", en: "" },
       imageUrl: imageState.imageUrl,
-      category: categoryKey,
+      categoryId,
       type: "regular",
       availableForOrder: parseBooleanField(req.body && req.body.availableForOrder, "availableForOrder", { defaultValue: true }),
       availableForSubscription: parseBooleanField(
@@ -183,6 +210,16 @@ async function updateMeal(req, res) {
     return errorResponse(res, 400, "INVALID", typeCheck.message);
   }
 
+  if (Object.prototype.hasOwnProperty.call(req.body || {}, "categoryKey")
+    || Object.prototype.hasOwnProperty.call(req.body || {}, "category")) {
+    return errorResponse(
+      res,
+      400,
+      "INVALID",
+      "categoryKey/category is deprecated for writes. Use categoryId instead."
+    );
+  }
+
   try {
     const meal = await Meal.findOne({ _id: id, type: "regular" });
     if (!meal) {
@@ -214,12 +251,9 @@ async function updateMeal(req, res) {
     if (imageState.changed) {
       update.imageUrl = imageState.imageUrl;
     }
-    if (req.body && (Object.prototype.hasOwnProperty.call(req.body, "categoryKey")
-      || Object.prototype.hasOwnProperty.call(req.body, "category"))) {
-      update.category = await resolveValidatedCategoryKey(
-        Object.prototype.hasOwnProperty.call(req.body, "categoryKey") ? req.body.categoryKey : req.body.category,
-        { allowEmpty: true }
-      );
+    if (req.body && Object.prototype.hasOwnProperty.call(req.body, "categoryId")) {
+      const categoryId = await resolveValidatedCategoryId(req.body.categoryId, { allowEmpty: true });
+      update.categoryId = categoryId;
     }
     if (req.body && req.body.isActive !== undefined) {
       update.isActive = parseBooleanField(req.body.isActive, "isActive");
@@ -246,7 +280,7 @@ async function updateMeal(req, res) {
         res,
         400,
         "INVALID",
-        "At least one of name, description, image file, removeImage, categoryKey, availability flags, sortOrder, isActive, or nutrition fields is required"
+        "At least one of name, description, image file, removeImage, categoryId, availability flags, sortOrder, isActive, or nutrition fields is required"
       );
     }
 
@@ -260,6 +294,44 @@ async function updateMeal(req, res) {
     }
     throw err;
   }
+}
+
+async function listCategoriesWithMeals(req, res) {
+  const lang = getRequestLang(req);
+  const activeOnly = String(req.query.activeOnly || "").toLowerCase() !== "false";
+  const [categories, meals] = await Promise.all([
+    MealCategory.find(activeOnly ? { isActive: true } : {}).sort({ sortOrder: 1, createdAt: -1 }).lean(),
+    Meal.find({
+      type: "regular",
+      ...(activeOnly ? { isActive: true } : {}),
+      categoryId: { $ne: null },
+    }).sort({ sortOrder: 1, createdAt: -1 }).lean(),
+  ]);
+
+  const byId = new Map(categories.map((category) => [String(category._id), category]));
+
+  const data = categories.map((category) => ({
+    id: String(category._id),
+    name: pickLang(category.name, lang) || "",
+    slug: String(category.key || "").trim().toLowerCase(),
+    meals: [],
+  }));
+  const dataById = new Map(data.map((category) => [category.id, category]));
+
+  for (const meal of meals) {
+    const mealCategoryId = meal.categoryId ? String(meal.categoryId) : "";
+    const resolvedCategory = mealCategoryId && byId.get(mealCategoryId);
+    if (!resolvedCategory) continue;
+    const target = dataById.get(String(resolvedCategory._id));
+
+    target.meals.push({
+      id: String(meal._id),
+      name: pickLang(meal.name, lang) || "",
+      categoryId: String(resolvedCategory._id),
+    });
+  }
+
+  return res.status(200).json({ ok: true, data });
 }
 
 async function deleteMeal(req, res) {
@@ -305,4 +377,5 @@ module.exports = {
   updateMeal,
   deleteMeal,
   toggleMealActive,
+  listCategoriesWithMeals,
 };

@@ -23,7 +23,7 @@ async function processDueDeliveryArrivingSoon(now = new Date()) {
   const deliveries = await Delivery.find({
     etaAt: { $gt: now, $lte: oneHourLater },
     arrivingSoonReminderSentAt: null,
-    status: { $nin: ["delivered", "canceled", "cancelled"] },
+    status: { $nin: ["delivered", "canceled"] },
   })
     .populate({ path: "subscriptionId", select: "userId" })
     .populate({ path: "orderId", select: "userId" })
@@ -62,7 +62,7 @@ async function processDueDeliveryArrivingSoon(now = new Date()) {
       {
         _id: delivery._id,
         arrivingSoonReminderSentAt: null,
-        status: { $nin: ["delivered", "canceled", "cancelled"] },
+        status: { $nin: ["delivered", "canceled"] },
       },
       { $set: { arrivingSoonReminderSentAt: now } }
     );

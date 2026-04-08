@@ -7,18 +7,35 @@ const { writeLog } = require("../utils/log");
 const { notifyUser } = require("../utils/notify");
 const { sendUserNotificationWithDedupe } = require("../services/notificationService");
 const { fulfillSubscriptionDay } = require("../services/fulfillmentService");
-const { applyOperationalSkipForDate } = require("../services/subscriptionService");
+const {
+  canSendArrivingSoonReminder,
+  isDeliveryCanceledStatus,
+  isDeliveryDeliveredStatus,
+  normalizeDeliveryStatus,
+  parseDeliveryCancellationInput,
+} = require("../services/deliveryWorkflowService");
 const { logger } = require("../utils/logger");
 const validateObjectId = require("../utils/validateObjectId");
 const errorResponse = require("../utils/errorResponse");
+
+function appendDeliveryCancellationAudit(day, actorId) {
+  if (!day) return;
+  if (!Array.isArray(day.operationAuditLog)) {
+    day.operationAuditLog = [];
+  }
+  day.operationAuditLog.push({
+    action: "delivery_canceled",
+    by: String(actorId || ""),
+    at: new Date(),
+  });
+}
 
 async function listTodayDeliveries(req, res) {
   try {
     const today = getTodayKSADate();
     const dayDocs = await SubscriptionDay.find({ date: today }).select("_id").lean();
     const dayIds = dayDocs.map((d) => d._id);
-    // SECURITY FIX: Couriers can only view deliveries assigned to their own userId.
-    const deliveries = await Delivery.find({ dayId: { $in: dayIds }, courierId: req.userId }).sort({ createdAt: -1 }).lean();
+    const deliveries = await Delivery.find({ dayId: { $in: dayIds } }).sort({ createdAt: -1 }).lean();
     return res.status(200).json({ ok: true, data: deliveries });
   } catch (err) {
     // MEDIUM AUDIT FIX: Express 4 does not catch async errors automatically; return controlled 500.
@@ -40,23 +57,41 @@ async function markArrivingSoon(req, res) {
     if (!delivery) {
       return errorResponse(res, 404, "NOT_FOUND", "Delivery not found");
     }
-    // SECURITY FIX: Guard state transition to prevent reopening delivered/cancelled deliveries.
-    if (!["scheduled", "out_for_delivery"].includes(delivery.status)) {
+    if (!canSendArrivingSoonReminder(delivery.status) || isDeliveryCanceledStatus(delivery.status) || isDeliveryDeliveredStatus(delivery.status)) {
       return errorResponse(res, 409, "INVALID_TRANSITION", "Invalid state transition");
     }
 
-    // MEDIUM AUDIT FIX: Deduplicate "arriving soon" push by atomically stamping reminder flag with the status update.
     if (delivery.arrivingSoonReminderSentAt) {
-      return res.status(200).json({ ok: true, deduped: true });
+      return res.status(200).json({
+        ok: true,
+        deduped: true,
+        data: {
+          deliveryId: String(delivery._id),
+          status: normalizeDeliveryStatus(delivery.status),
+          reminderSentAt: delivery.arrivingSoonReminderSentAt,
+        },
+      });
     }
     const reminderSentAt = new Date();
     const updated = await Delivery.findOneAndUpdate(
-      { _id: id, status: { $in: ["scheduled", "out_for_delivery"] }, arrivingSoonReminderSentAt: null },
-      { $set: { status: "out_for_delivery", arrivingSoonReminderSentAt: reminderSentAt } },
+      {
+        _id: id,
+        arrivingSoonReminderSentAt: null,
+        status: { $nin: ["delivered", "canceled"] },
+      },
+      { $set: { arrivingSoonReminderSentAt: reminderSentAt } },
       { new: true }
     );
     if (!updated) {
-      return res.status(200).json({ ok: true, deduped: true });
+      return res.status(200).json({
+        ok: true,
+        deduped: true,
+        data: {
+          deliveryId: String(delivery._id),
+          status: normalizeDeliveryStatus(delivery.status),
+          reminderSentAt: delivery.arrivingSoonReminderSentAt,
+        },
+      });
     }
 
     const sub = await Subscription.findById(updated.subscriptionId).lean();
@@ -75,7 +110,14 @@ async function markArrivingSoon(req, res) {
         data: { deliveryId: String(updated._id) },
       });
     }
-    return res.status(200).json({ ok: true });
+    return res.status(200).json({
+      ok: true,
+      data: {
+        deliveryId: String(updated._id),
+        status: normalizeDeliveryStatus(updated.status),
+        reminderSentAt: updated.arrivingSoonReminderSentAt,
+      },
+    });
   } catch (err) {
     // MEDIUM AUDIT FIX: Express 4 does not catch async errors automatically; return controlled 500.
     logger.error("courierController.markArrivingSoon failed", { error: err.message, stack: err.stack });
@@ -97,12 +139,24 @@ async function markDelivered(req, res) {
       return errorResponse(res, 404, "NOT_FOUND", "Delivery not found");
     }
 
-    if (delivery.status === "delivered") {
-      return res.status(200).json({ ok: true });
+    if (isDeliveryDeliveredStatus(delivery.status)) {
+      return res.status(200).json({
+        ok: true,
+        idempotent: true,
+        data: {
+          deliveryId: String(delivery._id),
+          status: "delivered",
+          deliveredAt: delivery.deliveredAt || null,
+        },
+      });
+    }
+    if (isDeliveryCanceledStatus(delivery.status)) {
+      return errorResponse(res, 409, "ALREADY_CANCELED", "Cannot deliver a canceled delivery");
     }
 
     const session = await mongoose.startSession();
     let result;
+    let deliveredAt = null;
     try {
       session.startTransaction();
       result = await fulfillSubscriptionDay({ dayId: delivery.dayId, session });
@@ -118,7 +172,8 @@ async function markDelivered(req, res) {
       }
 
       delivery.status = "delivered";
-      delivery.deliveredAt = new Date();
+      deliveredAt = new Date();
+      delivery.deliveredAt = deliveredAt;
       await delivery.save({ session });
 
       await session.commitTransaction();
@@ -169,7 +224,17 @@ async function markDelivered(req, res) {
       logger.error("Delivery notification failed", { error: err.message, stack: err.stack, deliveryId: String(delivery._id) });
     }
 
-    return res.status(200).json({ ok: true });
+    return res.status(200).json({
+      ok: true,
+      data: {
+        deliveryId: String(delivery._id),
+        subscriptionDayId: String(delivery.dayId),
+        deliveryStatus: "delivered",
+        subscriptionDayStatus: result && result.day ? result.day.status : "fulfilled",
+        deliveredAt,
+      },
+      alreadyFulfilled: Boolean(result && result.alreadyFulfilled),
+    });
   } catch (err) {
     // MEDIUM AUDIT FIX: Express 4 does not catch async errors automatically; return controlled 500.
     logger.error("courierController.markDelivered failed", { error: err.message, stack: err.stack });
@@ -191,54 +256,99 @@ async function markCancelled(req, res) {
       return errorResponse(res, 404, "NOT_FOUND", "Delivery not found");
     }
 
-    if (delivery.status === "cancelled") {
-      return res.status(200).json({ ok: true });
+    if (isDeliveryCanceledStatus(delivery.status)) {
+      return res.status(200).json({
+        ok: true,
+        idempotent: true,
+        data: {
+          deliveryId: String(delivery._id),
+          deliveryStatus: "canceled",
+          canceledAt: delivery.canceledAt || null,
+          cancellationReason: delivery.cancellationReason || null,
+          cancellationCategory: delivery.cancellationCategory || null,
+          cancellationNote: delivery.cancellationNote || null,
+          canceledBy: delivery.canceledByUserId ? String(delivery.canceledByUserId) : null,
+        },
+      });
     }
-    if (delivery.status === "delivered") {
+    if (isDeliveryDeliveredStatus(delivery.status)) {
       return errorResponse(res, 400, "ALREADY_DELIVERED", "Cannot cancel delivered order");
+    }
+
+    let cancellation;
+    try {
+      cancellation = parseDeliveryCancellationInput(req.body || {});
+    } catch (err) {
+      return errorResponse(res, err.status, err.code, err.message);
     }
 
     const session = await mongoose.startSession();
     let sub;
-    let result;
+    let day;
+    let canceledAt = null;
     try {
       session.startTransaction();
-      sub = await Subscription.findById(delivery.subscriptionId).populate("planId").session(session);
+      sub = await Subscription.findById(delivery.subscriptionId).session(session).lean();
       if (!sub) {
         await session.abortTransaction();
         session.endSession();
         return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
       }
 
-      const day = await SubscriptionDay.findById(delivery.dayId).session(session);
+      day = await SubscriptionDay.findById(delivery.dayId).session(session);
       if (!day) {
         await session.abortTransaction();
         session.endSession();
         return errorResponse(res, 404, "NOT_FOUND", "Day not found");
       }
-
-      // Delivery cancellation remains an operational consumed cancellation, not a compensated client skip.
-      result = await applyOperationalSkipForDate({ sub, date: day.date, session });
-
-      if (result.status === "fulfilled") {
+      if (day.status === "fulfilled") {
         await session.abortTransaction();
         session.endSession();
         return errorResponse(res, 400, "ALREADY_FULFILLED", "Cannot cancel fulfilled order");
       }
-
-      if (result.status === "frozen") {
+      if (day.status === "delivery_canceled") {
+        await session.commitTransaction();
+        session.endSession();
+        return res.status(200).json({
+          ok: true,
+          idempotent: true,
+          data: {
+            deliveryId: String(delivery._id),
+            subscriptionDayId: String(day._id),
+            deliveryStatus: "canceled",
+            subscriptionDayStatus: "delivery_canceled",
+            canceledAt: delivery.canceledAt || null,
+            cancellationReason: delivery.cancellationReason || null,
+            cancellationCategory: delivery.cancellationCategory || null,
+            cancellationNote: delivery.cancellationNote || null,
+            canceledBy: day.canceledBy || (delivery.canceledByUserId ? String(delivery.canceledByUserId) : null),
+          },
+        });
+      }
+      if (day.status !== "out_for_delivery") {
         await session.abortTransaction();
         session.endSession();
-        return errorResponse(res, 409, "FROZEN", "Day is frozen");
+        return errorResponse(res, 409, "INVALID_TRANSITION", "Only dispatched deliveries can be canceled");
       }
 
-      if (result.status === "insufficient_credits") {
-        await session.abortTransaction();
-        session.endSession();
-        return errorResponse(res, 400, "INSUFFICIENT_CREDITS", "Not enough credits");
-      }
+      day.status = "delivery_canceled";
+      day.pickupRequested = false;
+      day.cancellationReason = cancellation.reason;
+      day.cancellationCategory = cancellation.category;
+      day.cancellationNote = cancellation.note;
+      day.canceledAt = new Date();
+      day.canceledBy = String(req.dashboardUserId || req.userId || "");
+      appendDeliveryCancellationAudit(day, req.dashboardUserId || req.userId);
+      await day.save({ session });
 
-      delivery.status = "cancelled";
+      canceledAt = day.canceledAt;
+      delivery.status = "canceled";
+      delivery.canceledAt = canceledAt;
+      delivery.cancellationReason = cancellation.reason;
+      delivery.cancellationCategory = cancellation.category;
+      delivery.cancellationNote = cancellation.note;
+      delivery.canceledByRole = req.userRole || null;
+      delivery.canceledByUserId = req.dashboardUserId || req.userId || null;
       await delivery.save({ session });
 
       await session.commitTransaction();
@@ -254,10 +364,18 @@ async function markCancelled(req, res) {
       await writeLog({
         entityType: "delivery",
         entityId: delivery._id,
-        action: "cancelled",
+        action: "canceled",
         byUserId: req.userId,
         byRole: req.userRole,
-        meta: { subscriptionId: delivery.subscriptionId, compensated: Boolean(result.compensatedDateAdded) },
+        meta: {
+          subscriptionId: delivery.subscriptionId,
+          subscriptionDayId: day ? String(day._id) : null,
+          reason: cancellation.reason,
+          category: cancellation.category,
+          note: cancellation.note,
+          canceledAt,
+          canceledBy: day ? day.canceledBy : String(req.dashboardUserId || req.userId || ""),
+        },
       });
     } catch (err) {
       logger.error("Delivery cancellation log write failed", { error: err.message, stack: err.stack, deliveryId: String(delivery._id) });
@@ -266,16 +384,32 @@ async function markCancelled(req, res) {
     try {
       if (sub) {
         await notifyUser(sub.userId, {
-          title: "تم إلغاء التوصيل",
-          body: "تم إلغاء التوصيل لليوم وسيتم تعويضك إذا كان ضمن السماحية",
-          data: { deliveryId: String(delivery._id) },
+          title: "Delivery Update",
+          body: "Your delivery has been canceled.",
+          data: {
+            deliveryId: String(delivery._id),
+            type: "canceled",
+          },
         });
       }
     } catch (err) {
       logger.error("Delivery cancellation notification failed", { error: err.message, stack: err.stack, deliveryId: String(delivery._id) });
     }
 
-    return res.status(200).json({ ok: true });
+    return res.status(200).json({
+      ok: true,
+      data: {
+        deliveryId: String(delivery._id),
+        subscriptionDayId: day ? String(day._id) : String(delivery.dayId),
+        deliveryStatus: "canceled",
+        subscriptionDayStatus: day ? day.status : "delivery_canceled",
+        canceledAt,
+        cancellationReason: cancellation.reason,
+        cancellationCategory: cancellation.category,
+        cancellationNote: cancellation.note,
+        canceledBy: day ? day.canceledBy : String(req.dashboardUserId || req.userId || ""),
+      },
+    });
   } catch (err) {
     // MEDIUM AUDIT FIX: Express 4 does not catch async errors automatically; return controlled 500.
     logger.error("courierController.markCancelled failed", { error: err.message, stack: err.stack });

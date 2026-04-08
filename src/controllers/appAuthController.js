@@ -1,8 +1,11 @@
 const AppUser = require("../models/AppUser");
 const User = require("../models/User");
+const Subscription = require("../models/Subscription");
+const SubscriptionDay = require("../models/SubscriptionDay");
 const { isApiError, ApiError } = require("../utils/apiError");
 const { assertValidPhoneE164, requestOtpForPhone } = require("../services/otpService");
 const errorResponse = require("../utils/errorResponse");
+const { getTodayKSADate } = require("../utils/date");
 
 function serializeCoreUser(user) {
   return {
@@ -200,4 +203,70 @@ async function updateProfile(req, res) {
   }
 }
 
-module.exports = { login, register, getProfile, updateProfile };
+function resolveTodayPickupStatusOrder(status) {
+  switch (String(status || "")) {
+    case "ready_for_pickup":
+      return 0;
+    case "in_preparation":
+      return 1;
+    case "locked":
+      return 2;
+    case "open":
+      return 3;
+    case "fulfilled":
+      return 4;
+    case "no_show":
+      return 5;
+    case "canceled_at_branch":
+      return 6;
+    default:
+      return 99;
+  }
+}
+
+async function getTodayPickup(req, res) {
+  try {
+    const today = getTodayKSADate();
+    const pickupSubscriptions = await Subscription.find({
+      userId: req.userId,
+      deliveryMode: "pickup",
+      status: "active",
+    })
+      .select("_id")
+      .lean();
+    const subscriptionIds = pickupSubscriptions.map((sub) => sub._id);
+    if (!subscriptionIds.length) {
+      return errorResponse(res, 404, "NOT_FOUND", "No active pickup subscription found");
+    }
+
+    const days = await SubscriptionDay.find({
+      subscriptionId: { $in: subscriptionIds },
+      date: today,
+      status: { $in: ["open", "locked", "in_preparation", "ready_for_pickup", "fulfilled", "no_show", "canceled_at_branch"] },
+    })
+      .select("status pickupCode lockedSnapshot fulfilledSnapshot")
+      .lean();
+    if (!days.length) {
+      return errorResponse(res, 404, "NOT_FOUND", "No pickup day found for today");
+    }
+
+    const selectedDay = days.sort(
+      (left, right) => resolveTodayPickupStatusOrder(left.status) - resolveTodayPickupStatusOrder(right.status)
+    )[0];
+    const snapshot = selectedDay.lockedSnapshot || selectedDay.fulfilledSnapshot || {};
+
+    return res.status(200).json({
+      ok: true,
+      data: {
+        status: selectedDay.status || "open",
+        branchName: snapshot.pickupLocationName || "",
+        pickupWindow: snapshot.deliveryWindow || null,
+        code: selectedDay.status === "ready_for_pickup" ? String(selectedDay.pickupCode || "") : "",
+      },
+    });
+  } catch (err) {
+    return handleError(res, err);
+  }
+}
+
+module.exports = { login, register, getProfile, updateProfile, getTodayPickup };

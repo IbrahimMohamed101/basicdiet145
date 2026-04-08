@@ -14,6 +14,9 @@ const SubscriptionDaySchema = new mongoose.Schema(
         "out_for_delivery",
         "ready_for_pickup",
         "fulfilled",
+        "delivery_canceled",
+        "canceled_at_branch",
+        "no_show",
         "skipped",
       ],
       default: "open",
@@ -77,6 +80,26 @@ const SubscriptionDaySchema = new mongoose.Schema(
     },
     assignedByKitchen: { type: Boolean, default: false },
     pickupRequested: { type: Boolean, default: false },
+    pickupCode: { type: String, trim: true, default: null },
+    pickupCodeIssuedAt: { type: Date, default: null },
+    pickupVerifiedAt: { type: Date, default: null },
+    pickupVerifiedByDashboardUserId: { type: mongoose.Schema.Types.ObjectId, ref: "DashboardUser", default: null },
+    pickupNoShowAt: { type: Date, default: null },
+    cancellationReason: { type: String, trim: true, default: null },
+    cancellationCategory: { type: String, enum: ["customer_issue", "delivery_issue"], default: null },
+    cancellationNote: { type: String, trim: true, default: null },
+    canceledBy: { type: String, trim: true, default: null },
+    canceledAt: { type: Date, default: null },
+    operationAuditLog: {
+      type: [
+        {
+          action: { type: String, required: true },
+          by: { type: String, default: "" },
+          at: { type: Date, default: Date.now },
+        },
+      ],
+      default: [],
+    },
     creditsDeducted: { type: Boolean, default: false },
     deliveryAddressOverride: {
       line1: { type: String },
@@ -173,6 +196,7 @@ const SubscriptionDaySchema = new mongoose.Schema(
 // and/or date. A compound index supports these access patterns without requiring full collection scans.
 SubscriptionDaySchema.index({ subscriptionId: 1, status: 1, date: 1 });
 SubscriptionDaySchema.index({ subscriptionId: 1, canonicalDayActionType: 1, skipCompensated: 1, date: 1 });
+SubscriptionDaySchema.index({ date: 1, pickupCode: 1 });
 
 // Unique index to quickly lookup or upsert per-subscription per-day rows.
 SubscriptionDaySchema.index({ subscriptionId: 1, date: 1 }, { unique: true });
