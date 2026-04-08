@@ -237,27 +237,50 @@ class _MealPlannerScreenState extends State<MealPlannerScreen> {
       body: SafeArea(
         child: Stack(
           children: [
-            SingleChildScrollView(
-              padding: EdgeInsets.only(bottom: 120.h),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildHeader(),
-                  Gap(AppSize.s16.h),
-                  _buildDateSelector(),
-                  Gap(AppSize.s16.h),
-                  _buildBlueBanner(),
-                  Gap(AppSize.s16.h),
-                  _buildProgressSection(),
-                  Gap(AppSize.s16.h),
-                  _buildPremiumBanner(),
-                  Gap(AppSize.s16.h),
-                  _buildCategorySelector(),
-                  Gap(AppSize.s16.h),
-                  if (isPremiumCategory) _buildPremiumMealsAvailableBanner(),
-                  _buildMealList(activeMeals),
-                ],
-              ),
+            CustomScrollView(
+              slivers: [
+                SliverToBoxAdapter(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildHeader(),
+                      Gap(AppSize.s16.h),
+                      _buildDateSelector(),
+                      Gap(AppSize.s16.h),
+                      _buildBlueBanner(),
+                      Gap(AppSize.s16.h),
+                      _buildProgressSection(),
+                      Gap(AppSize.s16.h),
+                      _buildPremiumBanner(),
+                      Gap(AppSize.s16.h),
+                    ],
+                  ),
+                ),
+                SliverPersistentHeader(
+                  pinned: true,
+                  delegate: _StickyCategoryDelegate(
+                    child: Container(
+                      color: Colors.white,
+                      padding: EdgeInsets.only(bottom: AppSize.s16.h),
+                      child: _buildCategorySelector(),
+                    ),
+                    height: 40.h + AppSize.s16.h,
+                  ),
+                ),
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.only(bottom: 120.h),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (isPremiumCategory)
+                          _buildPremiumMealsAvailableBanner(),
+                        _buildMealList(activeMeals),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
             _buildBottomAction(),
             _buildTopNotificationBanner(),
@@ -1118,5 +1141,32 @@ class _MealPlannerScreenState extends State<MealPlannerScreen> {
         ),
       ),
     );
+  }
+}
+
+class _StickyCategoryDelegate extends SliverPersistentHeaderDelegate {
+  final Widget child;
+  final double height;
+
+  _StickyCategoryDelegate({required this.child, required this.height});
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    return SizedBox.expand(child: child);
+  }
+
+  @override
+  double get maxExtent => height;
+
+  @override
+  double get minExtent => height;
+
+  @override
+  bool shouldRebuild(covariant _StickyCategoryDelegate oldDelegate) {
+    return oldDelegate.child != child || oldDelegate.height != height;
   }
 }

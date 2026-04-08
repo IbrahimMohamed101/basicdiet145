@@ -12,6 +12,7 @@ import 'package:intl/intl.dart';
 import 'package:basic_diet/presentation/plans/manage_subscription/skip/skip_days_bloc.dart';
 import 'package:basic_diet/presentation/plans/manage_subscription/skip/skip_days_event.dart';
 import 'package:basic_diet/presentation/plans/manage_subscription/skip/skip_days_state.dart';
+import 'package:basic_diet/presentation/widgets/button_widget.dart';
 
 enum SkipTypeSelection { singleDay, dateRange }
 
@@ -408,6 +409,16 @@ class _SkipDaysScreenState extends State<SkipDaysScreen> {
 
   Widget _buildActionButtons(BuildContext context, SkipDaysState state) {
     final isLoading = state is SkipDaysLoading;
+
+    bool hasValidSelection = false;
+    if (_skipType == SkipTypeSelection.singleDay) {
+      hasValidSelection = _startDate != null;
+    } else {
+      hasValidSelection = _startDate != null && _endDate != null;
+    }
+
+    final isEnabled = hasValidSelection && !isLoading;
+
     return Row(
       children: [
         Expanded(
@@ -431,65 +442,33 @@ class _SkipDaysScreenState extends State<SkipDaysScreen> {
         ),
         Gap(AppSize.s12.w),
         Expanded(
-          child: ElevatedButton(
-            onPressed: isLoading
-                ? null
-                : () {
+          child: ButtonWidget(
+            text: isLoading ? Strings.loading : Strings.skipDays,
+            height: 52,
+            color: hasValidSelection
+                ? ColorManager.greenPrimary
+                : const Color(0xFF86E2BB),
+            radius: AppSize.s12,
+            onTap: isEnabled
+                ? () {
                     if (_skipType == SkipTypeSelection.singleDay) {
-                      if (_startDate != null) {
-                        context.read<SkipDaysBloc>().add(
-                          SkipSingleDayEvent(
-                            widget.subscriptionId,
-                            DateFormat('yyyy-MM-dd').format(_startDate!),
-                          ),
-                        );
-                      } else {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text("Please select a date")),
-                        );
-                      }
+                      context.read<SkipDaysBloc>().add(
+                        SkipSingleDayEvent(
+                          widget.subscriptionId,
+                          DateFormat('yyyy-MM-dd').format(_startDate!),
+                        ),
+                      );
                     } else {
-                      if (_startDate != null && _endDate != null) {
-                        context.read<SkipDaysBloc>().add(
-                          SkipDateRangeEvent(
-                            widget.subscriptionId,
-                            DateFormat('yyyy-MM-dd').format(_startDate!),
-                            DateFormat('yyyy-MM-dd').format(_endDate!),
-                          ),
-                        );
-                      } else {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text("Please select start and end dates"),
-                          ),
-                        );
-                      }
+                      context.read<SkipDaysBloc>().add(
+                        SkipDateRangeEvent(
+                          widget.subscriptionId,
+                          DateFormat('yyyy-MM-dd').format(_startDate!),
+                          DateFormat('yyyy-MM-dd').format(_endDate!),
+                        ),
+                      );
                     }
-                  },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF86E2BB),
-              padding: const EdgeInsets.symmetric(vertical: AppPadding.p16),
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(AppSize.s12),
-              ),
-            ),
-            child: isLoading
-                ? SizedBox(
-                    height: AppSize.s20.h,
-                    width: AppSize.s20.w,
-                    child: CircularProgressIndicator(
-                      color: Colors.white,
-                      strokeWidth: 2,
-                    ),
-                  )
-                : Text(
-                    Strings.skipDays,
-                    style: getRegularTextStyle(
-                      color: Colors.white,
-                      fontSize: FontSizeManager.s16.sp,
-                    ),
-                  ),
+                  }
+                : null,
           ),
         ),
       ],
