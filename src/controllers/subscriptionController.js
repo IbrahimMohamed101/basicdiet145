@@ -35,6 +35,7 @@ const {
 const {
   applyWalletTopupPayment: applyWalletTopupSideEffects,
   applyPaymentSideEffects,
+  SUPPORTED_PHASE1_SHARED_PAYMENT_TYPES,
 } = require("../services/paymentApplicationService");
 const { logger } = require("../utils/logger");
 const { getRequestLang, pickLang } = require("../utils/i18n");
@@ -1477,6 +1478,101 @@ function buildSubscriptionCheckoutStatusPayload({ draft, payment, providerInvoic
       }
       : null,
   };
+}
+
+async function autoFinalizePaidCheckoutDraft({ draft, payment, providerInvoice }, runtimeOverrides = null) {
+  if (!draft || !payment || !payment._id || payment.applied) {
+    return { applied: false, alreadyApplied: Boolean(payment && payment.applied) };
+  }
+  if (String(payment.status).trim().toLowerCase() !== "paid") {
+    return { applied: false, reason: "payment_not_paid" };
+  }
+
+  const startSessionFn = runtimeOverrides && runtimeOverrides.startSession
+    ? runtimeOverrides.startSession
+    : () => mongoose.startSession();
+  const applyPaymentSideEffectsFn = runtimeOverrides && runtimeOverrides.applyPaymentSideEffects
+    ? runtimeOverrides.applyPaymentSideEffects
+    : applyPaymentSideEffects;
+  const finalizeSubscriptionDraftPaymentFn = runtimeOverrides && runtimeOverrides.finalizeSubscriptionDraftPayment
+    ? runtimeOverrides.finalizeSubscriptionDraftPayment
+    : finalizeSubscriptionDraftPayment;
+  const isSharedPaymentDispatcherEnabledFn = runtimeOverrides && runtimeOverrides.isPhase1SharedPaymentDispatcherEnabled
+    ? runtimeOverrides.isPhase1SharedPaymentDispatcherEnabled
+    : isPhase1SharedPaymentDispatcherEnabled;
+  const supportedSharedPaymentTypes = runtimeOverrides && runtimeOverrides.supportedPaymentTypes
+    ? runtimeOverrides.supportedPaymentTypes
+    : SUPPORTED_PHASE1_SHARED_PAYMENT_TYPES;
+
+  const session = await startSessionFn();
+  session.startTransaction();
+  try {
+    const paymentInSession = await Payment.findOne({ _id: payment._id }).session(session);
+    if (!paymentInSession) {
+      await session.abortTransaction();
+      session.endSession();
+      return { applied: false, reason: "payment_not_found" };
+    }
+    if (paymentInSession.applied) {
+      await session.commitTransaction();
+      session.endSession();
+      return { applied: false, alreadyApplied: true };
+    }
+
+    const claimedPayment = await Payment.findOneAndUpdate(
+      { _id: paymentInSession._id, applied: false },
+      { $set: { applied: true, status: "paid" } },
+      { new: true, session }
+    );
+    if (!claimedPayment) {
+      await session.commitTransaction();
+      session.endSession();
+      return { applied: false, reason: "already_claimed" };
+    }
+
+    const useSharedDispatcher = supportedSharedPaymentTypes.has(String(claimedPayment.type || ""))
+      && (
+        isSharedPaymentDispatcherEnabledFn()
+        || String(claimedPayment.type || "") === "premium_overage_day"
+        || String(claimedPayment.type || "") === "one_time_addon_day_planning"
+      );
+
+    let result;
+    if (useSharedDispatcher) {
+      result = await applyPaymentSideEffectsFn({
+        payment: claimedPayment,
+        session,
+        source: "auto_finalize",
+      });
+    } else {
+      result = await finalizeSubscriptionDraftPaymentFn({ draft, payment: claimedPayment, session });
+    }
+
+    if (!result.applied) {
+      const metadata = Object.assign({}, claimedPayment.metadata || {}, { unappliedReason: result.reason });
+      await Payment.updateOne(
+        { _id: claimedPayment._id },
+        { $set: { applied: true, status: "paid", metadata } },
+        { session }
+      );
+    }
+
+    await session.commitTransaction();
+    session.endSession();
+    return { applied: Boolean(result.applied), reason: result.reason };
+  } catch (err) {
+    if (session.inTransaction()) {
+      await session.abortTransaction();
+    }
+    session.endSession();
+    logger.error("Subscription checkout auto-finalization failed", {
+      draftId: String(draft._id),
+      paymentId: String(payment._id),
+      error: err.message,
+      stack: err.stack,
+    });
+    return { applied: false, reason: "auto_finalize_failed" };
+  }
 }
 
 async function finalizeSubscriptionDraftPayment({ draft, payment, session }, runtimeOverrides = null) {
@@ -2922,12 +3018,27 @@ async function getCheckoutDraftStatus(req, res) {
   }
 
   try {
-    const { draft, payment, invoice } = await reconcileCheckoutDraft(draftId, { mode: RECONCILE_MODES.READ_ONLY });
+    let { draft, payment, invoice } = await reconcileCheckoutDraft(draftId, { mode: RECONCILE_MODES.READ_ONLY });
     if (!draft) {
       return errorResponse(res, 404, "NOT_FOUND", "Checkout draft not found");
     }
     if (String(draft.userId) !== String(req.userId)) {
       return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
+    }
+
+    if (
+      draft.status === "pending_payment"
+      && payment
+      && String(payment.status).trim().toLowerCase() === "paid"
+      && payment.applied !== true
+    ) {
+      const autoFinalizeResult = await autoFinalizePaidCheckoutDraft({ draft, payment, providerInvoice: invoice });
+      if (autoFinalizeResult.applied || autoFinalizeResult.reason) {
+        const reconciled = await reconcileCheckoutDraft(draftId, { mode: RECONCILE_MODES.PERSIST });
+        draft = reconciled.draft;
+        payment = reconciled.payment;
+        invoice = reconciled.invoice;
+      }
     }
 
     return res.status(200).json({

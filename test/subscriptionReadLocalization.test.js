@@ -80,6 +80,25 @@ function createQueryStub(result) {
   };
 }
 
+function createSession() {
+  return {
+    active: false,
+    startTransaction() {
+      this.active = true;
+    },
+    async commitTransaction() {
+      this.active = false;
+    },
+    async abortTransaction() {
+      this.active = false;
+    },
+    endSession() {},
+    inTransaction() {
+      return this.active;
+    },
+  };
+}
+
 test("getSubscriptionMenu respects query language and falls back safely for incomplete bilingual data", async (t) => {
   const originalPlanFind = Plan.find;
   const originalMealFind = Meal.find;
@@ -511,6 +530,95 @@ test("getCheckoutDraftStatus adds localized read labels without changing checkou
   assert.equal(res.payload.data.deliveryModeLabel, "استلام");
   assert.equal(res.payload.data.totals.addonsTotalHalala, 12000);
   assert.equal(res.payload.data.totals.totalHalala, 22000);
+});
+
+test("getCheckoutDraftStatus auto-finalizes paid but unapplied subscription activation", async (t) => {
+  const originalCheckoutDraftFindById = CheckoutDraft.findById;
+  const originalPaymentFindById = Payment.findById;
+  const originalPaymentFindOne = Payment.findOne;
+  const originalPaymentFindOneAndUpdate = Payment.findOneAndUpdate;
+  const originalSubscriptionCreate = Subscription.create;
+  const originalSubscriptionDayCountDocuments = SubscriptionDay.countDocuments;
+  const originalSubscriptionDayInsertMany = SubscriptionDay.insertMany;
+  const originalStartSession = mongoose.startSession;
+
+  t.after(() => {
+    CheckoutDraft.findById = originalCheckoutDraftFindById;
+    Payment.findById = originalPaymentFindById;
+    Payment.findOne = originalPaymentFindOne;
+    Payment.findOneAndUpdate = originalPaymentFindOneAndUpdate;
+    Subscription.create = originalSubscriptionCreate;
+    SubscriptionDay.countDocuments = originalSubscriptionDayCountDocuments;
+    SubscriptionDay.insertMany = originalSubscriptionDayInsertMany;
+    mongoose.startSession = originalStartSession;
+  });
+
+  const userId = objectId();
+  const draftId = objectId();
+  const paymentId = objectId();
+  const subscriptionId = objectId();
+
+  const draftDoc = {
+    _id: draftId,
+    userId,
+    status: "pending_payment",
+    paymentId,
+    providerInvoiceId: "inv-paid-1",
+    daysCount: 3,
+    mealsPerDay: 2,
+    planId: objectId(),
+    startDate: new Date("2026-04-10T00:00:00.000Z"),
+    breakdown: { totalHalala: 1000, currency: "SAR", basePlanPriceHalala: 1000 },
+    delivery: { type: "delivery", slot: { type: "delivery", window: "08:00-12:00", slotId: "slot-1" } },
+    subscriptionId: null,
+    completedAt: null,
+    failedAt: null,
+    failureReason: "",
+    async save() { return this; },
+    session() { return this; },
+  };
+
+  const paymentDoc = {
+    _id: paymentId,
+    provider: "moyasar",
+    providerInvoiceId: "inv-paid-1",
+    providerPaymentId: "pay-paid-1",
+    type: "subscription_activation",
+    status: "paid",
+    applied: false,
+    amount: 1000,
+    currency: "SAR",
+    userId,
+    metadata: { draftId: String(draftId), userId: String(userId) },
+    async save() { return this; },
+    session() { return this; },
+  };
+
+  CheckoutDraft.findById = () => ({ session: () => draftDoc });
+  Payment.findById = () => ({ session: () => paymentDoc });
+  Payment.findOne = ({ _id }) => ({ session: () => paymentDoc });
+  Payment.findOneAndUpdate = async () => {
+    paymentDoc.applied = true;
+    paymentDoc.status = "paid";
+    return paymentDoc;
+  };
+  Subscription.create = async ([payload], { session } = {}) => [{ _id: subscriptionId, ...payload }];
+  SubscriptionDay.countDocuments = () => ({ session: () => 0 });
+  SubscriptionDay.insertMany = async () => [];
+  mongoose.startSession = async () => createSession();
+
+  const { req, res } = createReqRes({
+    params: { draftId: String(draftId) },
+    query: { lang: "en" },
+    userId,
+  });
+
+  await subscriptionController.getCheckoutDraftStatus(req, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.payload.data.checkoutStatus, "completed");
+  assert.equal(res.payload.data.payment.applied, true);
+  assert.equal(res.payload.data.subscriptionId, String(subscriptionId));
 });
 
 test("getSubscriptionTimeline returns UI-ready statuses with localized labels", async (t) => {
