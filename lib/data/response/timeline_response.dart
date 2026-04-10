@@ -44,11 +44,14 @@ class TimelineDataResponse {
   int? dailyMealsRequired;
   @JsonKey(name: "days")
   List<TimelineDayResponse>? days;
+  @JsonKey(name: "premiumMealsRemaining")
+  int? premiumMealsRemaining;
 
   TimelineDataResponse(
     this.subscriptionId,
     this.dailyMealsRequired,
     this.days,
+    this.premiumMealsRemaining,
   );
 
   factory TimelineDataResponse.fromJson(Map<String, dynamic> json) =>

@@ -32,7 +32,10 @@ import 'package:basic_diet/presentation/plans/manage_subscription/skip/skip_days
 import 'package:basic_diet/domain/usecase/skip_day_usecase.dart';
 import 'package:basic_diet/domain/usecase/skip_date_range_usecase.dart';
 import 'package:basic_diet/domain/usecase/get_timeline_usecase.dart';
+import 'package:basic_diet/domain/usecase/get_categories_with_meals_usecase.dart';
 import 'package:basic_diet/presentation/plans/timeline/bloc/timeline_bloc.dart';
+import 'package:basic_diet/presentation/plans/timeline/meal_planner/bloc/meal_planner_bloc.dart';
+import 'package:basic_diet/domain/model/timeline_model.dart';
 import 'package:get_it/get_it.dart';
 
 final instance = GetIt.instance; // Singleton instance of GetIt
@@ -222,6 +225,25 @@ void initTimelineModule() {
   if (!GetIt.I.isRegistered<TimelineBloc>()) {
     instance.registerFactory<TimelineBloc>(
       () => TimelineBloc(instance<GetTimelineUseCase>()),
+    );
+  }
+}
+
+void initMealPlannerModule() {
+  if (!GetIt.I.isRegistered<GetCategoriesWithMealsUseCase>()) {
+    instance.registerFactory<GetCategoriesWithMealsUseCase>(
+      () => GetCategoriesWithMealsUseCase(instance<Repository>()),
+    );
+  }
+
+  if (!GetIt.I.isRegistered<MealPlannerBloc>()) {
+    instance.registerFactoryParam<MealPlannerBloc, Map<String, dynamic>, void>(
+      (params, _) => MealPlannerBloc(
+        instance(),
+        initialTimelineDays: params['timelineDays'],
+        initialDayIndex: params['initialDayIndex'],
+        premiumMealsRemaining: params['premiumMealsRemaining'],
+      ),
     );
   }
 }

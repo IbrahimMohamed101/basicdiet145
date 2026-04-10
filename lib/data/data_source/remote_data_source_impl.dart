@@ -5,6 +5,7 @@ import 'package:basic_diet/data/request/subscription_quote_request.dart';
 import 'package:basic_diet/data/response/addons_response.dart';
 import 'package:basic_diet/data/response/auth_response.dart';
 import 'package:basic_diet/data/response/base_response/base_response.dart';
+import 'package:basic_diet/data/response/categories_with_meals_response.dart';
 import 'package:basic_diet/data/response/delivery_options_response.dart';
 import 'package:basic_diet/data/response/plans_response.dart';
 import 'package:basic_diet/data/response/popular_packages_response.dart';
@@ -95,10 +96,7 @@ class RemoteDataSourceImpl implements RemoteDataSource {
   }
 
   @override
-  Future<SkipDaysResponse> skipDay(
-    String id,
-    SkipDayRequest request,
-  ) {
+  Future<SkipDaysResponse> skipDay(String id, SkipDayRequest request) {
     return _appServiceClient.skipDay(id, request);
   }
 
@@ -113,5 +111,10 @@ class RemoteDataSourceImpl implements RemoteDataSource {
   @override
   Future<TimelineResponse> getSubscriptionTimeline(String id) {
     return _appServiceClient.getSubscriptionTimeline(id);
+  }
+
+  @override
+  Future<CategoriesWithMealsResponse> getCategoriesWithMeals() {
+    return _appServiceClient.getCategoriesWithMeals();
   }
 }

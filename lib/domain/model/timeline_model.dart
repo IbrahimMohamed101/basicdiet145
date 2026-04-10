@@ -21,11 +21,13 @@ class TimelineDayModel {
 class TimelineDataModel {
   final String subscriptionId;
   final int dailyMealsRequired;
+  final int premiumMealsRemaining;
   final List<TimelineDayModel> days;
 
   TimelineDataModel({
     required this.subscriptionId,
     required this.dailyMealsRequired,
+    required this.premiumMealsRemaining,
     required this.days,
   });
 }

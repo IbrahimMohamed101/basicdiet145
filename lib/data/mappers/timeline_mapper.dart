@@ -22,6 +22,8 @@ extension TimelineDataResponseMapper on TimelineDataResponse? {
     return TimelineDataModel(
       subscriptionId: this?.subscriptionId.orEmpty() ?? Constants.empty,
       dailyMealsRequired: this?.dailyMealsRequired.orZero() ?? Constants.zero,
+      premiumMealsRemaining:
+          this?.premiumMealsRemaining.orZero() ?? Constants.zero,
       days: (this?.days?.map((e) => e.toDomain()).toList()) ?? [],
     );
   }
@@ -30,11 +32,14 @@ extension TimelineDataResponseMapper on TimelineDataResponse? {
 extension TimelineResponseMapper on TimelineResponse? {
   TimelineModel toDomain() {
     return TimelineModel(
-      data: this?.data.toDomain() ?? TimelineDataModel(
-        subscriptionId: Constants.empty,
-        dailyMealsRequired: Constants.zero,
-        days: [],
-      ),
+      data:
+          this?.data.toDomain() ??
+          TimelineDataModel(
+            subscriptionId: Constants.empty,
+            dailyMealsRequired: Constants.zero,
+            premiumMealsRemaining: Constants.zero,
+            days: [],
+          ),
     );
   }
 }

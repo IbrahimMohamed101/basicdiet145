@@ -73,10 +73,16 @@ class TimeLineScreen extends StatelessWidget {
                   children: [
                     _buildMonthHeader(currentMonthYear),
                     Gap(AppSize.s24.h),
-                    ...days.map((day) {
+                    ...days.asMap().entries.map((entry) {
                       return Padding(
                         padding: EdgeInsets.only(bottom: AppSize.s16.h),
-                        child: _buildDayItem(context, day),
+                        child: _buildDayItem(
+                          context,
+                          entry.value,
+                          days,
+                          entry.key,
+                          state.timeline.data.premiumMealsRemaining,
+                        ),
                       );
                     }),
                     Gap(AppSize.s16.h),
@@ -116,7 +122,13 @@ class TimeLineScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildDayItem(BuildContext context, TimelineDayModel day) {
+  Widget _buildDayItem(
+    BuildContext context,
+    TimelineDayModel day,
+    List<TimelineDayModel> days,
+    int index,
+    int premiumMealsRemaining,
+  ) {
     Color color;
     Color bgColor;
     Color? borderColor;
@@ -178,7 +190,11 @@ class TimeLineScreen extends StatelessWidget {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => const MealPlannerScreen(),
+            builder: (context) => MealPlannerScreen(
+              timelineDays: days,
+              initialDayIndex: index,
+              premiumMealsRemaining: premiumMealsRemaining,
+            ),
           ),
         );
       } : null,

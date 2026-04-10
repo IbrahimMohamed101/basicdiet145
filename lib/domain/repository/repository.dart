@@ -15,6 +15,7 @@ import 'package:basic_diet/domain/model/freeze_subscription_model.dart';
 import 'package:basic_diet/data/request/skip_days_request.dart';
 import 'package:basic_diet/data/response/skip_days_response.dart';
 import 'package:basic_diet/domain/model/timeline_model.dart';
+import 'package:basic_diet/domain/model/categories_with_meals_model.dart';
 
 abstract class Repository {
   Future<Either<Failure, BaseModel>> login(String phone);
@@ -52,4 +53,5 @@ abstract class Repository {
     SkipDateRangeRequest request,
   );
   Future<Either<Failure, TimelineModel>> getSubscriptionTimeline(String id);
+  Future<Either<Failure, CategoriesWithMealsModel>> getCategoriesWithMeals();
 }

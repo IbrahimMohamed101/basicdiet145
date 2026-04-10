@@ -1,326 +1,127 @@
-import 'package:basic_diet/presentation/resources/assets_manager.dart';
+import 'package:basic_diet/app/dependency_injection.dart';
+import 'package:basic_diet/domain/model/categories_with_meals_model.dart';
+import 'package:basic_diet/domain/model/timeline_model.dart';
+import 'package:basic_diet/presentation/plans/timeline/meal_planner/bloc/meal_planner_bloc.dart';
+import 'package:basic_diet/presentation/plans/timeline/meal_planner/bloc/meal_planner_event.dart';
+import 'package:basic_diet/presentation/plans/timeline/meal_planner/bloc/meal_planner_state.dart';
 import 'package:basic_diet/presentation/resources/color_manager.dart';
 import 'package:basic_diet/presentation/resources/font_manager.dart';
 import 'package:basic_diet/presentation/resources/strings_manager.dart';
 import 'package:basic_diet/presentation/resources/styles_manager.dart';
 import 'package:basic_diet/presentation/resources/values_manager.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:gap/gap.dart';
 
-class MealPlannerScreen extends StatefulWidget {
-  const MealPlannerScreen({super.key});
+class MealPlannerScreen extends StatelessWidget {
+  final List<TimelineDayModel> timelineDays;
+  final int initialDayIndex;
+  final int premiumMealsRemaining;
 
-  @override
-  State<MealPlannerScreen> createState() => _MealPlannerScreenState();
-}
-
-class _MealPlannerScreenState extends State<MealPlannerScreen> {
-  int _selectedDayIndex = 0;
-  int _selectedCategoryIndex = 0;
-  final int _maxMeals = 2;
-  bool _showSavedBanner = false;
-  String _lastAddedMealName = "";
-
-  final Map<int, List<String>> _selectedMealsPerDay = {
-    0: [],
-    1: [],
-    2: [],
-    3: [],
-  };
-
-  Map<int, List<String>> _savedSelections = {0: [], 1: [], 2: [], 3: []};
-
-  int get _selectedMealsForDay =>
-      _selectedMealsPerDay[_selectedDayIndex]?.length ?? 0;
-
-  bool get _isDirty {
-    for (int i = 0; i < 4; i++) {
-      var current = _selectedMealsPerDay[i] ?? [];
-      var saved = _savedSelections[i] ?? [];
-      if (current.length != saved.length) return true;
-      for (var id in current) {
-        if (!saved.contains(id)) return true;
-      }
-    }
-    return false;
-  }
-
-  final List<Map<String, dynamic>> _days = [
-    {
-      "name": "Mon",
-      "fullName": "Monday",
-      "date": "Apr 6",
-      "status": "Planned",
-      "locked": false,
-      "isComplete": false,
-    },
-    {
-      "name": "Tue",
-      "fullName": "Tuesday",
-      "date": "Apr 7",
-      "status": "Planned",
-      "locked": false,
-      "isComplete": false,
-    },
-    {
-      "name": "Wed",
-      "fullName": "Wednesday",
-      "date": "Apr 8",
-      "status": "Planned",
-      "locked": false,
-      "isComplete": false,
-    },
-    {
-      "name": "Thu",
-      "fullName": "Thursday",
-      "date": "Apr 9",
-      "status": "Locked",
-      "locked": true,
-      "isComplete": false,
-    },
-  ];
-
-  final List<Map<String, dynamic>> _categories = [
-    {
-      "name": Strings.lunch,
-      "count": 4,
-      "icon": ImageAssets.soup,
-    }, // using mockup
-    {"name": Strings.dinner, "count": 4, "icon": ImageAssets.salad},
-    {"name": Strings.snacks, "count": 4, "icon": ImageAssets.snacks},
-    {
-      "name": Strings.premiumMealsText,
-      "count": 4,
-      "icon": Icons.star,
-      "isPremium": true,
-    },
-  ];
-
-  final List<Map<String, dynamic>> _meals = [
-    {
-      "id": "1",
-      "name": "Grilled Chicken Salad",
-      "description":
-          "Fresh mixed greens with grilled chicken breast, cherry tomatoes, and balsamic",
-      "protein": "35g",
-      "carbs": "12g",
-      "fat": "8g",
-      "price": "\$12.99",
-      "image": ImageAssets.salad,
-      "isPremium": false,
-      "isSelected": false,
-    },
-    {
-      "id": "2",
-      "name": "Quinoa Power Bowl",
-      "description":
-          "Protein-packed quinoa with roasted vegetables, chickpeas, and tahini dressing",
-      "protein": "18g",
-      "carbs": "45g",
-      "fat": "14g",
-      "price": "\$11.99",
-      "image": ImageAssets.salad, // reusable
-      "isPremium": false,
-      "isSelected": false,
-    },
-    {
-      "id": "3",
-      "name": "Turkey Club Sandwich",
-      "description":
-          "Sliced turkey breast, crispy bacon, lettuce, tomato on whole grain bread",
-      "protein": "32g",
-      "carbs": "38g",
-      "fat": "12g",
-      "price": "\$10.99",
-      "image": ImageAssets.salad,
-      "isPremium": false,
-      "isSelected": false,
-    },
-  ];
-
-  final List<Map<String, dynamic>> _premiumMealsList = [
-    {
-      "id": "p1",
-      "name": "Lobster Tail Dinner",
-      "description":
-          "Butter-poached lobster tail with truffle risotto and grilled asparagus",
-      "protein": "38g",
-      "carbs": "28g",
-      "fat": "24g",
-      "price": "\$34.99",
-      "image": ImageAssets.salad,
-      "isPremium": true,
-      "isSelected": false,
-    },
-    {
-      "id": "p2",
-      "name": "Wagyu Ribeye",
-      "description":
-          "10oz Japanese A5 wagyu ribeye with roasted fingerling potatoes",
-      "protein": "52g",
-      "carbs": "22g",
-      "fat": "42g",
-      "price": "\$49.99",
-      "image": ImageAssets.salad,
-      "isPremium": true,
-      "isSelected": false,
-    },
-    {
-      "id": "p3",
-      "name": "Truffle Pasta",
-      "description":
-          "Fresh tagliatelle with black truffle shavings, parmesan, and truffle oil",
-      "protein": "18g",
-      "carbs": "48g",
-      "fat": "28g",
-      "price": "\$29.99",
-      "image": ImageAssets.salad,
-      "isPremium": true,
-      "isSelected": false,
-      "notAvailable": true,
-    },
-  ];
-
-  void _toggleMeal(Map<String, dynamic> meal) {
-    if (meal['notAvailable'] == true) return;
-
-    setState(() {
-      final mealId = meal['id'];
-      final currentSelected = _selectedMealsPerDay[_selectedDayIndex] ?? [];
-
-      if (currentSelected.contains(mealId)) {
-        currentSelected.remove(mealId);
-      } else {
-        if (currentSelected.length < _maxMeals) {
-          currentSelected.add(mealId);
-          _showTopBanner(meal['name']);
-        }
-      }
-      _selectedMealsPerDay[_selectedDayIndex] = currentSelected;
-      _days[_selectedDayIndex]['isComplete'] =
-          currentSelected.length == _maxMeals;
-    });
-  }
-
-  void _showTopBanner(String mealName) {
-    setState(() {
-      _lastAddedMealName = mealName;
-      _showSavedBanner = true;
-    });
-    Future.delayed(const Duration(seconds: 2), () {
-      if (mounted) {
-        setState(() {
-          _showSavedBanner = false;
-        });
-      }
-    });
-  }
-
-  void _saveChanges() {
-    setState(() {
-      _savedSelections = _selectedMealsPerDay.map(
-        (key, value) => MapEntry(key, List.from(value)),
-      );
-    });
-  }
+  const MealPlannerScreen({
+    super.key,
+    required this.timelineDays,
+    required this.initialDayIndex,
+    required this.premiumMealsRemaining,
+  });
 
   @override
   Widget build(BuildContext context) {
-    List<Map<String, dynamic>> activeMeals = _selectedCategoryIndex == 3
-        ? _premiumMealsList
-        : _meals;
-    bool isPremiumCategory = _selectedCategoryIndex == 3;
+    return BlocProvider(
+      create: (context) {
+        initMealPlannerModule();
+        return instance<MealPlannerBloc>(
+          param1: {
+            'timelineDays': timelineDays,
+            'initialDayIndex': initialDayIndex,
+            'premiumMealsRemaining': premiumMealsRemaining,
+          },
+        )..add(const GetMealPlannerDataEvent());
+      },
+      child: const MealPlannerView(),
+    );
+  }
+}
 
+class MealPlannerView extends StatelessWidget {
+  const MealPlannerView({super.key});
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
-        child: Stack(
-          children: [
-            CustomScrollView(
-              slivers: [
-                SliverToBoxAdapter(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildHeader(),
-                      Gap(AppSize.s16.h),
-                      _buildDateSelector(),
-                      Gap(AppSize.s16.h),
-                      _buildBlueBanner(),
-                      Gap(AppSize.s16.h),
-                      _buildProgressSection(),
-                      Gap(AppSize.s16.h),
-                      _buildPremiumBanner(),
-                      Gap(AppSize.s16.h),
+        child: BlocBuilder<MealPlannerBloc, MealPlannerState>(
+          builder: (context, state) {
+            if (state is MealPlannerLoading) {
+              return const Center(child: CircularProgressIndicator());
+            } else if (state is MealPlannerError) {
+              return Center(child: Text(state.message));
+            } else if (state is MealPlannerLoaded) {
+              return Stack(
+                children: [
+                  CustomScrollView(
+                    slivers: [
+                      SliverToBoxAdapter(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildHeader(),
+                            Gap(AppSize.s16.h),
+                            _buildDateSelector(state),
+                            Gap(AppSize.s16.h),
+                            _buildBlueBanner(state),
+                            Gap(AppSize.s16.h),
+                            _buildProgressSection(state),
+                            Gap(AppSize.s16.h),
+                            _buildPremiumBanner(state),
+                            Gap(AppSize.s16.h),
+                          ],
+                        ),
+                      ),
+                      SliverPersistentHeader(
+                        pinned: true,
+                        delegate: _StickyCategoryDelegate(
+                          child: Container(
+                            color: Colors.white,
+                            padding: EdgeInsets.only(bottom: AppSize.s16.h),
+                            child: _buildCategorySelector(state, context),
+                          ),
+                          height: 40.h + AppSize.s16.h,
+                        ),
+                      ),
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: EdgeInsets.only(bottom: 120.h),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [_buildMealList(state, context)],
+                          ),
+                        ),
+                      ),
                     ],
                   ),
-                ),
-                SliverPersistentHeader(
-                  pinned: true,
-                  delegate: _StickyCategoryDelegate(
-                    child: Container(
-                      color: Colors.white,
-                      padding: EdgeInsets.only(bottom: AppSize.s16.h),
-                      child: _buildCategorySelector(),
-                    ),
-                    height: 40.h + AppSize.s16.h,
-                  ),
-                ),
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: EdgeInsets.only(bottom: 120.h),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (isPremiumCategory)
-                          _buildPremiumMealsAvailableBanner(),
-                        _buildMealList(activeMeals),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            _buildBottomAction(),
-            _buildTopNotificationBanner(),
-          ],
+                  _buildBottomAction(state, context),
+                  _buildTopNotificationBanner(state, context),
+                ],
+              );
+            }
+            return const SizedBox.shrink();
+          },
         ),
       ),
     );
   }
 
-  Widget _buildHeader() {
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: AppPadding.p16.w),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            Strings.mealPlanner,
-            style: getBoldTextStyle(
-              color: ColorManager.black101828,
-              fontSize: FontSizeManager.s24.sp,
-            ),
-          ),
-          Gap(AppSize.s4.h),
-          Text(
-            Strings.planMealsWeekAhead,
-            style: getRegularTextStyle(
-              color: ColorManager.grey6A7282,
-              fontSize: FontSizeManager.s14.sp,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTopNotificationBanner() {
+  Widget _buildTopNotificationBanner(
+    MealPlannerLoaded state,
+    BuildContext context,
+  ) {
     return AnimatedPositioned(
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeInOut,
-      top: _showSavedBanner ? AppPadding.p16.h : -100.h,
+      top: state.showSavedBanner ? AppPadding.p16.h : -120.h,
       left: AppPadding.p16.w,
       right: AppPadding.p16.w,
       child: Material(
@@ -366,13 +167,23 @@ class _MealPlannerScreenState extends State<MealPlannerScreen> {
                       ),
                     ),
                     Text(
-                      "$_lastAddedMealName ${Strings.addedTo} ${_days[_selectedDayIndex]['fullName']}",
+                      "${state.lastAddedMealName} ${Strings.addedTo} ${_getFullDayName(state.timelineDays[state.selectedDayIndex].day)}",
                       style: getRegularTextStyle(
                         color: const Color(0xFF166534),
                         fontSize: FontSizeManager.s14.sp,
                       ),
                     ),
                   ],
+                ),
+              ),
+              IconButton(
+                onPressed: () => context.read<MealPlannerBloc>().add(
+                  const HideBannerEvent(),
+                ),
+                icon: const Icon(
+                  Icons.close,
+                  color: Color(0xFF166534),
+                  size: 16,
                 ),
               ),
             ],
@@ -382,7 +193,33 @@ class _MealPlannerScreenState extends State<MealPlannerScreen> {
     );
   }
 
-  Widget _buildDateSelector() {
+  Widget _buildHeader() {
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: AppPadding.p16.w),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            Strings.mealPlanner,
+            style: getBoldTextStyle(
+              color: ColorManager.black101828,
+              fontSize: FontSizeManager.s24.sp,
+            ),
+          ),
+          Gap(AppSize.s4.h),
+          Text(
+            Strings.planMealsWeekAhead,
+            style: getRegularTextStyle(
+              color: ColorManager.grey6A7282,
+              fontSize: FontSizeManager.s14.sp,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDateSelector(MealPlannerLoaded state) {
     return SizedBox(
       height: 100.h,
       child: ListView.separated(
@@ -391,43 +228,87 @@ class _MealPlannerScreenState extends State<MealPlannerScreen> {
           vertical: 8.h,
         ),
         scrollDirection: Axis.horizontal,
-        itemCount: _days.length,
+        itemCount: state.timelineDays.length,
         separatorBuilder: (context, index) => Gap(AppSize.s12.w),
         itemBuilder: (context, index) {
-          final day = _days[index];
-          final isSelected = index == _selectedDayIndex;
-          final isLocked = day['locked'];
-          final isComplete = _selectedMealsPerDay[index]?.length == _maxMeals;
+          final day = state.timelineDays[index];
+          final isSelected = index == state.selectedDayIndex;
+          final isLocked = ![
+            'open',
+            'planned',
+            'extension',
+          ].contains(day.status.toLowerCase());
+          final isComplete =
+              state.selectedMealsPerDay[index]?.length == state.maxMeals;
 
-          Color borderColor = isSelected
-              ? ColorManager.bluePrimary
-              : ColorManager.formFieldsBorderColor;
-          Color bgColor = isSelected
-              ? ColorManager.bluePrimary.withValues(alpha: 0.05)
-              : Colors.white;
-          Color textColor = isLocked
-              ? ColorManager.grey9CA3AF
-              : ColorManager.black101828;
+          Color baseColor;
+          Color baseBgColor;
+          Color? baseBorderColor;
+          String statusText;
+
+          switch (day.status.toLowerCase()) {
+            case 'locked':
+              baseColor = ColorManager.grey9CA3AF;
+              baseBgColor = ColorManager.greyF3F4F6;
+              statusText = Strings.locked;
+              break;
+            case 'planned':
+              baseColor = ColorManager.greenPrimary;
+              baseBgColor = ColorManager.greenPrimary.withValues(alpha: 0.05);
+              baseBorderColor = ColorManager.greenPrimary;
+              statusText = Strings.planned;
+              break;
+            case 'frozen':
+              baseColor = ColorManager.bluePrimary;
+              baseBgColor = ColorManager.bluePrimary.withValues(alpha: 0.05);
+              baseBorderColor = ColorManager.bluePrimary;
+              statusText = Strings.frozen;
+              break;
+            case 'skipped':
+              baseColor = ColorManager.orangePrimary;
+              baseBgColor = ColorManager.orangePrimary.withValues(alpha: 0.05);
+              baseBorderColor = ColorManager.orangePrimary;
+              statusText = Strings.skipped;
+              break;
+            case 'extension':
+              baseColor = ColorManager.purplePrimary;
+              baseBgColor = ColorManager.purplePrimary.withValues(alpha: 0.05);
+              baseBorderColor = ColorManager.purplePrimary;
+              statusText = Strings.extension;
+              break;
+            case 'open':
+            default:
+              baseColor = ColorManager.black101828;
+              baseBgColor = Colors.white;
+              baseBorderColor = ColorManager.formFieldsBorderColor;
+              statusText = Strings.open;
+              break;
+          }
+
+          Color textColor = baseColor;
+          Color bgColor = baseBgColor;
+          Color borderColor = baseBorderColor ?? Colors.transparent;
 
           if (isComplete) {
             bgColor = ColorManager.greenPrimary;
             borderColor = Colors.transparent;
             textColor = Colors.white;
-          } else if (isLocked) {
-            borderColor = ColorManager.formFieldsBorderColor;
-            bgColor = Colors.white;
+          } else if (isSelected) {
+            borderColor = ColorManager.bluePrimary;
+            if (day.status.toLowerCase() == 'open') {
+              bgColor = ColorManager.bluePrimary.withValues(alpha: 0.05);
+            }
           }
 
-          Color pillBgColor = isLocked
-              ? ColorManager.grey9CA3AF
-              : ColorManager.bluePrimary;
+          Color pillBgColor = isComplete
+              ? Colors.white.withValues(alpha: 0.2)
+              : baseColor;
+          Color statusTextColor = Colors.white;
 
           return GestureDetector(
             onTap: () {
               if (!isLocked) {
-                setState(() {
-                  _selectedDayIndex = index;
-                });
+                context.read<MealPlannerBloc>().add(ChangeDateEvent(index));
               }
             },
             child: Stack(
@@ -445,14 +326,14 @@ class _MealPlannerScreenState extends State<MealPlannerScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(
-                        day['name'],
+                        day.day,
                         style: getRegularTextStyle(
                           color: textColor,
                           fontSize: FontSizeManager.s12.sp,
                         ),
                       ),
                       Text(
-                        day['date'],
+                        "${day.month} ${day.dayNumber}",
                         style: getBoldTextStyle(
                           color: textColor,
                           fontSize: FontSizeManager.s14.sp,
@@ -469,9 +350,9 @@ class _MealPlannerScreenState extends State<MealPlannerScreen> {
                           borderRadius: BorderRadius.circular(12.r),
                         ),
                         child: Text(
-                          day['status'],
+                          statusText,
                           style: getRegularTextStyle(
-                            color: Colors.white,
+                            color: statusTextColor,
                             fontSize: FontSizeManager.s10.sp,
                           ),
                         ),
@@ -501,7 +382,8 @@ class _MealPlannerScreenState extends State<MealPlannerScreen> {
     );
   }
 
-  Widget _buildBlueBanner() {
+  Widget _buildBlueBanner(MealPlannerLoaded state) {
+    final day = state.timelineDays[state.selectedDayIndex];
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: AppPadding.p16.w),
       child: Container(
@@ -532,7 +414,7 @@ class _MealPlannerScreenState extends State<MealPlannerScreen> {
                   ),
                 ),
                 Text(
-                  "${_days[_selectedDayIndex]['fullName']}, ${_days[_selectedDayIndex]['date']}",
+                  "${_getFullDayName(day.day)}, ${day.month} ${day.dayNumber}",
                   style: getBoldTextStyle(
                     color: Colors.white,
                     fontSize: FontSizeManager.s14.sp,
@@ -546,8 +428,11 @@ class _MealPlannerScreenState extends State<MealPlannerScreen> {
     );
   }
 
-  Widget _buildProgressSection() {
-    bool isComplete = _selectedMealsForDay == _maxMeals;
+  Widget _buildProgressSection(MealPlannerLoaded state) {
+    final selectedCount =
+        state.selectedMealsPerDay[state.selectedDayIndex]?.length ?? 0;
+    final maxMeals = state.maxMeals;
+    bool isComplete = selectedCount == maxMeals;
 
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: AppPadding.p16.w),
@@ -570,14 +455,14 @@ class _MealPlannerScreenState extends State<MealPlannerScreen> {
                   Row(
                     children: [
                       Text(
-                        "$_selectedMealsForDay",
+                        "$selectedCount",
                         style: getBoldTextStyle(
                           color: ColorManager.black101828,
                           fontSize: FontSizeManager.s20.sp,
                         ),
                       ),
                       Text(
-                        " ${Strings.of} $_maxMeals ${Strings.selected}",
+                        " ${Strings.of} $maxMeals ${Strings.selected}",
                         style: getBoldTextStyle(
                           color: ColorManager.grey9CA3AF,
                           fontSize: FontSizeManager.s20.sp,
@@ -616,7 +501,7 @@ class _MealPlannerScreenState extends State<MealPlannerScreen> {
           ),
           Gap(AppSize.s8.h),
           LinearProgressIndicator(
-            value: _selectedMealsForDay / _maxMeals,
+            value: selectedCount / maxMeals,
             backgroundColor: ColorManager.formFieldsBorderColor,
             valueColor: AlwaysStoppedAnimation<Color>(
               isComplete ? ColorManager.greenPrimary : ColorManager.bluePrimary,
@@ -624,44 +509,12 @@ class _MealPlannerScreenState extends State<MealPlannerScreen> {
             minHeight: 4.h,
             borderRadius: BorderRadius.circular(4.r),
           ),
-          if (isComplete) ...[
-            Gap(AppSize.s8.h),
-            Container(
-              padding: EdgeInsets.all(AppPadding.p12.w),
-              decoration: BoxDecoration(
-                color: ColorManager.orangePrimary.withValues(alpha: 0.05),
-                borderRadius: BorderRadius.circular(AppSize.s8.r),
-                border: Border.all(
-                  color: ColorManager.orangePrimary.withValues(alpha: 0.2),
-                ),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.error_outline,
-                    color: ColorManager.orangePrimary,
-                    size: 16.w,
-                  ),
-                  Gap(AppSize.s8.w),
-                  Expanded(
-                    child: Text(
-                      Strings.mealLimitReached,
-                      style: getRegularTextStyle(
-                        color: ColorManager.orangePrimary,
-                        fontSize: FontSizeManager.s12.sp,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
         ],
       ),
     );
   }
 
-  Widget _buildPremiumBanner() {
+  Widget _buildPremiumBanner(MealPlannerLoaded state) {
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: AppPadding.p16.w),
       child: Container(
@@ -695,7 +548,7 @@ class _MealPlannerScreenState extends State<MealPlannerScreen> {
               ),
             ),
             Text(
-              "4 ",
+              "${state.premiumMealsRemaining} ",
               style: getBoldTextStyle(
                 color: ColorManager.orangePrimary,
                 fontSize: FontSizeManager.s16.sp,
@@ -714,63 +567,38 @@ class _MealPlannerScreenState extends State<MealPlannerScreen> {
     );
   }
 
-  Widget _buildCategorySelector() {
+  Widget _buildCategorySelector(MealPlannerLoaded state, BuildContext context) {
     return SizedBox(
       height: 40.h,
       child: ListView.separated(
         padding: EdgeInsets.symmetric(horizontal: AppPadding.p16.w),
         scrollDirection: Axis.horizontal,
-        itemCount: _categories.length,
+        itemCount: state.categoriesWithMeals.data.length,
         separatorBuilder: (context, index) => Gap(AppSize.s8.w),
         itemBuilder: (context, index) {
-          final category = _categories[index];
-          final isSelected = index == _selectedCategoryIndex;
-          final isPremium = category['isPremium'] == true;
-
-          Color bgColor = ColorManager.greyF3F4F6;
-          Color textColor = ColorManager.black101828;
-          Color iconColor = ColorManager.grey6A7282;
-
-          if (isSelected) {
-            bgColor = isPremium
-                ? ColorManager.orangePrimary
-                : ColorManager.greenPrimary;
-            textColor = Colors.white;
-            iconColor = Colors.white;
-          }
+          final category = state.categoriesWithMeals.data[index];
+          final isSelected = index == state.selectedCategoryIndex;
 
           return GestureDetector(
             onTap: () {
-              setState(() {
-                _selectedCategoryIndex = index;
-              });
+              context.read<MealPlannerBloc>().add(ChangeCategoryEvent(index));
             },
             child: Container(
               padding: EdgeInsets.symmetric(horizontal: AppPadding.p12.w),
               decoration: BoxDecoration(
-                color: bgColor,
+                color: isSelected
+                    ? ColorManager.greenPrimary
+                    : ColorManager.greyF3F4F6,
                 borderRadius: BorderRadius.circular(AppSize.s8.r),
               ),
               child: Row(
                 children: [
-                  if (category['icon'] is IconData)
-                    Icon(
-                      category['icon'],
-                      color: iconColor,
-                      size: AppSize.s16.w,
-                    )
-                  else
-                    Image.asset(
-                      category['icon'],
-                      width: 16.w,
-                      height: 16.w,
-                      color: isSelected ? Colors.white : null,
-                    ),
-                  Gap(AppSize.s8.w),
                   Text(
-                    category['name'],
+                    category.name,
                     style: getBoldTextStyle(
-                      color: textColor,
+                      color: isSelected
+                          ? Colors.white
+                          : ColorManager.black101828,
                       fontSize: FontSizeManager.s14.sp,
                     ),
                   ),
@@ -784,9 +612,11 @@ class _MealPlannerScreenState extends State<MealPlannerScreen> {
                       shape: BoxShape.circle,
                     ),
                     child: Text(
-                      "${category['count']}",
+                      "${category.meals.length}",
                       style: getRegularTextStyle(
-                        color: textColor,
+                        color: isSelected
+                            ? Colors.white
+                            : ColorManager.black101828,
                         fontSize: FontSizeManager.s10.sp,
                       ),
                     ),
@@ -800,103 +630,61 @@ class _MealPlannerScreenState extends State<MealPlannerScreen> {
     );
   }
 
-  Widget _buildPremiumMealsAvailableBanner() {
-    return Padding(
-      padding: EdgeInsets.only(
-        left: AppPadding.p16.w,
-        right: AppPadding.p16.w,
-        bottom: AppPadding.p16.h,
-      ),
-      child: Container(
-        padding: EdgeInsets.all(AppPadding.p16.w),
-        decoration: BoxDecoration(
-          color: ColorManager.orangeFFF5EC,
-          borderRadius: BorderRadius.circular(AppSize.s8.r),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              padding: EdgeInsets.all(8.w),
-              decoration: BoxDecoration(
-                color: ColorManager.orangePrimary,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.star_border,
-                color: Colors.white,
-                size: AppSize.s24.w,
-              ),
+  Widget _buildMealList(MealPlannerLoaded state, BuildContext context) {
+    if (state.categoriesWithMeals.data.isEmpty) return const SizedBox.shrink();
+    final selectedCategory =
+        state.categoriesWithMeals.data[state.selectedCategoryIndex];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: AppPadding.p16.w,
+            vertical: AppPadding.p8.h,
+          ),
+          child: Text(
+            selectedCategory.name,
+            style: getBoldTextStyle(
+              color: ColorManager.black101828,
+              fontSize: FontSizeManager.s18.sp,
             ),
-            Gap(AppSize.s12.w),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    Strings.premiumMealsAvailable,
-                    style: getBoldTextStyle(
-                      color: ColorManager.black101828,
-                      fontSize: FontSizeManager.s14.sp,
-                    ),
-                  ),
-                  Gap(AppSize.s4.h),
-                  RichText(
-                    text: TextSpan(
-                      style: getRegularTextStyle(
-                        color: ColorManager.grey6A7282,
-                        fontSize: FontSizeManager.s12.sp,
-                      ),
-                      children: [
-                        TextSpan(text: "${Strings.youHave} "),
-                        TextSpan(
-                          text: "4 ${Strings.premiumMealsText.toLowerCase()} ",
-                          style: getBoldTextStyle(
-                            color: ColorManager.orangePrimary,
-                            fontSize: FontSizeManager.s12.sp,
-                          ),
-                        ),
-                        TextSpan(text: Strings.remainingSelectPremium),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
+          ),
         ),
-      ),
+        ...selectedCategory.meals.map((meal) {
+          return Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: AppPadding.p16.w,
+              vertical: AppPadding.p8.h,
+            ),
+            child: _buildMealCard(meal, state, context),
+          );
+        }).toList(),
+      ],
     );
   }
 
-  Widget _buildMealList(List<Map<String, dynamic>> meals) {
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: AppPadding.p16.w),
-      child: Column(
-        children: meals
-            .map(
-              (meal) => Padding(
-                padding: EdgeInsets.only(bottom: AppSize.s16.h),
-                child: _buildMealCard(meal),
-              ),
-            )
-            .toList(),
-      ),
-    );
-  }
-
-  Widget _buildMealCard(Map<String, dynamic> meal) {
+  Widget _buildMealCard(
+    MealItemModel meal,
+    MealPlannerLoaded state,
+    BuildContext context,
+  ) {
     bool isSelected =
-        _selectedMealsPerDay[_selectedDayIndex]?.contains(meal['id']) ?? false;
-    bool isPremium = meal['isPremium'];
-
-    bool isMaxReached =
-        (_selectedMealsPerDay[_selectedDayIndex]?.length ?? 0) >= _maxMeals;
-    bool isNotAvailable =
-        meal['notAvailable'] == true || (isMaxReached && !isSelected);
+        state.selectedMealsPerDay[state.selectedDayIndex]?.contains(meal.id) ??
+        false;
+    int selectedCount =
+        state.selectedMealsPerDay[state.selectedDayIndex]?.length ?? 0;
+    bool isMaxReached = selectedCount >= state.maxMeals;
+    bool isNotAvailable = isMaxReached && !isSelected;
 
     return GestureDetector(
-      onTap: isNotAvailable ? null : () => _toggleMeal(meal),
+      onTap: isNotAvailable
+          ? null
+          : () {
+              context.read<MealPlannerBloc>().add(
+                ToggleMealSelectionEvent(meal.id),
+              );
+            },
       child: Opacity(
         opacity: isNotAvailable ? 0.5 : 1.0,
         child: Container(
@@ -921,35 +709,13 @@ class _MealPlannerScreenState extends State<MealPlannerScreen> {
                     borderRadius: BorderRadius.vertical(
                       top: Radius.circular(AppSize.s14.r),
                     ),
-                    child: Image.asset(
-                      meal['image'],
+                    child: Image.network(
+                      meal.imageUrl,
                       height: 150.h,
                       width: double.infinity,
                       fit: BoxFit.cover,
                     ),
                   ),
-                  if (isPremium)
-                    Positioned(
-                      top: 12.h,
-                      left: 12.w,
-                      child: Container(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: 8.w,
-                          vertical: 4.h,
-                        ),
-                        decoration: BoxDecoration(
-                          color: ColorManager.orangePrimary,
-                          borderRadius: BorderRadius.circular(16.r),
-                        ),
-                        child: Text(
-                          "PREMIUM",
-                          style: getBoldTextStyle(
-                            color: Colors.white,
-                            fontSize: FontSizeManager.s10.sp,
-                          ),
-                        ),
-                      ),
-                    ),
                   if (isSelected)
                     Positioned(
                       top: 12.h,
@@ -974,7 +740,7 @@ class _MealPlannerScreenState extends State<MealPlannerScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      meal['name'],
+                      meal.name,
                       style: TextStyle(
                         fontFamily: 'Inter',
                         fontWeight: FontWeight.w600,
@@ -985,7 +751,7 @@ class _MealPlannerScreenState extends State<MealPlannerScreen> {
                     ),
                     Gap(AppSize.s8.h),
                     Text(
-                      meal['description'],
+                      meal.description,
                       style: TextStyle(
                         fontFamily: 'Inter',
                         fontWeight: FontWeight.w400,
@@ -999,19 +765,19 @@ class _MealPlannerScreenState extends State<MealPlannerScreen> {
                       children: [
                         _buildMacroItem(
                           ColorManager.bluePrimary,
-                          "${meal['protein']}",
+                          "${meal.proteinGrams}g",
                           "protein",
                         ),
                         Gap(AppSize.s12.w),
                         _buildMacroItem(
                           ColorManager.orangePrimary,
-                          "${meal['carbs']}",
+                          "${meal.carbGrams}g",
                           "carbs",
                         ),
                         Gap(AppSize.s12.w),
                         _buildMacroItem(
                           ColorManager.greenPrimary,
-                          "${meal['fat']}",
+                          "${meal.fatGrams}g",
                           "fat",
                         ),
                       ],
@@ -1021,7 +787,7 @@ class _MealPlannerScreenState extends State<MealPlannerScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          meal['price'],
+                          "${meal.price} SAR",
                           style: TextStyle(
                             fontFamily: 'Inter',
                             fontWeight: FontWeight.w700,
@@ -1030,14 +796,6 @@ class _MealPlannerScreenState extends State<MealPlannerScreen> {
                             color: const Color(0xFF101828),
                           ),
                         ),
-                        if (isNotAvailable)
-                          Text(
-                            Strings.notAvailable,
-                            style: getRegularTextStyle(
-                              color: ColorManager.errorColor,
-                              fontSize: FontSizeManager.s12.sp,
-                            ),
-                          ),
                       ],
                     ),
                   ],
@@ -1085,9 +843,10 @@ class _MealPlannerScreenState extends State<MealPlannerScreen> {
     );
   }
 
-  Widget _buildBottomAction() {
+  Widget _buildBottomAction(MealPlannerLoaded state, BuildContext context) {
     final bool canSave =
-        _isDirty && _selectedMealsPerDay.values.any((l) => l.isNotEmpty);
+        state.isDirty &&
+        state.selectedMealsPerDay.values.any((l) => l.isNotEmpty);
 
     return Align(
       alignment: Alignment.bottomCenter,
@@ -1108,7 +867,11 @@ class _MealPlannerScreenState extends State<MealPlannerScreen> {
             width: double.infinity,
             height: 50.h,
             child: ElevatedButton(
-              onPressed: canSave ? _saveChanges : null,
+              onPressed: canSave
+                  ? () => context.read<MealPlannerBloc>().add(
+                      const SaveMealPlannerChangesEvent(),
+                    )
+                  : null,
               style: ElevatedButton.styleFrom(
                 backgroundColor: canSave
                     ? ColorManager.greenPrimary
@@ -1118,29 +881,58 @@ class _MealPlannerScreenState extends State<MealPlannerScreen> {
                   borderRadius: BorderRadius.circular(AppSize.s8.r),
                 ),
               ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    canSave ? Icons.save : Icons.save_outlined,
-                    color: canSave ? Colors.white : ColorManager.grey9CA3AF,
-                    size: AppSize.s20.w,
-                  ),
-                  Gap(AppSize.s8.w),
-                  Text(
-                    canSave ? Strings.saveChanges : Strings.noChangesToSave,
-                    style: getBoldTextStyle(
-                      color: canSave ? Colors.white : ColorManager.grey9CA3AF,
-                      fontSize: FontSizeManager.s16.sp,
+              child: state.isSaving
+                  ? const CircularProgressIndicator(color: Colors.white)
+                  : Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          canSave ? Icons.save : Icons.save_outlined,
+                          color: canSave
+                              ? Colors.white
+                              : ColorManager.grey9CA3AF,
+                          size: AppSize.s20.w,
+                        ),
+                        Gap(AppSize.s8.w),
+                        Text(
+                          canSave
+                              ? Strings.saveChanges
+                              : Strings.noChangesToSave,
+                          style: getBoldTextStyle(
+                            color: canSave
+                                ? Colors.white
+                                : ColorManager.grey9CA3AF,
+                            fontSize: FontSizeManager.s16.sp,
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                ],
-              ),
             ),
           ),
         ),
       ),
     );
+  }
+
+  String _getFullDayName(String shortName) {
+    switch (shortName.toLowerCase()) {
+      case 'mon':
+        return 'Monday';
+      case 'tue':
+        return 'Tuesday';
+      case 'wed':
+        return 'Wednesday';
+      case 'thu':
+        return 'Thursday';
+      case 'fri':
+        return 'Friday';
+      case 'sat':
+        return 'Saturday';
+      case 'sun':
+        return 'Sunday';
+      default:
+        return shortName;
+    }
   }
 }
 

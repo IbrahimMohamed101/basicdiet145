@@ -35,6 +35,8 @@ import 'package:basic_diet/data/mappers/freeze_subscription_mapper.dart';
 import 'package:basic_diet/domain/model/freeze_subscription_model.dart';
 import 'package:basic_diet/data/mappers/timeline_mapper.dart';
 import 'package:basic_diet/domain/model/timeline_model.dart';
+import 'package:basic_diet/data/mappers/categories_with_meals_mapper.dart';
+import 'package:basic_diet/domain/model/categories_with_meals_model.dart';
 
 class RepositoryImpl implements Repository {
   final RemoteDataSource _remoteDataSource;
@@ -348,6 +350,20 @@ class RepositoryImpl implements Repository {
   ) async {
     try {
       final response = await _remoteDataSource.getSubscriptionTimeline(id);
+      if (_isSuccessfulResponse(response)) {
+        return Right(response.toDomain());
+      } else {
+        return Left(_mapFailureFromResponse(response));
+      }
+    } catch (error) {
+      return _handleError(error);
+    }
+  }
+
+  @override
+  Future<Either<Failure, CategoriesWithMealsModel>> getCategoriesWithMeals() async {
+    try {
+      final response = await _remoteDataSource.getCategoriesWithMeals();
       if (_isSuccessfulResponse(response)) {
         return Right(response.toDomain());
       } else {
