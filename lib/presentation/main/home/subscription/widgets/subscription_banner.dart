@@ -14,8 +14,7 @@ class SubscriptionBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: double.infinity,
-      height: 200.h,
+      height: AppSize.s205.h,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(AppSize.s30.r),
         image: const DecorationImage(
@@ -45,7 +44,7 @@ class _GradientOverlay extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
-          _BadgeLabel(label: Strings.new2026Packages),
+          // _BadgeLabel(label: Strings.new2026Packages),
           Gap(AppSize.s8.h),
           Text(
             Strings.subscriptionPricingMenu,
@@ -68,29 +67,29 @@ class _GradientOverlay extends StatelessWidget {
   }
 }
 
-class _BadgeLabel extends StatelessWidget {
-  const _BadgeLabel({required this.label});
+// class _BadgeLabel extends StatelessWidget {
+//   const _BadgeLabel({required this.label});
 
-  final String label;
+//   final String label;
 
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsetsDirectional.symmetric(
-        horizontal: AppPadding.p12.w,
-        vertical: AppSize.s4.h,
-      ),
-      decoration: BoxDecoration(
-        color: ColorManager.greenPrimary,
-        borderRadius: BorderRadius.circular(AppSize.s20.r),
-      ),
-      child: Text(
-        label,
-        style: getBoldTextStyle(
-          color: ColorManager.whiteColor,
-          fontSize: FontSizeManager.s12.sp,
-        ),
-      ),
-    );
-  }
-}
+//   @override
+//   Widget build(BuildContext context) {
+//     return Container(
+//       padding: EdgeInsetsDirectional.symmetric(
+//         horizontal: AppPadding.p12.w,
+//         vertical: AppSize.s4.h,
+//       ),
+//       decoration: BoxDecoration(
+//         color: ColorManager.greenPrimary,
+//         borderRadius: BorderRadius.circular(AppSize.s20.r),
+//       ),
+//       child: Text(
+//         label,
+//         style: getBoldTextStyle(
+//           color: ColorManager.whiteColor,
+//           fontSize: FontSizeManager.s12.sp,
+//         ),
+//       ),
+//     );
+//   }
+// }

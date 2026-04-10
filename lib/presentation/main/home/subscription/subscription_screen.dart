@@ -13,6 +13,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:basic_diet/presentation/main/home/premium/premium_meals_screen.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:gap/gap.dart';
+import 'package:go_router/go_router.dart';
 
 class SubscriptionScreen extends StatelessWidget {
   static const String subscriptionRoute = '/subscription';
@@ -42,9 +43,10 @@ class SubscriptionScreen extends StatelessWidget {
     return AppBar(
       backgroundColor: ColorManager.whiteColor,
       elevation: 0,
-      centerTitle: false,
+      centerTitle: true,
+      scrolledUnderElevation: 0,
       leading: IconButton(
-        onPressed: () => Navigator.pop(context),
+        onPressed: () => context.pop(),
         icon: Icon(
           Icons.keyboard_arrow_left,
           color: ColorManager.blackColor,
