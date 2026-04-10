@@ -3,6 +3,7 @@ import 'package:basic_diet/app/functions.dart';
 import 'package:basic_diet/presentation/login/login_screen.dart';
 import 'package:basic_diet/presentation/main/main_screen.dart';
 import 'package:basic_diet/presentation/main/home/delivery/delivery_method_screen.dart';
+import 'package:basic_diet/presentation/main/home/add-ons/add_ons_screen.dart';
 import 'package:basic_diet/presentation/main/home/premium/premium_meals_screen.dart';
 import 'package:basic_diet/presentation/main/home/subscription/subscription_screen.dart';
 import 'package:basic_diet/presentation/main/home/subscription/bloc/subscription_bloc.dart';
@@ -90,6 +91,19 @@ class GoRouterConfig {
               state: state,
               child: const DeliveryMethodScreen(),
             ),
+      ),
+      GoRoute(
+        path: AddOnsScreen.addOnsRoute,
+        pageBuilder: (BuildContext context, GoRouterState state) {
+          initAddOnsModule();
+          return getCustomTransitionPage(
+            state: state,
+            child: BlocProvider.value(
+              value: state.extra as SubscriptionBloc,
+              child: const AddOnsScreen(),
+            ),
+          );
+        },
       ),
     ],
   );

@@ -30,6 +30,14 @@ class SelectMealOptionEvent extends SubscriptionEvent {
   List<Object> get props => [plan, gramOption, option];
 }
 
+class TogglePlanExpansionEvent extends SubscriptionEvent {
+  final int index;
+  const TogglePlanExpansionEvent(this.index);
+
+  @override
+  List<Object> get props => [index];
+}
+
 class SavePremiumMealsSelectionEvent extends SubscriptionEvent {
   final Map<String, int> mealCounters;
 
@@ -64,12 +72,4 @@ class CheckoutSubscriptionEvent extends SubscriptionEvent {
 
   @override
   List<Object> get props => [request];
-}
-
-class TogglePlanExpansionEvent extends SubscriptionEvent {
-  final int index;
-  const TogglePlanExpansionEvent(this.index);
-
-  @override
-  List<Object> get props => [index];
 }

@@ -8,7 +8,9 @@ class PremiumMealsBloc extends Bloc<PremiumMealsEvent, PremiumMealsState> {
 
   PremiumMealsBloc(this._getPremiumMealsUseCase)
     : super(const PremiumMealsInitial()) {
+    // featch premium meals
     on<GetPremiumMealsEvent>(_onGetPremiumMeals);
+    // Update meal quantity
     on<UpdateMealCounterEvent>(_onUpdateMealCounter);
   }
 
@@ -37,8 +39,10 @@ class PremiumMealsBloc extends Bloc<PremiumMealsEvent, PremiumMealsState> {
   ) {
     if (state is PremiumMealsSuccess) {
       final currentState = state as PremiumMealsSuccess;
+      // this data structure is used to store the quantity of each meal
       final newCounters = Map<String, int>.from(currentState.mealCounters);
       newCounters[event.id] = event.quantity;
+      // this will update the meal counter
       emit(currentState.copyWith(mealCounters: newCounters));
     }
   }

@@ -70,10 +70,6 @@ void initLoginModule() {
     instance.registerFactory<LoginBloc>(
       () => LoginBloc(instance<LoginUseCase>()),
     );
-
-    // instance.registerFactory<LoginViewModel>(
-    //   () => LoginViewModel(instance<LoginUseCase>()),
-    // );
   }
 }
 

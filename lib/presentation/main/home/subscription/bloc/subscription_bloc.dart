@@ -199,6 +199,8 @@ class SubscriptionBloc extends Bloc<SubscriptionEvent, SubscriptionState> {
   ) {
     if (state is SubscriptionSuccess) {
       final successState = state as SubscriptionSuccess;
+      // expandedPlanIndex hold the index of the expanded plan
+      // if the expandedPlanIndex is equal to the event.index then it will be -1 else it will be event.index
       final newIndex = successState.expandedPlanIndex == event.index
           ? -1
           : event.index;

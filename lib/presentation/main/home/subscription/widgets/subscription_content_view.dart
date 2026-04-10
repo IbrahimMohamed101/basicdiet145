@@ -50,6 +50,7 @@ class SubscriptionContentView extends StatelessWidget {
                   plan: plansModel.plans[index],
                   isExpanded: expandedIndex == index,
                   onTap: () {
+                    // when clicking on the accordion item it will toggle the expanded index
                     context.read<SubscriptionBloc>().add(
                       TogglePlanExpansionEvent(index),
                     );
@@ -58,6 +59,7 @@ class SubscriptionContentView extends StatelessWidget {
                   selectedGramOption: selectedGramOption,
                   selectedMealOption: selectedMealOption,
                   onMealOptionTap: (plan, gramOption, option) {
+                    // when clicking on the meal option it will select the meal option
                     context.read<SubscriptionBloc>().add(
                       SelectMealOptionEvent(
                         plan: plan,
