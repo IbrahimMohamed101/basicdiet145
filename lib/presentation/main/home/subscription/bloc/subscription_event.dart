@@ -65,3 +65,11 @@ class CheckoutSubscriptionEvent extends SubscriptionEvent {
   @override
   List<Object> get props => [request];
 }
+
+class TogglePlanExpansionEvent extends SubscriptionEvent {
+  final int index;
+  const TogglePlanExpansionEvent(this.index);
+
+  @override
+  List<Object> get props => [index];
+}

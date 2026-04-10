@@ -14,37 +14,24 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:gap/gap.dart';
 
-class SubscriptionContentView extends StatefulWidget {
+class SubscriptionContentView extends StatelessWidget {
   const SubscriptionContentView({super.key, required this.plansModel});
 
   final PlansModel plansModel;
-
-  @override
-  State<SubscriptionContentView> createState() =>
-      _SubscriptionContentViewState();
-}
-
-class _SubscriptionContentViewState extends State<SubscriptionContentView> {
-  int _expandedIndex = -1;
-
-  void _onPlanTapped(int index) {
-    setState(() => _expandedIndex = _expandedIndex == index ? -1 : index);
-  }
 
   @override
   Widget build(BuildContext context) {
     return BlocBuilder<SubscriptionBloc, SubscriptionState>(
       buildWhen: (previous, current) => current is SubscriptionSuccess,
       builder: (context, state) {
-        final selectedPlan = state is SubscriptionSuccess
-            ? state.selectedPlan
-            : null;
-        final selectedGramOption = state is SubscriptionSuccess
-            ? state.selectedGramOption
-            : null;
-        final selectedMealOption = state is SubscriptionSuccess
-            ? state.selectedMealOption
-            : null;
+        if (state is! SubscriptionSuccess) {
+          return const SizedBox.shrink();
+        }
+
+        final selectedPlan = state.selectedPlan;
+        final selectedGramOption = state.selectedGramOption;
+        final selectedMealOption = state.selectedMealOption;
+        final expandedIndex = state.expandedPlanIndex;
 
         return ListView(
           padding: EdgeInsetsDirectional.symmetric(
@@ -56,13 +43,17 @@ class _SubscriptionContentViewState extends State<SubscriptionContentView> {
             Gap(AppSize.s20.h),
             const _BenefitsRow(),
             Gap(AppSize.s30.h),
-            ...List.generate(widget.plansModel.plans.length, (index) {
+            ...List.generate(plansModel.plans.length, (index) {
               return Padding(
                 padding: EdgeInsetsDirectional.only(bottom: AppSize.s16.h),
                 child: PlanAccordionItem(
-                  plan: widget.plansModel.plans[index],
-                  isExpanded: _expandedIndex == index,
-                  onTap: () => _onPlanTapped(index),
+                  plan: plansModel.plans[index],
+                  isExpanded: expandedIndex == index,
+                  onTap: () {
+                    context.read<SubscriptionBloc>().add(
+                      TogglePlanExpansionEvent(index),
+                    );
+                  },
                   selectedPlan: selectedPlan,
                   selectedGramOption: selectedGramOption,
                   selectedMealOption: selectedMealOption,

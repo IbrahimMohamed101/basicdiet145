@@ -40,6 +40,7 @@ class SubscriptionSuccess extends SubscriptionState {
   final SubscriptionCheckoutStatus checkoutStatus;
   final SubscriptionCheckoutModel? subscriptionCheckout;
   final String? checkoutErrorMessage;
+  final int expandedPlanIndex;
 
   const SubscriptionSuccess(
     this.plansModel, {
@@ -56,6 +57,7 @@ class SubscriptionSuccess extends SubscriptionState {
     this.checkoutStatus = SubscriptionCheckoutStatus.initial,
     this.subscriptionCheckout,
     this.checkoutErrorMessage,
+    this.expandedPlanIndex = -1,
   });
 
   SubscriptionSuccess copyWith({
@@ -73,6 +75,7 @@ class SubscriptionSuccess extends SubscriptionState {
     SubscriptionCheckoutStatus? checkoutStatus,
     Object? subscriptionCheckout = _noChange,
     Object? checkoutErrorMessage = _noChange,
+    int? expandedPlanIndex,
   }) {
     return SubscriptionSuccess(
       plansModel ?? this.plansModel,
@@ -102,6 +105,7 @@ class SubscriptionSuccess extends SubscriptionState {
       checkoutErrorMessage: identical(checkoutErrorMessage, _noChange)
           ? this.checkoutErrorMessage
           : checkoutErrorMessage as String?,
+      expandedPlanIndex: expandedPlanIndex ?? this.expandedPlanIndex,
     );
   }
 
@@ -121,6 +125,7 @@ class SubscriptionSuccess extends SubscriptionState {
     checkoutStatus,
     subscriptionCheckout,
     checkoutErrorMessage,
+    expandedPlanIndex,
   ];
 }
 

@@ -18,6 +18,7 @@ class SubscriptionBloc extends Bloc<SubscriptionEvent, SubscriptionState> {
   ) : super(const SubscriptionInitial()) {
     on<GetPlansEvent>(_onGetPlans);
     on<SelectMealOptionEvent>(_onSelectMealOption);
+    on<TogglePlanExpansionEvent>(_onTogglePlanExpansion);
     on<SavePremiumMealsSelectionEvent>(_onSavePremiumMealsSelection);
     on<SaveAddOnsSelectionEvent>(_onSaveAddOnsSelection);
     on<GetSubscriptionQuoteEvent>(_onGetSubscriptionQuote);
@@ -190,5 +191,18 @@ class SubscriptionBloc extends Bloc<SubscriptionEvent, SubscriptionState> {
         ),
       ),
     );
+  }
+
+  void _onTogglePlanExpansion(
+    TogglePlanExpansionEvent event,
+    Emitter<SubscriptionState> emit,
+  ) {
+    if (state is SubscriptionSuccess) {
+      final successState = state as SubscriptionSuccess;
+      final newIndex = successState.expandedPlanIndex == event.index
+          ? -1
+          : event.index;
+      emit(successState.copyWith(expandedPlanIndex: newIndex));
+    }
   }
 }

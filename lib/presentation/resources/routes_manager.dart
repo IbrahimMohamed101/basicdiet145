@@ -3,12 +3,15 @@ import 'package:basic_diet/app/functions.dart';
 import 'package:basic_diet/presentation/login/login_screen.dart';
 import 'package:basic_diet/presentation/main/main_screen.dart';
 import 'package:basic_diet/presentation/main/home/delivery/delivery_method_screen.dart';
+import 'package:basic_diet/presentation/main/home/premium/premium_meals_screen.dart';
 import 'package:basic_diet/presentation/main/home/subscription/subscription_screen.dart';
+import 'package:basic_diet/presentation/main/home/subscription/bloc/subscription_bloc.dart';
 import 'package:basic_diet/presentation/onboarding/on_boarding_screen.dart';
 import 'package:basic_diet/presentation/register/register_screen.dart';
 import 'package:basic_diet/presentation/splash/splash_screen.dart';
 import 'package:basic_diet/presentation/verify/verify_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
 class GoRouterConfig {
@@ -64,6 +67,19 @@ class GoRouterConfig {
           return getCustomTransitionPage(
             state: state,
             child: SubscriptionScreen(),
+          );
+        },
+      ),
+      GoRoute(
+        path: PremiumMealsScreen.premiumRoute,
+        pageBuilder: (BuildContext context, GoRouterState state) {
+          initPremiumMealsModule();
+          return getCustomTransitionPage(
+            state: state,
+            child: BlocProvider.value(
+              value: state.extra as SubscriptionBloc,
+              child: const PremiumMealsScreen(),
+            ),
           );
         },
       ),
