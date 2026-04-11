@@ -17,6 +17,7 @@ import 'package:gap/gap.dart';
 import 'package:uuid/uuid.dart';
 
 class SubscriptionDetails extends StatelessWidget {
+  static const String subscriptionDetailsRoute = '/subscription_details';
   final SubscriptionQuoteModel quote;
   final SubscriptionQuoteRequestModel quoteRequest;
 

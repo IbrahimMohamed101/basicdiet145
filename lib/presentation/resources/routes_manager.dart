@@ -1,10 +1,12 @@
 import 'package:basic_diet/app/dependency_injection.dart';
 import 'package:basic_diet/app/functions.dart';
+import 'package:basic_diet/domain/model/subscription_quote_model.dart';
 import 'package:basic_diet/presentation/login/login_screen.dart';
 import 'package:basic_diet/presentation/main/main_screen.dart';
 import 'package:basic_diet/presentation/main/home/delivery/delivery_method_screen.dart';
 import 'package:basic_diet/presentation/main/home/add-ons/add_ons_screen.dart';
 import 'package:basic_diet/presentation/main/home/premium/premium_meals_screen.dart';
+import 'package:basic_diet/presentation/main/home/subscription-details/subscription_details_screen.dart';
 import 'package:basic_diet/presentation/main/home/subscription/subscription_screen.dart';
 import 'package:basic_diet/presentation/main/home/subscription/bloc/subscription_bloc.dart';
 import 'package:basic_diet/presentation/onboarding/on_boarding_screen.dart';
@@ -86,11 +88,16 @@ class GoRouterConfig {
       ),
       GoRoute(
         path: DeliveryMethodScreen.deliveryMethodRoute,
-        pageBuilder: (BuildContext context, GoRouterState state) =>
-            getCustomTransitionPage(
-              state: state,
+        pageBuilder: (BuildContext context, GoRouterState state) {
+          initDeliveryOptionsModule();
+          return getCustomTransitionPage(
+            state: state,
+            child: BlocProvider.value(
+              value: state.extra as SubscriptionBloc,
               child: const DeliveryMethodScreen(),
             ),
+          );
+        },
       ),
       GoRoute(
         path: AddOnsScreen.addOnsRoute,
@@ -101,6 +108,22 @@ class GoRouterConfig {
             child: BlocProvider.value(
               value: state.extra as SubscriptionBloc,
               child: const AddOnsScreen(),
+            ),
+          );
+        },
+      ),
+      GoRoute(
+        path: SubscriptionDetails.subscriptionDetailsRoute,
+        pageBuilder: (BuildContext context, GoRouterState state) {
+          final extras = state.extra as Map<String, dynamic>;
+          return getCustomTransitionPage(
+            state: state,
+            child: BlocProvider.value(
+              value: instance<SubscriptionBloc>(),
+              child: SubscriptionDetails(
+                quote: extras['quote'] as SubscriptionQuoteModel,
+                quoteRequest: extras['quoteRequest'] as SubscriptionQuoteRequestModel,
+              ),
             ),
           );
         },

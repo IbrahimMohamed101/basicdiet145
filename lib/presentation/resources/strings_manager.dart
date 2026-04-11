@@ -131,6 +131,11 @@ class Strings {
   static const String extraSalad = "Extra Salad";
   static const String addExtraSaladToPlan = "Add an extra salad to your plan";
   static const String plus19SAR = "+19 SAR";
+  static const String appliedTo = "applied to";
+  static const String noAddOnsSelected = "No Add-Ons Selected";
+  static const String daily = "Daily";
+  static const String oneTime = "One Time";
+  static const String sarPerDay = "SAR/Day";
 
   // Delivery Method Screen
   static const String deliveryMethod = "Delivery Method";
@@ -273,8 +278,10 @@ class Strings {
   static const String cityLabel = "City";
   static const String useCurrentLocation = "Use Current Location";
   static const String deliveryTimePreference = "Delivery Time Preference";
-  static const String deliveryInstructionsOptional = "Delivery Instructions (Optional)";
-  static const String deliveryInstructionsHint = "e.g., Ring the doorbell, Leave at door, etc.";
+  static const String deliveryInstructionsOptional =
+      "Delivery Instructions (Optional)";
+  static const String deliveryInstructionsHint =
+      "e.g., Ring the doorbell, Leave at door, etc.";
   static const String saveChanges = "Save Changes";
 
   // Meal Timeline Screen
@@ -291,7 +298,8 @@ class Strings {
 
   // Empty States
   static const String noSubscriptionTitle = "No Active Subscription";
-  static const String noSubscriptionSubtitle = "It looks like you don't have an active subscription yet. Start your journey today!";
+  static const String noSubscriptionSubtitle =
+      "It looks like you don't have an active subscription yet. Start your journey today!";
   static const String exploreOurPlans = "Explore Our Plans";
 
   // Meal Planner Screen
@@ -301,7 +309,8 @@ class Strings {
   static const String of = "of";
   static const String selected = "selected";
   static const String complete = "Complete";
-  static const String mealLimitReached = "You've reached your meal limit for this day. Unselect a meal to choose a different one.";
+  static const String mealLimitReached =
+      "You've reached your meal limit for this day. Unselect a meal to choose a different one.";
   static const String premiumMealsRemaining = "Premium meals remaining";
   static const String left = "left";
   static const String lunch = "Lunch";
@@ -309,7 +318,8 @@ class Strings {
   static const String snacks = "Snacks";
   static const String premiumMealsAvailable = "Premium Meals Available";
   static const String youHave = "You have";
-  static const String remainingSelectPremium = "remaining. Select from our exclusive premium collection below.";
+  static const String remainingSelectPremium =
+      "remaining. Select from our exclusive premium collection below.";
   static const String noChangesToSave = "No Changes to Save";
   static const String mealAdded = "Meal added";
   static const String addedTo = "added to";
