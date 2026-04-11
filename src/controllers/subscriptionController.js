@@ -16,22 +16,20 @@ const { canTransition } = require("../utils/state");
 const { writeLog } = require("../utils/log");
 const { createInvoice, getInvoice } = require("../services/moyasarService");
 const { fulfillSubscriptionDay } = require("../services/fulfillmentService");
-const { buildLockedDaySnapshot } = require("../services/subscriptionDayOperationalSnapshotService");
+const { buildLockedDaySnapshot } = require("../services/subscription/subscriptionDayOperationalSnapshotService");
 const {
-  applySkipForDate,
-  syncSubscriptionValidity,
   buildSubscriptionTimeline,
-} = require("../services/subscriptionService");
+} = require("../services/subscription/subscriptionService");
 const {
   buildPhase1SubscriptionContract,
   buildCanonicalDraftPersistenceFields,
-} = require("../services/subscriptionContractService");
+} = require("../services/subscription/subscriptionContractService");
 const {
   finalizeSubscriptionDraftPaymentFlow,
   activateSubscriptionFromCanonicalDraft,
   activateSubscriptionFromLegacyDraft,
   isCanonicalCheckoutDraft,
-} = require("../services/subscriptionActivationService");
+} = require("../services/subscription/subscriptionActivationService");
 const {
   applyWalletTopupPayment: applyWalletTopupSideEffects,
   applyPaymentSideEffects,
@@ -39,16 +37,16 @@ const {
 } = require("../services/paymentApplicationService");
 const { logger } = require("../utils/logger");
 const { getRequestLang, pickLang } = require("../utils/i18n");
-const { resolveMealsPerDay, applyDayWalletSelections } = require("../utils/subscriptionDaySelectionSync");
+const { resolveMealsPerDay, applyDayWalletSelections } = require("../utils/subscription/subscriptionDaySelectionSync");
 const {
   resolvePickupLocationSelection,
   resolveQuoteSummary,
   resolveAddonChargeTotalHalala,
-} = require("../utils/subscriptionCatalog");
+} = require("../utils/subscription/subscriptionCatalog");
 const {
   mapRawDayStatusToClientStatus,
   resolveCatalogOrStoredName,
-} = require("../utils/subscriptionLocalizationCommon");
+} = require("../utils/subscription/subscriptionLocalizationCommon");
 const {
   getGenericPremiumCreditsLabel,
   localizeCheckoutDraftStatusReadPayload,
@@ -58,7 +56,7 @@ const {
   localizeRenewalSeedReadPayload,
   localizeWalletHistoryEntries,
   localizeWalletTopupStatusReadPayload,
-} = require("../utils/subscriptionReadLocalization");
+} = require("../utils/subscription/subscriptionReadLocalization");
 const {
   buildPaymentDescription,
   localizeSkipRangeSummary,
@@ -68,7 +66,7 @@ const {
   localizeWritePremiumOverageStatusPayload,
   localizeWriteSubscriptionPayload,
   localizeWriteWalletTopupStatusPayload,
-} = require("../utils/subscriptionWriteLocalization");
+} = require("../utils/subscription/subscriptionWriteLocalization");
 const {
   LEGACY_PREMIUM_MEAL_BUCKET_ID,
   LEGACY_PREMIUM_WALLET_MODE,
@@ -83,8 +81,6 @@ const {
   getRemainingPremiumCredits,
   buildGenericPremiumBalanceRows,
   appendGenericPremiumCredits,
-  consumeGenericPremiumCredits,
-  refundGenericPremiumSelectionRowsOrThrow,
 } = require("../services/genericPremiumWalletService");
 const validateObjectId = require("../utils/validateObjectId");
 const errorResponse = require("../utils/errorResponse");
@@ -95,12 +91,14 @@ const {
   isPhase2CanonicalDayPlanningEnabled,
   isPhase2GenericPremiumWalletEnabled,
 } = require("../utils/featureFlags");
+const { sliceBDefaultRuntime } = require("../services/subscription/runtime");
+const { performSubscriptionCheckout } = require("../services/subscription/subscriptionCheckoutService");
 const {
   getSubscriptionContractReadView,
   resolveSubscriptionFreezePolicy,
   resolveSubscriptionSkipPolicy,
-} = require("../services/subscriptionContractReadService");
-const { buildSubscriptionRenewalSeed } = require("../services/subscriptionRenewalService");
+} = require("../services/subscription/subscriptionContractReadService");
+const { buildSubscriptionRenewalSeed, performSubscriptionRenewal } = require("../services/subscription/subscriptionRenewalService");
 const {
   isCanonicalDayPlanningEligible,
   applyCanonicalDraftPlanningToDay,
@@ -110,7 +108,7 @@ const {
   assertNoPendingPremiumOverage,
   buildCanonicalPlanningView,
   isCanonicalPremiumOverageEligible,
-} = require("../services/subscriptionDayPlanningService");
+} = require("../services/subscription/subscriptionDayPlanningService");
 const {
   isCanonicalRecurringAddonEligible,
   buildRecurringAddonEntitlementsFromQuote,
@@ -133,18 +131,44 @@ const {
   compareIdempotentRequest,
 } = require("../services/idempotencyService");
 const { reconcileCheckoutDraft, RECONCILE_MODES } = require("../services/reconciliationService");
-const { cancelSubscriptionDomain } = require("../services/subscriptionCancellationService");
+const { cancelSubscriptionDomain } = require("../services/subscription/subscriptionCancellationService");
 const {
   validateDayBeforeLockOrPrepare,
   resolveDayExecutionValidationErrorStatus,
-} = require("../services/subscriptionDayExecutionValidationService");
+} = require("../services/subscription/subscriptionDayExecutionValidationService");
+const { syncSubscriptionValidity } = require("../services/subscription/subscriptionCompensationService");
+const {
+  performSkipRange,
+  performSkipDay,
+  performUnskipDay,
+  resolveSkipRemainingDays,
+} = require("../services/subscription/subscriptionSkipService");
+const {
+  performDaySelectionUpdate,
+  performDayPlanningConfirmation,
+  performConsumePremiumSelection,
+  performRemovePremiumSelection,
+  performConsumeAddonSelection,
+  performRemoveAddonSelection,
+} = require("../services/subscription/subscriptionSelectionService");
 const { validateRedirectUrl, resolveProviderRedirectUrl } = require("../utils/security");
 const {
   resolveEffectiveSubscriptionStatus,
   buildSubscriptionOperationsMeta,
   buildFreezePreview,
-} = require("../services/subscriptionOperationsReadService");
-const { resolveSubscriptionDeliveryDefaultsUpdate } = require("../services/subscriptionDeliveryUpdateService");
+} = require("../services/subscription/subscriptionOperationsReadService");
+const {
+  resolveSubscriptionDeliveryDefaultsUpdate,
+  performDeliveryDetailsUpdate,
+  performDeliveryDetailsUpdateForDate,
+} = require("../services/subscription/subscriptionDeliveryUpdateService");
+const {
+  persistCheckoutDraftUpdate,
+  ensureSubscriptionCheckoutPayment,
+  buildCheckoutReusePayload,
+  isPendingCheckoutReusable,
+  getPaymentMetadata,
+} = require("../services/subscription/subscriptionCheckoutHelpers");
 
 const SYSTEM_CURRENCY = "SAR";
 const STALE_DRAFT_THRESHOLD_MS = 30 * 1000; // 30 seconds - reduced for faster recovery
@@ -375,9 +399,14 @@ function normalizeOperationItemsForHash(items, idKey) {
     .sort((a, b) => a.id.localeCompare(b.id) || a.qty - b.qty);
 }
 
-function getPaymentMetadata(payment) {
-  return payment && payment.metadata && typeof payment.metadata === "object" ? payment.metadata : {};
+
+function buildAddonUnitFromDoc(doc) {
+  if (!doc) return 0;
+  return Number.isInteger(doc.priceHalala)
+    ? doc.priceHalala
+    : Math.max(0, Math.round(Number(doc.price || 0) * 100));
 }
+
 
 function isReusableInitiatedPayment(payment) {
   const metadata = getPaymentMetadata(payment);
@@ -589,308 +618,29 @@ function getInvoiceResponseUrl(invoice) {
   return String(invoice.url || invoice.payment_url || invoice.paymentUrl || "").trim();
 }
 
-function buildCheckoutInitFailureReason(stage, err) {
-  const normalizedStage = String(stage || "checkout_init").trim() || "checkout_init";
-  const detail = err && err.code
-    ? String(err.code).trim()
-    : err && err.message
-      ? String(err.message).trim()
-      : "unknown_error";
-  return `${normalizedStage}:${detail || "unknown_error"}`.slice(0, 200);
-}
 
-function isCheckoutDraftDuplicateKeyError(err) {
-  if (!err || err.code !== 11000) return false;
 
-  const keyNames = Object.keys(err.keyPattern || err.keyValue || {});
-  if (keyNames.some((key) => key === "idempotencyKey" || key === "requestHash")) {
-    return true;
-  }
 
-  const message = String(err.message || "");
-  return message.includes("idempotencyKey") || message.includes("requestHash");
-}
 
-async function persistCheckoutDraftUpdate(draft, changes, { stage } = {}) {
-  if (!draft) return;
 
-  const persistedChanges = Object.fromEntries(
-    Object.entries({
-      ...changes,
-      updatedAt: new Date(),
-    }).filter(([, value]) => value !== undefined)
-  );
 
-  logger.debug("[DEBUG-CHECKOUT] Persisting draft update", {
-    draftId: String(draft._id),
-    stage: String(stage || "unknown"),
-    status: persistedChanges.status !== undefined ? persistedChanges.status : draft.status,
-    providerInvoiceId:
-      persistedChanges.providerInvoiceId !== undefined
-        ? persistedChanges.providerInvoiceId
-        : (draft.providerInvoiceId || ""),
-    paymentId:
-      persistedChanges.paymentId !== undefined
-        ? String(persistedChanges.paymentId || "")
-        : (draft.paymentId ? String(draft.paymentId) : ""),
-    hasPaymentUrl:
-      persistedChanges.paymentUrl !== undefined
-        ? Boolean(String(persistedChanges.paymentUrl || "").trim())
-        : Boolean(String(draft.paymentUrl || "").trim()),
-    failureReason:
-      persistedChanges.failureReason !== undefined
-        ? persistedChanges.failureReason
-        : (draft.failureReason || ""),
-  });
 
-  Object.assign(draft, persistedChanges);
 
-  try {
-    await draft.save();
-    logger.debug("[DEBUG-CHECKOUT] Draft update saved", {
-      draftId: String(draft._id),
-      stage: String(stage || "unknown"),
-    });
-  } catch (saveErr) {
-    logger.error("[DEBUG-CHECKOUT] Draft save failed; attempting updateOne fallback", {
-      draftId: String(draft._id),
-      stage: String(stage || "unknown"),
-      error: saveErr.message,
-    });
 
-    try {
-      await CheckoutDraft.updateOne({ _id: draft._id }, { $set: persistedChanges });
-      Object.assign(draft, persistedChanges);
-      logger.warn("[DEBUG-CHECKOUT] Draft update persisted via updateOne fallback", {
-        draftId: String(draft._id),
-        stage: String(stage || "unknown"),
-      });
-    } catch (updateErr) {
-      logger.error("[DEBUG-CHECKOUT] Draft updateOne fallback failed", {
-        draftId: String(draft._id),
-        stage: String(stage || "unknown"),
-        error: updateErr.message,
-      });
-      throw saveErr;
-    }
-  }
-}
 
-async function persistCheckoutInitializationFailure(draft, err, { stage, providerInvoiceId, paymentUrl } = {}) {
-  if (!draft) return;
 
-  const failureReason = buildCheckoutInitFailureReason(stage, err);
-  logger.error("[DEBUG-CHECKOUT] Checkout initialization failed", {
-    draftId: String(draft._id),
-    stage: String(stage || "unknown"),
-    error: err && err.message ? err.message : "Unknown error",
-    code: err && err.code ? err.code : null,
-    providerInvoiceId: providerInvoiceId || draft.providerInvoiceId || "",
-    hasPaymentUrl: Boolean(String(paymentUrl !== undefined ? paymentUrl : draft.paymentUrl || "").trim()),
-    failureReason,
-  });
-
-  try {
-    await persistCheckoutDraftUpdate(
-      draft,
-      {
-        status: "failed",
-        failedAt: new Date(),
-        failureReason,
-        ...(providerInvoiceId ? { providerInvoiceId } : {}),
-        ...(paymentUrl !== undefined ? { paymentUrl } : {}),
-      },
-      { stage: `${String(stage || "unknown")}_failure` }
-    );
-  } catch (persistErr) {
-    logger.error("[DEBUG-CHECKOUT] Failed to persist checkout initialization failure", {
-      draftId: String(draft._id),
-      stage: String(stage || "unknown"),
-      error: persistErr.message,
-      originalError: err && err.message ? err.message : "Unknown error",
-    });
-  }
-}
-
-async function releaseCheckoutDraftIdempotencyKey(draft, { stage, failureReason } = {}) {
-  if (!draft || !draft._id) return;
-
-  const currentKey = String(draft.idempotencyKey || "").trim();
-  if (!currentKey) return;
-
-  const status = String(draft.status || "").trim();
-  if (!["failed", "canceled", "expired"].includes(status)) return;
-
-  const update = {
-    idempotencyKey: "",
-    updatedAt: new Date(),
-  };
-  if (failureReason !== undefined) {
-    update.failureReason = failureReason;
-  }
-
-  await CheckoutDraft.updateOne({ _id: draft._id }, { $set: update });
-  draft.idempotencyKey = "";
-  if (failureReason !== undefined) {
-    draft.failureReason = failureReason;
-  }
-
-  logger.debug("[DEBUG-CHECKOUT] Released terminal draft idempotency key", {
-    draftId: String(draft._id),
-    stage: String(stage || "unknown"),
-    status,
-    failureReason: failureReason !== undefined ? failureReason : (draft.failureReason || ""),
-  });
-}
-
-function buildCheckoutReusePayload(draft, payment) {
-  const paymentMetadata = getPaymentMetadata(payment);
-  return {
-    subscriptionId: draft.subscriptionId ? String(draft.subscriptionId) : null,
-    draftId: String(draft._id),
-    paymentId: payment ? String(payment._id) : (draft.paymentId ? String(draft.paymentId) : null),
-    payment_url: draft.paymentUrl || paymentMetadata.paymentUrl || "",
-    totals: draft.breakdown,
-    reused: true,
-  };
-}
-
-function isPendingCheckoutReusable(draft, payment) {
-  const metadata = getPaymentMetadata(payment);
-  const hasPaymentUrl = Boolean(
-    (draft && draft.paymentUrl && String(draft.paymentUrl).trim())
-    || (typeof metadata.paymentUrl === "string" && metadata.paymentUrl.trim())
-  );
-  return Boolean(
-    draft
-    && draft.status === "pending_payment"
-    && payment
-    && payment.status === "initiated"
-    && payment.applied !== true
-    && hasPaymentUrl
-  );
-}
 
 function resolveSubscriptionCheckoutPaymentType({ renewedFromSubscriptionId } = {}) {
   return renewedFromSubscriptionId ? "subscription_renewal" : "subscription_activation";
 }
 
-function resolveSubscriptionCheckoutResponseShape(paymentType) {
-  return paymentType === "subscription_renewal" ? "subscription_renewal" : "subscription_checkout";
-}
 
-function buildSubscriptionCheckoutPaymentMetadata({
-  draft,
-  paymentType,
-  providerInvoiceId,
-  paymentUrl,
-  totalHalala,
-}) {
-  const metadata = {
-    type: paymentType,
-    draftId: String(draft && draft._id ? draft._id : ""),
-    userId: String(draft && draft.userId ? draft.userId : ""),
-    grams: Number(draft && draft.grams ? draft.grams : 0),
-    mealsPerDay: Number(draft && draft.mealsPerDay ? draft.mealsPerDay : 0),
-    paymentUrl: paymentUrl || "",
-    initiationResponseShape: resolveSubscriptionCheckoutResponseShape(paymentType),
-    totalHalala: Number(totalHalala || 0),
-  };
 
-  if (providerInvoiceId) {
-    metadata.providerInvoiceId = providerInvoiceId;
-  }
-  if (draft && draft.renewedFromSubscriptionId) {
-    metadata.renewedFromSubscriptionId = String(draft.renewedFromSubscriptionId);
-  }
 
-  return metadata;
-}
 
-async function findSubscriptionCheckoutPayment({ draft, paymentType, providerInvoiceId }) {
-  if (!draft) return null;
 
-  let payment = draft.paymentId ? await Payment.findById(draft.paymentId) : null;
-  if (!payment && providerInvoiceId) {
-    payment = await Payment.findOne({
-      provider: "moyasar",
-      providerInvoiceId,
-    }).sort({ createdAt: -1 });
-  }
-  if (!payment) {
-    payment = await Payment.findOne({
-      userId: draft.userId,
-      type: paymentType,
-      "metadata.draftId": String(draft._id),
-    }).sort({ createdAt: -1 });
-  }
 
-  return payment;
-}
 
-async function ensureSubscriptionCheckoutPayment({
-  draft,
-  paymentType,
-  totalHalala,
-  invoiceCurrency,
-  providerInvoiceId,
-  paymentUrl,
-}) {
-  if (!draft) return null;
-
-  const paymentMetadata = buildSubscriptionCheckoutPaymentMetadata({
-    draft,
-    paymentType,
-    providerInvoiceId,
-    paymentUrl,
-    totalHalala,
-  });
-
-  let payment = await findSubscriptionCheckoutPayment({ draft, paymentType, providerInvoiceId });
-
-  if (!payment) {
-    try {
-      payment = await Payment.create({
-        provider: "moyasar",
-        type: paymentType,
-        status: "initiated",
-        amount: totalHalala,
-        currency: invoiceCurrency,
-        userId: draft.userId,
-        providerInvoiceId,
-        metadata: paymentMetadata,
-      });
-    } catch (err) {
-      if (!err || err.code !== 11000) {
-        throw err;
-      }
-      payment = await findSubscriptionCheckoutPayment({ draft, paymentType, providerInvoiceId });
-      if (!payment) {
-        throw err;
-      }
-    }
-  }
-
-  let paymentChanged = false;
-  if (!payment.providerInvoiceId && providerInvoiceId) {
-    payment.providerInvoiceId = providerInvoiceId;
-    paymentChanged = true;
-  }
-  const mergedMetadata = Object.assign({}, payment.metadata || {}, paymentMetadata);
-  if (JSON.stringify(mergedMetadata) !== JSON.stringify(payment.metadata || {})) {
-    payment.metadata = mergedMetadata;
-    paymentChanged = true;
-  }
-  if (!payment.currency && invoiceCurrency) {
-    payment.currency = invoiceCurrency;
-    paymentChanged = true;
-  }
-  if (paymentChanged) {
-    await payment.save();
-  }
-
-  return payment;
-}
 
 function normalizeProviderPaymentStatus(value) {
   const normalized = String(value || "").trim().toLowerCase();
@@ -1600,171 +1350,8 @@ function resolveAddonUnitPriceHalala(addon) {
   return 0;
 }
 
-function toPremiumWalletRowsFIFO(sub) {
-  const rows = Array.isArray(sub && sub.premiumBalance) ? sub.premiumBalance : [];
-  return rows
-    .filter((row) => Number(row && row.remainingQty) > 0)
-    .sort((a, b) => new Date(a.purchasedAt || 0).getTime() - new Date(b.purchasedAt || 0).getTime());
-}
-
-function parseLegacyDayPremiumSlotIndex(baseSlotKey) {
-  const raw = String(baseSlotKey || "");
-  if (!raw.startsWith(LEGACY_DAY_PREMIUM_SLOT_PREFIX)) return null;
-  const value = Number(raw.slice(LEGACY_DAY_PREMIUM_SLOT_PREFIX.length));
-  return Number.isInteger(value) && value >= 0 ? value : null;
-}
-
-function getLegacyDayPremiumSelections(sub, { dayId, date }) {
-  const rows = Array.isArray(sub && sub.premiumSelections) ? sub.premiumSelections : [];
-  const expectedDayId = dayId ? String(dayId) : null;
-  return rows.filter((row) => {
-    const slotKey = String(row && row.baseSlotKey ? row.baseSlotKey : "");
-    if (!slotKey.startsWith(LEGACY_DAY_PREMIUM_SLOT_PREFIX)) return false;
-    if (expectedDayId && row.dayId && String(row.dayId) === expectedDayId) return true;
-    return Boolean(row.date && date && String(row.date) === String(date));
-  });
-}
-
-function getNextLegacyDayPremiumSlotIndex(existingRows) {
-  const maxIndex = existingRows.reduce((max, row) => {
-    const parsed = parseLegacyDayPremiumSlotIndex(row && row.baseSlotKey);
-    if (parsed === null) return max;
-    return parsed > max ? parsed : max;
-  }, -1);
-  return maxIndex + 1;
-}
-
-function extractAddedPremiumSelectionIds(previousSelections, nextSelections, qty) {
-  const remainingCounts = new Map();
-  for (const mealId of Array.isArray(previousSelections) ? previousSelections : []) {
-    const key = String(mealId || "");
-    remainingCounts.set(key, (remainingCounts.get(key) || 0) + 1);
-  }
-
-  const added = [];
-  for (const mealId of Array.isArray(nextSelections) ? nextSelections : []) {
-    const key = String(mealId || "");
-    const existingCount = remainingCounts.get(key) || 0;
-    if (existingCount > 0) {
-      remainingCounts.set(key, existingCount - 1);
-      continue;
-    }
-    if (key) {
-      added.push(key);
-    }
-  }
-
-  return added.slice(0, qty);
-}
-
-function sortDayPremiumRowsByConsumedAt(rows) {
-  return (Array.isArray(rows) ? rows : [])
-    .slice()
-    .sort((a, b) => new Date(a && a.consumedAt ? a.consumedAt : 0).getTime() - new Date(b && b.consumedAt ? b.consumedAt : 0).getTime());
-}
-
-function reconcileWalletBackedPremiumRowsForRequestedSelections(currentRows, requestedPremiumSelections) {
-  const requestedCounts = new Map();
-  for (const mealId of Array.isArray(requestedPremiumSelections) ? requestedPremiumSelections : []) {
-    const key = String(mealId || "");
-    if (!key) continue;
-    requestedCounts.set(key, (requestedCounts.get(key) || 0) + 1);
-  }
-
-  const retainedRows = [];
-  const refundableRows = [];
-  for (const row of sortDayPremiumRowsByConsumedAt(currentRows)) {
-    const key = String(row && row.premiumMealId ? row.premiumMealId : "");
-    const remainingRequested = requestedCounts.get(key) || 0;
-    if (remainingRequested > 0) {
-      retainedRows.push(row);
-      requestedCounts.set(key, remainingRequested - 1);
-    } else {
-      refundableRows.push(row);
-    }
-  }
-
-  const retainedCounts = new Map();
-  for (const row of retainedRows) {
-    const key = String(row && row.premiumMealId ? row.premiumMealId : "");
-    retainedCounts.set(key, (retainedCounts.get(key) || 0) + 1);
-  }
-
-  const unmetRequestedMealIds = [];
-  for (const mealId of Array.isArray(requestedPremiumSelections) ? requestedPremiumSelections : []) {
-    const key = String(mealId || "");
-    const retainedCount = retainedCounts.get(key) || 0;
-    if (retainedCount > 0) {
-      retainedCounts.set(key, retainedCount - 1);
-      continue;
-    }
-    if (key) {
-      unmetRequestedMealIds.push(mealId);
-    }
-  }
-
-  return {
-    retainedRows,
-    refundableRows,
-    unmetRequestedMealIds,
-  };
-}
-
-function consumePremiumBalanceFifoRows(sub, qty) {
-  const rows = toPremiumWalletRowsFIFO(sub);
-  const available = rows.reduce((sum, row) => sum + Number(row.remainingQty || 0), 0);
-  if (available < qty) {
-    return null;
-  }
-
-  const consumed = [];
-  let remaining = qty;
-  for (const row of rows) {
-    if (remaining <= 0) break;
-    const rowAvailable = Number(row.remainingQty || 0);
-    if (rowAvailable <= 0) continue;
-    const used = Math.min(rowAvailable, remaining);
-    row.remainingQty = rowAvailable - used;
-    remaining -= used;
-    for (let i = 0; i < used; i += 1) {
-      consumed.push({
-        premiumMealId: row.premiumMealId,
-        unitExtraFeeHalala: Number(row.unitExtraFeeHalala || 0),
-        currency: row.currency || SYSTEM_CURRENCY,
-      });
-    }
-  }
-  return consumed;
-}
-
 function logWalletIntegrityError(context, meta = {}) {
   logger.error("Wallet integrity error", { context, ...meta });
-}
-
-function refundPremiumSelectionRowsToBalanceOrThrow(sub, selections) {
-  for (const selection of selections) {
-    const match = (sub.premiumBalance || [])
-      .find(
-        (row) =>
-          String(row.premiumMealId) === String(selection.premiumMealId)
-          && Number(row.unitExtraFeeHalala || 0) === Number(selection.unitExtraFeeHalala || 0)
-          && String(row.currency || SYSTEM_CURRENCY).toUpperCase()
-          === String(selection.currency || SYSTEM_CURRENCY).toUpperCase()
-      );
-    if (!match) {
-      const err = new Error("Cannot refund premium credits because the original wallet bucket was not found");
-      err.code = "DATA_INTEGRITY_ERROR";
-      throw err;
-    }
-    const nextRemainingQty = Number(match.remainingQty || 0) + 1;
-    const purchasedQty = Number(match.purchasedQty || 0);
-    if (nextRemainingQty > purchasedQty) {
-      const err = new Error("Cannot refund premium credits because refund exceeds purchased quantity");
-      err.code = "DATA_INTEGRITY_ERROR";
-      throw err;
-    }
-    match.remainingQty = nextRemainingQty;
-  }
 }
 
 function normalizeSlotInput(slot = {}) {
@@ -2130,17 +1717,6 @@ async function resolveCheckoutQuoteOrThrow(
   };
 }
 
-const sliceBDefaultRuntime = () => ({
-  resolveCheckoutQuoteOrThrow,
-  createInvoice,
-  buildPhase1SubscriptionContract,
-  buildCanonicalDraftPersistenceFields,
-  finalizeSubscriptionDraftPaymentFlow,
-  activateSubscriptionFromCanonicalDraft,
-  activateSubscriptionFromLegacyDraft,
-  isCanonicalCheckoutDraft,
-});
-
 function validateFutureDateOrThrow(date, sub, endDateOverride) {
   if (!dateUtils.isValidKSADateString(date)) {
     const err = new Error("Invalid date format");
@@ -2220,12 +1796,6 @@ function serializeSubscriptionDayForClient(subscription, day, runtime = sliceP2S
   return serializedDay;
 }
 
-function resolveSkipRemainingDays(skipPolicy, subscription) {
-  return Math.max(
-    Number(skipPolicy && skipPolicy.maxDays ? skipPolicy.maxDays : 0) - Number(subscription && subscription.skipDaysUsed ? subscription.skipDaysUsed : 0),
-    0
-  );
-}
 
 function resolveRequestedDate(req) {
   const bodyDate = req && req.body && typeof req.body.date === "string"
@@ -2294,26 +1864,6 @@ function buildSingleSkipMessage({ appliedDays, dueToLimit = false, alreadySkippe
     : "No days applied";
 }
 
-function buildSkipRangeMessage(summary) {
-  const requestedDays = Number(summary && summary.requestedDays ? summary.requestedDays : 0);
-  const appliedDays = Number(summary && summary.appliedDays ? summary.appliedDays : 0);
-  const alreadySkippedCount = Array.isArray(summary && summary.alreadySkipped) ? summary.alreadySkipped.length : 0;
-  const rejected = Array.isArray(summary && summary.rejected) ? summary.rejected : [];
-  const hasPlanLimitRejection = rejected.some((entry) => entry && entry.reason === "PLAN_LIMIT_REACHED");
-
-  if (hasPlanLimitRejection) {
-    return appliedDays > 0
-      ? `Only ${appliedDays} day${appliedDays === 1 ? "" : "s"} applied due to plan limit`
-      : "No days applied due to plan limit";
-  }
-  if (appliedDays === requestedDays && rejected.length === 0 && alreadySkippedCount === 0) {
-    return `${appliedDays} day${appliedDays === 1 ? "" : "s"} applied`;
-  }
-  if (appliedDays === 0 && alreadySkippedCount > 0 && rejected.length === 0) {
-    return "All requested days were already skipped";
-  }
-  return `Applied ${appliedDays} of ${requestedDays} requested day${requestedDays === 1 ? "" : "s"}`;
-}
 
 function resolveFreezePolicy(planDoc) {
   const source = planDoc && typeof planDoc === "object" && planDoc.freezePolicy && typeof planDoc.freezePolicy === "object"
@@ -2563,17 +2113,9 @@ async function quoteSubscription(req, res, runtimeOverrides = null) {
 }
 
 async function checkoutSubscription(req, res, runtimeOverrides = null) {
-  const runtime = runtimeOverrides ? { ...sliceBDefaultRuntime(), ...runtimeOverrides } : sliceBDefaultRuntime();
-  let draft;
-  let idempotencyKey = "";
-  let requestHash = "";
-  let canonicalContract = null;
-  let checkoutStage = "pre_draft";
-  let providerInvoiceId = "";
-  let paymentUrl = "";
   try {
     const body = req.body || {};
-    idempotencyKey = parseIdempotencyKey(
+    const idempotencyKey = parseIdempotencyKey(
       req.get("Idempotency-Key")
       || req.get("X-Idempotency-Key")
       || body.idempotencyKey
@@ -2585,426 +2127,26 @@ async function checkoutSubscription(req, res, runtimeOverrides = null) {
       );
     }
     const lang = getRequestLang(req);
-    const quote = await runtime.resolveCheckoutQuoteOrThrow(body, {
-      lang,
-      useGenericPremiumWallet:
-        isPhase2GenericPremiumWalletEnabled()
-        && isPhase1CanonicalCheckoutDraftWriteEnabled(),
-    });
-    const normalizedDelivery = normalizeCheckoutDeliveryForPersistence(quote.delivery);
-    if (isPhase1CanonicalCheckoutDraftWriteEnabled()) {
-      canonicalContract = runtime.buildPhase1SubscriptionContract({
-        payload: body,
-        resolvedQuote: quote,
-        actorContext: { actorRole: "client", actorUserId: req.userId },
-        source: "customer_checkout",
-        now: new Date(),
-      });
-    }
-    requestHash = buildCheckoutRequestHash({ userId: req.userId, quote });
-
-    const existingByKey = await CheckoutDraft.findOne({
-      userId: req.userId,
-      idempotencyKey,
-    }).sort({ createdAt: -1 }).lean();
-
-    if (existingByKey) {
-      if (existingByKey.requestHash && existingByKey.requestHash !== requestHash) {
-        return errorResponse(
-          res,
-          409,
-          "IDEMPOTENCY_CONFLICT",
-          "idempotencyKey is already used with a different checkout payload"
-        );
-      }
-
-      const { draft: reconciledDraft, payment: reconciledPayment } = await reconcileCheckoutDraft(existingByKey._id, { mode: RECONCILE_MODES.PERSIST });
-      const currentDraft = reconciledDraft || existingByKey;
-      const currentPayment = reconciledPayment;
-
-      if (isPendingCheckoutReusable(currentDraft, currentPayment)) {
-        return res.status(200).json({ ok: true, data: buildCheckoutReusePayload(currentDraft, currentPayment) });
-      }
-
-      if (currentDraft.status === "completed") {
-        return res.status(200).json({
-          ok: true,
-          data: {
-            ...buildCheckoutReusePayload(currentDraft, currentPayment),
-            checkoutStatusLabel: resolveReadLabel("checkoutStatuses", "completed", lang),
-            paymentStatusLabel: resolveReadLabel("paymentStatuses", "paid", lang),
-            checkedProvider: true,
-            synchronized: true,
-          }
-        });
-      }
-
-      if (currentDraft.status === "pending_payment") {
-        const isStale = (new Date() - new Date(currentDraft.createdAt)) > STALE_DRAFT_THRESHOLD_MS;
-        if (isStale) {
-          // It's a zombie. Mark as abandoned to allow retry.
-          await CheckoutDraft.updateOne(
-            { _id: currentDraft._id },
-            { $set: { status: "failed", failureReason: "stale_abandoned", updatedAt: new Date() } }
-          );
-          currentDraft.status = "failed";
-          currentDraft.failureReason = "stale_abandoned";
-          await releaseCheckoutDraftIdempotencyKey(currentDraft, {
-            stage: "existing_by_key_stale",
-            failureReason: "stale_abandoned",
-          });
-        } else {
-          // Before returning 409, check if the invoice has a resolved status
-          if (currentPayment && currentPayment.providerInvoiceId) {
-            try {
-              const invoice = await getInvoice(currentPayment.providerInvoiceId);
-              const invoiceStatus = (invoice && invoice.status || "").toLowerCase();
-
-              // If invoice is paid, we can reuse this draft
-              if (invoiceStatus === "paid" || invoiceStatus === "captured") {
-                return res.status(200).json({ ok: true, data: buildCheckoutReusePayload(currentDraft, currentPayment) });
-              }
-
-              // If invoice is failed/expired/canceled, mark draft as failed and allow new checkout
-              if (["failed", "expired", "canceled"].includes(invoiceStatus)) {
-                await CheckoutDraft.updateOne(
-                  { _id: currentDraft._id },
-                  { $set: { status: "failed", failureReason: `invoice_${invoiceStatus}`, updatedAt: new Date() } }
-                );
-                currentDraft.status = "failed";
-                currentDraft.failureReason = `invoice_${invoiceStatus}`;
-                await releaseCheckoutDraftIdempotencyKey(currentDraft, {
-                  stage: "existing_by_key_invoice_terminal",
-                  failureReason: `invoice_${invoiceStatus}`,
-                });
-                // Continue to create new draft below
-              } else {
-                // Invoice is still pending, return 409
-                return errorResponse(
-                  res,
-                  409,
-                  "CHECKOUT_IN_PROGRESS",
-                  "Checkout initialization is still in progress. Retry with the same idempotency key.",
-                  { draftId: String(currentDraft._id) }
-                );
-              }
-            } catch (err) {
-              // If we can't fetch invoice status, be conservative and return 409
-              logger.warn("Failed to fetch invoice status during checkout reconciliation", {
-                draftId: String(currentDraft._id),
-                error: err.message
-              });
-              return errorResponse(
-                res,
-                409,
-                "CHECKOUT_IN_PROGRESS",
-                "Checkout initialization is still in progress. Retry with the same idempotency key.",
-                { draftId: String(currentDraft._id) }
-              );
-            }
-          } else {
-            // No payment info, return 409
-            return errorResponse(
-              res,
-              409,
-              "CHECKOUT_IN_PROGRESS",
-              "Checkout initialization is still in progress. Retry with the same idempotency key.",
-              { draftId: String(currentDraft._id) }
-            );
-          }
-        }
-      } else if (["failed", "canceled", "expired"].includes(String(currentDraft.status || "").trim())) {
-        await releaseCheckoutDraftIdempotencyKey(currentDraft, {
-          stage: "existing_by_key_terminal_retry",
-        });
-      } else {
-        return errorResponse(
-          res,
-          409,
-          "IDEMPOTENCY_CONFLICT",
-          `idempotencyKey is already finalized with status ${currentDraft.status}`
-        );
-      }
-    }
-
-    const existingByHash = await CheckoutDraft.findOne({
-      userId: req.userId,
-      requestHash,
-      status: "pending_payment",
-    }).sort({ createdAt: -1 }).lean();
-
-    if (existingByHash) {
-      const { draft: reconciledByHash, payment: reconciledPaymentByHash } = await reconcileCheckoutDraft(existingByHash._id, { mode: RECONCILE_MODES.PERSIST });
-      const currentDraft = reconciledByHash || existingByHash;
-      const currentPayment = reconciledPaymentByHash;
-
-      if (isPendingCheckoutReusable(currentDraft, currentPayment)) {
-        return res.status(200).json({ ok: true, data: buildCheckoutReusePayload(currentDraft, currentPayment) });
-      }
-
-      if (currentDraft.status === "completed") {
-        return res.status(200).json({ ok: true, data: buildCheckoutReusePayload(currentDraft, currentPayment) });
-      }
-
-      const isStale = (new Date() - new Date(currentDraft.createdAt)) > STALE_DRAFT_THRESHOLD_MS;
-      if (isStale) {
-        // It's a zombie. Mark as abandoned to allow retry with new idempotency key/hash lock.
-        await CheckoutDraft.updateOne({ _id: currentDraft._id }, { $set: { status: "failed", failureReason: "stale_abandoned" } });
-      } else {
-        // Before returning 409, check if the invoice has a resolved status
-        if (currentPayment && currentPayment.providerInvoiceId) {
-          try {
-            const invoice = await getInvoice(currentPayment.providerInvoiceId);
-            const invoiceStatus = (invoice && invoice.status || "").toLowerCase();
-
-            // If invoice is paid, we can reuse this draft
-            if (invoiceStatus === "paid" || invoiceStatus === "captured") {
-              return res.status(200).json({ ok: true, data: buildCheckoutReusePayload(currentDraft, currentPayment) });
-            }
-
-            // If invoice is failed/expired/canceled, mark draft as failed and allow new checkout
-            if (["failed", "expired", "canceled"].includes(invoiceStatus)) {
-              await CheckoutDraft.updateOne(
-                { _id: currentDraft._id },
-                { $set: { status: "failed", failureReason: `invoice_${invoiceStatus}` } }
-              );
-              // Continue to create new draft below
-            } else {
-              // Invoice is still pending, return 409
-              return errorResponse(
-                res,
-                409,
-                "CHECKOUT_IN_PROGRESS",
-                "Checkout initialization is still in progress. Retry with the same idempotency key.",
-                { draftId: String(currentDraft._id) }
-              );
-            }
-          } catch (err) {
-            // If we can't fetch invoice status, be conservative and return 409
-            logger.warn("Failed to fetch invoice status during checkout reconciliation (by hash)", {
-              draftId: String(currentDraft._id),
-              error: err.message
-            });
-            return errorResponse(
-              res,
-              409,
-              "CHECKOUT_IN_PROGRESS",
-              "Checkout initialization is still in progress. Retry with the same idempotency key.",
-              { draftId: String(currentDraft._id) }
-            );
-          }
-        } else {
-          // No payment info, return 409
-          return errorResponse(
-            res,
-            409,
-            "CHECKOUT_IN_PROGRESS",
-            "Checkout initialization is still in progress. Retry with the same idempotency key.",
-            { draftId: String(currentDraft._id) }
-          );
-        }
-      }
-    }
-
-    const addonSubscriptions = canonicalContract
-      ? buildRecurringAddonEntitlementsFromQuote({ addonItems: quote.addonItems, lang })
-      : quote.addonItems
-        .filter((item) => String(item && item.addon && item.addon.type ? item.addon.type : "subscription") !== "one_time")
-        .map((item) => ({
-          addonId: item.addon._id,
-          name: pickLang(item.addon.name, lang),
-          price: item.unitPriceHalala / 100,
-          type: item.addon.type || "subscription",
-          category: item.addon.category || "",
-          maxPerDay: 1,
-        }));
-
-    logger.debug("[DEBUG-CHECKOUT] Creating draft", { userId: String(req.userId) });
-    checkoutStage = "draft_create";
-    draft = await CheckoutDraft.create({
-      userId: req.userId,
-      planId: quote.plan._id,
-      idempotencyKey,
-      requestHash,
-      daysCount: quote.plan.daysCount,
-      grams: quote.grams,
-      mealsPerDay: quote.mealsPerDay,
-      startDate: canonicalContract ? canonicalContract.resolvedStart.resolvedStartDate : (quote.startDate || undefined),
-      delivery: normalizedDelivery,
-      premiumItems: quote.premiumItems.map((item) => ({
-        premiumMealId: item.premiumMeal._id,
-        qty: item.qty,
-        unitExtraFeeHalala: item.unitExtraFeeHalala,
-        currency: SYSTEM_CURRENCY,
-      })),
-      premiumWalletMode: quote.premiumWalletMode || LEGACY_PREMIUM_WALLET_MODE,
-      premiumCount: Number(quote.premiumCount || 0),
-      premiumUnitPriceHalala: Number(quote.premiumUnitPriceHalala || 0),
-      addonItems: quote.addonItems.map((item) => ({
-        addonId: item.addon._id,
-        qty: item.qty,
-        unitPriceHalala: item.unitPriceHalala,
-        currency: SYSTEM_CURRENCY,
-      })),
-      addonSubscriptions,
-      breakdown: { ...quote.breakdown, currency: SYSTEM_CURRENCY },
-      ...(canonicalContract ? runtime.buildCanonicalDraftPersistenceFields({ contract: canonicalContract }) : {}),
-    });
-
-    logger.debug("[DEBUG-CHECKOUT] Draft created", { draftId: String(draft._id) });
-    const appUrl = process.env.APP_URL || "https://example.com";
-    checkoutStage = "invoice_create";
-    logger.debug("[DEBUG-CHECKOUT] Calling createInvoice", {
-      draftId: String(draft._id),
-      totalHalala: Number(quote && quote.breakdown && quote.breakdown.totalHalala || 0),
-    });
-    const invoice = await runtime.createInvoice({
-      amount: quote.breakdown.totalHalala,
-      description: buildPaymentDescription("subscriptionCheckout", lang, {
-        daysCount: Number(quote.plan.daysCount || 0),
-      }),
-      callbackUrl: `${appUrl}/api/webhooks/moyasar`,
-      successUrl: resolveProviderRedirectUrl(body.successUrl, `${appUrl}/payments/success`),
-      backUrl: resolveProviderRedirectUrl(body.backUrl, `${appUrl}/payments/cancel`),
-      metadata: {
-        type: "subscription_activation",
-        draftId: String(draft._id),
-        userId: String(req.userId),
-        grams: quote.grams,
-        mealsPerDay: quote.mealsPerDay,
-      },
-    });
-    providerInvoiceId = getInvoiceResponseId(invoice);
-    paymentUrl = getInvoiceResponseUrl(invoice);
-    logger.debug("[DEBUG-CHECKOUT] createInvoice returned", {
-      draftId: String(draft._id),
-      hasInvoiceId: Boolean(providerInvoiceId),
-    });
-
-    if (!providerInvoiceId || !paymentUrl) {
-      const invalidInvoiceErr = new Error("Invoice response missing required payment fields");
-      invalidInvoiceErr.code = "PAYMENT_PROVIDER_INVALID_RESPONSE";
-      throw invalidInvoiceErr;
-    }
-
-    const invoiceCurrency = assertSystemCurrencyOrThrow(invoice.currency || SYSTEM_CURRENCY, "Invoice currency");
-    const paymentType = resolveSubscriptionCheckoutPaymentType({ renewedFromSubscriptionId: null });
-    const paymentPromise = ensureSubscriptionCheckoutPayment({
-      draft,
-      paymentType,
-      totalHalala: quote.breakdown.totalHalala,
-      invoiceCurrency,
-      providerInvoiceId,
-      paymentUrl,
-    });
-
-    checkoutStage = "draft_invoice_persist";
-    await persistCheckoutDraftUpdate(
-      draft,
-      {
-        providerInvoiceId,
-        paymentUrl,
-        failureReason: "",
-      },
-      { stage: checkoutStage }
-    );
-
-    checkoutStage = "payment_create";
-    logger.debug("[DEBUG-CHECKOUT] Creating payment record", {
-      draftId: String(draft._id),
-    });
-    const payment = await paymentPromise;
-    logger.debug("[DEBUG-CHECKOUT] Payment record created", {
-      draftId: String(draft._id),
-      paymentId: String(payment._id),
-    });
-
-    checkoutStage = "draft_payment_link_persist";
-    await persistCheckoutDraftUpdate(
-      draft,
-      {
-        paymentId: payment._id,
-        providerInvoiceId,
-        paymentUrl,
-        failureReason: "",
-      },
-      { stage: checkoutStage }
-    );
-
-    return res.status(201).json({
-      ok: true,
-      data: {
-        subscriptionId: null,
-        draftId: draft.id,
-        paymentId: payment.id,
-        payment_url: draft.paymentUrl,
-        totals: quote.breakdown,
-      },
-    });
+    const result = await performSubscriptionCheckout(req.userId, idempotencyKey, body, lang, runtimeOverrides);
+    return res.status(result.status || 200).json(result);
   } catch (err) {
-    if (!draft && err.code === "VALIDATION_ERROR") {
+    if (err.code === "VALIDATION_ERROR") {
       return sendValidationError(res, err.message);
     }
-    if (!draft && err.code === "NOT_FOUND") {
+    if (err.code === "NOT_FOUND") {
       return errorResponse(res, 404, "NOT_FOUND", err.message);
     }
-    if (!draft && err.code === "INVALID_SELECTION") {
+    if (err.code === "INVALID_SELECTION") {
       return errorResponse(res, 400, "INVALID", err.message);
     }
-    if (!draft && isCheckoutDraftDuplicateKeyError(err)) {
-      let existingDraft = null;
-      existingDraft = await CheckoutDraft.findOne({ userId: req.userId, idempotencyKey }).lean();
-      if (!existingDraft && requestHash) {
-        existingDraft = await CheckoutDraft.findOne({
-          userId: req.userId,
-          requestHash,
-          status: "pending_payment",
-        }).sort({ createdAt: -1 }).lean();
-      }
-      if (existingDraft) {
-        const existingPayment = existingDraft.paymentId ? await Payment.findById(existingDraft.paymentId).lean() : null;
-        if (isPendingCheckoutReusable(existingDraft, existingPayment)) {
-          return res.status(200).json({ ok: true, data: buildCheckoutReusePayload(existingDraft, existingPayment) });
-        }
-
-        if (existingDraft.status === "pending_payment") {
-          return errorResponse(
-            res,
-            409,
-            "CHECKOUT_IN_PROGRESS",
-            "Checkout initialization is still in progress. Retry with the same idempotency key.",
-            { draftId: String(existingDraft._id) }
-          );
-        }
-
-        if (existingDraft.status === "completed") {
-          return res.status(200).json({
-            ok: true,
-            data: {
-              ...buildCheckoutReusePayload(existingDraft, existingPayment),
-              checkoutStatusLabel: resolveReadLabel("checkoutStatuses", "completed", lang),
-              paymentStatusLabel: resolveReadLabel("paymentStatuses", "paid", lang),
-              checkedProvider: true,
-              synchronized: true,
-            }
-          });
-        }
-
-        return errorResponse(
-          res,
-          409,
-          "IDEMPOTENCY_CONFLICT",
-          `idempotencyKey is already finalized with status ${existingDraft.status}`
-        );
-      }
+    if (err.status === 409 && err.code === "IDEMPOTENCY_CONFLICT") {
+      return errorResponse(res, 409, "IDEMPOTENCY_CONFLICT", err.message);
     }
-    await persistCheckoutInitializationFailure(draft, err, {
-      stage: checkoutStage,
-      providerInvoiceId,
-      paymentUrl,
-    });
+    if (err.status === 400 && err.code === "CHECKOUT_FAILED") {
+      return errorResponse(res, 400, "CHECKOUT_FAILED", err.message);
+    }
     logger.error("Subscription checkout failed", { error: err.message, stack: err.stack });
-    return errorResponse(res, 500, "INTERNAL", "Checkout failed");
+    return errorResponse(res, 500, "INTERNAL", `Checkout failed: ${err.message} \n ${err.stack}`);
   }
 }
 
@@ -4001,414 +3143,21 @@ async function getSubscriptionRenewalSeed(req, res, runtimeOverrides = null) {
 }
 
 async function renewSubscription(req, res, runtimeOverrides = null) {
-  const runtime = runtimeOverrides ? { ...sliceBDefaultRuntime(), ...runtimeOverrides } : sliceBDefaultRuntime();
   const { id } = req.params;
   const body = req.body || {};
   const lang = getRequestLang(req);
-  let draft;
-  let requestHash = "";
-  let renewalStage = "pre_draft";
-  let providerInvoiceId = "";
-  let paymentUrl = "";
+
+  // Parse idempotency key from headers or body
+  body.idempotencyKey = req.get("Idempotency-Key") || req.get("X-Idempotency-Key") || body.idempotencyKey;
 
   try {
-    validateObjectId(id, "subscriptionId");
+    const result = await performSubscriptionRenewal(req.userId, id, body, lang, runtimeOverrides);
+    return res.status(result.status).json({ ok: true, data: result.data });
   } catch (err) {
+    if (err.data) {
+      return errorResponse(res, err.status, err.code, err.message, err.data);
+    }
     return errorResponse(res, err.status, err.code, err.message);
-  }
-
-  const previousSubscription = await Subscription.findById(id).lean();
-  if (!previousSubscription) {
-    return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
-  }
-  if (String(previousSubscription.userId) !== String(req.userId)) {
-    return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
-  }
-
-  // Verify subscription is eligible for renewal (either expired or in final stages)
-  const today = dateUtils.getTodayKSADate();
-  const endDate = previousSubscription.validityEndDate || previousSubscription.endDate;
-  const endDateStr = endDate ? dateUtils.toKSADateString(endDate) : null;
-  if (endDateStr && endDateStr > today) {
-    return errorResponse(res, 422, "RENEWAL_PREMATURE", "Cannot renew an active subscription");
-  }
-
-  // Extract renewal parameters from previous subscription or body
-  const candidatePlanId = previousSubscription.contractSnapshot
-    && previousSubscription.contractSnapshot.plan
-    && previousSubscription.contractSnapshot.plan.planId
-    ? previousSubscription.contractSnapshot.plan.planId
-    : previousSubscription.planId;
-
-  if (!candidatePlanId) {
-    return errorResponse(res, 422, "RENEWAL_UNAVAILABLE", "Subscription does not have enough base configuration to renew");
-  }
-
-  // Use previous parameters as defaults, allow overrides from body
-  const renewalPayload = {
-    planId: body.planId || candidatePlanId,
-    grams: body.grams !== undefined ? body.grams : (previousSubscription.selectedGrams || 1000),
-    mealsPerDay: body.mealsPerDay !== undefined ? body.mealsPerDay : (previousSubscription.selectedMealsPerDay || 1),
-    premiumItems: body.premiumItems || [],
-    addons: body.addons || [],
-    delivery: {
-      type: body.delivery && body.delivery.type ? body.delivery.type : (previousSubscription.deliveryMode || "delivery"),
-      address: body.delivery && body.delivery.address ? body.delivery.address : (previousSubscription.deliveryAddress || null),
-      slot: body.delivery && body.delivery.slot ? body.delivery.slot : (previousSubscription.deliverySlot || {}),
-      zoneId: body.delivery && body.delivery.zoneId ? body.delivery.zoneId : (previousSubscription.deliveryZoneId || null),
-      pickupLocationId: body.delivery && body.delivery.pickupLocationId ? body.delivery.pickupLocationId : null,
-    },
-    renewedFromSubscriptionId: id,
-    startDate: body.startDate || null,
-    idempotencyKey: parseIdempotencyKey(
-      req.get("Idempotency-Key")
-      || req.get("X-Idempotency-Key")
-      || body.idempotencyKey
-    ),
-  };
-
-  if (!renewalPayload.idempotencyKey) {
-    return sendValidationError(
-      res,
-      "idempotencyKey is required (Idempotency-Key header, X-Idempotency-Key header, or body.idempotencyKey)"
-    );
-  }
-
-  try {
-    // Use same checkout quote resolver with renewal context
-    const quote = await runtime.resolveCheckoutQuoteOrThrow(renewalPayload, {
-      lang,
-      useGenericPremiumWallet:
-        isPhase2GenericPremiumWalletEnabled()
-        && isPhase1CanonicalCheckoutDraftWriteEnabled(),
-      enforceActivePlan: true,
-    });
-    const normalizedDelivery = normalizeCheckoutDeliveryForPersistence(quote.delivery);
-
-    // Proceed with checkout (standard flow)
-    if (isPhase1CanonicalCheckoutDraftWriteEnabled()) {
-      const canonicalContract = runtime.buildPhase1SubscriptionContract({
-        payload: renewalPayload,
-        resolvedQuote: quote,
-        actorContext: { actorRole: "client", actorUserId: req.userId },
-        source: "renewal",
-        now: new Date(),
-      });
-      renewalPayload.contractVersion = canonicalContract.contractVersion;
-      renewalPayload.contractMode = canonicalContract.contractMode;
-    }
-
-    requestHash = buildCheckoutRequestHash({ userId: req.userId, quote });
-    const existingByKey = await CheckoutDraft.findOne({
-      userId: req.userId,
-      idempotencyKey: renewalPayload.idempotencyKey,
-    }).sort({ createdAt: -1 }).lean();
-
-    if (existingByKey) {
-      if (existingByKey.requestHash && existingByKey.requestHash !== requestHash) {
-        return errorResponse(
-          res,
-          409,
-          "IDEMPOTENCY_CONFLICT",
-          "idempotencyKey is already used with a different renewal payload"
-        );
-      }
-
-      const { draft: reconciledDraft, payment: reconciledPayment } = await reconcileCheckoutDraft(existingByKey._id, {
-        mode: RECONCILE_MODES.PERSIST,
-      });
-      const currentDraft = reconciledDraft || existingByKey;
-      const currentPayment = reconciledPayment;
-
-      if (isPendingCheckoutReusable(currentDraft, currentPayment)) {
-        return res.status(200).json({ ok: true, data: buildCheckoutReusePayload(currentDraft, currentPayment) });
-      }
-      if (currentDraft.status === "completed" && currentDraft.subscriptionId) {
-        const newSub = await Subscription.findById(currentDraft.subscriptionId).lean();
-        return res.status(200).json({
-          ok: true,
-          data: await serializeSubscriptionForClient(newSub, lang),
-        });
-      }
-
-      if (currentDraft.status === "pending_payment") {
-        const isStale = (new Date() - new Date(currentDraft.createdAt)) > STALE_DRAFT_THRESHOLD_MS;
-        if (isStale) {
-          await CheckoutDraft.updateOne(
-            { _id: currentDraft._id },
-            { $set: { status: "failed", failureReason: "stale_abandoned", updatedAt: new Date() } }
-          );
-          currentDraft.status = "failed";
-          currentDraft.failureReason = "stale_abandoned";
-          await releaseCheckoutDraftIdempotencyKey(currentDraft, {
-            stage: "renewal_existing_by_key_stale",
-            failureReason: "stale_abandoned",
-          });
-        } else if (currentPayment && currentPayment.providerInvoiceId) {
-          try {
-            const invoice = await getInvoice(currentPayment.providerInvoiceId);
-            const invoiceStatus = String(invoice && invoice.status || "").toLowerCase();
-
-            if (invoiceStatus === "paid" || invoiceStatus === "captured") {
-              return res.status(200).json({ ok: true, data: buildCheckoutReusePayload(currentDraft, currentPayment) });
-            }
-
-            if (["failed", "expired", "canceled"].includes(invoiceStatus)) {
-              await CheckoutDraft.updateOne(
-                { _id: currentDraft._id },
-                { $set: { status: "failed", failureReason: `invoice_${invoiceStatus}`, updatedAt: new Date() } }
-              );
-              currentDraft.status = "failed";
-              currentDraft.failureReason = `invoice_${invoiceStatus}`;
-              await releaseCheckoutDraftIdempotencyKey(currentDraft, {
-                stage: "renewal_existing_by_key_invoice_terminal",
-                failureReason: `invoice_${invoiceStatus}`,
-              });
-            } else {
-              return errorResponse(
-                res,
-                409,
-                "CHECKOUT_IN_PROGRESS",
-                "Checkout initialization is still in progress. Retry with the same idempotency key.",
-                { draftId: String(currentDraft._id) }
-              );
-            }
-          } catch (err) {
-            logger.warn("Failed to fetch renewal invoice status during checkout reconciliation", {
-              draftId: String(currentDraft._id),
-              error: err.message,
-            });
-            return errorResponse(
-              res,
-              409,
-              "CHECKOUT_IN_PROGRESS",
-              "Checkout initialization is still in progress. Retry with the same idempotency key.",
-              { draftId: String(currentDraft._id) }
-            );
-          }
-        } else {
-          return errorResponse(
-            res,
-            409,
-            "CHECKOUT_IN_PROGRESS",
-            "Checkout initialization is still in progress. Retry with the same idempotency key.",
-            { draftId: String(currentDraft._id) }
-          );
-        }
-      } else if (["failed", "canceled", "expired"].includes(String(currentDraft.status || "").trim())) {
-        await releaseCheckoutDraftIdempotencyKey(currentDraft, {
-          stage: "renewal_existing_by_key_terminal_retry",
-        });
-      } else {
-        return errorResponse(
-          res,
-          409,
-          "IDEMPOTENCY_CONFLICT",
-          `idempotencyKey is already finalized with status ${currentDraft.status}`
-        );
-      }
-    }
-
-    // Create checkout draft - same as regular checkout
-    const draftPayload = {
-      userId: req.userId,
-      planId: quote.plan._id,
-      idempotencyKey: renewalPayload.idempotencyKey,
-      requestHash,
-      daysCount: quote.plan.daysCount,
-      grams: quote.grams,
-      mealsPerDay: quote.mealsPerDay,
-      startDate: quote.startDate || undefined,
-      delivery: normalizedDelivery,
-      premiumItems: quote.premiumItems.map((item) => ({
-        premiumMealId: item.premiumMeal._id,
-        qty: item.qty,
-        unitExtraFeeHalala: item.unitExtraFeeHalala,
-        currency: SYSTEM_CURRENCY,
-      })),
-      premiumWalletMode: quote.premiumWalletMode || LEGACY_PREMIUM_WALLET_MODE,
-      premiumCount: Number(quote.premiumCount || 0),
-      premiumUnitPriceHalala: Number(quote.premiumUnitPriceHalala || 0),
-      addonItems: quote.addonItems.map((item) => ({
-        addonId: item.addon._id,
-        qty: item.qty,
-        unitPriceHalala: item.unitPriceHalala,
-        currency: SYSTEM_CURRENCY,
-      })),
-      addonSubscriptions: buildRecurringAddonEntitlementsFromQuote({ addonItems: quote.addonItems, lang }),
-      breakdown: { ...quote.breakdown, currency: SYSTEM_CURRENCY },
-      renewedFromSubscriptionId: id,
-    };
-
-    if (isPhase1CanonicalCheckoutDraftWriteEnabled()) {
-      const canonicalContract = runtime.buildPhase1SubscriptionContract({
-        payload: renewalPayload,
-        resolvedQuote: quote,
-        actorContext: { actorRole: "client", actorUserId: req.userId },
-        source: "renewal",
-        now: new Date(),
-      });
-      Object.assign(draftPayload, runtime.buildCanonicalDraftPersistenceFields({ contract: canonicalContract }));
-    }
-
-    renewalStage = "draft_create";
-    draft = await CheckoutDraft.create(draftPayload);
-
-    const appUrl = process.env.APP_URL || "https://example.com";
-    renewalStage = "invoice_create";
-    logger.debug("[DEBUG-CHECKOUT] Calling renewal createInvoice", {
-      draftId: String(draft._id),
-      totalHalala: Number(quote && quote.breakdown && quote.breakdown.totalHalala || 0),
-    });
-    const invoice = await runtime.createInvoice({
-      amount: quote.breakdown.totalHalala,
-      description: buildPaymentDescription("subscriptionRenewal", lang, {
-        daysCount: Number(quote.plan.daysCount || 0),
-        previousSubscriptionId: id,
-      }),
-      callbackUrl: `${appUrl}/api/webhooks/moyasar`,
-      successUrl: resolveProviderRedirectUrl(body.successUrl, `${appUrl}/payments/success`),
-      backUrl: resolveProviderRedirectUrl(body.backUrl, `${appUrl}/payments/cancel`),
-      metadata: {
-        type: "subscription_renewal",
-        draftId: String(draft._id),
-        userId: String(req.userId),
-        renewedFromSubscriptionId: id,
-        grams: quote.grams,
-        mealsPerDay: quote.mealsPerDay,
-      },
-    });
-
-    providerInvoiceId = getInvoiceResponseId(invoice);
-    paymentUrl = getInvoiceResponseUrl(invoice);
-    logger.debug("[DEBUG-CHECKOUT] Renewal createInvoice returned", {
-      draftId: String(draft._id),
-      hasInvoiceId: Boolean(providerInvoiceId),
-    });
-
-    if (!providerInvoiceId || !paymentUrl) {
-      const invalidInvoiceErr = new Error("Invoice response missing required payment fields");
-      invalidInvoiceErr.code = "PAYMENT_PROVIDER_INVALID_RESPONSE";
-      throw invalidInvoiceErr;
-    }
-
-    const invoiceCurrency = assertSystemCurrencyOrThrow(invoice.currency || SYSTEM_CURRENCY, "Invoice currency");
-    const paymentPromise = ensureSubscriptionCheckoutPayment({
-      draft,
-      paymentType: resolveSubscriptionCheckoutPaymentType({ renewedFromSubscriptionId: id }),
-      totalHalala: quote.breakdown.totalHalala,
-      invoiceCurrency,
-      providerInvoiceId,
-      paymentUrl,
-    });
-
-    renewalStage = "draft_invoice_persist";
-    await persistCheckoutDraftUpdate(
-      draft,
-      {
-        providerInvoiceId,
-        paymentUrl,
-        failureReason: "",
-      },
-      { stage: renewalStage }
-    );
-
-    renewalStage = "payment_create";
-    logger.debug("[DEBUG-CHECKOUT] Creating renewal payment record", {
-      draftId: String(draft._id),
-    });
-    const payment = await paymentPromise;
-
-    renewalStage = "draft_payment_link_persist";
-    await persistCheckoutDraftUpdate(
-      draft,
-      {
-        paymentId: payment._id,
-        providerInvoiceId,
-        paymentUrl,
-        failureReason: "",
-      },
-      { stage: renewalStage }
-    );
-
-    return res.status(201).json({
-      ok: true,
-      data: {
-        draftId: draft.id,
-        paymentId: payment.id,
-        payment_url: draft.paymentUrl,
-        renewedFromSubscriptionId: id,
-        totals: quote.breakdown,
-      },
-    });
-  } catch (err) {
-    if (!draft && err.code === "VALIDATION_ERROR") {
-      return sendValidationError(res, err.message);
-    }
-    if (!draft && err.code === "NOT_FOUND") {
-      return errorResponse(res, 404, "NOT_FOUND", err.message);
-    }
-    if (!draft && err.code === "INVALID_SELECTION") {
-      return errorResponse(res, 400, "INVALID", err.message);
-    }
-    if (!draft && isCheckoutDraftDuplicateKeyError(err)) {
-      let existingDraft = await CheckoutDraft.findOne({
-        userId: req.userId,
-        idempotencyKey: renewalPayload.idempotencyKey,
-      }).sort({ createdAt: -1 }).lean();
-
-      if (!existingDraft && requestHash) {
-        existingDraft = await CheckoutDraft.findOne({
-          userId: req.userId,
-          requestHash,
-          status: "pending_payment",
-        }).sort({ createdAt: -1 }).lean();
-      }
-
-      if (existingDraft) {
-        const { draft: reconciledDraft, payment: reconciledPayment } = await reconcileCheckoutDraft(existingDraft._id, {
-          mode: RECONCILE_MODES.PERSIST,
-        });
-        const currentDraft = reconciledDraft || existingDraft;
-        const currentPayment = reconciledPayment;
-
-        if (isPendingCheckoutReusable(currentDraft, currentPayment)) {
-          return res.status(200).json({ ok: true, data: buildCheckoutReusePayload(currentDraft, currentPayment) });
-        }
-
-        if (currentDraft.status === "completed" && currentDraft.subscriptionId) {
-          const newSub = await Subscription.findById(currentDraft.subscriptionId).lean();
-          return res.status(200).json({
-            ok: true,
-            data: await serializeSubscriptionForClient(newSub, lang),
-          });
-        }
-
-        if (currentDraft.status === "pending_payment") {
-          return errorResponse(
-            res,
-            409,
-            "CHECKOUT_IN_PROGRESS",
-            "Checkout initialization is still in progress. Retry with the same idempotency key.",
-            { draftId: String(currentDraft._id) }
-          );
-        }
-
-        return errorResponse(
-          res,
-          409,
-          "IDEMPOTENCY_CONFLICT",
-          `idempotencyKey is already finalized with status ${currentDraft.status}`
-        );
-      }
-    }
-    await persistCheckoutInitializationFailure(draft, err, {
-      stage: renewalStage,
-      providerInvoiceId,
-      paymentUrl,
-    });
-    logger.error("Subscription renewal failed", { error: err.message, stack: err.stack });
-    return errorResponse(res, 500, "INTERNAL", "Renewal failed");
   }
 }
 
@@ -5892,7 +4641,7 @@ async function unfreezeSubscription(req, res) {
 
     if (unfrozenDates.length > 0) {
       await writeLogSafely({
-        entityType: "subscription",
+        entityType: "subscription_day",
         entityId: subInSession._id,
         action: "unfreeze",
         byUserId: req.userId,
@@ -6019,365 +4768,65 @@ async function getSubscriptionToday(req, res) {
 
 async function updateDaySelection(req, res, runtimeOverrides = null) {
   const runtime = runtimeOverrides ? { ...sliceP2S1DefaultRuntime, ...runtimeOverrides } : sliceP2S1DefaultRuntime;
+  const { id } = req.params;
+  const date = resolveRequestedDate(req);
   const body = req.body || {};
-  const selections = body.selections || body.meals || [];
-  const premiumSelections = body.premiumSelections || [];
-  const requestedOneTimeAddonIds = body.oneTimeAddonSelections;
-  const { id, date } = req.params;
+  const selections = Array.isArray(body.selections) ? body.selections : (Array.isArray(body.meals) ? body.meals : []);
+  const premiumSelections = Array.isArray(body.premiumSelections) ? body.premiumSelections : [];
+  const requestedOneTimeAddonIds = body.addonsOneTime || body.oneTimeAddonSelections;
+  const lang = getRequestLang(req);
 
   try {
     validateObjectId(id, "subscriptionId");
-    if (requestedOneTimeAddonIds !== undefined) {
-      if (!Array.isArray(requestedOneTimeAddonIds)) {
-        return sendValidationError(res, "oneTimeAddonSelections must be an array");
-      }
-      for (const addonId of requestedOneTimeAddonIds) {
-        validateObjectId(addonId, "addonId");
-      }
-    }
   } catch (err) {
     return errorResponse(res, err.status, err.code, err.message);
   }
 
-  const sub = await Subscription.findById(id).populate("planId");
-  if (!sub) return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
-  if (sub.userId.toString() !== req.userId.toString()) {
-    return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
-  }
   try {
-    validateFutureDateOrThrow(date, sub);
-  } catch (err) {
-    const status = err.code === "SUB_INACTIVE" || err.code === "SUB_EXPIRED" ? 422 : 400;
-    return errorResponse(res, status, err.code || "INVALID_DATE", err.message);
-  }
-
-  try {
-    await enforceTomorrowCutoffOrThrow(date);
-  } catch (err) {
-    return errorResponse(res, 400, err.code || "LOCKED", err.message);
-  }
-
-  const totalSelected = selections.length + premiumSelections.length;
-  const mealsPerDayLimit = resolveMealsPerDay(sub);
-  if (totalSelected > mealsPerDayLimit) {
-    return errorResponse(res, 400, "DAILY_CAP", "Selections exceed meals per day");
-  }
-  const useCanonicalPremiumOverage = runtime.isCanonicalPremiumOverageEligible(sub, {
-    dayPlanningFlagEnabled: isPhase2CanonicalDayPlanningEnabled(),
-    genericPremiumWalletFlagEnabled: isPhase2GenericPremiumWalletEnabled(),
-  });
-  const useCanonicalOneTimeAddonPlanning = runtime.isCanonicalDayPlanningEligible(sub, {
-    flagEnabled: isPhase2CanonicalDayPlanningEnabled(),
-  });
-  const premiumPriceSar = Number(await getSettingValue("premium_price", 20));
-  const legacyPremiumUnitHalala =
-    Number.isFinite(premiumPriceSar) && premiumPriceSar >= 0
-      ? Math.round(premiumPriceSar * 100)
-      : 0;
-  const lang = getRequestLang(req);
-
-  const session = await mongoose.startSession();
-  session.startTransaction();
-  try {
-    const subInSession = await Subscription.findById(id).session(session);
-    if (!subInSession) {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
-    }
-    try {
-      ensureActive(subInSession, date);
-      validateFutureDateOrThrow(date, subInSession);
-    } catch (err) {
-      await session.abortTransaction();
-      session.endSession();
-      const status = err.code === "SUB_INACTIVE" || err.code === "SUB_EXPIRED" ? 422 : 400;
-      return errorResponse(res, status, err.code || "INVALID_DATE", err.message);
-    }
-
-    const existingDay = await SubscriptionDay.findOne({ subscriptionId: id, date }).session(session);
-
-    // CR-04 FIX: Check for idempotency - if same selections, return early
-    if (existingDay && existingDay.status === "open") {
-      const toStringSet = (values) => new Set((Array.isArray(values) ? values : []).map((value) => String(value)));
-      const existingRegSet = toStringSet(existingDay.selections);
-      const existingPremSet = toStringSet(existingDay.premiumSelections);
-      const newRegSet = toStringSet(selections);
-      const newPremSet = toStringSet(premiumSelections);
-
-      const setsEqual = (a, b) => a.size === b.size && [...a].every((value) => b.has(value));
-
-      if (
-        !useCanonicalPremiumOverage
-        && !(useCanonicalOneTimeAddonPlanning && requestedOneTimeAddonIds !== undefined)
-        && setsEqual(existingRegSet, newRegSet)
-        && setsEqual(existingPremSet, newPremSet)
-      ) {
-        await session.commitTransaction();
-        session.endSession();
-        const serializedDay = serializeSubscriptionDayForClient(
-          subInSession,
-          existingDay.toObject ? existingDay.toObject() : existingDay,
-          runtime
-        );
-        const catalog = await loadWalletCatalogMapsSafely({
-          days: [serializedDay],
-          lang,
-          context: "update_day_selection_idempotent",
-        });
-        return res.status(200).json({
-          ok: true,
-          data: localizeWriteDayPayload(serializedDay, {
-            lang,
-            addonNames: catalog.addonNames,
-          }),
-          idempotent: true,
-        });
-      }
-    }
-
-    if (existingDay && existingDay.status !== "open") {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 409, "LOCKED", "Day is locked");
-    }
-
-    const useGenericPremiumWallet = isGenericPremiumWalletMode(subInSession);
-    const usePremiumOverageFlow = runtime.isCanonicalPremiumOverageEligible(subInSession, {
-      dayPlanningFlagEnabled: isPhase2CanonicalDayPlanningEnabled(),
-      genericPremiumWalletFlagEnabled: isPhase2GenericPremiumWalletEnabled(),
-    });
-    if (!useGenericPremiumWallet) {
-      // Compatibility bridge: migrate legacy numeric premiumRemaining into wallet rows once.
-      ensureLegacyPremiumBalanceFromRemaining(subInSession, {
-        unitExtraFeeHalala: legacyPremiumUnitHalala,
-        currency: SYSTEM_CURRENCY,
-      });
-    }
-
-    const currentLegacyRows = getLegacyDayPremiumSelections(subInSession, {
-      dayId: existingDay ? existingDay._id : null,
+    const result = await performDaySelectionUpdate({
+      userId: req.userId,
+      subscriptionId: id,
       date,
+      selections,
+      premiumSelections,
+      requestedOneTimeAddonIds,
+      lang,
+      runtime,
     });
-    const insertedSelectionRows = [];
-    let walletBackedConsumedCount = currentLegacyRows.length;
 
-    if (usePremiumOverageFlow) {
-      const {
-        retainedRows,
-        refundableRows,
-        unmetRequestedMealIds,
-      } = reconcileWalletBackedPremiumRowsForRequestedSelections(currentLegacyRows, premiumSelections);
-
-      if (refundableRows.length > 0) {
-        refundGenericPremiumSelectionRowsOrThrow(subInSession, refundableRows);
-        const rowsToRemove = new Set(refundableRows);
-        subInSession.premiumSelections = (subInSession.premiumSelections || []).filter(
-          (row) => !rowsToRemove.has(row)
-        );
-      }
-
-      const availableCredits = getRemainingPremiumCredits(subInSession);
-      const consumeQty = Math.min(unmetRequestedMealIds.length, availableCredits);
-      const consumedRows = consumeQty > 0
-        ? consumeGenericPremiumCredits(subInSession, consumeQty)
-        : [];
-
-      if (consumeQty > 0 && (!consumedRows || consumedRows.length !== consumeQty)) {
-        const err = new Error("Generic premium wallet could not satisfy the requested partial consumption");
-        err.code = "DATA_INTEGRITY_ERROR";
-        throw err;
-      }
-
-      let nextSlotIndex = getNextLegacyDayPremiumSlotIndex(retainedRows);
-      for (let index = 0; index < consumeQty; index += 1) {
-        const consumed = consumedRows[index];
-        const insertedRow = {
-          dayId: existingDay ? existingDay._id : undefined,
-          date,
-          baseSlotKey: `${LEGACY_DAY_PREMIUM_SLOT_PREFIX}${nextSlotIndex}`,
-          premiumMealId: unmetRequestedMealIds[index],
-          unitExtraFeeHalala: Number(consumed.unitCreditPriceHalala || 0),
-          currency: consumed.currency || SYSTEM_CURRENCY,
-          premiumWalletMode: GENERIC_PREMIUM_WALLET_MODE,
-          premiumWalletRowId: consumed.premiumWalletRowId || null,
-        };
-        subInSession.premiumSelections = subInSession.premiumSelections || [];
-        subInSession.premiumSelections.push(insertedRow);
-        insertedSelectionRows.push(insertedRow);
-        nextSlotIndex += 1;
-      }
-
-      walletBackedConsumedCount = retainedRows.length + consumeQty;
-    } else {
-      const diff = premiumSelections.length - currentLegacyRows.length;
-      const addedPremiumMealIds = extractAddedPremiumSelectionIds(
-        existingDay && Array.isArray(existingDay.premiumSelections) ? existingDay.premiumSelections : [],
-        premiumSelections,
-        diff > 0 ? diff : 0
-      );
-
-      if (diff > 0) {
-        const consumedRows = useGenericPremiumWallet
-          ? consumeGenericPremiumCredits(subInSession, diff)
-          : consumePremiumBalanceFifoRows(subInSession, diff);
-        if (!consumedRows) {
-          await session.abortTransaction();
-          session.endSession();
-          return errorResponse(res, 400, "INSUFFICIENT_PREMIUM", "Not enough premium credits");
-        }
-        let nextSlotIndex = getNextLegacyDayPremiumSlotIndex(currentLegacyRows);
-        const firstInsertedOffset = nextSlotIndex;
-        for (const consumed of consumedRows) {
-          const insertedOffset = nextSlotIndex - firstInsertedOffset;
-          const insertedRow = {
-            dayId: existingDay ? existingDay._id : undefined,
-            date,
-            baseSlotKey: `${LEGACY_DAY_PREMIUM_SLOT_PREFIX}${nextSlotIndex}`,
-            premiumMealId: addedPremiumMealIds[insertedOffset]
-              || premiumSelections[insertedOffset]
-              || consumed.premiumMealId,
-            unitExtraFeeHalala: useGenericPremiumWallet
-              ? Number(consumed.unitCreditPriceHalala || 0)
-              : Number(consumed.unitExtraFeeHalala || 0),
-            currency: consumed.currency || SYSTEM_CURRENCY,
-            premiumWalletMode: useGenericPremiumWallet ? GENERIC_PREMIUM_WALLET_MODE : LEGACY_PREMIUM_WALLET_MODE,
-            premiumWalletRowId:
-              useGenericPremiumWallet && consumed.premiumWalletRowId
-                ? consumed.premiumWalletRowId
-                : null,
-          };
-          subInSession.premiumSelections = subInSession.premiumSelections || [];
-          subInSession.premiumSelections.push(insertedRow);
-          insertedSelectionRows.push(insertedRow);
-          nextSlotIndex += 1;
-        }
-      } else if (diff < 0) {
-        const rowsToRefund = currentLegacyRows
-          .slice()
-          .sort((a, b) => new Date(b.consumedAt || 0).getTime() - new Date(a.consumedAt || 0).getTime())
-          .slice(0, -diff);
-
-        if (useGenericPremiumWallet) {
-          refundGenericPremiumSelectionRowsOrThrow(subInSession, rowsToRefund);
-        } else {
-          refundPremiumSelectionRowsToBalanceOrThrow(subInSession, rowsToRefund);
-        }
-
-        const rowsToRemove = new Set(rowsToRefund);
-        subInSession.premiumSelections = (subInSession.premiumSelections || []).filter(
-          (row) => !rowsToRemove.has(row)
-        );
-      }
-
-      walletBackedConsumedCount = getLegacyDayPremiumSelections(subInSession, {
-        dayId: existingDay ? existingDay._id : null,
-        date,
-      }).length;
+    if (!result.idempotent) {
+      await writeLogSafely({
+        entityType: "subscription_day",
+        entityId: result.day._id,
+        action: "day_selection_update",
+        byUserId: req.userId,
+        byRole: "client",
+        meta: result.logMeta,
+      }, { subscriptionId: id, date });
     }
 
-    let finalOneTimeAddonSelections;
-    if (useCanonicalOneTimeAddonPlanning) {
-      if (requestedOneTimeAddonIds !== undefined) {
-        const addonDocs = requestedOneTimeAddonIds.length
-          ? await Addon.find({ _id: { $in: requestedOneTimeAddonIds }, isActive: true }).session(session).lean()
-          : [];
-        finalOneTimeAddonSelections = runtime.normalizeOneTimeAddonSelections({
-          requestedAddonIds: requestedOneTimeAddonIds,
-          addonDocs,
-          lang,
-        });
-      } else {
-        finalOneTimeAddonSelections = Array.isArray(existingDay && existingDay.oneTimeAddonSelections)
-          ? existingDay.oneTimeAddonSelections
-          : [];
-      }
-    }
-
-    const update = { selections, premiumSelections };
-    if (body.addonsOneTime !== undefined) {
-      update.addonsOneTime = body.addonsOneTime;
-    }
-    if (useCanonicalOneTimeAddonPlanning && requestedOneTimeAddonIds !== undefined) {
-      update.oneTimeAddonSelections = finalOneTimeAddonSelections;
-    }
-
-    const day = await SubscriptionDay.findOneAndUpdate(
-      { subscriptionId: id, date: date },
-      update,
-      { upsert: true, new: true, session }
+    const serializedDay = serializeSubscriptionDayForClient(
+      result.subscription,
+      result.day.toObject ? result.day.toObject() : result.day,
+      runtime
     );
-
-    if (insertedSelectionRows.length > 0) {
-      for (const row of insertedSelectionRows) {
-        row.dayId = day._id;
-        row.date = day.date;
-      }
-    }
-
-    syncPremiumRemainingFromActivePremiumWallet(subInSession);
-    if (usePremiumOverageFlow) {
-      runtime.applyPremiumOverageState({
-        day,
-        requestedPremiumSelectionCount: premiumSelections.length,
-        walletBackedConsumedCount,
-      });
-    }
-    if (useCanonicalOneTimeAddonPlanning) {
-      runtime.recomputeOneTimeAddonPlanningState({
-        day,
-        selections: finalOneTimeAddonSelections,
-      });
-    }
-    applyDayWalletSelections({ subscription: subInSession, day });
-    if (runtime.isCanonicalRecurringAddonEligible(subInSession)) {
-      runtime.applyRecurringAddonProjectionToDay({
-        subscription: subInSession,
-        day,
-      });
-    }
-    if (runtime.isCanonicalDayPlanningEligible(subInSession, {
-      flagEnabled: isPhase2CanonicalDayPlanningEnabled(),
-    })) {
-      runtime.applyCanonicalDraftPlanningToDay({
-        subscription: subInSession,
-        day,
-        selections,
-        premiumSelections,
-        assignmentSource: "client",
-      });
-    }
-
-    await subInSession.save({ session });
-    await day.save({ session });
-
-    await session.commitTransaction();
-    session.endSession();
-
-    await writeLogSafely({
-      entityType: "subscription_day",
-      entityId: day._id,
-      action: "day_selection_update",
-      byUserId: req.userId,
-      byRole: "client",
-      meta: { date, selectionsCount: selections.length, premiumCount: premiumSelections.length },
-    }, { subscriptionId: id, date });
-    const serializedDay = serializeSubscriptionDayForClient(subInSession, day.toObject ? day.toObject() : day, runtime);
     const catalog = await loadWalletCatalogMapsSafely({
       days: [serializedDay],
       lang,
-      context: "update_day_selection_result",
+      context: result.idempotent ? "update_day_selection_idempotent" : "update_day_selection_result",
     });
-    return res.status(200).json({
+    const payload = {
       ok: true,
       data: localizeWriteDayPayload(serializedDay, {
         lang,
         addonNames: catalog.addonNames,
       }),
-    });
+    };
+    if (result.idempotent) {
+      payload.idempotent = true;
+    }
+    return res.status(200).json(payload);
   } catch (err) {
-    await session.abortTransaction();
-    session.endSession();
     if (err && err.code === "DATA_INTEGRITY_ERROR") {
       logWalletIntegrityError("update_day_selection_refund", {
         subscriptionId: id,
@@ -6393,6 +4842,10 @@ async function updateDaySelection(req, res, runtimeOverrides = null) {
     ) {
       return errorResponse(res, 400, "INVALID", err.message);
     }
+    if (err.status && err.code) {
+      return errorResponse(res, err.status, err.code, err.message);
+    }
+    logger.error("Update day selection failed", { subscriptionId: id, date, error: err.message, stack: err.stack });
     return errorResponse(res, 500, "INTERNAL", "Selection failed");
   }
 }
@@ -6429,93 +4882,28 @@ async function confirmDayPlanning(req, res, runtimeOverrides = null) {
     return errorResponse(res, status, err.code || "INVALID_DATE", err.message);
   }
 
-  const session = await mongoose.startSession();
-  session.startTransaction();
   try {
-    const subInSession = await Subscription.findById(id).session(session);
-    if (!subInSession) {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
-    }
-    if (!runtime.isCanonicalDayPlanningEligible(subInSession, {
-      flagEnabled: isPhase2CanonicalDayPlanningEnabled(),
-    })) {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 409, "CANONICAL_DAY_PLANNING_DISABLED", "Canonical day planning is not enabled for this subscription");
-    }
-
-    ensureActive(subInSession, date);
-    validateFutureDateOrThrow(date, subInSession);
-    const day = await SubscriptionDay.findOne({ subscriptionId: id, date }).session(session);
-    if (!day) {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 404, "NOT_FOUND", "Day not found");
-    }
-    if (day.status !== "open") {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 409, "LOCKED", "Day is locked");
-    }
-
-    try {
-      runtime.assertCanonicalPlanningExactCount({
-        subscription: subInSession,
-        day,
-      });
-      runtime.assertNoPendingPremiumOverage({
-        subscription: subInSession,
-        day,
-        overageEligible: runtime.isCanonicalPremiumOverageEligible(subInSession, {
-          dayPlanningFlagEnabled: isPhase2CanonicalDayPlanningEnabled(),
-          genericPremiumWalletFlagEnabled: isPhase2GenericPremiumWalletEnabled(),
-        }),
-      });
-      runtime.assertNoPendingOneTimeAddonPayment({ day });
-      runtime.confirmCanonicalDayPlanning({
-        subscription: subInSession,
-        day,
-        actorRole: "client",
-      });
-      runtime.applyRecurringAddonProjectionToDay({
-        subscription: subInSession,
-        day,
-      });
-    } catch (err) {
-      await session.abortTransaction();
-      session.endSession();
-      if (
-        err.code === "PLANNING_INCOMPLETE"
-        || err.code === "PREMIUM_OVERAGE_PAYMENT_REQUIRED"
-        || err.code === "ONE_TIME_ADDON_PAYMENT_REQUIRED"
-      ) {
-        // Operational visibility for failure modes that require user action or payment.
-        logger.warn("Confirm day planning blocked", {
-          subscriptionId: id,
-          date,
-          code: err.code,
-          message: err.message,
-        });
-        return errorResponse(res, 422, err.code, err.message);
-      }
-      throw err;
-    }
-
-    await day.save({ session });
-    await session.commitTransaction();
-    session.endSession();
+    const result = await performDayPlanningConfirmation({
+      userId: req.userId,
+      subscriptionId: id,
+      date,
+      runtime,
+    });
 
     await writeLogSafely({
       entityType: "subscription_day",
-      entityId: day._id,
+      entityId: result.day._id,
       action: "day_plan_confirm",
       byUserId: req.userId,
       byRole: "client",
       meta: { date },
     }, { subscriptionId: id, date });
-    const serializedDay = serializeSubscriptionDayForClient(subInSession, day.toObject ? day.toObject() : day, runtime);
+
+    const serializedDay = serializeSubscriptionDayForClient(
+      result.subscription,
+      result.day.toObject ? result.day.toObject() : result.day,
+      runtime
+    );
     const catalog = await loadWalletCatalogMapsSafely({
       days: [serializedDay],
       lang,
@@ -6530,13 +4918,26 @@ async function confirmDayPlanning(req, res, runtimeOverrides = null) {
       }),
     });
   } catch (err) {
-    await session.abortTransaction();
-    session.endSession();
-    if (err.code === "SUB_INACTIVE" || err.code === "SUB_EXPIRED") {
-      return errorResponse(res, 422, err.code, err.message);
+    if (err.status && err.code) {
+      return errorResponse(res, err.status, err.code, err.message);
     }
-    if (err.code === "INVALID_DATE" || err.code === "LOCKED") {
-      return errorResponse(res, 400, err.code, err.message);
+    if (
+      err.code === "PLANNING_INCOMPLETE"
+      || err.code === "PREMIUM_OVERAGE_PAYMENT_REQUIRED"
+      || err.code === "ONE_TIME_ADDON_PAYMENT_REQUIRED"
+      || err.code === "SUB_INACTIVE"
+      || err.code === "SUB_EXPIRED"
+      || err.code === "INVALID_DATE"
+      || err.code === "LOCKED"
+    ) {
+      const status = 422;
+      logger.warn("Confirm day planning blocked", {
+        subscriptionId: id,
+        date,
+        code: err.code,
+        message: err.message,
+      });
+      return errorResponse(res, status, err.code, err.message);
     }
     logger.error("Confirm day planning failed", { subscriptionId: id, date, error: err.message, stack: err.stack });
     return errorResponse(res, 500, "INTERNAL", "Day planning confirmation failed");
@@ -6563,6 +4964,13 @@ async function skipDay(req, res) {
   const { id } = req.params;
   const date = resolveRequestedDate(req);
   const lang = getRequestLang(req);
+
+  try {
+    validateObjectId(id, "subscriptionId");
+  } catch (err) {
+    return errorResponse(res, err.status, err.code, err.message);
+  }
+
   const sub = await Subscription.findById(id).populate("planId");
   if (!sub) return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
   if (sub.userId.toString() !== req.userId.toString()) {
@@ -6582,30 +4990,19 @@ async function skipDay(req, res) {
     return errorResponse(res, 400, err.code || "LOCKED", err.message);
   }
 
-  const session = await mongoose.startSession();
-  session.startTransaction();
   try {
-    const subInSession = await Subscription.findById(id).populate("planId").session(session);
-    if (!subInSession) {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
-    }
-    if (subInSession.status !== "active") {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 422, "SUB_INACTIVE", "Subscription not active");
-    }
+    const result = await performSkipDay({
+      userId: req.userId,
+      subscriptionId: id,
+      date,
+    });
 
-    const result = await applySkipForDate({ sub: subInSession, date, session });
-    const policy = result.policy || resolveSubscriptionSkipPolicy(subInSession, subInSession.planId, {
+    const policy = result.policy || resolveSubscriptionSkipPolicy(result.subscription, result.subscription.planId, {
       context: "skip_day",
     });
-    const remainingSkipDays = resolveSkipRemainingDays(policy, subInSession);
+    const remainingSkipDays = resolveSkipRemainingDays(policy, result.subscription);
 
     if (result.status === "already_skipped") {
-      await session.commitTransaction();
-      session.endSession();
       return res.status(200).json({
         ok: true,
         data: {
@@ -6618,27 +5015,11 @@ async function skipDay(req, res) {
         },
       });
     }
-    if (result.status === "skip_disabled") {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 422, "SKIP_DISABLED", "Skip is disabled for this plan");
-    }
-    if (result.status === "frozen") {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 409, "FROZEN", "Day is frozen");
-    }
-    if (result.status === "locked") {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 409, "LOCKED", "Cannot skip after lock");
-    }
+
     if (result.status === "limit_reached") {
-      await session.commitTransaction();
-      session.endSession();
       const projectedDay = result.day
-        ? serializeSubscriptionDayForClient(subInSession, result.day)
-        : buildProjectedOpenDayForClient(subInSession, date);
+        ? serializeSubscriptionDayForClient(result.subscription, result.day)
+        : buildProjectedOpenDayForClient(result.subscription, date);
       return res.status(200).json({
         ok: true,
         data: {
@@ -6651,14 +5032,11 @@ async function skipDay(req, res) {
         },
       });
     }
+
     if (result.status !== "skipped") {
-      await session.abortTransaction();
-      session.endSession();
       return errorResponse(res, 400, "INVALID", "Skip failed");
     }
 
-    await session.commitTransaction();
-    session.endSession();
     await writeLogSafely({
       entityType: "subscription_day",
       entityId: result.day._id,
@@ -6671,6 +5049,7 @@ async function skipDay(req, res) {
         compensatedDaysAdded: Number(result.compensatedDaysAdded || 0),
       },
     }, { subscriptionId: id, date: result.day.date });
+
     return res.status(200).json({
       ok: true,
       data: {
@@ -6683,10 +5062,9 @@ async function skipDay(req, res) {
       },
     });
   } catch (err) {
-    if (typeof session.inTransaction !== "function" || session.inTransaction()) {
-      await session.abortTransaction();
+    if (err.status && err.code) {
+      return errorResponse(res, err.status, err.code, err.message);
     }
-    session.endSession();
     logger.error("Skip failed", { subscriptionId: id, date, error: err.message, stack: err.stack });
     return errorResponse(res, 500, "INTERNAL", "Skip failed");
   }
@@ -6721,138 +5099,32 @@ async function unskipDay(req, res) {
     return errorResponse(res, 400, err.code || "LOCKED", err.message);
   }
 
-  const session = await mongoose.startSession();
-  session.startTransaction();
   try {
-    const subInSession = await Subscription.findById(id).populate("planId").session(session);
-    if (!subInSession) {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
-    }
+    const result = await performUnskipDay({
+      userId: req.userId,
+      subscriptionId: id,
+      date,
+    });
 
-    ensureActive(subInSession, date);
-    validateFutureDateOrThrow(date, subInSession);
-
-    const day = await SubscriptionDay.findOne({ subscriptionId: id, date }).session(session);
-    if (!day) {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 404, "NOT_FOUND", "Day not found");
-    }
-    if (day.status !== "skipped") {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 409, "CONFLICT", "Day is not skipped");
-    }
-    if (day.lockedSnapshot || day.fulfilledSnapshot || day.fulfilledAt || day.assignedByKitchen || day.pickupRequested) {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 409, "CONFLICT", "Cannot unskip a processed day");
-    }
-    const isCompensatedSkip = Boolean(day.skipCompensated);
-
-    if (isCompensatedSkip) {
-      const updatedSubscription = await Subscription.findOneAndUpdate(
-        {
-          _id: subInSession._id,
-          skipDaysUsed: { $gte: 1 },
-        },
-        { $inc: { skipDaysUsed: -1 } },
-        { new: true, session }
-      );
-      if (!updatedSubscription) {
-        await session.abortTransaction();
-        session.endSession();
-        return errorResponse(res, 409, "DATA_INTEGRITY_ERROR", "Cannot restore credits for this skipped day");
-      }
-
-      subInSession.skipDaysUsed = Number(updatedSubscription.skipDaysUsed || 0);
-      await SubscriptionDay.updateOne(
-        { _id: day._id },
-        {
-          $set: {
-            status: "open",
-            skippedByUser: false,
-            skipCompensated: false,
-            creditsDeducted: false,
-          },
-          $unset: { canonicalDayActionType: 1 },
-        },
-        { session }
-      );
-      await syncSubscriptionValidity(subInSession, session);
-      day.status = "open";
-      day.skippedByUser = false;
-      day.skipCompensated = false;
-      day.creditsDeducted = false;
-    } else {
-      if (!day.creditsDeducted) {
-        await session.abortTransaction();
-        session.endSession();
-        return errorResponse(res, 409, "CONFLICT", "Skipped day has no deducted credits to restore");
-      }
-
-      const mealsToRestore = resolveMealsPerDay(subInSession);
-      const restoredSub = await Subscription.findOneAndUpdate(
-        {
-          _id: subInSession._id,
-          skippedCount: { $gte: 1 },
-          remainingMeals: { $lte: Number(subInSession.totalMeals || 0) - mealsToRestore },
-        },
-        { $inc: { remainingMeals: mealsToRestore, skippedCount: -1 } },
-        { new: true, session }
-      );
-      if (!restoredSub) {
-        await session.abortTransaction();
-        session.endSession();
-        return errorResponse(res, 409, "DATA_INTEGRITY_ERROR", "Cannot restore credits for this skipped day");
-      }
-
-      day.status = "open";
-      day.skippedByUser = false;
-      day.creditsDeducted = false;
-      await SubscriptionDay.updateOne(
-        { _id: day._id },
-        {
-          $set: {
-            status: "open",
-            skippedByUser: false,
-            skipCompensated: false,
-            creditsDeducted: false,
-          },
-          $unset: { canonicalDayActionType: 1 },
-        },
-        { session }
-      );
-    }
-
-    const responseDay = day.toObject ? day.toObject() : { ...day };
+    const responseDay = result.day.toObject ? result.day.toObject() : { ...result.day };
     delete responseDay.canonicalDayActionType;
-
-    await session.commitTransaction();
-    session.endSession();
 
     await writeLogSafely({
       entityType: "subscription_day",
-      entityId: day._id,
+      entityId: result.day._id,
       action: "unskip",
       byUserId: req.userId,
       byRole: "client",
       meta: { date },
     }, { subscriptionId: id, date });
+
     return res.status(200).json({
       ok: true,
       data: localizeWriteDayPayload(responseDay, { lang }),
     });
   } catch (err) {
-    await session.abortTransaction();
-    session.endSession();
-    if (err.code === "SUB_INACTIVE" || err.code === "SUB_EXPIRED") {
-      return errorResponse(res, 422, err.code, err.message);
-    }
-    if (err.code === "INVALID_DATE" || err.code === "LOCKED") {
-      return errorResponse(res, 400, err.code, err.message);
+    if (err.status && err.code) {
+      return errorResponse(res, err.status, err.code, err.message);
     }
     logger.error("Unskip failed", { subscriptionId: id, date, error: err.message, stack: err.stack });
     return errorResponse(res, 500, "INTERNAL", "Unskip failed");
@@ -6874,130 +5146,18 @@ async function skipRange(req, res) {
   try {
     rangeRequest = resolveSkipRangeInputOrThrow({ startDate, days, endDate });
   } catch (err) {
-    const status = err.code === "INVALID_DATE" ? 400 : 400;
-    return errorResponse(res, status, err.code || "INVALID", err.message);
+    return errorResponse(res, 400, err.code || "INVALID", err.message);
   }
 
-  const sub = await Subscription.findById(id).populate("planId");
-  if (!sub) return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
-  if (sub.userId.toString() !== req.userId.toString()) {
-    return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
-  }
   try {
-    ensureActive(sub);
-  } catch (err) {
-    return errorResponse(res, 422, err.code, err.message);
-  }
-
-  const tomorrow = dateUtils.getTomorrowKSADate();
-  if (!dateUtils.isOnOrAfterKSADate(startDate, tomorrow)) {
-    return errorResponse(res, 400, "INVALID_DATE", "startDate must be from tomorrow onward");
-  }
-
-  const cutoffTime = await getSettingValue("cutoff_time", "00:00");
-  const summary = {
-    requestedRange: {
-      startDate: rangeRequest.startDate,
-      endDate: rangeRequest.endDate,
-      days: rangeRequest.days,
-    },
-    requestedDays: rangeRequest.days,
-    appliedDays: 0,
-    remainingSkipDays: 0,
-    compensatedDaysAdded: 0,
-    appliedDates: [],
-    alreadySkipped: [],
-    rejected: [],
-    message: "",
-  };
-  const skippedForLog = [];
-
-  const session = await mongoose.startSession();
-  session.startTransaction();
-  try {
-    const subInSession = await Subscription.findById(id).populate("planId").session(session);
-    if (!subInSession) {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
-    }
-    try {
-      ensureActive(subInSession, startDate);
-    } catch (err) {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 422, err.code, err.message);
-    }
-    const skipPolicy = resolveSubscriptionSkipPolicy(subInSession, subInSession.planId, {
-      context: "skip_range",
+    const result = await performSkipRange({
+      userId: req.userId,
+      subscriptionId: id,
+      rangeRequest,
+      lang,
     });
-    if (!skipPolicy.enabled) {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 422, "SKIP_DISABLED", "Skip is disabled for this plan");
-    }
-    const baseEndDate = subInSession.validityEndDate || subInSession.endDate;
-    let appliedAny = false;
 
-    for (const dateStr of rangeRequest.targetDates) {
-      if (!dateUtils.isOnOrAfterKSADate(dateStr, tomorrow)) {
-        summary.rejected.push({ date: dateStr, reason: "BEFORE_TOMORROW" });
-        continue;
-      }
-      if (!dateUtils.isInSubscriptionRange(dateStr, baseEndDate)) {
-        summary.rejected.push({ date: dateStr, reason: "OUTSIDE_VALIDITY" });
-        continue;
-      }
-      if (dateStr === tomorrow && !dateUtils.isBeforeCutoff(cutoffTime)) {
-        summary.rejected.push({ date: dateStr, reason: "CUTOFF_PASSED" });
-        continue;
-      }
-
-      const result = await applySkipForDate({
-        sub: subInSession,
-        date: dateStr,
-        session,
-        syncValidityAfterApply: false,
-      });
-      if (result.status === "already_skipped") {
-        summary.alreadySkipped.push(dateStr);
-        continue;
-      }
-      if (result.status === "frozen") {
-        summary.rejected.push({ date: dateStr, reason: "FROZEN" });
-        continue;
-      }
-      if (result.status === "locked") {
-        summary.rejected.push({ date: dateStr, reason: "LOCKED" });
-        continue;
-      }
-      if (result.status === "limit_reached") {
-        summary.rejected.push({ date: dateStr, reason: "PLAN_LIMIT_REACHED" });
-        continue;
-      }
-      if (result.status !== "skipped") {
-        summary.rejected.push({ date: dateStr, reason: "UNKNOWN" });
-        continue;
-      }
-
-      appliedAny = true;
-      summary.appliedDays += 1;
-      summary.compensatedDaysAdded += Number(result.compensatedDaysAdded || 0);
-      summary.appliedDates.push(dateStr);
-      skippedForLog.push({ dayId: result.day._id, date: result.day.date });
-    }
-
-    if (appliedAny) {
-      await syncSubscriptionValidity(subInSession, session);
-    }
-
-    summary.remainingSkipDays = resolveSkipRemainingDays(skipPolicy, subInSession);
-    summary.message = buildSkipRangeMessage(summary);
-
-    await session.commitTransaction();
-    session.endSession();
-
-    for (const item of skippedForLog) {
+    for (const item of result.skippedForLog) {
       await writeLogSafely({
         entityType: "subscription_day",
         entityId: item.dayId,
@@ -7010,32 +5170,39 @@ async function skipRange(req, res) {
 
     return res.status(200).json({
       ok: true,
-      data: localizeSkipRangeSummary(summary, { lang }),
+      data: localizeSkipRangeSummary(result.summary, { lang }),
     });
   } catch (err) {
-    await session.abortTransaction();
-    session.endSession();
+    if (err.status && err.code) {
+      return errorResponse(res, err.status, err.code, err.message);
+    }
+    logger.error("Skip range failed", { subscriptionId: id, error: err.message, stack: err.stack });
     return errorResponse(res, 500, "INTERNAL", "Skip range failed");
   }
 }
 
 function matchSelectionDay(selection, { dayId, date }) {
-  if (dayId) {
-    return String(selection.dayId) === String(dayId);
-  }
-  return selection.date === date;
+  if (dayId && selection.dayId && String(selection.dayId) === String(dayId)) return true;
+  if (date && selection.date === date) return true;
+  return false;
 }
 
 async function resolveSubscriptionDay({ subscriptionId, dayId, date, session }) {
   if (dayId) {
-    return SubscriptionDay.findOne({ _id: dayId, subscriptionId }).session(session);
+    const day = (await SubscriptionDay.findById(dayId).session(session)) || (await SubscriptionDay.findOne({ subscriptionId, _id: dayId }).session(session));
+    if (day) return day;
   }
-  return SubscriptionDay.findOne({ subscriptionId, date }).session(session);
+  if (date) {
+    const day = await SubscriptionDay.findOne({ subscriptionId, date }).session(session);
+    if (day) return day;
+  }
+  return null;
 }
 
-function buildAddonUnitFromDoc(addonDoc) {
-  return resolveAddonUnitPriceHalala(addonDoc);
+function logWalletIntegrityError(context, meta = {}) {
+  logger.error(`WALLET_INTEGRITY_ERROR: ${context}`, meta);
 }
+
 
 async function consumePremiumSelection(req, res) {
   const { id } = req.params;
@@ -7055,148 +5222,29 @@ async function consumePremiumSelection(req, res) {
     return sendValidationError(res, "baseSlotKey is required");
   }
 
-  const session = await mongoose.startSession();
-  session.startTransaction();
   try {
-    const sub = await Subscription.findById(id).session(session);
-    if (!sub) {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
-    }
-    if (sub.userId.toString() !== req.userId.toString()) {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
-    }
-    ensureActive(sub, date);
-
-    const day = await resolveSubscriptionDay({ subscriptionId: sub._id, dayId, date, session });
-    if (!day) {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 404, "NOT_FOUND", "Day not found");
-    }
-    if (day.status !== "open") {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 409, "LOCKED", "Day is locked");
-    }
-
-    const existingSelection = (sub.premiumSelections || []).find(
-      (item) =>
-        matchSelectionDay(item, { dayId: day._id, date: day.date })
-        && String(item.baseSlotKey) === String(baseSlotKey)
-    );
-    const existingDaySelection = (day.premiumUpgradeSelections || []).find(
-      (item) => String(item.baseSlotKey) === String(baseSlotKey)
-    );
-    if (existingSelection || existingDaySelection) {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 409, "CONFLICT", "baseSlotKey already upgraded for this day");
-    }
-
-    if (isGenericPremiumWalletMode(sub)) {
-      const consumedRows = consumeGenericPremiumCredits(sub, 1);
-      if (!consumedRows || !consumedRows.length) {
-        await session.abortTransaction();
-        session.endSession();
-        return errorResponse(res, 400, "INSUFFICIENT_PREMIUM", "Not enough premium credits");
-      }
-
-      sub.premiumSelections.push({
-        dayId: day._id,
-        date: day.date,
-        baseSlotKey: String(baseSlotKey),
-        premiumMealId,
-        unitExtraFeeHalala: Number(consumedRows[0].unitCreditPriceHalala || 0),
-        currency: consumedRows[0].currency || "SAR",
-        premiumWalletMode: GENERIC_PREMIUM_WALLET_MODE,
-        premiumWalletRowId: consumedRows[0].premiumWalletRowId || null,
-      });
-      syncPremiumRemainingFromActivePremiumWallet(sub);
-    } else {
-      const hasPremiumBalanceRows = Array.isArray(sub.premiumBalance) && sub.premiumBalance.length > 0;
-      const hasLegacyPremiumOnly = Number(sub.premiumRemaining || 0) > 0 && !hasPremiumBalanceRows;
-      if (hasLegacyPremiumOnly) {
-        const subPremiumPriceSar = Number(sub.premiumPrice);
-        const settingsPremiumPriceSar = Number(await getSettingValue("premium_price", 20));
-        const fallbackPremiumPriceSar = Number.isFinite(subPremiumPriceSar) && subPremiumPriceSar >= 0
-          ? subPremiumPriceSar
-          : Number.isFinite(settingsPremiumPriceSar) && settingsPremiumPriceSar >= 0
-            ? settingsPremiumPriceSar
-            : 0;
-        const legacyUnitExtraFeeHalala = Math.round(fallbackPremiumPriceSar * 100);
-        const migrated = ensureLegacyPremiumBalanceFromRemaining(sub, {
-          premiumMealId,
-          unitExtraFeeHalala: legacyUnitExtraFeeHalala,
-          currency: SYSTEM_CURRENCY,
-        });
-        if (migrated) {
-          syncPremiumRemainingFromBalance(sub);
-        }
-      }
-
-      const hasRequestedPremiumBucket = (sub.premiumBalance || []).some(
-        (row) => String(row.premiumMealId) === String(premiumMealId)
-      );
-      if (!hasRequestedPremiumBucket) {
-        for (const row of sub.premiumBalance || []) {
-          if (String(row.premiumMealId) !== LEGACY_PREMIUM_MEAL_BUCKET_ID) continue;
-          if (Number(row.remainingQty || 0) <= 0 && Number(row.purchasedQty || 0) <= 0) continue;
-          row.premiumMealId = premiumMealId;
-        }
-      }
-
-      const candidates = (sub.premiumBalance || [])
-        .filter((row) => String(row.premiumMealId) === String(premiumMealId) && Number(row.remainingQty) > 0)
-        .sort((a, b) => new Date(a.purchasedAt).getTime() - new Date(b.purchasedAt).getTime());
-      if (!candidates.length) {
-        await session.abortTransaction();
-        session.endSession();
-        return errorResponse(res, 400, "INSUFFICIENT_PREMIUM", "Not enough premium credits");
-      }
-
-      candidates[0].remainingQty = Number(candidates[0].remainingQty) - 1;
-      sub.premiumSelections.push({
-        dayId: day._id,
-        date: day.date,
-        baseSlotKey: String(baseSlotKey),
-        premiumMealId,
-        unitExtraFeeHalala: Number(candidates[0].unitExtraFeeHalala || 0),
-        currency: candidates[0].currency || "SAR",
-        premiumWalletMode: LEGACY_PREMIUM_WALLET_MODE,
-      });
-      syncPremiumRemainingFromActivePremiumWallet(sub);
-    }
-    applyDayWalletSelections({ subscription: sub, day });
-    await sub.save({ session });
-    await day.save({ session });
-
-    await session.commitTransaction();
-    session.endSession();
-
-    const remainingQtyTotal = isGenericPremiumWalletMode(sub)
-      ? getRemainingPremiumCredits(sub)
-      : (sub.premiumBalance || [])
-        .filter((row) => String(row.premiumMealId) === String(premiumMealId))
-        .reduce((sum, row) => sum + Number(row.remainingQty || 0), 0);
+    const result = await performConsumePremiumSelection({
+      userId: req.userId,
+      subscriptionId: id,
+      dayId,
+      date,
+      baseSlotKey,
+      premiumMealId,
+    });
 
     return res.status(200).json({
       ok: true,
       data: {
-        subscriptionId: sub.id,
-        premiumMealId: String(premiumMealId),
-        remainingQtyTotal,
+        subscriptionId: result.subscriptionId,
+        premiumMealId: String(result.premiumMealId),
+        remainingQtyTotal: result.remainingQtyTotal,
       },
     });
   } catch (err) {
-    await session.abortTransaction();
-    session.endSession();
-    if (err.code === "SUB_INACTIVE" || err.code === "SUB_EXPIRED") {
-      return errorResponse(res, 422, err.code, err.message);
+    if (err.status && err.code) {
+      return errorResponse(res, err.status, err.code, err.message);
     }
+    logger.error("Premium selection failed", { subscriptionId: id, date, error: err.message, stack: err.stack });
     return errorResponse(res, 500, "INTERNAL", "Premium selection failed");
   }
 }
@@ -7218,97 +5266,21 @@ async function removePremiumSelection(req, res) {
     return sendValidationError(res, "baseSlotKey is required");
   }
 
-  const session = await mongoose.startSession();
-  session.startTransaction();
   try {
-    const sub = await Subscription.findById(id).session(session);
-    if (!sub) {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
-    }
-    if (sub.userId.toString() !== req.userId.toString()) {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
-    }
+    const result = await performRemovePremiumSelection({
+      userId: req.userId,
+      subscriptionId: id,
+      dayId,
+      date,
+      baseSlotKey,
+    });
 
-    const targetDay = await resolveSubscriptionDay({ subscriptionId: sub._id, dayId, date, session });
-    if (!targetDay) {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 404, "NOT_FOUND", "Day not found");
+    return res.status(200).json({ ok: true, data: { subscriptionId: result.subscriptionId } });
+  } catch (err) {
+    if (err.status && err.code) {
+      return errorResponse(res, err.status, err.code, err.message);
     }
-    try {
-      ensureActive(sub, targetDay.date);
-    } catch (err) {
-      await session.abortTransaction();
-      session.endSession();
-      const status = err.code === "SUB_INACTIVE" || err.code === "SUB_EXPIRED" ? 422 : 400;
-      return errorResponse(res, status, err.code || "INVALID", err.message);
-    }
-    if (targetDay.status !== "open") {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 409, "LOCKED", "Day is locked");
-    }
-    const targetDayId = String(targetDay._id);
-    const targetDate = targetDay.date;
-    const rows = sub.premiumSelections || [];
-    const index = rows.findIndex(
-      (row) =>
-        matchSelectionDay(row, { dayId: targetDayId, date: targetDate })
-        && String(row.baseSlotKey) === String(baseSlotKey)
-    );
-
-    if (index === -1) {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 404, "NOT_FOUND", "Premium selection not found");
-    }
-
-    const [removed] = rows.splice(index, 1);
-    try {
-      if (isGenericPremiumWalletMode(sub)) {
-        refundGenericPremiumSelectionRowsOrThrow(sub, [removed]);
-      } else {
-        refundPremiumSelectionRowsToBalanceOrThrow(sub, [removed]);
-      }
-    } catch (err) {
-      logWalletIntegrityError("premium_refund_remove_selection", {
-        subscriptionId: id,
-        dayId: targetDayId,
-        date: targetDate,
-        baseSlotKey: String(baseSlotKey),
-        premiumMealId: String(removed.premiumMealId),
-        unitExtraFeeHalala: Number(removed.unitExtraFeeHalala || 0),
-        reason: err.message,
-      });
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(
-        res,
-        409,
-        "DATA_INTEGRITY_ERROR",
-        err.message
-      );
-    }
-
-    syncPremiumRemainingFromActivePremiumWallet(sub);
-    applyDayWalletSelections({ subscription: sub, day: targetDay });
-    await sub.save({ session });
-    await targetDay.save({ session });
-
-    await session.commitTransaction();
-    session.endSession();
-
-    return res.status(200).json({ ok: true, data: { subscriptionId: sub.id } });
-  } catch (_err) {
-    await session.abortTransaction();
-    session.endSession();
-    if (_err && _err.code === "DATA_INTEGRITY_ERROR") {
-      return errorResponse(res, 409, "DATA_INTEGRITY_ERROR", _err.message);
-    }
+    logger.error("Premium selection refund failed", { subscriptionId: id, date, error: err.message, stack: err.stack });
     return errorResponse(res, 500, "INTERNAL", "Premium selection refund failed");
   }
 }
@@ -7332,83 +5304,25 @@ async function consumeAddonSelection(req, res) {
     return sendValidationError(res, "qty must be a positive integer");
   }
 
-  const session = await mongoose.startSession();
-  session.startTransaction();
   try {
-    const sub = await Subscription.findById(id).session(session);
-    if (!sub) {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
-    }
-    if (sub.userId.toString() !== req.userId.toString()) {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
-    }
-    ensureActive(sub, date);
-
-    const day = await resolveSubscriptionDay({ subscriptionId: sub._id, dayId, date, session });
-    if (!day) {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 404, "NOT_FOUND", "Day not found");
-    }
-    if (day.status !== "open") {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 409, "LOCKED", "Day is locked");
-    }
-
-    const balances = (sub.addonBalance || [])
-      .filter((row) => String(row.addonId) === String(addonId) && Number(row.remainingQty) > 0)
-      .sort((a, b) => new Date(a.purchasedAt).getTime() - new Date(b.purchasedAt).getTime());
-
-    const totalAvailable = balances.reduce((sum, row) => sum + Number(row.remainingQty || 0), 0);
-    if (totalAvailable < parsedQty) {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 400, "INSUFFICIENT_ADDON", "Not enough addon credits");
-    }
-
-    let remaining = parsedQty;
-    for (const row of balances) {
-      if (remaining <= 0) break;
-      const available = Number(row.remainingQty || 0);
-      const deduct = Math.min(available, remaining);
-      if (!deduct) continue;
-      row.remainingQty = available - deduct;
-      sub.addonSelections.push({
-        dayId: day._id,
-        date: day.date,
-        addonId,
-        qty: deduct,
-        unitPriceHalala: Number(row.unitPriceHalala || 0),
-        currency: row.currency || "SAR",
-      });
-      remaining -= deduct;
-    }
-
-    applyDayWalletSelections({ subscription: sub, day });
-    await sub.save({ session });
-    await day.save({ session });
-    await session.commitTransaction();
-    session.endSession();
-
-    const remainingQtyTotal = (sub.addonBalance || [])
-      .filter((row) => String(row.addonId) === String(addonId))
-      .reduce((sum, row) => sum + Number(row.remainingQty || 0), 0);
+    const result = await performConsumeAddonSelection({
+      userId: req.userId,
+      subscriptionId: id,
+      dayId,
+      date,
+      addonId,
+      qty: parsedQty,
+    });
 
     return res.status(200).json({
       ok: true,
-      data: { subscriptionId: sub.id, addonId: String(addonId), remainingQtyTotal },
+      data: { subscriptionId: result.subscriptionId, addonId: String(result.addonId), remainingQtyTotal: result.remainingQtyTotal },
     });
   } catch (err) {
-    await session.abortTransaction();
-    session.endSession();
-    if (err.code === "SUB_INACTIVE" || err.code === "SUB_EXPIRED") {
-      return errorResponse(res, 422, err.code, err.message);
+    if (err.status && err.code) {
+      return errorResponse(res, err.status, err.code, err.message);
     }
+    logger.error("Addon selection failed", { subscriptionId: id, date, error: err.message, stack: err.stack });
     return errorResponse(res, 500, "INTERNAL", "Addon selection failed");
   }
 }
@@ -7428,134 +5342,21 @@ async function removeAddonSelection(req, res) {
     return sendValidationError(res, "dayId or date is required");
   }
 
-  const session = await mongoose.startSession();
-  session.startTransaction();
   try {
-    const sub = await Subscription.findById(id).session(session);
-    if (!sub) {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
-    }
-    if (sub.userId.toString() !== req.userId.toString()) {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
-    }
+    const result = await performRemoveAddonSelection({
+      userId: req.userId,
+      subscriptionId: id,
+      dayId,
+      date,
+      addonId,
+    });
 
-    const targetDay = await resolveSubscriptionDay({ subscriptionId: sub._id, dayId, date, session });
-    if (!targetDay) {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 404, "NOT_FOUND", "Day not found");
+    return res.status(200).json({ ok: true, data: { subscriptionId: result.subscriptionId } });
+  } catch (err) {
+    if (err.status && err.code) {
+      return errorResponse(res, err.status, err.code, err.message);
     }
-    try {
-      ensureActive(sub, targetDay.date);
-    } catch (err) {
-      await session.abortTransaction();
-      session.endSession();
-      const status = err.code === "SUB_INACTIVE" || err.code === "SUB_EXPIRED" ? 422 : 400;
-      return errorResponse(res, status, err.code || "INVALID", err.message);
-    }
-    if (targetDay.status !== "open") {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 409, "LOCKED", "Day is locked");
-    }
-    const targetDayId = String(targetDay._id);
-    const targetDate = targetDay.date;
-
-    const toRefund = (sub.addonSelections || []).filter(
-      (row) =>
-        String(row.addonId) === String(addonId)
-        && matchSelectionDay(row, { dayId: targetDayId, date: targetDate })
-    );
-    if (!toRefund.length) {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 404, "NOT_FOUND", "Addon selection not found");
-    }
-
-    sub.addonSelections = (sub.addonSelections || []).filter(
-      (row) =>
-        !(String(row.addonId) === String(addonId) && matchSelectionDay(row, { dayId: targetDayId, date: targetDate }))
-    );
-
-    for (const row of toRefund) {
-      const match = (sub.addonBalance || []).find(
-        (balance) =>
-          String(balance.addonId) === String(addonId)
-          && Number(balance.unitPriceHalala || 0) === Number(row.unitPriceHalala || 0)
-      );
-      if (!match) {
-        logWalletIntegrityError("addon_refund_remove_selection_missing_bucket", {
-          subscriptionId: id,
-          dayId: targetDayId,
-          date: targetDate,
-          addonId: String(addonId),
-          unitPriceHalala: Number(row.unitPriceHalala || 0),
-        });
-        await session.abortTransaction();
-        session.endSession();
-        return errorResponse(
-          res,
-          409,
-          "DATA_INTEGRITY_ERROR",
-          "Cannot refund addon credits because the original wallet bucket was not found"
-        );
-      }
-      const refundQty = Number(row.qty || 0);
-      const nextRemainingQty = Number(match.remainingQty || 0) + refundQty;
-      const purchasedQty = Number(match.purchasedQty || 0);
-      if (nextRemainingQty > purchasedQty) {
-        logWalletIntegrityError("addon_refund_remove_selection_exceeds_purchased", {
-          subscriptionId: id,
-          dayId: targetDayId,
-          date: targetDate,
-          addonId: String(addonId),
-          unitPriceHalala: Number(row.unitPriceHalala || 0),
-          attemptedRemainingQty: nextRemainingQty,
-          purchasedQty,
-        });
-        await session.abortTransaction();
-        session.endSession();
-        return errorResponse(
-          res,
-          409,
-          "DATA_INTEGRITY_ERROR",
-          "Cannot refund addon credits because refund exceeds purchased quantity"
-        );
-      }
-      match.remainingQty = nextRemainingQty;
-    }
-
-    const hasPremiumBalanceRows = Array.isArray(sub.premiumBalance) && sub.premiumBalance.length > 0;
-    const hasLegacyPremiumOnly = Number(sub.premiumRemaining || 0) > 0 && !hasPremiumBalanceRows;
-    if (hasLegacyPremiumOnly) {
-      const subPremiumPriceSar = Number(sub.premiumPrice);
-      const settingsPremiumPriceSar = Number(await getSettingValue("premium_price", 20));
-      const fallbackPremiumPriceSar = Number.isFinite(subPremiumPriceSar) && subPremiumPriceSar >= 0
-        ? subPremiumPriceSar
-        : Number.isFinite(settingsPremiumPriceSar) && settingsPremiumPriceSar >= 0
-          ? settingsPremiumPriceSar
-          : 0;
-      const legacyUnitExtraFeeHalala = Math.round(fallbackPremiumPriceSar * 100);
-      ensureLegacyPremiumBalanceFromRemaining(sub, {
-        unitExtraFeeHalala: legacyUnitExtraFeeHalala,
-        currency: SYSTEM_CURRENCY,
-      });
-    }
-    syncPremiumRemainingFromBalance(sub);
-    applyDayWalletSelections({ subscription: sub, day: targetDay });
-    await sub.save({ session });
-    await targetDay.save({ session });
-    await session.commitTransaction();
-    session.endSession();
-
-    return res.status(200).json({ ok: true, data: { subscriptionId: sub.id } });
-  } catch (_err) {
-    await session.abortTransaction();
-    session.endSession();
+    logger.error("Addon selection refund failed", { subscriptionId: id, date, error: err.message, stack: err.stack });
     return errorResponse(res, 500, "INTERNAL", "Addon selection refund failed");
   }
 }
@@ -8190,63 +5991,35 @@ async function updateDeliveryDetails(req, res, runtimeOverrides = null) {
   const { id } = req.params;
   const lang = getRequestLang(req);
 
-  const sub = await Subscription.findById(id);
-  if (!sub) return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
-  if (sub.userId.toString() !== req.userId.toString()) {
-    return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
-  }
   try {
-    ensureActive(sub);
-  } catch (err) {
-    return errorResponse(res, 422, err.code, err.message);
-  }
-
-  let resolvedUpdate;
-  try {
-    resolvedUpdate = await resolveSubscriptionDeliveryDefaultsUpdate({
-      subscription: sub.toObject ? sub.toObject() : sub,
+    const result = await performDeliveryDetailsUpdate({
+      userId: req.userId,
+      subscriptionId: id,
       payload: req.body || {},
       lang,
-      allowModeChange: false,
-      runtime: runtimeOverrides,
+      runtimeOverrides,
+    });
+
+    await writeLogSafely({
+      entityType: "subscription",
+      entityId: result.sub._id,
+      action: "delivery_update",
+      byUserId: req.userId,
+      byRole: "client",
+      meta: result.logMeta,
+    }, { subscriptionId: id });
+
+    return res.status(200).json({
+      ok: true,
+      data: localizeWriteSubscriptionPayload(result.sub.toObject ? result.sub.toObject() : result.sub, { lang }),
     });
   } catch (err) {
-    return errorResponse(res, err.status || 400, err.code || "INVALID", err.message);
-  }
-
-  // MEDIUM AUDIT FIX: Global delivery updates must not mutate tomorrow's effective details after cutoff has passed.
-  if (resolvedUpdate.willChangeAddress || resolvedUpdate.willChangeWindow) {
-    const tomorrow = dateUtils.getTomorrowKSADate();
-    const endDate = sub.validityEndDate || sub.endDate;
-    if (dateUtils.isInSubscriptionRange(tomorrow, endDate)) {
-      const tomorrowDay = await SubscriptionDay.findOne({ subscriptionId: id, date: tomorrow }).lean();
-      const isTomorrowEditable = !tomorrowDay || tomorrowDay.status === "open";
-      const addressImpactsTomorrow = resolvedUpdate.willChangeAddress && !hasDeliveryAddressOverride(tomorrowDay);
-      const windowImpactsTomorrow = resolvedUpdate.willChangeWindow && !hasDeliveryWindowOverride(tomorrowDay);
-      if (isTomorrowEditable && (addressImpactsTomorrow || windowImpactsTomorrow)) {
-        try {
-          await enforceTomorrowCutoffOrThrow(tomorrow);
-        } catch (err) {
-          return errorResponse(res, 400, err.code || "LOCKED", err.message);
-        }
-      }
+    if (err.status && err.code) {
+      return errorResponse(res, err.status, err.code, err.message);
     }
+    logger.error("Delivery update failed", { subscriptionId: id, error: err.message, stack: err.stack });
+    return errorResponse(res, 500, "INTERNAL", "Delivery update failed");
   }
-
-  Object.assign(sub, resolvedUpdate.patch);
-  await sub.save();
-  await writeLogSafely({
-    entityType: "subscription",
-    entityId: sub._id,
-    action: "delivery_update",
-    byUserId: req.userId,
-    byRole: "client",
-    meta: resolvedUpdate.logMeta,
-  }, { subscriptionId: id });
-  return res.status(200).json({
-    ok: true,
-    data: localizeWriteSubscriptionPayload(sub.toObject ? sub.toObject() : sub, { lang }),
-  });
 }
 
 async function updateDeliveryDetailsForDate(req, res) {
@@ -8257,62 +6030,32 @@ async function updateDeliveryDetailsForDate(req, res) {
     return errorResponse(res, 400, "INVALID", "Missing delivery update fields");
   }
 
-  const sub = await Subscription.findById(id);
-  if (!sub) return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
-  if (sub.userId.toString() !== req.userId.toString()) {
-    return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
-  }
   try {
-    ensureActive(sub, date);
-    validateFutureDateOrThrow(date, sub);
+    const result = await performDeliveryDetailsUpdateForDate({
+      userId: req.userId,
+      subscriptionId: id,
+      date,
+      payload: req.body || {},
+      lang,
+    });
+
+    await writeLogSafely({
+      entityType: "subscription_day",
+      entityId: String(result.subscriptionId),
+      action: "delivery_update_day",
+      byUserId: req.userId,
+      byRole: "client",
+      meta: { date: result.date, deliveryWindow: result.updatedDay.deliveryWindowOverride },
+    }, { subscriptionId: id, date: result.date });
+
+    return res.status(200).json({ ok: true, data: { subscriptionId: result.subscriptionId } });
   } catch (err) {
-    const status = err.code === "SUB_INACTIVE" || err.code === "SUB_EXPIRED" ? 422 : 400;
-    return errorResponse(res, status, err.code || "INVALID_DATE", err.message);
+    if (err.status && err.code) {
+      return errorResponse(res, err.status, err.code, err.message);
+    }
+    logger.error("Delivery update for date failed", { subscriptionId: id, date, error: err.message, stack: err.stack });
+    return errorResponse(res, 500, "INTERNAL", "Delivery update for date failed");
   }
-
-  try {
-    await enforceTomorrowCutoffOrThrow(date);
-  } catch (err) {
-    return errorResponse(res, 400, err.code || "LOCKED", err.message);
-  }
-
-  if (sub.deliveryMode !== "delivery") {
-    return errorResponse(res, 400, "INVALID", "Delivery mode is not delivery");
-  }
-
-  const windows = await getSettingValue("delivery_windows", []);
-  if (deliveryWindow && windows.length && !windows.includes(deliveryWindow)) {
-    return errorResponse(res, 400, "INVALID", "Invalid delivery window");
-  }
-
-  const day = await SubscriptionDay.findOne({ subscriptionId: id, date }).lean();
-  if (day && day.status !== "open") {
-    return errorResponse(res, 409, "LOCKED", "Day is locked");
-  }
-
-  const update = {};
-  if (deliveryAddress !== undefined) update.deliveryAddressOverride = deliveryAddress;
-  if (deliveryWindow !== undefined) update.deliveryWindowOverride = deliveryWindow;
-
-  const updatedDay = await SubscriptionDay.findOneAndUpdate(
-    { subscriptionId: id, date },
-    { $set: update },
-    { upsert: true, new: true }
-  );
-
-  await writeLogSafely({
-    entityType: "subscription_day",
-    entityId: updatedDay._id,
-    action: "delivery_update_day",
-    byUserId: req.userId,
-    byRole: "client",
-    meta: { date, deliveryWindow: updatedDay.deliveryWindowOverride },
-  }, { subscriptionId: id, date });
-
-  return res.status(200).json({
-    ok: true,
-    data: localizeWriteDayPayload(updatedDay, { lang }),
-  });
 }
 
 /** @unwired - NOT mounted on any route. Do not call without review. */

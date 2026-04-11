@@ -135,7 +135,7 @@ test("automation lock for canonical subscription captures exhaustive state and r
   day.selections = []; 
   day.premiumOverageCount = 99;
 
-  const { buildCanonicalPlanningView } = require("../src/services/subscriptionDayPlanningService");
+  const { buildCanonicalPlanningView } = require("../src/services/subscription/subscriptionDayPlanningService");
   const view = buildCanonicalPlanningView({ subscription: sub, day });
 
   assert.equal(view.selectedBaseMealCount, 3, "Should still report 3 base meals from snapshot");

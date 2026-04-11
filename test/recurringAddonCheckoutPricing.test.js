@@ -527,6 +527,7 @@ test("checkoutSubscription accepts premiumItems objects plus recurring add-on id
     return createdDraft;
   };
   Payment.findById = () => createQueryStub(null);
+  Payment.findOne = () => createQueryStub(null);
   Payment.create = async (payload) => {
     createdPayment = createPaymentRecord(payload);
     return createdPayment;
@@ -558,6 +559,7 @@ test("checkoutSubscription accepts premiumItems objects plus recurring add-on id
     },
   });
 
+  if (res.statusCode !== 201) process.stderr.write("\nDEBUG CHECKOUT ERROR: " + JSON.stringify(res.payload, null, 2) + "\n");
   assert.equal(res.statusCode, 201);
   assert.equal(res.payload.data.totals.premiumTotalHalala, 5000);
   assert.equal(res.payload.data.totals.addonsTotalHalala, 12000);
@@ -651,6 +653,7 @@ test("renewSubscription accepts premiumItems objects plus recurring add-on ids a
     return createdDraft;
   };
   Payment.findById = () => createQueryStub(null);
+  Payment.findOne = () => createQueryStub(null);
   Payment.create = async (payload) => createPaymentRecord(payload);
 
   const { req, res } = createReqRes({
@@ -676,6 +679,7 @@ test("renewSubscription accepts premiumItems objects plus recurring add-on ids a
     },
   });
 
+  if (res.statusCode !== 201) process.stderr.write("\nDEBUG RENEW ERROR: " + JSON.stringify(res.payload, null, 2) + "\n");
   assert.equal(res.statusCode, 201);
   assert.equal(res.payload.data.totals.premiumTotalHalala, 5000);
   assert.equal(res.payload.data.totals.addonsTotalHalala, 24000);

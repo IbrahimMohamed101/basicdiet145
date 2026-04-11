@@ -3,8 +3,8 @@ const test = require("node:test");
 const mongoose = require("mongoose");
 const Subscription = require("../src/models/Subscription");
 const CheckoutDraft = require("../src/models/CheckoutDraft");
-const { buildPhase1SubscriptionContract } = require("../src/services/subscriptionContractService");
-const { buildCanonicalSubscriptionActivationPayload } = require("../src/services/subscriptionActivationService");
+const { buildPhase1SubscriptionContract } = require("../src/services/subscription/subscriptionContractService");
+const { buildCanonicalSubscriptionActivationPayload } = require("../src/services/subscription/subscriptionActivationService");
 
 const objectId = () => new mongoose.Types.ObjectId();
 
@@ -173,8 +173,8 @@ test("resolveDeliveryInput gates zone fields for pickup mode", async (t) => {
 });
 
 test("Subscription activation (Admin Flow) propagates zone details", async (t) => {
-  const { buildPhase1SubscriptionContract } = require("../src/services/subscriptionContractService");
-  const { activateSubscriptionFromCanonicalContract } = require("../src/services/subscriptionActivationService");
+  const { buildPhase1SubscriptionContract } = require("../src/services/subscription/subscriptionContractService");
+  const { activateSubscriptionFromCanonicalContract } = require("../src/services/subscription/subscriptionActivationService");
 
   const zoneId = objectId();
   const planId = objectId();

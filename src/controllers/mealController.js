@@ -332,6 +332,7 @@ async function listCategoriesWithMeals(req, res) {
     sortOrder: resolveSortValue(category.sortOrder),
     meals: category.categoryMeals.map((meal) => ({
       id: String(meal._id),
+      categoryId: String(meal.categoryId),
       name: pickLang(meal.name, lang) || "",
       description: pickLang(meal.description, lang) || "",
       imageUrl: meal.imageUrl || "",

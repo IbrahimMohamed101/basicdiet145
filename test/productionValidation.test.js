@@ -10,27 +10,20 @@
  */
 
 const request = require("supertest");
+const { describe, it, before } = require("node:test");
 const assert = require("node:assert/strict");
 const { createApp } = require("../src/app");
-const { clearDatabase, seedDatabase } = require("./helpers/database");
 
 const app = createApp();
 
-describe("Production Validation Suite", function () {
-  this.timeout(20000);
+describe("Production Validation Suite", () => {
 
-  before(async () => {
+  before(() => {
     process.env.MOYASAR_SECRET_KEY = process.env.MOYASAR_SECRET_KEY || "test_moyasar_key_1234567890";
     process.env.JWT_SECRET = process.env.JWT_SECRET || "test_jwt_secret";
     process.env.DASHBOARD_JWT_SECRET = process.env.DASHBOARD_JWT_SECRET || "test_dashboard_secret";
     process.env.MONGO_URI = process.env.MONGO_URI || process.env.MONGODB_URI || "mongodb://user:pass@localhost:27017/basicdiet_test";
     process.env.MONGODB_URI = process.env.MONGODB_URI || process.env.MONGO_URI;
-
-    await clearDatabase();
-  });
-
-  after(async () => {
-    await clearDatabase();
   });
 
   describe("Configuration Checks", () => {
@@ -82,17 +75,17 @@ describe("Production Validation Suite", function () {
   });
 
   describe("Deprecation Headers", () => {
-    it("POST /subscriptions/:id/premium/topup should return Deprecation header", async () => {
-      // This test is informational - verifies sunset headers are being set
-      // If we have test fixtures with users/subscriptions, we could test this directly
-      // For now, this documents the expected behavior
-      
-      // Expected behavior:
-      // res.headers["deprecation"] === "true"
-      // res.headers["sunset"] === "Tue, 30 Jun 2026 23:59:59 GMT"
-      
-      // This is a manual verification step documented here for completeness
-      assert.ok(true); // Placeholder for actual implementation test
+    it("POST /subscriptions/:id/premium/topup should be routed and expose legacy headers", async () => {
+      const res = await request(app)
+        .post("/api/subscriptions/invalid-id/premium/topup")
+        .set("Authorization", "Bearer invalid")
+        .send({ count: 1, successUrl: "https://example.com/success", backUrl: "https://example.com/back" });
+
+      assert.notEqual(res.status, 404);
+      if (res.status !== 401) {
+        assert.equal(res.headers["deprecation"], "true");
+        assert.ok(res.headers["sunset"]);
+      }
     });
   });
 

@@ -7,7 +7,7 @@ const { addDays } = require("date-fns");
 const { toKSADateString } = require("../src/utils/date");
 
 // Import the service directly for unit testing the logic
-const { buildSubscriptionTimeline } = require("../src/services/subscriptionService");
+const { buildSubscriptionTimeline } = require("../src/services/subscription/subscriptionService");
 const Subscription = require("../src/models/Subscription");
 const SubscriptionDay = require("../src/models/SubscriptionDay");
 

@@ -4,9 +4,9 @@ const mongoose = require("mongoose");
 const Zone = require("../src/models/Zone");
 const Subscription = require("../src/models/Subscription");
 const Plan = require("../src/models/Plan");
-const { buildPhase1SubscriptionContract } = require("../src/services/subscriptionContractService");
-const { buildCanonicalSubscriptionActivationPayload } = require("../src/services/subscriptionActivationService");
-const { buildSubscriptionRenewalSeed } = require("../src/services/subscriptionRenewalService");
+const { buildPhase1SubscriptionContract } = require("../src/services/subscription/subscriptionContractService");
+const { buildCanonicalSubscriptionActivationPayload } = require("../src/services/subscription/subscriptionActivationService");
+const { buildSubscriptionRenewalSeed } = require("../src/services/subscription/subscriptionRenewalService");
 
 // Mocking resolveCheckoutQuoteOrThrow since it's an async controller-level function
 // but we'll reflect the actual logic of resolution from Zone master data.

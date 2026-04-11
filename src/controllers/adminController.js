@@ -16,8 +16,8 @@ const ActivityLog = require("../models/ActivityLog");
 const NotificationLog = require("../models/NotificationLog");
 const { processDailyCutoff } = require("../services/automationService");
 const { getInvoice } = require("../services/moyasarService");
-const { buildPhase1SubscriptionContract } = require("../services/subscriptionContractService");
-const { activateSubscriptionFromCanonicalContract } = require("../services/subscriptionActivationService");
+const { buildPhase1SubscriptionContract } = require("../services/subscription/subscriptionContractService");
+const { activateSubscriptionFromCanonicalContract } = require("../services/subscription/subscriptionActivationService");
 const {
   applyPaymentSideEffects,
   SUPPORTED_PHASE1_SHARED_PAYMENT_TYPES,
@@ -36,14 +36,14 @@ const validateObjectId = require("../utils/validateObjectId");
 const errorResponse = require("../utils/errorResponse");
 const { getRequestLang, pickLang } = require("../utils/i18n");
 const dateUtils = require("../utils/date");
-const { resolveMealsPerDay } = require("../utils/subscriptionDaySelectionSync");
+const { resolveMealsPerDay } = require("../utils/subscription/subscriptionDaySelectionSync");
 const { writeLog } = require("../utils/log");
 const {
   isPhase1CanonicalAdminCreateEnabled,
   isPhase1SharedPaymentDispatcherEnabled,
   isPhase2GenericPremiumWalletEnabled,
 } = require("../utils/featureFlags");
-const { getSubscriptionContractReadView } = require("../services/subscriptionContractReadService");
+const { getSubscriptionContractReadView } = require("../services/subscription/subscriptionContractReadService");
 const {
   LEGACY_PREMIUM_WALLET_MODE,
   GENERIC_PREMIUM_WALLET_MODE,
@@ -61,7 +61,8 @@ const {
   hashDashboardPassword,
 } = require("../services/dashboardPasswordService");
 const { assertValidPhoneE164 } = require("../services/otpService");
-const { cancelSubscriptionDomain } = require("../services/subscriptionCancellationService");
+const SubscriptionLifecycleService = require("../services/subscription/subscriptionLifecycleService");
+const SubscriptionOperationsReadService = require("../services/subscription/subscriptionOperationsReadService");
 
 const MAX_PREMIUM_PRICE = 10000;
 const MAX_VAT_PERCENTAGE = 100;
@@ -88,17 +89,8 @@ const sliceCAdminRuntime = {
     return mongoose.startSession();
   },
 };
-const cancelSubscriptionAdminDefaultRuntime = {
-  cancelSubscriptionDomain: (...args) => cancelSubscriptionDomain(...args),
-  serializeSubscriptionAdmin: (...args) => serializeSubscriptionAdmin(...args),
-  writeActivityLogSafely: (...args) => writeActivityLogSafely(...args),
-  findSubscriptionByIdLean(subscriptionId) {
-    return Subscription.findById(subscriptionId).lean();
-  },
-  findUserByIdLean(userId) {
-    return User.findById(userId).lean();
-  },
-};
+
+// cancelSubscriptionAdminDefaultRuntime moved to SubscriptionLifecycleService
 
 function resolveAdminRuntimeOverrides(defaultRuntime, nextOrRuntimeOverrides, explicitRuntimeOverrides = null) {
   const candidate = explicitRuntimeOverrides || nextOrRuntimeOverrides;
@@ -1251,37 +1243,8 @@ function serializeSubscriptionAdminFromCatalog(subscription, userDoc, catalog) {
   };
 }
 
-function parseAdminSubscriptionDisplaySuffix(value) {
-  const match = /^sub-([a-f0-9]{1,24})$/i.exec(String(value || "").trim());
-  return match ? match[1] : "";
-}
 
-async function findSubscriptionsByDisplaySuffix(suffix, limit) {
-  if (!suffix) return [];
-
-  return Subscription.aggregate([
-    {
-      $addFields: {
-        _adminSubscriptionIdString: { $toString: "$_id" },
-      },
-    },
-    {
-      $match: {
-        _adminSubscriptionIdString: {
-          $regex: `${escapeRegExp(suffix)}$`,
-          $options: "i",
-        },
-      },
-    },
-    { $sort: { createdAt: -1 } },
-    { $limit: Math.max(Number(limit) || 1, 1) },
-    {
-      $project: {
-        _adminSubscriptionIdString: 0,
-      },
-    },
-  ]);
-}
+// parseAdminSubscriptionDisplaySuffix and findSubscriptionsByDisplaySuffix moved to SubscriptionOperationsReadService
 
 function parseAdminOrderDisplaySuffix(value) {
   const match = /^ord-([a-f0-9]{1,24})$/i.exec(String(value || "").trim());
@@ -3179,157 +3142,13 @@ async function listAppUserSubscriptions(req, res) {
   return res.status(200).json({ ok: true, data });
 }
 
-function normalizeAdminSubscriptionStatusOrThrow(value) {
-  if (value === undefined || value === null || String(value).trim() === "") {
-    return null;
-  }
-
-  const normalized = String(value).trim().toLowerCase();
-  if (normalized === "all") {
-    return null;
-  }
-  if (normalized === "pending") {
-    return "pending_payment";
-  }
-  if (normalized === "cancelled") {
-    return "canceled";
-  }
-  if (["active", "pending_payment", "expired", "canceled", "ended"].includes(normalized)) {
-    return normalized;
-  }
-
-  throw createControlledError(
-    400,
-    "INVALID",
-    "status must be one of: active, pending_payment, pending, expired, canceled, ended, all"
-  );
-}
-
-async function resolveAdminSubscriptionFiltersOrThrow(query = {}, { includeStatus = true } = {}) {
-  const q = String(query.q || "").trim();
-  const normalizedStatus = normalizeAdminSubscriptionStatusOrThrow(query.status);
-  const parsedFrom = query.from ? parseDateFilterOrNull(query.from, { bound: "start" }) : null;
-  if (query.from && !parsedFrom) {
-    throw createControlledError(400, "INVALID", "from must be a valid date");
-  }
-  const parsedTo = query.to ? parseDateFilterOrNull(query.to, { bound: "end" }) : null;
-  if (query.to && !parsedTo) {
-    throw createControlledError(400, "INVALID", "to must be a valid date");
-  }
-  if (parsedFrom && parsedTo && parsedFrom.value > parsedTo.value) {
-    throw createControlledError(400, "INVALID", "from must be before or equal to to");
-  }
-
-  const match = {};
-  if (includeStatus && normalizedStatus) {
-    if (normalizedStatus === "ended") {
-      match.status = { $in: ["expired", "canceled"] };
-    } else {
-      match.status = normalizedStatus;
-    }
-  }
-
-  if (query.from || query.to) {
-    match.startDate = {};
-    if (parsedFrom) match.startDate[parsedFrom.operator] = parsedFrom.value;
-    if (parsedTo) match.startDate[parsedTo.operator] = parsedTo.value;
-  }
-
-  if (!q) {
-    return {
-      q: "",
-      normalizedStatus,
-      from: query.from ? String(query.from).trim() : null,
-      to: query.to ? String(query.to).trim() : null,
-      match,
-    };
-  }
-
-  const regex = new RegExp(escapeRegExp(q), "i");
-  const exactObjectId = mongoose.Types.ObjectId.isValid(q) ? new mongoose.Types.ObjectId(q) : null;
-  const displaySuffix = parseAdminSubscriptionDisplaySuffix(q);
-  const [users, plans, displayRows] = await Promise.all([
-    User.find({
-      role: "client",
-      $or: [{ name: regex }, { phone: regex }, { email: regex }],
-    })
-      .select("_id")
-      .limit(200)
-      .lean(),
-    Plan.find({
-      $or: [{ "name.ar": regex }, { "name.en": regex }],
-    })
-      .select("_id")
-      .limit(200)
-      .lean(),
-    displaySuffix ? findSubscriptionsByDisplaySuffix(displaySuffix, 200) : Promise.resolve([]),
-  ]);
-
-  const orFilters = [
-    ...(users.length ? [{ userId: { $in: users.map((user) => user._id) } }] : []),
-    ...(plans.length ? [{ planId: { $in: plans.map((plan) => plan._id) } }] : []),
-    ...(exactObjectId ? [{ _id: exactObjectId }] : []),
-    ...(displayRows.length ? [{ _id: { $in: displayRows.map((row) => row._id) } }] : []),
-  ];
-
-  if (!orFilters.length) {
-    match._id = { $exists: false };
-  } else {
-    match.$or = orFilters;
-  }
-
-  return {
-    q,
-    normalizedStatus,
-    from: query.from ? String(query.from).trim() : null,
-    to: query.to ? String(query.to).trim() : null,
-    match,
-  };
-}
-
-async function fetchAdminSubscriptionsPayload(query = {}, {
-  paginate = true,
-  includeStatus = true,
-} = {}) {
-  const filters = await resolveAdminSubscriptionFiltersOrThrow(query, { includeStatus });
-  const pagination = paginate ? resolvePagination(query) : null;
-  if (pagination && pagination.error) {
-    throw createControlledError(pagination.error.status, pagination.error.code, pagination.error.message);
-  }
-
-  const skip = pagination ? (pagination.page - 1) * pagination.limit : 0;
-  const queryBuilder = Subscription.find(filters.match).sort({ createdAt: -1 });
-  if (pagination) {
-    queryBuilder.skip(skip).limit(pagination.limit);
-  }
-
-  const [subscriptions, total] = await Promise.all([
-    queryBuilder.lean(),
-    Subscription.countDocuments(filters.match),
-  ]);
-  const userIds = Array.from(new Set(subscriptions.map((subscription) => String(subscription.userId)).filter(Boolean)));
-  const lang = String(query.lang || "ar");
-  const [userMap, catalog] = await Promise.all([
-    buildUserMapByIds(userIds),
-    loadSubscriptionSummaryCatalog(subscriptions, lang),
-  ]);
-
-  return {
-    filters,
-    pagination,
-    total,
-    data: subscriptions.map((subscription) =>
-      serializeSubscriptionAdminFromCatalog(subscription, userMap.get(String(subscription.userId)) || null, catalog)),
-  };
-}
-
 async function listSubscriptionsAdmin(req, res) {
   try {
     const lang = getRequestLang(req);
-    const payload = await fetchAdminSubscriptionsPayload(
-      { ...(req.query || {}), lang },
-      { paginate: true, includeStatus: true }
-    );
+    const payload = await SubscriptionOperationsReadService.performAdminSubscriptionsSearch({
+      ...(req.query || {}),
+      lang,
+    });
 
     return res.status(200).json({
       ok: true,
@@ -3352,8 +3171,8 @@ async function listSubscriptionsAdmin(req, res) {
 
 async function getSubscriptionsSummaryAdmin(req, res) {
   try {
-    const filters = await resolveAdminSubscriptionFiltersOrThrow(req.query || {}, { includeStatus: false });
-    const selectedStatus = normalizeAdminSubscriptionStatusOrThrow(req.query && req.query.status);
+    const filters = await SubscriptionOperationsReadService.resolveAdminSubscriptionFiltersOrThrow(req.query || {}, { includeStatus: false });
+    const selectedStatus = SubscriptionOperationsReadService.normalizeAdminSubscriptionStatusOrThrow(req.query && req.query.status);
     const selectedStatusMatch = selectedStatus
       ? (selectedStatus === "ended" ? { status: { $in: ["expired", "canceled"] } } : { status: selectedStatus })
       : {};
@@ -3409,7 +3228,7 @@ async function getSubscriptionsSummaryAdmin(req, res) {
 async function exportSubscriptionsAdmin(req, res) {
   try {
     const lang = getRequestLang(req);
-    const payload = await fetchAdminSubscriptionsPayload(
+    const payload = await SubscriptionOperationsReadService.fetchAdminSubscriptionsPayload(
       { ...(req.query || {}), lang },
       { paginate: false, includeStatus: true }
     );
@@ -3610,23 +3429,22 @@ async function listSubscriptionDaysAdmin(req, res) {
   return res.status(200).json({ ok: true, data: days });
 }
 
-async function cancelSubscriptionAdmin(req, res, runtimeOverrides = null) {
+async function cancelSubscriptionAdmin(req, res) {
   const { id } = req.params;
   if (!validateObjectIdOrRespond(res, id, "id")) {
     return undefined;
   }
 
   const lang = getRequestLang(req);
-  const runtime = resolveAdminRuntimeOverrides(cancelSubscriptionAdminDefaultRuntime, runtimeOverrides);
 
   try {
-    const result = await runtime.cancelSubscriptionDomain({
+    const result = await SubscriptionLifecycleService.performCancelSubscriptionAdmin({
       subscriptionId: id,
       actor: {
-        kind: "admin",
         dashboardUserId: req.dashboardUserId,
         dashboardUserRole: req.dashboardUserRole,
       },
+      lang,
     });
 
     if (result.outcome === "not_found") {
@@ -3646,6 +3464,10 @@ async function cancelSubscriptionAdmin(req, res, runtimeOverrides = null) {
       return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
     }
 
+    if (result.outcome === "error") {
+      return errorResponse(res, 500, "INTERNAL", result.message || "Subscription cancellation failed");
+    }
+
     if (!["canceled", "already_canceled"].includes(result.outcome)) {
       logger.error("adminController.cancelSubscriptionAdmin received unsupported outcome", {
         outcome: result.outcome,
@@ -3654,32 +3476,10 @@ async function cancelSubscriptionAdmin(req, res, runtimeOverrides = null) {
       return errorResponse(res, 500, "INTERNAL", "Subscription cancellation failed");
     }
 
-    const subscription = await runtime.findSubscriptionByIdLean(result.subscriptionId || id);
-    if (!subscription) {
-      return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
-    }
-    const user = subscription.userId ? await runtime.findUserByIdLean(subscription.userId) : null;
-
-    if (result.outcome === "already_canceled") {
-      return res.status(200).json({
-        ok: true,
-        data: await runtime.serializeSubscriptionAdmin(subscription, lang, user),
-        idempotent: true,
-      });
-    }
-
-    await runtime.writeActivityLogSafely({
-      entityType: "subscription",
-      entityId: result.subscriptionId || id,
-      action: "subscription_canceled_by_admin",
-      byUserId: req.dashboardUserId,
-      byRole: req.dashboardUserRole,
-      meta: result.mutation,
-    }, { subscriptionId: id });
-
     return res.status(200).json({
       ok: true,
-      data: await runtime.serializeSubscriptionAdmin(subscription, lang, user),
+      data: result.data,
+      idempotent: result.idempotent,
     });
   } catch (err) {
     logger.error("adminController.cancelSubscriptionAdmin failed", {

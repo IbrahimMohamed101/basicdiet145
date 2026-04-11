@@ -18,7 +18,7 @@ const {
 const { writeLog } = require("../utils/log");
 const { logger } = require("../utils/logger");
 const { getRequestLang } = require("../utils/i18n");
-const { buildPaymentDescription } = require("../utils/subscriptionWriteLocalization");
+const { buildPaymentDescription } = require("../utils/subscription/subscriptionWriteLocalization");
 const errorResponse = require("../utils/errorResponse");
 const { validateRedirectUrl } = require("../utils/security");
 

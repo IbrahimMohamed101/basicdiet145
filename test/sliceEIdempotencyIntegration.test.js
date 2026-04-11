@@ -1,6 +1,10 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const mongoose = require("mongoose");
+const {
+  objectId,
+  createReqRes,
+  createQueryStub,
+} = require("./helpers/httpMocks");
 
 const controller = require("../src/controllers/subscriptionController");
 const Subscription = require("../src/models/Subscription");
@@ -10,57 +14,6 @@ const PremiumMeal = require("../src/models/PremiumMeal");
 const Addon = require("../src/models/Addon");
 const Setting = require("../src/models/Setting");
 const dateUtils = require("../src/utils/date");
-
-function objectId() {
-  return new mongoose.Types.ObjectId();
-}
-
-function createReqRes({ params = {}, body = {}, userId = objectId(), headers = {} } = {}) {
-  const normalizedHeaders = Object.fromEntries(
-    Object.entries(headers).map(([key, value]) => [String(key).toLowerCase(), value])
-  );
-
-  const req = {
-    params,
-    body,
-    userId,
-    headers: normalizedHeaders,
-    get(name) {
-      return normalizedHeaders[String(name || "").toLowerCase()];
-    },
-  };
-
-  const res = {
-    statusCode: 200,
-    payload: null,
-    set() {},
-    append() {},
-    status(code) {
-      this.statusCode = code;
-      return this;
-    },
-    json(payload) {
-      this.payload = payload;
-      return this;
-    },
-  };
-
-  return { req, res };
-}
-
-function createQueryStub(result) {
-  return {
-    sort() {
-      return this;
-    },
-    lean() {
-      return Promise.resolve(result);
-    },
-    populate() {
-      return Promise.resolve(result);
-    },
-  };
-}
 
 test("topupPremiumCredits with flag off preserves legacy initiation behavior even when an idempotency key is provided", async (t) => {
   const originalFlag = process.env.PHASE1_NON_CHECKOUT_PAID_IDEMPOTENCY;

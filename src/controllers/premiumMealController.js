@@ -1,7 +1,7 @@
 const PremiumMeal = require("../models/PremiumMeal");
 const { getRequestLang } = require("../utils/i18n");
 const { parseMealNutritionFromBody, withDefaultMealNutrition } = require("../utils/mealNutrition");
-const { resolvePremiumMealCatalogEntry } = require("../utils/subscriptionCatalog");
+const { resolvePremiumMealCatalogEntry } = require("../utils/subscription/subscriptionCatalog");
 const validateObjectId = require("../utils/validateObjectId");
 const errorResponse = require("../utils/errorResponse");
 const { resolveManagedImageFromRequest } = require("../services/adminImageService");

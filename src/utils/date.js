@@ -67,6 +67,10 @@ function isAfterKSADate(a, b) {
     return compareKSADateStrings(a, b) > 0;
 }
 
+function isBeforeKSADate(a, b) {
+    return compareKSADateStrings(a, b) < 0;
+}
+
 function isOnOrAfterKSADate(a, b) {
     return compareKSADateStrings(a, b) >= 0;
 }
@@ -105,6 +109,7 @@ module.exports = {
     toKSADateString,
     compareKSADateStrings,
     isAfterKSADate,
+    isBeforeKSADate,
     isOnOrAfterKSADate,
     isValidKSADateString,
     isInSubscriptionRange,

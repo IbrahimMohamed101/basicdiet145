@@ -1,4 +1,4 @@
-const { localizeField, t } = require("./i18n");
+const { localizeField, t } = require("../i18n");
 
 const RAW_DAY_STATUS_TO_CLIENT_STATUS = {
   open: "open",

@@ -82,17 +82,26 @@ function buildMealCategoryMap(categoryDocs = [], lang = "ar") {
 
   for (const doc of Array.isArray(categoryDocs) ? categoryDocs : []) {
     const entry = resolveMealCategoryEntry(doc, lang);
-    if (!entry || !entry.id) continue;
-    map.set(String(entry.id), entry);
+    if (!entry) continue;
+    if (entry.id) {
+      map.set(String(entry.id), entry);
+    }
+    if (entry.key) {
+      map.set(String(entry.key), entry);
+    }
   }
 
   return map;
 }
 
 function resolveMealCategoryForKey(categoryId, categoryMap, lang = "ar") {
-  const normalizedId = categoryId ? String(categoryId) : "";
-  if (normalizedId && categoryMap && categoryMap.has(normalizedId)) {
-    return categoryMap.get(normalizedId);
+  const normalizedValue = normalizeCategoryKey(categoryId);
+  if (normalizedValue && categoryMap && categoryMap.has(normalizedValue)) {
+    return categoryMap.get(normalizedValue);
+  }
+  const rawValue = categoryId ? String(categoryId) : "";
+  if (rawValue && categoryMap && categoryMap.has(rawValue)) {
+    return categoryMap.get(rawValue);
   }
   return null;
 }
@@ -112,7 +121,11 @@ function buildMealSections({ meals = [], categoryDocs = [], lang = "ar", itemRes
   const sectionsByKey = new Map();
 
   for (const meal of Array.isArray(meals) ? meals : []) {
-    const category = resolveMealCategoryForKey(meal && meal.categoryId, categoryMap, lang);
+    const category = resolveMealCategoryForKey(
+      meal && (meal.categoryId !== undefined && meal.categoryId !== null ? meal.categoryId : meal.category),
+      categoryMap,
+      lang
+    );
     if (!category) continue;
     if (!sectionsByKey.has(category.key)) {
       sectionsByKey.set(category.key, { category, items: [] });

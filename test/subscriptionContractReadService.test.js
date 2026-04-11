@@ -7,7 +7,7 @@ const {
   resolveSubscriptionFreezePolicy,
   resolveSubscriptionSkipPolicy,
   getSubscriptionContractDiagnostics,
-} = require("../src/services/subscriptionContractReadService");
+} = require("../src/services/subscription/subscriptionContractReadService");
 
 function objectId() {
   return new mongoose.Types.ObjectId();

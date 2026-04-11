@@ -8,7 +8,7 @@ const {
   confirmCanonicalDayPlanning,
   isCanonicalDayPlanningEligible,
   buildScopedCanonicalPlanningSnapshot,
-} = require("../src/services/subscriptionDayPlanningService");
+} = require("../src/services/subscription/subscriptionDayPlanningService");
 const { assertNoPendingOneTimeAddonPayment } = require("../src/services/oneTimeAddonPlanningService");
 const { normalizeRecurringAddonEntitlements } = require("../src/services/recurringAddonService");
 

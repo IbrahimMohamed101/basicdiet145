@@ -9,7 +9,7 @@ const subscriptionController = require("../src/controllers/subscriptionControlle
 const {
   buildSubscriptionOperationsMeta,
   buildFreezePreview,
-} = require("../src/services/subscriptionOperationsReadService");
+} = require("../src/services/subscription/subscriptionOperationsReadService");
 const Subscription = require("../src/models/Subscription");
 const SubscriptionDay = require("../src/models/SubscriptionDay");
 const SubscriptionModel = require("../src/models/Subscription");
@@ -362,6 +362,10 @@ test("skipRange accepts endDate in addition to legacy days", async (t) => {
   });
 
   await subscriptionController.skipRange(req, res);
+
+  if (res.statusCode !== 200) {
+    require("fs").writeFileSync("debug.log", JSON.stringify(res.payload));
+  }
 
   assert.equal(res.statusCode, 200);
   assert.equal(res.payload.ok, true);

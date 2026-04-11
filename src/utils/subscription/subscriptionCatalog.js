@@ -1,5 +1,5 @@
-const { pickLang } = require("./i18n");
-const { withDefaultMealNutrition } = require("./mealNutrition");
+const { pickLang } = require("../i18n");
+const { withDefaultMealNutrition } = require("../mealNutrition");
 
 const SYSTEM_CURRENCY = "SAR";
 

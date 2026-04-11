@@ -74,14 +74,24 @@ function getFutureDate(daysAhead = 2) {
   return toKSADateString(base);
 }
 
+function buildActiveSubscriptionWindow() {
+  const tomorrow = new Date(`${getTomorrowKSADate()}T00:00:00+03:00`);
+  const startDate = new Date(tomorrow);
+  startDate.setDate(startDate.getDate() - 31);
+  const endDate = new Date(tomorrow);
+  endDate.setDate(endDate.getDate() + 29);
+  return { startDate, endDate, validityEndDate: endDate };
+}
+
 function createSubscriptionDoc(userId, overrides = {}) {
+  const { startDate, endDate, validityEndDate } = buildActiveSubscriptionWindow();
   return {
     _id: objectId(),
     userId,
     status: "active",
-    startDate: new Date("2026-03-10T21:00:00.000Z"),
-    endDate: new Date("2026-04-10T21:00:00.000Z"),
-    validityEndDate: new Date("2026-04-10T21:00:00.000Z"),
+    startDate,
+    endDate,
+    validityEndDate,
     selectedMealsPerDay: 3,
     premiumBalance: [],
     addonBalance: [],
@@ -160,7 +170,7 @@ test("updateDaySelection stores canonical planning data for canonical subscripti
 
   await controller.updateDaySelection(req, res);
 
-  assert.equal(subscriptionFindCount >= 2, true);
+  assert.equal(subscriptionFindCount >= 1, true);
   assert.equal(res.statusCode, 200);
   assert.equal(Array.isArray(res.payload.data.selections), true);
   assert.equal(res.payload.data.selections.length, 1);

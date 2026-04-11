@@ -6,7 +6,7 @@ const mongoose = require("mongoose");
 
 const adminController = require("../src/controllers/adminController");
 const subscriptionController = require("../src/controllers/subscriptionController");
-const { cancelSubscriptionDomain } = require("../src/services/subscriptionCancellationService");
+const { cancelSubscriptionDomain } = require("../src/services/subscription/subscriptionCancellationService");
 const Subscription = require("../src/models/Subscription");
 const SubscriptionDay = require("../src/models/SubscriptionDay");
 const User = require("../src/models/User");

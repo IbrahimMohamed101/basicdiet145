@@ -1,6 +1,6 @@
 const Plan = require("../models/Plan");
 const { getRequestLang } = require("../utils/i18n");
-const { resolvePlanCatalogEntry } = require("../utils/subscriptionCatalog");
+const { resolvePlanCatalogEntry } = require("../utils/subscription/subscriptionCatalog");
 
 function resolvePopularPackage(plan, lang) {
   const resolvedPlan = resolvePlanCatalogEntry(plan, lang);

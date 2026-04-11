@@ -58,7 +58,7 @@ const {
 const { issueAppAccessToken } = require("../src/services/appTokenService");
 const { pickLang } = require("../src/utils/i18n");
 const dateUtils = require("../src/utils/date");
-const { resolveAddonChargeTotalHalala } = require("../src/utils/subscriptionCatalog");
+const { resolveAddonChargeTotalHalala } = require("../src/utils/subscription/subscriptionCatalog");
 
 const {
   settings: demoSettings,

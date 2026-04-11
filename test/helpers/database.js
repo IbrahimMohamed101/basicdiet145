@@ -1,19 +1,22 @@
 const mongoose = require("mongoose");
 
-async function ensureConnected() {
+function getDatabaseUri() {
+  return process.env.MONGO_URI || process.env.MONGODB_URI;
+}
+
+async function connectDatabase() {
   if (mongoose.connection.readyState === 1) {
     return true;
   }
 
-  const uri = process.env.MONGO_URI || process.env.MONGODB_URI;
+  const uri = getDatabaseUri();
   if (!uri) {
+    console.warn("Database URI not configured for tests. Set MONGO_URI or MONGODB_URI.");
     return false;
   }
 
   try {
     await mongoose.connect(uri, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
       serverSelectionTimeoutMS: 1000,
       connectTimeoutMS: 1000,
     });
@@ -24,28 +27,48 @@ async function ensureConnected() {
   }
 }
 
+async function ensureConnected() {
+  if (mongoose.connection.readyState === 1) {
+    return true;
+  }
+
+  return connectDatabase();
+}
+
 async function clearDatabase() {
   const connected = await ensureConnected();
   if (!connected) {
-    // No DB configured in this environment, skip cleanup.
     return;
   }
 
   const collections = mongoose.connection.collections;
-  for (const key in collections) {
-    if (Object.prototype.hasOwnProperty.call(collections, key)) {
-      await collections[key].deleteMany({});
+  const collectionKeys = Object.keys(collections);
+  for (const key of collectionKeys) {
+    const collection = collections[key];
+    try {
+      await collection.deleteMany({});
+    } catch (error) {
+      console.warn(`Failed to clear collection ${key}:`, error.message);
     }
+  }
+}
+
+async function disconnectDatabase() {
+  if (mongoose.connection.readyState !== 0) {
+    await mongoose.disconnect();
   }
 }
 
 async function seedDatabase() {
   // implement seeded fixtures if needed
-  // currently no default load behavior (stubbed to satisfy imports)
   return;
 }
 
 module.exports = {
+  connectDatabase,
+  ensureConnected,
   clearDatabase,
+  disconnectDatabase,
   seedDatabase,
 };
+

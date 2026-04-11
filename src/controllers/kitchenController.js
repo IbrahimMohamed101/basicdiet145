@@ -9,19 +9,19 @@ const { isValidKSADateString, getTodayKSADate } = require("../utils/date");
 const { canTransition } = require("../utils/state");
 const { writeLog } = require("../utils/log");
 const { notifyUser } = require("../utils/notify");
-const { resolveMealsPerDay, resolveDayWalletSelections } = require("../utils/subscriptionDaySelectionSync");
+const { resolveMealsPerDay, resolveDayWalletSelections } = require("../utils/subscription/subscriptionDaySelectionSync");
 const { isPhase2CanonicalDayPlanningEnabled } = require("../utils/featureFlags");
 const {
   isCanonicalDayPlanningEligible,
   applyCanonicalDraftPlanningToDay,
-} = require("../services/subscriptionDayPlanningService");
+} = require("../services/subscription/subscriptionDayPlanningService");
 const {
   isCanonicalRecurringAddonEligible,
   resolveProjectedRecurringAddons,
   applyRecurringAddonProjectionToDay,
 } = require("../services/recurringAddonService");
 const { getRemainingPremiumCredits } = require("../services/genericPremiumWalletService");
-const { buildLockedDaySnapshot } = require("../services/subscriptionDayOperationalSnapshotService");
+const { buildLockedDaySnapshot } = require("../services/subscription/subscriptionDayOperationalSnapshotService");
 const {
   sumPremiumRemainingFromBalance,
   syncPremiumRemainingFromBalance,
@@ -31,7 +31,7 @@ const { fulfillSubscriptionDay } = require("../services/fulfillmentService");
 const {
   validateDayBeforeLockOrPrepare,
   resolveDayExecutionValidationErrorStatus,
-} = require("../services/subscriptionDayExecutionValidationService");
+} = require("../services/subscription/subscriptionDayExecutionValidationService");
 const { logger } = require("../utils/logger");
 const validateObjectId = require("../utils/validateObjectId");
 const errorResponse = require("../utils/errorResponse");

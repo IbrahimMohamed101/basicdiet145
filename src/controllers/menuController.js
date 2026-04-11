@@ -17,7 +17,7 @@ const {
   resolvePremiumMealCatalogEntry,
   resolveAddonCatalogEntry,
   resolveDeliveryCatalog,
-} = require("../utils/subscriptionCatalog");
+} = require("../utils/subscription/subscriptionCatalog");
 
 const SYSTEM_CURRENCY = "SAR";
 
@@ -28,12 +28,20 @@ async function getSettingValue(key, fallback) {
 
 function resolveMealCard(doc, lang, category = null) {
   const normalizedDoc = withDefaultMealNutrition(doc);
+  const resolvedCategoryKey = category && category.key
+    ? category.key
+    : normalizedDoc.categoryId
+      ? String(normalizedDoc.categoryId)
+      : normalizedDoc.category
+        ? String(normalizedDoc.category)
+        : null;
   return {
     id: String(normalizedDoc._id),
     name: pickLang(normalizedDoc.name, lang),
     description: pickLang(normalizedDoc.description, lang),
     imageUrl: normalizedDoc.imageUrl || "",
     categoryId: normalizedDoc.categoryId ? String(normalizedDoc.categoryId) : null,
+    categoryKey: resolvedCategoryKey,
     category: category || null,
     proteinGrams: normalizedDoc.proteinGrams,
     carbGrams: normalizedDoc.carbGrams,
@@ -78,7 +86,11 @@ function buildSubscriptionMealCatalog({
   const mappedAddons = addons.map((addon) => resolveAddonCatalogEntry(addon, lang));
   const mealCategoryMap = buildMealCategoryMap(mealCategories, lang);
   const resolvedRegularMeals = regularMeals.map((meal) => {
-    const category = resolveMealCategoryForKey(meal.categoryId, mealCategoryMap, lang);
+    const category = resolveMealCategoryForKey(
+      meal.categoryId !== undefined && meal.categoryId !== null ? meal.categoryId : meal.category,
+      mealCategoryMap,
+      lang
+    );
     return {
       ...resolveMealCard(meal, lang, category),
       type: "regular",
@@ -102,7 +114,10 @@ function buildSubscriptionMealCatalog({
       type: "regular",
     },
   });
-  const mealCategoriesPayload = mealSections.map((section) => section.category);
+  const mealCategoriesPayload = mealSections.map((section) => ({
+    ...section.category,
+    categoryId: section.category.id,
+  }));
   const premiumMealsPayload = mappedPremiumMeals.map((meal) => ({
     ...meal,
     type: "premium",

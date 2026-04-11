@@ -11,7 +11,7 @@ const PremiumMeal = require("../src/models/PremiumMeal");
 const Addon = require("../src/models/Addon");
 const Setting = require("../src/models/Setting");
 const ActivityLog = require("../src/models/ActivityLog");
-const { buildPaymentDescription } = require("../src/utils/subscriptionWriteLocalization");
+const { buildPaymentDescription } = require("../src/utils/subscription/subscriptionWriteLocalization");
 const { getTomorrowKSADate, toKSADateString } = require("../src/utils/date");
 
 function objectId() {
@@ -120,6 +120,15 @@ function getFutureDate(daysAhead = 2) {
   const base = new Date(`${getTomorrowKSADate()}T00:00:00+03:00`);
   base.setDate(base.getDate() + (daysAhead - 1));
   return toKSADateString(base);
+}
+
+function buildActiveSubscriptionWindow() {
+  const tomorrow = new Date(`${getTomorrowKSADate()}T00:00:00+03:00`);
+  const startDate = new Date(tomorrow);
+  startDate.setDate(startDate.getDate() - 31);
+  const endDate = new Date(tomorrow);
+  endDate.setDate(endDate.getDate() + 29);
+  return { startDate, endDate, validityEndDate: endDate };
 }
 
 test("checkoutSubscription localizes the checkout invoice description in Arabic and preserves the response shape", async (t) => {
@@ -476,14 +485,15 @@ test("updateDaySelection localizes additive write-day fields without changing th
   ActivityLog.create = async () => ({});
 
   const userId = objectId();
+  const { startDate, endDate, validityEndDate } = buildActiveSubscriptionWindow();
   const subscription = {
     _id: objectId(),
     id: null,
     userId,
     status: "active",
-    startDate: new Date("2026-03-10T21:00:00.000Z"),
-    endDate: new Date("2026-04-10T21:00:00.000Z"),
-    validityEndDate: new Date("2026-04-10T21:00:00.000Z"),
+    startDate,
+    endDate,
+    validityEndDate,
     selectedMealsPerDay: 3,
     premiumSelections: [],
     premiumBalance: [],

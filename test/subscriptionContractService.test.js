@@ -6,7 +6,7 @@ const {
   resolvePhase1StartDate,
   buildPhase1SubscriptionContract,
   buildCanonicalDraftPersistenceFields,
-} = require("../src/services/subscriptionContractService");
+} = require("../src/services/subscription/subscriptionContractService");
 const { PHASE1_CONTRACT_VERSION } = require("../src/constants/phase1Contract");
 
 function createResolvedQuote() {

@@ -1,9 +1,9 @@
 const Subscription = require("../models/Subscription");
 const SubscriptionDay = require("../models/SubscriptionDay");
 const { canTransition } = require("../utils/state");
-const { resolveMealsPerDay, resolveDayWalletSelections } = require("../utils/subscriptionDaySelectionSync");
+const { resolveMealsPerDay, resolveDayWalletSelections } = require("../utils/subscription/subscriptionDaySelectionSync");
 const { isPhase2CanonicalDayPlanningEnabled } = require("../utils/featureFlags");
-const { buildScopedCanonicalPlanningSnapshot } = require("./subscriptionDayPlanningService");
+const { buildScopedCanonicalPlanningSnapshot } = require("./subscription/subscriptionDayPlanningService");
 const { buildScopedRecurringAddonSnapshot } = require("./recurringAddonService");
 const { buildOneTimeAddonPlanningSnapshot } = require("./oneTimeAddonPlanningService");
 

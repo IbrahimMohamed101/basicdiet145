@@ -240,30 +240,28 @@ test("createMeal rejects unknown categoryId values", async (t) => {
 });
 
 test("listCategoriesWithMeals returns grouped payload with slug and categoryId only", async (t) => {
-  const originalCategoryFind = MealCategory.find;
-  const originalMealFind = Meal.find;
+  const originalAggregate = MealCategory.aggregate;
   t.after(() => {
-    MealCategory.find = originalCategoryFind;
-    Meal.find = originalMealFind;
+    MealCategory.aggregate = originalAggregate;
   });
 
   const categoryId = objectId();
-  MealCategory.find = () => createQueryStub([
+  MealCategory.aggregate = () => createQueryStub([
     {
       _id: categoryId,
       key: "breakfast",
       name: { en: "Breakfast", ar: "فطور" },
       sortOrder: 1,
       isActive: true,
-    },
-  ]);
-  Meal.find = () => createQueryStub([
-    {
-      _id: objectId(),
-      name: { en: "Omelette", ar: "عجة" },
-      categoryId,
-      sortOrder: 1,
-      isActive: true,
+      categoryMeals: [
+        {
+          _id: objectId(),
+          name: { en: "Omelette", ar: "عجة" },
+          categoryId,
+          sortOrder: 1,
+          isActive: true,
+        }
+      ]
     },
   ]);
 

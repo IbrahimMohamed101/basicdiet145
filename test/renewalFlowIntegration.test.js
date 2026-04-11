@@ -1,291 +1,48 @@
 /**
  * @file renewalFlowIntegration.test.js
- * @description Integration tests for subscription renewal flow
- * 
- * Tests the complete renewal pathway:
- * - Fetching renewal seed from expired subscription
- * - Initiating renewal checkout
- * - Handling idempotency
- * - Payment verification
- * - New subscription creation
+ * @description Skeleton for subscription renewal integration tests.
+ *
+ * This file is intentionally skipped until the renewal flow has a stable
+ * integration harness. The current coverage is tracked through TODO items
+ * rather than placeholder assertions.
  */
 
-const request = require("supertest");
-const assert = require("node:assert/strict");
-const { createApp } = require("../src/app");
-const app = createApp();
-const Subscription = require("../src/models/Subscription");
-const Payment = require("../src/models/Payment");
-const CheckoutDraft = require("../src/models/CheckoutDraft");
-const { clearDatabase, seedDatabase } = require("./helpers/database");
+const { describe, it } = require("node:test");
 
-describe("Renewal Flow Integration", function () {
-  this.timeout(20000);
-  let userId;
-  let expiredSubscriptionId;
-  let authToken;
-
-  before(async () => {
-    process.env.MOYASAR_SECRET_KEY = process.env.MOYASAR_SECRET_KEY || "test_moyasar_key_1234567890";
-    process.env.JWT_SECRET = process.env.JWT_SECRET || "test_jwt_secret";
-    process.env.DASHBOARD_JWT_SECRET = process.env.DASHBOARD_JWT_SECRET || "test_dashboard_secret";
-    process.env.MONGO_URI = process.env.MONGO_URI || process.env.MONGODB_URI || "mongodb://user:pass@localhost:27017/basicdiet_test";
-    process.env.MONGODB_URI = process.env.MONGODB_URI || process.env.MONGO_URI;
-
-    await clearDatabase();
-    // Seed test data would go here
-    // For now, this is a skeleton for integration testing
-  });
-
-  after(async () => {
-    await clearDatabase();
-  });
-
-  describe("GET /subscriptions/:id/renewal-seed", () => {
-    it("should return renewal seed for expired subscription", async () => {
-      // This test would require:
-      // 1. Create expired subscription
-      // 2. Call GET /subscriptions/:id/renewal-seed
-      // 3. Verify response structure
-      
-      assert.ok(true); // Placeholder for full implementation
-    });
-
-    it("should mark subscription as renewable if eligible", async () => {
-      // Verify the renewable flag is set correctly
-      assert.ok(true); // Placeholder for full implementation
-    });
-
-    it("should include previous plan preferences in seed", async () => {
-      // Verify plan, grams, meals, delivery preferences are returned
-      assert.ok(true); // Placeholder for full implementation
-    });
-  });
-
-  describe("POST /subscriptions/:id/renew", () => {
-    it("should create renewal checkout with defaults from seed", async () => {
-      // Request renewal without body parameters
-      // Should use previous subscription parameters
-      assert.ok(true); // Placeholder for full implementation
-    });
-
-    it("should accept parameter overrides in request body", async () => {
-      // Request renewal with custom plan/addons/delivery
-      // Should use provided values instead of defaults
-      assert.ok(true); // Placeholder for full implementation
-    });
-
-    it("should support idempotency with key", async () => {
-      // Call renewal twice with same idempotencyKey
-      // Should return same draftId and paymentId
-      assert.ok(true); // Placeholder for full implementation
-    });
-
-    it("should reject renewal with different parameters on same key", async () => {
-      // Call renewal with key A + params 1
-      // Call renewal with key A + params 2
-      // Should return IDEMPOTENCY_MISMATCH error
-      assert.ok(true); // Placeholder for full implementation
-    });
-
-    it("should only allow renewal of expired subscriptions", async () => {
-      // Try to renew active subscription
-      // Should return error (INACTIVE or similar)
-      assert.ok(true); // Placeholder for full implementation
-    });
-
-    it("should check plan availability before renewal", async () => {
-      // If previous plan is no longer available
-      // Should return PLAN_DEACTIVATED error
-      assert.ok(true); // Placeholder for full implementation
-    });
-
-    it("should validate delivery zone for renewal", async () => {
-      // If previous delivery zone no longer exists
-      // Should return ZONE_NOT_FOUND error
-      assert.ok(true); // Placeholder for full implementation
-    });
-
-    it("should return payment_url for Moyasar redirect", async () => {
-      // Successful renewal should return payment_url
-      // Should be a valid Moyasar invoice URL
-      assert.ok(true); // Placeholder for full implementation
-    });
-
-    it("should include renewedFromSubscriptionId in response", async () => {
-      // Response should track the original subscription for audit
-      assert.ok(true); // Placeholder for full implementation
-    });
-
-    it("should include pricing summary in response", async () => {
-      // Response should have totals: subtotal, vat, delivery, total, currency
-      assert.ok(true); // Placeholder for full implementation
-    });
-
-    it("should create CheckoutDraft record", async () => {
-      // After successful renewal call
-      // CheckoutDraft should exist with correct parameters
-      assert.ok(true); // Placeholder for full implementation
-    });
-
-    it("should create Payment record with initiated status", async () => {
-      // After successful renewal call
-      // Payment should exist with status: "initiated"
-      assert.ok(true); // Placeholder for full implementation
-    });
-
-    it("should require authentication", async () => {
-      // Call without bearer token
-      // Should return 401
-      assert.ok(true); // Placeholder for full implementation
-    });
-
-    it("should reject renewal of other user's subscriptions", async () => {
-      // Try to renew subscription owned by different user
-      // Should return 403 FORBIDDEN
-      assert.ok(true); // Placeholder for full implementation
-    });
-
-    it("should support canonical phase 1 renewal when enabled", async () => {
-      // If phase 1 feature flag enabled
-      // Should create CheckoutDraft with canonical contract
-      assert.ok(true); // Placeholder for full implementation
-    });
-
-    it("should fallback to legacy renewal when phase 1 disabled", async () => {
-      // If phase 1 feature flag disabled
-      // Should create CheckoutDraft with legacy format
-      assert.ok(true); // Placeholder for full implementation
-    });
-  });
-
-  describe("Payment Verification After Renewal", () => {
-    it("should verify renewal payment via standard checkout verification", async () => {
-      // Call POST /checkout-drafts/:draftId/verify-payment
-      // Should activate new subscription upon payment verification
-      assert.ok(true); // Placeholder for full implementation
-    });
-
-    it("should create new subscription after payment verification", async () => {
-      // After payment verification
-      // New subscription should exist with:
-      // - Different _id than original
-      // - Same plan/meals/delivery as renewal parameters
-      // - status: "active"
-      assert.ok(true); // Placeholder for full implementation
-    });
-
-    it("should reference original subscription in audit trail", async () => {
-      // New subscription should have metadata linking to old subscription
-      // For audit purposes
-      assert.ok(true); // Placeholder for full implementation
-    });
-
-    it("should reset day planning for new subscription", async () => {
-      // New subscription should start with all days in "open" status
-      // No locked days, no selections from old subscription
-      assert.ok(true); // Placeholder for full implementation
-    });
-  });
-
-  describe("Renewal Error Cases", () => {
-    it("should return NOT_FOUND if subscription doesn't exist", async () => {
-      // POST /subscriptions/invalid-id/renew
-      // Should return 404 with NOT_FOUND error
-      assert.ok(true); // Placeholder
-    });
-
-    it("should return RENEWAL_UNAVAILABLE if plan no longer exists", async () => {
-      // Renew with plan that was deactivated
-      // Should return error preventing renewal
-      assert.ok(true); // Placeholder
-    });
-
-    it("should return INVALID if parameters don't form valid quote", async () => {
-      // Renew with invalid parameters (negative grams, etc)
-      // Should return INVALID error with details
-      assert.ok(true); // Placeholder
-    });
-
-    it("should handle payment provider errors gracefully", async () => {
-      // If Moyasar invoice creation fails
-      // Should return descriptive error, not crash
-      assert.ok(true); // Placeholder
-    });
-  });
-
-  describe("Renewal with Addons", () => {
-    it("should include addon selections from previous subscription", async () => {
-      // If previous subscription had recurring addons
-      // Renewal seed should include them
-      assert.ok(true); // Placeholder
-    });
-
-    it("should support addon override in renewal request", async () => {
-      // Request renewal with different addons than previous
-      // Should use provided addon list
-      assert.ok(true); // Placeholder
-    });
-
-    it("should calculate addon pricing in renewal quote", async () => {
-      // Renewal totals should include addon pricing
-      assert.ok(true); // Placeholder
-    });
-  });
-
-  describe("Renewal with Premium Topup", () => {
-    it("should include premium selection in renewal", async () => {
-      // If previous subscription had premium meals
-      // Renewal should allow premium topup
-      assert.ok(true); // Placeholder
-    });
-
-    it("should calculate premium pricing in renewal", async () => {
-      // Renewal totals should reflect premium meal pricing
-      assert.ok(true); // Placeholder
-    });
-
-    it("should start new subscription with fresh premium credits", async () => {
-      // New subscription after renewal should have reset premium/addon wallets
-      // Not carry over from previous subscription
-      assert.ok(true); // Placeholder
-    });
-  });
-
-  describe("Concurrent Renewal Attempts", () => {
-    it("should handle parallel renewal requests with same key", async () => {
-      // Two simultaneous renewal requests with same idempotencyKey
-      // Should return same draft/payment, not create duplicates
-      assert.ok(true); // Placeholder
-    });
-
-    it("should handle different keys independently", async () => {
-      // Two renewal requests with different keys
-      // Should create separate drafts and payments
-      assert.ok(true); // Placeholder
-    });
-  });
+describe.skip("Renewal Flow Integration (skeleton)", () => {
+  it.todo("should return renewal seed for expired subscription");
+  it.todo("should mark subscription as renewable if eligible");
+  it.todo("should include previous plan preferences in seed");
+  it.todo("should create renewal checkout with defaults from seed");
+  it.todo("should accept parameter overrides in request body");
+  it.todo("should support idempotency with key");
+  it.todo("should reject renewal with different parameters on same key");
+  it.todo("should only allow renewal of expired subscriptions");
+  it.todo("should check plan availability before renewal");
+  it.todo("should validate delivery zone for renewal");
+  it.todo("should return payment_url for Moyasar redirect");
+  it.todo("should include renewedFromSubscriptionId in response");
+  it.todo("should include pricing summary in response");
+  it.todo("should create CheckoutDraft record");
+  it.todo("should create Payment record with initiated status");
+  it.todo("should require authentication");
+  it.todo("should reject renewal of other user's subscriptions");
+  it.todo("should support canonical phase 1 renewal when enabled");
+  it.todo("should fallback to legacy renewal when phase 1 disabled");
+  it.todo("should verify renewal payment via standard checkout verification");
+  it.todo("should create new subscription after payment verification");
+  it.todo("should reference original subscription in audit trail");
+  it.todo("should reset day planning for new subscription");
+  it.todo("should return NOT_FOUND if subscription doesn't exist");
+  it.todo("should return RENEWAL_UNAVAILABLE if plan no longer exists");
+  it.todo("should return INVALID if parameters don't form valid quote");
+  it.todo("should handle payment provider errors gracefully");
+  it.todo("should include addon selections from previous subscription");
+  it.todo("should support addon override in renewal request");
+  it.todo("should calculate addon pricing in renewal quote");
+  it.todo("should include premium selection in renewal");
+  it.todo("should calculate premium pricing in renewal");
+  it.todo("should start new subscription with fresh premium credits");
+  it.todo("should handle parallel renewal requests with same key");
+  it.todo("should handle different keys independently");
 });
-
-/**
- * RENEWAL FLOW CHECKLIST
- * 
- * Renewal is complete when:
- * 
- * [ ] GET /subscriptions/:id/renewal-seed returns seed for expired subscriptions
- * [ ] POST /subscriptions/:id/renew accepts renewal request
- * [ ] Renewal creates CheckoutDraft and Payment records
- * [ ] Renewal supports request body parameter overrides
- * [ ] Renewal supports idempotency via idempotencyKey
- * [ ] Renewal validates subscription is expired
- * [ ] Renewal validates plan still exists
- * [ ] Renewal validates delivery zone still exists
- * [ ] Renewal prevents renewal of active subscriptions
- * [ ] Renewal includes canonical contract option if phase 1 enabled
- * [ ] Renewal payment verification creates new active subscription
- * [ ] New subscription has different ID from original
- * [ ] New subscription preserved plan/addon/delivery parameters
- * [ ] Payment provider invoice is created successfully
- * [ ] Payment URL is returned for Moyasar redirect
- * [ ] All pricing is calculated correctly (subtotal + VAT + delivery)
- */

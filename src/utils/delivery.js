@@ -1,5 +1,5 @@
 const { pickLang } = require("./i18n");
-const { resolvePickupLocationSelection } = require("./subscriptionCatalog");
+const { resolvePickupLocationSelection } = require("./subscription/subscriptionCatalog");
 
 function getEffectiveDeliveryDetails(subscription, day) {
   const address =

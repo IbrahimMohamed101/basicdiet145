@@ -6,7 +6,12 @@ const controller = require("../src/controllers/subscriptionController");
 const Subscription = require("../src/models/Subscription");
 const SubscriptionDay = require("../src/models/SubscriptionDay");
 const Setting = require("../src/models/Setting");
-const { getTomorrowKSADate, toKSADateString } = require("../src/utils/date");
+const {
+  addDaysToKSADateString,
+  getTodayKSADate,
+  getTomorrowKSADate,
+  toKSADateString,
+} = require("../src/utils/date");
 
 function objectId() {
   return new mongoose.Types.ObjectId();
@@ -75,13 +80,17 @@ function getFutureDate(daysAhead = 2) {
 }
 
 function createCanonicalGenericSubscription(userId, overrides = {}) {
+  const today = getTodayKSADate();
+  const startDate = new Date(`${addDaysToKSADateString(today, -30)}T00:00:00+03:00`);
+  const endDate = new Date(`${addDaysToKSADateString(today, 30)}T00:00:00+03:00`);
+
   return {
     _id: objectId(),
     userId,
     status: "active",
-    startDate: new Date("2026-03-10T21:00:00.000Z"),
-    endDate: new Date("2026-04-10T21:00:00.000Z"),
-    validityEndDate: new Date("2026-04-10T21:00:00.000Z"),
+    startDate,
+    endDate,
+    validityEndDate: endDate,
     selectedMealsPerDay: 3,
     premiumWalletMode: "generic_v1",
     genericPremiumBalance: [],

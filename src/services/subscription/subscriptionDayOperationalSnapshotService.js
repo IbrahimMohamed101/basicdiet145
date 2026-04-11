@@ -1,12 +1,12 @@
 "use strict";
 
-const User = require("../models/User");
-const { buildLockedOperationalSnapshotDetails } = require("../utils/delivery");
-const { isPhase2CanonicalDayPlanningEnabled } = require("../utils/featureFlags");
-const { resolveMealsPerDay, applyDayWalletSelections } = require("../utils/subscriptionDaySelectionSync");
+const User = require("../../models/User");
+const { buildLockedOperationalSnapshotDetails } = require("../../utils/delivery");
+const { isPhase2CanonicalDayPlanningEnabled } = require("../../utils/featureFlags");
+const { resolveMealsPerDay, applyDayWalletSelections } = require("../../utils/subscription/subscriptionDaySelectionSync");
 const { buildScopedCanonicalPlanningSnapshot } = require("./subscriptionDayPlanningService");
-const { buildScopedRecurringAddonSnapshot } = require("./recurringAddonService");
-const { buildOneTimeAddonPlanningSnapshot } = require("./oneTimeAddonPlanningService");
+const { buildScopedRecurringAddonSnapshot } = require("../recurringAddonService");
+const { buildOneTimeAddonPlanningSnapshot } = require("../oneTimeAddonPlanningService");
 
 function normalizeSnapshotCustomer(userLike) {
   if (!userLike) {

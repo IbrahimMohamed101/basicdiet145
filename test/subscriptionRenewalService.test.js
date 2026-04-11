@@ -6,7 +6,7 @@ const {
   buildSubscriptionRenewalSeed,
   resolveRenewalSeedSource,
   validateRenewablePlanOption,
-} = require("../src/services/subscriptionRenewalService");
+} = require("../src/services/subscription/subscriptionRenewalService");
 
 function objectId() {
   return new mongoose.Types.ObjectId();

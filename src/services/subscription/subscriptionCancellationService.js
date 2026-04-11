@@ -1,10 +1,10 @@
 "use strict";
 
 const mongoose = require("mongoose");
-const Subscription = require("../models/Subscription");
-const SubscriptionDay = require("../models/SubscriptionDay");
-const dateUtils = require("../utils/date");
-const { resolveMealsPerDay } = require("../utils/subscriptionDaySelectionSync");
+const Subscription = require("../../models/Subscription");
+const SubscriptionDay = require("../../models/SubscriptionDay");
+const dateUtils = require("../../utils/date");
+const { resolveMealsPerDay } = require("../../utils/subscription/subscriptionDaySelectionSync");
 
 const CANCELABLE_STATUSES = new Set(["active", "pending_payment"]);
 const COMMITTED_DAY_STATUSES = ["locked", "in_preparation", "out_for_delivery", "ready_for_pickup"];

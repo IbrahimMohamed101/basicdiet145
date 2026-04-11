@@ -32,7 +32,7 @@ const mongoose = require("mongoose");
 
 const SubscriptionDay = require("../src/models/SubscriptionDay");
 const Subscription = require("../src/models/Subscription");
-const { applySkipForDate, countAlreadySkippedDays } = require("../src/services/subscriptionService");
+const { applySkipForDate, countAlreadySkippedDays } = require("../src/services/subscription/subscriptionService");
 const {
   CANONICAL_SKIP_POLICY_MODE,
 } = require("../src/constants/phase1Contract");

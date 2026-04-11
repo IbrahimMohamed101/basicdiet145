@@ -1,4 +1,4 @@
-const { t } = require("./i18n");
+const { t } = require("../i18n");
 const {
   localizeAddonRows,
   localizeStatusObject,

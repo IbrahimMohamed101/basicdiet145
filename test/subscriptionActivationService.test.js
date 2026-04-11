@@ -6,7 +6,7 @@ const {
   isCanonicalCheckoutDraft,
   buildCanonicalSubscriptionActivationPayload,
   activateSubscriptionFromCanonicalDraft,
-} = require("../src/services/subscriptionActivationService");
+} = require("../src/services/subscription/subscriptionActivationService");
 const { PHASE1_CONTRACT_VERSION } = require("../src/constants/phase1Contract");
 
 function objectId() {

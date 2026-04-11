@@ -4,7 +4,7 @@ const { getTomorrowKSADate } = require("../utils/date");
 const { notifyUser } = require("../utils/notify");
 const { writeLog } = require("../utils/log");
 const { getEffectiveDeliveryDetails } = require("../utils/delivery");
-const { resolveMealsPerDay, applyDayWalletSelections } = require("../utils/subscriptionDaySelectionSync");
+const { resolveMealsPerDay, applyDayWalletSelections } = require("../utils/subscription/subscriptionDaySelectionSync");
 const { logger } = require("../utils/logger");
 const { createLocalizedError } = require("../utils/errorLocalization");
 const { isPhase2CanonicalDayPlanningEnabled } = require("../utils/featureFlags");
@@ -13,7 +13,7 @@ const {
     applyCanonicalDraftPlanningToDay,
     buildScopedCanonicalPlanningSnapshot,
     confirmCanonicalDayPlanning,
-} = require("./subscriptionDayPlanningService");
+} = require("./subscription/subscriptionDayPlanningService");
 const {
     isCanonicalRecurringAddonEligible,
     applyRecurringAddonProjectionToDay,

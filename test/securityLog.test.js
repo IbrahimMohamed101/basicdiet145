@@ -1,3 +1,4 @@
+const test = require("node:test");
 const { sanitizeLogData } = require('../src/utils/security');
 const assert = require('assert');
 

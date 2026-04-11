@@ -8,9 +8,9 @@ const {
   mapRawDayStatusToClientStatus,
   resolveCatalogOrStoredName,
   resolveLocalizedText,
-} = require("../src/utils/subscriptionLocalizationCommon");
-const { localizeSubscriptionDayReadPayload } = require("../src/utils/subscriptionReadLocalization");
-const { localizeWriteDayPayload } = require("../src/utils/subscriptionWriteLocalization");
+} = require("../src/utils/subscription/subscriptionLocalizationCommon");
+const { localizeSubscriptionDayReadPayload } = require("../src/utils/subscription/subscriptionReadLocalization");
+const { localizeWriteDayPayload } = require("../src/utils/subscription/subscriptionWriteLocalization");
 
 test("resolveLocalizedText supports bilingual objects, legacy name fields, nested name values, and plain strings", () => {
   assert.equal(resolveLocalizedText("Legacy Name", "en"), "Legacy Name");

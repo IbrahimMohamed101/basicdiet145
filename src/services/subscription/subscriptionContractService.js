@@ -5,22 +5,22 @@ const {
   KSA_TIMEZONE,
   isOnOrAfterKSADate,
   isValidKSADateString,
-} = require("../utils/date");
+} = require("../../utils/date");
 const {
   PHASE1_CONTRACT_VERSION,
   PHASE1_CONTRACT_TIMEZONE,
   CONTRACT_MODES,
   CONTRACT_COMPLETENESS_VALUES,
   CONTRACT_SOURCES,
-} = require("../constants/phase1Contract");
-const { buildContractHash } = require("./idempotencyService");
+} = require("../../constants/phase1Contract");
+const { buildContractHash } = require("../idempotencyService");
 const {
   LEGACY_PREMIUM_WALLET_MODE,
   GENERIC_PREMIUM_WALLET_MODE,
-} = require("../utils/premiumWallet");
+} = require("../../utils/premiumWallet");
 const {
   buildRecurringAddonEntitlementsFromQuote,
-} = require("./recurringAddonService");
+} = require("../recurringAddonService");
 
 function getKsaDateString(date, timezone = PHASE1_CONTRACT_TIMEZONE) {
   return formatInTimeZone(date, timezone, "yyyy-MM-dd");

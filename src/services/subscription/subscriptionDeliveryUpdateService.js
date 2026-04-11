@@ -1,9 +1,12 @@
 "use strict";
 
-const Zone = require("../models/Zone");
-const Setting = require("../models/Setting");
-const { pickLang } = require("../utils/i18n");
-const { resolvePickupLocationSelection } = require("../utils/subscriptionCatalog");
+const Subscription = require("../../models/Subscription");
+const SubscriptionDay = require("../../models/SubscriptionDay");
+const Zone = require("../../models/Zone");
+const Setting = require("../../models/Setting");
+const dateUtils = require("../../utils/date");
+const { getRequestLang, pickLang } = require("../../utils/i18n");
+const { resolvePickupLocationSelection } = require("../../utils/subscription/subscriptionCatalog");
 
 function createDeliveryUpdateError(status, code, message) {
   const err = new Error(message);
@@ -228,6 +231,162 @@ async function resolveSubscriptionDeliveryDefaultsUpdate({
   };
 }
 
+// --- PRIVATE HELPERS (Migrated from Controller - Byte-for-Byte Check) ---
+
+function ensureActive(subscription, dateStr) {
+  if (subscription.status !== "active") {
+    const err = new Error("Subscription not active");
+    err.code = "SUB_INACTIVE";
+    err.status = 422;
+    throw err;
+  }
+  if (dateStr) {
+    const endDate = subscription.validityEndDate || subscription.endDate;
+    if (endDate && dateUtils.isAfterKSADate(dateStr, endDate)) {
+      const err = new Error("Subscription expired for this date");
+      err.code = "SUB_EXPIRED";
+      err.status = 422;
+      throw err;
+    }
+  }
+}
+
+function validateFutureDateOrThrow(date, sub, endDateOverride) {
+  if (!dateUtils.isValidKSADateString(date)) {
+    const err = new Error("Invalid date format");
+    err.code = "INVALID_DATE";
+    err.status = 400;
+    throw err;
+  }
+  const tomorrow = dateUtils.getTomorrowKSADate();
+  if (dateUtils.isBeforeKSADate(date, tomorrow)) {
+    const err = new Error("Date must be from tomorrow onward");
+    err.code = "INVALID_DATE";
+    err.status = 400;
+    throw err;
+  }
+  if (sub) {
+    const endDate = endDateOverride || sub.validityEndDate || sub.endDate;
+    if (endDate && dateUtils.isAfterKSADate(date, endDate)) {
+      const err = new Error("Date is outside subscription validity");
+      err.code = "SUB_EXPIRED";
+      err.status = 422;
+      throw err;
+    }
+  }
+}
+
+async function enforceTomorrowCutoffOrThrow(dateStr) {
+  const tomorrow = dateUtils.getTomorrowKSADate();
+  if (dateStr === tomorrow) {
+    const cutoffTime = await getSettingValue("cutoff_time", "00:00");
+    if (!dateUtils.isBeforeCutoff(cutoffTime)) {
+      const err = new Error("Selection is locked for tomorrow");
+      err.code = "LOCKED";
+      err.status = 400;
+      throw err;
+    }
+  }
+}
+
+function hasDeliveryAddressOverride(day) {
+  return day && day.deliveryAddressOverride !== undefined && day.deliveryAddressOverride !== null;
+}
+
+function hasDeliveryWindowOverride(day) {
+  return day && day.deliveryWindowOverride !== undefined && day.deliveryWindowOverride !== null;
+}
+
+// --- ORCHESTRATION LAYER (Migrated from Controller) ---
+
+async function performDeliveryDetailsUpdate({ userId, subscriptionId, payload, lang, runtimeOverrides }) {
+  const sub = await Subscription.findById(subscriptionId);
+  if (!sub) {
+    throw createDeliveryUpdateError(404, "NOT_FOUND", "Subscription not found");
+  }
+  if (String(sub.userId) !== String(userId)) {
+    throw createDeliveryUpdateError(403, "FORBIDDEN", "Forbidden");
+  }
+  ensureActive(sub);
+
+  let resolvedUpdate;
+  resolvedUpdate = await resolveSubscriptionDeliveryDefaultsUpdate({
+    subscription: sub.toObject ? sub.toObject() : sub,
+    payload,
+    lang,
+    allowModeChange: false,
+    runtime: runtimeOverrides,
+  });
+
+  // Global delivery updates impact check
+  if (resolvedUpdate.willChangeAddress || resolvedUpdate.willChangeWindow) {
+    const tomorrow = dateUtils.getTomorrowKSADate();
+    const endDate = sub.validityEndDate || sub.endDate;
+    if (dateUtils.isInSubscriptionRange(tomorrow, endDate)) {
+      const tomorrowDay = await SubscriptionDay.findOne({ subscriptionId: sub._id, date: tomorrow }).lean();
+      const isTomorrowEditable = !tomorrowDay || tomorrowDay.status === "open";
+      const addressImpactsTomorrow = resolvedUpdate.willChangeAddress && !hasDeliveryAddressOverride(tomorrowDay);
+      const windowImpactsTomorrow = resolvedUpdate.willChangeWindow && !hasDeliveryWindowOverride(tomorrowDay);
+      if (isTomorrowEditable && (addressImpactsTomorrow || windowImpactsTomorrow)) {
+        await enforceTomorrowCutoffOrThrow(tomorrow);
+      }
+    }
+  }
+
+  Object.assign(sub, resolvedUpdate.patch);
+  await sub.save();
+
+  return {
+    ok: true,
+    sub,
+    logMeta: resolvedUpdate.logMeta,
+  };
+}
+
+async function performDeliveryDetailsUpdateForDate({ userId, subscriptionId, date, payload, lang }) {
+  const { deliveryAddress, deliveryWindow } = payload || {};
+
+  const sub = await Subscription.findById(subscriptionId);
+  if (!sub) {
+    throw createDeliveryUpdateError(404, "NOT_FOUND", "Subscription not found");
+  }
+  if (String(sub.userId) !== String(userId)) {
+    throw createDeliveryUpdateError(403, "FORBIDDEN", "Forbidden");
+  }
+
+  ensureActive(sub, date);
+  validateFutureDateOrThrow(date, sub);
+  await enforceTomorrowCutoffOrThrow(date);
+
+  if (sub.deliveryMode !== "delivery") {
+    throw createDeliveryUpdateError(400, "INVALID", "Delivery mode is not delivery");
+  }
+
+  const windows = await getSettingValue("delivery_windows", []);
+  if (deliveryWindow && windows.length && !windows.includes(deliveryWindow)) {
+    throw createDeliveryUpdateError(400, "INVALID", "Invalid delivery window");
+  }
+
+  const dayStatusCheck = await SubscriptionDay.findOne({ subscriptionId, date }).lean();
+  if (dayStatusCheck && dayStatusCheck.status !== "open") {
+    throw createDeliveryUpdateError(409, "LOCKED", "Day is locked");
+  }
+
+  const update = {};
+  if (deliveryAddress !== undefined) update.deliveryAddressOverride = deliveryAddress;
+  if (deliveryWindow !== undefined) update.deliveryWindowOverride = deliveryWindow;
+
+  const updatedDay = await SubscriptionDay.findOneAndUpdate(
+    { subscriptionId, date },
+    { $set: update },
+    { upsert: true, new: true }
+  );
+
+  return { ok: true, subscriptionId: sub.id, date, updatedDay };
+}
+
 module.exports = {
   resolveSubscriptionDeliveryDefaultsUpdate,
+  performDeliveryDetailsUpdate,
+  performDeliveryDetailsUpdateForDate,
 };

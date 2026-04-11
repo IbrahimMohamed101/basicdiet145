@@ -1172,6 +1172,349 @@ components:
         totalPages:
           type: integer
 
+    KitchenOperationsTab:
+      type: string
+      enum: [subscriptions, orders, branch_pickup]
+
+    KitchenOperationsMode:
+      type: string
+      enum: [all, delivery, pickup]
+
+    KitchenUiStatus:
+      type: string
+      enum:
+        - open
+        - locked
+        - in_preparation
+        - ready_for_pickup
+        - out_for_delivery
+        - fulfilled
+        - received
+        - cancelled
+        - not_prepared
+        - no_show
+
+    KitchenOperationsCustomer:
+      type: object
+      required: [id, name, avatar]
+      properties:
+        id:
+          type: string
+          nullable: true
+        name:
+          type: string
+        avatar:
+          type: string
+          nullable: true
+
+    KitchenOperationsTimeWindow:
+      type: object
+      required: [from, to, label]
+      properties:
+        from:
+          type: string
+          nullable: true
+        to:
+          type: string
+          nullable: true
+        label:
+          type: string
+
+    KitchenOperationsItem:
+      type: object
+      required: [id, name, kind]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        kind:
+          type: string
+          enum: [meal, addon]
+
+    KitchenOperationsProgressStep:
+      type: object
+      required: [key, done]
+      properties:
+        key:
+          type: string
+        done:
+          type: boolean
+
+    KitchenOperationsProgress:
+      type: object
+      required: [step, totalSteps, steps]
+      properties:
+        step:
+          type: integer
+        totalSteps:
+          type: integer
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/KitchenOperationsProgressStep'
+
+    KitchenOperationsAction:
+      type: object
+      required: [key, label, method, endpoint, enabled, variant, confirm, requiresConfirmation, confirmationMessage]
+      properties:
+        key:
+          type: string
+        label:
+          type: string
+        method:
+          type: string
+          enum: [POST]
+        endpoint:
+          type: string
+        enabled:
+          type: boolean
+        variant:
+          type: string
+          enum: [primary, secondary, danger]
+        confirm:
+          type: boolean
+        requiresConfirmation:
+          type: boolean
+        confirmationMessage:
+          type: string
+          nullable: true
+
+    KitchenOperationsBadges:
+      type: object
+      required: [locked, assignedByKitchen, pickupRequested]
+      properties:
+        locked:
+          type: boolean
+        assignedByKitchen:
+          type: boolean
+        pickupRequested:
+          type: boolean
+
+    KitchenOperationsVerification:
+      type: object
+      nullable: true
+      required: [status, statusLabel]
+      properties:
+        status:
+          type: string
+          enum: [not_verified, verified, no_show]
+        statusLabel:
+          type: string
+
+    KitchenOperationsUi:
+      type: object
+      required: [layout]
+      properties:
+        layout:
+          type: string
+          enum: [table, card]
+
+    KitchenOperationsTiming:
+      type: object
+      required: [createdAt, createdAtLabel]
+      properties:
+        createdAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAtLabel:
+          type: string
+          nullable: true
+
+    KitchenOperationsRowMeta:
+      type: object
+      required: [subscriptionId, orderId, dayId]
+      properties:
+        subscriptionId:
+          type: string
+          nullable: true
+        orderId:
+          type: string
+          nullable: true
+        dayId:
+          type: string
+          nullable: true
+
+    KitchenOperationsRow:
+      type: object
+      required:
+        - id
+        - entityType
+        - reference
+        - customer
+        - date
+        - mode
+        - modeLabel
+        - timeWindow
+        - items
+        - status
+        - statusLabel
+        - progress
+        - actions
+        - badges
+        - verification
+        - ui
+        - timing
+        - meta
+      properties:
+        id:
+          type: string
+        entityType:
+          type: string
+          enum: [subscription_day, order, pickup_day]
+        reference:
+          type: string
+        customer:
+          $ref: '#/components/schemas/KitchenOperationsCustomer'
+        date:
+          type: string
+          pattern: '^\\d{4}-\\d{2}-\\d{2}$'
+        mode:
+          type: string
+          enum: [delivery, pickup]
+        modeLabel:
+          type: string
+        timeWindow:
+          $ref: '#/components/schemas/KitchenOperationsTimeWindow'
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/KitchenOperationsItem'
+        status:
+          $ref: '#/components/schemas/KitchenUiStatus'
+        statusLabel:
+          type: string
+        progress:
+          $ref: '#/components/schemas/KitchenOperationsProgress'
+        actions:
+          type: array
+          items:
+            $ref: '#/components/schemas/KitchenOperationsAction'
+        badges:
+          $ref: '#/components/schemas/KitchenOperationsBadges'
+        verification:
+          $ref: '#/components/schemas/KitchenOperationsVerification'
+        ui:
+          $ref: '#/components/schemas/KitchenOperationsUi'
+        timing:
+          $ref: '#/components/schemas/KitchenOperationsTiming'
+        meta:
+          $ref: '#/components/schemas/KitchenOperationsRowMeta'
+
+    KitchenOperationsSummaryResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          type: object
+          required: [date, summary, tabs, subscriptionFilters]
+          properties:
+            date:
+              type: string
+              pattern: '^\\d{4}-\\d{2}-\\d{2}$'
+            summary:
+              type: object
+              required:
+                - subscriptionsToday
+                - lockedDays
+                - inPreparation
+                - readyForPickup
+                - outForDelivery
+                - individualOrders
+                - receivedToday
+                - notPrepared
+              properties:
+                subscriptionsToday: { type: integer }
+                lockedDays: { type: integer }
+                inPreparation: { type: integer }
+                readyForPickup: { type: integer }
+                outForDelivery: { type: integer }
+                individualOrders: { type: integer }
+                receivedToday: { type: integer }
+                notPrepared: { type: integer }
+            tabs:
+              type: object
+              required: [subscriptionsDaily, individualOrders, branchPickup]
+              properties:
+                subscriptionsDaily: { type: integer }
+                individualOrders: { type: integer }
+                branchPickup: { type: integer }
+            subscriptionFilters:
+              type: object
+              required:
+                - all
+                - delivery
+                - pickup
+                - received
+                - open
+                - locked
+                - in_preparation
+                - ready_for_pickup
+                - out_for_delivery
+                - not_prepared
+              properties:
+                all: { type: integer }
+                delivery: { type: integer }
+                pickup: { type: integer }
+                received: { type: integer }
+                open: { type: integer }
+                locked: { type: integer }
+                in_preparation: { type: integer }
+                ready_for_pickup: { type: integer }
+                out_for_delivery: { type: integer }
+                not_prepared: { type: integer }
+
+    KitchenOperationsListResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          type: object
+          required: [date, tab, rows, pagination, appliedFilters]
+          properties:
+            date:
+              type: string
+              pattern: '^\\d{4}-\\d{2}-\\d{2}$'
+            tab:
+              $ref: '#/components/schemas/KitchenOperationsTab'
+            rows:
+              type: array
+              items:
+                $ref: '#/components/schemas/KitchenOperationsRow'
+            pagination:
+              $ref: '#/components/schemas/PaginationMeta'
+            appliedFilters:
+              type: object
+              properties:
+                status:
+                  allOf:
+                    - $ref: '#/components/schemas/KitchenUiStatus'
+                  nullable: true
+                mode:
+                  $ref: '#/components/schemas/KitchenOperationsMode'
+                search:
+                  type: string
+                  nullable: true
+                branchId:
+                  type: string
+                  nullable: true
+                kitchenId:
+                  type: string
+                  nullable: true
+                sortBy:
+                  type: string
+                  enum: [status, customerName, reference, timeWindow, date, createdAt]
+                sortOrder:
+                  type: string
+                  enum: [asc, desc]
+
     User:
       type: object
       properties:
@@ -7302,7 +7645,9 @@ paths:
     get:
       tags: [Kitchen]
       summary: List kitchen workload for subscription days
-      description: Requires `kitchen` or `admin` role.
+      description: >
+        Legacy raw subscription-day workload feed. Requires `kitchen` or `admin` role.
+        For the dashboard-facing read model, prefer `/api/kitchen/operations/summary` and `/api/kitchen/operations/list`.
       security:
         - dashboardBearerAuth: []
       parameters:
@@ -7327,11 +7672,153 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
 
+  /api/kitchen/operations/summary:
+    get:
+      tags: [Kitchen]
+      summary: Get kitchen operations dashboard summary
+      description: >
+        Returns dashboard cards, tab counts, and subscription-tab filter counts for a single operating date.
+        This is the preferred summary endpoint for the Kitchen Operations dashboard.
+        Existing transition/command endpoints remain supported and are returned separately through row actions.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - name: date
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: '^\\d{4}-\\d{2}-\\d{2}$'
+        - name: branchId
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filters pickup subscription rows by branch/pickup location id.
+        - name: kitchenId
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Reserved for future kitchen scoping. Accepted for forward compatibility.
+      responses:
+        '200':
+          description: Dashboard summary read model.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KitchenOperationsSummaryResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/kitchen/operations/list:
+    get:
+      tags: [Kitchen]
+      summary: List unified kitchen operations rows
+      description: >
+        Returns a lean, screen-oriented read model that unifies subscription days, one-time orders,
+        and branch pickup flows into a single frontend-friendly row DTO.
+        The backend resolves UI status, progress, labels, and available actions so the frontend does not
+        need to inspect raw nested documents or infer workflow logic.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - name: date
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: '^\\d{4}-\\d{2}-\\d{2}$'
+        - name: tab
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/KitchenOperationsTab'
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/KitchenUiStatus'
+        - name: mode
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/KitchenOperationsMode'
+          description: Ignored for `branch_pickup` tab because all rows are pickup-oriented by definition.
+        - name: search
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Searches customer name and generated reference.
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: branchId
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filters pickup subscription rows by branch/pickup location id.
+        - name: kitchenId
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Reserved for future kitchen scoping. Accepted for forward compatibility.
+        - name: sortBy
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [status, customerName, reference, timeWindow, date, createdAt]
+            default: status
+        - name: sortOrder
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: asc
+      responses:
+        '200':
+          description: Unified operations list for the requested tab.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KitchenOperationsListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
   /api/kitchen/today-pickup:
     get:
       tags: [Kitchen]
       summary: List today's pickup queue
-      description: Returns today's pickup execution queue for kitchen dashboard.
+      deprecated: true
+      description: >
+        Legacy alias for today's pickup execution queue.
+        Prefer `/api/kitchen/operations/list?date=YYYY-MM-DD&tab=branch_pickup` for the dashboard read model
+        or `/api/kitchen/pickups/{date}` for the dated raw pickup queue.
       security:
         - dashboardBearerAuth: []
       responses:
@@ -7656,6 +8143,138 @@ paths:
           $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/Internal'
+
+  /api/kitchen/pickups/{date}:
+    get:
+      tags: [Kitchen]
+      summary: List pickups by date
+      description: Returns pickup subscription days scheduled for the provided KSA date.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/KsaDate'
+      responses:
+        '200':
+          description: Pickups for date.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/kitchen/pickups/{dayId}/verify:
+    post:
+      tags: [Kitchen]
+      summary: Verify pickup
+      description: Verifies a pickup subscription day by day ID.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - in: path
+          name: dayId
+          required: true
+          schema:
+            type: string
+          description: Subscription day ID.
+      responses:
+        '200':
+          description: Verified.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/SubscriptionDay'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/kitchen/pickups/{dayId}/no-show:
+    post:
+      tags: [Kitchen]
+      summary: Mark pickup as no-show
+      description: Marks a pickup subscription day as no-show by day ID.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - in: path
+          name: dayId
+          required: true
+          schema:
+            type: string
+          description: Subscription day ID.
+      responses:
+        '200':
+          description: Marked as no-show.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/SubscriptionDay'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/kitchen/subscriptions/{id}/days/{date}/cancel-at-branch:
+    post:
+      tags: [Kitchen]
+      summary: Cancel subscription day at branch
+      description: Cancels a subscription day at branch level. Requires kitchen or admin role.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+        - $ref: '#/components/parameters/KsaDate'
+      responses:
+        '200':
+          description: Cancelled at branch.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/SubscriptionDay'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
 
   /api/kitchen/orders/{date}:
     get:

@@ -1,6 +1,6 @@
 const Addon = require("../models/Addon");
 const { getRequestLang } = require("../utils/i18n");
-const { resolveAddonCatalogEntry } = require("../utils/subscriptionCatalog");
+const { resolveAddonCatalogEntry } = require("../utils/subscription/subscriptionCatalog");
 const validateObjectId = require("../utils/validateObjectId");
 const errorResponse = require("../utils/errorResponse");
 const { resolveManagedImageFromRequest } = require("../services/adminImageService");

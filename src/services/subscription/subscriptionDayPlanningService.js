@@ -1,11 +1,11 @@
-const { logger } = require("../utils/logger");
-const { createLocalizedError } = require("../utils/errorLocalization");
-const { resolveMealsPerDay } = require("../utils/subscriptionDaySelectionSync");
+const { logger } = require("../../utils/logger");
+const { createLocalizedError } = require("../../utils/errorLocalization");
+const { resolveMealsPerDay } = require("../../utils/subscription/subscriptionDaySelectionSync");
 const {
   isPhase2CanonicalDayPlanningEnabled,
   isPhase2GenericPremiumWalletEnabled,
-} = require("../utils/featureFlags");
-const { isGenericPremiumWalletMode } = require("./genericPremiumWalletService");
+} = require("../../utils/featureFlags");
+const { isGenericPremiumWalletMode } = require("../genericPremiumWalletService");
 
 const DAY_PLANNING_VERSION = "subscription_day_planning.v1";
 const BASE_MEAL_SLOT_PREFIX = "base_slot_";

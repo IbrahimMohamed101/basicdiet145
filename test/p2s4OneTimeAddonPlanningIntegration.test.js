@@ -91,14 +91,24 @@ function getFutureDate(daysAhead = 2) {
   return toKSADateString(base);
 }
 
+function buildActiveSubscriptionWindow() {
+  const tomorrow = new Date(`${getTomorrowKSADate()}T00:00:00+03:00`);
+  const startDate = new Date(tomorrow);
+  startDate.setDate(startDate.getDate() - 31);
+  const endDate = new Date(tomorrow);
+  endDate.setDate(endDate.getDate() + 29);
+  return { startDate, endDate, validityEndDate: endDate };
+}
+
 function createCanonicalSubscription(userId = objectId(), overrides = {}) {
+  const { startDate, endDate, validityEndDate } = buildActiveSubscriptionWindow();
   return {
     _id: objectId(),
     userId,
     status: "active",
-    startDate: new Date("2026-03-10T21:00:00.000Z"),
-    endDate: new Date("2026-04-10T21:00:00.000Z"),
-    validityEndDate: new Date("2026-04-10T21:00:00.000Z"),
+    startDate,
+    endDate,
+    validityEndDate,
     selectedMealsPerDay: 3,
     premiumBalance: [],
     addonBalance: [],

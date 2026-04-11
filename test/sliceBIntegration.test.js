@@ -6,7 +6,12 @@ const controller = require("../src/controllers/subscriptionController");
 const CheckoutDraft = require("../src/models/CheckoutDraft");
 const Payment = require("../src/models/Payment");
 const Subscription = require("../src/models/Subscription");
+const Setting = require("../src/models/Setting");
 const SubscriptionDay = require("../src/models/SubscriptionDay");
+const ActivityLog = require("../src/models/ActivityLog");
+
+Setting.findOne = () => createQueryStub({ value: "23:59" });
+ActivityLog.create = async () => ({});
 
 function objectId() {
   return new mongoose.Types.ObjectId();

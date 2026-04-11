@@ -1,16 +1,16 @@
-const { createLocalizedError } = require("../utils/errorLocalization");
-const { resolveMealsPerDay } = require("../utils/subscriptionDaySelectionSync");
+const { createLocalizedError } = require("../../utils/errorLocalization");
+const { resolveMealsPerDay } = require("../../utils/subscription/subscriptionDaySelectionSync");
 const {
   isPhase2CanonicalDayPlanningEnabled,
   isPhase2GenericPremiumWalletEnabled,
-} = require("../utils/featureFlags");
+} = require("../../utils/featureFlags");
 const {
   isCanonicalDayPlanningEligible,
   buildCanonicalPlanningView,
   isCanonicalPremiumOverageEligible,
   assertNoPendingPremiumOverage,
 } = require("./subscriptionDayPlanningService");
-const { assertNoPendingOneTimeAddonPayment } = require("./oneTimeAddonPlanningService");
+const { assertNoPendingOneTimeAddonPayment } = require("../oneTimeAddonPlanningService");
 
 function createPlanningIncompleteError() {
   return createLocalizedError({

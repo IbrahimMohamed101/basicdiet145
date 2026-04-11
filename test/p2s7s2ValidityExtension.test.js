@@ -21,7 +21,7 @@ const { toKSADateString, addDaysToKSADateString } = require("../src/utils/date")
 
 const SubscriptionDay = require("../src/models/SubscriptionDay");
 const Subscription = require("../src/models/Subscription");
-const { syncSubscriptionValidity } = require("../src/services/subscriptionService");
+const { syncSubscriptionValidity } = require("../src/services/subscription/subscriptionService");
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 

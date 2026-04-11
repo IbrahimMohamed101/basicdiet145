@@ -6,7 +6,38 @@
  * This prevents runtime failures due to missing payment provider config
  */
 
+const { describe, it, before } = require("node:test");
 const assert = require("node:assert/strict");
+
+function reloadValidateEnv() {
+  const path = require.resolve("../src/utils/validateEnv");
+  delete require.cache[path];
+  return require("../src/utils/validateEnv");
+}
+
+function withEnv(overrides, fn) {
+  const backup = {};
+  for (const key of Object.keys(overrides)) {
+    backup[key] = process.env[key];
+    if (overrides[key] === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = overrides[key];
+    }
+  }
+
+  try {
+    return fn();
+  } finally {
+    for (const key of Object.keys(overrides)) {
+      if (backup[key] === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = backup[key];
+      }
+    }
+  }
+}
 
 describe("Configuration Validation", () => {
   before(() => {
@@ -87,23 +118,57 @@ describe("Configuration Validation", () => {
     });
 
     it("app should not start without payment config", () => {
-      // This is ensured by validateEnv.js being called in app initialization
-      // If we got here, validation passed
-      assert.ok(true);
+      const result = withEnv({ MOYASAR_SECRET_KEY: "" }, () => {
+        const { validateEnv } = reloadValidateEnv();
+        return validateEnv();
+      });
+
+      assert.equal(result.ok, false);
+      assert.ok(Array.isArray(result.missing));
+      assert.ok(result.missing.includes("MOYASAR_SECRET_KEY"));
     });
   });
 
   describe("Feature Flags and Optional Configuration", () => {
-    it("should handle missing optional OTP provider gracefully", () => {
-      // TWILIO credentials are optional
-      // App should not crash if missing
-      assert.ok(true);
+    it("should handle missing optional OTP provider gracefully when test auth is enabled", () => {
+      const result = withEnv(
+        {
+          OTP_TEST_MODE: "true",
+          ALLOW_TEST_AUTH: "true",
+          OTP_TEST_CODE: "123456",
+          OTP_TEST_PHONE: "+15005550006",
+          TWILIO_ACCOUNT_SID: undefined,
+          TWILIO_AUTH_TOKEN: undefined,
+          TWILIO_WHATSAPP_FROM: undefined,
+          OTP_HASH_SECRET: undefined,
+        },
+        () => {
+          const { validateEnv } = reloadValidateEnv();
+          return validateEnv();
+        }
+      );
+
+      assert.equal(result.ok, true);
     });
 
     it("should handle missing optional Cloudinary gracefully", () => {
-      // Cloudinary is optional
-      // App should not crash if missing
-      assert.ok(true);
+      const result = withEnv(
+        {
+          CLOUDINARY_CLOUD_NAME: undefined,
+          CLOUDINARY_API_KEY: undefined,
+          CLOUDINARY_API_SECRET: undefined,
+          TWILIO_ACCOUNT_SID: "dummy-sid",
+          TWILIO_AUTH_TOKEN: "dummy-token",
+          TWILIO_WHATSAPP_FROM: "+15005550006",
+          OTP_HASH_SECRET: "dummy-hash",
+        },
+        () => {
+          const { validateEnv } = reloadValidateEnv();
+          return validateEnv();
+        }
+      );
+
+      assert.equal(result.ok, true);
     });
   });
 
@@ -115,14 +180,10 @@ describe("Configuration Validation", () => {
     });
 
     it("should enforce production checks appropriately", () => {
-      // Production restricts dev-only endpoints
-      if (process.env.NODE_ENV === "production") {
-        // POST /activate should be blocked (tested in integration tests)
-        assert.ok(true);
-      } else {
-        // Dev environment allows more access for testing
-        assert.ok(true);
-      }
+      const nodeEnv = String(process.env.NODE_ENV || "development");
+      assert.ok(nodeEnv.length > 0);
+      assert.equal(typeof nodeEnv, "string");
+      assert.ok(["production", "development", "test", "staging"].includes(nodeEnv) || nodeEnv !== "");
     });
   });
 

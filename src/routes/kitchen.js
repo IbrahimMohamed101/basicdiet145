@@ -1,6 +1,7 @@
 const { Router } = require("express");
 const controller = require("../controllers/kitchenController");
 const orderController = require("../controllers/orderKitchenController");
+const operationsController = require("../controllers/kitchenOperationsController");
 const { dashboardAuthMiddleware, dashboardRoleMiddleware } = require("../middleware/dashboardAuth");
 const asyncHandler = require("../middleware/asyncHandler");
 
@@ -8,6 +9,8 @@ const router = Router();
 
 router.use(dashboardAuthMiddleware, dashboardRoleMiddleware(["kitchen", "admin"]));
 
+router.get("/operations/summary", asyncHandler(operationsController.getSummary));
+router.get("/operations/list", asyncHandler(operationsController.getList));
 router.get("/days/:date", asyncHandler(controller.listDailyOrders));
 router.get("/pickups/:date", asyncHandler(controller.listPickupsByDate));
 router.get("/today-pickup", asyncHandler(controller.listTodayPickups));

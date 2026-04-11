@@ -1,10 +1,10 @@
-const { PHASE1_CONTRACT_VERSION } = require("../constants/phase1Contract");
-const { pickLang } = require("../utils/i18n");
-const { logger } = require("../utils/logger");
+const { PHASE1_CONTRACT_VERSION } = require("../../constants/phase1Contract");
+const { pickLang } = require("../../utils/i18n");
+const { logger } = require("../../utils/logger");
 const {
   isPhase1SnapshotFirstReadsEnabled,
   isPhase1CompatLoggingEnabled,
-} = require("../utils/featureFlags");
+} = require("../../utils/featureFlags");
 
 function normalizeFreezePolicy(source) {
   const value = source && typeof source === "object" ? source : {};

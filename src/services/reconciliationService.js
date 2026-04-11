@@ -220,22 +220,40 @@ async function reconcileCheckoutDraft(draftId, { mode = RECONCILE_MODES.READ_ONL
       }
 
       // Optional: Sync payment status if we have the record and it's not terminal
-      if (payment && invoice && !["paid", "failed", "canceled", "expired"].includes(payment.status)) {
-        const providerStatus = (invoice.status || "").toLowerCase();
-        if (providerStatus === "paid" || providerStatus === "captured") {
-          payment.status = "paid";
-          payment.paidAt = payment.paidAt || new Date();
-          
-          const providerPayment = Array.isArray(invoice.payments) ? invoice.payments.find(p => ["paid", "captured", "authorized"].includes(p.status)) : null;
-          if (providerPayment && providerPayment.id && !payment.providerPaymentId) {
-            payment.providerPaymentId = String(providerPayment.id);
-          }
+     if (payment && invoice) {
+  const providerStatus = (invoice.status || "").toLowerCase();
+  const isProviderPaid = providerStatus === "paid" || providerStatus === "captured";
 
-          if (mode === RECONCILE_MODES.PERSIST) {
-            await payment.save({ session });
-          }
-        }
-      }
+  let paymentChanged = false;
+
+  if (
+    isProviderPaid &&
+    !["failed", "canceled", "expired"].includes(payment.status) &&
+    payment.status !== "paid"
+  ) {
+    payment.status = "paid";
+    payment.paidAt = payment.paidAt || new Date();
+    paymentChanged = true;
+  }
+
+  const providerPayment = Array.isArray(invoice.payments)
+    ? invoice.payments.find((p) => ["paid", "captured", "authorized"].includes((p.status || "").toLowerCase()))
+    : null;
+
+  if (providerPayment && providerPayment.id && !payment.providerPaymentId) {
+    payment.providerPaymentId = String(providerPayment.id);
+    paymentChanged = true;
+  }
+
+  if (isProviderPaid && !payment.paidAt) {
+    payment.paidAt = invoice.updatedAt ? new Date(invoice.updatedAt) : new Date();
+    paymentChanged = true;
+  }
+
+  if (paymentChanged && mode === RECONCILE_MODES.PERSIST) {
+    await payment.save({ session });
+  }
+}
     } catch (err) {
       logger.warn("Reconciliation failed to fetch provider invoice", { draftId, providerInvoiceId, error: err.message });
     }

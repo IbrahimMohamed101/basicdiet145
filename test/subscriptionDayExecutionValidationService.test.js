@@ -3,7 +3,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { validateDayBeforeLockOrPrepare } = require("../src/services/subscriptionDayExecutionValidationService");
+const { validateDayBeforeLockOrPrepare } = require("../src/services/subscription/subscriptionDayExecutionValidationService");
 
 test("validateDayBeforeLockOrPrepare accepts exact-count legacy day plans", () => {
   const subscription = { selectedMealsPerDay: 2 };

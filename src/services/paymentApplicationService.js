@@ -16,7 +16,7 @@ const {
 const {
   isCanonicalDayPlanningEligible,
   isCanonicalPremiumOverageEligible,
-} = require("./subscriptionDayPlanningService");
+} = require("./subscription/subscriptionDayPlanningService");
 const {
   buildOneTimeAddonPaymentSnapshot,
   matchesOneTimeAddonPaymentSnapshot,
@@ -30,7 +30,7 @@ const { logger } = require("../utils/logger");
 const {
   finalizeSubscriptionDraftPaymentFlow,
   activatePendingLegacySubscription,
-} = require("./subscriptionActivationService");
+} = require("./subscription/subscriptionActivationService");
 
 const SUPPORTED_PHASE1_SHARED_PAYMENT_TYPES = new Set([
   "subscription_activation",

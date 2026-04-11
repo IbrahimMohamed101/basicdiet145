@@ -10,7 +10,7 @@ const {
   assertCanonicalPlanningExactCount,
   assertNoPendingPremiumOverage,
   buildCanonicalPlanningSnapshot,
-} = require("../src/services/subscriptionDayPlanningService");
+} = require("../src/services/subscription/subscriptionDayPlanningService");
 
 function objectId() {
   return new mongoose.Types.ObjectId();
