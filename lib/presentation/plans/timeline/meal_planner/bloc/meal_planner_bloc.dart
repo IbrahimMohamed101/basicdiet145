@@ -1,4 +1,6 @@
 import 'package:basic_diet/domain/usecase/get_categories_with_meals_usecase.dart';
+import 'package:basic_diet/domain/usecase/get_premium_meals_usecase.dart';
+import 'package:basic_diet/domain/model/categories_with_meals_model.dart';
 import 'package:basic_diet/domain/model/timeline_model.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'meal_planner_event.dart';
@@ -6,12 +8,14 @@ import 'meal_planner_state.dart';
 
 class MealPlannerBloc extends Bloc<MealPlannerEvent, MealPlannerState> {
   final GetCategoriesWithMealsUseCase _getCategoriesWithMealsUseCase;
+  final GetPremiumMealsUseCase _getPremiumMealsUseCase;
   final List<TimelineDayModel> initialTimelineDays;
   final int initialDayIndex;
   final int premiumMealsRemaining;
 
   MealPlannerBloc(
-    this._getCategoriesWithMealsUseCase, {
+    this._getCategoriesWithMealsUseCase,
+    this._getPremiumMealsUseCase, {
     required this.initialTimelineDays,
     required this.initialDayIndex,
     required this.premiumMealsRemaining,
@@ -29,29 +33,59 @@ class MealPlannerBloc extends Bloc<MealPlannerEvent, MealPlannerState> {
     Emitter<MealPlannerState> emit,
   ) async {
     emit(MealPlannerLoading());
-    final result = await _getCategoriesWithMealsUseCase.execute(null);
+    final categoriesResult = await _getCategoriesWithMealsUseCase.execute(null);
+    final premiumResult = await _getPremiumMealsUseCase.execute(null);
 
-    result.fold(
+    categoriesResult.fold(
       (failure) => emit(MealPlannerError(failure.message)),
       (categories) {
-        final Map<int, List<String>> selectedMealsPerDay = {};
-        final Map<int, List<String>> savedSelections = {};
+        premiumResult.fold(
+          (failure) => emit(MealPlannerError(failure.message)),
+          (premiumMeals) {
+            final premiumCategory = CategoryWithMealsModel(
+              id: 'premium_category',
+              name: 'Premium',
+              slug: 'premium',
+              sortOrder: 999,
+              meals: premiumMeals.meals.map((p) => MealItemModel(
+                id: p.id,
+                name: p.name,
+                description: p.description,
+                imageUrl: p.imageUrl,
+                price: p.priceSar,
+                calories: 0,
+                proteinGrams: 0,
+                carbGrams: 0,
+                fatGrams: 0,
+                availableForOrder: true,
+                availableForSubscription: true,
+                type: 'premium',
+                sortOrder: 0,
+              )).toList(),
+            );
+            
+            categories.data.add(premiumCategory);
 
-        for (int i = 0; i < initialTimelineDays.length; i++) {
-          final day = initialTimelineDays[i];
-          selectedMealsPerDay[i] =
-              List.generate(day.selectedMeals, (index) => "initial_$index");
-          savedSelections[i] = List.from(selectedMealsPerDay[i]!);
-        }
+            final Map<int, List<String>> selectedMealsPerDay = {};
+            final Map<int, List<String>> savedSelections = {};
 
-        emit(MealPlannerLoaded(
-          timelineDays: initialTimelineDays,
-          categoriesWithMeals: categories,
-          selectedDayIndex: initialDayIndex,
-          selectedMealsPerDay: selectedMealsPerDay,
-          savedSelections: savedSelections,
-          premiumMealsRemaining: premiumMealsRemaining,
-        ));
+            for (int i = 0; i < initialTimelineDays.length; i++) {
+              final day = initialTimelineDays[i];
+              selectedMealsPerDay[i] =
+                  List.generate(day.selectedMeals, (index) => "initial_$index");
+              savedSelections[i] = List.from(selectedMealsPerDay[i]!);
+            }
+
+            emit(MealPlannerLoaded(
+              timelineDays: initialTimelineDays,
+              categoriesWithMeals: categories,
+              selectedDayIndex: initialDayIndex,
+              selectedMealsPerDay: selectedMealsPerDay,
+              savedSelections: savedSelections,
+              premiumMealsRemaining: premiumMealsRemaining,
+            ));
+          },
+        );
       },
     );
   }

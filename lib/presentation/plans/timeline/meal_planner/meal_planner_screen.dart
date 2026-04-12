@@ -96,7 +96,15 @@ class MealPlannerView extends StatelessWidget {
                           padding: EdgeInsets.only(bottom: 120.h),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [_buildMealList(state, context)],
+                            children: [
+                              if (state
+                                      .categoriesWithMeals
+                                      .data[state.selectedCategoryIndex]
+                                      .slug ==
+                                  'premium')
+                                _buildPremiumHighlightBanner(state),
+                              _buildMealList(state, context),
+                            ],
                           ),
                         ),
                       ),
@@ -239,7 +247,8 @@ class MealPlannerView extends StatelessWidget {
             'extension',
           ].contains(day.status.toLowerCase());
           final isComplete =
-              state.selectedMealsPerDay[index]?.length == state.maxMeals;
+              (state.selectedMealsPerDay[index]?.length ?? 0) >=
+              day.requiredMeals;
 
           Color baseColor;
           Color baseBgColor;
@@ -514,6 +523,92 @@ class MealPlannerView extends StatelessWidget {
     );
   }
 
+  Widget _buildPremiumHighlightBanner(MealPlannerLoaded state) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(AppPadding.p16.w),
+      decoration: BoxDecoration(
+        color: ColorManager.orangeFFF5EC,
+        border: Border(
+          bottom: BorderSide(
+            color: ColorManager.orangePrimary.withValues(alpha: 0.1),
+            width: 1,
+          ),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: EdgeInsets.all(10.w),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  ColorManager.orangePrimary,
+                  ColorManager.orangePrimary.withValues(alpha: 0.8),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(AppSize.s14.r),
+              boxShadow: [
+                BoxShadow(
+                  color: ColorManager.orangePrimary.withValues(alpha: 0.2),
+                  blurRadius: 8,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Icon(
+              Icons.auto_awesome,
+              color: Colors.white,
+              size: AppSize.s24.w,
+            ),
+          ),
+          Gap(AppSize.s16.w),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "Premium Meals Available",
+                  style: getBoldTextStyle(
+                    color: ColorManager.black101828,
+                    fontSize: FontSizeManager.s18.sp,
+                  ),
+                ),
+                Gap(AppSize.s4.h),
+                RichText(
+                  text: TextSpan(
+                    style: getRegularTextStyle(
+                      color: ColorManager.grey4A5565,
+                      fontSize: FontSizeManager.s14.sp,
+                    ),
+                    children: [
+                      const TextSpan(text: "You have "),
+                      TextSpan(
+                        text:
+                            "${state.premiumMealsRemaining} premium meal${state.premiumMealsRemaining != 1 ? 's' : ''} ",
+                        style: getBoldTextStyle(
+                          color: ColorManager.orangePrimary,
+                          fontSize: FontSizeManager.s14.sp,
+                        ),
+                      ),
+                      const TextSpan(
+                        text:
+                            "remaining. Select from our exclusive premium collection below.",
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildPremiumBanner(MealPlannerLoaded state) {
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: AppPadding.p16.w),
@@ -569,30 +664,55 @@ class MealPlannerView extends StatelessWidget {
 
   Widget _buildCategorySelector(MealPlannerLoaded state, BuildContext context) {
     return SizedBox(
-      height: 40.h,
+      height: 48.h,
       child: ListView.separated(
         padding: EdgeInsets.symmetric(horizontal: AppPadding.p16.w),
         scrollDirection: Axis.horizontal,
         itemCount: state.categoriesWithMeals.data.length,
-        separatorBuilder: (context, index) => Gap(AppSize.s8.w),
+        separatorBuilder: (context, index) => Gap(AppSize.s10.w),
         itemBuilder: (context, index) {
           final category = state.categoriesWithMeals.data[index];
           final isSelected = index == state.selectedCategoryIndex;
+          final isPremium = category.slug == 'premium';
 
           return GestureDetector(
             onTap: () {
               context.read<MealPlannerBloc>().add(ChangeCategoryEvent(index));
             },
-            child: Container(
-              padding: EdgeInsets.symmetric(horizontal: AppPadding.p12.w),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: EdgeInsets.symmetric(horizontal: AppPadding.p14.w),
               decoration: BoxDecoration(
                 color: isSelected
-                    ? ColorManager.greenPrimary
+                    ? (isPremium
+                          ? ColorManager.orangePrimary
+                          : ColorManager.greenPrimary)
                     : ColorManager.greyF3F4F6,
-                borderRadius: BorderRadius.circular(AppSize.s8.r),
+                borderRadius: BorderRadius.circular(AppSize.s12.r),
+                boxShadow: isSelected && isPremium
+                    ? [
+                        BoxShadow(
+                          color: ColorManager.orangePrimary.withValues(
+                            alpha: 0.3,
+                          ),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ]
+                    : null,
               ),
               child: Row(
                 children: [
+                  if (isPremium) ...[
+                    Icon(
+                      Icons.star_rounded,
+                      color: isSelected
+                          ? Colors.white
+                          : ColorManager.orangePrimary,
+                      size: 22.w,
+                    ),
+                    Gap(AppSize.s8.w),
+                  ],
                   Text(
                     category.name,
                     style: getBoldTextStyle(
@@ -604,7 +724,10 @@ class MealPlannerView extends StatelessWidget {
                   ),
                   Gap(AppSize.s8.w),
                   Container(
-                    padding: EdgeInsets.all(4.w),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 8.w,
+                      vertical: 2.h,
+                    ),
                     decoration: BoxDecoration(
                       color: isSelected
                           ? Colors.white.withValues(alpha: 0.2)
@@ -613,7 +736,7 @@ class MealPlannerView extends StatelessWidget {
                     ),
                     child: Text(
                       "${category.meals.length}",
-                      style: getRegularTextStyle(
+                      style: getBoldTextStyle(
                         color: isSelected
                             ? Colors.white
                             : ColorManager.black101828,
@@ -659,7 +782,7 @@ class MealPlannerView extends StatelessWidget {
             ),
             child: _buildMealCard(meal, state, context),
           );
-        }).toList(),
+        }),
       ],
     );
   }

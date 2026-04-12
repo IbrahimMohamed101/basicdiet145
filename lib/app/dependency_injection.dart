@@ -235,9 +235,16 @@ void initMealPlannerModule() {
     );
   }
 
+  if (!GetIt.I.isRegistered<GetPremiumMealsUseCase>()) {
+    instance.registerFactory<GetPremiumMealsUseCase>(
+      () => GetPremiumMealsUseCase(instance<Repository>()),
+    );
+  }
+
   if (!GetIt.I.isRegistered<MealPlannerBloc>()) {
     instance.registerFactoryParam<MealPlannerBloc, Map<String, dynamic>, void>(
       (params, _) => MealPlannerBloc(
+        instance(),
         instance(),
         initialTimelineDays: params['timelineDays'],
         initialDayIndex: params['initialDayIndex'],
