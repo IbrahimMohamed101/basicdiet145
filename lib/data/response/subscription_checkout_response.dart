@@ -5,7 +5,7 @@ part 'subscription_checkout_response.g.dart';
 @JsonSerializable(explicitToJson: true)
 class SubscriptionCheckoutResponse {
   @JsonKey(name: 'status')
-  bool? status;
+  dynamic status;
   @JsonKey(name: 'message')
   String? message;
   @JsonKey(name: 'data')

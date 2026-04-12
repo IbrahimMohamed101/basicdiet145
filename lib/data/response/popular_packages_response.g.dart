@@ -9,7 +9,7 @@ part of 'popular_packages_response.dart';
 PopularPackagesResponse _$PopularPackagesResponseFromJson(
   Map<String, dynamic> json,
 ) => PopularPackagesResponse(
-  status: json['status'] as bool?,
+  status: json['status'],
   data: (json['data'] as List<dynamic>?)
       ?.map((e) => PopularPackageResponse.fromJson(e as Map<String, dynamic>))
       .toList(),

@@ -5,7 +5,7 @@ part 'popular_packages_response.g.dart';
 @JsonSerializable()
 class PopularPackagesResponse {
   @JsonKey(name: "status")
-  bool? status;
+  dynamic status;
   @JsonKey(name: "data")
   List<PopularPackageResponse>? data;
 

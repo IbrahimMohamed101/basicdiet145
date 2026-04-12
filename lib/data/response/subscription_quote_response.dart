@@ -5,7 +5,7 @@ part 'subscription_quote_response.g.dart';
 @JsonSerializable(explicitToJson: true)
 class SubscriptionQuoteResponse {
   @JsonKey(name: 'status')
-  bool? status;
+  dynamic status;
   @JsonKey(name: 'message')
   String? message;
   @JsonKey(name: 'data')

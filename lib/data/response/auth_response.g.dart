@@ -9,7 +9,7 @@ part of 'auth_response.dart';
 AuthenticationResponse _$AuthenticationResponseFromJson(
   Map<String, dynamic> json,
 ) => AuthenticationResponse(
-  status: json['status'] as bool?,
+  status: json['status'],
   token: json['token'] as String?,
 );
 

@@ -9,7 +9,7 @@ part of 'premium_meals_response.dart';
 PremiumMealsResponse _$PremiumMealsResponseFromJson(
   Map<String, dynamic> json,
 ) => PremiumMealsResponse(
-  status: json['status'] as bool?,
+  status: json['status'],
   data: (json['data'] as List<dynamic>?)
       ?.map((e) => PremiumMealResponse.fromJson(e as Map<String, dynamic>))
       .toList(),

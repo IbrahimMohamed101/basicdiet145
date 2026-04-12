@@ -5,7 +5,7 @@ part 'addons_response.g.dart';
 @JsonSerializable()
 class AddOnsResponse {
   @JsonKey(name: "status")
-  bool? status;
+  dynamic status;
   @JsonKey(name: "message")
   String? message;
   @JsonKey(name: "data")

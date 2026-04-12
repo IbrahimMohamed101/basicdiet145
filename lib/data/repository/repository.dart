@@ -46,7 +46,12 @@ class RepositoryImpl implements Repository {
 
   RepositoryImpl(this._remoteDataSource);
 
-  bool _isSuccessfulResponse(dynamic response) => response.status == true;
+  bool _isSuccessfulResponse(dynamic response) {
+    if (response.status is bool) return response.status == true;
+    if (response.status is num) return response.status >= 200 && response.status < 300;
+    if (response.status is String) return response.status.toString().toLowerCase() == 'true';
+    return false;
+  }
 
   Failure _mapFailureFromResponse(dynamic response) {
     return Failure(

@@ -9,7 +9,7 @@ part of 'categories_with_meals_response.dart';
 CategoriesWithMealsResponse _$CategoriesWithMealsResponseFromJson(
   Map<String, dynamic> json,
 ) => CategoriesWithMealsResponse(
-  status: json['status'] as bool?,
+  status: json['status'],
   data: (json['data'] as List<dynamic>?)
       ?.map(
         (e) => CategoryWithMealsResponse.fromJson(e as Map<String, dynamic>),

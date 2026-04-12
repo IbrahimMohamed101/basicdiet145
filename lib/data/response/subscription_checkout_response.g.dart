@@ -9,7 +9,7 @@ part of 'subscription_checkout_response.dart';
 SubscriptionCheckoutResponse _$SubscriptionCheckoutResponseFromJson(
   Map<String, dynamic> json,
 ) => SubscriptionCheckoutResponse(
-  status: json['status'] as bool?,
+  status: json['status'],
   message: json['message'] as String?,
   data: json['data'] == null
       ? null

@@ -8,7 +8,7 @@ part of 'addons_response.dart';
 
 AddOnsResponse _$AddOnsResponseFromJson(Map<String, dynamic> json) =>
     AddOnsResponse(
-      json['status'] as bool?,
+      json['status'],
       json['message'] as String?,
       (json['data'] as List<dynamic>?)
           ?.map((e) => AddOnResponse.fromJson(e as Map<String, dynamic>))

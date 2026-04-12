@@ -221,6 +221,10 @@ class Strings {
   static const String viewTimeline = "View Timeline";
   static const String todaysMeals = "Today's Meals";
   static const String subscriptionPeriodText = "Subscription Period";
+  static const String plan = 'plan';
+  static const String premium = 'premium';
+  static const String addons = 'addons';
+  static const String vat = 'vat';
 
   // Manage Subscription Screen
   static const String manageSubscription = "Manage Subscription";

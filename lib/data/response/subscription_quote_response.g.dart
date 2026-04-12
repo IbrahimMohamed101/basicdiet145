@@ -9,7 +9,7 @@ part of 'subscription_quote_response.dart';
 SubscriptionQuoteResponse _$SubscriptionQuoteResponseFromJson(
   Map<String, dynamic> json,
 ) => SubscriptionQuoteResponse(
-  status: json['status'] as bool?,
+  status: json['status'],
   message: json['message'] as String?,
   data: json['data'] == null
       ? null

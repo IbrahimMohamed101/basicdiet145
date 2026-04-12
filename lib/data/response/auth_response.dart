@@ -5,7 +5,7 @@ part 'auth_response.g.dart';
 @JsonSerializable()
 class AuthenticationResponse {
   @JsonKey(name: "status")
-  bool? status;
+  dynamic status;
   @JsonKey(name: "token")
   String? token;
 

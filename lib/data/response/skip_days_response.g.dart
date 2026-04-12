@@ -8,7 +8,7 @@ part of 'skip_days_response.dart';
 
 SkipDaysResponse _$SkipDaysResponseFromJson(Map<String, dynamic> json) =>
     SkipDaysResponse(json['data'] as Map<String, dynamic>?)
-      ..status = json['status'] as bool?
+      ..status = json['status']
       ..message = json['message'] as String?;
 
 Map<String, dynamic> _$SkipDaysResponseToJson(SkipDaysResponse instance) =>

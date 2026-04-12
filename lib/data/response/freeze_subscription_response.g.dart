@@ -62,7 +62,7 @@ FreezeSubscriptionResponse _$FreezeSubscriptionResponseFromJson(
                 json['data'] as Map<String, dynamic>,
               ),
       )
-      ..status = json['status'] as bool?
+      ..status = json['status']
       ..message = json['message'] as String?;
 
 Map<String, dynamic> _$FreezeSubscriptionResponseToJson(

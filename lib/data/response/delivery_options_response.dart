@@ -5,7 +5,7 @@ part 'delivery_options_response.g.dart';
 @JsonSerializable(explicitToJson: true)
 class DeliveryOptionsResponse {
   @JsonKey(name: 'status')
-  bool? status;
+  dynamic status;
   @JsonKey(name: 'message')
   String? message;
   @JsonKey(name: 'data')

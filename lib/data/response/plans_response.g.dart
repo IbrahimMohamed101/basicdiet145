@@ -8,7 +8,7 @@ part of 'plans_response.dart';
 
 PlansResponse _$PlansResponseFromJson(Map<String, dynamic> json) =>
     PlansResponse(
-      status: json['status'] as bool?,
+      status: json['status'],
       data: (json['data'] as List<dynamic>?)
           ?.map((e) => PlanResponse.fromJson(e as Map<String, dynamic>))
           .toList(),

@@ -9,7 +9,7 @@ part of 'delivery_options_response.dart';
 DeliveryOptionsResponse _$DeliveryOptionsResponseFromJson(
   Map<String, dynamic> json,
 ) => DeliveryOptionsResponse(
-  status: json['status'] as bool?,
+  status: json['status'],
   message: json['message'] as String?,
   data: json['data'] == null
       ? null

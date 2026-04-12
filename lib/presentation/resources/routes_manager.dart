@@ -119,7 +119,7 @@ class GoRouterConfig {
           return getCustomTransitionPage(
             state: state,
             child: BlocProvider.value(
-              value: instance<SubscriptionBloc>(),
+              value: extras['bloc'] as SubscriptionBloc,
               child: SubscriptionDetails(
                 quote: extras['quote'] as SubscriptionQuoteModel,
                 quoteRequest: extras['quoteRequest'] as SubscriptionQuoteRequestModel,

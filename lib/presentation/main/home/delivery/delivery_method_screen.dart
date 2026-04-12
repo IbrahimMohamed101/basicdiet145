@@ -63,6 +63,7 @@ class _DeliveryMethodListener extends StatelessWidget {
               context.push(
                 SubscriptionDetails.subscriptionDetailsRoute,
                 extra: {
+                  'bloc': context.read<SubscriptionBloc>(),
                   'quote': state.subscriptionQuote!,
                   'quoteRequest': state.lastQuoteRequest!,
                   'subscriptionId':
