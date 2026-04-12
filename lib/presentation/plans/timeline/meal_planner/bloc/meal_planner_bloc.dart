@@ -1,7 +1,9 @@
 import 'package:basic_diet/domain/usecase/get_categories_with_meals_usecase.dart';
 import 'package:basic_diet/domain/usecase/get_premium_meals_usecase.dart';
+import 'package:basic_diet/domain/usecase/save_meal_planner_changes_usecase.dart';
 import 'package:basic_diet/domain/model/categories_with_meals_model.dart';
 import 'package:basic_diet/domain/model/timeline_model.dart';
+import 'package:basic_diet/data/request/bulk_selections_request.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'meal_planner_event.dart';
 import 'meal_planner_state.dart';
@@ -9,16 +11,20 @@ import 'meal_planner_state.dart';
 class MealPlannerBloc extends Bloc<MealPlannerEvent, MealPlannerState> {
   final GetCategoriesWithMealsUseCase _getCategoriesWithMealsUseCase;
   final GetPremiumMealsUseCase _getPremiumMealsUseCase;
+  final SaveMealPlannerChangesUseCase _saveMealPlannerChangesUseCase;
   final List<TimelineDayModel> initialTimelineDays;
   final int initialDayIndex;
   final int premiumMealsRemaining;
+  final String subscriptionId;
 
   MealPlannerBloc(
     this._getCategoriesWithMealsUseCase,
-    this._getPremiumMealsUseCase, {
+    this._getPremiumMealsUseCase,
+    this._saveMealPlannerChangesUseCase, {
     required this.initialTimelineDays,
     required this.initialDayIndex,
     required this.premiumMealsRemaining,
+    required this.subscriptionId,
   }) : super(MealPlannerInitial()) {
     on<GetMealPlannerDataEvent>(_onGetData);
     on<ChangeDateEvent>(_onChangeDate);
@@ -71,9 +77,12 @@ class MealPlannerBloc extends Bloc<MealPlannerEvent, MealPlannerState> {
 
             for (int i = 0; i < initialTimelineDays.length; i++) {
               final day = initialTimelineDays[i];
-              selectedMealsPerDay[i] =
-                  List.generate(day.selectedMeals, (index) => "initial_$index");
-              savedSelections[i] = List.from(selectedMealsPerDay[i]!);
+              final allSelections = [
+                ...day.selections,
+                ...day.premiumSelections,
+              ];
+              selectedMealsPerDay[i] = allSelections;
+              savedSelections[i] = List.from(allSelections);
             }
 
             emit(MealPlannerLoaded(
@@ -161,14 +170,71 @@ class MealPlannerBloc extends Bloc<MealPlannerEvent, MealPlannerState> {
       final s = state as MealPlannerLoaded;
       emit(s.copyWith(isSaving: true));
 
-      // Mock API call for saving
-      await Future.delayed(const Duration(seconds: 1));
+      // 1. Identify completed days
+      List<BulkSelectionDayRequest> dayRequests = [];
+      for (int i = 0; i < s.timelineDays.length; i++) {
+        final day = s.timelineDays[i];
+        final selections = s.selectedMealsPerDay[i] ?? [];
+        if (selections.length >= day.requiredMeals) {
+          // This day is completed, we will send it.
+          List<String> normalSelections = [];
+          List<String> premiumSelections = [];
 
-      final newSavedSelections = Map<int, List<String>>.from(s.selectedMealsPerDay);
-      emit(s.copyWith(
-        isSaving: false,
-        savedSelections: newSavedSelections,
-      ));
+          for (final mealId in selections) {
+            // Check type. We added premium as type 'premium'
+            bool isPremium = false;
+            for (var category in s.categoriesWithMeals.data) {
+              for (var meal in category.meals) {
+                if (meal.id == mealId && meal.type == 'premium') {
+                  isPremium = true;
+                  break;
+                }
+              }
+              if (isPremium) break;
+            }
+
+            if (isPremium) {
+              premiumSelections.add(mealId);
+            } else {
+              normalSelections.add(mealId);
+            }
+          }
+
+          dayRequests.add(BulkSelectionDayRequest(
+            date: day.date,
+            selections: normalSelections,
+            premiumSelections: premiumSelections,
+            addonsOneTime: [],
+          ));
+        }
+      }
+
+      if (dayRequests.isEmpty) {
+        // Nothing to save
+        emit(s.copyWith(isSaving: false));
+        return;
+      }
+
+      final request = BulkSelectionsRequest(days: dayRequests);
+      final result = await _saveMealPlannerChangesUseCase.execute(
+        SaveMealPlannerChangesUseCaseInput(subscriptionId, request),
+      );
+
+      result.fold(
+        (failure) {
+          // You might want to handle error differently (e.g. show toast)
+          // For now, let's just stop loading.
+          emit(s.copyWith(isSaving: false));
+        },
+        (success) {
+          final newSavedSelections = Map<int, List<String>>.from(s.selectedMealsPerDay);
+          emit(s.copyWith(
+            isSaving: false,
+            saveSuccess: true,
+            savedSelections: newSavedSelections,
+          ));
+        },
+      );
     }
   }
 }

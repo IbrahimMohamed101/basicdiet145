@@ -32,6 +32,7 @@ class MealPlannerLoaded extends MealPlannerState {
   final bool showSavedBanner;
   final String lastAddedMealName;
   final int premiumMealsRemaining;
+  final bool saveSuccess;
 
   const MealPlannerLoaded({
     required this.timelineDays,
@@ -41,6 +42,7 @@ class MealPlannerLoaded extends MealPlannerState {
     required this.savedSelections,
     required this.premiumMealsRemaining,
     this.isSaving = false,
+    this.saveSuccess = false,
     this.selectedCategoryIndex = 0,
     this.showSavedBanner = false,
     this.lastAddedMealName = "",
@@ -74,6 +76,7 @@ class MealPlannerLoaded extends MealPlannerState {
     showSavedBanner,
     lastAddedMealName,
     premiumMealsRemaining,
+    saveSuccess,
   ];
 
   MealPlannerLoaded copyWith({
@@ -87,6 +90,7 @@ class MealPlannerLoaded extends MealPlannerState {
     bool? showSavedBanner,
     String? lastAddedMealName,
     int? premiumMealsRemaining,
+    bool? saveSuccess,
   }) {
     return MealPlannerLoaded(
       timelineDays: timelineDays ?? this.timelineDays,
@@ -101,6 +105,7 @@ class MealPlannerLoaded extends MealPlannerState {
       lastAddedMealName: lastAddedMealName ?? this.lastAddedMealName,
       premiumMealsRemaining:
           premiumMealsRemaining ?? this.premiumMealsRemaining,
+      saveSuccess: saveSuccess ?? this.saveSuccess,
     );
   }
 }

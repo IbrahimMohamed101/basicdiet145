@@ -6,6 +6,8 @@ class TimelineDayModel {
   final String status;
   final int selectedMeals;
   final int requiredMeals;
+  final List<String> selections;
+  final List<String> premiumSelections;
 
   TimelineDayModel({
     required this.date,
@@ -15,6 +17,8 @@ class TimelineDayModel {
     required this.status,
     required this.selectedMeals,
     required this.requiredMeals,
+    required this.selections,
+    required this.premiumSelections,
   });
 }
 

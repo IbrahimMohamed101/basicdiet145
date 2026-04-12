@@ -1,3 +1,4 @@
+import 'package:basic_diet/data/request/bulk_selections_request.dart';
 import 'dart:developer' as developer;
 
 import 'package:basic_diet/data/data_source/remote_data_source.dart';
@@ -385,6 +386,20 @@ class RepositoryImpl implements Repository {
   Future<Either<Failure, CheckoutDraftModel>> getCheckoutDraft(String id) async {
     try {
       final response = await _remoteDataSource.getCheckoutDraft(id);
+      if (_isSuccessfulResponse(response)) {
+        return Right(response.toDomain());
+      } else {
+        return Left(_mapFailureFromResponse(response));
+      }
+    } catch (error) {
+      return _handleError(error);
+    }
+  }
+
+  @override
+  Future<Either<Failure, BaseModel>> bulkSelections(String id, BulkSelectionsRequest request) async {
+    try {
+      final response = await _remoteDataSource.bulkSelections(id, request);
       if (_isSuccessfulResponse(response)) {
         return Right(response.toDomain());
       } else {

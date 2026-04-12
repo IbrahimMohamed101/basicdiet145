@@ -19,6 +19,10 @@ class TimelineDayResponse {
   int? selectedMeals;
   @JsonKey(name: "requiredMeals")
   int? requiredMeals;
+  @JsonKey(name: "selections")
+  List<String>? selections;
+  @JsonKey(name: "premiumSelections")
+  List<String>? premiumSelections;
 
   TimelineDayResponse(
     this.date,
@@ -28,6 +32,8 @@ class TimelineDayResponse {
     this.status,
     this.selectedMeals,
     this.requiredMeals,
+    this.selections,
+    this.premiumSelections,
   );
 
   factory TimelineDayResponse.fromJson(Map<String, dynamic> json) =>

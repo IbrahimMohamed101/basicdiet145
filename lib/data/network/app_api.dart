@@ -1,3 +1,4 @@
+import 'package:basic_diet/data/request/bulk_selections_request.dart';
 import 'package:basic_diet/app/constants.dart';
 import 'package:basic_diet/data/response/checkout_draft_response.dart';
 import 'package:basic_diet/data/request/subscription_checkout_request.dart';
@@ -96,4 +97,10 @@ abstract class AppServiceClient {
 
   @GET("/api/subscriptions/checkout-drafts/{id}")
   Future<CheckoutDraftResponse> getCheckoutDraft(@Path("id") String id);
+
+  @PUT("/api/subscriptions/{id}/days/selections/bulk")
+  Future<BaseResponse> bulkSelections(
+    @Path("id") String id,
+    @Body() BulkSelectionsRequest request,
+  );
 }

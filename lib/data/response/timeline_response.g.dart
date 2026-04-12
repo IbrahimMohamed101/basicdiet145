@@ -15,6 +15,10 @@ TimelineDayResponse _$TimelineDayResponseFromJson(Map<String, dynamic> json) =>
       json['status'] as String?,
       (json['selectedMeals'] as num?)?.toInt(),
       (json['requiredMeals'] as num?)?.toInt(),
+      (json['selections'] as List<dynamic>?)?.map((e) => e as String).toList(),
+      (json['premiumSelections'] as List<dynamic>?)
+          ?.map((e) => e as String)
+          .toList(),
     );
 
 Map<String, dynamic> _$TimelineDayResponseToJson(
@@ -27,6 +31,8 @@ Map<String, dynamic> _$TimelineDayResponseToJson(
   'status': instance.status,
   'selectedMeals': instance.selectedMeals,
   'requiredMeals': instance.requiredMeals,
+  'selections': instance.selections,
+  'premiumSelections': instance.premiumSelections,
 };
 
 TimelineDataResponse _$TimelineDataResponseFromJson(

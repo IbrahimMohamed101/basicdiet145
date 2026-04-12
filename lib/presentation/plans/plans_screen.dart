@@ -377,13 +377,16 @@ class PlansScreen extends StatelessWidget {
       children: [
         Expanded(
           child: ElevatedButton(
-            onPressed: () {
-              Navigator.push(
+            onPressed: () async {
+              await Navigator.push(
                 context,
                 MaterialPageRoute(
                   builder: (context) => TimeLineScreen(subscriptionId: data.id),
                 ),
               );
+              if (context.mounted) {
+                context.read<PlansBloc>().add(FetchCurrentSubscriptionOverviewEvent());
+              }
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: ColorManager.greenPrimary,

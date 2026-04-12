@@ -1,3 +1,4 @@
+import 'package:basic_diet/data/request/bulk_selections_request.dart';
 import 'package:basic_diet/data/network/app_api.dart';
 import 'package:basic_diet/data/response/checkout_draft_response.dart';
 import 'package:basic_diet/data/data_source/remote_data_source.dart';
@@ -122,5 +123,10 @@ class RemoteDataSourceImpl implements RemoteDataSource {
   @override
   Future<CheckoutDraftResponse> getCheckoutDraft(String id) {
     return _appServiceClient.getCheckoutDraft(id);
+  }
+
+  @override
+  Future<BaseResponse> bulkSelections(String id, BulkSelectionsRequest request) {
+    return _appServiceClient.bulkSelections(id, request);
   }
 }

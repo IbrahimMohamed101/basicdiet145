@@ -1,3 +1,4 @@
+import 'package:basic_diet/data/request/bulk_selections_request.dart';
 import 'package:basic_diet/data/response/addons_response.dart';
 import 'package:basic_diet/data/response/checkout_draft_response.dart';
 import 'package:basic_diet/data/request/subscription_checkout_request.dart';
@@ -49,4 +50,5 @@ abstract class RemoteDataSource {
   Future<TimelineResponse> getSubscriptionTimeline(String id);
   Future<CategoriesWithMealsResponse> getCategoriesWithMeals();
   Future<CheckoutDraftResponse> getCheckoutDraft(String id);
+  Future<BaseResponse> bulkSelections(String id, BulkSelectionsRequest request);
 }

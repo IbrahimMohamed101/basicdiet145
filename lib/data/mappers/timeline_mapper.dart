@@ -13,6 +13,8 @@ extension TimelineDayResponseMapper on TimelineDayResponse? {
       status: this?.status.orEmpty() ?? Constants.empty,
       selectedMeals: this?.selectedMeals.orZero() ?? Constants.zero,
       requiredMeals: this?.requiredMeals.orZero() ?? Constants.zero,
+      selections: this?.selections ?? [],
+      premiumSelections: this?.premiumSelections ?? [],
     );
   }
 }

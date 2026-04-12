@@ -18,12 +18,14 @@ class MealPlannerScreen extends StatelessWidget {
   final List<TimelineDayModel> timelineDays;
   final int initialDayIndex;
   final int premiumMealsRemaining;
+  final String subscriptionId;
 
   const MealPlannerScreen({
     super.key,
     required this.timelineDays,
     required this.initialDayIndex,
     required this.premiumMealsRemaining,
+    required this.subscriptionId,
   });
 
   @override
@@ -36,10 +38,19 @@ class MealPlannerScreen extends StatelessWidget {
             'timelineDays': timelineDays,
             'initialDayIndex': initialDayIndex,
             'premiumMealsRemaining': premiumMealsRemaining,
+            'subscriptionId': subscriptionId,
           },
         )..add(const GetMealPlannerDataEvent());
       },
-      child: const MealPlannerView(),
+      child: BlocListener<MealPlannerBloc, MealPlannerState>(
+        listenWhen: (prev, curr) => curr is MealPlannerLoaded && (prev is! MealPlannerLoaded || prev.saveSuccess != curr.saveSuccess),
+        listener: (context, state) {
+          if (state is MealPlannerLoaded && state.saveSuccess) {
+            Navigator.pop(context, true);
+          }
+        },
+        child: const MealPlannerView(),
+      ),
     );
   }
 }
@@ -302,6 +313,7 @@ class MealPlannerView extends StatelessWidget {
             bgColor = ColorManager.greenPrimary;
             borderColor = Colors.transparent;
             textColor = Colors.white;
+            statusText = Strings.planned;
           } else if (isSelected) {
             borderColor = ColorManager.bluePrimary;
             if (day.status.toLowerCase() == 'open') {
@@ -967,9 +979,17 @@ class MealPlannerView extends StatelessWidget {
   }
 
   Widget _buildBottomAction(MealPlannerLoaded state, BuildContext context) {
-    final bool canSave =
-        state.isDirty &&
-        state.selectedMealsPerDay.values.any((l) => l.isNotEmpty);
+    bool hasCompletedDay = false;
+    for (int i = 0; i < state.timelineDays.length; i++) {
+      final required = state.timelineDays[i].requiredMeals;
+      final selected = state.selectedMealsPerDay[i]?.length ?? 0;
+      if (selected >= required) {
+        hasCompletedDay = true;
+        break;
+      }
+    }
+    
+    final bool canSave = state.isDirty && hasCompletedDay;
 
     return Align(
       alignment: Alignment.bottomCenter,

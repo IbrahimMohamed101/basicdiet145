@@ -186,17 +186,22 @@ class TimeLineScreen extends StatelessWidget {
         day.status.toLowerCase() == 'extension';
 
     return GestureDetector(
-      onTap: isClickable ? () {
-        Navigator.push(
+      onTap: isClickable ? () async {
+        final result = await Navigator.push(
           context,
           MaterialPageRoute(
             builder: (context) => MealPlannerScreen(
               timelineDays: days,
               initialDayIndex: index,
               premiumMealsRemaining: premiumMealsRemaining,
+              subscriptionId: subscriptionId,
             ),
           ),
         );
+
+        if (result == true && context.mounted) {
+          context.read<TimelineBloc>().add(FetchTimelineEvent(subscriptionId));
+        }
       } : null,
       child: Container(
         padding: EdgeInsets.all(AppPadding.p16.w),
