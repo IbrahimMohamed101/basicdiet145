@@ -124,6 +124,51 @@ router.get("/:id/days/:date/pickup/status", asyncHandler(controller.getPickupSta
 router.get("/:id/days/:date", asyncHandler(controller.getSubscriptionDay));
 /**
  * @openapi
+ * /subscriptions/{id}/days/selections/bulk:
+ *   put:
+ *     summary: Update the same day selections for multiple dates
+ *     tags: [Subscriptions]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [dates]
+ *             properties:
+ *               dates:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                   example: 2026-04-15
+ *               selections:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               premiumSelections:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               addonsOneTime:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *     responses:
+ *       200:
+ *         description: Bulk day selections processed
+ */
+router.put("/:id/days/selections/bulk", asyncHandler(controller.updateBulkDaySelections));
+
+/**
+ * @openapi
  * /subscriptions/{id}/days/{date}/selection:
  *   put:
  *     summary: Update day selections

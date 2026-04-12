@@ -1810,6 +1810,16 @@ function resolveRequestedDate(req) {
     : "";
 }
 
+function resolveRequestedDates(req) {
+  const bodyDates = req && req.body && Array.isArray(req.body.dates)
+    ? req.body.dates
+    : (req && req.body && Array.isArray(req.body.days) ? req.body.days : []);
+
+  return bodyDates
+    .map((value) => (typeof value === "string" ? value.trim() : ""))
+    .filter(Boolean);
+}
+
 function isPopulatedPlanDocument(plan) {
   return Boolean(
     plan
@@ -4861,6 +4871,132 @@ async function updateDaySelection(req, res, runtimeOverrides = null) {
   }
 }
 
+async function updateBulkDaySelections(req, res, runtimeOverrides = null) {
+  const runtime = runtimeOverrides ? { ...sliceP2S1DefaultRuntime, ...runtimeOverrides } : sliceP2S1DefaultRuntime;
+  const { id } = req.params;
+  const body = req.body || {};
+  const dates = resolveRequestedDates(req);
+  const selections = Array.isArray(body.selections) ? body.selections : (Array.isArray(body.meals) ? body.meals : []);
+  const premiumSelections = Array.isArray(body.premiumSelections) ? body.premiumSelections : [];
+  const requestedOneTimeAddonIds = body.addonsOneTime || body.oneTimeAddonSelections;
+  const lang = getRequestLang(req);
+
+  try {
+    validateObjectId(id, "subscriptionId");
+  } catch (err) {
+    return errorResponse(res, err.status, err.code, err.message);
+  }
+
+  if (!dates.length) {
+    return errorResponse(res, 400, "INVALID", "dates array is required");
+  }
+
+  const uniqueDates = new Set(dates);
+  if (uniqueDates.size !== dates.length) {
+    return errorResponse(res, 400, "INVALID", "dates array must not contain duplicates");
+  }
+
+  const rawResults = [];
+  const serializedDays = [];
+
+  // Preserve caller order because shared premium/add-on balances can affect later dates.
+  for (const date of dates) {
+    try {
+      const result = await performDaySelectionUpdate({
+        userId: req.userId,
+        subscriptionId: id,
+        date,
+        selections,
+        premiumSelections,
+        requestedOneTimeAddonIds,
+        lang,
+        runtime,
+      });
+
+      if (!result.idempotent) {
+        await writeLogSafely({
+          entityType: "subscription_day",
+          entityId: result.day._id,
+          action: "day_selection_bulk_update",
+          byUserId: req.userId,
+          byRole: "client",
+          meta: {
+            date,
+            selectionsCount: selections.length,
+            premiumCount: premiumSelections.length,
+            totalRequestedDates: dates.length,
+          },
+        }, { subscriptionId: id, date });
+      }
+
+      const serializedDay = serializeSubscriptionDayForClient(
+        result.subscription,
+        result.day.toObject ? result.day.toObject() : result.day,
+        runtime
+      );
+      serializedDays.push(serializedDay);
+      rawResults.push({
+        date,
+        ok: true,
+        idempotent: Boolean(result.idempotent),
+      });
+    } catch (err) {
+      if (err && err.code === "DATA_INTEGRITY_ERROR") {
+        logWalletIntegrityError("update_bulk_day_selections_refund", {
+          subscriptionId: id,
+          date,
+          reason: err.message,
+        });
+      }
+
+      rawResults.push({
+        date,
+        ok: false,
+        code: err && err.code ? err.code : "INTERNAL",
+        message: err && err.message ? err.message : "Selection failed",
+      });
+    }
+  }
+
+  const catalog = await loadWalletCatalogMapsSafely({
+    days: serializedDays,
+    lang,
+    context: "update_bulk_day_selections_result",
+  });
+
+  const localizedDayByDate = new Map(
+    serializedDays.map((day) => [
+      String(day.date),
+      localizeWriteDayPayload(day, {
+        lang,
+        addonNames: catalog.addonNames,
+      }),
+    ])
+  );
+
+  const results = rawResults.map((entry) => (
+    entry.ok
+      ? {
+        ...entry,
+        data: localizedDayByDate.get(String(entry.date)) || null,
+      }
+      : entry
+  ));
+
+  return res.status(200).json({
+    ok: true,
+    data: {
+      summary: {
+        totalDates: dates.length,
+        updatedCount: results.filter((entry) => entry.ok && !entry.idempotent).length,
+        idempotentCount: results.filter((entry) => entry.ok && entry.idempotent).length,
+        failedCount: results.filter((entry) => !entry.ok).length,
+      },
+      results,
+    },
+  });
+}
+
 async function confirmDayPlanning(req, res, runtimeOverrides = null) {
   const runtime = runtimeOverrides ? { ...sliceP2S1DefaultRuntime, ...runtimeOverrides } : sliceP2S1DefaultRuntime;
   const { id, date } = req.params;
@@ -6255,6 +6391,7 @@ module.exports = {
   getSubscriptionToday,
   getSubscriptionDay,
   updateDaySelection,
+  updateBulkDaySelections,
   confirmDayPlanning,
   skipDay,
   unskipDay,

@@ -252,6 +252,107 @@ test("updateDaySelection accepts legacy meals payload as selections alias", asyn
   assert.equal(res.payload.data.planning.selectedTotalMealCount, 2);
 });
 
+test("updateBulkDaySelections applies the same selections to multiple dates in request order", async (t) => {
+  const originalFlag = process.env.PHASE2_CANONICAL_DAY_PLANNING;
+  process.env.PHASE2_CANONICAL_DAY_PLANNING = "true";
+  t.after(() => {
+    process.env.PHASE2_CANONICAL_DAY_PLANNING = originalFlag;
+  });
+
+  const originalStartSession = mongoose.startSession;
+  const originalFindById = Subscription.findById;
+  const originalDayFindOne = SubscriptionDay.findOne;
+  const originalDayFindOneAndUpdate = SubscriptionDay.findOneAndUpdate;
+  const originalSettingFindOne = Setting.findOne;
+  t.after(() => {
+    mongoose.startSession = originalStartSession;
+    Subscription.findById = originalFindById;
+    SubscriptionDay.findOne = originalDayFindOne;
+    SubscriptionDay.findOneAndUpdate = originalDayFindOneAndUpdate;
+    Setting.findOne = originalSettingFindOne;
+  });
+
+  mongoose.startSession = async () => createSessionStub();
+
+  const userId = objectId();
+  const subscription = createSubscriptionDoc(userId);
+  Subscription.findById = () => createQueryStub(subscription);
+
+  const firstDate = getFutureDate(2);
+  const secondDate = getFutureDate(3);
+  const savedDates = [];
+  const dayDocs = new Map();
+
+  SubscriptionDay.findOne = ({ date }) => createQueryStub(dayDocs.get(String(date)) || null);
+  SubscriptionDay.findOneAndUpdate = async (_query, update) => {
+    const date = String(_query.date);
+    const dayDoc = dayDocs.get(date) || {
+      _id: objectId(),
+      subscriptionId: subscription._id,
+      date,
+      status: "open",
+      selections: [],
+      premiumSelections: [],
+      addonsOneTime: [],
+      async save() {
+        savedDates.push(this.date);
+        return this;
+      },
+      toObject() {
+        return { ...this };
+      },
+    };
+
+    dayDoc.selections = update.selections || [];
+    dayDoc.premiumSelections = update.premiumSelections || [];
+    dayDocs.set(date, dayDoc);
+    return dayDoc;
+  };
+  Setting.findOne = () => createQueryStub(null);
+
+  const mealId = objectId();
+  const { req, res } = createReqRes({
+    params: { id: String(subscription._id) },
+    body: {
+      dates: [firstDate, secondDate],
+      selections: [mealId],
+      premiumSelections: [],
+      addonsOneTime: [],
+    },
+    userId,
+  });
+
+  await controller.updateBulkDaySelections(req, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(savedDates, [firstDate, secondDate]);
+  assert.equal(res.payload.data.summary.totalDates, 2);
+  assert.equal(res.payload.data.summary.updatedCount, 2);
+  assert.equal(res.payload.data.summary.failedCount, 0);
+  assert.equal(res.payload.data.results.length, 2);
+  assert.equal(res.payload.data.results[0].date, firstDate);
+  assert.equal(res.payload.data.results[1].date, secondDate);
+  assert.equal(res.payload.data.results[0].data.planning.selectedTotalMealCount, 1);
+  assert.equal(res.payload.data.results[1].data.planning.selectedTotalMealCount, 1);
+});
+
+test("updateBulkDaySelections rejects duplicate dates", async () => {
+  const { req, res } = createReqRes({
+    params: { id: String(objectId()) },
+    body: {
+      dates: ["2026-04-15", "2026-04-15"],
+      selections: [],
+      premiumSelections: [],
+    },
+  });
+
+  await controller.updateBulkDaySelections(req, res);
+
+  assert.equal(res.statusCode, 400);
+  assert.equal(res.payload.ok, false);
+  assert.equal(res.payload.error.code, "INVALID");
+});
+
 test("confirmDayPlanning confirms only exact-count canonical day plans", async (t) => {
   const originalFlag = process.env.PHASE2_CANONICAL_DAY_PLANNING;
   process.env.PHASE2_CANONICAL_DAY_PLANNING = "true";

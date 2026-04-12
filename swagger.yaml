@@ -5346,6 +5346,74 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /api/subscriptions/{id}/days/selections/bulk:
+    put:
+      tags: [Subscriptions]
+      summary: Update the same day meal selections for multiple dates
+      description: Applies the provided selections to multiple subscription days in request order and returns a per-date result summary.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [dates]
+              properties:
+                dates:
+                  type: array
+                  items:
+                    type: string
+                    format: date
+                selections:
+                  type: array
+                  items:
+                    type: string
+                premiumSelections:
+                  type: array
+                  items:
+                    type: string
+                addonsOneTime:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Bulk update processed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      summary:
+                        type: object
+                        properties:
+                          totalDates:
+                            type: integer
+                          updatedCount:
+                            type: integer
+                          idempotentCount:
+                            type: integer
+                          failedCount:
+                            type: integer
+                      results:
+                        type: array
+                        items:
+                          type: object
+                          additionalProperties: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
   /api/subscriptions/{id}/days/{date}/selection:
     put:
       tags: [Subscriptions]

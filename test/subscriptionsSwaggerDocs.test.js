@@ -52,6 +52,7 @@ test("GET /subscriptions-api-docs/swagger.yaml serves the unified OpenAPI docume
   assert.ok(doc.paths["/api/subscriptions/menu"]);
   assert.ok(doc.paths["/api/subscriptions/current/overview"]);
   assert.ok(doc.paths["/api/subscriptions/{id}/renew"]);
+  assert.ok(doc.paths["/api/subscriptions/{id}/days/selections/bulk"]);
   assert.ok(doc.paths["/api/subscriptions/{id}/days/{date}/premium-overage/payments"]);
   assert.ok(doc.paths["/api/admin/uploads/image"]);
   assert.ok(doc.paths["/api/admin/subscriptions/{id}/extend"]);
