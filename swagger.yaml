@@ -5840,6 +5840,67 @@ paths:
         '500':
           $ref: '#/components/responses/Internal'
 
+  /api/subscriptions/{id}/days/{date}/pickup/status:
+    get:
+      tags: [Subscriptions]
+      summary: Get pickup status for a day
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+        - $ref: '#/components/parameters/KsaDate'
+      responses:
+        '200':
+          description: Pickup status retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      subscriptionId:
+                        type: string
+                      date:
+                        type: string
+                        format: date
+                      currentStep:
+                        type: integer
+                      status:
+                        type: string
+                      statusLabel:
+                        type: string
+                      message:
+                        type: string
+                      canModify:
+                        type: boolean
+                      isReady:
+                        type: boolean
+                      isCompleted:
+                        type: boolean
+                      pickupCode:
+                        type: string
+                        nullable: true
+                      pickupCodeIssuedAt:
+                        type: string
+                        nullable: true
+                      fulfilledAt:
+                        type: string
+                        nullable: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '500':
+          $ref: '#/components/responses/Internal'
+
   /api/subscriptions/{id}/days/{date}/custom-salad:
     post:
       tags: [Subscriptions, Meals / Menu]

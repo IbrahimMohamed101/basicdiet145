@@ -132,7 +132,7 @@ test("processDailyCutoff does not consume premium credits and includes recurring
     subscriptionId: subscription,
     date: tomorrow,
     status: "open",
-    selections: [],
+    selections: ["m1", "m2"],
     premiumSelections: [],
     assignedByKitchen: false,
     save: async function () { return this; },
@@ -166,15 +166,11 @@ test("processDailyCutoff does not consume premium credits and includes recurring
   assert.equal(subscription.genericPremiumBalance[0].remainingQty, 1, "Premium balance must remain unchanged");
   assert.equal(day.selections.length, 2, "Auto-assignment should assign the correct number of meals");
   assert.equal(day.premiumSelections.length, 0, "Auto-assignment should not consume premium selections");
-  assert.equal(day.assignedByKitchen, true, "Day should be marked as assigned by kitchen");
-  assert.deepEqual(capturedMealQuery, {
-    type: "regular",
-    isActive: true,
-    availableForSubscription: { $ne: false },
-  });
+  assert.equal(day.assignedByKitchen, false, "Lock-as-is should not mark the day as assigned by kitchen");
+  assert.equal(capturedMealQuery, null, "Lock-as-is should not query fallback meals");
   assert.ok(Array.isArray(day.lockedSnapshot.recurringAddons), "Locked snapshot should include recurring add-ons");
   assert.equal(day.lockedSnapshot.recurringAddons.length, 1, "Recurring add-ons should be projected into the locked snapshot");
-  assert.equal(day.lockedSnapshot.planningSource, "system", "Fallback snapshot should mark system planning");
+  assert.equal(day.lockedSnapshot.planningSource, "user", "Lock-as-is snapshot should mark user planning");
 
   Meal.find = originalMealFind;
   SubscriptionDay.find = originalDayFind;

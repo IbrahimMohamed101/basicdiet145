@@ -203,7 +203,7 @@ test("automation lock snapshot includes planning only for canonical subscription
     _id: objectId(),
     date: "2026-03-18",
     status: "open",
-    selections: [],
+    selections: [objectId(), objectId(), objectId()],
     premiumSelections: [],
     addonsOneTime: [],
     customSalads: [],

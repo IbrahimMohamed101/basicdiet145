@@ -235,13 +235,14 @@ test("automation lock for fallback canonical day has confirmed planning snapshot
   ];
   Meal.find = () => createQueryStub(regularMeals);
 
-  await processDailyCutoff();
+  await assert.rejects(
+    () => processDailyCutoff(),
+    (err) => err && err.code === "PLANNING_INCOMPLETE"
+  );
 
-  assert.equal(day.status, "locked");
-  assert.equal(day.planningState, "confirmed");
-  assert.ok(day.lockedSnapshot);
-  assert.ok(day.lockedSnapshot.planning);
-  assert.equal(day.lockedSnapshot.planning.state, "confirmed");
+  assert.equal(day.status, "open");
+  assert.equal(day.planningState, undefined);
+  assert.equal(day.lockedSnapshot, undefined);
 });
 
 test("automation lock for legacy subscription does not include canonical fields", async (t) => {

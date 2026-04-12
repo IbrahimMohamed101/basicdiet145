@@ -79,6 +79,48 @@ router.post("/:id/freeze", asyncHandler(controller.freezeSubscription));
 router.post("/:id/unfreeze", asyncHandler(controller.unfreezeSubscription));
 router.get("/:id/days", authMiddleware, asyncHandler(controller.getSubscriptionDays));
 router.get("/:id/today", asyncHandler(controller.getSubscriptionToday));
+/**
+ * @openapi
+ * /subscriptions/{id}/days/{date}/pickup/prepare:
+ *   post:
+ *     summary: Prepare pickup for a day
+ *     tags: [Subscriptions]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *       - name: date
+ *         in: path
+ *         required: true
+ *     responses:
+ *       200:
+ *         description: Pickup prepared
+ */
+router.post("/:id/days/:date/pickup/prepare", asyncHandler(controller.preparePickup));
+
+/**
+ * @openapi
+ * /subscriptions/{id}/days/{date}/pickup/status:
+ *   get:
+ *     summary: Get pickup status for a day
+ *     tags: [Subscriptions]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *       - name: date
+ *         in: path
+ *         required: true
+ *     responses:
+ *       200:
+ *         description: Pickup status retrieved
+ */
+router.get("/:id/days/:date/pickup/status", asyncHandler(controller.getPickupStatus));
+
 router.get("/:id/days/:date", asyncHandler(controller.getSubscriptionDay));
 /**
  * @openapi
@@ -165,26 +207,6 @@ router.post("/:id/days/:date/unskip", asyncHandler(controller.unskipDay));
  *         description: Range skip summary
  */
 router.post("/:id/skip-range", authMiddleware, asyncHandler(controller.skipRange));
-/**
- * @openapi
- * /subscriptions/{id}/days/{date}/pickup/prepare:
- *   post:
- *     summary: Prepare pickup for a day
- *     tags: [Subscriptions]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - name: id
- *         in: path
- *         required: true
- *       - name: date
- *         in: path
- *         required: true
- *     responses:
- *       200:
- *         description: Pickup prepared
- */
-router.post("/:id/days/:date/pickup/prepare", asyncHandler(controller.preparePickup));
 /**
  * @openapi
  * /subscriptions/{id}/days/{date}/custom-salad:

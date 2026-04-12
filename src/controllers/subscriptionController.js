@@ -136,6 +136,7 @@ const {
   validateDayBeforeLockOrPrepare,
   resolveDayExecutionValidationErrorStatus,
 } = require("../services/subscription/subscriptionDayExecutionValidationService");
+const { resolvePickupPreparationState } = require("../services/subscription/subscriptionPickupPreparationService");
 const { syncSubscriptionValidity } = require("../services/subscription/subscriptionCompensationService");
 const {
   performSkipRange,
@@ -2832,11 +2833,21 @@ async function getCurrentSubscriptionOverview(req, res) {
     const serializedSubscription = await serializeSubscriptionForClient(sub, lang);
     const skipUsage = await buildSubscriptionOverviewSkipUsage(sub);
 
+    // Pickup Preparation Status
+    const todayKSA = dateUtils.getTodayKSADate();
+    const todayDay = await SubscriptionDay.findOne({
+      subscriptionId: sub._id,
+      date: todayKSA,
+    }).lean();
+
+    const pickupPreparation = resolvePickupPreparationState(sub, todayDay);
+
     return res.status(200).json({
       ok: true,
       data: {
         ...serializedSubscription,
         ...skipUsage,
+        pickupPreparation,
       },
     });
   } catch (err) {
@@ -5874,20 +5885,18 @@ async function preparePickup(req, res) {
 
     try {
       ensureActive(sub, date);
-      validateFutureDateOrThrow(date, sub);
+      // Logic Pivot: Only allow Today for pickup preparation
+      const today = dateUtils.getTodayKSADate();
+      if (date !== today) {
+        const err = new Error("يمكن تجهيز الطلب ليوم الاستلام الحالي فقط");
+        err.code = "INVALID_DATE";
+        throw err;
+      }
     } catch (err) {
       await session.abortTransaction();
       session.endSession();
       const status = err.code === "SUB_INACTIVE" || err.code === "SUB_EXPIRED" ? 422 : 400;
       return errorResponse(res, status, err.code || "INVALID_DATE", err.message);
-    }
-
-    try {
-      await enforceTomorrowCutoffOrThrow(date);
-    } catch (err) {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 400, err.code || "LOCKED", err.message);
     }
 
     if (sub.deliveryMode !== "pickup") {
@@ -5975,15 +5984,99 @@ async function preparePickup(req, res) {
       byRole: "client",
       meta: { date: updatedDay.date, deductedCredits: mealsToDeduct },
     }, { subscriptionId: id, date: updatedDay.date });
-    return res.status(200).json({
-      ok: true,
-      data: localizeWriteDayPayload(updatedDay, { lang }),
+    return res.json({
+      status: true,
+      data: {
+        subscriptionId: sub._id,
+        date: updatedDay.date,
+        currentStep: 2,
+        status: "locked",
+        statusLabel: "Your order is locked",
+        message: "Modification period has ended. Waiting for kitchen.",
+        pickupRequested: true,
+        nextAction: "poll_pickup_status",
+      },
     });
   } catch (err) {
     await session.abortTransaction();
     session.endSession();
     logger.error("Pickup prepare failed", { error: err.message, stack: err.stack });
     return errorResponse(res, 500, "INTERNAL", "Pickup prepare failed");
+  }
+}
+
+async function getPickupStatus(req, res) {
+  const { id, date } = req.params;
+  const userId = req.userId;
+
+  try {
+    const subscription = await Subscription.findById(id).lean();
+    if (!subscription) {
+      return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
+    }
+
+    if (subscription.userId.toString() !== userId.toString()) {
+      return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
+    }
+
+    ensureActive(subscription, date);
+
+    const day = await SubscriptionDay.findOne({ subscriptionId: id, date }).lean();
+    if (!day) {
+      return errorResponse(res, 404, "NOT_FOUND", "Day not found");
+    }
+
+    const STEP_MAP = {
+      open: 1,
+      locked: 2,
+      in_preparation: 3,
+      ready_for_pickup: 4,
+      fulfilled: 4,
+    };
+
+    const LABEL_MAP = {
+      open: "Your meals are not prepared yet",
+      locked: "Your order is locked",
+      in_preparation: "Kitchen is preparing your meals",
+      ready_for_pickup: "Your order is ready",
+      fulfilled: "Completed",
+    };
+
+    const MESSAGE_MAP = {
+      open: "Review your selection to start preparation.",
+      locked: "Modification period has ended. Waiting for kitchen.",
+      in_preparation: "Chef is hand-picking ingredients for your order.",
+      ready_for_pickup: "Use this pickup code at the branch.",
+      fulfilled: "Order picked up successfully.",
+    };
+
+    const isReady = ["ready_for_pickup", "fulfilled"].includes(day.status);
+    const isCompleted = day.status === "fulfilled";
+    const showCode = isReady;
+
+    return res.status(200).json({
+      status: true,
+      data: {
+        subscriptionId: subscription._id,
+        date: day.date,
+        currentStep: STEP_MAP[day.status] ?? 1,
+        status: day.status,
+        statusLabel: LABEL_MAP[day.status] ?? "",
+        message: MESSAGE_MAP[day.status] ?? "",
+        canModify: day.status === "open",
+        isReady,
+        isCompleted,
+        pickupCode: showCode ? day.pickupCode ?? null : null,
+        pickupCodeIssuedAt: showCode ? day.pickupCodeIssuedAt ?? null : null,
+        fulfilledAt: isCompleted ? day.fulfilledAt ?? null : null,
+      },
+    });
+  } catch (err) {
+    if (err.status && err.code) {
+      return errorResponse(res, err.status, err.code, err.message);
+    }
+    logger.error("getPickupStatus failed", { error: err.message, stack: err.stack, subscriptionId: id, date });
+    return errorResponse(res, 500, "INTERNAL", "Failed to get pickup status");
   }
 }
 
@@ -6175,6 +6268,7 @@ module.exports = {
   topupAddonCredits,
   addOneTimeAddon,
   preparePickup,
+  getPickupStatus,
   updateDeliveryDetails,
   updateDeliveryDetailsForDate,
   transitionDay,

@@ -577,19 +577,18 @@ test("automation fallback clears unpaid one-time add-ons while fulfillment snaps
       return Promise.resolve([canonicalDay]);
     },
   });
-  Meal.find = () => createQueryStub([
-    { _id: objectId(), type: "regular" },
-    { _id: objectId(), type: "regular" },
-    { _id: objectId(), type: "regular" },
-  ]);
+  Meal.find = () => createQueryStub([]);
 
-  await processDailyCutoff();
+  await assert.rejects(
+    () => processDailyCutoff(),
+    (err) => err && err.code === "PLANNING_INCOMPLETE"
+  );
 
-  assert.ok(canonicalDay.lockedSnapshot);
-  assert.equal(canonicalDay.lockedSnapshot.oneTimeAddonSelections.length, 0);
-  assert.equal(canonicalDay.lockedSnapshot.oneTimeAddonPendingCount, 0);
-  assert.equal(canonicalDay.lockedSnapshot.oneTimeAddonPaymentStatus, null);
-  assert.equal(canonicalDay.lockedSnapshot.planningSource, "system");
+  assert.equal(canonicalDay.status, "open");
+  assert.equal(canonicalDay.lockedSnapshot, undefined);
+  assert.equal(canonicalDay.oneTimeAddonSelections.length, 1);
+  assert.equal(canonicalDay.oneTimeAddonPendingCount, 1);
+  assert.equal(canonicalDay.oneTimeAddonPaymentStatus, "pending");
 
   const fulfillmentDay = {
     _id: objectId(),

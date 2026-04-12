@@ -120,47 +120,29 @@ test("automation fallback for canonical subscription assigns regular meals and c
   });
 
   let capturedMealQuery = null;
-  const regularMeals = [
-    { _id: objectId(), type: "regular" },
-    { _id: objectId(), type: "regular" },
-    { _id: objectId(), type: "regular" },
-  ];
   Meal.find = (query) => {
     capturedMealQuery = query;
-    return createQueryStub(regularMeals);
+    return createQueryStub([]);
   };
 
-  await processDailyCutoff();
+  await assert.rejects(
+    () => processDailyCutoff(),
+    (err) => err && err.code === "PLANNING_INCOMPLETE"
+  );
 
-  assert.equal(day.status, "locked");
-  assert.equal(day.selections.length, 3);
-  assert.equal(day.planningState, "confirmed");
-  assert.equal(day.baseMealSlots.length, 3);
-  assert.equal(day.baseMealSlots[0].assignmentSource, "cutoff_fallback");
-  assert.deepEqual(capturedMealQuery, {
-    type: "regular",
-    isActive: true,
-    availableForSubscription: { $ne: false },
-  });
-  
-  // Verify premium/one-time are cleared
+  assert.equal(day.status, "open");
+  assert.equal(day.selections.length, 0);
+  assert.equal(day.planningState, undefined);
+  assert.equal(day.baseMealSlots, undefined);
+  assert.equal(capturedMealQuery, null);
   assert.equal(day.premiumSelections.length, 0);
   assert.equal(day.premiumUpgradeSelections.length, 0);
   assert.equal(day.addonCreditSelections.length, 0);
   assert.equal(day.oneTimeAddonSelections, undefined);
   assert.equal(day.oneTimeAddonPendingCount, undefined);
   assert.equal(day.oneTimeAddonPaymentStatus, undefined);
-
-  // Verify recurring addons are applied
-  assert.equal(day.recurringAddons.length, 1);
-  assert.equal(day.recurringAddons[0].name, "Recurring Addon");
-  
-  // Verify snapshot
-  assert.ok(day.lockedSnapshot);
-  assert.equal(day.lockedSnapshot.planningSource, "system");
-  assert.equal(day.lockedSnapshot.assignmentSource, "cutoff_fallback");
-  assert.equal(day.lockedSnapshot.planning.state, "confirmed");
-  assert.equal(day.lockedSnapshot.recurringAddons.length, 1);
+  assert.equal(day.recurringAddons, undefined);
+  assert.equal(day.lockedSnapshot, undefined);
 });
 
 test("automation fallback for canonical subscription does NOT run if selections already exist", async (t) => {
@@ -321,22 +303,21 @@ test("automation cutoff fallback refunds premium wallet intent and replaces it w
     },
   });
 
-  Meal.find = () => createQueryStub([
-    { _id: objectId(), type: "regular" },
-    { _id: objectId(), type: "regular" },
-    { _id: objectId(), type: "regular" },
-  ]);
+  Meal.find = () => createQueryStub([]);
 
-  await processDailyCutoff();
+  await assert.rejects(
+    () => processDailyCutoff(),
+    (err) => err && err.code === "PLANNING_INCOMPLETE"
+  );
 
-  assert.equal(day.status, "locked");
-  assert.equal(day.selections.length, 3);
+  assert.equal(day.status, "open");
+  assert.equal(day.selections.length, 0);
   assert.equal(day.premiumSelections.length, 0);
-  assert.equal(day.premiumUpgradeSelections.length, 0);
-  assert.equal(day.planningState, "confirmed");
-  assert.equal(sub.premiumSelections.length, 0);
-  assert.equal(sub.genericPremiumBalance[0].remainingQty, 1);
-  assert.equal(day.lockedSnapshot.planningSource, "system");
+  assert.equal(day.premiumUpgradeSelections.length, 1);
+  assert.equal(day.planningState, undefined);
+  assert.equal(sub.premiumSelections.length, 1);
+  assert.equal(sub.genericPremiumBalance[0].remainingQty, 0);
+  assert.equal(day.lockedSnapshot, undefined);
 });
 
 test("automation cutoff fallback refunds addon wallet intent and replaces it with regular meals", async (t) => {
@@ -394,20 +375,20 @@ test("automation cutoff fallback refunds addon wallet intent and replaces it wit
     },
   });
 
-  Meal.find = () => createQueryStub([
-    { _id: objectId(), type: "regular" },
-    { _id: objectId(), type: "regular" },
-    { _id: objectId(), type: "regular" },
-  ]);
+  Meal.find = () => createQueryStub([]);
 
-  await processDailyCutoff();
+  await assert.rejects(
+    () => processDailyCutoff(),
+    (err) => err && err.code === "PLANNING_INCOMPLETE"
+  );
 
-  assert.equal(day.status, "locked");
-  assert.equal(day.selections.length, 3);
-  assert.equal(day.addonCreditSelections.length, 0);
-  assert.equal(day.planningState, "confirmed");
-  assert.equal(sub.addonSelections.length, 0);
-  assert.equal(sub.addonBalance[0].remainingQty, 1);
+  assert.equal(day.status, "open");
+  assert.equal(day.selections.length, 0);
+  assert.equal(day.addonCreditSelections.length, 1);
+  assert.equal(day.planningState, undefined);
+  assert.equal(sub.addonSelections.length, 1);
+  assert.equal(sub.addonBalance[0].remainingQty, 0);
+  assert.equal(day.lockedSnapshot, undefined);
 });
 
 test("automation cutoff fallback clears unpaid one-time add-ons and locks a safe regular plan", async (t) => {
@@ -450,20 +431,20 @@ test("automation cutoff fallback clears unpaid one-time add-ons and locks a safe
     },
   });
 
-  Meal.find = () => createQueryStub([
-    { _id: objectId(), type: "regular" },
-    { _id: objectId(), type: "regular" },
-    { _id: objectId(), type: "regular" },
-  ]);
+  Meal.find = () => createQueryStub([]);
 
-  await processDailyCutoff();
+  await assert.rejects(
+    () => processDailyCutoff(),
+    (err) => err && err.code === "PLANNING_INCOMPLETE"
+  );
 
-  assert.equal(day.status, "locked");
-  assert.equal(day.selections.length, 3);
-  assert.equal(day.oneTimeAddonSelections.length, 0);
-  assert.equal(day.oneTimeAddonPendingCount, 0);
+  assert.equal(day.status, "open");
+  assert.equal(day.selections.length, 0);
+  assert.equal(day.oneTimeAddonSelections.length, 1);
+  assert.equal(day.oneTimeAddonPendingCount, undefined);
   assert.equal(day.oneTimeAddonPaymentStatus, undefined);
-  assert.equal(day.planningState, "confirmed");
+  assert.equal(day.planningState, undefined);
+  assert.equal(day.lockedSnapshot, undefined);
 });
 
 test("automation cutoff fallback clears unpaid premium overage and locks a safe regular plan", async (t) => {
@@ -507,19 +488,19 @@ test("automation cutoff fallback clears unpaid premium overage and locks a safe 
     },
   });
 
-  Meal.find = () => createQueryStub([
-    { _id: objectId(), type: "regular" },
-    { _id: objectId(), type: "regular" },
-    { _id: objectId(), type: "regular" },
-  ]);
+  Meal.find = () => createQueryStub([]);
 
-  await processDailyCutoff();
+  await assert.rejects(
+    () => processDailyCutoff(),
+    (err) => err && err.code === "PLANNING_INCOMPLETE"
+  );
 
-  assert.equal(day.status, "locked");
-  assert.equal(day.selections.length, 3);
-  assert.equal(day.premiumOverageCount, 0);
-  assert.equal(day.premiumOverageStatus, undefined);
-  assert.equal(day.planningState, "confirmed");
+  assert.equal(day.status, "open");
+  assert.equal(day.selections.length, 0);
+  assert.equal(day.premiumOverageCount, 2);
+  assert.equal(day.premiumOverageStatus, "pending");
+  assert.equal(day.planningState, undefined);
+  assert.equal(day.lockedSnapshot, undefined);
 });
 
 test("automation fallback for legacy subscription remains unchanged (no planning state)", async (t) => {
@@ -561,21 +542,16 @@ test("automation fallback for legacy subscription remains unchanged (no planning
     },
   });
 
-  const regularMeals = [
-    { _id: objectId(), type: "regular" },
-    { _id: objectId(), type: "regular" },
-    { _id: objectId(), type: "regular" },
-  ];
-  Meal.find = () => createQueryStub(regularMeals);
+  Meal.find = () => createQueryStub([]);
 
   await processDailyCutoff();
 
   assert.equal(day.status, "locked");
-  assert.equal(day.selections.length, 3);
+  assert.equal(day.selections.length, 0);
   // Planning state should NOT be set for legacy
   assert.equal(day.planningState, undefined);
   assert.equal(day.baseMealSlots, undefined);
-  assert.equal(day.lockedSnapshot.planningSource, "system");
+  assert.equal(day.lockedSnapshot.planningSource, "user");
 });
 
 test("automation cutoff fallback rejects catalog shortage instead of locking an invalid day", async (t) => {
@@ -623,7 +599,7 @@ test("automation cutoff fallback rejects catalog shortage instead of locking an 
 
   await assert.rejects(
     () => processDailyCutoff(),
-    (err) => err && err.code === "SUBSCRIPTION_CUTOFF_CATALOG_SHORTAGE"
+    (err) => err && err.code === "PLANNING_INCOMPLETE"
   );
 
   assert.equal(day.status, "open");
