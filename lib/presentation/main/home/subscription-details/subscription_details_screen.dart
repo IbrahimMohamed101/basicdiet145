@@ -64,6 +64,7 @@ class SubscriptionDetails extends StatelessWidget {
             MaterialPageRoute(
               builder: (_) => PaymentWebViewScreen(
                 paymentUrl: state.subscriptionCheckout!.paymentUrl,
+                draftId: state.subscriptionCheckout!.draftId,
                 successUrl: _paymentSuccessUrl,
                 backUrl: _paymentCancelUrl,
               ),

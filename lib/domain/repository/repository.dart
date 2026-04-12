@@ -1,4 +1,5 @@
 import 'package:basic_diet/data/network/failure.dart';
+import 'package:basic_diet/domain/model/checkout_draft_model.dart';
 import 'package:basic_diet/domain/model/auth_model.dart';
 import 'package:basic_diet/domain/model/base__model.dart';
 import 'package:basic_diet/domain/model/delivery_options_model.dart';
@@ -54,4 +55,5 @@ abstract class Repository {
   );
   Future<Either<Failure, TimelineModel>> getSubscriptionTimeline(String id);
   Future<Either<Failure, CategoriesWithMealsModel>> getCategoriesWithMeals();
+  Future<Either<Failure, CheckoutDraftModel>> getCheckoutDraft(String id);
 }

@@ -13,12 +13,14 @@ class PaymentWebViewScreen extends StatefulWidget {
   final String paymentUrl;
   final String successUrl;
   final String backUrl;
+  final String draftId;
 
   const PaymentWebViewScreen({
     super.key,
     required this.paymentUrl,
     required this.successUrl,
     required this.backUrl,
+    required this.draftId,
   });
 
   @override
@@ -67,7 +69,7 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
   void _openSuccessScreen() {
     if (!mounted) return;
     Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => const PaymentSuccessfulScreen()),
+      MaterialPageRoute(builder: (_) => PaymentSuccessfulScreen(draftId: widget.draftId)),
     );
   }
 

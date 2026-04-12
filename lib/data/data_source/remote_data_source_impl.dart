@@ -1,4 +1,5 @@
 import 'package:basic_diet/data/network/app_api.dart';
+import 'package:basic_diet/data/response/checkout_draft_response.dart';
 import 'package:basic_diet/data/data_source/remote_data_source.dart';
 import 'package:basic_diet/data/request/subscription_checkout_request.dart';
 import 'package:basic_diet/data/request/subscription_quote_request.dart';
@@ -116,5 +117,10 @@ class RemoteDataSourceImpl implements RemoteDataSource {
   @override
   Future<CategoriesWithMealsResponse> getCategoriesWithMeals() {
     return _appServiceClient.getCategoriesWithMeals();
+  }
+
+  @override
+  Future<CheckoutDraftResponse> getCheckoutDraft(String id) {
+    return _appServiceClient.getCheckoutDraft(id);
   }
 }

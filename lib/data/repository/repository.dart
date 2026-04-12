@@ -37,6 +37,8 @@ import 'package:basic_diet/data/mappers/timeline_mapper.dart';
 import 'package:basic_diet/domain/model/timeline_model.dart';
 import 'package:basic_diet/data/mappers/categories_with_meals_mapper.dart';
 import 'package:basic_diet/domain/model/categories_with_meals_model.dart';
+import 'package:basic_diet/data/mappers/checkout_draft_mapper.dart';
+import 'package:basic_diet/domain/model/checkout_draft_model.dart';
 
 class RepositoryImpl implements Repository {
   final RemoteDataSource _remoteDataSource;
@@ -369,6 +371,20 @@ class RepositoryImpl implements Repository {
   Future<Either<Failure, CategoriesWithMealsModel>> getCategoriesWithMeals() async {
     try {
       final response = await _remoteDataSource.getCategoriesWithMeals();
+      if (_isSuccessfulResponse(response)) {
+        return Right(response.toDomain());
+      } else {
+        return Left(_mapFailureFromResponse(response));
+      }
+    } catch (error) {
+      return _handleError(error);
+    }
+  }
+
+  @override
+  Future<Either<Failure, CheckoutDraftModel>> getCheckoutDraft(String id) async {
+    try {
+      final response = await _remoteDataSource.getCheckoutDraft(id);
       if (_isSuccessfulResponse(response)) {
         return Right(response.toDomain());
       } else {

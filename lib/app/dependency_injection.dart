@@ -35,6 +35,8 @@ import 'package:basic_diet/domain/usecase/get_timeline_usecase.dart';
 import 'package:basic_diet/domain/usecase/get_categories_with_meals_usecase.dart';
 import 'package:basic_diet/presentation/plans/timeline/bloc/timeline_bloc.dart';
 import 'package:basic_diet/presentation/plans/timeline/meal_planner/bloc/meal_planner_bloc.dart';
+import 'package:basic_diet/domain/usecase/get_checkout_draft_usecase.dart';
+import 'package:basic_diet/presentation/main/home/payment_validation_cubit.dart';
 import 'package:get_it/get_it.dart';
 
 final instance = GetIt.instance; // Singleton instance of GetIt
@@ -120,6 +122,8 @@ void initSubscriptionModule() {
       ),
     );
   }
+  
+  initPaymentValidationModule();
 }
 
 void initHomeModule() {
@@ -239,6 +243,20 @@ void initMealPlannerModule() {
         initialDayIndex: params['initialDayIndex'],
         premiumMealsRemaining: params['premiumMealsRemaining'],
       ),
+    );
+  }
+}
+
+void initPaymentValidationModule() {
+  if (!GetIt.I.isRegistered<GetCheckoutDraftUseCase>()) {
+    instance.registerFactory<GetCheckoutDraftUseCase>(
+      () => GetCheckoutDraftUseCase(instance<Repository>()),
+    );
+  }
+
+  if (!GetIt.I.isRegistered<PaymentValidationCubit>()) {
+    instance.registerFactory<PaymentValidationCubit>(
+      () => PaymentValidationCubit(instance<GetCheckoutDraftUseCase>()),
     );
   }
 }

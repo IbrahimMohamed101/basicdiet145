@@ -1,4 +1,5 @@
 import 'package:basic_diet/app/constants.dart';
+import 'package:basic_diet/data/response/checkout_draft_response.dart';
 import 'package:basic_diet/data/request/subscription_checkout_request.dart';
 import 'package:basic_diet/data/request/subscription_quote_request.dart';
 import 'package:basic_diet/data/response/auth_response.dart';
@@ -92,4 +93,7 @@ abstract class AppServiceClient {
 
   @GET("/api/categories-with-meals")
   Future<CategoriesWithMealsResponse> getCategoriesWithMeals();
+
+  @GET("/api/subscriptions/checkout-drafts/{id}")
+  Future<CheckoutDraftResponse> getCheckoutDraft(@Path("id") String id);
 }
