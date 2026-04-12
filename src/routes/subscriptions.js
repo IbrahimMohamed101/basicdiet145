@@ -141,26 +141,51 @@ router.get("/:id/days/:date", asyncHandler(controller.getSubscriptionDay));
  *       content:
  *         application/json:
  *           schema:
- *             type: object
- *             required: [dates]
- *             properties:
- *               dates:
- *                 type: array
- *                 items:
- *                   type: string
- *                   example: 2026-04-15
- *               selections:
- *                 type: array
- *                 items:
- *                   type: string
- *               premiumSelections:
- *                 type: array
- *                 items:
- *                   type: string
- *               addonsOneTime:
- *                 type: array
- *                 items:
- *                   type: string
+ *             oneOf:
+ *               - type: object
+ *                 required: [dates]
+ *                 properties:
+ *                   dates:
+ *                     type: array
+ *                     items:
+ *                       type: string
+ *                       example: 2026-04-15
+ *                   selections:
+ *                     type: array
+ *                     items:
+ *                       type: string
+ *                   premiumSelections:
+ *                     type: array
+ *                     items:
+ *                       type: string
+ *                   addonsOneTime:
+ *                     type: array
+ *                     items:
+ *                       type: string
+ *               - type: object
+ *                 required: [days]
+ *                 properties:
+ *                   days:
+ *                     type: array
+ *                     items:
+ *                       type: object
+ *                       required: [date]
+ *                       properties:
+ *                         date:
+ *                           type: string
+ *                           example: 2026-04-15
+ *                         selections:
+ *                           type: array
+ *                           items:
+ *                             type: string
+ *                         premiumSelections:
+ *                           type: array
+ *                           items:
+ *                             type: string
+ *                         addonsOneTime:
+ *                           type: array
+ *                           items:
+ *                             type: string
  *     responses:
  *       200:
  *         description: Bulk day selections processed

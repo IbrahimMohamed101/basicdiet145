@@ -5360,26 +5360,51 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              required: [dates]
-              properties:
-                dates:
-                  type: array
-                  items:
-                    type: string
-                    format: date
-                selections:
-                  type: array
-                  items:
-                    type: string
-                premiumSelections:
-                  type: array
-                  items:
-                    type: string
-                addonsOneTime:
-                  type: array
-                  items:
-                    type: string
+              oneOf:
+                - type: object
+                  required: [dates]
+                  properties:
+                    dates:
+                      type: array
+                      items:
+                        type: string
+                        format: date
+                    selections:
+                      type: array
+                      items:
+                        type: string
+                    premiumSelections:
+                      type: array
+                      items:
+                        type: string
+                    addonsOneTime:
+                      type: array
+                      items:
+                        type: string
+                - type: object
+                  required: [days]
+                  properties:
+                    days:
+                      type: array
+                      items:
+                        type: object
+                        required: [date]
+                        properties:
+                          date:
+                            type: string
+                            format: date
+                          selections:
+                            type: array
+                            items:
+                              type: string
+                          premiumSelections:
+                            type: array
+                            items:
+                              type: string
+                          addonsOneTime:
+                            type: array
+                            items:
+                              type: string
       responses:
         '200':
           description: Bulk update processed.

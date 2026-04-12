@@ -1810,14 +1810,38 @@ function resolveRequestedDate(req) {
     : "";
 }
 
-function resolveRequestedDates(req) {
-  const bodyDates = req && req.body && Array.isArray(req.body.dates)
-    ? req.body.dates
-    : (req && req.body && Array.isArray(req.body.days) ? req.body.days : []);
+function resolveBulkDaySelectionRequests(req) {
+  const body = req && req.body && typeof req.body === "object" ? req.body : {};
+  const bodyDays = Array.isArray(body.days) ? body.days : null;
+
+  if (bodyDays && bodyDays.every((entry) => entry && typeof entry === "object" && !Array.isArray(entry))) {
+    return bodyDays.map((entry) => ({
+      date: typeof entry.date === "string" ? entry.date.trim() : "",
+      selections: Array.isArray(entry.selections) ? entry.selections : (Array.isArray(entry.meals) ? entry.meals : []),
+      premiumSelections: Array.isArray(entry.premiumSelections) ? entry.premiumSelections : [],
+      requestedOneTimeAddonIds:
+        entry.addonsOneTime !== undefined
+          ? entry.addonsOneTime
+          : entry.oneTimeAddonSelections,
+    }));
+  }
+
+  const bodyDates = Array.isArray(body.dates)
+    ? body.dates
+    : (Array.isArray(body.days) ? body.days : []);
+  const selections = Array.isArray(body.selections) ? body.selections : (Array.isArray(body.meals) ? body.meals : []);
+  const premiumSelections = Array.isArray(body.premiumSelections) ? body.premiumSelections : [];
+  const requestedOneTimeAddonIds = body.addonsOneTime || body.oneTimeAddonSelections;
 
   return bodyDates
     .map((value) => (typeof value === "string" ? value.trim() : ""))
-    .filter(Boolean);
+    .filter(Boolean)
+    .map((date) => ({
+      date,
+      selections,
+      premiumSelections,
+      requestedOneTimeAddonIds,
+    }));
 }
 
 function isPopulatedPlanDocument(plan) {
@@ -4874,11 +4898,7 @@ async function updateDaySelection(req, res, runtimeOverrides = null) {
 async function updateBulkDaySelections(req, res, runtimeOverrides = null) {
   const runtime = runtimeOverrides ? { ...sliceP2S1DefaultRuntime, ...runtimeOverrides } : sliceP2S1DefaultRuntime;
   const { id } = req.params;
-  const body = req.body || {};
-  const dates = resolveRequestedDates(req);
-  const selections = Array.isArray(body.selections) ? body.selections : (Array.isArray(body.meals) ? body.meals : []);
-  const premiumSelections = Array.isArray(body.premiumSelections) ? body.premiumSelections : [];
-  const requestedOneTimeAddonIds = body.addonsOneTime || body.oneTimeAddonSelections;
+  const requests = resolveBulkDaySelectionRequests(req);
   const lang = getRequestLang(req);
 
   try {
@@ -4887,20 +4907,32 @@ async function updateBulkDaySelections(req, res, runtimeOverrides = null) {
     return errorResponse(res, err.status, err.code, err.message);
   }
 
-  if (!dates.length) {
-    return errorResponse(res, 400, "INVALID", "dates array is required");
+  if (!requests.length) {
+    return errorResponse(res, 400, "INVALID", "days or dates array is required");
+  }
+
+  const dates = requests.map((entry) => String(entry.date || ""));
+  if (dates.some((date) => !date)) {
+    return errorResponse(res, 400, "INVALID", "Each day entry must include date");
   }
 
   const uniqueDates = new Set(dates);
-  if (uniqueDates.size !== dates.length) {
-    return errorResponse(res, 400, "INVALID", "dates array must not contain duplicates");
+  if (uniqueDates.size !== requests.length) {
+    return errorResponse(res, 400, "INVALID", "Bulk selection request must not contain duplicate dates");
   }
 
   const rawResults = [];
   const serializedDays = [];
 
   // Preserve caller order because shared premium/add-on balances can affect later dates.
-  for (const date of dates) {
+  for (const requestEntry of requests) {
+    const {
+      date,
+      selections,
+      premiumSelections,
+      requestedOneTimeAddonIds,
+    } = requestEntry;
+
     try {
       const result = await performDaySelectionUpdate({
         userId: req.userId,
@@ -4924,7 +4956,7 @@ async function updateBulkDaySelections(req, res, runtimeOverrides = null) {
             date,
             selectionsCount: selections.length,
             premiumCount: premiumSelections.length,
-            totalRequestedDates: dates.length,
+            totalRequestedDates: requests.length,
           },
         }, { subscriptionId: id, date });
       }
@@ -4987,7 +5019,7 @@ async function updateBulkDaySelections(req, res, runtimeOverrides = null) {
     ok: true,
     data: {
       summary: {
-        totalDates: dates.length,
+        totalDates: requests.length,
         updatedCount: results.filter((entry) => entry.ok && !entry.idempotent).length,
         idempotentCount: results.filter((entry) => entry.ok && entry.idempotent).length,
         failedCount: results.filter((entry) => !entry.ok).length,
