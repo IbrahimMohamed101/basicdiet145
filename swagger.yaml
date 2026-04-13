@@ -67,6 +67,8 @@ tags:
     description: Premium/addon wallet consumption, refunds, and top-ups.
   - name: Admin
     description: Admin CRUD and controls for premium meals and addons.
+  - name: Dashboard Ops
+    description: Unified operational endpoints for dashboard operators (Kitchen, Courier, Admin).
 
 components:
   securitySchemes:
@@ -369,6 +371,74 @@ components:
               message: Amount mismatch
 
   schemas:
+    UnifiedOperationalDTO:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [subscription, order]
+        mode:
+          type: string
+          enum: [delivery, pickup]
+        reference:
+          type: string
+          example: SUB-XXXXXX
+        status:
+          type: string
+        ui:
+          type: object
+          properties:
+            label: { type: string }
+            color: { type: string }
+            icon: { type: string }
+        customer:
+          type: object
+          properties:
+            id: { type: string }
+            name: { type: string }
+            phone: { type: string }
+        context:
+          type: object
+          properties:
+            date: { type: string, format: date }
+            window: { type: string }
+            address: { type: object, nullable: true }
+            branch: { type: string, nullable: true }
+            pickupCode: { type: string, nullable: true }
+        allowedActions:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              label: { type: string }
+              color: { type: string }
+              icon: { type: string }
+              requiresReason: { type: boolean }
+        timestamps:
+          type: object
+          properties:
+            createdAt: { type: string, format: date-time }
+            updatedAt: { type: string, format: date-time }
+
+    OperationalActionRequest:
+      type: object
+      required: [entityId, entityType]
+      properties:
+        entityId: { type: string }
+        entityType: { type: string, enum: [subscription, order] }
+        payload:
+          type: object
+          additionalProperties: true
+
+    OperationalActionResponse:
+      type: object
+      properties:
+        ok: { type: boolean, enum: [true] }
+        data: { $ref: '#/components/schemas/UnifiedOperationalDTO' }
+
     TimelineDay:
       type: object
       properties:
@@ -3712,6 +3782,101 @@ paths:
                 ok: true
         '401':
           $ref: '#/components/responses/Unauthorized'
+
+  /api/dashboard/ops/list:
+    get:
+      tags: [Dashboard Ops]
+      summary: List operational entities (Subscriptions & Orders)
+      description: Returns a unified list of active subscriptions and orders for a specific date.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - name: date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+          description: KSA date (YYYY-MM-DD) to list operations for.
+        - $ref: '#/components/parameters/AcceptLanguage'
+      responses:
+        '200':
+          description: List of operational DTOs.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean, enum: [true] }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/UnifiedOperationalDTO' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/dashboard/ops/search:
+    get:
+      tags: [Dashboard Ops]
+      summary: Search operations across domains
+      description: Fast search by Name, Phone, Reference (SUB- or ORD-), or Pickup Code.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 3
+          description: Search query (name, phone, reference, or pickup code).
+        - $ref: '#/components/parameters/AcceptLanguage'
+      responses:
+        '200':
+          description: Matching operational DTOs.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean, enum: [true] }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/UnifiedOperationalDTO' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/dashboard/ops/actions/{action}:
+    post:
+      tags: [Dashboard Ops]
+      summary: Execute operational transition
+      description: |
+        Unified endpoint to execute state transitions.
+        Supported actions: `prepare`, `dispatch`, `ready_for_pickup`, `fulfill`, `cancel`, `notify_arrival`.
+      security:
+        - dashboardBearerAuth: []
+      parameters:
+        - name: action
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [prepare, dispatch, ready_for_pickup, fulfill, cancel, notify_arrival]
+        - $ref: '#/components/parameters/AcceptLanguage'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OperationalActionRequest' }
+      responses:
+        '200':
+          description: Successful transition, returns updated DTO.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OperationalActionResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
 
   /api/app/login:
     post:

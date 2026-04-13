@@ -17,6 +17,7 @@ const addonRoutes = require("./addons");
 const adminRoutes = require("./admin");
 const courierRoutes = require("./courier");
 const kitchenRoutes = require("./kitchen");
+const dashboardOpsRoutes = require("./dashboardOps");
 const { getSettings } = require("../controllers/settingsController");
 const { listCategoriesWithMeals } = require("../controllers/mealController");
 const asyncHandler = require("../middleware/asyncHandler");
@@ -41,7 +42,13 @@ router.use("/meals", mealRoutes);
 router.use("/premium-meals", premiumMealRoutes);
 router.use("/addons", addonRoutes);
 router.use("/dashboard", adminRoutes);
+router.use("/dashboard/ops", dashboardOpsRoutes);
 router.use("/admin", adminRoutes);
+
+/**
+ * DEPRECATED: Standard Kitchen/Courier operational routes.
+ * Replaced by the Unified Dashboard Ops API (/api/dashboard/ops).
+ */
 router.use("/courier", courierRoutes);
 router.use("/kitchen", kitchenRoutes);
 router.get("/categories-with-meals", asyncHandler(listCategoriesWithMeals));
