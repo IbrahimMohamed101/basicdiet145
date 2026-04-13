@@ -93,6 +93,18 @@ module.exports = {
       internal_delivery_problem: "Internal delivery problem",
       order_operational_issue: "Order operational issue",
     },
+    pickupPreparation: {
+      buttonLabel: "Prepare Request",
+      messages: {
+        SUBSCRIPTION_INACTIVE: "Your subscription is inactive or expired",
+        PLANNING_INCOMPLETE: "Please select your meals first",
+        DAY_SKIPPED: "This day is skipped or frozen",
+        PAYMENT_REQUIRED: "There are pending payments, please complete payment",
+        INSUFFICIENT_CREDITS: "Insufficient meal credits",
+        INVALID_STATE: "The current state is unknown",
+        DEFAULT_ERROR: "Cannot prepare request at this time",
+      },
+    },
   },
   write: {
     paymentDescriptions: {

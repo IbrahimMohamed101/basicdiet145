@@ -2,6 +2,7 @@ const SubscriptionDay = require("../models/SubscriptionDay");
 const { getTomorrowKSADate } = require("../utils/date");
 const { notifyUser } = require("../utils/notify");
 const { writeLog } = require("../utils/log");
+const { bulkWriteAuditLogs } = require("./subscription/subscriptionAuditLogService");
 const { getEffectiveDeliveryDetails } = require("../utils/delivery");
 const { resolveMealsPerDay, applyDayWalletSelections } = require("../utils/subscription/subscriptionDaySelectionSync");
 const { logger } = require("../utils/logger");
@@ -57,6 +58,7 @@ async function processDailyCutoff() {
     isCutoffJobRunning = true;
 
     const sentNotificationKeys = new Set();
+    const auditLogs = [];
     try {
         const tomorrow = getTomorrowKSADate();
         logger.info("Automation cutoff start", { date: tomorrow });
@@ -146,6 +148,8 @@ async function processDailyCutoff() {
                 day.lockedAt = new Date();
             }
 
+            const fromStatus = day.status || "open";
+
             // ── Apply lock fields ─────────────────────────────────────────────
             day.status = "locked";
             day.autoLocked = true;
@@ -202,7 +206,27 @@ async function processDailyCutoff() {
                 });
                 sentNotificationKeys.add(notificationKey);
             }
+            
+            auditLogs.push({
+                entityType: "subscription_day",
+                entityId: day._id,
+                action: "status_transition",
+                fromStatus,
+                toStatus: "locked",
+                actorType: "system",
+                note: lockReason,
+                meta: {
+                    deliveryMode: sub.deliveryMode,
+                    mealsSelected: countSelectedMeals(day),
+                    mealsRequired: mealsPerDay,
+                    mealsDeducted: actualDeduct,
+                    ...(creditDeficit > 0 && { credit_deficit: creditDeficit }),
+                }
+            });
         }
+
+        // Write bulk audit logs without blocking functionality if it fails
+        await bulkWriteAuditLogs(auditLogs);
 
         logger.info("Automation cutoff finished", { count: openDays.length });
     } finally {

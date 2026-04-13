@@ -9,6 +9,15 @@ const mockDeps = (overrides = {}) => ({
   resolveMealsPerDay: () => 1,
   getTodayKSADate: () => "2026-04-12",
   toKSADateString: (d) => (d instanceof Date ? d.toISOString().split("T")[0] : d),
+  translate: (key, lang) => {
+    if (key.includes("buttonLabel")) return lang === "ar" ? "تجهيز الطلب" : "Prepare Request";
+    if (key.includes("SUBSCRIPTION_INACTIVE")) return lang === "ar" ? "اشتراكك غير نشط" : "Your subscription is inactive";
+    if (key.includes("PLANNING_INCOMPLETE")) return lang === "ar" ? "يرجى اختيار وجباتك أولاً" : "Please select your meals first";
+    if (key.includes("DAY_SKIPPED")) return lang === "ar" ? "هذا اليوم موقوف" : "This day is skipped";
+    if (key.includes("PAYMENT_REQUIRED")) return lang === "ar" ? "يوجد مبالغ معلقة" : "There are pending payments";
+    if (key.includes("INSUFFICIENT_CREDITS")) return lang === "ar" ? "رصيد وجباتك غير كافٍ" : "Insufficient meal credits";
+    return key;
+  },
   ...overrides,
 });
 
@@ -21,6 +30,9 @@ async function runTests() {
     const sub = { deliveryMode: "delivery" };
     const res = resolvePickupPreparationState(sub, null, mockDeps());
     assert.strictEqual(res.flowStatus, "hidden");
+    assert.strictEqual(res.buttonLabel, null);
+    assert.strictEqual(res.buttonLabelAr, null);
+    assert.strictEqual(res.buttonLabelEn, null);
   }
 
   // 2. Inactive: status = 'expired'
@@ -30,6 +42,12 @@ async function runTests() {
     const res = resolvePickupPreparationState(sub, null, mockDeps());
     assert.strictEqual(res.flowStatus, "disabled");
     assert.strictEqual(res.reason, "SUBSCRIPTION_INACTIVE");
+    assert.strictEqual(res.buttonLabel, "تجهيز الطلب");
+    assert.strictEqual(res.buttonLabelAr, "تجهيز الطلب");
+    assert.strictEqual(res.buttonLabelEn, "Prepare Request");
+    assert.strictEqual(res.message, "اشتراكك غير نشط");
+    assert.strictEqual(res.messageAr, "اشتراكك غير نشط");
+    assert.strictEqual(res.messageEn, "Your subscription is inactive");
   }
 
   // 2b. Expired by validityEndDate
@@ -48,6 +66,8 @@ async function runTests() {
     const res = resolvePickupPreparationState(sub, null, mockDeps());
     assert.strictEqual(res.flowStatus, "disabled");
     assert.strictEqual(res.reason, "PLANNING_INCOMPLETE");
+    assert.strictEqual(res.messageAr, "يرجى اختيار وجباتك أولاً");
+    assert.strictEqual(res.messageEn, "Please select your meals first");
   }
 
   // 4. Completed: status = 'fulfilled'
@@ -140,6 +160,8 @@ async function runTests() {
     assert.strictEqual(res.flowStatus, "available");
     assert.strictEqual(res.reason, null);
     assert.strictEqual(res.buttonLabel, "تجهيز الطلب");
+    assert.strictEqual(res.buttonLabelEn, "Prepare Request");
+    assert.strictEqual(res.message, null);
   }
   // --- Pickup Status Mapping Tests ---
   console.log("\nRunning Pickup Status Mapping Tests...");

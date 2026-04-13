@@ -583,6 +583,9 @@ async function applyPaymentSideEffects({ payment, session, source = "system" }, 
     return { applied: false, reason: "invalid_payment" };
   }
 
+  // Item 9: Pre-Activation Model Documented explicitly.
+  // This service sits at the threshold of Pre-Activation (Draft + Payment) and Activation (Subscription).
+  // E.g. 'subscription_activation' takes a Draft and builds the official Subscription row.
   let result;
   switch (String(payment.type)) {
     case "subscription_activation":

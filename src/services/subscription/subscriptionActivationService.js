@@ -100,7 +100,9 @@ function buildCanonicalActivationPayload({
 
   const daysCount = Number(plan.daysCount || 0);
   const mealsPerDay = Number(plan.mealsPerDay || 0);
-  const totalMeals = Number(plan.totalMeals || (daysCount * mealsPerDay));
+  // Item 8: Enforce consistency invariant where totalMeals = daysCount * mealsPerDay
+  // ensuring alignment across all standard plan subscriptions without legacy misconfigurations
+  const totalMeals = daysCount * mealsPerDay;
 
   if (
     !start

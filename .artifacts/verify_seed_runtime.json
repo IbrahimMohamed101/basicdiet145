@@ -1,0 +1,378 @@
+{
+  "rows": [
+    {
+      "scenario": "NEW_SUBSCRIPTION",
+      "user": {
+        "id": "69dc299113197ecafad4e8f7",
+        "email": "lifecycle.new-subscription@seed.local",
+        "phone": "+966590100001"
+      },
+      "subscriptionCount": 0,
+      "subscription": null,
+      "checkoutDraft": {
+        "id": "69dc299713197ecafad4e931",
+        "status": "pending_payment",
+        "paymentUrl": "https://seed.moyasar.test/invoices/lifecycle-new-subscription"
+      },
+      "payment": {
+        "id": "69dc299613197ecafad4e92f",
+        "type": "subscription_activation",
+        "status": "initiated"
+      },
+      "days": [],
+      "delivery": null
+    },
+    {
+      "scenario": "ACTIVE_PLANNING",
+      "user": {
+        "id": "69dc299113197ecafad4e8fb",
+        "email": "lifecycle.active-planning@seed.local",
+        "phone": "+966590100002"
+      },
+      "subscriptionCount": 1,
+      "subscription": {
+        "id": "69dc299713197ecafad4e933",
+        "status": "active",
+        "deliveryMode": "delivery",
+        "renewedFromSubscriptionId": null
+      },
+      "checkoutDraft": null,
+      "payment": null,
+      "days": [
+        {
+          "id": "69dc299713197ecafad4e935",
+          "date": "2026-04-14",
+          "status": "open"
+        }
+      ],
+      "delivery": null
+    },
+    {
+      "scenario": "ACTIVE_PLANNED",
+      "user": {
+        "id": "69dc299113197ecafad4e8ff",
+        "email": "lifecycle.active-planned@seed.local",
+        "phone": "+966590100003"
+      },
+      "subscriptionCount": 1,
+      "subscription": {
+        "id": "69dc299713197ecafad4e937",
+        "status": "active",
+        "deliveryMode": "delivery",
+        "renewedFromSubscriptionId": null
+      },
+      "checkoutDraft": null,
+      "payment": null,
+      "days": [
+        {
+          "id": "69dc299713197ecafad4e939",
+          "date": "2026-04-14",
+          "status": "open"
+        }
+      ],
+      "delivery": null
+    },
+    {
+      "scenario": "LOCKED_WAITING",
+      "user": {
+        "id": "69dc299213197ecafad4e903",
+        "email": "lifecycle.locked-waiting@seed.local",
+        "phone": "+966590100004"
+      },
+      "subscriptionCount": 1,
+      "subscription": {
+        "id": "69dc299813197ecafad4e93e",
+        "status": "active",
+        "deliveryMode": "delivery",
+        "renewedFromSubscriptionId": null
+      },
+      "checkoutDraft": null,
+      "payment": null,
+      "days": [
+        {
+          "id": "69dc299813197ecafad4e940",
+          "date": "2026-04-13",
+          "status": "locked"
+        }
+      ],
+      "delivery": null
+    },
+    {
+      "scenario": "IN_PREPARATION",
+      "user": {
+        "id": "69dc299213197ecafad4e907",
+        "email": "lifecycle.in-preparation@seed.local",
+        "phone": "+966590100005"
+      },
+      "subscriptionCount": 1,
+      "subscription": {
+        "id": "69dc299813197ecafad4e945",
+        "status": "active",
+        "deliveryMode": "delivery",
+        "renewedFromSubscriptionId": null
+      },
+      "checkoutDraft": null,
+      "payment": null,
+      "days": [
+        {
+          "id": "69dc299913197ecafad4e947",
+          "date": "2026-04-13",
+          "status": "in_preparation"
+        }
+      ],
+      "delivery": null
+    },
+    {
+      "scenario": "OUT_FOR_DELIVERY",
+      "user": {
+        "id": "69dc299213197ecafad4e90b",
+        "email": "lifecycle.out-for-delivery@seed.local",
+        "phone": "+966590100006"
+      },
+      "subscriptionCount": 1,
+      "subscription": {
+        "id": "69dc299913197ecafad4e94c",
+        "status": "active",
+        "deliveryMode": "delivery",
+        "renewedFromSubscriptionId": null
+      },
+      "checkoutDraft": null,
+      "payment": null,
+      "days": [
+        {
+          "id": "69dc299913197ecafad4e94e",
+          "date": "2026-04-13",
+          "status": "out_for_delivery"
+        }
+      ],
+      "delivery": {
+        "id": "69dc299913197ecafad4e953",
+        "status": "out_for_delivery"
+      }
+    },
+    {
+      "scenario": "FULFILLED_TODAY",
+      "user": {
+        "id": "69dc299313197ecafad4e90f",
+        "email": "lifecycle.fulfilled-today@seed.local",
+        "phone": "+966590100007"
+      },
+      "subscriptionCount": 1,
+      "subscription": {
+        "id": "69dc299913197ecafad4e955",
+        "status": "active",
+        "deliveryMode": "delivery",
+        "renewedFromSubscriptionId": null
+      },
+      "checkoutDraft": null,
+      "payment": null,
+      "days": [
+        {
+          "id": "69dc299a13197ecafad4e957",
+          "date": "2026-04-13",
+          "status": "fulfilled"
+        }
+      ],
+      "delivery": {
+        "id": "69dc299a13197ecafad4e95c",
+        "status": "delivered"
+      }
+    },
+    {
+      "scenario": "FROZEN",
+      "user": {
+        "id": "69dc299313197ecafad4e913",
+        "email": "lifecycle.frozen@seed.local",
+        "phone": "+966590100008"
+      },
+      "subscriptionCount": 1,
+      "subscription": {
+        "id": "69dc299a13197ecafad4e95e",
+        "status": "active",
+        "deliveryMode": "delivery",
+        "renewedFromSubscriptionId": null
+      },
+      "checkoutDraft": null,
+      "payment": null,
+      "days": [
+        {
+          "id": "69dc299a13197ecafad4e960",
+          "date": "2026-04-15",
+          "status": "frozen"
+        },
+        {
+          "id": "69dc299a13197ecafad4e962",
+          "date": "2026-04-16",
+          "status": "frozen"
+        },
+        {
+          "id": "69dc299b13197ecafad4e964",
+          "date": "2026-04-17",
+          "status": "frozen"
+        }
+      ],
+      "delivery": null
+    },
+    {
+      "scenario": "EXPIRED",
+      "user": {
+        "id": "69dc299413197ecafad4e917",
+        "email": "lifecycle.expired@seed.local",
+        "phone": "+966590100009"
+      },
+      "subscriptionCount": 1,
+      "subscription": {
+        "id": "69dc299b13197ecafad4e966",
+        "status": "expired",
+        "deliveryMode": "delivery",
+        "renewedFromSubscriptionId": null
+      },
+      "checkoutDraft": null,
+      "payment": null,
+      "days": [
+        {
+          "id": "69dc299b13197ecafad4e968",
+          "date": "2026-04-14",
+          "status": "open"
+        }
+      ],
+      "delivery": null
+    },
+    {
+      "scenario": "SKIPPED_DAY",
+      "user": {
+        "id": "69dc299413197ecafad4e91b",
+        "email": "lifecycle.skipped-day@seed.local",
+        "phone": "+966590100010"
+      },
+      "subscriptionCount": 1,
+      "subscription": {
+        "id": "69dc299b13197ecafad4e96d",
+        "status": "active",
+        "deliveryMode": "delivery",
+        "renewedFromSubscriptionId": null
+      },
+      "checkoutDraft": null,
+      "payment": null,
+      "days": [
+        {
+          "id": "69dc299b13197ecafad4e96f",
+          "date": "2026-04-16",
+          "status": "skipped"
+        }
+      ],
+      "delivery": null
+    },
+    {
+      "scenario": "CANCELED_SUBSCRIPTION",
+      "user": {
+        "id": "69dc299513197ecafad4e91f",
+        "email": "lifecycle.canceled-subscription@seed.local",
+        "phone": "+966590100011"
+      },
+      "subscriptionCount": 1,
+      "subscription": {
+        "id": "69dc299c13197ecafad4e971",
+        "status": "canceled",
+        "deliveryMode": "delivery",
+        "renewedFromSubscriptionId": null
+      },
+      "checkoutDraft": null,
+      "payment": null,
+      "days": [],
+      "delivery": null
+    },
+    {
+      "scenario": "RENEWED_SUBSCRIPTION",
+      "user": {
+        "id": "69dc299513197ecafad4e923",
+        "email": "lifecycle.renewed-subscription@seed.local",
+        "phone": "+966590100012"
+      },
+      "subscriptionCount": 2,
+      "subscription": {
+        "id": "69dc299c13197ecafad4e975",
+        "status": "active",
+        "deliveryMode": "delivery",
+        "renewedFromSubscriptionId": "69dc299c13197ecafad4e973"
+      },
+      "checkoutDraft": null,
+      "payment": null,
+      "days": [
+        {
+          "id": "69dc299c13197ecafad4e977",
+          "date": "2026-04-14",
+          "status": "open"
+        }
+      ],
+      "delivery": null
+    },
+    {
+      "scenario": "NO_SHOW",
+      "user": {
+        "id": "69dc299513197ecafad4e927",
+        "email": "lifecycle.no-show@seed.local",
+        "phone": "+966590100013"
+      },
+      "subscriptionCount": 1,
+      "subscription": {
+        "id": "69dc299c13197ecafad4e97c",
+        "status": "active",
+        "deliveryMode": "pickup",
+        "renewedFromSubscriptionId": null
+      },
+      "checkoutDraft": null,
+      "payment": null,
+      "days": [
+        {
+          "id": "69dc299d13197ecafad4e97e",
+          "date": "2026-04-13",
+          "status": "no_show"
+        }
+      ],
+      "delivery": null
+    },
+    {
+      "scenario": "CANCELED_AT_BRANCH",
+      "user": {
+        "id": "69dc299613197ecafad4e92b",
+        "email": "lifecycle.canceled-at-branch@seed.local",
+        "phone": "+966590100014"
+      },
+      "subscriptionCount": 1,
+      "subscription": {
+        "id": "69dc299d13197ecafad4e983",
+        "status": "active",
+        "deliveryMode": "pickup",
+        "renewedFromSubscriptionId": null
+      },
+      "checkoutDraft": null,
+      "payment": null,
+      "days": [
+        {
+          "id": "69dc299d13197ecafad4e985",
+          "date": "2026-04-13",
+          "status": "canceled_at_branch"
+        }
+      ],
+      "delivery": null
+    }
+  ],
+  "dashboard": [
+    {
+      "id": "69dc299013197ecafad4e8f5",
+      "email": "lifecycle.admin@seed.local",
+      "role": "admin"
+    },
+    {
+      "id": "69dc299013197ecafad4e8f2",
+      "email": "lifecycle.courier@seed.local",
+      "role": "courier"
+    },
+    {
+      "id": "69dc299013197ecafad4e8ee",
+      "email": "lifecycle.kitchen@seed.local",
+      "role": "kitchen"
+    }
+  ]
+}

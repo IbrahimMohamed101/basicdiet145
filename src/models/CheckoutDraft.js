@@ -42,6 +42,12 @@ const DraftAddonSubscriptionSchema = new mongoose.Schema(
   { _id: false }
 );
 
+/**
+ * Item 9: Pre-Activation Model
+ * CheckoutDraft explicitly models the pre-activation state along with its paired Payment.
+ * It is intentionally designed NOT as an actual Subscription row to avoid 'ghost' reservations.
+ * If draft is completed successfully, it converts into a row in the Subscription collection.
+ */
 const CheckoutDraftSchema = new mongoose.Schema(
   {
     userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },

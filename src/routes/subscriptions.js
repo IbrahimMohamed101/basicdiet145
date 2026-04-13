@@ -97,6 +97,32 @@ router.get("/:id/today", asyncHandler(controller.getSubscriptionToday));
  *     responses:
  *       200:
  *         description: Pickup prepared
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     subscriptionId:
+ *                       type: string
+ *                     date:
+ *                       type: string
+ *                     currentStep:
+ *                       type: integer
+ *                     status:
+ *                       type: string
+ *                     statusLabel:
+ *                       type: string
+ *                     message:
+ *                       type: string
+ *                     pickupRequested:
+ *                       type: boolean
+ *                     nextAction:
+ *                       type: string
  */
 router.post("/:id/days/:date/pickup/prepare", asyncHandler(controller.preparePickup));
 
@@ -118,6 +144,43 @@ router.post("/:id/days/:date/pickup/prepare", asyncHandler(controller.preparePic
  *     responses:
  *       200:
  *         description: Pickup status retrieved
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     subscriptionId:
+ *                       type: string
+ *                     date:
+ *                       type: string
+ *                     currentStep:
+ *                       type: integer
+ *                     status:
+ *                       type: string
+ *                     statusLabel:
+ *                       type: string
+ *                     message:
+ *                       type: string
+ *                     canModify:
+ *                       type: boolean
+ *                     isReady:
+ *                       type: boolean
+ *                     isCompleted:
+ *                       type: boolean
+ *                     pickupCode:
+ *                       type: string
+ *                       nullable: true
+ *                     pickupCodeIssuedAt:
+ *                       type: string
+ *                       nullable: true
+ *                     fulfilledAt:
+ *                       type: string
+ *                       nullable: true
  */
 router.get("/:id/days/:date/pickup/status", asyncHandler(controller.getPickupStatus));
 

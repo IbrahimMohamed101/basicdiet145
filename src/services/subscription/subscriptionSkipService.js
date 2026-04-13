@@ -447,11 +447,11 @@ async function applyOperationalSkipForDate({ sub, date, session }) {
       }
 
       if (day.status !== "skipped") {
-        throw { status: 409, code: "CONFLICT", message: "Day is not skipped" };
+        throw { status: 409, code: "INVALID_TRANSITION", message: "Invalid state transition: Day is not skipped" };
       }
 
       if (day.lockedSnapshot || day.fulfilledSnapshot || day.fulfilledAt || day.assignedByKitchen || day.pickupRequested) {
-        throw { status: 409, code: "CONFLICT", message: "Cannot unskip a processed day" };
+        throw { status: 409, code: "INVALID_TRANSITION", message: "Invalid state transition: Cannot unskip a processed day" };
       }
 
       const isCompensatedSkip = Boolean(day.skipCompensated);
@@ -483,7 +483,7 @@ async function applyOperationalSkipForDate({ sub, date, session }) {
         day.creditsDeducted = false;
       } else {
         if (!day.creditsDeducted) {
-          throw { status: 409, code: "CONFLICT", message: "Skipped day has no deducted credits to restore" };
+          throw { status: 409, code: "INVALID_TRANSITION", message: "Invalid state transition: Skipped day has no deducted credits to restore" };
         }
 
         const mealsToRestore = resolveMealsPerDay(subInSession);

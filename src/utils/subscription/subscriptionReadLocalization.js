@@ -226,10 +226,19 @@ function localizeCheckoutDraftStatusReadPayload(payload, { lang, draft = null } 
 function localizeSubscriptionReadPayload(subscription, { lang, addonNames = new Map(), planName = "" } = {}) {
   if (!subscription || typeof subscription !== "object") return subscription;
 
+  const statusLabelAr = resolveReadLabel("subscriptionStatuses", subscription.status, "ar");
+  const statusLabelEn = resolveReadLabel("subscriptionStatuses", subscription.status, "en");
+  const deliveryModeLabelAr = resolveReadLabel("deliveryModes", subscription.deliveryMode, "ar");
+  const deliveryModeLabelEn = resolveReadLabel("deliveryModes", subscription.deliveryMode, "en");
+
   const localized = {
     ...subscription,
     statusLabel: resolveReadLabel("subscriptionStatuses", subscription.status, lang),
+    statusLabelAr,
+    statusLabelEn,
     deliveryModeLabel: resolveReadLabel("deliveryModes", subscription.deliveryMode, lang),
+    deliveryModeLabelAr,
+    deliveryModeLabelEn,
   };
 
   if (planName) {

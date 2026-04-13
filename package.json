@@ -9,6 +9,8 @@
     "fix:payment-indexes": "node scripts/fix-payment-indexes.js",
     "test": "node scripts/run-tests.js",
     "seed": "node scripts/seed-demo-data.js",
+    "seed:pickup": "node scripts/seedPickupTestData.js",
+    "seed:courier": "node scripts/seedSubscriptionCycles.js",
     "seed:clear": "node scripts/seed-demo-data.js --clear",
     "seed:full": "node scripts/seed-demo-data.js --clear --users=50 --subscriptions=80 --orders=50",
     "backfill:meal-categories": "node scripts/backfill-meal-categories.js",

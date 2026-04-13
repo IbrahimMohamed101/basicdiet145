@@ -5914,10 +5914,28 @@ paths:
               schema:
                 type: object
                 properties:
-                  ok:
+                  status:
                     type: boolean
                   data:
-                    $ref: '#/components/schemas/SubscriptionDay'
+                    type: object
+                    properties:
+                      subscriptionId:
+                        type: string
+                      date:
+                        type: string
+                        format: date
+                      currentStep:
+                        type: integer
+                      status:
+                        type: string
+                      statusLabel:
+                        type: string
+                      message:
+                        type: string
+                      pickupRequested:
+                        type: boolean
+                      nextAction:
+                        type: string
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':

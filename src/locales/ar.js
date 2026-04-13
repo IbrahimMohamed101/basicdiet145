@@ -94,6 +94,18 @@ module.exports = {
       internal_delivery_problem: "مشكلة توصيل داخلية",
       order_operational_issue: "مشكلة تشغيلية في الطلب",
     },
+    pickupPreparation: {
+      buttonLabel: "تجهيز الطلب",
+      messages: {
+        SUBSCRIPTION_INACTIVE: "اشتراكك غير نشط أو انتهت صلاحيته",
+        PLANNING_INCOMPLETE: "يرجى اختيار وجباتك أولاً",
+        DAY_SKIPPED: "هذا اليوم موقوف أو مجمّد",
+        PAYMENT_REQUIRED: "يوجد مبالغ معلقة، يرجى إتمام الدفع",
+        INSUFFICIENT_CREDITS: "رصيد وجباتك غير كافٍ",
+        INVALID_STATE: "الحالة الحالية غير معروفة",
+        DEFAULT_ERROR: "لا يمكن تجهيز الطلب حالياً",
+      },
+    },
   },
   write: {
     paymentDescriptions: {

@@ -14,6 +14,9 @@ const SubscriptionDaySchema = new mongoose.Schema(
         "out_for_delivery",
         "ready_for_pickup",
         "fulfilled",
+        // Item 11: Terminal delivery failures.
+        // These statuses do NOT trigger automatic compensation. 
+        // Compensation is strictly admin-controlled via explicit addition of days.
         "delivery_canceled",
         "canceled_at_branch",
         "no_show",
