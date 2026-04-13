@@ -182,6 +182,7 @@ void initDeliveryOptionsModule() {
 }
 
 void initPlansModule() {
+  initTimelineModule();
   if (!GetIt.I.isRegistered<GetCurrentSubscriptionOverviewUseCase>()) {
     instance.registerFactory<GetCurrentSubscriptionOverviewUseCase>(
       () => GetCurrentSubscriptionOverviewUseCase(instance<Repository>()),
@@ -190,7 +191,10 @@ void initPlansModule() {
 
   if (!GetIt.I.isRegistered<PlansBloc>()) {
     instance.registerFactory<PlansBloc>(
-      () => PlansBloc(instance<GetCurrentSubscriptionOverviewUseCase>()),
+      () => PlansBloc(
+        instance<GetCurrentSubscriptionOverviewUseCase>(),
+        instance<GetTimelineUseCase>(),
+      ),
     );
   }
 }

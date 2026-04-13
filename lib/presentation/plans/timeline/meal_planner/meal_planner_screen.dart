@@ -79,7 +79,7 @@ class MealPlannerView extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            _buildHeader(),
+                            _buildHeader(context),
                             Gap(AppSize.s16.h),
                             _buildDateSelector(state),
                             Gap(AppSize.s16.h),
@@ -213,12 +213,24 @@ class MealPlannerView extends StatelessWidget {
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(BuildContext context) {
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: AppPadding.p16.w),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Row(
+            children: [
+              IconButton(
+                onPressed: () => Navigator.pop(context),
+                icon: const Icon(Icons.arrow_back, color: ColorManager.black101828),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+              ),
+              const Spacer(),
+            ],
+          ),
+          Gap(AppSize.s12.h),
           Text(
             Strings.mealPlanner.tr(),
             style: getBoldTextStyle(

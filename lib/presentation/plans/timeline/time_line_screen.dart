@@ -18,7 +18,10 @@ import 'package:basic_diet/presentation/plans/timeline/meal_planner/meal_planner
 class TimeLineScreen extends StatelessWidget {
   final String subscriptionId;
 
-  const TimeLineScreen({super.key, required this.subscriptionId});
+  const TimeLineScreen({
+    super.key,
+    required this.subscriptionId,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -187,23 +190,25 @@ class TimeLineScreen extends StatelessWidget {
         day.status.toLowerCase() == 'extension';
 
     return GestureDetector(
-      onTap: isClickable ? () async {
-        final result = await Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => MealPlannerScreen(
-              timelineDays: days,
-              initialDayIndex: index,
-              premiumMealsRemaining: premiumMealsRemaining,
-              subscriptionId: subscriptionId,
-            ),
-          ),
-        );
+      onTap: isClickable
+          ? () async {
+              final result = await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => MealPlannerScreen(
+                    timelineDays: days,
+                    initialDayIndex: index,
+                    premiumMealsRemaining: premiumMealsRemaining,
+                    subscriptionId: subscriptionId,
+                  ),
+                ),
+              );
 
-        if (result == true && context.mounted) {
-          context.read<TimelineBloc>().add(FetchTimelineEvent(subscriptionId));
-        }
-      } : null,
+              if (result == true && context.mounted) {
+                context.read<TimelineBloc>().add(FetchTimelineEvent(subscriptionId));
+              }
+            }
+          : null,
       child: Container(
         padding: EdgeInsets.all(AppPadding.p16.w),
         decoration: BoxDecoration(
@@ -213,77 +218,77 @@ class TimeLineScreen extends StatelessWidget {
               ? Border.all(color: borderColor)
               : Border.all(color: Colors.transparent),
         ),
-      child: Row(
-        children: [
-          SizedBox(
-            width: AppSize.s40.w,
-            child: Column(
-              children: [
-                Text(
-                  day.day.toUpperCase(),
-                  style: getRegularTextStyle(
-                    color: ColorManager.grey9CA3AF,
-                    fontSize: FontSizeManager.s10.sp,
-                  ),
-                ),
-                Text(
-                  day.dayNumber.toString(),
-                  style: getBoldTextStyle(
-                    color: color,
-                    fontSize: FontSizeManager.s18.sp,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Gap(AppSize.s16.w),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  statusText,
-                  style: getBoldTextStyle(
-                    color: color,
-                    fontSize: FontSizeManager.s16.sp,
-                  ),
-                ),
-                if (extraTag != null) ...[
-                  Gap(AppSize.s4.h),
-                  Container(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: AppPadding.p8.w,
-                      vertical: AppPadding.p2.h,
+        child: Row(
+          children: [
+            SizedBox(
+              width: AppSize.s40.w,
+              child: Column(
+                children: [
+                  Text(
+                    day.day.toUpperCase(),
+                    style: getRegularTextStyle(
+                      color: ColorManager.grey9CA3AF,
+                      fontSize: FontSizeManager.s10.sp,
                     ),
-                    decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(AppSize.s4.r),
-                    ),
-                    child: Text(
-                      extraTag,
-                      style: getRegularTextStyle(
-                        color: color,
-                        fontSize: FontSizeManager.s10.sp,
-                      ),
+                  ),
+                  Text(
+                    day.dayNumber.toString(),
+                    style: getBoldTextStyle(
+                      color: color,
+                      fontSize: FontSizeManager.s18.sp,
                     ),
                   ),
                 ],
-                if (day.selectedMeals > 0) ...[
-                  Gap(AppSize.s4.h),
+              ),
+            ),
+            Gap(AppSize.s16.w),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                   Text(
-                    "${day.selectedMeals}/${day.requiredMeals} ${Strings.meals.tr()}",
-                    style: getRegularTextStyle(
-                      color: ColorManager.grey6A7282,
-                      fontSize: FontSizeManager.s12.sp,
+                    statusText,
+                    style: getBoldTextStyle(
+                      color: color,
+                      fontSize: FontSizeManager.s16.sp,
                     ),
                   ),
-                ]
-              ],
+                  if (extraTag != null) ...[
+                    Gap(AppSize.s4.h),
+                    Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: AppPadding.p8.w,
+                        vertical: AppPadding.p2.h,
+                      ),
+                      decoration: BoxDecoration(
+                        color: color.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(AppSize.s4.r),
+                      ),
+                      child: Text(
+                        extraTag,
+                        style: getRegularTextStyle(
+                          color: color,
+                          fontSize: FontSizeManager.s10.sp,
+                        ),
+                      ),
+                    ),
+                  ],
+                  if (day.selectedMeals > 0) ...[
+                    Gap(AppSize.s4.h),
+                    Text(
+                      "${day.selectedMeals}/${day.requiredMeals} ${Strings.meals.tr()}",
+                      style: getRegularTextStyle(
+                        color: ColorManager.grey6A7282,
+                        fontSize: FontSizeManager.s12.sp,
+                      ),
+                    ),
+                  ]
+                ],
+              ),
             ),
-          ),
-          if (icon != null) Icon(icon, color: color, size: AppSize.s24.w),
-        ],
-      ),
+            if (icon != null) Icon(icon, color: color, size: AppSize.s24.w),
+          ],
+        ),
       ),
     );
   }

@@ -1,6 +1,7 @@
 import 'package:easy_localization/easy_localization.dart';
 import 'package:basic_diet/presentation/main/home/subscription/subscription_screen.dart';
 import 'package:basic_diet/presentation/plans/timeline/time_line_screen.dart';
+import 'package:basic_diet/presentation/plans/timeline/meal_planner/meal_planner_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:basic_diet/presentation/resources/color_manager.dart';
 import 'package:basic_diet/presentation/resources/font_manager.dart';
@@ -30,52 +31,91 @@ class PlansScreen extends StatelessWidget {
         return instance<PlansBloc>()
           ..add(FetchCurrentSubscriptionOverviewEvent());
       },
-      child: Scaffold(
-        backgroundColor: Colors.white,
-        body: SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(AppPadding.p16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: AppSize.s8),
-                _buildHeader(),
-                const SizedBox(height: AppSize.s24),
-                BlocBuilder<PlansBloc, PlansState>(
-                  builder: (context, state) {
-                    if (state is PlansLoading || state is PlansInitial) {
-                      return const Center(
-                        child: CircularProgressIndicator(
-                          color: ColorManager.greenPrimary,
-                        ),
-                      );
-                    } else if (state is PlansError) {
-                      return Center(child: Text(state.message));
-                    } else if (state is CurrentSubscriptionOverviewLoaded) {
-                      final data = state.currentSubscriptionOverviewModel.data;
+      child: BlocListener<PlansBloc, PlansState>(
+        listener: (context, state) {
+          if (state is NavigateToMealPlannerState) {
+            initMealPlannerModule();
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => MealPlannerScreen(
+                  timelineDays: state.timelineDays,
+                  initialDayIndex: state.initialDayIndex,
+                  premiumMealsRemaining: state.premiumMealsRemaining,
+                  subscriptionId: state.subscriptionId,
+                ),
+              ),
+            ).then((_) {
+              if (context.mounted) {
+                context.read<PlansBloc>().add(
+                  FetchCurrentSubscriptionOverviewEvent(),
+                );
+              }
+            });
+          }
+        },
+        child: Scaffold(
+          backgroundColor: Colors.white,
+          body: SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(AppPadding.p16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: AppSize.s8),
+                  _buildHeader(),
+                  const SizedBox(height: AppSize.s24),
+                  BlocBuilder<PlansBloc, PlansState>(
+                    builder: (context, state) {
+                      if (state is PlansLoading || state is PlansInitial) {
+                        return const Center(
+                          child: CircularProgressIndicator(
+                            color: ColorManager.greenPrimary,
+                          ),
+                        );
+                      } else if (state is PlansError) {
+                        return Center(child: Text(state.message));
+                      }
+
+                      // Get data from the state
+                      final data = state.data?.data;
 
                       if (data == null) {
                         return _buildNoSubscriptionState(context);
                       }
 
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      return Stack(
                         children: [
-                          _buildSubscriptionPlanCard(context, data),
-                          Gap(AppSize.s16.h),
-                          _buildActionButtons(context, data),
-                          if (data.pickupPreparation != null &&
-                              data.pickupPreparation!.flowStatus != 'hidden')
-                            _buildPickupPreparationSection(data),
-                          // _buildSubscriptionPeriodCard(data),
-                          Gap(AppSize.s24.h),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildSubscriptionPlanCard(context, data),
+                              Gap(AppSize.s16.h),
+                              _buildActionButtons(context, data),
+                              if (data.pickupPreparation != null &&
+                                  data.pickupPreparation!.flowStatus !=
+                                      'hidden')
+                                _buildPickupPreparationSection(context, data),
+                              Gap(AppSize.s24.h),
+                            ],
+                          ),
+                          if (state is OpenPlannerLoading)
+                            Positioned.fill(
+                              child: Container(
+                                color: Colors.white.withValues(alpha: 0.5),
+                                child: const Center(
+                                  child: CircularProgressIndicator(
+                                    color: ColorManager.greenPrimary,
+                                  ),
+                                ),
+                              ),
+                            ),
                         ],
                       );
-                    }
-                    return const SizedBox.shrink();
-                  },
-                ),
-              ],
+                    },
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -544,6 +584,7 @@ class PlansScreen extends StatelessWidget {
   }
 
   Widget _buildPickupPreparationSection(
+    BuildContext context,
     CurrentSubscriptionOverviewDataModel data,
   ) {
     final status = data.pickupPreparation!.flowStatus;
@@ -552,7 +593,7 @@ class PlansScreen extends StatelessWidget {
       children: [
         Gap(AppSize.s16.h),
         switch (status) {
-          'disabled' => _buildOrderStatusCard(data),
+          'disabled' => _buildOrderStatusCard(context, data),
           'available' => _buildPreparationCard(data),
           'in_progress' => _buildInProgressCard(data),
           'completed' => _buildCompletedCard(data),
@@ -640,9 +681,15 @@ class PlansScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildOrderStatusCard(CurrentSubscriptionOverviewDataModel data) {
+  Widget _buildOrderStatusCard(
+    BuildContext context,
+    CurrentSubscriptionOverviewDataModel data,
+  ) {
     final prep = data.pickupPreparation!;
-    final buttonLabel = prep.buttonLabel.isNotEmpty
+    final bool isPlanningIncomplete = prep.reason == "PLANNING_INCOMPLETE";
+    final buttonLabel = isPlanningIncomplete
+        ? Strings.mealPlanner.tr()
+        : prep.buttonLabel.isNotEmpty
         ? prep.buttonLabel
         : Strings.confirm.tr();
     final message = prep.message.isNotEmpty
@@ -687,19 +734,32 @@ class PlansScreen extends StatelessWidget {
             ),
           ),
           Gap(AppSize.s24.h),
-          Container(
-            width: double.infinity,
-            height: 56.h,
-            decoration: BoxDecoration(
-              color: const Color(0xFFE5E7EB),
-              borderRadius: BorderRadius.circular(100.r),
-            ),
-            child: Center(
-              child: Text(
-                buttonLabel,
-                style: getBoldTextStyle(
-                  color: ColorManager.grey6A7282,
-                  fontSize: FontSizeManager.s18.sp,
+          InkWell(
+            onTap: isPlanningIncomplete
+                ? () {
+                    context.read<PlansBloc>().add(
+                      FetchTimelineAndOpenPlannerEvent(data.id),
+                    );
+                  }
+                : null,
+            child: Container(
+              width: double.infinity,
+              height: 56.h,
+              decoration: BoxDecoration(
+                color: isPlanningIncomplete
+                    ? ColorManager.greenPrimary
+                    : const Color(0xFFE5E7EB),
+                borderRadius: BorderRadius.circular(100.r),
+              ),
+              child: Center(
+                child: Text(
+                  buttonLabel,
+                  style: getBoldTextStyle(
+                    color: isPlanningIncomplete
+                        ? Colors.white
+                        : ColorManager.grey6A7282,
+                    fontSize: FontSizeManager.s18.sp,
+                  ),
                 ),
               ),
             ),
