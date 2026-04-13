@@ -186,7 +186,9 @@ void initPlansModule() {
     instance.registerFactory<GetCurrentSubscriptionOverviewUseCase>(
       () => GetCurrentSubscriptionOverviewUseCase(instance<Repository>()),
     );
+  }
 
+  if (!GetIt.I.isRegistered<PlansBloc>()) {
     instance.registerFactory<PlansBloc>(
       () => PlansBloc(instance<GetCurrentSubscriptionOverviewUseCase>()),
     );

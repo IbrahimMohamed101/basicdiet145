@@ -64,15 +64,9 @@ class PlansScreen extends StatelessWidget {
                           _buildSubscriptionPlanCard(context, data),
                           Gap(AppSize.s16.h),
                           _buildActionButtons(context, data),
-                          if (data.pickupPreparation != null) ...[
-                            Gap(AppSize.s16.h),
-                            if (data.pickupPreparation!.flowStatus ==
-                                'disabled')
-                              _buildOrderStatusCard(data)
-                            else if (data.pickupPreparation!.flowStatus ==
-                                'available')
-                              _buildPreparationCard(data),
-                          ],
+                          if (data.pickupPreparation != null &&
+                              data.pickupPreparation!.flowStatus != 'hidden')
+                            _buildPickupPreparationSection(data),
                           // _buildSubscriptionPeriodCard(data),
                           Gap(AppSize.s24.h),
                         ],
@@ -549,6 +543,25 @@ class PlansScreen extends StatelessWidget {
     );
   }
 
+  Widget _buildPickupPreparationSection(
+    CurrentSubscriptionOverviewDataModel data,
+  ) {
+    final status = data.pickupPreparation!.flowStatus;
+
+    return Column(
+      children: [
+        Gap(AppSize.s16.h),
+        switch (status) {
+          'disabled' => _buildOrderStatusCard(data),
+          'available' => _buildPreparationCard(data),
+          'in_progress' => _buildInProgressCard(data),
+          'completed' => _buildCompletedCard(data),
+          _ => const SizedBox.shrink(),
+        },
+      ],
+    );
+  }
+
   Widget _buildNoSubscriptionState(BuildContext context) {
     return Center(
       child: Padding(
@@ -628,9 +641,21 @@ class PlansScreen extends StatelessWidget {
   }
 
   Widget _buildOrderStatusCard(CurrentSubscriptionOverviewDataModel data) {
+    final prep = data.pickupPreparation!;
+    final buttonLabel = prep.buttonLabel.isNotEmpty
+        ? prep.buttonLabel
+        : Strings.confirm.tr();
+    final message = prep.message.isNotEmpty
+        ? prep.message
+        : Strings.modificationPeriodEnded.tr();
+
+    IconData icon = Icons.lock_rounded;
+    if (prep.reason == "DAY_SKIPPED") {
+      icon = Icons.pause_circle_outline_rounded;
+    }
+
     return Container(
       width: double.infinity,
-      height: 194.h,
       padding: EdgeInsets.all(24.w),
       decoration: BoxDecoration(
         color: const Color(0xFFF3F3F6),
@@ -642,11 +667,7 @@ class PlansScreen extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(
-                Icons.lock_rounded,
-                color: ColorManager.black101828,
-                size: 20.sp,
-              ),
+              Icon(icon, color: ColorManager.black101828, size: 20.sp),
               Gap(8.w),
               Text(
                 Strings.orderLocked.tr(),
@@ -659,15 +680,13 @@ class PlansScreen extends StatelessWidget {
           ),
           Gap(12.h),
           Text(
-            data.pickupPreparation?.message.isNotEmpty == true
-                ? data.pickupPreparation!.message
-                : Strings.modificationPeriodEnded.tr(),
+            message,
             style: getRegularTextStyle(
               color: ColorManager.grey6A7282,
               fontSize: FontSizeManager.s16.sp,
             ),
           ),
-          const Spacer(),
+          Gap(AppSize.s24.h),
           Container(
             width: double.infinity,
             height: 56.h,
@@ -677,7 +696,7 @@ class PlansScreen extends StatelessWidget {
             ),
             child: Center(
               child: Text(
-                Strings.waitingForKitchen.tr(),
+                buttonLabel,
                 style: getBoldTextStyle(
                   color: ColorManager.grey6A7282,
                   fontSize: FontSizeManager.s18.sp,
@@ -691,6 +710,14 @@ class PlansScreen extends StatelessWidget {
   }
 
   Widget _buildPreparationCard(CurrentSubscriptionOverviewDataModel data) {
+    final prep = data.pickupPreparation!;
+    final buttonLabel = prep.buttonLabel.isNotEmpty
+        ? prep.buttonLabel
+        : Strings.confirmAndPrepare.tr();
+    final message = prep.message.isNotEmpty
+        ? prep.message
+        : Strings.reviewSelectionToStartPreparation.tr();
+
     return Container(
       width: double.infinity,
       padding: EdgeInsets.all(24.w),
@@ -731,9 +758,7 @@ class PlansScreen extends StatelessWidget {
           ),
           Gap(12.h),
           Text(
-            data.pickupPreparation?.message.isNotEmpty == true
-                ? data.pickupPreparation!.message
-                : Strings.reviewSelectionToStartPreparation.tr(),
+            message,
             style: getRegularTextStyle(
               color: ColorManager.grey6A7282,
               fontSize: FontSizeManager.s16.sp,
@@ -753,13 +778,59 @@ class PlansScreen extends StatelessWidget {
                 elevation: 0,
               ),
               child: Text(
-                Strings.confirmAndPrepare.tr(),
+                buttonLabel,
                 style: getBoldTextStyle(
                   color: Colors.white,
                   fontSize: FontSizeManager.s18.sp,
                 ),
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInProgressCard(CurrentSubscriptionOverviewDataModel data) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(24.w),
+      decoration: BoxDecoration(
+        color: ColorManager.whiteColor,
+        borderRadius: BorderRadius.circular(24.r),
+        border: Border.all(color: ColorManager.formFieldsBorderColor, width: 1),
+      ),
+      child: Column(
+        children: [
+          const CircularProgressIndicator(color: ColorManager.greenPrimary),
+          Gap(16.h),
+          Text(
+            Strings.loading.tr(),
+            style: getBoldTextStyle(color: ColorManager.black101828),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCompletedCard(CurrentSubscriptionOverviewDataModel data) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(24.w),
+      decoration: BoxDecoration(
+        color: ColorManager.greenPrimary.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(24.r),
+        border: Border.all(
+          color: ColorManager.greenPrimary.withValues(alpha: 0.2),
+        ),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.check_circle, color: ColorManager.greenPrimary),
+          Gap(12.w),
+          Text(
+            Strings.success.tr(),
+            style: getBoldTextStyle(color: ColorManager.greenPrimary),
           ),
         ],
       ),
