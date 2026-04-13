@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:basic_diet/presentation/main/home/add-ons/add_ons_screen.dart';
 import 'package:basic_diet/presentation/main/home/premium/bloc/premium_meals_bloc.dart';
 import 'package:basic_diet/presentation/main/home/premium/bloc/premium_meals_state.dart';
@@ -57,7 +58,7 @@ class PremiumMealsBottomActions extends StatelessWidget {
               elevation: 0,
             ),
             child: Text(
-              Strings.continueText,
+              Strings.continueText.tr(),
               style: getBoldTextStyle(
                 fontSize: FontSizeManager.s16.sp,
                 color: ColorManager.whiteColor,
@@ -71,7 +72,7 @@ class PremiumMealsBottomActions extends StatelessWidget {
               minimumSize: Size(double.infinity, 48.h),
             ),
             child: Text(
-              Strings.skipThisStep,
+              Strings.skipThisStep.tr(),
               style: getBoldTextStyle(
                 fontSize: FontSizeManager.s16.sp,
                 color: ColorManager.black101828,

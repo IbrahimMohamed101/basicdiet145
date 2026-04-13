@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:basic_diet/domain/model/delivery_options_model.dart';
 import 'package:basic_diet/domain/model/subscription_quote_model.dart';
 import 'package:basic_diet/presentation/main/home/delivery/bloc/delivery_options_bloc.dart';
@@ -40,7 +41,7 @@ class DeliveryMethodContentView extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _SectionTitle(title: Strings.chooseDeliveryType),
+          _SectionTitle(title: Strings.chooseDeliveryType.tr()),
           Gap(AppSize.s16.h),
           ...state.deliveryOptionsModel.methods.map(
             (method) => Padding(
@@ -62,16 +63,16 @@ class DeliveryMethodContentView extends StatelessWidget {
             ),
           ),
           Gap(AppSize.s8.h),
-          _SectionTitle(title: Strings.subscriptionStartDate),
+          _SectionTitle(title: Strings.subscriptionStartDate.tr()),
           Gap(AppSize.s12.h),
           _buildStartDateSelector(context),
           if (state.selectedType == DeliveryType.home &&
               selectedMethod != null) ...[
             Gap(AppSize.s24.h),
-            _SectionTitle(title: Strings.deliveryArea),
+            _SectionTitle(title: Strings.deliveryArea.tr()),
             Gap(AppSize.s12.h),
             DeliveryLocationSelector(
-              label: Strings.selectYourArea,
+              label: Strings.selectYourArea.tr(),
               value: state.selectedArea?.label,
               onTap: () =>
                   _showAreaModal(context, state.deliveryOptionsModel.areas),
@@ -79,14 +80,14 @@ class DeliveryMethodContentView extends StatelessWidget {
             Gap(AppSize.s8.h),
             _HelperText(text: selectedMethod.helperText),
             Gap(AppSize.s24.h),
-            _SectionTitle(title: Strings.deliveryAddress),
+            _SectionTitle(title: Strings.deliveryAddress.tr()),
             Gap(AppSize.s16.h),
             _buildAddressFields(context),
             Gap(AppSize.s24.h),
-            _SectionTitle(title: Strings.deliverySchedule),
+            _SectionTitle(title: Strings.deliverySchedule.tr()),
             Gap(AppSize.s12.h),
             DeliveryLocationSelector(
-              label: Strings.selectPreferredTime,
+              label: Strings.selectPreferredTime.tr(),
               value: state.selectedTime?.window,
               onTap: () => _showTimeModal(context, selectedMethod.slots),
             ),
@@ -97,8 +98,8 @@ class DeliveryMethodContentView extends StatelessWidget {
           Gap(AppSize.s16.h),
           _buildLabelledField(
             context,
-            Strings.notesOptional,
-            Strings.notesHint,
+            Strings.notesOptional.tr(),
+            Strings.notesHint.tr(),
             bloc.notesController,
             onChanged: (val) => bloc.add(UpdateAddressFieldsEvent(notes: val)),
           ),
@@ -117,24 +118,24 @@ class DeliveryMethodContentView extends StatelessWidget {
       children: [
         _buildLabelledField(
           context,
-          Strings.streetName,
-          Strings.streetHint,
+          Strings.streetName.tr(),
+          Strings.streetHint.tr(),
           bloc.streetController,
           isRequired: true,
           onChanged: (val) => bloc.add(UpdateAddressFieldsEvent(street: val)),
         ),
         _buildLabelledField(
           context,
-          Strings.buildingNumber,
-          Strings.buildingHint,
+          Strings.buildingNumber.tr(),
+          Strings.buildingHint.tr(),
           bloc.buildingController,
           isRequired: true,
           onChanged: (val) => bloc.add(UpdateAddressFieldsEvent(building: val)),
         ),
         _buildLabelledField(
           context,
-          Strings.apartmentOptional,
-          Strings.apartmentHint,
+          Strings.apartmentOptional.tr(),
+          Strings.apartmentHint.tr(),
           bloc.apartmentController,
           onChanged: (val) =>
               bloc.add(UpdateAddressFieldsEvent(apartment: val)),
@@ -154,7 +155,7 @@ class DeliveryMethodContentView extends StatelessWidget {
 
         return ButtonWidget(
           radius: AppSize.s12.r,
-          text: loading ? Strings.loading : Strings.getYourPrice,
+          text: loading ? Strings.loading.tr() : Strings.getYourPrice.tr(),
           color: enabled || loading
               ? ColorManager.greenPrimary
               : ColorManager.greyF3F4F6,
@@ -176,7 +177,7 @@ class DeliveryMethodContentView extends StatelessWidget {
       isScrollControlled: true,
       shape: _modalShape(),
       builder: (context) => SelectionModal<DeliveryAreaModel>(
-        title: Strings.selectYourArea,
+        title: Strings.selectYourArea.tr(),
         items: areas,
         initialSelection: state.selectedArea,
         itemBuilder: (item, current, onSelected) => RadioSelectionTile(
@@ -198,7 +199,7 @@ class DeliveryMethodContentView extends StatelessWidget {
       isScrollControlled: true,
       shape: _modalShape(),
       builder: (context) => SelectionModal<DeliverySlotModel>(
-        title: Strings.chooseDeliveryTime,
+        title: Strings.chooseDeliveryTime.tr(),
         items: slots,
         initialSelection: state.selectedTime,
         itemBuilder: (item, current, onSelected) => RadioSelectionTile(
@@ -293,7 +294,7 @@ class DeliveryMethodContentView extends StatelessWidget {
 
   Widget _buildStartDateSelector(BuildContext context) {
     return DeliveryLocationSelector(
-      label: Strings.selectStartDate,
+      label: Strings.selectStartDate.tr(),
       value: state.selectedStartDate != null
           ? _formatRequestDate(state.selectedStartDate!)
           : null,
@@ -352,7 +353,7 @@ class DeliveryMethodContentView extends StatelessWidget {
           Gap(AppSize.s12.w),
           Expanded(
             child: Text(
-              pickupLocation?.label ?? Strings.pickupFromBranch,
+              pickupLocation?.label ?? Strings.pickupFromBranch.tr(),
               style: getBoldTextStyle(
                 color: ColorManager.greenDark,
                 fontSize: 16.sp,

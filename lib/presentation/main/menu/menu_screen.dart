@@ -1,3 +1,5 @@
+import 'package:easy_localization/easy_localization.dart';
+import 'package:basic_diet/presentation/resources/strings_manager.dart';
 import 'package:flutter/material.dart';
 
 class MenuScreen extends StatelessWidget {
@@ -5,6 +7,6 @@ class MenuScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(body: Center(child: Text("Menu Screen")));
+    return Scaffold(body: Center(child: Text(Strings.menu.tr())));
   }
 }

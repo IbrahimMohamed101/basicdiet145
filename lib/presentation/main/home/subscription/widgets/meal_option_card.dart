@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:basic_diet/domain/model/plans_model.dart';
 import 'package:basic_diet/presentation/resources/color_manager.dart';
 import 'package:basic_diet/presentation/resources/font_manager.dart';
@@ -25,7 +26,7 @@ class MealOptionCard extends StatelessWidget {
   // Presentation logic as getters — unit-testable without rendering
   String get _mealLabel {
     final count = option.mealsPerDay;
-    return '$count ${count > 1 ? Strings.meals : Strings.meal}';
+    return '$count ${count > 1 ? Strings.meals.tr() : Strings.meal.tr()}';
   }
 
   @override
@@ -111,7 +112,7 @@ class _PriceRow extends StatelessWidget {
       children: [
         Text(amount, style: _style(amountFontSize)),
         Gap(AppSize.s4.w),
-        Text(Strings.sar, style: _style(labelFontSize)),
+        Text(Strings.sar.tr(), style: _style(labelFontSize)),
       ],
     );
   }

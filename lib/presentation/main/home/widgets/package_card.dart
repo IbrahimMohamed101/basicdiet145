@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -22,12 +23,12 @@ class PackageCard extends StatelessWidget {
 
   // Formatting helpers — keep presentation logic out of build()
   String get _mealsDesc =>
-      '${package.mealsPerDay} ${Strings.mealsPerDay} - ${package.daysCount} ${Strings.days}';
-  String get _price => '${_formatAmount(package.newPrice)} ${package.currency}';
+      '${package.mealsPerDay} ${Strings.mealsPerDay.tr()} - ${package.daysCount} ${Strings.days.tr()}';
+  String get _price => '${_formatAmount(package.newPrice)} ${Strings.sar.tr()}';
   String get _originalPrice =>
-      '${_formatAmount(package.oldPrice)} ${package.currency}';
+      '${_formatAmount(package.oldPrice)} ${Strings.sar.tr()}';
   String get _saveAmount =>
-      '${Strings.save} ${_formatAmount(package.moneySave)} ${package.currency}';
+      '${Strings.save.tr()} ${_formatAmount(package.moneySave)} ${Strings.sar.tr()}';
 
   @override
   Widget build(BuildContext context) {
@@ -44,7 +45,7 @@ class PackageCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _PackageCardHeader(title: package.name, tagText: Strings.mostPopular),
+          _PackageCardHeader(title: package.name, tagText: Strings.mostPopular.tr()),
           Gap(AppSize.s8.h),
           Text(
             _mealsDesc,

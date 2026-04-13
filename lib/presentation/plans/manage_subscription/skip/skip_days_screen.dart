@@ -9,6 +9,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:gap/gap.dart';
 import 'package:intl/intl.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:basic_diet/presentation/plans/manage_subscription/skip/skip_days_bloc.dart';
 import 'package:basic_diet/presentation/plans/manage_subscription/skip/skip_days_event.dart';
 import 'package:basic_diet/presentation/plans/manage_subscription/skip/skip_days_state.dart';
@@ -79,7 +80,7 @@ class _SkipDaysScreenState extends State<SkipDaysScreen> {
                 onPressed: () => Navigator.of(context).pop(),
               ),
               title: Text(
-                Strings.skipDays,
+                Strings.skipDays.tr(),
                 style: getRegularTextStyle(
                   color: Colors.black,
                   fontSize: FontSizeManager.s20.sp,
@@ -138,7 +139,7 @@ class _SkipDaysScreenState extends State<SkipDaysScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  "${Strings.skipLimit} ${widget.skipDaysUsed}/${widget.skipDaysLimit}",
+                  "${Strings.skipLimit.tr()} ${widget.skipDaysUsed}/${widget.skipDaysLimit}",
                   style: getRegularTextStyle(
                     color: const Color(0xFF1E3A8A),
                     fontSize: FontSizeManager.s14.sp,
@@ -146,7 +147,7 @@ class _SkipDaysScreenState extends State<SkipDaysScreen> {
                 ),
                 Gap(AppSize.s4.h),
                 Text(
-                  "You have ${widget.remainingSkipDays} ${Strings.skipsRemaining}",
+                  "${Strings.youHave.tr()} ${widget.remainingSkipDays} ${Strings.skipsRemaining.tr()}",
                   style: getRegularTextStyle(
                     color: const Color(0xFF3B82F6),
                     fontSize: FontSizeManager.s14.sp,
@@ -172,7 +173,7 @@ class _SkipDaysScreenState extends State<SkipDaysScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            Strings.skipType,
+            Strings.skipType.tr(),
             style: getRegularTextStyle(
               color: Colors.black,
               fontSize: FontSizeManager.s16.sp,
@@ -184,16 +185,16 @@ class _SkipDaysScreenState extends State<SkipDaysScreen> {
               Expanded(
                 child: _buildTypeCard(
                   type: SkipTypeSelection.singleDay,
-                  title: Strings.singleDay,
-                  subtitle: Strings.skipOneDay,
+                  title: Strings.singleDay.tr(),
+                  subtitle: Strings.skipOneDay.tr(),
                 ),
               ),
               Gap(AppSize.s12.w),
               Expanded(
                 child: _buildTypeCard(
                   type: SkipTypeSelection.dateRange,
-                  title: Strings.dateRange,
-                  subtitle: Strings.skipMultipleDays,
+                  title: Strings.dateRange.tr(),
+                  subtitle: Strings.skipMultipleDays.tr(),
                 ),
               ),
             ],
@@ -270,7 +271,7 @@ class _SkipDaysScreenState extends State<SkipDaysScreen> {
         children: [
           if (_skipType == SkipTypeSelection.singleDay) ...[
             Text(
-              Strings.startDate,
+              Strings.startDate.tr(),
               style: getRegularTextStyle(
                 color: Colors.black,
                 fontSize: FontSizeManager.s16.sp,
@@ -285,7 +286,7 @@ class _SkipDaysScreenState extends State<SkipDaysScreen> {
             ),
           ] else ...[
             Text(
-              Strings.startDate,
+              Strings.startDate.tr(),
               style: getRegularTextStyle(
                 color: Colors.black,
                 fontSize: FontSizeManager.s16.sp,
@@ -300,7 +301,7 @@ class _SkipDaysScreenState extends State<SkipDaysScreen> {
             ),
             Gap(AppSize.s16.h),
             Text(
-              Strings.endDate,
+              Strings.endDate.tr(),
               style: getRegularTextStyle(
                 color: Colors.black,
                 fontSize: FontSizeManager.s16.sp,
@@ -351,7 +352,7 @@ class _SkipDaysScreenState extends State<SkipDaysScreen> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(
-              date != null ? DateFormat('MMMM d, yyyy').format(date) : '',
+              date != null ? DateFormat('MMMM d, yyyy', context.locale.toString()).format(date) : '',
               style: getRegularTextStyle(
                 color: Colors.black,
                 fontSize: FontSizeManager.s16.sp,
@@ -380,18 +381,18 @@ class _SkipDaysScreenState extends State<SkipDaysScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            Strings.importantInformation,
+            Strings.importantInformation.tr(),
             style: getRegularTextStyle(
               color: Colors.black,
               fontSize: FontSizeManager.s16.sp,
             ),
           ),
           Gap(AppSize.s12.h),
-          _buildInfoBullet(Strings.skipInfo1),
+          _buildInfoBullet(Strings.skipInfo1.tr()),
           Gap(AppSize.s8.h),
-          _buildInfoBullet(Strings.skipInfo2),
+          _buildInfoBullet(Strings.skipInfo2.tr()),
           Gap(AppSize.s8.h),
-          _buildInfoBullet(Strings.skipInfo3),
+          _buildInfoBullet(Strings.skipInfo3.tr()),
         ],
       ),
     );
@@ -432,7 +433,7 @@ class _SkipDaysScreenState extends State<SkipDaysScreen> {
               ),
             ),
             child: Text(
-              Strings.cancel,
+              Strings.cancel.tr(),
               style: getRegularTextStyle(
                 color: Colors.black,
                 fontSize: FontSizeManager.s16.sp,
@@ -443,7 +444,7 @@ class _SkipDaysScreenState extends State<SkipDaysScreen> {
         Gap(AppSize.s12.w),
         Expanded(
           child: ButtonWidget(
-            text: isLoading ? Strings.loading : Strings.skipDays,
+            text: isLoading ? Strings.loading.tr() : Strings.skipDays.tr(),
             height: 52,
             color: hasValidSelection
                 ? ColorManager.greenPrimary

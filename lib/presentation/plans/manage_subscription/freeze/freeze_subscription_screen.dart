@@ -7,6 +7,7 @@ import 'package:basic_diet/presentation/resources/values_manager.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:gap/gap.dart';
 import 'package:intl/intl.dart';
+import 'package:easy_localization/easy_localization.dart';
 
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:basic_diet/app/dependency_injection.dart';
@@ -64,8 +65,8 @@ class _FreezeSubscriptionScreenState extends State<FreezeSubscriptionScreen> {
         listener: (context, state) {
           if (state is FreezeSubscriptionSuccess) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Subscription frozen successfully!'),
+              SnackBar(
+                content: Text(Strings.subscriptionFrozenSuccessfully.tr()),
                 backgroundColor: ColorManager.greenPrimary,
               ),
             );
@@ -92,7 +93,7 @@ class _FreezeSubscriptionScreenState extends State<FreezeSubscriptionScreen> {
                 onPressed: () => Navigator.of(context).pop(),
               ),
               title: Text(
-                Strings.freezeSubscription,
+                Strings.freezeSubscription.tr(),
                 style: getRegularTextStyle(
                   color: Colors.black,
                   fontSize: FontSizeManager.s20.sp,
@@ -149,18 +150,20 @@ class _FreezeSubscriptionScreenState extends State<FreezeSubscriptionScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  Strings.freezingYourSubscriptionWill,
+                  Strings.freezingYourSubscriptionWill.tr(),
                   style: getRegularTextStyle(
                     color: const Color(0xFF1E3A8A), // Dark blue text
                     fontSize: FontSizeManager.s14.sp,
                   ),
                 ),
                 Gap(AppSize.s8.h),
-                _buildInfoBulletItem(Strings.pauseAllMealDeliveries),
+                _buildInfoBulletItem(Strings.pauseAllMealDeliveries.tr()),
                 Gap(AppSize.s4.h),
-                _buildInfoBulletItem(Strings.extendYourSubscriptionEndDate),
+                _buildInfoBulletItem(
+                  Strings.extendYourSubscriptionEndDate.tr(),
+                ),
                 Gap(AppSize.s4.h),
-                _buildInfoBulletItem(Strings.keepYourMealCreditsIntact),
+                _buildInfoBulletItem(Strings.keepYourMealCreditsIntact.tr()),
               ],
             ),
           ),
@@ -191,7 +194,7 @@ class _FreezeSubscriptionScreenState extends State<FreezeSubscriptionScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            Strings.startDate,
+            Strings.startDate.tr(),
             style: getRegularTextStyle(
               color: Colors.black,
               fontSize: FontSizeManager.s16.sp,
@@ -225,7 +228,10 @@ class _FreezeSubscriptionScreenState extends State<FreezeSubscriptionScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    DateFormat('MMMM d, yyyy').format(_startDate),
+                    DateFormat(
+                      'MMMM d, yyyy',
+                      context.locale.toString(),
+                    ).format(_startDate),
                     style: getRegularTextStyle(
                       color: Colors.black,
                       fontSize: FontSizeManager.s16.sp,
@@ -242,7 +248,7 @@ class _FreezeSubscriptionScreenState extends State<FreezeSubscriptionScreen> {
           ),
           Gap(AppSize.s24.h),
           Text(
-            Strings.numberOfDays,
+            Strings.numberOfDays.tr(),
             style: getRegularTextStyle(
               color: Colors.black,
               fontSize: FontSizeManager.s16.sp,
@@ -280,7 +286,7 @@ class _FreezeSubscriptionScreenState extends State<FreezeSubscriptionScreen> {
                     ),
                     Gap(AppSize.s4.h),
                     Text(
-                      Strings.days.toLowerCase(),
+                      Strings.days.tr().toLowerCase(),
                       style: getRegularTextStyle(
                         color: ColorManager.grey6A7282,
                         fontSize: FontSizeManager.s12.sp,
@@ -334,7 +340,7 @@ class _FreezeSubscriptionScreenState extends State<FreezeSubscriptionScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            Strings.impactSummary,
+            Strings.impactSummary.tr(),
             style: getRegularTextStyle(
               color: Colors.black,
               fontSize: FontSizeManager.s16.sp,
@@ -345,14 +351,14 @@ class _FreezeSubscriptionScreenState extends State<FreezeSubscriptionScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                Strings.freezePeriod,
+                Strings.freezePeriod.tr(),
                 style: getRegularTextStyle(
                   color: ColorManager.grey6A7282,
                   fontSize: FontSizeManager.s14.sp,
                 ),
               ),
               Text(
-                '$_days ${Strings.days.toLowerCase()}',
+                '$_days ${Strings.days.tr().toLowerCase()}',
                 style: getRegularTextStyle(
                   color: Colors.black,
                   fontSize: FontSizeManager.s14.sp,
@@ -365,14 +371,17 @@ class _FreezeSubscriptionScreenState extends State<FreezeSubscriptionScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                Strings.currentEndDate,
+                Strings.currentEndDate.tr(),
                 style: getRegularTextStyle(
                   color: ColorManager.grey6A7282,
                   fontSize: FontSizeManager.s14.sp,
                 ),
               ),
               Text(
-                DateFormat('MMM d').format(currentEndDate),
+                DateFormat(
+                  'MMM d',
+                  context.locale.toString(),
+                ).format(currentEndDate),
                 style: getRegularTextStyle(
                   color: Colors.black,
                   fontSize: FontSizeManager.s14.sp,
@@ -387,14 +396,17 @@ class _FreezeSubscriptionScreenState extends State<FreezeSubscriptionScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                Strings.newEndDate,
+                Strings.newEndDate.tr(),
                 style: getRegularTextStyle(
                   color: Colors.black,
                   fontSize: FontSizeManager.s14.sp,
                 ),
               ),
               Text(
-                DateFormat('MMM d, yyyy').format(newEndDate),
+                DateFormat(
+                  'MMM d, yyyy',
+                  context.locale.toString(),
+                ).format(newEndDate),
                 style: getRegularTextStyle(
                   color: ColorManager.greenPrimary,
                   fontSize: FontSizeManager.s14.sp,
@@ -426,7 +438,7 @@ class _FreezeSubscriptionScreenState extends State<FreezeSubscriptionScreen> {
               ),
             ),
             child: Text(
-              Strings.cancel,
+              Strings.cancel.tr(),
               style: getRegularTextStyle(
                 color: Colors.black,
                 fontSize: FontSizeManager.s16.sp,
@@ -465,7 +477,7 @@ class _FreezeSubscriptionScreenState extends State<FreezeSubscriptionScreen> {
                     child: CircularProgressIndicator(color: Colors.white),
                   )
                 : Text(
-                    Strings.freezeSubscription,
+                    Strings.freezeSubscription.tr(),
                     style: getRegularTextStyle(
                       color: Colors.white,
                       fontSize: FontSizeManager.s16.sp,

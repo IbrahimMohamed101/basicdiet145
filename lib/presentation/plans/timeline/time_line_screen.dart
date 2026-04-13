@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:basic_diet/app/dependency_injection.dart';
 import 'package:basic_diet/domain/model/timeline_model.dart';
 import 'package:basic_diet/presentation/plans/timeline/bloc/timeline_bloc.dart';
@@ -37,7 +38,7 @@ class TimeLineScreen extends StatelessWidget {
             onPressed: () => Navigator.pop(context),
           ),
           title: Text(
-            Strings.mealTimeline,
+            Strings.mealTimeline.tr(),
             style: getBoldTextStyle(
               color: ColorManager.black101828,
               fontSize: FontSizeManager.s18.sp,
@@ -112,7 +113,7 @@ class TimeLineScreen extends StatelessWidget {
         ),
         Gap(AppSize.s4.h),
         Text(
-          Strings.tapOnAnyDay,
+          Strings.tapOnAnyDay.tr(),
           style: getRegularTextStyle(
             color: ColorManager.grey6A7282,
             fontSize: FontSizeManager.s14.sp,
@@ -141,43 +142,43 @@ class TimeLineScreen extends StatelessWidget {
         color = ColorManager.grey9CA3AF;
         bgColor = ColorManager.greyF3F4F6;
         icon = Icons.lock_outline;
-        statusText = Strings.locked;
+        statusText = Strings.locked.tr();
         break;
       case 'planned':
         color = ColorManager.greenPrimary;
         bgColor = ColorManager.greenPrimary.withValues(alpha: 0.05);
         borderColor = ColorManager.greenPrimary;
         icon = Icons.check_circle_outline;
-        statusText = Strings.planned;
+        statusText = Strings.planned.tr();
         break;
       case 'frozen':
         color = ColorManager.bluePrimary;
         bgColor = ColorManager.bluePrimary.withValues(alpha: 0.05);
         borderColor = ColorManager.bluePrimary;
         icon = Icons.ac_unit;
-        statusText = Strings.frozen;
+        statusText = Strings.frozen.tr();
         break;
       case 'skipped':
         color = ColorManager.orangePrimary;
         bgColor = ColorManager.orangePrimary.withValues(alpha: 0.05);
         borderColor = ColorManager.orangePrimary;
         icon = Icons.cancel_outlined;
-        statusText = Strings.skipped;
+        statusText = Strings.skipped.tr();
         break;
       case 'extension':
         color = ColorManager.purplePrimary;
         bgColor = ColorManager.purplePrimary.withValues(alpha: 0.05);
         borderColor = ColorManager.purplePrimary;
         icon = Icons.add_circle_outline;
-        statusText = Strings.extension;
-        extraTag = Strings.extensionDay;
+        statusText = Strings.extension.tr();
+        extraTag = Strings.extensionDay.tr();
         break;
       case 'open':
       default:
         color = ColorManager.black101828;
         bgColor = Colors.white;
         borderColor = ColorManager.formFieldsBorderColor;
-        statusText = Strings.open;
+        statusText = Strings.open.tr();
         break;
     }
 
@@ -270,7 +271,7 @@ class TimeLineScreen extends StatelessWidget {
                 if (day.selectedMeals > 0) ...[
                   Gap(AppSize.s4.h),
                   Text(
-                    "${day.selectedMeals}/${day.requiredMeals} ${Strings.meals}",
+                    "${day.selectedMeals}/${day.requiredMeals} ${Strings.meals.tr()}",
                     style: getRegularTextStyle(
                       color: ColorManager.grey6A7282,
                       fontSize: FontSizeManager.s12.sp,
@@ -299,7 +300,7 @@ class TimeLineScreen extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            Strings.statusLegend,
+            Strings.statusLegend.tr(),
             style: getBoldTextStyle(
               color: ColorManager.black101828,
               fontSize: FontSizeManager.s16.sp,
@@ -311,32 +312,32 @@ class TimeLineScreen extends StatelessWidget {
             runSpacing: AppSize.s16.h,
             children: [
               _buildLegendItem(
-                Strings.planned,
+                Strings.planned.tr(),
                 Icons.check_circle_outline,
                 ColorManager.greenPrimary,
               ),
               _buildLegendItem(
-                Strings.open,
+                Strings.open.tr(),
                 Icons.crop_square,
                 ColorManager.grey9CA3AF,
               ),
               _buildLegendItem(
-                Strings.locked,
+                Strings.locked.tr(),
                 Icons.lock_outline,
                 ColorManager.grey9CA3AF,
               ),
               _buildLegendItem(
-                Strings.skipped,
+                Strings.skipped.tr(),
                 Icons.cancel_outlined,
                 ColorManager.orangePrimary,
               ),
               _buildLegendItem(
-                Strings.frozen,
+                Strings.frozen.tr(),
                 Icons.ac_unit,
                 ColorManager.bluePrimary,
               ),
               _buildLegendItem(
-                Strings.extension,
+                Strings.extension.tr(),
                 Icons.add_circle_outline,
                 ColorManager.purplePrimary,
               ),

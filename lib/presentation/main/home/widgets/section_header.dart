@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:basic_diet/presentation/resources/color_manager.dart';
 import 'package:basic_diet/presentation/resources/font_manager.dart';
 import 'package:basic_diet/presentation/resources/strings_manager.dart';
@@ -26,7 +27,7 @@ class SectionHeader extends StatelessWidget {
         GestureDetector(
           onTap: onSeeAll,
           child: Text(
-            Strings.seeAll,
+            Strings.seeAll.tr(),
             style: getBoldTextStyle(
               fontSize: FontSizeManager.s12.sp,
               color: ColorManager.greenDark,

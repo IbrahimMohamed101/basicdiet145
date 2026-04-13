@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:basic_diet/presentation/resources/assets_manager.dart';
 import 'package:basic_diet/presentation/resources/color_manager.dart';
 import 'package:basic_diet/presentation/resources/font_manager.dart';
@@ -47,7 +48,7 @@ class _GradientOverlay extends StatelessWidget {
           // _BadgeLabel(label: Strings.new2026Packages),
           Gap(AppSize.s8.h),
           Text(
-            Strings.subscriptionPricingMenu,
+            Strings.subscriptionPricingMenu.tr(),
             style: getBoldTextStyle(
               color: ColorManager.whiteColor,
               fontSize: FontSizeManager.s24.sp,
@@ -55,7 +56,7 @@ class _GradientOverlay extends StatelessWidget {
           ),
           Gap(AppSize.s4.h),
           Text(
-            Strings.choosePackageHealthGoals,
+            Strings.choosePackageHealthGoals.tr(),
             style: getRegularTextStyle(
               color: ColorManager.whiteColor.withValues(alpha: 0.9),
               fontSize: FontSizeManager.s12.sp,

@@ -3,6 +3,7 @@ import 'package:basic_diet/presentation/resources/strings_manager.dart';
 import 'package:basic_diet/presentation/resources/styles_manager.dart';
 import 'package:basic_diet/presentation/resources/values_manager.dart';
 import 'package:flutter/material.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
 class AppTextField extends StatelessWidget {
@@ -49,7 +50,7 @@ class AppTextField extends StatelessWidget {
     String? errorText,
   }) {
     return AppTextField._(
-      hintText: Strings.emailHint,
+      hintText: Strings.emailHint.tr(),
       controller: controller,
       keyboardType: TextInputType.emailAddress,
       obscureText: false,
@@ -65,7 +66,7 @@ class AppTextField extends StatelessWidget {
     String? errorText,
   }) {
     return AppTextField._(
-      hintText: Strings.phoneHint,
+      hintText: Strings.phoneHint.tr(),
       controller: controller,
       keyboardType: TextInputType.phone,
       obscureText: false,

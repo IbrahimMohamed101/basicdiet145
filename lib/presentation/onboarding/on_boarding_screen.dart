@@ -4,6 +4,7 @@ import 'package:basic_diet/presentation/register/register_screen.dart';
 import 'package:basic_diet/presentation/resources/assets_manager.dart';
 import 'package:basic_diet/presentation/resources/color_manager.dart';
 import 'package:basic_diet/presentation/resources/strings_manager.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:basic_diet/presentation/resources/styles_manager.dart';
 import 'package:basic_diet/presentation/resources/values_manager.dart';
 import 'package:basic_diet/presentation/widgets/button_widget.dart';
@@ -39,15 +40,15 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   late final PageController _pageController;
   int _currentPageIndex = 0;
 
-  final List<OnboardingPageContent> _onboardingPages = const [
+  final List<OnboardingPageContent> _onboardingPages = [
     OnboardingPageContent(
-      title: Strings.slide1FullTitle,
-      subtitle: Strings.slide1Description,
+      title: Strings.slide1FullTitle.tr(),
+      subtitle: Strings.slide1Description.tr(),
       imagePath: ImageAssets.onBoarding1,
     ),
     OnboardingPageContent(
-      title: Strings.slide2FullTitle,
-      subtitle: Strings.slide2Description,
+      title: Strings.slide2FullTitle.tr(),
+      subtitle: Strings.slide2Description.tr(),
       imagePath: ImageAssets.onBoarding2,
     ),
   ];
@@ -96,9 +97,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     }
   }
 
-  String get _buttonText => _isLastPage
-      ? Strings.buttonGetStartedWithArrow
-      : Strings.buttonContinueWithArrow;
+  String get _buttonText =>
+      _isLastPage ? Strings.getStartedArrow.tr() : Strings.continueArrow.tr();
 
   @override
   Widget build(BuildContext context) {

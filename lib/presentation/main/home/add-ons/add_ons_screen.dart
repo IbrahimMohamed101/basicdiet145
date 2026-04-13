@@ -1,4 +1,5 @@
 // add_ons_screen.dart
+import 'package:easy_localization/easy_localization.dart';
 import 'package:basic_diet/app/dependency_injection.dart';
 import 'package:basic_diet/domain/model/add_ons_model.dart';
 import 'package:basic_diet/presentation/main/home/add-ons/bloc/add_ons_bloc.dart';
@@ -71,7 +72,7 @@ class AddOnsScreen extends StatelessWidget {
         ),
       ),
       title: Text(
-        Strings.addOns,
+        Strings.addOns.tr(),
         style: getBoldTextStyle(
           color: ColorManager.black101828,
           fontSize: FontSizeManager.s18.sp,
@@ -149,7 +150,7 @@ class _AddOnsListView extends StatelessWidget {
     return Column(
       children: [
         Text(
-          Strings.enhanceYourPlan,
+          Strings.enhanceYourPlan.tr(),
           style: getBoldTextStyle(
             color: ColorManager.black101828,
             fontSize: FontSizeManager.s18.sp,
@@ -157,7 +158,7 @@ class _AddOnsListView extends StatelessWidget {
         ),
         Gap(AppSize.s8.h),
         Text(
-          Strings.addExtraItemsOptional,
+          Strings.addExtraItemsOptional.tr(),
           textAlign: TextAlign.center,
           style: getRegularTextStyle(
             color: ColorManager.grey6A7282,
@@ -284,7 +285,7 @@ class _AddOnBadge extends StatelessWidget {
 
   // Presentation logic isolated here, not scattered in the card widget.
   String get _label =>
-      badge.contains('Subscription') ? Strings.daily : Strings.oneTime;
+      badge.contains('Subscription') ? Strings.daily.tr() : Strings.oneTime.tr();
 
   @override
   Widget build(BuildContext context) {
@@ -334,7 +335,7 @@ class _AddOnInfo extends StatelessWidget {
         ),
         Gap(AppSize.s5.h),
         Text(
-          '${addOn.priceSar.toInt()} ${Strings.sarPerDay}',
+          '${addOn.priceSar.toInt()} ${Strings.sarPerDay.tr()}',
           style: getBoldTextStyle(
             color: ColorManager.greenPrimary,
             fontSize: FontSizeManager.s14.sp,
@@ -448,7 +449,7 @@ class _ContinueButton extends StatelessWidget {
         elevation: 0,
       ),
       child: Text(
-        Strings.continueText,
+        Strings.continueText.tr(),
         style: getBoldTextStyle(
           fontSize: FontSizeManager.s16.sp,
           color: ColorManager.whiteColor,
@@ -469,7 +470,7 @@ class _SkipButton extends StatelessWidget {
       onPressed: onPressed,
       style: TextButton.styleFrom(minimumSize: Size(double.infinity, 40.h)),
       child: Text(
-        Strings.skipThisStep,
+        Strings.skipThisStep.tr(),
         style: getBoldTextStyle(
           fontSize: FontSizeManager.s14.sp,
           color: ColorManager.grey6A7282,
@@ -524,7 +525,7 @@ class _EmptySummary extends StatelessWidget {
     return Padding(
       padding: EdgeInsetsDirectional.symmetric(vertical: 10.h),
       child: Text(
-        Strings.noAddOnsSelected,
+        Strings.noAddOnsSelected.tr(),
         style: getRegularTextStyle(
           color: ColorManager.grey6A7282,
           fontSize: FontSizeManager.s14.sp,
@@ -565,14 +566,14 @@ class _AddOnsSummary {
   }
 
   String get countLabel =>
-      '$count ${Strings.addOns}${count > 1 ? 's' : ''} ${Strings.selected}';
+      '$count ${Strings.addOns.tr()}${count > 1 ? 's' : ''} ${Strings.selected.tr()}';
 
   String get priceBreakdownLabel =>
-      '${pricePerDay.toInt()} ${Strings.sar} × $daysCount ${Strings.days}';
+      '${pricePerDay.toInt()} ${Strings.sar.tr()} × $daysCount ${Strings.days.tr()}';
 
-  String get totalLabel => '${totalPrice.toInt()} ${Strings.sar}';
+  String get totalLabel => '${totalPrice.toInt()} ${Strings.sar.tr()}';
 
-  String get appliedLabel => '${Strings.appliedTo} $daysCount ${Strings.days}';
+  String get appliedLabel => '${Strings.appliedTo.tr()} $daysCount ${Strings.days.tr()}';
 }
 
 class _SummaryCard extends StatelessWidget {
@@ -603,7 +604,7 @@ class _SummaryCard extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                Strings.total,
+                Strings.total.tr(),
                 style: getBoldTextStyle(
                   color: ColorManager.black101828,
                   fontSize: FontSizeManager.s16.sp,

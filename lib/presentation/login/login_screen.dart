@@ -10,6 +10,7 @@ import 'package:basic_diet/presentation/widgets/button_widget.dart';
 import 'package:basic_diet/presentation/widgets/custom_text_field_style.dart';
 import 'package:basic_diet/presentation/widgets/text_button_widget.dart';
 import 'package:flutter/material.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:gap/gap.dart';
@@ -65,7 +66,7 @@ class LoginScreen extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          Strings.welcomeBack,
+          Strings.welcomeBack.tr(),
           style: getBoldTextStyle(
             color: ColorManager.blackColor,
             fontSize: FontSizeManager.s30.sp,
@@ -73,7 +74,7 @@ class LoginScreen extends StatelessWidget {
         ),
         Gap(AppSize.s10.h),
         Text(
-          Strings.signInToContinueYourHealthyJourney,
+          Strings.signInToContinueYourHealthyJourney.tr(),
           style: getRegularTextStyle(
             color: ColorManager.grayColor,
             fontSize: FontSizeManager.s16.sp,
@@ -88,7 +89,7 @@ class LoginScreen extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          Strings.phone,
+          Strings.phone.tr(),
           style: getRegularTextStyle(
             color: ColorManager.blackColor,
             fontSize: FontSizeManager.s16.sp,
@@ -116,7 +117,7 @@ class LoginScreen extends StatelessWidget {
                 state.phoneError == null && state.phone.isNotEmpty;
 
             return ButtonWidget(
-              text: isLoading ? Strings.loading : Strings.sendOtp,
+              text: isLoading ? Strings.loading.tr() : Strings.sendOtp.tr(),
               textColor: ColorManager.whiteColor,
               color: isEnabled
                   ? ColorManager.greenDark
@@ -138,14 +139,14 @@ class LoginScreen extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Text(
-          Strings.dontHaveAccount,
+          Strings.dontHaveAccount.tr(),
           style: getRegularTextStyle(
             color: ColorManager.grayColor,
             fontSize: FontSizeManager.s14.sp,
           ),
         ),
         TextButtonWidget(
-          Strings.signUp,
+          Strings.signUp.tr(),
           ColorManager.greenDark,
           FontSizeManager.s14,
           () => context.push(RegisterScreen.registerRoute),

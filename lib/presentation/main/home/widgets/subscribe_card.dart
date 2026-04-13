@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:basic_diet/presentation/main/home/subscription/subscription_screen.dart';
 import 'package:basic_diet/presentation/resources/assets_manager.dart';
 import 'package:basic_diet/presentation/resources/color_manager.dart';
@@ -38,7 +39,7 @@ class SubscribeCard extends StatelessWidget {
             ),
             Gap(AppSize.s20.h),
             Text(
-              Strings.subscribeAndSave,
+              Strings.subscribeSave.tr(),
               style: getBoldTextStyle(
                 fontSize: FontSizeManager.s18.sp,
                 color: ColorManager.whiteColor,
@@ -46,7 +47,7 @@ class SubscribeCard extends StatelessWidget {
             ),
             Gap(AppSize.s8.h),
             Text(
-              Strings.personalizedDailyPlans,
+              Strings.personalizedPlans.tr(),
               style: getRegularTextStyle(
                 fontSize: FontSizeManager.s12.sp,
                 color: ColorManager.whiteColor.withValues(alpha: 0.8),
@@ -90,7 +91,7 @@ class SubscribeCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(AppSize.s10.r),
       ),
       child: Text(
-        Strings.save20,
+        Strings.save20.tr(),
         textAlign: TextAlign.center,
         style: getBoldTextStyle(
           fontSize: FontSizeManager.s10.sp,
@@ -104,7 +105,7 @@ class SubscribeCard extends StatelessWidget {
     return Row(
       children: [
         Text(
-          Strings.viewPlans,
+          Strings.viewPlans.tr(),
           style: getBoldTextStyle(
             fontSize: FontSizeManager.s12.sp,
             color: ColorManager.whiteColor,

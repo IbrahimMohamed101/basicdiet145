@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:basic_diet/app/dependency_injection.dart';
 import 'package:basic_diet/presentation/main/home/subscription/bloc/subscription_bloc.dart';
 import 'package:basic_diet/presentation/main/home/subscription/bloc/subscription_event.dart';
@@ -48,13 +49,15 @@ class SubscriptionScreen extends StatelessWidget {
       leading: IconButton(
         onPressed: () => context.pop(),
         icon: Icon(
-          Icons.keyboard_arrow_left,
+          context.locale.languageCode == 'en'
+              ? Icons.keyboard_arrow_left
+              : Icons.keyboard_arrow_right,
           color: ColorManager.blackColor,
           size: AppSize.s30.sp,
         ),
       ),
       title: Text(
-        Strings.subscriptionPackages,
+        Strings.subscriptionPackages.tr(),
         style: getBoldTextStyle(
           color: ColorManager.black101828,
           fontSize: FontSizeManager.s20.sp,
@@ -107,7 +110,7 @@ class _ErrorView extends StatelessWidget {
           ElevatedButton(
             onPressed: () =>
                 context.read<SubscriptionBloc>().add(const GetPlansEvent()),
-            child: const Text(Strings.tryAgain),
+            child: Text(Strings.tryAgain.tr()),
           ),
         ],
       ),
@@ -151,7 +154,7 @@ class _ProceedButton extends StatelessWidget {
               elevation: 0,
             ),
             child: Text(
-              Strings.choosePackageProceed,
+              Strings.choosePackageProceed.tr(),
               style: getBoldTextStyle(
                 fontSize: FontSizeManager.s16.sp,
                 color: ColorManager.whiteColor,

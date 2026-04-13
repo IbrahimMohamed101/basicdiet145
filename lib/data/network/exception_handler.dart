@@ -136,20 +136,20 @@ class ResponseCode {
 class ResponseMessage {
   static String success = Strings.success;
   static String noContent = Strings.noContent;
-  static String badRequest = Strings.badRequestError;
-  static String unauthorised = Strings.unauthorizedError;
-  static String forbidden = Strings.forbiddenError;
+  static String badRequest = Strings.badRequest;
+  static String unauthorised = Strings.unauthorized;
+  static String forbidden = Strings.forbidden;
   static String internalServerError = Strings.internalServerError;
-  static String notFound = Strings.notFoundError;
+  static String notFound = Strings.notFound;
 
   // local status codes
-  static String connectTimeout = Strings.timeoutError;
+  static String connectTimeout = Strings.timeout;
   static String cancel = Strings.defaultError;
-  static String receiveTimeout = Strings.timeoutError;
-  static String sendTimeout = Strings.timeoutError;
+  static String receiveTimeout = Strings.timeout;
+  static String sendTimeout = Strings.timeout;
   static String cancelError = Strings.defaultError;
   static String cacheError = Strings.cacheError;
-  static String noInternetConnection = Strings.noInternetError;
+  static String noInternetConnection = Strings.noInternet;
   static String defaultError = Strings.defaultError;
 }
 

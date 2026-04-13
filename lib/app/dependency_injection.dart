@@ -37,7 +37,7 @@ import 'package:basic_diet/domain/usecase/save_meal_planner_changes_usecase.dart
 import 'package:basic_diet/presentation/plans/timeline/bloc/timeline_bloc.dart';
 import 'package:basic_diet/presentation/plans/timeline/meal_planner/bloc/meal_planner_bloc.dart';
 import 'package:basic_diet/domain/usecase/get_checkout_draft_usecase.dart';
-import 'package:basic_diet/presentation/main/home/payment_validation_cubit.dart';
+import 'package:basic_diet/presentation/main/home/payment-success/payment_validation_cubit.dart';
 import 'package:get_it/get_it.dart';
 
 final instance = GetIt.instance; // Singleton instance of GetIt
@@ -123,7 +123,7 @@ void initSubscriptionModule() {
       ),
     );
   }
-  
+
   initPaymentValidationModule();
 }
 
@@ -144,7 +144,9 @@ void initPremiumMealsModule() {
     instance.registerFactory<GetPremiumMealsUseCase>(
       () => GetPremiumMealsUseCase(instance<Repository>()),
     );
+  }
 
+  if (!GetIt.I.isRegistered<PremiumMealsBloc>()) {
     instance.registerFactory<PremiumMealsBloc>(
       () => PremiumMealsBloc(instance<GetPremiumMealsUseCase>()),
     );
@@ -156,7 +158,9 @@ void initAddOnsModule() {
     instance.registerFactory<GetAddOnsUseCase>(
       () => GetAddOnsUseCase(instance<Repository>()),
     );
+  }
 
+  if (!GetIt.I.isRegistered<AddOnsBloc>()) {
     instance.registerFactory<AddOnsBloc>(
       () => AddOnsBloc(instance<GetAddOnsUseCase>()),
     );
@@ -168,7 +172,9 @@ void initDeliveryOptionsModule() {
     instance.registerFactory<GetDeliveryOptionsUseCase>(
       () => GetDeliveryOptionsUseCase(instance<Repository>()),
     );
+  }
 
+  if (!GetIt.I.isRegistered<DeliveryOptionsBloc>()) {
     instance.registerFactory<DeliveryOptionsBloc>(
       () => DeliveryOptionsBloc(instance<GetDeliveryOptionsUseCase>()),
     );

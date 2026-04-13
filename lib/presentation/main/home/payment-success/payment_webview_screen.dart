@@ -1,4 +1,5 @@
-import 'package:basic_diet/presentation/main/home/payment_successful_screen.dart';
+import 'package:easy_localization/easy_localization.dart';
+import 'package:basic_diet/presentation/main/home/payment-success/payment_successful_screen.dart';
 import 'package:basic_diet/presentation/resources/color_manager.dart';
 import 'package:basic_diet/presentation/resources/font_manager.dart';
 import 'package:basic_diet/presentation/resources/strings_manager.dart';
@@ -69,7 +70,9 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
   void _openSuccessScreen() {
     if (!mounted) return;
     Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => PaymentSuccessfulScreen(draftId: widget.draftId)),
+      MaterialPageRoute(
+        builder: (_) => PaymentSuccessfulScreen(draftId: widget.draftId),
+      ),
     );
   }
 
@@ -108,7 +111,7 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
             ),
           ),
           title: Text(
-            Strings.securePayment,
+            Strings.securePayment.tr(),
             style: getBoldTextStyle(
               color: ColorManager.black101828,
               fontSize: FontSizeManager.s18.sp,

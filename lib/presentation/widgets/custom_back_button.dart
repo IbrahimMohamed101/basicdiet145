@@ -3,6 +3,7 @@ import 'package:basic_diet/presentation/resources/font_manager.dart';
 import 'package:basic_diet/presentation/resources/strings_manager.dart';
 import 'package:basic_diet/presentation/resources/styles_manager.dart';
 import 'package:basic_diet/presentation/resources/values_manager.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:gap/gap.dart';
@@ -32,7 +33,7 @@ class CustomBackButton extends StatelessWidget {
             ),
             Gap(AppSize.s4.w),
             Text(
-              Strings.back,
+              Strings.back.tr(),
               style: getRegularTextStyle(
                 color: ColorManager.blackColor,
                 fontSize: FontSizeManager.s16.sp,

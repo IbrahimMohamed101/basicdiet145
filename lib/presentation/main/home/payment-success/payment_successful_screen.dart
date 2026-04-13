@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:basic_diet/presentation/main/main_screen.dart';
 import 'package:basic_diet/presentation/resources/color_manager.dart';
 import 'package:basic_diet/presentation/resources/font_manager.dart';
@@ -10,7 +11,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:gap/gap.dart';
 
 import 'package:basic_diet/app/dependency_injection.dart';
-import 'package:basic_diet/presentation/main/home/payment_validation_cubit.dart';
+import 'package:basic_diet/presentation/main/home/payment-success/payment_validation_cubit.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 class PaymentSuccessfulScreen extends StatelessWidget {
@@ -58,7 +59,7 @@ class PaymentSuccessfulScreen extends StatelessWidget {
                         ),
                         Gap(AppSize.s24.h),
                         ButtonWidget(
-                          text: Strings.goToHome,
+                          text: Strings.goToHome.tr(),
                           onTap: () =>
                               _openMainScreen(context, MainScreen.homeTabIndex),
                           radius: AppSize.s14,
@@ -81,7 +82,7 @@ class PaymentSuccessfulScreen extends StatelessWidget {
                       const _SuccessBadge(),
                       Gap(AppSize.s28.h),
                       Text(
-                        Strings.paymentSuccessful,
+                        Strings.paymentSuccessful.tr(),
                         textAlign: TextAlign.center,
                         style: getBoldTextStyle(
                           color: ColorManager.black101828,
@@ -94,7 +95,7 @@ class PaymentSuccessfulScreen extends StatelessWidget {
                           horizontal: AppPadding.p12.w,
                         ),
                         child: Text(
-                          Strings.paymentSuccessfulSubtitle,
+                          Strings.paymentSuccessfulSubtitle.tr(),
                           textAlign: TextAlign.center,
                           style: getRegularTextStyle(
                             color: ColorManager.grey6A7282,
@@ -105,7 +106,7 @@ class PaymentSuccessfulScreen extends StatelessWidget {
                       const Spacer(flex: 2),
                       ButtonWidget(
                         radius: AppSize.s14,
-                        text: Strings.viewMyPlan,
+                        text: Strings.viewMyPlan.tr(),
                         onTap: () =>
                             _openMainScreen(context, MainScreen.plansTabIndex),
                       ),
@@ -124,7 +125,7 @@ class PaymentSuccessfulScreen extends StatelessWidget {
                           backgroundColor: ColorManager.whiteColor,
                         ),
                         child: Text(
-                          Strings.goToHome,
+                          Strings.goToHome.tr(),
                           style: getBoldTextStyle(
                             color: ColorManager.black101828,
                             fontSize: FontSizeManager.s16.sp,

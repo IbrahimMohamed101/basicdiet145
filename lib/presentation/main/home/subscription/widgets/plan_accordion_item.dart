@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:basic_diet/domain/model/plans_model.dart';
 import 'package:basic_diet/presentation/main/home/subscription/widgets/meal_option_card.dart';
 import 'package:basic_diet/presentation/resources/color_manager.dart';
@@ -100,7 +101,7 @@ class _PlanHeader extends StatelessWidget {
                 ),
                 Gap(AppSize.s4.h),
                 Text(
-                  Strings.chooseDailyMealCount,
+                  Strings.chooseDailyMealCount.tr(),
                   style: getRegularTextStyle(
                     fontSize: FontSizeManager.s12.sp,
                     color: ColorManager.grey6A7282,
@@ -175,7 +176,7 @@ class _PlanExpandedContent extends StatelessWidget {
               Gap(AppSize.s12.w),
               Expanded(
                 child: Text(
-                  Strings.perfectForTrying,
+                  Strings.perfectForTrying.tr(),
                   style: getRegularTextStyle(
                     fontSize: FontSizeManager.s12.sp,
                     color: ColorManager.black101828.withValues(alpha: 0.8),
@@ -247,7 +248,7 @@ class _GramSizeSection extends StatelessWidget {
             _RestaurantIconBadge(),
             Gap(AppSize.s10.w),
             Text(
-              '${gramOption.grams}g ${Strings.size}',
+              '${gramOption.grams}g ${Strings.size.tr()}',
               style: getBoldTextStyle(
                 color: ColorManager.black101828,
                 fontSize: FontSizeManager.s14.sp,

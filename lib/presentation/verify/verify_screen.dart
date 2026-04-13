@@ -4,6 +4,7 @@ import 'package:basic_diet/presentation/resources/color_manager.dart';
 import 'package:basic_diet/presentation/resources/font_manager.dart';
 import 'package:basic_diet/presentation/resources/strings_manager.dart';
 import 'package:basic_diet/presentation/resources/styles_manager.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:basic_diet/presentation/resources/values_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -75,7 +76,7 @@ class VerifyScreen extends StatelessWidget {
       child: Column(
         children: [
           Text(
-            Strings.verifyYourPhone,
+            Strings.verifyYourPhone.tr(),
             style: getBoldTextStyle(
               color: ColorManager.blackColor,
               fontSize: FontSizeManager.s24.sp,
@@ -83,7 +84,7 @@ class VerifyScreen extends StatelessWidget {
           ),
           Gap(AppSize.s16.h),
           Text(
-            Strings.otpSentSubtitle,
+            Strings.otpSentSubtitle.tr(),
             style: getRegularTextStyle(
               color: ColorManager.grayColor,
               fontSize: FontSizeManager.s14.sp,
@@ -138,8 +139,8 @@ class VerifyScreen extends StatelessWidget {
             child: RichText(
               text: TextSpan(
                 text: state.canResend
-                    ? "Resend Code"
-                    : "${Strings.resendCodeIn} ",
+                    ? Strings.resendCode.tr()
+                    : "${Strings.resendCodeIn.tr()} ",
                 style:
                     getRegularTextStyle(
                       color: state.canResend
@@ -213,7 +214,7 @@ class VerifyScreen extends StatelessWidget {
           Gap(AppSize.s8.w),
           Expanded(
             child: Text(
-              Strings.secureInfo,
+              Strings.secureInfo.tr(),
               style: getRegularTextStyle(
                 color: ColorManager.grayColor,
                 fontSize: FontSizeManager.s12.sp,

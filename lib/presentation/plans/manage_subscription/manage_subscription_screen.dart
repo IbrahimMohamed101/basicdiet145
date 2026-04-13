@@ -38,7 +38,7 @@ class ManageSubscriptionScreen extends StatelessWidget {
     String formattedDate = '';
     try {
       DateTime dt = DateTime.parse(validityEndDate);
-      formattedDate = DateFormat('MMMM d, yyyy').format(dt);
+      formattedDate = DateFormat('MMMM d, yyyy', context.locale.toString()).format(dt);
     } catch (e) {
       formattedDate = validityEndDate;
     }
@@ -54,7 +54,7 @@ class ManageSubscriptionScreen extends StatelessWidget {
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: Text(
-          Strings.manageSubscription,
+          Strings.manageSubscription.tr(),
           style: getRegularTextStyle(
             color: Colors.black,
             fontSize: FontSizeManager.s18.sp,
@@ -76,7 +76,7 @@ class ManageSubscriptionScreen extends StatelessWidget {
             _buildPlanCard(formattedDate),
             Gap(AppSize.s24.h),
             Text(
-              Strings.subscriptionActions,
+              Strings.subscriptionActions.tr(),
               style: getRegularTextStyle(
                 color: Colors.black,
                 fontSize: FontSizeManager.s16.sp,
@@ -85,8 +85,8 @@ class ManageSubscriptionScreen extends StatelessWidget {
             Gap(AppSize.s12.h),
             _buildActionItem(
               icon: IconAssets.freeze,
-              title: Strings.freezeSubscription,
-              subtitle: Strings.freezeSubscriptionDesc,
+              title: Strings.freezeSubscription.tr(),
+              subtitle: Strings.freezeSubscriptionDesc.tr(),
               onTap: () {
                 Navigator.of(context).push(
                   MaterialPageRoute(
@@ -101,8 +101,8 @@ class ManageSubscriptionScreen extends StatelessWidget {
             Gap(AppSize.s12.h),
             _buildActionItem(
               icon: IconAssets.skip,
-              title: Strings.skipDays,
-              subtitle: Strings.skipDaysDesc,
+              title: Strings.skipDays.tr(),
+              subtitle: Strings.skipDaysDesc.tr(),
               onTap: () {
                 Navigator.of(context).push(
                   MaterialPageRoute(
@@ -119,8 +119,8 @@ class ManageSubscriptionScreen extends StatelessWidget {
             Gap(AppSize.s12.h),
             _buildActionItem(
               icon: IconAssets.delivery,
-              title: Strings.deliverySettings,
-              subtitle: Strings.deliverySettingsDesc,
+              title: Strings.deliverySettings.tr(),
+              subtitle: Strings.deliverySettingsDesc.tr(),
               onTap: () {
                 Navigator.of(context).push(
                   MaterialPageRoute(
@@ -152,7 +152,7 @@ class ManageSubscriptionScreen extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            Strings.premiumMonthlyPlan,
+            Strings.premiumMonthlyPlan.tr(),
             style: getRegularTextStyle(
               color: Colors.black,
               fontSize: FontSizeManager.s18.sp,
@@ -160,7 +160,7 @@ class ManageSubscriptionScreen extends StatelessWidget {
           ),
           Gap(AppSize.s8.h),
           Text(
-            '${Strings.activeUntil} $date',
+            '${Strings.activeUntil.tr()} $date',
             style: getRegularTextStyle(
               color: ColorManager.grey6A7282,
               fontSize: FontSizeManager.s14.sp,
@@ -180,7 +180,7 @@ class ManageSubscriptionScreen extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        Strings.mealsPerDay,
+                        Strings.mealsPerDay.tr(),
                         style: getRegularTextStyle(
                           color: ColorManager.grey6A7282,
                           fontSize: FontSizeManager.s14.sp,
@@ -210,7 +210,7 @@ class ManageSubscriptionScreen extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        Strings.deliveryMode,
+                        Strings.deliveryMode.tr(),
                         style: getRegularTextStyle(
                           color: ColorManager.grey6A7282,
                           fontSize: FontSizeManager.s14.sp,
@@ -220,7 +220,7 @@ class ManageSubscriptionScreen extends StatelessWidget {
                       Text(
                         deliveryModeLabel.isNotEmpty
                             ? deliveryModeLabel
-                            : Strings.delivery,
+                            : Strings.delivery.tr(),
                         style: getRegularTextStyle(
                           color: Colors.black,
                           fontSize: FontSizeManager.s16.sp,
@@ -308,7 +308,7 @@ class ManageSubscriptionScreen extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            Strings.dangerZone,
+            Strings.dangerZone.tr(),
             style: getRegularTextStyle(
               color: const Color(0xFF991B1B),
               fontSize: FontSizeManager.s16.sp,
@@ -316,7 +316,7 @@ class ManageSubscriptionScreen extends StatelessWidget {
           ),
           Gap(AppSize.s8.h),
           Text(
-            Strings.dangerZoneDesc,
+            Strings.dangerZoneDesc.tr(),
             style: getRegularTextStyle(
               color: const Color(0xFFB91C1C),
               fontSize: FontSizeManager.s14.sp,
@@ -337,7 +337,7 @@ class ManageSubscriptionScreen extends StatelessWidget {
                 ),
               ),
               label: Text(
-                Strings.cancelSubscription,
+                Strings.cancelSubscription.tr(),
                 style: getRegularTextStyle(
                   color: ColorManager.errorColor,
                   fontSize: FontSizeManager.s16.sp,

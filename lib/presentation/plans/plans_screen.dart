@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:basic_diet/presentation/main/home/subscription/subscription_screen.dart';
 import 'package:basic_diet/presentation/plans/timeline/time_line_screen.dart';
 import 'package:flutter/material.dart';
@@ -96,7 +97,7 @@ class PlansScreen extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              Strings.mySubscription,
+              Strings.mySubscription.tr(),
               style: getBoldTextStyle(
                 color: ColorManager.black101828,
                 fontSize: FontSizeManager.s22.sp,
@@ -104,7 +105,7 @@ class PlansScreen extends StatelessWidget {
             ),
             Gap(AppSize.s4.h),
             Text(
-              Strings.welcomeBack,
+              Strings.welcomeBack.tr(),
               style: getRegularTextStyle(
                 color: ColorManager.grey6A7282,
                 fontSize: FontSizeManager.s14.sp,
@@ -153,7 +154,7 @@ class PlansScreen extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                Strings.subscriptionPlanText,
+                Strings.subscriptionPlanText.tr(),
                 style: getBoldTextStyle(
                   color: ColorManager.black101828,
                   fontSize: FontSizeManager.s18.sp,
@@ -195,7 +196,7 @@ class PlansScreen extends StatelessWidget {
               borderRadius: BorderRadius.circular(AppSize.s20.r),
             ),
             child: Text(
-              data.statusLabel.isNotEmpty ? data.statusLabel : Strings.active,
+              data.statusLabel.isNotEmpty ? data.statusLabel : Strings.active.tr(),
               style: getBoldTextStyle(
                 color: ColorManager.greenPrimary,
                 fontSize: FontSizeManager.s12.sp,
@@ -207,7 +208,7 @@ class PlansScreen extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                Strings.regularMealsRemaining,
+                Strings.regularMealsRemaining.tr(),
                 style: getRegularTextStyle(
                   color: ColorManager.grey6A7282,
                   fontSize: FontSizeManager.s14.sp,
@@ -268,14 +269,14 @@ class PlansScreen extends StatelessWidget {
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Text(
-                                  Strings.premiumMealsText,
+                                  Strings.premiumMealsText.tr(),
                                   style: getRegularTextStyle(
                                     color: ColorManager.grey6A7282,
                                     fontSize: FontSizeManager.s14.sp,
                                   ),
                                 ),
                                 Text(
-                                  "${premium.remainingQtyTotal} ${Strings.available}",
+                                  "${premium.remainingQtyTotal} ${Strings.available.tr()}",
                                   style: getBoldTextStyle(
                                     color: ColorManager.grey4A5565,
                                     fontSize: FontSizeManager.s14.sp,
@@ -285,7 +286,7 @@ class PlansScreen extends StatelessWidget {
                             ),
                             Gap(AppSize.s4.h),
                             Text(
-                              "${Strings.purchased} ${premium.purchasedQtyTotal} • ${Strings.consumed} ${premium.consumedQtyTotal}",
+                              "${Strings.purchased.tr()} ${premium.purchasedQtyTotal} • ${Strings.consumed.tr()} ${premium.consumedQtyTotal}",
                               style: getRegularTextStyle(
                                 color: ColorManager.grey6A7282,
                                 fontSize: FontSizeManager.s12.sp,
@@ -304,7 +305,7 @@ class PlansScreen extends StatelessWidget {
 
           if (data.addonSubscriptions.isNotEmpty) ...[
             Text(
-              Strings.addOnsIncluded,
+              Strings.addOnsIncluded.tr(),
               style: getRegularTextStyle(
                 color: ColorManager.grey6A7282,
                 fontSize: FontSizeManager.s12.sp,
@@ -327,7 +328,7 @@ class PlansScreen extends StatelessWidget {
                     borderRadius: BorderRadius.circular(AppSize.s20),
                   ),
                   child: Text(
-                    "${addon.name} • 1/day",
+                    "${addon.name} • 1/${Strings.day.tr()}",
                     style: getRegularTextStyle(
                       color: ColorManager.grey6A7282,
                       fontSize: FontSizeManager.s12,
@@ -350,7 +351,7 @@ class PlansScreen extends StatelessWidget {
               Text(
                 data.deliveryModeLabel.isNotEmpty
                     ? data.deliveryModeLabel
-                    : Strings.pickup,
+                    : Strings.pickup.tr(),
                 style: getRegularTextStyle(
                   color: ColorManager.grey6A7282,
                   fontSize: FontSizeManager.s14.sp,
@@ -364,7 +365,7 @@ class PlansScreen extends StatelessWidget {
               ),
               const SizedBox(width: AppSize.s4),
               Text(
-                "${data.selectedMealsPerDay} Meals/day",
+                "${data.selectedMealsPerDay} ${Strings.mealsDay.tr()}",
                 style: getRegularTextStyle(
                   color: ColorManager.grey6A7282,
                   fontSize: FontSizeManager.s14,
@@ -416,7 +417,7 @@ class PlansScreen extends StatelessWidget {
                 ),
                 Gap(AppSize.s8.w),
                 Text(
-                  Strings.viewTimeline,
+                  Strings.viewTimeline.tr(),
                   style: getRegularTextStyle(
                     color: Colors.white,
                     fontSize: FontSizeManager.s14.sp,
@@ -450,7 +451,7 @@ class PlansScreen extends StatelessWidget {
                 ),
                 Gap(AppSize.s8.w),
                 Text(
-                  Strings.todaysMeals,
+                  Strings.todaysMeals.tr(),
                   style: getRegularTextStyle(
                     color: ColorManager.black101828,
                     fontSize: FontSizeManager.s14.sp,
@@ -489,7 +490,7 @@ class PlansScreen extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            Strings.subscriptionPeriodText,
+            Strings.subscriptionPeriodText.tr(),
             style: getRegularTextStyle(
               color: ColorManager.black101828,
               fontSize: FontSizeManager.s16.sp,
@@ -503,7 +504,7 @@ class PlansScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    Strings.startDate,
+                    Strings.startDate.tr(),
                     style: getRegularTextStyle(
                       color: ColorManager.grey6A7282,
                       fontSize: FontSizeManager.s12.sp,
@@ -523,7 +524,7 @@ class PlansScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    Strings.endDate,
+                    Strings.endDate.tr(),
                     style: getRegularTextStyle(
                       color: ColorManager.grey6A7282,
                       fontSize: FontSizeManager.s12.sp,
@@ -576,7 +577,7 @@ class PlansScreen extends StatelessWidget {
             ),
             Gap(AppSize.s40.h),
             Text(
-              Strings.noSubscriptionTitle,
+              Strings.noSubscriptionTitle.tr(),
               textAlign: TextAlign.center,
               style: getBoldTextStyle(
                 color: ColorManager.black101828,
@@ -585,7 +586,7 @@ class PlansScreen extends StatelessWidget {
             ),
             Gap(AppSize.s12.h),
             Text(
-              Strings.noSubscriptionSubtitle,
+              Strings.noSubscriptionSubtitle.tr(),
               textAlign: TextAlign.center,
               style: getRegularTextStyle(
                 color: ColorManager.grey6A7282,
@@ -610,7 +611,7 @@ class PlansScreen extends StatelessWidget {
                   shadowColor: ColorManager.greenPrimary.withValues(alpha: 0.3),
                 ),
                 child: Text(
-                  Strings.exploreOurPlans,
+                  Strings.exploreOurPlans.tr(),
                   style: getBoldTextStyle(
                     color: Colors.white,
                     fontSize: FontSizeManager.s16.sp,
@@ -646,7 +647,7 @@ class PlansScreen extends StatelessWidget {
               ),
               Gap(8.w),
               Text(
-                Strings.orderLocked,
+                Strings.orderLocked.tr(),
                 style: getBoldTextStyle(
                   color: ColorManager.black101828,
                   fontSize: FontSizeManager.s20.sp,
@@ -658,7 +659,7 @@ class PlansScreen extends StatelessWidget {
           Text(
             data.pickupPreparation?.reason.isNotEmpty == true
                 ? data.pickupPreparation!.reason
-                : Strings.modificationPeriodEnded,
+                : Strings.modificationPeriodEnded.tr(),
             style: getRegularTextStyle(
               color: ColorManager.grey6A7282,
               fontSize: FontSizeManager.s16.sp,
@@ -674,7 +675,7 @@ class PlansScreen extends StatelessWidget {
             ),
             child: Center(
               child: Text(
-                Strings.waitingForKitchen,
+                Strings.waitingForKitchen.tr(),
                 style: getBoldTextStyle(
                   color: ColorManager.grey6A7282,
                   fontSize: FontSizeManager.s18.sp,
@@ -705,7 +706,7 @@ class PlansScreen extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  Strings.mealsNotPreparedYet,
+                  Strings.mealsNotPreparedYet.tr(),
                   style: getBoldTextStyle(
                     color: ColorManager.black101828,
                     fontSize: FontSizeManager.s20.sp,
@@ -730,7 +731,7 @@ class PlansScreen extends StatelessWidget {
           Text(
             data.pickupPreparation?.message.isNotEmpty == true
                 ? data.pickupPreparation!.message
-                : Strings.reviewSelectionToStartPreparation,
+                : Strings.reviewSelectionToStartPreparation.tr(),
             style: getRegularTextStyle(
               color: ColorManager.grey6A7282,
               fontSize: FontSizeManager.s16.sp,
@@ -750,7 +751,7 @@ class PlansScreen extends StatelessWidget {
                 elevation: 0,
               ),
               child: Text(
-                Strings.confirmAndPrepare,
+                Strings.confirmAndPrepare.tr(),
                 style: getBoldTextStyle(
                   color: Colors.white,
                   fontSize: FontSizeManager.s18.sp,

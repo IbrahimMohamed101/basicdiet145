@@ -14,6 +14,7 @@ import 'package:basic_diet/presentation/resources/font_manager.dart';
 import 'package:basic_diet/presentation/resources/strings_manager.dart';
 import 'package:basic_diet/presentation/resources/styles_manager.dart';
 import 'package:basic_diet/presentation/resources/values_manager.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -63,7 +64,7 @@ class _HomeHeader extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              Strings.goodMorning,
+              Strings.goodMorning.tr(),
               style: getBoldTextStyle(
                 fontSize: FontSizeManager.s24,
                 color: ColorManager.blackColor,
@@ -71,7 +72,7 @@ class _HomeHeader extends StatelessWidget {
             ),
             Gap(AppSize.s4.h),
             Text(
-              Strings.eatHealthyFeelGreat,
+              Strings.eatHealthy.tr(),
               style: getRegularTextStyle(
                 fontSize: FontSizeManager.s14,
                 color: ColorManager.grayColor,
@@ -164,7 +165,7 @@ class _ImageCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  Strings.buildYourOwnMeal,
+                  Strings.buildMeal.tr(),
                   style: getBoldTextStyle(
                     fontSize: FontSizeManager.s24.sp,
                     color: ColorManager.whiteColor,
@@ -172,7 +173,7 @@ class _ImageCard extends StatelessWidget {
                 ),
                 Gap(AppSize.s12.h),
                 Text(
-                  Strings.totalControlOverNutrition,
+                  Strings.nutritionControl.tr(),
                   style: getRegularTextStyle(
                     fontSize: FontSizeManager.s14.sp,
                     color: ColorManager.whiteColor.withValues(alpha: 0.78),
@@ -182,7 +183,7 @@ class _ImageCard extends StatelessWidget {
                 Row(
                   children: [
                     Text(
-                      Strings.explore,
+                      Strings.explore.tr(),
                       style: getBoldTextStyle(
                         fontSize: FontSizeManager.s16.sp,
                         color: ColorManager.orangePrimary,
@@ -219,24 +220,21 @@ class _QuickBrowseSection extends StatelessWidget {
 
   static const _categories = [
     _CategoryData(title: Strings.readyMeals, imagePath: ImageAssets.soup),
-    _CategoryData(title: Strings.snacksCategory, imagePath: ImageAssets.snacks),
-    _CategoryData(
-      title: Strings.dessertsCategory,
-      imagePath: ImageAssets.desserts,
-    ),
-    _CategoryData(title: Strings.drinksCategory, imagePath: ImageAssets.drinks),
+    _CategoryData(title: Strings.snacks, imagePath: ImageAssets.snacks),
+    _CategoryData(title: Strings.desserts, imagePath: ImageAssets.desserts),
+    _CategoryData(title: Strings.drinks, imagePath: ImageAssets.drinks),
   ];
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
-        const SectionHeader(title: Strings.quickBrowse),
+        SectionHeader(title: Strings.quickBrowse.tr()),
         Gap(AppSize.s20.h),
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: _categories
-              .map((c) => CategoryItem(title: c.title, imagePath: c.imagePath))
+              .map((c) => CategoryItem(title: c.title.tr(), imagePath: c.imagePath))
               .toList(),
         ),
       ],
@@ -300,7 +298,7 @@ class _PackageList extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SectionHeader(title: Strings.popularPackages),
+        SectionHeader(title: Strings.popularPackages.tr()),
         Gap(AppSize.s20.h),
         ...packages.map(
           (package) => Padding(

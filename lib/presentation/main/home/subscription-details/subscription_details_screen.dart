@@ -1,6 +1,7 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:basic_diet/domain/model/subscription_checkout_model.dart';
 import 'package:basic_diet/domain/model/subscription_quote_model.dart';
-import 'package:basic_diet/presentation/main/home/payment_webview_screen.dart';
+import 'package:basic_diet/presentation/main/home/payment-success/payment_webview_screen.dart';
 import 'package:basic_diet/presentation/main/home/subscription/bloc/subscription_bloc.dart';
 import 'package:basic_diet/presentation/main/home/subscription/bloc/subscription_event.dart';
 import 'package:basic_diet/presentation/main/home/subscription/bloc/subscription_state.dart';
@@ -75,7 +76,7 @@ class SubscriptionDetails extends StatelessWidget {
 
           if (result == PaymentWebViewResult.cancelled) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text(Strings.paymentCancelled)),
+              SnackBar(content: Text(Strings.paymentCancelled.tr())),
             );
           }
         }
@@ -157,7 +158,7 @@ class SubscriptionDetails extends StatelessWidget {
         ),
       ),
       title: Text(
-        Strings.orderSummary,
+        Strings.orderSummary.tr(),
         style: getBoldTextStyle(
           color: ColorManager.black101828,
           fontSize: FontSizeManager.s18.sp,
@@ -233,7 +234,7 @@ class _HeroBanner extends StatelessWidget {
               ),
               Gap(AppSize.s12.h),
               Text(
-                Strings.reviewYourOrder,
+                Strings.reviewYourOrder.tr(),
                 textAlign: TextAlign.center,
                 style: getBoldTextStyle(
                   color: ColorManager.whiteColor,
@@ -242,7 +243,7 @@ class _HeroBanner extends StatelessWidget {
               ),
               Gap(AppSize.s8.h),
               Text(
-                Strings.confirmSubscriptionDetailsBelow,
+                Strings.confirmSubscriptionDetailsBelow.tr(),
                 textAlign: TextAlign.center,
                 style: getRegularTextStyle(
                   color: ColorManager.whiteColor.withValues(alpha: 0.82),
@@ -287,7 +288,7 @@ class _PlanSection extends StatelessWidget {
     final planLineItem = _findLineItemFromQuote(quote, 'plan');
 
     return _SummarySectionCard(
-      title: Strings.subscriptionPlan,
+      title: Strings.subscriptionPlan.tr(),
       icon: Icons.calendar_view_month_rounded,
       child: Padding(
         padding: EdgeInsetsDirectional.all(AppPadding.p16.w),
@@ -337,7 +338,7 @@ class _PlanSection extends StatelessWidget {
                 ),
                 Gap(AppSize.s4.h),
                 Text(
-                  Strings.basePrice,
+                  Strings.basePrice.tr(),
                   style: getRegularTextStyle(
                     color: ColorManager.grey6A7282,
                     fontSize: FontSizeManager.s12.sp,
@@ -362,7 +363,7 @@ class _PremiumMealsSection extends StatelessWidget {
     final premiumLineItem = _findLineItemFromQuote(quote, 'premium');
 
     return _SummarySectionCard(
-      title: Strings.premiumMeals,
+      title: Strings.premiumMeals.tr(),
       icon: Icons.star_border_rounded,
       trailing: premiumLineItem != null
           ? Text(
@@ -458,7 +459,7 @@ class _PremiumMealTile extends StatelessWidget {
                     borderRadius: BorderRadius.circular(AppSize.s20.r),
                   ),
                   child: Text(
-                    Strings.premiumTag,
+                    Strings.premiumTag.tr(),
                     style: getBoldTextStyle(
                       color: ColorManager.orangePrimary,
                       fontSize: FontSizeManager.s10.sp,
@@ -508,7 +509,7 @@ class _AddOnsSection extends StatelessWidget {
     final addOnsLineItem = _findLineItemFromQuote(quote, 'addons');
 
     return _SummarySectionCard(
-      title: Strings.addOns,
+      title: Strings.addOns.tr(),
       icon: Icons.add_circle_outline_rounded,
       trailing: addOnsLineItem != null
           ? Text(
@@ -619,13 +620,13 @@ class _DeliveryDetailsSection extends StatelessWidget {
     final addressValue = _buildAddressSummary(address);
 
     return _SummarySectionCard(
-      title: Strings.deliveryDetails,
+      title: Strings.deliveryDetails.tr(),
       icon: Icons.local_shipping_outlined,
       child: Column(
         children: [
           _InfoTile(
             icon: Icons.location_on_outlined,
-            label: Strings.deliveryZone,
+            label: Strings.deliveryZone.tr(),
             value: zoneValue.isNotEmpty ? zoneValue : delivery.label,
           ),
           if (addressValue.isNotEmpty)
@@ -637,7 +638,7 @@ class _DeliveryDetailsSection extends StatelessWidget {
                 ),
                 _InfoTile(
                   icon: Icons.home_outlined,
-                  label: Strings.address,
+                  label: Strings.address.tr(),
                   value: addressValue,
                 ),
               ],
@@ -645,7 +646,7 @@ class _DeliveryDetailsSection extends StatelessWidget {
           const Divider(height: 1, color: ColorManager.formFieldsBorderColor),
           _InfoTile(
             icon: Icons.access_time_rounded,
-            label: Strings.deliveryFee,
+            label: Strings.deliveryFee.tr(),
             value: delivery.label,
             trailing: Text(
               _displayAmount(
@@ -684,7 +685,7 @@ class _DeliveryScheduleSection extends StatelessWidget {
     final slotWindow = (slot?.window ?? '').trim();
 
     return _SummarySectionCard(
-      title: Strings.deliverySchedule,
+      title: Strings.deliverySchedule.tr(),
       icon: Icons.calendar_today_outlined,
       child: Column(
         children: [
@@ -693,17 +694,17 @@ class _DeliveryScheduleSection extends StatelessWidget {
               children: [
                 Expanded(
                   child: _ScheduleCell(
-                    label: Strings.startDate,
+                    label: Strings.startDate.tr(),
                     value: _formatDisplayDate(startDate),
-                    subtitle: Strings.firstDelivery,
+                    subtitle: Strings.firstDelivery.tr(),
                   ),
                 ),
                 Container(width: 1, color: ColorManager.formFieldsBorderColor),
                 Expanded(
                   child: _ScheduleCell(
-                    label: Strings.endDate,
+                    label: Strings.endDate.tr(),
                     value: _formatDisplayDate(endDate),
-                    subtitle: Strings.lastDelivery,
+                    subtitle: Strings.lastDelivery.tr(),
                   ),
                 ),
               ],
@@ -722,7 +723,7 @@ class _DeliveryScheduleSection extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        Strings.timeSlot,
+                        Strings.timeSlot.tr(),
                         style: getRegularTextStyle(
                           color: ColorManager.grey6A7282,
                           fontSize: FontSizeManager.s10.sp,
@@ -779,7 +780,7 @@ class _PriceBreakdownSection extends StatelessWidget {
         .toList();
 
     return _SummarySectionCard(
-      title: Strings.priceBreakdown,
+      title: Strings.priceBreakdown.tr(),
       icon: Icons.attach_money_rounded,
       child: Column(
         children: [
@@ -861,7 +862,7 @@ class _DeliveryNotesSection extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  Strings.deliveryNotes,
+                  Strings.deliveryNotes.tr(),
                   style: getBoldTextStyle(
                     color: ColorManager.black101828,
                     fontSize: FontSizeManager.s15.sp,
@@ -922,8 +923,8 @@ class _BottomActionBar extends StatelessWidget {
         child: ButtonWidget(
           radius: AppSize.s16,
           text: isLoading
-              ? Strings.openingPayment
-              : '${Strings.confirmAndPay} - $totalLabel',
+              ? Strings.openingPayment.tr()
+              : '${Strings.confirmAndPay.tr()} - $totalLabel',
           onTap: onTap,
         ),
       ),
@@ -1244,7 +1245,7 @@ String _formatDisplayDate(DateTime? date) {
 }
 
 String _formatSar(num amount) {
-  return '${_formatNumber(amount)} ${Strings.sar}';
+  return '${_formatNumber(amount)} ${Strings.sar.tr()}';
 }
 
 String _displayAmount({String? label, required num fallbackAmount}) {

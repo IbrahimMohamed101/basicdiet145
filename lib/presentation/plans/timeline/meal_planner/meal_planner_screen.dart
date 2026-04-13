@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:basic_diet/app/dependency_injection.dart';
 import 'package:basic_diet/domain/model/categories_with_meals_model.dart';
 import 'package:basic_diet/domain/model/timeline_model.dart';
@@ -179,14 +180,14 @@ class MealPlannerView extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      Strings.mealAdded,
+                      Strings.mealAdded.tr(),
                       style: getRegularTextStyle(
                         color: const Color(0xFF166534),
                         fontSize: FontSizeManager.s14.sp,
                       ),
                     ),
                     Text(
-                      "${state.lastAddedMealName} ${Strings.addedTo} ${_getFullDayName(state.timelineDays[state.selectedDayIndex].day)}",
+                      "${state.lastAddedMealName} ${Strings.addedTo.tr()} ${_getFullDayName(state.timelineDays[state.selectedDayIndex].day)}",
                       style: getRegularTextStyle(
                         color: const Color(0xFF166534),
                         fontSize: FontSizeManager.s14.sp,
@@ -219,7 +220,7 @@ class MealPlannerView extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            Strings.mealPlanner,
+            Strings.mealPlanner.tr(),
             style: getBoldTextStyle(
               color: ColorManager.black101828,
               fontSize: FontSizeManager.s24.sp,
@@ -227,7 +228,7 @@ class MealPlannerView extends StatelessWidget {
           ),
           Gap(AppSize.s4.h),
           Text(
-            Strings.planMealsWeekAhead,
+            Strings.planMealsWeekAhead.tr(),
             style: getRegularTextStyle(
               color: ColorManager.grey6A7282,
               fontSize: FontSizeManager.s14.sp,
@@ -270,38 +271,38 @@ class MealPlannerView extends StatelessWidget {
             case 'locked':
               baseColor = ColorManager.grey9CA3AF;
               baseBgColor = ColorManager.greyF3F4F6;
-              statusText = Strings.locked;
+              statusText = Strings.locked.tr();
               break;
             case 'planned':
               baseColor = ColorManager.greenPrimary;
               baseBgColor = ColorManager.greenPrimary.withValues(alpha: 0.05);
               baseBorderColor = ColorManager.greenPrimary;
-              statusText = Strings.planned;
+              statusText = Strings.planned.tr();
               break;
             case 'frozen':
               baseColor = ColorManager.bluePrimary;
               baseBgColor = ColorManager.bluePrimary.withValues(alpha: 0.05);
               baseBorderColor = ColorManager.bluePrimary;
-              statusText = Strings.frozen;
+              statusText = Strings.frozen.tr();
               break;
             case 'skipped':
               baseColor = ColorManager.orangePrimary;
               baseBgColor = ColorManager.orangePrimary.withValues(alpha: 0.05);
               baseBorderColor = ColorManager.orangePrimary;
-              statusText = Strings.skipped;
+              statusText = Strings.skipped.tr();
               break;
             case 'extension':
               baseColor = ColorManager.purplePrimary;
               baseBgColor = ColorManager.purplePrimary.withValues(alpha: 0.05);
               baseBorderColor = ColorManager.purplePrimary;
-              statusText = Strings.extension;
+              statusText = Strings.extension.tr();
               break;
             case 'open':
             default:
               baseColor = ColorManager.black101828;
               baseBgColor = Colors.white;
               baseBorderColor = ColorManager.formFieldsBorderColor;
-              statusText = Strings.open;
+              statusText = Strings.open.tr();
               break;
           }
 
@@ -313,7 +314,7 @@ class MealPlannerView extends StatelessWidget {
             bgColor = ColorManager.greenPrimary;
             borderColor = Colors.transparent;
             textColor = Colors.white;
-            statusText = Strings.planned;
+            statusText = Strings.planned.tr();
           } else if (isSelected) {
             borderColor = ColorManager.bluePrimary;
             if (day.status.toLowerCase() == 'open') {
@@ -428,7 +429,7 @@ class MealPlannerView extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  Strings.planningFor,
+                  Strings.planningFor.tr(),
                   style: getRegularTextStyle(
                     color: Colors.white70,
                     fontSize: FontSizeManager.s10.sp,
@@ -467,7 +468,7 @@ class MealPlannerView extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    Strings.dailyMeals,
+                    Strings.dailyMeals.tr(),
                     style: getRegularTextStyle(
                       color: ColorManager.grey6A7282,
                       fontSize: FontSizeManager.s12.sp,
@@ -483,7 +484,7 @@ class MealPlannerView extends StatelessWidget {
                         ),
                       ),
                       Text(
-                        " ${Strings.of} $maxMeals ${Strings.selected}",
+                        " ${Strings.of.tr()} $maxMeals ${Strings.selected.tr()}",
                         style: getBoldTextStyle(
                           color: ColorManager.grey9CA3AF,
                           fontSize: FontSizeManager.s20.sp,
@@ -509,7 +510,7 @@ class MealPlannerView extends StatelessWidget {
                       ),
                       Gap(4.w),
                       Text(
-                        Strings.complete,
+                        Strings.complete.tr(),
                         style: getRegularTextStyle(
                           color: ColorManager.greenPrimary,
                           fontSize: FontSizeManager.s12.sp,
@@ -583,7 +584,7 @@ class MealPlannerView extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  "Premium Meals Available",
+                  Strings.premiumMealsAvailable.tr(),
                   style: getBoldTextStyle(
                     color: ColorManager.black101828,
                     fontSize: FontSizeManager.s18.sp,
@@ -597,18 +598,17 @@ class MealPlannerView extends StatelessWidget {
                       fontSize: FontSizeManager.s14.sp,
                     ),
                     children: [
-                      const TextSpan(text: "You have "),
+                      TextSpan(text: "${Strings.youHave.tr()} "),
                       TextSpan(
                         text:
-                            "${state.premiumMealsRemaining} premium meal${state.premiumMealsRemaining != 1 ? 's' : ''} ",
+                            "${state.premiumMealsRemaining} ${Strings.premiumMealsText.tr()} ",
                         style: getBoldTextStyle(
                           color: ColorManager.orangePrimary,
                           fontSize: FontSizeManager.s14.sp,
                         ),
                       ),
-                      const TextSpan(
-                        text:
-                            "remaining. Select from our exclusive premium collection below.",
+                      TextSpan(
+                        text: Strings.remainingSelectPremium.tr(),
                       ),
                     ],
                   ),
@@ -647,7 +647,7 @@ class MealPlannerView extends StatelessWidget {
             Gap(AppSize.s12.w),
             Expanded(
               child: Text(
-                Strings.premiumMealsRemaining,
+                Strings.premiumMealsRemaining.tr(),
                 style: getBoldTextStyle(
                   color: ColorManager.black101828,
                   fontSize: FontSizeManager.s14.sp,
@@ -662,7 +662,7 @@ class MealPlannerView extends StatelessWidget {
               ),
             ),
             Text(
-              Strings.left,
+              Strings.left.tr(),
               style: getRegularTextStyle(
                 color: ColorManager.orangePrimary,
                 fontSize: FontSizeManager.s12.sp,
@@ -901,19 +901,19 @@ class MealPlannerView extends StatelessWidget {
                         _buildMacroItem(
                           ColorManager.bluePrimary,
                           "${meal.proteinGrams}g",
-                          "protein",
+                          Strings.protein.tr(),
                         ),
                         Gap(AppSize.s12.w),
                         _buildMacroItem(
                           ColorManager.orangePrimary,
                           "${meal.carbGrams}g",
-                          "carbs",
+                          Strings.carbs.tr(),
                         ),
                         Gap(AppSize.s12.w),
                         _buildMacroItem(
                           ColorManager.greenPrimary,
                           "${meal.fatGrams}g",
-                          "fat",
+                          Strings.fat.tr(),
                         ),
                       ],
                     ),
@@ -922,7 +922,7 @@ class MealPlannerView extends StatelessWidget {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          "${meal.price} SAR",
+                          "${meal.price} ${Strings.sar.tr()}",
                           style: TextStyle(
                             fontFamily: 'Inter',
                             fontWeight: FontWeight.w700,
@@ -1039,8 +1039,8 @@ class MealPlannerView extends StatelessWidget {
                         Gap(AppSize.s8.w),
                         Text(
                           canSave
-                              ? Strings.saveChanges
-                              : Strings.noChangesToSave,
+                              ? Strings.saveChanges.tr()
+                              : Strings.noChangesToSave.tr(),
                           style: getBoldTextStyle(
                             color: canSave
                                 ? Colors.white
@@ -1060,19 +1060,19 @@ class MealPlannerView extends StatelessWidget {
   String _getFullDayName(String shortName) {
     switch (shortName.toLowerCase()) {
       case 'mon':
-        return 'Monday';
+        return Strings.monday.tr();
       case 'tue':
-        return 'Tuesday';
+        return Strings.tuesday.tr();
       case 'wed':
-        return 'Wednesday';
+        return Strings.wednesday.tr();
       case 'thu':
-        return 'Thursday';
+        return Strings.thursday.tr();
       case 'fri':
-        return 'Friday';
+        return Strings.friday.tr();
       case 'sat':
-        return 'Saturday';
+        return Strings.saturday.tr();
       case 'sun':
-        return 'Sunday';
+        return Strings.sunday.tr();
       default:
         return shortName;
     }

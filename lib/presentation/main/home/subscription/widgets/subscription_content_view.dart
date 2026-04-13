@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:basic_diet/domain/model/plans_model.dart';
 import 'package:basic_diet/presentation/main/home/subscription/bloc/subscription_bloc.dart';
 import 'package:basic_diet/presentation/main/home/subscription/bloc/subscription_event.dart';
@@ -93,7 +94,7 @@ class _BenefitsRow extends StatelessWidget {
       children: [
         Center(
           child: Text(
-            Strings.vatAndDelivery,
+            Strings.vatAndDelivery.tr(),
             style: getRegularTextStyle(
               color: ColorManager.grayColor,
               fontSize: FontSizeManager.s14.sp,
@@ -105,7 +106,7 @@ class _BenefitsRow extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children:
               _benefits
-                  .map((text) => _BenefitItem(text: text))
+                  .map((text) => _BenefitItem(text: text.tr()))
                   .expand((w) => [w, Gap(AppSize.s8.w)])
                   .toList()
                 ..removeLast(), // drop trailing gap

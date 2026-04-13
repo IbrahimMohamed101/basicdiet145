@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:basic_diet/presentation/resources/assets_manager.dart';
 import 'package:basic_diet/presentation/resources/color_manager.dart';
 import 'package:basic_diet/presentation/resources/strings_manager.dart';
@@ -117,35 +118,35 @@ class BottomNavBar extends StatelessWidget {
                 assetPath: IconAssets.home,
                 isSelected: currentIndex == 0,
               ),
-              label: Strings.home,
+              label: Strings.home.tr(),
             ),
             BottomNavigationBarItem(
               icon: _buildIcon(
                 assetPath: IconAssets.knife,
                 isSelected: currentIndex == 1,
               ),
-              label: Strings.menu,
+              label: Strings.menu.tr(),
             ),
             BottomNavigationBarItem(
               icon: _buildIcon(
                 assetPath: IconAssets.plans,
                 isSelected: currentIndex == 2,
               ),
-              label: Strings.plans,
+              label: Strings.plans.tr(),
             ),
             BottomNavigationBarItem(
               icon: _buildIcon(
                 assetPath: IconAssets.orders,
                 isSelected: currentIndex == 3,
               ),
-              label: Strings.orders,
+              label: Strings.orders.tr(),
             ),
             BottomNavigationBarItem(
               icon: _buildIcon(
                 assetPath: IconAssets.profile,
                 isSelected: currentIndex == 4,
               ),
-              label: Strings.profile,
+              label: Strings.profile.tr(),
             ),
           ],
         ),

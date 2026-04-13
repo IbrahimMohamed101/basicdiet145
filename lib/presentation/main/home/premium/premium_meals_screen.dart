@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:basic_diet/app/dependency_injection.dart';
 import 'package:basic_diet/presentation/main/home/premium/bloc/premium_meals_bloc.dart';
 import 'package:basic_diet/presentation/main/home/premium/bloc/premium_meals_event.dart';
@@ -63,7 +64,7 @@ class PremiumMealsScreen extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            Strings.premiumMeals,
+            Strings.premiumMeals.tr(),
             style: getBoldTextStyle(
               color: ColorManager.black101828,
               fontSize: FontSizeManager.s18.sp,
@@ -71,7 +72,7 @@ class PremiumMealsScreen extends StatelessWidget {
           ),
           Gap(AppSize.s2.h),
           Text(
-            Strings.exclusiveProteins,
+            Strings.exclusiveProteins.tr(),
             style: getRegularTextStyle(
               color: ColorManager.grey6A7282,
               fontSize: FontSizeManager.s12.sp,

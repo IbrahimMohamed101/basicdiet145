@@ -11,6 +11,7 @@ import 'package:basic_diet/presentation/widgets/text_button_widget.dart';
 import 'package:basic_diet/app/dependency_injection.dart';
 import 'package:basic_diet/presentation/verify/verify_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:gap/gap.dart';
@@ -71,7 +72,7 @@ class RegisterScreen extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          Strings.welcome,
+          Strings.welcome.tr(),
           style: getBoldTextStyle(
             color: ColorManager.blackColor,
             fontSize: FontSizeManager.s30.sp,
@@ -79,7 +80,7 @@ class RegisterScreen extends StatelessWidget {
         ),
         Gap(AppSize.s10.h),
         Text(
-          Strings.registerSubtitle,
+          Strings.registerSubtitle.tr(),
           style: getRegularTextStyle(
             color: ColorManager.grayColor,
             fontSize: FontSizeManager.s16.sp,
@@ -95,7 +96,7 @@ class RegisterScreen extends StatelessWidget {
       children: [
         // Full Name
         Text(
-          Strings.fullName,
+          Strings.fullName.tr(),
           style: getRegularTextStyle(
             color: ColorManager.blackColor,
             fontSize: FontSizeManager.s16.sp,
@@ -107,7 +108,7 @@ class RegisterScreen extends StatelessWidget {
               previous.fullNameError != current.fullNameError,
           builder: (context, state) {
             return AppTextField.normal(
-              hintText: Strings.fullNameHint,
+              hintText: Strings.fullNameHint.tr(),
               controller: _fullNameController,
               errorText: state.fullNameError,
               onChanged: (fullName) {
@@ -122,7 +123,7 @@ class RegisterScreen extends StatelessWidget {
 
         // Phone Number
         Text(
-          Strings.phone,
+          Strings.phone.tr(),
           style: getRegularTextStyle(
             color: ColorManager.blackColor,
             fontSize: FontSizeManager.s16.sp,
@@ -146,7 +147,7 @@ class RegisterScreen extends StatelessWidget {
 
         // Email Address
         Text(
-          Strings.emailOptional,
+          Strings.emailOptional.tr(),
           style: getRegularTextStyle(
             color: ColorManager.blackColor,
             fontSize: FontSizeManager.s16.sp,
@@ -180,7 +181,7 @@ class RegisterScreen extends StatelessWidget {
                 state.emailError == null;
 
             return ButtonWidget(
-              text: isLoading ? Strings.loading : Strings.createAccount,
+              text: isLoading ? Strings.loading.tr() : Strings.createAccount.tr(),
               textColor: ColorManager.whiteColor,
               color: isEnabled
                   ? ColorManager.greenDark
@@ -204,14 +205,14 @@ class RegisterScreen extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Text(
-          Strings.alreadyHaveAccount,
+          Strings.alreadyHaveAccount.tr(),
           style: getRegularTextStyle(
             color: ColorManager.grayColor,
             fontSize: FontSizeManager.s14.sp,
           ),
         ),
         TextButtonWidget(
-          Strings.signIn,
+          Strings.signIn.tr(),
           ColorManager.greenDark,
           FontSizeManager.s14,
           () => context.push(LoginScreen.loginRoute),

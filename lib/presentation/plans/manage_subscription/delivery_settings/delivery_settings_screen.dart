@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:basic_diet/presentation/resources/color_manager.dart';
 import 'package:basic_diet/presentation/resources/font_manager.dart';
@@ -54,7 +55,7 @@ class _DeliverySettingsScreenState extends State<DeliverySettingsScreen> {
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: Text(
-          Strings.deliverySettings,
+          Strings.deliverySettings.tr(),
           style: getRegularTextStyle(
             color: Colors.black,
             fontSize: FontSizeManager.s20.sp,
@@ -102,7 +103,7 @@ class _DeliverySettingsScreenState extends State<DeliverySettingsScreen> {
               Icon(Icons.location_on_outlined, color: ColorManager.greenPrimary, size: AppSize.s20),
               Gap(AppSize.s8.w),
               Text(
-                Strings.deliveryAddress,
+                Strings.deliveryAddress.tr(),
                 style: getRegularTextStyle(
                   color: Colors.black,
                   fontSize: FontSizeManager.s16.sp,
@@ -112,7 +113,7 @@ class _DeliverySettingsScreenState extends State<DeliverySettingsScreen> {
           ),
           Gap(AppSize.s16.h),
           Text(
-            Strings.streetAddressLabel,
+            Strings.streetAddressLabel.tr(),
             style: getRegularTextStyle(
               color: Colors.black,
               fontSize: FontSizeManager.s14.sp,
@@ -128,7 +129,7 @@ class _DeliverySettingsScreenState extends State<DeliverySettingsScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      Strings.areaLabel,
+                      Strings.areaLabel.tr(),
                       style: getRegularTextStyle(
                         color: Colors.black,
                         fontSize: FontSizeManager.s14.sp,
@@ -145,7 +146,7 @@ class _DeliverySettingsScreenState extends State<DeliverySettingsScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      Strings.cityLabel,
+                      Strings.cityLabel.tr(),
                       style: getRegularTextStyle(
                         color: Colors.black,
                         fontSize: FontSizeManager.s14.sp,
@@ -171,7 +172,7 @@ class _DeliverySettingsScreenState extends State<DeliverySettingsScreen> {
                 ),
               ),
               child: Text(
-                Strings.useCurrentLocation,
+                Strings.useCurrentLocation.tr(),
                 style: getRegularTextStyle(
                   color: ColorManager.greenPrimary,
                   fontSize: FontSizeManager.s14.sp,
@@ -233,7 +234,7 @@ class _DeliverySettingsScreenState extends State<DeliverySettingsScreen> {
               Icon(Icons.access_time_outlined, color: ColorManager.greenPrimary, size: AppSize.s20),
               Gap(AppSize.s8.w),
               Text(
-                Strings.deliveryTimePreference,
+                Strings.deliveryTimePreference.tr(),
                 style: getRegularTextStyle(
                   color: Colors.black,
                   fontSize: FontSizeManager.s16.sp,
@@ -293,7 +294,7 @@ class _DeliverySettingsScreenState extends State<DeliverySettingsScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            Strings.deliveryInstructionsOptional,
+            Strings.deliveryInstructionsOptional.tr(),
             style: getRegularTextStyle(
               color: Colors.black,
               fontSize: FontSizeManager.s14.sp,
@@ -303,7 +304,7 @@ class _DeliverySettingsScreenState extends State<DeliverySettingsScreen> {
           _buildTextField(
             _instructionsController,
             maxLines: 4,
-            hint: Strings.deliveryInstructionsHint,
+            hint: Strings.deliveryInstructionsHint.tr(),
           ),
         ],
       ),
@@ -324,7 +325,7 @@ class _DeliverySettingsScreenState extends State<DeliverySettingsScreen> {
               ),
             ),
             child: Text(
-              Strings.cancel,
+              Strings.cancel.tr(),
               style: getRegularTextStyle(
                 color: Colors.black,
                 fontSize: FontSizeManager.s16.sp,
@@ -347,7 +348,7 @@ class _DeliverySettingsScreenState extends State<DeliverySettingsScreen> {
               ),
             ),
             child: Text(
-              Strings.saveChanges,
+              Strings.saveChanges.tr(),
               style: getRegularTextStyle(
                 color: Colors.white,
                 fontSize: FontSizeManager.s16.sp,

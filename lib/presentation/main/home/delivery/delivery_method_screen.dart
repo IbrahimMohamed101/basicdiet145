@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:basic_diet/app/dependency_injection.dart';
 import 'package:basic_diet/presentation/main/home/delivery/bloc/delivery_options_bloc.dart';
 import 'package:basic_diet/presentation/main/home/delivery/bloc/delivery_options_event.dart';
@@ -105,7 +106,7 @@ class _DeliveryMethodScaffold extends StatelessWidget {
   AppBar _buildAppBar() {
     return AppBar(
       title: Text(
-        Strings.deliveryMethod,
+        Strings.deliveryMethod.tr(),
         style: getBoldTextStyle(
           color: ColorManager.black101828,
           fontSize: FontSizeManager.s20.sp,
@@ -122,7 +123,7 @@ class _DeliveryMethodScaffold extends StatelessWidget {
           child: Align(
             alignment: AlignmentDirectional.centerStart,
             child: Text(
-              Strings.howWouldYouLikeToReceiveYourMeals,
+              Strings.howWouldYouLikeToReceiveYourMeals.tr(),
               style: getRegularTextStyle(
                 color: ColorManager.grey6A7282,
                 fontSize: FontSizeManager.s14.sp,
@@ -161,7 +162,7 @@ class _ErrorView extends StatelessWidget {
             onPressed: () => context.read<DeliveryOptionsBloc>().add(
               const GetDeliveryOptionsEvent(),
             ),
-            child: const Text(Strings.tryAgain),
+            child: Text(Strings.tryAgain.tr()),
           ),
         ],
       ),

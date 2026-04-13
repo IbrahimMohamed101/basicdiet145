@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:basic_diet/presentation/resources/color_manager.dart';
 import 'package:basic_diet/presentation/resources/font_manager.dart';
 import 'package:basic_diet/presentation/resources/strings_manager.dart';
@@ -52,7 +53,7 @@ class PremiumInfoBanner extends StatelessWidget {
                         ),
                         Gap(AppSize.s8.w),
                         Text(
-                          Strings.premiumProteinSelection,
+                          Strings.premiumProteinSelection.tr(),
                           style: getBoldTextStyle(
                             color: ColorManager.black101828,
                             fontSize: FontSizeManager.s14.sp,
@@ -62,7 +63,7 @@ class PremiumInfoBanner extends StatelessWidget {
                     ),
                     Gap(AppSize.s8.h),
                     Text(
-                      Strings.premiumProteinDesc,
+                      Strings.premiumProteinDesc.tr(),
                       style: getRegularTextStyle(
                         color: ColorManager.grey6A7282,
                         fontSize: FontSizeManager.s12.sp,
