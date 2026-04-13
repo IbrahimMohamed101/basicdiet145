@@ -4,6 +4,64 @@ import 'package:basic_diet/data/response/base_response/base_response.dart';
 part 'current_subscription_overview_response.g.dart';
 
 @JsonSerializable()
+class MetaResponse {
+  @JsonKey(name: "testScenario")
+  String? testScenario;
+
+  MetaResponse(this.testScenario);
+
+  factory MetaResponse.fromJson(Map<String, dynamic> json) => _$MetaResponseFromJson(json);
+  Map<String, dynamic> toJson() => _$MetaResponseToJson(this);
+}
+
+@JsonSerializable()
+class ContractResponse {
+  @JsonKey(name: "isCanonical")
+  bool? isCanonical;
+  @JsonKey(name: "isGrandfathered")
+  bool? isGrandfathered;
+  @JsonKey(name: "version")
+  String? version;
+
+  ContractResponse(this.isCanonical, this.isGrandfathered, this.version);
+
+  factory ContractResponse.fromJson(Map<String, dynamic> json) => _$ContractResponseFromJson(json);
+  Map<String, dynamic> toJson() => _$ContractResponseToJson(this);
+}
+
+@JsonSerializable()
+class PickupPreparationResponse {
+  @JsonKey(name: "flowStatus")
+  String? flowStatus;
+  @JsonKey(name: "reason")
+  String? reason;
+  @JsonKey(name: "buttonLabel")
+  String? buttonLabel;
+  @JsonKey(name: "message")
+  String? message;
+
+  PickupPreparationResponse(this.flowStatus, this.reason, this.buttonLabel, this.message);
+
+  factory PickupPreparationResponse.fromJson(Map<String, dynamic> json) => _$PickupPreparationResponseFromJson(json);
+  Map<String, dynamic> toJson() => _$PickupPreparationResponseToJson(this);
+}
+
+@JsonSerializable()
+class OverviewDeliverySlotResponse {
+  @JsonKey(name: "slotId")
+  String? slotId;
+  @JsonKey(name: "type")
+  String? type;
+  @JsonKey(name: "window")
+  String? window;
+
+  OverviewDeliverySlotResponse(this.slotId, this.type, this.window);
+
+  factory OverviewDeliverySlotResponse.fromJson(Map<String, dynamic> json) => _$OverviewDeliverySlotResponseFromJson(json);
+  Map<String, dynamic> toJson() => _$OverviewDeliverySlotResponseToJson(this);
+}
+
+@JsonSerializable()
 class AddonSubscriptionResponse {
   @JsonKey(name: "addonId")
   String? addonId;
@@ -112,6 +170,14 @@ class CurrentSubscriptionOverviewDataResponse {
   int? skipDaysLimit;
   @JsonKey(name: "remainingSkipDays")
   int? remainingSkipDays;
+  @JsonKey(name: "meta")
+  MetaResponse? meta;
+  @JsonKey(name: "contract")
+  ContractResponse? contract;
+  @JsonKey(name: "pickupPreparation")
+  PickupPreparationResponse? pickupPreparation;
+  @JsonKey(name: "deliverySlot")
+  OverviewDeliverySlotResponse? deliverySlot;
 
   CurrentSubscriptionOverviewDataResponse(
     this.id,
@@ -132,6 +198,10 @@ class CurrentSubscriptionOverviewDataResponse {
     this.skipDaysUsed,
     this.skipDaysLimit,
     this.remainingSkipDays,
+    this.meta,
+    this.contract,
+    this.pickupPreparation,
+    this.deliverySlot,
   );
 
   factory CurrentSubscriptionOverviewDataResponse.fromJson(Map<String, dynamic> json) =>

@@ -1,3 +1,33 @@
+class MetaModel {
+  String testScenario;
+  MetaModel(this.testScenario);
+}
+
+class ContractModel {
+  bool isCanonical;
+  bool isGrandfathered;
+  String version;
+
+  ContractModel(this.isCanonical, this.isGrandfathered, this.version);
+}
+
+class PickupPreparationModel {
+  String flowStatus;
+  String reason;
+  String buttonLabel;
+  String message;
+
+  PickupPreparationModel(this.flowStatus, this.reason, this.buttonLabel, this.message);
+}
+
+class DeliverySlotModel {
+  String slotId;
+  String type;
+  String window;
+
+  DeliverySlotModel(this.slotId, this.type, this.window);
+}
+
 class AddonSubscriptionModel {
   String addonId;
   String name;
@@ -57,6 +87,10 @@ class CurrentSubscriptionOverviewDataModel {
   int skipDaysUsed;
   int skipDaysLimit;
   int remainingSkipDays;
+  MetaModel? meta;
+  ContractModel? contract;
+  PickupPreparationModel? pickupPreparation;
+  DeliverySlotModel? deliverySlot;
 
   CurrentSubscriptionOverviewDataModel(
     this.id,
@@ -77,6 +111,10 @@ class CurrentSubscriptionOverviewDataModel {
     this.skipDaysUsed,
     this.skipDaysLimit,
     this.remainingSkipDays,
+    this.meta,
+    this.contract,
+    this.pickupPreparation,
+    this.deliverySlot,
   );
 }
 

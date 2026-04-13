@@ -63,8 +63,16 @@ class PlansScreen extends StatelessWidget {
                           _buildSubscriptionPlanCard(context, data),
                           Gap(AppSize.s16.h),
                           _buildActionButtons(context, data),
-                          Gap(AppSize.s16.h),
-                          _buildSubscriptionPeriodCard(data),
+                          if (data.pickupPreparation != null) ...[
+                            Gap(AppSize.s16.h),
+                            if (data.pickupPreparation!.flowStatus ==
+                                'disabled')
+                              _buildOrderStatusCard(data)
+                            else if (data.pickupPreparation!.flowStatus ==
+                                'available')
+                              _buildPreparationCard(data),
+                          ],
+                          // _buildSubscriptionPeriodCard(data),
                           Gap(AppSize.s24.h),
                         ],
                       );
@@ -385,7 +393,9 @@ class PlansScreen extends StatelessWidget {
                 ),
               );
               if (context.mounted) {
-                context.read<PlansBloc>().add(FetchCurrentSubscriptionOverviewEvent());
+                context.read<PlansBloc>().add(
+                  FetchCurrentSubscriptionOverviewEvent(),
+                );
               }
             },
             style: ElevatedButton.styleFrom(
@@ -610,6 +620,145 @@ class PlansScreen extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildOrderStatusCard(CurrentSubscriptionOverviewDataModel data) {
+    return Container(
+      width: double.infinity,
+      height: 194.h,
+      padding: EdgeInsets.all(24.w),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF3F3F6),
+        borderRadius: BorderRadius.circular(24.r),
+        border: Border.all(color: ColorManager.formFieldsBorderColor, width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.lock_rounded,
+                color: ColorManager.black101828,
+                size: 20.sp,
+              ),
+              Gap(8.w),
+              Text(
+                Strings.orderLocked,
+                style: getBoldTextStyle(
+                  color: ColorManager.black101828,
+                  fontSize: FontSizeManager.s20.sp,
+                ),
+              ),
+            ],
+          ),
+          Gap(12.h),
+          Text(
+            data.pickupPreparation?.reason.isNotEmpty == true
+                ? data.pickupPreparation!.reason
+                : Strings.modificationPeriodEnded,
+            style: getRegularTextStyle(
+              color: ColorManager.grey6A7282,
+              fontSize: FontSizeManager.s16.sp,
+            ),
+          ),
+          const Spacer(),
+          Container(
+            width: double.infinity,
+            height: 56.h,
+            decoration: BoxDecoration(
+              color: const Color(0xFFE5E7EB),
+              borderRadius: BorderRadius.circular(100.r),
+            ),
+            child: Center(
+              child: Text(
+                Strings.waitingForKitchen,
+                style: getBoldTextStyle(
+                  color: ColorManager.grey6A7282,
+                  fontSize: FontSizeManager.s18.sp,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPreparationCard(CurrentSubscriptionOverviewDataModel data) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(24.w),
+      decoration: BoxDecoration(
+        color: ColorManager.whiteColor,
+        borderRadius: BorderRadius.circular(24.r),
+        border: Border.all(color: ColorManager.formFieldsBorderColor, width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Text(
+                  Strings.mealsNotPreparedYet,
+                  style: getBoldTextStyle(
+                    color: ColorManager.black101828,
+                    fontSize: FontSizeManager.s20.sp,
+                  ),
+                ),
+              ),
+              Container(
+                padding: EdgeInsets.all(8.w),
+                decoration: BoxDecoration(
+                  color: ColorManager.greenPrimary.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.assignment_turned_in_outlined,
+                  color: ColorManager.greenPrimary,
+                  size: 24.sp,
+                ),
+              ),
+            ],
+          ),
+          Gap(12.h),
+          Text(
+            data.pickupPreparation?.message.isNotEmpty == true
+                ? data.pickupPreparation!.message
+                : Strings.reviewSelectionToStartPreparation,
+            style: getRegularTextStyle(
+              color: ColorManager.grey6A7282,
+              fontSize: FontSizeManager.s16.sp,
+            ),
+          ),
+          Gap(24.h),
+          SizedBox(
+            width: double.infinity,
+            height: 56.h,
+            child: ElevatedButton(
+              onPressed: () {},
+              style: ElevatedButton.styleFrom(
+                backgroundColor: ColorManager.greenPrimary,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(100.r),
+                ),
+                elevation: 0,
+              ),
+              child: Text(
+                Strings.confirmAndPrepare,
+                style: getBoldTextStyle(
+                  color: Colors.white,
+                  fontSize: FontSizeManager.s18.sp,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

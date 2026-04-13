@@ -6,6 +6,60 @@ part of 'current_subscription_overview_response.dart';
 // JsonSerializableGenerator
 // **************************************************************************
 
+MetaResponse _$MetaResponseFromJson(Map<String, dynamic> json) =>
+    MetaResponse(json['testScenario'] as String?);
+
+Map<String, dynamic> _$MetaResponseToJson(MetaResponse instance) =>
+    <String, dynamic>{'testScenario': instance.testScenario};
+
+ContractResponse _$ContractResponseFromJson(Map<String, dynamic> json) =>
+    ContractResponse(
+      json['isCanonical'] as bool?,
+      json['isGrandfathered'] as bool?,
+      json['version'] as String?,
+    );
+
+Map<String, dynamic> _$ContractResponseToJson(ContractResponse instance) =>
+    <String, dynamic>{
+      'isCanonical': instance.isCanonical,
+      'isGrandfathered': instance.isGrandfathered,
+      'version': instance.version,
+    };
+
+PickupPreparationResponse _$PickupPreparationResponseFromJson(
+  Map<String, dynamic> json,
+) => PickupPreparationResponse(
+  json['flowStatus'] as String?,
+  json['reason'] as String?,
+  json['buttonLabel'] as String?,
+  json['message'] as String?,
+);
+
+Map<String, dynamic> _$PickupPreparationResponseToJson(
+  PickupPreparationResponse instance,
+) => <String, dynamic>{
+  'flowStatus': instance.flowStatus,
+  'reason': instance.reason,
+  'buttonLabel': instance.buttonLabel,
+  'message': instance.message,
+};
+
+OverviewDeliverySlotResponse _$OverviewDeliverySlotResponseFromJson(
+  Map<String, dynamic> json,
+) => OverviewDeliverySlotResponse(
+  json['slotId'] as String?,
+  json['type'] as String?,
+  json['window'] as String?,
+);
+
+Map<String, dynamic> _$OverviewDeliverySlotResponseToJson(
+  OverviewDeliverySlotResponse instance,
+) => <String, dynamic>{
+  'slotId': instance.slotId,
+  'type': instance.type,
+  'window': instance.window,
+};
+
 AddonSubscriptionResponse _$AddonSubscriptionResponseFromJson(
   Map<String, dynamic> json,
 ) => AddonSubscriptionResponse(
@@ -94,6 +148,22 @@ _$CurrentSubscriptionOverviewDataResponseFromJson(Map<String, dynamic> json) =>
       (json['skipDaysUsed'] as num?)?.toInt(),
       (json['skipDaysLimit'] as num?)?.toInt(),
       (json['remainingSkipDays'] as num?)?.toInt(),
+      json['meta'] == null
+          ? null
+          : MetaResponse.fromJson(json['meta'] as Map<String, dynamic>),
+      json['contract'] == null
+          ? null
+          : ContractResponse.fromJson(json['contract'] as Map<String, dynamic>),
+      json['pickupPreparation'] == null
+          ? null
+          : PickupPreparationResponse.fromJson(
+              json['pickupPreparation'] as Map<String, dynamic>,
+            ),
+      json['deliverySlot'] == null
+          ? null
+          : OverviewDeliverySlotResponse.fromJson(
+              json['deliverySlot'] as Map<String, dynamic>,
+            ),
     );
 
 Map<String, dynamic> _$CurrentSubscriptionOverviewDataResponseToJson(
@@ -117,6 +187,10 @@ Map<String, dynamic> _$CurrentSubscriptionOverviewDataResponseToJson(
   'skipDaysUsed': instance.skipDaysUsed,
   'skipDaysLimit': instance.skipDaysLimit,
   'remainingSkipDays': instance.remainingSkipDays,
+  'meta': instance.meta,
+  'contract': instance.contract,
+  'pickupPreparation': instance.pickupPreparation,
+  'deliverySlot': instance.deliverySlot,
 };
 
 CurrentSubscriptionOverviewResponse

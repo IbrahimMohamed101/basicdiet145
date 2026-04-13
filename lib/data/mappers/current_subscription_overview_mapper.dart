@@ -3,6 +3,43 @@ import 'package:basic_diet/app/extensions.dart';
 import 'package:basic_diet/data/response/current_subscription_overview_response.dart';
 import 'package:basic_diet/domain/model/current_subscription_overview_model.dart';
 
+extension MetaResponseMapper on MetaResponse? {
+  MetaModel toDomain() {
+    return MetaModel(this?.testScenario.orEmpty() ?? Constants.empty);
+  }
+}
+
+extension ContractResponseMapper on ContractResponse? {
+  ContractModel toDomain() {
+    return ContractModel(
+      this?.isCanonical ?? false,
+      this?.isGrandfathered ?? false,
+      this?.version.orEmpty() ?? Constants.empty,
+    );
+  }
+}
+
+extension PickupPreparationResponseMapper on PickupPreparationResponse? {
+  PickupPreparationModel toDomain() {
+    return PickupPreparationModel(
+      this?.flowStatus.orEmpty() ?? Constants.empty,
+      this?.reason.orEmpty() ?? Constants.empty,
+      this?.buttonLabel.orEmpty() ?? Constants.empty,
+      this?.message.orEmpty() ?? Constants.empty,
+    );
+  }
+}
+
+extension OverviewDeliverySlotResponseMapper on OverviewDeliverySlotResponse? {
+  DeliverySlotModel toDomain() {
+    return DeliverySlotModel(
+      this?.slotId.orEmpty() ?? Constants.empty,
+      this?.type.orEmpty() ?? Constants.empty,
+      this?.window.orEmpty() ?? Constants.empty,
+    );
+  }
+}
+
 extension AddonSubscriptionResponseMapper on AddonSubscriptionResponse? {
   AddonSubscriptionModel toDomain() {
     return AddonSubscriptionModel(
@@ -58,6 +95,10 @@ extension CurrentSubscriptionOverviewDataResponseMapper on CurrentSubscriptionOv
       this?.skipDaysUsed.orZero() ?? Constants.zero,
       this?.skipDaysLimit.orZero() ?? Constants.zero,
       this?.remainingSkipDays.orZero() ?? Constants.zero,
+      this?.meta?.toDomain(),
+      this?.contract?.toDomain(),
+      this?.pickupPreparation?.toDomain(),
+      this?.deliverySlot?.toDomain(),
     );
   }
 }

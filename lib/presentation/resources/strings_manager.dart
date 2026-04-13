@@ -328,4 +328,12 @@ class Strings {
   static const String mealAdded = "Meal added";
   static const String addedTo = "added to";
   static const String planningFor = "Planning for";
+
+  // Order Status Cards
+  static const String orderLocked = "Your order is locked";
+  static const String mealsNotPreparedYet = "Your meals are not prepared yet";
+  static const String modificationPeriodEnded = "Modification period has ended. Preparing for the kitchen.";
+  static const String reviewSelectionToStartPreparation = "Review your selection to start preparation and enjoy fresh meals.";
+  static const String confirmAndPrepare = "Confirm & Prepare";
+  static const String waitingForKitchen = "Waiting for kitchen";
 }
