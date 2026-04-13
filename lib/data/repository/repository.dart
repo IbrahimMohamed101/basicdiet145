@@ -41,6 +41,9 @@ import 'package:basic_diet/domain/model/categories_with_meals_model.dart';
 import 'package:basic_diet/data/mappers/checkout_draft_mapper.dart';
 import 'package:basic_diet/domain/model/checkout_draft_model.dart';
 
+import 'package:basic_diet/data/mappers/pickup_prepare_mapper.dart';
+import 'package:basic_diet/domain/model/pickup_prepare_model.dart';
+
 class RepositoryImpl implements Repository {
   final RemoteDataSource _remoteDataSource;
   static const int _checkoutRetryCount = 5;
@@ -285,7 +288,8 @@ class RepositoryImpl implements Repository {
   }
 
   @override
-  Future<Either<Failure, CurrentSubscriptionOverviewModel>> getCurrentSubscriptionOverview() async {
+  Future<Either<Failure, CurrentSubscriptionOverviewModel>>
+  getCurrentSubscriptionOverview() async {
     try {
       final response = await _remoteDataSource.getCurrentSubscriptionOverview();
       if (_isSuccessfulResponse(response)) {
@@ -397,9 +401,29 @@ class RepositoryImpl implements Repository {
   }
 
   @override
-  Future<Either<Failure, BaseModel>> bulkSelections(String id, BulkSelectionsRequest request) async {
+  Future<Either<Failure, BaseModel>> bulkSelections(
+    String id,
+    BulkSelectionsRequest request,
+  ) async {
     try {
       final response = await _remoteDataSource.bulkSelections(id, request);
+      if (_isSuccessfulResponse(response)) {
+        return Right(response.toDomain());
+      } else {
+        return Left(_mapFailureFromResponse(response));
+      }
+    } catch (error) {
+      return _handleError(error);
+    }
+  }
+
+  @override
+  Future<Either<Failure, PickupPrepareModel>> preparePickup(
+    String id,
+    String date,
+  ) async {
+    try {
+      final response = await _remoteDataSource.preparePickup(id, date);
       if (_isSuccessfulResponse(response)) {
         return Right(response.toDomain());
       } else {

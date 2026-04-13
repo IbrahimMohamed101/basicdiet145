@@ -1,22 +1,27 @@
 import 'package:basic_diet/domain/usecase/get_current_subscription_overview_usecase.dart';
 import 'package:basic_diet/domain/usecase/get_timeline_usecase.dart';
+import 'package:basic_diet/domain/usecase/prepare_pickup_usecase.dart';
 import 'package:basic_diet/presentation/plans/bloc/plans_event.dart';
 import 'package:basic_diet/presentation/plans/bloc/plans_state.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:intl/intl.dart';
 
 class PlansBloc extends Bloc<PlansEvent, PlansState> {
   final GetCurrentSubscriptionOverviewUseCase
   _getCurrentSubscriptionOverviewUseCase;
   final GetTimelineUseCase _getTimelineUseCase;
+  final PreparePickupUseCase _preparePickupUseCase;
 
   PlansBloc(
     this._getCurrentSubscriptionOverviewUseCase,
     this._getTimelineUseCase,
-  ) : super(PlansInitial()) {
+    this._preparePickupUseCase,
+  ) : super(const PlansInitial()) {
     on<FetchCurrentSubscriptionOverviewEvent>(
       _onFetchCurrentSubscriptionOverview,
     );
     on<FetchTimelineAndOpenPlannerEvent>(_onFetchTimelineAndOpenPlanner);
+    on<PreparePickupEvent>(_onPreparePickup);
   }
 
   void _onFetchCurrentSubscriptionOverview(
@@ -65,8 +70,34 @@ class PlansBloc extends Bloc<PlansEvent, PlansState> {
             ),
           );
         } else {
-          emit(PlansError("No available days for meal planning", data: currentData));
+          emit(
+            PlansError(
+              "No available days for meal planning",
+              data: currentData,
+            ),
+          );
         }
+      },
+    );
+  }
+
+  void _onPreparePickup(
+    PreparePickupEvent event,
+    Emitter<PlansState> emit,
+  ) async {
+    final currentData = state.data;
+    emit(PreparePickupLoading(data: currentData));
+
+    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    final result = await _preparePickupUseCase.execute(
+      PreparePickupUseCaseInput(event.subscriptionId, today),
+    );
+
+    result.fold(
+      (failure) => emit(PlansError(failure.message, data: currentData)),
+      (data) {
+        emit(PreparePickupSuccess(data: currentData));
+        add(FetchCurrentSubscriptionOverviewEvent());
       },
     );
   }

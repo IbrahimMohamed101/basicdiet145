@@ -16,3 +16,11 @@ class FetchTimelineAndOpenPlannerEvent extends PlansEvent {
   @override
   List<Object> get props => [subscriptionId];
 }
+
+class PreparePickupEvent extends PlansEvent {
+  final String subscriptionId;
+  const PreparePickupEvent(this.subscriptionId);
+
+  @override
+  List<Object> get props => [subscriptionId];
+}

@@ -99,7 +99,8 @@ class PlansScreen extends StatelessWidget {
                               Gap(AppSize.s24.h),
                             ],
                           ),
-                          if (state is OpenPlannerLoading)
+                          if (state is OpenPlannerLoading ||
+                              state is PreparePickupLoading)
                             Positioned.fill(
                               child: Container(
                                 color: Colors.white.withValues(alpha: 0.5),
@@ -594,7 +595,7 @@ class PlansScreen extends StatelessWidget {
         Gap(AppSize.s16.h),
         switch (status) {
           'disabled' => _buildOrderStatusCard(context, data),
-          'available' => _buildPreparationCard(data),
+          'available' => _buildPreparationCard(context, data),
           'in_progress' => _buildInProgressCard(data),
           'completed' => _buildCompletedCard(data),
           _ => const SizedBox.shrink(),
@@ -769,7 +770,10 @@ class PlansScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildPreparationCard(CurrentSubscriptionOverviewDataModel data) {
+  Widget _buildPreparationCard(
+    BuildContext context,
+    CurrentSubscriptionOverviewDataModel data,
+  ) {
     final prep = data.pickupPreparation!;
     final buttonLabel = prep.buttonLabel.isNotEmpty
         ? prep.buttonLabel
@@ -829,7 +833,9 @@ class PlansScreen extends StatelessWidget {
             width: double.infinity,
             height: 56.h,
             child: ElevatedButton(
-              onPressed: () {},
+              onPressed: () {
+                context.read<PlansBloc>().add(PreparePickupEvent(data.id));
+              },
               style: ElevatedButton.styleFrom(
                 backgroundColor: ColorManager.greenPrimary,
                 shape: RoundedRectangleBorder(
@@ -856,17 +862,103 @@ class PlansScreen extends StatelessWidget {
       width: double.infinity,
       padding: EdgeInsets.all(24.w),
       decoration: BoxDecoration(
-        color: ColorManager.whiteColor,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(24.r),
         border: Border.all(color: ColorManager.formFieldsBorderColor, width: 1),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const CircularProgressIndicator(color: ColorManager.greenPrimary),
-          Gap(16.h),
-          Text(
-            Strings.loading.tr(),
-            style: getBoldTextStyle(color: ColorManager.black101828),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "Kitchen is preparing your meals",
+                      style: getBoldTextStyle(
+                        color: ColorManager.black101828,
+                        fontSize: FontSizeManager.s20.sp,
+                      ),
+                    ),
+                    Gap(8.h),
+                    Text(
+                      "Chef is hand-picking ingredients for your order.",
+                      style: getRegularTextStyle(
+                        color: ColorManager.grey6A7282,
+                        fontSize: FontSizeManager.s16.sp,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: EdgeInsets.all(12.w),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFEAD1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.soup_kitchen_outlined,
+                  color: const Color(0xFFB45309),
+                  size: 28.sp,
+                ),
+              ),
+            ],
+          ),
+          Gap(24.h),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(100.r),
+            child: LinearProgressIndicator(
+              value: 0.6,
+              minHeight: 8.h,
+              backgroundColor: ColorManager.greyF3F4F6,
+              valueColor: const AlwaysStoppedAnimation<Color>(
+                ColorManager.greenDark,
+              ),
+            ),
+          ),
+          Gap(24.h),
+          Container(
+            width: double.infinity,
+            height: 56.h,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF068453), Color(0xFF2E9C75)],
+              ),
+              borderRadius: BorderRadius.circular(100.r),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                SizedBox(
+                  width: 20.w,
+                  height: 20.w,
+                  child: const CircularProgressIndicator(
+                    color: Colors.white,
+                    strokeWidth: 2,
+                  ),
+                ),
+                Gap(12.w),
+                Text(
+                  "Preparing...",
+                  style: getBoldTextStyle(
+                    color: Colors.white,
+                    fontSize: FontSizeManager.s18.sp,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),

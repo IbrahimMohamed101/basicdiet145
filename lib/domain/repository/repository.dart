@@ -19,6 +19,8 @@ import 'package:basic_diet/data/response/skip_days_response.dart';
 import 'package:basic_diet/domain/model/timeline_model.dart';
 import 'package:basic_diet/domain/model/categories_with_meals_model.dart';
 
+import 'package:basic_diet/domain/model/pickup_prepare_model.dart';
+
 abstract class Repository {
   Future<Either<Failure, BaseModel>> login(String phone);
   Future<Either<Failure, AuthenticationModel>> verifyOtp(
@@ -41,7 +43,8 @@ abstract class Repository {
   Future<Either<Failure, SubscriptionCheckoutModel>> checkoutSubscription(
     SubscriptionCheckoutRequestModel request,
   );
-  Future<Either<Failure, CurrentSubscriptionOverviewModel>> getCurrentSubscriptionOverview();
+  Future<Either<Failure, CurrentSubscriptionOverviewModel>>
+  getCurrentSubscriptionOverview();
   Future<Either<Failure, FreezeSubscriptionModel>> freezeSubscription(
     String id,
     FreezeSubscriptionRequestModel request,
@@ -57,5 +60,12 @@ abstract class Repository {
   Future<Either<Failure, TimelineModel>> getSubscriptionTimeline(String id);
   Future<Either<Failure, CategoriesWithMealsModel>> getCategoriesWithMeals();
   Future<Either<Failure, CheckoutDraftModel>> getCheckoutDraft(String id);
-  Future<Either<Failure, BaseModel>> bulkSelections(String id, BulkSelectionsRequest request);
+  Future<Either<Failure, BaseModel>> bulkSelections(
+    String id,
+    BulkSelectionsRequest request,
+  );
+  Future<Either<Failure, PickupPrepareModel>> preparePickup(
+    String id,
+    String date,
+  );
 }

@@ -56,6 +56,16 @@ class OpenPlannerLoading extends PlansState {
       : super(data: data);
 }
 
+class PreparePickupLoading extends PlansState {
+  const PreparePickupLoading({CurrentSubscriptionOverviewModel? data})
+      : super(data: data);
+}
+
+class PreparePickupSuccess extends PlansState {
+  const PreparePickupSuccess({CurrentSubscriptionOverviewModel? data})
+      : super(data: data);
+}
+
 class PlansError extends PlansState {
   final String message;
 

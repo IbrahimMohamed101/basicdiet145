@@ -5,6 +5,7 @@ import 'package:basic_diet/data/network/dio_factory.dart';
 import 'package:basic_diet/data/repository/repository.dart';
 import 'package:basic_diet/domain/repository/repository.dart';
 import 'package:basic_diet/domain/usecase/login_usecase.dart';
+import 'package:basic_diet/domain/usecase/prepare_pickup_usecase.dart';
 import 'package:basic_diet/domain/usecase/verify_otp_usecase.dart';
 import 'package:basic_diet/domain/usecase/checkout_subscription_usecase.dart';
 import 'package:basic_diet/domain/usecase/get_plans_usecase.dart';
@@ -189,11 +190,18 @@ void initPlansModule() {
     );
   }
 
+  if (!GetIt.I.isRegistered<PreparePickupUseCase>()) {
+    instance.registerFactory<PreparePickupUseCase>(
+      () => PreparePickupUseCase(instance<Repository>()),
+    );
+  }
+
   if (!GetIt.I.isRegistered<PlansBloc>()) {
     instance.registerFactory<PlansBloc>(
       () => PlansBloc(
         instance<GetCurrentSubscriptionOverviewUseCase>(),
         instance<GetTimelineUseCase>(),
+        instance<PreparePickupUseCase>(),
       ),
     );
   }
