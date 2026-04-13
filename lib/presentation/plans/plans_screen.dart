@@ -196,7 +196,9 @@ class PlansScreen extends StatelessWidget {
               borderRadius: BorderRadius.circular(AppSize.s20.r),
             ),
             child: Text(
-              data.statusLabel.isNotEmpty ? data.statusLabel : Strings.active.tr(),
+              data.statusLabel.isNotEmpty
+                  ? data.statusLabel
+                  : Strings.active.tr(),
               style: getBoldTextStyle(
                 color: ColorManager.greenPrimary,
                 fontSize: FontSizeManager.s12.sp,
@@ -657,8 +659,8 @@ class PlansScreen extends StatelessWidget {
           ),
           Gap(12.h),
           Text(
-            data.pickupPreparation?.reason.isNotEmpty == true
-                ? data.pickupPreparation!.reason
+            data.pickupPreparation?.message.isNotEmpty == true
+                ? data.pickupPreparation!.message
                 : Strings.modificationPeriodEnded.tr(),
             style: getRegularTextStyle(
               color: ColorManager.grey6A7282,
