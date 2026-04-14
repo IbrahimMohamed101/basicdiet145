@@ -145,7 +145,7 @@ class _ProceedButton extends StatelessWidget {
                 : null,
             style: ElevatedButton.styleFrom(
               backgroundColor: isEnabled
-                  ? ColorManager.greenPrimary
+                  ? ColorManager.greenFA76F
                   : ColorManager.greenPrimary.withValues(alpha: 0.5),
               minimumSize: Size(double.infinity, AppSize.s55.h),
               shape: RoundedRectangleBorder(

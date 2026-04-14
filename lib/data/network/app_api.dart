@@ -20,6 +20,7 @@ import 'package:basic_diet/data/response/skip_days_response.dart';
 import 'package:basic_diet/data/response/timeline_response.dart';
 import 'package:basic_diet/data/response/categories_with_meals_response.dart';
 import 'package:basic_diet/data/response/pickup_prepare_response.dart';
+import 'package:basic_diet/data/response/pickup_status_response.dart';
 import 'package:retrofit/retrofit.dart';
 import 'package:dio/dio.dart';
 part 'app_api.g.dart';
@@ -107,6 +108,12 @@ abstract class AppServiceClient {
 
   @POST("/api/subscriptions/{id}/days/{date}/pickup/prepare")
   Future<PickupPrepareResponse> preparePickup(
+    @Path("id") String id,
+    @Path("date") String date,
+  );
+
+  @GET("/api/subscriptions/{id}/days/{date}/pickup/status")
+  Future<PickupStatusResponse> getPickupStatus(
     @Path("id") String id,
     @Path("date") String date,
   );

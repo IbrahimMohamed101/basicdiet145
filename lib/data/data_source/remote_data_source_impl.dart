@@ -22,6 +22,7 @@ import 'package:basic_diet/data/response/skip_days_response.dart';
 import 'package:basic_diet/data/response/timeline_response.dart';
 
 import 'package:basic_diet/data/response/pickup_prepare_response.dart';
+import 'package:basic_diet/data/response/pickup_status_response.dart';
 
 class RemoteDataSourceImpl implements RemoteDataSource {
   final AppServiceClient _appServiceClient;
@@ -135,5 +136,10 @@ class RemoteDataSourceImpl implements RemoteDataSource {
   @override
   Future<PickupPrepareResponse> preparePickup(String id, String date) {
     return _appServiceClient.preparePickup(id, date);
+  }
+
+  @override
+  Future<PickupStatusResponse> getPickupStatus(String id, String date) {
+    return _appServiceClient.getPickupStatus(id, date);
   }
 }

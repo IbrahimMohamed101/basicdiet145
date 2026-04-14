@@ -40,11 +40,18 @@ class MealOptionCard extends StatelessWidget {
           color: isSelected
               ? ColorManager.greenPrimary.withValues(alpha: 0.05)
               : ColorManager.whiteColor,
-          borderRadius: BorderRadius.circular(AppSize.s12.r),
+          borderRadius: BorderRadius.circular(AppSize.s16.r),
           border: Border.all(
             color: isSelected ? ColorManager.greenPrimary : _borderColor,
             width: isSelected ? 1.5 : 1.0,
           ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -61,16 +68,16 @@ class MealOptionCard extends StatelessWidget {
               amount: option.priceSar.toStringAsFixed(0),
               isStrikethrough: false,
               color: ColorManager.greenPrimary,
-              amountFontSize: FontSizeManager.s18.sp,
-              labelFontSize: FontSizeManager.s10.sp,
+              amountFontSize: FontSizeManager.s22.sp,
+              labelFontSize: FontSizeManager.s12.sp,
             ),
             Gap(AppSize.s4.h),
             _PriceRow(
               amount: option.compareAtSar.toStringAsFixed(0),
               isStrikethrough: true,
               color: ColorManager.grayColor.withValues(alpha: 0.6),
-              amountFontSize: FontSizeManager.s12.sp,
-              labelFontSize: FontSizeManager.s10.sp,
+              amountFontSize: FontSizeManager.s16.sp,
+              labelFontSize: FontSizeManager.s12.sp,
             ),
           ],
         ),

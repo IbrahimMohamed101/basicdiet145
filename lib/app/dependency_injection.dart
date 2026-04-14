@@ -38,7 +38,9 @@ import 'package:basic_diet/domain/usecase/save_meal_planner_changes_usecase.dart
 import 'package:basic_diet/presentation/plans/timeline/bloc/timeline_bloc.dart';
 import 'package:basic_diet/presentation/plans/timeline/meal_planner/bloc/meal_planner_bloc.dart';
 import 'package:basic_diet/domain/usecase/get_checkout_draft_usecase.dart';
+import 'package:basic_diet/domain/usecase/get_pickup_status_usecase.dart';
 import 'package:basic_diet/presentation/main/home/payment-success/payment_validation_cubit.dart';
+import 'package:basic_diet/presentation/plans/pickup_status/pickup_status_cubit.dart';
 import 'package:get_it/get_it.dart';
 
 final instance = GetIt.instance; // Singleton instance of GetIt
@@ -203,6 +205,20 @@ void initPlansModule() {
         instance<GetTimelineUseCase>(),
         instance<PreparePickupUseCase>(),
       ),
+    );
+  }
+}
+
+void initPickupStatusModule() {
+  if (!GetIt.I.isRegistered<GetPickupStatusUseCase>()) {
+    instance.registerFactory<GetPickupStatusUseCase>(
+      () => GetPickupStatusUseCase(instance<Repository>()),
+    );
+  }
+
+  if (!GetIt.I.isRegistered<PickupStatusCubit>()) {
+    instance.registerFactory<PickupStatusCubit>(
+      () => PickupStatusCubit(instance<GetPickupStatusUseCase>()),
     );
   }
 }

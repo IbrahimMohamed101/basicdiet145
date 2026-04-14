@@ -14,9 +14,11 @@ import 'package:basic_diet/presentation/plans/bloc/plans_bloc.dart';
 import 'package:basic_diet/presentation/plans/bloc/plans_event.dart';
 import 'package:basic_diet/presentation/plans/bloc/plans_state.dart';
 import 'package:basic_diet/domain/model/current_subscription_overview_model.dart';
+import 'package:basic_diet/domain/model/pickup_status_model.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:gap/gap.dart';
 import 'package:basic_diet/presentation/plans/manage_subscription/manage_subscription_screen.dart';
+import 'package:basic_diet/presentation/plans/pickup_status/pickup_status_cubit.dart';
 import 'package:basic_diet/presentation/resources/assets_manager.dart';
 import 'package:go_router/go_router.dart';
 
@@ -590,13 +592,40 @@ class PlansScreen extends StatelessWidget {
   ) {
     final status = data.pickupPreparation!.flowStatus;
 
+    // For in_progress, use PickupStatusCubit for polling
+    if (status == 'in_progress') {
+      return Column(
+        children: [
+          Gap(AppSize.s16.h),
+          BlocProvider(
+            create: (_) {
+              initPickupStatusModule();
+              return instance<PickupStatusCubit>()
+                ..startPolling(data.id);
+            },
+            child: BlocBuilder<PickupStatusCubit, PickupStatusState>(
+              builder: (context, pickupState) {
+                if (pickupState is PickupStatusLoaded) {
+                  final ps = pickupState.data;
+                  if (ps.status == 'ready_for_pickup' ||
+                      ps.status == 'fulfilled') {
+                    return _buildReadyForPickupCard(ps);
+                  }
+                }
+                return _buildInProgressCard(data);
+              },
+            ),
+          ),
+        ],
+      );
+    }
+
     return Column(
       children: [
         Gap(AppSize.s16.h),
         switch (status) {
           'disabled' => _buildOrderStatusCard(context, data),
           'available' => _buildPreparationCard(context, data),
-          'in_progress' => _buildInProgressCard(data),
           'completed' => _buildCompletedCard(data),
           _ => const SizedBox.shrink(),
         },
@@ -960,6 +989,122 @@ class PlansScreen extends StatelessWidget {
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReadyForPickupCard(PickupStatusDataModel data) {
+    final isCompleted = data.isCompleted;
+    final code = data.pickupCode ?? '';
+
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.symmetric(horizontal: 28.w, vertical: 24.h),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF068453), Color(0xFF10B981)],
+        ),
+        borderRadius: BorderRadius.circular(24.r),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF068453).withValues(alpha: 0.35),
+            blurRadius: 24,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'PICKUP CODE',
+                      style: getRegularTextStyle(
+                        color: Colors.white.withValues(alpha: 0.75),
+                        fontSize: FontSizeManager.s12.sp,
+                      ),
+                    ),
+                    Gap(4.h),
+                    Text(
+                      code,
+                      style: getBoldTextStyle(
+                        color: Colors.white,
+                        fontSize: 48.sp,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Gap(16.w),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    isCompleted ? 'Order picked up' : 'Your order',
+                    style: getBoldTextStyle(
+                      color: Colors.white,
+                      fontSize: FontSizeManager.s18.sp,
+                    ),
+                  ),
+                  Row(
+                    children: [
+                      Text(
+                        isCompleted ? 'successfully' : 'is ready',
+                        style: getBoldTextStyle(
+                          color: Colors.white,
+                          fontSize: FontSizeManager.s18.sp,
+                        ),
+                      ),
+                      Gap(6.w),
+                      Container(
+                        padding: EdgeInsets.all(2.w),
+                        decoration: const BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.check_circle,
+                          color: const Color(0xFF068453),
+                          size: 20.sp,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ],
+          ),
+          if (isCompleted) ...[
+            Gap(16.h),
+            Divider(color: Colors.white.withValues(alpha: 0.25)),
+            Gap(8.h),
+            Row(
+              children: [
+                Icon(
+                  Icons.schedule,
+                  color: Colors.white.withValues(alpha: 0.75),
+                  size: 16.sp,
+                ),
+                Gap(6.w),
+                Text(
+                  data.statusLabel,
+                  style: getRegularTextStyle(
+                    color: Colors.white.withValues(alpha: 0.85),
+                    fontSize: FontSizeManager.s14.sp,
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );

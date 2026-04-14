@@ -48,12 +48,13 @@ class PlanAccordionItem extends StatelessWidget {
                 : _borderColorCollapsed,
           ),
           boxShadow: [
-            if (!isExpanded)
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.02),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
+            BoxShadow(
+              color: isExpanded
+                  ? Colors.black.withValues(alpha: 0.08)
+                  : Colors.black.withValues(alpha: 0.04),
+              blurRadius: 12,
+              offset: const Offset(0, 6),
+            ),
           ],
         ),
         child: Column(
@@ -178,8 +179,8 @@ class _PlanExpandedContent extends StatelessWidget {
                 child: Text(
                   Strings.perfectForTrying.tr(),
                   style: getRegularTextStyle(
-                    fontSize: FontSizeManager.s12.sp,
-                    color: ColorManager.black101828.withValues(alpha: 0.8),
+                    fontSize: FontSizeManager.s14.sp,
+                    color: ColorManager.grey364153,
                   ).copyWith(height: 1.5),
                 ),
               ),
@@ -243,20 +244,31 @@ class _GramSizeSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            _RestaurantIconBadge(),
-            Gap(AppSize.s10.w),
-            Text(
-              '${gramOption.grams}g ${Strings.size.tr()}',
-              style: getBoldTextStyle(
-                color: ColorManager.black101828,
-                fontSize: FontSizeManager.s14.sp,
+        Container(
+          padding: EdgeInsets.symmetric(
+            horizontal: AppPadding.p12.w,
+            vertical: AppPadding.p8.h,
+          ),
+          decoration: BoxDecoration(
+            color: ColorManager.greenPrimary.withValues(alpha: 0.05),
+            borderRadius: BorderRadius.circular(AppSize.s8.r),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _RestaurantIconBadge(),
+              Gap(AppSize.s10.w),
+              Text(
+                '${gramOption.grams}g ${Strings.size.tr()}',
+                style: getBoldTextStyle(
+                  color: ColorManager.greenPrimary,
+                  fontSize: FontSizeManager.s16.sp,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
-        Gap(AppSize.s12.h),
+        Gap(AppSize.s16.h),
         _OptionsGrid(
           plan: plan,
           gramOption: gramOption,
@@ -267,6 +279,14 @@ class _GramSizeSection extends StatelessWidget {
           onMealOptionTap: onMealOptionTap,
         ),
         Gap(AppSize.s24.h),
+        if (plan.gramsOptions.last != gramOption)
+          Padding(
+            padding: EdgeInsets.only(bottom: AppSize.s24.h),
+            child: Divider(
+              color: ColorManager.formFieldsBorderColor.withValues(alpha: 0.5),
+              thickness: 1,
+            ),
+          ),
       ],
     );
   }

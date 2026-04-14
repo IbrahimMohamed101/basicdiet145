@@ -27,9 +27,15 @@ class _DeliverySettingsScreenState extends State<DeliverySettingsScreen> {
   String _selectedTimeSlot = "8:00 AM - 10:00 AM";
 
   // Controllers for initial values (based on mock image)
-  final TextEditingController _streetController = TextEditingController(text: "123 Main Street, Apt 4B");
-  final TextEditingController _areaController = TextEditingController(text: "Dubai Marina");
-  final TextEditingController _cityController = TextEditingController(text: "Dubai");
+  final TextEditingController _streetController = TextEditingController(
+    text: "123 Main Street, Apt 4B",
+  );
+  final TextEditingController _areaController = TextEditingController(
+    text: "Dubai Marina",
+  );
+  final TextEditingController _cityController = TextEditingController(
+    text: "Dubai",
+  );
   final TextEditingController _instructionsController = TextEditingController();
 
   @override
@@ -100,7 +106,11 @@ class _DeliverySettingsScreenState extends State<DeliverySettingsScreen> {
         children: [
           Row(
             children: [
-              Icon(Icons.location_on_outlined, color: ColorManager.greenPrimary, size: AppSize.s20),
+              Icon(
+                Icons.location_on_outlined,
+                color: ColorManager.greenPrimary,
+                size: AppSize.s20,
+              ),
               Gap(AppSize.s8.w),
               Text(
                 Strings.deliveryAddress.tr(),
@@ -185,7 +195,11 @@ class _DeliverySettingsScreenState extends State<DeliverySettingsScreen> {
     );
   }
 
-  Widget _buildTextField(TextEditingController controller, {int maxLines = 1, String? hint}) {
+  Widget _buildTextField(
+    TextEditingController controller, {
+    int maxLines = 1,
+    String? hint,
+  }) {
     return TextFormField(
       controller: controller,
       maxLines: maxLines,
@@ -201,14 +215,21 @@ class _DeliverySettingsScreenState extends State<DeliverySettingsScreen> {
         ),
         filled: true,
         fillColor: ColorManager.greyF3F4F6,
-        contentPadding: const EdgeInsets.symmetric(horizontal: AppPadding.p16, vertical: AppPadding.p12),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: AppPadding.p16,
+          vertical: AppPadding.p12,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppSize.s8),
-          borderSide: const BorderSide(color: ColorManager.formFieldsBorderColor),
+          borderSide: const BorderSide(
+            color: ColorManager.formFieldsBorderColor,
+          ),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppSize.s8),
-          borderSide: const BorderSide(color: ColorManager.formFieldsBorderColor),
+          borderSide: const BorderSide(
+            color: ColorManager.formFieldsBorderColor,
+          ),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppSize.s8),
@@ -231,7 +252,11 @@ class _DeliverySettingsScreenState extends State<DeliverySettingsScreen> {
         children: [
           Row(
             children: [
-              Icon(Icons.access_time_outlined, color: ColorManager.greenPrimary, size: AppSize.s20),
+              Icon(
+                Icons.access_time_outlined,
+                color: ColorManager.greenPrimary,
+                size: AppSize.s20,
+              ),
               Gap(AppSize.s8.w),
               Text(
                 Strings.deliveryTimePreference.tr(),
@@ -264,9 +289,13 @@ class _DeliverySettingsScreenState extends State<DeliverySettingsScreen> {
           width: double.infinity,
           padding: const EdgeInsets.all(AppPadding.p16),
           decoration: BoxDecoration(
-            color: isSelected ? ColorManager.greenPrimary.withValues(alpha: 0.05) : Colors.white,
+            color: isSelected
+                ? ColorManager.greenPrimary.withValues(alpha: 0.05)
+                : Colors.white,
             border: Border.all(
-              color: isSelected ? ColorManager.greenPrimary : ColorManager.formFieldsBorderColor,
+              color: isSelected
+                  ? ColorManager.greenPrimary
+                  : ColorManager.formFieldsBorderColor,
             ),
             borderRadius: BorderRadius.circular(AppSize.s12),
           ),
