@@ -13,13 +13,14 @@ SubscriptionQuoteRequest _$SubscriptionQuoteRequestFromJson(
   grams: (json['grams'] as num).toInt(),
   mealsPerDay: (json['mealsPerDay'] as num).toInt(),
   startDate: json['startDate'] as String,
-  premiumItems: (json['premiumItems'] as List<dynamic>)
-      .map(
-        (e) => SubscriptionQuotePremiumItemRequest.fromJson(
-          e as Map<String, dynamic>,
-        ),
-      )
-      .toList(),
+  premiumItems:
+      (json['premiumItems'] as List<dynamic>)
+          .map(
+            (e) => SubscriptionQuotePremiumItemRequest.fromJson(
+              e as Map<String, dynamic>,
+            ),
+          )
+          .toList(),
   addons: (json['addons'] as List<dynamic>).map((e) => e as String).toList(),
   delivery: SubscriptionQuoteDeliveryRequest.fromJson(
     json['delivery'] as Map<String, dynamic>,
@@ -58,11 +59,12 @@ SubscriptionQuoteDeliveryRequest _$SubscriptionQuoteDeliveryRequestFromJson(
   type: json['type'] as String,
   zoneId: json['zoneId'] as String?,
   slotId: json['slotId'] as String?,
-  address: json['address'] == null
-      ? null
-      : SubscriptionQuoteAddressRequest.fromJson(
-          json['address'] as Map<String, dynamic>,
-        ),
+  address:
+      json['address'] == null
+          ? null
+          : SubscriptionQuoteAddressRequest.fromJson(
+            json['address'] as Map<String, dynamic>,
+          ),
 );
 
 Map<String, dynamic> _$SubscriptionQuoteDeliveryRequestToJson(

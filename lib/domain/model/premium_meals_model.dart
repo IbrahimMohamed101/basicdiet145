@@ -15,6 +15,9 @@ class PremiumMealModel {
   int priceHalala;
   double priceSar;
   String priceLabel;
+  int proteinGrams;
+  int carbGrams;
+  int fatGrams;
   PremiumMealUiModel ui;
 
   PremiumMealModel({
@@ -28,6 +31,9 @@ class PremiumMealModel {
     required this.priceHalala,
     required this.priceSar,
     required this.priceLabel,
+    required this.proteinGrams,
+    required this.carbGrams,
+    required this.fatGrams,
     required this.ui,
   });
 }

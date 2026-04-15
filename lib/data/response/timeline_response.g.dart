@@ -60,8 +60,8 @@ TimelineResponse _$TimelineResponseFromJson(Map<String, dynamic> json) =>
         json['data'] == null
             ? null
             : TimelineDataResponse.fromJson(
-                json['data'] as Map<String, dynamic>,
-              ),
+              json['data'] as Map<String, dynamic>,
+            ),
       )
       ..status = json['status']
       ..message = json['message'] as String?;

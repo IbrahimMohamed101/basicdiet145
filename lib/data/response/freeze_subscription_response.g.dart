@@ -36,8 +36,8 @@ FreezeSubscriptionDataResponse _$FreezeSubscriptionDataResponseFromJson(
   json['freezePolicy'] == null
       ? null
       : FreezePolicyResponse.fromJson(
-          json['freezePolicy'] as Map<String, dynamic>,
-        ),
+        json['freezePolicy'] as Map<String, dynamic>,
+      ),
 );
 
 Map<String, dynamic> _$FreezeSubscriptionDataResponseToJson(
@@ -59,8 +59,8 @@ FreezeSubscriptionResponse _$FreezeSubscriptionResponseFromJson(
         json['data'] == null
             ? null
             : FreezeSubscriptionDataResponse.fromJson(
-                json['data'] as Map<String, dynamic>,
-              ),
+              json['data'] as Map<String, dynamic>,
+            ),
       )
       ..status = json['status']
       ..message = json['message'] as String?;

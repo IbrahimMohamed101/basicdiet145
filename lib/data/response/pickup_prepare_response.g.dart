@@ -39,8 +39,8 @@ PickupPrepareResponse _$PickupPrepareResponseFromJson(
   json['data'] == null
       ? null
       : PickupPrepareDataResponse.fromJson(
-          json['data'] as Map<String, dynamic>,
-        ),
+        json['data'] as Map<String, dynamic>,
+      ),
 );
 
 Map<String, dynamic> _$PickupPrepareResponseToJson(

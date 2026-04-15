@@ -8,9 +8,7 @@ class PremiumMealsBloc extends Bloc<PremiumMealsEvent, PremiumMealsState> {
 
   PremiumMealsBloc(this._getPremiumMealsUseCase)
     : super(const PremiumMealsInitial()) {
-    // featch premium meals
     on<GetPremiumMealsEvent>(_onGetPremiumMeals);
-    // Update meal quantity
     on<UpdateMealCounterEvent>(_onUpdateMealCounter);
   }
 
@@ -20,17 +18,18 @@ class PremiumMealsBloc extends Bloc<PremiumMealsEvent, PremiumMealsState> {
   ) async {
     emit(const PremiumMealsLoading());
     final result = await _getPremiumMealsUseCase.execute(null);
-    result.fold((failure) => emit(PremiumMealsError(failure.message)), (
-      premiumMealsModel,
-    ) {
-      final initialCounters = <String, int>{};
-      for (var meal in premiumMealsModel.meals) {
-        initialCounters[meal.id] = 0;
-      }
-      emit(
-        PremiumMealsSuccess(premiumMealsModel, mealCounters: initialCounters),
-      );
-    });
+    if (isClosed) return;
+    result.fold(
+      (failure) => emit(PremiumMealsError(failure.message)),
+      (premiumMealsModel) {
+        final initialCounters = <String, int>{
+          for (final meal in premiumMealsModel.meals) meal.id: 0,
+        };
+        emit(
+          PremiumMealsSuccess(premiumMealsModel, mealCounters: initialCounters),
+        );
+      },
+    );
   }
 
   void _onUpdateMealCounter(
@@ -39,10 +38,8 @@ class PremiumMealsBloc extends Bloc<PremiumMealsEvent, PremiumMealsState> {
   ) {
     if (state is PremiumMealsSuccess) {
       final currentState = state as PremiumMealsSuccess;
-      // this data structure is used to store the quantity of each meal
       final newCounters = Map<String, int>.from(currentState.mealCounters);
-      newCounters[event.id] = event.quantity;
-      // this will update the meal counter
+      newCounters[event.id] = event.quantity < 0 ? 0 : event.quantity;
       emit(currentState.copyWith(mealCounters: newCounters));
     }
   }

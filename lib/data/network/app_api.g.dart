@@ -170,7 +170,7 @@ class _AppServiceClient implements AppServiceClient {
       Options(method: 'GET', headers: _headers, extra: _extra)
           .compose(
             _dio.options,
-            '/api/premium-meals',
+            '/api/builder/premium-meals',
             queryParameters: queryParameters,
             data: _data,
           )

@@ -9,9 +9,10 @@ part of 'plans_response.dart';
 PlansResponse _$PlansResponseFromJson(Map<String, dynamic> json) =>
     PlansResponse(
       status: json['status'],
-      data: (json['data'] as List<dynamic>?)
-          ?.map((e) => PlanResponse.fromJson(e as Map<String, dynamic>))
-          .toList(),
+      data:
+          (json['data'] as List<dynamic>?)
+              ?.map((e) => PlanResponse.fromJson(e as Map<String, dynamic>))
+              .toList(),
     );
 
 Map<String, dynamic> _$PlansResponseToJson(PlansResponse instance) =>
@@ -23,9 +24,10 @@ PlanResponse _$PlanResponseFromJson(Map<String, dynamic> json) => PlanResponse(
   daysCount: (json['daysCount'] as num?)?.toInt(),
   currency: json['currency'] as String?,
   isActive: json['isActive'] as bool?,
-  gramsOptions: (json['gramsOptions'] as List<dynamic>?)
-      ?.map((e) => GramOptionResponse.fromJson(e as Map<String, dynamic>))
-      .toList(),
+  gramsOptions:
+      (json['gramsOptions'] as List<dynamic>?)
+          ?.map((e) => GramOptionResponse.fromJson(e as Map<String, dynamic>))
+          .toList(),
 );
 
 Map<String, dynamic> _$PlanResponseToJson(PlanResponse instance) =>
@@ -41,9 +43,12 @@ Map<String, dynamic> _$PlanResponseToJson(PlanResponse instance) =>
 GramOptionResponse _$GramOptionResponseFromJson(Map<String, dynamic> json) =>
     GramOptionResponse(
       grams: (json['grams'] as num?)?.toInt(),
-      mealsOptions: (json['mealsOptions'] as List<dynamic>?)
-          ?.map((e) => MealOptionResponse.fromJson(e as Map<String, dynamic>))
-          .toList(),
+      mealsOptions:
+          (json['mealsOptions'] as List<dynamic>?)
+              ?.map(
+                (e) => MealOptionResponse.fromJson(e as Map<String, dynamic>),
+              )
+              .toList(),
     );
 
 Map<String, dynamic> _$GramOptionResponseToJson(GramOptionResponse instance) =>

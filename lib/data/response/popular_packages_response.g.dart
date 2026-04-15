@@ -10,9 +10,12 @@ PopularPackagesResponse _$PopularPackagesResponseFromJson(
   Map<String, dynamic> json,
 ) => PopularPackagesResponse(
   status: json['status'],
-  data: (json['data'] as List<dynamic>?)
-      ?.map((e) => PopularPackageResponse.fromJson(e as Map<String, dynamic>))
-      .toList(),
+  data:
+      (json['data'] as List<dynamic>?)
+          ?.map(
+            (e) => PopularPackageResponse.fromJson(e as Map<String, dynamic>),
+          )
+          .toList(),
 );
 
 Map<String, dynamic> _$PopularPackagesResponseToJson(

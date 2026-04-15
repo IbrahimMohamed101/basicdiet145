@@ -9,10 +9,11 @@ part of 'premium_meals_response.dart';
 PremiumMealsResponse _$PremiumMealsResponseFromJson(
   Map<String, dynamic> json,
 ) => PremiumMealsResponse(
-  status: json['status'],
-  data: (json['data'] as List<dynamic>?)
-      ?.map((e) => PremiumMealResponse.fromJson(e as Map<String, dynamic>))
-      .toList(),
+  status: json['status'] as bool?,
+  data:
+      (json['data'] as List<dynamic>?)
+          ?.map((e) => PremiumMealResponse.fromJson(e as Map<String, dynamic>))
+          .toList(),
 );
 
 Map<String, dynamic> _$PremiumMealsResponseToJson(
@@ -31,9 +32,15 @@ PremiumMealResponse _$PremiumMealResponseFromJson(Map<String, dynamic> json) =>
       priceHalala: (json['priceHalala'] as num?)?.toInt(),
       priceSar: (json['priceSar'] as num?)?.toDouble(),
       priceLabel: json['priceLabel'] as String?,
-      ui: json['ui'] == null
-          ? null
-          : PremiumMealUiResponse.fromJson(json['ui'] as Map<String, dynamic>),
+      proteinGrams: (json['proteinGrams'] as num?)?.toInt(),
+      carbGrams: (json['carbGrams'] as num?)?.toInt(),
+      fatGrams: (json['fatGrams'] as num?)?.toInt(),
+      ui:
+          json['ui'] == null
+              ? null
+              : PremiumMealUiResponse.fromJson(
+                json['ui'] as Map<String, dynamic>,
+              ),
     );
 
 Map<String, dynamic> _$PremiumMealResponseToJson(
@@ -49,6 +56,9 @@ Map<String, dynamic> _$PremiumMealResponseToJson(
   'priceHalala': instance.priceHalala,
   'priceSar': instance.priceSar,
   'priceLabel': instance.priceLabel,
+  'proteinGrams': instance.proteinGrams,
+  'carbGrams': instance.carbGrams,
+  'fatGrams': instance.fatGrams,
   'ui': instance.ui,
 };
 

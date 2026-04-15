@@ -11,11 +11,12 @@ SubscriptionCheckoutResponse _$SubscriptionCheckoutResponseFromJson(
 ) => SubscriptionCheckoutResponse(
   status: json['status'],
   message: json['message'] as String?,
-  data: json['data'] == null
-      ? null
-      : SubscriptionCheckoutDataResponse.fromJson(
-          json['data'] as Map<String, dynamic>,
-        ),
+  data:
+      json['data'] == null
+          ? null
+          : SubscriptionCheckoutDataResponse.fromJson(
+            json['data'] as Map<String, dynamic>,
+          ),
 );
 
 Map<String, dynamic> _$SubscriptionCheckoutResponseToJson(
@@ -33,11 +34,12 @@ SubscriptionCheckoutDataResponse _$SubscriptionCheckoutDataResponseFromJson(
   draftId: json['draftId'] as String?,
   paymentId: json['paymentId'] as String?,
   paymentUrl: json['payment_url'] as String?,
-  totals: json['totals'] == null
-      ? null
-      : SubscriptionCheckoutTotalsResponse.fromJson(
-          json['totals'] as Map<String, dynamic>,
-        ),
+  totals:
+      json['totals'] == null
+          ? null
+          : SubscriptionCheckoutTotalsResponse.fromJson(
+            json['totals'] as Map<String, dynamic>,
+          ),
   reused: json['reused'] as bool?,
 );
 

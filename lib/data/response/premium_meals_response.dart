@@ -5,7 +5,7 @@ part 'premium_meals_response.g.dart';
 @JsonSerializable()
 class PremiumMealsResponse {
   @JsonKey(name: "status")
-  dynamic status;
+  bool? status;
   @JsonKey(name: "data")
   List<PremiumMealResponse>? data;
 
@@ -39,6 +39,12 @@ class PremiumMealResponse {
   double? priceSar;
   @JsonKey(name: "priceLabel")
   String? priceLabel;
+  @JsonKey(name: "proteinGrams")
+  int? proteinGrams;
+  @JsonKey(name: "carbGrams")
+  int? carbGrams;
+  @JsonKey(name: "fatGrams")
+  int? fatGrams;
   @JsonKey(name: "ui")
   PremiumMealUiResponse? ui;
 
@@ -53,6 +59,9 @@ class PremiumMealResponse {
     this.priceHalala,
     this.priceSar,
     this.priceLabel,
+    this.proteinGrams,
+    this.carbGrams,
+    this.fatGrams,
     this.ui,
   });
 

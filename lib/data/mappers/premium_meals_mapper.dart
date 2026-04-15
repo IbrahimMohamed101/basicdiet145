@@ -23,6 +23,9 @@ extension PremiumMealResponseMapper on PremiumMealResponse? {
       priceHalala: this?.priceHalala ?? Constants.zero,
       priceSar: this?.priceSar ?? 0.0,
       priceLabel: this?.priceLabel ?? Constants.empty,
+      proteinGrams: this?.proteinGrams ?? Constants.zero,
+      carbGrams: this?.carbGrams ?? Constants.zero,
+      fatGrams: this?.fatGrams ?? Constants.zero,
       ui:
           this?.ui.toDomain() ??
           PremiumMealUiModel(

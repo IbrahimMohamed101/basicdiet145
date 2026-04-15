@@ -28,9 +28,10 @@ CategoryWithMealsResponse _$CategoryWithMealsResponseFromJson(
   name: json['name'] as String?,
   slug: json['slug'] as String?,
   sortOrder: (json['sortOrder'] as num?)?.toInt(),
-  meals: (json['meals'] as List<dynamic>?)
-      ?.map((e) => MealItemResponse.fromJson(e as Map<String, dynamic>))
-      .toList(),
+  meals:
+      (json['meals'] as List<dynamic>?)
+          ?.map((e) => MealItemResponse.fromJson(e as Map<String, dynamic>))
+          .toList(),
 );
 
 Map<String, dynamic> _$CategoryWithMealsResponseToJson(

@@ -11,11 +11,12 @@ SubscriptionQuoteResponse _$SubscriptionQuoteResponseFromJson(
 ) => SubscriptionQuoteResponse(
   status: json['status'],
   message: json['message'] as String?,
-  data: json['data'] == null
-      ? null
-      : SubscriptionQuoteDataResponse.fromJson(
-          json['data'] as Map<String, dynamic>,
-        ),
+  data:
+      json['data'] == null
+          ? null
+          : SubscriptionQuoteDataResponse.fromJson(
+            json['data'] as Map<String, dynamic>,
+          ),
 );
 
 Map<String, dynamic> _$SubscriptionQuoteResponseToJson(
@@ -29,17 +30,19 @@ Map<String, dynamic> _$SubscriptionQuoteResponseToJson(
 SubscriptionQuoteDataResponse _$SubscriptionQuoteDataResponseFromJson(
   Map<String, dynamic> json,
 ) => SubscriptionQuoteDataResponse(
-  breakdown: json['breakdown'] == null
-      ? null
-      : SubscriptionQuoteBreakdownResponse.fromJson(
-          json['breakdown'] as Map<String, dynamic>,
-        ),
+  breakdown:
+      json['breakdown'] == null
+          ? null
+          : SubscriptionQuoteBreakdownResponse.fromJson(
+            json['breakdown'] as Map<String, dynamic>,
+          ),
   totalSar: (json['totalSar'] as num?)?.toDouble(),
-  summary: json['summary'] == null
-      ? null
-      : SubscriptionQuoteSummaryResponse.fromJson(
-          json['summary'] as Map<String, dynamic>,
-        ),
+  summary:
+      json['summary'] == null
+          ? null
+          : SubscriptionQuoteSummaryResponse.fromJson(
+            json['summary'] as Map<String, dynamic>,
+          ),
 );
 
 Map<String, dynamic> _$SubscriptionQuoteDataResponseToJson(
@@ -77,36 +80,42 @@ Map<String, dynamic> _$SubscriptionQuoteBreakdownResponseToJson(
 SubscriptionQuoteSummaryResponse _$SubscriptionQuoteSummaryResponseFromJson(
   Map<String, dynamic> json,
 ) => SubscriptionQuoteSummaryResponse(
-  plan: json['plan'] == null
-      ? null
-      : SubscriptionQuotePlanSummaryResponse.fromJson(
-          json['plan'] as Map<String, dynamic>,
-        ),
-  delivery: json['delivery'] == null
-      ? null
-      : SubscriptionQuoteDeliverySummaryResponse.fromJson(
-          json['delivery'] as Map<String, dynamic>,
-        ),
-  premiumItems: (json['premiumItems'] as List<dynamic>?)
-      ?.map(
-        (e) => SubscriptionQuotePremiumItemResponse.fromJson(
-          e as Map<String, dynamic>,
-        ),
-      )
-      .toList(),
-  addons: (json['addons'] as List<dynamic>?)
-      ?.map(
-        (e) =>
-            SubscriptionQuoteAddonResponse.fromJson(e as Map<String, dynamic>),
-      )
-      .toList(),
-  lineItems: (json['lineItems'] as List<dynamic>?)
-      ?.map(
-        (e) => SubscriptionQuoteLineItemResponse.fromJson(
-          e as Map<String, dynamic>,
-        ),
-      )
-      .toList(),
+  plan:
+      json['plan'] == null
+          ? null
+          : SubscriptionQuotePlanSummaryResponse.fromJson(
+            json['plan'] as Map<String, dynamic>,
+          ),
+  delivery:
+      json['delivery'] == null
+          ? null
+          : SubscriptionQuoteDeliverySummaryResponse.fromJson(
+            json['delivery'] as Map<String, dynamic>,
+          ),
+  premiumItems:
+      (json['premiumItems'] as List<dynamic>?)
+          ?.map(
+            (e) => SubscriptionQuotePremiumItemResponse.fromJson(
+              e as Map<String, dynamic>,
+            ),
+          )
+          .toList(),
+  addons:
+      (json['addons'] as List<dynamic>?)
+          ?.map(
+            (e) => SubscriptionQuoteAddonResponse.fromJson(
+              e as Map<String, dynamic>,
+            ),
+          )
+          .toList(),
+  lineItems:
+      (json['lineItems'] as List<dynamic>?)
+          ?.map(
+            (e) => SubscriptionQuoteLineItemResponse.fromJson(
+              e as Map<String, dynamic>,
+            ),
+          )
+          .toList(),
 );
 
 Map<String, dynamic> _$SubscriptionQuoteSummaryResponseToJson(
@@ -157,16 +166,18 @@ _$SubscriptionQuoteDeliverySummaryResponseFromJson(Map<String, dynamic> json) =>
       feeHalala: (json['feeHalala'] as num?)?.toInt(),
       feeSar: (json['feeSar'] as num?)?.toDouble(),
       feeLabel: json['feeLabel'] as String?,
-      address: json['address'] == null
-          ? null
-          : SubscriptionQuoteAddressResponse.fromJson(
-              json['address'] as Map<String, dynamic>,
-            ),
-      slot: json['slot'] == null
-          ? null
-          : SubscriptionQuoteSlotSummaryResponse.fromJson(
-              json['slot'] as Map<String, dynamic>,
-            ),
+      address:
+          json['address'] == null
+              ? null
+              : SubscriptionQuoteAddressResponse.fromJson(
+                json['address'] as Map<String, dynamic>,
+              ),
+      slot:
+          json['slot'] == null
+              ? null
+              : SubscriptionQuoteSlotSummaryResponse.fromJson(
+                json['slot'] as Map<String, dynamic>,
+              ),
     );
 
 Map<String, dynamic> _$SubscriptionQuoteDeliverySummaryResponseToJson(

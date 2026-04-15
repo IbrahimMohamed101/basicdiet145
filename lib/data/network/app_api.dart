@@ -51,7 +51,7 @@ abstract class AppServiceClient {
   @GET("/api/popular_packages")
   Future<PopularPackagesResponse> getPopularPackages();
 
-  @GET("/api/premium-meals")
+  @GET("/api/builder/premium-meals")
   Future<PremiumMealsResponse> getPremiumMeals();
 
   @GET("/api/addons")

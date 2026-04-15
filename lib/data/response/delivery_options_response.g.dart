@@ -11,11 +11,12 @@ DeliveryOptionsResponse _$DeliveryOptionsResponseFromJson(
 ) => DeliveryOptionsResponse(
   status: json['status'],
   message: json['message'] as String?,
-  data: json['data'] == null
-      ? null
-      : DeliveryOptionsDataResponse.fromJson(
-          json['data'] as Map<String, dynamic>,
-        ),
+  data:
+      json['data'] == null
+          ? null
+          : DeliveryOptionsDataResponse.fromJson(
+            json['data'] as Map<String, dynamic>,
+          ),
 );
 
 Map<String, dynamic> _$DeliveryOptionsResponseToJson(
@@ -29,20 +30,28 @@ Map<String, dynamic> _$DeliveryOptionsResponseToJson(
 DeliveryOptionsDataResponse _$DeliveryOptionsDataResponseFromJson(
   Map<String, dynamic> json,
 ) => DeliveryOptionsDataResponse(
-  methods: (json['methods'] as List<dynamic>?)
-      ?.map((e) => DeliveryMethodResponse.fromJson(e as Map<String, dynamic>))
-      .toList(),
-  areas: (json['areas'] as List<dynamic>?)
-      ?.map((e) => DeliveryAreaResponse.fromJson(e as Map<String, dynamic>))
-      .toList(),
-  pickupLocations: (json['pickupLocations'] as List<dynamic>?)
-      ?.map((e) => PickupLocationResponse.fromJson(e as Map<String, dynamic>))
-      .toList(),
-  defaults: json['defaults'] == null
-      ? null
-      : DeliveryDefaultsResponse.fromJson(
-          json['defaults'] as Map<String, dynamic>,
-        ),
+  methods:
+      (json['methods'] as List<dynamic>?)
+          ?.map(
+            (e) => DeliveryMethodResponse.fromJson(e as Map<String, dynamic>),
+          )
+          .toList(),
+  areas:
+      (json['areas'] as List<dynamic>?)
+          ?.map((e) => DeliveryAreaResponse.fromJson(e as Map<String, dynamic>))
+          .toList(),
+  pickupLocations:
+      (json['pickupLocations'] as List<dynamic>?)
+          ?.map(
+            (e) => PickupLocationResponse.fromJson(e as Map<String, dynamic>),
+          )
+          .toList(),
+  defaults:
+      json['defaults'] == null
+          ? null
+          : DeliveryDefaultsResponse.fromJson(
+            json['defaults'] as Map<String, dynamic>,
+          ),
 );
 
 Map<String, dynamic> _$DeliveryOptionsDataResponseToJson(
@@ -68,9 +77,10 @@ DeliveryMethodResponse _$DeliveryMethodResponseFromJson(
   helperText: json['helperText'] as String?,
   areaSelectionRequired: json['areaSelectionRequired'] as bool?,
   requiresAddress: json['requiresAddress'] as bool?,
-  slots: (json['slots'] as List<dynamic>?)
-      ?.map((e) => DeliverySlotResponse.fromJson(e as Map<String, dynamic>))
-      .toList(),
+  slots:
+      (json['slots'] as List<dynamic>?)
+          ?.map((e) => DeliverySlotResponse.fromJson(e as Map<String, dynamic>))
+          .toList(),
 );
 
 Map<String, dynamic> _$DeliveryMethodResponseToJson(
@@ -144,14 +154,16 @@ PickupLocationResponse _$PickupLocationResponseFromJson(
   id: json['id'] as String?,
   name: json['name'] as String?,
   label: json['label'] as String?,
-  address: json['address'] == null
-      ? null
-      : PickupLocationAddressResponse.fromJson(
-          json['address'] as Map<String, dynamic>,
-        ),
-  slots: (json['slots'] as List<dynamic>?)
-      ?.map((e) => DeliverySlotResponse.fromJson(e as Map<String, dynamic>))
-      .toList(),
+  address:
+      json['address'] == null
+          ? null
+          : PickupLocationAddressResponse.fromJson(
+            json['address'] as Map<String, dynamic>,
+          ),
+  slots:
+      (json['slots'] as List<dynamic>?)
+          ?.map((e) => DeliverySlotResponse.fromJson(e as Map<String, dynamic>))
+          .toList(),
 );
 
 Map<String, dynamic> _$PickupLocationResponseToJson(

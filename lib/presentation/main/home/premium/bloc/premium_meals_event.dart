@@ -1,4 +1,4 @@
-abstract class PremiumMealsEvent {
+sealed class PremiumMealsEvent {
   const PremiumMealsEvent();
 }
 

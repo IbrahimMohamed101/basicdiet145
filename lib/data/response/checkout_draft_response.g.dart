@@ -11,11 +11,12 @@ CheckoutDraftResponse _$CheckoutDraftResponseFromJson(
 ) => CheckoutDraftResponse(
   status: json['status'],
   message: json['message'] as String?,
-  data: json['data'] == null
-      ? null
-      : CheckoutDraftDataResponse.fromJson(
-          json['data'] as Map<String, dynamic>,
-        ),
+  data:
+      json['data'] == null
+          ? null
+          : CheckoutDraftDataResponse.fromJson(
+            json['data'] as Map<String, dynamic>,
+          ),
 );
 
 Map<String, dynamic> _$CheckoutDraftResponseToJson(

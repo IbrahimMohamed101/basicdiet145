@@ -117,54 +117,52 @@ Map<String, dynamic> _$AddonSummaryResponseToJson(
 };
 
 CurrentSubscriptionOverviewDataResponse
-_$CurrentSubscriptionOverviewDataResponseFromJson(Map<String, dynamic> json) =>
-    CurrentSubscriptionOverviewDataResponse(
-      json['_id'] as String?,
-      json['status'] as String?,
-      json['startDate'] as String?,
-      json['endDate'] as String?,
-      (json['totalMeals'] as num?)?.toInt(),
-      (json['remainingMeals'] as num?)?.toInt(),
-      (json['premiumRemaining'] as num?)?.toInt(),
-      (json['addonSubscriptions'] as List<dynamic>?)
-          ?.map(
-            (e) =>
-                AddonSubscriptionResponse.fromJson(e as Map<String, dynamic>),
-          )
-          .toList(),
-      (json['selectedMealsPerDay'] as num?)?.toInt(),
-      json['deliveryMode'] as String?,
-      (json['premiumSummary'] as List<dynamic>?)
-          ?.map(
-            (e) => PremiumSummaryResponse.fromJson(e as Map<String, dynamic>),
-          )
-          .toList(),
-      (json['addonsSummary'] as List<dynamic>?)
-          ?.map((e) => AddonSummaryResponse.fromJson(e as Map<String, dynamic>))
-          .toList(),
-      json['statusLabel'] as String?,
-      json['deliveryModeLabel'] as String?,
-      json['validityEndDate'] as String?,
-      (json['skipDaysUsed'] as num?)?.toInt(),
-      (json['skipDaysLimit'] as num?)?.toInt(),
-      (json['remainingSkipDays'] as num?)?.toInt(),
-      json['meta'] == null
-          ? null
-          : MetaResponse.fromJson(json['meta'] as Map<String, dynamic>),
-      json['contract'] == null
-          ? null
-          : ContractResponse.fromJson(json['contract'] as Map<String, dynamic>),
-      json['pickupPreparation'] == null
-          ? null
-          : PickupPreparationResponse.fromJson(
-              json['pickupPreparation'] as Map<String, dynamic>,
-            ),
-      json['deliverySlot'] == null
-          ? null
-          : OverviewDeliverySlotResponse.fromJson(
-              json['deliverySlot'] as Map<String, dynamic>,
-            ),
-    );
+_$CurrentSubscriptionOverviewDataResponseFromJson(
+  Map<String, dynamic> json,
+) => CurrentSubscriptionOverviewDataResponse(
+  json['_id'] as String?,
+  json['status'] as String?,
+  json['startDate'] as String?,
+  json['endDate'] as String?,
+  (json['totalMeals'] as num?)?.toInt(),
+  (json['remainingMeals'] as num?)?.toInt(),
+  (json['premiumRemaining'] as num?)?.toInt(),
+  (json['addonSubscriptions'] as List<dynamic>?)
+      ?.map(
+        (e) => AddonSubscriptionResponse.fromJson(e as Map<String, dynamic>),
+      )
+      .toList(),
+  (json['selectedMealsPerDay'] as num?)?.toInt(),
+  json['deliveryMode'] as String?,
+  (json['premiumSummary'] as List<dynamic>?)
+      ?.map((e) => PremiumSummaryResponse.fromJson(e as Map<String, dynamic>))
+      .toList(),
+  (json['addonsSummary'] as List<dynamic>?)
+      ?.map((e) => AddonSummaryResponse.fromJson(e as Map<String, dynamic>))
+      .toList(),
+  json['statusLabel'] as String?,
+  json['deliveryModeLabel'] as String?,
+  json['validityEndDate'] as String?,
+  (json['skipDaysUsed'] as num?)?.toInt(),
+  (json['skipDaysLimit'] as num?)?.toInt(),
+  (json['remainingSkipDays'] as num?)?.toInt(),
+  json['meta'] == null
+      ? null
+      : MetaResponse.fromJson(json['meta'] as Map<String, dynamic>),
+  json['contract'] == null
+      ? null
+      : ContractResponse.fromJson(json['contract'] as Map<String, dynamic>),
+  json['pickupPreparation'] == null
+      ? null
+      : PickupPreparationResponse.fromJson(
+        json['pickupPreparation'] as Map<String, dynamic>,
+      ),
+  json['deliverySlot'] == null
+      ? null
+      : OverviewDeliverySlotResponse.fromJson(
+        json['deliverySlot'] as Map<String, dynamic>,
+      ),
+);
 
 Map<String, dynamic> _$CurrentSubscriptionOverviewDataResponseToJson(
   CurrentSubscriptionOverviewDataResponse instance,
@@ -199,8 +197,8 @@ _$CurrentSubscriptionOverviewResponseFromJson(Map<String, dynamic> json) =>
         json['data'] == null
             ? null
             : CurrentSubscriptionOverviewDataResponse.fromJson(
-                json['data'] as Map<String, dynamic>,
-              ),
+              json['data'] as Map<String, dynamic>,
+            ),
       )
       ..status = json['status']
       ..message = json['message'] as String?;

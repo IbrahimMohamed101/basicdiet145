@@ -14,13 +14,14 @@ SubscriptionCheckoutRequest _$SubscriptionCheckoutRequestFromJson(
   grams: (json['grams'] as num).toInt(),
   mealsPerDay: (json['mealsPerDay'] as num).toInt(),
   startDate: json['startDate'] as String,
-  premiumItems: (json['premiumItems'] as List<dynamic>)
-      .map(
-        (e) => SubscriptionCheckoutPremiumItemRequest.fromJson(
-          e as Map<String, dynamic>,
-        ),
-      )
-      .toList(),
+  premiumItems:
+      (json['premiumItems'] as List<dynamic>)
+          .map(
+            (e) => SubscriptionCheckoutPremiumItemRequest.fromJson(
+              e as Map<String, dynamic>,
+            ),
+          )
+          .toList(),
   addons: (json['addons'] as List<dynamic>).map((e) => e as String).toList(),
   delivery: SubscriptionCheckoutDeliveryRequest.fromJson(
     json['delivery'] as Map<String, dynamic>,
@@ -64,11 +65,12 @@ _$SubscriptionCheckoutDeliveryRequestFromJson(Map<String, dynamic> json) =>
       type: json['type'] as String,
       zoneId: json['zoneId'] as String?,
       slotId: json['slotId'] as String?,
-      address: json['address'] == null
-          ? null
-          : SubscriptionCheckoutAddressRequest.fromJson(
-              json['address'] as Map<String, dynamic>,
-            ),
+      address:
+          json['address'] == null
+              ? null
+              : SubscriptionCheckoutAddressRequest.fromJson(
+                json['address'] as Map<String, dynamic>,
+              ),
     );
 
 Map<String, dynamic> _$SubscriptionCheckoutDeliveryRequestToJson(
