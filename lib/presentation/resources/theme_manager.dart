@@ -1,4 +1,5 @@
 import 'package:basic_diet/presentation/resources/color_manager.dart';
+import 'package:basic_diet/presentation/resources/font_manager.dart';
 import 'package:basic_diet/presentation/resources/styles_manager.dart';
 import 'package:basic_diet/presentation/resources/values_manager.dart';
 import 'package:flutter/material.dart';
@@ -6,6 +7,7 @@ import 'package:flutter/material.dart';
 ThemeData getApplicationTheme() {
   return ThemeData(
     useMaterial3: true,
+    fontFamily: FontConstants.fontFamily,
     primaryColor: ColorManager.greenPrimary,
 
     buttonTheme: ButtonThemeData(

@@ -82,73 +82,75 @@ class BottomNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: AppSize.s100.h,
-      decoration: BoxDecoration(
-        color: ColorManager.whiteColor,
-        borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(AppSize.s50.r),
-          topRight: Radius.circular(AppSize.s50.r),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: ColorManager.blackColor.withValues(alpha: 0.15),
-            spreadRadius: 0,
-            blurRadius: 15,
-            offset: const Offset(0, 0), // shadow ABOVE the nav bar
+    return SafeArea(
+      child: Container(
+        height: AppSize.s100.h,
+        decoration: BoxDecoration(
+          color: ColorManager.whiteColor,
+          borderRadius: BorderRadius.only(
+            topLeft: Radius.circular(AppSize.s50.r),
+            topRight: Radius.circular(AppSize.s50.r),
           ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(AppSize.s50.r),
-          topRight: Radius.circular(AppSize.s50.r),
-        ),
-        child: BottomNavigationBar(
-          backgroundColor: ColorManager.whiteColor,
-          selectedItemColor: ColorManager.greenPrimary,
-          unselectedItemColor: ColorManager.grayColor,
-          showUnselectedLabels: true,
-          type: BottomNavigationBarType.fixed,
-          currentIndex: currentIndex,
-          onTap: onTap,
-          items: [
-            BottomNavigationBarItem(
-              icon: _buildIcon(
-                assetPath: IconAssets.home,
-                isSelected: currentIndex == 0,
-              ),
-              label: Strings.home.tr(),
-            ),
-            BottomNavigationBarItem(
-              icon: _buildIcon(
-                assetPath: IconAssets.knife,
-                isSelected: currentIndex == 1,
-              ),
-              label: Strings.menu.tr(),
-            ),
-            BottomNavigationBarItem(
-              icon: _buildIcon(
-                assetPath: IconAssets.plans,
-                isSelected: currentIndex == 2,
-              ),
-              label: Strings.plans.tr(),
-            ),
-            BottomNavigationBarItem(
-              icon: _buildIcon(
-                assetPath: IconAssets.orders,
-                isSelected: currentIndex == 3,
-              ),
-              label: Strings.orders.tr(),
-            ),
-            BottomNavigationBarItem(
-              icon: _buildIcon(
-                assetPath: IconAssets.profile,
-                isSelected: currentIndex == 4,
-              ),
-              label: Strings.profile.tr(),
+          boxShadow: [
+            BoxShadow(
+              color: ColorManager.blackColor.withValues(alpha: 0.15),
+              spreadRadius: 0,
+              blurRadius: 15,
+              offset: const Offset(0, 0), // shadow ABOVE the nav bar
             ),
           ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.only(
+            topLeft: Radius.circular(AppSize.s50.r),
+            topRight: Radius.circular(AppSize.s50.r),
+          ),
+          child: BottomNavigationBar(
+            backgroundColor: ColorManager.whiteColor,
+            selectedItemColor: ColorManager.greenPrimary,
+            unselectedItemColor: ColorManager.grayColor,
+            showUnselectedLabels: true,
+            type: BottomNavigationBarType.fixed,
+            currentIndex: currentIndex,
+            onTap: onTap,
+            items: [
+              BottomNavigationBarItem(
+                icon: _buildIcon(
+                  assetPath: IconAssets.home,
+                  isSelected: currentIndex == 0,
+                ),
+                label: Strings.home.tr(),
+              ),
+              BottomNavigationBarItem(
+                icon: _buildIcon(
+                  assetPath: IconAssets.knife,
+                  isSelected: currentIndex == 1,
+                ),
+                label: Strings.menu.tr(),
+              ),
+              BottomNavigationBarItem(
+                icon: _buildIcon(
+                  assetPath: IconAssets.plans,
+                  isSelected: currentIndex == 2,
+                ),
+                label: Strings.plans.tr(),
+              ),
+              BottomNavigationBarItem(
+                icon: _buildIcon(
+                  assetPath: IconAssets.orders,
+                  isSelected: currentIndex == 3,
+                ),
+                label: Strings.orders.tr(),
+              ),
+              BottomNavigationBarItem(
+                icon: _buildIcon(
+                  assetPath: IconAssets.profile,
+                  isSelected: currentIndex == 4,
+                ),
+                label: Strings.profile.tr(),
+              ),
+            ],
+          ),
         ),
       ),
     );

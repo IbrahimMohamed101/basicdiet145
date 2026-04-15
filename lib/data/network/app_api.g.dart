@@ -2,13 +2,11 @@
 
 part of 'app_api.dart';
 
-// dart format off
-
 // **************************************************************************
 // RetrofitGenerator
 // **************************************************************************
 
-// ignore_for_file: unnecessary_brace_in_string_interps,no_leading_underscores_for_local_identifiers,unused_element,unnecessary_string_interpolations,unused_element_parameter,avoid_unused_constructor_parameters,unreachable_from_main
+// ignore_for_file: unnecessary_brace_in_string_interps,no_leading_underscores_for_local_identifiers,unused_element,unnecessary_string_interpolations,unused_element_parameter
 
 class _AppServiceClient implements AppServiceClient {
   _AppServiceClient(this._dio, {this.baseUrl, this.errorLogger}) {
@@ -42,7 +40,7 @@ class _AppServiceClient implements AppServiceClient {
     try {
       _value = BaseResponse.fromJson(_result.data!);
     } on Object catch (e, s) {
-      errorLogger?.logError(e, s, _options, response: _result);
+      errorLogger?.logError(e, s, _options);
       rethrow;
     }
     return _value;
@@ -69,7 +67,7 @@ class _AppServiceClient implements AppServiceClient {
     try {
       _value = AuthenticationResponse.fromJson(_result.data!);
     } on Object catch (e, s) {
-      errorLogger?.logError(e, s, _options, response: _result);
+      errorLogger?.logError(e, s, _options);
       rethrow;
     }
     return _value;
@@ -102,7 +100,7 @@ class _AppServiceClient implements AppServiceClient {
     try {
       _value = BaseResponse.fromJson(_result.data!);
     } on Object catch (e, s) {
-      errorLogger?.logError(e, s, _options, response: _result);
+      errorLogger?.logError(e, s, _options);
       rethrow;
     }
     return _value;
@@ -129,7 +127,7 @@ class _AppServiceClient implements AppServiceClient {
     try {
       _value = PlansResponse.fromJson(_result.data!);
     } on Object catch (e, s) {
-      errorLogger?.logError(e, s, _options, response: _result);
+      errorLogger?.logError(e, s, _options);
       rethrow;
     }
     return _value;
@@ -156,7 +154,7 @@ class _AppServiceClient implements AppServiceClient {
     try {
       _value = PopularPackagesResponse.fromJson(_result.data!);
     } on Object catch (e, s) {
-      errorLogger?.logError(e, s, _options, response: _result);
+      errorLogger?.logError(e, s, _options);
       rethrow;
     }
     return _value;
@@ -183,7 +181,7 @@ class _AppServiceClient implements AppServiceClient {
     try {
       _value = PremiumMealsResponse.fromJson(_result.data!);
     } on Object catch (e, s) {
-      errorLogger?.logError(e, s, _options, response: _result);
+      errorLogger?.logError(e, s, _options);
       rethrow;
     }
     return _value;
@@ -210,7 +208,7 @@ class _AppServiceClient implements AppServiceClient {
     try {
       _value = AddOnsResponse.fromJson(_result.data!);
     } on Object catch (e, s) {
-      errorLogger?.logError(e, s, _options, response: _result);
+      errorLogger?.logError(e, s, _options);
       rethrow;
     }
     return _value;
@@ -237,7 +235,7 @@ class _AppServiceClient implements AppServiceClient {
     try {
       _value = DeliveryOptionsResponse.fromJson(_result.data!);
     } on Object catch (e, s) {
-      errorLogger?.logError(e, s, _options, response: _result);
+      errorLogger?.logError(e, s, _options);
       rethrow;
     }
     return _value;
@@ -267,7 +265,7 @@ class _AppServiceClient implements AppServiceClient {
     try {
       _value = SubscriptionQuoteResponse.fromJson(_result.data!);
     } on Object catch (e, s) {
-      errorLogger?.logError(e, s, _options, response: _result);
+      errorLogger?.logError(e, s, _options);
       rethrow;
     }
     return _value;
@@ -297,7 +295,7 @@ class _AppServiceClient implements AppServiceClient {
     try {
       _value = SubscriptionCheckoutResponse.fromJson(_result.data!);
     } on Object catch (e, s) {
-      errorLogger?.logError(e, s, _options, response: _result);
+      errorLogger?.logError(e, s, _options);
       rethrow;
     }
     return _value;
@@ -325,7 +323,7 @@ class _AppServiceClient implements AppServiceClient {
     try {
       _value = CurrentSubscriptionOverviewResponse.fromJson(_result.data!);
     } on Object catch (e, s) {
-      errorLogger?.logError(e, s, _options, response: _result);
+      errorLogger?.logError(e, s, _options);
       rethrow;
     }
     return _value;
@@ -356,7 +354,7 @@ class _AppServiceClient implements AppServiceClient {
     try {
       _value = FreezeSubscriptionResponse.fromJson(_result.data!);
     } on Object catch (e, s) {
-      errorLogger?.logError(e, s, _options, response: _result);
+      errorLogger?.logError(e, s, _options);
       rethrow;
     }
     return _value;
@@ -384,7 +382,7 @@ class _AppServiceClient implements AppServiceClient {
     try {
       _value = SkipDaysResponse.fromJson(_result.data!);
     } on Object catch (e, s) {
-      errorLogger?.logError(e, s, _options, response: _result);
+      errorLogger?.logError(e, s, _options);
       rethrow;
     }
     return _value;
@@ -415,7 +413,7 @@ class _AppServiceClient implements AppServiceClient {
     try {
       _value = SkipDaysResponse.fromJson(_result.data!);
     } on Object catch (e, s) {
-      errorLogger?.logError(e, s, _options, response: _result);
+      errorLogger?.logError(e, s, _options);
       rethrow;
     }
     return _value;
@@ -442,7 +440,7 @@ class _AppServiceClient implements AppServiceClient {
     try {
       _value = TimelineResponse.fromJson(_result.data!);
     } on Object catch (e, s) {
-      errorLogger?.logError(e, s, _options, response: _result);
+      errorLogger?.logError(e, s, _options);
       rethrow;
     }
     return _value;
@@ -469,7 +467,7 @@ class _AppServiceClient implements AppServiceClient {
     try {
       _value = CategoriesWithMealsResponse.fromJson(_result.data!);
     } on Object catch (e, s) {
-      errorLogger?.logError(e, s, _options, response: _result);
+      errorLogger?.logError(e, s, _options);
       rethrow;
     }
     return _value;
@@ -496,7 +494,7 @@ class _AppServiceClient implements AppServiceClient {
     try {
       _value = CheckoutDraftResponse.fromJson(_result.data!);
     } on Object catch (e, s) {
-      errorLogger?.logError(e, s, _options, response: _result);
+      errorLogger?.logError(e, s, _options);
       rethrow;
     }
     return _value;
@@ -527,7 +525,7 @@ class _AppServiceClient implements AppServiceClient {
     try {
       _value = BaseResponse.fromJson(_result.data!);
     } on Object catch (e, s) {
-      errorLogger?.logError(e, s, _options, response: _result);
+      errorLogger?.logError(e, s, _options);
       rethrow;
     }
     return _value;
@@ -554,7 +552,7 @@ class _AppServiceClient implements AppServiceClient {
     try {
       _value = PickupPrepareResponse.fromJson(_result.data!);
     } on Object catch (e, s) {
-      errorLogger?.logError(e, s, _options, response: _result);
+      errorLogger?.logError(e, s, _options);
       rethrow;
     }
     return _value;
@@ -581,7 +579,7 @@ class _AppServiceClient implements AppServiceClient {
     try {
       _value = PickupStatusResponse.fromJson(_result.data!);
     } on Object catch (e, s) {
-      errorLogger?.logError(e, s, _options, response: _result);
+      errorLogger?.logError(e, s, _options);
       rethrow;
     }
     return _value;
@@ -614,5 +612,3 @@ class _AppServiceClient implements AppServiceClient {
     return Uri.parse(dioBaseUrl).resolveUri(url).toString();
   }
 }
-
-// dart format on
