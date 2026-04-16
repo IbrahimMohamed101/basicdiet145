@@ -205,12 +205,15 @@ class _AddOnCard extends StatelessWidget {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding: EdgeInsetsDirectional.all(AppPadding.p16.w),
+        padding: EdgeInsetsDirectional.symmetric(
+          horizontal: AppPadding.p12.w,
+          vertical: AppPadding.p12.h,
+        ),
         decoration: _cardDecoration(),
         child: Row(
           children: [
-            _AddOnImage(addOn: addOn),
-            Gap(AppSize.s16.w),
+            // _AddOnImage(addOn: addOn),
+            // Gap(AppSize.s8.w),
             Expanded(child: _AddOnInfo(addOn: addOn)),
             Gap(AppSize.s8.w),
             _SelectionIndicator(isSelected: isSelected),
@@ -256,24 +259,29 @@ class _AddOnImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(AppSize.s12.r),
-          child: Image.network(
-            addOn.imageUrl,
-            width: AppSize.s70.w,
-            height: AppSize.s70.h,
-            fit: BoxFit.cover,
+    return SizedBox(
+      width: AppSize.s70.w,
+      height: AppSize.s70.h,
+      child: Stack(
+        clipBehavior: Clip.hardEdge,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(AppSize.s12.r),
+            child: Image.network(
+              addOn.imageUrl,
+              width: AppSize.s70.w,
+              height: AppSize.s70.h,
+              fit: BoxFit.cover,
+            ),
           ),
-        ),
-        if (addOn.ui.badge.isNotEmpty)
-          Positioned(
-            top: 4.h,
-            left: 4.w,
-            child: _AddOnBadge(badge: addOn.ui.badge),
-          ),
-      ],
+          if (addOn.ui.badge.isNotEmpty)
+            Positioned(
+              top: 4.h,
+              left: 4.w,
+              child: _AddOnBadge(badge: addOn.ui.badge),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -318,6 +326,8 @@ class _AddOnInfo extends StatelessWidget {
       children: [
         Text(
           addOn.ui.title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: getBoldTextStyle(
             color: ColorManager.black101828,
             fontSize: FontSizeManager.s16.sp,
@@ -336,6 +346,8 @@ class _AddOnInfo extends StatelessWidget {
         Gap(AppSize.s5.h),
         Text(
           '${addOn.priceSar.toInt()} ${Strings.sarPerDay.tr()}',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: getBoldTextStyle(
             color: ColorManager.greenPrimary,
             fontSize: FontSizeManager.s14.sp,
@@ -653,8 +665,8 @@ class _SummaryRow extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(left, style: style),
-        Text(right, style: style),
+        Flexible(child: Text(left, style: style, overflow: TextOverflow.ellipsis)),
+        Flexible(child: Text(right, style: style, overflow: TextOverflow.ellipsis, textAlign: TextAlign.end)),
       ],
     );
   }
