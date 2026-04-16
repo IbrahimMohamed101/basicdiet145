@@ -517,6 +517,7 @@ class Strings {
   static const String fat = 'fat';
   static const String selectProtein = 'selectProtein';
   static const String selectCarb = 'selectCarb';
+  static const String premium = 'premium';
 
   // Days
   static const String monday = 'monday';

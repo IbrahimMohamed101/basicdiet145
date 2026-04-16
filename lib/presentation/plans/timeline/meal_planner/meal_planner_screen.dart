@@ -1237,6 +1237,24 @@ class _ProteinPickerSheetState extends State<_ProteinPickerSheet> {
     return null;
   }
 
+  /// Returns a fixed emoji for each known protein family / tab key.
+  String _iconForTabKey(String key) {
+    switch (key.toLowerCase()) {
+      case 'chicken':
+        return '🍗';
+      case 'beef':
+        return '🥩';
+      case 'seafood':
+        return '🦐';
+      case 'egg':
+        return '🥚';
+      case 'premium':
+        return '⭐';
+      default:
+        return '🍽️';
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -1304,6 +1322,12 @@ class _ProteinPickerSheetState extends State<_ProteinPickerSheet> {
         beefCount >= beefRule.maxSlotsPerDay &&
         !currentIsBeef;
 
+    // Build tab list: premium first, then regular categories
+    final tabs = [
+      _ProteinTab(key: 'premium', label: Strings.premium.tr()),
+      ...allCategories.map((c) => _ProteinTab(key: c.key, label: c.name)),
+    ];
+
     return DraggableScrollableSheet(
       initialChildSize: 0.85,
       minChildSize: 0.5,
@@ -1352,99 +1376,70 @@ class _ProteinPickerSheetState extends State<_ProteinPickerSheet> {
                   ],
                 ),
               ),
-              if (widget.selectedProteinId != null)
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: AppPadding.p16.w),
-                  child: Align(
-                    alignment: AlignmentDirectional.centerStart,
-                    child: TextButton(
-                      onPressed: () {
-                        context.read<MealPlannerBloc>().add(
-                              SetMealSlotProteinEvent(
-                                slotIndex: widget.slotIndex,
-                                proteinId: null,
-                              ),
-                            );
-                        Navigator.pop(context);
-                      },
-                      child: Text(
-                        Strings.removeSelection.tr(),
-                        style: getBoldTextStyle(
-                          color: ColorManager.errorColor,
-                          fontSize: FontSizeManager.s14.sp,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
+              Gap(AppSize.s4.h),
+              // Category tabs: icon card + label below
               SizedBox(
-                height: 78.h,
+                height: 88.h,
                 child: ListView.separated(
                   padding: EdgeInsets.symmetric(horizontal: AppPadding.p16.w),
                   scrollDirection: Axis.horizontal,
-                  itemCount: allCategories.length + 1,
-                  separatorBuilder: (_, __) => Gap(AppSize.s10.w),
+                  itemCount: tabs.length,
+                  separatorBuilder: (_, __) => Gap(AppSize.s12.w),
                   itemBuilder: (context, index) {
-                    final tabKey =
-                        index == 0 ? 'premium' : allCategories[index - 1].key;
-                    final isSelected = tabKey == _activeTabKey;
-                    final cat = index == 0 ? null : allCategories[index - 1];
-                    final isBeefTab = cat?.key == beefRule.proteinFamilyKey;
+                    final tab = tabs[index];
+                    final isSelected = tab.key == _activeTabKey;
+                    final isPremiumTab = tab.key == 'premium';
+                    final isBeefTab =
+                        tab.key == beefRule.proteinFamilyKey && !isPremiumTab;
                     final isTabDisabled = isBeefTab && isBeefDisabled;
+
+                    final activeCardColor = isPremiumTab
+                        ? ColorManager.orangePrimary
+                        : ColorManager.bluePrimary;
+
                     return GestureDetector(
                       onTap: isTabDisabled
                           ? null
-                          : () => setState(() => _activeTabKey = tabKey),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        padding: EdgeInsets.symmetric(
-                          horizontal: 14.w,
-                          vertical: 12.h,
-                        ),
-                        decoration: BoxDecoration(
-                          color: isSelected
-                              ? ColorManager.bluePrimary
-                              : ColorManager.greyF3F4F6.withValues(alpha: 0.6),
-                          borderRadius: BorderRadius.circular(AppSize.s16.r),
-                        ),
+                          : () => setState(() => _activeTabKey = tab.key),
+                      child: Opacity(
+                        opacity: isTabDisabled ? 0.4 : 1.0,
                         child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
+                          mainAxisSize: MainAxisSize.min,
                           children: [
+                            AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              width: 56.w,
+                              height: 56.w,
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? activeCardColor
+                                    : ColorManager.greyF3F4F6,
+                                borderRadius:
+                                    BorderRadius.circular(AppSize.s16.r),
+                                border: isSelected
+                                    ? null
+                                    : Border.all(
+                                        color: ColorManager.formFieldsBorderColor,
+                                      ),
+                              ),
+                              alignment: Alignment.center,
+                              child: Text(
+                                _iconForTabKey(tab.key),
+                                style: TextStyle(fontSize: 26.sp),
+                              ),
+                            ),
+                            Gap(6.h),
                             Text(
-                              index == 0
-                                  ? Strings.premiumMealsText.tr()
-                                  : cat!.name,
+                              tab.label,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: getBoldTextStyle(
                                 color: isSelected
-                                    ? Colors.white
-                                    : ColorManager.grey364153,
-                                fontSize: FontSizeManager.s12.sp,
-                              ),
-                            ),
-                            Gap(6.h),
-                            Container(
-                              padding: EdgeInsets.symmetric(
-                                horizontal: 10.w,
-                                vertical: 4.h,
-                              ),
-                              decoration: BoxDecoration(
-                                color: isSelected
-                                    ? Colors.white.withValues(alpha: 0.18)
-                                    : Colors.white,
-                                borderRadius: BorderRadius.circular(99.r),
-                              ),
-                              child: Text(
-                                index == 0
-                                    ? "${widget.state.menu.builderCatalog.proteins.where((p) => p.isPremium).length}"
-                                    : "${widget.state.menu.builderCatalog.proteins.where((p) => !p.isPremium && p.displayCategoryKey == cat!.key).length}",
-                                style: getBoldTextStyle(
-                                  color: isSelected
-                                      ? Colors.white
-                                      : ColorManager.black101828,
-                                  fontSize: FontSizeManager.s12.sp,
-                                ),
+                                    ? (isPremiumTab
+                                        ? ColorManager.orangePrimary
+                                        : ColorManager.bluePrimary)
+                                    : ColorManager.grey6A7282,
+                                fontSize: FontSizeManager.s10.sp,
                               ),
                             ),
                           ],
@@ -1454,7 +1449,7 @@ class _ProteinPickerSheetState extends State<_ProteinPickerSheet> {
                   },
                 ),
               ),
-              Gap(AppSize.s8.h),
+              Gap(AppSize.s12.h),
               Expanded(
                 child: ListView.separated(
                   controller: scrollController,
@@ -1492,88 +1487,110 @@ class _ProteinPickerSheetState extends State<_ProteinPickerSheet> {
                                   );
                               Navigator.pop(context);
                             },
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        padding: EdgeInsets.all(AppPadding.p12.w),
-                        decoration: BoxDecoration(
-                          color: isSelected
-                              ? ColorManager.bluePrimary.withValues(alpha: 0.06)
-                              : Colors.white,
-                          borderRadius: BorderRadius.circular(AppSize.s16.r),
-                          border: Border.all(
+                      child: Opacity(
+                        opacity: isItemDisabled ? 0.4 : 1.0,
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          padding: EdgeInsets.all(AppPadding.p12.w),
+                          decoration: BoxDecoration(
                             color: isSelected
                                 ? ColorManager.bluePrimary
-                                : ColorManager.formFieldsBorderColor,
-                          ),
-                        ),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: Text(
-                                          protein.name,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: getBoldTextStyle(
-                                            color: ColorManager.black101828,
-                                            fontSize: FontSizeManager.s14.sp,
-                                          ),
-                                        ),
-                                      ),
-                                      if (isPremium)
-                                        Container(
-                                          padding: EdgeInsets.symmetric(
-                                            horizontal: 8.w,
-                                            vertical: 3.h,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: ColorManager.orangeFFF5EC,
-                                            borderRadius:
-                                                BorderRadius.circular(99.r),
-                                            border: Border.all(
-                                              color: ColorManager.orangeLight,
-                                            ),
-                                          ),
-                                          child: Text(
-                                            Strings.premiumMealsText.tr(),
-                                            style: getBoldTextStyle(
-                                              color: ColorManager.orangePrimary,
-                                              fontSize: FontSizeManager.s10.sp,
-                                            ),
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-                                  Gap(4.h),
-                                  Text(
-                                    protein.description,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: getRegularTextStyle(
-                                      color: ColorManager.grey4A5565,
-                                      fontSize: FontSizeManager.s12.sp,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Gap(AppSize.s8.w),
-                            Icon(
-                              isSelected
-                                  ? Icons.check_circle
-                                  : Icons.radio_button_unchecked,
+                                    .withValues(alpha: 0.06)
+                                : Colors.white,
+                            borderRadius: BorderRadius.circular(AppSize.s16.r),
+                            border: Border.all(
                               color: isSelected
                                   ? ColorManager.bluePrimary
-                                  : ColorManager.grey9CA3AF,
-                              size: 22.w,
+                                  : ColorManager.formFieldsBorderColor,
                             ),
-                          ],
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            protein.name,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: getBoldTextStyle(
+                                              color: ColorManager.black101828,
+                                              fontSize: FontSizeManager.s14.sp,
+                                            ),
+                                          ),
+                                        ),
+                                        if (isPremium) ...[
+                                          Gap(AppSize.s8.w),
+                                          Container(
+                                            padding: EdgeInsets.symmetric(
+                                              horizontal: 8.w,
+                                              vertical: 3.h,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: ColorManager.orangeFFF5EC,
+                                              borderRadius:
+                                                  BorderRadius.circular(99.r),
+                                              border: Border.all(
+                                                color: ColorManager.orangeLight,
+                                              ),
+                                            ),
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Icon(
+                                                  Icons.workspace_premium,
+                                                  color:
+                                                      ColorManager.orangePrimary,
+                                                  size: 12.w,
+                                                ),
+                                                Gap(3.w),
+                                                Text(
+                                                  Strings.premium.tr(),
+                                                  style: getBoldTextStyle(
+                                                    color: ColorManager
+                                                        .orangePrimary,
+                                                    fontSize:
+                                                        FontSizeManager.s10.sp,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                    if(protein.description.isNotEmpty)...[
+                                      Gap(4.h),
+                                      Text(
+                                        protein.description,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: getRegularTextStyle(
+                                          color: ColorManager.grey4A5565,
+                                          fontSize: FontSizeManager.s12.sp,
+                                        ),
+                                      ),
+                                    ],
+
+                                  ],
+                                ),
+                              ),
+                              Gap(AppSize.s8.w),
+                              Icon(
+                                isSelected
+                                    ? Icons.check_circle
+                                    : Icons.radio_button_unchecked,
+                                color: isSelected
+                                    ? ColorManager.bluePrimary
+                                    : ColorManager.grey9CA3AF,
+                                size: 22.w,
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     );
@@ -1600,4 +1617,11 @@ class _ProteinPickerSheetState extends State<_ProteinPickerSheet> {
     filtered.sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
     return filtered;
   }
+}
+
+/// Simple data class for tab entries.
+class _ProteinTab {
+  final String key;
+  final String label;
+  const _ProteinTab({required this.key, required this.label});
 }
