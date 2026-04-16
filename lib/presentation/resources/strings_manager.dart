@@ -515,6 +515,8 @@ class Strings {
   static const String carb = 'carb';
   static const String carbs = 'carbs';
   static const String fat = 'fat';
+  static const String selectProtein = 'selectProtein';
+  static const String selectCarb = 'selectCarb';
 
   // Days
   static const String monday = 'monday';

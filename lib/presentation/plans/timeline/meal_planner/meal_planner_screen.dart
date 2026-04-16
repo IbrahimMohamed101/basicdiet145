@@ -144,11 +144,6 @@ class MealPlannerView extends StatelessWidget {
                                 protein: protein,
                                 carb: carb,
                                 isProteinPremium: protein?.isPremium ?? false,
-                                isBeefDisabled: _isBeefDisabledForSlot(
-                                  state: state,
-                                  slotIndex: index,
-                                  currentProtein: protein,
-                                ),
                                 onSelectProtein: () => _openProteinPickerSheet(
                                   context: context,
                                   state: state,
@@ -699,6 +694,10 @@ class _MealPlannerProgressIndicator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isAllSelected = totalMeals > 0 && selectedMeals >= totalMeals;
+    final activeColor =
+        isAllSelected ? ColorManager.greenPrimary : ColorManager.bluePrimary;
+
     return Row(
       children: [
         Expanded(
@@ -709,12 +708,12 @@ class _MealPlannerProgressIndicator extends StatelessWidget {
                 height: 32.w,
                 width: 32.w,
                 decoration: BoxDecoration(
-                  color: ColorManager.bluePrimary.withValues(alpha: 0.1),
+                  color: activeColor.withValues(alpha: 0.1),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
                   Icons.check,
-                  color: ColorManager.bluePrimary,
+                  color: activeColor,
                   size: 18.w,
                 ),
               ),
@@ -733,18 +732,31 @@ class _MealPlannerProgressIndicator extends StatelessWidget {
                     Gap(8.h),
                     Row(
                       children: List.generate(totalMeals, (index) {
+                        final isFilled = index < selectedMeals;
                         return Expanded(
                           child: Container(
-                            height: 6.h,
+                            height: 4.h,
                             margin: EdgeInsets.only(
                               right: index == totalMeals - 1 ? 0 : 6.w,
                             ),
                             decoration: BoxDecoration(
-                              color: index < selectedMeals
-                                  ? ColorManager.bluePrimary
+                              color: isFilled
+                                  ? activeColor
                                   : ColorManager.greyF3F4F6,
                               borderRadius: BorderRadius.circular(99.r),
                             ),
+                            alignment: Alignment.center,
+                            child: isFilled
+                                ? Text(
+                                    '—',
+                                    style: TextStyle(
+                                      color: activeColor,
+                                      fontSize: FontSizeManager.s12.sp,
+                                      fontWeight: FontWeight.bold,
+                                      height: 1,
+                                    ),
+                                  )
+                                : null,
                           ),
                         );
                       }),
@@ -791,7 +803,6 @@ class _MealSlotCard extends StatelessWidget {
   final BuilderProteinModel? protein;
   final BuilderCarbModel? carb;
   final bool isProteinPremium;
-  final bool isBeefDisabled;
   final VoidCallback onSelectProtein;
   final List<BuilderCarbModel> carbOptions;
   final void Function(String carbId)? onCarbSelected;
@@ -802,7 +813,6 @@ class _MealSlotCard extends StatelessWidget {
     required this.protein,
     required this.carb,
     required this.isProteinPremium,
-    required this.isBeefDisabled,
     required this.onSelectProtein,
     required this.carbOptions,
     required this.onCarbSelected,
@@ -901,21 +911,22 @@ class _MealSlotCard extends StatelessWidget {
               ),
               Gap(AppSize.s16.h),
               _PlannerField(
-                title: Strings.protein.tr(),
+                title: Strings.selectProtein.tr(),
                 value: protein?.name ?? Strings.selectMeal.tr(),
                 isSelected: protein != null,
                 isPremium: isProteinPremium && protein != null,
                 onTap: onSelectProtein,
               ),
               Gap(AppSize.s12.h),
-              _PlannerDropdownField(
-                title: Strings.carb.tr(),
+              _PlannerField(
+                title: Strings.selectCarb.tr(),
                 value: carb?.name ?? Strings.selectMeal.tr(),
                 isSelected: carb != null,
-                isEnabled: onCarbSelected != null,
-                options: carbOptions,
-                selectedId: carb?.id,
-                onSelected: onCarbSelected,
+                isPremium: false,
+                onTap: onCarbSelected == null
+                    ? () {}
+                    : () => _openCarbPickerSheet(context),
+                isDisabled: onCarbSelected == null,
               ),
             ],
           ),
@@ -959,6 +970,23 @@ class _MealSlotCard extends StatelessWidget {
       ],
     );
   }
+
+  Future<void> _openCarbPickerSheet(BuildContext context) {
+    final bloc = context.read<MealPlannerBloc>();
+    return showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => BlocProvider.value(
+        value: bloc,
+        child: _CarbPickerSheet(
+          options: carbOptions,
+          selectedId: carb?.id,
+          slotIndex: slotNumber - 1,
+        ),
+      ),
+    );
+  }
 }
 
 class _PlannerField extends StatelessWidget {
@@ -967,6 +995,7 @@ class _PlannerField extends StatelessWidget {
   final bool isSelected;
   final bool isPremium;
   final VoidCallback onTap;
+  final bool isDisabled;
 
   const _PlannerField({
     required this.title,
@@ -974,6 +1003,7 @@ class _PlannerField extends StatelessWidget {
     required this.isSelected,
     required this.isPremium,
     required this.onTap,
+    this.isDisabled = false,
   });
 
   @override
@@ -990,171 +1020,194 @@ class _PlannerField extends StatelessWidget {
             : ColorManager.bluePrimary.withValues(alpha: 0.25))
         : Colors.transparent;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          title,
-          style: getRegularTextStyle(
-            color: ColorManager.grey6A7282,
-            fontSize: FontSizeManager.s12.sp,
+    return Opacity(
+      opacity: isDisabled ? 0.5 : 1.0,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: getRegularTextStyle(
+              color: ColorManager.grey6A7282,
+              fontSize: FontSizeManager.s12.sp,
+            ),
           ),
-        ),
-        Gap(8.h),
-        GestureDetector(
-          onTap: onTap,
-          child: Container(
-            width: double.infinity,
-            padding: EdgeInsets.symmetric(
-              horizontal: AppPadding.p16.w,
-              vertical: AppPadding.p14.h,
-            ),
-            decoration: BoxDecoration(
-              color: bgColor,
-              borderRadius: BorderRadius.circular(AppSize.s14.r),
-              border: Border.all(color: borderColor),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    value,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: getBoldTextStyle(
-                      color: isSelected
-                          ? ColorManager.black101828
-                          : ColorManager.grey6A7282,
-                      fontSize: FontSizeManager.s14.sp,
+          Gap(8.h),
+          GestureDetector(
+            onTap: isDisabled ? null : onTap,
+            child: Container(
+              width: double.infinity,
+              padding: EdgeInsets.symmetric(
+                horizontal: AppPadding.p16.w,
+                vertical: AppPadding.p14.h,
+              ),
+              decoration: BoxDecoration(
+                color: bgColor,
+                borderRadius: BorderRadius.circular(AppSize.s14.r),
+                border: Border.all(color: borderColor),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      value,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: getBoldTextStyle(
+                        color: isSelected
+                            ? ColorManager.black101828
+                            : ColorManager.grey6A7282,
+                        fontSize: FontSizeManager.s14.sp,
+                      ),
                     ),
                   ),
-                ),
-                Icon(
-                  Icons.keyboard_arrow_down,
-                  color: ColorManager.grey6A7282,
-                  size: 22.w,
-                ),
-              ],
+                  Icon(
+                    Icons.keyboard_arrow_down,
+                    color: ColorManager.grey6A7282,
+                    size: 22.w,
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
 
-class _PlannerDropdownField extends StatelessWidget {
-  final String title;
-  final String value;
-  final bool isSelected;
-  final bool isEnabled;
+class _CarbPickerSheet extends StatelessWidget {
   final List<BuilderCarbModel> options;
   final String? selectedId;
-  final void Function(String carbId)? onSelected;
+  final int slotIndex;
 
-  const _PlannerDropdownField({
-    required this.title,
-    required this.value,
-    required this.isSelected,
-    required this.isEnabled,
+  const _CarbPickerSheet({
     required this.options,
     required this.selectedId,
-    required this.onSelected,
+    required this.slotIndex,
   });
 
   @override
   Widget build(BuildContext context) {
-    final bgColor = isSelected
-        ? ColorManager.bluePrimary.withValues(alpha: 0.06)
-        : ColorManager.greyF3F4F6.withValues(alpha: 0.8);
-
-    final borderColor = isSelected
-        ? ColorManager.bluePrimary.withValues(alpha: 0.25)
-        : Colors.transparent;
-
-    return Opacity(
-      opacity: isEnabled ? 1 : 0.5,
-      child: IgnorePointer(
-        ignoring: !isEnabled,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title,
-              style: getRegularTextStyle(
-                color: ColorManager.grey6A7282,
-                fontSize: FontSizeManager.s12.sp,
-              ),
+    return DraggableScrollableSheet(
+      initialChildSize: 0.6,
+      minChildSize: 0.4,
+      maxChildSize: 0.9,
+      builder: (context, scrollController) {
+        return Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(
+              top: Radius.circular(AppSize.s24.r),
             ),
-            Gap(8.h),
-            PopupMenuButton<String>(
-              onSelected: (id) => onSelected?.call(id),
-              itemBuilder: (context) {
-                return options
-                    .map(
-                      (c) => PopupMenuItem<String>(
-                        value: c.id,
+          ),
+          child: Column(
+            children: [
+              Gap(AppSize.s10.h),
+              Container(
+                width: 48.w,
+                height: 5.h,
+                decoration: BoxDecoration(
+                  color: ColorManager.greyF3F4F6,
+                  borderRadius: BorderRadius.circular(99.r),
+                ),
+              ),
+              Gap(AppSize.s12.h),
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: AppPadding.p16.w),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        Strings.selectCarb.tr(),
+                        style: getBoldTextStyle(
+                          color: ColorManager.black101828,
+                          fontSize: FontSizeManager.s18.sp,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      icon: Icon(
+                        Icons.close,
+                        color: ColorManager.grey6A7282,
+                        size: 20.w,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Gap(AppSize.s8.h),
+              Expanded(
+                child: ListView.separated(
+                  controller: scrollController,
+                  padding: EdgeInsets.only(
+                    left: AppPadding.p16.w,
+                    right: AppPadding.p16.w,
+                    bottom: 24.h,
+                  ),
+                  itemCount: options.length,
+                  separatorBuilder: (_, __) => Gap(AppSize.s10.h),
+                  itemBuilder: (context, index) {
+                    final carb = options[index];
+                    final isSelected = selectedId == carb.id;
+
+                    return GestureDetector(
+                      onTap: () {
+                        context.read<MealPlannerBloc>().add(
+                              SetMealSlotCarbEvent(
+                                slotIndex: slotIndex,
+                                carbId: carb.id,
+                              ),
+                            );
+                        Navigator.pop(context);
+                      },
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        padding: EdgeInsets.all(AppPadding.p12.w),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? ColorManager.bluePrimary.withValues(alpha: 0.06)
+                              : Colors.white,
+                          borderRadius: BorderRadius.circular(AppSize.s16.r),
+                          border: Border.all(
+                            color: isSelected
+                                ? ColorManager.bluePrimary
+                                : ColorManager.formFieldsBorderColor,
+                          ),
+                        ),
                         child: Row(
                           children: [
                             Expanded(
                               child: Text(
-                                c.name,
-                                style: getRegularTextStyle(
+                                carb.name,
+                                style: getBoldTextStyle(
                                   color: ColorManager.black101828,
                                   fontSize: FontSizeManager.s14.sp,
                                 ),
                               ),
                             ),
-                            if (selectedId == c.id)
-                              Icon(
-                                Icons.check,
-                                color: ColorManager.bluePrimary,
-                                size: 18.w,
-                              ),
+                            Gap(AppSize.s8.w),
+                            Icon(
+                              isSelected
+                                  ? Icons.check_circle
+                                  : Icons.radio_button_unchecked,
+                              color: isSelected
+                                  ? ColorManager.bluePrimary
+                                  : ColorManager.grey9CA3AF,
+                              size: 22.w,
+                            ),
                           ],
                         ),
                       ),
-                    )
-                    .toList();
-              },
-              child: Container(
-                width: double.infinity,
-                padding: EdgeInsets.symmetric(
-                  horizontal: AppPadding.p16.w,
-                  vertical: AppPadding.p14.h,
-                ),
-                decoration: BoxDecoration(
-                  color: bgColor,
-                  borderRadius: BorderRadius.circular(AppSize.s14.r),
-                  border: Border.all(color: borderColor),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        value,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: getBoldTextStyle(
-                          color: isSelected
-                              ? ColorManager.black101828
-                              : ColorManager.grey6A7282,
-                          fontSize: FontSizeManager.s14.sp,
-                        ),
-                      ),
-                    ),
-                    Icon(
-                      Icons.keyboard_arrow_down,
-                      color: ColorManager.grey6A7282,
-                      size: 22.w,
-                    ),
-                  ],
+                    );
+                  },
                 ),
               ),
-            ),
-          ],
-        ),
-      ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
@@ -1281,7 +1334,7 @@ class _ProteinPickerSheetState extends State<_ProteinPickerSheet> {
                   children: [
                     Expanded(
                       child: Text(
-                        Strings.protein.tr(),
+                        Strings.selectProtein.tr(),
                         style: getBoldTextStyle(
                           color: ColorManager.black101828,
                           fontSize: FontSizeManager.s18.sp,
