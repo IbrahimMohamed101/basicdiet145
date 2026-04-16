@@ -46,13 +46,13 @@ class SubscriptionCheckoutRequest {
 
 @JsonSerializable()
 class SubscriptionCheckoutPremiumItemRequest {
-  @JsonKey(name: 'premiumMealId')
-  final String premiumMealId;
+  @JsonKey(name: 'proteinId')
+  final String proteinId;
   @JsonKey(name: 'qty')
   final int qty;
 
   const SubscriptionCheckoutPremiumItemRequest({
-    required this.premiumMealId,
+    required this.proteinId,
     required this.qty,
   });
 

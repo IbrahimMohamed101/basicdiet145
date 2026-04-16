@@ -1315,7 +1315,7 @@ SubscriptionCheckoutRequestModel _buildCheckoutRequest(
     premiumItems: request.premiumItems
         .map(
           (item) => SubscriptionCheckoutPremiumItemRequestModel(
-            premiumMealId: item.premiumMealId,
+            proteinId: item.proteinId,
             qty: item.qty,
           ),
         )

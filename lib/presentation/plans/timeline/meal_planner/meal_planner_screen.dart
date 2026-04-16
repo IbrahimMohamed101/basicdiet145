@@ -568,6 +568,21 @@ class MealPlannerView extends StatelessWidget {
     required String? selectedProteinId,
   }) {
     final bloc = context.read<MealPlannerBloc>();
+    // Compute credits used excluding the current slot so swapping is allowed.
+    var usedCredits = 0;
+    for (final entry in state.selectedSlotsPerDay.entries) {
+      for (var i = 0; i < entry.value.length; i++) {
+        if (entry.key == state.selectedDayIndex && i == slotIndex) continue;
+        final proteinId = entry.value[i].proteinId;
+        if (proteinId == null) continue;
+        final protein = _findProteinById(state.menu, proteinId);
+        if (protein == null || !protein.isPremium) continue;
+        usedCredits +=
+            protein.premiumCreditCost == 0 ? 1 : protein.premiumCreditCost;
+      }
+    }
+    final availableCredits = state.premiumMealsRemaining - usedCredits;
+
     return showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -578,6 +593,7 @@ class MealPlannerView extends StatelessWidget {
           state: state,
           slotIndex: slotIndex,
           selectedProteinId: selectedProteinId,
+          availablePremiumCredits: availableCredits < 0 ? 0 : availableCredits,
         ),
       ),
     );
@@ -1203,11 +1219,13 @@ class _ProteinPickerSheet extends StatefulWidget {
   final MealPlannerLoaded state;
   final int slotIndex;
   final String? selectedProteinId;
+  final int availablePremiumCredits;
 
   const _ProteinPickerSheet({
     required this.state,
     required this.slotIndex,
     required this.selectedProteinId,
+    required this.availablePremiumCredits,
   });
 
   @override
@@ -1463,9 +1481,17 @@ class _ProteinPickerSheetState extends State<_ProteinPickerSheet> {
                     final isItemDisabled = isBeefDisabled &&
                         protein.proteinFamilyKey == beefRule.proteinFamilyKey &&
                         !currentIsBeef;
+                    // Disable premium proteins when the user has no credits left
+                    // for this slot (but allow re-selecting the already-chosen one).
+                    final isPremiumExhausted = isPremium &&
+                        !isSelected &&
+                        widget.availablePremiumCredits <
+                            (protein.premiumCreditCost == 0
+                                ? 1
+                                : protein.premiumCreditCost);
 
                     return GestureDetector(
-                      onTap: isItemDisabled
+                      onTap: (isItemDisabled || isPremiumExhausted)
                           ? null
                           : () {
                               context.read<MealPlannerBloc>().add(
@@ -1477,7 +1503,7 @@ class _ProteinPickerSheetState extends State<_ProteinPickerSheet> {
                               Navigator.pop(context);
                             },
                       child: Opacity(
-                        opacity: isItemDisabled ? 0.4 : 1.0,
+                        opacity: (isItemDisabled || isPremiumExhausted) ? 0.4 : 1.0,
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 200),
                           padding: EdgeInsets.all(AppPadding.p12.w),

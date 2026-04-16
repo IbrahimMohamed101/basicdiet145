@@ -42,16 +42,16 @@ class SubscriptionCheckoutRequestModel extends Equatable {
 }
 
 class SubscriptionCheckoutPremiumItemRequestModel extends Equatable {
-  final String premiumMealId;
+  final String proteinId;
   final int qty;
 
   const SubscriptionCheckoutPremiumItemRequestModel({
-    required this.premiumMealId,
+    required this.proteinId,
     required this.qty,
   });
 
   @override
-  List<Object?> get props => [premiumMealId, qty];
+  List<Object?> get props => [proteinId, qty];
 }
 
 class SubscriptionCheckoutDeliveryRequestModel extends Equatable {

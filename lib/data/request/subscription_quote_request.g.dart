@@ -42,14 +42,14 @@ Map<String, dynamic> _$SubscriptionQuoteRequestToJson(
 SubscriptionQuotePremiumItemRequest
 _$SubscriptionQuotePremiumItemRequestFromJson(Map<String, dynamic> json) =>
     SubscriptionQuotePremiumItemRequest(
-      premiumMealId: json['premiumMealId'] as String,
+      proteinId: json['proteinId'] as String,
       qty: (json['qty'] as num).toInt(),
     );
 
 Map<String, dynamic> _$SubscriptionQuotePremiumItemRequestToJson(
   SubscriptionQuotePremiumItemRequest instance,
 ) => <String, dynamic>{
-  'premiumMealId': instance.premiumMealId,
+  'proteinId': instance.proteinId,
   'qty': instance.qty,
 };
 

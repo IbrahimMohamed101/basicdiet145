@@ -103,6 +103,35 @@ class MealPlannerBloc extends Bloc<MealPlannerEvent, MealPlannerState> {
     final current = slots[event.slotIndex];
     if (current.proteinId == event.proteinId) return;
 
+    // Guard: check premium credit availability before allowing selection.
+    if (event.proteinId != null) {
+      final newProtein = _findProteinById(s.menu, event.proteinId!);
+      if (newProtein != null && newProtein.isPremium) {
+        final cost = newProtein.premiumCreditCost == 0
+            ? 1
+            : newProtein.premiumCreditCost;
+
+        // Credits already consumed across all days, excluding the current slot
+        // (so swapping a premium for another premium is handled correctly).
+        var usedCredits = 0;
+        for (final entry in s.selectedSlotsPerDay.entries) {
+          for (var i = 0; i < entry.value.length; i++) {
+            // Skip the slot being replaced so we don't double-count it.
+            if (entry.key == dayIndex && i == event.slotIndex) continue;
+            final proteinId = entry.value[i].proteinId;
+            if (proteinId == null) continue;
+            final protein = _findProteinById(s.menu, proteinId);
+            if (protein == null || !protein.isPremium) continue;
+            usedCredits += protein.premiumCreditCost == 0
+                ? 1
+                : protein.premiumCreditCost;
+          }
+        }
+
+        if (usedCredits + cost > s.premiumMealsRemaining) return;
+      }
+    }
+
     final next = current.copyWith(
       proteinId: event.proteinId,
       carbId: event.proteinId == null ? null : current.carbId,
