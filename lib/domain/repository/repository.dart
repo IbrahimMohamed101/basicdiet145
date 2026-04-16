@@ -18,6 +18,7 @@ import 'package:basic_diet/data/request/skip_days_request.dart';
 import 'package:basic_diet/data/response/skip_days_response.dart';
 import 'package:basic_diet/domain/model/timeline_model.dart';
 import 'package:basic_diet/domain/model/categories_with_meals_model.dart';
+import 'package:basic_diet/domain/model/meal_planner_menu_model.dart';
 
 import 'package:basic_diet/domain/model/pickup_prepare_model.dart';
 import 'package:basic_diet/domain/model/pickup_status_model.dart';
@@ -60,6 +61,7 @@ abstract class Repository {
   );
   Future<Either<Failure, TimelineModel>> getSubscriptionTimeline(String id);
   Future<Either<Failure, CategoriesWithMealsModel>> getCategoriesWithMeals();
+  Future<Either<Failure, MealPlannerMenuModel>> getMealPlannerMenu();
   Future<Either<Failure, CheckoutDraftModel>> getCheckoutDraft(String id);
   Future<Either<Failure, BaseModel>> bulkSelections(
     String id,

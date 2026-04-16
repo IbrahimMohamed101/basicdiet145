@@ -1,19 +1,19 @@
-import 'package:basic_diet/domain/model/categories_with_meals_model.dart';
+import 'package:basic_diet/domain/model/meal_planner_menu_model.dart';
 import 'package:basic_diet/domain/model/timeline_model.dart';
 import 'package:equatable/equatable.dart';
 
-abstract class MealPlannerState extends Equatable {
+sealed class MealPlannerState extends Equatable {
   const MealPlannerState();
 
   @override
   List<Object?> get props => [];
 }
 
-class MealPlannerInitial extends MealPlannerState {}
+final class MealPlannerInitial extends MealPlannerState {}
 
-class MealPlannerLoading extends MealPlannerState {}
+final class MealPlannerLoading extends MealPlannerState {}
 
-class MealPlannerError extends MealPlannerState {
+final class MealPlannerError extends MealPlannerState {
   final String message;
   const MealPlannerError(this.message);
 
@@ -21,14 +21,36 @@ class MealPlannerError extends MealPlannerState {
   List<Object?> get props => [message];
 }
 
-class MealPlannerLoaded extends MealPlannerState {
+final class MealPlannerSlotSelection extends Equatable {
+  final String? proteinId;
+  final String? carbId;
+
+  const MealPlannerSlotSelection({
+    required this.proteinId,
+    required this.carbId,
+  });
+
+  MealPlannerSlotSelection copyWith({
+    String? proteinId,
+    String? carbId,
+  }) {
+    return MealPlannerSlotSelection(
+      proteinId: proteinId ?? this.proteinId,
+      carbId: carbId ?? this.carbId,
+    );
+  }
+
+  @override
+  List<Object?> get props => [proteinId, carbId];
+}
+
+final class MealPlannerLoaded extends MealPlannerState {
   final List<TimelineDayModel> timelineDays;
-  final CategoriesWithMealsModel categoriesWithMeals;
+  final MealPlannerMenuModel menu;
   final int selectedDayIndex;
-  final Map<int, List<String>> selectedMealsPerDay;
-  final Map<int, List<String>> savedSelections;
+  final Map<int, List<MealPlannerSlotSelection>> selectedSlotsPerDay;
+  final Map<int, List<MealPlannerSlotSelection>> savedSlotsPerDay;
   final bool isSaving;
-  final int selectedCategoryIndex;
   final bool showSavedBanner;
   final String lastAddedMealName;
   final int premiumMealsRemaining;
@@ -36,28 +58,28 @@ class MealPlannerLoaded extends MealPlannerState {
 
   const MealPlannerLoaded({
     required this.timelineDays,
-    required this.categoriesWithMeals,
+    required this.menu,
     required this.selectedDayIndex,
-    required this.selectedMealsPerDay,
-    required this.savedSelections,
+    required this.selectedSlotsPerDay,
+    required this.savedSlotsPerDay,
     required this.premiumMealsRemaining,
     this.isSaving = false,
     this.saveSuccess = false,
-    this.selectedCategoryIndex = 0,
     this.showSavedBanner = false,
     this.lastAddedMealName = "",
   });
 
   bool get isDirty {
-    if (selectedMealsPerDay[selectedDayIndex] == null ||
-        savedSelections[selectedDayIndex] == null) {
-      return false;
-    }
-    final current = selectedMealsPerDay[selectedDayIndex]!;
-    final saved = savedSelections[selectedDayIndex]!;
-    if (current.length != saved.length) return true;
-    for (final id in current) {
-      if (!saved.contains(id)) return true;
+    for (final entry in selectedSlotsPerDay.entries) {
+      final dayIndex = entry.key;
+      final current = entry.value;
+      final saved = savedSlotsPerDay[dayIndex];
+      if (saved == null) continue;
+      if (current.length != saved.length) return true;
+      for (var i = 0; i < current.length; i++) {
+        if (i >= saved.length) return true;
+        if (current[i] != saved[i]) return true;
+      }
     }
     return false;
   }
@@ -67,12 +89,11 @@ class MealPlannerLoaded extends MealPlannerState {
   @override
   List<Object?> get props => [
     timelineDays,
-    categoriesWithMeals,
+    menu,
     selectedDayIndex,
-    selectedMealsPerDay,
-    savedSelections,
+    selectedSlotsPerDay,
+    savedSlotsPerDay,
     isSaving,
-    selectedCategoryIndex,
     showSavedBanner,
     lastAddedMealName,
     premiumMealsRemaining,
@@ -81,12 +102,11 @@ class MealPlannerLoaded extends MealPlannerState {
 
   MealPlannerLoaded copyWith({
     List<TimelineDayModel>? timelineDays,
-    CategoriesWithMealsModel? categoriesWithMeals,
+    MealPlannerMenuModel? menu,
     int? selectedDayIndex,
-    Map<int, List<String>>? selectedMealsPerDay,
-    Map<int, List<String>>? savedSelections,
+    Map<int, List<MealPlannerSlotSelection>>? selectedSlotsPerDay,
+    Map<int, List<MealPlannerSlotSelection>>? savedSlotsPerDay,
     bool? isSaving,
-    int? selectedCategoryIndex,
     bool? showSavedBanner,
     String? lastAddedMealName,
     int? premiumMealsRemaining,
@@ -94,13 +114,11 @@ class MealPlannerLoaded extends MealPlannerState {
   }) {
     return MealPlannerLoaded(
       timelineDays: timelineDays ?? this.timelineDays,
-      categoriesWithMeals: categoriesWithMeals ?? this.categoriesWithMeals,
+      menu: menu ?? this.menu,
       selectedDayIndex: selectedDayIndex ?? this.selectedDayIndex,
-      selectedMealsPerDay: selectedMealsPerDay ?? this.selectedMealsPerDay,
-      savedSelections: savedSelections ?? this.savedSelections,
+      selectedSlotsPerDay: selectedSlotsPerDay ?? this.selectedSlotsPerDay,
+      savedSlotsPerDay: savedSlotsPerDay ?? this.savedSlotsPerDay,
       isSaving: isSaving ?? this.isSaving,
-      selectedCategoryIndex:
-          selectedCategoryIndex ?? this.selectedCategoryIndex,
       showSavedBanner: showSavedBanner ?? this.showSavedBanner,
       lastAddedMealName: lastAddedMealName ?? this.lastAddedMealName,
       premiumMealsRemaining:

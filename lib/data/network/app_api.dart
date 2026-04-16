@@ -21,6 +21,7 @@ import 'package:basic_diet/data/response/timeline_response.dart';
 import 'package:basic_diet/data/response/categories_with_meals_response.dart';
 import 'package:basic_diet/data/response/pickup_prepare_response.dart';
 import 'package:basic_diet/data/response/pickup_status_response.dart';
+import 'package:basic_diet/data/response/meal_planner_menu_response.dart';
 import 'package:retrofit/retrofit.dart';
 import 'package:dio/dio.dart';
 part 'app_api.g.dart';
@@ -117,4 +118,7 @@ abstract class AppServiceClient {
     @Path("id") String id,
     @Path("date") String date,
   );
+
+  @GET("/api/subscriptions/meal-planner-menu")
+  Future<MealPlannerMenuResponse> getMealPlannerMenu();
 }

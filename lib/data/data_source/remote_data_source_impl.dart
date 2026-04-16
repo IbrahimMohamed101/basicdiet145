@@ -20,6 +20,7 @@ import 'package:basic_diet/data/response/freeze_subscription_response.dart';
 import 'package:basic_diet/data/request/skip_days_request.dart';
 import 'package:basic_diet/data/response/skip_days_response.dart';
 import 'package:basic_diet/data/response/timeline_response.dart';
+import 'package:basic_diet/data/response/meal_planner_menu_response.dart';
 
 import 'package:basic_diet/data/response/pickup_prepare_response.dart';
 import 'package:basic_diet/data/response/pickup_status_response.dart';
@@ -141,5 +142,10 @@ class RemoteDataSourceImpl implements RemoteDataSource {
   @override
   Future<PickupStatusResponse> getPickupStatus(String id, String date) {
     return _appServiceClient.getPickupStatus(id, date);
+  }
+
+  @override
+  Future<MealPlannerMenuResponse> getMealPlannerMenu() {
+    return _appServiceClient.getMealPlannerMenu();
   }
 }

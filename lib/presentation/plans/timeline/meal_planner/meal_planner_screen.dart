@@ -1,7 +1,6 @@
 import 'package:easy_localization/easy_localization.dart';
 import 'package:basic_diet/app/dependency_injection.dart';
-import 'package:basic_diet/presentation/widgets/network_image_placeholder.dart';
-import 'package:basic_diet/domain/model/categories_with_meals_model.dart';
+import 'package:basic_diet/domain/model/meal_planner_menu_model.dart';
 import 'package:basic_diet/domain/model/timeline_model.dart';
 import 'package:basic_diet/presentation/plans/timeline/meal_planner/bloc/meal_planner_bloc.dart';
 import 'package:basic_diet/presentation/plans/timeline/meal_planner/bloc/meal_planner_event.dart';
@@ -45,7 +44,9 @@ class MealPlannerScreen extends StatelessWidget {
         )..add(const GetMealPlannerDataEvent());
       },
       child: BlocListener<MealPlannerBloc, MealPlannerState>(
-        listenWhen: (prev, curr) => curr is MealPlannerLoaded && (prev is! MealPlannerLoaded || prev.saveSuccess != curr.saveSuccess),
+        listenWhen: (prev, curr) =>
+            curr is MealPlannerLoaded &&
+            (prev is! MealPlannerLoaded || prev.saveSuccess != curr.saveSuccess),
         listener: (context, state) {
           if (state is MealPlannerLoaded && state.saveSuccess) {
             Navigator.pop(context, true);
@@ -62,76 +63,131 @@ class MealPlannerView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: SafeArea(
-        child: BlocBuilder<MealPlannerBloc, MealPlannerState>(
-          builder: (context, state) {
-            if (state is MealPlannerLoading) {
-              return const Center(child: CircularProgressIndicator());
-            } else if (state is MealPlannerError) {
-              return Center(child: Text(state.message));
-            } else if (state is MealPlannerLoaded) {
-              return Stack(
-                children: [
-                  CustomScrollView(
-                    slivers: [
-                      SliverToBoxAdapter(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _buildHeader(context),
-                            Gap(AppSize.s16.h),
-                            _buildDateSelector(state),
-                            Gap(AppSize.s16.h),
-                            _buildBlueBanner(state),
-                            Gap(AppSize.s16.h),
-                            _buildProgressSection(state),
-                            Gap(AppSize.s16.h),
-                            _buildPremiumBanner(state),
-                            Gap(AppSize.s16.h),
-                          ],
-                        ),
-                      ),
-                      SliverPersistentHeader(
-                        pinned: true,
-                        delegate: _StickyCategoryDelegate(
-                          child: Container(
-                            color: Colors.white,
-                            padding: EdgeInsets.only(bottom: AppSize.s16.h),
-                            child: _buildCategorySelector(state, context),
-                          ),
-                          height: 40.h + AppSize.s16.h,
-                        ),
-                      ),
-                      SliverToBoxAdapter(
-                        child: Padding(
-                          padding: EdgeInsets.only(bottom: 120.h),
+    return BlocBuilder<MealPlannerBloc, MealPlannerState>(
+      builder: (context, state) {
+        return Scaffold(
+          backgroundColor: Colors.white,
+          bottomNavigationBar: state is MealPlannerLoaded
+              ? _buildBottomAction(state, context)
+              : null,
+          body: SafeArea(
+            child: Builder(
+              builder: (context) {
+                if (state is MealPlannerLoading) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (state is MealPlannerError) {
+                  return Center(child: Text(state.message));
+                }
+                if (state is! MealPlannerLoaded) {
+                  return const SizedBox.shrink();
+                }
+
+                return Stack(
+                  children: [
+                    CustomScrollView(
+                      slivers: [
+                        SliverToBoxAdapter(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              if (state
-                                      .categoriesWithMeals
-                                      .data[state.selectedCategoryIndex]
-                                      .slug ==
-                                  'premium')
-                                _buildPremiumHighlightBanner(state),
-                              _buildMealList(state, context),
+                              _buildHeader(context),
+                              Gap(AppSize.s16.h),
+                              _buildDateSelector(state),
+                              Gap(AppSize.s16.h),
                             ],
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                  _buildBottomAction(state, context),
-                  _buildTopNotificationBanner(state, context),
-                ],
-              );
-            }
-            return const SizedBox.shrink();
-          },
-        ),
-      ),
+                        SliverPadding(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: AppPadding.p16.w,
+                          ),
+                          sliver: SliverToBoxAdapter(
+                            child: Column(
+                              children: [
+                                _MealPlannerProgressIndicator(
+                                  selectedMeals: _selectedMealsCount(state),
+                                  totalMeals: state.maxMeals,
+                                  premiumLeft: _premiumLeftForDay(state),
+                                ),
+                                Gap(AppSize.s16.h),
+                              ],
+                            ),
+                          ),
+                        ),
+                        SliverPadding(
+                          padding: EdgeInsets.only(
+                            left: AppPadding.p16.w,
+                            right: AppPadding.p16.w,
+                            bottom: 24.h,
+                          ),
+                          sliver: SliverList.separated(
+                            itemCount: state.maxMeals,
+                            separatorBuilder: (_, __) => Gap(AppSize.s12.h),
+                            itemBuilder: (context, index) {
+                              final slot = _slotForIndex(state, index);
+                              final protein = slot?.proteinId == null
+                                  ? null
+                                  : _findProteinById(
+                                      state.menu,
+                                      slot!.proteinId!,
+                                    );
+                              final carb = slot?.carbId == null
+                                  ? null
+                                  : _findCarbById(
+                                      state.menu,
+                                      slot!.carbId!,
+                                    );
+
+                              return _MealSlotCard(
+                                slotNumber: index + 1,
+                                protein: protein,
+                                carb: carb,
+                                isProteinPremium: protein?.isPremium ?? false,
+                                isBeefDisabled: _isBeefDisabledForSlot(
+                                  state: state,
+                                  slotIndex: index,
+                                  currentProtein: protein,
+                                ),
+                                onSelectProtein: () => _openProteinPickerSheet(
+                                  context: context,
+                                  state: state,
+                                  slotIndex: index,
+                                  selectedProteinId: slot?.proteinId,
+                                ),
+                                carbOptions: _sortedCarbs(state.menu),
+                                onCarbSelected: protein == null
+                                    ? null
+                                    : (carbId) => context
+                                        .read<MealPlannerBloc>()
+                                        .add(
+                                          SetMealSlotCarbEvent(
+                                            slotIndex: index,
+                                            carbId: carbId,
+                                          ),
+                                        ),
+                                onClear: protein == null
+                                    ? null
+                                    : () => context.read<MealPlannerBloc>().add(
+                                          SetMealSlotProteinEvent(
+                                            slotIndex: index,
+                                            proteinId: null,
+                                          ),
+                                        ),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                    _buildTopNotificationBanner(state, context),
+                  ],
+                );
+              },
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -199,8 +255,8 @@ class MealPlannerView extends StatelessWidget {
               ),
               IconButton(
                 onPressed: () => context.read<MealPlannerBloc>().add(
-                  const HideBannerEvent(),
-                ),
+                      const HideBannerEvent(),
+                    ),
                 icon: const Icon(
                   Icons.close,
                   color: Color(0xFF166534),
@@ -224,7 +280,8 @@ class MealPlannerView extends StatelessWidget {
             children: [
               IconButton(
                 onPressed: () => Navigator.pop(context),
-                icon: const Icon(Icons.arrow_back, color: ColorManager.black101828),
+                icon:
+                    const Icon(Icons.arrow_back, color: ColorManager.black101828),
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(),
               ),
@@ -252,6 +309,7 @@ class MealPlannerView extends StatelessWidget {
     );
   }
 
+  // Keep as-is (top days slider).
   Widget _buildDateSelector(MealPlannerLoaded state) {
     return SizedBox(
       height: 100.h,
@@ -272,8 +330,13 @@ class MealPlannerView extends StatelessWidget {
             'extension',
           ].contains(day.status.toLowerCase());
           final isComplete =
-              (state.selectedMealsPerDay[index]?.length ?? 0) >=
-              day.requiredMeals;
+              (state.selectedSlotsPerDay[index]
+                          ?.where(
+                            (s) => s.proteinId != null && s.carbId != null,
+                          )
+                          .length ??
+                      0) >=
+                  day.requiredMeals;
 
           Color baseColor;
           Color baseBgColor;
@@ -335,9 +398,8 @@ class MealPlannerView extends StatelessWidget {
             }
           }
 
-          Color pillBgColor = isComplete
-              ? Colors.white.withValues(alpha: 0.2)
-              : baseColor;
+          Color pillBgColor =
+              isComplete ? Colors.white.withValues(alpha: 0.2) : baseColor;
           Color statusTextColor = Colors.white;
 
           return GestureDetector(
@@ -406,7 +468,8 @@ class MealPlannerView extends StatelessWidget {
                         border: Border.all(color: Colors.white, width: 2.w),
                       ),
                       padding: EdgeInsets.all(4.w),
-                      child: Icon(Icons.check, color: Colors.white, size: 14.w),
+                      child:
+                          Icon(Icons.check, color: Colors.white, size: 14.w),
                     ),
                   ),
               ],
@@ -417,575 +480,111 @@ class MealPlannerView extends StatelessWidget {
     );
   }
 
-  Widget _buildBlueBanner(MealPlannerLoaded state) {
-    final day = state.timelineDays[state.selectedDayIndex];
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: AppPadding.p16.w),
-      child: Container(
-        padding: EdgeInsets.symmetric(
-          horizontal: AppPadding.p16.w,
-          vertical: AppPadding.p12.h,
-        ),
-        decoration: BoxDecoration(
-          color: ColorManager.bluePrimary,
-          borderRadius: BorderRadius.circular(AppSize.s8.r),
-        ),
-        child: Row(
-          children: [
-            Icon(
-              Icons.calendar_today,
-              color: Colors.white,
-              size: AppSize.s18.w,
-            ),
-            Gap(AppSize.s8.w),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  Strings.planningFor.tr(),
-                  style: getRegularTextStyle(
-                    color: Colors.white70,
-                    fontSize: FontSizeManager.s10.sp,
-                  ),
-                ),
-                Text(
-                  "${_getFullDayName(day.day)}, ${day.month} ${day.dayNumber}",
-                  style: getBoldTextStyle(
-                    color: Colors.white,
-                    fontSize: FontSizeManager.s14.sp,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
+  int _selectedMealsCount(MealPlannerLoaded state) {
+    final slots = state.selectedSlotsPerDay[state.selectedDayIndex] ?? [];
+    var count = 0;
+    for (final slot in slots) {
+      if (slot.proteinId != null && slot.carbId != null) {
+        count++;
+      }
+    }
+    return count;
   }
 
-  Widget _buildProgressSection(MealPlannerLoaded state) {
-    final selectedCount =
-        state.selectedMealsPerDay[state.selectedDayIndex]?.length ?? 0;
-    final maxMeals = state.maxMeals;
-    bool isComplete = selectedCount == maxMeals;
-
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: AppPadding.p16.w),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    Strings.dailyMeals.tr(),
-                    style: getRegularTextStyle(
-                      color: ColorManager.grey6A7282,
-                      fontSize: FontSizeManager.s12.sp,
-                    ),
-                  ),
-                  Row(
-                    children: [
-                      Text(
-                        "$selectedCount",
-                        style: getBoldTextStyle(
-                          color: ColorManager.black101828,
-                          fontSize: FontSizeManager.s20.sp,
-                        ),
-                      ),
-                      Text(
-                        " ${Strings.of.tr()} $maxMeals ${Strings.selected.tr()}",
-                        style: getBoldTextStyle(
-                          color: ColorManager.grey9CA3AF,
-                          fontSize: FontSizeManager.s20.sp,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              if (isComplete)
-                Container(
-                  padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
-                  decoration: BoxDecoration(
-                    color: ColorManager.greenPrimary.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(AppSize.s16.r),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.circle,
-                        color: ColorManager.greenPrimary,
-                        size: 8.w,
-                      ),
-                      Gap(4.w),
-                      Text(
-                        Strings.complete.tr(),
-                        style: getRegularTextStyle(
-                          color: ColorManager.greenPrimary,
-                          fontSize: FontSizeManager.s12.sp,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-            ],
-          ),
-          Gap(AppSize.s8.h),
-          LinearProgressIndicator(
-            value: selectedCount / maxMeals,
-            backgroundColor: ColorManager.formFieldsBorderColor,
-            valueColor: AlwaysStoppedAnimation<Color>(
-              isComplete ? ColorManager.greenPrimary : ColorManager.bluePrimary,
-            ),
-            minHeight: 4.h,
-            borderRadius: BorderRadius.circular(4.r),
-          ),
-        ],
-      ),
-    );
+  int _premiumLeftForDay(MealPlannerLoaded state) {
+    final usedCredits = _premiumCreditsUsed(state);
+    final left = state.premiumMealsRemaining - usedCredits;
+    return left < 0 ? 0 : left;
   }
 
-  Widget _buildPremiumHighlightBanner(MealPlannerLoaded state) {
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.all(AppPadding.p16.w),
-      decoration: BoxDecoration(
-        color: ColorManager.orangeFFF5EC,
-        border: Border(
-          bottom: BorderSide(
-            color: ColorManager.orangePrimary.withValues(alpha: 0.1),
-            width: 1,
-          ),
-        ),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: EdgeInsets.all(10.w),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  ColorManager.orangePrimary,
-                  ColorManager.orangePrimary.withValues(alpha: 0.8),
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(AppSize.s14.r),
-              boxShadow: [
-                BoxShadow(
-                  color: ColorManager.orangePrimary.withValues(alpha: 0.2),
-                  blurRadius: 8,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Icon(
-              Icons.auto_awesome,
-              color: Colors.white,
-              size: AppSize.s24.w,
-            ),
-          ),
-          Gap(AppSize.s16.w),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  Strings.premiumMealsAvailable.tr(),
-                  style: getBoldTextStyle(
-                    color: ColorManager.black101828,
-                    fontSize: FontSizeManager.s18.sp,
-                  ),
-                ),
-                Gap(AppSize.s4.h),
-                RichText(
-                  text: TextSpan(
-                    style: getRegularTextStyle(
-                      color: ColorManager.grey4A5565,
-                      fontSize: FontSizeManager.s14.sp,
-                    ),
-                    children: [
-                      TextSpan(text: "${Strings.youHave.tr()} "),
-                      TextSpan(
-                        text:
-                            "${state.premiumMealsRemaining} ${Strings.premiumMealsText.tr()} ",
-                        style: getBoldTextStyle(
-                          color: ColorManager.orangePrimary,
-                          fontSize: FontSizeManager.s14.sp,
-                        ),
-                      ),
-                      TextSpan(
-                        text: Strings.remainingSelectPremium.tr(),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
+  int _premiumCreditsUsed(MealPlannerLoaded state) {
+    var used = 0;
+    for (final entry in state.selectedSlotsPerDay.entries) {
+      for (final slot in entry.value) {
+        final proteinId = slot.proteinId;
+        if (proteinId == null) continue;
+        final protein = _findProteinById(state.menu, proteinId);
+        if (protein == null) continue;
+        if (protein.isPremium) {
+          used += protein.premiumCreditCost == 0 ? 1 : protein.premiumCreditCost;
+        }
+      }
+    }
+    return used;
   }
 
-  Widget _buildPremiumBanner(MealPlannerLoaded state) {
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: AppPadding.p16.w),
-      child: Container(
-        padding: EdgeInsets.symmetric(
-          horizontal: AppPadding.p16.w,
-          vertical: AppPadding.p12.h,
-        ),
-        decoration: BoxDecoration(
-          color: ColorManager.orangeFFF5EC,
-          borderRadius: BorderRadius.circular(AppSize.s8.r),
-          border: Border.all(color: ColorManager.orangeLight),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: EdgeInsets.all(4.w),
-              decoration: BoxDecoration(
-                color: ColorManager.orangePrimary,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(Icons.star, color: Colors.white, size: AppSize.s14.w),
-            ),
-            Gap(AppSize.s12.w),
-            Expanded(
-              child: Text(
-                Strings.premiumMealsRemaining.tr(),
-                style: getBoldTextStyle(
-                  color: ColorManager.black101828,
-                  fontSize: FontSizeManager.s14.sp,
-                ),
-              ),
-            ),
-            Text(
-              "${state.premiumMealsRemaining} ",
-              style: getBoldTextStyle(
-                color: ColorManager.orangePrimary,
-                fontSize: FontSizeManager.s16.sp,
-              ),
-            ),
-            Text(
-              Strings.left.tr(),
-              style: getRegularTextStyle(
-                color: ColorManager.orangePrimary,
-                fontSize: FontSizeManager.s12.sp,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCategorySelector(MealPlannerLoaded state, BuildContext context) {
-    return SizedBox(
-      height: 48.h,
-      child: ListView.separated(
-        padding: EdgeInsets.symmetric(horizontal: AppPadding.p16.w),
-        scrollDirection: Axis.horizontal,
-        itemCount: state.categoriesWithMeals.data.length,
-        separatorBuilder: (context, index) => Gap(AppSize.s10.w),
-        itemBuilder: (context, index) {
-          final category = state.categoriesWithMeals.data[index];
-          final isSelected = index == state.selectedCategoryIndex;
-          final isPremium = category.slug == 'premium';
-
-          return GestureDetector(
-            onTap: () {
-              context.read<MealPlannerBloc>().add(ChangeCategoryEvent(index));
-            },
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              padding: EdgeInsets.symmetric(horizontal: AppPadding.p14.w),
-              decoration: BoxDecoration(
-                color: isSelected
-                    ? (isPremium
-                          ? ColorManager.orangePrimary
-                          : ColorManager.greenPrimary)
-                    : ColorManager.greyF3F4F6,
-                borderRadius: BorderRadius.circular(AppSize.s12.r),
-                boxShadow: isSelected && isPremium
-                    ? [
-                        BoxShadow(
-                          color: ColorManager.orangePrimary.withValues(
-                            alpha: 0.3,
-                          ),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
-                        ),
-                      ]
-                    : null,
-              ),
-              child: Row(
-                children: [
-                  if (isPremium) ...[
-                    Icon(
-                      Icons.star_rounded,
-                      color: isSelected
-                          ? Colors.white
-                          : ColorManager.orangePrimary,
-                      size: 22.w,
-                    ),
-                    Gap(AppSize.s8.w),
-                  ],
-                  Text(
-                    category.name,
-                    style: getBoldTextStyle(
-                      color: isSelected
-                          ? Colors.white
-                          : ColorManager.black101828,
-                      fontSize: FontSizeManager.s14.sp,
-                    ),
-                  ),
-                  Gap(AppSize.s8.w),
-                  Container(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 8.w,
-                      vertical: 2.h,
-                    ),
-                    decoration: BoxDecoration(
-                      color: isSelected
-                          ? Colors.white.withValues(alpha: 0.2)
-                          : Colors.white,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Text(
-                      "${category.meals.length}",
-                      style: getBoldTextStyle(
-                        color: isSelected
-                            ? Colors.white
-                            : ColorManager.black101828,
-                        fontSize: FontSizeManager.s10.sp,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildMealList(MealPlannerLoaded state, BuildContext context) {
-    if (state.categoriesWithMeals.data.isEmpty) return const SizedBox.shrink();
-    final selectedCategory =
-        state.categoriesWithMeals.data[state.selectedCategoryIndex];
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: EdgeInsets.symmetric(
-            horizontal: AppPadding.p16.w,
-            vertical: AppPadding.p8.h,
-          ),
-          child: Text(
-            selectedCategory.name,
-            style: getBoldTextStyle(
-              color: ColorManager.black101828,
-              fontSize: FontSizeManager.s18.sp,
-            ),
-          ),
-        ),
-        ...selectedCategory.meals.map((meal) {
-          return Padding(
-            padding: EdgeInsets.symmetric(
-              horizontal: AppPadding.p16.w,
-              vertical: AppPadding.p8.h,
-            ),
-            child: _buildMealCard(meal, state, context),
-          );
-        }),
-      ],
-    );
-  }
-
-  Widget _buildMealCard(
-    MealItemModel meal,
+  MealPlannerSlotSelection? _slotForIndex(
     MealPlannerLoaded state,
-    BuildContext context,
+    int slotIndex,
   ) {
-    bool isSelected =
-        state.selectedMealsPerDay[state.selectedDayIndex]?.contains(meal.id) ??
-        false;
-    int selectedCount =
-        state.selectedMealsPerDay[state.selectedDayIndex]?.length ?? 0;
-    bool isMaxReached = selectedCount >= state.maxMeals;
-    bool isNotAvailable = isMaxReached && !isSelected;
-
-    return GestureDetector(
-      onTap: isNotAvailable
-          ? null
-          : () {
-              context.read<MealPlannerBloc>().add(
-                ToggleMealSelectionEvent(meal.id),
-              );
-            },
-      child: Opacity(
-        opacity: isNotAvailable ? 0.5 : 1.0,
-        child: Container(
-          decoration: BoxDecoration(
-            color: isSelected
-                ? ColorManager.greenPrimary.withValues(alpha: 0.05)
-                : const Color(0xFFFFFFFF),
-            borderRadius: BorderRadius.circular(14.r),
-            border: Border.all(
-              color: isSelected
-                  ? ColorManager.greenPrimary
-                  : const Color(0xFFE5E7EB),
-              width: 1.25.w,
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Stack(
-                children: [
-                  NetworkImagePlaceholder(
-                    imageUrl: meal.imageUrl,
-                    height: 150.h,
-                    width: double.infinity,
-                    fit: BoxFit.cover,
-                    borderRadius: BorderRadius.vertical(
-                      top: Radius.circular(AppSize.s14.r),
-                    ),
-                  ),
-                  if (isSelected)
-                    Positioned(
-                      top: 12.h,
-                      right: 12.w,
-                      child: Container(
-                        decoration: const BoxDecoration(
-                          color: Colors.white,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          Icons.check_circle,
-                          color: ColorManager.greenPrimary,
-                          size: 28.w,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              Padding(
-                padding: EdgeInsets.all(AppPadding.p16.w),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      meal.name,
-                      style: TextStyle(
-                        fontFamily: 'Inter',
-                        fontWeight: FontWeight.w600,
-                        fontSize: 16.sp,
-                        height: 24 / 16,
-                        color: const Color(0xFF101828),
-                      ),
-                    ),
-                    Gap(AppSize.s8.h),
-                    Text(
-                      meal.description,
-                      style: TextStyle(
-                        fontFamily: 'Inter',
-                        fontWeight: FontWeight.w400,
-                        fontSize: 14.sp,
-                        height: 20 / 14,
-                        color: const Color(0xFF4A5565),
-                      ),
-                    ),
-                    Gap(AppSize.s12.h),
-                    Row(
-                      children: [
-                        _buildMacroItem(
-                          ColorManager.bluePrimary,
-                          "${meal.proteinGrams}g",
-                          Strings.protein.tr(),
-                        ),
-                        Gap(AppSize.s12.w),
-                        _buildMacroItem(
-                          ColorManager.orangePrimary,
-                          "${meal.carbGrams}g",
-                          Strings.carbs.tr(),
-                        ),
-                        Gap(AppSize.s12.w),
-                        _buildMacroItem(
-                          ColorManager.greenPrimary,
-                          "${meal.fatGrams}g",
-                          Strings.fat.tr(),
-                        ),
-                      ],
-                    ),
-                    Gap(AppSize.s16.h),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          "${meal.price} ${Strings.sar.tr()}",
-                          style: TextStyle(
-                            fontFamily: 'Inter',
-                            fontWeight: FontWeight.w700,
-                            fontSize: 18.sp,
-                            height: 28 / 18,
-                            color: const Color(0xFF101828),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+    final slots = state.selectedSlotsPerDay[state.selectedDayIndex] ?? [];
+    if (slotIndex < 0 || slotIndex >= slots.length) return null;
+    return slots[slotIndex];
   }
 
-  Widget _buildMacroItem(Color color, String value, String label) {
-    return Row(
-      children: [
-        Icon(Icons.circle, color: color, size: 6.w),
-        Gap(4.w),
-        RichText(
-          text: TextSpan(
-            children: [
-              TextSpan(
-                text: value,
-                style: TextStyle(
-                  fontFamily: 'Inter',
-                  fontWeight: FontWeight.w600,
-                  fontSize: 12.sp,
-                  height: 16 / 12,
-                  color: const Color(0xFF4A5565),
-                ),
-              ),
-              TextSpan(
-                text: " $label",
-                style: TextStyle(
-                  fontFamily: 'Inter',
-                  fontWeight: FontWeight.w400,
-                  fontSize: 12.sp,
-                  height: 16 / 12,
-                  color: const Color(0xFF4A5565),
-                ),
-              ),
-            ],
-          ),
+  List<BuilderCarbModel> _sortedCarbs(MealPlannerMenuModel menu) {
+    final carbs = List<BuilderCarbModel>.from(menu.builderCatalog.carbs);
+    carbs.sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+    return carbs;
+  }
+
+  BuilderProteinModel? _findProteinById(MealPlannerMenuModel menu, String id) {
+    for (final protein in menu.builderCatalog.proteins) {
+      if (protein.id == id) return protein;
+    }
+    return null;
+  }
+
+  BuilderCarbModel? _findCarbById(MealPlannerMenuModel menu, String id) {
+    for (final carb in menu.builderCatalog.carbs) {
+      if (carb.id == id) return carb;
+    }
+    return null;
+  }
+
+  bool _isBeefDisabledForSlot({
+    required MealPlannerLoaded state,
+    required int slotIndex,
+    required BuilderProteinModel? currentProtein,
+  }) {
+    final beefRule = state.menu.builderCatalog.rules.beef;
+    if (beefRule.maxSlotsPerDay <= 0) return false;
+
+    final slots = state.selectedSlotsPerDay[state.selectedDayIndex] ?? [];
+    var beefSlotsCount = 0;
+    for (final slot in slots) {
+      final proteinId = slot.proteinId;
+      if (proteinId == null) continue;
+      final protein = _findProteinById(state.menu, proteinId);
+      if (protein?.proteinFamilyKey == beefRule.proteinFamilyKey) {
+        beefSlotsCount++;
+      }
+    }
+
+    final currentIsBeef =
+        currentProtein?.proteinFamilyKey == beefRule.proteinFamilyKey;
+    return beefSlotsCount >= beefRule.maxSlotsPerDay && !currentIsBeef;
+  }
+
+  Future<void> _openProteinPickerSheet({
+    required BuildContext context,
+    required MealPlannerLoaded state,
+    required int slotIndex,
+    required String? selectedProteinId,
+  }) {
+    final bloc = context.read<MealPlannerBloc>();
+    return showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => BlocProvider.value(
+        value: bloc,
+        child: _ProteinPickerSheet(
+          state: state,
+          slotIndex: slotIndex,
+          selectedProteinId: selectedProteinId,
         ),
-      ],
+      ),
     );
   }
 
@@ -993,75 +592,72 @@ class MealPlannerView extends StatelessWidget {
     bool hasCompletedDay = false;
     for (int i = 0; i < state.timelineDays.length; i++) {
       final required = state.timelineDays[i].requiredMeals;
-      final selected = state.selectedMealsPerDay[i]?.length ?? 0;
-      if (selected >= required) {
+      final slots = state.selectedSlotsPerDay[i] ?? [];
+      final completeSlotsCount = slots
+          .where((s) => s.proteinId != null && s.carbId != null)
+          .length;
+      if (completeSlotsCount >= required) {
         hasCompletedDay = true;
         break;
       }
     }
-    
+
     final bool canSave = state.isDirty && hasCompletedDay;
 
-    return Align(
-      alignment: Alignment.bottomCenter,
-      child: Container(
-        padding: EdgeInsets.all(AppPadding.p16.w),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
-              blurRadius: 10,
-              offset: const Offset(0, -5),
-            ),
-          ],
-        ),
-        child: SafeArea(
-          child: SizedBox(
-            width: double.infinity,
-            height: 50.h,
-            child: ElevatedButton(
-              onPressed: canSave
-                  ? () => context.read<MealPlannerBloc>().add(
+    return Container(
+      padding: EdgeInsets.all(AppPadding.p16.w),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 12,
+            offset: const Offset(0, -6),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          width: double.infinity,
+          height: 56.h,
+          child: ElevatedButton(
+            onPressed: canSave
+                ? () => context.read<MealPlannerBloc>().add(
                       const SaveMealPlannerChangesEvent(),
                     )
-                  : null,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: canSave
-                    ? ColorManager.greenPrimary
-                    : ColorManager.greyF3F4F6,
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(AppSize.s8.r),
-                ),
+                : null,
+            style: ElevatedButton.styleFrom(
+              backgroundColor:
+                  canSave ? ColorManager.greenPrimary : ColorManager.greyF3F4F6,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppSize.s16.r),
               ),
-              child: state.isSaving
-                  ? const CircularProgressIndicator(color: Colors.white)
-                  : Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          canSave ? Icons.save : Icons.save_outlined,
-                          color: canSave
-                              ? Colors.white
-                              : ColorManager.grey9CA3AF,
-                          size: AppSize.s20.w,
-                        ),
-                        Gap(AppSize.s8.w),
-                        Text(
-                          canSave
-                              ? Strings.saveChanges.tr()
-                              : Strings.noChangesToSave.tr(),
-                          style: getBoldTextStyle(
-                            color: canSave
-                                ? Colors.white
-                                : ColorManager.grey9CA3AF,
-                            fontSize: FontSizeManager.s16.sp,
-                          ),
-                        ),
-                      ],
-                    ),
             ),
+            child: state.isSaving
+                ? const CircularProgressIndicator(color: Colors.white)
+                : Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.check,
+                        color: canSave ? Colors.white : ColorManager.grey9CA3AF,
+                        size: AppSize.s20.w,
+                      ),
+                      Gap(AppSize.s8.w),
+                      Text(
+                        canSave
+                            ? Strings.saveChanges.tr()
+                            : Strings.noChangesToSave.tr(),
+                        style: getBoldTextStyle(
+                          color:
+                              canSave ? Colors.white : ColorManager.grey9CA3AF,
+                          fontSize: FontSizeManager.s16.sp,
+                        ),
+                      ),
+                    ],
+                  ),
           ),
         ),
       ),
@@ -1090,29 +686,865 @@ class MealPlannerView extends StatelessWidget {
   }
 }
 
-class _StickyCategoryDelegate extends SliverPersistentHeaderDelegate {
-  final Widget child;
-  final double height;
+class _MealPlannerProgressIndicator extends StatelessWidget {
+  final int selectedMeals;
+  final int totalMeals;
+  final int premiumLeft;
 
-  _StickyCategoryDelegate({required this.child, required this.height});
+  const _MealPlannerProgressIndicator({
+    required this.selectedMeals,
+    required this.totalMeals,
+    required this.premiumLeft,
+  });
 
   @override
-  Widget build(
-    BuildContext context,
-    double shrinkOffset,
-    bool overlapsContent,
-  ) {
-    return SizedBox.expand(child: child);
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                height: 32.w,
+                width: 32.w,
+                decoration: BoxDecoration(
+                  color: ColorManager.bluePrimary.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.check,
+                  color: ColorManager.bluePrimary,
+                  size: 18.w,
+                ),
+              ),
+              Gap(AppSize.s12.w),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "$selectedMeals ${Strings.of.tr()} $totalMeals ${Strings.meals.tr()} ${Strings.selected.tr()}",
+                      style: getRegularTextStyle(
+                        color: ColorManager.black101828,
+                        fontSize: FontSizeManager.s14.sp,
+                      ),
+                    ),
+                    Gap(8.h),
+                    Row(
+                      children: List.generate(totalMeals, (index) {
+                        return Expanded(
+                          child: Container(
+                            height: 6.h,
+                            margin: EdgeInsets.only(
+                              right: index == totalMeals - 1 ? 0 : 6.w,
+                            ),
+                            decoration: BoxDecoration(
+                              color: index < selectedMeals
+                                  ? ColorManager.bluePrimary
+                                  : ColorManager.greyF3F4F6,
+                              borderRadius: BorderRadius.circular(99.r),
+                            ),
+                          ),
+                        );
+                      }),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        Gap(AppSize.s12.w),
+        Container(
+          padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
+          decoration: BoxDecoration(
+            color: ColorManager.orangeFFF5EC,
+            border: Border.all(color: ColorManager.orangeLight),
+            borderRadius: BorderRadius.circular(AppSize.s12.r),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                Icons.workspace_premium,
+                color: ColorManager.orangePrimary,
+                size: 18.w,
+              ),
+              Gap(6.w),
+              Text(
+                "$premiumLeft ${Strings.premiumMealsText.tr()} ${Strings.left.tr()}",
+                style: getBoldTextStyle(
+                  color: ColorManager.orangePrimary,
+                  fontSize: FontSizeManager.s12.sp,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _MealSlotCard extends StatelessWidget {
+  final int slotNumber;
+  final BuilderProteinModel? protein;
+  final BuilderCarbModel? carb;
+  final bool isProteinPremium;
+  final bool isBeefDisabled;
+  final VoidCallback onSelectProtein;
+  final List<BuilderCarbModel> carbOptions;
+  final void Function(String carbId)? onCarbSelected;
+  final VoidCallback? onClear;
+
+  const _MealSlotCard({
+    required this.slotNumber,
+    required this.protein,
+    required this.carb,
+    required this.isProteinPremium,
+    required this.isBeefDisabled,
+    required this.onSelectProtein,
+    required this.carbOptions,
+    required this.onCarbSelected,
+    required this.onClear,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isComplete = protein != null && carb != null;
+    final borderColor = isComplete
+        ? isProteinPremium
+            ? ColorManager.orangeLight
+            : ColorManager.greenPrimary.withValues(alpha: 0.35)
+        : ColorManager.formFieldsBorderColor;
+
+    final bgColor = isComplete
+        ? isProteinPremium
+            ? ColorManager.orangeFFF5EC.withValues(alpha: 0.6)
+            : ColorManager.greenPrimary.withValues(alpha: 0.05)
+        : Colors.white;
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Container(
+          padding: EdgeInsets.all(AppPadding.p16.w),
+          decoration: BoxDecoration(
+            color: bgColor,
+            borderRadius: BorderRadius.circular(AppSize.s16.r),
+            border: Border.all(color: borderColor),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    height: 40.w,
+                    width: 40.w,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: isComplete
+                          ? isProteinPremium
+                              ? ColorManager.orangePrimary
+                              : ColorManager.greenPrimary
+                          : ColorManager.greyF3F4F6,
+                      borderRadius: BorderRadius.circular(AppSize.s14.r),
+                    ),
+                    child: Text(
+                      "$slotNumber",
+                      style: getBoldTextStyle(
+                        color: isComplete
+                            ? Colors.white
+                            : ColorManager.grey9CA3AF,
+                        fontSize: FontSizeManager.s18.sp,
+                      ),
+                    ),
+                  ),
+                  Gap(AppSize.s12.w),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          "${Strings.meal.tr()} $slotNumber",
+                          style: getBoldTextStyle(
+                            color: ColorManager.black101828,
+                            fontSize: FontSizeManager.s16.sp,
+                          ),
+                        ),
+                        Gap(2.h),
+                        Text(
+                          isComplete
+                              ? Strings.complete.tr()
+                              : Strings.buildYourMeal.tr(),
+                          style: getRegularTextStyle(
+                            color: ColorManager.grey6A7282,
+                            fontSize: FontSizeManager.s12.sp,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (onClear != null && protein != null)
+                    IconButton(
+                      onPressed: onClear,
+                      icon: Icon(
+                        Icons.close,
+                        size: 18.w,
+                        color: ColorManager.grey6A7282,
+                      ),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                ],
+              ),
+              Gap(AppSize.s16.h),
+              _PlannerField(
+                title: Strings.protein.tr(),
+                value: protein?.name ?? Strings.selectMeal.tr(),
+                isSelected: protein != null,
+                isPremium: isProteinPremium && protein != null,
+                onTap: onSelectProtein,
+              ),
+              Gap(AppSize.s12.h),
+              _PlannerDropdownField(
+                title: Strings.carb.tr(),
+                value: carb?.name ?? Strings.selectMeal.tr(),
+                isSelected: carb != null,
+                isEnabled: onCarbSelected != null,
+                options: carbOptions,
+                selectedId: carb?.id,
+                onSelected: onCarbSelected,
+              ),
+            ],
+          ),
+        ),
+        if (isProteinPremium && protein != null)
+          Positioned(
+            top: -10.h,
+            right: -6.w,
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 6.h),
+              decoration: BoxDecoration(
+                color: ColorManager.orangePrimary,
+                borderRadius: BorderRadius.circular(99.r),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.12),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.star,
+                    color: Colors.white,
+                    size: 14.w,
+                  ),
+                  Gap(4.w),
+                  Text(
+                    Strings.premiumMealsText.tr(),
+                    style: getBoldTextStyle(
+                      color: Colors.white,
+                      fontSize: FontSizeManager.s12.sp,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _PlannerField extends StatelessWidget {
+  final String title;
+  final String value;
+  final bool isSelected;
+  final bool isPremium;
+  final VoidCallback onTap;
+
+  const _PlannerField({
+    required this.title,
+    required this.value,
+    required this.isSelected,
+    required this.isPremium,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final bgColor = isSelected
+        ? (isPremium
+            ? ColorManager.orangeFFF5EC
+            : ColorManager.bluePrimary.withValues(alpha: 0.06))
+        : ColorManager.greyF3F4F6.withValues(alpha: 0.8);
+
+    final borderColor = isSelected
+        ? (isPremium
+            ? ColorManager.orangeLight
+            : ColorManager.bluePrimary.withValues(alpha: 0.25))
+        : Colors.transparent;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: getRegularTextStyle(
+            color: ColorManager.grey6A7282,
+            fontSize: FontSizeManager.s12.sp,
+          ),
+        ),
+        Gap(8.h),
+        GestureDetector(
+          onTap: onTap,
+          child: Container(
+            width: double.infinity,
+            padding: EdgeInsets.symmetric(
+              horizontal: AppPadding.p16.w,
+              vertical: AppPadding.p14.h,
+            ),
+            decoration: BoxDecoration(
+              color: bgColor,
+              borderRadius: BorderRadius.circular(AppSize.s14.r),
+              border: Border.all(color: borderColor),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    value,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: getBoldTextStyle(
+                      color: isSelected
+                          ? ColorManager.black101828
+                          : ColorManager.grey6A7282,
+                      fontSize: FontSizeManager.s14.sp,
+                    ),
+                  ),
+                ),
+                Icon(
+                  Icons.keyboard_arrow_down,
+                  color: ColorManager.grey6A7282,
+                  size: 22.w,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PlannerDropdownField extends StatelessWidget {
+  final String title;
+  final String value;
+  final bool isSelected;
+  final bool isEnabled;
+  final List<BuilderCarbModel> options;
+  final String? selectedId;
+  final void Function(String carbId)? onSelected;
+
+  const _PlannerDropdownField({
+    required this.title,
+    required this.value,
+    required this.isSelected,
+    required this.isEnabled,
+    required this.options,
+    required this.selectedId,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final bgColor = isSelected
+        ? ColorManager.bluePrimary.withValues(alpha: 0.06)
+        : ColorManager.greyF3F4F6.withValues(alpha: 0.8);
+
+    final borderColor = isSelected
+        ? ColorManager.bluePrimary.withValues(alpha: 0.25)
+        : Colors.transparent;
+
+    return Opacity(
+      opacity: isEnabled ? 1 : 0.5,
+      child: IgnorePointer(
+        ignoring: !isEnabled,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: getRegularTextStyle(
+                color: ColorManager.grey6A7282,
+                fontSize: FontSizeManager.s12.sp,
+              ),
+            ),
+            Gap(8.h),
+            PopupMenuButton<String>(
+              onSelected: (id) => onSelected?.call(id),
+              itemBuilder: (context) {
+                return options
+                    .map(
+                      (c) => PopupMenuItem<String>(
+                        value: c.id,
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                c.name,
+                                style: getRegularTextStyle(
+                                  color: ColorManager.black101828,
+                                  fontSize: FontSizeManager.s14.sp,
+                                ),
+                              ),
+                            ),
+                            if (selectedId == c.id)
+                              Icon(
+                                Icons.check,
+                                color: ColorManager.bluePrimary,
+                                size: 18.w,
+                              ),
+                          ],
+                        ),
+                      ),
+                    )
+                    .toList();
+              },
+              child: Container(
+                width: double.infinity,
+                padding: EdgeInsets.symmetric(
+                  horizontal: AppPadding.p16.w,
+                  vertical: AppPadding.p14.h,
+                ),
+                decoration: BoxDecoration(
+                  color: bgColor,
+                  borderRadius: BorderRadius.circular(AppSize.s14.r),
+                  border: Border.all(color: borderColor),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        value,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: getBoldTextStyle(
+                          color: isSelected
+                              ? ColorManager.black101828
+                              : ColorManager.grey6A7282,
+                          fontSize: FontSizeManager.s14.sp,
+                        ),
+                      ),
+                    ),
+                    Icon(
+                      Icons.keyboard_arrow_down,
+                      color: ColorManager.grey6A7282,
+                      size: 22.w,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ProteinPickerSheet extends StatefulWidget {
+  final MealPlannerLoaded state;
+  final int slotIndex;
+  final String? selectedProteinId;
+
+  const _ProteinPickerSheet({
+    required this.state,
+    required this.slotIndex,
+    required this.selectedProteinId,
+  });
+
+  @override
+  State<_ProteinPickerSheet> createState() => _ProteinPickerSheetState();
+}
+
+class _ProteinPickerSheetState extends State<_ProteinPickerSheet> {
+  late String _activeTabKey;
+
+  BuilderProteinModel? _proteinById(String id) {
+    for (final protein in widget.state.menu.builderCatalog.proteins) {
+      if (protein.id == id) return protein;
+    }
+    return null;
   }
 
   @override
-  double get maxExtent => height;
+  void initState() {
+    super.initState();
+    _activeTabKey = 'premium';
+    final selectedProtein = widget.selectedProteinId == null
+        ? null
+        : _proteinById(widget.selectedProteinId!);
+
+    if (selectedProtein != null && selectedProtein.isPremium) {
+      _activeTabKey = 'premium';
+    } else if (selectedProtein != null) {
+      _activeTabKey = selectedProtein.displayCategoryKey;
+    }
+  }
 
   @override
-  double get minExtent => height;
+  Widget build(BuildContext context) {
+    final allCategories = widget.state.menu.builderCatalog.categories
+        .where((c) => c.dimension == 'protein')
+        .toList()
+      ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
 
-  @override
-  bool shouldRebuild(covariant _StickyCategoryDelegate oldDelegate) {
-    return oldDelegate.child != child || oldDelegate.height != height;
+    if (allCategories.isEmpty) {
+      return Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(
+            top: Radius.circular(AppSize.s24.r),
+          ),
+        ),
+        padding: EdgeInsets.all(AppPadding.p16.w),
+        child: SafeArea(
+          child: Text(
+            Strings.noContent.tr(),
+            style: getRegularTextStyle(
+              color: ColorManager.grey6A7282,
+              fontSize: FontSizeManager.s14.sp,
+            ),
+          ),
+        ),
+      );
+    }
+
+    final selectedProtein = widget.selectedProteinId == null
+        ? null
+        : _proteinById(widget.selectedProteinId!);
+
+    final beefRule = widget.state.menu.builderCatalog.rules.beef;
+    final slots =
+        widget.state.selectedSlotsPerDay[widget.state.selectedDayIndex] ?? [];
+    var beefCount = 0;
+    for (final slot in slots) {
+      final proteinId = slot.proteinId;
+      if (proteinId == null) continue;
+      final protein = _proteinById(proteinId);
+      if (protein != null &&
+          protein.proteinFamilyKey == beefRule.proteinFamilyKey) {
+        beefCount++;
+      }
+    }
+    final currentIsBeef =
+        selectedProtein?.proteinFamilyKey == beefRule.proteinFamilyKey;
+    final isBeefDisabled =
+        beefRule.maxSlotsPerDay > 0 &&
+        beefCount >= beefRule.maxSlotsPerDay &&
+        !currentIsBeef;
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.85,
+      minChildSize: 0.5,
+      maxChildSize: 0.95,
+      builder: (context, scrollController) {
+        return Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(
+              top: Radius.circular(AppSize.s24.r),
+            ),
+          ),
+          child: Column(
+            children: [
+              Gap(AppSize.s10.h),
+              Container(
+                width: 48.w,
+                height: 5.h,
+                decoration: BoxDecoration(
+                  color: ColorManager.greyF3F4F6,
+                  borderRadius: BorderRadius.circular(99.r),
+                ),
+              ),
+              Gap(AppSize.s12.h),
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: AppPadding.p16.w),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        Strings.protein.tr(),
+                        style: getBoldTextStyle(
+                          color: ColorManager.black101828,
+                          fontSize: FontSizeManager.s18.sp,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      icon: Icon(
+                        Icons.close,
+                        color: ColorManager.grey6A7282,
+                        size: 20.w,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (widget.selectedProteinId != null)
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: AppPadding.p16.w),
+                  child: Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: TextButton(
+                      onPressed: () {
+                        context.read<MealPlannerBloc>().add(
+                              SetMealSlotProteinEvent(
+                                slotIndex: widget.slotIndex,
+                                proteinId: null,
+                              ),
+                            );
+                        Navigator.pop(context);
+                      },
+                      child: Text(
+                        Strings.removeSelection.tr(),
+                        style: getBoldTextStyle(
+                          color: ColorManager.errorColor,
+                          fontSize: FontSizeManager.s14.sp,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              SizedBox(
+                height: 78.h,
+                child: ListView.separated(
+                  padding: EdgeInsets.symmetric(horizontal: AppPadding.p16.w),
+                  scrollDirection: Axis.horizontal,
+                  itemCount: allCategories.length + 1,
+                  separatorBuilder: (_, __) => Gap(AppSize.s10.w),
+                  itemBuilder: (context, index) {
+                    final tabKey =
+                        index == 0 ? 'premium' : allCategories[index - 1].key;
+                    final isSelected = tabKey == _activeTabKey;
+                    final cat = index == 0 ? null : allCategories[index - 1];
+                    final isBeefTab = cat?.key == beefRule.proteinFamilyKey;
+                    final isTabDisabled = isBeefTab && isBeefDisabled;
+                    return GestureDetector(
+                      onTap: isTabDisabled
+                          ? null
+                          : () => setState(() => _activeTabKey = tabKey),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 14.w,
+                          vertical: 12.h,
+                        ),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? ColorManager.bluePrimary
+                              : ColorManager.greyF3F4F6.withValues(alpha: 0.6),
+                          borderRadius: BorderRadius.circular(AppSize.s16.r),
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              index == 0
+                                  ? Strings.premiumMealsText.tr()
+                                  : cat!.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: getBoldTextStyle(
+                                color: isSelected
+                                    ? Colors.white
+                                    : ColorManager.grey364153,
+                                fontSize: FontSizeManager.s12.sp,
+                              ),
+                            ),
+                            Gap(6.h),
+                            Container(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: 10.w,
+                                vertical: 4.h,
+                              ),
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? Colors.white.withValues(alpha: 0.18)
+                                    : Colors.white,
+                                borderRadius: BorderRadius.circular(99.r),
+                              ),
+                              child: Text(
+                                index == 0
+                                    ? "${widget.state.menu.builderCatalog.proteins.where((p) => p.isPremium).length}"
+                                    : "${widget.state.menu.builderCatalog.proteins.where((p) => !p.isPremium && p.displayCategoryKey == cat!.key).length}",
+                                style: getBoldTextStyle(
+                                  color: isSelected
+                                      ? Colors.white
+                                      : ColorManager.black101828,
+                                  fontSize: FontSizeManager.s12.sp,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              Gap(AppSize.s8.h),
+              Expanded(
+                child: ListView.separated(
+                  controller: scrollController,
+                  padding: EdgeInsets.only(
+                    left: AppPadding.p16.w,
+                    right: AppPadding.p16.w,
+                    bottom: 24.h,
+                  ),
+                  itemCount: _filteredProteins(
+                    widget.state.menu,
+                    _activeTabKey,
+                  ).length,
+                  separatorBuilder: (_, __) => Gap(AppSize.s10.h),
+                  itemBuilder: (context, index) {
+                    final proteins = _filteredProteins(
+                      widget.state.menu,
+                      _activeTabKey,
+                    );
+                    final protein = proteins[index];
+                    final isSelected = widget.selectedProteinId == protein.id;
+                    final isPremium = protein.isPremium;
+                    final isItemDisabled = isBeefDisabled &&
+                        protein.proteinFamilyKey == beefRule.proteinFamilyKey &&
+                        !currentIsBeef;
+
+                    return GestureDetector(
+                      onTap: isItemDisabled
+                          ? null
+                          : () {
+                              context.read<MealPlannerBloc>().add(
+                                    SetMealSlotProteinEvent(
+                                      slotIndex: widget.slotIndex,
+                                      proteinId: protein.id,
+                                    ),
+                                  );
+                              Navigator.pop(context);
+                            },
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        padding: EdgeInsets.all(AppPadding.p12.w),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? ColorManager.bluePrimary.withValues(alpha: 0.06)
+                              : Colors.white,
+                          borderRadius: BorderRadius.circular(AppSize.s16.r),
+                          border: Border.all(
+                            color: isSelected
+                                ? ColorManager.bluePrimary
+                                : ColorManager.formFieldsBorderColor,
+                          ),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          protein.name,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: getBoldTextStyle(
+                                            color: ColorManager.black101828,
+                                            fontSize: FontSizeManager.s14.sp,
+                                          ),
+                                        ),
+                                      ),
+                                      if (isPremium)
+                                        Container(
+                                          padding: EdgeInsets.symmetric(
+                                            horizontal: 8.w,
+                                            vertical: 3.h,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: ColorManager.orangeFFF5EC,
+                                            borderRadius:
+                                                BorderRadius.circular(99.r),
+                                            border: Border.all(
+                                              color: ColorManager.orangeLight,
+                                            ),
+                                          ),
+                                          child: Text(
+                                            Strings.premiumMealsText.tr(),
+                                            style: getBoldTextStyle(
+                                              color: ColorManager.orangePrimary,
+                                              fontSize: FontSizeManager.s10.sp,
+                                            ),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                  Gap(4.h),
+                                  Text(
+                                    protein.description,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: getRegularTextStyle(
+                                      color: ColorManager.grey4A5565,
+                                      fontSize: FontSizeManager.s12.sp,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Gap(AppSize.s8.w),
+                            Icon(
+                              isSelected
+                                  ? Icons.check_circle
+                                  : Icons.radio_button_unchecked,
+                              color: isSelected
+                                  ? ColorManager.bluePrimary
+                                  : ColorManager.grey9CA3AF,
+                              size: 22.w,
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  List<BuilderProteinModel> _filteredProteins(
+    MealPlannerMenuModel menu,
+    String tabKey,
+  ) {
+    final proteins = menu.builderCatalog.proteins;
+    final filtered = tabKey == 'premium'
+        ? proteins.where((p) => p.isPremium).toList()
+        : proteins
+            .where((p) => !p.isPremium && p.displayCategoryKey == tabKey)
+            .toList();
+    filtered.sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+    return filtered;
   }
 }

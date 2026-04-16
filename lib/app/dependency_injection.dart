@@ -33,7 +33,7 @@ import 'package:basic_diet/presentation/plans/manage_subscription/skip/skip_days
 import 'package:basic_diet/domain/usecase/skip_day_usecase.dart';
 import 'package:basic_diet/domain/usecase/skip_date_range_usecase.dart';
 import 'package:basic_diet/domain/usecase/get_timeline_usecase.dart';
-import 'package:basic_diet/domain/usecase/get_categories_with_meals_usecase.dart';
+import 'package:basic_diet/domain/usecase/get_meal_planner_menu_usecase.dart';
 import 'package:basic_diet/domain/usecase/save_meal_planner_changes_usecase.dart';
 import 'package:basic_diet/presentation/plans/timeline/bloc/timeline_bloc.dart';
 import 'package:basic_diet/presentation/plans/timeline/meal_planner/bloc/meal_planner_bloc.dart';
@@ -266,15 +266,9 @@ void initTimelineModule() {
 }
 
 void initMealPlannerModule() {
-  if (!GetIt.I.isRegistered<GetCategoriesWithMealsUseCase>()) {
-    instance.registerFactory<GetCategoriesWithMealsUseCase>(
-      () => GetCategoriesWithMealsUseCase(instance<Repository>()),
-    );
-  }
-
-  if (!GetIt.I.isRegistered<GetPremiumMealsUseCase>()) {
-    instance.registerFactory<GetPremiumMealsUseCase>(
-      () => GetPremiumMealsUseCase(instance<Repository>()),
+  if (!GetIt.I.isRegistered<GetMealPlannerMenuUseCase>()) {
+    instance.registerFactory<GetMealPlannerMenuUseCase>(
+      () => GetMealPlannerMenuUseCase(instance<Repository>()),
     );
   }
 
@@ -287,8 +281,7 @@ void initMealPlannerModule() {
   if (!GetIt.I.isRegistered<MealPlannerBloc>()) {
     instance.registerFactoryParam<MealPlannerBloc, Map<String, dynamic>, void>(
       (params, _) => MealPlannerBloc(
-        instance(),
-        instance(),
+        instance<GetMealPlannerMenuUseCase>(),
         instance(),
         initialTimelineDays: params['timelineDays'],
         initialDayIndex: params['initialDayIndex'],

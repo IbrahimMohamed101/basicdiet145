@@ -18,6 +18,7 @@ import 'package:basic_diet/data/request/skip_days_request.dart';
 import 'package:basic_diet/data/response/skip_days_response.dart';
 import 'package:basic_diet/data/response/timeline_response.dart';
 import 'package:basic_diet/data/response/categories_with_meals_response.dart';
+import 'package:basic_diet/data/response/meal_planner_menu_response.dart';
 
 import 'package:basic_diet/data/response/pickup_prepare_response.dart';
 import 'package:basic_diet/data/response/pickup_status_response.dart';
@@ -56,4 +57,5 @@ abstract class RemoteDataSource {
   Future<BaseResponse> bulkSelections(String id, BulkSelectionsRequest request);
   Future<PickupPrepareResponse> preparePickup(String id, String date);
   Future<PickupStatusResponse> getPickupStatus(String id, String date);
+  Future<MealPlannerMenuResponse> getMealPlannerMenu();
 }

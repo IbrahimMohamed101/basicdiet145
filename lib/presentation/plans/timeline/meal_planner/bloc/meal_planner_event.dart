@@ -1,17 +1,17 @@
 import 'package:equatable/equatable.dart';
 
-abstract class MealPlannerEvent extends Equatable {
+sealed class MealPlannerEvent extends Equatable {
   const MealPlannerEvent();
 
   @override
   List<Object?> get props => [];
 }
 
-class GetMealPlannerDataEvent extends MealPlannerEvent {
+final class GetMealPlannerDataEvent extends MealPlannerEvent {
   const GetMealPlannerDataEvent();
 }
 
-class ChangeDateEvent extends MealPlannerEvent {
+final class ChangeDateEvent extends MealPlannerEvent {
   final int index;
   const ChangeDateEvent(this.index);
 
@@ -19,26 +19,36 @@ class ChangeDateEvent extends MealPlannerEvent {
   List<Object?> get props => [index];
 }
 
-class ToggleMealSelectionEvent extends MealPlannerEvent {
-  final String mealId;
-  const ToggleMealSelectionEvent(this.mealId);
+final class SetMealSlotProteinEvent extends MealPlannerEvent {
+  final int slotIndex;
+  final String? proteinId;
+
+  const SetMealSlotProteinEvent({
+    required this.slotIndex,
+    required this.proteinId,
+  });
 
   @override
-  List<Object?> get props => [mealId];
+  List<Object?> get props => [slotIndex, proteinId];
 }
 
-class SaveMealPlannerChangesEvent extends MealPlannerEvent {
+final class SetMealSlotCarbEvent extends MealPlannerEvent {
+  final int slotIndex;
+  final String? carbId;
+
+  const SetMealSlotCarbEvent({
+    required this.slotIndex,
+    required this.carbId,
+  });
+
+  @override
+  List<Object?> get props => [slotIndex, carbId];
+}
+
+final class SaveMealPlannerChangesEvent extends MealPlannerEvent {
   const SaveMealPlannerChangesEvent();
 }
 
-class ChangeCategoryEvent extends MealPlannerEvent {
-  final int index;
-  const ChangeCategoryEvent(this.index);
-
-  @override
-  List<Object?> get props => [index];
-}
-
-class HideBannerEvent extends MealPlannerEvent {
+final class HideBannerEvent extends MealPlannerEvent {
   const HideBannerEvent();
 }

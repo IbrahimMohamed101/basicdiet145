@@ -38,6 +38,8 @@ import 'package:basic_diet/data/mappers/timeline_mapper.dart';
 import 'package:basic_diet/domain/model/timeline_model.dart';
 import 'package:basic_diet/data/mappers/categories_with_meals_mapper.dart';
 import 'package:basic_diet/domain/model/categories_with_meals_model.dart';
+import 'package:basic_diet/data/mappers/meal_planner_menu_mapper.dart';
+import 'package:basic_diet/domain/model/meal_planner_menu_model.dart';
 import 'package:basic_diet/data/mappers/checkout_draft_mapper.dart';
 import 'package:basic_diet/domain/model/checkout_draft_model.dart';
 
@@ -385,6 +387,45 @@ class RepositoryImpl implements Repository {
         return Left(_mapFailureFromResponse(response));
       }
     } catch (error) {
+      return _handleError(error);
+    }
+  }
+
+  @override
+  Future<Either<Failure, MealPlannerMenuModel>> getMealPlannerMenu() async {
+    try {
+      final response = await _remoteDataSource.getMealPlannerMenu();
+      if (_isSuccessfulResponse(response)) {
+        return Right(response.toDomain());
+      } else {
+        return Left(_mapFailureFromResponse(response));
+      }
+    } catch (error, stackTrace) {
+      developer.log(
+        'getMealPlannerMenu failed: ${error.runtimeType}',
+        name: 'meal_planner_menu',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      if (error is DioException) {
+        final contentType = error.response?.headers.value('content-type');
+        developer.log(
+          'DioException type=${error.type} status=${error.response?.statusCode} contentType=$contentType dataType=${error.response?.data.runtimeType}',
+          name: 'meal_planner_menu',
+        );
+        final data = error.response?.data;
+        if (data is String) {
+          developer.log(
+            'Response body (string): ${data.length > 500 ? data.substring(0, 500) : data}',
+            name: 'meal_planner_menu',
+          );
+        } else if (data is Map<String, dynamic>) {
+          developer.log(
+            'Response body (map): $data',
+            name: 'meal_planner_menu',
+          );
+        }
+      }
       return _handleError(error);
     }
   }

@@ -498,6 +498,9 @@ class Strings {
   static const String of = 'of';
   static const String selected = 'selected';
   static const String complete = 'complete';
+  static const String buildYourMeal = 'buildYourMeal';
+  static const String selectMeal = 'selectMeal';
+  static const String removeSelection = 'removeSelection';
   static const String mealAdded = 'mealAdded';
   static const String addedTo = 'addedTo';
   static const String planningFor = 'planningFor';
@@ -509,6 +512,7 @@ class Strings {
   static const String youHave = 'youHave';
   static const String remainingSelectPremium = 'remainingSelectPremium';
   static const String protein = 'protein';
+  static const String carb = 'carb';
   static const String carbs = 'carbs';
   static const String fat = 'fat';
 
