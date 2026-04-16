@@ -1413,13 +1413,15 @@ class _ProteinPickerSheetState extends State<_ProteinPickerSheet> {
                               decoration: BoxDecoration(
                                 color: isSelected
                                     ? activeCardColor
-                                    : ColorManager.greyF3F4F6,
+                                    : ColorManager.whiteColor,
                                 borderRadius:
                                     BorderRadius.circular(AppSize.s16.r),
                                 border: isSelected
                                     ? null
                                     : Border.all(
-                                        color: ColorManager.formFieldsBorderColor,
+                                        color: isPremiumTab
+                                            ? ColorManager.orangeLight
+                                            : ColorManager.formFieldsBorderColor,
                                       ),
                               ),
                               alignment: Alignment.center,
