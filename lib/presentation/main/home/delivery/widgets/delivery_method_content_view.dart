@@ -36,76 +36,78 @@ class DeliveryMethodContentView extends StatelessWidget {
     final selectedMethod = _getSelectedMethod();
     final bloc = context.read<DeliveryOptionsBloc>();
 
-    return SingleChildScrollView(
-      padding: EdgeInsetsDirectional.all(AppPadding.p16.w),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _SectionTitle(title: Strings.chooseDeliveryType.tr()),
-          Gap(AppSize.s16.h),
-          ...state.deliveryOptionsModel.methods.map(
-            (method) => Padding(
-              padding: EdgeInsetsDirectional.only(bottom: AppSize.s16.h),
-              child: DeliveryTypeCard(
-                method: method,
-                icon: method.type == 'pickup'
-                    ? Icons.location_on_outlined
-                    : Icons.local_shipping_outlined,
-                isSelected: _isMethodSelected(method),
-                onTap: () => bloc.add(
-                  ChangeDeliveryTypeEvent(
-                    method.type == 'pickup'
-                        ? DeliveryType.pickup
-                        : DeliveryType.home,
+    return SafeArea(
+      child: SingleChildScrollView(
+        padding: EdgeInsetsDirectional.all(AppPadding.p16.w),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _SectionTitle(title: Strings.chooseDeliveryType.tr()),
+            Gap(AppSize.s16.h),
+            ...state.deliveryOptionsModel.methods.map(
+              (method) => Padding(
+                padding: EdgeInsetsDirectional.only(bottom: AppSize.s16.h),
+                child: DeliveryTypeCard(
+                  method: method,
+                  icon: method.type == 'pickup'
+                      ? Icons.location_on_outlined
+                      : Icons.local_shipping_outlined,
+                  isSelected: _isMethodSelected(method),
+                  onTap: () => bloc.add(
+                    ChangeDeliveryTypeEvent(
+                      method.type == 'pickup'
+                          ? DeliveryType.pickup
+                          : DeliveryType.home,
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-          Gap(AppSize.s8.h),
-          _SectionTitle(title: Strings.subscriptionStartDate.tr()),
-          Gap(AppSize.s12.h),
-          _buildStartDateSelector(context),
-          if (state.selectedType == DeliveryType.home &&
-              selectedMethod != null) ...[
-            Gap(AppSize.s24.h),
-            _SectionTitle(title: Strings.deliveryArea.tr()),
-            Gap(AppSize.s12.h),
-            DeliveryLocationSelector(
-              label: Strings.selectYourArea.tr(),
-              value: state.selectedArea?.label,
-              onTap: () =>
-                  _showAreaModal(context, state.deliveryOptionsModel.areas),
-            ),
             Gap(AppSize.s8.h),
-            _HelperText(text: selectedMethod.helperText),
-            Gap(AppSize.s24.h),
-            _SectionTitle(title: Strings.deliveryAddress.tr()),
-            Gap(AppSize.s16.h),
-            _buildAddressFields(context),
-            Gap(AppSize.s24.h),
-            _SectionTitle(title: Strings.deliverySchedule.tr()),
+            _SectionTitle(title: Strings.subscriptionStartDate.tr()),
             Gap(AppSize.s12.h),
-            DeliveryLocationSelector(
-              label: Strings.selectPreferredTime.tr(),
-              value: state.selectedTime?.window,
-              onTap: () => _showTimeModal(context, selectedMethod.slots),
+            _buildStartDateSelector(context),
+            if (state.selectedType == DeliveryType.home &&
+                selectedMethod != null) ...[
+              Gap(AppSize.s24.h),
+              _SectionTitle(title: Strings.deliveryArea.tr()),
+              Gap(AppSize.s12.h),
+              DeliveryLocationSelector(
+                label: Strings.selectYourArea.tr(),
+                value: state.selectedArea?.label,
+                onTap: () =>
+                    _showAreaModal(context, state.deliveryOptionsModel.areas),
+              ),
+              Gap(AppSize.s8.h),
+              _HelperText(text: selectedMethod.helperText),
+              Gap(AppSize.s24.h),
+              _SectionTitle(title: Strings.deliveryAddress.tr()),
+              Gap(AppSize.s16.h),
+              _buildAddressFields(context),
+              Gap(AppSize.s24.h),
+              _SectionTitle(title: Strings.deliverySchedule.tr()),
+              Gap(AppSize.s12.h),
+              DeliveryLocationSelector(
+                label: Strings.selectPreferredTime.tr(),
+                value: state.selectedTime?.window,
+                onTap: () => _showTimeModal(context, selectedMethod.slots),
+              ),
+            ] else ...[
+              Gap(AppSize.s24.h),
+              _buildBranchCard(state.selectedPickupLocation),
+            ],
+            Gap(AppSize.s16.h),
+            _buildLabelledField(
+              context,
+              Strings.notesOptional.tr(),
+              Strings.notesHint.tr(),
+              bloc.notesController,
+              onChanged: (val) => bloc.add(UpdateAddressFieldsEvent(notes: val)),
             ),
-          ] else ...[
             Gap(AppSize.s24.h),
-            _buildBranchCard(state.selectedPickupLocation),
+            _buildSubmitButton(context),
           ],
-          Gap(AppSize.s16.h),
-          _buildLabelledField(
-            context,
-            Strings.notesOptional.tr(),
-            Strings.notesHint.tr(),
-            bloc.notesController,
-            onChanged: (val) => bloc.add(UpdateAddressFieldsEvent(notes: val)),
-          ),
-          Gap(AppSize.s24.h),
-          _buildSubmitButton(context),
-        ],
+        ),
       ),
     );
   }

@@ -1,5 +1,6 @@
 import 'package:easy_localization/easy_localization.dart';
 import 'package:basic_diet/app/dependency_injection.dart';
+import 'package:basic_diet/presentation/widgets/network_image_placeholder.dart';
 import 'package:basic_diet/domain/model/categories_with_meals_model.dart';
 import 'package:basic_diet/domain/model/timeline_model.dart';
 import 'package:basic_diet/presentation/plans/timeline/meal_planner/bloc/meal_planner_bloc.dart';
@@ -852,15 +853,13 @@ class MealPlannerView extends StatelessWidget {
             children: [
               Stack(
                 children: [
-                  ClipRRect(
+                  NetworkImagePlaceholder(
+                    imageUrl: meal.imageUrl,
+                    height: 150.h,
+                    width: double.infinity,
+                    fit: BoxFit.cover,
                     borderRadius: BorderRadius.vertical(
                       top: Radius.circular(AppSize.s14.r),
-                    ),
-                    child: Image.network(
-                      meal.imageUrl,
-                      height: 150.h,
-                      width: double.infinity,
-                      fit: BoxFit.cover,
                     ),
                   ),
                   if (isSelected)

@@ -1,6 +1,6 @@
-// add_ons_screen.dart
 import 'package:easy_localization/easy_localization.dart';
 import 'package:basic_diet/app/dependency_injection.dart';
+import 'package:basic_diet/presentation/widgets/network_image_placeholder.dart';
 import 'package:basic_diet/domain/model/add_ons_model.dart';
 import 'package:basic_diet/presentation/main/home/add-ons/bloc/add_ons_bloc.dart';
 import 'package:basic_diet/presentation/main/home/add-ons/bloc/add_ons_event.dart';
@@ -265,14 +265,12 @@ class _AddOnImage extends StatelessWidget {
       child: Stack(
         clipBehavior: Clip.hardEdge,
         children: [
-          ClipRRect(
+          NetworkImagePlaceholder(
+            imageUrl: addOn.imageUrl,
+            width: AppSize.s70.w,
+            height: AppSize.s70.h,
+            fit: BoxFit.cover,
             borderRadius: BorderRadius.circular(AppSize.s12.r),
-            child: Image.network(
-              addOn.imageUrl,
-              width: AppSize.s70.w,
-              height: AppSize.s70.h,
-              fit: BoxFit.cover,
-            ),
           ),
           if (addOn.ui.badge.isNotEmpty)
             Positioned(
