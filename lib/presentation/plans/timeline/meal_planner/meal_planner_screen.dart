@@ -733,30 +733,17 @@ class _MealPlannerProgressIndicator extends StatelessWidget {
                     Row(
                       children: List.generate(totalMeals, (index) {
                         final isFilled = index < selectedMeals;
-                        return Expanded(
-                          child: Container(
-                            height: 4.h,
-                            margin: EdgeInsets.only(
-                              right: index == totalMeals - 1 ? 0 : 6.w,
-                            ),
-                            decoration: BoxDecoration(
-                              color: isFilled
-                                  ? activeColor
-                                  : ColorManager.greyF3F4F6,
-                              borderRadius: BorderRadius.circular(99.r),
-                            ),
-                            alignment: Alignment.center,
-                            child: isFilled
-                                ? Text(
-                                    '—',
-                                    style: TextStyle(
-                                      color: activeColor,
-                                      fontSize: FontSizeManager.s12.sp,
-                                      fontWeight: FontWeight.bold,
-                                      height: 1,
-                                    ),
-                                  )
-                                : null,
+                        return Container(
+                          width: 20.w,
+                          height: 4.h,
+                          margin: EdgeInsets.only(
+                            right:  6.w,
+                          ),
+                          decoration: BoxDecoration(
+                            color: isFilled
+                                ? activeColor
+                                : ColorManager.greyF3F4F6,
+                            borderRadius: BorderRadius.circular(99.r),
                           ),
                         );
                       }),
