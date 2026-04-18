@@ -14,14 +14,49 @@ import 'meal_planner_state.dart';
 
 /// Corrected MealPlannerBloc following MEAL_PLANNER_INTEGRATION.md
 /// 
-/// API Flow:
-/// 1. Load: GET /subscriptions/:id/days/:date + GET /meal-planner-menu
-/// 2. User selects: Local state update
-/// 3. Validate (optional but recommended): POST /selection/validate
-/// 4. Save: PUT /selection
-/// 5. If paymentRequirement.requiresPayment: POST /premium-extra/payments
-/// 6. After payment: POST /premium-extra/payments/:id/verify
-/// 7. If ready: POST /confirm
+/// CRITICAL PAYMENT FLOW (as per backend requirements):
+/// 
+/// 1. User selects meals (including premium) → Local state update only (no API calls)
+/// 
+/// 2. User clicks "Save" → _onSave() is called:
+///    a. POST /selection/validate (optional but recommended)
+///    b. PUT /selection (saves the selection)
+///    c. Backend determines payment requirement:
+///       - If balance covers premium: premiumSource = "balance", requiresPayment = false
+///       - If balance doesn't cover: premiumSource = "pending_payment", requiresPayment = true
+///    d. Backend returns updated day with paymentRequirement and plannerMeta
+/// 
+/// 3. After save, check paymentRequirement.requiresPayment:
+///    - If FALSE: Premium covered by balance, no payment needed, can confirm directly
+///    - If TRUE: UI shows "Pay Now" button with amount from paymentRequirement.amount
+/// 
+/// 4. User clicks "Pay Now" → _onInitiatePayment() is called:
+///    - ONLY if paymentRequirement.requiresPayment === true
+///    - POST /subscriptions/:id/days/:date/premium-extra/payments
+///    - Returns paymentUrl and paymentId
+/// 
+/// 5. Open paymentUrl in WebView/browser
+/// 
+/// 6. After payment completion → _onVerifyPayment() is called:
+///    - POST /subscriptions/:id/days/:date/premium-extra/payments/:id/verify
+///    - If successful: paymentStatus = "paid"
+///    - Reload day data to get updated state
+/// 
+/// 7. After verification, check updated state:
+///    - paymentRequirement.requiresPayment should now be false
+///    - commercialState should be "ready_to_confirm"
+///    - Can now call confirm
+/// 
+/// 8. User clicks "Confirm" → _onConfirm() is called:
+///    - POST /subscriptions/:id/days/:date/confirm
+///    - Only allowed when plannerMeta.isConfirmable === true
+/// 
+/// IMPORTANT NOTES:
+/// - DO NOT create payment immediately after selecting premium meal
+/// - DO NOT create payment during save operation
+/// - ONLY create payment when user explicitly clicks "Pay Now" button
+/// - Payment button should only appear when paymentRequirement.requiresPayment === true
+/// - Any attempt to create payment when not required will result in PREMIUM_EXTRA_PAYMENT_NOT_REQUIRED error
 class MealPlannerBlocFixed extends Bloc<MealPlannerEvent, MealPlannerState> {
   final GetSubscriptionDayUseCase _getSubscriptionDayUseCase;
   final GetMealPlannerMenuUseCase _getMealPlannerMenuUseCase;
@@ -50,6 +85,7 @@ class MealPlannerBlocFixed extends Bloc<MealPlannerEvent, MealPlannerState> {
     on<SetMealSlotCarbEvent>(_onSetCarb);
     on<ValidateDaySelectionEvent>(_onValidate);
     on<SaveDaySelectionEvent>(_onSave);
+    on<SaveMealPlannerChangesEvent>(_onSaveMealPlannerChanges); // Map UI event to save
     on<ConfirmDaySelectionEvent>(_onConfirm);
     on<InitiatePremiumPaymentEvent>(_onInitiatePayment);
     on<VerifyPremiumPaymentEvent>(_onVerifyPayment);
@@ -235,10 +271,22 @@ class MealPlannerBlocFixed extends Bloc<MealPlannerEvent, MealPlannerState> {
   }
 
   /// Phase 4: Save draft
-  /// Calls: PUT /subscriptions/:id/days/:date/selection
+  /// Calls: 
+  /// 1. POST /subscriptions/:id/days/:date/selection/validate (optional but recommended)
+  /// 2. PUT /subscriptions/:id/days/:date/selection
   /// 
-  /// IMPORTANT: Save does NOT mean confirm or ready.
-  /// After save, check paymentRequirement.requiresPayment
+  /// CRITICAL FLOW:
+  /// - User selects meals (including premium) → local state only
+  /// - User clicks "Save" → THIS method is called
+  /// - First validate, then save
+  /// - Backend determines if payment needed based on:
+  ///   * Premium meals selected
+  ///   * Available balance
+  ///   * If balance covers premium: premiumSource = "balance", requiresPayment = false
+  ///   * If balance doesn't cover: premiumSource = "pending_payment", requiresPayment = true
+  /// - After save, check paymentRequirement.requiresPayment
+  /// - If true, UI shows "Pay Now" button
+  /// - DO NOT create payment here - wait for user to click "Pay Now"
   Future<void> _onSave(
     SaveDaySelectionEvent event,
     Emitter<MealPlannerState> emit,
@@ -252,6 +300,41 @@ class MealPlannerBlocFixed extends Bloc<MealPlannerEvent, MealPlannerState> {
 
     final request = _buildDaySelectionRequest(s.currentSlots);
     
+    // Step 1: Validate first (recommended)
+    final validateResult = await _validateDaySelectionUseCase.execute(
+      ValidateDaySelectionUseCaseInput(subscriptionId, s.day.date, request),
+    );
+
+    // Check validation result
+    final validationFailed = validateResult.fold(
+      (failure) {
+        emit(s.copyWith(
+          isSaving: false,
+          paymentError: "${failure.code}: ${failure.message}",
+        ));
+        return true;
+      },
+      (validationResult) {
+        // Check for slot errors
+        if (validationResult.slotErrors != null && validationResult.slotErrors!.isNotEmpty) {
+          final slotErrorsMap = <int, SlotErrorModel>{};
+          for (final error in validationResult.slotErrors!) {
+            slotErrorsMap[error.slotIndex] = error;
+          }
+          emit(s.copyWith(
+            isSaving: false,
+            slotErrors: slotErrorsMap,
+            paymentError: "Please fix validation errors before saving",
+          ));
+          return true;
+        }
+        return false;
+      },
+    );
+
+    if (validationFailed) return;
+
+    // Step 2: Save the selection
     final result = await _saveDaySelectionUseCase.execute(
       SaveDaySelectionUseCaseInput(subscriptionId, s.day.date, request),
     );
@@ -280,6 +363,11 @@ class MealPlannerBlocFixed extends Bloc<MealPlannerEvent, MealPlannerState> {
           // After save, current = saved (no local changes)
           final newSavedSlots = List<MealPlannerSlotSelection>.from(newCurrentSlots);
 
+          // IMPORTANT: Backend has now determined payment requirement
+          // - If paymentRequirement.requiresPayment === true → UI will show "Pay Now" button
+          // - If false → premium is covered by balance, no payment needed
+          // - plannerMeta.premiumPendingPaymentCount shows how many premium meals need payment
+
           emit(s.copyWith(
             isSaving: false,
             saveSuccess: true,
@@ -293,6 +381,16 @@ class MealPlannerBlocFixed extends Bloc<MealPlannerEvent, MealPlannerState> {
         }
       },
     );
+  }
+
+  /// Handler for SaveMealPlannerChangesEvent (used by UI)
+  /// Maps to SaveDaySelectionEvent for consistency
+  Future<void> _onSaveMealPlannerChanges(
+    SaveMealPlannerChangesEvent event,
+    Emitter<MealPlannerState> emit,
+  ) async {
+    // Delegate to the main save handler
+    await _onSave(const SaveDaySelectionEvent(), emit);
   }
 
   /// Phase 5: Create premium payment

@@ -139,10 +139,20 @@ class MealPlannerBloc extends Bloc<MealPlannerEvent, MealPlannerState> {
       }
     }
 
-    // Calculate pending payment count
-    final pendingPaymentCount = totalUsedCredits > s.premiumMealsRemaining 
-        ? totalUsedCredits - s.premiumMealsRemaining 
-        : 0;
+    // CRITICAL FIX: Do NOT calculate pending payment locally
+    // The backend will determine if payment is needed after save based on:
+    // 1. User's actual premium balance
+    // 2. Whether premium can be covered by balance
+    // 3. Premium source (balance vs pending_payment)
+    // 
+    // Local calculation is unreliable because:
+    // - We don't know the exact balance state
+    // - Backend might have different premium pricing
+    // - Backend handles balance deduction logic
+    // 
+    // Therefore: Keep pendingPaymentCount at 0 during selection
+    // Only show payment button AFTER save if backend says payment is required
+    final pendingPaymentCount = 0;
 
     String proteinName = '';
     if (event.proteinId != null) {
@@ -279,6 +289,19 @@ class MealPlannerBloc extends Bloc<MealPlannerEvent, MealPlannerState> {
             }
           } else {
             // All days saved successfully
+            // CRITICAL FIX: After bulk save, backend has already determined payment requirements
+            // The backend will deduct from premiumBalance first, then determine if extra payment is needed
+            // Since bulk save doesn't return individual day payment requirements,
+            // we MUST set premiumMealsPendingPayment to 0 to avoid showing payment button incorrectly
+            // 
+            // IMPORTANT: The backend handles payment logic:
+            // - If premium is covered by balance → premiumSource = "balance", no payment needed
+            // - If premium exceeds balance → premiumSource = "pending_payment", payment needed
+            // - But bulk save endpoint doesn't expose this per-day info
+            // 
+            // Therefore: DO NOT show payment button after bulk save
+            // If payment is actually needed, user should use single-day flow with proper payment requirement check
+            
             if (!emit.isDone) {
               emit(s.copyWith(
                 isSaving: false,
@@ -286,6 +309,8 @@ class MealPlannerBloc extends Bloc<MealPlannerEvent, MealPlannerState> {
                 savedSlotsPerDay: Map<int, List<MealPlannerSlotSelection>>.from(
                   s.selectedSlotsPerDay,
                 ),
+                // Set to 0 to hide payment button
+                // Backend has already handled premium balance deduction
                 premiumMealsPendingPayment: 0,
               ));
             }
