@@ -10,11 +10,13 @@ CategoriesWithMealsResponse _$CategoriesWithMealsResponseFromJson(
   Map<String, dynamic> json,
 ) => CategoriesWithMealsResponse(
   status: json['status'],
-  data: (json['data'] as List<dynamic>?)
-      ?.map(
-        (e) => CategoryWithMealsResponse.fromJson(e as Map<String, dynamic>),
-      )
-      .toList(),
+  data:
+      (json['data'] as List<dynamic>?)
+          ?.map(
+            (e) =>
+                CategoryWithMealsResponse.fromJson(e as Map<String, dynamic>),
+          )
+          .toList(),
 );
 
 Map<String, dynamic> _$CategoriesWithMealsResponseToJson(

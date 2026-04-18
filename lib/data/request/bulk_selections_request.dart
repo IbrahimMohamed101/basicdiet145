@@ -18,21 +18,42 @@ class BulkSelectionsRequest {
 class BulkSelectionDayRequest {
   @JsonKey(name: "date")
   String date;
-  @JsonKey(name: "selections")
-  List<String> selections;
-  @JsonKey(name: "premiumSelections")
-  List<String> premiumSelections;
-  @JsonKey(name: "addonsOneTime")
-  List<String> addonsOneTime;
+  
+  @JsonKey(name: "mealSlots")
+  List<MealSlotRequest> mealSlots;
 
   BulkSelectionDayRequest({
     required this.date,
-    required this.selections,
-    required this.premiumSelections,
-    required this.addonsOneTime,
+    required this.mealSlots,
   });
 
   factory BulkSelectionDayRequest.fromJson(Map<String, dynamic> json) => _$BulkSelectionDayRequestFromJson(json);
 
   Map<String, dynamic> toJson() => _$BulkSelectionDayRequestToJson(this);
+}
+
+@JsonSerializable()
+class MealSlotRequest {
+  @JsonKey(name: "slotIndex")
+  int slotIndex;
+  
+  @JsonKey(name: "slotKey")
+  String slotKey;
+  
+  @JsonKey(name: "proteinId")
+  String? proteinId;
+  
+  @JsonKey(name: "carbId")
+  String? carbId;
+
+  MealSlotRequest({
+    required this.slotIndex,
+    required this.slotKey,
+    this.proteinId,
+    this.carbId,
+  });
+
+  factory MealSlotRequest.fromJson(Map<String, dynamic> json) => _$MealSlotRequestFromJson(json);
+
+  Map<String, dynamic> toJson() => _$MealSlotRequestToJson(this);
 }
