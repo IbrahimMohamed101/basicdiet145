@@ -34,11 +34,16 @@ import 'package:basic_diet/domain/usecase/skip_day_usecase.dart';
 import 'package:basic_diet/domain/usecase/skip_date_range_usecase.dart';
 import 'package:basic_diet/domain/usecase/get_timeline_usecase.dart';
 import 'package:basic_diet/domain/usecase/get_meal_planner_menu_usecase.dart';
+import 'package:basic_diet/domain/usecase/get_subscription_day_usecase.dart';
 import 'package:basic_diet/domain/usecase/save_meal_planner_changes_usecase.dart';
+import 'package:basic_diet/domain/usecase/validate_day_selection_usecase.dart';
+import 'package:basic_diet/domain/usecase/save_day_selection_usecase.dart';
 import 'package:basic_diet/domain/usecase/create_premium_payment_usecase.dart';
 import 'package:basic_diet/domain/usecase/verify_premium_payment_usecase.dart';
+import 'package:basic_diet/domain/usecase/confirm_day_selection_usecase.dart';
 import 'package:basic_diet/presentation/plans/timeline/bloc/timeline_bloc.dart';
 import 'package:basic_diet/presentation/plans/timeline/meal_planner/bloc/meal_planner_bloc.dart';
+import 'package:basic_diet/presentation/plans/timeline/meal_planner/bloc/meal_planner_bloc_correct.dart';
 import 'package:basic_diet/domain/usecase/get_checkout_draft_usecase.dart';
 import 'package:basic_diet/domain/usecase/get_pickup_status_usecase.dart';
 import 'package:basic_diet/presentation/main/home/payment-success/payment_validation_cubit.dart';
@@ -274,9 +279,27 @@ void initMealPlannerModule() {
     );
   }
 
+  if (!GetIt.I.isRegistered<GetSubscriptionDayUseCase>()) {
+    instance.registerFactory<GetSubscriptionDayUseCase>(
+      () => GetSubscriptionDayUseCase(instance<Repository>()),
+    );
+  }
+
   if (!GetIt.I.isRegistered<SaveMealPlannerChangesUseCase>()) {
     instance.registerFactory<SaveMealPlannerChangesUseCase>(
       () => SaveMealPlannerChangesUseCase(instance<Repository>()),
+    );
+  }
+
+  if (!GetIt.I.isRegistered<ValidateDaySelectionUseCase>()) {
+    instance.registerFactory<ValidateDaySelectionUseCase>(
+      () => ValidateDaySelectionUseCase(instance<Repository>()),
+    );
+  }
+
+  if (!GetIt.I.isRegistered<SaveDaySelectionUseCase>()) {
+    instance.registerFactory<SaveDaySelectionUseCase>(
+      () => SaveDaySelectionUseCase(instance<Repository>()),
     );
   }
 
@@ -292,6 +315,13 @@ void initMealPlannerModule() {
     );
   }
 
+  if (!GetIt.I.isRegistered<ConfirmDaySelectionUseCase>()) {
+    instance.registerFactory<ConfirmDaySelectionUseCase>(
+      () => ConfirmDaySelectionUseCase(instance<Repository>()),
+    );
+  }
+
+  // Old BLoC (for backward compatibility)
   if (!GetIt.I.isRegistered<MealPlannerBloc>()) {
     instance.registerFactoryParam<MealPlannerBloc, Map<String, dynamic>, void>(
       (params, _) => MealPlannerBloc(
@@ -303,6 +333,23 @@ void initMealPlannerModule() {
         initialDayIndex: params['initialDayIndex'],
         premiumMealsRemaining: params['premiumMealsRemaining'],
         subscriptionId: params['subscriptionId'],
+      ),
+    );
+  }
+
+  // New correct BLoC (100% API guide compliant)
+  if (!GetIt.I.isRegistered<MealPlannerBlocCorrect>()) {
+    instance.registerFactoryParam<MealPlannerBlocCorrect, Map<String, dynamic>, void>(
+      (params, _) => MealPlannerBlocCorrect(
+        instance<GetMealPlannerMenuUseCase>(),
+        instance<GetSubscriptionDayUseCase>(),
+        instance<ValidateDaySelectionUseCase>(),
+        instance<SaveDaySelectionUseCase>(),
+        instance<CreatePremiumPaymentUseCase>(),
+        instance<VerifyPremiumPaymentUseCase>(),
+        instance<ConfirmDaySelectionUseCase>(),
+        subscriptionId: params['subscriptionId'],
+        date: params['date'],
       ),
     );
   }

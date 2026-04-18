@@ -1,4 +1,5 @@
 import 'package:basic_diet/data/request/bulk_selections_request.dart';
+import 'package:basic_diet/data/request/day_selection_request.dart';
 import 'package:basic_diet/data/response/addons_response.dart';
 import 'package:basic_diet/data/response/checkout_draft_response.dart';
 import 'package:basic_diet/data/request/subscription_checkout_request.dart';
@@ -8,6 +9,8 @@ import 'package:basic_diet/data/response/base_response/base_response.dart';
 import 'package:basic_diet/data/response/delivery_options_response.dart';
 import 'package:basic_diet/data/response/plans_response.dart';
 import 'package:basic_diet/data/response/popular_packages_response.dart';
+import 'package:basic_diet/data/response/validation_response.dart';
+import 'package:basic_diet/data/response/subscription_day_response.dart';
 import 'package:basic_diet/data/response/premium_meals_response.dart';
 import 'package:basic_diet/data/response/subscription_checkout_response.dart';
 import 'package:basic_diet/data/response/subscription_quote_response.dart';
@@ -23,6 +26,8 @@ import 'package:basic_diet/data/response/premium_payment_response.dart';
 
 import 'package:basic_diet/data/response/pickup_prepare_response.dart';
 import 'package:basic_diet/data/response/pickup_status_response.dart';
+
+import '../response/bulk_selections_response.dart';
 
 abstract class RemoteDataSource {
   Future<BaseResponse> login(String phone);
@@ -55,7 +60,11 @@ abstract class RemoteDataSource {
   Future<TimelineResponse> getSubscriptionTimeline(String id);
   Future<CategoriesWithMealsResponse> getCategoriesWithMeals();
   Future<CheckoutDraftResponse> getCheckoutDraft(String id);
-  Future<BaseResponse> bulkSelections(String id, BulkSelectionsRequest request);
+  Future<BulkSelectionsResponse> bulkSelections(String id, BulkSelectionsRequest request);
+  Future<ValidationResponse> validateDaySelection(String id, String date, DaySelectionRequest request);
+  Future<SubscriptionDayResponse> saveDaySelection(String id, String date, DaySelectionRequest request);
+  Future<SubscriptionDayResponse> getSubscriptionDay(String id, String date);
+  Future<BaseResponse> confirmDaySelection(String id, String date);
   Future<PickupPrepareResponse> preparePickup(String id, String date);
   Future<PickupStatusResponse> getPickupStatus(String id, String date);
   Future<MealPlannerMenuResponse> getMealPlannerMenu();

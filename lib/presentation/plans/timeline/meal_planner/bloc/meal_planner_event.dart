@@ -49,6 +49,10 @@ final class SaveMealPlannerChangesEvent extends MealPlannerEvent {
   const SaveMealPlannerChangesEvent();
 }
 
+final class ConfirmDaySelectionEvent extends MealPlannerEvent {
+  const ConfirmDaySelectionEvent();
+}
+
 final class HideBannerEvent extends MealPlannerEvent {
   const HideBannerEvent();
 }

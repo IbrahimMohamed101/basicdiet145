@@ -1,5 +1,6 @@
 import 'package:basic_diet/domain/model/meal_planner_menu_model.dart';
 import 'package:basic_diet/domain/model/timeline_model.dart';
+import 'package:basic_diet/domain/model/subscription_day_model.dart';
 import 'package:equatable/equatable.dart';
 
 sealed class MealPlannerState extends Equatable {
@@ -22,28 +23,148 @@ final class MealPlannerError extends MealPlannerState {
 }
 
 final class MealPlannerSlotSelection extends Equatable {
+  final int slotIndex;
+  final String slotKey;
   final String? proteinId;
   final String? carbId;
 
   const MealPlannerSlotSelection({
+    required this.slotIndex,
+    required this.slotKey,
     required this.proteinId,
     required this.carbId,
   });
 
   MealPlannerSlotSelection copyWith({
+    int? slotIndex,
+    String? slotKey,
     String? proteinId,
     String? carbId,
   }) {
     return MealPlannerSlotSelection(
+      slotIndex: slotIndex ?? this.slotIndex,
+      slotKey: slotKey ?? this.slotKey,
       proteinId: proteinId ?? this.proteinId,
       carbId: carbId ?? this.carbId,
     );
   }
 
   @override
-  List<Object?> get props => [proteinId, carbId];
+  List<Object?> get props => [slotIndex, slotKey, proteinId, carbId];
 }
 
+/// New state following API Integration Guide
+final class MealPlannerLoadedNew extends MealPlannerState {
+  final SubscriptionDayModel day;
+  final MealPlannerMenuModel menu;
+  final List<MealPlannerSlotSelection> currentSlots;
+  final List<MealPlannerSlotSelection> savedSlots;
+  final PlannerMetaModel? plannerMeta;
+  final PaymentRequirementModel? paymentRequirement;
+  final Map<int, SlotErrorModel> slotErrors;
+  final bool validationInProgress;
+  final bool isSaving;
+  final bool showSavedBanner;
+  final String lastAddedMealName;
+  final bool saveSuccess;
+  final String? paymentUrl;
+  final String? paymentId;
+  final String? paymentError;
+
+  const MealPlannerLoadedNew({
+    required this.day,
+    required this.menu,
+    required this.currentSlots,
+    required this.savedSlots,
+    required this.plannerMeta,
+    required this.paymentRequirement,
+    required this.slotErrors,
+    required this.validationInProgress,
+    this.isSaving = false,
+    this.saveSuccess = false,
+    this.showSavedBanner = false,
+    this.lastAddedMealName = "",
+    this.paymentUrl,
+    this.paymentId,
+    this.paymentError,
+  });
+
+  bool get isDirty {
+    if (currentSlots.length != savedSlots.length) return true;
+    for (var i = 0; i < currentSlots.length; i++) {
+      if (i >= savedSlots.length) return true;
+      if (currentSlots[i] != savedSlots[i]) return true;
+    }
+    return false;
+  }
+
+  bool get canSave {
+    // Can save if:
+    // 1. There are changes
+    // 2. No validation errors
+    // 3. Day is not locked
+    return isDirty &&
+        slotErrors.isEmpty &&
+        ['open', 'planned', 'extension'].contains(day.status.toLowerCase());
+  }
+
+  @override
+  List<Object?> get props => [
+        day,
+        menu,
+        currentSlots,
+        savedSlots,
+        plannerMeta,
+        paymentRequirement,
+        slotErrors,
+        validationInProgress,
+        isSaving,
+        showSavedBanner,
+        lastAddedMealName,
+        saveSuccess,
+        paymentUrl,
+        paymentId,
+        paymentError,
+      ];
+
+  MealPlannerLoadedNew copyWith({
+    SubscriptionDayModel? day,
+    MealPlannerMenuModel? menu,
+    List<MealPlannerSlotSelection>? currentSlots,
+    List<MealPlannerSlotSelection>? savedSlots,
+    PlannerMetaModel? plannerMeta,
+    PaymentRequirementModel? paymentRequirement,
+    Map<int, SlotErrorModel>? slotErrors,
+    bool? validationInProgress,
+    bool? isSaving,
+    bool? showSavedBanner,
+    String? lastAddedMealName,
+    bool? saveSuccess,
+    String? paymentUrl,
+    String? paymentId,
+    String? paymentError,
+  }) {
+    return MealPlannerLoadedNew(
+      day: day ?? this.day,
+      menu: menu ?? this.menu,
+      currentSlots: currentSlots ?? this.currentSlots,
+      savedSlots: savedSlots ?? this.savedSlots,
+      plannerMeta: plannerMeta ?? this.plannerMeta,
+      paymentRequirement: paymentRequirement ?? this.paymentRequirement,
+      slotErrors: slotErrors ?? this.slotErrors,
+      validationInProgress: validationInProgress ?? this.validationInProgress,
+      isSaving: isSaving ?? this.isSaving,
+      showSavedBanner: showSavedBanner ?? this.showSavedBanner,
+      lastAddedMealName: lastAddedMealName ?? this.lastAddedMealName,
+      saveSuccess: saveSuccess ?? this.saveSuccess,
+      paymentUrl: paymentUrl,
+      paymentId: paymentId,
+      paymentError: paymentError,
+    );
+  }
+}
+
+// Keep old state for backward compatibility during migration
 final class MealPlannerLoaded extends MealPlannerState {
   final List<TimelineDayModel> timelineDays;
   final MealPlannerMenuModel menu;

@@ -65,6 +65,8 @@ class MealPlannerBloc extends Bloc<MealPlannerEvent, MealPlannerState> {
             (slotIndex) {
               final proteinId = slotIndex < selections.length ? selections[slotIndex] : null;
               return MealPlannerSlotSelection(
+                slotIndex: slotIndex + 1,
+                slotKey: 'slot_${slotIndex + 1}',
                 proteinId: proteinId,
                 carbId: null,
               );
@@ -198,7 +200,7 @@ class MealPlannerBloc extends Bloc<MealPlannerEvent, MealPlannerState> {
       SaveMealPlannerChangesEvent event, Emitter<MealPlannerState> emit) async {
     if (state is MealPlannerLoaded) {
       final s = state as MealPlannerLoaded;
-      emit(s.copyWith(isSaving: true));
+      emit(s.copyWith(isSaving: true, paymentError: null));
 
       // 1. Identify completed days
       List<BulkSelectionDayRequest> dayRequests = [];
@@ -247,18 +249,47 @@ class MealPlannerBloc extends Bloc<MealPlannerEvent, MealPlannerState> {
 
       result.fold(
         (failure) {
-          // You might want to handle error differently (e.g. show toast)
-          // For now, let's just stop loading.
-          emit(s.copyWith(isSaving: false));
+          if (!emit.isDone) {
+            emit(s.copyWith(
+              isSaving: false,
+              paymentError: "${failure.code}: ${failure.message}",
+            ));
+          }
         },
-        (success) {
-          emit(s.copyWith(
-            isSaving: false,
-            saveSuccess: true,
-            savedSlotsPerDay: Map<int, List<MealPlannerSlotSelection>>.from(
-              s.selectedSlotsPerDay,
-            ),
-          ));
+        (bulkResponse) {
+          // Check if any days failed
+          final failedDays = bulkResponse.results
+              .where((r) => !r.ok)
+              .toList();
+          
+          if (failedDays.isNotEmpty) {
+            // Build error message showing which days failed
+            final errorMessages = failedDays.map((r) {
+              final date = r.date;
+              final code = r.code ?? 'UNKNOWN';
+              final message = r.message ?? 'Failed to save';
+              return '$date: $message';
+            }).join('\n');
+            
+            if (!emit.isDone) {
+              emit(s.copyWith(
+                isSaving: false,
+                paymentError: errorMessages,
+              ));
+            }
+          } else {
+            // All days saved successfully
+            if (!emit.isDone) {
+              emit(s.copyWith(
+                isSaving: false,
+                saveSuccess: true,
+                savedSlotsPerDay: Map<int, List<MealPlannerSlotSelection>>.from(
+                  s.selectedSlotsPerDay,
+                ),
+                premiumMealsPendingPayment: 0,
+              ));
+            }
+          }
         },
       );
     }

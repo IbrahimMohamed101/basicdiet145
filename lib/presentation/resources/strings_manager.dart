@@ -410,6 +410,8 @@ class Strings {
 
   // Errors
   static const String success = 'success';
+  static const String error = 'error';
+  static const String ok = 'ok';
   static const String noContent = 'noContent';
   static const String badRequest = 'badRequest';
   static const String unauthorized = 'unauthorized';
@@ -723,6 +725,7 @@ class Strings {
   static const String totalAmount = 'totalAmount';
   static const String payNow = 'payNow';
   static const String payFirstToSave = 'payFirstToSave';
+  static const String saveAndPay = 'saveAndPay';
   static const String completePayment = 'completePayment';
   static const String redirectingToPayment = 'redirectingToPayment';
   static const String openPayment = 'openPayment';

@@ -1,4 +1,5 @@
 import 'package:basic_diet/data/request/bulk_selections_request.dart';
+import 'package:basic_diet/data/request/day_selection_request.dart';
 import 'package:basic_diet/data/network/app_api.dart';
 import 'package:basic_diet/data/response/checkout_draft_response.dart';
 import 'package:basic_diet/data/data_source/remote_data_source.dart';
@@ -8,6 +9,8 @@ import 'package:basic_diet/data/response/addons_response.dart';
 import 'package:basic_diet/data/response/auth_response.dart';
 import 'package:basic_diet/data/response/base_response/base_response.dart';
 import 'package:basic_diet/data/response/categories_with_meals_response.dart';
+import 'package:basic_diet/data/response/validation_response.dart';
+import 'package:basic_diet/data/response/subscription_day_response.dart';
 import 'package:basic_diet/data/response/delivery_options_response.dart';
 import 'package:basic_diet/data/response/plans_response.dart';
 import 'package:basic_diet/data/response/popular_packages_response.dart';
@@ -25,6 +28,8 @@ import 'package:basic_diet/data/response/premium_payment_response.dart';
 
 import 'package:basic_diet/data/response/pickup_prepare_response.dart';
 import 'package:basic_diet/data/response/pickup_status_response.dart';
+
+import '../response/bulk_selections_response.dart';
 
 class RemoteDataSourceImpl implements RemoteDataSource {
   final AppServiceClient _appServiceClient;
@@ -131,8 +136,28 @@ class RemoteDataSourceImpl implements RemoteDataSource {
   }
 
   @override
-  Future<BaseResponse> bulkSelections(String id, BulkSelectionsRequest request) {
+  Future<BulkSelectionsResponse> bulkSelections(String id, BulkSelectionsRequest request) {
     return _appServiceClient.bulkSelections(id, request);
+  }
+
+  @override
+  Future<ValidationResponse> validateDaySelection(String id, String date, DaySelectionRequest request) {
+    return _appServiceClient.validateDaySelection(id, date, request);
+  }
+
+  @override
+  Future<SubscriptionDayResponse> saveDaySelection(String id, String date, DaySelectionRequest request) {
+    return _appServiceClient.saveDaySelection(id, date, request);
+  }
+
+  @override
+  Future<SubscriptionDayResponse> getSubscriptionDay(String id, String date) {
+    return _appServiceClient.getSubscriptionDay(id, date);
+  }
+
+  @override
+  Future<BaseResponse> confirmDaySelection(String id, String date) {
+    return _appServiceClient.confirmDaySelection(id, date);
   }
 
   @override

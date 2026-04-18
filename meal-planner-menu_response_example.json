@@ -1,0 +1,1275 @@
+/api/subscriptions/meal-planner-menu
+{
+  "status": true,
+  "data": {
+    "currency": "SAR",
+    "regularMeals": {
+      "items": [],
+      "categories": [],
+      "sections": [],
+      "totalCount": 0
+    },
+    "premiumMeals": {
+      "items": [
+        {
+          "id": "69dfcca68ad797e60eed6138",
+          "name": "جمبري",
+          "description": "",
+          "imageUrl": "",
+          "currency": "SAR",
+          "extraFeeHalala": 2000,
+          "extraFeeSar": 20,
+          "priceHalala": 2000,
+          "priceSar": 20,
+          "priceLabel": "20 SAR",
+          "proteinGrams": 0,
+          "carbGrams": 0,
+          "fatGrams": 0,
+          "ui": {
+            "title": "جمبري",
+            "subtitle": "",
+            "ctaLabel": "أضف",
+            "selectionStyle": "stepper"
+          },
+          "type": "premium",
+          "pricingModel": "extra_fee"
+        },
+        {
+          "id": "69dfcca68ad797e60eed6137",
+          "name": "ستيك لحم",
+          "description": "",
+          "imageUrl": "",
+          "currency": "SAR",
+          "extraFeeHalala": 2500,
+          "extraFeeSar": 25,
+          "priceHalala": 2500,
+          "priceSar": 25,
+          "priceLabel": "25 SAR",
+          "proteinGrams": 0,
+          "carbGrams": 0,
+          "fatGrams": 0,
+          "ui": {
+            "title": "ستيك لحم",
+            "subtitle": "",
+            "ctaLabel": "أضف",
+            "selectionStyle": "stepper"
+          },
+          "type": "premium",
+          "pricingModel": "extra_fee"
+        },
+        {
+          "id": "69dfcca68ad797e60eed6139",
+          "name": "سالمون",
+          "description": "",
+          "imageUrl": "",
+          "currency": "SAR",
+          "extraFeeHalala": 1500,
+          "extraFeeSar": 15,
+          "priceHalala": 1500,
+          "priceSar": 15,
+          "priceLabel": "15 SAR",
+          "proteinGrams": 0,
+          "carbGrams": 0,
+          "fatGrams": 0,
+          "ui": {
+            "title": "سالمون",
+            "subtitle": "",
+            "ctaLabel": "أضف",
+            "selectionStyle": "stepper"
+          },
+          "type": "premium",
+          "pricingModel": "extra_fee"
+        }
+      ],
+      "totalCount": 3
+    },
+    "addons": {
+      "items": [
+        {
+          "id": "69dfcca98ad797e60eed6143",
+          "name": "مافن التفاح بالقرفة (2 قطع)",
+          "description": "",
+          "imageUrl": "",
+          "currency": "SAR",
+          "priceHalala": 1200,
+          "priceSar": 12,
+          "priceLabel": "12 SAR",
+          "type": "one_time",
+          "pricingModel": "one_time",
+          "billingUnit": "item",
+          "ui": {
+            "title": "مافن التفاح بالقرفة (2 قطع)",
+            "subtitle": "",
+            "ctaLabel": "أضف",
+            "badge": "إضافة مرة واحدة"
+          }
+        },
+        {
+          "id": "69dfccaa8ad797e60eed6144",
+          "name": "تشيز كيك بالتوت",
+          "description": "",
+          "imageUrl": "",
+          "currency": "SAR",
+          "priceHalala": 1900,
+          "priceSar": 19,
+          "priceLabel": "19 SAR",
+          "type": "one_time",
+          "pricingModel": "one_time",
+          "billingUnit": "item",
+          "ui": {
+            "title": "تشيز كيك بالتوت",
+            "subtitle": "",
+            "ctaLabel": "أضف",
+            "badge": "إضافة مرة واحدة"
+          }
+        },
+        {
+          "id": "69dfccaa8ad797e60eed6146",
+          "name": "تشيز كيك بالفراولة",
+          "description": "",
+          "imageUrl": "",
+          "currency": "SAR",
+          "priceHalala": 1900,
+          "priceSar": 19,
+          "priceLabel": "19 SAR",
+          "type": "one_time",
+          "pricingModel": "one_time",
+          "billingUnit": "item",
+          "ui": {
+            "title": "تشيز كيك بالفراولة",
+            "subtitle": "",
+            "ctaLabel": "أضف",
+            "badge": "إضافة مرة واحدة"
+          }
+        },
+        {
+          "id": "69dfccaa8ad797e60eed6147",
+          "name": "براونيز داكن",
+          "description": "",
+          "imageUrl": "",
+          "currency": "SAR",
+          "priceHalala": 1300,
+          "priceSar": 13,
+          "priceLabel": "13 SAR",
+          "type": "one_time",
+          "pricingModel": "one_time",
+          "billingUnit": "item",
+          "ui": {
+            "title": "براونيز داكن",
+            "subtitle": "",
+            "ctaLabel": "أضف",
+            "badge": "إضافة مرة واحدة"
+          }
+        },
+        {
+          "id": "69dfccaa8ad797e60eed6148",
+          "name": "كيك شوكولاتة بروتين",
+          "description": "",
+          "imageUrl": "",
+          "currency": "SAR",
+          "priceHalala": 1900,
+          "priceSar": 19,
+          "priceLabel": "19 SAR",
+          "type": "one_time",
+          "pricingModel": "one_time",
+          "billingUnit": "item",
+          "ui": {
+            "title": "كيك شوكولاتة بروتين",
+            "subtitle": "",
+            "ctaLabel": "أضف",
+            "badge": "إضافة مرة واحدة"
+          }
+        },
+        {
+          "id": "69dfccab8ad797e60eed6149",
+          "name": "ايس كريم فانيليا",
+          "description": "",
+          "imageUrl": "",
+          "currency": "SAR",
+          "priceHalala": 1300,
+          "priceSar": 13,
+          "priceLabel": "13 SAR",
+          "type": "one_time",
+          "pricingModel": "one_time",
+          "billingUnit": "item",
+          "ui": {
+            "title": "ايس كريم فانيليا",
+            "subtitle": "",
+            "ctaLabel": "أضف",
+            "badge": "إضافة مرة واحدة"
+          }
+        },
+        {
+          "id": "69dfccab8ad797e60eed614a",
+          "name": "ايس كريم شوكولا",
+          "description": "",
+          "imageUrl": "",
+          "currency": "SAR",
+          "priceHalala": 1300,
+          "priceSar": 13,
+          "priceLabel": "13 SAR",
+          "type": "one_time",
+          "pricingModel": "one_time",
+          "billingUnit": "item",
+          "ui": {
+            "title": "ايس كريم شوكولا",
+            "subtitle": "",
+            "ctaLabel": "أضف",
+            "badge": "إضافة مرة واحدة"
+          }
+        },
+        {
+          "id": "69dfccab8ad797e60eed614b",
+          "name": "بروتين بار",
+          "description": "",
+          "imageUrl": "",
+          "currency": "SAR",
+          "priceHalala": 1500,
+          "priceSar": 15,
+          "priceLabel": "15 SAR",
+          "type": "one_time",
+          "pricingModel": "one_time",
+          "billingUnit": "item",
+          "ui": {
+            "title": "بروتين بار",
+            "subtitle": "",
+            "ctaLabel": "أضف",
+            "badge": "إضافة مرة واحدة"
+          }
+        },
+        {
+          "id": "69dfccab8ad797e60eed614c",
+          "name": "بيسك كلاسيك",
+          "description": "",
+          "imageUrl": "",
+          "currency": "SAR",
+          "priceHalala": 1400,
+          "priceSar": 14,
+          "priceLabel": "14 SAR",
+          "type": "one_time",
+          "pricingModel": "one_time",
+          "billingUnit": "item",
+          "ui": {
+            "title": "بيسك كلاسيك",
+            "subtitle": "",
+            "ctaLabel": "أضف",
+            "badge": "إضافة مرة واحدة"
+          }
+        },
+        {
+          "id": "69dfccab8ad797e60eed614d",
+          "name": "بيري بلاست",
+          "description": "",
+          "imageUrl": "",
+          "currency": "SAR",
+          "priceHalala": 1100,
+          "priceSar": 11,
+          "priceLabel": "11 SAR / يوم",
+          "type": "subscription",
+          "pricingModel": "daily_recurring",
+          "billingUnit": "day",
+          "ui": {
+            "title": "بيري بلاست",
+            "subtitle": "",
+            "ctaLabel": "أضف",
+            "badge": "إضافة مع الاشتراك"
+          }
+        },
+        {
+          "id": "69dfccac8ad797e60eed614e",
+          "name": "بيري بروت",
+          "description": "",
+          "imageUrl": "",
+          "currency": "SAR",
+          "priceHalala": 1300,
+          "priceSar": 13,
+          "priceLabel": "13 SAR / يوم",
+          "type": "subscription",
+          "pricingModel": "daily_recurring",
+          "billingUnit": "day",
+          "ui": {
+            "title": "بيري بروت",
+            "subtitle": "",
+            "ctaLabel": "أضف",
+            "badge": "إضافة مع الاشتراك"
+          }
+        },
+        {
+          "id": "69dfccac8ad797e60eed614f",
+          "name": "كلاسيك جرين",
+          "description": "",
+          "imageUrl": "",
+          "currency": "SAR",
+          "priceHalala": 1100,
+          "priceSar": 11,
+          "priceLabel": "11 SAR / يوم",
+          "type": "subscription",
+          "pricingModel": "daily_recurring",
+          "billingUnit": "day",
+          "ui": {
+            "title": "كلاسيك جرين",
+            "subtitle": "",
+            "ctaLabel": "أضف",
+            "badge": "إضافة مع الاشتراك"
+          }
+        },
+        {
+          "id": "69dfccac8ad797e60eed6150",
+          "name": "بيت بنش",
+          "description": "",
+          "imageUrl": "",
+          "currency": "SAR",
+          "priceHalala": 1100,
+          "priceSar": 11,
+          "priceLabel": "11 SAR / يوم",
+          "type": "subscription",
+          "pricingModel": "daily_recurring",
+          "billingUnit": "day",
+          "ui": {
+            "title": "بيت بنش",
+            "subtitle": "",
+            "ctaLabel": "أضف",
+            "badge": "إضافة مع الاشتراك"
+          }
+        },
+        {
+          "id": "69dfccac8ad797e60eed6151",
+          "name": "برتقال وجزر",
+          "description": "",
+          "imageUrl": "",
+          "currency": "SAR",
+          "priceHalala": 1100,
+          "priceSar": 11,
+          "priceLabel": "11 SAR / يوم",
+          "type": "subscription",
+          "pricingModel": "daily_recurring",
+          "billingUnit": "day",
+          "ui": {
+            "title": "برتقال وجزر",
+            "subtitle": "",
+            "ctaLabel": "أضف",
+            "badge": "إضافة مع الاشتراك"
+          }
+        },
+        {
+          "id": "69dfccac8ad797e60eed6152",
+          "name": "بطيخ بالنعناع",
+          "description": "",
+          "imageUrl": "",
+          "currency": "SAR",
+          "priceHalala": 1100,
+          "priceSar": 11,
+          "priceLabel": "11 SAR / يوم",
+          "type": "subscription",
+          "pricingModel": "daily_recurring",
+          "billingUnit": "day",
+          "ui": {
+            "title": "بطيخ بالنعناع",
+            "subtitle": "",
+            "ctaLabel": "أضف",
+            "badge": "إضافة مع الاشتراك"
+          }
+        },
+        {
+          "id": "69dfccad8ad797e60eed6153",
+          "name": "مشروب بروتين",
+          "description": "",
+          "imageUrl": "",
+          "currency": "SAR",
+          "priceHalala": 1900,
+          "priceSar": 19,
+          "priceLabel": "19 SAR / يوم",
+          "type": "subscription",
+          "pricingModel": "daily_recurring",
+          "billingUnit": "day",
+          "ui": {
+            "title": "مشروب بروتين",
+            "subtitle": "",
+            "ctaLabel": "أضف",
+            "badge": "إضافة مع الاشتراك"
+          }
+        },
+        {
+          "id": "69dfccad8ad797e60eed6154",
+          "name": "ايس تى دايت",
+          "description": "",
+          "imageUrl": "",
+          "currency": "SAR",
+          "priceHalala": 400,
+          "priceSar": 4,
+          "priceLabel": "4 SAR / يوم",
+          "type": "subscription",
+          "pricingModel": "daily_recurring",
+          "billingUnit": "day",
+          "ui": {
+            "title": "ايس تى دايت",
+            "subtitle": "",
+            "ctaLabel": "أضف",
+            "badge": "إضافة مع الاشتراك"
+          }
+        },
+        {
+          "id": "69dfccad8ad797e60eed6155",
+          "name": "صودا دايت",
+          "description": "",
+          "imageUrl": "",
+          "currency": "SAR",
+          "priceHalala": 300,
+          "priceSar": 3,
+          "priceLabel": "3 SAR / يوم",
+          "type": "subscription",
+          "pricingModel": "daily_recurring",
+          "billingUnit": "day",
+          "ui": {
+            "title": "صودا دايت",
+            "subtitle": "",
+            "ctaLabel": "أضف",
+            "badge": "إضافة مع الاشتراك"
+          }
+        },
+        {
+          "id": "69dfccad8ad797e60eed6156",
+          "name": "مياه عادية",
+          "description": "",
+          "imageUrl": "",
+          "currency": "SAR",
+          "priceHalala": 200,
+          "priceSar": 2,
+          "priceLabel": "2 SAR / يوم",
+          "type": "subscription",
+          "pricingModel": "daily_recurring",
+          "billingUnit": "day",
+          "ui": {
+            "title": "مياه عادية",
+            "subtitle": "",
+            "ctaLabel": "أضف",
+            "badge": "إضافة مع الاشتراك"
+          }
+        }
+      ],
+      "byType": {
+        "subscription": [
+          {
+            "id": "69dfccab8ad797e60eed614d",
+            "name": "بيري بلاست",
+            "description": "",
+            "imageUrl": "",
+            "currency": "SAR",
+            "priceHalala": 1100,
+            "priceSar": 11,
+            "priceLabel": "11 SAR / يوم",
+            "type": "subscription",
+            "pricingModel": "daily_recurring",
+            "billingUnit": "day",
+            "ui": {
+              "title": "بيري بلاست",
+              "subtitle": "",
+              "ctaLabel": "أضف",
+              "badge": "إضافة مع الاشتراك"
+            }
+          },
+          {
+            "id": "69dfccac8ad797e60eed614e",
+            "name": "بيري بروت",
+            "description": "",
+            "imageUrl": "",
+            "currency": "SAR",
+            "priceHalala": 1300,
+            "priceSar": 13,
+            "priceLabel": "13 SAR / يوم",
+            "type": "subscription",
+            "pricingModel": "daily_recurring",
+            "billingUnit": "day",
+            "ui": {
+              "title": "بيري بروت",
+              "subtitle": "",
+              "ctaLabel": "أضف",
+              "badge": "إضافة مع الاشتراك"
+            }
+          },
+          {
+            "id": "69dfccac8ad797e60eed614f",
+            "name": "كلاسيك جرين",
+            "description": "",
+            "imageUrl": "",
+            "currency": "SAR",
+            "priceHalala": 1100,
+            "priceSar": 11,
+            "priceLabel": "11 SAR / يوم",
+            "type": "subscription",
+            "pricingModel": "daily_recurring",
+            "billingUnit": "day",
+            "ui": {
+              "title": "كلاسيك جرين",
+              "subtitle": "",
+              "ctaLabel": "أضف",
+              "badge": "إضافة مع الاشتراك"
+            }
+          },
+          {
+            "id": "69dfccac8ad797e60eed6150",
+            "name": "بيت بنش",
+            "description": "",
+            "imageUrl": "",
+            "currency": "SAR",
+            "priceHalala": 1100,
+            "priceSar": 11,
+            "priceLabel": "11 SAR / يوم",
+            "type": "subscription",
+            "pricingModel": "daily_recurring",
+            "billingUnit": "day",
+            "ui": {
+              "title": "بيت بنش",
+              "subtitle": "",
+              "ctaLabel": "أضف",
+              "badge": "إضافة مع الاشتراك"
+            }
+          },
+          {
+            "id": "69dfccac8ad797e60eed6151",
+            "name": "برتقال وجزر",
+            "description": "",
+            "imageUrl": "",
+            "currency": "SAR",
+            "priceHalala": 1100,
+            "priceSar": 11,
+            "priceLabel": "11 SAR / يوم",
+            "type": "subscription",
+            "pricingModel": "daily_recurring",
+            "billingUnit": "day",
+            "ui": {
+              "title": "برتقال وجزر",
+              "subtitle": "",
+              "ctaLabel": "أضف",
+              "badge": "إضافة مع الاشتراك"
+            }
+          },
+          {
+            "id": "69dfccac8ad797e60eed6152",
+            "name": "بطيخ بالنعناع",
+            "description": "",
+            "imageUrl": "",
+            "currency": "SAR",
+            "priceHalala": 1100,
+            "priceSar": 11,
+            "priceLabel": "11 SAR / يوم",
+            "type": "subscription",
+            "pricingModel": "daily_recurring",
+            "billingUnit": "day",
+            "ui": {
+              "title": "بطيخ بالنعناع",
+              "subtitle": "",
+              "ctaLabel": "أضف",
+              "badge": "إضافة مع الاشتراك"
+            }
+          },
+          {
+            "id": "69dfccad8ad797e60eed6153",
+            "name": "مشروب بروتين",
+            "description": "",
+            "imageUrl": "",
+            "currency": "SAR",
+            "priceHalala": 1900,
+            "priceSar": 19,
+            "priceLabel": "19 SAR / يوم",
+            "type": "subscription",
+            "pricingModel": "daily_recurring",
+            "billingUnit": "day",
+            "ui": {
+              "title": "مشروب بروتين",
+              "subtitle": "",
+              "ctaLabel": "أضف",
+              "badge": "إضافة مع الاشتراك"
+            }
+          },
+          {
+            "id": "69dfccad8ad797e60eed6154",
+            "name": "ايس تى دايت",
+            "description": "",
+            "imageUrl": "",
+            "currency": "SAR",
+            "priceHalala": 400,
+            "priceSar": 4,
+            "priceLabel": "4 SAR / يوم",
+            "type": "subscription",
+            "pricingModel": "daily_recurring",
+            "billingUnit": "day",
+            "ui": {
+              "title": "ايس تى دايت",
+              "subtitle": "",
+              "ctaLabel": "أضف",
+              "badge": "إضافة مع الاشتراك"
+            }
+          },
+          {
+            "id": "69dfccad8ad797e60eed6155",
+            "name": "صودا دايت",
+            "description": "",
+            "imageUrl": "",
+            "currency": "SAR",
+            "priceHalala": 300,
+            "priceSar": 3,
+            "priceLabel": "3 SAR / يوم",
+            "type": "subscription",
+            "pricingModel": "daily_recurring",
+            "billingUnit": "day",
+            "ui": {
+              "title": "صودا دايت",
+              "subtitle": "",
+              "ctaLabel": "أضف",
+              "badge": "إضافة مع الاشتراك"
+            }
+          },
+          {
+            "id": "69dfccad8ad797e60eed6156",
+            "name": "مياه عادية",
+            "description": "",
+            "imageUrl": "",
+            "currency": "SAR",
+            "priceHalala": 200,
+            "priceSar": 2,
+            "priceLabel": "2 SAR / يوم",
+            "type": "subscription",
+            "pricingModel": "daily_recurring",
+            "billingUnit": "day",
+            "ui": {
+              "title": "مياه عادية",
+              "subtitle": "",
+              "ctaLabel": "أضف",
+              "badge": "إضافة مع الاشتراك"
+            }
+          }
+        ],
+        "oneTime": [
+          {
+            "id": "69dfcca98ad797e60eed6143",
+            "name": "مافن التفاح بالقرفة (2 قطع)",
+            "description": "",
+            "imageUrl": "",
+            "currency": "SAR",
+            "priceHalala": 1200,
+            "priceSar": 12,
+            "priceLabel": "12 SAR",
+            "type": "one_time",
+            "pricingModel": "one_time",
+            "billingUnit": "item",
+            "ui": {
+              "title": "مافن التفاح بالقرفة (2 قطع)",
+              "subtitle": "",
+              "ctaLabel": "أضف",
+              "badge": "إضافة مرة واحدة"
+            }
+          },
+          {
+            "id": "69dfccaa8ad797e60eed6144",
+            "name": "تشيز كيك بالتوت",
+            "description": "",
+            "imageUrl": "",
+            "currency": "SAR",
+            "priceHalala": 1900,
+            "priceSar": 19,
+            "priceLabel": "19 SAR",
+            "type": "one_time",
+            "pricingModel": "one_time",
+            "billingUnit": "item",
+            "ui": {
+              "title": "تشيز كيك بالتوت",
+              "subtitle": "",
+              "ctaLabel": "أضف",
+              "badge": "إضافة مرة واحدة"
+            }
+          },
+          {
+            "id": "69dfccaa8ad797e60eed6146",
+            "name": "تشيز كيك بالفراولة",
+            "description": "",
+            "imageUrl": "",
+            "currency": "SAR",
+            "priceHalala": 1900,
+            "priceSar": 19,
+            "priceLabel": "19 SAR",
+            "type": "one_time",
+            "pricingModel": "one_time",
+            "billingUnit": "item",
+            "ui": {
+              "title": "تشيز كيك بالفراولة",
+              "subtitle": "",
+              "ctaLabel": "أضف",
+              "badge": "إضافة مرة واحدة"
+            }
+          },
+          {
+            "id": "69dfccaa8ad797e60eed6147",
+            "name": "براونيز داكن",
+            "description": "",
+            "imageUrl": "",
+            "currency": "SAR",
+            "priceHalala": 1300,
+            "priceSar": 13,
+            "priceLabel": "13 SAR",
+            "type": "one_time",
+            "pricingModel": "one_time",
+            "billingUnit": "item",
+            "ui": {
+              "title": "براونيز داكن",
+              "subtitle": "",
+              "ctaLabel": "أضف",
+              "badge": "إضافة مرة واحدة"
+            }
+          },
+          {
+            "id": "69dfccaa8ad797e60eed6148",
+            "name": "كيك شوكولاتة بروتين",
+            "description": "",
+            "imageUrl": "",
+            "currency": "SAR",
+            "priceHalala": 1900,
+            "priceSar": 19,
+            "priceLabel": "19 SAR",
+            "type": "one_time",
+            "pricingModel": "one_time",
+            "billingUnit": "item",
+            "ui": {
+              "title": "كيك شوكولاتة بروتين",
+              "subtitle": "",
+              "ctaLabel": "أضف",
+              "badge": "إضافة مرة واحدة"
+            }
+          },
+          {
+            "id": "69dfccab8ad797e60eed6149",
+            "name": "ايس كريم فانيليا",
+            "description": "",
+            "imageUrl": "",
+            "currency": "SAR",
+            "priceHalala": 1300,
+            "priceSar": 13,
+            "priceLabel": "13 SAR",
+            "type": "one_time",
+            "pricingModel": "one_time",
+            "billingUnit": "item",
+            "ui": {
+              "title": "ايس كريم فانيليا",
+              "subtitle": "",
+              "ctaLabel": "أضف",
+              "badge": "إضافة مرة واحدة"
+            }
+          },
+          {
+            "id": "69dfccab8ad797e60eed614a",
+            "name": "ايس كريم شوكولا",
+            "description": "",
+            "imageUrl": "",
+            "currency": "SAR",
+            "priceHalala": 1300,
+            "priceSar": 13,
+            "priceLabel": "13 SAR",
+            "type": "one_time",
+            "pricingModel": "one_time",
+            "billingUnit": "item",
+            "ui": {
+              "title": "ايس كريم شوكولا",
+              "subtitle": "",
+              "ctaLabel": "أضف",
+              "badge": "إضافة مرة واحدة"
+            }
+          },
+          {
+            "id": "69dfccab8ad797e60eed614b",
+            "name": "بروتين بار",
+            "description": "",
+            "imageUrl": "",
+            "currency": "SAR",
+            "priceHalala": 1500,
+            "priceSar": 15,
+            "priceLabel": "15 SAR",
+            "type": "one_time",
+            "pricingModel": "one_time",
+            "billingUnit": "item",
+            "ui": {
+              "title": "بروتين بار",
+              "subtitle": "",
+              "ctaLabel": "أضف",
+              "badge": "إضافة مرة واحدة"
+            }
+          },
+          {
+            "id": "69dfccab8ad797e60eed614c",
+            "name": "بيسك كلاسيك",
+            "description": "",
+            "imageUrl": "",
+            "currency": "SAR",
+            "priceHalala": 1400,
+            "priceSar": 14,
+            "priceLabel": "14 SAR",
+            "type": "one_time",
+            "pricingModel": "one_time",
+            "billingUnit": "item",
+            "ui": {
+              "title": "بيسك كلاسيك",
+              "subtitle": "",
+              "ctaLabel": "أضف",
+              "badge": "إضافة مرة واحدة"
+            }
+          }
+        ]
+      },
+      "totalCount": 19
+    },
+    "builderCatalog": {
+      "categories": [
+        {
+          "id": "69dfcca08ad797e60eed611f",
+          "key": "rice",
+          "dimension": "carb",
+          "name": "أرز",
+          "description": "",
+          "sortOrder": 10,
+          "rules": {
+            "dailyLimit": null,
+            "ruleKey": null
+          }
+        },
+        {
+          "id": "69dfcca08ad797e60eed6120",
+          "key": "pasta",
+          "dimension": "carb",
+          "name": "باستا",
+          "description": "",
+          "sortOrder": 20,
+          "rules": {
+            "dailyLimit": null,
+            "ruleKey": null
+          }
+        },
+        {
+          "id": "69dfcca18ad797e60eed6121",
+          "key": "potato",
+          "dimension": "carb",
+          "name": "بطاطس",
+          "description": "",
+          "sortOrder": 30,
+          "rules": {
+            "dailyLimit": null,
+            "ruleKey": null
+          }
+        },
+        {
+          "id": "69dfcca18ad797e60eed6122",
+          "key": "vegetables",
+          "dimension": "carb",
+          "name": "خضار",
+          "description": "",
+          "sortOrder": 40,
+          "rules": {
+            "dailyLimit": null,
+            "ruleKey": null
+          }
+        },
+        {
+          "id": "69dfcc9f8ad797e60eed611b",
+          "key": "egg",
+          "dimension": "protein",
+          "name": "بيض",
+          "description": "",
+          "sortOrder": 10,
+          "rules": {
+            "dailyLimit": null,
+            "ruleKey": null
+          }
+        },
+        {
+          "id": "69dfcca08ad797e60eed611c",
+          "key": "seafood",
+          "dimension": "protein",
+          "name": "مأكولات بحرية",
+          "description": "",
+          "sortOrder": 20,
+          "rules": {
+            "dailyLimit": null,
+            "ruleKey": null
+          }
+        },
+        {
+          "id": "69dfcca08ad797e60eed611d",
+          "key": "chicken",
+          "dimension": "protein",
+          "name": "دجاج",
+          "description": "",
+          "sortOrder": 30,
+          "rules": {
+            "dailyLimit": null,
+            "ruleKey": null
+          }
+        },
+        {
+          "id": "69dfcca08ad797e60eed611e",
+          "key": "beef",
+          "dimension": "protein",
+          "name": "لحم بقري",
+          "description": "",
+          "sortOrder": 40,
+          "rules": {
+            "dailyLimit": 1,
+            "ruleKey": "beef_daily_limit"
+          }
+        }
+      ],
+      "proteins": [
+        {
+          "id": "69dfcca58ad797e60eed6134",
+          "displayCategoryId": "69dfcca08ad797e60eed611e",
+          "displayCategoryKey": "beef",
+          "name": "كرات لحم",
+          "description": "",
+          "proteinFamilyKey": "beef",
+          "ruleTags": [
+            "beef_daily_limit"
+          ],
+          "isPremium": false,
+          "premiumCreditCost": 0,
+          "extraFeeHalala": 0,
+          "currency": "SAR",
+          "sortOrder": 10
+        },
+        {
+          "id": "69dfcca28ad797e60eed6127",
+          "displayCategoryId": "69dfcca08ad797e60eed611d",
+          "displayCategoryKey": "chicken",
+          "name": "فاهيتا",
+          "description": "",
+          "proteinFamilyKey": "chicken",
+          "ruleTags": [],
+          "isPremium": false,
+          "premiumCreditCost": 0,
+          "extraFeeHalala": 0,
+          "currency": "SAR",
+          "sortOrder": 10
+        },
+        {
+          "id": "69dfcca18ad797e60eed6125",
+          "displayCategoryId": "69dfcca08ad797e60eed611c",
+          "displayCategoryKey": "seafood",
+          "name": "تونا",
+          "description": "",
+          "proteinFamilyKey": "seafood",
+          "ruleTags": [],
+          "isPremium": false,
+          "premiumCreditCost": 0,
+          "extraFeeHalala": 0,
+          "currency": "SAR",
+          "sortOrder": 10
+        },
+        {
+          "id": "69dfcca18ad797e60eed6124",
+          "displayCategoryId": "69dfcc9f8ad797e60eed611b",
+          "displayCategoryKey": "egg",
+          "name": "بيض مسلوق",
+          "description": "",
+          "proteinFamilyKey": "other",
+          "ruleTags": [],
+          "isPremium": false,
+          "premiumCreditCost": 0,
+          "extraFeeHalala": 0,
+          "currency": "SAR",
+          "sortOrder": 10
+        },
+        {
+          "id": "69dfcca68ad797e60eed6136",
+          "displayCategoryId": "69dfcca08ad797e60eed611e",
+          "displayCategoryKey": "beef",
+          "name": "لحم استرغانوف",
+          "description": "",
+          "proteinFamilyKey": "beef",
+          "ruleTags": [
+            "beef_daily_limit"
+          ],
+          "isPremium": false,
+          "premiumCreditCost": 0,
+          "extraFeeHalala": 0,
+          "currency": "SAR",
+          "sortOrder": 20
+        },
+        {
+          "id": "69dfcca28ad797e60eed6128",
+          "displayCategoryId": "69dfcca08ad797e60eed611d",
+          "displayCategoryKey": "chicken",
+          "name": "دجاج زبدة",
+          "description": "",
+          "proteinFamilyKey": "chicken",
+          "ruleTags": [],
+          "isPremium": false,
+          "premiumCreditCost": 0,
+          "extraFeeHalala": 0,
+          "currency": "SAR",
+          "sortOrder": 20
+        },
+        {
+          "id": "69dfcca18ad797e60eed6126",
+          "displayCategoryId": "69dfcca08ad797e60eed611c",
+          "displayCategoryKey": "seafood",
+          "name": "سمك فيليه",
+          "description": "",
+          "proteinFamilyKey": "seafood",
+          "ruleTags": [],
+          "isPremium": false,
+          "premiumCreditCost": 0,
+          "extraFeeHalala": 0,
+          "currency": "SAR",
+          "sortOrder": 20
+        },
+        {
+          "id": "69dfcca68ad797e60eed6138",
+          "displayCategoryId": "69dfcca08ad797e60eed611c",
+          "displayCategoryKey": "seafood",
+          "name": "جمبري",
+          "description": "",
+          "proteinFamilyKey": "seafood",
+          "ruleTags": [],
+          "isPremium": true,
+          "premiumCreditCost": 1,
+          "extraFeeHalala": 2000,
+          "currency": "SAR",
+          "sortOrder": 30
+        },
+        {
+          "id": "69dfcca68ad797e60eed6137",
+          "displayCategoryId": "69dfcca08ad797e60eed611e",
+          "displayCategoryKey": "beef",
+          "name": "ستيك لحم",
+          "description": "",
+          "proteinFamilyKey": "beef",
+          "ruleTags": [
+            "beef_daily_limit"
+          ],
+          "isPremium": true,
+          "premiumCreditCost": 1,
+          "extraFeeHalala": 2500,
+          "currency": "SAR",
+          "sortOrder": 30
+        },
+        {
+          "id": "69dfcca28ad797e60eed6129",
+          "displayCategoryId": "69dfcca08ad797e60eed611d",
+          "displayCategoryKey": "chicken",
+          "name": "دجاج كريمة",
+          "description": "",
+          "proteinFamilyKey": "chicken",
+          "ruleTags": [],
+          "isPremium": false,
+          "premiumCreditCost": 0,
+          "extraFeeHalala": 0,
+          "currency": "SAR",
+          "sortOrder": 30
+        },
+        {
+          "id": "69dfcca68ad797e60eed6139",
+          "displayCategoryId": "69dfcca08ad797e60eed611c",
+          "displayCategoryKey": "seafood",
+          "name": "سالمون",
+          "description": "",
+          "proteinFamilyKey": "seafood",
+          "ruleTags": [],
+          "isPremium": true,
+          "premiumCreditCost": 1,
+          "extraFeeHalala": 1500,
+          "currency": "SAR",
+          "sortOrder": 40
+        },
+        {
+          "id": "69dfcca28ad797e60eed612a",
+          "displayCategoryId": "69dfcca08ad797e60eed611d",
+          "displayCategoryKey": "chicken",
+          "name": "دجاج كاري وجوز الهند",
+          "description": "",
+          "proteinFamilyKey": "chicken",
+          "ruleTags": [],
+          "isPremium": false,
+          "premiumCreditCost": 0,
+          "extraFeeHalala": 0,
+          "currency": "SAR",
+          "sortOrder": 40
+        },
+        {
+          "id": "69dfcca28ad797e60eed612b",
+          "displayCategoryId": "69dfcca08ad797e60eed611d",
+          "displayCategoryKey": "chicken",
+          "name": "دجاج سبايسي",
+          "description": "",
+          "proteinFamilyKey": "chicken",
+          "ruleTags": [],
+          "isPremium": false,
+          "premiumCreditCost": 0,
+          "extraFeeHalala": 0,
+          "currency": "SAR",
+          "sortOrder": 50
+        },
+        {
+          "id": "69dfcca38ad797e60eed612c",
+          "displayCategoryId": "69dfcca08ad797e60eed611d",
+          "displayCategoryKey": "chicken",
+          "name": "دجاج توابل إيطالية",
+          "description": "",
+          "proteinFamilyKey": "chicken",
+          "ruleTags": [],
+          "isPremium": false,
+          "premiumCreditCost": 0,
+          "extraFeeHalala": 0,
+          "currency": "SAR",
+          "sortOrder": 60
+        },
+        {
+          "id": "69dfcca48ad797e60eed612f",
+          "displayCategoryId": "69dfcca08ad797e60eed611d",
+          "displayCategoryKey": "chicken",
+          "name": "دجاج تكا",
+          "description": "",
+          "proteinFamilyKey": "chicken",
+          "ruleTags": [],
+          "isPremium": false,
+          "premiumCreditCost": 0,
+          "extraFeeHalala": 0,
+          "currency": "SAR",
+          "sortOrder": 70
+        },
+        {
+          "id": "69dfcca48ad797e60eed6130",
+          "displayCategoryId": "69dfcca08ad797e60eed611d",
+          "displayCategoryKey": "chicken",
+          "name": "دجاج آسيوي",
+          "description": "",
+          "proteinFamilyKey": "chicken",
+          "ruleTags": [],
+          "isPremium": false,
+          "premiumCreditCost": 0,
+          "extraFeeHalala": 0,
+          "currency": "SAR",
+          "sortOrder": 80
+        },
+        {
+          "id": "69dfcca58ad797e60eed6131",
+          "displayCategoryId": "69dfcca08ad797e60eed611d",
+          "displayCategoryKey": "chicken",
+          "name": "استربس",
+          "description": "",
+          "proteinFamilyKey": "chicken",
+          "ruleTags": [],
+          "isPremium": false,
+          "premiumCreditCost": 0,
+          "extraFeeHalala": 0,
+          "currency": "SAR",
+          "sortOrder": 90
+        },
+        {
+          "id": "69dfcca58ad797e60eed6132",
+          "displayCategoryId": "69dfcca08ad797e60eed611d",
+          "displayCategoryKey": "chicken",
+          "name": "دجاج مشوي",
+          "description": "",
+          "proteinFamilyKey": "chicken",
+          "ruleTags": [],
+          "isPremium": false,
+          "premiumCreditCost": 0,
+          "extraFeeHalala": 0,
+          "currency": "SAR",
+          "sortOrder": 100
+        },
+        {
+          "id": "69dfcca58ad797e60eed6133",
+          "displayCategoryId": "69dfcca08ad797e60eed611d",
+          "displayCategoryKey": "chicken",
+          "name": "دجاج مكسيكي",
+          "description": "",
+          "proteinFamilyKey": "chicken",
+          "ruleTags": [],
+          "isPremium": false,
+          "premiumCreditCost": 0,
+          "extraFeeHalala": 0,
+          "currency": "SAR",
+          "sortOrder": 110
+        }
+      ],
+      "carbs": [
+        {
+          "id": "69dfcca98ad797e60eed6142",
+          "displayCategoryId": "69dfcca18ad797e60eed6122",
+          "displayCategoryKey": "vegetables",
+          "name": "خضار مشكل مشوي",
+          "description": "",
+          "sortOrder": 10
+        },
+        {
+          "id": "69dfcca98ad797e60eed6140",
+          "displayCategoryId": "69dfcca18ad797e60eed6121",
+          "displayCategoryKey": "potato",
+          "name": "بطاطس مشوي",
+          "description": "",
+          "sortOrder": 10
+        },
+        {
+          "id": "69dfcca88ad797e60eed613e",
+          "displayCategoryId": "69dfcca08ad797e60eed6120",
+          "displayCategoryKey": "pasta",
+          "name": "باستا الفريدو",
+          "description": "",
+          "sortOrder": 10
+        },
+        {
+          "id": "69dfcca78ad797e60eed613a",
+          "displayCategoryId": "69dfcca08ad797e60eed611f",
+          "displayCategoryKey": "rice",
+          "name": "رز أبيض",
+          "description": "",
+          "sortOrder": 10
+        },
+        {
+          "id": "69dfcca98ad797e60eed6141",
+          "displayCategoryId": "69dfcca18ad797e60eed6121",
+          "displayCategoryKey": "potato",
+          "name": "بطاطا حلوة",
+          "description": "",
+          "sortOrder": 20
+        },
+        {
+          "id": "69dfcca88ad797e60eed613f",
+          "displayCategoryId": "69dfcca08ad797e60eed6120",
+          "displayCategoryKey": "pasta",
+          "name": "باستا بالصوص الأحمر",
+          "description": "",
+          "sortOrder": 20
+        },
+        {
+          "id": "69dfcca88ad797e60eed613b",
+          "displayCategoryId": "69dfcca08ad797e60eed611f",
+          "displayCategoryKey": "rice",
+          "name": "رز بالكركم",
+          "description": "",
+          "sortOrder": 20
+        },
+        {
+          "id": "69dfcca88ad797e60eed613c",
+          "displayCategoryId": "69dfcca08ad797e60eed611f",
+          "displayCategoryKey": "rice",
+          "name": "رز برياني",
+          "description": "",
+          "sortOrder": 30
+        },
+        {
+          "id": "69dfcca88ad797e60eed613d",
+          "displayCategoryId": "69dfcca08ad797e60eed611f",
+          "displayCategoryKey": "rice",
+          "name": "كينوا",
+          "description": "",
+          "sortOrder": 40
+        }
+      ],
+      "rules": {
+        "version": "meal_planner_rules.v1",
+        "beef": {
+          "proteinFamilyKey": "beef",
+          "maxSlotsPerDay": 1
+        }
+      }
+    }
+  }
+}

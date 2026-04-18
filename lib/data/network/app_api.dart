@@ -1,4 +1,5 @@
 import 'package:basic_diet/data/request/bulk_selections_request.dart';
+import 'package:basic_diet/data/request/day_selection_request.dart';
 import 'package:basic_diet/app/constants.dart';
 import 'package:basic_diet/data/response/checkout_draft_response.dart';
 import 'package:basic_diet/data/request/subscription_checkout_request.dart';
@@ -23,6 +24,9 @@ import 'package:basic_diet/data/response/pickup_prepare_response.dart';
 import 'package:basic_diet/data/response/pickup_status_response.dart';
 import 'package:basic_diet/data/response/meal_planner_menu_response.dart';
 import 'package:basic_diet/data/response/premium_payment_response.dart';
+import 'package:basic_diet/data/response/subscription_day_response.dart';
+import 'package:basic_diet/data/response/validation_response.dart';
+import 'package:basic_diet/data/response/bulk_selections_response.dart';
 import 'package:retrofit/retrofit.dart';
 import 'package:dio/dio.dart';
 part 'app_api.g.dart';
@@ -103,9 +107,35 @@ abstract class AppServiceClient {
   Future<CheckoutDraftResponse> getCheckoutDraft(@Path("id") String id);
 
   @PUT("/api/subscriptions/{id}/days/selections/bulk")
-  Future<BaseResponse> bulkSelections(
+  Future<BulkSelectionsResponse> bulkSelections(
     @Path("id") String id,
     @Body() BulkSelectionsRequest request,
+  );
+
+  @GET("/api/subscriptions/{id}/days/{date}")
+  Future<SubscriptionDayResponse> getSubscriptionDay(
+    @Path("id") String id,
+    @Path("date") String date,
+  );
+
+  @PUT("/api/subscriptions/{id}/days/{date}/selection")
+  Future<SubscriptionDayResponse> saveDaySelection(
+    @Path("id") String id,
+    @Path("date") String date,
+    @Body() DaySelectionRequest request,
+  );
+
+  @POST("/api/subscriptions/{id}/days/{date}/selection/validate")
+  Future<ValidationResponse> validateDaySelection(
+    @Path("id") String id,
+    @Path("date") String date,
+    @Body() DaySelectionRequest request,
+  );
+
+  @POST("/api/subscriptions/{id}/days/{date}/confirm")
+  Future<BaseResponse> confirmDaySelection(
+    @Path("id") String id,
+    @Path("date") String date,
   );
 
   @POST("/api/subscriptions/{id}/days/{date}/pickup/prepare")

@@ -1,4 +1,5 @@
 import 'package:basic_diet/data/request/bulk_selections_request.dart';
+import 'package:basic_diet/data/request/day_selection_request.dart';
 import 'dart:developer' as developer;
 
 import 'package:basic_diet/data/data_source/remote_data_source.dart';
@@ -11,6 +12,8 @@ import 'package:basic_diet/data/mappers/delivery_options_mapper.dart';
 import 'package:basic_diet/data/mappers/subscription_checkout_mapper.dart';
 import 'package:basic_diet/data/mappers/subscription_quote_mapper.dart';
 import 'package:basic_diet/data/mappers/error_mapper.dart';
+import 'package:basic_diet/data/mappers/bulk_selections_mapper.dart';
+import 'package:basic_diet/data/mappers/subscription_day_mapper.dart';
 import 'package:basic_diet/data/network/exception_handler.dart';
 import 'package:basic_diet/data/network/failure.dart';
 import 'package:basic_diet/data/response/subscription_checkout_response.dart';
@@ -22,6 +25,8 @@ import 'package:basic_diet/domain/model/popular_packages_model.dart';
 import 'package:basic_diet/domain/model/premium_meals_model.dart';
 import 'package:basic_diet/domain/model/subscription_checkout_model.dart';
 import 'package:basic_diet/domain/model/subscription_quote_model.dart';
+import 'package:basic_diet/domain/model/bulk_selections_model.dart';
+import 'package:basic_diet/domain/model/subscription_day_model.dart';
 import 'package:basic_diet/domain/repository/repository.dart';
 import 'package:dartz/dartz.dart';
 import 'package:dio/dio.dart';
@@ -448,12 +453,78 @@ class RepositoryImpl implements Repository {
   }
 
   @override
-  Future<Either<Failure, BaseModel>> bulkSelections(
+  Future<Either<Failure, BulkSelectionsModel>> bulkSelections(
     String id,
     BulkSelectionsRequest request,
   ) async {
     try {
       final response = await _remoteDataSource.bulkSelections(id, request);
+      if (response.status) {
+        return Right(response.toDomain());
+      } else {
+        return Left(Failure(0, 'Failed to save meal selections'));
+      }
+    } catch (error) {
+      return _handleError(error);
+    }
+  }
+
+  @override
+  Future<Either<Failure, ValidationResultModel>> validateDaySelection(
+    String id,
+    String date,
+    DaySelectionRequest request,
+  ) async {
+    try {
+      final response = await _remoteDataSource.validateDaySelection(id, date, request);
+      return Right(response.toDomain());
+    } catch (error) {
+      return _handleError(error);
+    }
+  }
+
+  @override
+  Future<Either<Failure, SubscriptionDayModel>> saveDaySelection(
+    String id,
+    String date,
+    DaySelectionRequest request,
+  ) async {
+    try {
+      final response = await _remoteDataSource.saveDaySelection(id, date, request);
+      if (response.status == true) {
+        return Right(response.toDomain());
+      } else {
+        return Left(Failure(0, 'Failed to save day selection'));
+      }
+    } catch (error) {
+      return _handleError(error);
+    }
+  }
+
+  @override
+  Future<Either<Failure, SubscriptionDayModel>> getSubscriptionDay(
+    String id,
+    String date,
+  ) async {
+    try {
+      final response = await _remoteDataSource.getSubscriptionDay(id, date);
+      if (response.status == true) {
+        return Right(response.toDomain());
+      } else {
+        return Left(Failure(0, 'Failed to get subscription day'));
+      }
+    } catch (error) {
+      return _handleError(error);
+    }
+  }
+
+  @override
+  Future<Either<Failure, BaseModel>> confirmDaySelection(
+    String id,
+    String date,
+  ) async {
+    try {
+      final response = await _remoteDataSource.confirmDaySelection(id, date);
       if (_isSuccessfulResponse(response)) {
         return Right(response.toDomain());
       } else {

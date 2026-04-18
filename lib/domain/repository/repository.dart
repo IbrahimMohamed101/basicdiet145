@@ -1,4 +1,5 @@
 import 'package:basic_diet/data/request/bulk_selections_request.dart';
+import 'package:basic_diet/data/request/day_selection_request.dart';
 import 'package:basic_diet/data/network/failure.dart';
 import 'package:basic_diet/domain/model/checkout_draft_model.dart';
 import 'package:basic_diet/domain/model/auth_model.dart';
@@ -8,6 +9,7 @@ import 'package:basic_diet/domain/model/plans_model.dart';
 import 'package:basic_diet/domain/model/popular_packages_model.dart';
 import 'package:basic_diet/domain/model/premium_meals_model.dart';
 import 'package:basic_diet/domain/model/subscription_checkout_model.dart';
+import 'package:basic_diet/domain/model/subscription_day_model.dart';
 import 'package:basic_diet/domain/model/subscription_quote_model.dart';
 import 'package:dartz/dartz.dart';
 
@@ -23,6 +25,8 @@ import 'package:basic_diet/domain/model/premium_payment_model.dart';
 
 import 'package:basic_diet/domain/model/pickup_prepare_model.dart';
 import 'package:basic_diet/domain/model/pickup_status_model.dart';
+
+import '../model/bulk_selections_model.dart';
 
 abstract class Repository {
   Future<Either<Failure, BaseModel>> login(String phone);
@@ -64,9 +68,27 @@ abstract class Repository {
   Future<Either<Failure, CategoriesWithMealsModel>> getCategoriesWithMeals();
   Future<Either<Failure, MealPlannerMenuModel>> getMealPlannerMenu();
   Future<Either<Failure, CheckoutDraftModel>> getCheckoutDraft(String id);
-  Future<Either<Failure, BaseModel>> bulkSelections(
+  Future<Either<Failure, BulkSelectionsModel>> bulkSelections(
     String id,
     BulkSelectionsRequest request,
+  );
+  Future<Either<Failure, ValidationResultModel>> validateDaySelection(
+    String id,
+    String date,
+    DaySelectionRequest request,
+  );
+  Future<Either<Failure, SubscriptionDayModel>> saveDaySelection(
+    String id,
+    String date,
+    DaySelectionRequest request,
+  );
+  Future<Either<Failure, SubscriptionDayModel>> getSubscriptionDay(
+    String id,
+    String date,
+  );
+  Future<Either<Failure, BaseModel>> confirmDaySelection(
+    String id,
+    String date,
   );
   Future<Either<Failure, PickupPrepareModel>> preparePickup(
     String id,
