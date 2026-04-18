@@ -2,18 +2,25 @@ import 'package:json_annotation/json_annotation.dart';
 
 part 'subscription_day_response.g.dart';
 
-@JsonSerializable()
+@JsonSerializable(createFactory: false)
 class SubscriptionDayResponse {
-  @JsonKey(name: "ok")
+  /// Top-level success flag (`status` on current API, `ok` on some older payloads).
   final bool? status;
-  
+
   @JsonKey(name: "data")
   final SubscriptionDayData? data;
 
   SubscriptionDayResponse(this.status, this.data);
 
-  factory SubscriptionDayResponse.fromJson(Map<String, dynamic> json) =>
-      _$SubscriptionDayResponseFromJson(json);
+  factory SubscriptionDayResponse.fromJson(Map<String, dynamic> json) {
+    final top = json['status'] as bool? ?? json['ok'] as bool?;
+    return SubscriptionDayResponse(
+      top,
+      json['data'] == null
+          ? null
+          : SubscriptionDayData.fromJson(json['data'] as Map<String, dynamic>),
+    );
+  }
 
   Map<String, dynamic> toJson() => _$SubscriptionDayResponseToJson(this);
 }
@@ -116,7 +123,8 @@ class PlannerMetaResponse {
   @JsonKey(name: "premiumPendingPaymentCount")
   final int premiumPendingPaymentCount;
   
-  @JsonKey(name: "premiumTotalHalala")
+  /// Not always present on newer API payloads; default to 0.
+  @JsonKey(name: "premiumTotalHalala", defaultValue: 0)
   final int premiumTotalHalala;
   
   @JsonKey(name: "isDraftValid")

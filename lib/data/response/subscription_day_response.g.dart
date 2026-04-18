@@ -6,18 +6,9 @@ part of 'subscription_day_response.dart';
 // JsonSerializableGenerator
 // **************************************************************************
 
-SubscriptionDayResponse _$SubscriptionDayResponseFromJson(
-  Map<String, dynamic> json,
-) => SubscriptionDayResponse(
-  json['ok'] as bool?,
-  json['data'] == null
-      ? null
-      : SubscriptionDayData.fromJson(json['data'] as Map<String, dynamic>),
-);
-
 Map<String, dynamic> _$SubscriptionDayResponseToJson(
   SubscriptionDayResponse instance,
-) => <String, dynamic>{'ok': instance.status, 'data': instance.data};
+) => <String, dynamic>{'status': instance.status, 'data': instance.data};
 
 SubscriptionDayData _$SubscriptionDayDataFromJson(Map<String, dynamic> json) =>
     SubscriptionDayData(
@@ -82,7 +73,7 @@ PlannerMetaResponse _$PlannerMetaResponseFromJson(Map<String, dynamic> json) =>
       (json['completeSlotCount'] as num).toInt(),
       (json['premiumSlotCount'] as num).toInt(),
       (json['premiumPendingPaymentCount'] as num).toInt(),
-      (json['premiumTotalHalala'] as num).toInt(),
+      (json['premiumTotalHalala'] as num?)?.toInt() ?? 0,
       json['isDraftValid'] as bool,
       json['isConfirmable'] as bool,
     );
