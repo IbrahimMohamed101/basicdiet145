@@ -20,21 +20,17 @@ class MealSlotRequest {
   @JsonKey(name: "slotIndex")
   final int slotIndex;
   
-  @JsonKey(name: "slotKey")
-  final String slotKey;
-  
   @JsonKey(name: "proteinId")
   final String? proteinId;
   
   @JsonKey(name: "carbId")
   final String? carbId;
 
-  MealSlotRequest(
-    this.slotIndex,
-    this.slotKey,
+  MealSlotRequest({
+    required this.slotIndex,
     this.proteinId,
     this.carbId,
-  );
+  });
 
   factory MealSlotRequest.fromJson(Map<String, dynamic> json) =>
       _$MealSlotRequestFromJson(json);

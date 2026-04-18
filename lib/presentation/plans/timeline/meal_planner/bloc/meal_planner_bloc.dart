@@ -1,19 +1,21 @@
 import 'package:basic_diet/domain/usecase/get_meal_planner_menu_usecase.dart';
-import 'package:basic_diet/domain/usecase/save_meal_planner_changes_usecase.dart';
+import 'package:basic_diet/domain/usecase/save_day_selection_usecase.dart';
 import 'package:basic_diet/domain/usecase/create_premium_payment_usecase.dart';
 import 'package:basic_diet/domain/usecase/verify_premium_payment_usecase.dart';
+import 'package:basic_diet/domain/usecase/confirm_day_selection_usecase.dart';
 import 'package:basic_diet/domain/model/meal_planner_menu_model.dart';
 import 'package:basic_diet/domain/model/timeline_model.dart';
-import 'package:basic_diet/data/request/bulk_selections_request.dart';
+import 'package:basic_diet/data/request/day_selection_request.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'meal_planner_event.dart';
 import 'meal_planner_state.dart';
 
 class MealPlannerBloc extends Bloc<MealPlannerEvent, MealPlannerState> {
   final GetMealPlannerMenuUseCase _getMealPlannerMenuUseCase;
-  final SaveMealPlannerChangesUseCase _saveMealPlannerChangesUseCase;
+  final SaveDaySelectionUseCase _saveDaySelectionUseCase;
   final CreatePremiumPaymentUseCase _createPremiumPaymentUseCase;
   final VerifyPremiumPaymentUseCase _verifyPremiumPaymentUseCase;
+  final ConfirmDaySelectionUseCase _confirmDaySelectionUseCase;
   final List<TimelineDayModel> initialTimelineDays;
   final int initialDayIndex;
   final int premiumMealsRemaining;
@@ -21,9 +23,10 @@ class MealPlannerBloc extends Bloc<MealPlannerEvent, MealPlannerState> {
 
   MealPlannerBloc(
     this._getMealPlannerMenuUseCase,
-    this._saveMealPlannerChangesUseCase,
+    this._saveDaySelectionUseCase,
     this._createPremiumPaymentUseCase,
-    this._verifyPremiumPaymentUseCase, {
+    this._verifyPremiumPaymentUseCase,
+    this._confirmDaySelectionUseCase, {
     required this.initialTimelineDays,
     required this.initialDayIndex,
     required this.premiumMealsRemaining,
@@ -221,48 +224,38 @@ class MealPlannerBloc extends Bloc<MealPlannerEvent, MealPlannerState> {
       final s = state as MealPlannerLoaded;
       emit(s.copyWith(isSaving: true, paymentError: null));
 
-      // 1. Identify completed days and build mealSlots
-      List<BulkSelectionDayRequest> dayRequests = [];
-      for (int i = 0; i < s.timelineDays.length; i++) {
-        final day = s.timelineDays[i];
-        final slots = s.selectedSlotsPerDay[i] ?? [];
-        
-        // Filter only complete slots (both protein and carb selected)
-        final completeSlots = slots
-            .where((slot) => slot.proteinId != null && slot.carbId != null)
-            .toList();
+      // Get the current day
+      final currentDayIndex = s.selectedDayIndex;
+      final currentDay = s.timelineDays[currentDayIndex];
+      final slots = s.selectedSlotsPerDay[currentDayIndex] ?? [];
+      
+      // Filter only complete slots (both protein and carb selected)
+      final completeSlots = slots
+          .where((slot) => slot.proteinId != null && slot.carbId != null)
+          .toList();
 
-        if (completeSlots.length >= day.requiredMeals) {
-          // This day is completed, build mealSlots in new format
-          final mealSlots = completeSlots.map((slot) {
-            return MealSlotRequest(
-              slotIndex: slot.slotIndex,
-              slotKey: slot.slotKey,
-              proteinId: slot.proteinId,
-              carbId: slot.carbId,
-            );
-          }).toList();
-
-          dayRequests.add(BulkSelectionDayRequest(
-            date: day.date,
-            mealSlots: mealSlots,
-          ));
-        }
-      }
-
-      if (dayRequests.isEmpty) {
-        // Nothing to save
-        emit(s.copyWith(isSaving: false));
+      if (completeSlots.length < currentDay.requiredMeals) {
+        emit(s.copyWith(
+          isSaving: false,
+          paymentError: "Please complete all required meals (${completeSlots.length}/${currentDay.requiredMeals})",
+        ));
         return;
       }
 
-      final request = BulkSelectionsRequest(days: dayRequests);
+      // Build mealSlots in new format (without slotKey - backend generates it)
+      final mealSlots = completeSlots.map((slot) {
+        return MealSlotRequest(
+          slotIndex: slot.slotIndex,
+          proteinId: slot.proteinId,
+          carbId: slot.carbId,
+        );
+      }).toList();
+
+      final request = DaySelectionRequest(mealSlots);
       
-      // CRITICAL: Save with bulk endpoint
-      // Note: Bulk save endpoint validates and saves in one call
-      // It doesn't expose per-day payment requirements in response
-      final result = await _saveMealPlannerChangesUseCase.execute(
-        SaveMealPlannerChangesUseCaseInput(subscriptionId, request),
+      // Use the single-day save endpoint
+      final result = await _saveDaySelectionUseCase.execute(
+        SaveDaySelectionUseCaseInput(subscriptionId, currentDay.date, request),
       );
 
       result.fold(
@@ -274,51 +267,37 @@ class MealPlannerBloc extends Bloc<MealPlannerEvent, MealPlannerState> {
             ));
           }
         },
-        (bulkResponse) {
-          // Check if any days failed
-          final failedDays = bulkResponse.results
-              .where((r) => !r.ok)
-              .toList();
-          
-          if (failedDays.isNotEmpty) {
-            // Build error message showing which days failed
-            final errorMessages = failedDays.map((r) {
-              final date = r.date;
-              final code = r.code ?? 'UNKNOWN';
-              final message = r.message ?? 'Failed to save';
-              return '$date: $message';
-            }).join('\n');
-            
-            if (!emit.isDone) {
-              emit(s.copyWith(
-                isSaving: false,
-                paymentError: errorMessages,
-              ));
-            }
-          } else {
-            // All days saved successfully
-            // 
-            // IMPORTANT: After save via "Save" button (not "Pay Now"):
-            // - Backend has validated and saved
-            // - Backend has deducted from balance if available
-            // - We don't know if payment is required (bulk save doesn't expose this)
-            // 
-            // Therefore: Hide payment button after regular save
-            // If user needs to pay, they should use the "Pay Now" button which:
-            // 1. Saves first
-            // 2. Then creates payment if backend requires it
-            
-            if (!emit.isDone) {
-              emit(s.copyWith(
-                isSaving: false,
-                saveSuccess: true,
-                savedSlotsPerDay: Map<int, List<MealPlannerSlotSelection>>.from(
-                  s.selectedSlotsPerDay,
-                ),
-                // Hide payment button after regular save
-                premiumMealsPendingPayment: 0,
-              ));
-            }
+        (updatedDay) {
+          if (!emit.isDone) {
+            // Update the current day's slots with the saved data
+            final newSlots = updatedDay.mealSlots.map((slot) {
+              return MealPlannerSlotSelection(
+                slotIndex: slot.slotIndex,
+                slotKey: slot.slotKey,
+                proteinId: slot.proteinId,
+                carbId: slot.carbId,
+              );
+            }).toList();
+
+            final updatedSlotsPerDay = Map<int, List<MealPlannerSlotSelection>>.from(
+              s.selectedSlotsPerDay,
+            )..[currentDayIndex] = newSlots;
+
+            final updatedSavedSlotsPerDay = Map<int, List<MealPlannerSlotSelection>>.from(
+              s.savedSlotsPerDay,
+            )..[currentDayIndex] = List<MealPlannerSlotSelection>.from(newSlots);
+
+            // Check payment requirement from backend response
+            final requiresPayment = updatedDay.paymentRequirement?.requiresPayment ?? false;
+            final pendingPaymentCount = updatedDay.plannerMeta?.premiumPendingPaymentCount ?? 0;
+
+            emit(s.copyWith(
+              isSaving: false,
+              saveSuccess: true,
+              selectedSlotsPerDay: updatedSlotsPerDay,
+              savedSlotsPerDay: updatedSavedSlotsPerDay,
+              premiumMealsPendingPayment: requiresPayment ? pendingPaymentCount : 0,
+            ));
           }
         },
       );
@@ -348,48 +327,31 @@ class MealPlannerBloc extends Bloc<MealPlannerEvent, MealPlannerState> {
     // 4. If payment required → create payment
     // 5. If not required → just show success
     
-    // Step 1 & 2: Save first (which includes validation)
-    // Identify completed days and build mealSlots
-    List<BulkSelectionDayRequest> dayRequests = [];
-    for (int i = 0; i < s.timelineDays.length; i++) {
-      final day = s.timelineDays[i];
-      final slots = s.selectedSlotsPerDay[i] ?? [];
-      
-      // Filter only complete slots (both protein and carb selected)
-      final completeSlots = slots
-          .where((slot) => slot.proteinId != null && slot.carbId != null)
-          .toList();
+    final currentDay = s.timelineDays[s.selectedDayIndex];
+    final slots = s.selectedSlotsPerDay[s.selectedDayIndex] ?? [];
+    final completeSlots = slots
+        .where((slot) => slot.proteinId != null && slot.carbId != null)
+        .toList();
 
-      if (completeSlots.length >= day.requiredMeals) {
-        // This day is completed, build mealSlots in new format
-        final mealSlots = completeSlots.map((slot) {
-          return MealSlotRequest(
-            slotIndex: slot.slotIndex,
-            slotKey: slot.slotKey,
-            proteinId: slot.proteinId,
-            carbId: slot.carbId,
-          );
-        }).toList();
-
-        dayRequests.add(BulkSelectionDayRequest(
-          date: day.date,
-          mealSlots: mealSlots,
-        ));
-      }
-    }
-
-    if (dayRequests.isEmpty) {
+    if (completeSlots.length < currentDay.requiredMeals) {
       emit(s.copyWith(
         isSaving: false,
-        paymentError: "No completed days to save",
+        paymentError: "Please complete all required meals (${completeSlots.length}/${currentDay.requiredMeals})",
       ));
       return;
     }
 
-    // Save the selection
-    final request = BulkSelectionsRequest(days: dayRequests);
-    final saveResult = await _saveMealPlannerChangesUseCase.execute(
-      SaveMealPlannerChangesUseCaseInput(subscriptionId, request),
+    final mealSlots = completeSlots.map((slot) {
+      return MealSlotRequest(
+        slotIndex: slot.slotIndex,
+        proteinId: slot.proteinId,
+        carbId: slot.carbId,
+      );
+    }).toList();
+    final request = DaySelectionRequest(mealSlots);
+
+    final saveResult = await _saveDaySelectionUseCase.execute(
+      SaveDaySelectionUseCaseInput(subscriptionId, currentDay.date, request),
     );
 
     await saveResult.fold(
@@ -399,48 +361,54 @@ class MealPlannerBloc extends Bloc<MealPlannerEvent, MealPlannerState> {
           paymentError: "${failure.code}: ${failure.message}",
         ));
       },
-      (bulkResponse) async {
-        // Check if any days failed
-        final failedDays = bulkResponse.results.where((r) => !r.ok).toList();
-        
-        if (failedDays.isNotEmpty) {
-          final errorMessages = failedDays.map((r) {
-            return '${r.date}: ${r.message ?? "Failed to save"}';
-          }).join('\n');
-          
+      (updatedDay) async {
+        final updatedSlots = updatedDay.mealSlots.map((slot) {
+          return MealPlannerSlotSelection(
+            slotIndex: slot.slotIndex,
+            slotKey: slot.slotKey,
+            proteinId: slot.proteinId,
+            carbId: slot.carbId,
+          );
+        }).toList();
+
+        final updatedSlotsPerDay = Map<int, List<MealPlannerSlotSelection>>.from(
+          s.selectedSlotsPerDay,
+        )..[s.selectedDayIndex] = updatedSlots;
+        final updatedSavedSlotsPerDay = Map<int, List<MealPlannerSlotSelection>>.from(
+          s.savedSlotsPerDay,
+        )..[s.selectedDayIndex] = List<MealPlannerSlotSelection>.from(updatedSlots);
+
+        final requiresPayment = updatedDay.paymentRequirement?.requiresPayment ?? false;
+        final pendingPaymentCount = updatedDay.plannerMeta?.premiumPendingPaymentCount ?? 0;
+
+        if (!requiresPayment) {
           emit(s.copyWith(
             isSaving: false,
-            paymentError: errorMessages,
+            saveSuccess: true,
+            selectedSlotsPerDay: updatedSlotsPerDay,
+            savedSlotsPerDay: updatedSavedSlotsPerDay,
+            premiumMealsPendingPayment: 0,
+            paymentError: null,
           ));
           return;
         }
 
-        // Save successful - now check if payment is needed
-        // Get the current day to create payment for
-        final currentDay = s.timelineDays[s.selectedDayIndex];
-        
-        // Step 3: Try to create payment
-        // Backend will validate if payment is actually required
         final paymentResult = await _createPremiumPaymentUseCase.execute(
           CreatePremiumPaymentUseCaseInput(subscriptionId, currentDay.date),
         );
-        
+
         paymentResult.fold(
           (failure) {
             if (failure.code == 'PREMIUM_EXTRA_PAYMENT_NOT_REQUIRED') {
-              // Backend says no payment needed - this is success!
-              // Premium was covered by balance
               emit(s.copyWith(
                 isSaving: false,
                 saveSuccess: true,
-                savedSlotsPerDay: Map<int, List<MealPlannerSlotSelection>>.from(
-                  s.selectedSlotsPerDay,
-                ),
-                premiumMealsPendingPayment: 0, // Hide payment button
+                selectedSlotsPerDay: updatedSlotsPerDay,
+                savedSlotsPerDay: updatedSavedSlotsPerDay,
+                premiumMealsPendingPayment: 0,
                 paymentError: null,
               ));
             } else {
-              // Real error
               emit(s.copyWith(
                 isSaving: false,
                 paymentError: "${failure.code}: ${failure.message}",
@@ -448,13 +416,12 @@ class MealPlannerBloc extends Bloc<MealPlannerEvent, MealPlannerState> {
             }
           },
           (paymentModel) {
-            // Payment required - open payment URL
             emit(s.copyWith(
               isSaving: false,
               saveSuccess: true,
-              savedSlotsPerDay: Map<int, List<MealPlannerSlotSelection>>.from(
-                s.selectedSlotsPerDay,
-              ),
+              selectedSlotsPerDay: updatedSlotsPerDay,
+              savedSlotsPerDay: updatedSavedSlotsPerDay,
+              premiumMealsPendingPayment: pendingPaymentCount,
               paymentUrl: paymentModel.paymentUrl,
               paymentId: paymentModel.paymentId,
             ));
@@ -488,13 +455,28 @@ class MealPlannerBloc extends Bloc<MealPlannerEvent, MealPlannerState> {
       },
       (verificationModel) {
         if (verificationModel.paymentStatus == "paid") {
-          // Payment successful - reset pending payment count
-          emit(s.copyWith(
-            isSaving: false,
-            premiumMealsPendingPayment: 0,
-            paymentUrl: null,
-            paymentId: null,
-          ));
+          _confirmDaySelectionUseCase
+              .execute(ConfirmDaySelectionUseCaseInput(subscriptionId, currentDay.date))
+              .then((confirmResult) {
+            if (emit.isDone) return;
+            confirmResult.fold(
+              (failure) {
+                emit(s.copyWith(
+                  isSaving: false,
+                  paymentError: "${failure.code}: ${failure.message}",
+                ));
+              },
+              (_) {
+                emit(s.copyWith(
+                  isSaving: false,
+                  premiumMealsPendingPayment: 0,
+                  paymentUrl: null,
+                  paymentId: null,
+                  saveSuccess: true,
+                ));
+              },
+            );
+          });
         } else {
           emit(s.copyWith(
             isSaving: false,

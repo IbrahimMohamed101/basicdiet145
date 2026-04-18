@@ -635,10 +635,9 @@ class MealPlannerBlocFixed extends Bloc<MealPlannerEvent, MealPlannerState> {
   ) {
     final mealSlots = slots.map((slot) {
       return MealSlotRequest(
-        slot.slotIndex,
-        slot.slotKey,
-        slot.proteinId,
-        slot.carbId,
+        slotIndex: slot.slotIndex,
+        proteinId: slot.proteinId,
+        carbId: slot.carbId,
       );
     }).toList();
 

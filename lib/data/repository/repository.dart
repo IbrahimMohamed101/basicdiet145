@@ -81,14 +81,25 @@ class RepositoryImpl implements Repository {
 
   Either<Failure, T> _handleError<T>(dynamic error) {
     try {
-      final data = error.response!.data as Map<String, dynamic>;
-      final message = data.toDomain();
-      return Left(
-        Failure(
-          error.response!.statusCode ?? ApiInternalStatus.failure,
-          message.isNotEmpty ? message : ResponseMessage.defaultError,
-        ),
-      );
+      if (error is DioException && error.response != null) {
+        final data = error.response!.data as Map<String, dynamic>;
+        final message = data.toDomain();
+        
+        // Extract custom code if available
+        dynamic code = error.response!.statusCode ?? ApiInternalStatus.failure;
+        if (data['error'] is Map && data['error']['code'] != null) {
+          code = data['error']['code'];
+        } else if (data['code'] != null) {
+          code = data['code'];
+        }
+
+        return Left(
+          Failure(
+            code,
+            message.isNotEmpty ? message : ResponseMessage.defaultError,
+          ),
+        );
+      }
     } catch (_) {}
     return Left(ExceptionHandler.handle(error).failure);
   }

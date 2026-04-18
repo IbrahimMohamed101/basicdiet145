@@ -326,9 +326,10 @@ void initMealPlannerModule() {
     instance.registerFactoryParam<MealPlannerBloc, Map<String, dynamic>, void>(
       (params, _) => MealPlannerBloc(
         instance<GetMealPlannerMenuUseCase>(),
-        instance<SaveMealPlannerChangesUseCase>(),
+        instance<SaveDaySelectionUseCase>(),
         instance<CreatePremiumPaymentUseCase>(),
         instance<VerifyPremiumPaymentUseCase>(),
+        instance<ConfirmDaySelectionUseCase>(),
         initialTimelineDays: params['timelineDays'],
         initialDayIndex: params['initialDayIndex'],
         premiumMealsRemaining: params['premiumMealsRemaining'],

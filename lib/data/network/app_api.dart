@@ -132,7 +132,7 @@ abstract class AppServiceClient {
     @Body() DaySelectionRequest request,
   );
 
-  @POST("/api/subscriptions/{id}/days/{date}/confirm")
+  @POST("/subscriptions/{id}/days/{date}/confirm")
   Future<BaseResponse> confirmDaySelection(
     @Path("id") String id,
     @Path("date") String date,
@@ -159,7 +159,7 @@ abstract class AppServiceClient {
     @Path("date") String date,
   );
 
-  @POST("/api/subscriptions/{id}/days/{date}/premium-extra/payments/{paymentId}/verify")
+  @POST("/subscriptions/{id}/days/{date}/premium-extra/payments/{paymentId}/verify")
   Future<PremiumPaymentVerificationResponse> verifyPremiumPayment(
     @Path("id") String subscriptionId,
     @Path("date") String date,

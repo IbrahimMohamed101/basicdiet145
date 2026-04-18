@@ -1,5 +1,5 @@
 class Failure {
-  int code;
+  dynamic code;
   String message;
   Failure(this.code, this.message);
 }

@@ -190,10 +190,9 @@ class MealPlannerBlocCorrect extends Bloc<MealPlannerEvent, MealPlannerState> {
     final request = DaySelectionRequest(
       state.currentSlots
           .map((slot) => MealSlotRequest(
-                slot.slotIndex,
-                slot.slotKey,
-                slot.proteinId,
-                slot.carbId,
+                slotIndex: slot.slotIndex,
+                proteinId: slot.proteinId,
+                carbId: slot.carbId,
               ))
           .toList(),
     );
@@ -253,10 +252,9 @@ class MealPlannerBlocCorrect extends Bloc<MealPlannerEvent, MealPlannerState> {
     final request = DaySelectionRequest(
       s.currentSlots
           .map((slot) => MealSlotRequest(
-                slot.slotIndex,
-                slot.slotKey,
-                slot.proteinId,
-                slot.carbId,
+                slotIndex: slot.slotIndex,
+                proteinId: slot.proteinId,
+                carbId: slot.carbId,
               ))
           .toList(),
     );

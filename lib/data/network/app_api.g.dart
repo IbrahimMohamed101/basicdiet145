@@ -635,7 +635,7 @@ class _AppServiceClient implements AppServiceClient {
       Options(method: 'POST', headers: _headers, extra: _extra)
           .compose(
             _dio.options,
-            '/api/subscriptions/${id}/days/${date}/confirm',
+            '/subscriptions/${id}/days/${date}/confirm',
             queryParameters: queryParameters,
             data: _data,
           )
@@ -777,7 +777,7 @@ class _AppServiceClient implements AppServiceClient {
       Options(method: 'POST', headers: _headers, extra: _extra)
           .compose(
             _dio.options,
-            '/api/subscriptions/${subscriptionId}/days/${date}/premium-extra/payments/${paymentId}/verify',
+            '/subscriptions/${subscriptionId}/days/${date}/premium-extra/payments/${paymentId}/verify',
             queryParameters: queryParameters,
             data: _data,
           )

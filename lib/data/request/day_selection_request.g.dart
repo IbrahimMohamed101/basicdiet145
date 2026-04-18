@@ -19,16 +19,14 @@ Map<String, dynamic> _$DaySelectionRequestToJson(
 
 MealSlotRequest _$MealSlotRequestFromJson(Map<String, dynamic> json) =>
     MealSlotRequest(
-      (json['slotIndex'] as num).toInt(),
-      json['slotKey'] as String,
-      json['proteinId'] as String?,
-      json['carbId'] as String?,
+      slotIndex: (json['slotIndex'] as num).toInt(),
+      proteinId: json['proteinId'] as String?,
+      carbId: json['carbId'] as String?,
     );
 
 Map<String, dynamic> _$MealSlotRequestToJson(MealSlotRequest instance) =>
     <String, dynamic>{
       'slotIndex': instance.slotIndex,
-      'slotKey': instance.slotKey,
       'proteinId': instance.proteinId,
       'carbId': instance.carbId,
     };
