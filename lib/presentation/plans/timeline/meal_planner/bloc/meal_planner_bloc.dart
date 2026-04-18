@@ -1,5 +1,7 @@
 import 'package:basic_diet/domain/usecase/get_meal_planner_menu_usecase.dart';
 import 'package:basic_diet/domain/usecase/save_meal_planner_changes_usecase.dart';
+import 'package:basic_diet/domain/usecase/create_premium_payment_usecase.dart';
+import 'package:basic_diet/domain/usecase/verify_premium_payment_usecase.dart';
 import 'package:basic_diet/domain/model/meal_planner_menu_model.dart';
 import 'package:basic_diet/domain/model/timeline_model.dart';
 import 'package:basic_diet/data/request/bulk_selections_request.dart';
@@ -10,6 +12,8 @@ import 'meal_planner_state.dart';
 class MealPlannerBloc extends Bloc<MealPlannerEvent, MealPlannerState> {
   final GetMealPlannerMenuUseCase _getMealPlannerMenuUseCase;
   final SaveMealPlannerChangesUseCase _saveMealPlannerChangesUseCase;
+  final CreatePremiumPaymentUseCase _createPremiumPaymentUseCase;
+  final VerifyPremiumPaymentUseCase _verifyPremiumPaymentUseCase;
   final List<TimelineDayModel> initialTimelineDays;
   final int initialDayIndex;
   final int premiumMealsRemaining;
@@ -17,7 +21,9 @@ class MealPlannerBloc extends Bloc<MealPlannerEvent, MealPlannerState> {
 
   MealPlannerBloc(
     this._getMealPlannerMenuUseCase,
-    this._saveMealPlannerChangesUseCase, {
+    this._saveMealPlannerChangesUseCase,
+    this._createPremiumPaymentUseCase,
+    this._verifyPremiumPaymentUseCase, {
     required this.initialTimelineDays,
     required this.initialDayIndex,
     required this.premiumMealsRemaining,
@@ -29,6 +35,8 @@ class MealPlannerBloc extends Bloc<MealPlannerEvent, MealPlannerState> {
     on<SetMealSlotCarbEvent>(_onSetCarb);
     on<SaveMealPlannerChangesEvent>(_onSave);
     on<HideBannerEvent>(_onHideBanner);
+    on<InitiatePremiumPaymentEvent>(_onInitiatePayment);
+    on<VerifyPremiumPaymentEvent>(_onVerifyPayment);
   }
 
   Future<void> _onGetData(
@@ -103,35 +111,7 @@ class MealPlannerBloc extends Bloc<MealPlannerEvent, MealPlannerState> {
     final current = slots[event.slotIndex];
     if (current.proteinId == event.proteinId) return;
 
-    // Guard: check premium credit availability before allowing selection.
-    if (event.proteinId != null) {
-      final newProtein = _findProteinById(s.menu, event.proteinId!);
-      if (newProtein != null && newProtein.isPremium) {
-        final cost = newProtein.premiumCreditCost == 0
-            ? 1
-            : newProtein.premiumCreditCost;
-
-        // Credits already consumed across all days, excluding the current slot
-        // (so swapping a premium for another premium is handled correctly).
-        var usedCredits = 0;
-        for (final entry in s.selectedSlotsPerDay.entries) {
-          for (var i = 0; i < entry.value.length; i++) {
-            // Skip the slot being replaced so we don't double-count it.
-            if (entry.key == dayIndex && i == event.slotIndex) continue;
-            final proteinId = entry.value[i].proteinId;
-            if (proteinId == null) continue;
-            final protein = _findProteinById(s.menu, proteinId);
-            if (protein == null || !protein.isPremium) continue;
-            usedCredits += protein.premiumCreditCost == 0
-                ? 1
-                : protein.premiumCreditCost;
-          }
-        }
-
-        if (usedCredits + cost > s.premiumMealsRemaining) return;
-      }
-    }
-
+    // Update the slot first
     final next = current.copyWith(
       proteinId: event.proteinId,
       carbId: event.proteinId == null ? null : current.carbId,
@@ -141,6 +121,26 @@ class MealPlannerBloc extends Bloc<MealPlannerEvent, MealPlannerState> {
     final updated = Map<int, List<MealPlannerSlotSelection>>.from(
       s.selectedSlotsPerDay,
     )..[dayIndex] = slots;
+
+    // Now calculate total premium credits used across ALL days with the updated slots
+    var totalUsedCredits = 0;
+    
+    for (final entry in updated.entries) {
+      for (final slot in entry.value) {
+        final proteinId = slot.proteinId;
+        if (proteinId == null) continue;
+        final protein = _findProteinById(s.menu, proteinId);
+        if (protein == null || !protein.isPremium) continue;
+        
+        final cost = protein.premiumCreditCost == 0 ? 1 : protein.premiumCreditCost;
+        totalUsedCredits += cost;
+      }
+    }
+
+    // Calculate pending payment count
+    final pendingPaymentCount = totalUsedCredits > s.premiumMealsRemaining 
+        ? totalUsedCredits - s.premiumMealsRemaining 
+        : 0;
 
     String proteinName = '';
     if (event.proteinId != null) {
@@ -154,6 +154,7 @@ class MealPlannerBloc extends Bloc<MealPlannerEvent, MealPlannerState> {
         showSavedBanner: event.proteinId != null,
         lastAddedMealName:
             proteinName.isNotEmpty ? proteinName : s.lastAddedMealName,
+        premiumMealsPendingPayment: pendingPaymentCount,
       ),
     );
   }
@@ -268,5 +269,81 @@ class MealPlannerBloc extends Bloc<MealPlannerEvent, MealPlannerState> {
       if (protein.id == id) return protein;
     }
     return null;
+  }
+
+  Future<void> _onInitiatePayment(
+    InitiatePremiumPaymentEvent event,
+    Emitter<MealPlannerState> emit,
+  ) async {
+    if (state is! MealPlannerLoaded) return;
+    final s = state as MealPlannerLoaded;
+    
+    if (s.premiumMealsPendingPayment <= 0) return;
+    
+    emit(s.copyWith(isSaving: true));
+    
+    // Get the current day's date
+    final currentDay = s.timelineDays[s.selectedDayIndex];
+    
+    final result = await _createPremiumPaymentUseCase.execute(
+      CreatePremiumPaymentUseCaseInput(subscriptionId, currentDay.date),
+    );
+    
+    result.fold(
+      (failure) {
+        emit(s.copyWith(
+          isSaving: false,
+          paymentError: "${failure.code}: ${failure.message}",
+        ));
+      },
+      (paymentModel) {
+        emit(s.copyWith(
+          isSaving: false,
+          paymentUrl: paymentModel.paymentUrl,
+          paymentId: paymentModel.paymentId,
+        ));
+      },
+    );
+  }
+
+  Future<void> _onVerifyPayment(
+    VerifyPremiumPaymentEvent event,
+    Emitter<MealPlannerState> emit,
+  ) async {
+    if (state is! MealPlannerLoaded) return;
+    final s = state as MealPlannerLoaded;
+    
+    emit(s.copyWith(isSaving: true));
+    
+    final currentDay = s.timelineDays[s.selectedDayIndex];
+    
+    final result = await _verifyPremiumPaymentUseCase.execute(
+      VerifyPremiumPaymentUseCaseInput(subscriptionId, currentDay.date, event.paymentId),
+    );
+    
+    result.fold(
+      (failure) {
+        emit(s.copyWith(
+          isSaving: false,
+          paymentError: "${failure.code}: ${failure.message}",
+        ));
+      },
+      (verificationModel) {
+        if (verificationModel.paymentStatus == "paid") {
+          // Payment successful - reset pending payment count
+          emit(s.copyWith(
+            isSaving: false,
+            premiumMealsPendingPayment: 0,
+            paymentUrl: null,
+            paymentId: null,
+          ));
+        } else {
+          emit(s.copyWith(
+            isSaving: false,
+            paymentError: verificationModel.message,
+          ));
+        }
+      },
+    );
   }
 }

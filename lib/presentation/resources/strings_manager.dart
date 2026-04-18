@@ -715,4 +715,15 @@ class Strings {
   static const String getYourPrice = 'getYourPrice';
   static const String apartmentHint = 'apartmentHint';
   static const String selectPreferredTime = 'selectPreferredTime';
+  
+  // Premium Payment
+  static const String paymentRequired = 'paymentRequired';
+  static const String youSelected = 'youSelected';
+  static const String extraPremiumMeals = 'extraPremiumMeals';
+  static const String totalAmount = 'totalAmount';
+  static const String payNow = 'payNow';
+  static const String payFirstToSave = 'payFirstToSave';
+  static const String completePayment = 'completePayment';
+  static const String redirectingToPayment = 'redirectingToPayment';
+  static const String openPayment = 'openPayment';
 }

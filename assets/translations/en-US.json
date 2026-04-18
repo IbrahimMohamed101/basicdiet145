@@ -308,5 +308,14 @@
     "getYourPrice": "Get Your Price",
     "apartmentHint": "Apartment / Floor (Optional)",
     "selectPreferredTime": "Select Preferred Time",
+    "paymentRequired": "Payment Required",
+    "youSelected": "You selected",
+    "extraPremiumMeals": "extra premium meals",
+    "totalAmount": "Total Amount",
+    "payNow": "Pay Now",
+    "payFirstToSave": "Complete payment first",
+    "completePayment": "Complete Payment",
+    "redirectingToPayment": "Please complete your payment to continue",
+    "openPayment": "Open Payment",
     "confirmAndPay": "Confirm & Pay"
 }

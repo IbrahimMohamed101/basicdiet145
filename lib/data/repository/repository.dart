@@ -49,6 +49,9 @@ import 'package:basic_diet/domain/model/pickup_prepare_model.dart';
 import 'package:basic_diet/data/mappers/pickup_status_mapper.dart';
 import 'package:basic_diet/domain/model/pickup_status_model.dart';
 
+import 'package:basic_diet/data/mappers/premium_payment_mapper.dart';
+import 'package:basic_diet/domain/model/premium_payment_model.dart';
+
 class RepositoryImpl implements Repository {
   final RemoteDataSource _remoteDataSource;
   static const int _checkoutRetryCount = 5;
@@ -490,6 +493,33 @@ class RepositoryImpl implements Repository {
       } else {
         return Left(_mapFailureFromResponse(response));
       }
+    } catch (error) {
+      return _handleError(error);
+    }
+  }
+
+  @override
+  Future<Either<Failure, PremiumPaymentModel>> createPremiumPayment(
+    String subscriptionId,
+    String date,
+  ) async {
+    try {
+      final response = await _remoteDataSource.createPremiumPayment(subscriptionId, date);
+      return Right(response.toDomain());
+    } catch (error) {
+      return _handleError(error);
+    }
+  }
+
+  @override
+  Future<Either<Failure, PremiumPaymentVerificationModel>> verifyPremiumPayment(
+    String subscriptionId,
+    String date,
+    String paymentId,
+  ) async {
+    try {
+      final response = await _remoteDataSource.verifyPremiumPayment(subscriptionId, date, paymentId);
+      return Right(response.toDomain());
     } catch (error) {
       return _handleError(error);
     }

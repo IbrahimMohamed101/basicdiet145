@@ -52,3 +52,16 @@ final class SaveMealPlannerChangesEvent extends MealPlannerEvent {
 final class HideBannerEvent extends MealPlannerEvent {
   const HideBannerEvent();
 }
+
+final class InitiatePremiumPaymentEvent extends MealPlannerEvent {
+  const InitiatePremiumPaymentEvent();
+}
+
+final class VerifyPremiumPaymentEvent extends MealPlannerEvent {
+  final String paymentId;
+  
+  const VerifyPremiumPaymentEvent(this.paymentId);
+  
+  @override
+  List<Object?> get props => [paymentId];
+}

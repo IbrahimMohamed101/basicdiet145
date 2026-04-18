@@ -54,10 +54,7 @@ _$SubscriptionCheckoutPremiumItemRequestFromJson(Map<String, dynamic> json) =>
 
 Map<String, dynamic> _$SubscriptionCheckoutPremiumItemRequestToJson(
   SubscriptionCheckoutPremiumItemRequest instance,
-) => <String, dynamic>{
-  'proteinId': instance.proteinId,
-  'qty': instance.qty,
-};
+) => <String, dynamic>{'proteinId': instance.proteinId, 'qty': instance.qty};
 
 SubscriptionCheckoutDeliveryRequest
 _$SubscriptionCheckoutDeliveryRequestFromJson(Map<String, dynamic> json) =>

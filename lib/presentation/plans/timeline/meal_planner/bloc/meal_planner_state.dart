@@ -55,6 +55,10 @@ final class MealPlannerLoaded extends MealPlannerState {
   final String lastAddedMealName;
   final int premiumMealsRemaining;
   final bool saveSuccess;
+  final int premiumMealsPendingPayment;
+  final String? paymentUrl;
+  final String? paymentId;
+  final String? paymentError;
 
   const MealPlannerLoaded({
     required this.timelineDays,
@@ -67,6 +71,10 @@ final class MealPlannerLoaded extends MealPlannerState {
     this.saveSuccess = false,
     this.showSavedBanner = false,
     this.lastAddedMealName = "",
+    this.premiumMealsPendingPayment = 0,
+    this.paymentUrl,
+    this.paymentId,
+    this.paymentError,
   });
 
   bool get isDirty {
@@ -98,6 +106,10 @@ final class MealPlannerLoaded extends MealPlannerState {
     lastAddedMealName,
     premiumMealsRemaining,
     saveSuccess,
+    premiumMealsPendingPayment,
+    paymentUrl,
+    paymentId,
+    paymentError,
   ];
 
   MealPlannerLoaded copyWith({
@@ -111,6 +123,10 @@ final class MealPlannerLoaded extends MealPlannerState {
     String? lastAddedMealName,
     int? premiumMealsRemaining,
     bool? saveSuccess,
+    int? premiumMealsPendingPayment,
+    String? paymentUrl,
+    String? paymentId,
+    String? paymentError,
   }) {
     return MealPlannerLoaded(
       timelineDays: timelineDays ?? this.timelineDays,
@@ -124,6 +140,11 @@ final class MealPlannerLoaded extends MealPlannerState {
       premiumMealsRemaining:
           premiumMealsRemaining ?? this.premiumMealsRemaining,
       saveSuccess: saveSuccess ?? this.saveSuccess,
+      premiumMealsPendingPayment:
+          premiumMealsPendingPayment ?? this.premiumMealsPendingPayment,
+      paymentUrl: paymentUrl,
+      paymentId: paymentId,
+      paymentError: paymentError,
     );
   }
 }

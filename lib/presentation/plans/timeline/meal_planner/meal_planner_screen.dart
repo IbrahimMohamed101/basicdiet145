@@ -44,17 +44,82 @@ class MealPlannerScreen extends StatelessWidget {
         )..add(const GetMealPlannerDataEvent());
       },
       child: BlocListener<MealPlannerBloc, MealPlannerState>(
-        listenWhen: (prev, curr) =>
-            curr is MealPlannerLoaded &&
-            (prev is! MealPlannerLoaded || prev.saveSuccess != curr.saveSuccess),
+        listenWhen: (prev, curr) {
+          if (curr is MealPlannerLoaded) {
+            final prevLoaded = prev is MealPlannerLoaded ? prev : null;
+            
+            // Listen for save success
+            if (prevLoaded == null || prevLoaded.saveSuccess != curr.saveSuccess) {
+              return true;
+            }
+            // Listen for payment URL
+            if (prevLoaded.paymentUrl != curr.paymentUrl) {
+              return curr.paymentUrl != null;
+            }
+            // Listen for payment error
+            if (prevLoaded.paymentError != curr.paymentError) {
+              return curr.paymentError != null;
+            }
+          }
+          return false;
+        },
         listener: (context, state) {
-          if (state is MealPlannerLoaded && state.saveSuccess) {
-            Navigator.pop(context, true);
+          if (state is MealPlannerLoaded) {
+            if (state.saveSuccess) {
+              Navigator.pop(context, true);
+            } else if (state.paymentUrl != null) {
+              _openPaymentWebView(context, state.paymentUrl!, state.paymentId!);
+            } else if (state.paymentError != null) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(state.paymentError!),
+                  backgroundColor: Colors.red,
+                ),
+              );
+            }
           }
         },
         child: const MealPlannerView(),
       ),
     );
+  }
+
+  Future<void> _openPaymentWebView(BuildContext context, String paymentUrl, String paymentId) async {
+    // For now, we'll use a simple dialog with instructions
+    // In production, you should use webview_flutter or url_launcher
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(Strings.completePayment.tr()),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(Strings.redirectingToPayment.tr()),
+            Gap(AppSize.s16.h),
+            ElevatedButton(
+              onPressed: () {
+                // TODO: Open payment URL in WebView or browser
+                // For now, simulate payment completion
+                Navigator.of(dialogContext).pop(true);
+              },
+              child: Text(Strings.openPayment.tr()),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(Strings.cancel.tr()),
+          ),
+        ],
+      ),
+    );
+
+    if (result == true && context.mounted) {
+      // Verify payment
+      context.read<MealPlannerBloc>().add(VerifyPremiumPaymentEvent(paymentId));
+    }
   }
 }
 
@@ -109,6 +174,8 @@ class MealPlannerView extends StatelessWidget {
                                   selectedMeals: _selectedMealsCount(state),
                                   totalMeals: state.maxMeals,
                                   premiumLeft: _premiumLeftForDay(state),
+                                  premiumPending: _premiumPendingPayment(state),
+                                  paymentAmount: _premiumPaymentAmount(state),
                                 ),
                                 Gap(AppSize.s16.h),
                               ],
@@ -492,6 +559,34 @@ class MealPlannerView extends StatelessWidget {
     return left < 0 ? 0 : left;
   }
 
+  int _premiumPendingPayment(MealPlannerLoaded state) {
+    return state.premiumMealsPendingPayment;
+  }
+
+  double _premiumPaymentAmount(MealPlannerLoaded state) {
+    var totalHalala = 0;
+    var usedCredits = 0;
+
+    for (final entry in state.selectedSlotsPerDay.entries) {
+      for (final slot in entry.value) {
+        final proteinId = slot.proteinId;
+        if (proteinId == null) continue;
+        final protein = _findProteinById(state.menu, proteinId);
+        if (protein == null || !protein.isPremium) continue;
+        
+        final cost = protein.premiumCreditCost == 0 ? 1 : protein.premiumCreditCost;
+        usedCredits += cost;
+        
+        // If exceeds balance, add to payment amount
+        if (usedCredits > state.premiumMealsRemaining) {
+          totalHalala += protein.extraFeeHalala;
+        }
+      }
+    }
+    
+    return totalHalala / 100.0; // Convert halala to SAR
+  }
+
   int _premiumCreditsUsed(MealPlannerLoaded state) {
     var used = 0;
     for (final entry in state.selectedSlotsPerDay.entries) {
@@ -535,30 +630,6 @@ class MealPlannerView extends StatelessWidget {
       if (carb.id == id) return carb;
     }
     return null;
-  }
-
-  bool _isBeefDisabledForSlot({
-    required MealPlannerLoaded state,
-    required int slotIndex,
-    required BuilderProteinModel? currentProtein,
-  }) {
-    final beefRule = state.menu.builderCatalog.rules.beef;
-    if (beefRule.maxSlotsPerDay <= 0) return false;
-
-    final slots = state.selectedSlotsPerDay[state.selectedDayIndex] ?? [];
-    var beefSlotsCount = 0;
-    for (final slot in slots) {
-      final proteinId = slot.proteinId;
-      if (proteinId == null) continue;
-      final protein = _findProteinById(state.menu, proteinId);
-      if (protein?.proteinFamilyKey == beefRule.proteinFamilyKey) {
-        beefSlotsCount++;
-      }
-    }
-
-    final currentIsBeef =
-        currentProtein?.proteinFamilyKey == beefRule.proteinFamilyKey;
-    return beefSlotsCount >= beefRule.maxSlotsPerDay && !currentIsBeef;
   }
 
   Future<void> _openProteinPickerSheet({
@@ -614,6 +685,7 @@ class MealPlannerView extends StatelessWidget {
     }
 
     final bool canSave = state.isDirty && hasCompletedDay;
+    final bool hasPendingPayment = state.premiumMealsPendingPayment > 0;
 
     return Container(
       padding: EdgeInsets.all(AppPadding.p16.w),
@@ -629,47 +701,95 @@ class MealPlannerView extends StatelessWidget {
       ),
       child: SafeArea(
         top: false,
-        child: SizedBox(
-          width: double.infinity,
-          height: 56.h,
-          child: ElevatedButton(
-            onPressed: canSave
-                ? () => context.read<MealPlannerBloc>().add(
-                      const SaveMealPlannerChangesEvent(),
-                    )
-                : null,
-            style: ElevatedButton.styleFrom(
-              backgroundColor:
-                  canSave ? ColorManager.greenPrimary : ColorManager.greyF3F4F6,
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(AppSize.s16.r),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (hasPendingPayment) ...[
+              SizedBox(
+                width: double.infinity,
+                height: 56.h,
+                child: ElevatedButton(
+                  onPressed: state.isSaving
+                      ? null
+                      : () => context.read<MealPlannerBloc>().add(
+                            const InitiatePremiumPaymentEvent(),
+                          ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: ColorManager.orangePrimary,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppSize.s16.r),
+                    ),
+                  ),
+                  child: state.isSaving
+                      ? const CircularProgressIndicator(color: Colors.white)
+                      : Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.payment,
+                              color: Colors.white,
+                              size: AppSize.s20.w,
+                            ),
+                            Gap(AppSize.s8.w),
+                            Text(
+                              "${Strings.payNow.tr()} ${_premiumPaymentAmount(state).toStringAsFixed(2)} ${Strings.sar.tr()}",
+                              style: getBoldTextStyle(
+                                color: Colors.white,
+                                fontSize: FontSizeManager.s16.sp,
+                              ),
+                            ),
+                          ],
+                        ),
+                ),
+              ),
+              Gap(AppSize.s12.h),
+            ],
+            SizedBox(
+              width: double.infinity,
+              height: 56.h,
+              child: ElevatedButton(
+                onPressed: canSave && !hasPendingPayment
+                    ? () => context.read<MealPlannerBloc>().add(
+                          const SaveMealPlannerChangesEvent(),
+                        )
+                    : null,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor:
+                      canSave && !hasPendingPayment ? ColorManager.greenPrimary : ColorManager.greyF3F4F6,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(AppSize.s16.r),
+                  ),
+                ),
+                child: state.isSaving && !hasPendingPayment
+                    ? const CircularProgressIndicator(color: Colors.white)
+                    : Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.check,
+                            color: canSave && !hasPendingPayment ? Colors.white : ColorManager.grey9CA3AF,
+                            size: AppSize.s20.w,
+                          ),
+                          Gap(AppSize.s8.w),
+                          Text(
+                            hasPendingPayment
+                                ? Strings.payFirstToSave.tr()
+                                : canSave
+                                    ? Strings.saveChanges.tr()
+                                    : Strings.noChangesToSave.tr(),
+                            style: getBoldTextStyle(
+                              color:
+                                  canSave && !hasPendingPayment ? Colors.white : ColorManager.grey9CA3AF,
+                              fontSize: FontSizeManager.s16.sp,
+                            ),
+                          ),
+                        ],
+                      ),
               ),
             ),
-            child: state.isSaving
-                ? const CircularProgressIndicator(color: Colors.white)
-                : Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.check,
-                        color: canSave ? Colors.white : ColorManager.grey9CA3AF,
-                        size: AppSize.s20.w,
-                      ),
-                      Gap(AppSize.s8.w),
-                      Text(
-                        canSave
-                            ? Strings.saveChanges.tr()
-                            : Strings.noChangesToSave.tr(),
-                        style: getBoldTextStyle(
-                          color:
-                              canSave ? Colors.white : ColorManager.grey9CA3AF,
-                          fontSize: FontSizeManager.s16.sp,
-                        ),
-                      ),
-                    ],
-                  ),
-          ),
+          ],
         ),
       ),
     );
@@ -701,11 +821,15 @@ class _MealPlannerProgressIndicator extends StatelessWidget {
   final int selectedMeals;
   final int totalMeals;
   final int premiumLeft;
+  final int premiumPending;
+  final double paymentAmount;
 
   const _MealPlannerProgressIndicator({
     required this.selectedMeals,
     required this.totalMeals,
     required this.premiumLeft,
+    required this.premiumPending,
+    required this.paymentAmount,
   });
 
   @override
@@ -713,89 +837,144 @@ class _MealPlannerProgressIndicator extends StatelessWidget {
     final isAllSelected = totalMeals > 0 && selectedMeals >= totalMeals;
     final activeColor =
         isAllSelected ? ColorManager.greenPrimary : ColorManager.bluePrimary;
+    final hasPendingPayment = premiumPending > 0;
 
-    return Row(
+    return Column(
       children: [
-        Expanded(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                height: 32.w,
-                width: 32.w,
-                decoration: BoxDecoration(
-                  color: activeColor.withValues(alpha: 0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  Icons.check,
-                  color: activeColor,
-                  size: 18.w,
-                ),
+        Row(
+          children: [
+            Expanded(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    height: 32.w,
+                    width: 32.w,
+                    decoration: BoxDecoration(
+                      color: activeColor.withValues(alpha: 0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.check,
+                      color: activeColor,
+                      size: 18.w,
+                    ),
+                  ),
+                  Gap(AppSize.s12.w),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          "$selectedMeals ${Strings.of.tr()} $totalMeals ${Strings.meals.tr()} ${Strings.selected.tr()}",
+                          style: getRegularTextStyle(
+                            color: ColorManager.black101828,
+                            fontSize: FontSizeManager.s14.sp,
+                          ),
+                        ),
+                        Gap(8.h),
+                        Row(
+                          children: List.generate(totalMeals, (index) {
+                            final isFilled = index < selectedMeals;
+                            return Container(
+                              width: 20.w,
+                              height: 4.h,
+                              margin: EdgeInsets.only(
+                                right:  6.w,
+                              ),
+                              decoration: BoxDecoration(
+                                color: isFilled
+                                    ? activeColor
+                                    : ColorManager.greyF3F4F6,
+                                borderRadius: BorderRadius.circular(99.r),
+                              ),
+                            );
+                          }),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              Gap(AppSize.s12.w),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      "$selectedMeals ${Strings.of.tr()} $totalMeals ${Strings.meals.tr()} ${Strings.selected.tr()}",
-                      style: getRegularTextStyle(
-                        color: ColorManager.black101828,
-                        fontSize: FontSizeManager.s14.sp,
+            ),
+            Gap(AppSize.s12.w),
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
+              decoration: BoxDecoration(
+                color: ColorManager.orangeFFF5EC,
+                border: Border.all(color: ColorManager.orangeLight),
+                borderRadius: BorderRadius.circular(AppSize.s12.r),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.workspace_premium,
+                    color: ColorManager.orangePrimary,
+                    size: 18.w,
+                  ),
+                  Gap(6.w),
+                  Text(
+                    "$premiumLeft ${Strings.premiumMealsText.tr()} ${Strings.left.tr()}",
+                    style: getBoldTextStyle(
+                      color: ColorManager.orangePrimary,
+                      fontSize: FontSizeManager.s12.sp,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        if (hasPendingPayment) ...[
+          Gap(AppSize.s12.h),
+          Container(
+            padding: EdgeInsets.all(AppPadding.p12.w),
+            decoration: BoxDecoration(
+              color: ColorManager.bluePrimary.withValues(alpha: 0.05),
+              border: Border.all(color: ColorManager.bluePrimary.withValues(alpha: 0.2)),
+              borderRadius: BorderRadius.circular(AppSize.s12.r),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.info_outline,
+                  color: ColorManager.bluePrimary,
+                  size: 20.w,
+                ),
+                Gap(AppSize.s12.w),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        Strings.paymentRequired.tr(),
+                        style: getBoldTextStyle(
+                          color: ColorManager.bluePrimary,
+                          fontSize: FontSizeManager.s14.sp,
+                        ),
                       ),
-                    ),
-                    Gap(8.h),
-                    Row(
-                      children: List.generate(totalMeals, (index) {
-                        final isFilled = index < selectedMeals;
-                        return Container(
-                          width: 20.w,
-                          height: 4.h,
-                          margin: EdgeInsets.only(
-                            right:  6.w,
-                          ),
-                          decoration: BoxDecoration(
-                            color: isFilled
-                                ? activeColor
-                                : ColorManager.greyF3F4F6,
-                            borderRadius: BorderRadius.circular(99.r),
-                          ),
-                        );
-                      }),
-                    ),
-                  ],
+                      Gap(4.h),
+                      Text(
+                        "${Strings.youSelected.tr()} $premiumPending ${Strings.extraPremiumMeals.tr()}",
+                        style: getRegularTextStyle(
+                          color: ColorManager.bluePrimary,
+                          fontSize: FontSizeManager.s12.sp,
+                        ),
+                      ),
+                      Text(
+                        "${Strings.totalAmount.tr()}: ${paymentAmount.toStringAsFixed(2)} ${Strings.sar.tr()}",
+                        style: getBoldTextStyle(
+                          color: ColorManager.bluePrimary,
+                          fontSize: FontSizeManager.s10.sp,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
-        Gap(AppSize.s12.w),
-        Container(
-          padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
-          decoration: BoxDecoration(
-            color: ColorManager.orangeFFF5EC,
-            border: Border.all(color: ColorManager.orangeLight),
-            borderRadius: BorderRadius.circular(AppSize.s12.r),
-          ),
-          child: Row(
-            children: [
-              Icon(
-                Icons.workspace_premium,
-                color: ColorManager.orangePrimary,
-                size: 18.w,
-              ),
-              Gap(6.w),
-              Text(
-                "$premiumLeft ${Strings.premiumMealsText.tr()} ${Strings.left.tr()}",
-                style: getBoldTextStyle(
-                  color: ColorManager.orangePrimary,
-                  fontSize: FontSizeManager.s12.sp,
-                ),
-              ),
-            ],
-          ),
-        ),
+        ],
       ],
     );
   }
@@ -1481,17 +1660,11 @@ class _ProteinPickerSheetState extends State<_ProteinPickerSheet> {
                     final isItemDisabled = isBeefDisabled &&
                         protein.proteinFamilyKey == beefRule.proteinFamilyKey &&
                         !currentIsBeef;
-                    // Disable premium proteins when the user has no credits left
-                    // for this slot (but allow re-selecting the already-chosen one).
-                    final isPremiumExhausted = isPremium &&
-                        !isSelected &&
-                        widget.availablePremiumCredits <
-                            (protein.premiumCreditCost == 0
-                                ? 1
-                                : protein.premiumCreditCost);
+                    
+                    // Allow premium selection even without credits - payment will be required
 
                     return GestureDetector(
-                      onTap: (isItemDisabled || isPremiumExhausted)
+                      onTap: isItemDisabled
                           ? null
                           : () {
                               context.read<MealPlannerBloc>().add(
@@ -1503,7 +1676,7 @@ class _ProteinPickerSheetState extends State<_ProteinPickerSheet> {
                               Navigator.pop(context);
                             },
                       child: Opacity(
-                        opacity: (isItemDisabled || isPremiumExhausted) ? 0.4 : 1.0,
+                        opacity: isItemDisabled ? 0.4 : 1.0,
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 200),
                           padding: EdgeInsets.all(AppPadding.p12.w),

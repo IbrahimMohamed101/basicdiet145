@@ -308,5 +308,14 @@
     "getYourPrice": "احصل على سعرك",
     "apartmentHint": "مثال: شقة / صالة (اختياري)",
     "selectPreferredTime": "اختر الوقت المفضل",
+    "paymentRequired": "الدفع مطلوب",
+    "youSelected": "لقد اخترت",
+    "extraPremiumMeals": "وجبات مميزة إضافية",
+    "totalAmount": "المبلغ الإجمالي",
+    "payNow": "ادفع الآن",
+    "payFirstToSave": "أكمل الدفع أولاً",
+    "completePayment": "إتمام الدفع",
+    "redirectingToPayment": "يرجى إكمال الدفع للمتابعة",
+    "openPayment": "فتح صفحة الدفع",
     "confirmAndPay": "تاكيد والدفع"
 }

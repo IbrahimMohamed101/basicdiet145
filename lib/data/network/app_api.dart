@@ -22,6 +22,7 @@ import 'package:basic_diet/data/response/categories_with_meals_response.dart';
 import 'package:basic_diet/data/response/pickup_prepare_response.dart';
 import 'package:basic_diet/data/response/pickup_status_response.dart';
 import 'package:basic_diet/data/response/meal_planner_menu_response.dart';
+import 'package:basic_diet/data/response/premium_payment_response.dart';
 import 'package:retrofit/retrofit.dart';
 import 'package:dio/dio.dart';
 part 'app_api.g.dart';
@@ -121,4 +122,17 @@ abstract class AppServiceClient {
 
   @GET("/api/subscriptions/meal-planner-menu")
   Future<MealPlannerMenuResponse> getMealPlannerMenu();
+
+  @POST("/api/subscriptions/{id}/days/{date}/premium-extra/payments")
+  Future<PremiumPaymentResponse> createPremiumPayment(
+    @Path("id") String subscriptionId,
+    @Path("date") String date,
+  );
+
+  @POST("/api/subscriptions/{id}/days/{date}/premium-extra/payments/{paymentId}/verify")
+  Future<PremiumPaymentVerificationResponse> verifyPremiumPayment(
+    @Path("id") String subscriptionId,
+    @Path("date") String date,
+    @Path("paymentId") String paymentId,
+  );
 }

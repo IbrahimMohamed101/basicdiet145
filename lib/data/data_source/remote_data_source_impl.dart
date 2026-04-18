@@ -21,6 +21,7 @@ import 'package:basic_diet/data/request/skip_days_request.dart';
 import 'package:basic_diet/data/response/skip_days_response.dart';
 import 'package:basic_diet/data/response/timeline_response.dart';
 import 'package:basic_diet/data/response/meal_planner_menu_response.dart';
+import 'package:basic_diet/data/response/premium_payment_response.dart';
 
 import 'package:basic_diet/data/response/pickup_prepare_response.dart';
 import 'package:basic_diet/data/response/pickup_status_response.dart';
@@ -147,5 +148,15 @@ class RemoteDataSourceImpl implements RemoteDataSource {
   @override
   Future<MealPlannerMenuResponse> getMealPlannerMenu() {
     return _appServiceClient.getMealPlannerMenu();
+  }
+
+  @override
+  Future<PremiumPaymentResponse> createPremiumPayment(String subscriptionId, String date) {
+    return _appServiceClient.createPremiumPayment(subscriptionId, date);
+  }
+
+  @override
+  Future<PremiumPaymentVerificationResponse> verifyPremiumPayment(String subscriptionId, String date, String paymentId) {
+    return _appServiceClient.verifyPremiumPayment(subscriptionId, date, paymentId);
   }
 }
