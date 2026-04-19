@@ -13,6 +13,7 @@ dependencies:
   dio: ^5.9.2
   easy_localization: ^3.0.8
   equatable: ^2.0.8
+  firebase_core: ^4.7.0
   flutter:
     sdk: flutter
   flutter_bloc: ^9.1.1

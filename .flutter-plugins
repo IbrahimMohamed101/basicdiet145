@@ -1,5 +1,7 @@
 # This is a generated file; do not edit or check into version control.
 connectivity_plus=/Users/moali/.pub-cache/hosted/pub.dev/connectivity_plus-6.1.5/
+firebase_core=/Users/moali/.pub-cache/hosted/pub.dev/firebase_core-4.7.0/
+firebase_core_web=/Users/moali/.pub-cache/hosted/pub.dev/firebase_core_web-3.6.0/
 flutter_secure_storage=/Users/moali/.pub-cache/hosted/pub.dev/flutter_secure_storage-10.0.0/
 flutter_secure_storage_darwin=/Users/moali/.pub-cache/hosted/pub.dev/flutter_secure_storage_darwin-0.2.0/
 flutter_secure_storage_linux=/Users/moali/.pub-cache/hosted/pub.dev/flutter_secure_storage_linux-3.0.0/
