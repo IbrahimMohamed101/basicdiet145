@@ -2,6 +2,7 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:basic_diet/app/dependency_injection.dart';
 import 'package:basic_diet/domain/model/meal_planner_menu_model.dart';
 import 'package:basic_diet/domain/model/timeline_model.dart';
+import 'package:basic_diet/presentation/main/home/payment-success/payment_webview_screen.dart';
 import 'package:basic_diet/presentation/plans/timeline/meal_planner/bloc/meal_planner_bloc.dart';
 import 'package:basic_diet/presentation/plans/timeline/meal_planner/bloc/meal_planner_event.dart';
 import 'package:basic_diet/presentation/plans/timeline/meal_planner/bloc/meal_planner_state.dart';
@@ -65,9 +66,9 @@ class MealPlannerScreen extends StatelessWidget {
         },
         listener: (context, state) {
           if (state is MealPlannerLoaded) {
-            if (state.saveSuccess) {
+            if (state.saveSuccess && state.paymentUrl == null) {
               Navigator.pop(context, true);
-            } else if (state.paymentUrl != null) {
+            } else if (state.paymentUrl != null && state.paymentId != null) {
               _openPaymentWebView(context, state.paymentUrl!, state.paymentId!);
             } else if (state.paymentError != null) {
               ScaffoldMessenger.of(context).showSnackBar(
@@ -85,43 +86,48 @@ class MealPlannerScreen extends StatelessWidget {
   }
 
   Future<void> _openPaymentWebView(BuildContext context, String paymentUrl, String paymentId) async {
-    // For now, we'll use a simple dialog with instructions
-    // In production, you should use webview_flutter or url_launcher
-    final result = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(Strings.completePayment.tr()),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(Strings.redirectingToPayment.tr()),
-            Gap(AppSize.s16.h),
-            ElevatedButton(
-              onPressed: () {
-                // TODO: Open payment URL in WebView or browser
-                // For now, simulate payment completion
-                Navigator.of(dialogContext).pop(true);
-              },
-              child: Text(Strings.openPayment.tr()),
-            ),
-          ],
+    // Validate payment URL has a valid scheme
+    final uri = Uri.tryParse(paymentUrl);
+    if (uri == null || !uri.hasScheme) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(Strings.paymentNotCompleted.tr()),
+          backgroundColor: Colors.red,
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: Text(Strings.cancel.tr()),
-          ),
-        ],
+      );
+      return;
+    }
+
+    final result = await Navigator.push<PaymentWebViewResult>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PaymentWebViewScreen(
+          paymentUrl: paymentUrl,
+          draftId: paymentId,
+          successUrl: _premiumPaymentSuccessUrl,
+          backUrl: _premiumPaymentCancelUrl,
+          onSuccess: () {
+            Navigator.of(context).pop();
+          },
+        ),
       ),
     );
 
-    if (result == true && context.mounted) {
-      // Verify payment
+    if (!context.mounted) return;
+
+    if (result == PaymentWebViewResult.cancelled) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(Strings.paymentCancelled.tr())),
+      );
+    } else {
+      // Payment was successful, verify it
       context.read<MealPlannerBloc>().add(VerifyPremiumPaymentEvent(paymentId));
     }
   }
 }
+
+const String _premiumPaymentSuccessUrl = 'https://app.example.com/payments/premium/success';
+const String _premiumPaymentCancelUrl = 'https://app.example.com/payments/premium/cancel';
 
 class MealPlannerView extends StatelessWidget {
   const MealPlannerView({super.key});

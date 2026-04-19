@@ -4,10 +4,29 @@ part 'premium_payment_response.g.dart';
 
 @JsonSerializable()
 class PremiumPaymentResponse {
+  @JsonKey(name: 'status')
+  final bool? status;
+  
+  @JsonKey(name: 'data')
+  final PremiumPaymentDataResponse? data;
+
+  PremiumPaymentResponse({
+    this.status,
+    this.data,
+  });
+
+  factory PremiumPaymentResponse.fromJson(Map<String, dynamic> json) =>
+      _$PremiumPaymentResponseFromJson(json);
+
+  Map<String, dynamic> toJson() => _$PremiumPaymentResponseToJson(this);
+}
+
+@JsonSerializable()
+class PremiumPaymentDataResponse {
   @JsonKey(name: 'paymentId')
   final String? paymentId;
   
-  @JsonKey(name: 'paymentUrl')
+  @JsonKey(name: 'payment_url')
   final String? paymentUrl;
   
   @JsonKey(name: 'amountHalala')
@@ -19,7 +38,7 @@ class PremiumPaymentResponse {
   @JsonKey(name: 'reused')
   final bool? reused;
 
-  PremiumPaymentResponse({
+  PremiumPaymentDataResponse({
     this.paymentId,
     this.paymentUrl,
     this.amountHalala,
@@ -27,27 +46,46 @@ class PremiumPaymentResponse {
     this.reused,
   });
 
-  factory PremiumPaymentResponse.fromJson(Map<String, dynamic> json) =>
-      _$PremiumPaymentResponseFromJson(json);
+  factory PremiumPaymentDataResponse.fromJson(Map<String, dynamic> json) =>
+      _$PremiumPaymentDataResponseFromJson(json);
 
-  Map<String, dynamic> toJson() => _$PremiumPaymentResponseToJson(this);
+  Map<String, dynamic> toJson() => _$PremiumPaymentDataResponseToJson(this);
 }
 
 @JsonSerializable()
 class PremiumPaymentVerificationResponse {
-  @JsonKey(name: 'paymentStatus')
-  final String? paymentStatus;
+  @JsonKey(name: 'status')
+  final bool? status;
   
-  @JsonKey(name: 'message')
-  final String? message;
+  @JsonKey(name: 'data')
+  final PremiumPaymentVerificationData? data;
 
   PremiumPaymentVerificationResponse({
-    this.paymentStatus,
-    this.message,
+    this.status,
+    this.data,
   });
 
   factory PremiumPaymentVerificationResponse.fromJson(Map<String, dynamic> json) =>
       _$PremiumPaymentVerificationResponseFromJson(json);
 
   Map<String, dynamic> toJson() => _$PremiumPaymentVerificationResponseToJson(this);
+}
+
+@JsonSerializable()
+class PremiumPaymentVerificationData {
+  @JsonKey(name: 'paymentStatus')
+  final String? paymentStatus;
+  
+  @JsonKey(name: 'message')
+  final String? message;
+
+  PremiumPaymentVerificationData({
+    this.paymentStatus,
+    this.message,
+  });
+
+  factory PremiumPaymentVerificationData.fromJson(Map<String, dynamic> json) =>
+      _$PremiumPaymentVerificationDataFromJson(json);
+
+  Map<String, dynamic> toJson() => _$PremiumPaymentVerificationDataToJson(this);
 }

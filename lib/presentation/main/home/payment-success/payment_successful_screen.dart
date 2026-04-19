@@ -1,6 +1,7 @@
 import 'package:easy_localization/easy_localization.dart';
 import 'package:basic_diet/presentation/main/main_screen.dart';
 import 'package:basic_diet/presentation/resources/color_manager.dart';
+import 'package:go_router/go_router.dart';
 import 'package:basic_diet/presentation/resources/font_manager.dart';
 import 'package:basic_diet/presentation/resources/strings_manager.dart';
 import 'package:basic_diet/presentation/resources/styles_manager.dart';
@@ -145,10 +146,7 @@ class PaymentSuccessfulScreen extends StatelessWidget {
   }
 
   void _openMainScreen(BuildContext context, int initialIndex) {
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => MainScreen(initialIndex: initialIndex)),
-      (route) => false,
-    );
+    context.go(MainScreen.mainRoute, extra: initialIndex);
   }
 }
 

@@ -4,21 +4,23 @@ import 'package:basic_diet/domain/model/premium_payment_model.dart';
 
 extension PremiumPaymentResponseMapper on PremiumPaymentResponse? {
   PremiumPaymentModel toDomain() {
+    final data = this?.data;
     return PremiumPaymentModel(
-      paymentId: this?.paymentId ?? Constants.empty,
-      paymentUrl: this?.paymentUrl ?? Constants.empty,
-      amountHalala: this?.amountHalala ?? Constants.zero,
-      currency: this?.currency ?? Constants.empty,
-      reused: this?.reused ?? false,
+      paymentId: data?.paymentId ?? Constants.empty,
+      paymentUrl: data?.paymentUrl ?? Constants.empty,
+      amountHalala: data?.amountHalala ?? Constants.zero,
+      currency: data?.currency ?? Constants.empty,
+      reused: data?.reused ?? false,
     );
   }
 }
 
 extension PremiumPaymentVerificationResponseMapper on PremiumPaymentVerificationResponse? {
   PremiumPaymentVerificationModel toDomain() {
+    final data = this?.data;
     return PremiumPaymentVerificationModel(
-      paymentStatus: this?.paymentStatus ?? Constants.empty,
-      message: this?.message ?? Constants.empty,
+      paymentStatus: data?.paymentStatus ?? Constants.empty,
+      message: data?.message ?? Constants.empty,
     );
   }
 }

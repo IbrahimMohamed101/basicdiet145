@@ -15,6 +15,9 @@ class PaymentWebViewScreen extends StatefulWidget {
   final String successUrl;
   final String backUrl;
   final String draftId;
+  /// Optional override for success behavior.
+  /// When provided, called instead of navigating to PaymentSuccessfulScreen.
+  final VoidCallback? onSuccess;
 
   const PaymentWebViewScreen({
     super.key,
@@ -22,6 +25,7 @@ class PaymentWebViewScreen extends StatefulWidget {
     required this.successUrl,
     required this.backUrl,
     required this.draftId,
+    this.onSuccess,
   });
 
   @override
@@ -45,6 +49,7 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
             setState(() => _progress = progress);
           },
           onNavigationRequest: (request) {
+            print("+++${request.url}====++${widget.successUrl}==${_matchesCallback(request.url, widget.successUrl)}");
             if (_matchesCallback(request.url, widget.successUrl)) {
               _openSuccessScreen();
               return NavigationDecision.prevent;
@@ -69,6 +74,10 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
 
   void _openSuccessScreen() {
     if (!mounted) return;
+    if (widget.onSuccess != null) {
+      widget.onSuccess!();
+      return;
+    }
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
         builder: (_) => PaymentSuccessfulScreen(draftId: widget.draftId),
@@ -84,9 +93,22 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
       return currentUrl == callbackUrl;
     }
 
-    return current.scheme == callback.scheme &&
-        current.host == callback.host &&
-        current.path == callback.path;
+    // Compare path only (ignore query parameters and hostname differences)
+    // Normalize paths and check for matching segments
+    final currentPath = current.path.toLowerCase();
+    final callbackPath = callback.path.toLowerCase();
+    
+    // Direct match
+    if (currentPath == callbackPath) return true;
+    
+    // Check if paths share the same ending (e.g., both end with /success or /cancel)
+    final currentSegments = currentPath.split('/').where((s) => s.isNotEmpty).toList();
+    final callbackSegments = callbackPath.split('/').where((s) => s.isNotEmpty).toList();
+    
+    if (currentSegments.isEmpty || callbackSegments.isEmpty) return false;
+    
+    // Match if last segment is the same (e.g., both 'success' or both 'cancel')
+    return currentSegments.last == callbackSegments.last;
   }
 
   @override

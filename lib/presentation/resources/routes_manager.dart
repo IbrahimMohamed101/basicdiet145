@@ -60,7 +60,13 @@ class GoRouterConfig {
         path: MainScreen.mainRoute,
         pageBuilder: (BuildContext context, GoRouterState state) {
           initHomeModule();
-          return getCustomTransitionPage(state: state, child: MainScreen());
+          final initialIndex = state.extra is int
+              ? state.extra as int
+              : MainScreen.homeTabIndex;
+          return getCustomTransitionPage(
+            state: state,
+            child: MainScreen(initialIndex: initialIndex),
+          );
         },
       ),
       GoRoute(
