@@ -1,0 +1,52 @@
+name: Build & Upload APK
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-apk:
+    name: Build Release APK
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build Release APK
+        run: flutter build apk --release
+
+      - name: Upload APK as Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-${{ github.sha }}
+          path: build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 90
+
+      - name: Build Summary
+        if: success()
+        run: |
+          echo "✅ Build successful!"
+          echo "📦 APK: build/app/outputs/flutter-apk/app-release.apk"
+          echo "🔗 Commit: ${{ github.sha }}"
+          echo "📝 Message: ${{ github.event.head_commit.message }}"
+          echo "🕒 Build: ${{ github.run_number }}"
+          echo ""
+          echo "Download the APK from the Artifacts section above ⬆️"
