@@ -46,38 +46,38 @@ class MealPlannerScreen extends StatelessWidget {
       },
       child: BlocListener<MealPlannerBloc, MealPlannerState>(
         listenWhen: (prev, curr) {
-          if (curr is MealPlannerLoaded) {
-            final prevLoaded = prev is MealPlannerLoaded ? prev : null;
-            
-            // Listen for save success
-            if (prevLoaded == null || prevLoaded.saveSuccess != curr.saveSuccess) {
-              return true;
-            }
-            // Listen for payment URL
-            if (prevLoaded.paymentUrl != curr.paymentUrl) {
-              return curr.paymentUrl != null;
-            }
-            // Listen for payment error
-            if (prevLoaded.paymentError != curr.paymentError) {
-              return curr.paymentError != null;
-            }
+          if (prev is! MealPlannerLoaded || curr is! MealPlannerLoaded) {
+            return false;
           }
+          // Fire when saveSuccess flips to true
+          if (!prev.saveSuccess && curr.saveSuccess) return true;
+          // Fire when a payment URL appears
+          if (prev.paymentUrl == null && curr.paymentUrl != null) return true;
+          // Fire when a payment error appears or changes
+          if (curr.paymentError != null && prev.paymentError != curr.paymentError) return true;
           return false;
         },
         listener: (context, state) {
-          if (state is MealPlannerLoaded) {
-            if (state.saveSuccess && state.paymentUrl == null) {
-              Navigator.pop(context, true);
-            } else if (state.paymentUrl != null && state.paymentId != null) {
-              _openPaymentWebView(context, state.paymentUrl!, state.paymentId!);
-            } else if (state.paymentError != null) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(state.paymentError!),
-                  backgroundColor: Colors.red,
-                ),
-              );
-            }
+          if (state is! MealPlannerLoaded) return;
+
+          if (state.saveSuccess && state.paymentUrl == null) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(Strings.changesSavedSuccessfully.tr()),
+                backgroundColor: ColorManager.greenPrimary,
+                duration: const Duration(seconds: 2),
+              ),
+            );
+            Navigator.pop(context, true);
+          } else if (state.paymentUrl != null && state.paymentId != null) {
+            _openPaymentWebView(context, state.paymentUrl!, state.paymentId!);
+          } else if (state.paymentError != null) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(state.paymentError!),
+                backgroundColor: Colors.red,
+              ),
+            );
           }
         },
         child: const MealPlannerView(),

@@ -510,6 +510,7 @@ class Strings {
   static const String left = 'left';
   static const String noChangesToSave = 'noChangesToSave';
   static const String saveChanges = 'saveChanges';
+  static const String changesSavedSuccessfully = 'changesSavedSuccessfully';
   static const String premiumMealsAvailable = 'premiumMealsAvailable';
   static const String youHave = 'youHave';
   static const String remainingSelectPremium = 'remainingSelectPremium';

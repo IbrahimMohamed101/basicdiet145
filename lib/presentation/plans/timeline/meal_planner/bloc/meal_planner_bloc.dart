@@ -222,7 +222,7 @@ class MealPlannerBloc extends Bloc<MealPlannerEvent, MealPlannerState> {
       SaveMealPlannerChangesEvent event, Emitter<MealPlannerState> emit) async {
     if (state is MealPlannerLoaded) {
       final s = state as MealPlannerLoaded;
-      emit(s.copyWith(isSaving: true, paymentError: null));
+      emit(s.copyWith(isSaving: true, saveSuccess: false, paymentError: null));
 
       // Get the current day
       final currentDayIndex = s.selectedDayIndex;
@@ -318,7 +318,7 @@ class MealPlannerBloc extends Bloc<MealPlannerEvent, MealPlannerState> {
     if (state is! MealPlannerLoaded) return;
     final s = state as MealPlannerLoaded;
     
-    emit(s.copyWith(isSaving: true, paymentError: null));
+    emit(s.copyWith(isSaving: true, saveSuccess: false, paymentError: null));
     
     // CRITICAL FIX: When user clicks "Pay Now", we need to:
     // 1. Validate the selection first
@@ -437,52 +437,54 @@ class MealPlannerBloc extends Bloc<MealPlannerEvent, MealPlannerState> {
   ) async {
     if (state is! MealPlannerLoaded) return;
     final s = state as MealPlannerLoaded;
-    
-    emit(s.copyWith(isSaving: true));
-    
+
+    emit(s.copyWith(isSaving: true, saveSuccess: false, paymentError: null));
+
     final currentDay = s.timelineDays[s.selectedDayIndex];
-    
+
     final result = await _verifyPremiumPaymentUseCase.execute(
       VerifyPremiumPaymentUseCaseInput(subscriptionId, currentDay.date, event.paymentId),
     );
-    
-    result.fold(
+
+    final verificationFailure = result.fold((f) => f, (_) => null);
+    if (verificationFailure != null) {
+      emit(s.copyWith(
+        isSaving: false,
+        paymentError: "${verificationFailure.code}: ${verificationFailure.message}",
+      ));
+      return;
+    }
+
+    final verificationModel = result.getOrElse(() => throw Exception());
+
+    if (verificationModel.paymentStatus != "paid") {
+      emit(s.copyWith(
+        isSaving: false,
+        paymentError: verificationModel.message,
+      ));
+      return;
+    }
+
+    // Payment is confirmed — now call confirm endpoint with a proper await
+    final confirmResult = await _confirmDaySelectionUseCase.execute(
+      ConfirmDaySelectionUseCaseInput(subscriptionId, currentDay.date),
+    );
+
+    confirmResult.fold(
       (failure) {
         emit(s.copyWith(
           isSaving: false,
           paymentError: "${failure.code}: ${failure.message}",
         ));
       },
-      (verificationModel) {
-        if (verificationModel.paymentStatus == "paid") {
-          _confirmDaySelectionUseCase
-              .execute(ConfirmDaySelectionUseCaseInput(subscriptionId, currentDay.date))
-              .then((confirmResult) {
-            if (emit.isDone) return;
-            confirmResult.fold(
-              (failure) {
-                emit(s.copyWith(
-                  isSaving: false,
-                  paymentError: "${failure.code}: ${failure.message}",
-                ));
-              },
-              (_) {
-                emit(s.copyWith(
-                  isSaving: false,
-                  premiumMealsPendingPayment: 0,
-                  paymentUrl: null,
-                  paymentId: null,
-                  saveSuccess: true,
-                ));
-              },
-            );
-          });
-        } else {
-          emit(s.copyWith(
-            isSaving: false,
-            paymentError: verificationModel.message,
-          ));
-        }
+      (_) {
+        emit(s.copyWith(
+          isSaving: false,
+          saveSuccess: true,
+          premiumMealsPendingPayment: 0,
+          paymentUrl: null,
+          paymentId: null,
+        ));
       },
     );
   }
