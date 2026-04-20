@@ -599,6 +599,38 @@ class Strings {
   static const String paymentSuccess = 'paymentSuccess';
   static const String paymentSuccessSubtitle = 'paymentSuccessSubtitle';
 
+  // Pickup Preparation
+  static const String pickupCode = 'pickupCode';
+  static const String yourOrderIsReady = 'yourOrderIsReady';
+  static const String orderPickedUp = 'orderPickedUp';
+  static const String successfully = 'successfully';
+  static const String isReady = 'isReady';
+  static const String kitchenPreparingMeals = 'kitchenPreparingMeals';
+  static const String chefHandPickingIngredients = 'chefHandPickingIngredients';
+  static const String preparing = 'preparing';
+  static const String restaurantClosed = 'restaurantClosed';
+  static const String restaurantClosedMessage = 'restaurantClosedMessage';
+  static const String openHours = 'openHours';
+  static const String daySkipped = 'daySkipped';
+  static const String dayFrozen = 'dayFrozen';
+  static const String daySkippedMessage = 'daySkippedMessage';
+  static const String dayFrozenMessage = 'dayFrozenMessage';
+  static const String pickupAlreadyRequested = 'pickupAlreadyRequested';
+  static const String pickupAlreadyCompleted = 'pickupAlreadyCompleted';
+  static const String pickupAlreadyClosed = 'pickupAlreadyClosed';
+  static const String dayAlreadyConsumed = 'dayAlreadyConsumed';
+  static const String insufficientCredits = 'insufficientCredits';
+  static const String subscriptionInactive = 'subscriptionInactive';
+  static const String subscriptionExpired = 'subscriptionExpired';
+  static const String plannerUnconfirmed = 'plannerUnconfirmed';
+  static const String paymentRequiredMessage = 'paymentRequiredMessage';
+  static const String noShowTitle = 'noShowTitle';
+  static const String noShowMessage = 'noShowMessage';
+  static const String consumedWithoutPrepTitle = 'consumedWithoutPrepTitle';
+  static const String consumedWithoutPrepMessage = 'consumedWithoutPrepMessage';
+  static const String pickupCompletedTitle = 'pickupCompletedTitle';
+  static const String pickupCompletedMessage = 'pickupCompletedMessage';
+
   // Profile
   static const String language = 'language';
   static const String english = 'english';
