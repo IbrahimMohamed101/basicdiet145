@@ -5,6 +5,7 @@ import 'package:basic_diet/domain/usecase/verify_premium_payment_usecase.dart';
 import 'package:basic_diet/domain/usecase/confirm_day_selection_usecase.dart';
 import 'package:basic_diet/domain/model/meal_planner_menu_model.dart';
 import 'package:basic_diet/domain/model/timeline_model.dart';
+import 'package:basic_diet/data/network/failure.dart';
 import 'package:basic_diet/data/request/day_selection_request.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'meal_planner_event.dart';
@@ -111,7 +112,15 @@ class MealPlannerBloc extends Bloc<MealPlannerEvent, MealPlannerState> {
   void _onChangeDate(ChangeDateEvent event, Emitter<MealPlannerState> emit) {
     if (state is MealPlannerLoaded) {
       final s = state as MealPlannerLoaded;
-      emit(s.copyWith(selectedDayIndex: event.index));
+      emit(
+        s.copyWith(
+          selectedDayIndex: event.index,
+          premiumMealsPendingPayment: _calculatePendingPaymentCount(
+            s,
+            dayIndex: event.index,
+          ),
+        ),
+      );
     }
   }
 
@@ -141,44 +150,11 @@ class MealPlannerBloc extends Bloc<MealPlannerEvent, MealPlannerState> {
       s.selectedSlotsPerDay,
     )..[dayIndex] = slots;
 
-    // Calculate total premium credits used across ALL days with the updated slots
-    var totalUsedCredits = 0;
-    
-    for (final entry in updated.entries) {
-      for (final slot in entry.value) {
-        final proteinId = slot.proteinId;
-        if (proteinId == null) continue;
-        final protein = _findProteinById(s.menu, proteinId);
-        if (protein == null || !protein.isPremium) continue;
-        
-        final cost = protein.premiumCreditCost == 0 ? 1 : protein.premiumCreditCost;
-        totalUsedCredits += cost;
-      }
-    }
-
-    // Calculate estimated pending payment count for UI display
-    // This shows the user how many premium meals might need payment
-    // BUT: The actual payment requirement is determined by backend after save
-    // 
-    // Why we calculate locally:
-    // - To show user the estimated cost BEFORE they save
-    // - To provide immediate feedback during selection
-    // - To display price information from menu data
-    // 
-    // Why we still validate + save:
-    // - Backend has the authoritative balance state
-    // - Backend determines actual payment requirement
-    // - Backend handles balance deduction logic
-    // - Backend sets premiumSource (balance vs pending_payment)
-    // 
-    // Flow:
-    // 1. Show estimated price during selection (local calculation)
-    // 2. User clicks save → validate first
-    // 3. Then save → backend determines actual payment requirement
-    // 4. Show payment button only if backend says requiresPayment = true
-    final pendingPaymentCount = totalUsedCredits > s.premiumMealsRemaining 
-        ? totalUsedCredits - s.premiumMealsRemaining 
-        : 0;
+    final pendingPaymentCount = _calculatePendingPaymentCount(
+      s,
+      dayIndex: dayIndex,
+      selectedSlotsPerDay: updated,
+    );
 
     String proteinName = '';
     if (event.proteinId != null) {
@@ -221,8 +197,35 @@ class MealPlannerBloc extends Bloc<MealPlannerEvent, MealPlannerState> {
     emit(
       s.copyWith(
         selectedSlotsPerDay: updated,
+        premiumMealsPendingPayment: _calculatePendingPaymentCount(
+          s,
+          dayIndex: dayIndex,
+          selectedSlotsPerDay: updated,
+        ),
       ),
     );
+  }
+
+  int _calculatePendingPaymentCount(
+    MealPlannerLoaded state, {
+    required int dayIndex,
+    Map<int, List<MealPlannerSlotSelection>>? selectedSlotsPerDay,
+  }) {
+    final slotsPerDay = selectedSlotsPerDay ?? state.selectedSlotsPerDay;
+    final daySlots = slotsPerDay[dayIndex] ?? const [];
+
+    var usedCredits = 0;
+    for (final slot in daySlots) {
+      final proteinId = slot.proteinId;
+      if (proteinId == null) continue;
+      final protein = _findProteinById(state.menu, proteinId);
+      if (protein == null || !protein.isPremium) continue;
+      usedCredits +=
+          protein.premiumCreditCost == 0 ? 1 : protein.premiumCreditCost;
+    }
+
+    final pending = usedCredits - state.premiumMealsRemaining;
+    return pending > 0 ? pending : 0;
   }
 
   void _onHideBanner(HideBannerEvent event, Emitter<MealPlannerState> emit) {
@@ -272,8 +275,8 @@ class MealPlannerBloc extends Bloc<MealPlannerEvent, MealPlannerState> {
         SaveDaySelectionUseCaseInput(subscriptionId, currentDay.date, request),
       );
 
-      result.fold(
-        (failure) {
+      await result.fold(
+        (failure) async {
           if (!emit.isDone) {
             emit(s.copyWith(
               isSaving: false,
@@ -281,7 +284,7 @@ class MealPlannerBloc extends Bloc<MealPlannerEvent, MealPlannerState> {
             ));
           }
         },
-        (updatedDay) {
+        (updatedDay) async {
           if (!emit.isDone) {
             // Update the current day's slots with the saved data
             final newSlots = updatedDay.mealSlots.map((slot) {
@@ -305,12 +308,36 @@ class MealPlannerBloc extends Bloc<MealPlannerEvent, MealPlannerState> {
             final requiresPayment = updatedDay.paymentRequirement?.requiresPayment ?? false;
             final pendingPaymentCount = updatedDay.plannerMeta?.premiumPendingPaymentCount ?? 0;
 
+            if (requiresPayment) {
+              emit(s.copyWith(
+                isSaving: false,
+                saveSuccess: true,
+                selectedSlotsPerDay: updatedSlotsPerDay,
+                savedSlotsPerDay: updatedSavedSlotsPerDay,
+                premiumMealsPendingPayment:
+                    pendingPaymentCount,
+              ));
+              return;
+            }
+
+            final confirmError = await _confirmSelection(
+              date: currentDay.date,
+            );
+            if (confirmError != null) {
+              emit(s.copyWith(
+                isSaving: false,
+                paymentError:
+                    "${confirmError.code}: ${confirmError.message}",
+              ));
+              return;
+            }
+
             emit(s.copyWith(
               isSaving: false,
               saveSuccess: true,
               selectedSlotsPerDay: updatedSlotsPerDay,
               savedSlotsPerDay: updatedSavedSlotsPerDay,
-              premiumMealsPendingPayment: requiresPayment ? pendingPaymentCount : 0,
+              premiumMealsPendingPayment: 0,
             ));
           }
         },
@@ -396,6 +423,15 @@ class MealPlannerBloc extends Bloc<MealPlannerEvent, MealPlannerState> {
         final pendingPaymentCount = updatedDay.plannerMeta?.premiumPendingPaymentCount ?? 0;
 
         if (!requiresPayment) {
+          final confirmError = await _confirmSelection(date: currentDay.date);
+          if (confirmError != null) {
+            emit(s.copyWith(
+              isSaving: false,
+              paymentError: "${confirmError.code}: ${confirmError.message}",
+            ));
+            return;
+          }
+
           emit(s.copyWith(
             isSaving: false,
             saveSuccess: true,
@@ -411,9 +447,19 @@ class MealPlannerBloc extends Bloc<MealPlannerEvent, MealPlannerState> {
           CreatePremiumPaymentUseCaseInput(subscriptionId, currentDay.date),
         );
 
-        paymentResult.fold(
-          (failure) {
+        await paymentResult.fold(
+          (failure) async {
             if (failure.code == 'PREMIUM_EXTRA_PAYMENT_NOT_REQUIRED') {
+              final confirmError = await _confirmSelection(date: currentDay.date);
+              if (confirmError != null) {
+                emit(s.copyWith(
+                  isSaving: false,
+                  paymentError:
+                      "${confirmError.code}: ${confirmError.message}",
+                ));
+                return;
+              }
+
               emit(s.copyWith(
                 isSaving: false,
                 saveSuccess: true,
@@ -429,7 +475,7 @@ class MealPlannerBloc extends Bloc<MealPlannerEvent, MealPlannerState> {
               ));
             }
           },
-          (paymentModel) {
+          (paymentModel) async {
             emit(s.copyWith(
               isSaving: false,
               saveSuccess: true,
@@ -479,27 +525,32 @@ class MealPlannerBloc extends Bloc<MealPlannerEvent, MealPlannerState> {
       return;
     }
 
-    // Payment is confirmed — now call confirm endpoint with a proper await
+    final confirmError = await _confirmSelection(date: currentDay.date);
+    if (confirmError != null) {
+      emit(s.copyWith(
+        isSaving: false,
+        paymentError: "${confirmError.code}: ${confirmError.message}",
+      ));
+      return;
+    }
+
+    emit(s.copyWith(
+      isSaving: false,
+      saveSuccess: true,
+      premiumMealsPendingPayment: 0,
+      paymentUrl: null,
+      paymentId: null,
+    ));
+  }
+
+  Future<Failure?> _confirmSelection({required String date}) async {
     final confirmResult = await _confirmDaySelectionUseCase.execute(
-      ConfirmDaySelectionUseCaseInput(subscriptionId, currentDay.date),
+      ConfirmDaySelectionUseCaseInput(subscriptionId, date),
     );
 
-    confirmResult.fold(
-      (failure) {
-        emit(s.copyWith(
-          isSaving: false,
-          paymentError: "${failure.code}: ${failure.message}",
-        ));
-      },
-      (_) {
-        emit(s.copyWith(
-          isSaving: false,
-          saveSuccess: true,
-          premiumMealsPendingPayment: 0,
-          paymentUrl: null,
-          paymentId: null,
-        ));
-      },
+    return confirmResult.fold(
+      (failure) => failure,
+      (_) => null,
     );
   }
 }

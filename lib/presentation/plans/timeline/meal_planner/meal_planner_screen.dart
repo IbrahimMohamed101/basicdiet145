@@ -580,24 +580,24 @@ class MealPlannerView extends StatelessWidget {
   double _premiumPaymentAmount(MealPlannerLoaded state) {
     var totalHalala = 0;
     var usedCredits = 0;
+    final slotsForSelectedDay =
+        state.selectedSlotsPerDay[state.selectedDayIndex] ?? const [];
 
-    for (final entry in state.selectedSlotsPerDay.entries) {
-      for (final slot in entry.value) {
-        final proteinId = slot.proteinId;
-        if (proteinId == null) continue;
-        final protein = _findProteinById(state.menu, proteinId);
-        if (protein == null || !protein.isPremium) continue;
-        
-        final cost = protein.premiumCreditCost == 0 ? 1 : protein.premiumCreditCost;
-        usedCredits += cost;
-        
-        // If exceeds balance, add to payment amount
-        if (usedCredits > state.premiumMealsRemaining) {
-          totalHalala += protein.extraFeeHalala;
-        }
+    for (final slot in slotsForSelectedDay) {
+      final proteinId = slot.proteinId;
+      if (proteinId == null) continue;
+      final protein = _findProteinById(state.menu, proteinId);
+      if (protein == null || !protein.isPremium) continue;
+
+      final cost = protein.premiumCreditCost == 0 ? 1 : protein.premiumCreditCost;
+      usedCredits += cost;
+
+      // If exceeds balance, add to payment amount.
+      if (usedCredits > state.premiumMealsRemaining) {
+        totalHalala += protein.extraFeeHalala;
       }
     }
-    
+
     return totalHalala / 100.0; // Convert halala to SAR
   }
 
