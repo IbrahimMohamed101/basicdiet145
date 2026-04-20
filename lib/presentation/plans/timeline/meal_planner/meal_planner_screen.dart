@@ -1510,12 +1510,15 @@ class _ProteinPickerSheetState extends State<_ProteinPickerSheet> {
       if (proteinId == null) continue;
       final protein = _proteinById(proteinId);
       if (protein != null &&
+          !protein.isPremium &&
           protein.proteinFamilyKey == beefRule.proteinFamilyKey) {
         beefCount++;
       }
     }
     final currentIsBeef =
-        selectedProtein?.proteinFamilyKey == beefRule.proteinFamilyKey;
+        selectedProtein != null &&
+        !selectedProtein.isPremium &&
+        selectedProtein.proteinFamilyKey == beefRule.proteinFamilyKey;
     final isBeefDisabled =
         beefRule.maxSlotsPerDay > 0 &&
         beefCount >= beefRule.maxSlotsPerDay &&
@@ -1672,7 +1675,8 @@ class _ProteinPickerSheetState extends State<_ProteinPickerSheet> {
                     final protein = proteins[index];
                     final isSelected = widget.selectedProteinId == protein.id;
                     final isPremium = protein.isPremium;
-                    final isItemDisabled = isBeefDisabled &&
+                    final isItemDisabled = !isPremium &&
+                        isBeefDisabled &&
                         protein.proteinFamilyKey == beefRule.proteinFamilyKey &&
                         !currentIsBeef;
                     
