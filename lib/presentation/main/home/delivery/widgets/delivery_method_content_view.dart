@@ -218,9 +218,7 @@ class DeliveryMethodContentView extends StatelessWidget {
     final bloc = context.read<DeliveryOptionsBloc>();
     final DateTime? picked = await showDatePicker(
       context: context,
-      initialDate:
-          state.selectedStartDate ??
-          DateTime.now().add(const Duration(days: 1)),
+      initialDate: state.selectedStartDate ?? DateTime.now(),
       firstDate: DateTime.now(),
       lastDate: DateTime.now().add(const Duration(days: 365)),
       builder: (context, child) => Theme(
