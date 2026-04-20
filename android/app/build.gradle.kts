@@ -11,7 +11,7 @@ plugins {
 android {
     namespace = "com.example.basic_diet"
     compileSdk = 36
-    ndkVersion = "29.0.13113456"
+    ndkVersion = "26.3.11579264" // Stable NDK version available locally
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
