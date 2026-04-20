@@ -21,6 +21,7 @@ import 'meal_planner_state.dart';
 /// 4. Reload day data after payment verify
 /// 5. Use plannerMeta and paymentRequirement from backend only
 /// 6. Implement complete confirm flow
+///
 class MealPlannerBlocCorrect extends Bloc<MealPlannerEvent, MealPlannerState> {
   final GetMealPlannerMenuUseCase _getMealPlannerMenuUseCase;
   final GetSubscriptionDayUseCase _getSubscriptionDayUseCase;
