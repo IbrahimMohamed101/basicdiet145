@@ -1,3 +1,15 @@
+class TimelineMealSlot {
+  final int slotIndex;
+  final String? proteinId;
+  final String? carbId;
+
+  const TimelineMealSlot({
+    required this.slotIndex,
+    this.proteinId,
+    this.carbId,
+  });
+}
+
 class TimelineDayModel {
   final String date;
   final String day;
@@ -8,6 +20,7 @@ class TimelineDayModel {
   final int requiredMeals;
   final List<String> selections;
   final List<String> premiumSelections;
+  final List<TimelineMealSlot> mealSlots;
 
   TimelineDayModel({
     required this.date,
@@ -19,6 +32,7 @@ class TimelineDayModel {
     required this.requiredMeals,
     required this.selections,
     required this.premiumSelections,
+    this.mealSlots = const [],
   });
 }
 

@@ -4,6 +4,23 @@ import 'package:basic_diet/data/response/base_response/base_response.dart';
 part 'timeline_response.g.dart';
 
 @JsonSerializable()
+class TimelineMealSlotResponse {
+  @JsonKey(name: "slotIndex")
+  int? slotIndex;
+  @JsonKey(name: "proteinId")
+  String? proteinId;
+  @JsonKey(name: "carbId")
+  String? carbId;
+
+  TimelineMealSlotResponse(this.slotIndex, this.proteinId, this.carbId);
+
+  factory TimelineMealSlotResponse.fromJson(Map<String, dynamic> json) =>
+      _$TimelineMealSlotResponseFromJson(json);
+
+  Map<String, dynamic> toJson() => _$TimelineMealSlotResponseToJson(this);
+}
+
+@JsonSerializable()
 class TimelineDayResponse {
   @JsonKey(name: "date")
   String? date;
@@ -23,6 +40,8 @@ class TimelineDayResponse {
   List<String>? selections;
   @JsonKey(name: "premiumSelections")
   List<String>? premiumSelections;
+  @JsonKey(name: "mealSlots")
+  List<TimelineMealSlotResponse>? mealSlots;
 
   TimelineDayResponse(
     this.date,
@@ -34,6 +53,7 @@ class TimelineDayResponse {
     this.requiredMeals,
     this.selections,
     this.premiumSelections,
+    this.mealSlots,
   );
 
   factory TimelineDayResponse.fromJson(Map<String, dynamic> json) =>

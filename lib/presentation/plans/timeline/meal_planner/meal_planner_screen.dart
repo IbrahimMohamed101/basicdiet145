@@ -21,6 +21,7 @@ class MealPlannerScreen extends StatelessWidget {
   final int initialDayIndex;
   final int premiumMealsRemaining;
   final String subscriptionId;
+  final bool readOnly;
 
   const MealPlannerScreen({
     super.key,
@@ -28,6 +29,7 @@ class MealPlannerScreen extends StatelessWidget {
     required this.initialDayIndex,
     required this.premiumMealsRemaining,
     required this.subscriptionId,
+    this.readOnly = false,
   });
 
   @override
@@ -44,7 +46,9 @@ class MealPlannerScreen extends StatelessWidget {
           },
         )..add(const GetMealPlannerDataEvent());
       },
-      child: BlocListener<MealPlannerBloc, MealPlannerState>(
+      child: readOnly
+          ? const MealPlannerView(readOnly: true)
+          : BlocListener<MealPlannerBloc, MealPlannerState>(
         listenWhen: (prev, curr) {
           if (prev is! MealPlannerLoaded || curr is! MealPlannerLoaded) {
             return false;
@@ -130,7 +134,9 @@ const String _premiumPaymentSuccessUrl = 'https://app.example.com/payments/premi
 const String _premiumPaymentCancelUrl = 'https://app.example.com/payments/premium/cancel';
 
 class MealPlannerView extends StatelessWidget {
-  const MealPlannerView({super.key});
+  final bool readOnly;
+
+  const MealPlannerView({super.key, this.readOnly = false});
 
   @override
   Widget build(BuildContext context) {
@@ -138,7 +144,7 @@ class MealPlannerView extends StatelessWidget {
       builder: (context, state) {
         return Scaffold(
           backgroundColor: Colors.white,
-          bottomNavigationBar: state is MealPlannerLoaded
+          bottomNavigationBar: state is MealPlannerLoaded && !readOnly
               ? _buildBottomAction(state, context)
               : null,
           body: SafeArea(
@@ -164,7 +170,7 @@ class MealPlannerView extends StatelessWidget {
                             children: [
                               _buildHeader(context),
                               Gap(AppSize.s16.h),
-                              _buildDateSelector(state),
+                              _buildDateSelector(state, readOnly: readOnly),
                               Gap(AppSize.s16.h),
                             ],
                           ),
@@ -217,14 +223,16 @@ class MealPlannerView extends StatelessWidget {
                                 protein: protein,
                                 carb: carb,
                                 isProteinPremium: protein?.isPremium ?? false,
-                                onSelectProtein: () => _openProteinPickerSheet(
-                                  context: context,
-                                  state: state,
-                                  slotIndex: index,
-                                  selectedProteinId: slot?.proteinId,
-                                ),
+                                onSelectProtein: readOnly
+                                    ? null
+                                    : () => _openProteinPickerSheet(
+                                        context: context,
+                                        state: state,
+                                        slotIndex: index,
+                                        selectedProteinId: slot?.proteinId,
+                                      ),
                                 carbOptions: _sortedCarbs(state.menu),
-                                onCarbSelected: protein == null
+                                onCarbSelected: readOnly || protein == null
                                     ? null
                                     : (carbId) => context
                                         .read<MealPlannerBloc>()
@@ -234,7 +242,7 @@ class MealPlannerView extends StatelessWidget {
                                             carbId: carbId,
                                           ),
                                         ),
-                                onClear: protein == null
+                                onClear: readOnly || protein == null
                                     ? null
                                     : () => context.read<MealPlannerBloc>().add(
                                           SetMealSlotProteinEvent(
@@ -378,7 +386,7 @@ class MealPlannerView extends StatelessWidget {
   }
 
   // Keep as-is (top days slider).
-  Widget _buildDateSelector(MealPlannerLoaded state) {
+  Widget _buildDateSelector(MealPlannerLoaded state, {bool readOnly = false}) {
     return SizedBox(
       height: 100.h,
       child: ListView.separated(
@@ -472,7 +480,7 @@ class MealPlannerView extends StatelessWidget {
 
           return GestureDetector(
             onTap: () {
-              if (!isLocked) {
+              if (!isLocked && !readOnly) {
                 context.read<MealPlannerBloc>().add(ChangeDateEvent(index));
               }
             },
@@ -991,7 +999,7 @@ class _MealSlotCard extends StatelessWidget {
   final BuilderProteinModel? protein;
   final BuilderCarbModel? carb;
   final bool isProteinPremium;
-  final VoidCallback onSelectProtein;
+  final VoidCallback? onSelectProtein;
   final List<BuilderCarbModel> carbOptions;
   final void Function(String carbId)? onCarbSelected;
   final VoidCallback? onClear;
@@ -1103,7 +1111,8 @@ class _MealSlotCard extends StatelessWidget {
                 value: protein?.name ?? Strings.selectMeal.tr(),
                 isSelected: protein != null,
                 isPremium: isProteinPremium && protein != null,
-                onTap: onSelectProtein,
+                onTap: onSelectProtein ?? () {},
+                isDisabled: onSelectProtein == null,
               ),
               Gap(AppSize.s12.h),
               _PlannerField(

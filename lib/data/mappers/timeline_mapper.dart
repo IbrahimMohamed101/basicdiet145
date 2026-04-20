@@ -15,6 +15,16 @@ extension TimelineDayResponseMapper on TimelineDayResponse? {
       requiredMeals: this?.requiredMeals.orZero() ?? Constants.zero,
       selections: this?.selections ?? [],
       premiumSelections: this?.premiumSelections ?? [],
+      mealSlots: this?.mealSlots
+              ?.map(
+                (s) => TimelineMealSlot(
+                  slotIndex: s.slotIndex ?? 0,
+                  proteinId: s.proteinId,
+                  carbId: s.carbId,
+                ),
+              )
+              .toList() ??
+          [],
     );
   }
 }

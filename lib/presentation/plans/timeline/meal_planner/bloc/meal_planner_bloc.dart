@@ -58,23 +58,37 @@ class MealPlannerBloc extends Bloc<MealPlannerEvent, MealPlannerState> {
         for (int dayIndex = 0; dayIndex < initialTimelineDays.length; dayIndex++) {
           final day = initialTimelineDays[dayIndex];
           final requiredSlots = day.requiredMeals;
-          final selections = [
-            ...day.selections,
-            ...day.premiumSelections,
-          ];
 
-          final slots = List<MealPlannerSlotSelection>.generate(
-            requiredSlots,
-            (slotIndex) {
-              final proteinId = slotIndex < selections.length ? selections[slotIndex] : null;
+          // Prefer mealSlots (has both proteinId + carbId) over selections (protein only)
+          List<MealPlannerSlotSelection> slots;
+          if (day.mealSlots.isNotEmpty) {
+            slots = List.generate(requiredSlots, (slotIndex) {
+              final slot = slotIndex < day.mealSlots.length
+                  ? day.mealSlots[slotIndex]
+                  : null;
+              return MealPlannerSlotSelection(
+                slotIndex: slotIndex + 1,
+                slotKey: 'slot_${slotIndex + 1}',
+                proteinId: slot?.proteinId,
+                carbId: slot?.carbId,
+              );
+            });
+          } else {
+            final selections = [
+              ...day.selections,
+              ...day.premiumSelections,
+            ];
+            slots = List.generate(requiredSlots, (slotIndex) {
+              final proteinId =
+                  slotIndex < selections.length ? selections[slotIndex] : null;
               return MealPlannerSlotSelection(
                 slotIndex: slotIndex + 1,
                 slotKey: 'slot_${slotIndex + 1}',
                 proteinId: proteinId,
                 carbId: null,
               );
-            },
-          );
+            });
+          }
 
           slotsByDay[dayIndex] = slots;
           savedSlotsByDay[dayIndex] = List<MealPlannerSlotSelection>.from(slots);

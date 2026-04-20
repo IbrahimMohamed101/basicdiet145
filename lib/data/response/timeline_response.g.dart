@@ -6,6 +6,22 @@ part of 'timeline_response.dart';
 // JsonSerializableGenerator
 // **************************************************************************
 
+TimelineMealSlotResponse _$TimelineMealSlotResponseFromJson(
+  Map<String, dynamic> json,
+) => TimelineMealSlotResponse(
+  (json['slotIndex'] as num?)?.toInt(),
+  json['proteinId'] as String?,
+  json['carbId'] as String?,
+);
+
+Map<String, dynamic> _$TimelineMealSlotResponseToJson(
+  TimelineMealSlotResponse instance,
+) => <String, dynamic>{
+  'slotIndex': instance.slotIndex,
+  'proteinId': instance.proteinId,
+  'carbId': instance.carbId,
+};
+
 TimelineDayResponse _$TimelineDayResponseFromJson(Map<String, dynamic> json) =>
     TimelineDayResponse(
       json['date'] as String?,
@@ -18,6 +34,11 @@ TimelineDayResponse _$TimelineDayResponseFromJson(Map<String, dynamic> json) =>
       (json['selections'] as List<dynamic>?)?.map((e) => e as String).toList(),
       (json['premiumSelections'] as List<dynamic>?)
           ?.map((e) => e as String)
+          .toList(),
+      (json['mealSlots'] as List<dynamic>?)
+          ?.map(
+            (e) => TimelineMealSlotResponse.fromJson(e as Map<String, dynamic>),
+          )
           .toList(),
     );
 
@@ -33,6 +54,7 @@ Map<String, dynamic> _$TimelineDayResponseToJson(
   'requiredMeals': instance.requiredMeals,
   'selections': instance.selections,
   'premiumSelections': instance.premiumSelections,
+  'mealSlots': instance.mealSlots,
 };
 
 TimelineDataResponse _$TimelineDataResponseFromJson(

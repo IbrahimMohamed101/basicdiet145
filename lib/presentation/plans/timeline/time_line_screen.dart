@@ -189,6 +189,8 @@ class TimeLineScreen extends StatelessWidget {
         day.status.toLowerCase() == 'planned' ||
         day.status.toLowerCase() == 'extension';
 
+    final bool isReadOnly = day.status.toLowerCase() == 'planned';
+
     return GestureDetector(
       onTap: isClickable
           ? () async {
@@ -200,6 +202,7 @@ class TimeLineScreen extends StatelessWidget {
                     initialDayIndex: index,
                     premiumMealsRemaining: premiumMealsRemaining,
                     subscriptionId: subscriptionId,
+                    readOnly: isReadOnly,
                   ),
                 ),
               );

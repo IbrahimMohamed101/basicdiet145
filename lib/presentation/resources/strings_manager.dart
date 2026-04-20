@@ -730,4 +730,7 @@ class Strings {
   static const String completePayment = 'completePayment';
   static const String redirectingToPayment = 'redirectingToPayment';
   static const String openPayment = 'openPayment';
+
+  // View Only
+  static const String viewOnly = 'viewOnly';
 }
