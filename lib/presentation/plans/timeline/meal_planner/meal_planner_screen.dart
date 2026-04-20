@@ -142,9 +142,16 @@ class MealPlannerView extends StatelessWidget {
   Widget build(BuildContext context) {
     return BlocBuilder<MealPlannerBloc, MealPlannerState>(
       builder: (context, state) {
+        final bool isPlannerViewOnlyForSelectedDay =
+            state is MealPlannerLoaded &&
+                (readOnly ||
+                    state.timelineDays[state.selectedDayIndex].status
+                            .toLowerCase() ==
+                        'planned');
         return Scaffold(
           backgroundColor: Colors.white,
-          bottomNavigationBar: state is MealPlannerLoaded && !readOnly
+          bottomNavigationBar: state is MealPlannerLoaded &&
+                  !isPlannerViewOnlyForSelectedDay
               ? _buildBottomAction(state, context)
               : null,
           body: SafeArea(
@@ -159,6 +166,12 @@ class MealPlannerView extends StatelessWidget {
                 if (state is! MealPlannerLoaded) {
                   return const SizedBox.shrink();
                 }
+                final selectedDayStatus = state
+                    .timelineDays[state.selectedDayIndex]
+                    .status
+                    .toLowerCase();
+                final isSelectedDayReadOnly =
+                    readOnly || selectedDayStatus == 'planned';
 
                 return Stack(
                   children: [
@@ -170,7 +183,10 @@ class MealPlannerView extends StatelessWidget {
                             children: [
                               _buildHeader(context),
                               Gap(AppSize.s16.h),
-                              _buildDateSelector(state, readOnly: readOnly),
+                              _buildDateSelector(
+                                state,
+                                readOnly: isSelectedDayReadOnly,
+                              ),
                               Gap(AppSize.s16.h),
                             ],
                           ),
@@ -223,7 +239,7 @@ class MealPlannerView extends StatelessWidget {
                                 protein: protein,
                                 carb: carb,
                                 isProteinPremium: protein?.isPremium ?? false,
-                                onSelectProtein: readOnly
+                                onSelectProtein: isSelectedDayReadOnly
                                     ? null
                                     : () => _openProteinPickerSheet(
                                         context: context,
@@ -232,7 +248,8 @@ class MealPlannerView extends StatelessWidget {
                                         selectedProteinId: slot?.proteinId,
                                       ),
                                 carbOptions: _sortedCarbs(state.menu),
-                                onCarbSelected: readOnly || protein == null
+                                onCarbSelected:
+                                    isSelectedDayReadOnly || protein == null
                                     ? null
                                     : (carbId) => context
                                         .read<MealPlannerBloc>()
@@ -242,7 +259,7 @@ class MealPlannerView extends StatelessWidget {
                                             carbId: carbId,
                                           ),
                                         ),
-                                onClear: readOnly || protein == null
+                                onClear: isSelectedDayReadOnly || protein == null
                                     ? null
                                     : () => context.read<MealPlannerBloc>().add(
                                           SetMealSlotProteinEvent(
@@ -494,7 +511,7 @@ class MealPlannerView extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: bgColor,
                     borderRadius: BorderRadius.circular(AppSize.s16.r),
-                    border: Border.all(color: borderColor),
+                    border: Border.all(color: borderColor,width: 2),
                   ),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
