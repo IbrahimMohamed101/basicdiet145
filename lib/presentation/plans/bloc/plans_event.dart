@@ -11,10 +11,14 @@ class FetchCurrentSubscriptionOverviewEvent extends PlansEvent {}
 
 class FetchTimelineAndOpenPlannerEvent extends PlansEvent {
   final String subscriptionId;
-  const FetchTimelineAndOpenPlannerEvent(this.subscriptionId);
+  final bool openCurrentDay;
+  const FetchTimelineAndOpenPlannerEvent(
+    this.subscriptionId, {
+    this.openCurrentDay = false,
+  });
 
   @override
-  List<Object> get props => [subscriptionId];
+  List<Object> get props => [subscriptionId, openCurrentDay];
 }
 
 class PreparePickupEvent extends PlansEvent {

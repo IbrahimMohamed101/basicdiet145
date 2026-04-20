@@ -469,7 +469,14 @@ class PlansScreen extends StatelessWidget {
         Gap(AppSize.s12.w),
         Expanded(
           child: OutlinedButton(
-            onPressed: () {},
+            onPressed: () {
+              context.read<PlansBloc>().add(
+                FetchTimelineAndOpenPlannerEvent(
+                  data.id,
+                  openCurrentDay: true,
+                ),
+              );
+            },
             style: OutlinedButton.styleFrom(
               padding: const EdgeInsetsDirectional.symmetric(
                 vertical: AppPadding.p16,

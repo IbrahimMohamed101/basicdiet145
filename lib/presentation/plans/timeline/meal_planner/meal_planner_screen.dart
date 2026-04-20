@@ -469,18 +469,19 @@ class MealPlannerView extends StatelessWidget {
             statusText = Strings.planned.tr();
           } else if (isSelected) {
             borderColor = ColorManager.bluePrimary;
-            if (day.status.toLowerCase() == 'open') {
-              bgColor = ColorManager.bluePrimary.withValues(alpha: 0.05);
-            }
+            bgColor = ColorManager.bluePrimary;
+            textColor = Colors.white;
           }
 
           Color pillBgColor =
-              isComplete ? Colors.white.withValues(alpha: 0.2) : baseColor;
+              isComplete || isSelected
+                  ? Colors.white.withValues(alpha: 0.2)
+                  : baseColor;
           Color statusTextColor = Colors.white;
 
           return GestureDetector(
             onTap: () {
-              if (!isLocked && !readOnly) {
+              if (!isLocked) {
                 context.read<MealPlannerBloc>().add(ChangeDateEvent(index));
               }
             },

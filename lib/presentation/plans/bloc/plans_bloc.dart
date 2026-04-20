@@ -51,13 +51,23 @@ class PlansBloc extends Bloc<PlansEvent, PlansState> {
       (failure) => emit(PlansError(failure.message, data: currentData)),
       (timeline) {
         final days = timeline.data.days;
-        final index = days.indexWhere(
-          (day) => ![
-            'locked',
-            'frozen',
-            'skipped',
-          ].contains(day.status.toLowerCase()),
-        );
+        final availableStatuses = ['open', 'planned', 'extension'];
+        final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+        int index = -1;
+
+        if (event.openCurrentDay) {
+          index = days.indexWhere(
+            (day) =>
+                day.date.startsWith(today) &&
+                availableStatuses.contains(day.status.toLowerCase()),
+          );
+        }
+
+        index = index == -1
+            ? days.indexWhere(
+                (day) => availableStatuses.contains(day.status.toLowerCase()),
+              )
+            : index;
 
         if (index != -1) {
           emit(
