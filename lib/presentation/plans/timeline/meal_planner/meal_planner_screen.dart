@@ -484,7 +484,8 @@ class MealPlannerView extends StatelessWidget {
             borderColor = Colors.transparent;
             textColor = Colors.white;
             statusText = Strings.planned.tr();
-          } else if (isSelected) {
+          }
+          if (isSelected) {
             borderColor = ColorManager.bluePrimary;
             bgColor = ColorManager.bluePrimary;
             textColor = Colors.white;
