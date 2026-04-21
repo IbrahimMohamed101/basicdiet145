@@ -636,6 +636,9 @@ class Strings {
   static const String consumedWithoutPrepMessage = 'consumedWithoutPrepMessage';
   static const String pickupCompletedTitle = 'pickupCompletedTitle';
   static const String pickupCompletedMessage = 'pickupCompletedMessage';
+  static const String confirmPrepareTitle = 'confirmPrepareTitle';
+  static const String confirmPrepareMessage = 'confirmPrepareMessage';
+  static const String confirmPrepareAction = 'confirmPrepareAction';
 
   // Profile
   static const String language = 'language';

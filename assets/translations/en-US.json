@@ -355,5 +355,8 @@
     "consumedWithoutPrepTitle": "Day ended without preparation",
     "consumedWithoutPrepMessage": "This day ended without a prepare request and was consumed by policy.",
     "pickupCompletedTitle": "Order picked up successfully",
-    "pickupCompletedMessage": "Your meals have been collected. Enjoy!"
+    "pickupCompletedMessage": "Your meals have been collected. Enjoy!",
+    "confirmPrepareTitle": "Confirm Preparation",
+    "confirmPrepareMessage": "Are you sure you want to start preparing your order? This action cannot be undone.",
+    "confirmPrepareAction": "Yes, Prepare"
 }
