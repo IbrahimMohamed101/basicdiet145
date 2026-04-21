@@ -19,6 +19,8 @@ import 'package:basic_diet/presentation/plans/manage_subscription/cancel/cancel_
 import 'package:basic_diet/presentation/plans/manage_subscription/cancel/cancel_subscription_state.dart';
 import 'package:basic_diet/presentation/widgets/confirmation_dialog.dart';
 
+import '../../../app/constants.dart';
+
 class ManageSubscriptionScreen extends StatelessWidget {
   final String subscriptionId;
   final int selectedMealsPerDay;
@@ -159,8 +161,10 @@ class ManageSubscriptionScreen extends StatelessWidget {
                 );
               },
             ),
-            // Gap(AppSize.s24.h),
-            // _buildDangerZone(context, state),
+            if(Constants.isDebug)...[
+              Gap(AppSize.s24.h),
+              _buildDangerZone(context, state),
+            ]
           ],
         ),
       ),
