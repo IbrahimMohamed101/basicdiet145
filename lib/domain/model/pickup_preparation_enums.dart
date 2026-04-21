@@ -1,5 +1,3 @@
-import 'package:flutter/material.dart';
-
 /// Enum for pickup preparation flow status from Overview API.
 enum PickupFlowStatus {
   hidden,
@@ -75,6 +73,11 @@ enum PickupBlockedReason {
       _ => PickupBlockedReason.unknown,
     };
   }
+
+  bool get isActionable {
+    return this == PickupBlockedReason.planningIncomplete ||
+        this == PickupBlockedReason.plannerUnconfirmed;
+  }
 }
 
 /// Enum for pickup status from GET /pickup/status API.
@@ -99,78 +102,5 @@ enum PickupDayStatus {
         PickupDayStatus.consumedWithoutPreparation,
       _ => PickupDayStatus.open,
     };
-  }
-}
-
-/// Extension to provide UI metadata for blocked reasons.
-extension PickupBlockedReasonX on PickupBlockedReason {
-  String get titleKey {
-    return switch (this) {
-      PickupBlockedReason.daySkipped => 'daySkipped',
-      PickupBlockedReason.dayFrozen => 'dayFrozen',
-      PickupBlockedReason.restaurantClosed => 'restaurantClosed',
-      PickupBlockedReason.subscriptionInactive ||
-      PickupBlockedReason.subInactive =>
-        'subscriptionInactive',
-      PickupBlockedReason.subExpired => 'subscriptionExpired',
-      PickupBlockedReason.insufficientCredits => 'insufficientCredits',
-      PickupBlockedReason.paymentRequired ||
-      PickupBlockedReason.premiumPaymentRequired ||
-      PickupBlockedReason.premiumOveragePaymentRequired ||
-      PickupBlockedReason.oneTimeAddonPaymentRequired =>
-        'paymentRequiredMessage',
-      PickupBlockedReason.plannerUnconfirmed => 'plannerUnconfirmed',
-      PickupBlockedReason.planningIncomplete => 'orderLocked',
-      _ => 'orderLocked',
-    };
-  }
-
-  String get messageKey {
-    return switch (this) {
-      PickupBlockedReason.daySkipped => 'daySkippedMessage',
-      PickupBlockedReason.dayFrozen => 'dayFrozenMessage',
-      PickupBlockedReason.restaurantClosed => 'restaurantClosedMessage',
-      PickupBlockedReason.subscriptionInactive ||
-      PickupBlockedReason.subInactive =>
-        'subscriptionInactive',
-      PickupBlockedReason.subExpired => 'subscriptionExpired',
-      PickupBlockedReason.insufficientCredits => 'insufficientCredits',
-      PickupBlockedReason.paymentRequired ||
-      PickupBlockedReason.premiumPaymentRequired ||
-      PickupBlockedReason.premiumOveragePaymentRequired ||
-      PickupBlockedReason.oneTimeAddonPaymentRequired =>
-        'paymentRequiredMessage',
-      PickupBlockedReason.plannerUnconfirmed => 'plannerUnconfirmed',
-      PickupBlockedReason.planningIncomplete =>
-        'reviewSelectionToStartPreparation',
-      _ => 'modificationPeriodEnded',
-    };
-  }
-
-  IconData get icon {
-    return switch (this) {
-      PickupBlockedReason.daySkipped => Icons.pause_circle_outline_rounded,
-      PickupBlockedReason.dayFrozen => Icons.ac_unit_outlined,
-      PickupBlockedReason.restaurantClosed => Icons.storefront_outlined,
-      PickupBlockedReason.subscriptionInactive ||
-      PickupBlockedReason.subInactive ||
-      PickupBlockedReason.subExpired =>
-        Icons.cancel_outlined,
-      PickupBlockedReason.insufficientCredits =>
-        Icons.credit_card_off_outlined,
-      PickupBlockedReason.paymentRequired ||
-      PickupBlockedReason.premiumPaymentRequired ||
-      PickupBlockedReason.premiumOveragePaymentRequired ||
-      PickupBlockedReason.oneTimeAddonPaymentRequired =>
-        Icons.payment_outlined,
-      PickupBlockedReason.planningIncomplete => Icons.edit_calendar_outlined,
-      PickupBlockedReason.plannerUnconfirmed => Icons.pending_actions_outlined,
-      _ => Icons.lock_rounded,
-    };
-  }
-
-  bool get isActionable {
-    return this == PickupBlockedReason.planningIncomplete ||
-        this == PickupBlockedReason.plannerUnconfirmed;
   }
 }

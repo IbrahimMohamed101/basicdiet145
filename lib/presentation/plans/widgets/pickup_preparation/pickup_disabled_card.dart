@@ -1,6 +1,7 @@
 import 'package:easy_localization/easy_localization.dart';
 import 'package:basic_diet/domain/model/current_subscription_overview_model.dart';
 import 'package:basic_diet/domain/model/pickup_preparation_enums.dart';
+import 'package:basic_diet/presentation/plans/widgets/pickup_preparation/pickup_blocked_reason_ext.dart';
 import 'package:basic_diet/presentation/plans/bloc/plans_bloc.dart';
 import 'package:basic_diet/presentation/plans/bloc/plans_event.dart';
 import 'package:basic_diet/presentation/resources/color_manager.dart';
