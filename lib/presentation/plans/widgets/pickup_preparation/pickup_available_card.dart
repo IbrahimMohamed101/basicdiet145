@@ -22,69 +22,72 @@ class PickupAvailableCard extends StatelessWidget {
     final bloc = context.read<PlansBloc>();
     showDialog<void>(
       context: context,
-      builder: (_) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppSize.s24.r),
-        ),
-        title: Text(
-          Strings.confirmPrepareTitle.tr(),
-          style: getBoldTextStyle(
-            color: ColorManager.black101828,
-            fontSize: FontSizeManager.s18.sp,
-          ),
-        ),
-        content: Text(
-          Strings.confirmPrepareMessage.tr(),
-          style: getRegularTextStyle(
-            color: ColorManager.grey6A7282,
-            fontSize: FontSizeManager.s14.sp,
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: Text(
-              Strings.cancel.tr(),
+      builder:
+          (_) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppSize.s24.r),
+            ),
+            title: Text(
+              Strings.confirmPrepareTitle.tr(),
+              style: getBoldTextStyle(
+                color: ColorManager.black101828,
+                fontSize: FontSizeManager.s18.sp,
+              ),
+            ),
+            content: Text(
+              Strings.confirmPrepareMessage.tr(),
               style: getRegularTextStyle(
                 color: ColorManager.grey6A7282,
                 fontSize: FontSizeManager.s14.sp,
               ),
             ),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              bloc.add(PreparePickupEvent(data.id));
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: ColorManager.greenPrimary,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(AppSize.s100.r),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: Text(
+                  Strings.cancel.tr(),
+                  style: getRegularTextStyle(
+                    color: ColorManager.grey6A7282,
+                    fontSize: FontSizeManager.s14.sp,
+                  ),
+                ),
               ),
-              elevation: 0,
-            ),
-            child: Text(
-              Strings.confirmPrepareAction.tr(),
-              style: getBoldTextStyle(
-                color: Colors.white,
-                fontSize: FontSizeManager.s14.sp,
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  bloc.add(PreparePickupEvent(data.id, data.businessDate));
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: ColorManager.greenPrimary,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(AppSize.s100.r),
+                  ),
+                  elevation: 0,
+                ),
+                child: Text(
+                  Strings.confirmPrepareAction.tr(),
+                  style: getBoldTextStyle(
+                    color: Colors.white,
+                    fontSize: FontSizeManager.s14.sp,
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
-        ],
-      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     final prep = data.pickupPreparation!;
-    final buttonLabel = prep.buttonLabel.isNotEmpty
-        ? prep.buttonLabel
-        : Strings.confirmAndPrepare.tr();
-    final message = prep.message.isNotEmpty
-        ? prep.message
-        : Strings.reviewSelectionToStartPreparation.tr();
+    final buttonLabel =
+        prep.buttonLabel.isNotEmpty
+            ? prep.buttonLabel
+            : Strings.confirmAndPrepare.tr();
+    final message =
+        prep.message.isNotEmpty
+            ? prep.message
+            : Strings.reviewSelectionToStartPreparation.tr();
 
     return Container(
       width: double.infinity,

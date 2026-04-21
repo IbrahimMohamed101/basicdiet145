@@ -4,7 +4,6 @@ import 'package:basic_diet/domain/model/pickup_status_model.dart';
 import 'package:basic_diet/domain/usecase/get_pickup_status_usecase.dart';
 import 'package:bloc/bloc.dart';
 import 'package:equatable/equatable.dart';
-import 'package:intl/intl.dart';
 
 part 'pickup_status_state.dart';
 
@@ -18,19 +17,17 @@ class PickupStatusCubit extends Cubit<PickupStatusState> {
   static const _pollingStatuses = {'locked', 'in_preparation'};
 
   PickupStatusCubit(this._getPickupStatusUseCase)
-      : super(const PickupStatusInitial());
+    : super(const PickupStatusInitial());
 
-  Future<void> fetch(String subscriptionId) async {
-    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
-    await _fetchStatus(subscriptionId, today);
+  Future<void> fetch(String subscriptionId, String businessDate) async {
+    await _fetchStatus(subscriptionId, businessDate);
   }
 
-  Future<void> startPolling(String subscriptionId) async {
+  Future<void> startPolling(String subscriptionId, String businessDate) async {
     _pollingTimer?.cancel();
-    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
-    await _fetchStatus(subscriptionId, today);
+    await _fetchStatus(subscriptionId, businessDate);
     _pollingTimer = Timer.periodic(_pollingInterval, (_) {
-      _fetchStatus(subscriptionId, today);
+      _fetchStatus(subscriptionId, businessDate);
     });
   }
 

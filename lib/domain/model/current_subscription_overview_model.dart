@@ -16,8 +16,35 @@ class PickupPreparationModel {
   String reason;
   String buttonLabel;
   String message;
+  bool canRequestPrepare;
+  bool canBePrepared;
+  bool planningReady;
+  bool showMealPlannerCta;
+  String mealPlannerCtaLabelAr;
+  String mealPlannerCtaLabelEn;
+  String messageAr;
+  String messageEn;
+  String businessDate;
+  bool pickupRequested;
+  bool pickupPrepared;
 
-  PickupPreparationModel(this.flowStatus, this.reason, this.buttonLabel, this.message);
+  PickupPreparationModel(
+    this.flowStatus,
+    this.reason,
+    this.buttonLabel,
+    this.message,
+    this.canRequestPrepare,
+    this.canBePrepared,
+    this.planningReady,
+    this.showMealPlannerCta,
+    this.mealPlannerCtaLabelAr,
+    this.mealPlannerCtaLabelEn,
+    this.messageAr,
+    this.messageEn,
+    this.businessDate,
+    this.pickupRequested,
+    this.pickupPrepared,
+  );
 }
 
 class DeliverySlotModel {
@@ -70,6 +97,7 @@ class AddonSummaryModel {
 
 class CurrentSubscriptionOverviewDataModel {
   String id;
+  String businessDate;
   String status;
   String startDate;
   String endDate;
@@ -94,6 +122,7 @@ class CurrentSubscriptionOverviewDataModel {
 
   CurrentSubscriptionOverviewDataModel(
     this.id,
+    this.businessDate,
     this.status,
     this.startDate,
     this.endDate,

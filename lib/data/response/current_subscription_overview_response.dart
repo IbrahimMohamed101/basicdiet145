@@ -10,7 +10,8 @@ class MetaResponse {
 
   MetaResponse(this.testScenario);
 
-  factory MetaResponse.fromJson(Map<String, dynamic> json) => _$MetaResponseFromJson(json);
+  factory MetaResponse.fromJson(Map<String, dynamic> json) =>
+      _$MetaResponseFromJson(json);
   Map<String, dynamic> toJson() => _$MetaResponseToJson(this);
 }
 
@@ -25,7 +26,8 @@ class ContractResponse {
 
   ContractResponse(this.isCanonical, this.isGrandfathered, this.version);
 
-  factory ContractResponse.fromJson(Map<String, dynamic> json) => _$ContractResponseFromJson(json);
+  factory ContractResponse.fromJson(Map<String, dynamic> json) =>
+      _$ContractResponseFromJson(json);
   Map<String, dynamic> toJson() => _$ContractResponseToJson(this);
 }
 
@@ -39,10 +41,49 @@ class PickupPreparationResponse {
   String? buttonLabel;
   @JsonKey(name: "message")
   String? message;
+  @JsonKey(name: "canRequestPrepare")
+  bool? canRequestPrepare;
+  @JsonKey(name: "canBePrepared")
+  bool? canBePrepared;
+  @JsonKey(name: "planningReady")
+  bool? planningReady;
+  @JsonKey(name: "showMealPlannerCta")
+  bool? showMealPlannerCta;
+  @JsonKey(name: "mealPlannerCtaLabelAr")
+  String? mealPlannerCtaLabelAr;
+  @JsonKey(name: "mealPlannerCtaLabelEn")
+  String? mealPlannerCtaLabelEn;
+  @JsonKey(name: "messageAr")
+  String? messageAr;
+  @JsonKey(name: "messageEn")
+  String? messageEn;
+  @JsonKey(name: "businessDate")
+  String? businessDate;
+  @JsonKey(name: "pickupRequested")
+  bool? pickupRequested;
+  @JsonKey(name: "pickupPrepared")
+  bool? pickupPrepared;
 
-  PickupPreparationResponse(this.flowStatus, this.reason, this.buttonLabel, this.message);
+  PickupPreparationResponse(
+    this.flowStatus,
+    this.reason,
+    this.buttonLabel,
+    this.message,
+    this.canRequestPrepare,
+    this.canBePrepared,
+    this.planningReady,
+    this.showMealPlannerCta,
+    this.mealPlannerCtaLabelAr,
+    this.mealPlannerCtaLabelEn,
+    this.messageAr,
+    this.messageEn,
+    this.businessDate,
+    this.pickupRequested,
+    this.pickupPrepared,
+  );
 
-  factory PickupPreparationResponse.fromJson(Map<String, dynamic> json) => _$PickupPreparationResponseFromJson(json);
+  factory PickupPreparationResponse.fromJson(Map<String, dynamic> json) =>
+      _$PickupPreparationResponseFromJson(json);
   Map<String, dynamic> toJson() => _$PickupPreparationResponseToJson(this);
 }
 
@@ -57,7 +98,8 @@ class OverviewDeliverySlotResponse {
 
   OverviewDeliverySlotResponse(this.slotId, this.type, this.window);
 
-  factory OverviewDeliverySlotResponse.fromJson(Map<String, dynamic> json) => _$OverviewDeliverySlotResponseFromJson(json);
+  factory OverviewDeliverySlotResponse.fromJson(Map<String, dynamic> json) =>
+      _$OverviewDeliverySlotResponseFromJson(json);
   Map<String, dynamic> toJson() => _$OverviewDeliverySlotResponseToJson(this);
 }
 
@@ -136,6 +178,8 @@ class AddonSummaryResponse {
 class CurrentSubscriptionOverviewDataResponse {
   @JsonKey(name: "_id")
   String? id;
+  @JsonKey(name: "businessDate")
+  String? businessDate;
   @JsonKey(name: "status")
   String? status;
   @JsonKey(name: "startDate")
@@ -181,6 +225,7 @@ class CurrentSubscriptionOverviewDataResponse {
 
   CurrentSubscriptionOverviewDataResponse(
     this.id,
+    this.businessDate,
     this.status,
     this.startDate,
     this.endDate,
@@ -204,10 +249,12 @@ class CurrentSubscriptionOverviewDataResponse {
     this.deliverySlot,
   );
 
-  factory CurrentSubscriptionOverviewDataResponse.fromJson(Map<String, dynamic> json) =>
-      _$CurrentSubscriptionOverviewDataResponseFromJson(json);
+  factory CurrentSubscriptionOverviewDataResponse.fromJson(
+    Map<String, dynamic> json,
+  ) => _$CurrentSubscriptionOverviewDataResponseFromJson(json);
 
-  Map<String, dynamic> toJson() => _$CurrentSubscriptionOverviewDataResponseToJson(this);
+  Map<String, dynamic> toJson() =>
+      _$CurrentSubscriptionOverviewDataResponseToJson(this);
 }
 
 @JsonSerializable()
@@ -217,9 +264,11 @@ class CurrentSubscriptionOverviewResponse extends BaseResponse {
 
   CurrentSubscriptionOverviewResponse(this.data);
 
-  factory CurrentSubscriptionOverviewResponse.fromJson(Map<String, dynamic> json) =>
-      _$CurrentSubscriptionOverviewResponseFromJson(json);
+  factory CurrentSubscriptionOverviewResponse.fromJson(
+    Map<String, dynamic> json,
+  ) => _$CurrentSubscriptionOverviewResponseFromJson(json);
 
   @override
-  Map<String, dynamic> toJson() => _$CurrentSubscriptionOverviewResponseToJson(this);
+  Map<String, dynamic> toJson() =>
+      _$CurrentSubscriptionOverviewResponseToJson(this);
 }

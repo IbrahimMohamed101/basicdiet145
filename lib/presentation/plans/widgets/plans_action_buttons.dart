@@ -39,9 +39,9 @@ class PlansActionButtons extends StatelessWidget {
           ),
         );
         if (context.mounted) {
-          context
-              .read<PlansBloc>()
-              .add(FetchCurrentSubscriptionOverviewEvent());
+          context.read<PlansBloc>().add(
+            FetchCurrentSubscriptionOverviewEvent(),
+          );
         }
       },
       style: ElevatedButton.styleFrom(
@@ -75,9 +75,14 @@ class PlansActionButtons extends StatelessWidget {
 
   Widget _buildTodaysMealsButton(BuildContext context) {
     return OutlinedButton(
-      onPressed: () => context.read<PlansBloc>().add(
-        FetchTimelineAndOpenPlannerEvent(data.id, openCurrentDay: true),
-      ),
+      onPressed:
+          () => context.read<PlansBloc>().add(
+            FetchTimelineAndOpenPlannerEvent(
+              data.id,
+              openCurrentDay: true,
+              preferredDate: data.businessDate,
+            ),
+          ),
       style: OutlinedButton.styleFrom(
         padding: const EdgeInsetsDirectional.symmetric(
           vertical: AppPadding.p16,

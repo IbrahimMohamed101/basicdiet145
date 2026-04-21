@@ -26,6 +26,17 @@ extension PickupPreparationResponseMapper on PickupPreparationResponse? {
       this?.reason.orEmpty() ?? Constants.empty,
       this?.buttonLabel.orEmpty() ?? Constants.empty,
       this?.message.orEmpty() ?? Constants.empty,
+      this?.canRequestPrepare ?? false,
+      this?.canBePrepared ?? false,
+      this?.planningReady ?? false,
+      this?.showMealPlannerCta ?? false,
+      this?.mealPlannerCtaLabelAr.orEmpty() ?? Constants.empty,
+      this?.mealPlannerCtaLabelEn.orEmpty() ?? Constants.empty,
+      this?.messageAr.orEmpty() ?? Constants.empty,
+      this?.messageEn.orEmpty() ?? Constants.empty,
+      this?.businessDate.orEmpty() ?? Constants.empty,
+      this?.pickupRequested ?? false,
+      this?.pickupPrepared ?? false,
     );
   }
 }
@@ -74,21 +85,30 @@ extension AddonSummaryResponseMapper on AddonSummaryResponse? {
   }
 }
 
-extension CurrentSubscriptionOverviewDataResponseMapper on CurrentSubscriptionOverviewDataResponse? {
+extension CurrentSubscriptionOverviewDataResponseMapper
+    on CurrentSubscriptionOverviewDataResponse? {
   CurrentSubscriptionOverviewDataModel toDomain() {
     return CurrentSubscriptionOverviewDataModel(
       this?.id.orEmpty() ?? Constants.empty,
+      this?.businessDate.orEmpty() ?? Constants.empty,
       this?.status.orEmpty() ?? Constants.empty,
       this?.startDate.orEmpty() ?? Constants.empty,
       this?.endDate.orEmpty() ?? Constants.empty,
       this?.totalMeals.orZero() ?? Constants.zero,
       this?.remainingMeals.orZero() ?? Constants.zero,
       this?.premiumRemaining.orZero() ?? Constants.zero,
-      (this?.addonSubscriptions?.map((e) => e.toDomain()) ?? const Iterable.empty()).cast<AddonSubscriptionModel>().toList(),
+      (this?.addonSubscriptions?.map((e) => e.toDomain()) ??
+              const Iterable.empty())
+          .cast<AddonSubscriptionModel>()
+          .toList(),
       this?.selectedMealsPerDay.orZero() ?? Constants.zero,
       this?.deliveryMode.orEmpty() ?? Constants.empty,
-      (this?.premiumSummary?.map((e) => e.toDomain()) ?? const Iterable.empty()).cast<PremiumSummaryModel>().toList(),
-      (this?.addonsSummary?.map((e) => e.toDomain()) ?? const Iterable.empty()).cast<AddonSummaryModel>().toList(),
+      (this?.premiumSummary?.map((e) => e.toDomain()) ?? const Iterable.empty())
+          .cast<PremiumSummaryModel>()
+          .toList(),
+      (this?.addonsSummary?.map((e) => e.toDomain()) ?? const Iterable.empty())
+          .cast<AddonSummaryModel>()
+          .toList(),
       this?.statusLabel.orEmpty() ?? Constants.empty,
       this?.deliveryModeLabel.orEmpty() ?? Constants.empty,
       this?.validityEndDate.orEmpty() ?? Constants.empty,
@@ -103,10 +123,9 @@ extension CurrentSubscriptionOverviewDataResponseMapper on CurrentSubscriptionOv
   }
 }
 
-extension CurrentSubscriptionOverviewResponseMapper on CurrentSubscriptionOverviewResponse? {
+extension CurrentSubscriptionOverviewResponseMapper
+    on CurrentSubscriptionOverviewResponse? {
   CurrentSubscriptionOverviewModel toDomain() {
-    return CurrentSubscriptionOverviewModel(
-      this?.data?.toDomain(),
-    );
+    return CurrentSubscriptionOverviewModel(this?.data?.toDomain());
   }
 }

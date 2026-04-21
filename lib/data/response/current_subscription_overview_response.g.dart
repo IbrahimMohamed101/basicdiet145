@@ -33,6 +33,17 @@ PickupPreparationResponse _$PickupPreparationResponseFromJson(
   json['reason'] as String?,
   json['buttonLabel'] as String?,
   json['message'] as String?,
+  json['canRequestPrepare'] as bool?,
+  json['canBePrepared'] as bool?,
+  json['planningReady'] as bool?,
+  json['showMealPlannerCta'] as bool?,
+  json['mealPlannerCtaLabelAr'] as String?,
+  json['mealPlannerCtaLabelEn'] as String?,
+  json['messageAr'] as String?,
+  json['messageEn'] as String?,
+  json['businessDate'] as String?,
+  json['pickupRequested'] as bool?,
+  json['pickupPrepared'] as bool?,
 );
 
 Map<String, dynamic> _$PickupPreparationResponseToJson(
@@ -42,6 +53,17 @@ Map<String, dynamic> _$PickupPreparationResponseToJson(
   'reason': instance.reason,
   'buttonLabel': instance.buttonLabel,
   'message': instance.message,
+  'canRequestPrepare': instance.canRequestPrepare,
+  'canBePrepared': instance.canBePrepared,
+  'planningReady': instance.planningReady,
+  'showMealPlannerCta': instance.showMealPlannerCta,
+  'mealPlannerCtaLabelAr': instance.mealPlannerCtaLabelAr,
+  'mealPlannerCtaLabelEn': instance.mealPlannerCtaLabelEn,
+  'messageAr': instance.messageAr,
+  'messageEn': instance.messageEn,
+  'businessDate': instance.businessDate,
+  'pickupRequested': instance.pickupRequested,
+  'pickupPrepared': instance.pickupPrepared,
 };
 
 OverviewDeliverySlotResponse _$OverviewDeliverySlotResponseFromJson(
@@ -121,6 +143,7 @@ _$CurrentSubscriptionOverviewDataResponseFromJson(
   Map<String, dynamic> json,
 ) => CurrentSubscriptionOverviewDataResponse(
   json['_id'] as String?,
+  json['businessDate'] as String?,
   json['status'] as String?,
   json['startDate'] as String?,
   json['endDate'] as String?,
@@ -168,6 +191,7 @@ Map<String, dynamic> _$CurrentSubscriptionOverviewDataResponseToJson(
   CurrentSubscriptionOverviewDataResponse instance,
 ) => <String, dynamic>{
   '_id': instance.id,
+  'businessDate': instance.businessDate,
   'status': instance.status,
   'startDate': instance.startDate,
   'endDate': instance.endDate,
