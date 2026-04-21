@@ -19,7 +19,7 @@ class AppPreferences {
     if (language != null && language.isNotEmpty) {
       return language;
     }
-    return LanguageType.english.getValue();
+    return LanguageType.arabic.getValue();
   }
 
   Future<void> changeAppLanguage() async {

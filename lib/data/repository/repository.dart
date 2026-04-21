@@ -56,6 +56,9 @@ import 'package:basic_diet/domain/model/pickup_status_model.dart';
 
 import 'package:basic_diet/data/mappers/premium_payment_mapper.dart';
 import 'package:basic_diet/domain/model/premium_payment_model.dart';
+import 'package:basic_diet/data/mappers/cancel_subscription_mapper.dart';
+import 'package:basic_diet/domain/model/cancel_subscription_model.dart';
+import 'package:basic_diet/data/request/cancel_subscription_request.dart';
 
 class RepositoryImpl implements Repository {
   final RemoteDataSource _remoteDataSource;
@@ -602,6 +605,25 @@ class RepositoryImpl implements Repository {
     try {
       final response = await _remoteDataSource.verifyPremiumPayment(subscriptionId, date, paymentId);
       return Right(response.toDomain());
+    } catch (error) {
+      return _handleError(error);
+    }
+  }
+
+  @override
+  Future<Either<Failure, CancelSubscriptionModel>> cancelSubscription(
+    String subscriptionId,
+  ) async {
+    try {
+      final response = await _remoteDataSource.cancelSubscription(
+        subscriptionId,
+        const CancelSubscriptionRequest(),
+      );
+      if (_isSuccessfulResponse(response)) {
+        return Right(response.toDomain());
+      } else {
+        return Left(_mapFailureFromResponse(response));
+      }
     } catch (error) {
       return _handleError(error);
     }

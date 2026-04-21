@@ -27,6 +27,8 @@ import 'package:basic_diet/data/response/premium_payment_response.dart';
 import 'package:basic_diet/data/response/subscription_day_response.dart';
 import 'package:basic_diet/data/response/validation_response.dart';
 import 'package:basic_diet/data/response/bulk_selections_response.dart';
+import 'package:basic_diet/data/request/cancel_subscription_request.dart';
+import 'package:basic_diet/data/response/cancel_subscription_response.dart';
 import 'package:retrofit/retrofit.dart';
 import 'package:dio/dio.dart';
 part 'app_api.g.dart';
@@ -164,5 +166,11 @@ abstract class AppServiceClient {
     @Path("id") String subscriptionId,
     @Path("date") String date,
     @Path("paymentId") String paymentId,
+  );
+
+  @POST("/api/subscriptions/{id}/cancel")
+  Future<CancelSubscriptionResponse> cancelSubscription(
+    @Path("id") String id,
+    @Body() CancelSubscriptionRequest request,
   );
 }

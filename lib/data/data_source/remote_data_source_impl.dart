@@ -28,6 +28,8 @@ import 'package:basic_diet/data/response/premium_payment_response.dart';
 
 import 'package:basic_diet/data/response/pickup_prepare_response.dart';
 import 'package:basic_diet/data/response/pickup_status_response.dart';
+import 'package:basic_diet/data/response/cancel_subscription_response.dart';
+import 'package:basic_diet/data/request/cancel_subscription_request.dart';
 
 import '../response/bulk_selections_response.dart';
 
@@ -183,5 +185,10 @@ class RemoteDataSourceImpl implements RemoteDataSource {
   @override
   Future<PremiumPaymentVerificationResponse> verifyPremiumPayment(String subscriptionId, String date, String paymentId) {
     return _appServiceClient.verifyPremiumPayment(subscriptionId, date, paymentId);
+  }
+
+  @override
+  Future<CancelSubscriptionResponse> cancelSubscription(String id, CancelSubscriptionRequest request) {
+    return _appServiceClient.cancelSubscription(id, request);
   }
 }

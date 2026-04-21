@@ -23,6 +23,8 @@ import 'package:basic_diet/data/response/timeline_response.dart';
 import 'package:basic_diet/data/response/categories_with_meals_response.dart';
 import 'package:basic_diet/data/response/meal_planner_menu_response.dart';
 import 'package:basic_diet/data/response/premium_payment_response.dart';
+import 'package:basic_diet/data/response/cancel_subscription_response.dart';
+import 'package:basic_diet/data/request/cancel_subscription_request.dart';
 
 import 'package:basic_diet/data/response/pickup_prepare_response.dart';
 import 'package:basic_diet/data/response/pickup_status_response.dart';
@@ -70,4 +72,5 @@ abstract class RemoteDataSource {
   Future<MealPlannerMenuResponse> getMealPlannerMenu();
   Future<PremiumPaymentResponse> createPremiumPayment(String subscriptionId, String date);
   Future<PremiumPaymentVerificationResponse> verifyPremiumPayment(String subscriptionId, String date, String paymentId);
+  Future<CancelSubscriptionResponse> cancelSubscription(String id, CancelSubscriptionRequest request);
 }

@@ -9,9 +9,15 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:gap/gap.dart';
 import 'package:easy_localization/easy_localization.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:basic_diet/app/dependency_injection.dart';
 import 'package:basic_diet/presentation/plans/manage_subscription/freeze/freeze_subscription_screen.dart';
 import 'package:basic_diet/presentation/plans/manage_subscription/skip/skip_days_screen.dart';
 import 'package:basic_diet/presentation/plans/manage_subscription/delivery_settings/delivery_settings_screen.dart';
+import 'package:basic_diet/presentation/plans/manage_subscription/cancel/cancel_subscription_bloc.dart';
+import 'package:basic_diet/presentation/plans/manage_subscription/cancel/cancel_subscription_event.dart';
+import 'package:basic_diet/presentation/plans/manage_subscription/cancel/cancel_subscription_state.dart';
+import 'package:basic_diet/presentation/widgets/confirmation_dialog.dart';
 
 class ManageSubscriptionScreen extends StatelessWidget {
   final String subscriptionId;
@@ -43,7 +49,31 @@ class ManageSubscriptionScreen extends StatelessWidget {
       formattedDate = validityEndDate;
     }
 
-    return Scaffold(
+    return BlocProvider(
+      create: (_) {
+        initCancelSubscriptionModule();
+        return instance<CancelSubscriptionBloc>();
+      },
+      child: BlocConsumer<CancelSubscriptionBloc, CancelSubscriptionState>(
+        listener: (context, state) {
+          if (state is CancelSubscriptionSuccess) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(Strings.subscriptionCanceledSuccessfully.tr()),
+                backgroundColor: ColorManager.greenPrimary,
+              ),
+            );
+            Navigator.of(context).pop(true);
+          } else if (state is CancelSubscriptionError) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(state.message),
+                backgroundColor: ColorManager.errorColor,
+              ),
+            );
+          }
+        },
+        builder: (context, state) => Scaffold(
       backgroundColor: ColorManager.greyF3F4F6,
       appBar: AppBar(
         backgroundColor: Colors.white,
@@ -130,8 +160,10 @@ class ManageSubscriptionScreen extends StatelessWidget {
               },
             ),
             Gap(AppSize.s24.h),
-            _buildDangerZone(),
+            _buildDangerZone(context, state),
           ],
+        ),
+      ),
         ),
       ),
     );
@@ -296,7 +328,9 @@ class ManageSubscriptionScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildDangerZone() {
+  Widget _buildDangerZone(BuildContext context, CancelSubscriptionState state) {
+    final isLoading = state is CancelSubscriptionLoading;
+
     return Container(
       decoration: BoxDecoration(
         color: const Color(0xFFFEF2F2),
@@ -326,16 +360,27 @@ class ManageSubscriptionScreen extends StatelessWidget {
           SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(
-              onPressed: () {},
-              icon: SvgPicture.asset(
-                IconAssets.cancel,
-                width: AppSize.s20,
-                height: AppSize.s20,
-                colorFilter: const ColorFilter.mode(
-                  ColorManager.errorColor,
-                  BlendMode.srcIn,
-                ),
-              ),
+              onPressed: isLoading
+                  ? null
+                  : () => _showCancelWarning(context),
+              icon: isLoading
+                  ? SizedBox(
+                      width: AppSize.s20,
+                      height: AppSize.s20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: ColorManager.errorColor,
+                      ),
+                    )
+                  : SvgPicture.asset(
+                      IconAssets.cancel,
+                      width: AppSize.s20,
+                      height: AppSize.s20,
+                      colorFilter: const ColorFilter.mode(
+                        ColorManager.errorColor,
+                        BlendMode.srcIn,
+                      ),
+                    ),
               label: Text(
                 Strings.cancelSubscription.tr(),
                 style: getRegularTextStyle(
@@ -353,6 +398,23 @@ class ManageSubscriptionScreen extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showCancelWarning(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      builder: (_) => ConfirmationDialog(
+        title: Strings.cancelSubscriptionWarningTitle.tr(),
+        body: Strings.cancelSubscriptionWarningBody.tr(),
+        confirmLabel: Strings.cancelSubscriptionConfirm.tr(),
+        cancelLabel: Strings.cancel.tr(),
+        onConfirm: () {
+          context.read<CancelSubscriptionBloc>().add(
+                SubmitCancelSubscriptionEvent(subscriptionId: subscriptionId),
+              );
+        },
       ),
     );
   }

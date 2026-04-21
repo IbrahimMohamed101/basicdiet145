@@ -24,7 +24,18 @@ class LanguageSelectionScreen extends StatefulWidget {
 
 class _LanguageSelectionScreenState extends State<LanguageSelectionScreen> {
   final AppPreferences _appPreferences = instance<AppPreferences>();
-  String? _selectedLanguage;
+  String? _selectedLanguage = arabic; // Default to Arabic
+
+  @override
+  void initState() {
+    super.initState();
+    // Set initial locale to Arabic for first-time users
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        context.setLocale(arabicLocale);
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {

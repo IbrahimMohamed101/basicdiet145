@@ -734,6 +734,10 @@ class Strings {
   static const String dangerZone = 'dangerZone';
   static const String dangerZoneDesc = 'dangerZoneDesc';
   static const String cancelSubscription = 'cancelSubscription';
+  static const String cancelSubscriptionWarningTitle = 'cancelSubscriptionWarningTitle';
+  static const String cancelSubscriptionWarningBody = 'cancelSubscriptionWarningBody';
+  static const String cancelSubscriptionConfirm = 'cancelSubscriptionConfirm';
+  static const String subscriptionCanceledSuccessfully = 'subscriptionCanceledSuccessfully';
 
   // Freeze Subscription
   static const String freezingYourSubscriptionWill =

@@ -21,7 +21,7 @@ void main() async {
     EasyLocalization(
       supportedLocales: [englishLocale, arabicLocale],
       path: assetPathLocalization,
-      fallbackLocale: englishLocale,
+      fallbackLocale: arabicLocale,
       child: Phoenix(child: MyApp()),
     ),
   );

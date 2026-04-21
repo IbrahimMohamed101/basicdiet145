@@ -22,6 +22,7 @@ import 'package:basic_diet/domain/model/timeline_model.dart';
 import 'package:basic_diet/domain/model/categories_with_meals_model.dart';
 import 'package:basic_diet/domain/model/meal_planner_menu_model.dart';
 import 'package:basic_diet/domain/model/premium_payment_model.dart';
+import 'package:basic_diet/domain/model/cancel_subscription_model.dart';
 
 import 'package:basic_diet/domain/model/pickup_prepare_model.dart';
 import 'package:basic_diet/domain/model/pickup_status_model.dart';
@@ -106,5 +107,8 @@ abstract class Repository {
     String subscriptionId,
     String date,
     String paymentId,
+  );
+  Future<Either<Failure, CancelSubscriptionModel>> cancelSubscription(
+    String subscriptionId,
   );
 }

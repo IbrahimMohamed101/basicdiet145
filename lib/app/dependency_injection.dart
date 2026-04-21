@@ -30,6 +30,8 @@ import 'package:basic_diet/presentation/plans/bloc/plans_bloc.dart';
 import 'package:basic_diet/domain/usecase/freeze_subscription_usecase.dart';
 import 'package:basic_diet/presentation/plans/manage_subscription/freeze/freeze_subscription_bloc.dart';
 import 'package:basic_diet/presentation/plans/manage_subscription/skip/skip_days_bloc.dart';
+import 'package:basic_diet/domain/usecase/cancel_subscription_usecase.dart';
+import 'package:basic_diet/presentation/plans/manage_subscription/cancel/cancel_subscription_bloc.dart';
 import 'package:basic_diet/domain/usecase/skip_day_usecase.dart';
 import 'package:basic_diet/domain/usecase/skip_date_range_usecase.dart';
 import 'package:basic_diet/domain/usecase/get_timeline_usecase.dart';
@@ -237,6 +239,18 @@ void initFreezeSubscriptionModule() {
 
     instance.registerFactory<FreezeSubscriptionBloc>(
       () => FreezeSubscriptionBloc(instance<FreezeSubscriptionUseCase>()),
+    );
+  }
+}
+
+void initCancelSubscriptionModule() {
+  if (!GetIt.I.isRegistered<CancelSubscriptionUseCase>()) {
+    instance.registerFactory<CancelSubscriptionUseCase>(
+      () => CancelSubscriptionUseCase(instance<Repository>()),
+    );
+
+    instance.registerFactory<CancelSubscriptionBloc>(
+      () => CancelSubscriptionBloc(instance<CancelSubscriptionUseCase>()),
     );
   }
 }
