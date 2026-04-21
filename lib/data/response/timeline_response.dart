@@ -32,6 +32,12 @@ class TimelineDayResponse {
   int? dayNumber;
   @JsonKey(name: "status")
   String? status;
+  @JsonKey(name: "canBePrepared")
+  bool? canBePrepared;
+  @JsonKey(name: "fulfillmentReady")
+  bool? fulfillmentReady;
+  @JsonKey(name: "consumptionState")
+  String? consumptionState;
   @JsonKey(name: "selectedMeals")
   int? selectedMeals;
   @JsonKey(name: "requiredMeals")
@@ -49,6 +55,9 @@ class TimelineDayResponse {
     this.month,
     this.dayNumber,
     this.status,
+    this.canBePrepared,
+    this.fulfillmentReady,
+    this.consumptionState,
     this.selectedMeals,
     this.requiredMeals,
     this.selections,

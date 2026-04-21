@@ -639,6 +639,39 @@ class Strings {
   static const String confirmPrepareTitle = 'confirmPrepareTitle';
   static const String confirmPrepareMessage = 'confirmPrepareMessage';
   static const String confirmPrepareAction = 'confirmPrepareAction';
+  static const String pickupJourneyTitle = 'pickupJourneyTitle';
+  static const String pickupJourneySubtitle = 'pickupJourneySubtitle';
+  static const String pickupStepChooseMeals = 'pickupStepChooseMeals';
+  static const String pickupStepPrepare = 'pickupStepPrepare';
+  static const String pickupStepTrack = 'pickupStepTrack';
+  static const String pickupStartOrderTitle = 'pickupStartOrderTitle';
+  static const String pickupStartOrderSubtitle = 'pickupStartOrderSubtitle';
+  static const String pickupChooseMealsAction = 'pickupChooseMealsAction';
+  static const String pickupReadyTitle = 'pickupReadyTitle';
+  static const String pickupReadySubtitle = 'pickupReadySubtitle';
+  static const String pickupPrepareAction = 'pickupPrepareAction';
+  static const String pickupProgressReceived = 'pickupProgressReceived';
+  static const String pickupProgressPreparing = 'pickupProgressPreparing';
+  static const String pickupProgressReady = 'pickupProgressReady';
+  static const String pickupTrackingTitle = 'pickupTrackingTitle';
+  static const String pickupTrackingSubtitle = 'pickupTrackingSubtitle';
+  static const String pickupReadyToCollectTitle = 'pickupReadyToCollectTitle';
+  static const String pickupReadyToCollectSubtitle =
+      'pickupReadyToCollectSubtitle';
+  static const String pickupCompletedSuccessTitle =
+      'pickupCompletedSuccessTitle';
+  static const String pickupCompletedSuccessSubtitle =
+      'pickupCompletedSuccessSubtitle';
+  static const String pickupCompletedNoShowTitle = 'pickupCompletedNoShowTitle';
+  static const String pickupCompletedNoShowSubtitle =
+      'pickupCompletedNoShowSubtitle';
+  static const String pickupCompletedConsumedTitle =
+      'pickupCompletedConsumedTitle';
+  static const String pickupCompletedConsumedSubtitle =
+      'pickupCompletedConsumedSubtitle';
+  static const String pickupStatusDone = 'pickupStatusDone';
+  static const String pickupStatusCurrent = 'pickupStatusCurrent';
+  static const String pickupStatusLocked = 'pickupStatusLocked';
 
   // Profile
   static const String language = 'language';
@@ -759,7 +792,7 @@ class Strings {
   static const String getYourPrice = 'getYourPrice';
   static const String apartmentHint = 'apartmentHint';
   static const String selectPreferredTime = 'selectPreferredTime';
-  
+
   // Premium Payment
   static const String paymentRequired = 'paymentRequired';
   static const String youSelected = 'youSelected';

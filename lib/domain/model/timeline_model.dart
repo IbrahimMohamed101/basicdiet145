@@ -16,6 +16,9 @@ class TimelineDayModel {
   final String month;
   final int dayNumber;
   final String status;
+  final bool canBePrepared;
+  final bool fulfillmentReady;
+  final String consumptionState;
   final int selectedMeals;
   final int requiredMeals;
   final List<String> selections;
@@ -28,6 +31,9 @@ class TimelineDayModel {
     required this.month,
     required this.dayNumber,
     required this.status,
+    required this.canBePrepared,
+    required this.fulfillmentReady,
+    required this.consumptionState,
     required this.selectedMeals,
     required this.requiredMeals,
     required this.selections,

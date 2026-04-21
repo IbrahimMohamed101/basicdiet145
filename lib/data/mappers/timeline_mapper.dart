@@ -11,11 +11,15 @@ extension TimelineDayResponseMapper on TimelineDayResponse? {
       month: this?.month.orEmpty() ?? Constants.empty,
       dayNumber: this?.dayNumber.orZero() ?? Constants.zero,
       status: this?.status.orEmpty() ?? Constants.empty,
+      canBePrepared: this?.canBePrepared ?? false,
+      fulfillmentReady: this?.fulfillmentReady ?? false,
+      consumptionState: this?.consumptionState.orEmpty() ?? Constants.empty,
       selectedMeals: this?.selectedMeals.orZero() ?? Constants.zero,
       requiredMeals: this?.requiredMeals.orZero() ?? Constants.zero,
       selections: this?.selections ?? [],
       premiumSelections: this?.premiumSelections ?? [],
-      mealSlots: this?.mealSlots
+      mealSlots:
+          this?.mealSlots
               ?.map(
                 (s) => TimelineMealSlot(
                   slotIndex: s.slotIndex ?? 0,
