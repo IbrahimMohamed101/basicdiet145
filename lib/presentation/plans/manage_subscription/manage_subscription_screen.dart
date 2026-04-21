@@ -159,8 +159,8 @@ class ManageSubscriptionScreen extends StatelessWidget {
                 );
               },
             ),
-            Gap(AppSize.s24.h),
-            _buildDangerZone(context, state),
+            // Gap(AppSize.s24.h),
+            // _buildDangerZone(context, state),
           ],
         ),
       ),
