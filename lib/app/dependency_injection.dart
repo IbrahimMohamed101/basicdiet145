@@ -1,3 +1,4 @@
+import 'package:basic_diet/app/constants.dart';
 import 'package:basic_diet/data/data_source/remote_data_source.dart';
 import 'package:basic_diet/data/data_source/remote_data_source_impl.dart';
 import 'package:basic_diet/data/network/app_api.dart';
@@ -63,7 +64,7 @@ Future<void> initAppModule() async {
   );
 
   Dio dio = await instance<DioFactory>().createConfiguredDio();
-  instance.registerLazySingleton<AppServiceClient>(() => AppServiceClient(dio));
+  instance.registerLazySingleton<AppServiceClient>(() => AppServiceClient(dio, baseUrl: Constants.baseUrl));
 
   instance.registerLazySingleton<RemoteDataSource>(
     () => RemoteDataSourceImpl(instance<AppServiceClient>()),
