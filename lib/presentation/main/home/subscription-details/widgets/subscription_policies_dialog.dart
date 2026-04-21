@@ -107,7 +107,7 @@ class _SubscriptionPoliciesDialogState extends State<SubscriptionPoliciesDialog>
                     Strings.subscriptionPoliciesBody.tr(),
                     textAlign: TextAlign.start,
                     style: getRegularTextStyle(
-                      color: ColorManager.grey6A7282,
+                      color: ColorManager.blackColor,
                       fontSize: FontSizeManager.s12.sp,
                     ),
                   ),
