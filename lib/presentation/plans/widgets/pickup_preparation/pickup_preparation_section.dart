@@ -42,7 +42,7 @@ class PickupPreparationSection extends StatelessWidget {
     return switch (flowStatus) {
       PickupFlowStatus.available => PickupAvailableCard(data: data),
       PickupFlowStatus.disabled => PickupDisabledCard(data: data),
-      PickupFlowStatus.completed => const PickupCompletedCard(),
+      PickupFlowStatus.completed => PickupCompletedCard(data: data.pickupPreparation!),
       PickupFlowStatus.inProgress => _PollingSection(subscriptionId: data.id),
       PickupFlowStatus.hidden => const SizedBox.shrink(),
     };
