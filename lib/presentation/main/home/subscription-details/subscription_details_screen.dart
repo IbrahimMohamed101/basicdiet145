@@ -5,6 +5,7 @@ import 'package:basic_diet/presentation/main/home/payment-success/payment_webvie
 import 'package:basic_diet/presentation/main/home/subscription/bloc/subscription_bloc.dart';
 import 'package:basic_diet/presentation/main/home/subscription/bloc/subscription_event.dart';
 import 'package:basic_diet/presentation/main/home/subscription/bloc/subscription_state.dart';
+import 'package:basic_diet/presentation/main/home/subscription-details/widgets/subscription_policies_dialog.dart';
 import 'package:basic_diet/presentation/resources/color_manager.dart';
 import 'package:basic_diet/presentation/resources/font_manager.dart';
 import 'package:basic_diet/presentation/resources/strings_manager.dart';
@@ -15,6 +16,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:gap/gap.dart';
+import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 
 class SubscriptionDetails extends StatelessWidget {
@@ -92,11 +94,16 @@ class SubscriptionDetails extends StatelessWidget {
 
             return _BottomActionBar(
               totalLabel: _displayAmount(
+                context,
                 label: totalItem?.amountLabel,
                 fallbackAmount: totalItem?.amountSar ?? quote.totalSar,
               ),
               isLoading: isCheckoutLoading,
-              onTap: isCheckoutLoading ? null : () => _submitCheckout(context),
+              onTap: isCheckoutLoading
+                  ? null
+                  : () {
+                      _submitCheckout(context);
+                    },
             );
           },
         ),
@@ -171,9 +178,13 @@ class SubscriptionDetails extends StatelessWidget {
     );
   }
 
-  void _submitCheckout(BuildContext context) {
+  Future<void> _submitCheckout(BuildContext context) async {
+    final didAcceptPolicies = await SubscriptionPoliciesDialog.show(context);
+    if (!didAcceptPolicies || !context.mounted) {
+      return;
+    }
+
     final request = _buildCheckoutRequest(quoteRequest);
-    debugPrint('Checkout idempotencyKey: ${request.idempotencyKey}');
     context.read<SubscriptionBloc>().add(CheckoutSubscriptionEvent(request));
   }
 }
@@ -325,6 +336,7 @@ class _PlanSection extends StatelessWidget {
               children: [
                 Text(
                   _displayAmount(
+                    context,
                     label: planLineItem?.amountLabel,
                     fallbackAmount:
                         planLineItem?.amountSar ??
@@ -368,6 +380,7 @@ class _PremiumMealsSection extends StatelessWidget {
       trailing: premiumLineItem != null
           ? Text(
               _displayAmount(
+                context,
                 label: premiumLineItem.amountLabel,
                 fallbackAmount: premiumLineItem.amountSar,
               ),
@@ -474,7 +487,7 @@ class _PremiumMealTile extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
-                'x${item.qty} | ${_formatSar(item.unitPriceSar)}',
+                '×${_formatNumber(context, item.qty)} | ${_formatSar(context, item.unitPriceSar)}',
                 style: getRegularTextStyle(
                   color: ColorManager.grey6A7282,
                   fontSize: FontSizeManager.s10.sp,
@@ -483,6 +496,7 @@ class _PremiumMealTile extends StatelessWidget {
               Gap(AppSize.s4.h),
               Text(
                 _displayAmount(
+                  context,
                   label: item.totalLabel,
                   fallbackAmount: item.totalSar,
                 ),
@@ -511,14 +525,15 @@ class _AddOnsSection extends StatelessWidget {
     return _SummarySectionCard(
       title: Strings.addOns.tr(),
       icon: Icons.add_circle_outline_rounded,
-      trailing: addOnsLineItem != null
-          ? Text(
-              _displayAmount(
-                label: addOnsLineItem.amountLabel,
-                fallbackAmount: addOnsLineItem.amountSar,
-              ),
-              style: getRegularTextStyle(
-                color: ColorManager.grey6A7282,
+          trailing: addOnsLineItem != null
+              ? Text(
+                  _displayAmount(
+                    context,
+                    label: addOnsLineItem.amountLabel,
+                    fallbackAmount: addOnsLineItem.amountSar,
+                  ),
+                  style: getRegularTextStyle(
+                    color: ColorManager.grey6A7282,
                 fontSize: FontSizeManager.s12.sp,
               ),
             )
@@ -589,6 +604,7 @@ class _AddOnTile extends StatelessWidget {
           Gap(AppSize.s12.w),
           Text(
             _displayAmount(
+              context,
               label: item.totalLabel,
               fallbackAmount: item.totalSar,
             ),
@@ -617,7 +633,7 @@ class _DeliveryDetailsSection extends StatelessWidget {
       address?.district ?? '',
       address?.city ?? '',
     ]);
-    final addressValue = _buildAddressSummary(address);
+    final addressValue = _buildAddressSummary(context, address);
 
     return _SummarySectionCard(
       title: Strings.deliveryDetails.tr(),
@@ -650,6 +666,7 @@ class _DeliveryDetailsSection extends StatelessWidget {
             value: delivery.label,
             trailing: Text(
               _displayAmount(
+                context,
                 label: delivery.feeLabel,
                 fallbackAmount: delivery.feeSar,
               ),
@@ -695,7 +712,7 @@ class _DeliveryScheduleSection extends StatelessWidget {
                 Expanded(
                   child: _ScheduleCell(
                     label: Strings.startDate.tr(),
-                    value: _formatDisplayDate(startDate),
+                    value: _formatDisplayDate(context, startDate),
                     subtitle: Strings.firstDelivery.tr(),
                   ),
                 ),
@@ -703,7 +720,7 @@ class _DeliveryScheduleSection extends StatelessWidget {
                 Expanded(
                   child: _ScheduleCell(
                     label: Strings.endDate.tr(),
-                    value: _formatDisplayDate(endDate),
+                    value: _formatDisplayDate(context, endDate),
                     subtitle: Strings.lastDelivery.tr(),
                   ),
                 ),
@@ -823,6 +840,7 @@ class _PriceBreakdownSection extends StatelessWidget {
                   ),
                   Text(
                     _displayAmount(
+                      context,
                       label: totalItem.amountLabel,
                       fallbackAmount: totalItem.amountSar,
                     ),
@@ -1170,6 +1188,7 @@ class _PriceRow extends StatelessWidget {
           ),
           Text(
             _displayAmount(
+              context,
               label: item.amountLabel,
               fallbackAmount: item.amountSar,
             ),
@@ -1221,79 +1240,62 @@ DateTime? _tryParseDate(String? value) {
   return DateTime.tryParse(value);
 }
 
-String _formatDisplayDate(DateTime? date) {
+String _formatDisplayDate(BuildContext context, DateTime? date) {
   if (date == null) {
     return '--';
   }
 
-  const months = [
-    'Jan',
-    'Feb',
-    'Mar',
-    'Apr',
-    'May',
-    'Jun',
-    'Jul',
-    'Aug',
-    'Sep',
-    'Oct',
-    'Nov',
-    'Dec',
-  ];
-
-  return '${months[date.month - 1]} ${date.day}, ${date.year}';
+  return DateFormat.yMMMd(context.locale.toString()).format(date);
 }
 
-String _formatSar(num amount) {
-  return '${_formatNumber(amount)} ${Strings.sar.tr()}';
+String _formatSar(BuildContext context, num amount) {
+  return '${_formatNumber(context, amount)} ${Strings.sar.tr()}';
 }
 
-String _displayAmount({String? label, required num fallbackAmount}) {
+String _displayAmount(
+  BuildContext context, {
+  String? label,
+  required num fallbackAmount,
+}) {
   final normalizedLabel = (label ?? '').trim();
   if (normalizedLabel.isNotEmpty) {
-    return normalizedLabel;
-  }
-
-  return _formatSar(fallbackAmount);
-}
-
-String _formatNumber(num amount) {
-  final isWhole = amount == amount.roundToDouble();
-  final rawValue = isWhole
-      ? amount.round().toString()
-      : amount.toStringAsFixed(2);
-  final parts = rawValue.split('.');
-  final wholeNumber = parts.first;
-  final buffer = StringBuffer();
-
-  for (int index = 0; index < wholeNumber.length; index++) {
-    final remaining = wholeNumber.length - index;
-    buffer.write(wholeNumber[index]);
-    if (remaining > 1 && remaining % 3 == 1) {
-      buffer.write(',');
+    final isArabic = context.locale.languageCode == 'ar';
+    final hasLatinChars = RegExp(r'[A-Za-z]').hasMatch(normalizedLabel);
+    if (!(isArabic && hasLatinChars)) {
+      return normalizedLabel;
     }
   }
 
-  if (parts.length == 1) {
-    return buffer.toString();
-  }
+  return _formatSar(context, fallbackAmount);
+}
 
-  return '${buffer.toString()}.${parts.last}';
+String _formatNumber(BuildContext context, num amount) {
+  final isWhole = amount == amount.roundToDouble();
+  final localeName = context.locale.toString();
+  if (isWhole) {
+    return NumberFormat.decimalPattern(localeName).format(amount);
+  }
+  return NumberFormat('#,##0.00', localeName).format(amount);
 }
 
 String _joinNonEmpty(List<String> values) {
   return values.where((value) => value.trim().isNotEmpty).join(' - ');
 }
 
-String _buildAddressSummary(SubscriptionAddressModel? address) {
+String _buildAddressSummary(
+  BuildContext context,
+  SubscriptionAddressModel? address,
+) {
   if (address == null) {
     return '';
   }
 
   return _joinNonEmpty([
     address.street,
-    if (address.building.trim().isNotEmpty) 'Building ${address.building}',
-    if (address.apartment.trim().isNotEmpty) 'Apt ${address.apartment}',
+    if (address.building.trim().isNotEmpty)
+      '${Strings.buildingShort.tr()} ${address.building}',
+    if (address.apartment.trim().isNotEmpty)
+      '${Strings.apartmentShort.tr()} ${address.apartment}',
     address.district,
     address.city,
   ]);

@@ -686,6 +686,16 @@ class Strings {
   // Subscription Details
   static const String confirmAndPay = 'confirmAndPay';
   static const String openingPayment = 'openingPayment';
+  static const String subscriptionPoliciesTitle = 'subscriptionPoliciesTitle';
+  static const String subscriptionPoliciesSubtitle =
+      'subscriptionPoliciesSubtitle';
+  static const String subscriptionPoliciesBody = 'subscriptionPoliciesBody';
+  static const String subscriptionPoliciesAgreement =
+      'subscriptionPoliciesAgreement';
+  static const String subscriptionPoliciesAgreeContinue =
+      'subscriptionPoliciesAgreeContinue';
+  static const String buildingShort = 'buildingShort';
+  static const String apartmentShort = 'apartmentShort';
 
   static const String priceBreakdown = 'priceBreakdown';
   static const String deliveryNotes = 'deliveryNotes';
