@@ -493,6 +493,12 @@ class Strings {
   static const String extensionDay = 'extensionDay';
   static const String statusLegend = 'statusLegend';
 
+  // Terminal delivery statuses
+  static const String delivered = 'delivered';
+  static const String deliveryCanceled = 'deliveryCanceled';
+  static const String canceledAtBranch = 'canceledAtBranch';
+  static const String noShow = 'noShow';
+
   // Meal Planner
   static const String mealPlanner = 'mealPlanner';
   static const String planMealsWeekAhead = 'planMealsWeekAhead';

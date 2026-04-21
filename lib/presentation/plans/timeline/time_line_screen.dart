@@ -61,12 +61,6 @@ class TimeLineScreen extends StatelessWidget {
             } else if (state is TimelineLoaded) {
               final days = state.timeline.data.days;
 
-              // Extract first month from data
-              String currentMonthYear = "";
-              if (days.isNotEmpty) {
-                currentMonthYear = "${days.first.month} 2026";
-              }
-
               return SingleChildScrollView(
                 padding: EdgeInsets.symmetric(
                   horizontal: AppPadding.p16.w,
@@ -75,20 +69,11 @@ class TimeLineScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildMonthHeader(currentMonthYear),
-                    Gap(AppSize.s24.h),
-                    ...days.asMap().entries.map((entry) {
-                      return Padding(
-                        padding: EdgeInsets.only(bottom: AppSize.s16.h),
-                        child: _buildDayItem(
-                          context,
-                          entry.value,
-                          days,
-                          entry.key,
-                          state.timeline.data.premiumMealsRemaining,
-                        ),
-                      );
-                    }),
+                    ..._buildDaysWithMonthHeaders(
+                      context,
+                      days,
+                      state.timeline.data.premiumMealsRemaining,
+                    ),
                     Gap(AppSize.s16.h),
                     _buildStatusLegend(),
                     Gap(AppSize.s40.h),
@@ -103,7 +88,47 @@ class TimeLineScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildMonthHeader(String monthYear) {
+  List<Widget> _buildDaysWithMonthHeaders(
+    BuildContext context,
+    List<TimelineDayModel> days,
+    int premiumMealsRemaining,
+  ) {
+    final List<Widget> widgets = [];
+    String? lastMonth;
+
+    for (int i = 0; i < days.length; i++) {
+      final day = days[i];
+      final monthLabel = _extractMonthYear(day);
+
+      if (monthLabel != lastMonth) {
+        if (lastMonth != null) widgets.add(Gap(AppSize.s8.h));
+        widgets.add(_buildMonthHeader(monthLabel, isFirst: lastMonth == null));
+        widgets.add(Gap(AppSize.s16.h));
+        lastMonth = monthLabel;
+      }
+
+      widgets.add(
+        Padding(
+          padding: EdgeInsets.only(bottom: AppSize.s16.h),
+          child: _buildDayItem(context, day, days, i, premiumMealsRemaining),
+        ),
+      );
+    }
+
+    return widgets;
+  }
+
+  String _extractMonthYear(TimelineDayModel day) {
+    // date is expected as "YYYY-MM-DD"; fall back to month field if parsing fails
+    try {
+      final parsed = DateTime.parse(day.date);
+      return "${day.month} ${parsed.year}";
+    } catch (_) {
+      return day.month;
+    }
+  }
+
+  Widget _buildMonthHeader(String monthYear, {bool isFirst = false}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -114,14 +139,16 @@ class TimeLineScreen extends StatelessWidget {
             fontSize: FontSizeManager.s18.sp,
           ),
         ),
-        Gap(AppSize.s4.h),
-        Text(
-          Strings.tapOnAnyDay.tr(),
-          style: getRegularTextStyle(
-            color: ColorManager.grey6A7282,
-            fontSize: FontSizeManager.s14.sp,
+        if (isFirst) ...[
+          Gap(AppSize.s4.h),
+          Text(
+            Strings.tapOnAnyDay.tr(),
+            style: getRegularTextStyle(
+              color: ColorManager.grey6A7282,
+              fontSize: FontSizeManager.s14.sp,
+            ),
           ),
-        ),
+        ],
       ],
     );
   }
@@ -176,6 +203,34 @@ class TimeLineScreen extends StatelessWidget {
         statusText = Strings.extension.tr();
         extraTag = Strings.extensionDay.tr();
         break;
+      case 'delivered':
+        color = ColorManager.greenDark;
+        bgColor = ColorManager.greenDark.withValues(alpha: 0.05);
+        borderColor = ColorManager.greenDark;
+        icon = Icons.check_circle;
+        statusText = Strings.delivered.tr();
+        break;
+      case 'delivery_canceled':
+        color = ColorManager.errorColor;
+        bgColor = ColorManager.errorColor.withValues(alpha: 0.05);
+        borderColor = ColorManager.errorColor;
+        icon = Icons.local_shipping_outlined;
+        statusText = Strings.deliveryCanceled.tr();
+        break;
+      case 'canceled_at_branch':
+        color = ColorManager.errorColor;
+        bgColor = ColorManager.errorColor.withValues(alpha: 0.05);
+        borderColor = ColorManager.errorColor;
+        icon = Icons.store_mall_directory_outlined;
+        statusText = Strings.canceledAtBranch.tr();
+        break;
+      case 'no_show':
+        color = ColorManager.grey4A5565;
+        bgColor = ColorManager.greyF3F4F6;
+        borderColor = ColorManager.grey4A5565;
+        icon = Icons.person_off_outlined;
+        statusText = Strings.noShow.tr();
+        break;
       case 'open':
       default:
         color = ColorManager.black101828;
@@ -185,11 +240,11 @@ class TimeLineScreen extends StatelessWidget {
         break;
     }
 
-    bool isClickable = day.status.toLowerCase() == 'open' ||
-        day.status.toLowerCase() == 'planned' ||
-        day.status.toLowerCase() == 'extension';
-
-    final bool isReadOnly = day.status.toLowerCase() == 'planned';
+    final String statusLower = day.status.toLowerCase();
+    final bool isClickable = statusLower == 'open' ||
+        statusLower == 'planned' ||
+        statusLower == 'extension';
+    final bool isReadOnly = statusLower == 'planned';
 
     return GestureDetector(
       onTap: isClickable
@@ -208,7 +263,9 @@ class TimeLineScreen extends StatelessWidget {
               );
 
               if (result == true && context.mounted) {
-                context.read<TimelineBloc>().add(FetchTimelineEvent(subscriptionId));
+                context
+                    .read<TimelineBloc>()
+                    .add(FetchTimelineEvent(subscriptionId));
               }
             }
           : null,
@@ -285,7 +342,7 @@ class TimeLineScreen extends StatelessWidget {
                         fontSize: FontSizeManager.s12.sp,
                       ),
                     ),
-                  ]
+                  ],
                 ],
               ),
             ),
@@ -319,36 +376,16 @@ class TimeLineScreen extends StatelessWidget {
             spacing: AppSize.s24.w,
             runSpacing: AppSize.s16.h,
             children: [
-              _buildLegendItem(
-                Strings.planned.tr(),
-                Icons.check_circle_outline,
-                ColorManager.greenPrimary,
-              ),
-              _buildLegendItem(
-                Strings.open.tr(),
-                Icons.crop_square,
-                ColorManager.grey9CA3AF,
-              ),
-              _buildLegendItem(
-                Strings.locked.tr(),
-                Icons.lock_outline,
-                ColorManager.grey9CA3AF,
-              ),
-              _buildLegendItem(
-                Strings.skipped.tr(),
-                Icons.cancel_outlined,
-                ColorManager.orangePrimary,
-              ),
-              _buildLegendItem(
-                Strings.frozen.tr(),
-                Icons.ac_unit,
-                ColorManager.bluePrimary,
-              ),
-              _buildLegendItem(
-                Strings.extension.tr(),
-                Icons.add_circle_outline,
-                ColorManager.purplePrimary,
-              ),
+              _buildLegendItem(Strings.planned.tr(), Icons.check_circle_outline, ColorManager.greenPrimary),
+              _buildLegendItem(Strings.open.tr(), Icons.crop_square, ColorManager.grey9CA3AF),
+              _buildLegendItem(Strings.locked.tr(), Icons.lock_outline, ColorManager.grey9CA3AF),
+              _buildLegendItem(Strings.skipped.tr(), Icons.cancel_outlined, ColorManager.orangePrimary),
+              _buildLegendItem(Strings.frozen.tr(), Icons.ac_unit, ColorManager.bluePrimary),
+              _buildLegendItem(Strings.extension.tr(), Icons.add_circle_outline, ColorManager.purplePrimary),
+              _buildLegendItem(Strings.delivered.tr(), Icons.check_circle, ColorManager.greenDark),
+              _buildLegendItem(Strings.deliveryCanceled.tr(), Icons.local_shipping_outlined, ColorManager.errorColor),
+              _buildLegendItem(Strings.canceledAtBranch.tr(), Icons.store_mall_directory_outlined, ColorManager.errorColor),
+              _buildLegendItem(Strings.noShow.tr(), Icons.person_off_outlined, ColorManager.grey4A5565),
             ],
           ),
         ],
