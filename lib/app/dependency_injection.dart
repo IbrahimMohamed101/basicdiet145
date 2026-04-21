@@ -59,8 +59,10 @@ Future<void> initAppModule() async {
     () => AppPreferences(),
   );
 
+  instance.registerLazySingleton<String>(() => Constants.baseUrl, instanceName: "baseUrl");
+
   instance.registerLazySingleton<DioFactory>(
-    () => DioFactory(instance<AppPreferences>()),
+    () => DioFactory(instance<AppPreferences>(), instance<String>(instanceName: "baseUrl")),
   );
 
   Dio dio = await instance<DioFactory>().createConfiguredDio();

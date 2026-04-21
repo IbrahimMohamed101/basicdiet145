@@ -12,13 +12,14 @@ const String LANGUAGE = "Accept-Language";
 
 class DioFactory {
   final AppPreferences _appPreferences;
+  final String _baseUrl;
 
-  DioFactory(this._appPreferences);
+  DioFactory(this._appPreferences, this._baseUrl);
 
   Future<Dio> createConfiguredDio() async {
     // Base configuration for Dio
     final baseDioOptions = BaseOptions(
-      baseUrl: Constants.baseUrl,
+      baseUrl: _baseUrl,
       headers: {ACCEPT: APPLICATION_JSON, CONTENT_TYPE: APPLICATION_JSON},
       receiveDataWhenStatusError: true,
       sendTimeout: const Duration(seconds: Constants.timeout),

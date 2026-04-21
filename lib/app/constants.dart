@@ -7,5 +7,5 @@ class Constants {
   static const bool falseValue = false;
   static const bool isDebug = false;
   static const int timeout = 60 * 1000;
-  static String baseUrl = dotenv.env['BASE_URL']!;
+  static String get baseUrl => dotenv.env['BASE_URL']!;
 }
