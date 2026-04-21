@@ -1,4 +1,5 @@
 import 'package:easy_localization/easy_localization.dart';
+import 'package:basic_diet/domain/model/pickup_preparation_enums.dart';
 import 'package:basic_diet/domain/model/pickup_status_model.dart';
 import 'package:basic_diet/presentation/resources/color_manager.dart';
 import 'package:basic_diet/presentation/resources/font_manager.dart';
@@ -9,7 +10,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:gap/gap.dart';
 
-/// Shown for terminal states: no_show and consumed_without_preparation.
+/// Shown for terminal states: [PickupDayStatus.noShow] and
+/// [PickupDayStatus.consumedWithoutPreparation].
 class PickupTerminalCard extends StatelessWidget {
   final PickupStatusDataModel data;
 
@@ -17,7 +19,8 @@ class PickupTerminalCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isNoShow = data.status == 'no_show';
+    final dayStatus = PickupDayStatus.fromString(data.status);
+    final isNoShow = dayStatus == PickupDayStatus.noShow;
 
     final title = isNoShow
         ? Strings.noShowTitle.tr()

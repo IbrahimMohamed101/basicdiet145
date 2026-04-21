@@ -1,10 +1,10 @@
 import 'package:easy_localization/easy_localization.dart';
 import 'package:basic_diet/domain/model/current_subscription_overview_model.dart';
+import 'package:basic_diet/domain/model/pickup_preparation_enums.dart';
 import 'package:basic_diet/presentation/plans/bloc/plans_bloc.dart';
 import 'package:basic_diet/presentation/plans/bloc/plans_event.dart';
 import 'package:basic_diet/presentation/resources/color_manager.dart';
 import 'package:basic_diet/presentation/resources/font_manager.dart';
-import 'package:basic_diet/presentation/resources/strings_manager.dart';
 import 'package:basic_diet/presentation/resources/styles_manager.dart';
 import 'package:basic_diet/presentation/resources/values_manager.dart';
 import 'package:flutter/material.dart';
@@ -13,7 +13,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:gap/gap.dart';
 
 /// Shown when flowStatus == 'disabled'.
-/// Handles all reason codes with appropriate icon and CTA.
+/// Uses [PickupBlockedReason] enum for type-safe reason handling.
 class PickupDisabledCard extends StatelessWidget {
   final CurrentSubscriptionOverviewDataModel data;
 
@@ -22,21 +22,11 @@ class PickupDisabledCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final prep = data.pickupPreparation!;
-    final reason = prep.reason;
+    final reason = PickupBlockedReason.fromString(prep.reason);
+
     final message = prep.message.isNotEmpty
         ? prep.message
-        : _defaultMessageFor(reason);
-
-    final icon = _iconFor(reason);
-    final isPlanningIncomplete = reason == 'PLANNING_INCOMPLETE';
-    final isPlannerUnconfirmed = reason == 'PLANNER_UNCONFIRMED';
-    final isActionable = isPlanningIncomplete || isPlannerUnconfirmed;
-
-    final buttonLabel = isActionable
-        ? Strings.mealPlanner.tr()
-        : (prep.buttonLabel.isNotEmpty
-              ? prep.buttonLabel
-              : Strings.confirm.tr());
+        : reason.messageKey.tr();
 
     return Container(
       width: double.infinity,
@@ -51,11 +41,15 @@ class PickupDisabledCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(icon, color: ColorManager.black101828, size: AppSize.s20.sp),
+              Icon(
+                reason.icon,
+                color: ColorManager.black101828,
+                size: AppSize.s20.sp,
+              ),
               Gap(AppSize.s8.w),
               Expanded(
                 child: Text(
-                  _titleFor(reason),
+                  reason.titleKey.tr(),
                   style: getBoldTextStyle(
                     color: ColorManager.black101828,
                     fontSize: FontSizeManager.s20.sp,
@@ -73,19 +67,28 @@ class PickupDisabledCard extends StatelessWidget {
             ),
           ),
           Gap(AppSize.s24.h),
-          _buildButton(context, isActionable, buttonLabel),
+          _ActionButton(data: data, reason: reason),
         ],
       ),
     );
   }
+}
 
-  Widget _buildButton(
-    BuildContext context,
-    bool isActionable,
-    String buttonLabel,
-  ) {
+class _ActionButton extends StatelessWidget {
+  final CurrentSubscriptionOverviewDataModel data;
+  final PickupBlockedReason reason;
+
+  const _ActionButton({required this.data, required this.reason});
+
+  @override
+  Widget build(BuildContext context) {
+    final prep = data.pickupPreparation!;
+    final label = reason.isActionable
+        ? 'mealPlanner'.tr()
+        : (prep.buttonLabel.isNotEmpty ? prep.buttonLabel : 'confirm'.tr());
+
     return InkWell(
-      onTap: isActionable
+      onTap: reason.isActionable
           ? () => context.read<PlansBloc>().add(
               FetchTimelineAndOpenPlannerEvent(data.id),
             )
@@ -95,81 +98,23 @@ class PickupDisabledCard extends StatelessWidget {
         width: double.infinity,
         height: AppSize.s55.h,
         decoration: BoxDecoration(
-          color: isActionable
+          color: reason.isActionable
               ? ColorManager.greenPrimary
               : const Color(0xFFE5E7EB),
           borderRadius: BorderRadius.circular(AppSize.s100.r),
         ),
         child: Center(
           child: Text(
-            buttonLabel,
+            label,
             style: getBoldTextStyle(
-              color: isActionable ? Colors.white : ColorManager.grey6A7282,
+              color: reason.isActionable
+                  ? Colors.white
+                  : ColorManager.grey6A7282,
               fontSize: FontSizeManager.s18.sp,
             ),
           ),
         ),
       ),
     );
-  }
-
-  String _titleFor(String reason) {
-    return switch (reason) {
-      'DAY_SKIPPED' => Strings.daySkipped.tr(),
-      'DAY_FROZEN' => Strings.dayFrozen.tr(),
-      'RESTAURANT_CLOSED' => Strings.restaurantClosed.tr(),
-      'SUBSCRIPTION_INACTIVE' => Strings.subscriptionInactive.tr(),
-      'SUB_INACTIVE' => Strings.subscriptionInactive.tr(),
-      'SUB_EXPIRED' => Strings.subscriptionExpired.tr(),
-      'INSUFFICIENT_CREDITS' => Strings.insufficientCredits.tr(),
-      'PAYMENT_REQUIRED' ||
-      'PREMIUM_PAYMENT_REQUIRED' ||
-      'PREMIUM_OVERAGE_PAYMENT_REQUIRED' ||
-      'ONE_TIME_ADDON_PAYMENT_REQUIRED' =>
-        Strings.paymentRequiredMessage.tr(),
-      'PLANNER_UNCONFIRMED' => Strings.plannerUnconfirmed.tr(),
-      _ => Strings.orderLocked.tr(),
-    };
-  }
-
-  String _defaultMessageFor(String reason) {
-    return switch (reason) {
-      'DAY_SKIPPED' => Strings.daySkippedMessage.tr(),
-      'DAY_FROZEN' => Strings.dayFrozenMessage.tr(),
-      'RESTAURANT_CLOSED' => Strings.restaurantClosedMessage.tr(),
-      'SUBSCRIPTION_INACTIVE' || 'SUB_INACTIVE' =>
-        Strings.subscriptionInactive.tr(),
-      'SUB_EXPIRED' => Strings.subscriptionExpired.tr(),
-      'INSUFFICIENT_CREDITS' => Strings.insufficientCredits.tr(),
-      'PAYMENT_REQUIRED' ||
-      'PREMIUM_PAYMENT_REQUIRED' ||
-      'PREMIUM_OVERAGE_PAYMENT_REQUIRED' ||
-      'ONE_TIME_ADDON_PAYMENT_REQUIRED' =>
-        Strings.paymentRequiredMessage.tr(),
-      'PLANNER_UNCONFIRMED' => Strings.plannerUnconfirmed.tr(),
-      'PLANNING_INCOMPLETE' => Strings.reviewSelectionToStartPreparation.tr(),
-      _ => Strings.modificationPeriodEnded.tr(),
-    };
-  }
-
-  IconData _iconFor(String reason) {
-    return switch (reason) {
-      'DAY_SKIPPED' => Icons.pause_circle_outline_rounded,
-      'DAY_FROZEN' => Icons.ac_unit_outlined,
-      'RESTAURANT_CLOSED' => Icons.storefront_outlined,
-      'SUBSCRIPTION_INACTIVE' ||
-      'SUB_INACTIVE' ||
-      'SUB_EXPIRED' =>
-        Icons.cancel_outlined,
-      'INSUFFICIENT_CREDITS' => Icons.credit_card_off_outlined,
-      'PAYMENT_REQUIRED' ||
-      'PREMIUM_PAYMENT_REQUIRED' ||
-      'PREMIUM_OVERAGE_PAYMENT_REQUIRED' ||
-      'ONE_TIME_ADDON_PAYMENT_REQUIRED' =>
-        Icons.payment_outlined,
-      'PLANNING_INCOMPLETE' => Icons.edit_calendar_outlined,
-      'PLANNER_UNCONFIRMED' => Icons.pending_actions_outlined,
-      _ => Icons.lock_rounded,
-    };
   }
 }
