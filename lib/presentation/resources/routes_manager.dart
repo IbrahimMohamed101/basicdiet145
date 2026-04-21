@@ -1,6 +1,7 @@
 import 'package:basic_diet/app/dependency_injection.dart';
 import 'package:basic_diet/app/functions.dart';
 import 'package:basic_diet/domain/model/subscription_quote_model.dart';
+import 'package:basic_diet/presentation/language_selection/language_selection_screen.dart';
 import 'package:basic_diet/presentation/login/login_screen.dart';
 import 'package:basic_diet/presentation/main/main_screen.dart';
 import 'package:basic_diet/presentation/main/home/delivery/delivery_method_screen.dart';
@@ -26,6 +27,14 @@ class GoRouterConfig {
         path: SplashScreen.splashRoute,
         pageBuilder: (BuildContext context, GoRouterState state) =>
             getCustomTransitionPage(state: state, child: SplashScreen()),
+      ),
+      GoRoute(
+        path: LanguageSelectionScreen.languageSelectionRoute,
+        pageBuilder: (BuildContext context, GoRouterState state) =>
+            getCustomTransitionPage(
+              state: state,
+              child: const LanguageSelectionScreen(),
+            ),
       ),
       GoRoute(
         path: OnboardingScreen.routeName,

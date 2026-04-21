@@ -98,4 +98,16 @@ class AppPreferences {
   Future<bool> isOnboardingScreenViewed() async {
     return (await _secureStorage.read(key: 'PREFS_KEY_ONBOARDING_SCREEN_VIEWED')) == 'true';
   }
+
+  Future<void> setLanguageSelected() async {
+    await _secureStorage.write(key: 'PREFS_KEY_LANGUAGE_SELECTED', value: 'true');
+  }
+
+  Future<bool> isLanguageSelected() async {
+    return (await _secureStorage.read(key: 'PREFS_KEY_LANGUAGE_SELECTED')) == 'true';
+  }
+
+  Future<void> setAppLanguage(String languageCode) async {
+    await _secureStorage.write(key: pressKeyLanguage, value: languageCode);
+  }
 }

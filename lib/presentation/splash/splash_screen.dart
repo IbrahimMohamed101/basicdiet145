@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:basic_diet/app/app_pref.dart';
 import 'package:basic_diet/app/dependency_injection.dart';
+import 'package:basic_diet/presentation/language_selection/language_selection_screen.dart';
 import 'package:basic_diet/presentation/login/login_screen.dart';
 import 'package:basic_diet/presentation/main/main_screen.dart';
 import 'package:basic_diet/presentation/onboarding/on_boarding_screen.dart';
@@ -36,12 +37,16 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   void _goNext() async {
+    bool isLanguageSelected = await _appPreferences.isLanguageSelected();
     bool isUserLoggedIn = await _appPreferences.isUserLoggedIn("login");
     bool isOnboardingScreenViewed =
         await _appPreferences.isOnboardingScreenViewed();
 
     if (mounted) {
-      if (isUserLoggedIn) {
+      if (!isLanguageSelected) {
+        // First time user - show language selection
+        context.go(LanguageSelectionScreen.languageSelectionRoute);
+      } else if (isUserLoggedIn) {
         context.go(MainScreen.mainRoute);
       } else if (isOnboardingScreenViewed) {
         context.go(LoginScreen.loginRoute);

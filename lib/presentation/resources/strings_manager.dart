@@ -678,6 +678,11 @@ class Strings {
   static const String english = 'english';
   static const String arabic = 'arabic';
 
+  // Language Selection Screen
+  static const String chooseLanguage = 'chooseLanguage';
+  static const String selectYourLanguage = 'selectYourLanguage';
+  static const String continue_ = 'continue';
+
   // Subscription Details
   static const String confirmAndPay = 'confirmAndPay';
   static const String openingPayment = 'openingPayment';
