@@ -20,13 +20,22 @@ class MyApp extends StatefulWidget {
 
 class _MyAppState extends State<MyApp> {
   final AppPreferences _appPreferences = instance<AppPreferences>();
+  bool _isLocaleInitialized = false;
 
   @override
-  didChangeDependencies() {
-    _appPreferences.getLocalLanguage().then((locale) {
-      context.setLocale(locale);
-    });
+  void didChangeDependencies() {
     super.didChangeDependencies();
+
+    if (_isLocaleInitialized) return;
+    _isLocaleInitialized = true;
+    _initLocale();
+  }
+
+  Future<void> _initLocale() async {
+    final locale = await _appPreferences.getLocalLanguage();
+    if (!mounted) return;
+    if (context.locale == locale) return;
+    await context.setLocale(locale);
   }
 
   @override

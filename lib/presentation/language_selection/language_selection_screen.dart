@@ -24,16 +24,19 @@ class LanguageSelectionScreen extends StatefulWidget {
 
 class _LanguageSelectionScreenState extends State<LanguageSelectionScreen> {
   final AppPreferences _appPreferences = instance<AppPreferences>();
-  String? _selectedLanguage = arabic; // Default to Arabic
+  String? _selectedLanguage = arabic;
 
   @override
   void initState() {
     super.initState();
-    // Set initial locale to Arabic for first-time users
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        context.setLocale(arabicLocale);
-      }
+    _initSelectedLanguage();
+  }
+
+  Future<void> _initSelectedLanguage() async {
+    final savedLanguage = await _appPreferences.getAppLanguage();
+    if (!mounted) return;
+    setState(() {
+      _selectedLanguage = savedLanguage;
     });
   }
 
@@ -190,10 +193,15 @@ class _LanguageSelectionScreenState extends State<LanguageSelectionScreen> {
     );
   }
 
-  void _selectLanguage(String languageCode, Locale locale) {
+  Future<void> _selectLanguage(String languageCode, Locale locale) async {
+    if (_selectedLanguage == languageCode) return;
     setState(() {
       _selectedLanguage = languageCode;
     });
+
+    await _appPreferences.setAppLanguage(languageCode);
+    if (!mounted) return;
+    await context.setLocale(locale);
   }
 
   Widget _buildContinueButton() {
@@ -227,9 +235,6 @@ class _LanguageSelectionScreenState extends State<LanguageSelectionScreen> {
   Future<void> _handleContinue() async {
     if (_selectedLanguage == null) return;
 
-    final locale = _selectedLanguage == english ? englishLocale : arabicLocale;
-    await context.setLocale(locale);
-    await _appPreferences.setAppLanguage(_selectedLanguage!);
     await _appPreferences.setLanguageSelected();
 
     if (mounted) {
