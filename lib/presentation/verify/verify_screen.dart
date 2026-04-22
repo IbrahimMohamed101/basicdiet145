@@ -1,3 +1,4 @@
+import 'dart:ui' as ui;
 import 'package:basic_diet/app/dependency_injection.dart';
 import 'package:basic_diet/presentation/main/main_screen.dart';
 import 'package:basic_diet/presentation/resources/color_manager.dart';
@@ -35,34 +36,34 @@ class VerifyScreen extends StatelessWidget {
         child: Scaffold(
           backgroundColor: ColorManager.whiteColor,
           body: SafeArea(
-            child: SingleChildScrollView(
-              padding: EdgeInsetsDirectional.symmetric(
-                horizontal: AppPadding.p20.w,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Gap(AppSize.s20.h),
-                  // const CustomBackButton(),
-                  Gap(AppSize.s40.h),
-                  _buildHeader(),
-                  Gap(AppSize.s40.h),
-                  _buildOtpForm(context),
-                  Gap(AppSize.s24.h),
-                  _buildResendCode(context),
-                  Gap(AppSize.s40.h),
-                  // _buildVerifyButton(),
-                  BlocBuilder<VerifyBloc, VerifyState>(
-                    builder: (context, state) {
-                      if (state is VerifyLoadingState) {
-                        return _loader();
-                      }
-                      return const SizedBox.shrink();
-                    },
-                  ),
-                  Gap(AppSize.s20.h),
-                  _buildSecurityInfo(),
-                ],
+            child: Builder(
+              builder: (innerContext) => SingleChildScrollView(
+                padding: EdgeInsetsDirectional.symmetric(
+                  horizontal: AppPadding.p20.w,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Gap(AppSize.s20.h),
+                    Gap(AppSize.s40.h),
+                    _buildHeader(),
+                    Gap(AppSize.s40.h),
+                    _buildOtpForm(innerContext),
+                    Gap(AppSize.s24.h),
+                    _buildResendCode(innerContext),
+                    Gap(AppSize.s40.h),
+                    BlocBuilder<VerifyBloc, VerifyState>(
+                      builder: (context, state) {
+                        if (state is VerifyLoadingState) {
+                          return _loader();
+                        }
+                        return const SizedBox.shrink();
+                      },
+                    ),
+                    Gap(AppSize.s20.h),
+                    _buildSecurityInfo(),
+                  ],
+                ),
               ),
             ),
           ),
@@ -104,9 +105,11 @@ class VerifyScreen extends StatelessWidget {
   }
 
   Widget _buildOtpForm(BuildContext context) {
-    return Builder(
-      builder: (context) {
-        return OtpTextField(
+    return Directionality(
+      textDirection: ui.TextDirection.ltr,
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: OtpTextField(
           numberOfFields: 6,
           borderColor: ColorManager.greenPrimary,
           focusedBorderColor: ColorManager.greenPrimary,
@@ -123,8 +126,8 @@ class VerifyScreen extends StatelessWidget {
           borderRadius: BorderRadius.circular(AppSize.s16.r),
           filled: true,
           fillColor: ColorManager.whiteColor,
-        );
-      },
+        ),
+      ),
     );
   }
 
