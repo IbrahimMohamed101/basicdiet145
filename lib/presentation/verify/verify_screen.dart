@@ -30,7 +30,7 @@ class VerifyScreen extends StatelessWidget {
       child: BlocListener<VerifyBloc, VerifyState>(
         listener: (context, state) {
           if (state is VerifySuccessState) {
-            context.push(MainScreen.mainRoute);
+            context.go(MainScreen.mainRoute);
           }
         },
         child: Scaffold(
