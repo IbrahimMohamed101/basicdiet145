@@ -9,10 +9,10 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:basic_diet/presentation/resources/values_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:flutter_otp_text_field/flutter_otp_text_field.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:gap/gap.dart';
 import 'package:go_router/go_router.dart';
+import 'package:pinput/pinput.dart';
 import 'verify_bloc.dart';
 import 'verify_event.dart';
 import 'verify_state.dart';
@@ -105,28 +105,41 @@ class VerifyScreen extends StatelessWidget {
   }
 
   Widget _buildOtpForm(BuildContext context) {
+    final defaultPinTheme = PinTheme(
+      width: AppSize.s50.w,
+      height: AppSize.s70.h,
+      textStyle: getBoldTextStyle(
+        color: ColorManager.blackColor,
+        fontSize: FontSizeManager.s20.sp,
+      ),
+      decoration: BoxDecoration(
+        color: ColorManager.whiteColor,
+        borderRadius: BorderRadius.circular(AppSize.s16.r),
+        border: Border.all(color: ColorManager.greenPrimary),
+      ),
+    );
+
+    final focusedPinTheme = defaultPinTheme.copyWith(
+      decoration: defaultPinTheme.decoration!.copyWith(
+        border: Border.all(color: ColorManager.greenPrimary, width: 2),
+      ),
+    );
+
     return Directionality(
       textDirection: ui.TextDirection.ltr,
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: OtpTextField(
-          numberOfFields: 6,
-          borderColor: ColorManager.greenPrimary,
-          focusedBorderColor: ColorManager.greenPrimary,
-          showFieldAsBox: true,
-          fieldWidth: AppSize.s50.w,
-          fieldHeight: AppSize.s70.h,
-          onCodeChanged: (String code) {
-            context.read<VerifyBloc>().add(VerifyCodeChanged(code));
-          },
-          onSubmit: (String verificationCode) {
-            context.read<VerifyBloc>().add(VerifyCodeChanged(verificationCode));
-            context.read<VerifyBloc>().add(VerifySubmitted(phoneNumber ?? ""));
-          },
-          borderRadius: BorderRadius.circular(AppSize.s16.r),
-          filled: true,
-          fillColor: ColorManager.whiteColor,
-        ),
+      child: Pinput(
+        length: 6,
+        defaultPinTheme: defaultPinTheme,
+        focusedPinTheme: focusedPinTheme,
+        onChanged: (code) {
+          context.read<VerifyBloc>().add(VerifyCodeChanged(code));
+        },
+        onCompleted: (code) {
+          context.read<VerifyBloc>().add(VerifyCodeChanged(code));
+          context.read<VerifyBloc>().add(VerifySubmitted(phoneNumber ?? ""));
+        },
+        keyboardType: TextInputType.number,
+        autofocus: true,
       ),
     );
   }

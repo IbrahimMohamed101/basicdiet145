@@ -17,7 +17,7 @@ dependencies:
   flutter:
     sdk: flutter
   flutter_bloc: ^9.1.1
-  flutter_otp_text_field: ^1.5.1+1
+  pinput: ^5.0.0
   flutter_phoenix: ^1.1.1
   flutter_screenutil: ^5.9.3
   flutter_secure_storage: ^10.0.0
