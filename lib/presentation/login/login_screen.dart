@@ -30,6 +30,8 @@ class LoginScreen extends StatelessWidget {
     return BlocProvider(
       create: (_) => instance<LoginBloc>(),
       child: BlocListener<LoginBloc, LoginState>(
+        listenWhen: (previous, current) =>
+            previous is! LoginSuccessState && current is LoginSuccessState,
         listener: (context, state) {
           if (state is LoginSuccessState) {
             context.push(VerifyScreen.verifyRoute, extra: state.phone);
