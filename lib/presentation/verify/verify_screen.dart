@@ -127,19 +127,21 @@ class VerifyScreen extends StatelessWidget {
 
     return Directionality(
       textDirection: ui.TextDirection.ltr,
-      child: Pinput(
-        length: 6,
-        defaultPinTheme: defaultPinTheme,
-        focusedPinTheme: focusedPinTheme,
-        onChanged: (code) {
-          context.read<VerifyBloc>().add(VerifyCodeChanged(code));
-        },
-        onCompleted: (code) {
-          context.read<VerifyBloc>().add(VerifyCodeChanged(code));
-          context.read<VerifyBloc>().add(VerifySubmitted(phoneNumber ?? ""));
-        },
-        keyboardType: TextInputType.number,
-        autofocus: true,
+      child: Center(
+        child: Pinput(
+          length: 6,
+          defaultPinTheme: defaultPinTheme,
+          focusedPinTheme: focusedPinTheme,
+          onChanged: (code) {
+            context.read<VerifyBloc>().add(VerifyCodeChanged(code));
+          },
+          onCompleted: (code) {
+            context.read<VerifyBloc>().add(VerifyCodeChanged(code));
+            context.read<VerifyBloc>().add(VerifySubmitted(phoneNumber ?? ""));
+          },
+          keyboardType: TextInputType.number,
+          autofocus: true,
+        ),
       ),
     );
   }
