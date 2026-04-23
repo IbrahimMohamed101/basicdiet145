@@ -10,7 +10,7 @@ class Strings {
   static const String getStartedArrow = 'getStartedArrow';
   static const String chooseLanguage = 'chooseLanguage';
   static const String selectYourLanguage = 'selectYourLanguage';
-  static const String continue_ = 'continue_';
+  static const String continue_ = 'continue';
 
   // Auth
   static const String email = 'email';
