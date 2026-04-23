@@ -179,9 +179,9 @@ class TimeLineScreen extends StatelessWidget {
         statusText = Strings.planned.tr();
         break;
       case 'frozen':
-        color = ColorManager.brandPrimaryPressed;
-        bgColor = ColorManager.brandPrimaryTint;
-        borderColor = ColorManager.brandPrimaryHover;
+        color = ColorManager.bluePrimary;
+        bgColor = ColorManager.blueSurface;
+        borderColor = ColorManager.blueBorder;
         icon = Icons.ac_unit;
         statusText = Strings.frozen.tr();
         break;
@@ -401,7 +401,7 @@ class TimeLineScreen extends StatelessWidget {
               _buildLegendItem(
                 Strings.frozen.tr(),
                 Icons.ac_unit,
-                ColorManager.brandPrimaryPressed,
+                ColorManager.bluePrimary,
               ),
               _buildLegendItem(
                 Strings.extension.tr(),

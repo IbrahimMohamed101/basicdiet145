@@ -56,6 +56,12 @@ class ColorManager {
   static const Color stateDisabled = Color(0xFF9CA3AF);
   static const Color stateDisabledSurface = Color(0xFFF3F4F6);
 
+  // Blue Colors (for Frozen state)
+  static const Color bluePrimary = Color(0xFF3B82F6);
+  static const Color blueSurface = Color(0xFFEFF6FF);
+  static const Color blueBorder = Color(0xFFBFDBFE);
+  static const Color blueEmphasis = Color(0xFF1E40AF);
+
   static const Color transparent = Color(0x00000000);
 
   // Glow/Shadow helpers (10% alpha brand colors, safe for const use)
@@ -115,8 +121,4 @@ class ColorManager {
 
   @Deprecated('Use brandPrimary')
   static const Color greenFA76F = brandPrimary;
-  @Deprecated('Use brandAccent')
-  static const Color bluePrimary = brandAccent;
-  @Deprecated('Use brandAccent')
-  static const Color purplePrimary = brandAccent;
 }

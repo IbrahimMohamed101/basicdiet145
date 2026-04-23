@@ -174,9 +174,9 @@ class _DayCard extends StatelessWidget {
         statusText = Strings.planned.tr();
         break;
       case 'frozen':
-        baseColor = ColorManager.brandPrimaryPressed;
-        baseBgColor = ColorManager.brandPrimaryTint;
-        baseBorderColor = ColorManager.brandPrimaryHover;
+        baseColor = ColorManager.bluePrimary;
+        baseBgColor = ColorManager.blueSurface;
+        baseBorderColor = ColorManager.blueBorder;
         statusText = Strings.frozen.tr();
         break;
       case 'skipped':
