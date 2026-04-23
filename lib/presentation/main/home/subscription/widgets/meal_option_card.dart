@@ -246,7 +246,7 @@ class _CenteredStrikePainter extends CustomPainter {
           ..strokeWidth = strokeWidth
           ..strokeCap = StrokeCap.round;
 
-    final y = size.height / 2;
+    final y = size.height / 2.5;
     canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
   }
 
