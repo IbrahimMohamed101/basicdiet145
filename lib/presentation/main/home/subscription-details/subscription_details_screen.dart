@@ -5,6 +5,7 @@ import 'package:basic_diet/presentation/main/home/payment-success/payment_webvie
 import 'package:basic_diet/presentation/main/home/subscription/bloc/subscription_bloc.dart';
 import 'package:basic_diet/presentation/main/home/subscription/bloc/subscription_event.dart';
 import 'package:basic_diet/presentation/main/home/subscription/bloc/subscription_state.dart';
+import 'package:basic_diet/presentation/main/home/subscription-details/widgets/subscription_policies_dialog.dart';
 import 'package:basic_diet/presentation/resources/color_manager.dart';
 import 'package:basic_diet/presentation/resources/font_manager.dart';
 import 'package:basic_diet/presentation/resources/strings_manager.dart';
@@ -144,7 +145,7 @@ class _SubscriptionDetailsState extends State<SubscriptionDetails> {
               stalePricing: isPricingStale,
               onTap: isCheckoutLoading || !canCheckout
                   ? null
-                  : () => _submitCheckout(context, quoteRequest),
+                  : () => _handleConfirmAndPayTap(context, quoteRequest),
             ),
             body: SafeArea(
               top: false,
@@ -246,6 +247,18 @@ class _SubscriptionDetailsState extends State<SubscriptionDetails> {
     final request = _buildCheckoutRequest(quoteRequest);
     debugPrint('Checkout idempotencyKey: ${request.idempotencyKey}');
     context.read<SubscriptionBloc>().add(CheckoutSubscriptionEvent(request));
+  }
+
+  Future<void> _handleConfirmAndPayTap(
+    BuildContext context,
+    SubscriptionQuoteRequestModel quoteRequest,
+  ) async {
+    final hasAcceptedPolicies = await SubscriptionPoliciesDialog.show(context);
+    if (!context.mounted || !hasAcceptedPolicies) {
+      return;
+    }
+
+    _submitCheckout(context, quoteRequest);
   }
 }
 
