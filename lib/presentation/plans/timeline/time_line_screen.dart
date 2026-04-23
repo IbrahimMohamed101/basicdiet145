@@ -436,19 +436,22 @@ class TimeLineScreen extends StatelessWidget {
   }
 
   Widget _buildLegendItem(String label, IconData icon, Color color) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, color: color, size: AppSize.s20.w),
-        Gap(AppSize.s8.w),
-        Text(
-          label,
-          style: getRegularTextStyle(
-            color: ColorManager.textPrimary,
-            fontSize: FontSizeManager.s14.sp,
+    return Container(
+      padding: EdgeInsets.all(2),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: color, size: AppSize.s20.w),
+          Gap(AppSize.s8.w),
+          Text(
+            label,
+            style: getRegularTextStyle(
+              color: ColorManager.textPrimary,
+              fontSize: FontSizeManager.s14.sp,
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
