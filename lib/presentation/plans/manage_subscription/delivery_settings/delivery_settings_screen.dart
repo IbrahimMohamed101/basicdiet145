@@ -50,27 +50,27 @@ class _DeliverySettingsScreenState extends State<DeliverySettingsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: ColorManager.backgroundApp,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: ColorManager.backgroundSurface,
         elevation: 0,
         centerTitle: false,
         titleSpacing: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
+          icon: Icon(Icons.arrow_back, color: ColorManager.textPrimary),
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: Text(
           Strings.deliverySettings.tr(),
           style: getRegularTextStyle(
-            color: Colors.black,
+            color: ColorManager.textPrimary,
             fontSize: FontSizeManager.s20.sp,
           ),
         ),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1.0),
           child: Container(
-            color: ColorManager.formFieldsBorderColor,
+            color: ColorManager.borderDefault,
             height: 1.0,
           ),
         ),
@@ -97,8 +97,8 @@ class _DeliverySettingsScreenState extends State<DeliverySettingsScreen> {
     return Container(
       padding: const EdgeInsets.all(AppPadding.p16),
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: ColorManager.formFieldsBorderColor),
+        color: ColorManager.backgroundSurface,
+        border: Border.all(color: ColorManager.borderDefault),
         borderRadius: BorderRadius.circular(AppSize.s12),
       ),
       child: Column(
@@ -108,14 +108,14 @@ class _DeliverySettingsScreenState extends State<DeliverySettingsScreen> {
             children: [
               Icon(
                 Icons.location_on_outlined,
-                color: ColorManager.greenPrimary,
+                color: ColorManager.brandPrimary,
                 size: AppSize.s20,
               ),
               Gap(AppSize.s8.w),
               Text(
                 Strings.deliveryAddress.tr(),
                 style: getRegularTextStyle(
-                  color: Colors.black,
+                  color: ColorManager.textPrimary,
                   fontSize: FontSizeManager.s16.sp,
                 ),
               ),
@@ -125,7 +125,7 @@ class _DeliverySettingsScreenState extends State<DeliverySettingsScreen> {
           Text(
             Strings.streetAddressLabel.tr(),
             style: getRegularTextStyle(
-              color: Colors.black,
+              color: ColorManager.textPrimary,
               fontSize: FontSizeManager.s14.sp,
             ),
           ),
@@ -141,7 +141,7 @@ class _DeliverySettingsScreenState extends State<DeliverySettingsScreen> {
                     Text(
                       Strings.areaLabel.tr(),
                       style: getRegularTextStyle(
-                        color: Colors.black,
+                        color: ColorManager.textPrimary,
                         fontSize: FontSizeManager.s14.sp,
                       ),
                     ),
@@ -158,7 +158,7 @@ class _DeliverySettingsScreenState extends State<DeliverySettingsScreen> {
                     Text(
                       Strings.cityLabel.tr(),
                       style: getRegularTextStyle(
-                        color: Colors.black,
+                        color: ColorManager.textPrimary,
                         fontSize: FontSizeManager.s14.sp,
                       ),
                     ),
@@ -176,7 +176,7 @@ class _DeliverySettingsScreenState extends State<DeliverySettingsScreen> {
               onPressed: () {},
               style: OutlinedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: AppPadding.p12),
-                side: const BorderSide(color: ColorManager.greenPrimary),
+                side: BorderSide(color: ColorManager.brandPrimary),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(AppSize.s12),
                 ),
@@ -184,7 +184,7 @@ class _DeliverySettingsScreenState extends State<DeliverySettingsScreen> {
               child: Text(
                 Strings.useCurrentLocation.tr(),
                 style: getRegularTextStyle(
-                  color: ColorManager.greenPrimary,
+                  color: ColorManager.brandPrimary,
                   fontSize: FontSizeManager.s14.sp,
                 ),
               ),
@@ -204,36 +204,32 @@ class _DeliverySettingsScreenState extends State<DeliverySettingsScreen> {
       controller: controller,
       maxLines: maxLines,
       style: getRegularTextStyle(
-        color: ColorManager.grey6A7282, // slightly darker text
+        color: ColorManager.textSecondary,
         fontSize: FontSizeManager.s14.sp,
       ),
       decoration: InputDecoration(
         hintText: hint,
         hintStyle: getRegularTextStyle(
-          color: ColorManager.grey6A7282.withValues(alpha: 0.6),
+          color: ColorManager.textSecondary.withValues(alpha: 0.6),
           fontSize: FontSizeManager.s14.sp,
         ),
         filled: true,
-        fillColor: ColorManager.greyF3F4F6,
+        fillColor: ColorManager.backgroundSubtle,
         contentPadding: const EdgeInsets.symmetric(
           horizontal: AppPadding.p16,
           vertical: AppPadding.p12,
         ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppSize.s8),
-          borderSide: const BorderSide(
-            color: ColorManager.formFieldsBorderColor,
-          ),
+          borderSide: BorderSide(color: ColorManager.borderDefault),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppSize.s8),
-          borderSide: const BorderSide(
-            color: ColorManager.formFieldsBorderColor,
-          ),
+          borderSide: BorderSide(color: ColorManager.borderDefault),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppSize.s8),
-          borderSide: const BorderSide(color: ColorManager.greenPrimary),
+          borderSide: BorderSide(color: ColorManager.brandPrimary),
         ),
       ),
     );
@@ -243,8 +239,8 @@ class _DeliverySettingsScreenState extends State<DeliverySettingsScreen> {
     return Container(
       padding: const EdgeInsets.all(AppPadding.p16),
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: ColorManager.formFieldsBorderColor),
+        color: ColorManager.backgroundSurface,
+        border: Border.all(color: ColorManager.borderDefault),
         borderRadius: BorderRadius.circular(AppSize.s12),
       ),
       child: Column(
@@ -254,14 +250,14 @@ class _DeliverySettingsScreenState extends State<DeliverySettingsScreen> {
             children: [
               Icon(
                 Icons.access_time_outlined,
-                color: ColorManager.greenPrimary,
+                color: ColorManager.brandPrimary,
                 size: AppSize.s20,
               ),
               Gap(AppSize.s8.w),
               Text(
                 Strings.deliveryTimePreference.tr(),
                 style: getRegularTextStyle(
-                  color: Colors.black,
+                  color: ColorManager.textPrimary,
                   fontSize: FontSizeManager.s16.sp,
                 ),
               ),
@@ -289,20 +285,22 @@ class _DeliverySettingsScreenState extends State<DeliverySettingsScreen> {
           width: double.infinity,
           padding: const EdgeInsets.all(AppPadding.p16),
           decoration: BoxDecoration(
-            color: isSelected
-                ? ColorManager.greenPrimary.withValues(alpha: 0.05)
-                : Colors.white,
+            color:
+                isSelected
+                    ? ColorManager.brandPrimaryTint
+                    : ColorManager.backgroundSurface,
             border: Border.all(
-              color: isSelected
-                  ? ColorManager.greenPrimary
-                  : ColorManager.formFieldsBorderColor,
+              color:
+                  isSelected
+                      ? ColorManager.brandPrimary
+                      : ColorManager.borderDefault,
             ),
             borderRadius: BorderRadius.circular(AppSize.s12),
           ),
           child: Text(
             time,
             style: getRegularTextStyle(
-              color: Colors.black,
+              color: ColorManager.textPrimary,
               fontSize: FontSizeManager.s14.sp,
             ),
           ),
@@ -315,8 +313,8 @@ class _DeliverySettingsScreenState extends State<DeliverySettingsScreen> {
     return Container(
       padding: const EdgeInsets.all(AppPadding.p16),
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: ColorManager.formFieldsBorderColor),
+        color: ColorManager.backgroundSurface,
+        border: Border.all(color: ColorManager.borderDefault),
         borderRadius: BorderRadius.circular(AppSize.s12),
       ),
       child: Column(
@@ -325,7 +323,7 @@ class _DeliverySettingsScreenState extends State<DeliverySettingsScreen> {
           Text(
             Strings.deliveryInstructionsOptional.tr(),
             style: getRegularTextStyle(
-              color: Colors.black,
+              color: ColorManager.textPrimary,
               fontSize: FontSizeManager.s14.sp,
             ),
           ),
@@ -348,7 +346,7 @@ class _DeliverySettingsScreenState extends State<DeliverySettingsScreen> {
             onPressed: () => Navigator.of(context).pop(),
             style: OutlinedButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: AppPadding.p16),
-              side: const BorderSide(color: ColorManager.formFieldsBorderColor),
+              side: BorderSide(color: ColorManager.borderDefault),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(AppSize.s12),
               ),
@@ -356,7 +354,7 @@ class _DeliverySettingsScreenState extends State<DeliverySettingsScreen> {
             child: Text(
               Strings.cancel.tr(),
               style: getRegularTextStyle(
-                color: Colors.black,
+                color: ColorManager.textPrimary,
                 fontSize: FontSizeManager.s16.sp,
               ),
             ),
@@ -369,7 +367,7 @@ class _DeliverySettingsScreenState extends State<DeliverySettingsScreen> {
               // TODO: Integrate endpoint
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: ColorManager.greenPrimary,
+              backgroundColor: ColorManager.brandPrimary,
               padding: const EdgeInsets.symmetric(vertical: AppPadding.p16),
               elevation: 0,
               shape: RoundedRectangleBorder(
@@ -379,7 +377,7 @@ class _DeliverySettingsScreenState extends State<DeliverySettingsScreen> {
             child: Text(
               Strings.saveChanges.tr(),
               style: getRegularTextStyle(
-                color: Colors.white,
+                color: ColorManager.textInverse,
                 fontSize: FontSizeManager.s16.sp,
               ),
             ),

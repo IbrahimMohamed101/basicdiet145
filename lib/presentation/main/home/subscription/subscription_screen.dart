@@ -26,7 +26,7 @@ class SubscriptionScreen extends StatelessWidget {
     return BlocProvider(
       create: (_) => instance<SubscriptionBloc>()..add(const GetPlansEvent()),
       child: Scaffold(
-        backgroundColor: ColorManager.whiteColor,
+        backgroundColor: ColorManager.backgroundApp,
         appBar: _buildAppBar(context),
         body: SafeArea(
           child: Column(
@@ -42,7 +42,7 @@ class SubscriptionScreen extends StatelessWidget {
 
   AppBar _buildAppBar(BuildContext context) {
     return AppBar(
-      backgroundColor: ColorManager.whiteColor,
+      backgroundColor: ColorManager.backgroundSurface,
       elevation: 0,
       centerTitle: true,
       scrolledUnderElevation: 0,
@@ -52,14 +52,14 @@ class SubscriptionScreen extends StatelessWidget {
           context.locale.languageCode == 'en'
               ? Icons.keyboard_arrow_left
               : Icons.keyboard_arrow_right,
-          color: ColorManager.blackColor,
+          color: ColorManager.iconPrimary,
           size: AppSize.s30.sp,
         ),
       ),
       title: Text(
         Strings.subscriptionPackages.tr(),
         style: getBoldTextStyle(
-          color: ColorManager.black101828,
+          color: ColorManager.textPrimary,
           fontSize: FontSizeManager.s20.sp,
         ),
       ),
@@ -73,14 +73,15 @@ class _SubscriptionStateView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BlocBuilder<SubscriptionBloc, SubscriptionState>(
-      builder: (context, state) => switch (state) {
-        SubscriptionLoading() => const _LoadingView(),
-        SubscriptionSuccess() => SubscriptionContentView(
-          plansModel: state.plansModel,
-        ),
-        SubscriptionError() => _ErrorView(message: state.message),
-        _ => const SizedBox.shrink(),
-      },
+      builder:
+          (context, state) => switch (state) {
+            SubscriptionLoading() => const _LoadingView(),
+            SubscriptionSuccess() => SubscriptionContentView(
+              plansModel: state.plansModel,
+            ),
+            SubscriptionError() => _ErrorView(message: state.message),
+            _ => const SizedBox.shrink(),
+          },
     );
   }
 }
@@ -89,8 +90,8 @@ class _LoadingView extends StatelessWidget {
   const _LoadingView();
 
   @override
-  Widget build(BuildContext context) => const Center(
-    child: CircularProgressIndicator(color: ColorManager.greenPrimary),
+  Widget build(BuildContext context) => Center(
+    child: CircularProgressIndicator(color: ColorManager.brandPrimary),
   );
 }
 
@@ -108,8 +109,9 @@ class _ErrorView extends StatelessWidget {
           Text(message),
           Gap(AppSize.s16.h),
           ElevatedButton(
-            onPressed: () =>
-                context.read<SubscriptionBloc>().add(const GetPlansEvent()),
+            onPressed:
+                () =>
+                    context.read<SubscriptionBloc>().add(const GetPlansEvent()),
             child: Text(Strings.tryAgain.tr()),
           ),
         ],
@@ -133,20 +135,26 @@ class _ProceedButton extends StatelessWidget {
 
         return Container(
           padding: EdgeInsetsDirectional.all(AppPadding.p20.w),
-          color: ColorManager.whiteColor,
+          color: ColorManager.backgroundSurface,
           child: ElevatedButton(
-            onPressed: isEnabled
-                ? () {
-                    context.push(
-                      PremiumMealsScreen.premiumRoute,
-                      extra: context.read<SubscriptionBloc>(),
-                    );
-                  }
-                : null,
+            onPressed:
+                isEnabled
+                    ? () {
+                      context.push(
+                        PremiumMealsScreen.premiumRoute,
+                        extra: context.read<SubscriptionBloc>(),
+                      );
+                    }
+                    : null,
             style: ElevatedButton.styleFrom(
-              backgroundColor: isEnabled
-                  ? ColorManager.greenFA76F
-                  : ColorManager.greenPrimary.withValues(alpha: 0.5),
+              backgroundColor:
+                  isEnabled
+                      ? ColorManager.brandPrimary
+                      : ColorManager.stateDisabledSurface,
+              foregroundColor:
+                  isEnabled
+                      ? ColorManager.textInverse
+                      : ColorManager.stateDisabled,
               minimumSize: Size(double.infinity, AppSize.s55.h),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(AppSize.s16.r),
@@ -157,7 +165,10 @@ class _ProceedButton extends StatelessWidget {
               Strings.choosePackageProceed.tr(),
               style: getBoldTextStyle(
                 fontSize: FontSizeManager.s16.sp,
-                color: ColorManager.whiteColor,
+                color:
+                    isEnabled
+                        ? ColorManager.textInverse
+                        : ColorManager.stateDisabled,
               ),
             ),
           ),

@@ -38,7 +38,10 @@ class _GradientOverlay extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.bottomCenter,
           end: Alignment.topCenter,
-          colors: [Colors.black.withValues(alpha: 0.8), Colors.transparent],
+          colors: [
+            ColorManager.backgroundOverlayStrong,
+            ColorManager.transparent,
+          ],
         ),
       ),
       child: Column(
@@ -50,7 +53,7 @@ class _GradientOverlay extends StatelessWidget {
           Text(
             Strings.subscriptionPricingMenu.tr(),
             style: getBoldTextStyle(
-              color: ColorManager.whiteColor,
+              color: ColorManager.textInverse,
               fontSize: FontSizeManager.s24.sp,
             ).copyWith(height: 1.2),
           ),
@@ -58,7 +61,7 @@ class _GradientOverlay extends StatelessWidget {
           Text(
             Strings.choosePackageHealthGoals.tr(),
             style: getRegularTextStyle(
-              color: ColorManager.whiteColor.withValues(alpha: 0.9),
+              color: ColorManager.textInverse.withValues(alpha: 0.9),
               fontSize: FontSizeManager.s12.sp,
             ),
           ),
@@ -81,13 +84,13 @@ class _GradientOverlay extends StatelessWidget {
 //         vertical: AppSize.s4.h,
 //       ),
 //       decoration: BoxDecoration(
-//         color: ColorManager.greenPrimary,
+//         color: ColorManager.brandPrimary,
 //         borderRadius: BorderRadius.circular(AppSize.s20.r),
 //       ),
 //       child: Text(
 //         label,
 //         style: getBoldTextStyle(
-//           color: ColorManager.whiteColor,
+//           color: ColorManager.backgroundSurface,
 //           fontSize: FontSizeManager.s12.sp,
 //         ),
 //       ),

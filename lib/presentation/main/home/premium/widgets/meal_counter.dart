@@ -26,8 +26,8 @@ class MealCounter extends StatelessWidget {
         CounterButton(
           icon: Icons.remove,
           onPressed: quantity > 0 ? onDecrement : null,
-          backgroundColor: ColorManager.greyF3F4F6,
-          iconColor: ColorManager.black101828,
+          backgroundColor: ColorManager.backgroundSubtle,
+          iconColor: ColorManager.textPrimary,
         ),
         SizedBox(
           width: AppSize.s34.w,
@@ -35,7 +35,7 @@ class MealCounter extends StatelessWidget {
             quantity.toString(),
             textAlign: TextAlign.center,
             style: getBoldTextStyle(
-              color: ColorManager.black101828,
+              color: ColorManager.textPrimary,
               fontSize: FontSizeManager.s18.sp,
             ).copyWith(height: 28 / 18),
           ),
@@ -43,8 +43,8 @@ class MealCounter extends StatelessWidget {
         CounterButton(
           icon: Icons.add,
           onPressed: onIncrement,
-          backgroundColor: ColorManager.greenDark,
-          iconColor: ColorManager.whiteColor,
+          backgroundColor: ColorManager.stateSuccessEmphasis,
+          iconColor: ColorManager.backgroundSurface,
         ),
       ],
     );

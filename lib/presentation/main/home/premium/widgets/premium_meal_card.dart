@@ -27,12 +27,15 @@ class PremiumMealCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: ColorManager.whiteColor,
+        color: ColorManager.backgroundSurface,
         borderRadius: BorderRadius.circular(AppSize.s16.r),
+        border: Border(
+          top: BorderSide(color: ColorManager.brandAccent, width: 3),
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 10,
+            color: ColorManager.brandAccentGlow,
+            blurRadius: 12,
             offset: const Offset(0, 4),
           ),
         ],
@@ -49,7 +52,7 @@ class PremiumMealCard extends StatelessWidget {
                 Text(
                   meal.ui.title,
                   style: getBoldTextStyle(
-                    color: ColorManager.black101828,
+                    color: ColorManager.textPrimary,
                     fontSize: FontSizeManager.s16.sp,
                   ).copyWith(height: 24 / 16),
                 ),
@@ -57,7 +60,7 @@ class PremiumMealCard extends StatelessWidget {
                 Text(
                   meal.ui.subtitle,
                   style: getRegularTextStyle(
-                    color: ColorManager.grey4A5565,
+                    color: ColorManager.textSecondary,
                     fontSize: FontSizeManager.s14.sp,
                   ).copyWith(height: 22.75 / 14),
                 ),
@@ -68,7 +71,7 @@ class PremiumMealCard extends StatelessWidget {
                     Text(
                       meal.priceLabel,
                       style: getBoldTextStyle(
-                        color: ColorManager.greenDark,
+                        color: ColorManager.brandAccent,
                         fontSize: FontSizeManager.s24.sp,
                       ).copyWith(height: 32 / 24),
                     ),

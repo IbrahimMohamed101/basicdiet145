@@ -72,11 +72,11 @@ class _SelectionModalState<T> extends State<SelectionModal<T>> {
               radius: AppSize.s12,
               text: Strings.confirm,
               color: _tempSelected != null
-                  ? ColorManager.greenPrimary
-                  : ColorManager.greyF3F4F6,
+                  ? ColorManager.brandPrimary
+                  : ColorManager.backgroundSubtle,
               textColor: _tempSelected != null
-                  ? Colors.white
-                  : ColorManager.grey6A7282,
+                  ? ColorManager.backgroundSurface
+                  : ColorManager.textSecondary,
               onTap: _tempSelected != null
                   ? () {
                       widget.onConfirm(_tempSelected!);
@@ -97,7 +97,7 @@ class _SelectionModalState<T> extends State<SelectionModal<T>> {
         Text(
           widget.title,
           style: getBoldTextStyle(
-            color: ColorManager.black101828,
+            color: ColorManager.textPrimary,
             fontSize: FontSizeManager.s18.sp,
           ),
         ),
@@ -131,8 +131,8 @@ class RadioSelectionTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = isAvailable
-        ? (isSelected ? ColorManager.greenPrimary : ColorManager.black101828)
-        : ColorManager.grey6A7282.withValues(alpha: 0.5);
+        ? (isSelected ? ColorManager.brandPrimary : ColorManager.textPrimary)
+        : ColorManager.textSecondary.withValues(alpha: 0.5);
 
     return Padding(
       padding: EdgeInsetsDirectional.only(bottom: AppPadding.p12.h),
@@ -142,13 +142,13 @@ class RadioSelectionTile extends StatelessWidget {
           padding: EdgeInsetsDirectional.all(AppPadding.p14.w),
           decoration: BoxDecoration(
             color: isSelected
-                ? ColorManager.greenPrimary.withValues(alpha: 0.05)
-                : Colors.transparent,
+                ? ColorManager.brandPrimary.withValues(alpha: 0.05)
+                : ColorManager.transparent,
             borderRadius: BorderRadius.circular(AppSize.s12.r),
             border: Border.all(
               color: isSelected
-                  ? ColorManager.greenPrimary
-                  : ColorManager.formFieldsBorderColor.withValues(
+                  ? ColorManager.brandPrimary
+                  : ColorManager.borderDefault.withValues(
                       alpha: isAvailable ? 1 : 0.5,
                     ),
             ),
@@ -160,8 +160,8 @@ class RadioSelectionTile extends StatelessWidget {
                     ? Icons.radio_button_checked
                     : Icons.radio_button_unchecked,
                 color: isSelected
-                    ? ColorManager.greenPrimary
-                    : ColorManager.formFieldsBorderColor.withValues(
+                    ? ColorManager.brandPrimary
+                    : ColorManager.borderDefault.withValues(
                         alpha: isAvailable ? 1 : 0.5,
                       ),
               ),
@@ -181,7 +181,7 @@ class RadioSelectionTile extends StatelessWidget {
                       Text(
                         subtitle!,
                         style: getRegularTextStyle(
-                          color: ColorManager.grey6A7282,
+                          color: ColorManager.textSecondary,
                           fontSize: FontSizeManager.s12.sp,
                         ),
                       ),
@@ -192,7 +192,7 @@ class RadioSelectionTile extends StatelessWidget {
                 Text(
                   trailing!,
                   style: getRegularTextStyle(
-                    color: ColorManager.grey6A7282,
+                    color: ColorManager.textSecondary,
                     fontSize: FontSizeManager.s14.sp,
                   ),
                 ),

@@ -104,35 +104,35 @@ class AppTextField extends StatelessWidget {
 
         hintText: hintText,
         filled: true,
-        fillColor: ColorManager.whiteColor,
+        fillColor: ColorManager.backgroundSurface,
         hintStyle: getRegularTextStyle(
-          color: ColorManager.grayColor,
+          color: ColorManager.textSecondary,
           fontSize: AppSize.s16.sp,
         ),
 
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppSize.s14.r),
           borderSide: BorderSide(
-            color: ColorManager.formFieldsBorderColor,
+            color: ColorManager.borderDefault,
             width: AppSize.s1.w,
           ),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppSize.s14.r),
           borderSide: BorderSide(
-            color: ColorManager.greenPrimary,
+            color: ColorManager.brandPrimary,
             width: AppSize.s1.w,
           ),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppSize.s14.r),
-          borderSide: BorderSide(color: ColorManager.errorColor),
+          borderSide: BorderSide(color: ColorManager.stateError),
         ),
 
         focusedErrorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppSize.s14.r),
           borderSide: BorderSide(
-            color: ColorManager.errorColor,
+            color: ColorManager.stateError,
             width: AppSize.s1.w,
           ),
         ),

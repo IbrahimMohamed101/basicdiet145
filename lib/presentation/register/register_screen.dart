@@ -31,6 +31,8 @@ class RegisterScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+
     return BlocProvider(
       create: (_) => instance<RegisterBloc>(),
       child: BlocListener<RegisterBloc, RegisterState>(
@@ -40,12 +42,13 @@ class RegisterScreen extends StatelessWidget {
           }
         },
         child: Scaffold(
-          backgroundColor: ColorManager.whiteColor,
+          backgroundColor: ColorManager.backgroundSurface,
           body: SafeArea(
             child: SingleChildScrollView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
               padding: EdgeInsetsDirectional.symmetric(
                 horizontal: AppSize.s24.w,
-              ),
+              ).copyWith(bottom: AppPadding.p20.h + bottomInset),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -74,7 +77,7 @@ class RegisterScreen extends StatelessWidget {
         Text(
           Strings.welcome.tr(),
           style: getBoldTextStyle(
-            color: ColorManager.blackColor,
+            color: ColorManager.textPrimary,
             fontSize: FontSizeManager.s30.sp,
           ),
         ),
@@ -82,7 +85,7 @@ class RegisterScreen extends StatelessWidget {
         Text(
           Strings.registerSubtitle.tr(),
           style: getRegularTextStyle(
-            color: ColorManager.grayColor,
+            color: ColorManager.textSecondary,
             fontSize: FontSizeManager.s16.sp,
           ),
         ),
@@ -98,7 +101,7 @@ class RegisterScreen extends StatelessWidget {
         Text(
           Strings.fullName.tr(),
           style: getRegularTextStyle(
-            color: ColorManager.blackColor,
+            color: ColorManager.textPrimary,
             fontSize: FontSizeManager.s16.sp,
           ),
         ),
@@ -125,7 +128,7 @@ class RegisterScreen extends StatelessWidget {
         Text(
           Strings.phone.tr(),
           style: getRegularTextStyle(
-            color: ColorManager.blackColor,
+            color: ColorManager.textPrimary,
             fontSize: FontSizeManager.s16.sp,
           ),
         ),
@@ -149,7 +152,7 @@ class RegisterScreen extends StatelessWidget {
         Text(
           Strings.emailOptional.tr(),
           style: getRegularTextStyle(
-            color: ColorManager.blackColor,
+            color: ColorManager.textPrimary,
             fontSize: FontSizeManager.s16.sp,
           ),
         ),
@@ -182,10 +185,10 @@ class RegisterScreen extends StatelessWidget {
 
             return ButtonWidget(
               text: isLoading ? Strings.loading.tr() : Strings.createAccount.tr(),
-              textColor: ColorManager.whiteColor,
+              textColor: ColorManager.backgroundSurface,
               color: isEnabled
-                  ? ColorManager.greenDark
-                  : ColorManager.greenDark.withValues(alpha: 0.5),
+                  ? ColorManager.stateSuccessEmphasis
+                  : ColorManager.stateSuccessEmphasis.withValues(alpha: 0.5),
               width: double.infinity,
               radius: AppSize.s12.r,
               onTap: isEnabled
@@ -207,13 +210,13 @@ class RegisterScreen extends StatelessWidget {
         Text(
           Strings.alreadyHaveAccount.tr(),
           style: getRegularTextStyle(
-            color: ColorManager.grayColor,
+            color: ColorManager.textSecondary,
             fontSize: FontSizeManager.s14.sp,
           ),
         ),
         TextButtonWidget(
           Strings.signIn.tr(),
-          ColorManager.greenDark,
+          ColorManager.stateSuccessEmphasis,
           FontSizeManager.s14,
           () => context.push(LoginScreen.loginRoute),
         ),

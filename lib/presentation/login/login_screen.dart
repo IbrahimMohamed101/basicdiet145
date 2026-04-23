@@ -27,6 +27,8 @@ class LoginScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+
     return BlocProvider(
       create: (_) => instance<LoginBloc>(),
       child: BlocListener<LoginBloc, LoginState>(
@@ -38,12 +40,13 @@ class LoginScreen extends StatelessWidget {
           }
         },
         child: Scaffold(
-          backgroundColor: ColorManager.whiteColor,
+          backgroundColor: ColorManager.backgroundSurface,
           body: SafeArea(
             child: SingleChildScrollView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
               padding: EdgeInsetsDirectional.symmetric(
                 horizontal: AppSize.s24.w,
-              ),
+              ).copyWith(bottom: AppPadding.p20.h + bottomInset),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -70,7 +73,7 @@ class LoginScreen extends StatelessWidget {
         Text(
           Strings.welcomeBack.tr(),
           style: getBoldTextStyle(
-            color: ColorManager.blackColor,
+            color: ColorManager.textPrimary,
             fontSize: FontSizeManager.s30.sp,
           ),
         ),
@@ -78,7 +81,7 @@ class LoginScreen extends StatelessWidget {
         Text(
           Strings.signInToContinueYourHealthyJourney.tr(),
           style: getRegularTextStyle(
-            color: ColorManager.grayColor,
+            color: ColorManager.textSecondary,
             fontSize: FontSizeManager.s16.sp,
           ),
         ),
@@ -93,7 +96,7 @@ class LoginScreen extends StatelessWidget {
         Text(
           Strings.phone.tr(),
           style: getRegularTextStyle(
-            color: ColorManager.blackColor,
+            color: ColorManager.textPrimary,
             fontSize: FontSizeManager.s16.sp,
           ),
         ),
@@ -120,10 +123,10 @@ class LoginScreen extends StatelessWidget {
 
             return ButtonWidget(
               text: isLoading ? Strings.loading.tr() : Strings.sendOtp.tr(),
-              textColor: ColorManager.whiteColor,
+              textColor: ColorManager.backgroundSurface,
               color: isEnabled
-                  ? ColorManager.greenDark
-                  : ColorManager.greenDark.withValues(alpha: 0.5),
+                  ? ColorManager.stateSuccessEmphasis
+                  : ColorManager.stateSuccessEmphasis.withValues(alpha: 0.5),
               width: double.infinity,
               radius: AppSize.s12.r,
               onTap: isEnabled
@@ -143,13 +146,13 @@ class LoginScreen extends StatelessWidget {
         Text(
           Strings.dontHaveAccount.tr(),
           style: getRegularTextStyle(
-            color: ColorManager.grayColor,
+            color: ColorManager.textSecondary,
             fontSize: FontSizeManager.s14.sp,
           ),
         ),
         TextButtonWidget(
           Strings.signUp.tr(),
-          ColorManager.greenDark,
+          ColorManager.stateSuccessEmphasis,
           FontSizeManager.s14,
           () => context.push(RegisterScreen.registerRoute),
         ),

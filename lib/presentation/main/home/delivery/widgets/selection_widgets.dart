@@ -29,7 +29,7 @@ class DeliveryLocationSelector extends StatelessWidget {
           vertical: AppPadding.p16.h,
         ),
         decoration: BoxDecoration(
-          border: Border.all(color: ColorManager.formFieldsBorderColor),
+          border: Border.all(color: ColorManager.borderDefault),
           borderRadius: BorderRadius.circular(AppSize.s12.r),
         ),
         child: Row(
@@ -39,8 +39,8 @@ class DeliveryLocationSelector extends StatelessWidget {
                 value ?? label,
                 style: getRegularTextStyle(
                   color: value != null
-                      ? ColorManager.black101828
-                      : ColorManager.grey6A7282,
+                      ? ColorManager.textPrimary
+                      : ColorManager.textSecondary,
                   fontSize: FontSizeManager.s16.sp,
                 ),
               ),
@@ -48,7 +48,7 @@ class DeliveryLocationSelector extends StatelessWidget {
             Icon(
               Icons.arrow_forward_ios,
               size: AppSize.s16.w,
-              color: ColorManager.grey6A7282,
+              color: ColorManager.textSecondary,
             ),
           ],
         ),
@@ -79,13 +79,13 @@ class DeliveryTypeCard extends StatelessWidget {
         padding: EdgeInsetsDirectional.all(AppPadding.p16.w),
         decoration: BoxDecoration(
           color: isSelected
-              ? ColorManager.greenPrimary.withValues(alpha: 0.05)
-              : Colors.white,
+              ? ColorManager.brandPrimary.withValues(alpha: 0.05)
+              : ColorManager.backgroundSurface,
           borderRadius: BorderRadius.circular(AppSize.s16.r),
           border: Border.all(
             color: isSelected
-                ? ColorManager.greenPrimary
-                : ColorManager.formFieldsBorderColor,
+                ? ColorManager.brandPrimary
+                : ColorManager.borderDefault,
             width: 1.5,
           ),
         ),
@@ -95,13 +95,13 @@ class DeliveryTypeCard extends StatelessWidget {
               padding: EdgeInsetsDirectional.all(AppPadding.p12.w),
               decoration: BoxDecoration(
                 color: isSelected
-                    ? ColorManager.greenPrimary
-                    : ColorManager.greyF3F4F6,
+                    ? ColorManager.brandPrimary
+                    : ColorManager.backgroundSubtle,
                 borderRadius: BorderRadius.circular(AppSize.s12.r),
               ),
               child: Icon(
                 icon,
-                color: isSelected ? Colors.white : ColorManager.grey6A7282,
+                color: isSelected ? ColorManager.backgroundSurface : ColorManager.textSecondary,
               ),
             ),
             Gap(AppSize.s16.w),
@@ -112,14 +112,14 @@ class DeliveryTypeCard extends StatelessWidget {
                   Text(
                     method.title,
                     style: getBoldTextStyle(
-                      color: ColorManager.black101828,
+                      color: ColorManager.textPrimary,
                       fontSize: FontSizeManager.s18.sp,
                     ),
                   ),
                   Text(
                     method.subtitle,
                     style: getRegularTextStyle(
-                      color: ColorManager.grey6A7282,
+                      color: ColorManager.textSecondary,
                       fontSize: FontSizeManager.s14.sp,
                     ),
                   ),
@@ -130,8 +130,8 @@ class DeliveryTypeCard extends StatelessWidget {
                         : method.helperText,
                     style: getRegularTextStyle(
                       color: isSelected
-                          ? ColorManager.greenPrimary
-                          : ColorManager.grey6A7282,
+                          ? ColorManager.brandPrimary
+                          : ColorManager.textSecondary,
                       fontSize: FontSizeManager.s12.sp,
                     ),
                   ),
@@ -139,7 +139,7 @@ class DeliveryTypeCard extends StatelessWidget {
               ),
             ),
             if (isSelected)
-              Icon(Icons.check_circle, color: ColorManager.greenPrimary),
+              Icon(Icons.check_circle, color: ColorManager.brandPrimary),
           ],
         ),
       ),

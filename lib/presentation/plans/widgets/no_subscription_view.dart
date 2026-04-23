@@ -29,7 +29,7 @@ class NoSubscriptionView extends StatelessWidget {
               Strings.noSubscriptionTitle.tr(),
               textAlign: TextAlign.center,
               style: getBoldTextStyle(
-                color: ColorManager.black101828,
+                color: ColorManager.textPrimary,
                 fontSize: FontSizeManager.s22.sp,
               ),
             ),
@@ -38,7 +38,7 @@ class NoSubscriptionView extends StatelessWidget {
               Strings.noSubscriptionSubtitle.tr(),
               textAlign: TextAlign.center,
               style: getRegularTextStyle(
-                color: ColorManager.grey6A7282,
+                color: ColorManager.textSecondary,
                 fontSize: FontSizeManager.s15.sp,
               ),
             ),
@@ -57,7 +57,7 @@ class NoSubscriptionView extends StatelessWidget {
         borderRadius: BorderRadius.circular(AppSize.s24.r),
         boxShadow: [
           BoxShadow(
-            color: ColorManager.greenPrimary.withValues(alpha: 0.1),
+            color: ColorManager.brandPrimary.withValues(alpha: 0.1),
             blurRadius: 40,
             offset: const Offset(0, 10),
           ),
@@ -77,18 +77,18 @@ class NoSubscriptionView extends StatelessWidget {
         onPressed: () =>
             context.pushReplacement(SubscriptionScreen.subscriptionRoute),
         style: ElevatedButton.styleFrom(
-          backgroundColor: ColorManager.greenPrimary,
+          backgroundColor: ColorManager.brandPrimary,
           padding: const EdgeInsets.symmetric(vertical: AppPadding.p18),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppSize.s16.r),
           ),
           elevation: 4,
-          shadowColor: ColorManager.greenPrimary.withValues(alpha: 0.3),
+          shadowColor: ColorManager.brandPrimary.withValues(alpha: 0.3),
         ),
         child: Text(
           Strings.exploreOurPlans.tr(),
           style: getBoldTextStyle(
-            color: Colors.white,
+            color: ColorManager.backgroundSurface,
             fontSize: FontSizeManager.s16.sp,
           ),
         ),

@@ -56,7 +56,7 @@ class _MainScreenContentState extends State<_MainScreenContent> {
     return BlocBuilder<MainBloc, MainState>(
       builder: (context, state) {
         return Scaffold(
-          backgroundColor: ColorManager.whiteColor,
+          backgroundColor: ColorManager.backgroundSurface,
           body: _pages[state.currentIndex],
           bottomNavigationBar: BottomNavBar(
             currentIndex: state.currentIndex,
@@ -86,14 +86,14 @@ class BottomNavBar extends StatelessWidget {
       child: Container(
         height: AppSize.s100.h,
         decoration: BoxDecoration(
-          color: ColorManager.whiteColor,
+          color: ColorManager.backgroundSurface,
           borderRadius: BorderRadius.only(
             topLeft: Radius.circular(AppSize.s50.r),
             topRight: Radius.circular(AppSize.s50.r),
           ),
           boxShadow: [
             BoxShadow(
-              color: ColorManager.blackColor.withValues(alpha: 0.15),
+              color: ColorManager.textPrimary.withValues(alpha: 0.15),
               spreadRadius: 0,
               blurRadius: 15,
               offset: const Offset(0, 0), // shadow ABOVE the nav bar
@@ -106,9 +106,9 @@ class BottomNavBar extends StatelessWidget {
             topRight: Radius.circular(AppSize.s50.r),
           ),
           child: BottomNavigationBar(
-            backgroundColor: ColorManager.whiteColor,
-            selectedItemColor: ColorManager.greenPrimary,
-            unselectedItemColor: ColorManager.grayColor,
+            backgroundColor: ColorManager.backgroundSurface,
+            selectedItemColor: ColorManager.brandPrimary,
+            unselectedItemColor: ColorManager.textSecondary,
             showUnselectedLabels: true,
             type: BottomNavigationBarType.fixed,
             currentIndex: currentIndex,
@@ -161,13 +161,13 @@ class BottomNavBar extends StatelessWidget {
       return Container(
         padding: EdgeInsetsDirectional.all(AppPadding.p8.r),
         decoration: const BoxDecoration(
-          color: ColorManager.greenPrimary,
+          color: ColorManager.brandPrimary,
           shape: BoxShape.circle,
         ),
         child: SvgPicture.asset(
           assetPath,
           colorFilter: const ColorFilter.mode(
-            ColorManager.whiteColor,
+            ColorManager.backgroundSurface,
             BlendMode.srcIn,
           ),
           width: AppSize.s24.w,
@@ -180,7 +180,7 @@ class BottomNavBar extends StatelessWidget {
         child: SvgPicture.asset(
           assetPath,
           colorFilter: const ColorFilter.mode(
-            ColorManager.grayColor,
+            ColorManager.textSecondary,
             BlendMode.srcIn,
           ),
           width: AppSize.s24.w,

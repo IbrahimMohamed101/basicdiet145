@@ -24,18 +24,22 @@ class PaymentSuccessfulScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BlocProvider(
-      create: (_) =>
-          instance<PaymentValidationCubit>()..validatePayment(draftId),
+      create:
+          (_) => instance<PaymentValidationCubit>()..validatePayment(draftId),
       child: PopScope(
         canPop: false,
         child: Scaffold(
-          backgroundColor: ColorManager.whiteColor,
+          backgroundColor: ColorManager.backgroundSurface,
           body: SafeArea(
             child: BlocBuilder<PaymentValidationCubit, PaymentValidationState>(
               builder: (context, state) {
                 if (state is PaymentValidationLoading ||
                     state is PaymentValidationInitial) {
-                  return const Center(child: CircularProgressIndicator());
+                  return Center(
+                    child: CircularProgressIndicator(
+                      color: ColorManager.brandPrimary,
+                    ),
+                  );
                 }
 
                 if (state is PaymentValidationFailure) {
@@ -46,7 +50,7 @@ class PaymentSuccessfulScreen extends StatelessWidget {
                       children: [
                         Icon(
                           Icons.error_outline,
-                          color: ColorManager.errorColor,
+                          color: ColorManager.stateError,
                           size: 64.sp,
                         ),
                         Gap(AppSize.s16.h),
@@ -54,15 +58,18 @@ class PaymentSuccessfulScreen extends StatelessWidget {
                           state.message,
                           textAlign: TextAlign.center,
                           style: getRegularTextStyle(
-                            color: ColorManager.black101828,
+                            color: ColorManager.textPrimary,
                             fontSize: FontSizeManager.s16.sp,
                           ),
                         ),
                         Gap(AppSize.s24.h),
                         ButtonWidget(
                           text: Strings.goToHome.tr(),
-                          onTap: () =>
-                              _openMainScreen(context, MainScreen.homeTabIndex),
+                          onTap:
+                              () => _openMainScreen(
+                                context,
+                                MainScreen.homeTabIndex,
+                              ),
                           radius: AppSize.s14,
                         ),
                       ],
@@ -86,7 +93,7 @@ class PaymentSuccessfulScreen extends StatelessWidget {
                         Strings.paymentSuccessful.tr(),
                         textAlign: TextAlign.center,
                         style: getBoldTextStyle(
-                          color: ColorManager.black101828,
+                          color: ColorManager.textPrimary,
                           fontSize: FontSizeManager.s30.sp,
                         ),
                       ),
@@ -99,7 +106,7 @@ class PaymentSuccessfulScreen extends StatelessWidget {
                           Strings.paymentSuccessfulSubtitle.tr(),
                           textAlign: TextAlign.center,
                           style: getRegularTextStyle(
-                            color: ColorManager.grey6A7282,
+                            color: ColorManager.textSecondary,
                             fontSize: FontSizeManager.s16.sp,
                           ).copyWith(height: 1.45),
                         ),
@@ -108,27 +115,33 @@ class PaymentSuccessfulScreen extends StatelessWidget {
                       ButtonWidget(
                         radius: AppSize.s14,
                         text: Strings.viewMyPlan.tr(),
-                        onTap: () =>
-                            _openMainScreen(context, MainScreen.plansTabIndex),
+                        onTap:
+                            () => _openMainScreen(
+                              context,
+                              MainScreen.plansTabIndex,
+                            ),
                       ),
                       Gap(AppSize.s14.h),
                       OutlinedButton(
-                        onPressed: () =>
-                            _openMainScreen(context, MainScreen.homeTabIndex),
+                        onPressed:
+                            () => _openMainScreen(
+                              context,
+                              MainScreen.homeTabIndex,
+                            ),
                         style: OutlinedButton.styleFrom(
                           minimumSize: Size(double.infinity, AppSize.s50.h),
-                          side: const BorderSide(
-                            color: ColorManager.formFieldsBorderColor,
+                          side: BorderSide(
+                            color: ColorManager.borderDefault,
                           ),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(AppSize.s14.r),
                           ),
-                          backgroundColor: ColorManager.whiteColor,
+                          backgroundColor: ColorManager.backgroundSurface,
                         ),
                         child: Text(
                           Strings.goToHome.tr(),
                           style: getBoldTextStyle(
-                            color: ColorManager.black101828,
+                            color: ColorManager.textPrimary,
                             fontSize: FontSizeManager.s16.sp,
                           ),
                         ),
@@ -160,27 +173,27 @@ class _SuccessBadge extends StatelessWidget {
       height: AppSize.s120.w,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: ColorManager.greenPrimary.withValues(alpha: 0.10),
+        color: ColorManager.stateSuccessSurface,
       ),
       child: Center(
         child: Container(
           width: AppSize.s60.w,
           height: AppSize.s60.w,
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: ColorManager.whiteColor,
+            color: ColorManager.backgroundSurface,
           ),
           child: Center(
             child: Container(
               width: AppSize.s48.w,
               height: AppSize.s48.w,
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: ColorManager.greenDark,
+                color: ColorManager.stateSuccessEmphasis,
               ),
               child: Icon(
                 Icons.check_rounded,
-                color: ColorManager.whiteColor,
+                color: ColorManager.backgroundSurface,
                 size: AppSize.s28,
               ),
             ),

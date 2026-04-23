@@ -27,10 +27,10 @@ class PickupCompletedCard extends StatelessWidget {
       width: double.infinity,
       padding: EdgeInsets.all(AppPadding.p24.w),
       decoration: BoxDecoration(
-        color: ColorManager.greenPrimary.withValues(alpha: 0.05),
+        color: ColorManager.brandPrimary.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(AppSize.s24.r),
         border: Border.all(
-          color: ColorManager.greenPrimary.withValues(alpha: 0.2),
+          color: ColorManager.brandPrimary.withValues(alpha: 0.2),
         ),
       ),
       child: Row(
@@ -38,12 +38,12 @@ class PickupCompletedCard extends StatelessWidget {
           Container(
             padding: EdgeInsets.all(AppPadding.p8.w),
             decoration: BoxDecoration(
-              color: ColorManager.greenPrimary.withValues(alpha: 0.1),
+              color: ColorManager.brandPrimary.withValues(alpha: 0.1),
               shape: BoxShape.circle,
             ),
             child: Icon(
               Icons.check_circle_outline,
-              color: ColorManager.greenPrimary,
+              color: ColorManager.brandPrimary,
               size: AppSize.s24.sp,
             ),
           ),
@@ -55,7 +55,7 @@ class PickupCompletedCard extends StatelessWidget {
                 Text(
                   Strings.pickupCompletedTitle.tr(),
                   style: getBoldTextStyle(
-                    color: ColorManager.greenPrimary,
+                    color: ColorManager.brandPrimary,
                     fontSize: FontSizeManager.s16.sp,
                   ),
                 ),
@@ -63,7 +63,7 @@ class PickupCompletedCard extends StatelessWidget {
                 Text(
                   Strings.pickupCompletedMessage.tr(),
                   style: getRegularTextStyle(
-                    color: ColorManager.grey6A7282,
+                    color: ColorManager.textSecondary,
                     fontSize: FontSizeManager.s12.sp,
                   ),
                 ),
@@ -91,9 +91,9 @@ class _NoShowCompletedCard extends StatelessWidget {
       width: double.infinity,
       padding: EdgeInsets.all(AppPadding.p24.w),
       decoration: BoxDecoration(
-        color: ColorManager.greyF3F4F6,
+        color: ColorManager.backgroundSubtle,
         borderRadius: BorderRadius.circular(AppSize.s24.r),
-        border: Border.all(color: ColorManager.formFieldsBorderColor),
+        border: Border.all(color: ColorManager.borderDefault),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -101,13 +101,13 @@ class _NoShowCompletedCard extends StatelessWidget {
           Container(
             padding: EdgeInsets.all(AppPadding.p10.w),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: ColorManager.backgroundSurface,
               shape: BoxShape.circle,
-              border: Border.all(color: ColorManager.formFieldsBorderColor),
+              border: Border.all(color: ColorManager.borderDefault),
             ),
             child: Icon(
               Icons.person_off_outlined,
-              color: ColorManager.grey6A7282,
+              color: ColorManager.textSecondary,
               size: AppSize.s20.sp,
             ),
           ),
@@ -119,7 +119,7 @@ class _NoShowCompletedCard extends StatelessWidget {
                 Text(
                   Strings.noShowTitle.tr(),
                   style: getBoldTextStyle(
-                    color: ColorManager.black101828,
+                    color: ColorManager.textPrimary,
                     fontSize: FontSizeManager.s16.sp,
                   ),
                 ),
@@ -127,7 +127,7 @@ class _NoShowCompletedCard extends StatelessWidget {
                 Text(
                   message,
                   style: getRegularTextStyle(
-                    color: ColorManager.grey6A7282,
+                    color: ColorManager.textSecondary,
                     fontSize: FontSizeManager.s14.sp,
                   ),
                 ),

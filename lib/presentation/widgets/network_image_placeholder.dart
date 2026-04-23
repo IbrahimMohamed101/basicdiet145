@@ -63,11 +63,11 @@ class _Placeholder extends StatelessWidget {
     return Container(
       width: width,
       height: height,
-      color: ColorManager.greyF3F4F6,
+      color: ColorManager.backgroundSubtle,
       child: Center(
         child: Icon(
           Icons.image_not_supported_outlined,
-          color: ColorManager.grey9CA3AF,
+          color: ColorManager.textMuted,
           size: 24.w,
         ),
       ),

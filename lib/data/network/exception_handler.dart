@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:basic_diet/data/network/failure.dart';
 import 'package:basic_diet/presentation/resources/strings_manager.dart';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 
 class ExceptionHandler implements Exception {
   late Failure failure;
@@ -41,7 +42,7 @@ Failure _handleException(DioException exception) {
     case DioExceptionType.connectionError:
       return DataSource.NO_INTERNET_CONNECTION.getFailure();
     case DioExceptionType.unknown:
-      print("Unknown DioException: ${exception.error}");
+      debugPrint("Unknown DioException: ${exception.error}");
       if (exception.error is SocketException) {
         return DataSource.NO_INTERNET_CONNECTION.getFailure();
       }

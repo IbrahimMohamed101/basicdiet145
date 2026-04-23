@@ -23,6 +23,16 @@ enum SubscriptionQuoteStatus { initial, loading, success, failure }
 
 enum SubscriptionCheckoutStatus { initial, loading, success, failure }
 
+enum SubscriptionPromoStatus {
+  initial,
+  applying,
+  applied,
+  invalid,
+  expired,
+  ineligible,
+  backendError,
+}
+
 const Object _noChange = Object();
 
 class SubscriptionSuccess extends SubscriptionState {
@@ -35,11 +45,18 @@ class SubscriptionSuccess extends SubscriptionState {
   final SubscriptionQuoteStatus quoteStatus;
   final SubscriptionQuoteModel? subscriptionQuote;
   final String? quoteErrorMessage;
+  final dynamic quoteErrorCode;
   final SubscriptionQuoteRequestModel? lastQuoteRequest;
+  final SubscriptionQuoteRequestModel? lastSuccessfulQuoteRequest;
   final SubscriptionCheckoutRequestModel? lastCheckoutRequest;
   final SubscriptionCheckoutStatus checkoutStatus;
   final SubscriptionCheckoutModel? subscriptionCheckout;
   final String? checkoutErrorMessage;
+  final String promoCodeInput;
+  final SubscriptionPromoStatus promoStatus;
+  final String? promoMessage;
+  final SubscriptionAppliedPromoModel? appliedPromo;
+  final bool isPricingStale;
   final int expandedPlanIndex;
 
   const SubscriptionSuccess(
@@ -52,13 +69,27 @@ class SubscriptionSuccess extends SubscriptionState {
     this.quoteStatus = SubscriptionQuoteStatus.initial,
     this.subscriptionQuote,
     this.quoteErrorMessage,
+    this.quoteErrorCode,
     this.lastQuoteRequest,
+    this.lastSuccessfulQuoteRequest,
     this.lastCheckoutRequest,
     this.checkoutStatus = SubscriptionCheckoutStatus.initial,
     this.subscriptionCheckout,
     this.checkoutErrorMessage,
+    this.promoCodeInput = '',
+    this.promoStatus = SubscriptionPromoStatus.initial,
+    this.promoMessage,
+    this.appliedPromo,
+    this.isPricingStale = false,
     this.expandedPlanIndex = -1,
   });
+
+  bool get canCheckout =>
+      subscriptionQuote != null &&
+      lastSuccessfulQuoteRequest != null &&
+      !isPricingStale &&
+      quoteStatus != SubscriptionQuoteStatus.loading &&
+      checkoutStatus != SubscriptionCheckoutStatus.loading;
 
   SubscriptionSuccess copyWith({
     PlansModel? plansModel,
@@ -70,11 +101,18 @@ class SubscriptionSuccess extends SubscriptionState {
     SubscriptionQuoteStatus? quoteStatus,
     Object? subscriptionQuote = _noChange,
     Object? quoteErrorMessage = _noChange,
+    Object? quoteErrorCode = _noChange,
     Object? lastQuoteRequest = _noChange,
+    Object? lastSuccessfulQuoteRequest = _noChange,
     Object? lastCheckoutRequest = _noChange,
     SubscriptionCheckoutStatus? checkoutStatus,
     Object? subscriptionCheckout = _noChange,
     Object? checkoutErrorMessage = _noChange,
+    String? promoCodeInput,
+    SubscriptionPromoStatus? promoStatus,
+    Object? promoMessage = _noChange,
+    Object? appliedPromo = _noChange,
+    bool? isPricingStale,
     int? expandedPlanIndex,
   }) {
     return SubscriptionSuccess(
@@ -92,9 +130,16 @@ class SubscriptionSuccess extends SubscriptionState {
       quoteErrorMessage: identical(quoteErrorMessage, _noChange)
           ? this.quoteErrorMessage
           : quoteErrorMessage as String?,
+      quoteErrorCode: identical(quoteErrorCode, _noChange)
+          ? this.quoteErrorCode
+          : quoteErrorCode,
       lastQuoteRequest: identical(lastQuoteRequest, _noChange)
           ? this.lastQuoteRequest
           : lastQuoteRequest as SubscriptionQuoteRequestModel?,
+      lastSuccessfulQuoteRequest:
+          identical(lastSuccessfulQuoteRequest, _noChange)
+          ? this.lastSuccessfulQuoteRequest
+          : lastSuccessfulQuoteRequest as SubscriptionQuoteRequestModel?,
       lastCheckoutRequest: identical(lastCheckoutRequest, _noChange)
           ? this.lastCheckoutRequest
           : lastCheckoutRequest as SubscriptionCheckoutRequestModel?,
@@ -105,6 +150,15 @@ class SubscriptionSuccess extends SubscriptionState {
       checkoutErrorMessage: identical(checkoutErrorMessage, _noChange)
           ? this.checkoutErrorMessage
           : checkoutErrorMessage as String?,
+      promoCodeInput: promoCodeInput ?? this.promoCodeInput,
+      promoStatus: promoStatus ?? this.promoStatus,
+      promoMessage: identical(promoMessage, _noChange)
+          ? this.promoMessage
+          : promoMessage as String?,
+      appliedPromo: identical(appliedPromo, _noChange)
+          ? this.appliedPromo
+          : appliedPromo as SubscriptionAppliedPromoModel?,
+      isPricingStale: isPricingStale ?? this.isPricingStale,
       expandedPlanIndex: expandedPlanIndex ?? this.expandedPlanIndex,
     );
   }
@@ -120,11 +174,18 @@ class SubscriptionSuccess extends SubscriptionState {
     quoteStatus,
     subscriptionQuote,
     quoteErrorMessage,
+    quoteErrorCode,
     lastQuoteRequest,
+    lastSuccessfulQuoteRequest,
     lastCheckoutRequest,
     checkoutStatus,
     subscriptionCheckout,
     checkoutErrorMessage,
+    promoCodeInput,
+    promoStatus,
+    promoMessage,
+    appliedPromo,
+    isPricingStale,
     expandedPlanIndex,
   ];
 }

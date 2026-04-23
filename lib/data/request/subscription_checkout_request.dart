@@ -14,6 +14,8 @@ class SubscriptionCheckoutRequest {
   final int mealsPerDay;
   @JsonKey(name: 'startDate')
   final String startDate;
+  @JsonKey(name: 'promoCode', includeIfNull: false)
+  final String? promoCode;
   @JsonKey(name: 'premiumItems')
   final List<SubscriptionCheckoutPremiumItemRequest> premiumItems;
   @JsonKey(name: 'addons')
@@ -31,6 +33,7 @@ class SubscriptionCheckoutRequest {
     required this.grams,
     required this.mealsPerDay,
     required this.startDate,
+    this.promoCode,
     required this.premiumItems,
     required this.addons,
     required this.delivery,

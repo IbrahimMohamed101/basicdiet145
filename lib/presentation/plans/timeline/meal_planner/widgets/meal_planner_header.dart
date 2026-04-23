@@ -22,7 +22,7 @@ class MealPlannerHeader extends StatelessWidget {
             children: [
               IconButton(
                 onPressed: () => Navigator.pop(context),
-                icon: const Icon(Icons.arrow_back, color: ColorManager.black101828),
+                icon: const Icon(Icons.arrow_back, color: ColorManager.textPrimary),
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(),
               ),
@@ -33,7 +33,7 @@ class MealPlannerHeader extends StatelessWidget {
           Text(
             Strings.mealPlanner.tr(),
             style: getBoldTextStyle(
-              color: ColorManager.black101828,
+              color: ColorManager.textPrimary,
               fontSize: FontSizeManager.s24.sp,
             ),
           ),
@@ -41,7 +41,7 @@ class MealPlannerHeader extends StatelessWidget {
           Text(
             Strings.planMealsWeekAhead.tr(),
             style: getRegularTextStyle(
-              color: ColorManager.grey6A7282,
+              color: ColorManager.textSecondary,
               fontSize: FontSizeManager.s14.sp,
             ),
           ),

@@ -34,6 +34,11 @@ class SubscriptionContentView extends StatelessWidget {
         final selectedMealOption = state.selectedMealOption;
         final expandedIndex = state.expandedPlanIndex;
 
+        assert(() {
+          debugPrint('Selected: ${selectedMealOption?.mealsPerDay}');
+          return true;
+        }());
+
         return ListView(
           padding: EdgeInsetsDirectional.symmetric(
             horizontal: AppPadding.p20.w,
@@ -96,7 +101,7 @@ class _BenefitsRow extends StatelessWidget {
           child: Text(
             Strings.vatAndDelivery.tr(),
             style: getRegularTextStyle(
-              color: ColorManager.grayColor,
+              color: ColorManager.textSecondary,
               fontSize: FontSizeManager.s14.sp,
             ),
           ),
@@ -127,14 +132,14 @@ class _BenefitItem extends StatelessWidget {
       children: [
         Icon(
           Icons.check,
-          color: ColorManager.greenPrimary,
+          color: ColorManager.stateSuccess,
           size: AppSize.s16.sp,
         ),
         Gap(AppSize.s4.w),
         Text(
           text,
           style: getRegularTextStyle(
-            color: ColorManager.grey6A7282,
+            color: ColorManager.textSecondary,
             fontSize: FontSizeManager.s10.sp,
           ),
         ),

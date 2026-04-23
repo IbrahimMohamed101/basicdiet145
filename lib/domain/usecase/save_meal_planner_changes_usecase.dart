@@ -1,6 +1,5 @@
 import 'package:basic_diet/data/network/failure.dart';
 import 'package:basic_diet/data/request/bulk_selections_request.dart';
-import 'package:basic_diet/domain/model/base__model.dart';
 import 'package:basic_diet/domain/model/bulk_selections_model.dart';
 import 'package:basic_diet/domain/repository/repository.dart';
 import 'package:basic_diet/domain/usecase/base_usecase.dart';

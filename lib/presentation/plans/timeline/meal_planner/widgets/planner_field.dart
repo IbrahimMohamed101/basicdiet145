@@ -28,15 +28,15 @@ class PlannerField extends StatelessWidget {
   Widget build(BuildContext context) {
     final bgColor = isSelected
         ? (isPremium
-            ? ColorManager.orangeFFF5EC
-            : ColorManager.bluePrimary.withValues(alpha: 0.06))
-        : ColorManager.greyF3F4F6.withValues(alpha: 0.8);
+              ? ColorManager.brandAccentSoft
+              : ColorManager.brandPrimaryTint)
+        : ColorManager.backgroundSubtle.withValues(alpha: 0.8);
 
     final borderColor = isSelected
         ? (isPremium
-            ? ColorManager.orangeLight
-            : ColorManager.bluePrimary.withValues(alpha: 0.25))
-        : Colors.transparent;
+              ? ColorManager.brandAccentBorder
+              : ColorManager.brandPrimary.withValues(alpha: 0.25))
+        : ColorManager.transparent;
 
     return Opacity(
       opacity: isDisabled ? 0.5 : 1.0,
@@ -46,7 +46,7 @@ class PlannerField extends StatelessWidget {
           Text(
             title,
             style: getRegularTextStyle(
-              color: ColorManager.grey6A7282,
+              color: ColorManager.textSecondary,
               fontSize: FontSizeManager.s12.sp,
             ),
           ),
@@ -73,15 +73,15 @@ class PlannerField extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: getBoldTextStyle(
                         color: isSelected
-                            ? ColorManager.black101828
-                            : ColorManager.grey6A7282,
+                            ? ColorManager.textPrimary
+                            : ColorManager.textSecondary,
                         fontSize: FontSizeManager.s14.sp,
                       ),
                     ),
                   ),
                   Icon(
                     Icons.keyboard_arrow_down,
-                    color: ColorManager.grey6A7282,
+                    color: ColorManager.iconSecondary,
                     size: 22.w,
                   ),
                 ],

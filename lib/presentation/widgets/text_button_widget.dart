@@ -1,4 +1,5 @@
 import 'package:basic_diet/presentation/resources/styles_manager.dart';
+import 'package:basic_diet/presentation/resources/color_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
@@ -20,13 +21,17 @@ class TextButtonWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     return TextButton(
       style: TextButton.styleFrom(
+        foregroundColor: color,
         padding: EdgeInsetsDirectional.zero,
         minimumSize: Size.zero,
       ),
       onPressed: onPressed,
       child: Text(
         text,
-        style: getRegularTextStyle(color: color, fontSize: fontSize.sp),
+        style: getRegularTextStyle(
+          color: onPressed != null ? color : ColorManager.stateDisabled,
+          fontSize: fontSize.sp,
+        ),
       ),
     );
   }

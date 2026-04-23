@@ -14,6 +14,7 @@ SubscriptionCheckoutRequest _$SubscriptionCheckoutRequestFromJson(
   grams: (json['grams'] as num).toInt(),
   mealsPerDay: (json['mealsPerDay'] as num).toInt(),
   startDate: json['startDate'] as String,
+  promoCode: json['promoCode'] as String?,
   premiumItems:
       (json['premiumItems'] as List<dynamic>)
           .map(
@@ -38,6 +39,7 @@ Map<String, dynamic> _$SubscriptionCheckoutRequestToJson(
   'grams': instance.grams,
   'mealsPerDay': instance.mealsPerDay,
   'startDate': instance.startDate,
+  if (instance.promoCode case final value?) 'promoCode': value,
   'premiumItems': instance.premiumItems.map((e) => e.toJson()).toList(),
   'addons': instance.addons,
   'delivery': instance.delivery.toJson(),

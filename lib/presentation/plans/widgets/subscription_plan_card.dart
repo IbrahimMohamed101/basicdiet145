@@ -22,13 +22,13 @@ class SubscriptionPlanCard extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: ColorManager.whiteColor,
+        color: ColorManager.backgroundSurface,
         borderRadius: BorderRadius.circular(AppSize.s16),
-        border: Border.all(color: ColorManager.formFieldsBorderColor),
+        border: Border.all(color: ColorManager.borderDefault),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
-            blurRadius: 10,
+            color: ColorManager.brandPrimaryGlow,
+            blurRadius: 16,
             offset: const Offset(0, 4),
           ),
         ],
@@ -43,7 +43,7 @@ class SubscriptionPlanCard extends StatelessWidget {
           Gap(AppSize.s24.h),
           _buildMealsProgress(progressValue),
           Gap(AppSize.s24.h),
-          Container(height: 1, color: ColorManager.formFieldsBorderColor),
+          Container(height: 1, color: ColorManager.borderDefault),
           Gap(AppSize.s20.h),
           if (data.premiumSummary.isNotEmpty) _buildPremiumSection(),
           if (data.addonSubscriptions.isNotEmpty) _buildAddonsSection(),
@@ -60,28 +60,30 @@ class SubscriptionPlanCard extends StatelessWidget {
         Text(
           Strings.subscriptionPlanText.tr(),
           style: getBoldTextStyle(
-            color: ColorManager.black101828,
+            color: ColorManager.textPrimary,
             fontSize: FontSizeManager.s18.sp,
           ),
         ),
         InkWell(
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => ManageSubscriptionScreen(
-                subscriptionId: data.id,
-                selectedMealsPerDay: data.selectedMealsPerDay,
-                deliveryModeLabel: data.deliveryModeLabel,
-                validityEndDate: data.validityEndDate,
-                skipDaysUsed: data.skipDaysUsed,
-                skipDaysLimit: data.skipDaysLimit,
-                remainingSkipDays: data.remainingSkipDays,
+          onTap:
+              () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder:
+                      (_) => ManageSubscriptionScreen(
+                        subscriptionId: data.id,
+                        selectedMealsPerDay: data.selectedMealsPerDay,
+                        deliveryModeLabel: data.deliveryModeLabel,
+                        validityEndDate: data.validityEndDate,
+                        skipDaysUsed: data.skipDaysUsed,
+                        skipDaysLimit: data.skipDaysLimit,
+                        remainingSkipDays: data.remainingSkipDays,
+                      ),
+                ),
               ),
-            ),
-          ),
-          child: const Icon(
+          child: Icon(
             Icons.settings_outlined,
-            color: ColorManager.grey6A7282,
+            color: ColorManager.brandPrimary,
             size: AppSize.s20,
           ),
         ),
@@ -96,13 +98,13 @@ class SubscriptionPlanCard extends StatelessWidget {
         vertical: AppPadding.p6,
       ),
       decoration: BoxDecoration(
-        color: ColorManager.greenPrimary.withValues(alpha: 0.1),
+        color: ColorManager.stateSuccessSurface,
         borderRadius: BorderRadius.circular(AppSize.s20.r),
       ),
       child: Text(
         data.statusLabel.isNotEmpty ? data.statusLabel : Strings.active.tr(),
         style: getBoldTextStyle(
-          color: ColorManager.greenPrimary,
+          color: ColorManager.stateSuccessEmphasis,
           fontSize: FontSizeManager.s12.sp,
         ),
       ),
@@ -118,14 +120,14 @@ class SubscriptionPlanCard extends StatelessWidget {
             Text(
               Strings.regularMealsRemaining.tr(),
               style: getRegularTextStyle(
-                color: ColorManager.grey6A7282,
+                color: ColorManager.textSecondary,
                 fontSize: FontSizeManager.s14.sp,
               ),
             ),
             Text(
               '${data.remainingMeals} / ${data.totalMeals}',
               style: getBoldTextStyle(
-                color: ColorManager.black101828,
+                color: ColorManager.textPrimary,
                 fontSize: FontSizeManager.s16.sp,
               ),
             ),
@@ -136,9 +138,9 @@ class SubscriptionPlanCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(AppSize.s4),
           child: LinearProgressIndicator(
             value: progressValue,
-            backgroundColor: ColorManager.formFieldsBorderColor,
-            valueColor: const AlwaysStoppedAnimation<Color>(
-              ColorManager.greenPrimary,
+            backgroundColor: ColorManager.brandPrimaryTint,
+            valueColor: AlwaysStoppedAnimation<Color>(
+              ColorManager.brandPrimary,
             ),
             minHeight: AppSize.s8,
           ),
@@ -159,12 +161,12 @@ class SubscriptionPlanCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsetsDirectional.all(AppPadding.p8),
                   decoration: BoxDecoration(
-                    color: ColorManager.orangePrimary.withValues(alpha: 0.1),
+                    color: ColorManager.brandAccentSoft,
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(
+                  child: Icon(
                     Icons.workspace_premium_outlined,
-                    color: ColorManager.orangePrimary,
+                    color: ColorManager.brandAccent,
                     size: AppSize.s18,
                   ),
                 ),
@@ -179,14 +181,14 @@ class SubscriptionPlanCard extends StatelessWidget {
                           Text(
                             Strings.premiumMealsText.tr(),
                             style: getRegularTextStyle(
-                              color: ColorManager.grey6A7282,
+                              color: ColorManager.textSecondary,
                               fontSize: FontSizeManager.s14.sp,
                             ),
                           ),
                           Text(
                             '${premium.remainingQtyTotal} ${Strings.available.tr()}',
                             style: getBoldTextStyle(
-                              color: ColorManager.grey4A5565,
+                              color: ColorManager.brandAccent,
                               fontSize: FontSizeManager.s14.sp,
                             ),
                           ),
@@ -196,7 +198,7 @@ class SubscriptionPlanCard extends StatelessWidget {
                       Text(
                         '${Strings.purchased.tr()} ${premium.purchasedQtyTotal} • ${Strings.consumed.tr()} ${premium.consumedQtyTotal}',
                         style: getRegularTextStyle(
-                          color: ColorManager.grey6A7282,
+                          color: ColorManager.textSecondary,
                           fontSize: FontSizeManager.s12.sp,
                         ),
                       ),
@@ -218,7 +220,7 @@ class SubscriptionPlanCard extends StatelessWidget {
         Text(
           Strings.addOnsIncluded.tr(),
           style: getRegularTextStyle(
-            color: ColorManager.grey6A7282,
+            color: ColorManager.textSecondary,
             fontSize: FontSizeManager.s12.sp,
           ),
         ),
@@ -226,25 +228,27 @@ class SubscriptionPlanCard extends StatelessWidget {
         Wrap(
           spacing: AppSize.s8,
           runSpacing: AppSize.s8,
-          children: data.addonSubscriptions.map((addon) {
-            return Container(
-              padding: const EdgeInsetsDirectional.symmetric(
-                horizontal: AppPadding.p12,
-                vertical: AppPadding.p8,
-              ),
-              decoration: BoxDecoration(
-                border: Border.all(color: ColorManager.formFieldsBorderColor),
-                borderRadius: BorderRadius.circular(AppSize.s20),
-              ),
-              child: Text(
-                '${addon.name} • 1/${Strings.day.tr()}',
-                style: getRegularTextStyle(
-                  color: ColorManager.grey6A7282,
-                  fontSize: FontSizeManager.s12,
-                ),
-              ),
-            );
-          }).toList(),
+          children:
+              data.addonSubscriptions.map((addon) {
+                return Container(
+                  padding: const EdgeInsetsDirectional.symmetric(
+                    horizontal: AppPadding.p12,
+                    vertical: AppPadding.p8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: ColorManager.brandAccentSoft,
+                    border: Border.all(color: ColorManager.brandAccentBorder),
+                    borderRadius: BorderRadius.circular(AppSize.s20),
+                  ),
+                  child: Text(
+                    '${addon.name} • 1/${Strings.day.tr()}',
+                    style: getRegularTextStyle(
+                      color: ColorManager.brandAccent,
+                      fontSize: FontSizeManager.s12,
+                    ),
+                  ),
+                );
+              }).toList(),
         ),
         Gap(AppSize.s20.h),
       ],
@@ -254,9 +258,9 @@ class SubscriptionPlanCard extends StatelessWidget {
   Widget _buildDeliveryInfo() {
     return Row(
       children: [
-        const Icon(
+        Icon(
           Icons.location_on_outlined,
-          color: ColorManager.grey6A7282,
+          color: ColorManager.iconSecondary,
           size: AppSize.s18,
         ),
         const SizedBox(width: AppSize.s4),
@@ -265,21 +269,21 @@ class SubscriptionPlanCard extends StatelessWidget {
               ? data.deliveryModeLabel
               : Strings.pickup.tr(),
           style: getRegularTextStyle(
-            color: ColorManager.grey6A7282,
+            color: ColorManager.textSecondary,
             fontSize: FontSizeManager.s14.sp,
           ),
         ),
         Gap(AppSize.s16.w),
-        const Icon(
+        Icon(
           Icons.access_time_outlined,
-          color: ColorManager.grey6A7282,
+          color: ColorManager.iconSecondary,
           size: AppSize.s18,
         ),
         const SizedBox(width: AppSize.s4),
         Text(
           '${data.selectedMealsPerDay} ${Strings.mealsDay.tr()}',
           style: getRegularTextStyle(
-            color: ColorManager.grey6A7282,
+            color: ColorManager.textSecondary,
             fontSize: FontSizeManager.s14,
           ),
         ),

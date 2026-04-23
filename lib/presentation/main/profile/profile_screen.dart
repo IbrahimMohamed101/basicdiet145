@@ -13,7 +13,7 @@ class ProfileScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: ColorManager.whiteColor,
+      backgroundColor: ColorManager.backgroundSurface,
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(AppPadding.p20),
@@ -23,7 +23,7 @@ class ProfileScreen extends StatelessWidget {
               Text(
                 Strings.language.tr(),
                 style: getBoldTextStyle(
-                  color: ColorManager.black101828,
+                  color: ColorManager.textPrimary,
                   fontSize: FontSizeManager.s18,
                 ),
               ),
@@ -37,7 +37,7 @@ class ProfileScreen extends StatelessWidget {
                     vertical: AppPadding.p24,
                   ),
                   decoration: BoxDecoration(
-                    color: ColorManager.greyF3F4F6.withOpacity(0.5),
+                    color: ColorManager.backgroundSubtle.withOpacity(0.5),
                     borderRadius: BorderRadius.circular(AppSize.s24),
                   ),
                   child: Row(
@@ -45,14 +45,14 @@ class ProfileScreen extends StatelessWidget {
                       Text(
                         Strings.english.tr(),
                         style: getRegularTextStyle(
-                          color: ColorManager.grey6A7282,
+                          color: ColorManager.textSecondary,
                           fontSize: FontSizeManager.s18,
                         ),
                       ),
                       const Spacer(),
                       const Icon(
                         Icons.arrow_forward_ios_rounded,
-                        color: ColorManager.grey9CA3AF,
+                        color: ColorManager.textMuted,
                         size: AppSize.s16,
                       ),
                     ],

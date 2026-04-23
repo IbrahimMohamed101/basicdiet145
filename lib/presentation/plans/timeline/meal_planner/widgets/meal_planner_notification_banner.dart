@@ -6,6 +6,7 @@ import 'package:basic_diet/presentation/resources/strings_manager.dart';
 import 'package:basic_diet/presentation/resources/styles_manager.dart';
 import 'package:basic_diet/presentation/resources/values_manager.dart';
 import 'package:easy_localization/easy_localization.dart';
+import 'package:basic_diet/presentation/resources/color_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -25,16 +26,16 @@ class MealPlannerNotificationBanner extends StatelessWidget {
       left: AppPadding.p16.w,
       right: AppPadding.p16.w,
       child: Material(
-        color: Colors.transparent,
+        color: ColorManager.transparent,
         child: Container(
           padding: EdgeInsets.all(AppPadding.p12.w),
           decoration: BoxDecoration(
-            color: const Color(0xFFF0FDF4),
-            border: Border.all(color: const Color(0xFFBBF7D0)),
+            color: ColorManager.stateSuccessSurface,
+            border: Border.all(color: ColorManager.stateSuccessSurface),
             borderRadius: BorderRadius.circular(AppSize.s8.r),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.05),
+                color: ColorManager.textPrimary.withValues(alpha: 0.05),
                 blurRadius: 10,
                 offset: const Offset(0, 4),
               ),
@@ -45,10 +46,10 @@ class MealPlannerNotificationBanner extends StatelessWidget {
               Container(
                 decoration: const BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Color(0xFF16A34A),
+                  color: ColorManager.stateSuccess,
                 ),
                 padding: EdgeInsets.all(4.w),
-                child: Icon(Icons.check, color: Colors.white, size: AppSize.s14.w),
+                child: Icon(Icons.check, color: ColorManager.backgroundSurface, size: AppSize.s14.w),
               ),
               Gap(AppSize.s12.w),
               Expanded(
@@ -58,14 +59,14 @@ class MealPlannerNotificationBanner extends StatelessWidget {
                     Text(
                       Strings.mealAdded.tr(),
                       style: getRegularTextStyle(
-                        color: const Color(0xFF166534),
+                        color: ColorManager.stateSuccessEmphasis,
                         fontSize: FontSizeManager.s14.sp,
                       ),
                     ),
                     Text(
                       "${state.lastAddedMealName} ${Strings.addedTo.tr()} ${_getFullDayName(state.timelineDays[state.selectedDayIndex].day)}",
                       style: getRegularTextStyle(
-                        color: const Color(0xFF166534),
+                        color: ColorManager.stateSuccessEmphasis,
                         fontSize: FontSizeManager.s14.sp,
                       ),
                     ),
@@ -75,7 +76,7 @@ class MealPlannerNotificationBanner extends StatelessWidget {
               IconButton(
                 onPressed: () =>
                     context.read<MealPlannerBloc>().add(const HideBannerEvent()),
-                icon: const Icon(Icons.close, color: Color(0xFF166534), size: 16),
+                icon: const Icon(Icons.close, color: ColorManager.stateSuccessEmphasis, size: 16),
               ),
             ],
           ),

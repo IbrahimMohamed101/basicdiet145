@@ -64,10 +64,10 @@ class _SubscriptionPoliciesDialogState extends State<SubscriptionPoliciesDialog>
               height: AppSize.s55.w,
               padding: EdgeInsets.all(AppPadding.p10.r),
               decoration: BoxDecoration(
-                color: ColorManager.greyF3F4F6,
+                color: ColorManager.backgroundSubtle,
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: ColorManager.formFieldsBorderColor,
+                  color: ColorManager.borderDefault,
                   width: AppSize.s1,
                 ),
               ),
@@ -79,7 +79,7 @@ class _SubscriptionPoliciesDialogState extends State<SubscriptionPoliciesDialog>
             Strings.subscriptionPoliciesTitle.tr(),
             textAlign: TextAlign.center,
             style: getBoldTextStyle(
-              color: ColorManager.black101828,
+              color: ColorManager.textPrimary,
               fontSize: FontSizeManager.s16.sp,
             ),
           ),
@@ -88,7 +88,7 @@ class _SubscriptionPoliciesDialogState extends State<SubscriptionPoliciesDialog>
             Strings.subscriptionPoliciesSubtitle.tr(),
             textAlign: TextAlign.center,
             style: getRegularTextStyle(
-              color: ColorManager.grey6A7282,
+              color: ColorManager.textSecondary,
               fontSize: FontSizeManager.s12.sp,
             ),
           ),
@@ -98,7 +98,7 @@ class _SubscriptionPoliciesDialogState extends State<SubscriptionPoliciesDialog>
         constraints: BoxConstraints(maxHeight: maxContentHeight),
         child: Column(
           children: [
-            const Divider(height: 1, color: ColorManager.formFieldsBorderColor),
+            const Divider(height: 1, color: ColorManager.borderDefault),
             Gap(AppSize.s12.h),
             Expanded(
               child: Scrollbar(
@@ -107,7 +107,7 @@ class _SubscriptionPoliciesDialogState extends State<SubscriptionPoliciesDialog>
                     Strings.subscriptionPoliciesBody.tr(),
                     textAlign: TextAlign.start,
                     style: getRegularTextStyle(
-                      color: ColorManager.blackColor,
+                      color: ColorManager.textPrimary,
                       fontSize: FontSizeManager.s12.sp,
                     ),
                   ),
@@ -120,13 +120,13 @@ class _SubscriptionPoliciesDialogState extends State<SubscriptionPoliciesDialog>
               onChanged: (value) =>
                   setState(() => _isAgreed = value ?? false),
               dense: true,
-              activeColor: ColorManager.greenPrimary,
+              activeColor: ColorManager.brandPrimary,
               contentPadding: EdgeInsets.zero,
               controlAffinity: ListTileControlAffinity.leading,
               title: Text(
                 Strings.subscriptionPoliciesAgreement.tr(),
                 style: getRegularTextStyle(
-                  color: ColorManager.black101828,
+                  color: ColorManager.textPrimary,
                   fontSize: FontSizeManager.s12.sp,
                 ),
               ),
@@ -143,7 +143,7 @@ class _SubscriptionPoliciesDialogState extends State<SubscriptionPoliciesDialog>
                 style: OutlinedButton.styleFrom(
                   padding: EdgeInsets.symmetric(vertical: AppPadding.p12.h),
                   side: const BorderSide(
-                    color: ColorManager.formFieldsBorderColor,
+                    color: ColorManager.borderDefault,
                   ),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(AppSize.s10.r),
@@ -152,7 +152,7 @@ class _SubscriptionPoliciesDialogState extends State<SubscriptionPoliciesDialog>
                 child: Text(
                   Strings.cancel.tr(),
                   style: getRegularTextStyle(
-                    color: ColorManager.black101828,
+                    color: ColorManager.textPrimary,
                     fontSize: FontSizeManager.s14.sp,
                   ),
                 ),
@@ -165,9 +165,9 @@ class _SubscriptionPoliciesDialogState extends State<SubscriptionPoliciesDialog>
                     ? () => Navigator.of(context).pop(true)
                     : null,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: ColorManager.greenPrimary,
+                  backgroundColor: ColorManager.brandPrimary,
                   disabledBackgroundColor:
-                      ColorManager.greenPrimary.withValues(alpha: 0.35),
+                      ColorManager.brandPrimary.withValues(alpha: 0.35),
                   padding: EdgeInsets.symmetric(vertical: AppPadding.p12.h),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(AppSize.s10.r),
@@ -177,7 +177,7 @@ class _SubscriptionPoliciesDialogState extends State<SubscriptionPoliciesDialog>
                   Strings.subscriptionPoliciesAgreeContinue.tr(),
                   textAlign: TextAlign.center,
                   style: getRegularTextStyle(
-                    color: ColorManager.whiteColor,
+                    color: ColorManager.backgroundSurface,
                     fontSize: FontSizeManager.s14.sp,
                   ),
                 ),

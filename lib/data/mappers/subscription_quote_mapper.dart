@@ -10,6 +10,7 @@ extension SubscriptionQuoteRequestMapper on SubscriptionQuoteRequestModel {
       grams: grams,
       mealsPerDay: mealsPerDay,
       startDate: startDate,
+      promoCode: promoCode,
       premiumItems: premiumItems.map((item) => item.toRequest()).toList(),
       addons: addons,
       delivery: delivery.toRequest(),
@@ -93,6 +94,7 @@ extension SubscriptionQuoteResponseMapper on SubscriptionQuoteResponse? {
             addons: [],
             lineItems: [],
           ),
+      appliedPromo: this?.data?.appliedPromo.toDomain(),
     );
   }
 }
@@ -254,6 +256,27 @@ extension SubscriptionQuoteLineItemResponseMapper
       amountHalala: this?.amountHalala ?? Constants.zero,
       amountSar: this?.amountSar ?? Constants.decimalZero,
       amountLabel: this?.amountLabel ?? Constants.empty,
+    );
+  }
+}
+
+extension SubscriptionAppliedPromoResponseMapper
+    on SubscriptionAppliedPromoResponse? {
+  SubscriptionAppliedPromoModel? toDomain() {
+    final code = this?.code?.trim() ?? Constants.empty;
+    if (code.isEmpty) {
+      return null;
+    }
+
+    return SubscriptionAppliedPromoModel(
+      code: code,
+      discountType: this?.discountType ?? Constants.empty,
+      discountValue: this?.discountValue ?? Constants.decimalZero,
+      discountAmountHalala: this?.discountAmountHalala ?? Constants.zero,
+      discountAmountSar: this?.discountAmountSar ?? Constants.decimalZero,
+      label: this?.label ?? Constants.empty,
+      message: this?.message ?? Constants.empty,
+      validityState: this?.validityState ?? Constants.empty,
     );
   }
 }

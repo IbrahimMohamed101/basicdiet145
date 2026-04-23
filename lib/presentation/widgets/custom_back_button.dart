@@ -28,14 +28,14 @@ class CustomBackButton extends StatelessWidget {
             Icon(
               Icons
                   .arrow_back, // or arrow_back_ios_new if iOS style is preferred
-              color: ColorManager.blackColor,
+              color: ColorManager.textPrimary,
               size: AppSize.s24.sp,
             ),
             Gap(AppSize.s4.w),
             Text(
               Strings.back.tr(),
               style: getRegularTextStyle(
-                color: ColorManager.blackColor,
+                color: ColorManager.textPrimary,
                 fontSize: FontSizeManager.s16.sp,
               ),
             ),

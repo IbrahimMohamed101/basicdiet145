@@ -22,7 +22,7 @@ class PlansHeader extends StatelessWidget {
             Text(
               Strings.mySubscription.tr(),
               style: getBoldTextStyle(
-                color: ColorManager.black101828,
+                color: ColorManager.textPrimary,
                 fontSize: FontSizeManager.s22.sp,
               ),
             ),
@@ -30,7 +30,7 @@ class PlansHeader extends StatelessWidget {
             Text(
               Strings.welcomeBack.tr(),
               style: getRegularTextStyle(
-                color: ColorManager.grey6A7282,
+                color: ColorManager.textSecondary,
                 fontSize: FontSizeManager.s14.sp,
               ),
             ),
@@ -39,7 +39,7 @@ class PlansHeader extends StatelessWidget {
         Container(
           padding: const EdgeInsetsDirectional.all(AppPadding.p8),
           decoration: BoxDecoration(
-            color: ColorManager.greenPrimary.withValues(alpha: 0.1),
+            color: ColorManager.brandPrimary.withValues(alpha: 0.1),
             shape: BoxShape.circle,
           ),
           child: Text(

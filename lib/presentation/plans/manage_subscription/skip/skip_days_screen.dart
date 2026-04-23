@@ -54,7 +54,7 @@ class _SkipDaysScreenState extends State<SkipDaysScreen> {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text(state.message),
-                backgroundColor: ColorManager.greenPrimary,
+                backgroundColor: ColorManager.stateSuccess,
               ),
             );
             Navigator.of(context).pop();
@@ -62,34 +62,34 @@ class _SkipDaysScreenState extends State<SkipDaysScreen> {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text(state.message),
-                backgroundColor: ColorManager.errorColor,
+                backgroundColor: ColorManager.stateError,
               ),
             );
           }
         },
         builder: (context, state) {
           return Scaffold(
-            backgroundColor: Colors.white,
+            backgroundColor: ColorManager.backgroundApp,
             appBar: AppBar(
-              backgroundColor: Colors.white,
+              backgroundColor: ColorManager.backgroundSurface,
               elevation: 0,
               centerTitle: false,
               titleSpacing: 0,
               leading: IconButton(
-                icon: const Icon(Icons.arrow_back, color: Colors.black),
+                icon: Icon(Icons.arrow_back, color: ColorManager.textPrimary),
                 onPressed: () => Navigator.of(context).pop(),
               ),
               title: Text(
                 Strings.skipDays.tr(),
                 style: getRegularTextStyle(
-                  color: Colors.black,
+                  color: ColorManager.textPrimary,
                   fontSize: FontSizeManager.s20.sp,
                 ),
               ),
               bottom: PreferredSize(
                 preferredSize: const Size.fromHeight(1.0),
                 child: Container(
-                  color: ColorManager.formFieldsBorderColor,
+                  color: ColorManager.borderDefault,
                   height: 1.0,
                 ),
               ),
@@ -121,16 +121,16 @@ class _SkipDaysScreenState extends State<SkipDaysScreen> {
     return Container(
       padding: const EdgeInsets.all(AppPadding.p16),
       decoration: BoxDecoration(
-        color: const Color(0xFFEFF6FF),
-        border: Border.all(color: const Color(0xFFBFDBFE)),
+        color: ColorManager.stateWarningSurface,
+        border: Border.all(color: ColorManager.stateWarningBorder),
         borderRadius: BorderRadius.circular(AppSize.s12),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(
+          Icon(
             Icons.warning_amber_rounded,
-            color: Color(0xFF3B82F6),
+            color: ColorManager.stateWarning,
             size: AppSize.s20,
           ),
           Gap(AppSize.s12.w),
@@ -141,7 +141,7 @@ class _SkipDaysScreenState extends State<SkipDaysScreen> {
                 Text(
                   "${Strings.skipLimit.tr()} ${widget.skipDaysUsed}/${widget.skipDaysLimit}",
                   style: getRegularTextStyle(
-                    color: const Color(0xFF1E3A8A),
+                    color: ColorManager.stateWarningEmphasis,
                     fontSize: FontSizeManager.s14.sp,
                   ),
                 ),
@@ -149,7 +149,7 @@ class _SkipDaysScreenState extends State<SkipDaysScreen> {
                 Text(
                   "${Strings.youHave.tr()} ${widget.remainingSkipDays} ${Strings.skipsRemaining.tr()}",
                   style: getRegularTextStyle(
-                    color: const Color(0xFF3B82F6),
+                    color: ColorManager.stateWarningEmphasis,
                     fontSize: FontSizeManager.s14.sp,
                   ),
                 ),
@@ -165,8 +165,8 @@ class _SkipDaysScreenState extends State<SkipDaysScreen> {
     return Container(
       padding: const EdgeInsets.all(AppPadding.p16),
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: ColorManager.formFieldsBorderColor),
+        color: ColorManager.backgroundSurface,
+        border: Border.all(color: ColorManager.borderDefault),
         borderRadius: BorderRadius.circular(AppSize.s12),
       ),
       child: Column(
@@ -175,7 +175,7 @@ class _SkipDaysScreenState extends State<SkipDaysScreen> {
           Text(
             Strings.skipType.tr(),
             style: getRegularTextStyle(
-              color: Colors.black,
+              color: ColorManager.textPrimary,
               fontSize: FontSizeManager.s16.sp,
             ),
           ),
@@ -223,13 +223,15 @@ class _SkipDaysScreenState extends State<SkipDaysScreen> {
           horizontal: AppPadding.p8,
         ),
         decoration: BoxDecoration(
-          color: isSelected
-              ? ColorManager.greenPrimary.withValues(alpha: 0.05)
-              : Colors.white,
+          color:
+              isSelected
+                  ? ColorManager.brandPrimaryTint
+                  : ColorManager.backgroundSurface,
           border: Border.all(
-            color: isSelected
-                ? ColorManager.greenPrimary
-                : ColorManager.formFieldsBorderColor,
+            color:
+                isSelected
+                    ? ColorManager.brandPrimary
+                    : ColorManager.borderDefault,
           ),
           borderRadius: BorderRadius.circular(AppSize.s12),
         ),
@@ -239,7 +241,7 @@ class _SkipDaysScreenState extends State<SkipDaysScreen> {
               title,
               textAlign: TextAlign.center,
               style: getRegularTextStyle(
-                color: Colors.black,
+                color: ColorManager.textPrimary,
                 fontSize: FontSizeManager.s14.sp,
               ),
             ),
@@ -248,7 +250,7 @@ class _SkipDaysScreenState extends State<SkipDaysScreen> {
               subtitle,
               textAlign: TextAlign.center,
               style: getRegularTextStyle(
-                color: ColorManager.grey6A7282,
+                color: ColorManager.textSecondary,
                 fontSize: FontSizeManager.s12.sp,
               ),
             ),
@@ -262,8 +264,8 @@ class _SkipDaysScreenState extends State<SkipDaysScreen> {
     return Container(
       padding: const EdgeInsets.all(AppPadding.p16),
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: ColorManager.formFieldsBorderColor),
+        color: ColorManager.backgroundSurface,
+        border: Border.all(color: ColorManager.borderDefault),
         borderRadius: BorderRadius.circular(AppSize.s12),
       ),
       child: Column(
@@ -273,7 +275,7 @@ class _SkipDaysScreenState extends State<SkipDaysScreen> {
             Text(
               Strings.startDate.tr(),
               style: getRegularTextStyle(
-                color: Colors.black,
+                color: ColorManager.textPrimary,
                 fontSize: FontSizeManager.s16.sp,
               ),
             ),
@@ -288,7 +290,7 @@ class _SkipDaysScreenState extends State<SkipDaysScreen> {
             Text(
               Strings.startDate.tr(),
               style: getRegularTextStyle(
-                color: Colors.black,
+                color: ColorManager.textPrimary,
                 fontSize: FontSizeManager.s16.sp,
               ),
             ),
@@ -303,7 +305,7 @@ class _SkipDaysScreenState extends State<SkipDaysScreen> {
             Text(
               Strings.endDate.tr(),
               style: getRegularTextStyle(
-                color: Colors.black,
+                color: ColorManager.textPrimary,
                 fontSize: FontSizeManager.s16.sp,
               ),
             ),
@@ -344,23 +346,28 @@ class _SkipDaysScreenState extends State<SkipDaysScreen> {
           vertical: AppPadding.p12,
         ),
         decoration: BoxDecoration(
-          color: ColorManager.greyF3F4F6,
+          color: ColorManager.backgroundSubtle,
           borderRadius: BorderRadius.circular(AppSize.s8),
-          border: Border.all(color: ColorManager.formFieldsBorderColor),
+          border: Border.all(color: ColorManager.borderDefault),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(
-              date != null ? DateFormat('MMMM d, yyyy', context.locale.toString()).format(date) : '',
+              date != null
+                  ? DateFormat(
+                    'MMMM d, yyyy',
+                    context.locale.toString(),
+                  ).format(date)
+                  : '',
               style: getRegularTextStyle(
-                color: Colors.black,
+                color: ColorManager.textPrimary,
                 fontSize: FontSizeManager.s16.sp,
               ),
             ),
             const Icon(
               Icons.calendar_today_outlined,
-              color: ColorManager.grey6A7282,
+              color: ColorManager.textSecondary,
               size: AppSize.s20,
             ),
           ],
@@ -373,8 +380,8 @@ class _SkipDaysScreenState extends State<SkipDaysScreen> {
     return Container(
       padding: const EdgeInsets.all(AppPadding.p16),
       decoration: BoxDecoration(
-        color: const Color(0xFFFAFAFA),
-        border: Border.all(color: ColorManager.formFieldsBorderColor),
+        color: ColorManager.backgroundApp,
+        border: Border.all(color: ColorManager.borderDefault),
         borderRadius: BorderRadius.circular(AppSize.s12),
       ),
       child: Column(
@@ -383,7 +390,7 @@ class _SkipDaysScreenState extends State<SkipDaysScreen> {
           Text(
             Strings.importantInformation.tr(),
             style: getRegularTextStyle(
-              color: Colors.black,
+              color: ColorManager.textPrimary,
               fontSize: FontSizeManager.s16.sp,
             ),
           ),
@@ -402,7 +409,7 @@ class _SkipDaysScreenState extends State<SkipDaysScreen> {
     return Text(
       text,
       style: getRegularTextStyle(
-        color: ColorManager.grey6A7282,
+        color: ColorManager.textSecondary,
         fontSize: FontSizeManager.s14.sp,
       ),
     );
@@ -427,7 +434,7 @@ class _SkipDaysScreenState extends State<SkipDaysScreen> {
             onPressed: isLoading ? null : () => Navigator.of(context).pop(),
             style: OutlinedButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: AppPadding.p16),
-              side: const BorderSide(color: ColorManager.formFieldsBorderColor),
+              side: BorderSide(color: ColorManager.borderDefault),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(AppSize.s12),
               ),
@@ -435,7 +442,7 @@ class _SkipDaysScreenState extends State<SkipDaysScreen> {
             child: Text(
               Strings.cancel.tr(),
               style: getRegularTextStyle(
-                color: Colors.black,
+                color: ColorManager.textPrimary,
                 fontSize: FontSizeManager.s16.sp,
               ),
             ),
@@ -446,30 +453,32 @@ class _SkipDaysScreenState extends State<SkipDaysScreen> {
           child: ButtonWidget(
             text: isLoading ? Strings.loading.tr() : Strings.skipDays.tr(),
             height: 52,
-            color: hasValidSelection
-                ? ColorManager.greenPrimary
-                : const Color(0xFF86E2BB),
+            color:
+                hasValidSelection
+                    ? ColorManager.brandPrimary
+                    : ColorManager.stateDisabledSurface,
             radius: AppSize.s12,
-            onTap: isEnabled
-                ? () {
-                    if (_skipType == SkipTypeSelection.singleDay) {
-                      context.read<SkipDaysBloc>().add(
-                        SkipSingleDayEvent(
-                          widget.subscriptionId,
-                          DateFormat('yyyy-MM-dd').format(_startDate!),
-                        ),
-                      );
-                    } else {
-                      context.read<SkipDaysBloc>().add(
-                        SkipDateRangeEvent(
-                          widget.subscriptionId,
-                          DateFormat('yyyy-MM-dd').format(_startDate!),
-                          DateFormat('yyyy-MM-dd').format(_endDate!),
-                        ),
-                      );
+            onTap:
+                isEnabled
+                    ? () {
+                      if (_skipType == SkipTypeSelection.singleDay) {
+                        context.read<SkipDaysBloc>().add(
+                          SkipSingleDayEvent(
+                            widget.subscriptionId,
+                            DateFormat('yyyy-MM-dd').format(_startDate!),
+                          ),
+                        );
+                      } else {
+                        context.read<SkipDaysBloc>().add(
+                          SkipDateRangeEvent(
+                            widget.subscriptionId,
+                            DateFormat('yyyy-MM-dd').format(_startDate!),
+                            DateFormat('yyyy-MM-dd').format(_endDate!),
+                          ),
+                        );
+                      }
                     }
-                  }
-                : null,
+                    : null,
           ),
         ),
       ],

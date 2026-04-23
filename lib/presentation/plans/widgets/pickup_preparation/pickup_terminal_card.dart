@@ -36,9 +36,9 @@ class PickupTerminalCard extends StatelessWidget {
       width: double.infinity,
       padding: EdgeInsets.all(AppPadding.p24.w),
       decoration: BoxDecoration(
-        color: ColorManager.greyF3F4F6,
+        color: ColorManager.backgroundSubtle,
         borderRadius: BorderRadius.circular(AppSize.s24.r),
-        border: Border.all(color: ColorManager.formFieldsBorderColor),
+        border: Border.all(color: ColorManager.borderDefault),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -46,15 +46,15 @@ class PickupTerminalCard extends StatelessWidget {
           Container(
             padding: EdgeInsets.all(AppPadding.p10.w),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: ColorManager.backgroundSurface,
               shape: BoxShape.circle,
-              border: Border.all(color: ColorManager.formFieldsBorderColor),
+              border: Border.all(color: ColorManager.borderDefault),
             ),
             child: Icon(
               isNoShow
                   ? Icons.person_off_outlined
                   : Icons.hourglass_disabled_outlined,
-              color: ColorManager.grey6A7282,
+              color: ColorManager.textSecondary,
               size: AppSize.s20.sp,
             ),
           ),
@@ -66,7 +66,7 @@ class PickupTerminalCard extends StatelessWidget {
                 Text(
                   title,
                   style: getBoldTextStyle(
-                    color: ColorManager.black101828,
+                    color: ColorManager.textPrimary,
                     fontSize: FontSizeManager.s16.sp,
                   ),
                 ),
@@ -74,7 +74,7 @@ class PickupTerminalCard extends StatelessWidget {
                 Text(
                   message,
                   style: getRegularTextStyle(
-                    color: ColorManager.grey6A7282,
+                    color: ColorManager.textSecondary,
                     fontSize: FontSizeManager.s14.sp,
                   ),
                 ),

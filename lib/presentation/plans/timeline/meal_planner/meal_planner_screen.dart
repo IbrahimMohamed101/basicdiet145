@@ -51,50 +51,57 @@ class MealPlannerScreen extends StatelessWidget {
           },
         )..add(const GetMealPlannerDataEvent());
       },
-      child: readOnly
-          ? const MealPlannerView(readOnly: true)
-          : BlocListener<MealPlannerBloc, MealPlannerState>(
-              listenWhen: (prev, curr) {
-                if (prev is! MealPlannerLoaded || curr is! MealPlannerLoaded) {
+      child:
+          readOnly
+              ? const MealPlannerView(readOnly: true)
+              : BlocListener<MealPlannerBloc, MealPlannerState>(
+                listenWhen: (prev, curr) {
+                  if (prev is! MealPlannerLoaded ||
+                      curr is! MealPlannerLoaded) {
+                    return false;
+                  }
+                  if (!prev.saveSuccess && curr.saveSuccess) {
+                    return true;
+                  }
+                  if (prev.paymentUrl == null && curr.paymentUrl != null) {
+                    return true;
+                  }
+                  if (curr.paymentError != null &&
+                      prev.paymentError != curr.paymentError) {
+                    return true;
+                  }
                   return false;
-                }
-                if (!prev.saveSuccess && curr.saveSuccess) {
-                  return true;
-                }
-                if (prev.paymentUrl == null && curr.paymentUrl != null) {
-                  return true;
-                }
-                if (curr.paymentError != null &&
-                    prev.paymentError != curr.paymentError) {
-                  return true;
-                }
-                return false;
-              },
-              listener: (context, state) {
-                if (state is! MealPlannerLoaded) return;
+                },
+                listener: (context, state) {
+                  if (state is! MealPlannerLoaded) return;
 
-                if (state.saveSuccess && state.paymentUrl == null) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(Strings.changesSavedSuccessfully.tr()),
-                      backgroundColor: ColorManager.greenPrimary,
-                      duration: const Duration(seconds: 2),
-                    ),
-                  );
-                  Navigator.pop(context, true);
-                } else if (state.paymentUrl != null && state.paymentId != null) {
-                  _openPaymentWebView(context, state.paymentUrl!, state.paymentId!);
-                } else if (state.paymentError != null) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(state.paymentError!),
-                      backgroundColor: Colors.red,
-                    ),
-                  );
-                }
-              },
-              child: const MealPlannerView(),
-            ),
+                  if (state.saveSuccess && state.paymentUrl == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(Strings.changesSavedSuccessfully.tr()),
+                        backgroundColor: ColorManager.stateSuccess,
+                        duration: const Duration(seconds: 2),
+                      ),
+                    );
+                    Navigator.pop(context, true);
+                  } else if (state.paymentUrl != null &&
+                      state.paymentId != null) {
+                    _openPaymentWebView(
+                      context,
+                      state.paymentUrl!,
+                      state.paymentId!,
+                    );
+                  } else if (state.paymentError != null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(state.paymentError!),
+                        backgroundColor: ColorManager.stateError,
+                      ),
+                    );
+                  }
+                },
+                child: const MealPlannerView(),
+              ),
     );
   }
 
@@ -108,7 +115,7 @@ class MealPlannerScreen extends StatelessWidget {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(Strings.paymentNotCompleted.tr()),
-          backgroundColor: Colors.red,
+          backgroundColor: ColorManager.stateError,
         ),
       );
       return;
@@ -117,22 +124,23 @@ class MealPlannerScreen extends StatelessWidget {
     final result = await Navigator.push<PaymentWebViewResult>(
       context,
       MaterialPageRoute(
-        builder: (_) => PaymentWebViewScreen(
-          paymentUrl: paymentUrl,
-          draftId: paymentId,
-          successUrl: _premiumPaymentSuccessUrl,
-          backUrl: _premiumPaymentCancelUrl,
-          onSuccess: () => Navigator.of(context).pop(),
-        ),
+        builder:
+            (_) => PaymentWebViewScreen(
+              paymentUrl: paymentUrl,
+              draftId: paymentId,
+              successUrl: _premiumPaymentSuccessUrl,
+              backUrl: _premiumPaymentCancelUrl,
+              onSuccess: () => Navigator.of(context).pop(),
+            ),
       ),
     );
 
     if (!context.mounted) return;
 
     if (result == PaymentWebViewResult.cancelled) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(Strings.paymentCancelled.tr())),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(Strings.paymentCancelled.tr())));
     } else {
       context.read<MealPlannerBloc>().add(VerifyPremiumPaymentEvent(paymentId));
     }
@@ -157,20 +165,20 @@ class MealPlannerView extends StatelessWidget {
   Widget build(BuildContext context) {
     return BlocBuilder<MealPlannerBloc, MealPlannerState>(
       builder: (context, state) {
-        final bool isViewOnly = state is MealPlannerLoaded &&
+        final bool isViewOnly =
+            state is MealPlannerLoaded &&
             (readOnly ||
                 state.timelineDays[state.selectedDayIndex].status
                         .toLowerCase() ==
                     'planned');
 
         return Scaffold(
-          backgroundColor: Colors.white,
-          bottomNavigationBar: state is MealPlannerLoaded && !isViewOnly
-              ? MealPlannerBottomAction(state: state)
-              : null,
-          body: SafeArea(
-            child: _buildBody(context, state),
-          ),
+          backgroundColor: ColorManager.backgroundSurface,
+          bottomNavigationBar:
+              state is MealPlannerLoaded && !isViewOnly
+                  ? MealPlannerBottomAction(state: state)
+                  : null,
+          body: SafeArea(child: _buildBody(context, state)),
         );
       },
     );
@@ -178,7 +186,9 @@ class MealPlannerView extends StatelessWidget {
 
   Widget _buildBody(BuildContext context, MealPlannerState state) {
     if (state is MealPlannerLoading) {
-      return const Center(child: CircularProgressIndicator());
+      return Center(
+        child: CircularProgressIndicator(color: ColorManager.brandPrimary),
+      );
     }
     if (state is MealPlannerError) {
       return Center(child: Text(state.message));
@@ -232,8 +242,13 @@ class MealPlannerView extends StatelessWidget {
               sliver: SliverList.separated(
                 itemCount: state.maxMeals,
                 separatorBuilder: (_, __) => Gap(AppSize.s12.h),
-                itemBuilder: (context, index) =>
-                    _buildMealSlot(context, state, index, isSelectedDayReadOnly),
+                itemBuilder:
+                    (context, index) => _buildMealSlot(
+                      context,
+                      state,
+                      index,
+                      isSelectedDayReadOnly,
+                    ),
               ),
             ),
           ],
@@ -251,7 +266,9 @@ class MealPlannerView extends StatelessWidget {
   ) {
     final slot = _slotForIndex(state, index);
     final protein =
-        slot?.proteinId == null ? null : _findProteinById(state.menu, slot!.proteinId!);
+        slot?.proteinId == null
+            ? null
+            : _findProteinById(state.menu, slot!.proteinId!);
     final carb =
         slot?.carbId == null ? null : _findCarbById(state.menu, slot!.carbId!);
 
@@ -260,23 +277,26 @@ class MealPlannerView extends StatelessWidget {
       protein: protein,
       carb: carb,
       isProteinPremium: protein?.isPremium ?? false,
-      onSelectProtein: isReadOnly
-          ? null
-          : () => _openProteinPickerSheet(
+      onSelectProtein:
+          isReadOnly
+              ? null
+              : () => _openProteinPickerSheet(
                 context: context,
                 state: state,
                 slotIndex: index,
                 selectedProteinId: slot?.proteinId,
               ),
       carbOptions: _sortedCarbs(state.menu),
-      onCarbSelected: isReadOnly || protein == null
-          ? null
-          : (carbId) => context.read<MealPlannerBloc>().add(
+      onCarbSelected:
+          isReadOnly || protein == null
+              ? null
+              : (carbId) => context.read<MealPlannerBloc>().add(
                 SetMealSlotCarbEvent(slotIndex: index, carbId: carbId),
               ),
-      onClear: isReadOnly || protein == null
-          ? null
-          : () => context.read<MealPlannerBloc>().add(
+      onClear:
+          isReadOnly || protein == null
+              ? null
+              : () => context.read<MealPlannerBloc>().add(
                 SetMealSlotProteinEvent(slotIndex: index, proteinId: null),
               ),
     );
@@ -308,7 +328,8 @@ class MealPlannerView extends StatelessWidget {
       final protein = _findProteinById(state.menu, proteinId);
       if (protein == null || !protein.isPremium) continue;
 
-      final cost = protein.premiumCreditCost == 0 ? 1 : protein.premiumCreditCost;
+      final cost =
+          protein.premiumCreditCost == 0 ? 1 : protein.premiumCreditCost;
       usedCredits += cost;
 
       if (usedCredits > state.premiumMealsRemaining) {
@@ -326,14 +347,18 @@ class MealPlannerView extends StatelessWidget {
         if (proteinId == null) continue;
         final protein = _findProteinById(state.menu, proteinId);
         if (protein != null && protein.isPremium) {
-          used += protein.premiumCreditCost == 0 ? 1 : protein.premiumCreditCost;
+          used +=
+              protein.premiumCreditCost == 0 ? 1 : protein.premiumCreditCost;
         }
       }
     }
     return used;
   }
 
-  MealPlannerSlotSelection? _slotForIndex(MealPlannerLoaded state, int slotIndex) {
+  MealPlannerSlotSelection? _slotForIndex(
+    MealPlannerLoaded state,
+    int slotIndex,
+  ) {
     final slots = state.selectedSlotsPerDay[state.selectedDayIndex] ?? [];
     if (slotIndex < 0 || slotIndex >= slots.length) return null;
     return slots[slotIndex];
@@ -384,16 +409,18 @@ class MealPlannerView extends StatelessWidget {
     return showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (sheetContext) => BlocProvider.value(
-        value: bloc,
-        child: ProteinPickerSheet(
-          state: state,
-          slotIndex: slotIndex,
-          selectedProteinId: selectedProteinId,
-          availablePremiumCredits: availableCredits < 0 ? 0 : availableCredits,
-        ),
-      ),
+      backgroundColor: ColorManager.transparent,
+      builder:
+          (sheetContext) => BlocProvider.value(
+            value: bloc,
+            child: ProteinPickerSheet(
+              state: state,
+              slotIndex: slotIndex,
+              selectedProteinId: selectedProteinId,
+              availablePremiumCredits:
+                  availableCredits < 0 ? 0 : availableCredits,
+            ),
+          ),
     );
   }
 }

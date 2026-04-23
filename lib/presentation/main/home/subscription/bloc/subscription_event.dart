@@ -58,11 +58,12 @@ class SaveAddOnsSelectionEvent extends SubscriptionEvent {
 
 class GetSubscriptionQuoteEvent extends SubscriptionEvent {
   final SubscriptionQuoteRequestModel request;
+  final bool isPromoUpdate;
 
-  const GetSubscriptionQuoteEvent(this.request);
+  const GetSubscriptionQuoteEvent(this.request, {this.isPromoUpdate = false});
 
   @override
-  List<Object> get props => [request];
+  List<Object> get props => [request, isPromoUpdate];
 }
 
 class CheckoutSubscriptionEvent extends SubscriptionEvent {
@@ -72,4 +73,21 @@ class CheckoutSubscriptionEvent extends SubscriptionEvent {
 
   @override
   List<Object> get props => [request];
+}
+
+class UpdatePromoCodeInputEvent extends SubscriptionEvent {
+  final String value;
+
+  const UpdatePromoCodeInputEvent(this.value);
+
+  @override
+  List<Object> get props => [value];
+}
+
+class ApplyPromoCodeEvent extends SubscriptionEvent {
+  const ApplyPromoCodeEvent();
+}
+
+class RemovePromoCodeEvent extends SubscriptionEvent {
+  const RemovePromoCodeEvent();
 }

@@ -5,6 +5,7 @@ class SubscriptionQuoteRequestModel extends Equatable {
   final int grams;
   final int mealsPerDay;
   final String startDate;
+  final String? promoCode;
   final List<SubscriptionQuotePremiumItemRequestModel> premiumItems;
   final List<String> addons;
   final SubscriptionQuoteDeliveryRequestModel delivery;
@@ -14,6 +15,7 @@ class SubscriptionQuoteRequestModel extends Equatable {
     required this.grams,
     required this.mealsPerDay,
     required this.startDate,
+    this.promoCode,
     required this.premiumItems,
     required this.addons,
     required this.delivery,
@@ -25,6 +27,7 @@ class SubscriptionQuoteRequestModel extends Equatable {
     grams,
     mealsPerDay,
     startDate,
+    promoCode,
     premiumItems,
     addons,
     delivery,
@@ -93,15 +96,17 @@ class SubscriptionQuoteModel extends Equatable {
   final SubscriptionQuoteBreakdownModel breakdown;
   final double totalSar;
   final SubscriptionQuoteSummaryModel summary;
+  final SubscriptionAppliedPromoModel? appliedPromo;
 
   const SubscriptionQuoteModel({
     required this.breakdown,
     required this.totalSar,
     required this.summary,
+    this.appliedPromo,
   });
 
   @override
-  List<Object?> get props => [breakdown, totalSar, summary];
+  List<Object?> get props => [breakdown, totalSar, summary, appliedPromo];
 }
 
 class SubscriptionQuoteBreakdownModel extends Equatable {
@@ -353,5 +358,41 @@ class SubscriptionQuoteLineItemModel extends Equatable {
     amountHalala,
     amountSar,
     amountLabel,
+  ];
+}
+
+class SubscriptionAppliedPromoModel extends Equatable {
+  final String code;
+  final String discountType;
+  final double discountValue;
+  final int discountAmountHalala;
+  final double discountAmountSar;
+  final String label;
+  final String message;
+  final String validityState;
+
+  const SubscriptionAppliedPromoModel({
+    required this.code,
+    required this.discountType,
+    required this.discountValue,
+    required this.discountAmountHalala,
+    required this.discountAmountSar,
+    required this.label,
+    required this.message,
+    required this.validityState,
+  });
+
+  bool get hasCode => code.trim().isNotEmpty;
+
+  @override
+  List<Object?> get props => [
+    code,
+    discountType,
+    discountValue,
+    discountAmountHalala,
+    discountAmountSar,
+    label,
+    message,
+    validityState,
   ];
 }

@@ -34,7 +34,7 @@ class PickupDisabledCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xFFF3F3F6),
         borderRadius: BorderRadius.circular(AppSize.s24.r),
-        border: Border.all(color: ColorManager.formFieldsBorderColor),
+        border: Border.all(color: ColorManager.borderDefault),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -43,7 +43,7 @@ class PickupDisabledCard extends StatelessWidget {
             children: [
               Icon(
                 reason.icon,
-                color: ColorManager.black101828,
+                color: ColorManager.textPrimary,
                 size: AppSize.s20.sp,
               ),
               Gap(AppSize.s8.w),
@@ -51,7 +51,7 @@ class PickupDisabledCard extends StatelessWidget {
                 child: Text(
                   reason.titleKey.tr(),
                   style: getBoldTextStyle(
-                    color: ColorManager.black101828,
+                    color: ColorManager.textPrimary,
                     fontSize: FontSizeManager.s20.sp,
                   ),
                 ),
@@ -62,7 +62,7 @@ class PickupDisabledCard extends StatelessWidget {
           Text(
             message,
             style: getRegularTextStyle(
-              color: ColorManager.grey6A7282,
+              color: ColorManager.textSecondary,
               fontSize: FontSizeManager.s16.sp,
             ),
           ),
@@ -105,7 +105,7 @@ class _ActionButton extends StatelessWidget {
         decoration: BoxDecoration(
           color:
               reason.isActionable
-                  ? ColorManager.greenPrimary
+                  ? ColorManager.brandPrimary
                   : const Color(0xFFE5E7EB),
           borderRadius: BorderRadius.circular(AppSize.s100.r),
         ),
@@ -114,7 +114,7 @@ class _ActionButton extends StatelessWidget {
             label,
             style: getBoldTextStyle(
               color:
-                  reason.isActionable ? Colors.white : ColorManager.grey6A7282,
+                  reason.isActionable ? ColorManager.backgroundSurface : ColorManager.textSecondary,
               fontSize: FontSizeManager.s18.sp,
             ),
           ),

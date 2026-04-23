@@ -66,10 +66,10 @@ class MealPlannerBottomAction extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(AppPadding.p16.w),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: ColorManager.backgroundSurface,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
+            color: ColorManager.textPrimary.withValues(alpha: 0.05),
             blurRadius: 12,
             offset: const Offset(0, -6),
           ),
@@ -117,23 +117,23 @@ class _PayNowButton extends StatelessWidget {
                 .read<MealPlannerBloc>()
                 .add(const InitiatePremiumPaymentEvent()),
         style: ElevatedButton.styleFrom(
-          backgroundColor: ColorManager.orangePrimary,
+          backgroundColor: ColorManager.brandAccent,
           elevation: 0,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppSize.s16.r),
           ),
         ),
         child: isSaving
-            ? const CircularProgressIndicator(color: Colors.white)
+            ? const CircularProgressIndicator(color: ColorManager.textInverse)
             : Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.payment, color: Colors.white, size: AppSize.s20.w),
+                  Icon(Icons.payment, color: ColorManager.textInverse, size: AppSize.s20.w),
                   Gap(AppSize.s8.w),
                   Text(
                     "${Strings.payNow.tr()} ${paymentAmount.toStringAsFixed(2)} ${Strings.sar.tr()}",
                     style: getBoldTextStyle(
-                      color: Colors.white,
+                      color: ColorManager.textInverse,
                       fontSize: FontSizeManager.s16.sp,
                     ),
                   ),
@@ -170,20 +170,20 @@ class _SaveButton extends StatelessWidget {
             : null,
         style: ElevatedButton.styleFrom(
           backgroundColor:
-              isEnabled ? ColorManager.greenPrimary : ColorManager.greyF3F4F6,
+              isEnabled ? ColorManager.brandPrimary : ColorManager.stateDisabledSurface,
           elevation: 0,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppSize.s16.r),
           ),
         ),
         child: isSaving && !hasPendingPayment
-            ? const CircularProgressIndicator(color: Colors.white)
+            ? const CircularProgressIndicator(color: ColorManager.textInverse)
             : Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(
                     Icons.check,
-                    color: isEnabled ? Colors.white : ColorManager.grey9CA3AF,
+                    color: isEnabled ? ColorManager.textInverse : ColorManager.stateDisabled,
                     size: AppSize.s20.w,
                   ),
                   Gap(AppSize.s8.w),
@@ -194,7 +194,7 @@ class _SaveButton extends StatelessWidget {
                             ? Strings.saveChanges.tr()
                             : Strings.noChangesToSave.tr(),
                     style: getBoldTextStyle(
-                      color: isEnabled ? Colors.white : ColorManager.grey9CA3AF,
+                      color: isEnabled ? ColorManager.textInverse : ColorManager.stateDisabled,
                       fontSize: FontSizeManager.s16.sp,
                     ),
                   ),

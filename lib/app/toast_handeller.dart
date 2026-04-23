@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'package:basic_diet/presentation/resources/color_manager.dart';
 
 void showToast({required String? message, required ToastStates state}) {
   Fluttertoast.showToast(
@@ -8,7 +9,7 @@ void showToast({required String? message, required ToastStates state}) {
     gravity: ToastGravity.BOTTOM,
     timeInSecForIosWeb: 1,
     backgroundColor: getColor(state),
-    textColor: Colors.white,
+    textColor: ColorManager.textInverse,
     fontSize: 16.0,
   );
 }
@@ -19,13 +20,13 @@ Color getColor(ToastStates toastStates) {
   Color color;
   switch (toastStates) {
     case ToastStates.success:
-      color = Colors.green;
+      color = ColorManager.stateSuccess;
       break;
     case ToastStates.error:
-      color = Colors.red;
+      color = ColorManager.stateError;
       break;
     case ToastStates.warning:
-      color = Colors.amberAccent;
+      color = ColorManager.stateWarning;
       break;
   }
   return color;

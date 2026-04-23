@@ -1,6 +1,5 @@
 import 'package:basic_diet/data/request/bulk_selections_request.dart';
 import 'package:basic_diet/data/request/day_selection_request.dart';
-import 'package:basic_diet/app/constants.dart';
 import 'package:basic_diet/data/response/checkout_draft_response.dart';
 import 'package:basic_diet/data/request/subscription_checkout_request.dart';
 import 'package:basic_diet/data/request/subscription_quote_request.dart';

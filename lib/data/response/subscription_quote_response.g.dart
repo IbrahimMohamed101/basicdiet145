@@ -43,6 +43,12 @@ SubscriptionQuoteDataResponse _$SubscriptionQuoteDataResponseFromJson(
           : SubscriptionQuoteSummaryResponse.fromJson(
             json['summary'] as Map<String, dynamic>,
           ),
+  appliedPromo:
+      _readPromoPayload(json, 'promoCode') == null
+          ? null
+          : SubscriptionAppliedPromoResponse.fromJson(
+            _readPromoPayload(json, 'promoCode') as Map<String, dynamic>,
+          ),
 );
 
 Map<String, dynamic> _$SubscriptionQuoteDataResponseToJson(
@@ -51,6 +57,33 @@ Map<String, dynamic> _$SubscriptionQuoteDataResponseToJson(
   'breakdown': instance.breakdown?.toJson(),
   'totalSar': instance.totalSar,
   'summary': instance.summary?.toJson(),
+  'promoCode': instance.appliedPromo?.toJson(),
+};
+
+SubscriptionAppliedPromoResponse _$SubscriptionAppliedPromoResponseFromJson(
+  Map<String, dynamic> json,
+) => SubscriptionAppliedPromoResponse(
+  code: json['code'] as String?,
+  discountType: json['discountType'] as String?,
+  discountValue: (json['discountValue'] as num?)?.toDouble(),
+  discountAmountHalala: (json['discountAmountHalala'] as num?)?.toInt(),
+  discountAmountSar: (json['discountAmountSar'] as num?)?.toDouble(),
+  label: json['label'] as String?,
+  message: json['message'] as String?,
+  validityState: json['validityState'] as String?,
+);
+
+Map<String, dynamic> _$SubscriptionAppliedPromoResponseToJson(
+  SubscriptionAppliedPromoResponse instance,
+) => <String, dynamic>{
+  'code': instance.code,
+  'discountType': instance.discountType,
+  'discountValue': instance.discountValue,
+  'discountAmountHalala': instance.discountAmountHalala,
+  'discountAmountSar': instance.discountAmountSar,
+  'label': instance.label,
+  'message': instance.message,
+  'validityState': instance.validityState,
 };
 
 SubscriptionQuoteBreakdownResponse _$SubscriptionQuoteBreakdownResponseFromJson(

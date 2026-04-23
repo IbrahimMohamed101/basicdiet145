@@ -77,17 +77,20 @@ class _ProteinPickerSheetState extends State<ProteinPickerSheet> {
     final proteins = widget.state.menu.builderCatalog.proteins;
     final filtered = tabKey == 'premium'
         ? proteins.where((p) => p.isPremium).toList()
-        : proteins.where((p) => !p.isPremium && p.displayCategoryKey == tabKey).toList();
+        : proteins
+              .where((p) => !p.isPremium && p.displayCategoryKey == tabKey)
+              .toList();
     filtered.sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
     return filtered;
   }
 
   @override
   Widget build(BuildContext context) {
-    final allCategories = widget.state.menu.builderCatalog.categories
-        .where((c) => c.dimension == 'protein')
-        .toList()
-      ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+    final allCategories =
+        widget.state.menu.builderCatalog.categories
+            .where((c) => c.dimension == 'protein')
+            .toList()
+          ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
 
     if (allCategories.isEmpty) {
       return _EmptySheet();
@@ -98,7 +101,8 @@ class _ProteinPickerSheetState extends State<ProteinPickerSheet> {
         : _proteinById(widget.selectedProteinId!);
 
     final beefRule = widget.state.menu.builderCatalog.rules.beef;
-    final slots = widget.state.selectedSlotsPerDay[widget.state.selectedDayIndex] ?? [];
+    final slots =
+        widget.state.selectedSlotsPerDay[widget.state.selectedDayIndex] ?? [];
 
     var beefCount = 0;
     for (final slot in slots) {
@@ -112,11 +116,13 @@ class _ProteinPickerSheetState extends State<ProteinPickerSheet> {
       }
     }
 
-    final currentIsBeef = selectedProtein != null &&
+    final currentIsBeef =
+        selectedProtein != null &&
         !selectedProtein.isPremium &&
         selectedProtein.proteinFamilyKey == beefRule.proteinFamilyKey;
 
-    final isBeefDisabled = beefRule.maxSlotsPerDay > 0 &&
+    final isBeefDisabled =
+        beefRule.maxSlotsPerDay > 0 &&
         beefCount >= beefRule.maxSlotsPerDay &&
         !currentIsBeef;
 
@@ -132,7 +138,7 @@ class _ProteinPickerSheetState extends State<ProteinPickerSheet> {
       builder: (context, scrollController) {
         return Container(
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: ColorManager.backgroundSurface,
             borderRadius: BorderRadius.vertical(
               top: Radius.circular(AppSize.s24.r),
             ),
@@ -204,8 +210,9 @@ class _CategoryTabs extends StatelessWidget {
           final isPremiumTab = tab.key == 'premium';
           final isBeefTab = tab.key == beefRuleKey && !isPremiumTab;
           final isTabDisabled = isBeefTab && isBeefDisabled;
-          final activeCardColor =
-              isPremiumTab ? ColorManager.orangePrimary : ColorManager.bluePrimary;
+          final activeCardColor = isPremiumTab
+              ? ColorManager.brandAccent
+              : ColorManager.brandPrimary;
 
           return GestureDetector(
             onTap: isTabDisabled ? null : () => onTabSelected(tab.key),
@@ -219,14 +226,16 @@ class _CategoryTabs extends StatelessWidget {
                     width: 56.w,
                     height: 56.w,
                     decoration: BoxDecoration(
-                      color: isSelected ? activeCardColor : ColorManager.whiteColor,
+                      color: isSelected
+                          ? activeCardColor
+                          : ColorManager.backgroundSurface,
                       borderRadius: BorderRadius.circular(AppSize.s16.r),
                       border: isSelected
                           ? null
                           : Border.all(
                               color: isPremiumTab
-                                  ? ColorManager.orangeLight
-                                  : ColorManager.formFieldsBorderColor,
+                                  ? ColorManager.brandAccentBorder
+                                  : ColorManager.borderDefault,
                             ),
                     ),
                     alignment: Alignment.center,
@@ -243,9 +252,9 @@ class _CategoryTabs extends StatelessWidget {
                     style: getBoldTextStyle(
                       color: isSelected
                           ? (isPremiumTab
-                              ? ColorManager.orangePrimary
-                              : ColorManager.bluePrimary)
-                          : ColorManager.grey6A7282,
+                                ? ColorManager.brandAccent
+                                : ColorManager.brandPrimary)
+                          : ColorManager.textSecondary,
                       fontSize: FontSizeManager.s10.sp,
                     ),
                   ),
@@ -292,7 +301,8 @@ class _ProteinList extends StatelessWidget {
       itemBuilder: (context, index) {
         final protein = proteins[index];
         final isSelected = selectedProteinId == protein.id;
-        final isItemDisabled = !protein.isPremium &&
+        final isItemDisabled =
+            !protein.isPremium &&
             isBeefDisabled &&
             protein.proteinFamilyKey == beefFamilyKey &&
             !currentIsBeef;
@@ -328,11 +338,11 @@ class _ProteinItem extends StatelessWidget {
           ? null
           : () {
               context.read<MealPlannerBloc>().add(
-                    SetMealSlotProteinEvent(
-                      slotIndex: slotIndex,
-                      proteinId: protein.id,
-                    ),
-                  );
+                SetMealSlotProteinEvent(
+                  slotIndex: slotIndex,
+                  proteinId: protein.id,
+                ),
+              );
               Navigator.pop(context);
             },
       child: Opacity(
@@ -342,13 +352,13 @@ class _ProteinItem extends StatelessWidget {
           padding: EdgeInsets.all(AppPadding.p12.w),
           decoration: BoxDecoration(
             color: isSelected
-                ? ColorManager.bluePrimary.withValues(alpha: 0.06)
-                : Colors.white,
+                ? ColorManager.brandPrimaryTint
+                : ColorManager.backgroundSurface,
             borderRadius: BorderRadius.circular(AppSize.s16.r),
             border: Border.all(
               color: isSelected
-                  ? ColorManager.bluePrimary
-                  : ColorManager.formFieldsBorderColor,
+                  ? ColorManager.brandPrimary
+                  : ColorManager.borderDefault,
             ),
           ),
           child: Row(
@@ -365,7 +375,7 @@ class _ProteinItem extends StatelessWidget {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: getBoldTextStyle(
-                              color: ColorManager.black101828,
+                              color: ColorManager.textPrimary,
                               fontSize: FontSizeManager.s14.sp,
                             ),
                           ),
@@ -383,7 +393,7 @@ class _ProteinItem extends StatelessWidget {
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: getRegularTextStyle(
-                          color: ColorManager.grey4A5565,
+                          color: ColorManager.textSecondary,
                           fontSize: FontSizeManager.s12.sp,
                         ),
                       ),
@@ -394,7 +404,9 @@ class _ProteinItem extends StatelessWidget {
               Gap(AppSize.s8.w),
               Icon(
                 isSelected ? Icons.check_circle : Icons.radio_button_unchecked,
-                color: isSelected ? ColorManager.bluePrimary : ColorManager.grey9CA3AF,
+                color: isSelected
+                    ? ColorManager.brandPrimary
+                    : ColorManager.stateDisabled,
                 size: 22.w,
               ),
             ],
@@ -411,19 +423,23 @@ class _PremiumTag extends StatelessWidget {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
       decoration: BoxDecoration(
-        color: ColorManager.orangeFFF5EC,
+        color: ColorManager.brandAccentSoft,
         borderRadius: BorderRadius.circular(99.r),
-        border: Border.all(color: ColorManager.orangeLight),
+        border: Border.all(color: ColorManager.brandAccentBorder),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.workspace_premium, color: ColorManager.orangePrimary, size: 12.w),
+          Icon(
+            Icons.workspace_premium,
+            color: ColorManager.brandAccent,
+            size: 12.w,
+          ),
           Gap(3.w),
           Text(
             Strings.premium.tr(),
             style: getBoldTextStyle(
-              color: ColorManager.orangePrimary,
+              color: ColorManager.brandAccent,
               fontSize: FontSizeManager.s10.sp,
             ),
           ),
@@ -438,15 +454,17 @@ class _EmptySheet extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(AppSize.s24.r)),
+        color: ColorManager.backgroundSurface,
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(AppSize.s24.r),
+        ),
       ),
       padding: EdgeInsets.all(AppPadding.p16.w),
       child: SafeArea(
         child: Text(
           Strings.noContent.tr(),
           style: getRegularTextStyle(
-            color: ColorManager.grey6A7282,
+            color: ColorManager.textSecondary,
             fontSize: FontSizeManager.s14.sp,
           ),
         ),
@@ -462,7 +480,7 @@ class _SheetHandle extends StatelessWidget {
       width: 48.w,
       height: 5.h,
       decoration: BoxDecoration(
-        color: ColorManager.greyF3F4F6,
+        color: ColorManager.backgroundSubtle,
         borderRadius: BorderRadius.circular(99.r),
       ),
     );
@@ -484,14 +502,14 @@ class _SheetHeader extends StatelessWidget {
             child: Text(
               title,
               style: getBoldTextStyle(
-                color: ColorManager.black101828,
+                color: ColorManager.textPrimary,
                 fontSize: FontSizeManager.s18.sp,
               ),
             ),
           ),
           IconButton(
             onPressed: () => Navigator.pop(context),
-            icon: Icon(Icons.close, color: ColorManager.grey6A7282, size: 20.w),
+            icon: Icon(Icons.close, color: ColorManager.iconSecondary, size: 20.w),
           ),
         ],
       ),

@@ -27,7 +27,7 @@ class PremiumMealsScreen extends StatelessWidget {
       create: (context) =>
           instance<PremiumMealsBloc>()..add(const GetPremiumMealsEvent()),
       child: Scaffold(
-        backgroundColor: ColorManager.whiteColor,
+        backgroundColor: ColorManager.backgroundSurface,
         appBar: _buildAppBar(context),
         body: SafeArea(
           child: BlocBuilder<PremiumMealsBloc, PremiumMealsState>(
@@ -47,7 +47,7 @@ class PremiumMealsScreen extends StatelessWidget {
 
   AppBar _buildAppBar(BuildContext context) {
     return AppBar(
-      backgroundColor: ColorManager.whiteColor,
+      backgroundColor: ColorManager.backgroundSurface,
       elevation: 0,
       centerTitle: false,
       titleSpacing: 0,
@@ -56,7 +56,7 @@ class PremiumMealsScreen extends StatelessWidget {
         onPressed: () => Navigator.pop(context),
         icon: Icon(
           Icons.arrow_back,
-          color: ColorManager.blackColor,
+          color: ColorManager.textPrimary,
           size: AppSize.s24.sp,
         ),
       ),
@@ -66,7 +66,7 @@ class PremiumMealsScreen extends StatelessWidget {
           Text(
             Strings.premiumMeals.tr(),
             style: getBoldTextStyle(
-              color: ColorManager.black101828,
+              color: ColorManager.textPrimary,
               fontSize: FontSizeManager.s18.sp,
             ),
           ),
@@ -74,7 +74,7 @@ class PremiumMealsScreen extends StatelessWidget {
           Text(
             Strings.exclusiveProteins.tr(),
             style: getRegularTextStyle(
-              color: ColorManager.grey6A7282,
+              color: ColorManager.textSecondary,
               fontSize: FontSizeManager.s12.sp,
             ),
           ),
@@ -89,12 +89,12 @@ class PremiumMealsScreen extends StatelessWidget {
             width: AppSize.s40.w,
             height: AppSize.s40.w,
             decoration: const BoxDecoration(
-              color: ColorManager.greenDark,
+              color: ColorManager.brandAccent,
               shape: BoxShape.circle,
             ),
             child: Icon(
               Icons.star_rounded,
-              color: ColorManager.whiteColor,
+              color: ColorManager.backgroundSurface,
               size: AppSize.s24.sp,
             ),
           ),

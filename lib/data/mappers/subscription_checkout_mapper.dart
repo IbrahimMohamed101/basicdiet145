@@ -13,6 +13,7 @@ extension SubscriptionCheckoutRequestMapper
       grams: grams,
       mealsPerDay: mealsPerDay,
       startDate: startDate,
+      promoCode: promoCode,
       premiumItems: premiumItems.map((item) => item.toRequest()).toList(),
       addons: addons,
       delivery: delivery.toRequest(),
@@ -70,9 +71,10 @@ extension SubscriptionQuoteToCheckoutRequestMapper
       grams: grams,
       mealsPerDay: mealsPerDay,
       startDate: startDate,
+      promoCode: promoCode,
       premiumItems: premiumItems
-          .map(
-            (item) => SubscriptionCheckoutPremiumItemRequestModel(
+        .map(
+          (item) => SubscriptionCheckoutPremiumItemRequestModel(
               proteinId: item.proteinId,
               qty: item.qty,
             ),

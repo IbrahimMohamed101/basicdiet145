@@ -10,36 +10,55 @@ class ButtonWidget extends StatelessWidget {
   final void Function()? onTap;
   final Color color;
   final Color textColor;
+  final Color? disabledColor;
+  final Color? disabledTextColor;
 
   const ButtonWidget({
     super.key,
     required this.radius,
     this.width = double.infinity,
     this.height = AppSize.s50,
-    this.color = ColorManager.greenPrimary,
+    this.color = ColorManager.brandPrimary,
     required this.text,
     this.onTap,
-    this.textColor = ColorManager.whiteColor,
+    this.textColor = ColorManager.textInverse,
+    this.disabledColor,
+    this.disabledTextColor,
   });
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(radius.r),
-      splashColor: Colors.transparent,
-      highlightColor: Colors.transparent,
-      child: Container(
-        height: height.h,
-        width: width.w,
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(radius.r),
-        ),
-        child: Center(
-          child: Text(
-            text,
-            style: getBoldTextStyle(color: textColor, fontSize: AppSize.s18.sp),
+    final isEnabled = onTap != null;
+    final backgroundColor = isEnabled
+        ? color
+        : (disabledColor ?? ColorManager.stateDisabledSurface);
+    final foregroundColor = isEnabled
+        ? textColor
+        : (disabledTextColor ?? ColorManager.stateDisabled);
+
+    return Material(
+      color: ColorManager.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(radius.r),
+        splashColor: ColorManager.brandPrimaryTint,
+        highlightColor: ColorManager.brandPrimaryTint,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          height: height.h,
+          width: width.w,
+          decoration: BoxDecoration(
+            color: backgroundColor,
+            borderRadius: BorderRadius.circular(radius.r),
+          ),
+          child: Center(
+            child: Text(
+              text,
+              style: getBoldTextStyle(
+                color: foregroundColor,
+                fontSize: AppSize.s18.sp,
+              ),
+            ),
           ),
         ),
       ),

@@ -10,7 +10,6 @@ class AppPreferences {
 
   AppPreferences()
     : _secureStorage = const FlutterSecureStorage(
-        aOptions: AndroidOptions(encryptedSharedPreferences: true),
         iOptions: IOSOptions(accessibility: KeychainAccessibility.first_unlock),
       );
 

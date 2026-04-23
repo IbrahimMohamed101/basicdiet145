@@ -43,7 +43,7 @@ class _LanguageSelectionScreenState extends State<LanguageSelectionScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: ColorManager.whiteColor,
+      backgroundColor: ColorManager.backgroundSurface,
       body: SafeArea(
         child: Padding(
           padding: EdgeInsets.symmetric(horizontal: AppPadding.p24.w),
@@ -86,7 +86,7 @@ class _LanguageSelectionScreenState extends State<LanguageSelectionScreen> {
       textAlign: TextAlign.center,
       style: Theme.of(context).textTheme.headlineMedium?.copyWith(
             fontWeight: FontWeight.bold,
-            color: ColorManager.black101828,
+            color: ColorManager.textPrimary,
             fontSize: FontSizeManager.s24.sp,
           ),
     );
@@ -97,7 +97,7 @@ class _LanguageSelectionScreenState extends State<LanguageSelectionScreen> {
       Strings.selectYourLanguage.tr(),
       textAlign: TextAlign.center,
       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-            color: ColorManager.grey6A7282,
+            color: ColorManager.textSecondary,
             fontSize: FontSizeManager.s16.sp,
           ),
     );
@@ -138,13 +138,13 @@ class _LanguageSelectionScreenState extends State<LanguageSelectionScreen> {
         ),
         decoration: BoxDecoration(
           color: isSelected
-              ? ColorManager.greenPrimary.withOpacity(0.1)
-              : ColorManager.greyF3F4F6,
+              ? ColorManager.brandPrimary.withOpacity(0.1)
+              : ColorManager.backgroundSubtle,
           borderRadius: BorderRadius.circular(AppSize.s12.r),
           border: Border.all(
             color: isSelected
-                ? ColorManager.greenPrimary
-                : ColorManager.formFieldsBorderColor,
+                ? ColorManager.brandPrimary
+                : ColorManager.borderDefault,
             width: isSelected ? 2 : 1,
           ),
         ),
@@ -157,8 +157,8 @@ class _LanguageSelectionScreenState extends State<LanguageSelectionScreen> {
                 shape: BoxShape.circle,
                 border: Border.all(
                   color: isSelected
-                      ? ColorManager.greenPrimary
-                      : ColorManager.grey6A7282,
+                      ? ColorManager.brandPrimary
+                      : ColorManager.textSecondary,
                   width: 2,
                 ),
               ),
@@ -169,7 +169,7 @@ class _LanguageSelectionScreenState extends State<LanguageSelectionScreen> {
                         height: AppSize.s12.h,
                         decoration: const BoxDecoration(
                           shape: BoxShape.circle,
-                          color: ColorManager.greenPrimary,
+                          color: ColorManager.brandPrimary,
                         ),
                       ),
                     )
@@ -180,8 +180,8 @@ class _LanguageSelectionScreenState extends State<LanguageSelectionScreen> {
               languageName,
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     color: isSelected
-                        ? ColorManager.greenPrimary
-                        : ColorManager.black101828,
+                        ? ColorManager.brandPrimary
+                        : ColorManager.textPrimary,
                     fontWeight:
                         isSelected ? FontWeight.bold : FontWeight.normal,
                     fontSize: FontSizeManager.s16.sp,
@@ -210,8 +210,8 @@ class _LanguageSelectionScreenState extends State<LanguageSelectionScreen> {
       child: ElevatedButton(
         onPressed: _selectedLanguage != null ? _handleContinue : null,
         style: ElevatedButton.styleFrom(
-          backgroundColor: ColorManager.greenPrimary,
-          disabledBackgroundColor: ColorManager.greyF3F4F6,
+          backgroundColor: ColorManager.brandPrimary,
+          disabledBackgroundColor: ColorManager.backgroundSubtle,
           padding: EdgeInsets.symmetric(vertical: AppPadding.p18.h),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppSize.s12.r),
@@ -222,8 +222,8 @@ class _LanguageSelectionScreenState extends State<LanguageSelectionScreen> {
           Strings.continue_.tr(),
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
                 color: _selectedLanguage != null
-                    ? ColorManager.whiteColor
-                    : ColorManager.grey6A7282,
+                    ? ColorManager.backgroundSurface
+                    : ColorManager.textSecondary,
                 fontWeight: FontWeight.bold,
                 fontSize: FontSizeManager.s16.sp,
               ),

@@ -38,17 +38,19 @@ class MealSlotCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isComplete = protein != null && carb != null;
-    final borderColor = isComplete
-        ? isProteinPremium
-            ? ColorManager.orangeLight
-            : ColorManager.greenPrimary.withValues(alpha: 0.35)
-        : ColorManager.formFieldsBorderColor;
+    final borderColor =
+        isComplete
+            ? isProteinPremium
+                ? ColorManager.brandAccentBorder
+                : ColorManager.brandPrimary.withValues(alpha: 0.35)
+            : ColorManager.borderDefault;
 
-    final bgColor = isComplete
-        ? isProteinPremium
-            ? ColorManager.orangeFFF5EC.withValues(alpha: 0.6)
-            : ColorManager.greenPrimary.withValues(alpha: 0.05)
-        : Colors.white;
+    final bgColor =
+        isComplete
+            ? isProteinPremium
+                ? ColorManager.brandAccentSoft.withValues(alpha: 0.6)
+                : ColorManager.brandPrimaryTint
+            : ColorManager.backgroundSurface;
 
     return Stack(
       clipBehavior: Clip.none,
@@ -85,20 +87,17 @@ class MealSlotCard extends StatelessWidget {
                 value: carb?.name ?? Strings.selectMeal.tr(),
                 isSelected: carb != null,
                 isPremium: false,
-                onTap: onCarbSelected == null
-                    ? () {}
-                    : () => _openCarbPickerSheet(context),
+                onTap:
+                    onCarbSelected == null
+                        ? () {}
+                        : () => _openCarbPickerSheet(context),
                 isDisabled: onCarbSelected == null,
               ),
             ],
           ),
         ),
         if (isProteinPremium && protein != null)
-          Positioned(
-            top: -10.h,
-            right: -6.w,
-            child: _PremiumBadge(),
-          ),
+          Positioned(top: -10.h, right: -6.w, child: _PremiumBadge()),
       ],
     );
   }
@@ -108,15 +107,16 @@ class MealSlotCard extends StatelessWidget {
     return showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (sheetContext) => BlocProvider.value(
-        value: bloc,
-        child: CarbPickerSheet(
-          options: carbOptions,
-          selectedId: carb?.id,
-          slotIndex: slotNumber - 1,
-        ),
-      ),
+      backgroundColor: ColorManager.transparent,
+      builder:
+          (sheetContext) => BlocProvider.value(
+            value: bloc,
+            child: CarbPickerSheet(
+              options: carbOptions,
+              selectedId: carb?.id,
+              slotIndex: slotNumber - 1,
+            ),
+          ),
     );
   }
 }
@@ -145,17 +145,21 @@ class _SlotHeader extends StatelessWidget {
           width: 40.w,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: isComplete
-                ? isProteinPremium
-                    ? ColorManager.orangePrimary
-                    : ColorManager.greenPrimary
-                : ColorManager.greyF3F4F6,
+            color:
+                isComplete
+                    ? isProteinPremium
+                        ? ColorManager.brandAccent
+                        : ColorManager.brandPrimary
+                    : ColorManager.backgroundSubtle,
             borderRadius: BorderRadius.circular(AppSize.s14.r),
           ),
           child: Text(
             "$slotNumber",
             style: getBoldTextStyle(
-              color: isComplete ? Colors.white : ColorManager.grey9CA3AF,
+              color:
+                  isComplete
+                      ? ColorManager.textInverse
+                      : ColorManager.stateDisabled,
               fontSize: FontSizeManager.s18.sp,
             ),
           ),
@@ -168,7 +172,7 @@ class _SlotHeader extends StatelessWidget {
               Text(
                 "${Strings.meal.tr()} $slotNumber",
                 style: getBoldTextStyle(
-                  color: ColorManager.black101828,
+                  color: ColorManager.textPrimary,
                   fontSize: FontSizeManager.s16.sp,
                 ),
               ),
@@ -176,7 +180,7 @@ class _SlotHeader extends StatelessWidget {
               Text(
                 isComplete ? Strings.complete.tr() : Strings.buildYourMeal.tr(),
                 style: getRegularTextStyle(
-                  color: ColorManager.grey6A7282,
+                  color: ColorManager.textSecondary,
                   fontSize: FontSizeManager.s12.sp,
                 ),
               ),
@@ -186,7 +190,11 @@ class _SlotHeader extends StatelessWidget {
         if (onClear != null && protein != null)
           IconButton(
             onPressed: onClear,
-            icon: Icon(Icons.close, size: 18.w, color: ColorManager.grey6A7282),
+            icon: Icon(
+              Icons.close,
+              size: 18.w,
+              color: ColorManager.iconSecondary,
+            ),
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(),
           ),
@@ -201,11 +209,11 @@ class _PremiumBadge extends StatelessWidget {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 6.h),
       decoration: BoxDecoration(
-        color: ColorManager.orangePrimary,
+        color: ColorManager.brandAccent,
         borderRadius: BorderRadius.circular(99.r),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.12),
+            color: ColorManager.textPrimary.withValues(alpha: 0.12),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -213,12 +221,12 @@ class _PremiumBadge extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(Icons.star, color: Colors.white, size: 14.w),
+          Icon(Icons.star, color: ColorManager.textInverse, size: 14.w),
           Gap(4.w),
           Text(
             Strings.premiumMealsText.tr(),
             style: getBoldTextStyle(
-              color: Colors.white,
+              color: ColorManager.textInverse,
               fontSize: FontSizeManager.s12.sp,
             ),
           ),

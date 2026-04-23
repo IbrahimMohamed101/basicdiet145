@@ -18,10 +18,7 @@ import 'package:basic_diet/presentation/plans/timeline/meal_planner/meal_planner
 class TimeLineScreen extends StatelessWidget {
   final String subscriptionId;
 
-  const TimeLineScreen({
-    super.key,
-    required this.subscriptionId,
-  });
+  const TimeLineScreen({super.key, required this.subscriptionId});
 
   @override
   Widget build(BuildContext context) {
@@ -32,18 +29,18 @@ class TimeLineScreen extends StatelessWidget {
           ..add(FetchTimelineEvent(subscriptionId));
       },
       child: Scaffold(
-        backgroundColor: Colors.white,
+        backgroundColor: ColorManager.backgroundApp,
         appBar: AppBar(
-          backgroundColor: Colors.white,
+          backgroundColor: ColorManager.backgroundSurface,
           elevation: 0,
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back, color: ColorManager.black101828),
+            icon: const Icon(Icons.arrow_back, color: ColorManager.textPrimary),
             onPressed: () => Navigator.pop(context),
           ),
           title: Text(
             Strings.mealTimeline.tr(),
             style: getBoldTextStyle(
-              color: ColorManager.black101828,
+              color: ColorManager.textPrimary,
               fontSize: FontSizeManager.s18.sp,
             ),
           ),
@@ -51,9 +48,9 @@ class TimeLineScreen extends StatelessWidget {
         body: BlocBuilder<TimelineBloc, TimelineState>(
           builder: (context, state) {
             if (state is TimelineLoading || state is TimelineInitial) {
-              return const Center(
+              return Center(
                 child: CircularProgressIndicator(
-                  color: ColorManager.greenPrimary,
+                  color: ColorManager.brandPrimary,
                 ),
               );
             } else if (state is TimelineError) {
@@ -135,7 +132,7 @@ class TimeLineScreen extends StatelessWidget {
         Text(
           monthYear,
           style: getBoldTextStyle(
-            color: ColorManager.black101828,
+            color: ColorManager.textPrimary,
             fontSize: FontSizeManager.s18.sp,
           ),
         ),
@@ -144,7 +141,7 @@ class TimeLineScreen extends StatelessWidget {
           Text(
             Strings.tapOnAnyDay.tr(),
             style: getRegularTextStyle(
-              color: ColorManager.grey6A7282,
+              color: ColorManager.textSecondary,
               fontSize: FontSizeManager.s14.sp,
             ),
           ),
@@ -169,114 +166,118 @@ class TimeLineScreen extends StatelessWidget {
 
     switch (day.status.toLowerCase()) {
       case 'locked':
-        color = ColorManager.grey9CA3AF;
-        bgColor = ColorManager.greyF3F4F6;
+        color = ColorManager.textMuted;
+        bgColor = ColorManager.backgroundSubtle;
         icon = Icons.lock_outline;
         statusText = Strings.locked.tr();
         break;
       case 'planned':
-        color = ColorManager.greenPrimary;
-        bgColor = ColorManager.greenPrimary.withValues(alpha: 0.05);
-        borderColor = ColorManager.greenPrimary;
+        color = ColorManager.brandPrimary;
+        bgColor = ColorManager.brandPrimaryTint;
+        borderColor = ColorManager.brandPrimary;
         icon = Icons.check_circle_outline;
         statusText = Strings.planned.tr();
         break;
       case 'frozen':
-        color = ColorManager.bluePrimary;
-        bgColor = ColorManager.bluePrimary.withValues(alpha: 0.05);
-        borderColor = ColorManager.bluePrimary;
+        color = ColorManager.brandPrimaryPressed;
+        bgColor = ColorManager.brandPrimaryTint;
+        borderColor = ColorManager.brandPrimaryHover;
         icon = Icons.ac_unit;
         statusText = Strings.frozen.tr();
         break;
       case 'skipped':
-        color = ColorManager.orangePrimary;
-        bgColor = ColorManager.orangePrimary.withValues(alpha: 0.05);
-        borderColor = ColorManager.orangePrimary;
+        color = ColorManager.brandAccent;
+        bgColor = ColorManager.brandAccentSoft;
+        borderColor = ColorManager.brandAccentBorder;
         icon = Icons.cancel_outlined;
         statusText = Strings.skipped.tr();
         break;
       case 'extension':
-        color = ColorManager.purplePrimary;
-        bgColor = ColorManager.purplePrimary.withValues(alpha: 0.05);
-        borderColor = ColorManager.purplePrimary;
+        color = ColorManager.brandAccentPressed;
+        bgColor = ColorManager.brandAccentSoft;
+        borderColor = ColorManager.brandAccent;
         icon = Icons.add_circle_outline;
         statusText = Strings.extension.tr();
         extraTag = Strings.extensionDay.tr();
         break;
       case 'delivered':
-        color = ColorManager.greenDark;
-        bgColor = ColorManager.greenDark.withValues(alpha: 0.05);
-        borderColor = ColorManager.greenDark;
+        color = ColorManager.stateSuccessEmphasis;
+        bgColor = ColorManager.stateSuccessSurface;
+        borderColor = ColorManager.stateSuccess;
         icon = Icons.check_circle;
         statusText = Strings.delivered.tr();
         break;
       case 'delivery_canceled':
-        color = ColorManager.errorColor;
-        bgColor = ColorManager.errorColor.withValues(alpha: 0.05);
-        borderColor = ColorManager.errorColor;
+        color = ColorManager.stateError;
+        bgColor = ColorManager.stateError.withValues(alpha: 0.05);
+        borderColor = ColorManager.stateError;
         icon = Icons.local_shipping_outlined;
         statusText = Strings.deliveryCanceled.tr();
         break;
       case 'canceled_at_branch':
-        color = ColorManager.errorColor;
-        bgColor = ColorManager.errorColor.withValues(alpha: 0.05);
-        borderColor = ColorManager.errorColor;
+        color = ColorManager.stateError;
+        bgColor = ColorManager.stateError.withValues(alpha: 0.05);
+        borderColor = ColorManager.stateError;
         icon = Icons.store_mall_directory_outlined;
         statusText = Strings.canceledAtBranch.tr();
         break;
       case 'no_show':
-        color = ColorManager.grey4A5565;
-        bgColor = ColorManager.greyF3F4F6;
-        borderColor = ColorManager.grey4A5565;
+        color = ColorManager.textSecondary;
+        bgColor = ColorManager.backgroundSubtle;
+        borderColor = ColorManager.textSecondary;
         icon = Icons.person_off_outlined;
         statusText = Strings.noShow.tr();
         break;
       case 'open':
       default:
-        color = ColorManager.black101828;
-        bgColor = Colors.white;
-        borderColor = ColorManager.formFieldsBorderColor;
+        color = ColorManager.textPrimary;
+        bgColor = ColorManager.backgroundSurface;
+        borderColor = ColorManager.borderDefault;
         statusText = Strings.open.tr();
         break;
     }
 
     final String statusLower = day.status.toLowerCase();
-    final bool isClickable = statusLower == 'open' ||
+    final bool isClickable =
+        statusLower == 'open' ||
         statusLower == 'planned' ||
         statusLower == 'extension';
     final bool isReadOnly = statusLower == 'planned';
 
     return GestureDetector(
-      onTap: isClickable
-          ? () async {
-              final result = await Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => MealPlannerScreen(
-                    timelineDays: days,
-                    initialDayIndex: index,
-                    premiumMealsRemaining: premiumMealsRemaining,
-                    subscriptionId: subscriptionId,
-                    readOnly: isReadOnly,
+      onTap:
+          isClickable
+              ? () async {
+                final result = await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder:
+                        (context) => MealPlannerScreen(
+                          timelineDays: days,
+                          initialDayIndex: index,
+                          premiumMealsRemaining: premiumMealsRemaining,
+                          subscriptionId: subscriptionId,
+                          readOnly: isReadOnly,
+                        ),
                   ),
-                ),
-              );
+                );
 
-              if (result == true && context.mounted) {
-                context
-                    .read<TimelineBloc>()
-                    .add(FetchTimelineEvent(subscriptionId));
+                if (result == true && context.mounted) {
+                  context.read<TimelineBloc>().add(
+                    FetchTimelineEvent(subscriptionId),
+                  );
+                }
               }
-            }
-          : null,
+              : null,
       child: Container(
         padding: EdgeInsets.all(AppPadding.p16.w),
         decoration: BoxDecoration(
           color: bgColor,
           borderRadius: BorderRadius.circular(AppSize.s16.r),
-          border: borderColor != null
-              ? Border.all(color: borderColor)
-              : Border.all(color: Colors.transparent),
+          border:
+              borderColor != null
+                  ? Border.all(color: borderColor)
+                  : Border.all(color: ColorManager.transparent),
         ),
         child: Row(
           children: [
@@ -287,7 +288,7 @@ class TimeLineScreen extends StatelessWidget {
                   Text(
                     day.day.toUpperCase(),
                     style: getRegularTextStyle(
-                      color: ColorManager.grey9CA3AF,
+                      color: ColorManager.textMuted,
                       fontSize: FontSizeManager.s10.sp,
                     ),
                   ),
@@ -338,7 +339,7 @@ class TimeLineScreen extends StatelessWidget {
                     Text(
                       "${day.selectedMeals}/${day.requiredMeals} ${Strings.meals.tr()}",
                       style: getRegularTextStyle(
-                        color: ColorManager.grey6A7282,
+                        color: ColorManager.textSecondary,
                         fontSize: FontSizeManager.s12.sp,
                       ),
                     ),
@@ -355,11 +356,12 @@ class TimeLineScreen extends StatelessWidget {
 
   Widget _buildStatusLegend() {
     return Container(
+      width: double.infinity,
       padding: EdgeInsets.all(AppPadding.p20.w),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: ColorManager.backgroundSurface,
         borderRadius: BorderRadius.circular(AppSize.s16.r),
-        border: Border.all(color: ColorManager.formFieldsBorderColor),
+        border: Border.all(color: ColorManager.borderDefault),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -367,7 +369,7 @@ class TimeLineScreen extends StatelessWidget {
           Text(
             Strings.statusLegend.tr(),
             style: getBoldTextStyle(
-              color: ColorManager.black101828,
+              color: ColorManager.textPrimary,
               fontSize: FontSizeManager.s16.sp,
             ),
           ),
@@ -376,16 +378,56 @@ class TimeLineScreen extends StatelessWidget {
             spacing: AppSize.s24.w,
             runSpacing: AppSize.s16.h,
             children: [
-              _buildLegendItem(Strings.planned.tr(), Icons.check_circle_outline, ColorManager.greenPrimary),
-              _buildLegendItem(Strings.open.tr(), Icons.crop_square, ColorManager.grey9CA3AF),
-              _buildLegendItem(Strings.locked.tr(), Icons.lock_outline, ColorManager.grey9CA3AF),
-              _buildLegendItem(Strings.skipped.tr(), Icons.cancel_outlined, ColorManager.orangePrimary),
-              _buildLegendItem(Strings.frozen.tr(), Icons.ac_unit, ColorManager.bluePrimary),
-              _buildLegendItem(Strings.extension.tr(), Icons.add_circle_outline, ColorManager.purplePrimary),
-              _buildLegendItem(Strings.delivered.tr(), Icons.check_circle, ColorManager.greenDark),
-              _buildLegendItem(Strings.deliveryCanceled.tr(), Icons.local_shipping_outlined, ColorManager.errorColor),
-              _buildLegendItem(Strings.canceledAtBranch.tr(), Icons.store_mall_directory_outlined, ColorManager.errorColor),
-              _buildLegendItem(Strings.noShow.tr(), Icons.person_off_outlined, ColorManager.grey4A5565),
+              _buildLegendItem(
+                Strings.planned.tr(),
+                Icons.check_circle_outline,
+                ColorManager.brandPrimary,
+              ),
+              _buildLegendItem(
+                Strings.open.tr(),
+                Icons.crop_square,
+                ColorManager.textMuted,
+              ),
+              _buildLegendItem(
+                Strings.locked.tr(),
+                Icons.lock_outline,
+                ColorManager.textMuted,
+              ),
+              _buildLegendItem(
+                Strings.skipped.tr(),
+                Icons.cancel_outlined,
+                ColorManager.brandAccent,
+              ),
+              _buildLegendItem(
+                Strings.frozen.tr(),
+                Icons.ac_unit,
+                ColorManager.brandPrimaryPressed,
+              ),
+              _buildLegendItem(
+                Strings.extension.tr(),
+                Icons.add_circle_outline,
+                ColorManager.brandAccentPressed,
+              ),
+              _buildLegendItem(
+                Strings.delivered.tr(),
+                Icons.check_circle,
+                ColorManager.stateSuccessEmphasis,
+              ),
+              _buildLegendItem(
+                Strings.deliveryCanceled.tr(),
+                Icons.local_shipping_outlined,
+                ColorManager.stateError,
+              ),
+              _buildLegendItem(
+                Strings.canceledAtBranch.tr(),
+                Icons.store_mall_directory_outlined,
+                ColorManager.stateError,
+              ),
+              _buildLegendItem(
+                Strings.noShow.tr(),
+                Icons.person_off_outlined,
+                ColorManager.textSecondary,
+              ),
             ],
           ),
         ],
@@ -402,7 +444,7 @@ class TimeLineScreen extends StatelessWidget {
         Text(
           label,
           style: getRegularTextStyle(
-            color: ColorManager.black101828,
+            color: ColorManager.textPrimary,
             fontSize: FontSizeManager.s14.sp,
           ),
         ),

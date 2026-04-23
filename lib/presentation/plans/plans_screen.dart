@@ -29,7 +29,7 @@ class PlansScreen extends StatelessWidget {
       child: BlocListener<PlansBloc, PlansState>(
         listener: _onStateChanged,
         child: Scaffold(
-          backgroundColor: Colors.white,
+          backgroundColor: ColorManager.backgroundApp,
           body: SafeArea(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(AppPadding.p16),
@@ -39,9 +39,7 @@ class PlansScreen extends StatelessWidget {
                   const SizedBox(height: AppSize.s8),
                   const PlansHeader(),
                   const SizedBox(height: AppSize.s24),
-                  BlocBuilder<PlansBloc, PlansState>(
-                    builder: _buildBody,
-                  ),
+                  BlocBuilder<PlansBloc, PlansState>(builder: _buildBody),
                 ],
               ),
             ),
@@ -57,18 +55,19 @@ class PlansScreen extends StatelessWidget {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => MealPlannerScreen(
-            timelineDays: state.timelineDays,
-            initialDayIndex: state.initialDayIndex,
-            premiumMealsRemaining: state.premiumMealsRemaining,
-            subscriptionId: state.subscriptionId,
-          ),
+          builder:
+              (_) => MealPlannerScreen(
+                timelineDays: state.timelineDays,
+                initialDayIndex: state.initialDayIndex,
+                premiumMealsRemaining: state.premiumMealsRemaining,
+                subscriptionId: state.subscriptionId,
+              ),
         ),
       ).then((_) {
         if (context.mounted) {
-          context
-              .read<PlansBloc>()
-              .add(FetchCurrentSubscriptionOverviewEvent());
+          context.read<PlansBloc>().add(
+            FetchCurrentSubscriptionOverviewEvent(),
+          );
         }
       });
     }
@@ -76,8 +75,8 @@ class PlansScreen extends StatelessWidget {
 
   Widget _buildBody(BuildContext context, PlansState state) {
     if (state is PlansLoading || state is PlansInitial) {
-      return const Center(
-        child: CircularProgressIndicator(color: ColorManager.greenPrimary),
+      return Center(
+        child: CircularProgressIndicator(color: ColorManager.brandPrimary),
       );
     }
 
@@ -106,10 +105,10 @@ class PlansScreen extends StatelessWidget {
         if (state is OpenPlannerLoading || state is PreparePickupLoading)
           Positioned.fill(
             child: Container(
-              color: Colors.white.withValues(alpha: 0.5),
-              child: const Center(
+              color: ColorManager.backgroundSurface.withValues(alpha: 0.5),
+              child: Center(
                 child: CircularProgressIndicator(
-                  color: ColorManager.greenPrimary,
+                  color: ColorManager.brandPrimary,
                 ),
               ),
             ),

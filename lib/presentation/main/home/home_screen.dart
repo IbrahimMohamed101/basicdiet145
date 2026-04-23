@@ -28,7 +28,7 @@ class HomeScreen extends StatelessWidget {
     return BlocProvider(
       create: (_) => instance<HomeBloc>()..add(GetPopularPackagesEvent()),
       child: Scaffold(
-        backgroundColor: ColorManager.whiteColor,
+        backgroundColor: ColorManager.backgroundSurface,
         body: SafeArea(
           child: SingleChildScrollView(
             padding: EdgeInsetsDirectional.all(AppPadding.p20.w),
@@ -67,7 +67,7 @@ class _HomeHeader extends StatelessWidget {
               Strings.goodMorning.tr(),
               style: getBoldTextStyle(
                 fontSize: FontSizeManager.s24,
-                color: ColorManager.blackColor,
+                color: ColorManager.textPrimary,
               ),
             ),
             Gap(AppSize.s4.h),
@@ -75,7 +75,7 @@ class _HomeHeader extends StatelessWidget {
               Strings.eatHealthy.tr(),
               style: getRegularTextStyle(
                 fontSize: FontSizeManager.s14,
-                color: ColorManager.grayColor,
+                color: ColorManager.textSecondary,
               ),
             ),
           ],
@@ -97,12 +97,12 @@ class _CartButton extends StatelessWidget {
     return Container(
       padding: EdgeInsetsDirectional.all(AppPadding.p8.w),
       decoration: BoxDecoration(
-        color: ColorManager.greenDark,
+        color: ColorManager.stateSuccessEmphasis,
         borderRadius: BorderRadius.circular(AppSize.s16.r),
       ),
       child: const Icon(
         Icons.shopping_cart_outlined,
-        color: ColorManager.whiteColor,
+        color: ColorManager.backgroundSurface,
         size: AppSize.s24,
       ),
     );
@@ -146,9 +146,9 @@ class _ImageCard extends StatelessWidget {
                 begin: Alignment.centerLeft,
                 end: Alignment.centerRight,
                 colors: [
-                  ColorManager.blackColor.withValues(alpha: 0.8),
-                  ColorManager.blackColor.withValues(alpha: 0.4),
-                  ColorManager.blackColor.withValues(alpha: 0.0),
+                  ColorManager.textPrimary.withValues(alpha: 0.8),
+                  ColorManager.textPrimary.withValues(alpha: 0.4),
+                  ColorManager.textPrimary.withValues(alpha: 0.0),
                 ],
                 stops: const [0.0, 0.6, 1.0],
               ),
@@ -168,7 +168,7 @@ class _ImageCard extends StatelessWidget {
                   Strings.buildMeal.tr(),
                   style: getBoldTextStyle(
                     fontSize: FontSizeManager.s24.sp,
-                    color: ColorManager.whiteColor,
+                    color: ColorManager.backgroundSurface,
                   ).copyWith(height: 1.05),
                 ),
                 Gap(AppSize.s12.h),
@@ -176,7 +176,7 @@ class _ImageCard extends StatelessWidget {
                   Strings.nutritionControl.tr(),
                   style: getRegularTextStyle(
                     fontSize: FontSizeManager.s14.sp,
-                    color: ColorManager.whiteColor.withValues(alpha: 0.78),
+                    color: ColorManager.backgroundSurface.withValues(alpha: 0.78),
                   ).copyWith(height: 1.25),
                 ),
                 const Spacer(),
@@ -186,13 +186,13 @@ class _ImageCard extends StatelessWidget {
                       Strings.explore.tr(),
                       style: getBoldTextStyle(
                         fontSize: FontSizeManager.s16.sp,
-                        color: ColorManager.orangePrimary,
+                        color: ColorManager.brandAccent,
                       ).copyWith(letterSpacing: 1.2),
                     ),
                     Gap(AppSize.s4.w),
                     Icon(
                       Icons.arrow_forward_rounded,
-                      color: ColorManager.orangePrimary,
+                      color: ColorManager.brandAccent,
                       size: AppSize.s20.w,
                     ),
                   ],
@@ -267,7 +267,7 @@ class _LoadingIndicator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => const Center(
-    child: CircularProgressIndicator(color: ColorManager.greenPrimary),
+    child: CircularProgressIndicator(color: ColorManager.brandPrimary),
   );
 }
 
@@ -281,7 +281,7 @@ class _ErrorMessage extends StatelessWidget {
     child: Text(
       message,
       style: getRegularTextStyle(
-        color: ColorManager.errorColor,
+        color: ColorManager.stateError,
         fontSize: FontSizeManager.s14.sp,
       ),
     ),

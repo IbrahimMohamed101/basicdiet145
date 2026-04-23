@@ -5,21 +5,21 @@ import 'package:basic_diet/presentation/main/home/payment-success/payment_webvie
 import 'package:basic_diet/presentation/main/home/subscription/bloc/subscription_bloc.dart';
 import 'package:basic_diet/presentation/main/home/subscription/bloc/subscription_event.dart';
 import 'package:basic_diet/presentation/main/home/subscription/bloc/subscription_state.dart';
-import 'package:basic_diet/presentation/main/home/subscription-details/widgets/subscription_policies_dialog.dart';
 import 'package:basic_diet/presentation/resources/color_manager.dart';
 import 'package:basic_diet/presentation/resources/font_manager.dart';
 import 'package:basic_diet/presentation/resources/strings_manager.dart';
 import 'package:basic_diet/presentation/resources/styles_manager.dart';
 import 'package:basic_diet/presentation/resources/values_manager.dart';
+import 'package:basic_diet/presentation/widgets/custom_text_field_style.dart';
+import 'package:basic_diet/presentation/widgets/text_button_widget.dart';
 import 'package:basic_diet/presentation/widgets/button_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:gap/gap.dart';
-import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 
-class SubscriptionDetails extends StatelessWidget {
+class SubscriptionDetails extends StatefulWidget {
   static const String subscriptionDetailsRoute = '/subscription_details';
   final SubscriptionQuoteModel quote;
   final SubscriptionQuoteRequestModel quoteRequest;
@@ -31,123 +31,184 @@ class SubscriptionDetails extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    final totalItem = _findLineItemFromQuote(quote, 'total');
-    final startDate = _tryParseDate(quote.summary.plan.startDate);
-    final endDate = startDate?.add(
-      Duration(days: quote.summary.plan.daysCount - 1),
+  State<SubscriptionDetails> createState() => _SubscriptionDetailsState();
+}
+
+class _SubscriptionDetailsState extends State<SubscriptionDetails> {
+  late final TextEditingController _promoController;
+
+  @override
+  void initState() {
+    super.initState();
+    _promoController = TextEditingController(
+      text: widget.quote.appliedPromo?.code ?? widget.quoteRequest.promoCode ?? '',
     );
-    final deliveryNotes = quote.summary.delivery.address?.notes.trim() ?? '';
+  }
 
-    return BlocListener<SubscriptionBloc, SubscriptionState>(
-      listenWhen: (previous, current) {
-        final previousStatus = previous is SubscriptionSuccess
-            ? previous.checkoutStatus
-            : SubscriptionCheckoutStatus.initial;
-        final currentStatus = current is SubscriptionSuccess
-            ? current.checkoutStatus
-            : SubscriptionCheckoutStatus.initial;
-        return previousStatus != currentStatus;
-      },
-      listener: (context, state) async {
-        if (state is! SubscriptionSuccess) return;
+  @override
+  void dispose() {
+    _promoController.dispose();
+    super.dispose();
+  }
 
-        if (state.checkoutStatus == SubscriptionCheckoutStatus.failure &&
-            state.checkoutErrorMessage != null &&
-            state.checkoutErrorMessage!.isNotEmpty) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text(state.checkoutErrorMessage!)));
-        }
+  @override
+  Widget build(BuildContext context) {
+    return BlocBuilder<SubscriptionBloc, SubscriptionState>(
+      builder: (context, state) {
+        final successState = state is SubscriptionSuccess ? state : null;
+        final quote = successState?.subscriptionQuote ?? widget.quote;
+        final quoteRequest =
+            successState?.lastSuccessfulQuoteRequest ?? widget.quoteRequest;
+        final totalItem = _findLineItemFromQuote(quote, 'total');
+        final startDate = _tryParseDate(quote.summary.plan.startDate);
+        final endDate = startDate?.add(
+          Duration(days: quote.summary.plan.daysCount - 1),
+        );
+        final deliveryNotes = quote.summary.delivery.address?.notes.trim() ?? '';
+        final promoStatus =
+            successState?.promoStatus ?? SubscriptionPromoStatus.initial;
+        final appliedPromo = successState?.appliedPromo ?? quote.appliedPromo;
+        final promoMessage = successState?.promoMessage;
+        final desiredPromoText =
+            successState?.promoCodeInput ??
+            quoteRequest.promoCode ??
+            appliedPromo?.code ??
+            '';
+        final isCheckoutLoading =
+            successState?.checkoutStatus == SubscriptionCheckoutStatus.loading;
+        final canCheckout = successState?.canCheckout ?? true;
+        final isPricingStale = successState?.isPricingStale ?? false;
 
-        if (state.checkoutStatus == SubscriptionCheckoutStatus.success &&
-            state.subscriptionCheckout != null) {
-          final result = await Navigator.push<PaymentWebViewResult>(
-            context,
-            MaterialPageRoute(
-              builder: (_) => PaymentWebViewScreen(
-                paymentUrl: state.subscriptionCheckout!.paymentUrl,
-                draftId: state.subscriptionCheckout!.draftId,
-                successUrl: _paymentSuccessUrl,
-                backUrl: _paymentCancelUrl,
-              ),
-            ),
+        if (_promoController.text != desiredPromoText) {
+          _promoController.value = _promoController.value.copyWith(
+            text: desiredPromoText,
+            selection: TextSelection.collapsed(offset: desiredPromoText.length),
+            composing: TextRange.empty,
           );
-
-          if (!context.mounted) return;
-
-          if (result == PaymentWebViewResult.cancelled) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(Strings.paymentCancelled.tr())),
-            );
-          }
         }
-      },
-      child: Scaffold(
-        backgroundColor: ColorManager.greyF3F4F6,
-        appBar: _buildAppBar(context),
-        bottomNavigationBar: BlocBuilder<SubscriptionBloc, SubscriptionState>(
-          builder: (context, state) {
-            final isCheckoutLoading =
-                state is SubscriptionSuccess &&
-                state.checkoutStatus == SubscriptionCheckoutStatus.loading;
 
-            return _BottomActionBar(
-              totalLabel: _displayAmount(
+        return BlocListener<SubscriptionBloc, SubscriptionState>(
+          listenWhen: (previous, current) {
+            final previousStatus = previous is SubscriptionSuccess
+                ? previous.checkoutStatus
+                : SubscriptionCheckoutStatus.initial;
+            final currentStatus = current is SubscriptionSuccess
+                ? current.checkoutStatus
+                : SubscriptionCheckoutStatus.initial;
+            return previousStatus != currentStatus;
+          },
+          listener: (context, state) async {
+            if (state is! SubscriptionSuccess) return;
+
+            if (state.checkoutStatus == SubscriptionCheckoutStatus.failure &&
+                state.checkoutErrorMessage != null &&
+                state.checkoutErrorMessage!.isNotEmpty) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(state.checkoutErrorMessage!)),
+              );
+            }
+
+            if (state.checkoutStatus == SubscriptionCheckoutStatus.success &&
+                state.subscriptionCheckout != null) {
+              final result = await Navigator.push<PaymentWebViewResult>(
                 context,
+                MaterialPageRoute(
+                  builder: (_) => PaymentWebViewScreen(
+                    paymentUrl: state.subscriptionCheckout!.paymentUrl,
+                    draftId: state.subscriptionCheckout!.draftId,
+                    successUrl: _paymentSuccessUrl,
+                    backUrl: _paymentCancelUrl,
+                  ),
+                ),
+              );
+
+              if (!context.mounted) return;
+
+              if (result == PaymentWebViewResult.cancelled) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(Strings.paymentCancelled.tr())),
+                );
+              }
+            }
+          },
+          child: Scaffold(
+            backgroundColor: ColorManager.greyF3F4F6,
+            appBar: _buildAppBar(context),
+            bottomNavigationBar: _BottomActionBar(
+              totalLabel: _displayAmount(
                 label: totalItem?.amountLabel,
                 fallbackAmount: totalItem?.amountSar ?? quote.totalSar,
               ),
               isLoading: isCheckoutLoading,
-              onTap: isCheckoutLoading
+              isEnabled: canCheckout && !isCheckoutLoading,
+              stalePricing: isPricingStale,
+              onTap: isCheckoutLoading || !canCheckout
                   ? null
-                  : () {
-                      _submitCheckout(context);
-                    },
-            );
-          },
-        ),
-        body: SafeArea(
-          top: false,
-          child: SingleChildScrollView(
-            padding: EdgeInsetsDirectional.fromSTEB(
-              AppPadding.p16.w,
-              AppPadding.p16.h,
-              AppPadding.p16.w,
-              AppSize.s140.h,
+                  : () => _submitCheckout(context, quoteRequest),
             ),
-            child: Column(
-              children: [
-                const _HeroBanner(),
-                Gap(AppSize.s16.h),
-                _PlanSection(quote: quote),
-                if (quote.summary.premiumItems.isNotEmpty) ...[
-                  Gap(AppSize.s16.h),
-                  _PremiumMealsSection(quote: quote),
-                ],
-                if (quote.summary.addons.isNotEmpty) ...[
-                  Gap(AppSize.s16.h),
-                  _AddOnsSection(quote: quote),
-                ],
-                Gap(AppSize.s16.h),
-                _DeliveryDetailsSection(quote: quote),
-                Gap(AppSize.s16.h),
-                _DeliveryScheduleSection(
-                  quote: quote,
-                  startDate: startDate,
-                  endDate: endDate,
+            body: SafeArea(
+              top: false,
+              child: SingleChildScrollView(
+                padding: EdgeInsetsDirectional.fromSTEB(
+                  AppPadding.p16.w,
+                  AppPadding.p16.h,
+                  AppPadding.p16.w,
+                  AppSize.s140.h,
                 ),
-                Gap(AppSize.s16.h),
-                _PriceBreakdownSection(quote: quote),
-                if (deliveryNotes.isNotEmpty) ...[
-                  Gap(AppSize.s16.h),
-                  _DeliveryNotesSection(notes: deliveryNotes),
-                ],
-              ],
+                child: Column(
+                  children: [
+                    const _HeroBanner(),
+                    Gap(AppSize.s16.h),
+                    _PlanSection(quote: quote),
+                    if (quote.summary.premiumItems.isNotEmpty) ...[
+                      Gap(AppSize.s16.h),
+                      _PremiumMealsSection(quote: quote),
+                    ],
+                    if (quote.summary.addons.isNotEmpty) ...[
+                      Gap(AppSize.s16.h),
+                      _AddOnsSection(quote: quote),
+                    ],
+                    Gap(AppSize.s16.h),
+                    _DeliveryDetailsSection(quote: quote),
+                    Gap(AppSize.s16.h),
+                    _DeliveryScheduleSection(
+                      quote: quote,
+                      startDate: startDate,
+                      endDate: endDate,
+                    ),
+                    Gap(AppSize.s16.h),
+                    _PromoCodeSection(
+                      controller: _promoController,
+                      promoStatus: promoStatus,
+                      promoMessage: promoMessage,
+                      appliedPromo: appliedPromo,
+                      onChanged: (value) => context.read<SubscriptionBloc>().add(
+                        UpdatePromoCodeInputEvent(value),
+                      ),
+                      onApply: () => context.read<SubscriptionBloc>().add(
+                        const ApplyPromoCodeEvent(),
+                      ),
+                      onRemove: () => context.read<SubscriptionBloc>().add(
+                        const RemovePromoCodeEvent(),
+                      ),
+                    ),
+                    if (isPricingStale) ...[
+                      Gap(AppSize.s12.h),
+                      const _PricingRefreshNotice(),
+                    ],
+                    Gap(AppSize.s16.h),
+                    _PriceBreakdownSection(quote: quote),
+                    if (deliveryNotes.isNotEmpty) ...[
+                      Gap(AppSize.s16.h),
+                      _DeliveryNotesSection(notes: deliveryNotes),
+                    ],
+                  ],
+                ),
+              ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
@@ -178,13 +239,12 @@ class SubscriptionDetails extends StatelessWidget {
     );
   }
 
-  Future<void> _submitCheckout(BuildContext context) async {
-    final didAcceptPolicies = await SubscriptionPoliciesDialog.show(context);
-    if (!didAcceptPolicies || !context.mounted) {
-      return;
-    }
-
+  void _submitCheckout(
+    BuildContext context,
+    SubscriptionQuoteRequestModel quoteRequest,
+  ) {
     final request = _buildCheckoutRequest(quoteRequest);
+    debugPrint('Checkout idempotencyKey: ${request.idempotencyKey}');
     context.read<SubscriptionBloc>().add(CheckoutSubscriptionEvent(request));
   }
 }
@@ -336,7 +396,6 @@ class _PlanSection extends StatelessWidget {
               children: [
                 Text(
                   _displayAmount(
-                    context,
                     label: planLineItem?.amountLabel,
                     fallbackAmount:
                         planLineItem?.amountSar ??
@@ -380,7 +439,6 @@ class _PremiumMealsSection extends StatelessWidget {
       trailing: premiumLineItem != null
           ? Text(
               _displayAmount(
-                context,
                 label: premiumLineItem.amountLabel,
                 fallbackAmount: premiumLineItem.amountSar,
               ),
@@ -487,7 +545,7 @@ class _PremiumMealTile extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
-                '×${_formatNumber(context, item.qty)} | ${_formatSar(context, item.unitPriceSar)}',
+                'x${item.qty} | ${_formatSar(item.unitPriceSar)}',
                 style: getRegularTextStyle(
                   color: ColorManager.grey6A7282,
                   fontSize: FontSizeManager.s10.sp,
@@ -496,7 +554,6 @@ class _PremiumMealTile extends StatelessWidget {
               Gap(AppSize.s4.h),
               Text(
                 _displayAmount(
-                  context,
                   label: item.totalLabel,
                   fallbackAmount: item.totalSar,
                 ),
@@ -525,15 +582,14 @@ class _AddOnsSection extends StatelessWidget {
     return _SummarySectionCard(
       title: Strings.addOns.tr(),
       icon: Icons.add_circle_outline_rounded,
-          trailing: addOnsLineItem != null
-              ? Text(
-                  _displayAmount(
-                    context,
-                    label: addOnsLineItem.amountLabel,
-                    fallbackAmount: addOnsLineItem.amountSar,
-                  ),
-                  style: getRegularTextStyle(
-                    color: ColorManager.grey6A7282,
+      trailing: addOnsLineItem != null
+          ? Text(
+              _displayAmount(
+                label: addOnsLineItem.amountLabel,
+                fallbackAmount: addOnsLineItem.amountSar,
+              ),
+              style: getRegularTextStyle(
+                color: ColorManager.grey6A7282,
                 fontSize: FontSizeManager.s12.sp,
               ),
             )
@@ -604,7 +660,6 @@ class _AddOnTile extends StatelessWidget {
           Gap(AppSize.s12.w),
           Text(
             _displayAmount(
-              context,
               label: item.totalLabel,
               fallbackAmount: item.totalSar,
             ),
@@ -633,7 +688,7 @@ class _DeliveryDetailsSection extends StatelessWidget {
       address?.district ?? '',
       address?.city ?? '',
     ]);
-    final addressValue = _buildAddressSummary(context, address);
+    final addressValue = _buildAddressSummary(address);
 
     return _SummarySectionCard(
       title: Strings.deliveryDetails.tr(),
@@ -666,7 +721,6 @@ class _DeliveryDetailsSection extends StatelessWidget {
             value: delivery.label,
             trailing: Text(
               _displayAmount(
-                context,
                 label: delivery.feeLabel,
                 fallbackAmount: delivery.feeSar,
               ),
@@ -712,7 +766,7 @@ class _DeliveryScheduleSection extends StatelessWidget {
                 Expanded(
                   child: _ScheduleCell(
                     label: Strings.startDate.tr(),
-                    value: _formatDisplayDate(context, startDate),
+                    value: _formatDisplayDate(startDate),
                     subtitle: Strings.firstDelivery.tr(),
                   ),
                 ),
@@ -720,7 +774,7 @@ class _DeliveryScheduleSection extends StatelessWidget {
                 Expanded(
                   child: _ScheduleCell(
                     label: Strings.endDate.tr(),
-                    value: _formatDisplayDate(context, endDate),
+                    value: _formatDisplayDate(endDate),
                     subtitle: Strings.lastDelivery.tr(),
                   ),
                 ),
@@ -840,7 +894,6 @@ class _PriceBreakdownSection extends StatelessWidget {
                   ),
                   Text(
                     _displayAmount(
-                      context,
                       label: totalItem.amountLabel,
                       fallbackAmount: totalItem.amountSar,
                     ),
@@ -854,6 +907,144 @@ class _PriceBreakdownSection extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+class _PromoCodeSection extends StatelessWidget {
+  final TextEditingController controller;
+  final SubscriptionPromoStatus promoStatus;
+  final String? promoMessage;
+  final SubscriptionAppliedPromoModel? appliedPromo;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onApply;
+  final VoidCallback onRemove;
+
+  const _PromoCodeSection({
+    required this.controller,
+    required this.promoStatus,
+    required this.promoMessage,
+    required this.appliedPromo,
+    required this.onChanged,
+    required this.onApply,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isApplying = promoStatus == SubscriptionPromoStatus.applying;
+    final hasAppliedPromo = appliedPromo != null && appliedPromo!.hasCode;
+    final trimmedValue = controller.text.trim();
+    final message = _promoStatusMessage(
+      status: promoStatus,
+      fallbackMessage: promoMessage,
+      hasAppliedPromo: hasAppliedPromo,
+    );
+    final messageColor = _promoStatusColor(promoStatus, hasAppliedPromo);
+
+    return _SummarySectionCard(
+      title: Strings.promoCode.tr(),
+      icon: Icons.local_offer_outlined,
+      child: Padding(
+        padding: EdgeInsetsDirectional.all(AppPadding.p16.w),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: AppTextField.normal(
+                    hintText: Strings.enterPromoCode.tr(),
+                    controller: controller,
+                    onChanged: onChanged,
+                  ),
+                ),
+                Gap(AppSize.s12.w),
+                SizedBox(
+                  width: 104.w,
+                  child: ButtonWidget(
+                    radius: AppSize.s14,
+                    height: AppSize.s55,
+                    color: trimmedValue.isEmpty || isApplying
+                        ? ColorManager.grey9CA3AF
+                        : ColorManager.greenPrimary,
+                    text: isApplying
+                        ? Strings.applyingPromo.tr()
+                        : Strings.apply.tr(),
+                    onTap: trimmedValue.isEmpty || isApplying ? null : onApply,
+                  ),
+                ),
+              ],
+            ),
+            if (message != null && message.trim().isNotEmpty) ...[
+              Gap(AppSize.s12.h),
+              Text(
+                message,
+                style: getRegularTextStyle(
+                  color: messageColor,
+                  fontSize: FontSizeManager.s12.sp,
+                ),
+              ),
+            ],
+            if (hasAppliedPromo) ...[
+              Gap(AppSize.s14.h),
+              Container(
+                width: double.infinity,
+                padding: EdgeInsetsDirectional.all(AppPadding.p14.w),
+                decoration: BoxDecoration(
+                  color: ColorManager.whiteF0FDF4,
+                  borderRadius: BorderRadius.circular(AppSize.s16.r),
+                  border: Border.all(
+                    color: ColorManager.greenPrimary.withValues(alpha: 0.25),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            appliedPromo!.code,
+                            style: getBoldTextStyle(
+                              color: ColorManager.greenDark,
+                              fontSize: FontSizeManager.s15.sp,
+                            ),
+                          ),
+                        ),
+                        TextButtonWidget(
+                          Strings.remove.tr(),
+                          ColorManager.orangePrimary,
+                          FontSizeManager.s12,
+                          isApplying ? null : onRemove,
+                        ),
+                      ],
+                    ),
+                    if (appliedPromo!.label.trim().isNotEmpty)
+                      Text(
+                        appliedPromo!.label,
+                        style: getRegularTextStyle(
+                          color: ColorManager.grey4A5565,
+                          fontSize: FontSizeManager.s12.sp,
+                        ),
+                      ),
+                    if (appliedPromo!.message.trim().isNotEmpty) ...[
+                      Gap(AppSize.s4.h),
+                      Text(
+                        appliedPromo!.message,
+                        style: getRegularTextStyle(
+                          color: ColorManager.grey6A7282,
+                          fontSize: FontSizeManager.s12.sp,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -906,11 +1097,15 @@ class _DeliveryNotesSection extends StatelessWidget {
 class _BottomActionBar extends StatelessWidget {
   final String totalLabel;
   final bool isLoading;
+  final bool isEnabled;
+  final bool stalePricing;
   final VoidCallback? onTap;
 
   const _BottomActionBar({
     required this.totalLabel,
     required this.isLoading,
+    required this.isEnabled,
+    required this.stalePricing,
     required this.onTap,
   });
 
@@ -942,9 +1137,50 @@ class _BottomActionBar extends StatelessWidget {
           radius: AppSize.s16,
           text: isLoading
               ? Strings.openingPayment.tr()
+              : stalePricing
+              ? Strings.refreshPricingToContinue.tr()
               : '${Strings.confirmAndPay.tr()} - $totalLabel',
-          onTap: onTap,
+          onTap: isEnabled ? onTap : null,
         ),
+      ),
+    );
+  }
+}
+
+class _PricingRefreshNotice extends StatelessWidget {
+  const _PricingRefreshNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsetsDirectional.all(AppPadding.p14.w),
+      decoration: BoxDecoration(
+        color: ColorManager.orangeFFF5EC,
+        borderRadius: BorderRadius.circular(AppSize.s16.r),
+        border: Border.all(
+          color: ColorManager.orangePrimary.withValues(alpha: 0.2),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.info_outline_rounded,
+            color: ColorManager.orangePrimary,
+            size: AppSize.s18.sp,
+          ),
+          Gap(AppSize.s10.w),
+          Expanded(
+            child: Text(
+              Strings.pricingNeedsRefresh.tr(),
+              style: getRegularTextStyle(
+                color: ColorManager.orangePrimary,
+                fontSize: FontSizeManager.s12.sp,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1079,14 +1315,6 @@ class _InfoTile extends StatelessWidget {
                     fontSize: FontSizeManager.s10.sp,
                   ),
                 ),
-                Gap(AppSize.s4.h),
-                Text(
-                  value,
-                  style: getBoldTextStyle(
-                    color: ColorManager.black101828,
-                    fontSize: FontSizeManager.s14.sp,
-                  ),
-                ),
               ],
             ),
           ),
@@ -1164,6 +1392,17 @@ class _PriceRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isVat = item.kind == 'vat';
+    final isDiscount = _isDiscountLineItem(item);
+    final valueColor = isDiscount
+        ? ColorManager.greenDark
+        : isVat
+        ? ColorManager.grey6A7282
+        : ColorManager.black101828;
+    final labelColor = isDiscount
+        ? ColorManager.greenDark
+        : isVat
+        ? ColorManager.grey6A7282
+        : ColorManager.grey4A5565;
 
     return Padding(
       padding: EdgeInsetsDirectional.symmetric(
@@ -1175,30 +1414,24 @@ class _PriceRow extends StatelessWidget {
           Expanded(
             child: Text(
               item.label,
-              style: isVat
-                  ? getRegularTextStyle(
-                      color: ColorManager.grey6A7282,
-                      fontSize: FontSizeManager.s12.sp,
-                    )
-                  : getRegularTextStyle(
-                      color: ColorManager.grey4A5565,
-                      fontSize: FontSizeManager.s14.sp,
-                    ),
+              style: getRegularTextStyle(
+                color: labelColor,
+                fontSize: isVat ? FontSizeManager.s12.sp : FontSizeManager.s14.sp,
+              ),
             ),
           ),
           Text(
             _displayAmount(
-              context,
               label: item.amountLabel,
               fallbackAmount: item.amountSar,
             ),
             style: isVat
                 ? getRegularTextStyle(
-                    color: ColorManager.grey6A7282,
+                    color: valueColor,
                     fontSize: FontSizeManager.s12.sp,
                   )
                 : getBoldTextStyle(
-                    color: ColorManager.black101828,
+                    color: valueColor,
                     fontSize: FontSizeManager.s14.sp,
                   ),
           ),
@@ -1240,62 +1473,123 @@ DateTime? _tryParseDate(String? value) {
   return DateTime.tryParse(value);
 }
 
-String _formatDisplayDate(BuildContext context, DateTime? date) {
+String _formatDisplayDate(DateTime? date) {
   if (date == null) {
     return '--';
   }
 
-  return DateFormat.yMMMd(context.locale.toString()).format(date);
+  const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+
+  return '${months[date.month - 1]} ${date.day}, ${date.year}';
 }
 
-String _formatSar(BuildContext context, num amount) {
-  return '${_formatNumber(context, amount)} ${Strings.sar.tr()}';
+String _formatSar(num amount) {
+  return '${_formatNumber(amount)} ${Strings.sar.tr()}';
 }
 
-String _displayAmount(
-  BuildContext context, {
-  String? label,
-  required num fallbackAmount,
-}) {
+String _displayAmount({String? label, required num fallbackAmount}) {
   final normalizedLabel = (label ?? '').trim();
   if (normalizedLabel.isNotEmpty) {
-    final isArabic = context.locale.languageCode == 'ar';
-    final hasLatinChars = RegExp(r'[A-Za-z]').hasMatch(normalizedLabel);
-    if (!(isArabic && hasLatinChars)) {
-      return normalizedLabel;
+    return normalizedLabel;
+  }
+
+  return _formatSar(fallbackAmount);
+}
+
+bool _isDiscountLineItem(SubscriptionQuoteLineItemModel item) {
+  final kind = item.kind.trim().toLowerCase();
+  return kind == 'discount' ||
+      kind == 'promo' ||
+      kind == 'promo_code' ||
+      kind == 'coupon';
+}
+
+String? _promoStatusMessage({
+  required SubscriptionPromoStatus status,
+  required String? fallbackMessage,
+  required bool hasAppliedPromo,
+}) {
+  if (fallbackMessage != null && fallbackMessage.trim().isNotEmpty) {
+    return fallbackMessage;
+  }
+
+  return switch (status) {
+    SubscriptionPromoStatus.applied when hasAppliedPromo =>
+      Strings.promoApplied.tr(),
+    SubscriptionPromoStatus.invalid => Strings.invalidPromoCode.tr(),
+    SubscriptionPromoStatus.expired => Strings.expiredPromoCode.tr(),
+    SubscriptionPromoStatus.ineligible =>
+      Strings.promoNotValidForSubscription.tr(),
+    SubscriptionPromoStatus.backendError => Strings.promoBackendError.tr(),
+    SubscriptionPromoStatus.applying => Strings.validatingPromoCode.tr(),
+    _ => null,
+  };
+}
+
+Color _promoStatusColor(
+  SubscriptionPromoStatus status,
+  bool hasAppliedPromo,
+) {
+  return switch (status) {
+    SubscriptionPromoStatus.applied when hasAppliedPromo => ColorManager.greenDark,
+    SubscriptionPromoStatus.invalid ||
+    SubscriptionPromoStatus.expired ||
+    SubscriptionPromoStatus.ineligible ||
+    SubscriptionPromoStatus.backendError => ColorManager.errorColor,
+    _ => ColorManager.grey6A7282,
+  };
+}
+
+String _formatNumber(num amount) {
+  final isWhole = amount == amount.roundToDouble();
+  final rawValue = isWhole
+      ? amount.round().toString()
+      : amount.toStringAsFixed(2);
+  final parts = rawValue.split('.');
+  final wholeNumber = parts.first;
+  final buffer = StringBuffer();
+
+  for (int index = 0; index < wholeNumber.length; index++) {
+    final remaining = wholeNumber.length - index;
+    buffer.write(wholeNumber[index]);
+    if (remaining > 1 && remaining % 3 == 1) {
+      buffer.write(',');
     }
   }
 
-  return _formatSar(context, fallbackAmount);
-}
-
-String _formatNumber(BuildContext context, num amount) {
-  final isWhole = amount == amount.roundToDouble();
-  final localeName = context.locale.toString();
-  if (isWhole) {
-    return NumberFormat.decimalPattern(localeName).format(amount);
+  if (parts.length == 1) {
+    return buffer.toString();
   }
-  return NumberFormat('#,##0.00', localeName).format(amount);
+
+  return '${buffer.toString()}.${parts.last}';
 }
 
 String _joinNonEmpty(List<String> values) {
   return values.where((value) => value.trim().isNotEmpty).join(' - ');
 }
 
-String _buildAddressSummary(
-  BuildContext context,
-  SubscriptionAddressModel? address,
-) {
+String _buildAddressSummary(SubscriptionAddressModel? address) {
   if (address == null) {
     return '';
   }
 
   return _joinNonEmpty([
     address.street,
-    if (address.building.trim().isNotEmpty)
-      '${Strings.buildingShort.tr()} ${address.building}',
-    if (address.apartment.trim().isNotEmpty)
-      '${Strings.apartmentShort.tr()} ${address.apartment}',
+    if (address.building.trim().isNotEmpty) 'Building ${address.building}',
+    if (address.apartment.trim().isNotEmpty) 'Apt ${address.apartment}',
     address.district,
     address.city,
   ]);
@@ -1314,6 +1608,7 @@ SubscriptionCheckoutRequestModel _buildCheckoutRequest(
     grams: request.grams,
     mealsPerDay: request.mealsPerDay,
     startDate: request.startDate,
+    promoCode: request.promoCode,
     premiumItems: request.premiumItems
         .map(
           (item) => SubscriptionCheckoutPremiumItemRequestModel(

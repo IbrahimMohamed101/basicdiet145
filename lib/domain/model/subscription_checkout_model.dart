@@ -7,6 +7,7 @@ class SubscriptionCheckoutRequestModel extends Equatable {
   final int grams;
   final int mealsPerDay;
   final String startDate;
+  final String? promoCode;
   final List<SubscriptionCheckoutPremiumItemRequestModel> premiumItems;
   final List<String> addons;
   final SubscriptionCheckoutDeliveryRequestModel delivery;
@@ -19,6 +20,7 @@ class SubscriptionCheckoutRequestModel extends Equatable {
     required this.grams,
     required this.mealsPerDay,
     required this.startDate,
+    this.promoCode,
     required this.premiumItems,
     required this.addons,
     required this.delivery,
@@ -33,6 +35,7 @@ class SubscriptionCheckoutRequestModel extends Equatable {
     grams,
     mealsPerDay,
     startDate,
+    promoCode,
     premiumItems,
     addons,
     delivery,

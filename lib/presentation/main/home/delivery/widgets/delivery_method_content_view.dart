@@ -159,11 +159,11 @@ class DeliveryMethodContentView extends StatelessWidget {
           radius: AppSize.s12.r,
           text: loading ? Strings.loading.tr() : Strings.getYourPrice.tr(),
           color: enabled || loading
-              ? ColorManager.greenPrimary
-              : ColorManager.greyF3F4F6,
+              ? ColorManager.brandPrimary
+              : ColorManager.backgroundSubtle,
           textColor: enabled || loading
-              ? Colors.white
-              : ColorManager.grey6A7282,
+              ? ColorManager.backgroundSurface
+              : ColorManager.textSecondary,
           onTap: enabled ? () => _submitQuote(context, success) : null,
         );
       },
@@ -224,7 +224,7 @@ class DeliveryMethodContentView extends StatelessWidget {
       builder: (context, child) => Theme(
         data: Theme.of(context).copyWith(
           colorScheme: const ColorScheme.light(
-            primary: ColorManager.greenPrimary,
+            primary: ColorManager.brandPrimary,
           ),
         ),
         child: child!,
@@ -318,12 +318,12 @@ class DeliveryMethodContentView extends StatelessWidget {
             Text(
               label,
               style: getRegularTextStyle(
-                color: ColorManager.grey4A5565,
+                color: ColorManager.textSecondary,
                 fontSize: FontSizeManager.s14.sp,
               ),
             ),
             if (isRequired)
-              Text(" *", style: TextStyle(color: ColorManager.errorColor)),
+              Text(" *", style: TextStyle(color: ColorManager.stateError)),
           ],
         ),
         Gap(AppSize.s8.h),
@@ -341,21 +341,21 @@ class DeliveryMethodContentView extends StatelessWidget {
     return Container(
       padding: EdgeInsetsDirectional.all(AppPadding.p16.w),
       decoration: BoxDecoration(
-        color: ColorManager.greenPrimary.withValues(alpha: 0.05),
+        color: ColorManager.brandPrimary.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(AppSize.s12.r),
         border: Border.all(
-          color: ColorManager.greenPrimary.withValues(alpha: 0.2),
+          color: ColorManager.brandPrimary.withValues(alpha: 0.2),
         ),
       ),
       child: Row(
         children: [
-          const Icon(Icons.location_on, color: ColorManager.greenPrimary),
+          const Icon(Icons.location_on, color: ColorManager.brandPrimary),
           Gap(AppSize.s12.w),
           Expanded(
             child: Text(
               pickupLocation?.label ?? Strings.pickupFromBranch.tr(),
               style: getBoldTextStyle(
-                color: ColorManager.greenDark,
+                color: ColorManager.stateSuccessEmphasis,
                 fontSize: 16.sp,
               ),
             ),
@@ -373,7 +373,7 @@ class _SectionTitle extends StatelessWidget {
   Widget build(BuildContext context) => Text(
     title,
     style: getBoldTextStyle(
-      color: ColorManager.black101828,
+      color: ColorManager.textPrimary,
       fontSize: FontSizeManager.s16.sp,
     ),
   );
@@ -386,7 +386,7 @@ class _HelperText extends StatelessWidget {
   Widget build(BuildContext context) => Text(
     text,
     style: getRegularTextStyle(
-      color: ColorManager.grey6A7282,
+      color: ColorManager.textSecondary,
       fontSize: FontSizeManager.s12.sp,
     ),
   );

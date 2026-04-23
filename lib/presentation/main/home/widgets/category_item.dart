@@ -41,7 +41,7 @@ class CategoryItem extends StatelessWidget {
           title,
           style: getBoldTextStyle(
             fontSize: FontSizeManager.s12.sp,
-            color: ColorManager.grayColor,
+            color: ColorManager.textSecondary,
           ),
         ),
       ],

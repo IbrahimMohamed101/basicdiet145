@@ -12,6 +12,8 @@ class SubscriptionQuoteRequest {
   final int mealsPerDay;
   @JsonKey(name: 'startDate')
   final String startDate;
+  @JsonKey(name: 'promoCode', includeIfNull: false)
+  final String? promoCode;
   @JsonKey(name: 'premiumItems')
   final List<SubscriptionQuotePremiumItemRequest> premiumItems;
   @JsonKey(name: 'addons')
@@ -24,6 +26,7 @@ class SubscriptionQuoteRequest {
     required this.grams,
     required this.mealsPerDay,
     required this.startDate,
+    this.promoCode,
     required this.premiumItems,
     required this.addons,
     required this.delivery,

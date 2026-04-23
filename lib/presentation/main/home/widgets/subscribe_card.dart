@@ -26,7 +26,7 @@ class SubscribeCard extends StatelessWidget {
           vertical: AppPadding.p28.h,
         ),
         decoration: BoxDecoration(
-          color: ColorManager.greenDark,
+          color: ColorManager.brandPrimary,
           borderRadius: BorderRadius.circular(AppSize.s16.r),
         ),
         child: Column(
@@ -42,7 +42,7 @@ class SubscribeCard extends StatelessWidget {
               Strings.subscribeSave.tr(),
               style: getBoldTextStyle(
                 fontSize: FontSizeManager.s18.sp,
-                color: ColorManager.whiteColor,
+                color: ColorManager.backgroundSurface,
               ).copyWith(height: 1.2),
             ),
             Gap(AppSize.s8.h),
@@ -50,7 +50,7 @@ class SubscribeCard extends StatelessWidget {
               Strings.personalizedPlans.tr(),
               style: getRegularTextStyle(
                 fontSize: FontSizeManager.s12.sp,
-                color: ColorManager.whiteColor.withValues(alpha: 0.8),
+                color: ColorManager.backgroundSurface.withValues(alpha: 0.8),
               ).copyWith(height: 1.2),
             ),
             const Spacer(),
@@ -66,13 +66,13 @@ class SubscribeCard extends StatelessWidget {
     return Container(
       padding: EdgeInsetsDirectional.all(AppPadding.p12.w),
       decoration: BoxDecoration(
-        color: ColorManager.whiteColor.withValues(alpha: 0.2),
+        color: ColorManager.backgroundSurface.withValues(alpha: 0.2),
         borderRadius: BorderRadius.circular(AppSize.s16.r),
       ),
       child: SvgPicture.asset(
         IconAssets.increase,
         colorFilter: const ColorFilter.mode(
-          ColorManager.whiteColor,
+          ColorManager.backgroundSurface,
           BlendMode.srcIn,
         ),
         width: AppSize.s24.w,
@@ -87,7 +87,7 @@ class SubscribeCard extends StatelessWidget {
       width: AppSize.s45.w,
       padding: EdgeInsetsDirectional.all(AppPadding.p8.w),
       decoration: BoxDecoration(
-        color: ColorManager.whiteColor.withValues(alpha: 0.9),
+        color: ColorManager.backgroundSurface.withValues(alpha: 0.9),
         borderRadius: BorderRadius.circular(AppSize.s10.r),
       ),
       child: Text(
@@ -95,7 +95,7 @@ class SubscribeCard extends StatelessWidget {
         textAlign: TextAlign.center,
         style: getBoldTextStyle(
           fontSize: FontSizeManager.s10.sp,
-          color: ColorManager.greenDark,
+          color: ColorManager.brandAccent,
         ).copyWith(height: 1.2),
       ),
     );
@@ -108,13 +108,13 @@ class SubscribeCard extends StatelessWidget {
           Strings.viewPlans.tr(),
           style: getBoldTextStyle(
             fontSize: FontSizeManager.s12.sp,
-            color: ColorManager.whiteColor,
+            color: ColorManager.backgroundSurface,
           ).copyWith(letterSpacing: 1),
         ),
         Gap(AppSize.s4.w),
         const Icon(
           Icons.arrow_forward_rounded,
-          color: ColorManager.whiteColor,
+          color: ColorManager.backgroundSurface,
           size: AppSize.s16,
         ),
       ],

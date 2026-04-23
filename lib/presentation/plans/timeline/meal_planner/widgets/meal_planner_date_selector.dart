@@ -67,11 +67,21 @@ class _DayCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isLocked = !['open', 'planned', 'extension'].contains(day.status.toLowerCase());
-    final _DayStyle style = _resolveDayStyle(day.status, isSelected, isComplete);
+    final isLocked = ![
+      'open',
+      'planned',
+      'extension',
+    ].contains(day.status.toLowerCase());
+    final _DayStyle style = _resolveDayStyle(
+      day.status,
+      isSelected,
+      isComplete,
+    );
 
     return GestureDetector(
-      onTap: isLocked ? null : () => context.read<MealPlannerBloc>().add(ChangeDateEvent(index)),
+      onTap: isLocked
+          ? null
+          : () => context.read<MealPlannerBloc>().add(ChangeDateEvent(index)),
       child: Stack(
         clipBehavior: Clip.none,
         children: [
@@ -110,7 +120,7 @@ class _DayCard extends StatelessWidget {
                   child: Text(
                     style.statusText,
                     style: getRegularTextStyle(
-                      color: Colors.white,
+                      color: ColorManager.textInverse,
                       fontSize: FontSizeManager.s10.sp,
                     ),
                   ),
@@ -125,11 +135,18 @@ class _DayCard extends StatelessWidget {
               child: Container(
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: ColorManager.greenPrimary,
-                  border: Border.all(color: Colors.white, width: 2.w),
+                  color: ColorManager.brandPrimary,
+                  border: Border.all(
+                    color: ColorManager.backgroundSurface,
+                    width: 2.w,
+                  ),
                 ),
                 padding: EdgeInsets.all(4.w),
-                child: Icon(Icons.check, color: Colors.white, size: 14.w),
+                child: Icon(
+                  Icons.check,
+                  color: ColorManager.textInverse,
+                  size: 14.w,
+                ),
               ),
             ),
         ],
@@ -145,40 +162,40 @@ class _DayCard extends StatelessWidget {
 
     switch (status.toLowerCase()) {
       case 'locked':
-        baseColor = ColorManager.grey9CA3AF;
-        baseBgColor = ColorManager.greyF3F4F6;
-        baseBorderColor = Colors.transparent;
+        baseColor = ColorManager.textMuted;
+        baseBgColor = ColorManager.backgroundSubtle;
+        baseBorderColor = ColorManager.transparent;
         statusText = Strings.locked.tr();
         break;
       case 'planned':
-        baseColor = ColorManager.greenPrimary;
-        baseBgColor = ColorManager.greenPrimary.withValues(alpha: 0.05);
-        baseBorderColor = ColorManager.greenPrimary;
+        baseColor = ColorManager.brandPrimary;
+        baseBgColor = ColorManager.brandPrimaryTint;
+        baseBorderColor = ColorManager.brandPrimary;
         statusText = Strings.planned.tr();
         break;
       case 'frozen':
-        baseColor = ColorManager.bluePrimary;
-        baseBgColor = ColorManager.bluePrimary.withValues(alpha: 0.05);
-        baseBorderColor = ColorManager.bluePrimary;
+        baseColor = ColorManager.brandPrimaryPressed;
+        baseBgColor = ColorManager.brandPrimaryTint;
+        baseBorderColor = ColorManager.brandPrimaryHover;
         statusText = Strings.frozen.tr();
         break;
       case 'skipped':
-        baseColor = ColorManager.orangePrimary;
-        baseBgColor = ColorManager.orangePrimary.withValues(alpha: 0.05);
-        baseBorderColor = ColorManager.orangePrimary;
+        baseColor = ColorManager.brandAccent;
+        baseBgColor = ColorManager.brandAccentSoft;
+        baseBorderColor = ColorManager.brandAccentBorder;
         statusText = Strings.skipped.tr();
         break;
       case 'extension':
-        baseColor = ColorManager.purplePrimary;
-        baseBgColor = ColorManager.purplePrimary.withValues(alpha: 0.05);
-        baseBorderColor = ColorManager.purplePrimary;
+        baseColor = ColorManager.brandAccentPressed;
+        baseBgColor = ColorManager.brandAccentSoft;
+        baseBorderColor = ColorManager.brandAccent;
         statusText = Strings.extension.tr();
         break;
       case 'open':
       default:
-        baseColor = ColorManager.black101828;
-        baseBgColor = Colors.white;
-        baseBorderColor = ColorManager.formFieldsBorderColor;
+        baseColor = ColorManager.textPrimary;
+        baseBgColor = ColorManager.backgroundSurface;
+        baseBorderColor = ColorManager.borderDefault;
         statusText = Strings.open.tr();
         break;
     }
@@ -188,19 +205,19 @@ class _DayCard extends StatelessWidget {
     Color borderColor = baseBorderColor;
 
     if (isComplete) {
-      bgColor = ColorManager.greenPrimary;
-      borderColor = Colors.transparent;
-      textColor = Colors.white;
+      bgColor = ColorManager.brandPrimary;
+      borderColor = ColorManager.transparent;
+      textColor = ColorManager.textInverse;
       statusText = Strings.planned.tr();
     }
     if (isSelected) {
-      borderColor = ColorManager.bluePrimary;
-      bgColor = ColorManager.bluePrimary;
-      textColor = Colors.white;
+      borderColor = ColorManager.brandPrimary;
+      bgColor = ColorManager.brandPrimary;
+      textColor = ColorManager.textInverse;
     }
 
     final pillBgColor = isComplete || isSelected
-        ? Colors.white.withValues(alpha: 0.2)
+        ? ColorManager.textInverse.withValues(alpha: 0.2)
         : baseColor;
 
     return _DayStyle(

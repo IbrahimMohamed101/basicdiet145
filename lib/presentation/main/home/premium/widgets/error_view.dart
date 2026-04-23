@@ -12,7 +12,7 @@ class PremiumMealsErrorView extends StatelessWidget {
     return Center(
       child: Text(
         message,
-        style: getRegularTextStyle(color: ColorManager.errorColor),
+        style: getRegularTextStyle(color: ColorManager.stateError),
       ),
     );
   }

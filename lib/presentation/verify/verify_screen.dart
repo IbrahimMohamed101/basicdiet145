@@ -25,6 +25,8 @@ class VerifyScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+
     return BlocProvider(
       create: (_) => instance<VerifyBloc>(),
       child: BlocListener<VerifyBloc, VerifyState>(
@@ -34,13 +36,15 @@ class VerifyScreen extends StatelessWidget {
           }
         },
         child: Scaffold(
-          backgroundColor: ColorManager.whiteColor,
+          backgroundColor: ColorManager.backgroundSurface,
           body: SafeArea(
             child: Builder(
               builder: (innerContext) => SingleChildScrollView(
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
                 padding: EdgeInsetsDirectional.symmetric(
                   horizontal: AppPadding.p20.w,
-                ),
+                ).copyWith(bottom: AppPadding.p20.h + bottomInset),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -79,7 +83,7 @@ class VerifyScreen extends StatelessWidget {
           Text(
             Strings.verifyYourPhone.tr(),
             style: getBoldTextStyle(
-              color: ColorManager.blackColor,
+              color: ColorManager.textPrimary,
               fontSize: FontSizeManager.s24.sp,
             ),
           ),
@@ -87,7 +91,7 @@ class VerifyScreen extends StatelessWidget {
           Text(
             Strings.otpSentSubtitle.tr(),
             style: getRegularTextStyle(
-              color: ColorManager.grayColor,
+              color: ColorManager.textSecondary,
               fontSize: FontSizeManager.s14.sp,
             ),
           ),
@@ -95,7 +99,7 @@ class VerifyScreen extends StatelessWidget {
           Text(
             phoneNumber ?? "",
             style: getBoldTextStyle(
-              color: ColorManager.blackColor,
+              color: ColorManager.textPrimary,
               fontSize: FontSizeManager.s16.sp,
             ),
           ),
@@ -109,19 +113,19 @@ class VerifyScreen extends StatelessWidget {
       width: AppSize.s50.w,
       height: AppSize.s70.h,
       textStyle: getBoldTextStyle(
-        color: ColorManager.blackColor,
+        color: ColorManager.textPrimary,
         fontSize: FontSizeManager.s20.sp,
       ),
       decoration: BoxDecoration(
-        color: ColorManager.whiteColor,
+        color: ColorManager.backgroundSurface,
         borderRadius: BorderRadius.circular(AppSize.s16.r),
-        border: Border.all(color: ColorManager.greenPrimary),
+        border: Border.all(color: ColorManager.brandPrimary),
       ),
     );
 
     final focusedPinTheme = defaultPinTheme.copyWith(
       decoration: defaultPinTheme.decoration!.copyWith(
-        border: Border.all(color: ColorManager.greenPrimary, width: 2),
+        border: Border.all(color: ColorManager.brandPrimary, width: 2),
       ),
     );
 
@@ -162,8 +166,8 @@ class VerifyScreen extends StatelessWidget {
                 style:
                     getRegularTextStyle(
                       color: state.canResend
-                          ? ColorManager.greenDark
-                          : ColorManager.grayColor,
+                          ? ColorManager.stateSuccessEmphasis
+                          : ColorManager.textSecondary,
                       fontSize: FontSizeManager.s14.sp,
                     ).copyWith(
                       fontWeight: state.canResend
@@ -177,7 +181,7 @@ class VerifyScreen extends StatelessWidget {
                           text:
                               "0:${state.timerDuration.toString().padLeft(2, '0')}",
                           style: getBoldTextStyle(
-                            color: ColorManager.greenDark,
+                            color: ColorManager.stateSuccessEmphasis,
                             fontSize: FontSizeManager.s14.sp,
                           ),
                         ),
@@ -201,10 +205,10 @@ class VerifyScreen extends StatelessWidget {
 
   //       return ButtonWidget(
   //         text: isLoading ? Strings.loading : Strings.verifyAndContinue,
-  //         textColor: ColorManager.whiteColor,
+  //         textColor: ColorManager.backgroundSurface,
   //         color: isEnabled
-  //             ? ColorManager.greenDark
-  //             : ColorManager.greenDark.withValues(alpha: 0.5),
+  //             ? ColorManager.stateSuccessEmphasis
+  //             : ColorManager.stateSuccessEmphasis.withValues(alpha: 0.5),
   //         width: double.infinity,
   //         radius: AppSize.s12.r,
   //         onTap: isEnabled
@@ -219,22 +223,22 @@ class VerifyScreen extends StatelessWidget {
     return Container(
       padding: EdgeInsetsDirectional.all(AppPadding.p12.w),
       decoration: BoxDecoration(
-        color: ColorManager.greenLight.withValues(alpha: 0.1),
+        color: ColorManager.brandPrimaryTint.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(AppSize.s8.r),
         border: Border.all(
-          color: ColorManager.greenLight.withValues(alpha: 0.3),
+          color: ColorManager.brandPrimaryTint.withValues(alpha: 0.3),
         ),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.lock, size: AppSize.s16.sp, color: ColorManager.grayColor),
+          Icon(Icons.lock, size: AppSize.s16.sp, color: ColorManager.textSecondary),
           Gap(AppSize.s8.w),
           Expanded(
             child: Text(
               Strings.secureInfo.tr(),
               style: getRegularTextStyle(
-                color: ColorManager.grayColor,
+                color: ColorManager.textSecondary,
                 fontSize: FontSizeManager.s12.sp,
               ),
               overflow: TextOverflow.ellipsis,
@@ -247,7 +251,7 @@ class VerifyScreen extends StatelessWidget {
 
   Widget _loader() {
     return Center(
-      child: CircularProgressIndicator(color: ColorManager.greenDark),
+      child: CircularProgressIndicator(color: ColorManager.stateSuccessEmphasis),
     );
   }
 }

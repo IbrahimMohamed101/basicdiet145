@@ -103,7 +103,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: ColorManager.whiteColor,
+      backgroundColor: ColorManager.backgroundSurface,
       body: SafeArea(
         child: Column(
           children: [
@@ -190,7 +190,7 @@ class _PageIndicatorDot extends StatelessWidget {
       height: _inactiveSize.h,
       width: isActive ? _activeWidth.w : _inactiveSize.w,
       decoration: BoxDecoration(
-        color: isActive ? ColorManager.greenPrimary : _inactiveColor,
+        color: isActive ? ColorManager.brandPrimary : _inactiveColor,
         borderRadius: BorderRadius.circular(AppSize.s10),
       ),
     );
@@ -235,7 +235,7 @@ class OnboardingPageView extends StatelessWidget {
       pageContent.title,
       textAlign: TextAlign.center,
       style: getBoldTextStyle(
-        color: ColorManager.blackColor,
+        color: ColorManager.textPrimary,
         fontSize: AppSize.s24.sp,
       ),
     );
@@ -248,7 +248,7 @@ class OnboardingPageView extends StatelessWidget {
         pageContent.subtitle,
         textAlign: TextAlign.center,
         style: getRegularTextStyle(
-          color: ColorManager.grayColor,
+          color: ColorManager.textSecondary,
           fontSize: AppSize.s16.sp,
         ),
       ),

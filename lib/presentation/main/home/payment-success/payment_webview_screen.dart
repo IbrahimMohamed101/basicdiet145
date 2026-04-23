@@ -15,6 +15,7 @@ class PaymentWebViewScreen extends StatefulWidget {
   final String successUrl;
   final String backUrl;
   final String draftId;
+
   /// Optional override for success behavior.
   /// When provided, called instead of navigating to PaymentSuccessfulScreen.
   final VoidCallback? onSuccess;
@@ -41,7 +42,7 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
     super.initState();
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(ColorManager.whiteColor)
+      ..setBackgroundColor(ColorManager.backgroundSurface)
       ..setNavigationDelegate(
         NavigationDelegate(
           onProgress: (progress) {
@@ -49,7 +50,6 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
             setState(() => _progress = progress);
           },
           onNavigationRequest: (request) {
-            print("+++${request.url}====++${widget.successUrl}==${_matchesCallback(request.url, widget.successUrl)}");
             if (_matchesCallback(request.url, widget.successUrl)) {
               _openSuccessScreen();
               return NavigationDecision.prevent;
@@ -97,16 +97,22 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
     // Normalize paths and check for matching segments
     final currentPath = current.path.toLowerCase();
     final callbackPath = callback.path.toLowerCase();
-    
+
     // Direct match
     if (currentPath == callbackPath) return true;
-    
+
     // Check if paths share the same ending (e.g., both end with /success or /cancel)
-    final currentSegments = currentPath.split('/').where((s) => s.isNotEmpty).toList();
-    final callbackSegments = callbackPath.split('/').where((s) => s.isNotEmpty).toList();
-    
+    final currentSegments = currentPath
+        .split('/')
+        .where((s) => s.isNotEmpty)
+        .toList();
+    final callbackSegments = callbackPath
+        .split('/')
+        .where((s) => s.isNotEmpty)
+        .toList();
+
     if (currentSegments.isEmpty || callbackSegments.isEmpty) return false;
-    
+
     // Match if last segment is the same (e.g., both 'success' or both 'cancel')
     return currentSegments.last == callbackSegments.last;
   }
@@ -120,22 +126,22 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
         _closeWithCancelled();
       },
       child: Scaffold(
-        backgroundColor: ColorManager.whiteColor,
+        backgroundColor: ColorManager.backgroundSurface,
         appBar: AppBar(
-          backgroundColor: ColorManager.whiteColor,
+          backgroundColor: ColorManager.backgroundSurface,
           elevation: 0,
           leading: IconButton(
             onPressed: _closeWithCancelled,
             icon: Icon(
               Icons.close_rounded,
-              color: ColorManager.black101828,
+              color: ColorManager.iconPrimary,
               size: 22.sp,
             ),
           ),
           title: Text(
             Strings.securePayment.tr(),
             style: getBoldTextStyle(
-              color: ColorManager.black101828,
+              color: ColorManager.textPrimary,
               fontSize: FontSizeManager.s18.sp,
             ),
           ),
@@ -144,8 +150,8 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
             child: _progress < 100
                 ? LinearProgressIndicator(
                     value: _progress / 100,
-                    backgroundColor: ColorManager.formFieldsBorderColor,
-                    color: ColorManager.greenPrimary,
+                    backgroundColor: ColorManager.backgroundSubtle,
+                    color: ColorManager.brandPrimary,
                     minHeight: 3.h,
                   )
                 : SizedBox(height: 3.h),

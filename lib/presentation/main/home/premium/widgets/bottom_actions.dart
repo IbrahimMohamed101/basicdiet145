@@ -39,9 +39,9 @@ class PremiumMealsBottomActions extends StatelessWidget {
         vertical: AppPadding.p16.h,
       ),
       decoration: BoxDecoration(
-        color: ColorManager.whiteColor,
+        color: ColorManager.backgroundSurface,
         border: Border(
-          top: BorderSide(color: ColorManager.formFieldsBorderColor, width: 1),
+          top: BorderSide(color: ColorManager.borderDefault, width: 1),
         ),
       ),
       child: Column(
@@ -50,7 +50,7 @@ class PremiumMealsBottomActions extends StatelessWidget {
           ElevatedButton(
             onPressed: () => _navigateToAddOns(context),
             style: ElevatedButton.styleFrom(
-              backgroundColor: ColorManager.greenPrimary,
+              backgroundColor: ColorManager.brandPrimary,
               minimumSize: Size(double.infinity, 56.h),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(AppSize.s16.r),
@@ -61,7 +61,7 @@ class PremiumMealsBottomActions extends StatelessWidget {
               Strings.continueText.tr(),
               style: getBoldTextStyle(
                 fontSize: FontSizeManager.s16.sp,
-                color: ColorManager.whiteColor,
+                color: ColorManager.textInverse,
               ),
             ),
           ),
@@ -75,7 +75,7 @@ class PremiumMealsBottomActions extends StatelessWidget {
               Strings.skipThisStep.tr(),
               style: getBoldTextStyle(
                 fontSize: FontSizeManager.s16.sp,
-                color: ColorManager.black101828,
+                color: ColorManager.textPrimary,
               ),
             ),
           ),

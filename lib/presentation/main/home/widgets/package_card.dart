@@ -35,10 +35,10 @@ class PackageCard extends StatelessWidget {
     return Container(
       padding: EdgeInsetsDirectional.all(AppPadding.p16.w),
       decoration: BoxDecoration(
-        color: ColorManager.whiteColor,
+        color: ColorManager.backgroundSurface,
         borderRadius: BorderRadius.circular(AppSize.s16.r),
         border: Border.all(
-          color: ColorManager.formFieldsBorderColor,
+          color: ColorManager.borderDefault,
           width: AppSize.s1,
         ),
       ),
@@ -51,7 +51,7 @@ class PackageCard extends StatelessWidget {
             _mealsDesc,
             style: getRegularTextStyle(
               fontSize: FontSizeManager.s12.sp,
-              color: ColorManager.grey6A7282,
+              color: ColorManager.textSecondary,
             ).copyWith(height: 16 / 12),
           ),
           Gap(AppSize.s16.h),
@@ -83,7 +83,7 @@ class _PackageCardHeader extends StatelessWidget {
               title,
               style: getBoldTextStyle(
                 fontSize: FontSizeManager.s16.sp,
-                color: ColorManager.black101828,
+                color: ColorManager.textPrimary,
               ).copyWith(height: 24 / 16),
             ),
             Gap(AppSize.s8.w),
@@ -113,14 +113,14 @@ class _TagBadge extends StatelessWidget {
         vertical: AppSize.s4.h,
       ),
       decoration: BoxDecoration(
-        color: ColorManager.orangeF54900.withValues(alpha: 0.1),
+        color: ColorManager.brandAccent,
         borderRadius: BorderRadius.circular(AppSize.s8.r),
       ),
       child: Text(
         label,
         style: getBoldTextStyle(
           fontSize: 9.sp,
-          color: ColorManager.orangeF54900,
+          color: ColorManager.textInverse,
         ).copyWith(height: 13.5 / 9),
       ),
     );
@@ -151,7 +151,7 @@ class _PackageCardFooter extends StatelessWidget {
               price,
               style: getBoldTextStyle(
                 fontSize: FontSizeManager.s20.sp,
-                color: ColorManager.greenDark,
+                color: ColorManager.brandPrimary,
               ).copyWith(height: 28 / 20),
             ),
             Gap(AppSize.s8.w),
@@ -161,7 +161,7 @@ class _PackageCardFooter extends StatelessWidget {
                 originalPrice,
                 style: getRegularTextStyle(
                   fontSize: FontSizeManager.s14.sp,
-                  color: ColorManager.grayColor.withValues(alpha: 0.6),
+                  color: ColorManager.textSecondary.withValues(alpha: 0.6),
                 ).copyWith(decoration: TextDecoration.lineThrough),
               ),
             ),
@@ -186,14 +186,14 @@ class _SaveBadge extends StatelessWidget {
         vertical: AppPadding.p8.h,
       ),
       decoration: BoxDecoration(
-        color: ColorManager.greenPrimary.withValues(alpha: 0.1),
+        color: ColorManager.brandPrimaryTint,
         borderRadius: BorderRadius.circular(AppSize.s16.r),
       ),
       child: Text(
         label,
         style: getBoldTextStyle(
           fontSize: FontSizeManager.s12.sp,
-          color: ColorManager.greenDark,
+          color: ColorManager.brandPrimary,
         ),
       ),
     );

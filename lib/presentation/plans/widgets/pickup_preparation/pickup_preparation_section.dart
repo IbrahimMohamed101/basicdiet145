@@ -113,14 +113,14 @@ class _PickupJourneyCard extends StatelessWidget {
             title: Text(
               Strings.confirmPrepareTitle.tr(),
               style: getBoldTextStyle(
-                color: ColorManager.black101828,
+                color: ColorManager.textPrimary,
                 fontSize: FontSizeManager.s18.sp,
               ),
             ),
             content: Text(
               Strings.confirmPrepareMessage.tr(),
               style: getRegularTextStyle(
-                color: ColorManager.grey6A7282,
+                color: ColorManager.textSecondary,
                 fontSize: FontSizeManager.s14.sp,
               ),
             ),
@@ -130,7 +130,7 @@ class _PickupJourneyCard extends StatelessWidget {
                 child: Text(
                   Strings.cancel.tr(),
                   style: getRegularTextStyle(
-                    color: ColorManager.grey6A7282,
+                    color: ColorManager.textSecondary,
                     fontSize: FontSizeManager.s14.sp,
                   ),
                 ),
@@ -141,7 +141,7 @@ class _PickupJourneyCard extends StatelessWidget {
                   bloc.add(PreparePickupEvent(data.id, viewState.businessDate));
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: ColorManager.greenPrimary,
+                  backgroundColor: ColorManager.brandPrimary,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(AppSize.s100.r),
                   ),
@@ -150,7 +150,7 @@ class _PickupJourneyCard extends StatelessWidget {
                 child: Text(
                   Strings.confirmPrepareAction.tr(),
                   style: getBoldTextStyle(
-                    color: Colors.white,
+                    color: ColorManager.textInverse,
                     fontSize: FontSizeManager.s14.sp,
                   ),
                 ),
@@ -205,7 +205,7 @@ class _PickupJourneyCard extends StatelessWidget {
           Text(
             Strings.pickupJourneyTitle.tr(),
             style: getBoldTextStyle(
-              color: ColorManager.black101828,
+              color: ColorManager.textPrimary,
               fontSize: FontSizeManager.s22.sp,
             ),
           ),
@@ -213,7 +213,7 @@ class _PickupJourneyCard extends StatelessWidget {
           Text(
             Strings.pickupJourneySubtitle.tr(),
             style: getRegularTextStyle(
-              color: ColorManager.grey6A7282,
+              color: ColorManager.textSecondary,
               fontSize: FontSizeManager.s15.sp,
             ),
           ),
@@ -237,7 +237,7 @@ class _PickupJourneyCard extends StatelessWidget {
               child: ElevatedButton(
                 onPressed: () => _handlePrimaryAction(context),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: ColorManager.greenPrimary,
+                  backgroundColor: ColorManager.brandPrimary,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(AppSize.s100.r),
                   ),
@@ -246,7 +246,7 @@ class _PickupJourneyCard extends StatelessWidget {
                 child: Text(
                   viewState.primaryActionLabel!,
                   style: getBoldTextStyle(
-                    color: Colors.white,
+                    color: ColorManager.textInverse,
                     fontSize: FontSizeManager.s18.sp,
                   ),
                 ),
@@ -261,25 +261,25 @@ class _PickupJourneyCard extends StatelessWidget {
   List<Color> _backgroundColors() {
     return switch (viewState.visualState) {
       PickupJourneyVisualState.progress => [
-        const Color(0xFFFFFBF3),
-        const Color(0xFFFFFFFF),
+        ColorManager.brandAccentSoft.withValues(alpha: 0.2),
+        ColorManager.backgroundSurface,
       ],
       PickupJourneyVisualState.completion => [
-        const Color(0xFFF3FBF7),
-        const Color(0xFFFFFFFF),
+        ColorManager.brandPrimaryTint.withValues(alpha: 0.3),
+        ColorManager.backgroundSurface,
       ],
       PickupJourneyVisualState.idle => [
-        const Color(0xFFF9FAFB),
-        const Color(0xFFFFFFFF),
+        ColorManager.backgroundApp,
+        ColorManager.backgroundSurface,
       ],
     };
   }
 
   Color _borderColor() {
     return switch (viewState.visualState) {
-      PickupJourneyVisualState.progress => const Color(0xFFF3D6A5),
-      PickupJourneyVisualState.completion => const Color(0xFFA7E2C2),
-      PickupJourneyVisualState.idle => ColorManager.formFieldsBorderColor,
+      PickupJourneyVisualState.progress => ColorManager.brandAccentBorder,
+      PickupJourneyVisualState.completion => ColorManager.stateSuccess.withValues(alpha: 0.4),
+      PickupJourneyVisualState.idle => ColorManager.borderDefault,
     };
   }
 }
@@ -295,7 +295,7 @@ class _HeroSection extends StatelessWidget {
       width: double.infinity,
       padding: EdgeInsets.all(AppPadding.p18.w),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.92),
+        color: ColorManager.backgroundSurface.withValues(alpha: 0.92),
         borderRadius: BorderRadius.circular(AppSize.s22.r),
       ),
       child: Row(
@@ -318,7 +318,7 @@ class _HeroSection extends StatelessWidget {
                 Text(
                   viewState.title,
                   style: getBoldTextStyle(
-                    color: ColorManager.black101828,
+                    color: ColorManager.textPrimary,
                     fontSize: FontSizeManager.s20.sp,
                   ),
                 ),
@@ -326,7 +326,7 @@ class _HeroSection extends StatelessWidget {
                 Text(
                   viewState.subtitle,
                   style: getRegularTextStyle(
-                    color: ColorManager.grey6A7282,
+                    color: ColorManager.textSecondary,
                     fontSize: FontSizeManager.s15.sp,
                   ),
                 ),
@@ -352,18 +352,17 @@ class _HeroSection extends StatelessWidget {
 
   Color _iconColor() {
     return switch (viewState.visualState) {
-      PickupJourneyVisualState.progress => const Color(0xFFB45309),
-      PickupJourneyVisualState.completion => ColorManager.greenPrimary,
-      PickupJourneyVisualState.idle => ColorManager.black101828,
+      PickupJourneyVisualState.progress => ColorManager.brandAccent,
+      PickupJourneyVisualState.completion => ColorManager.brandPrimary,
+      PickupJourneyVisualState.idle => ColorManager.textPrimary,
     };
   }
 
   Color _iconBackground() {
     return switch (viewState.visualState) {
-      PickupJourneyVisualState.progress => const Color(0xFFFFEAD1),
-      PickupJourneyVisualState.completion => ColorManager.greenPrimary
-          .withValues(alpha: 0.12),
-      PickupJourneyVisualState.idle => const Color(0xFFF3F4F6),
+      PickupJourneyVisualState.progress => ColorManager.brandAccentSoft,
+      PickupJourneyVisualState.completion => ColorManager.brandPrimaryTint,
+      PickupJourneyVisualState.idle => ColorManager.backgroundSubtle,
     };
   }
 }
@@ -384,8 +383,8 @@ class _StepRow extends StatelessWidget {
               height: 2.h,
               color:
                   prevState == PickupJourneyStepState.locked
-                      ? const Color(0xFFD0D5DD)
-                      : ColorManager.greenPrimary,
+                      ? ColorManager.borderDefault
+                      : ColorManager.brandPrimary,
             ),
           );
         }
@@ -442,35 +441,33 @@ class _StepPill extends StatelessWidget {
 
   Color _backgroundColor() {
     return switch (step.state) {
-      PickupJourneyStepState.completed => ColorManager.greenPrimary.withValues(
-        alpha: 0.12,
-      ),
-      PickupJourneyStepState.active => const Color(0xFFFFF4E5),
-      PickupJourneyStepState.locked => const Color(0xFFF2F4F7),
+      PickupJourneyStepState.completed => ColorManager.brandPrimaryTint,
+      PickupJourneyStepState.active => ColorManager.brandAccentSoft,
+      PickupJourneyStepState.locked => ColorManager.backgroundSubtle,
     };
   }
 
   Color _borderColor() {
     return switch (step.state) {
-      PickupJourneyStepState.completed => ColorManager.greenPrimary,
-      PickupJourneyStepState.active => const Color(0xFFF59E0B),
-      PickupJourneyStepState.locked => const Color(0xFFD0D5DD),
+      PickupJourneyStepState.completed => ColorManager.brandPrimary,
+      PickupJourneyStepState.active => ColorManager.brandAccent,
+      PickupJourneyStepState.locked => ColorManager.borderDefault,
     };
   }
 
   Color _iconColor() {
     return switch (step.state) {
-      PickupJourneyStepState.completed => ColorManager.greenPrimary,
-      PickupJourneyStepState.active => const Color(0xFFB45309),
-      PickupJourneyStepState.locked => const Color(0xFF98A2B3),
+      PickupJourneyStepState.completed => ColorManager.brandPrimary,
+      PickupJourneyStepState.active => ColorManager.brandAccent,
+      PickupJourneyStepState.locked => ColorManager.stateDisabled,
     };
   }
 
   Color _textColor() {
     return switch (step.state) {
-      PickupJourneyStepState.completed => ColorManager.greenPrimary,
-      PickupJourneyStepState.active => const Color(0xFF92400E),
-      PickupJourneyStepState.locked => const Color(0xFF667085),
+      PickupJourneyStepState.completed => ColorManager.brandPrimary,
+      PickupJourneyStepState.active => ColorManager.brandAccent,
+      PickupJourneyStepState.locked => ColorManager.textSecondary,
     };
   }
 }
@@ -486,7 +483,7 @@ class _ProgressTimeline extends StatelessWidget {
       width: double.infinity,
       padding: EdgeInsets.all(AppPadding.p16.w),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.88),
+        color: ColorManager.backgroundSurface.withValues(alpha: 0.88),
         borderRadius: BorderRadius.circular(AppSize.s20.r),
       ),
       child: Column(children: items.map(_buildItem).toList()),
@@ -516,7 +513,7 @@ class _ProgressTimeline extends StatelessWidget {
             child: Text(
               item.title,
               style: getRegularTextStyle(
-                color: ColorManager.black101828,
+                color: ColorManager.textPrimary,
                 fontSize: FontSizeManager.s14.sp,
               ),
             ),
@@ -543,9 +540,9 @@ class _ProgressTimeline extends StatelessWidget {
 
   Color _dotColor(PickupJourneyStepState state) {
     return switch (state) {
-      PickupJourneyStepState.completed => ColorManager.greenPrimary,
-      PickupJourneyStepState.active => const Color(0xFFB45309),
-      PickupJourneyStepState.locked => const Color(0xFF98A2B3),
+      PickupJourneyStepState.completed => ColorManager.brandPrimary,
+      PickupJourneyStepState.active => ColorManager.brandAccent,
+      PickupJourneyStepState.locked => ColorManager.stateDisabled,
     };
   }
 
@@ -572,8 +569,8 @@ class _PickupCodeCard extends StatelessWidget {
         vertical: AppPadding.p16.h,
       ),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF068453), Color(0xFF12B76A)],
+        gradient: LinearGradient(
+          colors: [ColorManager.brandPrimaryPressed, ColorManager.brandPrimary],
         ),
         borderRadius: BorderRadius.circular(AppSize.s22.r),
       ),
@@ -583,7 +580,7 @@ class _PickupCodeCard extends StatelessWidget {
           Text(
             Strings.pickupCode.tr(),
             style: getRegularTextStyle(
-              color: Colors.white.withValues(alpha: 0.82),
+              color: ColorManager.textInverse.withValues(alpha: 0.82),
               fontSize: FontSizeManager.s12.sp,
             ),
           ),
@@ -591,7 +588,7 @@ class _PickupCodeCard extends StatelessWidget {
           Text(
             code,
             style: getBoldTextStyle(
-              color: Colors.white,
+              color: ColorManager.textInverse,
               fontSize: FontSizeManager.s38.sp,
             ),
           ),

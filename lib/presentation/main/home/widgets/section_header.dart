@@ -21,7 +21,7 @@ class SectionHeader extends StatelessWidget {
           title,
           style: getBoldTextStyle(
             fontSize: FontSizeManager.s18,
-            color: ColorManager.blackColor,
+            color: ColorManager.textPrimary,
           ),
         ),
         GestureDetector(
@@ -30,7 +30,7 @@ class SectionHeader extends StatelessWidget {
             Strings.seeAll.tr(),
             style: getBoldTextStyle(
               fontSize: FontSizeManager.s12.sp,
-              color: ColorManager.greenDark,
+              color: ColorManager.stateSuccessEmphasis,
             ).copyWith(letterSpacing: 1),
           ),
         ),

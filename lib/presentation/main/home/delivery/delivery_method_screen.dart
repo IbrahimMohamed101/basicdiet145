@@ -86,7 +86,7 @@ class _DeliveryMethodScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: ColorManager.backgroundSurface,
       appBar: _buildAppBar(),
       body: BlocBuilder<DeliveryOptionsBloc, DeliveryOptionsState>(
         builder: (context, state) => switch (state) {
@@ -108,7 +108,7 @@ class _DeliveryMethodScaffold extends StatelessWidget {
       title: Text(
         Strings.deliveryMethod.tr(),
         style: getBoldTextStyle(
-          color: ColorManager.black101828,
+          color: ColorManager.textPrimary,
           fontSize: FontSizeManager.s20.sp,
         ),
       ),
@@ -125,7 +125,7 @@ class _DeliveryMethodScaffold extends StatelessWidget {
             child: Text(
               Strings.howWouldYouLikeToReceiveYourMeals.tr(),
               style: getRegularTextStyle(
-                color: ColorManager.grey6A7282,
+                color: ColorManager.textSecondary,
                 fontSize: FontSizeManager.s14.sp,
               ),
             ),
@@ -133,8 +133,8 @@ class _DeliveryMethodScaffold extends StatelessWidget {
         ),
       ),
       elevation: 0,
-      backgroundColor: Colors.white,
-      leading: const BackButton(color: Colors.black),
+      backgroundColor: ColorManager.backgroundSurface,
+      leading: const BackButton(color: ColorManager.textPrimary),
     );
   }
 }
@@ -143,7 +143,7 @@ class _LoadingView extends StatelessWidget {
   const _LoadingView();
   @override
   Widget build(BuildContext context) => const Center(
-    child: CircularProgressIndicator(color: ColorManager.greenPrimary),
+    child: CircularProgressIndicator(color: ColorManager.brandPrimary),
   );
 }
 

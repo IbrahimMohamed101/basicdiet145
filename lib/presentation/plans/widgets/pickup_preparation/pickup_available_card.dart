@@ -30,14 +30,14 @@ class PickupAvailableCard extends StatelessWidget {
             title: Text(
               Strings.confirmPrepareTitle.tr(),
               style: getBoldTextStyle(
-                color: ColorManager.black101828,
+                color: ColorManager.textPrimary,
                 fontSize: FontSizeManager.s18.sp,
               ),
             ),
             content: Text(
               Strings.confirmPrepareMessage.tr(),
               style: getRegularTextStyle(
-                color: ColorManager.grey6A7282,
+                color: ColorManager.textSecondary,
                 fontSize: FontSizeManager.s14.sp,
               ),
             ),
@@ -47,7 +47,7 @@ class PickupAvailableCard extends StatelessWidget {
                 child: Text(
                   Strings.cancel.tr(),
                   style: getRegularTextStyle(
-                    color: ColorManager.grey6A7282,
+                    color: ColorManager.textSecondary,
                     fontSize: FontSizeManager.s14.sp,
                   ),
                 ),
@@ -58,7 +58,7 @@ class PickupAvailableCard extends StatelessWidget {
                   bloc.add(PreparePickupEvent(data.id, data.businessDate));
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: ColorManager.greenPrimary,
+                  backgroundColor: ColorManager.brandPrimary,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(AppSize.s100.r),
                   ),
@@ -67,7 +67,7 @@ class PickupAvailableCard extends StatelessWidget {
                 child: Text(
                   Strings.confirmPrepareAction.tr(),
                   style: getBoldTextStyle(
-                    color: Colors.white,
+                    color: ColorManager.backgroundSurface,
                     fontSize: FontSizeManager.s14.sp,
                   ),
                 ),
@@ -93,9 +93,9 @@ class PickupAvailableCard extends StatelessWidget {
       width: double.infinity,
       padding: EdgeInsets.all(AppPadding.p24.w),
       decoration: BoxDecoration(
-        color: ColorManager.whiteColor,
+        color: ColorManager.backgroundSurface,
         borderRadius: BorderRadius.circular(AppSize.s24.r),
-        border: Border.all(color: ColorManager.formFieldsBorderColor),
+        border: Border.all(color: ColorManager.borderDefault),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -108,7 +108,7 @@ class PickupAvailableCard extends StatelessWidget {
                 child: Text(
                   Strings.mealsNotPreparedYet.tr(),
                   style: getBoldTextStyle(
-                    color: ColorManager.black101828,
+                    color: ColorManager.textPrimary,
                     fontSize: FontSizeManager.s20.sp,
                   ),
                 ),
@@ -116,12 +116,12 @@ class PickupAvailableCard extends StatelessWidget {
               Container(
                 padding: EdgeInsets.all(AppPadding.p8.w),
                 decoration: BoxDecoration(
-                  color: ColorManager.greenPrimary.withValues(alpha: 0.1),
+                  color: ColorManager.brandPrimary.withValues(alpha: 0.1),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
                   Icons.assignment_turned_in_outlined,
-                  color: ColorManager.greenPrimary,
+                  color: ColorManager.brandPrimary,
                   size: AppSize.s24.sp,
                 ),
               ),
@@ -131,7 +131,7 @@ class PickupAvailableCard extends StatelessWidget {
           Text(
             message,
             style: getRegularTextStyle(
-              color: ColorManager.grey6A7282,
+              color: ColorManager.textSecondary,
               fontSize: FontSizeManager.s16.sp,
             ),
           ),
@@ -142,7 +142,7 @@ class PickupAvailableCard extends StatelessWidget {
             child: ElevatedButton(
               onPressed: () => _showConfirmDialog(context),
               style: ElevatedButton.styleFrom(
-                backgroundColor: ColorManager.greenPrimary,
+                backgroundColor: ColorManager.brandPrimary,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(AppSize.s100.r),
                 ),
@@ -151,7 +151,7 @@ class PickupAvailableCard extends StatelessWidget {
               child: Text(
                 buttonLabel,
                 style: getBoldTextStyle(
-                  color: Colors.white,
+                  color: ColorManager.backgroundSurface,
                   fontSize: FontSizeManager.s18.sp,
                 ),
               ),

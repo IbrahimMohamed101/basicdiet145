@@ -15,7 +15,7 @@ class PremiumInfoBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: ColorManager.orangeFFF5EC,
+        color: ColorManager.brandAccentSoft,
         borderRadius: BorderRadius.circular(AppSize.s12.r),
       ),
       child: IntrinsicHeight(
@@ -24,7 +24,7 @@ class PremiumInfoBanner extends StatelessWidget {
             Container(
               width: AppSize.s4.w,
               decoration: BoxDecoration(
-                color: ColorManager.greenDark,
+                color: ColorManager.brandAccent,
                 borderRadius: BorderRadius.only(
                   topLeft: Radius.circular(AppSize.s12.r),
                   bottomLeft: Radius.circular(AppSize.s12.r),
@@ -42,12 +42,12 @@ class PremiumInfoBanner extends StatelessWidget {
                         Container(
                           padding: EdgeInsetsDirectional.all(AppSize.s4.w),
                           decoration: const BoxDecoration(
-                            color: ColorManager.greenDark,
+                            color: ColorManager.brandAccent,
                             shape: BoxShape.circle,
                           ),
                           child: Icon(
                             Icons.star_rounded,
-                            color: ColorManager.whiteColor,
+                            color: ColorManager.backgroundSurface,
                             size: AppSize.s16.sp,
                           ),
                         ),
@@ -55,7 +55,7 @@ class PremiumInfoBanner extends StatelessWidget {
                         Text(
                           Strings.premiumProteinSelection.tr(),
                           style: getBoldTextStyle(
-                            color: ColorManager.black101828,
+                            color: ColorManager.textPrimary,
                             fontSize: FontSizeManager.s14.sp,
                           ),
                         ),
@@ -65,7 +65,7 @@ class PremiumInfoBanner extends StatelessWidget {
                     Text(
                       Strings.premiumProteinDesc.tr(),
                       style: getRegularTextStyle(
-                        color: ColorManager.grey6A7282,
+                        color: ColorManager.textSecondary,
                         fontSize: FontSizeManager.s12.sp,
                       ),
                     ),

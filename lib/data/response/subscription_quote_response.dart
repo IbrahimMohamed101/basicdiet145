@@ -27,13 +27,94 @@ class SubscriptionQuoteDataResponse {
   double? totalSar;
   @JsonKey(name: 'summary')
   SubscriptionQuoteSummaryResponse? summary;
+  @JsonKey(name: 'promoCode', readValue: _readPromoPayload)
+  SubscriptionAppliedPromoResponse? appliedPromo;
 
-  SubscriptionQuoteDataResponse({this.breakdown, this.totalSar, this.summary});
+  SubscriptionQuoteDataResponse({
+    this.breakdown,
+    this.totalSar,
+    this.summary,
+    this.appliedPromo,
+  });
 
   factory SubscriptionQuoteDataResponse.fromJson(Map<String, dynamic> json) =>
       _$SubscriptionQuoteDataResponseFromJson(json);
 
   Map<String, dynamic> toJson() => _$SubscriptionQuoteDataResponseToJson(this);
+}
+
+Map<String, dynamic>? _readPromoPayload(Map json, String _) {
+  final promoSource = json['promoCode'];
+  final appliedDiscount = json['appliedDiscount'];
+
+  if (promoSource == null &&
+      appliedDiscount == null &&
+      json['discountHalala'] == null &&
+      json['discountSar'] == null &&
+      json['discountLabel'] == null &&
+      json['validityState'] == null &&
+      json['promoMessage'] == null &&
+      json['message'] == null) {
+    return null;
+  }
+
+  final promoMap = <String, dynamic>{};
+  if (promoSource is Map) {
+    promoMap.addAll(promoSource.cast<String, dynamic>());
+  } else if (promoSource is String && promoSource.trim().isNotEmpty) {
+    promoMap['code'] = promoSource.trim();
+  }
+
+  if (appliedDiscount is Map) {
+    promoMap.addAll(appliedDiscount.cast<String, dynamic>());
+  }
+
+  promoMap['discountAmountHalala'] ??=
+      promoMap['amountHalala'] ?? json['discountHalala'];
+  promoMap['discountAmountSar'] ??=
+      promoMap['amountSar'] ?? json['discountSar'];
+  promoMap['label'] ??= json['discountLabel'];
+  promoMap['message'] ??= json['promoMessage'] ?? json['message'];
+  promoMap['validityState'] ??=
+      promoMap['status'] ?? promoMap['state'] ?? json['validityState'];
+
+  return promoMap.isEmpty ? null : promoMap;
+}
+
+@JsonSerializable()
+class SubscriptionAppliedPromoResponse {
+  @JsonKey(name: 'code')
+  String? code;
+  @JsonKey(name: 'discountType')
+  String? discountType;
+  @JsonKey(name: 'discountValue')
+  double? discountValue;
+  @JsonKey(name: 'discountAmountHalala')
+  int? discountAmountHalala;
+  @JsonKey(name: 'discountAmountSar')
+  double? discountAmountSar;
+  @JsonKey(name: 'label')
+  String? label;
+  @JsonKey(name: 'message')
+  String? message;
+  @JsonKey(name: 'validityState')
+  String? validityState;
+
+  SubscriptionAppliedPromoResponse({
+    this.code,
+    this.discountType,
+    this.discountValue,
+    this.discountAmountHalala,
+    this.discountAmountSar,
+    this.label,
+    this.message,
+    this.validityState,
+  });
+
+  factory SubscriptionAppliedPromoResponse.fromJson(Map<String, dynamic> json) =>
+      _$SubscriptionAppliedPromoResponseFromJson(json);
+
+  Map<String, dynamic> toJson() => _$SubscriptionAppliedPromoResponseToJson(this);
 }
 
 @JsonSerializable()

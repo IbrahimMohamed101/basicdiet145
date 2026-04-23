@@ -33,7 +33,7 @@ class CarbPickerSheet extends StatelessWidget {
       builder: (context, scrollController) {
         return Container(
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: ColorManager.backgroundSurface,
             borderRadius: BorderRadius.vertical(
               top: Radius.circular(AppSize.s24.r),
             ),
@@ -90,22 +90,24 @@ class _CarbItem extends StatelessWidget {
     return GestureDetector(
       onTap: () {
         context.read<MealPlannerBloc>().add(
-              SetMealSlotCarbEvent(slotIndex: slotIndex, carbId: carb.id),
-            );
+          SetMealSlotCarbEvent(slotIndex: slotIndex, carbId: carb.id),
+        );
         Navigator.pop(context);
       },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         padding: EdgeInsets.all(AppPadding.p12.w),
         decoration: BoxDecoration(
-          color: isSelected
-              ? ColorManager.bluePrimary.withValues(alpha: 0.06)
-              : Colors.white,
+          color:
+              isSelected
+                  ? ColorManager.brandPrimaryTint
+                  : ColorManager.backgroundSurface,
           borderRadius: BorderRadius.circular(AppSize.s16.r),
           border: Border.all(
-            color: isSelected
-                ? ColorManager.bluePrimary
-                : ColorManager.formFieldsBorderColor,
+            color:
+                isSelected
+                    ? ColorManager.brandPrimary
+                    : ColorManager.borderDefault,
           ),
         ),
         child: Row(
@@ -114,7 +116,7 @@ class _CarbItem extends StatelessWidget {
               child: Text(
                 carb.name,
                 style: getBoldTextStyle(
-                  color: ColorManager.black101828,
+                  color: ColorManager.textPrimary,
                   fontSize: FontSizeManager.s14.sp,
                 ),
               ),
@@ -122,7 +124,10 @@ class _CarbItem extends StatelessWidget {
             Gap(AppSize.s8.w),
             Icon(
               isSelected ? Icons.check_circle : Icons.radio_button_unchecked,
-              color: isSelected ? ColorManager.bluePrimary : ColorManager.grey9CA3AF,
+              color:
+                  isSelected
+                      ? ColorManager.brandPrimary
+                      : ColorManager.stateDisabled,
               size: 22.w,
             ),
           ],
@@ -139,7 +144,7 @@ class _SheetHandle extends StatelessWidget {
       width: 48.w,
       height: 5.h,
       decoration: BoxDecoration(
-        color: ColorManager.greyF3F4F6,
+        color: ColorManager.backgroundSubtle,
         borderRadius: BorderRadius.circular(99.r),
       ),
     );
@@ -161,14 +166,18 @@ class _SheetHeader extends StatelessWidget {
             child: Text(
               title,
               style: getBoldTextStyle(
-                color: ColorManager.black101828,
+                color: ColorManager.textPrimary,
                 fontSize: FontSizeManager.s18.sp,
               ),
             ),
           ),
           IconButton(
             onPressed: () => Navigator.pop(context),
-            icon: Icon(Icons.close, color: ColorManager.grey6A7282, size: 20.w),
+            icon: Icon(
+              Icons.close,
+              color: ColorManager.iconSecondary,
+              size: 20.w,
+            ),
           ),
         ],
       ),
