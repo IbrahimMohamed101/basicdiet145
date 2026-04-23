@@ -54,11 +54,6 @@ class MealOptionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    assert(() {
-      debugPrint('Card ${option.mealsPerDay} selected: $isSelected');
-      return true;
-    }());
-
     final borderRadius = BorderRadius.circular(AppSize.s18.r);
 
     return AnimatedScale(
@@ -193,26 +188,70 @@ class _PriceRow extends StatelessWidget {
   final double amountFontSize;
   final double labelFontSize;
 
-  TextStyle _style(double fontSize) {
-    final base =
-        isStrikethrough
-            ? getRegularTextStyle(fontSize: fontSize, color: color)
-            : getBoldTextStyle(fontSize: fontSize, color: color);
-    return isStrikethrough
-        ? base.copyWith(decoration: TextDecoration.lineThrough)
-        : base;
+  @override
+  Widget build(BuildContext context) {
+    final amountStyle = TextStyle(
+      fontFamily: FontConstants.fontFamily,
+      fontWeight:
+          isStrikethrough ? FontWeightManager.regular : FontWeightManager.bold,
+      fontSize: amountFontSize,
+      color: color,
+      height: 1.1,
+    );
+    final currencyStyle = TextStyle(
+      fontFamily: FontConstants.fontFamily,
+      fontWeight:
+          isStrikethrough ? FontWeightManager.regular : FontWeightManager.bold,
+      fontSize: labelFontSize,
+      color: color,
+      height: 1.1,
+    );
+
+    final priceContent = Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Text(amount, style: amountStyle),
+        Gap(AppSize.s4.w),
+        Text(Strings.sar.tr(), style: currencyStyle),
+      ],
+    );
+
+    if (!isStrikethrough) {
+      return priceContent;
+    }
+
+    return CustomPaint(
+      foregroundPainter: _CenteredStrikePainter(
+        color: color.withValues(alpha: 0.9),
+        strokeWidth: 1.6.h,
+      ),
+      child: priceContent,
+    );
+  }
+}
+
+class _CenteredStrikePainter extends CustomPainter {
+  const _CenteredStrikePainter({required this.color, required this.strokeWidth});
+
+  final Color color;
+  final double strokeWidth;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint =
+        Paint()
+          ..color = color
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = strokeWidth
+          ..strokeCap = StrokeCap.round;
+
+    final y = size.height / 2;
+    canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
   }
 
   @override
-  Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.baseline,
-      textBaseline: TextBaseline.alphabetic,
-      children: [
-        Text(amount, style: _style(amountFontSize)),
-        Gap(AppSize.s4.w),
-        Text(Strings.sar.tr(), style: _style(labelFontSize)),
-      ],
-    );
+  bool shouldRepaint(covariant _CenteredStrikePainter oldDelegate) {
+    return oldDelegate.color != color || oldDelegate.strokeWidth != strokeWidth;
   }
 }
