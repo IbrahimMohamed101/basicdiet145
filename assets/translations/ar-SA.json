@@ -54,6 +54,7 @@
     "notFound": "غير موجود",
     "timeout": "انتهت المهلة",
     "defaultError": "حدث خطأ ما",
+    "unknownErrorHappened": "حدث خطأ غير معروف.",
     "cacheError": "خطأ في التخزين المؤقت",
     "noInternet": "لا يوجد اتصال بالإنترنت",
     "goodMorning": "صباح الخير!",

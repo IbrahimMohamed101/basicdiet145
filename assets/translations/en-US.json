@@ -54,6 +54,7 @@
     "notFound": "Not Found",
     "timeout": "Timeout",
     "defaultError": "Something went wrong",
+    "unknownErrorHappened": "Unknown error occurred.",
     "cacheError": "Cache Error",
     "noInternet": "No Internet Connection",
     "goodMorning": "Good Morning!",

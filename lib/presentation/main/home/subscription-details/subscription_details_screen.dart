@@ -101,11 +101,9 @@ class _SubscriptionDetailsState extends State<SubscriptionDetails> {
           listener: (context, state) async {
             if (state is! SubscriptionSuccess) return;
 
-            if (state.checkoutStatus == SubscriptionCheckoutStatus.failure &&
-                state.checkoutErrorMessage != null &&
-                state.checkoutErrorMessage!.isNotEmpty) {
+            if (state.checkoutStatus == SubscriptionCheckoutStatus.failure) {
               ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text(state.checkoutErrorMessage!)),
+                SnackBar(content: Text(Strings.unknownErrorHappened.tr())),
               );
             }
 

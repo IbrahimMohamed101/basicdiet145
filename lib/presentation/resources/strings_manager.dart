@@ -72,6 +72,7 @@ class Strings {
   static const String notFound = 'notFound';
   static const String timeout = 'timeout';
   static const String defaultError = 'defaultError';
+  static const String unknownErrorHappened = 'unknownErrorHappened';
   static const String cacheError = 'cacheError';
   static const String noInternet = 'noInternet';
 
