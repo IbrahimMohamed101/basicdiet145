@@ -359,6 +359,9 @@ class Strings {
   static const String addonPendingBanner = 'addonPendingBanner';
   static const String addonPayButton = 'addonPayButton';
   static const String addonClearSelection = 'addonClearSelection';
+  static const String addonChoosePrompt = 'addonChoosePrompt';
+  static const String addonSelectedCount = 'addonSelectedCount';
+  static const String addonApplySelections = 'addonApplySelections';
 
   // Profile
   static const String language = 'language';

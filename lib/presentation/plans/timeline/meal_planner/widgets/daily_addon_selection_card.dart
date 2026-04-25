@@ -150,8 +150,12 @@ class _AddonSelectorField extends StatelessWidget {
               Expanded(
                 child: Text(
                   hasSelection
-                      ? 'تم اختيار ${state.selectedAddOnModels.length} إضافة'
-                      : 'اختر إضافاتك',
+                      ? Strings.addonSelectedCount.tr(
+                        namedArgs: {
+                          'count': state.selectedAddOnModels.length.toString(),
+                        },
+                      )
+                      : Strings.addonChoosePrompt.tr(),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.end,

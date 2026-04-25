@@ -3,8 +3,10 @@ import 'package:basic_diet/presentation/plans/timeline/meal_planner/bloc/meal_pl
 import 'package:basic_diet/presentation/plans/timeline/meal_planner/bloc/meal_planner_event.dart';
 import 'package:basic_diet/presentation/resources/color_manager.dart';
 import 'package:basic_diet/presentation/resources/font_manager.dart';
+import 'package:basic_diet/presentation/resources/strings_manager.dart';
 import 'package:basic_diet/presentation/resources/styles_manager.dart';
 import 'package:basic_diet/presentation/resources/values_manager.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:gap/gap.dart';
@@ -81,7 +83,7 @@ class _AddonSelectionBottomSheetState extends State<AddonSelectionBottomSheet> {
               Gap(AppSize.s10.h),
               _SheetHandle(),
               Gap(AppSize.s12.h),
-              _SheetHeader(title: 'اختر إضافاتك'),
+              _SheetHeader(title: Strings.pendingAddonBottomSheetTitle.tr()),
               Gap(AppSize.s4.h),
               if (_categories.isNotEmpty) ...[
                 _CategoryTabs(
@@ -267,7 +269,8 @@ class _AddonItemTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final requiresPayment = badgeLabel != null && badgeLabel!.contains('SAR');
+    final requiresPayment =
+        badgeLabel != null && RegExp(r'\d').hasMatch(badgeLabel!);
 
     return InkWell(
       borderRadius: BorderRadius.circular(AppSize.s16.r),
@@ -401,7 +404,7 @@ class _ApplyBar extends StatelessWidget {
                 child: TextButton(
                   onPressed: onClear,
                   child: Text(
-                    'إزالة اختيار هذه الفئة',
+                    Strings.addonClearSelection.tr(),
                     style: getBoldTextStyle(
                       color: ColorManager.stateError,
                       fontSize: FontSizeManager.s12.sp,
@@ -424,7 +427,7 @@ class _ApplyBar extends StatelessWidget {
                   ),
                 ),
                 child: Text(
-                  'تطبيق الاختيارات',
+                  Strings.addonApplySelections.tr(),
                   style: getBoldTextStyle(
                     color: ColorManager.textInverse,
                     fontSize: FontSizeManager.s15.sp,
@@ -514,11 +517,11 @@ class _EmptySheetBody extends StatelessWidget {
 String _categoryLabel(String category) {
   switch (category) {
     case 'juice':
-      return 'عصائر';
+      return Strings.addonSelectJuice.tr();
     case 'snack':
-      return 'سناك';
+      return Strings.addonSelectSnack.tr();
     case 'small_salad':
-      return 'سلطة صغيرة';
+      return Strings.addonSelectSalad.tr();
     default:
       return category;
   }
