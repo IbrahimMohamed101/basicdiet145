@@ -3,6 +3,7 @@ class SubscriptionDayModel {
   final String status;
   final String? plannerState;
   final List<MealSlotModel> mealSlots;
+  final List<AddonSelectionModel> addonSelections;
   final PlannerMetaModel? plannerMeta;
   final PaymentRequirementModel? paymentRequirement;
 
@@ -11,9 +12,32 @@ class SubscriptionDayModel {
     required this.status,
     this.plannerState,
     required this.mealSlots,
+    this.addonSelections = const [],
     this.plannerMeta,
     this.paymentRequirement,
   });
+}
+
+class AddonSelectionModel {
+  final String addonId;
+  final String category;
+  final String status;
+  final String name;
+  final int priceHalala;
+  final String currency;
+
+  const AddonSelectionModel({
+    required this.addonId,
+    required this.category,
+    required this.status,
+    this.name = '',
+    this.priceHalala = 0,
+    this.currency = 'SAR',
+  });
+
+  bool get isIncluded => status == 'included' || status == 'subscription';
+  bool get isPendingPayment => status == 'pending_payment';
+  bool get isPaid => status == 'paid';
 }
 
 class MealSlotModel {
@@ -66,15 +90,29 @@ class PaymentRequirementModel {
   final bool requiresPayment;
   final int premiumSelectedCount;
   final int premiumPendingPaymentCount;
+  final int addonSelectedCount;
+  final int addonPendingPaymentCount;
   final int amountHalala;
+  final int pendingAmountHalala;
   final String currency;
+  final String status;
+  final String pricingStatus;
+  final String? blockingReason;
+  final bool canCreatePayment;
 
   PaymentRequirementModel({
     required this.requiresPayment,
     required this.premiumSelectedCount,
     required this.premiumPendingPaymentCount,
+    this.addonSelectedCount = 0,
+    this.addonPendingPaymentCount = 0,
     required this.amountHalala,
+    this.pendingAmountHalala = 0,
     required this.currency,
+    this.status = 'satisfied',
+    this.pricingStatus = 'not_required',
+    this.blockingReason,
+    this.canCreatePayment = false,
   });
 }
 

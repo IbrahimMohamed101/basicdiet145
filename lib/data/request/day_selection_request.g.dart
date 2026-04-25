@@ -11,11 +11,19 @@ DaySelectionRequest _$DaySelectionRequestFromJson(Map<String, dynamic> json) =>
       (json['mealSlots'] as List<dynamic>)
           .map((e) => MealSlotRequest.fromJson(e as Map<String, dynamic>))
           .toList(),
+      addonsOneTime:
+          (json['addonsOneTime'] as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList() ??
+          const [],
     );
 
 Map<String, dynamic> _$DaySelectionRequestToJson(
   DaySelectionRequest instance,
-) => <String, dynamic>{'mealSlots': instance.mealSlots};
+) => <String, dynamic>{
+  'mealSlots': instance.mealSlots,
+  'addonsOneTime': instance.addonsOneTime,
+};
 
 MealSlotRequest _$MealSlotRequestFromJson(Map<String, dynamic> json) =>
     MealSlotRequest(

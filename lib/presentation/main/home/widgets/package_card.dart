@@ -45,7 +45,10 @@ class PackageCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _PackageCardHeader(title: package.name, tagText: Strings.mostPopular.tr()),
+          _PackageCardHeader(
+            title: package.name,
+            tagText: Strings.mostPopular.tr(),
+          ),
           Gap(AppSize.s8.h),
           Text(
             _mealsDesc,

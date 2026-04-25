@@ -96,10 +96,9 @@ class PlansBloc extends Bloc<PlansEvent, PlansState> {
       (timeline) {
         final days = timeline.data.days;
         final availableStatuses = ['open', 'planned', 'extension'];
-        final today =
-            event.preferredDate.isNotEmpty
-                ? event.preferredDate
-                : _resolveOperationalDayFromTimeline(timeline);
+        final today = event.preferredDate.isNotEmpty
+            ? event.preferredDate
+            : _resolveOperationalDayFromTimeline(timeline);
         int index = -1;
 
         if (event.openCurrentDay) {
@@ -110,12 +109,11 @@ class PlansBloc extends Bloc<PlansEvent, PlansState> {
           );
         }
 
-        index =
-            index == -1
-                ? days.indexWhere(
-                  (day) => availableStatuses.contains(day.status.toLowerCase()),
-                )
-                : index;
+        index = index == -1
+            ? days.indexWhere(
+                (day) => availableStatuses.contains(day.status.toLowerCase()),
+              )
+            : index;
 
         if (index != -1) {
           emit(

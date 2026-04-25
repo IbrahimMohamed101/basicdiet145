@@ -11,7 +11,9 @@ class GetCurrentSubscriptionOverviewUseCase
   GetCurrentSubscriptionOverviewUseCase(this._repository);
 
   @override
-  Future<Either<Failure, CurrentSubscriptionOverviewModel>> execute(void input) {
+  Future<Either<Failure, CurrentSubscriptionOverviewModel>> execute(
+    void input,
+  ) {
     return _repository.getCurrentSubscriptionOverview();
   }
 }

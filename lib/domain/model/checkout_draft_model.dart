@@ -23,13 +23,13 @@ class CheckoutDraftModel extends Equatable {
 
   @override
   List<Object?> get props => [
-        subscriptionId,
-        draftId,
-        paymentId,
-        paymentUrl,
-        invoiceId,
-        checkoutStatusLabel,
-        paymentStatusLabel,
-        checkedProvider,
-      ];
+    subscriptionId,
+    draftId,
+    paymentId,
+    paymentUrl,
+    invoiceId,
+    checkoutStatusLabel,
+    paymentStatusLabel,
+    checkedProvider,
+  ];
 }

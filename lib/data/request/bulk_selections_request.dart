@@ -9,7 +9,8 @@ class BulkSelectionsRequest {
 
   BulkSelectionsRequest({required this.days});
 
-  factory BulkSelectionsRequest.fromJson(Map<String, dynamic> json) => _$BulkSelectionsRequestFromJson(json);
+  factory BulkSelectionsRequest.fromJson(Map<String, dynamic> json) =>
+      _$BulkSelectionsRequestFromJson(json);
 
   Map<String, dynamic> toJson() => _$BulkSelectionsRequestToJson(this);
 }
@@ -18,16 +19,14 @@ class BulkSelectionsRequest {
 class BulkSelectionDayRequest {
   @JsonKey(name: "date")
   String date;
-  
+
   @JsonKey(name: "mealSlots")
   List<MealSlotRequest> mealSlots;
 
-  BulkSelectionDayRequest({
-    required this.date,
-    required this.mealSlots,
-  });
+  BulkSelectionDayRequest({required this.date, required this.mealSlots});
 
-  factory BulkSelectionDayRequest.fromJson(Map<String, dynamic> json) => _$BulkSelectionDayRequestFromJson(json);
+  factory BulkSelectionDayRequest.fromJson(Map<String, dynamic> json) =>
+      _$BulkSelectionDayRequestFromJson(json);
 
   Map<String, dynamic> toJson() => _$BulkSelectionDayRequestToJson(this);
 }
@@ -36,13 +35,13 @@ class BulkSelectionDayRequest {
 class MealSlotRequest {
   @JsonKey(name: "slotIndex")
   int slotIndex;
-  
+
   @JsonKey(name: "slotKey")
   String slotKey;
-  
+
   @JsonKey(name: "proteinId")
   String? proteinId;
-  
+
   @JsonKey(name: "carbId")
   String? carbId;
 
@@ -53,7 +52,8 @@ class MealSlotRequest {
     this.carbId,
   });
 
-  factory MealSlotRequest.fromJson(Map<String, dynamic> json) => _$MealSlotRequestFromJson(json);
+  factory MealSlotRequest.fromJson(Map<String, dynamic> json) =>
+      _$MealSlotRequestFromJson(json);
 
   Map<String, dynamic> toJson() => _$MealSlotRequestToJson(this);
 }

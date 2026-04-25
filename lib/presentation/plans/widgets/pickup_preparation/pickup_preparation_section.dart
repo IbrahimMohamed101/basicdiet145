@@ -32,8 +32,8 @@ class PickupPreparationSection extends StatelessWidget {
     if (flowStatus == PickupFlowStatus.inProgress) {
       final pollingBusinessDate =
           data.pickupPreparation!.businessDate.isNotEmpty
-              ? data.pickupPreparation!.businessDate
-              : data.businessDate;
+          ? data.pickupPreparation!.businessDate
+          : data.businessDate;
       return Column(
         children: [
           Gap(AppSize.s16.h),
@@ -105,58 +105,57 @@ class _PickupJourneyCard extends StatelessWidget {
     final bloc = context.read<PlansBloc>();
     showDialog<void>(
       context: context,
-      builder:
-          (_) => AlertDialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(AppSize.s24.r),
-            ),
-            title: Text(
-              Strings.confirmPrepareTitle.tr(),
-              style: getBoldTextStyle(
-                color: ColorManager.textPrimary,
-                fontSize: FontSizeManager.s18.sp,
-              ),
-            ),
-            content: Text(
-              Strings.confirmPrepareMessage.tr(),
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppSize.s24.r),
+        ),
+        title: Text(
+          Strings.confirmPrepareTitle.tr(),
+          style: getBoldTextStyle(
+            color: ColorManager.textPrimary,
+            fontSize: FontSizeManager.s18.sp,
+          ),
+        ),
+        content: Text(
+          Strings.confirmPrepareMessage.tr(),
+          style: getRegularTextStyle(
+            color: ColorManager.textSecondary,
+            fontSize: FontSizeManager.s14.sp,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text(
+              Strings.cancel.tr(),
               style: getRegularTextStyle(
                 color: ColorManager.textSecondary,
                 fontSize: FontSizeManager.s14.sp,
               ),
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: Text(
-                  Strings.cancel.tr(),
-                  style: getRegularTextStyle(
-                    color: ColorManager.textSecondary,
-                    fontSize: FontSizeManager.s14.sp,
-                  ),
-                ),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.of(context).pop();
-                  bloc.add(PreparePickupEvent(data.id, viewState.businessDate));
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: ColorManager.brandPrimary,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(AppSize.s100.r),
-                  ),
-                  elevation: 0,
-                ),
-                child: Text(
-                  Strings.confirmPrepareAction.tr(),
-                  style: getBoldTextStyle(
-                    color: ColorManager.textInverse,
-                    fontSize: FontSizeManager.s14.sp,
-                  ),
-                ),
-              ),
-            ],
           ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              bloc.add(PreparePickupEvent(data.id, viewState.businessDate));
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: ColorManager.brandPrimary,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppSize.s100.r),
+              ),
+              elevation: 0,
+            ),
+            child: Text(
+              Strings.confirmPrepareAction.tr(),
+              style: getBoldTextStyle(
+                color: ColorManager.textInverse,
+                fontSize: FontSizeManager.s14.sp,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -278,7 +277,8 @@ class _PickupJourneyCard extends StatelessWidget {
   Color _borderColor() {
     return switch (viewState.visualState) {
       PickupJourneyVisualState.progress => ColorManager.brandAccentBorder,
-      PickupJourneyVisualState.completion => ColorManager.stateSuccess.withValues(alpha: 0.4),
+      PickupJourneyVisualState.completion =>
+        ColorManager.stateSuccess.withValues(alpha: 0.4),
       PickupJourneyVisualState.idle => ColorManager.borderDefault,
     };
   }
@@ -381,10 +381,9 @@ class _StepRow extends StatelessWidget {
           return Expanded(
             child: Container(
               height: 2.h,
-              color:
-                  prevState == PickupJourneyStepState.locked
-                      ? ColorManager.borderDefault
-                      : ColorManager.brandPrimary,
+              color: prevState == PickupJourneyStepState.locked
+                  ? ColorManager.borderDefault
+                  : ColorManager.brandPrimary,
             ),
           );
         }

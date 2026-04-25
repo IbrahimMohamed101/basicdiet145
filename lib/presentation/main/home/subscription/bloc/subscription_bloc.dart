@@ -43,16 +43,17 @@ class SubscriptionBloc extends Bloc<SubscriptionEvent, SubscriptionState> {
     result.fold((failure) => emit(SubscriptionError(failure.message)), (
       plansModel,
     ) {
-      final defaultPlan =
-          plansModel.plans.isNotEmpty ? plansModel.plans.first : null;
+      final defaultPlan = plansModel.plans.isNotEmpty
+          ? plansModel.plans.first
+          : null;
       final defaultGramOption =
           defaultPlan != null && defaultPlan.gramsOptions.isNotEmpty
-              ? defaultPlan.gramsOptions.first
-              : null;
+          ? defaultPlan.gramsOptions.first
+          : null;
       final defaultMealOption =
           defaultGramOption != null && defaultGramOption.mealsOptions.isNotEmpty
-              ? defaultGramOption.mealsOptions.first
-              : null;
+          ? defaultGramOption.mealsOptions.first
+          : null;
 
       emit(
         SubscriptionSuccess(
@@ -179,13 +180,13 @@ class SubscriptionBloc extends Bloc<SubscriptionEvent, SubscriptionState> {
         lastCheckoutRequest: null,
         subscriptionCheckout: null,
         checkoutErrorMessage: null,
-        promoStatus:
-            event.isPromoUpdate
-                ? SubscriptionPromoStatus.applying
-                : successState.promoStatus,
+        promoStatus: event.isPromoUpdate
+            ? SubscriptionPromoStatus.applying
+            : successState.promoStatus,
         promoMessage: event.isPromoUpdate ? null : successState.promoMessage,
-        isPricingStale:
-            event.isPromoUpdate ? true : successState.isPricingStale,
+        isPricingStale: event.isPromoUpdate
+            ? true
+            : successState.isPricingStale,
       ),
     );
 
@@ -194,27 +195,26 @@ class SubscriptionBloc extends Bloc<SubscriptionEvent, SubscriptionState> {
       (failure) => emit(
         successState.copyWith(
           quoteStatus: SubscriptionQuoteStatus.failure,
-          subscriptionQuote:
-              event.isPromoUpdate ? successState.subscriptionQuote : null,
+          subscriptionQuote: event.isPromoUpdate
+              ? successState.subscriptionQuote
+              : null,
           quoteErrorMessage: failure.message,
           quoteErrorCode: failure.code,
           checkoutStatus: SubscriptionCheckoutStatus.initial,
           lastCheckoutRequest: null,
           subscriptionCheckout: null,
           checkoutErrorMessage: null,
-          promoStatus:
-              event.isPromoUpdate
-                  ? _promoStatusFromFailure(failure.code)
-                  : successState.promoStatus,
+          promoStatus: event.isPromoUpdate
+              ? _promoStatusFromFailure(failure.code)
+              : successState.promoStatus,
           promoMessage: event.isPromoUpdate ? failure.message : null,
           appliedPromo: event.isPromoUpdate ? successState.appliedPromo : null,
-          isPricingStale:
-              event.isPromoUpdate
-                  ? _isPricingStale(
-                    successState.promoCodeInput,
-                    successState.lastSuccessfulQuoteRequest,
-                  )
-                  : false,
+          isPricingStale: event.isPromoUpdate
+              ? _isPricingStale(
+                  successState.promoCodeInput,
+                  successState.lastSuccessfulQuoteRequest,
+                )
+              : false,
         ),
       ),
       (quote) {
@@ -234,10 +234,9 @@ class SubscriptionBloc extends Bloc<SubscriptionEvent, SubscriptionState> {
             subscriptionCheckout: null,
             checkoutErrorMessage: null,
             promoCodeInput: appliedPromo?.code ?? trimmedPromo,
-            promoStatus:
-                trimmedPromo.isEmpty
-                    ? SubscriptionPromoStatus.initial
-                    : SubscriptionPromoStatus.applied,
+            promoStatus: trimmedPromo.isEmpty
+                ? SubscriptionPromoStatus.initial
+                : SubscriptionPromoStatus.applied,
             promoMessage: _resolvePromoMessage(quote, appliedPromo),
             appliedPromo: appliedPromo,
             isPricingStale: false,
@@ -323,8 +322,9 @@ class SubscriptionBloc extends Bloc<SubscriptionEvent, SubscriptionState> {
       final successState = state as SubscriptionSuccess;
       // expandedPlanIndex hold the index of the expanded plan
       // if the expandedPlanIndex is equal to the event.index then it will be -1 else it will be event.index
-      final newIndex =
-          successState.expandedPlanIndex == event.index ? -1 : event.index;
+      final newIndex = successState.expandedPlanIndex == event.index
+          ? -1
+          : event.index;
       emit(successState.copyWith(expandedPlanIndex: newIndex));
     }
   }
@@ -344,23 +344,21 @@ class SubscriptionBloc extends Bloc<SubscriptionEvent, SubscriptionState> {
     emit(
       successState.copyWith(
         promoCodeInput: event.value,
-        promoStatus:
-            event.value.trim().isEmpty
-                ? SubscriptionPromoStatus.initial
-                : successState.promoStatus == SubscriptionPromoStatus.applied
-                ? SubscriptionPromoStatus.initial
-                : successState.promoStatus,
-        promoMessage:
-            event.value.trim().isEmpty || isPricingStale
-                ? null
-                : successState.promoMessage,
+        promoStatus: event.value.trim().isEmpty
+            ? SubscriptionPromoStatus.initial
+            : successState.promoStatus == SubscriptionPromoStatus.applied
+            ? SubscriptionPromoStatus.initial
+            : successState.promoStatus,
+        promoMessage: event.value.trim().isEmpty || isPricingStale
+            ? null
+            : successState.promoMessage,
         appliedPromo:
             event.value.trim().isEmpty ||
-                    isPricingStale ||
-                    event.value.trim() !=
-                        (successState.appliedPromo?.code.trim() ?? '')
-                ? null
-                : successState.appliedPromo,
+                isPricingStale ||
+                event.value.trim() !=
+                    (successState.appliedPromo?.code.trim() ?? '')
+            ? null
+            : successState.appliedPromo,
         isPricingStale: isPricingStale,
       ),
     );

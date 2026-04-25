@@ -509,7 +509,11 @@ class _SheetHeader extends StatelessWidget {
           ),
           IconButton(
             onPressed: () => Navigator.pop(context),
-            icon: Icon(Icons.close, color: ColorManager.iconSecondary, size: 20.w),
+            icon: Icon(
+              Icons.close,
+              color: ColorManager.iconSecondary,
+              size: 20.w,
+            ),
           ),
         ],
       ),

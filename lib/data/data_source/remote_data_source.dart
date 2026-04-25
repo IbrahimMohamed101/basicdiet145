@@ -51,10 +51,7 @@ abstract class RemoteDataSource {
     String id,
     FreezeSubscriptionRequest request,
   );
-  Future<SkipDaysResponse> skipDay(
-    String id,
-    SkipDayRequest request,
-  );
+  Future<SkipDaysResponse> skipDay(String id, SkipDayRequest request);
   Future<SkipDaysResponse> skipDateRange(
     String id,
     SkipDateRangeRequest request,
@@ -62,15 +59,45 @@ abstract class RemoteDataSource {
   Future<TimelineResponse> getSubscriptionTimeline(String id);
   Future<CategoriesWithMealsResponse> getCategoriesWithMeals();
   Future<CheckoutDraftResponse> getCheckoutDraft(String id);
-  Future<BulkSelectionsResponse> bulkSelections(String id, BulkSelectionsRequest request);
-  Future<ValidationResponse> validateDaySelection(String id, String date, DaySelectionRequest request);
-  Future<SubscriptionDayResponse> saveDaySelection(String id, String date, DaySelectionRequest request);
+  Future<BulkSelectionsResponse> bulkSelections(
+    String id,
+    BulkSelectionsRequest request,
+  );
+  Future<ValidationResponse> validateDaySelection(
+    String id,
+    String date,
+    DaySelectionRequest request,
+  );
+  Future<SubscriptionDayResponse> saveDaySelection(
+    String id,
+    String date,
+    DaySelectionRequest request,
+  );
   Future<SubscriptionDayResponse> getSubscriptionDay(String id, String date);
   Future<BaseResponse> confirmDaySelection(String id, String date);
   Future<PickupPrepareResponse> preparePickup(String id, String date);
   Future<PickupStatusResponse> getPickupStatus(String id, String date);
   Future<MealPlannerMenuResponse> getMealPlannerMenu();
-  Future<PremiumPaymentResponse> createPremiumPayment(String subscriptionId, String date);
-  Future<PremiumPaymentVerificationResponse> verifyPremiumPayment(String subscriptionId, String date, String paymentId);
-  Future<CancelSubscriptionResponse> cancelSubscription(String id, CancelSubscriptionRequest request);
+  Future<PremiumPaymentResponse> createPremiumPayment(
+    String subscriptionId,
+    String date,
+  );
+  Future<PremiumPaymentVerificationResponse> verifyPremiumPayment(
+    String subscriptionId,
+    String date,
+    String paymentId,
+  );
+  Future<PremiumPaymentResponse> createOneTimeAddonPayment(
+    String subscriptionId,
+    String date,
+  );
+  Future<PremiumPaymentVerificationResponse> verifyOneTimeAddonPayment(
+    String subscriptionId,
+    String date,
+    String paymentId,
+  );
+  Future<CancelSubscriptionResponse> cancelSubscription(
+    String id,
+    CancelSubscriptionRequest request,
+  );
 }

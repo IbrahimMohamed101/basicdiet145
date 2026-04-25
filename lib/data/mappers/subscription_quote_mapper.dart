@@ -21,10 +21,7 @@ extension SubscriptionQuoteRequestMapper on SubscriptionQuoteRequestModel {
 extension SubscriptionQuotePremiumItemRequestMapper
     on SubscriptionQuotePremiumItemRequestModel {
   SubscriptionQuotePremiumItemRequest toRequest() {
-    return SubscriptionQuotePremiumItemRequest(
-      proteinId: proteinId,
-      qty: qty,
-    );
+    return SubscriptionQuotePremiumItemRequest(proteinId: proteinId, qty: qty);
   }
 }
 

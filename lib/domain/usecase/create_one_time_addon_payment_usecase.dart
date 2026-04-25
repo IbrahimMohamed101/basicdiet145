@@ -4,25 +4,28 @@ import 'package:basic_diet/domain/repository/repository.dart';
 import 'package:basic_diet/domain/usecase/base_usecase.dart';
 import 'package:dartz/dartz.dart';
 
-class CreatePremiumPaymentUseCaseInput {
+class CreateOneTimeAddonPaymentUseCaseInput {
   final String subscriptionId;
   final String date;
 
-  CreatePremiumPaymentUseCaseInput(this.subscriptionId, this.date);
+  CreateOneTimeAddonPaymentUseCaseInput(this.subscriptionId, this.date);
 }
 
-class CreatePremiumPaymentUseCase
+class CreateOneTimeAddonPaymentUseCase
     implements
-        BaseUseCase<CreatePremiumPaymentUseCaseInput, PremiumPaymentModel> {
+        BaseUseCase<
+          CreateOneTimeAddonPaymentUseCaseInput,
+          PremiumPaymentModel
+        > {
   final Repository _repository;
 
-  CreatePremiumPaymentUseCase(this._repository);
+  CreateOneTimeAddonPaymentUseCase(this._repository);
 
   @override
   Future<Either<Failure, PremiumPaymentModel>> execute(
-    CreatePremiumPaymentUseCaseInput input,
+    CreateOneTimeAddonPaymentUseCaseInput input,
   ) async {
-    return await _repository.createPremiumPayment(
+    return await _repository.createOneTimeAddonPayment(
       input.subscriptionId,
       input.date,
     );

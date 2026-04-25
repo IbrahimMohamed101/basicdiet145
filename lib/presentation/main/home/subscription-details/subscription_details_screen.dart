@@ -42,7 +42,10 @@ class _SubscriptionDetailsState extends State<SubscriptionDetails> {
   void initState() {
     super.initState();
     _promoController = TextEditingController(
-      text: widget.quote.appliedPromo?.code ?? widget.quoteRequest.promoCode ?? '',
+      text:
+          widget.quote.appliedPromo?.code ??
+          widget.quoteRequest.promoCode ??
+          '',
     );
   }
 
@@ -65,7 +68,8 @@ class _SubscriptionDetailsState extends State<SubscriptionDetails> {
         final endDate = startDate?.add(
           Duration(days: quote.summary.plan.daysCount - 1),
         );
-        final deliveryNotes = quote.summary.delivery.address?.notes.trim() ?? '';
+        final deliveryNotes =
+            quote.summary.delivery.address?.notes.trim() ?? '';
         final promoStatus =
             successState?.promoStatus ?? SubscriptionPromoStatus.initial;
         final appliedPromo = successState?.appliedPromo ?? quote.appliedPromo;
@@ -101,9 +105,11 @@ class _SubscriptionDetailsState extends State<SubscriptionDetails> {
           listener: (context, state) async {
             if (state is! SubscriptionSuccess) return;
 
-            if (state.checkoutStatus == SubscriptionCheckoutStatus.failure) {
+            if (state.checkoutStatus == SubscriptionCheckoutStatus.failure &&
+                state.checkoutErrorMessage != null &&
+                state.checkoutErrorMessage!.isNotEmpty) {
               ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text(Strings.unknownErrorHappened.tr())),
+                SnackBar(content: Text(state.checkoutErrorMessage!)),
               );
             }
 
@@ -181,9 +187,9 @@ class _SubscriptionDetailsState extends State<SubscriptionDetails> {
                       promoStatus: promoStatus,
                       promoMessage: promoMessage,
                       appliedPromo: appliedPromo,
-                      onChanged: (value) => context.read<SubscriptionBloc>().add(
-                        UpdatePromoCodeInputEvent(value),
-                      ),
+                      onChanged: (value) => context
+                          .read<SubscriptionBloc>()
+                          .add(UpdatePromoCodeInputEvent(value)),
                       onApply: () => context.read<SubscriptionBloc>().add(
                         const ApplyPromoCodeEvent(),
                       ),
@@ -1427,7 +1433,9 @@ class _PriceRow extends StatelessWidget {
               item.label,
               style: getRegularTextStyle(
                 color: labelColor,
-                fontSize: isVat ? FontSizeManager.s12.sp : FontSizeManager.s14.sp,
+                fontSize: isVat
+                    ? FontSizeManager.s12.sp
+                    : FontSizeManager.s14.sp,
               ),
             ),
           ),
@@ -1550,12 +1558,10 @@ String? _promoStatusMessage({
   };
 }
 
-Color _promoStatusColor(
-  SubscriptionPromoStatus status,
-  bool hasAppliedPromo,
-) {
+Color _promoStatusColor(SubscriptionPromoStatus status, bool hasAppliedPromo) {
   return switch (status) {
-    SubscriptionPromoStatus.applied when hasAppliedPromo => ColorManager.greenDark,
+    SubscriptionPromoStatus.applied when hasAppliedPromo =>
+      ColorManager.greenDark,
     SubscriptionPromoStatus.invalid ||
     SubscriptionPromoStatus.expired ||
     SubscriptionPromoStatus.ineligible ||

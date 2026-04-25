@@ -451,20 +451,19 @@ class _FreezeSubscriptionScreenState extends State<FreezeSubscriptionScreen> {
         Gap(AppSize.s12.w),
         Expanded(
           child: ElevatedButton(
-            onPressed:
-                isLoading
-                    ? null
-                    : () {
-                      final formattedDate =
-                          "${_startDate.year}-${_startDate.month.toString().padLeft(2, '0')}-${_startDate.day.toString().padLeft(2, '0')}";
-                      context.read<FreezeSubscriptionBloc>().add(
-                        SubmitFreezeSubscriptionEvent(
-                          subscriptionId: widget.subscriptionId,
-                          startDate: formattedDate,
-                          days: _days,
-                        ),
-                      );
-                    },
+            onPressed: isLoading
+                ? null
+                : () {
+                    final formattedDate =
+                        "${_startDate.year}-${_startDate.month.toString().padLeft(2, '0')}-${_startDate.day.toString().padLeft(2, '0')}";
+                    context.read<FreezeSubscriptionBloc>().add(
+                      SubmitFreezeSubscriptionEvent(
+                        subscriptionId: widget.subscriptionId,
+                        startDate: formattedDate,
+                        days: _days,
+                      ),
+                    );
+                  },
             style: ElevatedButton.styleFrom(
               backgroundColor: ColorManager.brandPrimary,
               padding: const EdgeInsets.symmetric(vertical: AppPadding.p16),
@@ -473,22 +472,21 @@ class _FreezeSubscriptionScreenState extends State<FreezeSubscriptionScreen> {
                 borderRadius: BorderRadius.circular(AppSize.s12),
               ),
             ),
-            child:
-                isLoading
-                    ? SizedBox(
-                      width: AppSize.s24,
-                      height: AppSize.s24,
-                      child: CircularProgressIndicator(
-                        color: ColorManager.textInverse,
-                      ),
-                    )
-                    : Text(
-                      Strings.freezeSubscription.tr(),
-                      style: getRegularTextStyle(
-                        color: ColorManager.textInverse,
-                        fontSize: FontSizeManager.s16.sp,
-                      ),
+            child: isLoading
+                ? SizedBox(
+                    width: AppSize.s24,
+                    height: AppSize.s24,
+                    child: CircularProgressIndicator(
+                      color: ColorManager.textInverse,
                     ),
+                  )
+                : Text(
+                    Strings.freezeSubscription.tr(),
+                    style: getRegularTextStyle(
+                      color: ColorManager.textInverse,
+                      fontSize: FontSizeManager.s16.sp,
+                    ),
+                  ),
           ),
         ),
       ],

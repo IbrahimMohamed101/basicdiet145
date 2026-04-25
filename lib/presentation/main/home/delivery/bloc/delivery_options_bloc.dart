@@ -42,41 +42,52 @@ class DeliveryOptionsBloc
   ) async {
     emit(const DeliveryOptionsLoading());
     final result = await _getDeliveryOptionsUseCase.execute(null);
-    result.fold(
-      (failure) => emit(DeliveryOptionsError(failure.message)),
-      (deliveryOptions) {
-        final defaults = deliveryOptions.defaults;
-        final defaultMethod = deliveryOptions.methods.firstWhere(
-          (m) => m.type == defaults.type,
-          orElse: () => deliveryOptions.methods.first,
-        );
+    result.fold((failure) => emit(DeliveryOptionsError(failure.message)), (
+      deliveryOptions,
+    ) {
+      final defaults = deliveryOptions.defaults;
+      final defaultMethod = deliveryOptions.methods.firstWhere(
+        (m) => m.type == defaults.type,
+        orElse: () => deliveryOptions.methods.first,
+      );
 
-        final selectedArea = deliveryOptions.areas
-            .cast<DeliveryAreaModel?>()
-            .firstWhere((area) => area?.id == defaults.areaId, orElse: () => null);
-        
-        final selectedTime = defaultMethod.slots
-            .cast<DeliverySlotModel?>()
-            .firstWhere((slot) => slot?.id == defaults.slotId, orElse: () => defaultMethod.slots.isNotEmpty ? defaultMethod.slots.first : null);
+      final selectedArea = deliveryOptions.areas
+          .cast<DeliveryAreaModel?>()
+          .firstWhere(
+            (area) => area?.id == defaults.areaId,
+            orElse: () => null,
+          );
 
-        final selectedPickupLocation = deliveryOptions.pickupLocations
-            .cast<PickupLocationModel?>()
-            .firstWhere((loc) => loc?.id == defaults.pickupLocationId, orElse: () => deliveryOptions.pickupLocations.isNotEmpty ? deliveryOptions.pickupLocations.first : null);
+      final selectedTime = defaultMethod.slots
+          .cast<DeliverySlotModel?>()
+          .firstWhere(
+            (slot) => slot?.id == defaults.slotId,
+            orElse: () => defaultMethod.slots.isNotEmpty
+                ? defaultMethod.slots.first
+                : null,
+          );
 
-        emit(
-          DeliveryOptionsSuccess(
-            deliveryOptionsModel: deliveryOptions,
-            selectedType:
-                defaultMethod.type == 'pickup'
-                    ? DeliveryType.pickup
-                    : DeliveryType.home,
-            selectedArea: selectedArea,
-            selectedTime: selectedTime,
-            selectedPickupLocation: selectedPickupLocation,
-          ),
-        );
-      },
-    );
+      final selectedPickupLocation = deliveryOptions.pickupLocations
+          .cast<PickupLocationModel?>()
+          .firstWhere(
+            (loc) => loc?.id == defaults.pickupLocationId,
+            orElse: () => deliveryOptions.pickupLocations.isNotEmpty
+                ? deliveryOptions.pickupLocations.first
+                : null,
+          );
+
+      emit(
+        DeliveryOptionsSuccess(
+          deliveryOptionsModel: deliveryOptions,
+          selectedType: defaultMethod.type == 'pickup'
+              ? DeliveryType.pickup
+              : DeliveryType.home,
+          selectedArea: selectedArea,
+          selectedTime: selectedTime,
+          selectedPickupLocation: selectedPickupLocation,
+        ),
+      );
+    });
   }
 
   void _onChangeDeliveryType(
@@ -84,7 +95,11 @@ class DeliveryOptionsBloc
     Emitter<DeliveryOptionsState> emit,
   ) {
     if (state is DeliveryOptionsSuccess) {
-      emit((state as DeliveryOptionsSuccess).copyWith(selectedType: event.deliveryType));
+      emit(
+        (state as DeliveryOptionsSuccess).copyWith(
+          selectedType: event.deliveryType,
+        ),
+      );
     }
   }
 
@@ -93,7 +108,9 @@ class DeliveryOptionsBloc
     Emitter<DeliveryOptionsState> emit,
   ) {
     if (state is DeliveryOptionsSuccess) {
-      emit((state as DeliveryOptionsSuccess).copyWith(selectedArea: event.area));
+      emit(
+        (state as DeliveryOptionsSuccess).copyWith(selectedArea: event.area),
+      );
     }
   }
 
@@ -102,7 +119,9 @@ class DeliveryOptionsBloc
     Emitter<DeliveryOptionsState> emit,
   ) {
     if (state is DeliveryOptionsSuccess) {
-      emit((state as DeliveryOptionsSuccess).copyWith(selectedTime: event.time));
+      emit(
+        (state as DeliveryOptionsSuccess).copyWith(selectedTime: event.time),
+      );
     }
   }
 
@@ -111,7 +130,11 @@ class DeliveryOptionsBloc
     Emitter<DeliveryOptionsState> emit,
   ) {
     if (state is DeliveryOptionsSuccess) {
-      emit((state as DeliveryOptionsSuccess).copyWith(selectedStartDate: event.date));
+      emit(
+        (state as DeliveryOptionsSuccess).copyWith(
+          selectedStartDate: event.date,
+        ),
+      );
     }
   }
 

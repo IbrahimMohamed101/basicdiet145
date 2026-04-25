@@ -290,8 +290,9 @@ class _AddOnBadge extends StatelessWidget {
   const _AddOnBadge({required this.badge});
 
   // Presentation logic isolated here, not scattered in the card widget.
-  String get _label =>
-      badge.contains('Subscription') ? Strings.daily.tr() : Strings.oneTime.tr();
+  String get _label => badge.contains('Subscription')
+      ? Strings.daily.tr()
+      : Strings.oneTime.tr();
 
   @override
   Widget build(BuildContext context) {
@@ -583,7 +584,8 @@ class _AddOnsSummary {
 
   String get totalLabel => '${totalPrice.toInt()} ${Strings.sar.tr()}';
 
-  String get appliedLabel => '${Strings.appliedTo.tr()} $daysCount ${Strings.days.tr()}';
+  String get appliedLabel =>
+      '${Strings.appliedTo.tr()} $daysCount ${Strings.days.tr()}';
 }
 
 class _SummaryCard extends StatelessWidget {
@@ -663,8 +665,17 @@ class _SummaryRow extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Flexible(child: Text(left, style: style, overflow: TextOverflow.ellipsis)),
-        Flexible(child: Text(right, style: style, overflow: TextOverflow.ellipsis, textAlign: TextAlign.end)),
+        Flexible(
+          child: Text(left, style: style, overflow: TextOverflow.ellipsis),
+        ),
+        Flexible(
+          child: Text(
+            right,
+            style: style,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.end,
+          ),
+        ),
       ],
     );
   }

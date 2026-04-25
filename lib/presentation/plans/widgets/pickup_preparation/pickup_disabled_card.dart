@@ -25,8 +25,9 @@ class PickupDisabledCard extends StatelessWidget {
     final prep = data.pickupPreparation!;
     final reason = PickupBlockedReason.fromString(prep.reason);
 
-    final message =
-        prep.message.isNotEmpty ? prep.message : reason.messageKey.tr();
+    final message = prep.message.isNotEmpty
+        ? prep.message
+        : reason.messageKey.tr();
 
     return Container(
       width: double.infinity,
@@ -83,38 +84,36 @@ class _ActionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final prep = data.pickupPreparation!;
-    final label =
-        reason.isActionable
-            ? 'mealPlanner'.tr()
-            : (prep.buttonLabel.isNotEmpty ? prep.buttonLabel : 'confirm'.tr());
+    final label = reason.isActionable
+        ? 'mealPlanner'.tr()
+        : (prep.buttonLabel.isNotEmpty ? prep.buttonLabel : 'confirm'.tr());
 
     return InkWell(
-      onTap:
-          reason.isActionable
-              ? () => context.read<PlansBloc>().add(
-                FetchTimelineAndOpenPlannerEvent(
-                  data.id,
-                  preferredDate: data.businessDate,
-                ),
-              )
-              : null,
+      onTap: reason.isActionable
+          ? () => context.read<PlansBloc>().add(
+              FetchTimelineAndOpenPlannerEvent(
+                data.id,
+                preferredDate: data.businessDate,
+              ),
+            )
+          : null,
       borderRadius: BorderRadius.circular(AppSize.s100.r),
       child: Container(
         width: double.infinity,
         height: AppSize.s55.h,
         decoration: BoxDecoration(
-          color:
-              reason.isActionable
-                  ? ColorManager.brandPrimary
-                  : const Color(0xFFE5E7EB),
+          color: reason.isActionable
+              ? ColorManager.brandPrimary
+              : const Color(0xFFE5E7EB),
           borderRadius: BorderRadius.circular(AppSize.s100.r),
         ),
         child: Center(
           child: Text(
             label,
             style: getBoldTextStyle(
-              color:
-                  reason.isActionable ? ColorManager.backgroundSurface : ColorManager.textSecondary,
+              color: reason.isActionable
+                  ? ColorManager.backgroundSurface
+                  : ColorManager.textSecondary,
               fontSize: FontSizeManager.s18.sp,
             ),
           ),

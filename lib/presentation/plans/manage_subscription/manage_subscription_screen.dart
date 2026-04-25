@@ -100,10 +100,7 @@ class ManageSubscriptionScreen extends StatelessWidget {
             ),
             bottom: PreferredSize(
               preferredSize: const Size.fromHeight(1.0),
-              child: Container(
-                color: ColorManager.borderDefault,
-                height: 1.0,
-              ),
+              child: Container(color: ColorManager.borderDefault, height: 1.0),
             ),
           ),
           body: SingleChildScrollView(

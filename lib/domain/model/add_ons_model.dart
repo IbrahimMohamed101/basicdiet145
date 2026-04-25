@@ -12,9 +12,11 @@ class AddOnsModel extends Equatable {
 class AddOnModel extends Equatable {
   final String id;
   final String name;
+  final String category;
   final String description;
   final String imageUrl;
   final String currency;
+  final int priceHalala;
   final double priceSar;
   final String priceLabel;
   final String type;
@@ -23,22 +25,28 @@ class AddOnModel extends Equatable {
   const AddOnModel({
     required this.id,
     required this.name,
+    required this.category,
     required this.description,
     required this.imageUrl,
     required this.currency,
+    required this.priceHalala,
     required this.priceSar,
     required this.priceLabel,
     required this.type,
     required this.ui,
   });
 
+  String get kind => type;
+
   @override
   List<Object?> get props => [
     id,
     name,
+    category,
     description,
     imageUrl,
     currency,
+    priceHalala,
     priceSar,
     priceLabel,
     type,

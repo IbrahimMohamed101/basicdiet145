@@ -55,8 +55,9 @@ extension AddonSubscriptionResponseMapper on AddonSubscriptionResponse? {
   AddonSubscriptionModel toDomain() {
     return AddonSubscriptionModel(
       this?.addonId.orEmpty() ?? Constants.empty,
-      this?.name.orEmpty() ?? Constants.empty,
-      this?.price.orZero() ?? Constants.zero,
+      this?.category.orEmpty() ?? Constants.empty,
+      this?.includedCount ?? this?.maxPerDay ?? Constants.zero,
+      this?.status.orEmpty() ?? 'active',
     );
   }
 }

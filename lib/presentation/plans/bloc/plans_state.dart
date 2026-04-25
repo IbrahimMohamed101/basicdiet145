@@ -19,9 +19,8 @@ class PlansLoading extends PlansState {
 }
 
 class CurrentSubscriptionOverviewLoaded extends PlansState {
-  const CurrentSubscriptionOverviewLoaded(
-    CurrentSubscriptionOverviewModel data,
-  ) : super(data: data);
+  const CurrentSubscriptionOverviewLoaded(CurrentSubscriptionOverviewModel data)
+    : super(data: data);
 
   @override
   List<Object> get props => [data!];
@@ -43,34 +42,34 @@ class NavigateToMealPlannerState extends PlansState {
 
   @override
   List<Object> get props => [
-        timelineDays,
-        initialDayIndex,
-        premiumMealsRemaining,
-        subscriptionId,
-        if (data != null) data!,
-      ];
+    timelineDays,
+    initialDayIndex,
+    premiumMealsRemaining,
+    subscriptionId,
+    if (data != null) data!,
+  ];
 }
 
 class OpenPlannerLoading extends PlansState {
   const OpenPlannerLoading({CurrentSubscriptionOverviewModel? data})
-      : super(data: data);
+    : super(data: data);
 }
 
 class PreparePickupLoading extends PlansState {
   const PreparePickupLoading({CurrentSubscriptionOverviewModel? data})
-      : super(data: data);
+    : super(data: data);
 }
 
 class PreparePickupSuccess extends PlansState {
   const PreparePickupSuccess({CurrentSubscriptionOverviewModel? data})
-      : super(data: data);
+    : super(data: data);
 }
 
 class PlansError extends PlansState {
   final String message;
 
   const PlansError(this.message, {CurrentSubscriptionOverviewModel? data})
-      : super(data: data);
+    : super(data: data);
 
   @override
   List<Object> get props => [message, if (data != null) data!];

@@ -4,7 +4,8 @@ import 'package:basic_diet/domain/repository/repository.dart';
 import 'package:basic_diet/domain/usecase/base_usecase.dart';
 import 'package:dartz/dartz.dart';
 
-class GetCategoriesWithMealsUseCase implements BaseUseCase<void, CategoriesWithMealsModel> {
+class GetCategoriesWithMealsUseCase
+    implements BaseUseCase<void, CategoriesWithMealsModel> {
   final Repository _repository;
 
   GetCategoriesWithMealsUseCase(this._repository);

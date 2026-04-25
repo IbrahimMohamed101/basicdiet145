@@ -20,7 +20,7 @@ Future<void> openUrl(String link) async {
 Future<void> changeLanguage(BuildContext context) async {
   final appPreferences = instance<AppPreferences>();
   await appPreferences.changeAppLanguage();
-  
+
   // Restart the app to apply language change
   // The new locale will be loaded from AppPreferences in MyApp.didChangeDependencies
   if (context.mounted) {

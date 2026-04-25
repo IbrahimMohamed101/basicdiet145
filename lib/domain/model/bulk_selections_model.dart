@@ -2,10 +2,7 @@ class BulkSelectionsModel {
   final BulkSelectionsSummaryModel summary;
   final List<BulkSelectionResultModel> results;
 
-  BulkSelectionsModel({
-    required this.summary,
-    required this.results,
-  });
+  BulkSelectionsModel({required this.summary, required this.results});
 }
 
 class BulkSelectionsSummaryModel {

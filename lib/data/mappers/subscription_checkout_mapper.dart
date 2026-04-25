@@ -73,8 +73,8 @@ extension SubscriptionQuoteToCheckoutRequestMapper
       startDate: startDate,
       promoCode: promoCode,
       premiumItems: premiumItems
-        .map(
-          (item) => SubscriptionCheckoutPremiumItemRequestModel(
+          .map(
+            (item) => SubscriptionCheckoutPremiumItemRequestModel(
               proteinId: item.proteinId,
               qty: item.qty,
             ),

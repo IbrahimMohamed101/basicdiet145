@@ -2,10 +2,7 @@ class MealPlannerMenuModel {
   final String currency;
   final BuilderCatalogModel builderCatalog;
 
-  MealPlannerMenuModel({
-    required this.currency,
-    required this.builderCatalog,
-  });
+  MealPlannerMenuModel({required this.currency, required this.builderCatalog});
 }
 
 class BuilderCatalogModel {
@@ -92,19 +89,12 @@ class BuilderRulesModel {
   final String version;
   final BeefRuleModel beef;
 
-  BuilderRulesModel({
-    required this.version,
-    required this.beef,
-  });
+  BuilderRulesModel({required this.version, required this.beef});
 }
 
 class BeefRuleModel {
   final String proteinFamilyKey;
   final int maxSlotsPerDay;
 
-  BeefRuleModel({
-    required this.proteinFamilyKey,
-    required this.maxSlotsPerDay,
-  });
+  BeefRuleModel({required this.proteinFamilyKey, required this.maxSlotsPerDay});
 }
-

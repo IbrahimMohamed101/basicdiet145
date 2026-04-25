@@ -7,7 +7,10 @@ class DaySelectionRequest {
   @JsonKey(name: "mealSlots")
   final List<MealSlotRequest> mealSlots;
 
-  DaySelectionRequest(this.mealSlots);
+  @JsonKey(name: "addonsOneTime")
+  final List<String> addonsOneTime;
+
+  DaySelectionRequest(this.mealSlots, {this.addonsOneTime = const []});
 
   factory DaySelectionRequest.fromJson(Map<String, dynamic> json) =>
       _$DaySelectionRequestFromJson(json);
@@ -19,18 +22,14 @@ class DaySelectionRequest {
 class MealSlotRequest {
   @JsonKey(name: "slotIndex")
   final int slotIndex;
-  
+
   @JsonKey(name: "proteinId")
   final String? proteinId;
-  
+
   @JsonKey(name: "carbId")
   final String? carbId;
 
-  MealSlotRequest({
-    required this.slotIndex,
-    this.proteinId,
-    this.carbId,
-  });
+  MealSlotRequest({required this.slotIndex, this.proteinId, this.carbId});
 
   factory MealSlotRequest.fromJson(Map<String, dynamic> json) =>
       _$MealSlotRequestFromJson(json);

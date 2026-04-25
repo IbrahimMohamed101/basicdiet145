@@ -8,7 +8,7 @@ class CancelSubscriptionBloc
   final CancelSubscriptionUseCase _cancelSubscriptionUseCase;
 
   CancelSubscriptionBloc(this._cancelSubscriptionUseCase)
-      : super(CancelSubscriptionInitial()) {
+    : super(CancelSubscriptionInitial()) {
     on<SubmitCancelSubscriptionEvent>(_onSubmitCancelSubscription);
   }
 

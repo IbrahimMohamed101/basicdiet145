@@ -73,15 +73,14 @@ class _SubscriptionStateView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BlocBuilder<SubscriptionBloc, SubscriptionState>(
-      builder:
-          (context, state) => switch (state) {
-            SubscriptionLoading() => const _LoadingView(),
-            SubscriptionSuccess() => SubscriptionContentView(
-              plansModel: state.plansModel,
-            ),
-            SubscriptionError() => _ErrorView(message: state.message),
-            _ => const SizedBox.shrink(),
-          },
+      builder: (context, state) => switch (state) {
+        SubscriptionLoading() => const _LoadingView(),
+        SubscriptionSuccess() => SubscriptionContentView(
+          plansModel: state.plansModel,
+        ),
+        SubscriptionError() => _ErrorView(message: state.message),
+        _ => const SizedBox.shrink(),
+      },
     );
   }
 }
@@ -109,9 +108,8 @@ class _ErrorView extends StatelessWidget {
           Text(message),
           Gap(AppSize.s16.h),
           ElevatedButton(
-            onPressed:
-                () =>
-                    context.read<SubscriptionBloc>().add(const GetPlansEvent()),
+            onPressed: () =>
+                context.read<SubscriptionBloc>().add(const GetPlansEvent()),
             child: Text(Strings.tryAgain.tr()),
           ),
         ],
@@ -137,24 +135,21 @@ class _ProceedButton extends StatelessWidget {
           padding: EdgeInsetsDirectional.all(AppPadding.p20.w),
           color: ColorManager.backgroundSurface,
           child: ElevatedButton(
-            onPressed:
-                isEnabled
-                    ? () {
-                      context.push(
-                        PremiumMealsScreen.premiumRoute,
-                        extra: context.read<SubscriptionBloc>(),
-                      );
-                    }
-                    : null,
+            onPressed: isEnabled
+                ? () {
+                    context.push(
+                      PremiumMealsScreen.premiumRoute,
+                      extra: context.read<SubscriptionBloc>(),
+                    );
+                  }
+                : null,
             style: ElevatedButton.styleFrom(
-              backgroundColor:
-                  isEnabled
-                      ? ColorManager.brandPrimary
-                      : ColorManager.stateDisabledSurface,
-              foregroundColor:
-                  isEnabled
-                      ? ColorManager.textInverse
-                      : ColorManager.stateDisabled,
+              backgroundColor: isEnabled
+                  ? ColorManager.brandPrimary
+                  : ColorManager.stateDisabledSurface,
+              foregroundColor: isEnabled
+                  ? ColorManager.textInverse
+                  : ColorManager.stateDisabled,
               minimumSize: Size(double.infinity, AppSize.s55.h),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(AppSize.s16.r),
@@ -165,10 +160,9 @@ class _ProceedButton extends StatelessWidget {
               Strings.choosePackageProceed.tr(),
               style: getBoldTextStyle(
                 fontSize: FontSizeManager.s16.sp,
-                color:
-                    isEnabled
-                        ? ColorManager.textInverse
-                        : ColorManager.stateDisabled,
+                color: isEnabled
+                    ? ColorManager.textInverse
+                    : ColorManager.stateDisabled,
               ),
             ),
           ),

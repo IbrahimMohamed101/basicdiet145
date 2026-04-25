@@ -1,5 +1,6 @@
 import 'package:json_annotation/json_annotation.dart';
 import 'package:basic_diet/data/response/base_response/base_response.dart';
+import 'package:basic_diet/data/response/current_subscription_overview_response.dart';
 
 part 'timeline_response.g.dart';
 
@@ -81,12 +82,15 @@ class TimelineDataResponse {
   List<TimelineDayResponse>? days;
   @JsonKey(name: "premiumMealsRemaining")
   int? premiumMealsRemaining;
+  @JsonKey(name: "addonSubscriptions")
+  List<AddonSubscriptionResponse>? addonSubscriptions;
 
   TimelineDataResponse(
     this.subscriptionId,
     this.dailyMealsRequired,
     this.days,
     this.premiumMealsRemaining,
+    this.addonSubscriptions,
   );
 
   factory TimelineDataResponse.fromJson(Map<String, dynamic> json) =>

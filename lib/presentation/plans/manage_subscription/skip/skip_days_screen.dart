@@ -223,15 +223,13 @@ class _SkipDaysScreenState extends State<SkipDaysScreen> {
           horizontal: AppPadding.p8,
         ),
         decoration: BoxDecoration(
-          color:
-              isSelected
-                  ? ColorManager.brandPrimaryTint
-                  : ColorManager.backgroundSurface,
+          color: isSelected
+              ? ColorManager.brandPrimaryTint
+              : ColorManager.backgroundSurface,
           border: Border.all(
-            color:
-                isSelected
-                    ? ColorManager.brandPrimary
-                    : ColorManager.borderDefault,
+            color: isSelected
+                ? ColorManager.brandPrimary
+                : ColorManager.borderDefault,
           ),
           borderRadius: BorderRadius.circular(AppSize.s12),
         ),
@@ -356,9 +354,9 @@ class _SkipDaysScreenState extends State<SkipDaysScreen> {
             Text(
               date != null
                   ? DateFormat(
-                    'MMMM d, yyyy',
-                    context.locale.toString(),
-                  ).format(date)
+                      'MMMM d, yyyy',
+                      context.locale.toString(),
+                    ).format(date)
                   : '',
               style: getRegularTextStyle(
                 color: ColorManager.textPrimary,
@@ -453,32 +451,30 @@ class _SkipDaysScreenState extends State<SkipDaysScreen> {
           child: ButtonWidget(
             text: isLoading ? Strings.loading.tr() : Strings.skipDays.tr(),
             height: 52,
-            color:
-                hasValidSelection
-                    ? ColorManager.brandPrimary
-                    : ColorManager.stateDisabledSurface,
+            color: hasValidSelection
+                ? ColorManager.brandPrimary
+                : ColorManager.stateDisabledSurface,
             radius: AppSize.s12,
-            onTap:
-                isEnabled
-                    ? () {
-                      if (_skipType == SkipTypeSelection.singleDay) {
-                        context.read<SkipDaysBloc>().add(
-                          SkipSingleDayEvent(
-                            widget.subscriptionId,
-                            DateFormat('yyyy-MM-dd').format(_startDate!),
-                          ),
-                        );
-                      } else {
-                        context.read<SkipDaysBloc>().add(
-                          SkipDateRangeEvent(
-                            widget.subscriptionId,
-                            DateFormat('yyyy-MM-dd').format(_startDate!),
-                            DateFormat('yyyy-MM-dd').format(_endDate!),
-                          ),
-                        );
-                      }
+            onTap: isEnabled
+                ? () {
+                    if (_skipType == SkipTypeSelection.singleDay) {
+                      context.read<SkipDaysBloc>().add(
+                        SkipSingleDayEvent(
+                          widget.subscriptionId,
+                          DateFormat('yyyy-MM-dd').format(_startDate!),
+                        ),
+                      );
+                    } else {
+                      context.read<SkipDaysBloc>().add(
+                        SkipDateRangeEvent(
+                          widget.subscriptionId,
+                          DateFormat('yyyy-MM-dd').format(_startDate!),
+                          DateFormat('yyyy-MM-dd').format(_endDate!),
+                        ),
+                      );
                     }
-                    : null,
+                  }
+                : null,
           ),
         ),
       ],

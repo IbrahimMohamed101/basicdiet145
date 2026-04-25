@@ -107,12 +107,22 @@ class OverviewDeliverySlotResponse {
 class AddonSubscriptionResponse {
   @JsonKey(name: "addonId")
   String? addonId;
-  @JsonKey(name: "name")
-  String? name;
-  @JsonKey(name: "price")
-  int? price;
+  @JsonKey(name: "category")
+  String? category;
+  @JsonKey(name: "includedCount")
+  int? includedCount;
+  @JsonKey(name: "maxPerDay")
+  int? maxPerDay;
+  @JsonKey(name: "status")
+  String? status;
 
-  AddonSubscriptionResponse(this.addonId, this.name, this.price);
+  AddonSubscriptionResponse(
+    this.addonId,
+    this.category,
+    this.includedCount,
+    this.maxPerDay,
+    this.status,
+  );
 
   factory AddonSubscriptionResponse.fromJson(Map<String, dynamic> json) =>
       _$AddonSubscriptionResponseFromJson(json);

@@ -27,6 +27,9 @@ class AddOnResponse {
   @JsonKey(name: "name")
   String? name;
 
+  @JsonKey(name: "category")
+  String? category;
+
   @JsonKey(name: "description")
   String? description;
 
@@ -48,12 +51,16 @@ class AddOnResponse {
   @JsonKey(name: "type")
   String? type;
 
+  @JsonKey(name: "kind")
+  String? kind;
+
   @JsonKey(name: "ui")
   AddOnUiResponse? ui;
 
   AddOnResponse(
     this.id,
     this.name,
+    this.category,
     this.description,
     this.imageUrl,
     this.currency,
@@ -61,6 +68,7 @@ class AddOnResponse {
     this.priceSar,
     this.priceLabel,
     this.type,
+    this.kind,
     this.ui,
   );
 

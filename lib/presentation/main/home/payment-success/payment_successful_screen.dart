@@ -24,8 +24,8 @@ class PaymentSuccessfulScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BlocProvider(
-      create:
-          (_) => instance<PaymentValidationCubit>()..validatePayment(draftId),
+      create: (_) =>
+          instance<PaymentValidationCubit>()..validatePayment(draftId),
       child: PopScope(
         canPop: false,
         child: Scaffold(
@@ -65,11 +65,8 @@ class PaymentSuccessfulScreen extends StatelessWidget {
                         Gap(AppSize.s24.h),
                         ButtonWidget(
                           text: Strings.goToHome.tr(),
-                          onTap:
-                              () => _openMainScreen(
-                                context,
-                                MainScreen.homeTabIndex,
-                              ),
+                          onTap: () =>
+                              _openMainScreen(context, MainScreen.homeTabIndex),
                           radius: AppSize.s14,
                         ),
                       ],
@@ -115,24 +112,16 @@ class PaymentSuccessfulScreen extends StatelessWidget {
                       ButtonWidget(
                         radius: AppSize.s14,
                         text: Strings.viewMyPlan.tr(),
-                        onTap:
-                            () => _openMainScreen(
-                              context,
-                              MainScreen.plansTabIndex,
-                            ),
+                        onTap: () =>
+                            _openMainScreen(context, MainScreen.plansTabIndex),
                       ),
                       Gap(AppSize.s14.h),
                       OutlinedButton(
-                        onPressed:
-                            () => _openMainScreen(
-                              context,
-                              MainScreen.homeTabIndex,
-                            ),
+                        onPressed: () =>
+                            _openMainScreen(context, MainScreen.homeTabIndex),
                         style: OutlinedButton.styleFrom(
                           minimumSize: Size(double.infinity, AppSize.s50.h),
-                          side: BorderSide(
-                            color: ColorManager.borderDefault,
-                          ),
+                          side: BorderSide(color: ColorManager.borderDefault),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(AppSize.s14.r),
                           ),

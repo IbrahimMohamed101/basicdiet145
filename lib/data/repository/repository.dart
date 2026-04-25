@@ -70,8 +70,10 @@ class RepositoryImpl implements Repository {
 
   bool _isSuccessfulResponse(dynamic response) {
     if (response.status is bool) return response.status == true;
-    if (response.status is num) return response.status >= 200 && response.status < 300;
-    if (response.status is String) return response.status.toString().toLowerCase() == 'true';
+    if (response.status is num)
+      return response.status >= 200 && response.status < 300;
+    if (response.status is String)
+      return response.status.toString().toLowerCase() == 'true';
     return false;
   }
 
@@ -87,7 +89,7 @@ class RepositoryImpl implements Repository {
       if (error is DioException && error.response != null) {
         final data = error.response!.data as Map<String, dynamic>;
         final message = data.toDomain();
-        
+
         // Extract custom code if available
         dynamic code = error.response!.statusCode ?? ApiInternalStatus.failure;
         if (data['error'] is Map && data['error']['code'] != null) {
@@ -400,7 +402,8 @@ class RepositoryImpl implements Repository {
   }
 
   @override
-  Future<Either<Failure, CategoriesWithMealsModel>> getCategoriesWithMeals() async {
+  Future<Either<Failure, CategoriesWithMealsModel>>
+  getCategoriesWithMeals() async {
     try {
       final response = await _remoteDataSource.getCategoriesWithMeals();
       if (_isSuccessfulResponse(response)) {
@@ -453,7 +456,9 @@ class RepositoryImpl implements Repository {
   }
 
   @override
-  Future<Either<Failure, CheckoutDraftModel>> getCheckoutDraft(String id) async {
+  Future<Either<Failure, CheckoutDraftModel>> getCheckoutDraft(
+    String id,
+  ) async {
     try {
       final response = await _remoteDataSource.getCheckoutDraft(id);
       if (_isSuccessfulResponse(response)) {
@@ -490,7 +495,11 @@ class RepositoryImpl implements Repository {
     DaySelectionRequest request,
   ) async {
     try {
-      final response = await _remoteDataSource.validateDaySelection(id, date, request);
+      final response = await _remoteDataSource.validateDaySelection(
+        id,
+        date,
+        request,
+      );
       return Right(response.toDomain());
     } catch (error) {
       return _handleError(error);
@@ -504,7 +513,11 @@ class RepositoryImpl implements Repository {
     DaySelectionRequest request,
   ) async {
     try {
-      final response = await _remoteDataSource.saveDaySelection(id, date, request);
+      final response = await _remoteDataSource.saveDaySelection(
+        id,
+        date,
+        request,
+      );
       if (response.status == true) {
         return Right(response.toDomain());
       } else {
@@ -589,7 +602,10 @@ class RepositoryImpl implements Repository {
     String date,
   ) async {
     try {
-      final response = await _remoteDataSource.createPremiumPayment(subscriptionId, date);
+      final response = await _remoteDataSource.createPremiumPayment(
+        subscriptionId,
+        date,
+      );
       return Right(response.toDomain());
     } catch (error) {
       return _handleError(error);
@@ -603,7 +619,46 @@ class RepositoryImpl implements Repository {
     String paymentId,
   ) async {
     try {
-      final response = await _remoteDataSource.verifyPremiumPayment(subscriptionId, date, paymentId);
+      final response = await _remoteDataSource.verifyPremiumPayment(
+        subscriptionId,
+        date,
+        paymentId,
+      );
+      return Right(response.toDomain());
+    } catch (error) {
+      return _handleError(error);
+    }
+  }
+
+  @override
+  Future<Either<Failure, PremiumPaymentModel>> createOneTimeAddonPayment(
+    String subscriptionId,
+    String date,
+  ) async {
+    try {
+      final response = await _remoteDataSource.createOneTimeAddonPayment(
+        subscriptionId,
+        date,
+      );
+      return Right(response.toDomain());
+    } catch (error) {
+      return _handleError(error);
+    }
+  }
+
+  @override
+  Future<Either<Failure, PremiumPaymentVerificationModel>>
+  verifyOneTimeAddonPayment(
+    String subscriptionId,
+    String date,
+    String paymentId,
+  ) async {
+    try {
+      final response = await _remoteDataSource.verifyOneTimeAddonPayment(
+        subscriptionId,
+        date,
+        paymentId,
+      );
       return Right(response.toDomain());
     } catch (error) {
       return _handleError(error);

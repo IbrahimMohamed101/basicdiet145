@@ -15,8 +15,10 @@ extension MealItemResponseMapper on MealItemResponse? {
       proteinGrams: this?.proteinGrams.orZero() ?? Constants.zero,
       carbGrams: this?.carbGrams.orZero() ?? Constants.zero,
       fatGrams: this?.fatGrams.orZero() ?? Constants.zero,
-      availableForOrder: this?.availableForOrder.orFalse() ?? Constants.falseValue,
-      availableForSubscription: this?.availableForSubscription.orFalse() ?? Constants.falseValue,
+      availableForOrder:
+          this?.availableForOrder.orFalse() ?? Constants.falseValue,
+      availableForSubscription:
+          this?.availableForSubscription.orFalse() ?? Constants.falseValue,
       type: this?.type.orEmpty() ?? Constants.empty,
       sortOrder: this?.sortOrder.orZero() ?? Constants.zero,
     );

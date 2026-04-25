@@ -30,17 +30,14 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   void _startDelay() {
-    _timer = Timer(
-      const Duration(seconds: AppConstants.splashDelay),
-      _goNext,
-    );
+    _timer = Timer(const Duration(seconds: AppConstants.splashDelay), _goNext);
   }
 
   void _goNext() async {
     bool isLanguageSelected = await _appPreferences.isLanguageSelected();
     bool isUserLoggedIn = await _appPreferences.isUserLoggedIn("login");
-    bool isOnboardingScreenViewed =
-        await _appPreferences.isOnboardingScreenViewed();
+    bool isOnboardingScreenViewed = await _appPreferences
+        .isOnboardingScreenViewed();
 
     if (mounted) {
       if (!isLanguageSelected) {

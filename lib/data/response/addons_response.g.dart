@@ -26,6 +26,7 @@ AddOnResponse _$AddOnResponseFromJson(Map<String, dynamic> json) =>
     AddOnResponse(
       json['id'] as String?,
       json['name'] as String?,
+      json['category'] as String?,
       json['description'] as String?,
       json['imageUrl'] as String?,
       json['currency'] as String?,
@@ -33,6 +34,7 @@ AddOnResponse _$AddOnResponseFromJson(Map<String, dynamic> json) =>
       (json['priceSar'] as num?)?.toDouble(),
       json['priceLabel'] as String?,
       json['type'] as String?,
+      json['kind'] as String?,
       json['ui'] == null
           ? null
           : AddOnUiResponse.fromJson(json['ui'] as Map<String, dynamic>),
@@ -42,6 +44,7 @@ Map<String, dynamic> _$AddOnResponseToJson(AddOnResponse instance) =>
     <String, dynamic>{
       'id': instance.id,
       'name': instance.name,
+      'category': instance.category,
       'description': instance.description,
       'imageUrl': instance.imageUrl,
       'currency': instance.currency,
@@ -49,6 +52,7 @@ Map<String, dynamic> _$AddOnResponseToJson(AddOnResponse instance) =>
       'priceSar': instance.priceSar,
       'priceLabel': instance.priceLabel,
       'type': instance.type,
+      'kind': instance.kind,
       'ui': instance.ui,
     };
 

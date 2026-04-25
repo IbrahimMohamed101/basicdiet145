@@ -11,11 +11,7 @@ class MealPlannerMenuResponse {
   @JsonKey(name: "data")
   MealPlannerMenuDataResponse? data;
 
-  MealPlannerMenuResponse({
-    this.status,
-    this.message,
-    this.data,
-  });
+  MealPlannerMenuResponse({this.status, this.message, this.data});
 
   static Object? _readOkOrStatus(Map<dynamic, dynamic> json, String key) {
     final value = json['ok'] ?? json['status'];
@@ -46,10 +42,7 @@ class MealPlannerMenuDataResponse {
   @JsonKey(name: "builderCatalog")
   BuilderCatalogResponse? builderCatalog;
 
-  MealPlannerMenuDataResponse({
-    this.currency,
-    this.builderCatalog,
-  });
+  MealPlannerMenuDataResponse({this.currency, this.builderCatalog});
 
   factory MealPlannerMenuDataResponse.fromJson(Map<String, dynamic> json) =>
       _$MealPlannerMenuDataResponseFromJson(json);
@@ -194,10 +187,7 @@ class BuilderRulesResponse {
   @JsonKey(name: "beef")
   BeefRuleResponse? beef;
 
-  BuilderRulesResponse({
-    this.version,
-    this.beef,
-  });
+  BuilderRulesResponse({this.version, this.beef});
 
   factory BuilderRulesResponse.fromJson(Map<String, dynamic> json) =>
       _$BuilderRulesResponseFromJson(json);
@@ -211,10 +201,7 @@ class BeefRuleResponse {
   @JsonKey(name: "maxSlotsPerDay")
   int? maxSlotsPerDay;
 
-  BeefRuleResponse({
-    this.proteinFamilyKey,
-    this.maxSlotsPerDay,
-  });
+  BeefRuleResponse({this.proteinFamilyKey, this.maxSlotsPerDay});
 
   factory BeefRuleResponse.fromJson(Map<String, dynamic> json) =>
       _$BeefRuleResponseFromJson(json);

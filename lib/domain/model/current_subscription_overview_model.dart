@@ -57,10 +57,16 @@ class DeliverySlotModel {
 
 class AddonSubscriptionModel {
   String addonId;
-  String name;
-  int price;
+  String category;
+  int includedCount;
+  String status;
 
-  AddonSubscriptionModel(this.addonId, this.name, this.price);
+  AddonSubscriptionModel(
+    this.addonId,
+    this.category,
+    this.includedCount,
+    this.status,
+  );
 }
 
 class PremiumSummaryModel {

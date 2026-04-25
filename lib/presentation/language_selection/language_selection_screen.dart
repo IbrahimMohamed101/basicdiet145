@@ -85,10 +85,10 @@ class _LanguageSelectionScreenState extends State<LanguageSelectionScreen> {
       Strings.chooseLanguage.tr(),
       textAlign: TextAlign.center,
       style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-            fontWeight: FontWeight.bold,
-            color: ColorManager.textPrimary,
-            fontSize: FontSizeManager.s24.sp,
-          ),
+        fontWeight: FontWeight.bold,
+        color: ColorManager.textPrimary,
+        fontSize: FontSizeManager.s24.sp,
+      ),
     );
   }
 
@@ -97,9 +97,9 @@ class _LanguageSelectionScreenState extends State<LanguageSelectionScreen> {
       Strings.selectYourLanguage.tr(),
       textAlign: TextAlign.center,
       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-            color: ColorManager.textSecondary,
-            fontSize: FontSizeManager.s16.sp,
-          ),
+        color: ColorManager.textSecondary,
+        fontSize: FontSizeManager.s16.sp,
+      ),
     );
   }
 
@@ -179,13 +179,12 @@ class _LanguageSelectionScreenState extends State<LanguageSelectionScreen> {
             Text(
               languageName,
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: isSelected
-                        ? ColorManager.brandPrimary
-                        : ColorManager.textPrimary,
-                    fontWeight:
-                        isSelected ? FontWeight.bold : FontWeight.normal,
-                    fontSize: FontSizeManager.s16.sp,
-                  ),
+                color: isSelected
+                    ? ColorManager.brandPrimary
+                    : ColorManager.textPrimary,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                fontSize: FontSizeManager.s16.sp,
+              ),
             ),
           ],
         ),
@@ -221,12 +220,12 @@ class _LanguageSelectionScreenState extends State<LanguageSelectionScreen> {
         child: Text(
           Strings.continue_.tr(),
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                color: _selectedLanguage != null
-                    ? ColorManager.backgroundSurface
-                    : ColorManager.textSecondary,
-                fontWeight: FontWeight.bold,
-                fontSize: FontSizeManager.s16.sp,
-              ),
+            color: _selectedLanguage != null
+                ? ColorManager.backgroundSurface
+                : ColorManager.textSecondary,
+            fontWeight: FontWeight.bold,
+            fontSize: FontSizeManager.s16.sp,
+          ),
         ),
       ),
     );

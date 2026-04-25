@@ -1,5 +1,6 @@
 import 'package:easy_localization/easy_localization.dart';
 import 'package:basic_diet/app/dependency_injection.dart';
+import 'package:basic_diet/domain/model/current_subscription_overview_model.dart';
 import 'package:basic_diet/domain/model/timeline_model.dart';
 import 'package:basic_diet/presentation/plans/timeline/bloc/timeline_bloc.dart';
 import 'package:basic_diet/presentation/plans/timeline/bloc/timeline_event.dart';
@@ -70,6 +71,7 @@ class TimeLineScreen extends StatelessWidget {
                       context,
                       days,
                       state.timeline.data.premiumMealsRemaining,
+                      state.timeline.data.addonSubscriptions,
                     ),
                     Gap(AppSize.s16.h),
                     _buildStatusLegend(),
@@ -89,6 +91,7 @@ class TimeLineScreen extends StatelessWidget {
     BuildContext context,
     List<TimelineDayModel> days,
     int premiumMealsRemaining,
+    List<AddonSubscriptionModel> addonSubscriptions,
   ) {
     final List<Widget> widgets = [];
     String? lastMonth;
@@ -107,7 +110,7 @@ class TimeLineScreen extends StatelessWidget {
       widgets.add(
         Padding(
           padding: EdgeInsets.only(bottom: AppSize.s16.h),
-          child: _buildDayItem(context, day, days, i, premiumMealsRemaining),
+          child: _buildDayItem(context, day, days, i, premiumMealsRemaining, addonSubscriptions),
         ),
       );
     }
@@ -156,6 +159,7 @@ class TimeLineScreen extends StatelessWidget {
     List<TimelineDayModel> days,
     int index,
     int premiumMealsRemaining,
+    List<AddonSubscriptionModel> addonSubscriptions,
   ) {
     Color color;
     Color bgColor;
@@ -245,39 +249,38 @@ class TimeLineScreen extends StatelessWidget {
     final bool isReadOnly = statusLower == 'planned';
 
     return GestureDetector(
-      onTap:
-          isClickable
-              ? () async {
-                final result = await Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder:
-                        (context) => MealPlannerScreen(
-                          timelineDays: days,
-                          initialDayIndex: index,
-                          premiumMealsRemaining: premiumMealsRemaining,
-                          subscriptionId: subscriptionId,
-                          readOnly: isReadOnly,
-                        ),
-                  ),
-                );
+      onTap: isClickable
+          ? () async {
 
-                if (result == true && context.mounted) {
-                  context.read<TimelineBloc>().add(
-                    FetchTimelineEvent(subscriptionId),
-                  );
-                }
+              final result = await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => MealPlannerScreen(
+                    timelineDays: days,
+                    addonEntitlements: addonSubscriptions,
+                    initialDayIndex: index,
+                    premiumMealsRemaining: premiumMealsRemaining,
+                    subscriptionId: subscriptionId,
+                    readOnly: isReadOnly,
+                  ),
+                ),
+              );
+
+              if (result == true && context.mounted) {
+                context.read<TimelineBloc>().add(
+                  FetchTimelineEvent(subscriptionId),
+                );
               }
-              : null,
+            }
+          : null,
       child: Container(
         padding: EdgeInsets.all(AppPadding.p16.w),
         decoration: BoxDecoration(
           color: bgColor,
           borderRadius: BorderRadius.circular(AppSize.s16.r),
-          border:
-              borderColor != null
-                  ? Border.all(color: borderColor)
-                  : Border.all(color: ColorManager.transparent),
+          border: borderColor != null
+              ? Border.all(color: borderColor)
+              : Border.all(color: ColorManager.transparent),
         ),
         child: Row(
           children: [
@@ -436,22 +439,19 @@ class TimeLineScreen extends StatelessWidget {
   }
 
   Widget _buildLegendItem(String label, IconData icon, Color color) {
-    return Container(
-      padding: EdgeInsets.all(2),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: color, size: AppSize.s20.w),
-          Gap(AppSize.s8.w),
-          Text(
-            label,
-            style: getRegularTextStyle(
-              color: ColorManager.textPrimary,
-              fontSize: FontSizeManager.s14.sp,
-            ),
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, color: color, size: AppSize.s20.w),
+        Gap(AppSize.s8.w),
+        Text(
+          label,
+          style: getRegularTextStyle(
+            color: ColorManager.textPrimary,
+            fontSize: FontSizeManager.s14.sp,
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

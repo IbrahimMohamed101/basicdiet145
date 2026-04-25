@@ -89,7 +89,10 @@ class PickupInProgressCard extends StatelessWidget {
             height: AppSize.s55.h,
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: [ColorManager.brandPrimaryPressed, ColorManager.brandPrimaryHover],
+                colors: [
+                  ColorManager.brandPrimaryPressed,
+                  ColorManager.brandPrimaryHover,
+                ],
               ),
               borderRadius: BorderRadius.circular(AppSize.s100.r),
             ),

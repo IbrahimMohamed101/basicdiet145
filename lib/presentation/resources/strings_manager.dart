@@ -72,7 +72,6 @@ class Strings {
   static const String notFound = 'notFound';
   static const String timeout = 'timeout';
   static const String defaultError = 'defaultError';
-  static const String unknownErrorHappened = 'unknownErrorHappened';
   static const String cacheError = 'cacheError';
   static const String noInternet = 'noInternet';
 
@@ -333,6 +332,33 @@ class Strings {
   static const String pickupStatusDone = 'pickupStatusDone';
   static const String pickupStatusCurrent = 'pickupStatusCurrent';
   static const String pickupStatusLocked = 'pickupStatusLocked';
+
+  // Add-on Entitlements
+  static const String includedPerDay = 'includedPerDay';
+  static const String usedThisWeek = 'usedThisWeek';
+  static const String dayAddonsTitle = 'dayAddonsTitle';
+  static const String dayAddonsSubtitle = 'dayAddonsSubtitle';
+  static const String pendingAddonsCheckoutTitle = 'pendingAddonsCheckoutTitle';
+  static const String pendingAddonBottomSheetTitle =
+      'pendingAddonBottomSheetTitle';
+  static const String pendingAddonBottomSheetBody =
+      'pendingAddonBottomSheetBody';
+  static const String addAndPay = 'addAndPay';
+  static const String addonStatusIncluded = 'addonStatusIncluded';
+  static const String addonStatusPendingPayment = 'addonStatusPendingPayment';
+  static const String addonStatusPaid = 'addonStatusPaid';
+  static const String dayLockedAddonsMessage = 'dayLockedAddonsMessage';
+  static const String noAddonsAvailableForDay = 'noAddonsAvailableForDay';
+  static const String payPremiumExtras = 'payPremiumExtras';
+
+  // Addon Category Selectors
+  static const String addonSelectJuice = 'addonSelectJuice';
+  static const String addonSelectSnack = 'addonSelectSnack';
+  static const String addonSelectSalad = 'addonSelectSalad';
+  static const String addonNoItemsAvailable = 'addonNoItemsAvailable';
+  static const String addonPendingBanner = 'addonPendingBanner';
+  static const String addonPayButton = 'addonPayButton';
+  static const String addonClearSelection = 'addonClearSelection';
 
   // Profile
   static const String language = 'language';

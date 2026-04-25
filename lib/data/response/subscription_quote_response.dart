@@ -111,10 +111,12 @@ class SubscriptionAppliedPromoResponse {
     this.validityState,
   });
 
-  factory SubscriptionAppliedPromoResponse.fromJson(Map<String, dynamic> json) =>
-      _$SubscriptionAppliedPromoResponseFromJson(json);
+  factory SubscriptionAppliedPromoResponse.fromJson(
+    Map<String, dynamic> json,
+  ) => _$SubscriptionAppliedPromoResponseFromJson(json);
 
-  Map<String, dynamic> toJson() => _$SubscriptionAppliedPromoResponseToJson(this);
+  Map<String, dynamic> toJson() =>
+      _$SubscriptionAppliedPromoResponseToJson(this);
 }
 
 @JsonSerializable()

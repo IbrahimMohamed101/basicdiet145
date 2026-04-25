@@ -6,14 +6,11 @@ part 'premium_payment_response.g.dart';
 class PremiumPaymentResponse {
   @JsonKey(name: 'status')
   final bool? status;
-  
+
   @JsonKey(name: 'data')
   final PremiumPaymentDataResponse? data;
 
-  PremiumPaymentResponse({
-    this.status,
-    this.data,
-  });
+  PremiumPaymentResponse({this.status, this.data});
 
   factory PremiumPaymentResponse.fromJson(Map<String, dynamic> json) =>
       _$PremiumPaymentResponseFromJson(json);
@@ -25,16 +22,16 @@ class PremiumPaymentResponse {
 class PremiumPaymentDataResponse {
   @JsonKey(name: 'paymentId')
   final String? paymentId;
-  
+
   @JsonKey(name: 'payment_url')
   final String? paymentUrl;
-  
+
   @JsonKey(name: 'amountHalala')
   final int? amountHalala;
-  
+
   @JsonKey(name: 'currency')
   final String? currency;
-  
+
   @JsonKey(name: 'reused')
   final bool? reused;
 
@@ -56,33 +53,29 @@ class PremiumPaymentDataResponse {
 class PremiumPaymentVerificationResponse {
   @JsonKey(name: 'status')
   final bool? status;
-  
+
   @JsonKey(name: 'data')
   final PremiumPaymentVerificationData? data;
 
-  PremiumPaymentVerificationResponse({
-    this.status,
-    this.data,
-  });
+  PremiumPaymentVerificationResponse({this.status, this.data});
 
-  factory PremiumPaymentVerificationResponse.fromJson(Map<String, dynamic> json) =>
-      _$PremiumPaymentVerificationResponseFromJson(json);
+  factory PremiumPaymentVerificationResponse.fromJson(
+    Map<String, dynamic> json,
+  ) => _$PremiumPaymentVerificationResponseFromJson(json);
 
-  Map<String, dynamic> toJson() => _$PremiumPaymentVerificationResponseToJson(this);
+  Map<String, dynamic> toJson() =>
+      _$PremiumPaymentVerificationResponseToJson(this);
 }
 
 @JsonSerializable()
 class PremiumPaymentVerificationData {
   @JsonKey(name: 'paymentStatus')
   final String? paymentStatus;
-  
+
   @JsonKey(name: 'message')
   final String? message;
 
-  PremiumPaymentVerificationData({
-    this.paymentStatus,
-    this.message,
-  });
+  PremiumPaymentVerificationData({this.paymentStatus, this.message});
 
   factory PremiumPaymentVerificationData.fromJson(Map<String, dynamic> json) =>
       _$PremiumPaymentVerificationDataFromJson(json);

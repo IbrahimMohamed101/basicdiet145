@@ -69,10 +69,7 @@ class _DeliverySettingsScreenState extends State<DeliverySettingsScreen> {
         ),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1.0),
-          child: Container(
-            color: ColorManager.borderDefault,
-            height: 1.0,
-          ),
+          child: Container(color: ColorManager.borderDefault, height: 1.0),
         ),
       ),
       body: SingleChildScrollView(
@@ -285,15 +282,13 @@ class _DeliverySettingsScreenState extends State<DeliverySettingsScreen> {
           width: double.infinity,
           padding: const EdgeInsets.all(AppPadding.p16),
           decoration: BoxDecoration(
-            color:
-                isSelected
-                    ? ColorManager.brandPrimaryTint
-                    : ColorManager.backgroundSurface,
+            color: isSelected
+                ? ColorManager.brandPrimaryTint
+                : ColorManager.backgroundSurface,
             border: Border.all(
-              color:
-                  isSelected
-                      ? ColorManager.brandPrimary
-                      : ColorManager.borderDefault,
+              color: isSelected
+                  ? ColorManager.brandPrimary
+                  : ColorManager.borderDefault,
             ),
             borderRadius: BorderRadius.circular(AppSize.s12),
           ),

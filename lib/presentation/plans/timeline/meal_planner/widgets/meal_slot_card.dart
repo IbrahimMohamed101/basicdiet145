@@ -38,19 +38,17 @@ class MealSlotCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isComplete = protein != null && carb != null;
-    final borderColor =
-        isComplete
-            ? isProteinPremium
-                ? ColorManager.brandAccentBorder
-                : ColorManager.brandPrimary.withValues(alpha: 0.35)
-            : ColorManager.borderDefault;
+    final borderColor = isComplete
+        ? isProteinPremium
+              ? ColorManager.brandAccentBorder
+              : ColorManager.brandPrimary.withValues(alpha: 0.35)
+        : ColorManager.borderDefault;
 
-    final bgColor =
-        isComplete
-            ? isProteinPremium
-                ? ColorManager.brandAccentSoft.withValues(alpha: 0.6)
-                : ColorManager.brandPrimaryTint
-            : ColorManager.backgroundSurface;
+    final bgColor = isComplete
+        ? isProteinPremium
+              ? ColorManager.brandAccentSoft.withValues(alpha: 0.6)
+              : ColorManager.brandPrimaryTint
+        : ColorManager.backgroundSurface;
 
     return Stack(
       clipBehavior: Clip.none,
@@ -87,10 +85,9 @@ class MealSlotCard extends StatelessWidget {
                 value: carb?.name ?? Strings.selectMeal.tr(),
                 isSelected: carb != null,
                 isPremium: false,
-                onTap:
-                    onCarbSelected == null
-                        ? () {}
-                        : () => _openCarbPickerSheet(context),
+                onTap: onCarbSelected == null
+                    ? () {}
+                    : () => _openCarbPickerSheet(context),
                 isDisabled: onCarbSelected == null,
               ),
             ],
@@ -108,15 +105,14 @@ class MealSlotCard extends StatelessWidget {
       context: context,
       isScrollControlled: true,
       backgroundColor: ColorManager.transparent,
-      builder:
-          (sheetContext) => BlocProvider.value(
-            value: bloc,
-            child: CarbPickerSheet(
-              options: carbOptions,
-              selectedId: carb?.id,
-              slotIndex: slotNumber - 1,
-            ),
-          ),
+      builder: (sheetContext) => BlocProvider.value(
+        value: bloc,
+        child: CarbPickerSheet(
+          options: carbOptions,
+          selectedId: carb?.id,
+          slotIndex: slotNumber - 1,
+        ),
+      ),
     );
   }
 }
@@ -145,21 +141,19 @@ class _SlotHeader extends StatelessWidget {
           width: 40.w,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color:
-                isComplete
-                    ? isProteinPremium
-                        ? ColorManager.brandAccent
-                        : ColorManager.brandPrimary
-                    : ColorManager.backgroundSubtle,
+            color: isComplete
+                ? isProteinPremium
+                      ? ColorManager.brandAccent
+                      : ColorManager.brandPrimary
+                : ColorManager.backgroundSubtle,
             borderRadius: BorderRadius.circular(AppSize.s14.r),
           ),
           child: Text(
             "$slotNumber",
             style: getBoldTextStyle(
-              color:
-                  isComplete
-                      ? ColorManager.textInverse
-                      : ColorManager.stateDisabled,
+              color: isComplete
+                  ? ColorManager.textInverse
+                  : ColorManager.stateDisabled,
               fontSize: FontSizeManager.s18.sp,
             ),
           ),
