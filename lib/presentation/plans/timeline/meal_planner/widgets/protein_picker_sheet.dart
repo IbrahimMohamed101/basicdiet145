@@ -299,80 +299,100 @@ class _ProteinList extends StatelessWidget {
     final customPremiumSalad = state.menu.builderCatalog.customPremiumSalad;
     final showCustomBuilderOption =
         activeTabKey == 'premium' && customPremiumSalad != null;
+    final currentSlot =
+        (state.selectedSlotsPerDay[state.selectedDayIndex] ?? const [])
+            .where((slot) => slot.slotIndex == slotIndex + 1)
+            .cast<MealPlannerSlotSelection?>()
+            .firstWhere((slot) => slot != null, orElse: () => null);
+    final isCustomSelected = currentSlot?.selectionType == 'custom_premium_salad';
 
-    return Column(
-      children: [
-        Expanded(
-          child: ListView(
-            controller: scrollController,
-            padding: EdgeInsets.only(
-              left: AppPadding.p16.w,
-              right: AppPadding.p16.w,
-              bottom: 12.h,
-            ),
-            children:
-                proteins.map((protein) {
-                  final isSelected = selectedProteinId == protein.id;
-                  final isItemDisabled =
-                      !protein.isPremium &&
-                      isBeefDisabled &&
-                      protein.proteinFamilyKey == beefFamilyKey &&
-                      !currentIsBeef;
-
-                  return Padding(
-                    padding: EdgeInsets.only(bottom: AppSize.s10.h),
-                    child: _ProteinItem(
-                      protein: protein,
-                      isSelected: isSelected,
-                      isDisabled: isItemDisabled,
-                      slotIndex: slotIndex,
-                    ),
-                  );
-                }).toList(),
-          ),
-        ),
-        if (showCustomBuilderOption)
-          _CustomBuilderCta(
-            title: Strings.createCustomMeal.tr(),
-            subtitle: Strings.customMealBuilderDescription.tr(),
-            buttonLabel: Strings.buildMeal.tr(),
-            onTap: () async {
-              final premiumProteins = state.menu.builderCatalog.proteins
-                  .where((protein) => protein.isPremium)
-                  .toList()
-                ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
-
-              final result = await Navigator.push<CustomPremiumMealBuilderResult>(
-                context,
-                MaterialPageRoute(
-                  builder:
-                      (_) => CustomPremiumMealBuilderScreen(
-                        config: customPremiumSalad,
-                        premiumProteins: premiumProteins,
-                        initialProteinId: selectedProteinId,
+    return SafeArea(
+      child: Column(
+        children: [
+          Expanded(
+            child: ListView(
+              controller: scrollController,
+              padding: EdgeInsets.only(
+                left: AppPadding.p16.w,
+                right: AppPadding.p16.w,
+                bottom: 12.h,
+              ),
+              children:
+                  proteins.map((protein) {
+                    final isSelected =
+                        !isCustomSelected && selectedProteinId == protein.id;
+                    final isItemDisabled =
+                        !protein.isPremium &&
+                        isBeefDisabled &&
+                        protein.proteinFamilyKey == beefFamilyKey &&
+                        !currentIsBeef;
+      
+                    return Padding(
+                      padding: EdgeInsets.only(bottom: AppSize.s10.h),
+                      child: _ProteinItem(
+                        protein: protein,
+                        isSelected: isSelected,
+                        isDisabled: isItemDisabled,
+                        slotIndex: slotIndex,
                       ),
-                ),
-              );
-
-              if (result == null || !context.mounted) return;
-              context.read<MealPlannerBloc>().add(
-                SetCustomPremiumMealEvent(
-                  slotIndex: slotIndex,
-                  proteinId: result.proteinId,
-                  carbId: result.carbId,
-                  presetKey: result.presetKey,
-                  vegetables: result.vegetables,
-                  addons: result.addons,
-                  fruits: result.fruits,
-                  nuts: result.nuts,
-                  sauce: result.sauce,
-                ),
-              );
-              Navigator.pop(context);
-            },
+                    );
+                  }).toList(),
+            ),
           ),
-      ],
+          if (showCustomBuilderOption)
+            _CustomBuilderCta(
+              title: Strings.createCustomMeal.tr(),
+              subtitle: Strings.customMealBuilderDescription.tr(),
+              buttonLabel: Strings.buildMeal.tr(),
+              isSelected: isCustomSelected,
+              selectedProteinName:
+                  isCustomSelected ? _findProteinNameById(state, currentSlot?.proteinId) : null,
+              onTap: () async {
+                final premiumProteins = state.menu.builderCatalog.proteins
+                    .where((protein) => protein.isPremium)
+                    .toList()
+                  ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+      
+                final result = await Navigator.push<CustomPremiumMealBuilderResult>(
+                  context,
+                  MaterialPageRoute(
+                    builder:
+                        (_) => CustomPremiumMealBuilderScreen(
+                          config: customPremiumSalad,
+                          premiumProteins: premiumProteins,
+                          initialProteinId: currentSlot?.proteinId,
+                        ),
+                  ),
+                );
+      
+                if (result == null || !context.mounted) return;
+                context.read<MealPlannerBloc>().add(
+                  SetCustomPremiumMealEvent(
+                    slotIndex: slotIndex,
+                    proteinId: result.proteinId,
+                    carbId: result.carbId,
+                    presetKey: result.presetKey,
+                    vegetables: result.vegetables,
+                    addons: result.addons,
+                    fruits: result.fruits,
+                    nuts: result.nuts,
+                    sauce: result.sauce,
+                  ),
+                );
+                Navigator.pop(context);
+              },
+            ),
+        ],
+      ),
     );
+  }
+
+  String? _findProteinNameById(MealPlannerLoaded state, String? id) {
+    if (id == null) return null;
+    for (final protein in state.menu.builderCatalog.proteins) {
+      if (protein.id == id) return protein.name;
+    }
+    return null;
   }
 }
 
@@ -380,12 +400,16 @@ class _CustomBuilderCta extends StatelessWidget {
   final String title;
   final String subtitle;
   final String buttonLabel;
+  final bool isSelected;
+  final String? selectedProteinName;
   final VoidCallback onTap;
 
   const _CustomBuilderCta({
     required this.title,
     required this.subtitle,
     required this.buttonLabel,
+    this.isSelected = false,
+    this.selectedProteinName,
     required this.onTap,
   });
 
@@ -400,26 +424,37 @@ class _CustomBuilderCta extends StatelessWidget {
       ),
       padding: EdgeInsets.all(AppPadding.p12.w),
       decoration: BoxDecoration(
-        color: ColorManager.brandAccentSoft,
+        color:
+            isSelected
+                ? ColorManager.brandPrimary.withValues(alpha: 0.12)
+                : ColorManager.transparent,
         borderRadius: BorderRadius.circular(AppSize.s16.r),
-        border: Border.all(color: ColorManager.brandAccentBorder),
+        border: Border.all(
+          color: isSelected ? ColorManager.brandPrimary : ColorManager.brandAccentBorder,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(Icons.auto_awesome, color: ColorManager.brandAccent, size: 20.w),
+              Icon(Icons.star, color: Colors.yellow, size: 30.w),
               Gap(AppSize.s10.w),
               Expanded(
                 child: Text(
                   title,
                   style: getBoldTextStyle(
-                    color: ColorManager.brandAccent,
+                    color: isSelected ? ColorManager.brandPrimary : ColorManager.brandAccent,
                     fontSize: FontSizeManager.s14.sp,
                   ),
                 ),
               ),
+              if (isSelected)
+                Icon(
+                  Icons.check_circle,
+                  color: ColorManager.brandPrimary,
+                  size: 20.w,
+                ),
             ],
           ),
           Gap(4.h),
@@ -430,6 +465,16 @@ class _CustomBuilderCta extends StatelessWidget {
               fontSize: FontSizeManager.s12.sp,
             ),
           ),
+          if (isSelected && selectedProteinName != null) ...[
+            Gap(4.h),
+            Text(
+              '${Strings.selectProtein.tr()}: $selectedProteinName',
+              style: getBoldTextStyle(
+                color: ColorManager.brandPrimary,
+                fontSize: FontSizeManager.s12.sp,
+              ),
+            ),
+          ],
           Gap(AppSize.s10.h),
           SizedBox(
             width: double.infinity,
