@@ -87,6 +87,27 @@ function normalizePremiumName(value) {
   return value.toLowerCase().trim().replace(/\s+/g, " ");
 }
 
+const CUSTOM_PREMIUM_SALAD_KEY = "custom_premium_salad";
+
+const CUSTOM_PREMIUM_SALAD_NAMES = {
+  ar: "سلطة مميزة",
+  en: "Custom Premium Salad",
+};
+
+function buildCustomPremiumSaladItem(lang) {
+  const name = lang === "en" ? CUSTOM_PREMIUM_SALAD_NAMES.en : CUSTOM_PREMIUM_SALAD_NAMES.ar;
+  return {
+    premiumMealId: CUSTOM_PREMIUM_SALAD_KEY,
+    premiumKey: CUSTOM_PREMIUM_SALAD_KEY,
+    name,
+    type: "custom_premium_salad",
+    extraFeeHalala: 3000,
+    purchasedQtyTotal: 0,
+    remainingQtyTotal: 0,
+    consumedQtyTotal: 0,
+  };
+}
+
 async function loadPremiumCatalogForOverview(lang) {
   try {
     const premiumDocs = await BuilderProtein.find({ isActive: true, isPremium: true })
@@ -179,6 +200,7 @@ function buildSubscriptionPremiumBalanceSummary(subscription, premiumCatalog, la
     } else {
       balanceOnlyItems.push({
         premiumMealId: balanceProteinId,
+        premiumKey: row.premiumKey || null,
         name: row.name || "",
         purchasedQtyTotal: purchasedQty,
         remainingQtyTotal: remainingQty,
@@ -188,6 +210,9 @@ function buildSubscriptionPremiumBalanceSummary(subscription, premiumCatalog, la
   }
 
   const result = [];
+  const existingPremiumKeys = new Set();
+  const existingPremiumMealIds = new Set();
+  const existingNormalizedNames = new Set();
 
   for (const catalogItem of allItems) {
     const catalogId = catalogItem.id;
@@ -201,6 +226,14 @@ function buildSubscriptionPremiumBalanceSummary(subscription, premiumCatalog, la
         remainingQtyTotal: mergedData.remainingQtyTotal,
         consumedQtyTotal: mergedData.purchasedQtyTotal - mergedData.remainingQtyTotal,
       });
+      existingPremiumMealIds.add(mergedData.premiumMealId);
+      if (catalogItem.premiumKey) {
+        existingPremiumKeys.add(catalogItem.premiumKey);
+      }
+      const normalizedName = normalizePremiumName(catalogItem.name);
+      if (normalizedName) {
+        existingNormalizedNames.add(normalizedName);
+      }
     } else {
       result.push({
         premiumMealId: catalogId,
@@ -209,11 +242,52 @@ function buildSubscriptionPremiumBalanceSummary(subscription, premiumCatalog, la
         remainingQtyTotal: 0,
         consumedQtyTotal: 0,
       });
+      existingPremiumMealIds.add(catalogId);
+      if (catalogItem.premiumKey) {
+        existingPremiumKeys.add(catalogItem.premiumKey);
+      }
+      const normalizedName = normalizePremiumName(catalogItem.name);
+      if (normalizedName) {
+        existingNormalizedNames.add(normalizedName);
+      }
     }
   }
 
   for (const balanceOnly of balanceOnlyItems) {
-    result.push(balanceOnly);
+    if (balanceOnly.premiumKey && existingPremiumKeys.has(balanceOnly.premiumKey)) {
+      continue;
+    }
+    if (existingPremiumMealIds.has(balanceOnly.premiumMealId)) {
+      continue;
+    }
+    const balanceNormalizedName = normalizePremiumName(balanceOnly.name);
+    if (balanceNormalizedName && existingNormalizedNames.has(balanceNormalizedName)) {
+      continue;
+    }
+
+    result.push({
+      premiumMealId: balanceOnly.premiumMealId,
+      name: balanceOnly.name,
+      purchasedQtyTotal: balanceOnly.purchasedQtyTotal,
+      remainingQtyTotal: balanceOnly.remainingQtyTotal,
+      consumedQtyTotal: balanceOnly.consumedQtyTotal,
+    });
+
+    if (balanceOnly.premiumKey) {
+      existingPremiumKeys.add(balanceOnly.premiumKey);
+    }
+    existingPremiumMealIds.add(balanceOnly.premiumMealId);
+    if (balanceNormalizedName) {
+      existingNormalizedNames.add(balanceNormalizedName);
+    }
+  }
+
+  const customSaladItem = buildCustomPremiumSaladItem(lang);
+  const customSaladNormalizedName = normalizePremiumName(customSaladItem.name);
+  if (!existingPremiumKeys.has(CUSTOM_PREMIUM_SALAD_KEY) &&
+      !existingPremiumMealIds.has(customSaladItem.premiumMealId) &&
+      (!customSaladNormalizedName || !existingNormalizedNames.has(customSaladNormalizedName))) {
+    result.push(customSaladItem);
   }
 
   return result;
