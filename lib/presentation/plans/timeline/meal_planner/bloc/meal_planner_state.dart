@@ -27,32 +27,75 @@ final class MealPlannerError extends MealPlannerState {
 final class MealPlannerSlotSelection extends Equatable {
   final int slotIndex;
   final String slotKey;
+  final String selectionType;
   final String? proteinId;
   final String? carbId;
+  final String? sandwichId;
+  final CustomSaladSelection? customSalad;
 
   const MealPlannerSlotSelection({
     required this.slotIndex,
     required this.slotKey,
+    this.selectionType = 'standard_combo',
     required this.proteinId,
     required this.carbId,
+    this.sandwichId,
+    this.customSalad,
   });
 
   MealPlannerSlotSelection copyWith({
     int? slotIndex,
     String? slotKey,
+    String? selectionType,
     String? proteinId,
     String? carbId,
+    String? sandwichId,
+    CustomSaladSelection? customSalad,
+    bool clearSandwichId = false,
+    bool clearCustomSalad = false,
   }) {
     return MealPlannerSlotSelection(
       slotIndex: slotIndex ?? this.slotIndex,
       slotKey: slotKey ?? this.slotKey,
+      selectionType: selectionType ?? this.selectionType,
       proteinId: proteinId ?? this.proteinId,
       carbId: carbId ?? this.carbId,
+      sandwichId: clearSandwichId ? null : sandwichId ?? this.sandwichId,
+      customSalad: clearCustomSalad ? null : customSalad ?? this.customSalad,
     );
   }
 
   @override
-  List<Object?> get props => [slotIndex, slotKey, proteinId, carbId];
+  List<Object?> get props => [
+    slotIndex,
+    slotKey,
+    selectionType,
+    proteinId,
+    carbId,
+    sandwichId,
+    customSalad,
+  ];
+}
+
+final class CustomSaladSelection extends Equatable {
+  final String presetKey;
+  final List<String> vegetables;
+  final List<String> addons;
+  final List<String> fruits;
+  final List<String> nuts;
+  final List<String> sauce;
+
+  const CustomSaladSelection({
+    required this.presetKey,
+    this.vegetables = const [],
+    this.addons = const [],
+    this.fruits = const [],
+    this.nuts = const [],
+    this.sauce = const [],
+  });
+
+  @override
+  List<Object?> get props => [presetKey, vegetables, addons, fruits, nuts, sauce];
 }
 
 final class PendingAddonPrompt extends Equatable {

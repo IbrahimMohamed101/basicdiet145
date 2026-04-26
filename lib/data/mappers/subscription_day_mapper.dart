@@ -57,11 +57,27 @@ extension MealSlotResponseMapper on MealSlotResponse {
       slotIndex: slotIndex,
       slotKey: slotKey,
       status: status,
+      selectionType: selectionType,
       proteinId: proteinId,
       carbId: carbId,
+      sandwichId: sandwichId,
+      customSalad: customSalad?.toDomain(),
       isPremium: isPremium,
       premiumSource: premiumSource,
       proteinFamilyKey: proteinFamilyKey,
+    );
+  }
+}
+
+extension CustomSaladResponseMapper on CustomSaladResponse {
+  CustomSaladModel toDomain() {
+    return CustomSaladModel(
+      presetKey: presetKey,
+      vegetables: vegetables,
+      addons: addons,
+      fruits: fruits,
+      nuts: nuts,
+      sauce: sauce,
     );
   }
 }

@@ -501,6 +501,12 @@ class Strings {
   static const String completePayment = 'completePayment';
   static const String redirectingToPayment = 'redirectingToPayment';
   static const String openPayment = 'openPayment';
+  static const String createCustomMeal = 'createCustomMeal';
+  static const String customMealBuilder = 'customMealBuilder';
+  static const String customMealBuilderDescription = 'customMealBuilderDescription';
+  static const String chooseIngredients = 'chooseIngredients';
+  static const String chooseOneRequired = 'chooseOneRequired';
+  static const String chooseAtLeast = 'chooseAtLeast';
 
   // Promo Code
   static const String promoCode = 'promoCode';

@@ -171,6 +171,15 @@ class MealSlotResponse {
 
   @JsonKey(name: "carbId")
   final String? carbId;
+  
+  @JsonKey(name: "selectionType")
+  final String? selectionType;
+
+  @JsonKey(name: "sandwichId")
+  final String? sandwichId;
+
+  @JsonKey(name: "customSalad")
+  final CustomSaladResponse? customSalad;
 
   @JsonKey(name: "isPremium", defaultValue: false)
   final bool isPremium;
@@ -187,6 +196,9 @@ class MealSlotResponse {
     this.status,
     this.proteinId,
     this.carbId,
+    this.selectionType,
+    this.sandwichId,
+    this.customSalad,
     this.isPremium,
     this.premiumSource,
     this.proteinFamilyKey,
@@ -196,6 +208,41 @@ class MealSlotResponse {
       _$MealSlotResponseFromJson(json);
 
   Map<String, dynamic> toJson() => _$MealSlotResponseToJson(this);
+}
+
+@JsonSerializable()
+class CustomSaladResponse {
+  @JsonKey(name: "presetKey")
+  final String? presetKey;
+
+  @JsonKey(name: "vegetables", defaultValue: [])
+  final List<String> vegetables;
+
+  @JsonKey(name: "addons", defaultValue: [])
+  final List<String> addons;
+
+  @JsonKey(name: "fruits", defaultValue: [])
+  final List<String> fruits;
+
+  @JsonKey(name: "nuts", defaultValue: [])
+  final List<String> nuts;
+
+  @JsonKey(name: "sauce", defaultValue: [])
+  final List<String> sauce;
+
+  CustomSaladResponse(
+    this.presetKey,
+    this.vegetables,
+    this.addons,
+    this.fruits,
+    this.nuts,
+    this.sauce,
+  );
+
+  factory CustomSaladResponse.fromJson(Map<String, dynamic> json) =>
+      _$CustomSaladResponseFromJson(json);
+
+  Map<String, dynamic> toJson() => _$CustomSaladResponseToJson(this);
 }
 
 @JsonSerializable()

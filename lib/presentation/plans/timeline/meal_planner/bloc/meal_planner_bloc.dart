@@ -55,6 +55,7 @@ class MealPlannerBloc extends Bloc<MealPlannerEvent, MealPlannerState> {
     on<RetrySelectedDayLoadEvent>(_onRetrySelectedDayLoad);
     on<SetMealSlotProteinEvent>(_onSetProtein);
     on<SetMealSlotCarbEvent>(_onSetCarb);
+    on<SetCustomPremiumMealEvent>(_onSetCustomPremiumMeal);
     on<ToggleAddOnSelectionEvent>(_onToggleAddonSelection);
     on<SelectAddonForCategoryEvent>(_onSelectAddonForCategory);
     on<DismissPendingAddonPromptEvent>(_onDismissPendingAddonPrompt);
@@ -184,8 +185,11 @@ class MealPlannerBloc extends Bloc<MealPlannerEvent, MealPlannerState> {
     if (previous.proteinId == event.proteinId) return;
 
     slots[event.slotIndex] = previous.copyWith(
+      selectionType: 'standard_combo',
       proteinId: event.proteinId,
       carbId: event.proteinId == null ? null : previous.carbId,
+      clearSandwichId: true,
+      clearCustomSalad: true,
     );
 
     final updatedSlotsByDay = Map<int, List<MealPlannerSlotSelection>>.from(
@@ -230,6 +234,11 @@ class MealPlannerBloc extends Bloc<MealPlannerEvent, MealPlannerState> {
     if (previous.carbId == event.carbId) return;
 
     slots[event.slotIndex] = previous.copyWith(carbId: event.carbId);
+    slots[event.slotIndex] = slots[event.slotIndex].copyWith(
+      selectionType: 'standard_combo',
+      clearSandwichId: true,
+      clearCustomSalad: true,
+    );
 
     final updatedSlotsByDay = Map<int, List<MealPlannerSlotSelection>>.from(
       current.selectedSlotsPerDay,
@@ -243,6 +252,55 @@ class MealPlannerBloc extends Bloc<MealPlannerEvent, MealPlannerState> {
           selectedSlotsPerDay: updatedSlotsByDay,
         ),
         clearPaymentError: true,
+      ),
+    );
+  }
+
+  void _onSetCustomPremiumMeal(
+    SetCustomPremiumMealEvent event,
+    Emitter<MealPlannerState> emit,
+  ) {
+    if (state is! MealPlannerLoaded) return;
+    final current = state as MealPlannerLoaded;
+    if (!current.isSelectedDayEditable) {
+      emit(current.copyWith(paymentError: 'DAY_LOCKED'));
+      return;
+    }
+
+    final dayIndex = current.selectedDayIndex;
+    final slots = List<MealPlannerSlotSelection>.from(
+      current.selectedSlotsPerDay[dayIndex] ?? const [],
+    );
+    if (event.slotIndex < 0 || event.slotIndex >= slots.length) return;
+
+    slots[event.slotIndex] = slots[event.slotIndex].copyWith(
+      selectionType: 'custom_premium_salad',
+      proteinId: event.proteinId,
+      carbId: event.carbId,
+      customSalad: CustomSaladSelection(
+        presetKey: event.presetKey,
+        vegetables: event.vegetables,
+        addons: event.addons,
+        fruits: event.fruits,
+        nuts: event.nuts,
+        sauce: event.sauce,
+      ),
+      clearSandwichId: true,
+    );
+
+    final updatedSlotsByDay = Map<int, List<MealPlannerSlotSelection>>.from(
+      current.selectedSlotsPerDay,
+    )..[dayIndex] = slots;
+
+    emit(
+      current.copyWith(
+        selectedSlotsPerDay: updatedSlotsByDay,
+        showSavedBanner: true,
+        clearPaymentError: true,
+        premiumMealsPendingPayment: _calculatePendingPaymentCount(
+          current,
+          selectedSlotsPerDay: updatedSlotsByDay,
+        ),
       ),
     );
   }
@@ -476,10 +534,7 @@ class MealPlannerBloc extends Bloc<MealPlannerEvent, MealPlannerState> {
 
     final currentDay = current.selectedTimelineDay;
     final slots = current.selectedSlotsPerDay[current.selectedDayIndex] ?? [];
-    final completeSlots =
-        slots
-            .where((slot) => slot.proteinId != null && slot.carbId != null)
-            .toList();
+    final completeSlots = slots.where(_isCompleteSlot).toList();
 
     if (completeSlots.length < currentDay.requiredMeals) {
       emit(
@@ -505,8 +560,22 @@ class MealPlannerBloc extends Bloc<MealPlannerEvent, MealPlannerState> {
           .map(
             (slot) => MealSlotRequest(
               slotIndex: slot.slotIndex,
+              slotKey: slot.slotKey,
+              selectionType: slot.selectionType,
               proteinId: slot.proteinId,
               carbId: slot.carbId,
+              sandwichId: slot.sandwichId,
+              customSalad:
+                  slot.customSalad == null
+                      ? null
+                      : CustomSaladRequest(
+                        presetKey: slot.customSalad!.presetKey,
+                        vegetables: slot.customSalad!.vegetables,
+                        addons: slot.customSalad!.addons,
+                        fruits: slot.customSalad!.fruits,
+                        nuts: slot.customSalad!.nuts,
+                        sauce: slot.customSalad!.sauce,
+                      ),
             ),
           )
           .toList(),
@@ -836,6 +905,7 @@ class MealPlannerBloc extends Bloc<MealPlannerEvent, MealPlannerState> {
         return MealPlannerSlotSelection(
           slotIndex: index + 1,
           slotKey: 'slot_${index + 1}',
+          selectionType: 'standard_combo',
           proteinId: slot?.proteinId,
           carbId: slot?.carbId,
         );
@@ -847,6 +917,7 @@ class MealPlannerBloc extends Bloc<MealPlannerEvent, MealPlannerState> {
       return MealPlannerSlotSelection(
         slotIndex: index + 1,
         slotKey: 'slot_${index + 1}',
+        selectionType: 'standard_combo',
         proteinId: index < selections.length ? selections[index] : null,
         carbId: null,
       );
@@ -862,10 +933,36 @@ class MealPlannerBloc extends Bloc<MealPlannerEvent, MealPlannerState> {
       return MealPlannerSlotSelection(
         slotIndex: index + 1,
         slotKey: slot?.slotKey ?? 'slot_${index + 1}',
+        selectionType: slot?.selectionType ?? 'standard_combo',
         proteinId: slot?.proteinId,
         carbId: slot?.carbId,
+        sandwichId: slot?.sandwichId,
+        customSalad:
+            slot?.customSalad == null
+                ? null
+                : CustomSaladSelection(
+                  presetKey: slot!.customSalad!.presetKey ?? '',
+                  vegetables: slot.customSalad!.vegetables,
+                  addons: slot.customSalad!.addons,
+                  fruits: slot.customSalad!.fruits,
+                  nuts: slot.customSalad!.nuts,
+                  sauce: slot.customSalad!.sauce,
+                ),
       );
     });
+  }
+
+  bool _isCompleteSlot(MealPlannerSlotSelection slot) {
+    if (slot.selectionType == 'sandwich') {
+      return slot.sandwichId != null && slot.sandwichId!.isNotEmpty;
+    }
+    if (slot.selectionType == 'custom_premium_salad') {
+      return slot.proteinId != null &&
+          slot.carbId != null &&
+          slot.customSalad != null &&
+          slot.customSalad!.sauce.isNotEmpty;
+    }
+    return slot.proteinId != null && slot.carbId != null;
   }
 
   BuilderProteinModel? _findProteinById(MealPlannerMenuModel menu, String id) {

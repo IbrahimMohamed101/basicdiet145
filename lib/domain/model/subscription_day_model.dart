@@ -44,8 +44,11 @@ class MealSlotModel {
   final int slotIndex;
   final String slotKey;
   final String status;
+  final String? selectionType;
   final String? proteinId;
   final String? carbId;
+  final String? sandwichId;
+  final CustomSaladModel? customSalad;
   final bool isPremium;
   final String premiumSource;
   final String? proteinFamilyKey;
@@ -54,11 +57,32 @@ class MealSlotModel {
     required this.slotIndex,
     required this.slotKey,
     required this.status,
+    this.selectionType,
     this.proteinId,
     this.carbId,
+    this.sandwichId,
+    this.customSalad,
     required this.isPremium,
     required this.premiumSource,
     this.proteinFamilyKey,
+  });
+}
+
+class CustomSaladModel {
+  final String? presetKey;
+  final List<String> vegetables;
+  final List<String> addons;
+  final List<String> fruits;
+  final List<String> nuts;
+  final List<String> sauce;
+
+  CustomSaladModel({
+    this.presetKey,
+    this.vegetables = const [],
+    this.addons = const [],
+    this.fruits = const [],
+    this.nuts = const [],
+    this.sauce = const [],
   });
 }
 

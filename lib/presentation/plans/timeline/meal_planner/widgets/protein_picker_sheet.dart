@@ -2,6 +2,7 @@ import 'package:basic_diet/domain/model/meal_planner_menu_model.dart';
 import 'package:basic_diet/presentation/plans/timeline/meal_planner/bloc/meal_planner_bloc.dart';
 import 'package:basic_diet/presentation/plans/timeline/meal_planner/bloc/meal_planner_event.dart';
 import 'package:basic_diet/presentation/plans/timeline/meal_planner/bloc/meal_planner_state.dart';
+import 'package:basic_diet/presentation/plans/timeline/meal_planner/custom_premium_meal_builder_screen.dart';
 import 'package:basic_diet/presentation/resources/color_manager.dart';
 import 'package:basic_diet/presentation/resources/font_manager.dart';
 import 'package:basic_diet/presentation/resources/strings_manager.dart';
@@ -164,6 +165,8 @@ class _ProteinPickerSheetState extends State<ProteinPickerSheet> {
                   proteins: _filteredProteins(_activeTabKey),
                   selectedProteinId: widget.selectedProteinId,
                   slotIndex: widget.slotIndex,
+                  state: widget.state,
+                  activeTabKey: _activeTabKey,
                   isBeefDisabled: isBeefDisabled,
                   beefFamilyKey: beefRule.proteinFamilyKey,
                   currentIsBeef: currentIsBeef,
@@ -272,6 +275,8 @@ class _ProteinList extends StatelessWidget {
   final List<BuilderProteinModel> proteins;
   final String? selectedProteinId;
   final int slotIndex;
+  final MealPlannerLoaded state;
+  final String activeTabKey;
   final bool isBeefDisabled;
   final String beefFamilyKey;
   final bool currentIsBeef;
@@ -281,6 +286,8 @@ class _ProteinList extends StatelessWidget {
     required this.proteins,
     required this.selectedProteinId,
     required this.slotIndex,
+    required this.state,
+    required this.activeTabKey,
     required this.isBeefDisabled,
     required this.beefFamilyKey,
     required this.currentIsBeef,
@@ -289,31 +296,160 @@ class _ProteinList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListView.separated(
-      controller: scrollController,
-      padding: EdgeInsets.only(
-        left: AppPadding.p16.w,
-        right: AppPadding.p16.w,
-        bottom: 24.h,
-      ),
-      itemCount: proteins.length,
-      separatorBuilder: (_, __) => Gap(AppSize.s10.h),
-      itemBuilder: (context, index) {
-        final protein = proteins[index];
-        final isSelected = selectedProteinId == protein.id;
-        final isItemDisabled =
-            !protein.isPremium &&
-            isBeefDisabled &&
-            protein.proteinFamilyKey == beefFamilyKey &&
-            !currentIsBeef;
+    final customPremiumSalad = state.menu.builderCatalog.customPremiumSalad;
+    final showCustomBuilderOption =
+        activeTabKey == 'premium' && customPremiumSalad != null;
 
-        return _ProteinItem(
-          protein: protein,
-          isSelected: isSelected,
-          isDisabled: isItemDisabled,
-          slotIndex: slotIndex,
-        );
-      },
+    return Column(
+      children: [
+        Expanded(
+          child: ListView(
+            controller: scrollController,
+            padding: EdgeInsets.only(
+              left: AppPadding.p16.w,
+              right: AppPadding.p16.w,
+              bottom: 12.h,
+            ),
+            children:
+                proteins.map((protein) {
+                  final isSelected = selectedProteinId == protein.id;
+                  final isItemDisabled =
+                      !protein.isPremium &&
+                      isBeefDisabled &&
+                      protein.proteinFamilyKey == beefFamilyKey &&
+                      !currentIsBeef;
+
+                  return Padding(
+                    padding: EdgeInsets.only(bottom: AppSize.s10.h),
+                    child: _ProteinItem(
+                      protein: protein,
+                      isSelected: isSelected,
+                      isDisabled: isItemDisabled,
+                      slotIndex: slotIndex,
+                    ),
+                  );
+                }).toList(),
+          ),
+        ),
+        if (showCustomBuilderOption)
+          _CustomBuilderCta(
+            title: Strings.createCustomMeal.tr(),
+            subtitle: Strings.customMealBuilderDescription.tr(),
+            buttonLabel: Strings.buildMeal.tr(),
+            onTap: () async {
+              final premiumProteins = state.menu.builderCatalog.proteins
+                  .where((protein) => protein.isPremium)
+                  .toList()
+                ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+
+              final result = await Navigator.push<CustomPremiumMealBuilderResult>(
+                context,
+                MaterialPageRoute(
+                  builder:
+                      (_) => CustomPremiumMealBuilderScreen(
+                        config: customPremiumSalad,
+                        premiumProteins: premiumProteins,
+                        initialProteinId: selectedProteinId,
+                      ),
+                ),
+              );
+
+              if (result == null || !context.mounted) return;
+              context.read<MealPlannerBloc>().add(
+                SetCustomPremiumMealEvent(
+                  slotIndex: slotIndex,
+                  proteinId: result.proteinId,
+                  carbId: result.carbId,
+                  presetKey: result.presetKey,
+                  vegetables: result.vegetables,
+                  addons: result.addons,
+                  fruits: result.fruits,
+                  nuts: result.nuts,
+                  sauce: result.sauce,
+                ),
+              );
+              Navigator.pop(context);
+            },
+          ),
+      ],
+    );
+  }
+}
+
+class _CustomBuilderCta extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final String buttonLabel;
+  final VoidCallback onTap;
+
+  const _CustomBuilderCta({
+    required this.title,
+    required this.subtitle,
+    required this.buttonLabel,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: EdgeInsets.fromLTRB(
+        AppPadding.p16.w,
+        0,
+        AppPadding.p16.w,
+        AppPadding.p16.h,
+      ),
+      padding: EdgeInsets.all(AppPadding.p12.w),
+      decoration: BoxDecoration(
+        color: ColorManager.brandAccentSoft,
+        borderRadius: BorderRadius.circular(AppSize.s16.r),
+        border: Border.all(color: ColorManager.brandAccentBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.auto_awesome, color: ColorManager.brandAccent, size: 20.w),
+              Gap(AppSize.s10.w),
+              Expanded(
+                child: Text(
+                  title,
+                  style: getBoldTextStyle(
+                    color: ColorManager.brandAccent,
+                    fontSize: FontSizeManager.s14.sp,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          Gap(4.h),
+          Text(
+            subtitle,
+            style: getRegularTextStyle(
+              color: ColorManager.textSecondary,
+              fontSize: FontSizeManager.s12.sp,
+            ),
+          ),
+          Gap(AppSize.s10.h),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: onTap,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: ColorManager.brandPrimary,
+                minimumSize: Size.fromHeight(44.h),
+              ),
+              child: Text(
+                buttonLabel,
+                style: getBoldTextStyle(
+                  color: ColorManager.textInverse,
+                  fontSize: FontSizeManager.s14.sp,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

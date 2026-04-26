@@ -107,6 +107,13 @@ MealSlotResponse _$MealSlotResponseFromJson(Map<String, dynamic> json) =>
       json['status'] as String,
       json['proteinId'] as String?,
       json['carbId'] as String?,
+      json['selectionType'] as String?,
+      json['sandwichId'] as String?,
+      json['customSalad'] == null
+          ? null
+          : CustomSaladResponse.fromJson(
+            json['customSalad'] as Map<String, dynamic>,
+          ),
       json['isPremium'] as bool? ?? false,
       json['premiumSource'] as String? ?? 'none',
       json['proteinFamilyKey'] as String?,
@@ -119,10 +126,36 @@ Map<String, dynamic> _$MealSlotResponseToJson(MealSlotResponse instance) =>
       'status': instance.status,
       'proteinId': instance.proteinId,
       'carbId': instance.carbId,
+      'selectionType': instance.selectionType,
+      'sandwichId': instance.sandwichId,
+      'customSalad': instance.customSalad,
       'isPremium': instance.isPremium,
       'premiumSource': instance.premiumSource,
       'proteinFamilyKey': instance.proteinFamilyKey,
     };
+
+CustomSaladResponse _$CustomSaladResponseFromJson(
+  Map<String, dynamic> json,
+) => CustomSaladResponse(
+  json['presetKey'] as String?,
+  (json['vegetables'] as List<dynamic>?)?.map((e) => e as String).toList() ??
+      [],
+  (json['addons'] as List<dynamic>?)?.map((e) => e as String).toList() ?? [],
+  (json['fruits'] as List<dynamic>?)?.map((e) => e as String).toList() ?? [],
+  (json['nuts'] as List<dynamic>?)?.map((e) => e as String).toList() ?? [],
+  (json['sauce'] as List<dynamic>?)?.map((e) => e as String).toList() ?? [],
+);
+
+Map<String, dynamic> _$CustomSaladResponseToJson(
+  CustomSaladResponse instance,
+) => <String, dynamic>{
+  'presetKey': instance.presetKey,
+  'vegetables': instance.vegetables,
+  'addons': instance.addons,
+  'fruits': instance.fruits,
+  'nuts': instance.nuts,
+  'sauce': instance.sauce,
+};
 
 PlannerMetaResponse _$PlannerMetaResponseFromJson(Map<String, dynamic> json) =>
     PlannerMetaResponse(

@@ -297,7 +297,7 @@ class _MealPlannerBody extends StatelessWidget {
                   children: [
                     MealPlannerProgressIndicator(
                       selectedMeals: _selectedMealsCount(state),
-                      totalMeals: state.maxMeals,
+                      totalMeals: _totalMealsCount(state),
                       premiumLeft: _premiumLeftForDay(state),
                       premiumPending: state.premiumMealsPendingPayment,
                       paymentAmount: _premiumPaymentAmount(state),
@@ -382,19 +382,53 @@ class _MealPlannerBody extends StatelessWidget {
   }
 
   int _selectedMealsCount(MealPlannerLoaded state) {
-    final slots = state.selectedSlotsPerDay[state.selectedDayIndex] ?? [];
-    return slots
-        .where((slot) => slot.proteinId != null && slot.carbId != null)
-        .length;
+    final plannerMeta = state.selectedDayDetail?.plannerMeta;
+    if (plannerMeta != null) {
+      return plannerMeta.completeSlotCount;
+    }
+
+    final slots = state.selectedSlotsPerDay[state.selectedDayIndex] ?? const [];
+    return slots.where((slot) {
+      if (slot.selectionType == 'sandwich') {
+        return slot.sandwichId != null && slot.sandwichId!.isNotEmpty;
+      }
+      if (slot.selectionType == 'custom_premium_salad') {
+        return slot.proteinId != null &&
+            slot.carbId != null &&
+            slot.customSalad != null &&
+            slot.customSalad!.sauce.isNotEmpty;
+      }
+      return slot.proteinId != null && slot.carbId != null;
+    }).length;
+  }
+
+  int _totalMealsCount(MealPlannerLoaded state) {
+    final plannerMeta = state.selectedDayDetail?.plannerMeta;
+    if (plannerMeta != null && plannerMeta.requiredSlotCount > 0) {
+      return plannerMeta.requiredSlotCount;
+    }
+    return state.maxMeals;
   }
 
   int _premiumLeftForDay(MealPlannerLoaded state) {
-    final used = _premiumCreditsUsed(state);
+    final paymentRequirement = state.selectedDayDetail?.paymentRequirement;
+    final used = paymentRequirement?.premiumSelectedCount ?? _premiumCreditsUsed(state);
     final left = state.premiumMealsRemaining - used;
     return left < 0 ? 0 : left;
   }
 
   double _premiumPaymentAmount(MealPlannerLoaded state) {
+    final paymentRequirement = state.selectedDayDetail?.paymentRequirement;
+    if (paymentRequirement != null) {
+      final amountHalala =
+          paymentRequirement.pendingAmountHalala > 0
+              ? paymentRequirement.pendingAmountHalala
+              : paymentRequirement.amountHalala;
+      if (amountHalala > 0) {
+        return amountHalala / 100.0;
+      }
+    }
+
     var totalHalala = 0;
     var usedCredits = 0;
     final slots = state.selectedSlotsPerDay[state.selectedDayIndex] ?? const [];

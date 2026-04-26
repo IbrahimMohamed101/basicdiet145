@@ -99,9 +99,18 @@ class MealPlannerBottomAction extends StatelessWidget {
     final required = state.selectedTimelineDay.requiredMeals;
     final slots = state.selectedSlotsPerDay[state.selectedDayIndex] ?? [];
     final completeCount =
-        slots
-            .where((slot) => slot.proteinId != null && slot.carbId != null)
-            .length;
+        slots.where((slot) {
+          if (slot.selectionType == 'sandwich') {
+            return slot.sandwichId != null && slot.sandwichId!.isNotEmpty;
+          }
+          if (slot.selectionType == 'custom_premium_salad') {
+            return slot.proteinId != null &&
+                slot.carbId != null &&
+                slot.customSalad != null &&
+                slot.customSalad!.sauce.isNotEmpty;
+          }
+          return slot.proteinId != null && slot.carbId != null;
+        }).length;
     return completeCount >= required;
   }
 

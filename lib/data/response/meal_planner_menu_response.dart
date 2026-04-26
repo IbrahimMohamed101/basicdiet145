@@ -59,17 +59,129 @@ class BuilderCatalogResponse {
   List<BuilderCarbResponse>? carbs;
   @JsonKey(name: "rules")
   BuilderRulesResponse? rules;
+  @JsonKey(name: "customPremiumSalad")
+  CustomPremiumSaladResponse? customPremiumSalad;
 
   BuilderCatalogResponse({
     this.categories,
     this.proteins,
     this.carbs,
     this.rules,
+    this.customPremiumSalad,
   });
 
   factory BuilderCatalogResponse.fromJson(Map<String, dynamic> json) =>
       _$BuilderCatalogResponseFromJson(json);
   Map<String, dynamic> toJson() => _$BuilderCatalogResponseToJson(this);
+}
+
+@JsonSerializable()
+class CustomPremiumSaladResponse {
+  @JsonKey(name: "id")
+  String? id;
+  @JsonKey(name: "carbId")
+  String? carbId;
+  @JsonKey(name: "selectionType")
+  String? selectionType;
+  @JsonKey(name: "name")
+  String? name;
+  @JsonKey(name: "extraFeeHalala")
+  int? extraFeeHalala;
+  @JsonKey(name: "currency")
+  String? currency;
+  @JsonKey(name: "preset")
+  CustomPremiumSaladPresetResponse? preset;
+  @JsonKey(name: "ingredients")
+  List<CustomPremiumSaladIngredientResponse>? ingredients;
+
+  CustomPremiumSaladResponse({
+    this.id,
+    this.carbId,
+    this.selectionType,
+    this.name,
+    this.extraFeeHalala,
+    this.currency,
+    this.preset,
+    this.ingredients,
+  });
+
+  factory CustomPremiumSaladResponse.fromJson(Map<String, dynamic> json) =>
+      _$CustomPremiumSaladResponseFromJson(json);
+  Map<String, dynamic> toJson() => _$CustomPremiumSaladResponseToJson(this);
+}
+
+@JsonSerializable()
+class CustomPremiumSaladPresetResponse {
+  @JsonKey(name: "key")
+  String? key;
+  @JsonKey(name: "name")
+  String? name;
+  @JsonKey(name: "selectionType")
+  String? selectionType;
+  @JsonKey(name: "fixedPriceHalala")
+  int? fixedPriceHalala;
+  @JsonKey(name: "currency")
+  String? currency;
+  @JsonKey(name: "groups")
+  List<CustomPremiumSaladGroupRuleResponse>? groups;
+
+  CustomPremiumSaladPresetResponse({
+    this.key,
+    this.name,
+    this.selectionType,
+    this.fixedPriceHalala,
+    this.currency,
+    this.groups,
+  });
+
+  factory CustomPremiumSaladPresetResponse.fromJson(Map<String, dynamic> json) =>
+      _$CustomPremiumSaladPresetResponseFromJson(json);
+  Map<String, dynamic> toJson() => _$CustomPremiumSaladPresetResponseToJson(this);
+}
+
+@JsonSerializable()
+class CustomPremiumSaladGroupRuleResponse {
+  @JsonKey(name: "key")
+  String? key;
+  @JsonKey(name: "minSelect")
+  int? minSelect;
+  @JsonKey(name: "maxSelect")
+  int? maxSelect;
+
+  CustomPremiumSaladGroupRuleResponse({
+    this.key,
+    this.minSelect,
+    this.maxSelect,
+  });
+
+  factory CustomPremiumSaladGroupRuleResponse.fromJson(
+    Map<String, dynamic> json,
+  ) => _$CustomPremiumSaladGroupRuleResponseFromJson(json);
+  Map<String, dynamic> toJson() => _$CustomPremiumSaladGroupRuleResponseToJson(this);
+}
+
+@JsonSerializable()
+class CustomPremiumSaladIngredientResponse {
+  @JsonKey(name: "id")
+  String? id;
+  @JsonKey(name: "groupKey")
+  String? groupKey;
+  @JsonKey(name: "name")
+  String? name;
+  @JsonKey(name: "calories")
+  int? calories;
+
+  CustomPremiumSaladIngredientResponse({
+    this.id,
+    this.groupKey,
+    this.name,
+    this.calories,
+  });
+
+  factory CustomPremiumSaladIngredientResponse.fromJson(
+    Map<String, dynamic> json,
+  ) => _$CustomPremiumSaladIngredientResponseFromJson(json);
+  Map<String, dynamic> toJson() => _$CustomPremiumSaladIngredientResponseToJson(this);
 }
 
 @JsonSerializable()
