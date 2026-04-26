@@ -358,6 +358,7 @@ class _MealPlannerBody extends StatelessWidget {
       protein: protein,
       carb: carb,
       isProteinPremium: protein?.isPremium ?? false,
+      showCarbField: !isSandwichSelection,
       onSelectProtein:
           isReadOnly
               ? null

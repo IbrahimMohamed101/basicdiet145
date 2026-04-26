@@ -22,6 +22,7 @@ class MealSlotCard extends StatelessWidget {
   final List<BuilderCarbModel> carbOptions;
   final void Function(String carbId)? onCarbSelected;
   final VoidCallback? onClear;
+  final bool showCarbField;
 
   const MealSlotCard({
     super.key,
@@ -33,11 +34,12 @@ class MealSlotCard extends StatelessWidget {
     required this.carbOptions,
     required this.onCarbSelected,
     required this.onClear,
+    this.showCarbField = true,
   });
 
   @override
   Widget build(BuildContext context) {
-    final isComplete = protein != null && carb != null;
+    final isComplete = protein != null && (!showCarbField || carb != null);
     final borderColor = isComplete
         ? isProteinPremium
               ? ColorManager.brandAccentBorder
@@ -79,17 +81,19 @@ class MealSlotCard extends StatelessWidget {
                 onTap: onSelectProtein ?? () {},
                 isDisabled: onSelectProtein == null,
               ),
-              Gap(AppSize.s12.h),
-              PlannerField(
-                title: Strings.selectCarb.tr(),
-                value: carb?.name ?? Strings.selectMeal.tr(),
-                isSelected: carb != null,
-                isPremium: false,
-                onTap: onCarbSelected == null
-                    ? () {}
-                    : () => _openCarbPickerSheet(context),
-                isDisabled: onCarbSelected == null,
-              ),
+              if (showCarbField) ...[
+                Gap(AppSize.s12.h),
+                PlannerField(
+                  title: Strings.selectCarb.tr(),
+                  value: carb?.name ?? Strings.selectMeal.tr(),
+                  isSelected: carb != null,
+                  isPremium: false,
+                  onTap: onCarbSelected == null
+                      ? () {}
+                      : () => _openCarbPickerSheet(context),
+                  isDisabled: onCarbSelected == null,
+                ),
+              ],
             ],
           ),
         ),
