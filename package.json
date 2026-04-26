@@ -1,0 +1,48 @@
+{
+  "name": "basicdiet145-backend",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "diagnose:mongo": "node scripts/diagnose-mongo.js",
+    "fix:payment-indexes": "node scripts/fix-payment-indexes.js",
+    "test": "node scripts/run-tests.js",
+    "seed": "node scripts/seed-demo-data.js",
+    "seed:pickup": "node scripts/seedPickupTestData.js",
+    "seed:courier": "node scripts/seedSubscriptionCycles.js",
+    "seed:clear": "node scripts/seed-demo-data.js --clear",
+    "seed:full": "node scripts/seed-demo-data.js --clear --users=50 --subscriptions=80 --orders=50",
+    "backfill:meal-categories": "node scripts/backfill-meal-categories.js",
+    "backfill:meal-category-ids": "node scripts/backfill-meal-category-ids.js",
+    "create:dashboard-user": "node scripts/create-dashboard-user.js",
+    "seed:dashboard-users": "node scripts/seed-dashboard-users.js",
+    "seed:builder": "node scripts/seed-meal-builder-data.js",
+    "seed:legal-content": "node scripts/seed-legal-content.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cloudinary": "^2.9.0",
+    "cors": "^2.8.5",
+    "date-fns": "^3.6.0",
+    "date-fns-tz": "^3.1.3",
+    "dotenv": "^16.6.1",
+    "express": "^4.18.2",
+    "express-rate-limit": "^7.4.0",
+    "firebase-admin": "^12.5.0",
+    "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "mongodb": "^6.13.0",
+    "mongoose": "^8.10.0",
+    "multer": "^2.1.1",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.0",
+    "winston": "^3.14.2"
+  },
+  "devDependencies": {
+    "chai": "^6.2.2",
+    "mocha": "^11.7.5",
+    "sinon": "^21.1.2",
+    "supertest": "^7.2.2"
+  }
+}
