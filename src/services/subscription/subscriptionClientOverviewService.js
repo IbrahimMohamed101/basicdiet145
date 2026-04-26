@@ -1,12 +1,14 @@
 const Plan = require("../../models/Plan");
 const Subscription = require("../../models/Subscription");
 const SubscriptionDay = require("../../models/SubscriptionDay");
+const BuilderProtein = require("../../models/BuilderProtein");
 const { logger } = require("../../utils/logger");
 const { resolveSubscriptionSkipPolicy } = require("./subscriptionContractReadService");
 const { resolveSkipRemainingDays } = require("./subscriptionSkipService");
 const { resolvePickupPreparationState } = require("./subscriptionPickupPreparationService");
 const { serializeSubscriptionForClientWithGuard } = require("./subscriptionClientSerializationService");
 const { getRestaurantHours } = require("../restaurantHoursService");
+const { pickLang } = require("../../utils/i18n");
 
 function isPopulatedPlanDocument(plan) {
   return Boolean(
@@ -80,6 +82,70 @@ async function buildSubscriptionOverviewSkipUsageSafe(subscription, runtime) {
   };
 }
 
+async function loadPremiumCatalogForOverview(lang) {
+  try {
+    const premiumDocs = await BuilderProtein.find({ isActive: true, isPremium: true })
+      .select("_id name")
+      .lean();
+    return new Map(premiumDocs.map((doc) => [String(doc._id), pickLang(doc.name, lang) || ""]));
+  } catch (err) {
+    logger.error("currentOverview: failed to load premium catalog", {
+      error: err.message,
+      stack: err.stack,
+    });
+    return new Map();
+  }
+}
+
+function buildSubscriptionPremiumBalanceSummary(subscription, premiumCatalog, lang) {
+  const premiumBalance = Array.isArray(subscription && subscription.premiumBalance)
+    ? subscription.premiumBalance
+    : [];
+
+  const aggregatedByProteinId = new Map();
+  for (const row of premiumBalance) {
+    if (!row || !row.proteinId) continue;
+    const proteinId = String(row.proteinId);
+    const existing = aggregatedByProteinId.get(proteinId) || { purchasedQtyTotal: 0, remainingQtyTotal: 0 };
+    existing.purchasedQtyTotal += Number(row.purchasedQty || 0);
+    existing.remainingQtyTotal += Number(row.remainingQty || 0);
+    aggregatedByProteinId.set(proteinId, existing);
+  }
+
+  const summaryFromBalance = [];
+  for (const [proteinId, totals] of aggregatedByProteinId) {
+    const name = premiumCatalog.get(proteinId) || "";
+    summaryFromBalance.push({
+      premiumMealId: proteinId,
+      name,
+      purchasedQtyTotal: totals.purchasedQtyTotal,
+      remainingQtyTotal: totals.remainingQtyTotal,
+      consumedQtyTotal: totals.purchasedQtyTotal - totals.remainingQtyTotal,
+    });
+  }
+
+  const allPremiumItems = [];
+  const addedProteinIds = new Set();
+
+  for (const [proteinId, name] of premiumCatalog) {
+    addedProteinIds.add(proteinId);
+    const fromBalance = summaryFromBalance.find((item) => item.premiumMealId === proteinId);
+    if (fromBalance) {
+      allPremiumItems.push(fromBalance);
+    } else {
+      allPremiumItems.push({
+        premiumMealId: proteinId,
+        name,
+        purchasedQtyTotal: 0,
+        remainingQtyTotal: 0,
+        consumedQtyTotal: 0,
+      });
+    }
+  }
+
+  return allPremiumItems;
+}
+
 function defaultRuntime() {
   return {
     findCurrentSubscription(userId) {
@@ -141,6 +207,8 @@ async function buildCurrentSubscriptionOverview({ userId, lang, runtime: runtime
   const serializedSubscription = await runtime.serializeSubscriptionForClientWithGuard(sub, lang);
   const skipUsage = await buildSubscriptionOverviewSkipUsageSafe(sub, runtime);
   const restaurantHours = await runtime.getRestaurantHoursSettings();
+  const premiumCatalog = await loadPremiumCatalogForOverview(lang);
+  const premiumSummary = buildSubscriptionPremiumBalanceSummary(sub, premiumCatalog, lang);
 
   let pickupPreparation = null;
   try {
@@ -176,10 +244,13 @@ async function buildCurrentSubscriptionOverview({ userId, lang, runtime: runtime
       ...skipUsage,
       businessDate: restaurantHours.businessDate,
       pickupPreparation,
+      premiumSummary,
     },
   };
 }
 
 module.exports = {
   buildCurrentSubscriptionOverview,
+  buildSubscriptionPremiumBalanceSummary,
+  loadPremiumCatalogForOverview,
 };
