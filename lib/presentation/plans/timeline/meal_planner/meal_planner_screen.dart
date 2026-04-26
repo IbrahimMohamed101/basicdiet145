@@ -366,7 +366,7 @@ class _MealPlannerBody extends StatelessWidget {
                 context: context,
                 state: state,
                 slotIndex: index,
-                selectedProteinId: slot?.proteinId,
+                selectedProteinId: proteinIdForDisplay,
               ),
       carbOptions: _sortedCarbs(state.menu),
       onCarbSelected:

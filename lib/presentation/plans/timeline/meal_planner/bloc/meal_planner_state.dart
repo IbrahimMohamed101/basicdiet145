@@ -51,6 +51,8 @@ final class MealPlannerSlotSelection extends Equatable {
     String? carbId,
     String? sandwichId,
     CustomSaladSelection? customSalad,
+    bool clearProteinId = false,
+    bool clearCarbId = false,
     bool clearSandwichId = false,
     bool clearCustomSalad = false,
   }) {
@@ -58,8 +60,8 @@ final class MealPlannerSlotSelection extends Equatable {
       slotIndex: slotIndex ?? this.slotIndex,
       slotKey: slotKey ?? this.slotKey,
       selectionType: selectionType ?? this.selectionType,
-      proteinId: proteinId ?? this.proteinId,
-      carbId: carbId ?? this.carbId,
+      proteinId: clearProteinId ? null : proteinId ?? this.proteinId,
+      carbId: clearCarbId ? null : carbId ?? this.carbId,
       sandwichId: clearSandwichId ? null : sandwichId ?? this.sandwichId,
       customSalad: clearCustomSalad ? null : customSalad ?? this.customSalad,
     );

@@ -195,19 +195,14 @@ class MealPlannerBloc extends Bloc<MealPlannerEvent, MealPlannerState> {
               : isSandwichSelection
               ? 'sandwich'
               : 'standard_combo',
-      proteinId:
-          event.proteinId == null
-              ? null
-              : isSandwichSelection
-              ? null
-              : event.proteinId,
+      proteinId: isSandwichSelection ? null : event.proteinId,
       carbId:
-          event.proteinId == null
-              ? null
-              : isSandwichSelection
+          event.proteinId == null || isSandwichSelection
               ? null
               : previous.carbId,
       sandwichId: isSandwichSelection ? event.proteinId : null,
+      clearProteinId: event.proteinId == null || isSandwichSelection,
+      clearCarbId: event.proteinId == null || isSandwichSelection,
       clearSandwichId: !isSandwichSelection,
       clearCustomSalad: true,
     );
