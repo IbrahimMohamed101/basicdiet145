@@ -232,7 +232,11 @@ class VerifyScreen extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.lock, size: AppSize.s16.sp, color: ColorManager.textSecondary),
+          Icon(
+            Icons.lock,
+            size: AppSize.s16.sp,
+            color: ColorManager.textSecondary,
+          ),
           Gap(AppSize.s8.w),
           Expanded(
             child: Text(
@@ -251,7 +255,9 @@ class VerifyScreen extends StatelessWidget {
 
   Widget _loader() {
     return Center(
-      child: CircularProgressIndicator(color: ColorManager.stateSuccessEmphasis),
+      child: CircularProgressIndicator(
+        color: ColorManager.stateSuccessEmphasis,
+      ),
     );
   }
 }

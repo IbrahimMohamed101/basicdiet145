@@ -184,7 +184,9 @@ class RegisterScreen extends StatelessWidget {
                 state.emailError == null;
 
             return ButtonWidget(
-              text: isLoading ? Strings.loading.tr() : Strings.createAccount.tr(),
+              text: isLoading
+                  ? Strings.loading.tr()
+                  : Strings.createAccount.tr(),
               textColor: ColorManager.backgroundSurface,
               color: isEnabled
                   ? ColorManager.stateSuccessEmphasis

@@ -12,7 +12,8 @@ class GetSubscriptionDayUseCaseInput {
 }
 
 class GetSubscriptionDayUseCase
-    implements BaseUseCase<GetSubscriptionDayUseCaseInput, SubscriptionDayModel> {
+    implements
+        BaseUseCase<GetSubscriptionDayUseCaseInput, SubscriptionDayModel> {
   final Repository _repository;
 
   GetSubscriptionDayUseCase(this._repository);

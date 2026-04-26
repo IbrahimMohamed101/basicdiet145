@@ -26,7 +26,8 @@ class SubscriptionPoliciesDialog extends StatefulWidget {
       _SubscriptionPoliciesDialogState();
 }
 
-class _SubscriptionPoliciesDialogState extends State<SubscriptionPoliciesDialog> {
+class _SubscriptionPoliciesDialogState
+    extends State<SubscriptionPoliciesDialog> {
   bool _isAgreed = false;
 
   @override
@@ -117,8 +118,7 @@ class _SubscriptionPoliciesDialogState extends State<SubscriptionPoliciesDialog>
             Gap(AppSize.s12.h),
             CheckboxListTile(
               value: _isAgreed,
-              onChanged: (value) =>
-                  setState(() => _isAgreed = value ?? false),
+              onChanged: (value) => setState(() => _isAgreed = value ?? false),
               dense: true,
               activeColor: ColorManager.brandPrimary,
               contentPadding: EdgeInsets.zero,
@@ -142,9 +142,7 @@ class _SubscriptionPoliciesDialogState extends State<SubscriptionPoliciesDialog>
                 onPressed: () => Navigator.of(context).pop(false),
                 style: OutlinedButton.styleFrom(
                   padding: EdgeInsets.symmetric(vertical: AppPadding.p12.h),
-                  side: const BorderSide(
-                    color: ColorManager.borderDefault,
-                  ),
+                  side: const BorderSide(color: ColorManager.borderDefault),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(AppSize.s10.r),
                   ),
@@ -166,8 +164,9 @@ class _SubscriptionPoliciesDialogState extends State<SubscriptionPoliciesDialog>
                     : null,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: ColorManager.brandPrimary,
-                  disabledBackgroundColor:
-                      ColorManager.brandPrimary.withValues(alpha: 0.35),
+                  disabledBackgroundColor: ColorManager.brandPrimary.withValues(
+                    alpha: 0.35,
+                  ),
                   padding: EdgeInsets.symmetric(vertical: AppPadding.p12.h),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(AppSize.s10.r),

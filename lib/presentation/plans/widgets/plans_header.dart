@@ -42,10 +42,7 @@ class PlansHeader extends StatelessWidget {
             color: ColorManager.brandPrimary.withValues(alpha: 0.1),
             shape: BoxShape.circle,
           ),
-          child: Text(
-            '👋',
-            style: TextStyle(fontSize: FontSizeManager.s20.sp),
-          ),
+          child: Text('👋', style: TextStyle(fontSize: FontSizeManager.s20.sp)),
         ),
       ],
     );

@@ -5,13 +5,16 @@ import 'package:basic_diet/domain/repository/repository.dart';
 import 'package:basic_diet/domain/usecase/base_usecase.dart';
 import 'package:dartz/dartz.dart';
 
-class SkipDateRangeUseCase implements BaseUseCase<SkipDateRangeUseCaseInput, SkipDaysResponse> {
+class SkipDateRangeUseCase
+    implements BaseUseCase<SkipDateRangeUseCaseInput, SkipDaysResponse> {
   final Repository _repository;
 
   SkipDateRangeUseCase(this._repository);
 
   @override
-  Future<Either<Failure, SkipDaysResponse>> execute(SkipDateRangeUseCaseInput input) async {
+  Future<Either<Failure, SkipDaysResponse>> execute(
+    SkipDateRangeUseCaseInput input,
+  ) async {
     return await _repository.skipDateRange(
       input.id,
       SkipDateRangeRequest(input.startDate, input.endDate),

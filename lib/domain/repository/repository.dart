@@ -108,6 +108,16 @@ abstract class Repository {
     String date,
     String paymentId,
   );
+  Future<Either<Failure, PremiumPaymentModel>> createOneTimeAddonPayment(
+    String subscriptionId,
+    String date,
+  );
+  Future<Either<Failure, PremiumPaymentVerificationModel>>
+  verifyOneTimeAddonPayment(
+    String subscriptionId,
+    String date,
+    String paymentId,
+  );
   Future<Either<Failure, CancelSubscriptionModel>> cancelSubscription(
     String subscriptionId,
   );

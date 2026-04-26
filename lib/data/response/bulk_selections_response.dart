@@ -10,10 +10,7 @@ class BulkSelectionsResponse {
   @JsonKey(name: "data")
   BulkSelectionsData? data;
 
-  BulkSelectionsResponse({
-    required this.status,
-    this.data,
-  });
+  BulkSelectionsResponse({required this.status, this.data});
 
   factory BulkSelectionsResponse.fromJson(Map<String, dynamic> json) =>
       _$BulkSelectionsResponseFromJson(json);
@@ -29,10 +26,7 @@ class BulkSelectionsData {
   @JsonKey(name: "results")
   List<BulkSelectionResult> results;
 
-  BulkSelectionsData({
-    required this.summary,
-    required this.results,
-  });
+  BulkSelectionsData({required this.summary, required this.results});
 
   factory BulkSelectionsData.fromJson(Map<String, dynamic> json) =>
       _$BulkSelectionsDataFromJson(json);

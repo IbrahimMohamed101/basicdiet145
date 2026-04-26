@@ -1,3 +1,5 @@
+import 'package:basic_diet/domain/model/current_subscription_overview_model.dart';
+
 class TimelineMealSlot {
   final int slotIndex;
   final String? proteinId;
@@ -47,12 +49,15 @@ class TimelineDataModel {
   final int dailyMealsRequired;
   final int premiumMealsRemaining;
   final List<TimelineDayModel> days;
+  // اشتراكات الإضافات المضمنة في الخطة — تُمرَّر لشاشة تخطيط الوجبات
+  final List<AddonSubscriptionModel> addonSubscriptions;
 
   TimelineDataModel({
     required this.subscriptionId,
     required this.dailyMealsRequired,
     required this.premiumMealsRemaining,
     required this.days,
+    this.addonSubscriptions = const [],
   });
 }
 

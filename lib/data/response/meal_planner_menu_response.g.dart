@@ -71,6 +71,12 @@ BuilderCatalogResponse _$BuilderCatalogResponseFromJson(
           : BuilderRulesResponse.fromJson(
             json['rules'] as Map<String, dynamic>,
           ),
+  customPremiumSalad:
+      json['customPremiumSalad'] == null
+          ? null
+          : CustomPremiumSaladResponse.fromJson(
+            json['customPremiumSalad'] as Map<String, dynamic>,
+          ),
 );
 
 Map<String, dynamic> _$BuilderCatalogResponseToJson(
@@ -80,6 +86,108 @@ Map<String, dynamic> _$BuilderCatalogResponseToJson(
   'proteins': instance.proteins,
   'carbs': instance.carbs,
   'rules': instance.rules,
+  'customPremiumSalad': instance.customPremiumSalad,
+};
+
+CustomPremiumSaladResponse _$CustomPremiumSaladResponseFromJson(
+  Map<String, dynamic> json,
+) => CustomPremiumSaladResponse(
+  id: json['id'] as String?,
+  carbId: json['carbId'] as String?,
+  selectionType: json['selectionType'] as String?,
+  name: json['name'] as String?,
+  extraFeeHalala: (json['extraFeeHalala'] as num?)?.toInt(),
+  currency: json['currency'] as String?,
+  preset:
+      json['preset'] == null
+          ? null
+          : CustomPremiumSaladPresetResponse.fromJson(
+            json['preset'] as Map<String, dynamic>,
+          ),
+  ingredients:
+      (json['ingredients'] as List<dynamic>?)
+          ?.map(
+            (e) => CustomPremiumSaladIngredientResponse.fromJson(
+              e as Map<String, dynamic>,
+            ),
+          )
+          .toList(),
+);
+
+Map<String, dynamic> _$CustomPremiumSaladResponseToJson(
+  CustomPremiumSaladResponse instance,
+) => <String, dynamic>{
+  'id': instance.id,
+  'carbId': instance.carbId,
+  'selectionType': instance.selectionType,
+  'name': instance.name,
+  'extraFeeHalala': instance.extraFeeHalala,
+  'currency': instance.currency,
+  'preset': instance.preset,
+  'ingredients': instance.ingredients,
+};
+
+CustomPremiumSaladPresetResponse _$CustomPremiumSaladPresetResponseFromJson(
+  Map<String, dynamic> json,
+) => CustomPremiumSaladPresetResponse(
+  key: json['key'] as String?,
+  name: json['name'] as String?,
+  selectionType: json['selectionType'] as String?,
+  fixedPriceHalala: (json['fixedPriceHalala'] as num?)?.toInt(),
+  currency: json['currency'] as String?,
+  groups:
+      (json['groups'] as List<dynamic>?)
+          ?.map(
+            (e) => CustomPremiumSaladGroupRuleResponse.fromJson(
+              e as Map<String, dynamic>,
+            ),
+          )
+          .toList(),
+);
+
+Map<String, dynamic> _$CustomPremiumSaladPresetResponseToJson(
+  CustomPremiumSaladPresetResponse instance,
+) => <String, dynamic>{
+  'key': instance.key,
+  'name': instance.name,
+  'selectionType': instance.selectionType,
+  'fixedPriceHalala': instance.fixedPriceHalala,
+  'currency': instance.currency,
+  'groups': instance.groups,
+};
+
+CustomPremiumSaladGroupRuleResponse
+_$CustomPremiumSaladGroupRuleResponseFromJson(Map<String, dynamic> json) =>
+    CustomPremiumSaladGroupRuleResponse(
+      key: json['key'] as String?,
+      minSelect: (json['minSelect'] as num?)?.toInt(),
+      maxSelect: (json['maxSelect'] as num?)?.toInt(),
+    );
+
+Map<String, dynamic> _$CustomPremiumSaladGroupRuleResponseToJson(
+  CustomPremiumSaladGroupRuleResponse instance,
+) => <String, dynamic>{
+  'key': instance.key,
+  'minSelect': instance.minSelect,
+  'maxSelect': instance.maxSelect,
+};
+
+CustomPremiumSaladIngredientResponse
+_$CustomPremiumSaladIngredientResponseFromJson(Map<String, dynamic> json) =>
+    CustomPremiumSaladIngredientResponse(
+      id: json['id'] as String?,
+      groupKey: json['groupKey'] as String?,
+      name: json['name'] as String?,
+      calories: (json['calories'] as num?)?.toInt(),
+    );
+
+Map<String, dynamic> _$CustomPremiumSaladIngredientResponseToJson(
+  CustomPremiumSaladIngredientResponse instance,
+) => <String, dynamic>{
+  'id': instance.id,
+  'groupKey': instance.groupKey,
+  'name': instance.name,
+  'calories': instance.calories,
 };
 
 BuilderCategoryResponse _$BuilderCategoryResponseFromJson(

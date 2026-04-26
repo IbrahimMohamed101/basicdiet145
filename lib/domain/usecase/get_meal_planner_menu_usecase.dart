@@ -15,4 +15,3 @@ class GetMealPlannerMenuUseCase
     return _repository.getMealPlannerMenu();
   }
 }
-

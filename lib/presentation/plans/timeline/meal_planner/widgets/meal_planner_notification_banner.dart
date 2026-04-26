@@ -49,7 +49,11 @@ class MealPlannerNotificationBanner extends StatelessWidget {
                   color: ColorManager.stateSuccess,
                 ),
                 padding: EdgeInsets.all(4.w),
-                child: Icon(Icons.check, color: ColorManager.backgroundSurface, size: AppSize.s14.w),
+                child: Icon(
+                  Icons.check,
+                  color: ColorManager.backgroundSurface,
+                  size: AppSize.s14.w,
+                ),
               ),
               Gap(AppSize.s12.w),
               Expanded(
@@ -74,9 +78,14 @@ class MealPlannerNotificationBanner extends StatelessWidget {
                 ),
               ),
               IconButton(
-                onPressed: () =>
-                    context.read<MealPlannerBloc>().add(const HideBannerEvent()),
-                icon: const Icon(Icons.close, color: ColorManager.stateSuccessEmphasis, size: 16),
+                onPressed: () => context.read<MealPlannerBloc>().add(
+                  const HideBannerEvent(),
+                ),
+                icon: const Icon(
+                  Icons.close,
+                  color: ColorManager.stateSuccessEmphasis,
+                  size: 16,
+                ),
               ),
             ],
           ),

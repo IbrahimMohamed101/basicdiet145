@@ -32,20 +32,18 @@ class MealOptionCard extends StatelessWidget {
   Color get _borderColor =>
       isSelected ? ColorManager.brandPrimary : ColorManager.borderDefault;
 
-  Color get _titleColor =>
-      isSelected
-          ? ColorManager.stateSuccessEmphasis
-          : ColorManager.textSecondary;
+  Color get _titleColor => isSelected
+      ? ColorManager.stateSuccessEmphasis
+      : ColorManager.textSecondary;
 
   Color get _priceColor =>
       isSelected ? ColorManager.brandPrimary : ColorManager.textPrimary;
 
   List<BoxShadow> get _boxShadow => [
     BoxShadow(
-      color:
-          isSelected
-              ? ColorManager.brandPrimaryGlow
-              : ColorManager.textPrimary.withValues(alpha: 0.05),
+      color: isSelected
+          ? ColorManager.brandPrimaryGlow
+          : ColorManager.textPrimary.withValues(alpha: 0.05),
       blurRadius: isSelected ? 22 : 12,
       spreadRadius: isSelected ? 1.5 : 0,
       offset: Offset(0, isSelected ? 12 : 6),
@@ -192,16 +190,18 @@ class _PriceRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final amountStyle = TextStyle(
       fontFamily: FontConstants.fontFamily,
-      fontWeight:
-          isStrikethrough ? FontWeightManager.regular : FontWeightManager.bold,
+      fontWeight: isStrikethrough
+          ? FontWeightManager.regular
+          : FontWeightManager.bold,
       fontSize: amountFontSize,
       color: color,
       height: 1.1,
     );
     final currencyStyle = TextStyle(
       fontFamily: FontConstants.fontFamily,
-      fontWeight:
-          isStrikethrough ? FontWeightManager.regular : FontWeightManager.bold,
+      fontWeight: isStrikethrough
+          ? FontWeightManager.regular
+          : FontWeightManager.bold,
       fontSize: labelFontSize,
       color: color,
       height: 1.1,
@@ -232,19 +232,21 @@ class _PriceRow extends StatelessWidget {
 }
 
 class _CenteredStrikePainter extends CustomPainter {
-  const _CenteredStrikePainter({required this.color, required this.strokeWidth});
+  const _CenteredStrikePainter({
+    required this.color,
+    required this.strokeWidth,
+  });
 
   final Color color;
   final double strokeWidth;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint =
-        Paint()
-          ..color = color
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = strokeWidth
-          ..strokeCap = StrokeCap.round;
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.round;
 
     final y = size.height / 2.5;
     canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);

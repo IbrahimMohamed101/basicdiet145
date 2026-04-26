@@ -18,7 +18,8 @@ class ValidateDaySelectionUseCaseInput {
 }
 
 class ValidateDaySelectionUseCase
-    implements BaseUseCase<ValidateDaySelectionUseCaseInput, ValidationResultModel> {
+    implements
+        BaseUseCase<ValidateDaySelectionUseCaseInput, ValidationResultModel> {
   final Repository _repository;
 
   ValidateDaySelectionUseCase(this._repository);

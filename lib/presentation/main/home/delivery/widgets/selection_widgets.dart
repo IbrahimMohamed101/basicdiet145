@@ -101,7 +101,9 @@ class DeliveryTypeCard extends StatelessWidget {
               ),
               child: Icon(
                 icon,
-                color: isSelected ? ColorManager.backgroundSurface : ColorManager.textSecondary,
+                color: isSelected
+                    ? ColorManager.backgroundSurface
+                    : ColorManager.textSecondary,
               ),
             ),
             Gap(AppSize.s16.w),

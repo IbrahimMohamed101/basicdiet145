@@ -15,7 +15,8 @@ extension PremiumPaymentResponseMapper on PremiumPaymentResponse? {
   }
 }
 
-extension PremiumPaymentVerificationResponseMapper on PremiumPaymentVerificationResponse? {
+extension PremiumPaymentVerificationResponseMapper
+    on PremiumPaymentVerificationResponse? {
   PremiumPaymentVerificationModel toDomain() {
     final data = this?.data;
     return PremiumPaymentVerificationModel(

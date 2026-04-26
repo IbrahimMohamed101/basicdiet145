@@ -20,7 +20,8 @@ extension FreezePolicyResponseMapper on FreezePolicyResponse? {
   }
 }
 
-extension FreezeSubscriptionDataResponseMapper on FreezeSubscriptionDataResponse? {
+extension FreezeSubscriptionDataResponseMapper
+    on FreezeSubscriptionDataResponse? {
   FreezeSubscriptionDataModel toDomain() {
     return FreezeSubscriptionDataModel(
       this?.subscriptionId?.orEmpty() ?? Constants.empty,
@@ -29,7 +30,12 @@ extension FreezeSubscriptionDataResponseMapper on FreezeSubscriptionDataResponse
       this?.alreadyFrozen?.map((e) => e).toList() ?? [],
       this?.frozenDaysTotal?.orZero() ?? Constants.zero,
       this?.validityEndDate?.orEmpty() ?? Constants.empty,
-      this?.freezePolicy.toDomain() ?? FreezePolicyModel(Constants.falseValue, Constants.zero, Constants.zero),
+      this?.freezePolicy.toDomain() ??
+          FreezePolicyModel(
+            Constants.falseValue,
+            Constants.zero,
+            Constants.zero,
+          ),
     );
   }
 }
@@ -37,15 +43,20 @@ extension FreezeSubscriptionDataResponseMapper on FreezeSubscriptionDataResponse
 extension FreezeSubscriptionResponseMapper on FreezeSubscriptionResponse? {
   FreezeSubscriptionModel toDomain() {
     return FreezeSubscriptionModel(
-      this?.data?.toDomain() ?? FreezeSubscriptionDataModel(
-        Constants.empty,
-        [],
-        [],
-        [],
-        Constants.zero,
-        Constants.empty,
-        FreezePolicyModel(Constants.falseValue, Constants.zero, Constants.zero),
-      )
+      this?.data?.toDomain() ??
+          FreezeSubscriptionDataModel(
+            Constants.empty,
+            [],
+            [],
+            [],
+            Constants.zero,
+            Constants.empty,
+            FreezePolicyModel(
+              Constants.falseValue,
+              Constants.zero,
+              Constants.zero,
+            ),
+          ),
     );
   }
 }

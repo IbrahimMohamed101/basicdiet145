@@ -15,12 +15,14 @@ extension AddOnResponseMapper on AddOnResponse? {
     return AddOnModel(
       id: this?.id.orEmpty() ?? "",
       name: this?.name.orEmpty() ?? "",
+      category: this?.category.orEmpty() ?? "",
       description: this?.description.orEmpty() ?? "",
       imageUrl: this?.imageUrl.orEmpty() ?? "",
       currency: this?.currency.orEmpty() ?? "",
+      priceHalala: this?.priceHalala.orZero() ?? 0,
       priceSar: this?.priceSar.orZero() ?? 0,
       priceLabel: this?.priceLabel.orEmpty() ?? "",
-      type: this?.type.orEmpty() ?? "",
+      type: (this?.kind ?? this?.type).orEmpty(),
       ui:
           this?.ui.toDomain() ??
           const AddOnUiModel(title: "", subtitle: "", ctaLabel: "", badge: ""),

@@ -137,7 +137,8 @@ class GoRouterConfig {
               value: extras['bloc'] as SubscriptionBloc,
               child: SubscriptionDetails(
                 quote: extras['quote'] as SubscriptionQuoteModel,
-                quoteRequest: extras['quoteRequest'] as SubscriptionQuoteRequestModel,
+                quoteRequest:
+                    extras['quoteRequest'] as SubscriptionQuoteRequestModel,
               ),
             ),
           );

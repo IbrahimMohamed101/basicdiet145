@@ -7,10 +7,46 @@ extension SubscriptionDayResponseMapper on SubscriptionDayResponse {
     return SubscriptionDayModel(
       date: data?.date ?? '',
       status: data?.status ?? 'open',
-      plannerState: data?.plannerState,
+      plannerState: data?.plannerState ?? data?.planning?.state,
       mealSlots: data?.mealSlots.map((s) => s.toDomain()).toList() ?? [],
-      plannerMeta: data?.plannerMeta?.toDomain(),
+      addonSelections:
+          data?.addonSelections
+              .map((selection) => selection.toDomain())
+              .toList() ??
+          [],
+      plannerMeta:
+          data?.plannerMeta?.toDomain() ?? data?.planning?.toPlannerMetaDomain(),
       paymentRequirement: data?.paymentRequirement?.toDomain(),
+    );
+  }
+}
+
+extension PlanningResponseMapper on PlanningResponse {
+  PlannerMetaModel toPlannerMetaDomain() {
+    return PlannerMetaModel(
+      requiredSlotCount: requiredMealCount,
+      emptySlotCount: requiredMealCount - selectedTotalMealCount,
+      partialSlotCount: 0,
+      completeSlotCount: selectedTotalMealCount,
+      premiumSlotCount: 0,
+      premiumPendingPaymentCount: 0,
+      premiumTotalHalala: 0,
+      isDraftValid: isExactCountSatisfied,
+      isConfirmable: isExactCountSatisfied,
+    );
+  }
+}
+
+extension AddonSelectionResponseMapper on AddonSelectionResponse {
+  AddonSelectionModel toDomain() {
+    final rawStatus = status ?? source ?? 'pending_payment';
+    return AddonSelectionModel(
+      addonId: addonId ?? '',
+      category: category ?? '',
+      status: rawStatus == 'subscription' ? 'included' : rawStatus,
+      name: name ?? '',
+      priceHalala: priceHalala ?? 0,
+      currency: currency ?? 'SAR',
     );
   }
 }
@@ -21,11 +57,27 @@ extension MealSlotResponseMapper on MealSlotResponse {
       slotIndex: slotIndex,
       slotKey: slotKey,
       status: status,
+      selectionType: selectionType,
       proteinId: proteinId,
       carbId: carbId,
+      sandwichId: sandwichId,
+      customSalad: customSalad?.toDomain(),
       isPremium: isPremium,
       premiumSource: premiumSource,
       proteinFamilyKey: proteinFamilyKey,
+    );
+  }
+}
+
+extension CustomSaladResponseMapper on CustomSaladResponse {
+  CustomSaladModel toDomain() {
+    return CustomSaladModel(
+      presetKey: presetKey,
+      vegetables: vegetables,
+      addons: addons,
+      fruits: fruits,
+      nuts: nuts,
+      sauce: sauce,
     );
   }
 }
@@ -49,11 +101,18 @@ extension PlannerMetaResponseMapper on PlannerMetaResponse {
 extension PaymentRequirementResponseMapper on PaymentRequirementResponse {
   PaymentRequirementModel toDomain() {
     return PaymentRequirementModel(
+      status: status,
       requiresPayment: requiresPayment,
       premiumSelectedCount: premiumSelectedCount,
       premiumPendingPaymentCount: premiumPendingPaymentCount,
+      addonSelectedCount: addonSelectedCount,
+      addonPendingPaymentCount: addonPendingPaymentCount,
       amountHalala: amountHalala,
+      pendingAmountHalala: pendingAmountHalala,
       currency: currency,
+      pricingStatus: pricingStatus,
+      blockingReason: blockingReason,
+      canCreatePayment: canCreatePayment,
     );
   }
 }

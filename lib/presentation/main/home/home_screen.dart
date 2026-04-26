@@ -176,7 +176,9 @@ class _ImageCard extends StatelessWidget {
                   Strings.nutritionControl.tr(),
                   style: getRegularTextStyle(
                     fontSize: FontSizeManager.s14.sp,
-                    color: ColorManager.backgroundSurface.withValues(alpha: 0.78),
+                    color: ColorManager.backgroundSurface.withValues(
+                      alpha: 0.78,
+                    ),
                   ).copyWith(height: 1.25),
                 ),
                 const Spacer(),
@@ -234,7 +236,10 @@ class _QuickBrowseSection extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: _categories
-              .map((c) => CategoryItem(title: c.title.tr(), imagePath: c.imagePath))
+              .map(
+                (c) =>
+                    CategoryItem(title: c.title.tr(), imagePath: c.imagePath),
+              )
               .toList(),
         ),
       ],

@@ -3,6 +3,7 @@ class SubscriptionDayModel {
   final String status;
   final String? plannerState;
   final List<MealSlotModel> mealSlots;
+  final List<AddonSelectionModel> addonSelections;
   final PlannerMetaModel? plannerMeta;
   final PaymentRequirementModel? paymentRequirement;
 
@@ -11,17 +12,43 @@ class SubscriptionDayModel {
     required this.status,
     this.plannerState,
     required this.mealSlots,
+    this.addonSelections = const [],
     this.plannerMeta,
     this.paymentRequirement,
   });
+}
+
+class AddonSelectionModel {
+  final String addonId;
+  final String category;
+  final String status;
+  final String name;
+  final int priceHalala;
+  final String currency;
+
+  const AddonSelectionModel({
+    required this.addonId,
+    required this.category,
+    required this.status,
+    this.name = '',
+    this.priceHalala = 0,
+    this.currency = 'SAR',
+  });
+
+  bool get isIncluded => status == 'included' || status == 'subscription';
+  bool get isPendingPayment => status == 'pending_payment';
+  bool get isPaid => status == 'paid';
 }
 
 class MealSlotModel {
   final int slotIndex;
   final String slotKey;
   final String status;
+  final String? selectionType;
   final String? proteinId;
   final String? carbId;
+  final String? sandwichId;
+  final CustomSaladModel? customSalad;
   final bool isPremium;
   final String premiumSource;
   final String? proteinFamilyKey;
@@ -30,11 +57,32 @@ class MealSlotModel {
     required this.slotIndex,
     required this.slotKey,
     required this.status,
+    this.selectionType,
     this.proteinId,
     this.carbId,
+    this.sandwichId,
+    this.customSalad,
     required this.isPremium,
     required this.premiumSource,
     this.proteinFamilyKey,
+  });
+}
+
+class CustomSaladModel {
+  final String? presetKey;
+  final List<String> vegetables;
+  final List<String> addons;
+  final List<String> fruits;
+  final List<String> nuts;
+  final List<String> sauce;
+
+  CustomSaladModel({
+    this.presetKey,
+    this.vegetables = const [],
+    this.addons = const [],
+    this.fruits = const [],
+    this.nuts = const [],
+    this.sauce = const [],
   });
 }
 
@@ -66,15 +114,29 @@ class PaymentRequirementModel {
   final bool requiresPayment;
   final int premiumSelectedCount;
   final int premiumPendingPaymentCount;
+  final int addonSelectedCount;
+  final int addonPendingPaymentCount;
   final int amountHalala;
+  final int pendingAmountHalala;
   final String currency;
+  final String status;
+  final String pricingStatus;
+  final String? blockingReason;
+  final bool canCreatePayment;
 
   PaymentRequirementModel({
     required this.requiresPayment,
     required this.premiumSelectedCount,
     required this.premiumPendingPaymentCount,
+    this.addonSelectedCount = 0,
+    this.addonPendingPaymentCount = 0,
     required this.amountHalala,
+    this.pendingAmountHalala = 0,
     required this.currency,
+    this.status = 'satisfied',
+    this.pricingStatus = 'not_required',
+    this.blockingReason,
+    this.canCreatePayment = false,
   });
 }
 

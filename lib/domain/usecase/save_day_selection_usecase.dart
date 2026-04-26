@@ -10,11 +10,7 @@ class SaveDaySelectionUseCaseInput {
   final String date;
   final DaySelectionRequest request;
 
-  SaveDaySelectionUseCaseInput(
-    this.subscriptionId,
-    this.date,
-    this.request,
-  );
+  SaveDaySelectionUseCaseInput(this.subscriptionId, this.date, this.request);
 }
 
 class SaveDaySelectionUseCase

@@ -5,17 +5,17 @@ import 'package:basic_diet/domain/repository/repository.dart';
 import 'package:basic_diet/domain/usecase/base_usecase.dart';
 import 'package:dartz/dartz.dart';
 
-class SkipDayUseCase implements BaseUseCase<SkipDayUseCaseInput, SkipDaysResponse> {
+class SkipDayUseCase
+    implements BaseUseCase<SkipDayUseCaseInput, SkipDaysResponse> {
   final Repository _repository;
 
   SkipDayUseCase(this._repository);
 
   @override
-  Future<Either<Failure, SkipDaysResponse>> execute(SkipDayUseCaseInput input) async {
-    return await _repository.skipDay(
-      input.id,
-      SkipDayRequest(input.date),
-    );
+  Future<Either<Failure, SkipDaysResponse>> execute(
+    SkipDayUseCaseInput input,
+  ) async {
+    return await _repository.skipDay(input.id, SkipDayRequest(input.date));
   }
 }
 

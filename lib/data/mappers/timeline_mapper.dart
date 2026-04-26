@@ -1,5 +1,6 @@
 import 'package:basic_diet/app/constants.dart';
 import 'package:basic_diet/app/extensions.dart';
+import 'package:basic_diet/data/mappers/current_subscription_overview_mapper.dart';
 import 'package:basic_diet/data/response/timeline_response.dart';
 import 'package:basic_diet/domain/model/timeline_model.dart';
 
@@ -41,6 +42,10 @@ extension TimelineDataResponseMapper on TimelineDataResponse? {
       premiumMealsRemaining:
           this?.premiumMealsRemaining.orZero() ?? Constants.zero,
       days: (this?.days?.map((e) => e.toDomain()).toList()) ?? [],
+      // تحويل بيانات الإضافات المضمنة من الاستجابة إلى النموذج المجالي
+      addonSubscriptions:
+          (this?.addonSubscriptions?.map((e) => e.toDomain()).toList() ?? [])
+              .cast(),
     );
   }
 }

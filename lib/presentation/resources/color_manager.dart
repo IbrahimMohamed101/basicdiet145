@@ -67,7 +67,7 @@ class ColorManager {
   // Glow/Shadow helpers (10% alpha brand colors, safe for const use)
   static const Color brandPrimaryGlow = Color(0x1A10B981);
   static const Color brandAccentGlow = Color(0x1AFF6900);
-  
+
   // Legacy Aliases (Deprecated)
   @Deprecated('Use brandPrimary')
   static const Color greenPrimary = brandPrimary;

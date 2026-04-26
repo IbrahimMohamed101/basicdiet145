@@ -138,17 +138,28 @@ class RemoteDataSourceImpl implements RemoteDataSource {
   }
 
   @override
-  Future<BulkSelectionsResponse> bulkSelections(String id, BulkSelectionsRequest request) {
+  Future<BulkSelectionsResponse> bulkSelections(
+    String id,
+    BulkSelectionsRequest request,
+  ) {
     return _appServiceClient.bulkSelections(id, request);
   }
 
   @override
-  Future<ValidationResponse> validateDaySelection(String id, String date, DaySelectionRequest request) {
+  Future<ValidationResponse> validateDaySelection(
+    String id,
+    String date,
+    DaySelectionRequest request,
+  ) {
     return _appServiceClient.validateDaySelection(id, date, request);
   }
 
   @override
-  Future<SubscriptionDayResponse> saveDaySelection(String id, String date, DaySelectionRequest request) {
+  Future<SubscriptionDayResponse> saveDaySelection(
+    String id,
+    String date,
+    DaySelectionRequest request,
+  ) {
     return _appServiceClient.saveDaySelection(id, date, request);
   }
 
@@ -178,17 +189,52 @@ class RemoteDataSourceImpl implements RemoteDataSource {
   }
 
   @override
-  Future<PremiumPaymentResponse> createPremiumPayment(String subscriptionId, String date) {
+  Future<PremiumPaymentResponse> createPremiumPayment(
+    String subscriptionId,
+    String date,
+  ) {
     return _appServiceClient.createPremiumPayment(subscriptionId, date);
   }
 
   @override
-  Future<PremiumPaymentVerificationResponse> verifyPremiumPayment(String subscriptionId, String date, String paymentId) {
-    return _appServiceClient.verifyPremiumPayment(subscriptionId, date, paymentId);
+  Future<PremiumPaymentVerificationResponse> verifyPremiumPayment(
+    String subscriptionId,
+    String date,
+    String paymentId,
+  ) {
+    return _appServiceClient.verifyPremiumPayment(
+      subscriptionId,
+      date,
+      paymentId,
+    );
   }
 
   @override
-  Future<CancelSubscriptionResponse> cancelSubscription(String id, CancelSubscriptionRequest request) {
+  Future<PremiumPaymentResponse> createOneTimeAddonPayment(
+    String subscriptionId,
+    String date,
+  ) {
+    return _appServiceClient.createOneTimeAddonPayment(subscriptionId, date);
+  }
+
+  @override
+  Future<PremiumPaymentVerificationResponse> verifyOneTimeAddonPayment(
+    String subscriptionId,
+    String date,
+    String paymentId,
+  ) {
+    return _appServiceClient.verifyOneTimeAddonPayment(
+      subscriptionId,
+      date,
+      paymentId,
+    );
+  }
+
+  @override
+  Future<CancelSubscriptionResponse> cancelSubscription(
+    String id,
+    CancelSubscriptionRequest request,
+  ) {
     return _appServiceClient.cancelSubscription(id, request);
   }
 }

@@ -22,7 +22,10 @@ class MealPlannerHeader extends StatelessWidget {
             children: [
               IconButton(
                 onPressed: () => Navigator.pop(context),
-                icon: const Icon(Icons.arrow_back, color: ColorManager.textPrimary),
+                icon: const Icon(
+                  Icons.arrow_back,
+                  color: ColorManager.textPrimary,
+                ),
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(),
               ),

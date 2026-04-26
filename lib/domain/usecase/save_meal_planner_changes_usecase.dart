@@ -12,13 +12,20 @@ class SaveMealPlannerChangesUseCaseInput {
   SaveMealPlannerChangesUseCaseInput(this.subscriptionId, this.request);
 }
 
-class SaveMealPlannerChangesUseCase implements BaseUseCase<SaveMealPlannerChangesUseCaseInput, BulkSelectionsModel> {
+class SaveMealPlannerChangesUseCase
+    implements
+        BaseUseCase<SaveMealPlannerChangesUseCaseInput, BulkSelectionsModel> {
   final Repository _repository;
 
   SaveMealPlannerChangesUseCase(this._repository);
 
   @override
-  Future<Either<Failure, BulkSelectionsModel>> execute(SaveMealPlannerChangesUseCaseInput input) async {
-    return await _repository.bulkSelections(input.subscriptionId, input.request);
+  Future<Either<Failure, BulkSelectionsModel>> execute(
+    SaveMealPlannerChangesUseCaseInput input,
+  ) async {
+    return await _repository.bulkSelections(
+      input.subscriptionId,
+      input.request,
+    );
   }
 }

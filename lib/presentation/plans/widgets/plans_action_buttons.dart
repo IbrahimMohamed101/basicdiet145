@@ -75,14 +75,13 @@ class PlansActionButtons extends StatelessWidget {
 
   Widget _buildTodaysMealsButton(BuildContext context) {
     return OutlinedButton(
-      onPressed:
-          () => context.read<PlansBloc>().add(
-            FetchTimelineAndOpenPlannerEvent(
-              data.id,
-              openCurrentDay: true,
-              preferredDate: data.businessDate,
-            ),
-          ),
+      onPressed: () => context.read<PlansBloc>().add(
+        FetchTimelineAndOpenPlannerEvent(
+          data.id,
+          openCurrentDay: true,
+          preferredDate: data.businessDate,
+        ),
+      ),
       style: OutlinedButton.styleFrom(
         padding: const EdgeInsetsDirectional.symmetric(
           vertical: AppPadding.p16,

@@ -55,13 +55,13 @@ class PlansScreen extends StatelessWidget {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder:
-              (_) => MealPlannerScreen(
-                timelineDays: state.timelineDays,
-                initialDayIndex: state.initialDayIndex,
-                premiumMealsRemaining: state.premiumMealsRemaining,
-                subscriptionId: state.subscriptionId,
-              ),
+          builder: (_) => MealPlannerScreen(
+            timelineDays: state.timelineDays,
+            addonEntitlements: state.data?.data?.addonSubscriptions ?? const [],
+            initialDayIndex: state.initialDayIndex,
+            premiumMealsRemaining: state.premiumMealsRemaining,
+            subscriptionId: state.subscriptionId,
+          ),
         ),
       ).then((_) {
         if (context.mounted) {

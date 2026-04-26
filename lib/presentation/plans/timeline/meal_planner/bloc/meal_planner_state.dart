@@ -1,6 +1,8 @@
+import 'package:basic_diet/domain/model/add_ons_model.dart';
+import 'package:basic_diet/domain/model/current_subscription_overview_model.dart';
 import 'package:basic_diet/domain/model/meal_planner_menu_model.dart';
-import 'package:basic_diet/domain/model/timeline_model.dart';
 import 'package:basic_diet/domain/model/subscription_day_model.dart';
+import 'package:basic_diet/domain/model/timeline_model.dart';
 import 'package:equatable/equatable.dart';
 
 sealed class MealPlannerState extends Equatable {
@@ -25,153 +27,117 @@ final class MealPlannerError extends MealPlannerState {
 final class MealPlannerSlotSelection extends Equatable {
   final int slotIndex;
   final String slotKey;
+  final String selectionType;
   final String? proteinId;
   final String? carbId;
+  final String? sandwichId;
+  final CustomSaladSelection? customSalad;
 
   const MealPlannerSlotSelection({
     required this.slotIndex,
     required this.slotKey,
+    this.selectionType = 'standard_combo',
     required this.proteinId,
     required this.carbId,
+    this.sandwichId,
+    this.customSalad,
   });
 
   MealPlannerSlotSelection copyWith({
     int? slotIndex,
     String? slotKey,
+    String? selectionType,
     String? proteinId,
     String? carbId,
+    String? sandwichId,
+    CustomSaladSelection? customSalad,
+    bool clearProteinId = false,
+    bool clearCarbId = false,
+    bool clearSandwichId = false,
+    bool clearCustomSalad = false,
   }) {
     return MealPlannerSlotSelection(
       slotIndex: slotIndex ?? this.slotIndex,
       slotKey: slotKey ?? this.slotKey,
-      proteinId: proteinId ?? this.proteinId,
-      carbId: carbId ?? this.carbId,
+      selectionType: selectionType ?? this.selectionType,
+      proteinId: clearProteinId ? null : proteinId ?? this.proteinId,
+      carbId: clearCarbId ? null : carbId ?? this.carbId,
+      sandwichId: clearSandwichId ? null : sandwichId ?? this.sandwichId,
+      customSalad: clearCustomSalad ? null : customSalad ?? this.customSalad,
     );
-  }
-
-  @override
-  List<Object?> get props => [slotIndex, slotKey, proteinId, carbId];
-}
-
-/// New state following API Integration Guide
-final class MealPlannerLoadedNew extends MealPlannerState {
-  final SubscriptionDayModel day;
-  final MealPlannerMenuModel menu;
-  final List<MealPlannerSlotSelection> currentSlots;
-  final List<MealPlannerSlotSelection> savedSlots;
-  final PlannerMetaModel? plannerMeta;
-  final PaymentRequirementModel? paymentRequirement;
-  final Map<int, SlotErrorModel> slotErrors;
-  final bool validationInProgress;
-  final bool isSaving;
-  final bool showSavedBanner;
-  final String lastAddedMealName;
-  final bool saveSuccess;
-  final String? paymentUrl;
-  final String? paymentId;
-  final String? paymentError;
-
-  const MealPlannerLoadedNew({
-    required this.day,
-    required this.menu,
-    required this.currentSlots,
-    required this.savedSlots,
-    required this.plannerMeta,
-    required this.paymentRequirement,
-    required this.slotErrors,
-    required this.validationInProgress,
-    this.isSaving = false,
-    this.saveSuccess = false,
-    this.showSavedBanner = false,
-    this.lastAddedMealName = "",
-    this.paymentUrl,
-    this.paymentId,
-    this.paymentError,
-  });
-
-  bool get isDirty {
-    if (currentSlots.length != savedSlots.length) return true;
-    for (var i = 0; i < currentSlots.length; i++) {
-      if (i >= savedSlots.length) return true;
-      if (currentSlots[i] != savedSlots[i]) return true;
-    }
-    return false;
-  }
-
-  bool get canSave {
-    // Can save if:
-    // 1. There are changes
-    // 2. No validation errors
-    // 3. Day is not locked
-    return isDirty &&
-        slotErrors.isEmpty &&
-        ['open', 'planned', 'extension'].contains(day.status.toLowerCase());
   }
 
   @override
   List<Object?> get props => [
-        day,
-        menu,
-        currentSlots,
-        savedSlots,
-        plannerMeta,
-        paymentRequirement,
-        slotErrors,
-        validationInProgress,
-        isSaving,
-        showSavedBanner,
-        lastAddedMealName,
-        saveSuccess,
-        paymentUrl,
-        paymentId,
-        paymentError,
-      ];
-
-  MealPlannerLoadedNew copyWith({
-    SubscriptionDayModel? day,
-    MealPlannerMenuModel? menu,
-    List<MealPlannerSlotSelection>? currentSlots,
-    List<MealPlannerSlotSelection>? savedSlots,
-    PlannerMetaModel? plannerMeta,
-    PaymentRequirementModel? paymentRequirement,
-    Map<int, SlotErrorModel>? slotErrors,
-    bool? validationInProgress,
-    bool? isSaving,
-    bool? showSavedBanner,
-    String? lastAddedMealName,
-    bool? saveSuccess,
-    String? paymentUrl,
-    String? paymentId,
-    String? paymentError,
-  }) {
-    return MealPlannerLoadedNew(
-      day: day ?? this.day,
-      menu: menu ?? this.menu,
-      currentSlots: currentSlots ?? this.currentSlots,
-      savedSlots: savedSlots ?? this.savedSlots,
-      plannerMeta: plannerMeta ?? this.plannerMeta,
-      paymentRequirement: paymentRequirement ?? this.paymentRequirement,
-      slotErrors: slotErrors ?? this.slotErrors,
-      validationInProgress: validationInProgress ?? this.validationInProgress,
-      isSaving: isSaving ?? this.isSaving,
-      showSavedBanner: showSavedBanner ?? this.showSavedBanner,
-      lastAddedMealName: lastAddedMealName ?? this.lastAddedMealName,
-      saveSuccess: saveSuccess ?? this.saveSuccess,
-      paymentUrl: paymentUrl,
-      paymentId: paymentId,
-      paymentError: paymentError,
-    );
-  }
+    slotIndex,
+    slotKey,
+    selectionType,
+    proteinId,
+    carbId,
+    sandwichId,
+    customSalad,
+  ];
 }
 
-// Keep old state for backward compatibility during migration
+final class CustomSaladSelection extends Equatable {
+  final String presetKey;
+  final List<String> vegetables;
+  final List<String> addons;
+  final List<String> fruits;
+  final List<String> nuts;
+  final List<String> sauce;
+
+  const CustomSaladSelection({
+    required this.presetKey,
+    this.vegetables = const [],
+    this.addons = const [],
+    this.fruits = const [],
+    this.nuts = const [],
+    this.sauce = const [],
+  });
+
+  @override
+  List<Object?> get props => [presetKey, vegetables, addons, fruits, nuts, sauce];
+}
+
+final class PendingAddonPrompt extends Equatable {
+  final String addonId;
+  final String title;
+  final String category;
+  final int priceHalala;
+  final String currency;
+
+  const PendingAddonPrompt({
+    required this.addonId,
+    required this.title,
+    required this.category,
+    required this.priceHalala,
+    required this.currency,
+  });
+
+  @override
+  List<Object?> get props => [addonId, title, category, priceHalala, currency];
+}
+
 final class MealPlannerLoaded extends MealPlannerState {
+  static const List<String> addonCategoryOrder = [
+    'juice',
+    'snack',
+    'small_salad',
+  ];
+
   final List<TimelineDayModel> timelineDays;
   final MealPlannerMenuModel menu;
+  final List<AddOnModel> addOnsCatalog;
+  final List<AddonSubscriptionModel> addonEntitlements;
   final int selectedDayIndex;
   final Map<int, List<MealPlannerSlotSelection>> selectedSlotsPerDay;
   final Map<int, List<MealPlannerSlotSelection>> savedSlotsPerDay;
+  final Map<int, List<String>> selectedAddOnIdsByDay;
+  final Map<int, List<String>> savedAddOnIdsByDay;
+  final Map<int, SubscriptionDayModel> dayDetailsByIndex;
   final bool isSaving;
+  final bool isRefreshingDay;
   final bool showSavedBanner;
   final String lastAddedMealName;
   final int premiumMealsRemaining;
@@ -180,15 +146,23 @@ final class MealPlannerLoaded extends MealPlannerState {
   final String? paymentUrl;
   final String? paymentId;
   final String? paymentError;
+  final String? activePaymentKind;
+  final PendingAddonPrompt? pendingAddonPrompt;
 
   const MealPlannerLoaded({
     required this.timelineDays,
     required this.menu,
+    required this.addOnsCatalog,
+    required this.addonEntitlements,
     required this.selectedDayIndex,
     required this.selectedSlotsPerDay,
     required this.savedSlotsPerDay,
+    required this.selectedAddOnIdsByDay,
+    required this.savedAddOnIdsByDay,
+    required this.dayDetailsByIndex,
     required this.premiumMealsRemaining,
     this.isSaving = false,
+    this.isRefreshingDay = false,
     this.saveSuccess = false,
     this.showSavedBanner = false,
     this.lastAddedMealName = "",
@@ -196,33 +170,208 @@ final class MealPlannerLoaded extends MealPlannerState {
     this.paymentUrl,
     this.paymentId,
     this.paymentError,
+    this.activePaymentKind,
+    this.pendingAddonPrompt,
   });
 
-  bool get isDirty {
-    for (final entry in selectedSlotsPerDay.entries) {
-      final dayIndex = entry.key;
-      final current = entry.value;
-      final saved = savedSlotsPerDay[dayIndex];
-      if (saved == null) continue;
-      if (current.length != saved.length) return true;
-      for (var i = 0; i < current.length; i++) {
-        if (i >= saved.length) return true;
-        if (current[i] != saved[i]) return true;
+  TimelineDayModel get selectedTimelineDay => timelineDays[selectedDayIndex];
+
+  SubscriptionDayModel? get selectedDayDetail =>
+      dayDetailsByIndex[selectedDayIndex];
+
+  List<String> get selectedAddOnIds =>
+      selectedAddOnIdsByDay[selectedDayIndex] ?? const [];
+
+  List<String> get savedAddOnIds =>
+      savedAddOnIdsByDay[selectedDayIndex] ?? const [];
+
+  List<AddonSelectionModel> get addonSelections =>
+      selectedDayDetail?.addonSelections ?? const [];
+
+  List<AddOnModel> get plannerAddOnsCatalog =>
+      addOnsCatalog.where((addon) => addon.kind == 'item').toList();
+
+  Map<String, List<AddOnModel>> get groupedAddons {
+    final grouped = <String, List<AddOnModel>>{
+      for (final category in addonCategoryOrder) category: <AddOnModel>[],
+    };
+
+    for (final addon in plannerAddOnsCatalog) {
+      grouped.putIfAbsent(addon.category, () => <AddOnModel>[]).add(addon);
+    }
+
+    return grouped;
+  }
+
+  List<AddOnModel> get selectedAddOnModels {
+    final ids = selectedAddOnIds.toSet();
+    return plannerAddOnsCatalog
+        .where((addon) => ids.contains(addon.id))
+        .toList();
+  }
+
+  bool isAddonCoveredBySubscription(String category) {
+    for (final entitlement in addonEntitlements) {
+      if (entitlement.category == category &&
+          entitlement.status == 'active' &&
+          entitlement.includedCount > 0) {
+        return true;
       }
     }
     return false;
   }
 
-  int get maxMeals => timelineDays[selectedDayIndex].requiredMeals;
+  AddOnModel? selectedAddonForCategory(String category) {
+    for (final addon in selectedAddOnModels) {
+      if (addon.category == category) return addon;
+    }
+    return null;
+  }
+
+  String addonSelectionStatusFor(String addonId) {
+    final backendSelection = addonSelections
+        .where((selection) => selection.addonId == addonId)
+        .cast<AddonSelectionModel?>()
+        .firstWhere((selection) => selection != null, orElse: () => null);
+
+    if (backendSelection != null && backendSelection.status.isNotEmpty) {
+      return backendSelection.status;
+    }
+
+    final selectedAddon = plannerAddOnsCatalog
+        .where((addon) => addon.id == addonId)
+        .cast<AddOnModel?>()
+        .firstWhere((addon) => addon != null, orElse: () => null);
+
+    if (selectedAddon == null) return 'pending_payment';
+
+    return isAddonCoveredBySubscription(selectedAddon.category)
+        ? 'subscription'
+        : 'pending_payment';
+  }
+
+  int get localAddonPendingAmountHalala {
+    var total = 0;
+    for (final addon in selectedAddOnModels) {
+      final status = addonSelectionStatusFor(addon.id);
+      if (status == 'pending_payment') {
+        total += addon.priceHalala;
+      }
+    }
+    return total;
+  }
+
+  int get localAddonPendingCount {
+    var total = 0;
+    for (final addon in selectedAddOnModels) {
+      if (addonSelectionStatusFor(addon.id) == 'pending_payment') {
+        total++;
+      }
+    }
+    return total;
+  }
+
+  int get addonPendingPaymentCount {
+    return selectedDayDetail?.paymentRequirement?.addonPendingPaymentCount ??
+        localAddonPendingCount;
+  }
+
+  int get addonPendingPaymentAmountHalala {
+    return localAddonPendingAmountHalala;
+  }
+
+  int get premiumPendingPaymentAmountHalala {
+    var totalHalala = 0;
+    var usedCredits = 0;
+    final slots = selectedSlotsPerDay[selectedDayIndex] ?? const [];
+
+    for (final slot in slots) {
+      final proteinId = slot.proteinId;
+      if (proteinId == null) continue;
+
+      final protein = menu.builderCatalog.proteins
+          .where((item) => item.id == proteinId)
+          .cast<BuilderProteinModel?>()
+          .firstWhere((item) => item != null, orElse: () => null);
+
+      if (protein == null || !protein.isPremium) continue;
+
+      final cost =
+          protein.premiumCreditCost == 0 ? 1 : protein.premiumCreditCost;
+      usedCredits += cost;
+
+      if (usedCredits > premiumMealsRemaining) {
+        totalHalala += protein.extraFeeHalala;
+      }
+    }
+
+    return totalHalala;
+  }
+
+  int get totalPendingPaymentAmountHalala =>
+      premiumPendingPaymentAmountHalala + addonPendingPaymentAmountHalala;
+
+  String get paymentCurrency {
+    final dayCurrency = selectedDayDetail?.paymentRequirement?.currency;
+    if (dayCurrency != null && dayCurrency.isNotEmpty) {
+      return dayCurrency;
+    }
+    if (menu.currency.isNotEmpty) return menu.currency;
+    return 'SAR';
+  }
+
+  int get maxMeals => selectedTimelineDay.requiredMeals;
+
+  bool get isSelectedDayEditable {
+    final normalized = selectedTimelineDay.status.toLowerCase();
+    return normalized == 'open' || normalized == 'extension';
+  }
+
+  bool get hasPendingAddonPayment {
+    return addonPendingPaymentCount > 0;
+  }
+
+  bool get hasPendingPremiumPayment => premiumMealsPendingPayment > 0;
+
+  bool get hasAnyPendingPayment =>
+      hasPendingPremiumPayment || hasPendingAddonPayment;
+
+  bool get isDirty {
+    for (final entry in selectedSlotsPerDay.entries) {
+      final current = entry.value;
+      final saved = savedSlotsPerDay[entry.key];
+      if (saved == null || current.length != saved.length) return true;
+      for (var i = 0; i < current.length; i++) {
+        if (current[i] != saved[i]) return true;
+      }
+    }
+
+    for (final entry in selectedAddOnIdsByDay.entries) {
+      final current = entry.value;
+      final saved = savedAddOnIdsByDay[entry.key] ?? const [];
+      if (current.length != saved.length) return true;
+      for (var i = 0; i < current.length; i++) {
+        if (current[i] != saved[i]) return true;
+      }
+    }
+
+    return false;
+  }
 
   @override
   List<Object?> get props => [
     timelineDays,
     menu,
+    addOnsCatalog,
+    addonEntitlements,
     selectedDayIndex,
     selectedSlotsPerDay,
     savedSlotsPerDay,
+    selectedAddOnIdsByDay,
+    savedAddOnIdsByDay,
+    dayDetailsByIndex,
     isSaving,
+    isRefreshingDay,
     showSavedBanner,
     lastAddedMealName,
     premiumMealsRemaining,
@@ -231,15 +380,23 @@ final class MealPlannerLoaded extends MealPlannerState {
     paymentUrl,
     paymentId,
     paymentError,
+    activePaymentKind,
+    pendingAddonPrompt,
   ];
 
   MealPlannerLoaded copyWith({
     List<TimelineDayModel>? timelineDays,
     MealPlannerMenuModel? menu,
+    List<AddOnModel>? addOnsCatalog,
+    List<AddonSubscriptionModel>? addonEntitlements,
     int? selectedDayIndex,
     Map<int, List<MealPlannerSlotSelection>>? selectedSlotsPerDay,
     Map<int, List<MealPlannerSlotSelection>>? savedSlotsPerDay,
+    Map<int, List<String>>? selectedAddOnIdsByDay,
+    Map<int, List<String>>? savedAddOnIdsByDay,
+    Map<int, SubscriptionDayModel>? dayDetailsByIndex,
     bool? isSaving,
+    bool? isRefreshingDay,
     bool? showSavedBanner,
     String? lastAddedMealName,
     int? premiumMealsRemaining,
@@ -248,14 +405,27 @@ final class MealPlannerLoaded extends MealPlannerState {
     String? paymentUrl,
     String? paymentId,
     String? paymentError,
+    String? activePaymentKind,
+    PendingAddonPrompt? pendingAddonPrompt,
+    bool clearPaymentUrl = false,
+    bool clearPaymentId = false,
+    bool clearPaymentError = false,
+    bool clearPendingAddonPrompt = false,
   }) {
     return MealPlannerLoaded(
       timelineDays: timelineDays ?? this.timelineDays,
       menu: menu ?? this.menu,
+      addOnsCatalog: addOnsCatalog ?? this.addOnsCatalog,
+      addonEntitlements: addonEntitlements ?? this.addonEntitlements,
       selectedDayIndex: selectedDayIndex ?? this.selectedDayIndex,
       selectedSlotsPerDay: selectedSlotsPerDay ?? this.selectedSlotsPerDay,
       savedSlotsPerDay: savedSlotsPerDay ?? this.savedSlotsPerDay,
+      selectedAddOnIdsByDay:
+          selectedAddOnIdsByDay ?? this.selectedAddOnIdsByDay,
+      savedAddOnIdsByDay: savedAddOnIdsByDay ?? this.savedAddOnIdsByDay,
+      dayDetailsByIndex: dayDetailsByIndex ?? this.dayDetailsByIndex,
       isSaving: isSaving ?? this.isSaving,
+      isRefreshingDay: isRefreshingDay ?? this.isRefreshingDay,
       showSavedBanner: showSavedBanner ?? this.showSavedBanner,
       lastAddedMealName: lastAddedMealName ?? this.lastAddedMealName,
       premiumMealsRemaining:
@@ -263,9 +433,15 @@ final class MealPlannerLoaded extends MealPlannerState {
       saveSuccess: saveSuccess ?? this.saveSuccess,
       premiumMealsPendingPayment:
           premiumMealsPendingPayment ?? this.premiumMealsPendingPayment,
-      paymentUrl: paymentUrl,
-      paymentId: paymentId,
-      paymentError: paymentError,
+      paymentUrl: clearPaymentUrl ? null : paymentUrl ?? this.paymentUrl,
+      paymentId: clearPaymentId ? null : paymentId ?? this.paymentId,
+      paymentError:
+          clearPaymentError ? null : paymentError ?? this.paymentError,
+      activePaymentKind: activePaymentKind ?? this.activePaymentKind,
+      pendingAddonPrompt:
+          clearPendingAddonPrompt
+              ? null
+              : pendingAddonPrompt ?? this.pendingAddonPrompt,
     );
   }
 }

@@ -1,4 +1,3 @@
-import 'package:basic_diet/domain/model/meal_planner_menu_model.dart';
 import 'package:basic_diet/presentation/plans/timeline/meal_planner/bloc/meal_planner_bloc.dart';
 import 'package:basic_diet/presentation/plans/timeline/meal_planner/bloc/meal_planner_event.dart';
 import 'package:basic_diet/presentation/plans/timeline/meal_planner/bloc/meal_planner_state.dart';
@@ -18,50 +17,15 @@ class MealPlannerBottomAction extends StatelessWidget {
 
   const MealPlannerBottomAction({super.key, required this.state});
 
-  double _premiumPaymentAmount() {
-    var totalHalala = 0;
-    var usedCredits = 0;
-    final slotsForSelectedDay =
-        state.selectedSlotsPerDay[state.selectedDayIndex] ?? const [];
-
-    for (final slot in slotsForSelectedDay) {
-      final proteinId = slot.proteinId;
-      if (proteinId == null) continue;
-      final protein = _findProteinById(proteinId);
-      if (protein == null || !protein.isPremium) continue;
-
-      final cost = protein.premiumCreditCost == 0 ? 1 : protein.premiumCreditCost;
-      usedCredits += cost;
-
-      if (usedCredits > state.premiumMealsRemaining) {
-        totalHalala += protein.extraFeeHalala;
-      }
-    }
-    return totalHalala / 100.0;
-  }
-
-  bool _hasCompletedDay() {
-    for (int i = 0; i < state.timelineDays.length; i++) {
-      final required = state.timelineDays[i].requiredMeals;
-      final slots = state.selectedSlotsPerDay[i] ?? [];
-      final completeSlotsCount =
-          slots.where((s) => s.proteinId != null && s.carbId != null).length;
-      if (completeSlotsCount >= required) return true;
-    }
-    return false;
-  }
-
-  BuilderProteinModel? _findProteinById(String id) {
-    for (final protein in state.menu.builderCatalog.proteins) {
-      if (protein.id == id) return protein;
-    }
-    return null;
-  }
-
   @override
   Widget build(BuildContext context) {
-    final bool canSave = state.isDirty && _hasCompletedDay();
-    final bool hasPendingPayment = state.premiumMealsPendingPayment > 0;
+    final canSave =
+        state.isDirty &&
+        _hasCompletedSelectedDay() &&
+        !state.hasAnyPendingPayment &&
+        state.isSelectedDayEditable;
+    final hasPendingPayments = state.hasAnyPendingPayment;
+    final paymentAmount = state.totalPendingPaymentAmountHalala / 100.0;
 
     return Container(
       padding: EdgeInsets.all(AppPadding.p16.w),
@@ -80,126 +44,123 @@ class MealPlannerBottomAction extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (hasPendingPayment) ...[
-              _PayNowButton(
-                isSaving: state.isSaving,
-                paymentAmount: _premiumPaymentAmount(),
+            if (hasPendingPayments) ...[
+              _ActionButton(
+                label:
+                    '${Strings.addonPayButton.tr()} ${_moneyLabel(paymentAmount)}',
+                backgroundColor: ColorManager.brandAccent,
+                foregroundColor: ColorManager.textInverse,
+                isLoading:
+                    state.isSaving &&
+                    (state.activePaymentKind == 'premium' ||
+                        state.activePaymentKind == 'addons'),
+                onPressed:
+                    () => context.read<MealPlannerBloc>().add(
+                      state.hasPendingPremiumPayment
+                          ? const InitiatePremiumPaymentEvent()
+                          : const InitiateAddonPaymentEvent(),
+                    ),
               ),
-              Gap(AppSize.s12.h),
+              Gap(AppSize.s10.h),
             ],
-            _SaveButton(
-              canSave: canSave,
-              hasPendingPayment: hasPendingPayment,
-              isSaving: state.isSaving,
+            _ActionButton(
+              label:
+                  !state.isSelectedDayEditable
+                      ? Strings.dayLockedAddonsMessage.tr()
+                      : canSave
+                      ? Strings.saveChanges.tr()
+                      : Strings.noChangesToSave.tr(),
+              backgroundColor:
+                  canSave
+                      ? ColorManager.brandPrimary
+                      : ColorManager.stateDisabledSurface,
+              foregroundColor:
+                  canSave
+                      ? ColorManager.textInverse
+                      : ColorManager.stateDisabled,
+              isLoading:
+                  state.isSaving &&
+                  state.activePaymentKind != 'premium' &&
+                  state.activePaymentKind != 'addons',
+              onPressed:
+                  canSave
+                      ? () => context.read<MealPlannerBloc>().add(
+                        const SaveMealPlannerChangesEvent(),
+                      )
+                      : null,
             ),
           ],
         ),
       ),
     );
   }
-}
 
-class _PayNowButton extends StatelessWidget {
-  final bool isSaving;
-  final double paymentAmount;
+  bool _hasCompletedSelectedDay() {
+    final required = state.selectedTimelineDay.requiredMeals;
+    final slots = state.selectedSlotsPerDay[state.selectedDayIndex] ?? [];
+    final completeCount =
+        slots.where((slot) {
+          if (slot.selectionType == 'sandwich') {
+            return slot.sandwichId != null && slot.sandwichId!.isNotEmpty;
+          }
+          if (slot.selectionType == 'custom_premium_salad') {
+            return slot.proteinId != null &&
+                slot.carbId != null &&
+                slot.customSalad != null &&
+                slot.customSalad!.sauce.isNotEmpty;
+          }
+          return slot.proteinId != null && slot.carbId != null;
+        }).length;
+    return completeCount >= required;
+  }
 
-  const _PayNowButton({required this.isSaving, required this.paymentAmount});
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      height: 56.h,
-      child: ElevatedButton(
-        onPressed: isSaving
-            ? null
-            : () => context
-                .read<MealPlannerBloc>()
-                .add(const InitiatePremiumPaymentEvent()),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: ColorManager.brandAccent,
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppSize.s16.r),
-          ),
-        ),
-        child: isSaving
-            ? const CircularProgressIndicator(color: ColorManager.textInverse)
-            : Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.payment, color: ColorManager.textInverse, size: AppSize.s20.w),
-                  Gap(AppSize.s8.w),
-                  Text(
-                    "${Strings.payNow.tr()} ${paymentAmount.toStringAsFixed(2)} ${Strings.sar.tr()}",
-                    style: getBoldTextStyle(
-                      color: ColorManager.textInverse,
-                      fontSize: FontSizeManager.s16.sp,
-                    ),
-                  ),
-                ],
-              ),
-      ),
-    );
+  String _moneyLabel(double amount) {
+    return "${amount.toStringAsFixed(2)} ${Strings.sar.tr()}";
   }
 }
 
-class _SaveButton extends StatelessWidget {
-  final bool canSave;
-  final bool hasPendingPayment;
-  final bool isSaving;
+class _ActionButton extends StatelessWidget {
+  final String label;
+  final Color backgroundColor;
+  final Color foregroundColor;
+  final bool isLoading;
+  final VoidCallback? onPressed;
 
-  const _SaveButton({
-    required this.canSave,
-    required this.hasPendingPayment,
-    required this.isSaving,
+  const _ActionButton({
+    required this.label,
+    required this.backgroundColor,
+    this.foregroundColor = ColorManager.textInverse,
+    this.isLoading = false,
+    this.onPressed,
   });
 
   @override
   Widget build(BuildContext context) {
-    final isEnabled = canSave && !hasPendingPayment;
-
     return SizedBox(
       width: double.infinity,
       height: 56.h,
       child: ElevatedButton(
-        onPressed: isEnabled
-            ? () => context
-                .read<MealPlannerBloc>()
-                .add(const SaveMealPlannerChangesEvent())
-            : null,
+        onPressed: isLoading ? null : onPressed,
         style: ElevatedButton.styleFrom(
-          backgroundColor:
-              isEnabled ? ColorManager.brandPrimary : ColorManager.stateDisabledSurface,
+          backgroundColor: backgroundColor,
           elevation: 0,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppSize.s16.r),
           ),
         ),
-        child: isSaving && !hasPendingPayment
-            ? const CircularProgressIndicator(color: ColorManager.textInverse)
-            : Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.check,
-                    color: isEnabled ? ColorManager.textInverse : ColorManager.stateDisabled,
-                    size: AppSize.s20.w,
+        child:
+            isLoading
+                ? const CircularProgressIndicator(
+                  color: ColorManager.textInverse,
+                )
+                : Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  style: getBoldTextStyle(
+                    color: foregroundColor,
+                    fontSize: FontSizeManager.s15.sp,
                   ),
-                  Gap(AppSize.s8.w),
-                  Text(
-                    hasPendingPayment
-                        ? Strings.payFirstToSave.tr()
-                        : canSave
-                            ? Strings.saveChanges.tr()
-                            : Strings.noChangesToSave.tr(),
-                    style: getBoldTextStyle(
-                      color: isEnabled ? ColorManager.textInverse : ColorManager.stateDisabled,
-                      fontSize: FontSizeManager.s16.sp,
-                    ),
-                  ),
-                ],
-              ),
+                ),
       ),
     );
   }

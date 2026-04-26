@@ -102,7 +102,8 @@ class DeliveryMethodContentView extends StatelessWidget {
               Strings.notesOptional.tr(),
               Strings.notesHint.tr(),
               bloc.notesController,
-              onChanged: (val) => bloc.add(UpdateAddressFieldsEvent(notes: val)),
+              onChanged: (val) =>
+                  bloc.add(UpdateAddressFieldsEvent(notes: val)),
             ),
             Gap(AppSize.s24.h),
             _buildSubmitButton(context),

@@ -7,16 +7,16 @@ part 'validation_response.g.dart';
 class ValidationResponse {
   @JsonKey(name: "valid")
   final bool valid;
-  
+
   @JsonKey(name: "mealSlots")
   final List<MealSlotResponse>? mealSlots;
-  
+
   @JsonKey(name: "plannerMeta")
   final PlannerMetaResponse? plannerMeta;
-  
+
   @JsonKey(name: "paymentRequirement")
   final PaymentRequirementResponse? paymentRequirement;
-  
+
   @JsonKey(name: "slotErrors")
   final List<SlotErrorResponse>? slotErrors;
 
@@ -38,22 +38,17 @@ class ValidationResponse {
 class SlotErrorResponse {
   @JsonKey(name: "slotIndex")
   final int slotIndex;
-  
+
   @JsonKey(name: "field")
   final String field;
-  
+
   @JsonKey(name: "code")
   final String code;
-  
+
   @JsonKey(name: "message")
   final String message;
 
-  SlotErrorResponse(
-    this.slotIndex,
-    this.field,
-    this.code,
-    this.message,
-  );
+  SlotErrorResponse(this.slotIndex, this.field, this.code, this.message);
 
   factory SlotErrorResponse.fromJson(Map<String, dynamic> json) =>
       _$SlotErrorResponseFromJson(json);

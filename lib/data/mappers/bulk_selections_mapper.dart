@@ -4,12 +4,14 @@ import 'package:basic_diet/domain/model/bulk_selections_model.dart';
 extension BulkSelectionsResponseMapper on BulkSelectionsResponse {
   BulkSelectionsModel toDomain() {
     return BulkSelectionsModel(
-      summary: data?.summary.toDomain() ?? BulkSelectionsSummaryModel(
-        totalDates: 0,
-        updatedCount: 0,
-        idempotentCount: 0,
-        failedCount: 0,
-      ),
+      summary:
+          data?.summary.toDomain() ??
+          BulkSelectionsSummaryModel(
+            totalDates: 0,
+            updatedCount: 0,
+            idempotentCount: 0,
+            failedCount: 0,
+          ),
       results: data?.results.map((r) => r.toDomain()).toList() ?? [],
     );
   }

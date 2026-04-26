@@ -86,16 +86,20 @@ AddonSubscriptionResponse _$AddonSubscriptionResponseFromJson(
   Map<String, dynamic> json,
 ) => AddonSubscriptionResponse(
   json['addonId'] as String?,
-  json['name'] as String?,
-  (json['price'] as num?)?.toInt(),
+  json['category'] as String?,
+  (json['includedCount'] as num?)?.toInt(),
+  (json['maxPerDay'] as num?)?.toInt(),
+  json['status'] as String?,
 );
 
 Map<String, dynamic> _$AddonSubscriptionResponseToJson(
   AddonSubscriptionResponse instance,
 ) => <String, dynamic>{
   'addonId': instance.addonId,
-  'name': instance.name,
-  'price': instance.price,
+  'category': instance.category,
+  'includedCount': instance.includedCount,
+  'maxPerDay': instance.maxPerDay,
+  'status': instance.status,
 };
 
 PremiumSummaryResponse _$PremiumSummaryResponseFromJson(

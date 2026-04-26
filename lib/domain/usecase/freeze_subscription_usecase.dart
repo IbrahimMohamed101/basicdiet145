@@ -12,7 +12,8 @@ class FreezeSubscriptionUseCaseInput {
 }
 
 class FreezeSubscriptionUseCase
-    implements BaseUseCase<FreezeSubscriptionUseCaseInput, FreezeSubscriptionModel> {
+    implements
+        BaseUseCase<FreezeSubscriptionUseCaseInput, FreezeSubscriptionModel> {
   final Repository _repository;
 
   FreezeSubscriptionUseCase(this._repository);

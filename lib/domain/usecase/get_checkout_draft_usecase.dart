@@ -4,7 +4,8 @@ import 'package:basic_diet/domain/repository/repository.dart';
 import 'package:basic_diet/domain/usecase/base_usecase.dart';
 import 'package:dartz/dartz.dart';
 
-class GetCheckoutDraftUseCase implements BaseUseCase<String, CheckoutDraftModel> {
+class GetCheckoutDraftUseCase
+    implements BaseUseCase<String, CheckoutDraftModel> {
   final Repository _repository;
 
   GetCheckoutDraftUseCase(this._repository);

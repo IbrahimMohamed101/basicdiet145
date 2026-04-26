@@ -160,8 +160,25 @@ abstract class AppServiceClient {
     @Path("date") String date,
   );
 
-  @POST("/api/subscriptions/{id}/days/{date}/premium-extra/payments/{paymentId}/verify")
+  @POST(
+    "/api/subscriptions/{id}/days/{date}/premium-extra/payments/{paymentId}/verify",
+  )
   Future<PremiumPaymentVerificationResponse> verifyPremiumPayment(
+    @Path("id") String subscriptionId,
+    @Path("date") String date,
+    @Path("paymentId") String paymentId,
+  );
+
+  @POST("/api/subscriptions/{id}/days/{date}/one-time-addons/payments")
+  Future<PremiumPaymentResponse> createOneTimeAddonPayment(
+    @Path("id") String subscriptionId,
+    @Path("date") String date,
+  );
+
+  @POST(
+    "/api/subscriptions/{id}/days/{date}/one-time-addons/payments/{paymentId}/verify",
+  )
+  Future<PremiumPaymentVerificationResponse> verifyOneTimeAddonPayment(
     @Path("id") String subscriptionId,
     @Path("date") String date,
     @Path("paymentId") String paymentId,

@@ -41,17 +41,15 @@ class PlanAccordionItem extends StatelessWidget {
           color: ColorManager.backgroundSurface,
           borderRadius: BorderRadius.circular(AppSize.s16.r),
           border: Border.all(
-            color:
-                isExpanded
-                    ? ColorManager.brandPrimary.withValues(alpha: 0.55)
-                    : ColorManager.borderSubtle,
+            color: isExpanded
+                ? ColorManager.brandPrimary.withValues(alpha: 0.55)
+                : ColorManager.borderSubtle,
           ),
           boxShadow: [
             BoxShadow(
-              color:
-                  isExpanded
-                      ? ColorManager.brandPrimaryGlow
-                      : ColorManager.textPrimary.withValues(alpha: 0.04),
+              color: isExpanded
+                  ? ColorManager.brandPrimaryGlow
+                  : ColorManager.textPrimary.withValues(alpha: 0.04),
               blurRadius: 12,
               offset: const Offset(0, 6),
             ),
@@ -348,25 +346,23 @@ class _OptionsGrid extends StatelessWidget {
               child: MealOptionCard(
                 option: options[i],
                 isSelected: isOptionSelected(options[i]),
-                onTap:
-                    () => onMealOptionTap?.call(plan, gramOption, options[i]),
+                onTap: () =>
+                    onMealOptionTap?.call(plan, gramOption, options[i]),
               ),
             ),
             Gap(AppSize.s14.w),
             Expanded(
-              child:
-                  i + 1 < options.length
-                      ? MealOptionCard(
-                        option: options[i + 1],
-                        isSelected: isOptionSelected(options[i + 1]),
-                        onTap:
-                            () => onMealOptionTap?.call(
-                              plan,
-                              gramOption,
-                              options[i + 1],
-                            ),
-                      )
-                      : const SizedBox.shrink(),
+              child: i + 1 < options.length
+                  ? MealOptionCard(
+                      option: options[i + 1],
+                      isSelected: isOptionSelected(options[i + 1]),
+                      onTap: () => onMealOptionTap?.call(
+                        plan,
+                        gramOption,
+                        options[i + 1],
+                      ),
+                    )
+                  : const SizedBox.shrink(),
             ),
           ],
         ),

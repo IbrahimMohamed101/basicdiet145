@@ -42,7 +42,9 @@ import 'package:basic_diet/domain/usecase/save_meal_planner_changes_usecase.dart
 import 'package:basic_diet/domain/usecase/validate_day_selection_usecase.dart';
 import 'package:basic_diet/domain/usecase/save_day_selection_usecase.dart';
 import 'package:basic_diet/domain/usecase/create_premium_payment_usecase.dart';
+import 'package:basic_diet/domain/usecase/create_one_time_addon_payment_usecase.dart';
 import 'package:basic_diet/domain/usecase/verify_premium_payment_usecase.dart';
+import 'package:basic_diet/domain/usecase/verify_one_time_addon_payment_usecase.dart';
 import 'package:basic_diet/domain/usecase/confirm_day_selection_usecase.dart';
 import 'package:basic_diet/presentation/plans/timeline/bloc/timeline_bloc.dart';
 import 'package:basic_diet/presentation/plans/timeline/meal_planner/bloc/meal_planner_bloc.dart';
@@ -59,14 +61,22 @@ Future<void> initAppModule() async {
     () => AppPreferences(),
   );
 
-  instance.registerLazySingleton<String>(() => Constants.baseUrl, instanceName: "baseUrl");
+  instance.registerLazySingleton<String>(
+    () => Constants.baseUrl,
+    instanceName: "baseUrl",
+  );
 
   instance.registerLazySingleton<DioFactory>(
-    () => DioFactory(instance<AppPreferences>(), instance<String>(instanceName: "baseUrl")),
+    () => DioFactory(
+      instance<AppPreferences>(),
+      instance<String>(instanceName: "baseUrl"),
+    ),
   );
 
   Dio dio = await instance<DioFactory>().createConfiguredDio();
-  instance.registerLazySingleton<AppServiceClient>(() => AppServiceClient(dio, baseUrl: Constants.baseUrl));
+  instance.registerLazySingleton<AppServiceClient>(
+    () => AppServiceClient(dio, baseUrl: Constants.baseUrl),
+  );
 
   instance.registerLazySingleton<RemoteDataSource>(
     () => RemoteDataSourceImpl(instance<AppServiceClient>()),
@@ -289,6 +299,12 @@ void initTimelineModule() {
 }
 
 void initMealPlannerModule() {
+  if (!GetIt.I.isRegistered<GetAddOnsUseCase>()) {
+    instance.registerFactory<GetAddOnsUseCase>(
+      () => GetAddOnsUseCase(instance<Repository>()),
+    );
+  }
+
   if (!GetIt.I.isRegistered<GetMealPlannerMenuUseCase>()) {
     instance.registerFactory<GetMealPlannerMenuUseCase>(
       () => GetMealPlannerMenuUseCase(instance<Repository>()),
@@ -331,6 +347,18 @@ void initMealPlannerModule() {
     );
   }
 
+  if (!GetIt.I.isRegistered<CreateOneTimeAddonPaymentUseCase>()) {
+    instance.registerFactory<CreateOneTimeAddonPaymentUseCase>(
+      () => CreateOneTimeAddonPaymentUseCase(instance<Repository>()),
+    );
+  }
+
+  if (!GetIt.I.isRegistered<VerifyOneTimeAddonPaymentUseCase>()) {
+    instance.registerFactory<VerifyOneTimeAddonPaymentUseCase>(
+      () => VerifyOneTimeAddonPaymentUseCase(instance<Repository>()),
+    );
+  }
+
   if (!GetIt.I.isRegistered<ConfirmDaySelectionUseCase>()) {
     instance.registerFactory<ConfirmDaySelectionUseCase>(
       () => ConfirmDaySelectionUseCase(instance<Repository>()),
@@ -342,19 +370,22 @@ void initMealPlannerModule() {
     instance.registerFactoryParam<MealPlannerBloc, Map<String, dynamic>, void>(
       (params, _) => MealPlannerBloc(
         instance<GetMealPlannerMenuUseCase>(),
+        instance<GetSubscriptionDayUseCase>(),
+        instance<GetAddOnsUseCase>(),
         instance<SaveDaySelectionUseCase>(),
         instance<CreatePremiumPaymentUseCase>(),
         instance<VerifyPremiumPaymentUseCase>(),
+        instance<CreateOneTimeAddonPaymentUseCase>(),
+        instance<VerifyOneTimeAddonPaymentUseCase>(),
         instance<ConfirmDaySelectionUseCase>(),
         initialTimelineDays: params['timelineDays'],
+        addonEntitlements: params['addonEntitlements'] ?? const [],
         initialDayIndex: params['initialDayIndex'],
         premiumMealsRemaining: params['premiumMealsRemaining'],
         subscriptionId: params['subscriptionId'],
       ),
     );
   }
-
-
 }
 
 void initPaymentValidationModule() {

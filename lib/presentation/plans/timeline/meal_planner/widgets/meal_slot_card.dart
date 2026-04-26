@@ -22,6 +22,7 @@ class MealSlotCard extends StatelessWidget {
   final List<BuilderCarbModel> carbOptions;
   final void Function(String carbId)? onCarbSelected;
   final VoidCallback? onClear;
+  final bool showCarbField;
 
   const MealSlotCard({
     super.key,
@@ -33,24 +34,23 @@ class MealSlotCard extends StatelessWidget {
     required this.carbOptions,
     required this.onCarbSelected,
     required this.onClear,
+    this.showCarbField = true,
   });
 
   @override
   Widget build(BuildContext context) {
-    final isComplete = protein != null && carb != null;
-    final borderColor =
-        isComplete
-            ? isProteinPremium
-                ? ColorManager.brandAccentBorder
-                : ColorManager.brandPrimary.withValues(alpha: 0.35)
-            : ColorManager.borderDefault;
+    final isComplete = protein != null && (!showCarbField || carb != null);
+    final borderColor = isComplete
+        ? isProteinPremium
+              ? ColorManager.brandAccentBorder
+              : ColorManager.brandPrimary.withValues(alpha: 0.35)
+        : ColorManager.borderDefault;
 
-    final bgColor =
-        isComplete
-            ? isProteinPremium
-                ? ColorManager.brandAccentSoft.withValues(alpha: 0.6)
-                : ColorManager.brandPrimaryTint
-            : ColorManager.backgroundSurface;
+    final bgColor = isComplete
+        ? isProteinPremium
+              ? ColorManager.brandAccentSoft.withValues(alpha: 0.6)
+              : ColorManager.brandPrimaryTint
+        : ColorManager.backgroundSurface;
 
     return Stack(
       clipBehavior: Clip.none,
@@ -81,18 +81,19 @@ class MealSlotCard extends StatelessWidget {
                 onTap: onSelectProtein ?? () {},
                 isDisabled: onSelectProtein == null,
               ),
-              Gap(AppSize.s12.h),
-              PlannerField(
-                title: Strings.selectCarb.tr(),
-                value: carb?.name ?? Strings.selectMeal.tr(),
-                isSelected: carb != null,
-                isPremium: false,
-                onTap:
-                    onCarbSelected == null
-                        ? () {}
-                        : () => _openCarbPickerSheet(context),
-                isDisabled: onCarbSelected == null,
-              ),
+              if (showCarbField) ...[
+                Gap(AppSize.s12.h),
+                PlannerField(
+                  title: Strings.selectCarb.tr(),
+                  value: carb?.name ?? Strings.selectMeal.tr(),
+                  isSelected: carb != null,
+                  isPremium: false,
+                  onTap: onCarbSelected == null
+                      ? () {}
+                      : () => _openCarbPickerSheet(context),
+                  isDisabled: onCarbSelected == null,
+                ),
+              ],
             ],
           ),
         ),
@@ -108,15 +109,14 @@ class MealSlotCard extends StatelessWidget {
       context: context,
       isScrollControlled: true,
       backgroundColor: ColorManager.transparent,
-      builder:
-          (sheetContext) => BlocProvider.value(
-            value: bloc,
-            child: CarbPickerSheet(
-              options: carbOptions,
-              selectedId: carb?.id,
-              slotIndex: slotNumber - 1,
-            ),
-          ),
+      builder: (sheetContext) => BlocProvider.value(
+        value: bloc,
+        child: CarbPickerSheet(
+          options: carbOptions,
+          selectedId: carb?.id,
+          slotIndex: slotNumber - 1,
+        ),
+      ),
     );
   }
 }
@@ -145,21 +145,19 @@ class _SlotHeader extends StatelessWidget {
           width: 40.w,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color:
-                isComplete
-                    ? isProteinPremium
-                        ? ColorManager.brandAccent
-                        : ColorManager.brandPrimary
-                    : ColorManager.backgroundSubtle,
+            color: isComplete
+                ? isProteinPremium
+                      ? ColorManager.brandAccent
+                      : ColorManager.brandPrimary
+                : ColorManager.backgroundSubtle,
             borderRadius: BorderRadius.circular(AppSize.s14.r),
           ),
           child: Text(
             "$slotNumber",
             style: getBoldTextStyle(
-              color:
-                  isComplete
-                      ? ColorManager.textInverse
-                      : ColorManager.stateDisabled,
+              color: isComplete
+                  ? ColorManager.textInverse
+                  : ColorManager.stateDisabled,
               fontSize: FontSizeManager.s18.sp,
             ),
           ),

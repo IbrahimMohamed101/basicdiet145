@@ -10,15 +10,13 @@ extension PickupBlockedReasonX on PickupBlockedReason {
     PickupBlockedReason.dayFrozen => 'dayFrozen',
     PickupBlockedReason.restaurantClosed => 'restaurantClosed',
     PickupBlockedReason.subscriptionInactive ||
-    PickupBlockedReason.subInactive =>
-      'subscriptionInactive',
+    PickupBlockedReason.subInactive => 'subscriptionInactive',
     PickupBlockedReason.subExpired => 'subscriptionExpired',
     PickupBlockedReason.insufficientCredits => 'insufficientCredits',
     PickupBlockedReason.paymentRequired ||
     PickupBlockedReason.premiumPaymentRequired ||
     PickupBlockedReason.premiumOveragePaymentRequired ||
-    PickupBlockedReason.oneTimeAddonPaymentRequired =>
-      'paymentRequiredMessage',
+    PickupBlockedReason.oneTimeAddonPaymentRequired => 'paymentRequiredMessage',
     PickupBlockedReason.plannerUnconfirmed => 'plannerUnconfirmed',
     PickupBlockedReason.planningIncomplete => 'orderLocked',
     _ => 'orderLocked',
@@ -29,15 +27,13 @@ extension PickupBlockedReasonX on PickupBlockedReason {
     PickupBlockedReason.dayFrozen => 'dayFrozenMessage',
     PickupBlockedReason.restaurantClosed => 'restaurantClosedMessage',
     PickupBlockedReason.subscriptionInactive ||
-    PickupBlockedReason.subInactive =>
-      'subscriptionInactive',
+    PickupBlockedReason.subInactive => 'subscriptionInactive',
     PickupBlockedReason.subExpired => 'subscriptionExpired',
     PickupBlockedReason.insufficientCredits => 'insufficientCredits',
     PickupBlockedReason.paymentRequired ||
     PickupBlockedReason.premiumPaymentRequired ||
     PickupBlockedReason.premiumOveragePaymentRequired ||
-    PickupBlockedReason.oneTimeAddonPaymentRequired =>
-      'paymentRequiredMessage',
+    PickupBlockedReason.oneTimeAddonPaymentRequired => 'paymentRequiredMessage',
     PickupBlockedReason.plannerUnconfirmed => 'plannerUnconfirmed',
     PickupBlockedReason.planningIncomplete =>
       'reviewSelectionToStartPreparation',
@@ -50,14 +46,12 @@ extension PickupBlockedReasonX on PickupBlockedReason {
     PickupBlockedReason.restaurantClosed => Icons.storefront_outlined,
     PickupBlockedReason.subscriptionInactive ||
     PickupBlockedReason.subInactive ||
-    PickupBlockedReason.subExpired =>
-      Icons.cancel_outlined,
+    PickupBlockedReason.subExpired => Icons.cancel_outlined,
     PickupBlockedReason.insufficientCredits => Icons.credit_card_off_outlined,
     PickupBlockedReason.paymentRequired ||
     PickupBlockedReason.premiumPaymentRequired ||
     PickupBlockedReason.premiumOveragePaymentRequired ||
-    PickupBlockedReason.oneTimeAddonPaymentRequired =>
-      Icons.payment_outlined,
+    PickupBlockedReason.oneTimeAddonPaymentRequired => Icons.payment_outlined,
     PickupBlockedReason.planningIncomplete => Icons.edit_calendar_outlined,
     PickupBlockedReason.plannerUnconfirmed => Icons.pending_actions_outlined,
     _ => Icons.lock_rounded,

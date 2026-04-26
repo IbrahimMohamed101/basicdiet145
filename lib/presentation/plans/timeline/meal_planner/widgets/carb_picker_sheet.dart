@@ -98,16 +98,14 @@ class _CarbItem extends StatelessWidget {
         duration: const Duration(milliseconds: 200),
         padding: EdgeInsets.all(AppPadding.p12.w),
         decoration: BoxDecoration(
-          color:
-              isSelected
-                  ? ColorManager.brandPrimaryTint
-                  : ColorManager.backgroundSurface,
+          color: isSelected
+              ? ColorManager.brandPrimaryTint
+              : ColorManager.backgroundSurface,
           borderRadius: BorderRadius.circular(AppSize.s16.r),
           border: Border.all(
-            color:
-                isSelected
-                    ? ColorManager.brandPrimary
-                    : ColorManager.borderDefault,
+            color: isSelected
+                ? ColorManager.brandPrimary
+                : ColorManager.borderDefault,
           ),
         ),
         child: Row(
@@ -124,10 +122,9 @@ class _CarbItem extends StatelessWidget {
             Gap(AppSize.s8.w),
             Icon(
               isSelected ? Icons.check_circle : Icons.radio_button_unchecked,
-              color:
-                  isSelected
-                      ? ColorManager.brandPrimary
-                      : ColorManager.stateDisabled,
+              color: isSelected
+                  ? ColorManager.brandPrimary
+                  : ColorManager.stateDisabled,
               size: 22.w,
             ),
           ],
