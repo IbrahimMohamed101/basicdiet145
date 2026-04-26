@@ -184,11 +184,31 @@ class MealPlannerBloc extends Bloc<MealPlannerEvent, MealPlannerState> {
     final previous = slots[event.slotIndex];
     if (previous.proteinId == event.proteinId) return;
 
+    final selectedProtein =
+        event.proteinId == null ? null : _findProteinById(current.menu, event.proteinId!);
+    final isSandwichSelection = _isSandwichProtein(selectedProtein);
+
     slots[event.slotIndex] = previous.copyWith(
-      selectionType: 'standard_combo',
-      proteinId: event.proteinId,
-      carbId: event.proteinId == null ? null : previous.carbId,
-      clearSandwichId: true,
+      selectionType:
+          event.proteinId == null
+              ? 'standard_combo'
+              : isSandwichSelection
+              ? 'sandwich'
+              : 'standard_combo',
+      proteinId:
+          event.proteinId == null
+              ? null
+              : isSandwichSelection
+              ? null
+              : event.proteinId,
+      carbId:
+          event.proteinId == null
+              ? null
+              : isSandwichSelection
+              ? null
+              : previous.carbId,
+      sandwichId: isSandwichSelection ? event.proteinId : null,
+      clearSandwichId: !isSandwichSelection,
       clearCustomSalad: true,
     );
 
@@ -970,6 +990,12 @@ class MealPlannerBloc extends Bloc<MealPlannerEvent, MealPlannerState> {
       if (protein.id == id) return protein;
     }
     return null;
+  }
+
+  bool _isSandwichProtein(BuilderProteinModel? protein) {
+    if (protein == null) return false;
+    final key = protein.displayCategoryKey.toLowerCase();
+    return key.contains('sandwich');
   }
 
   int _calculatePendingPaymentCount(

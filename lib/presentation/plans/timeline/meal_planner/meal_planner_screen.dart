@@ -344,12 +344,14 @@ class _MealPlannerBody extends StatelessWidget {
     bool isReadOnly,
   ) {
     final slot = _slotForIndex(state, index);
+    final proteinIdForDisplay = slot?.proteinId ?? slot?.sandwichId;
     final protein =
-        slot?.proteinId == null
+        proteinIdForDisplay == null
             ? null
-            : _findProteinById(state.menu, slot!.proteinId!);
+            : _findProteinById(state.menu, proteinIdForDisplay);
     final carb =
         slot?.carbId == null ? null : _findCarbById(state.menu, slot!.carbId!);
+    final isSandwichSelection = _isSandwichProtein(protein);
 
     return MealSlotCard(
       slotNumber: index + 1,
@@ -367,7 +369,7 @@ class _MealPlannerBody extends StatelessWidget {
               ),
       carbOptions: _sortedCarbs(state.menu),
       onCarbSelected:
-          isReadOnly || protein == null
+          isReadOnly || protein == null || isSandwichSelection
               ? null
               : (carbId) => context.read<MealPlannerBloc>().add(
                 SetMealSlotCarbEvent(slotIndex: index, carbId: carbId),
@@ -491,6 +493,11 @@ class _MealPlannerBody extends StatelessWidget {
       if (carb.id == id) return carb;
     }
     return null;
+  }
+
+  bool _isSandwichProtein(BuilderProteinModel? protein) {
+    if (protein == null) return false;
+    return protein.displayCategoryKey.toLowerCase().contains('sandwich');
   }
 
   Future<void> _openProteinPickerSheet({
