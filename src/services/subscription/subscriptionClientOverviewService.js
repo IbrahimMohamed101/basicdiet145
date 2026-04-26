@@ -82,60 +82,144 @@ async function buildSubscriptionOverviewSkipUsageSafe(subscription, runtime) {
   };
 }
 
+function normalizePremiumName(value) {
+  if (!value || typeof value !== "string") return "";
+  return value.toLowerCase().trim().replace(/\s+/g, " ");
+}
+
+function getPremiumCanonicalKey(catalogItem) {
+  if (!catalogItem || typeof catalogItem !== "object") return null;
+
+  if (catalogItem.proteinFamilyKey) {
+    return `family:${catalogItem.proteinFamilyKey}`;
+  }
+  if (catalogItem.displayCategoryKey) {
+    return `category:${catalogItem.displayCategoryKey}`;
+  }
+
+  const nameAr = catalogItem.name?.ar || "";
+  const nameEn = catalogItem.name?.en || "";
+  if (nameAr) return `name:${normalizePremiumName(nameAr)}`;
+  if (nameEn) return `name:${normalizePremiumName(nameEn)}`;
+
+  return null;
+}
+
 async function loadPremiumCatalogForOverview(lang) {
   try {
     const premiumDocs = await BuilderProtein.find({ isActive: true, isPremium: true })
-      .select("_id name")
+      .select("_id name proteinFamilyKey displayCategoryKey")
       .lean();
-    return new Map(premiumDocs.map((doc) => [String(doc._id), pickLang(doc.name, lang) || ""]));
+
+    const byId = new Map();
+    const byCanonicalKey = new Map();
+
+    for (const doc of premiumDocs) {
+      const id = String(doc._id);
+      const localizedName = pickLang(doc.name, lang) || "";
+      const canonicalKey = getPremiumCanonicalKey(doc);
+
+      byId.set(id, {
+        id,
+        name: localizedName,
+        proteinFamilyKey: doc.proteinFamilyKey || null,
+        displayCategoryKey: doc.displayCategoryKey || null,
+        canonicalKey,
+      });
+
+      if (canonicalKey && !byCanonicalKey.has(canonicalKey)) {
+        byCanonicalKey.set(canonicalKey, {
+          id,
+          name: localizedName,
+          proteinFamilyKey: doc.proteinFamilyKey || null,
+          displayCategoryKey: doc.displayCategoryKey || null,
+          canonicalKey,
+        });
+      }
+    }
+
+    return { byId, byCanonicalKey, allItems: Array.from(byId.values()) };
   } catch (err) {
     logger.error("currentOverview: failed to load premium catalog", {
       error: err.message,
       stack: err.stack,
     });
-    return new Map();
+    return { byId: new Map(), byCanonicalKey: new Map(), allItems: [] };
   }
 }
 
 function buildSubscriptionPremiumBalanceSummary(subscription, premiumCatalog, lang) {
+  if (!premiumCatalog || !premiumCatalog.allItems) {
+    return [];
+  }
+
+  const { byId, byCanonicalKey, allItems } = premiumCatalog;
   const premiumBalance = Array.isArray(subscription && subscription.premiumBalance)
     ? subscription.premiumBalance
     : [];
 
-  const aggregatedByProteinId = new Map();
+  const canonicalToBalance = new Map();
+  const balanceOnlyItems = [];
+
   for (const row of premiumBalance) {
     if (!row || !row.proteinId) continue;
-    const proteinId = String(row.proteinId);
-    const existing = aggregatedByProteinId.get(proteinId) || { purchasedQtyTotal: 0, remainingQtyTotal: 0 };
-    existing.purchasedQtyTotal += Number(row.purchasedQty || 0);
-    existing.remainingQtyTotal += Number(row.remainingQty || 0);
-    aggregatedByProteinId.set(proteinId, existing);
-  }
 
-  const summaryFromBalance = [];
-  for (const [proteinId, totals] of aggregatedByProteinId) {
-    const name = premiumCatalog.get(proteinId) || "";
-    summaryFromBalance.push({
-      premiumMealId: proteinId,
-      name,
-      purchasedQtyTotal: totals.purchasedQtyTotal,
-      remainingQtyTotal: totals.remainingQtyTotal,
-      consumedQtyTotal: totals.purchasedQtyTotal - totals.remainingQtyTotal,
-    });
-  }
+    const balanceProteinId = String(row.proteinId);
+    const purchasedQty = Number(row.purchasedQty || 0);
+    const remainingQty = Number(row.remainingQty || 0);
 
-  const allPremiumItems = [];
-  const addedProteinIds = new Set();
-
-  for (const [proteinId, name] of premiumCatalog) {
-    addedProteinIds.add(proteinId);
-    const fromBalance = summaryFromBalance.find((item) => item.premiumMealId === proteinId);
-    if (fromBalance) {
-      allPremiumItems.push(fromBalance);
+    const catalogById = byId.get(balanceProteinId);
+    if (catalogById && catalogById.canonicalKey) {
+      const existing = canonicalToBalance.get(catalogById.canonicalKey) || {
+        purchasedQtyTotal: 0,
+        remainingQtyTotal: 0,
+        premiumMealId: balanceProteinId,
+        name: catalogById.name,
+      };
+      existing.purchasedQtyTotal += purchasedQty;
+      existing.remainingQtyTotal += remainingQty;
+      canonicalToBalance.set(catalogById.canonicalKey, existing);
     } else {
-      allPremiumItems.push({
-        premiumMealId: proteinId,
-        name,
+      balanceOnlyItems.push({
+        premiumMealId: balanceProteinId,
+        name: "",
+        purchasedQtyTotal: purchasedQty,
+        remainingQtyTotal: remainingQty,
+        consumedQtyTotal: purchasedQty - remainingQty,
+      });
+    }
+  }
+
+  const result = [];
+  const processedCanonicalKeys = new Set();
+
+  for (const catalogItem of allItems) {
+    const canonicalKey = catalogItem.canonicalKey;
+
+    if (canonicalKey && canonicalToBalance.has(canonicalKey)) {
+      const balanceData = canonicalToBalance.get(canonicalKey);
+      processedCanonicalKeys.add(canonicalKey);
+      result.push({
+        premiumMealId: balanceData.premiumMealId,
+        name: catalogItem.name,
+        purchasedQtyTotal: balanceData.purchasedQtyTotal,
+        remainingQtyTotal: balanceData.remainingQtyTotal,
+        consumedQtyTotal: balanceData.purchasedQtyTotal - balanceData.remainingQtyTotal,
+      });
+    } else if (!canonicalKey && byId.has(catalogItem.id) && canonicalToBalance.has(catalogItem.id)) {
+      const balanceData = canonicalToBalance.get(catalogItem.id);
+      processedCanonicalKeys.add(catalogItem.id);
+      result.push({
+        premiumMealId: balanceData.premiumMealId,
+        name: catalogItem.name,
+        purchasedQtyTotal: balanceData.purchasedQtyTotal,
+        remainingQtyTotal: balanceData.remainingQtyTotal,
+        consumedQtyTotal: balanceData.purchasedQtyTotal - balanceData.remainingQtyTotal,
+      });
+    } else {
+      result.push({
+        premiumMealId: catalogItem.id,
+        name: catalogItem.name,
         purchasedQtyTotal: 0,
         remainingQtyTotal: 0,
         consumedQtyTotal: 0,
@@ -143,7 +227,11 @@ function buildSubscriptionPremiumBalanceSummary(subscription, premiumCatalog, la
     }
   }
 
-  return allPremiumItems;
+  for (const balanceOnly of balanceOnlyItems) {
+    result.push(balanceOnly);
+  }
+
+  return result;
 }
 
 function defaultRuntime() {
