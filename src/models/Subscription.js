@@ -7,6 +7,7 @@ const {
 const PremiumBalanceSchema = new mongoose.Schema(
   {
     proteinId: { type: mongoose.Schema.Types.ObjectId, ref: "BuilderProtein", required: true },
+    premiumKey: { type: String, default: null, trim: true },
     purchasedQty: { type: Number, min: 0, default: 0 },
     remainingQty: { type: Number, min: 0, default: 0 },
     unitExtraFeeHalala: { type: Number, min: 0, default: 0 },

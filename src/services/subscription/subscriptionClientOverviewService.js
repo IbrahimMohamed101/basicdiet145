@@ -87,65 +87,60 @@ function normalizePremiumName(value) {
   return value.toLowerCase().trim().replace(/\s+/g, " ");
 }
 
-function getPremiumCanonicalKey(catalogItem) {
-  if (!catalogItem || typeof catalogItem !== "object") return null;
-
-  if (catalogItem.proteinFamilyKey) {
-    return `family:${catalogItem.proteinFamilyKey}`;
-  }
-  if (catalogItem.displayCategoryKey) {
-    return `category:${catalogItem.displayCategoryKey}`;
-  }
-
-  const nameAr = catalogItem.name?.ar || "";
-  const nameEn = catalogItem.name?.en || "";
-  if (nameAr) return `name:${normalizePremiumName(nameAr)}`;
-  if (nameEn) return `name:${normalizePremiumName(nameEn)}`;
-
-  return null;
-}
-
 async function loadPremiumCatalogForOverview(lang) {
   try {
     const premiumDocs = await BuilderProtein.find({ isActive: true, isPremium: true })
-      .select("_id name proteinFamilyKey displayCategoryKey")
+      .select("_id name premiumKey")
       .lean();
 
     const byId = new Map();
-    const byCanonicalKey = new Map();
+    const byPremiumKey = new Map();
 
     for (const doc of premiumDocs) {
       const id = String(doc._id);
       const localizedName = pickLang(doc.name, lang) || "";
-      const canonicalKey = getPremiumCanonicalKey(doc);
+      const premiumKey = doc.premiumKey || null;
 
-      byId.set(id, {
+      const catalogItem = {
         id,
         name: localizedName,
-        proteinFamilyKey: doc.proteinFamilyKey || null,
-        displayCategoryKey: doc.displayCategoryKey || null,
-        canonicalKey,
-      });
+        premiumKey,
+      };
 
-      if (canonicalKey && !byCanonicalKey.has(canonicalKey)) {
-        byCanonicalKey.set(canonicalKey, {
-          id,
-          name: localizedName,
-          proteinFamilyKey: doc.proteinFamilyKey || null,
-          displayCategoryKey: doc.displayCategoryKey || null,
-          canonicalKey,
-        });
+      byId.set(id, catalogItem);
+
+      if (premiumKey && !byPremiumKey.has(premiumKey)) {
+        byPremiumKey.set(premiumKey, catalogItem);
       }
     }
 
-    return { byId, byCanonicalKey, allItems: Array.from(byId.values()) };
+    return { byId, byPremiumKey, allItems: Array.from(byId.values()) };
   } catch (err) {
     logger.error("currentOverview: failed to load premium catalog", {
       error: err.message,
       stack: err.stack,
     });
-    return { byId: new Map(), byCanonicalKey: new Map(), allItems: [] };
+    return { byId: new Map(), byPremiumKey: new Map(), allItems: [] };
   }
+}
+
+function findMatchingCatalogItem(balanceRow, premiumCatalog) {
+  const { byId, byPremiumKey } = premiumCatalog;
+  const balanceProteinId = String(balanceRow.proteinId);
+
+  if (balanceRow.premiumKey) {
+    const keyMatch = byPremiumKey.get(balanceRow.premiumKey);
+    if (keyMatch) {
+      return { match: keyMatch, matchType: "premiumKey" };
+    }
+  }
+
+  const exactIdMatch = byId.get(balanceProteinId);
+  if (exactIdMatch) {
+    return { match: exactIdMatch, matchType: "id" };
+  }
+
+  return { match: null, matchType: null };
 }
 
 function buildSubscriptionPremiumBalanceSummary(subscription, premiumCatalog, lang) {
@@ -153,12 +148,12 @@ function buildSubscriptionPremiumBalanceSummary(subscription, premiumCatalog, la
     return [];
   }
 
-  const { byId, byCanonicalKey, allItems } = premiumCatalog;
+  const { byId, allItems } = premiumCatalog;
   const premiumBalance = Array.isArray(subscription && subscription.premiumBalance)
     ? subscription.premiumBalance
     : [];
 
-  const canonicalToBalance = new Map();
+  const mergedByCatalogId = new Map();
   const balanceOnlyItems = [];
 
   for (const row of premiumBalance) {
@@ -168,21 +163,23 @@ function buildSubscriptionPremiumBalanceSummary(subscription, premiumCatalog, la
     const purchasedQty = Number(row.purchasedQty || 0);
     const remainingQty = Number(row.remainingQty || 0);
 
-    const catalogById = byId.get(balanceProteinId);
-    if (catalogById && catalogById.canonicalKey) {
-      const existing = canonicalToBalance.get(catalogById.canonicalKey) || {
+    const matchResult = findMatchingCatalogItem(row, premiumCatalog);
+
+    if (matchResult.match) {
+      const matchedCatalogId = matchResult.match.id;
+      const existing = mergedByCatalogId.get(matchedCatalogId) || {
         purchasedQtyTotal: 0,
         remainingQtyTotal: 0,
-        premiumMealId: balanceProteinId,
-        name: catalogById.name,
+        premiumMealId: matchedCatalogId,
+        name: matchResult.match.name,
       };
       existing.purchasedQtyTotal += purchasedQty;
       existing.remainingQtyTotal += remainingQty;
-      canonicalToBalance.set(catalogById.canonicalKey, existing);
+      mergedByCatalogId.set(matchedCatalogId, existing);
     } else {
       balanceOnlyItems.push({
         premiumMealId: balanceProteinId,
-        name: "",
+        name: row.name || "",
         purchasedQtyTotal: purchasedQty,
         remainingQtyTotal: remainingQty,
         consumedQtyTotal: purchasedQty - remainingQty,
@@ -191,34 +188,22 @@ function buildSubscriptionPremiumBalanceSummary(subscription, premiumCatalog, la
   }
 
   const result = [];
-  const processedCanonicalKeys = new Set();
 
   for (const catalogItem of allItems) {
-    const canonicalKey = catalogItem.canonicalKey;
+    const catalogId = catalogItem.id;
 
-    if (canonicalKey && canonicalToBalance.has(canonicalKey)) {
-      const balanceData = canonicalToBalance.get(canonicalKey);
-      processedCanonicalKeys.add(canonicalKey);
+    if (mergedByCatalogId.has(catalogId)) {
+      const mergedData = mergedByCatalogId.get(catalogId);
       result.push({
-        premiumMealId: balanceData.premiumMealId,
+        premiumMealId: mergedData.premiumMealId,
         name: catalogItem.name,
-        purchasedQtyTotal: balanceData.purchasedQtyTotal,
-        remainingQtyTotal: balanceData.remainingQtyTotal,
-        consumedQtyTotal: balanceData.purchasedQtyTotal - balanceData.remainingQtyTotal,
-      });
-    } else if (!canonicalKey && byId.has(catalogItem.id) && canonicalToBalance.has(catalogItem.id)) {
-      const balanceData = canonicalToBalance.get(catalogItem.id);
-      processedCanonicalKeys.add(catalogItem.id);
-      result.push({
-        premiumMealId: balanceData.premiumMealId,
-        name: catalogItem.name,
-        purchasedQtyTotal: balanceData.purchasedQtyTotal,
-        remainingQtyTotal: balanceData.remainingQtyTotal,
-        consumedQtyTotal: balanceData.purchasedQtyTotal - balanceData.remainingQtyTotal,
+        purchasedQtyTotal: mergedData.purchasedQtyTotal,
+        remainingQtyTotal: mergedData.remainingQtyTotal,
+        consumedQtyTotal: mergedData.purchasedQtyTotal - mergedData.remainingQtyTotal,
       });
     } else {
       result.push({
-        premiumMealId: catalogItem.id,
+        premiumMealId: catalogId,
         name: catalogItem.name,
         purchasedQtyTotal: 0,
         remainingQtyTotal: 0,
