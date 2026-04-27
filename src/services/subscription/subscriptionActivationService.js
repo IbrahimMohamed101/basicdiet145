@@ -2,6 +2,7 @@ const { addDays } = require("date-fns");
 const mongoose = require("mongoose");
 
 const Plan = require("../../models/Plan");
+const BuilderProtein = require("../../models/BuilderProtein");
 const CheckoutDraft = require("../../models/CheckoutDraft");
 const Subscription = require("../../models/Subscription");
 const SubscriptionDay = require("../../models/SubscriptionDay");
@@ -18,6 +19,40 @@ const { logger } = require("../../utils/logger");
 
 const SYSTEM_CURRENCY = "SAR";
 
+const CANONICAL_PREMIUM_KEYS = ["shrimp", "beef_steak", "salmon", "custom_premium_salad"];
+
+const PREMIUM_KEY_NAME_MAP = {
+  shrimp: ["جمبري", "shrimp", "gambari", "جمبرى"],
+  beef_steak: ["ستيك لحم", "beef steak", "steak", "beefsteak", "لحم"],
+  salmon: ["سالمون", "salmon", "سمك سالمون", "سلمون"],
+};
+
+function normalizeName(value) {
+  if (!value || typeof value !== "string") return "";
+  return value.toLowerCase().trim().replace(/\s+/g, " ");
+}
+
+function resolvePremiumKeyFromProtein(proteinDoc) {
+  if (!proteinDoc) return null;
+
+  if (proteinDoc.premiumKey && CANONICAL_PREMIUM_KEYS.includes(proteinDoc.premiumKey)) {
+    return proteinDoc.premiumKey;
+  }
+
+  const name = proteinDoc.name?.en || proteinDoc.name?.ar || "";
+  const normalized = normalizeName(name);
+
+  for (const [key, aliases] of Object.entries(PREMIUM_KEY_NAME_MAP)) {
+    for (const alias of aliases) {
+      if (normalized.includes(alias) || alias.includes(normalized)) {
+        return key;
+      }
+    }
+  }
+
+  return null;
+}
+
 // Removed isCanonicalCheckoutDraft as the system now assumes a single unified contract model.
 
 
@@ -25,6 +60,7 @@ const SYSTEM_CURRENCY = "SAR";
 function toCanonicalPremiumBalanceRows(draft) {
   return (draft.premiumItems || []).map((item) => ({
     proteinId: item.proteinId,
+    premiumKey: item.premiumKey || null,
     purchasedQty: Number(item.qty || 0),
     remainingQty: Number(item.qty || 0),
     unitExtraFeeHalala: Number(item.unitExtraFeeHalala || 0),
@@ -61,7 +97,7 @@ function premiumBalanceRowsAreEquivalent(a, b) {
   return aa.every((v, i) => v === bb[i]);
 }
 
-function toPremiumBalanceRowsFromContractEntitlements(contractSnapshot) {
+function toPremiumBalanceRowsFromContractEntitlements(contractSnapshot, lang = "en") {
   const snapshot = contractSnapshot && typeof contractSnapshot === "object" ? contractSnapshot : {};
   const ec = snapshot.entitlementContract && typeof snapshot.entitlementContract === "object"
     ? snapshot.entitlementContract
@@ -77,10 +113,11 @@ function toPremiumBalanceRowsFromContractEntitlements(contractSnapshot) {
       });
     }
     const proteinId = normalizeProteinIdForPremiumBalance(item.proteinId);
+    const qtyNum = qty;
     return {
       proteinId,
-      purchasedQty: qty,
-      remainingQty: qty,
+      purchasedQty: qtyNum,
+      remainingQty: qtyNum,
       unitExtraFeeHalala: Number(item.unitExtraFeeHalala || 0),
       currency: String(item.currency || SYSTEM_CURRENCY),
       purchasedAt: new Date(),

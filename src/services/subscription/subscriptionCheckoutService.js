@@ -21,6 +21,7 @@ const {
   buildPromoResponseBlock,
 } = require("../promoCodeService");
 const { getRestaurantBusinessDate } = require("../restaurantHoursService");
+const { pickLang } = require("../../utils/i18n");
 
 const { sliceBDefaultRuntime } = require("./runtime");
 const {
@@ -41,6 +42,11 @@ const { resolveReadLabel } = require("../../utils/subscription/subscriptionReadL
 function normalizePremiumItem(item) {
   const proteinId = item.protein && item.protein._id ? item.protein._id : item.proteinId;
   const qty = Number(item.qty || 0);
+  
+  let premiumKey = item.premiumKey || null;
+  if (!premiumKey && item.protein && item.protein.premiumKey) {
+    premiumKey = item.protein.premiumKey;
+  }
 
   let unitExtraFeeHalala = 0;
   if (typeof item.unitExtraFeeHalala === "number") {
@@ -54,6 +60,7 @@ function normalizePremiumItem(item) {
     qty,
     unitExtraFeeHalala,
     currency: SYSTEM_CURRENCY,
+    premiumKey,
   };
 }
 
@@ -287,7 +294,13 @@ async function performSubscriptionCheckout(userId, idempotencyKey, body, lang, r
             premiumSelections: normalizedPremiumItems,
             entitlementContract: {
               ...((canonicalContract && canonicalContract.entitlementContract) || {}),
-              premiumItems: normalizedPremiumItems,
+              premiumItems: normalizedPremiumItems.map((item) => ({
+                proteinId: item.proteinId,
+                premiumKey: item.premiumKey,
+                qty: item.qty,
+                unitExtraFeeHalala: item.unitExtraFeeHalala,
+                currency: item.currency,
+              })),
             },
             pricing: {
               ...((canonicalContract && canonicalContract.pricing) || {}),

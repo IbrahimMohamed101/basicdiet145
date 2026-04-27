@@ -15,6 +15,40 @@ const {
 const { applyPromoCodeToSubscriptionQuote } = require("../promoCodeService");
 const { getRestaurantBusinessDate } = require("../restaurantHoursService");
 
+const CANONICAL_PREMIUM_KEYS = ["shrimp", "beef_steak", "salmon", "custom_premium_salad"];
+
+const PREMIUM_KEY_NAME_MAP = {
+  shrimp: ["جمبري", "shrimp", "gambari", "جمبرى"],
+  beef_steak: ["ستيك لحم", "beef steak", "steak", "beefsteak", "لحم"],
+  salmon: ["سالمون", "salmon", "سمك سالمون", "سلمون"],
+};
+
+function normalizeName(value) {
+  if (!value || typeof value !== "string") return "";
+  return value.toLowerCase().trim().replace(/\s+/g, " ");
+}
+
+function resolvePremiumKeyFromProtein(proteinDoc) {
+  if (!proteinDoc) return null;
+
+  if (proteinDoc.premiumKey && CANONICAL_PREMIUM_KEYS.includes(proteinDoc.premiumKey)) {
+    return proteinDoc.premiumKey;
+  }
+
+  const name = proteinDoc.name?.en || proteinDoc.name?.ar || "";
+  const normalized = normalizeName(name);
+
+  for (const [key, aliases] of Object.entries(PREMIUM_KEY_NAME_MAP)) {
+    for (const alias of aliases) {
+      if (normalized.includes(alias) || alias.includes(normalized)) {
+        return key;
+      }
+    }
+  }
+
+  return null;
+}
+
 async function getSettingValue(key, fallback) {
   const setting = await Setting.findOne({ key }).lean();
   return setting ? setting.value : fallback;
@@ -346,8 +380,9 @@ async function resolveCheckoutQuoteOrThrow(
       throw err;
     }
     assertSystemCurrencyOrThrow(doc.currency || SYSTEM_CURRENCY, `Premium protein ${item.id} currency`);
+    const premiumKey = resolvePremiumKeyFromProtein(doc);
     premiumTotalHalala += unit * item.qty;
-    resolvedPremiumItems.push({ protein: doc, qty: item.qty, unitExtraFeeHalala: unit, currency: SYSTEM_CURRENCY });
+    resolvedPremiumItems.push({ protein: doc, qty: item.qty, unitExtraFeeHalala: unit, currency: SYSTEM_CURRENCY, premiumKey });
   }
 
   let addonsTotalHalala = 0;

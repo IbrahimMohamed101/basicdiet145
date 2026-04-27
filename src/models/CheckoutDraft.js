@@ -7,6 +7,7 @@ const {
 const DraftPremiumItemSchema = new mongoose.Schema(
   {
     proteinId: { type: mongoose.Schema.Types.ObjectId, ref: "BuilderProtein", required: true },
+    premiumKey: { type: String, default: null, trim: true },
     qty: { type: Number, min: 1, required: true },
     unitExtraFeeHalala: { type: Number, min: 0, required: true },
     currency: { type: String, default: "SAR" },
