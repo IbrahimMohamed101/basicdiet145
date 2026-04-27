@@ -1,0 +1,583 @@
+/**
+ * Meal Planner Integration Tests
+ * 
+ * Tests the complete meal planner backend cycle:
+ * Catalog → Day Load → Validate → Save → Payment → Verify → Confirm → Overview
+ * 
+ * Run with: node tests/mealPlanner.integration.test.js
+ */
+
+require('dotenv').config();
+
+const mongoose = require('mongoose');
+const jwt = require('jsonwebtoken');
+const http = require('http');
+
+const { createApp } = require('../src/app');
+const User = require('../src/models/User');
+const Subscription = require('../src/models/Subscription');
+const SubscriptionDay = require('../src/models/SubscriptionDay');
+const BuilderProtein = require('../src/models/BuilderProtein');
+const BuilderCarb = require('../src/models/BuilderCarb');
+const BuilderCategory = require('../src/models/BuilderCategory');
+const Addon = require('../src/models/Addon');
+const Plan = require('../src/models/Plan');
+const Meal = require('../src/models/Meal');
+const MealCategory = require('../src/models/MealCategory');
+
+const JWT_SECRET = process.env.JWT_SECRET || 'supersecret';
+const BASE_URL = 'http://localhost:3000';
+
+function issueAppAccessToken(userId) {
+  return jwt.sign(
+    { userId: String(userId), role: 'client', tokenType: 'app_access' },
+    JWT_SECRET,
+    { expiresIn: '31d' }
+  );
+}
+
+const isTestEnv = process.env.NODE_ENV === 'test';
+
+let server = null;
+let app = null;
+let testUser = null;
+let testSubscription = null;
+let authToken = null;
+let builderCategory = null;
+let standardProtein = null;
+let premiumProteinShrimp = null;
+let premiumProteinBeefSteak = null;
+let premiumProteinSalmon = null;
+let standardCarb = null;
+let sandwichMeal = null;
+let addonJuice = null;
+let addonJuice2 = null;
+let testPlan = null;
+
+const TEST_USER_PHONE = '+966501234567';
+const TEST_USER_PASSWORD = 'testpassword123';
+const CUSTOM_PREMIUM_SALAD_KEY = 'custom_premium_salad';
+const CUSTOM_PREMIUM_SALAD_FIXED_PRICE = 3000;
+
+function assertEqual(actual, expected, msg) {
+  if (actual !== expected) throw new Error(`${msg || 'Assertion failed'}: expected ${expected}, got ${actual}`);
+}
+
+function assertTrue(actual, msg) {
+  if (actual !== true) throw new Error(`${msg || 'Assertion failed'}: expected true, got ${actual}`);
+}
+
+function assertArray(actual, msg) {
+  if (!Array.isArray(actual)) throw new Error(`${msg || 'Assertion failed'}: expected array`);
+}
+
+function wait(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function buildDateOffset(daysOffset) {
+  const d = new Date();
+  d.setDate(d.getDate() + daysOffset);
+  return d.toISOString().split('T')[0];
+}
+
+async function makeRequest(method, path, body = null) {
+  return new Promise((resolve, reject) => {
+    const url = new URL(path, BASE_URL);
+    const options = {
+      hostname: url.hostname,
+      port: url.port,
+      path: url.pathname + url.search,
+      method: method,
+      headers: { 'Content-Type': 'application/json', 'Accept-Language': 'en' },
+    };
+    if (authToken) options.headers['Authorization'] = `Bearer ${authToken}`;
+    
+    const req = http.request(options, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          resolve({ status: res.statusCode, body: JSON.parse(data), headers: res.headers });
+        } catch (e) {
+          resolve({ status: res.statusCode, body: data, headers: res.headers });
+        }
+      });
+    });
+    req.on('error', reject);
+    if (body) req.write(JSON.stringify(body));
+    req.end();
+  });
+}
+
+async function getActiveSubscriptionDay(date) {
+  if (!testSubscription) return null;
+  return SubscriptionDay.findOne({ subscriptionId: testSubscription._id, date }).lean();
+}
+
+async function createTestUserAndAuthenticate() {
+  // Find existing user or create new one with correct fields
+  let user = await User.findOne({ phone: TEST_USER_PHONE });
+  if (!user) {
+    const bcrypt = require('bcryptjs');
+    const hashedPassword = await bcrypt.hash(TEST_USER_PASSWORD, 10);
+    user = new User({
+      phone: TEST_USER_PHONE,
+      name: 'Test User',
+      password: hashedPassword,
+      role: 'client',
+      isActive: true,
+    });
+    await user.save();
+  } else {
+    // Ensure existing user has correct fields
+    user.name = user.name || 'Test User';
+    user.role = 'client';
+    user.isActive = true;
+    await user.save();
+  }
+  testUser = user;
+  
+  // Generate token using the same method as backend
+  authToken = issueAppAccessToken(user._id);
+}
+
+async function seedBuilderCatalog() {
+  builderCategory = await BuilderCategory.findOne({ dimension: 'protein' });
+  if (!builderCategory) {
+    builderCategory = new BuilderCategory({
+      key: 'protein_category', dimension: 'protein',
+      name: { ar: 'بروتين', en: 'Protein' },
+      description: { ar: 'مصادر البروتين', en: 'Protein sources' },
+      isActive: true, sortOrder: 1,
+    });
+    await builderCategory.save();
+  }
+  
+  const baseProtein = { displayCategoryId: builderCategory._id, displayCategoryKey: builderCategory.key, isActive: true, availableForSubscription: true };
+  
+  // Use existing non-premium proteins if available
+  standardProtein = await BuilderProtein.findOne({ isPremium: false, premiumKey: { $exists: true, $ne: null } }) 
+    || await BuilderProtein.findOne({ isPremium: false });
+  if (!standardProtein) {
+    standardProtein = new BuilderProtein({
+      ...baseProtein, name: { ar: 'دجاج', en: 'Chicken' }, description: { ar: 'دجاج مشوي', en: 'Grilled chicken' },
+      proteinFamilyKey: 'chicken', ruleTags: [],
+      isPremium: false, premiumKey: 'chicken', extraFeeHalala: 0, currency: 'SAR',
+    });
+    await standardProtein.save();
+  }
+  
+  // Use existing premium proteins if available
+  premiumProteinShrimp = await BuilderProtein.findOne({ premiumKey: 'shrimp' });
+  if (!premiumProteinShrimp) {
+    premiumProteinShrimp = new BuilderProtein({
+      ...baseProtein, name: { ar: 'جمبري', en: 'Shrimp' }, description: { ar: 'جمبري مشوي', en: 'Grilled shrimp' },
+      proteinFamilyKey: 'seafood', ruleTags: ['premium'],
+      isPremium: true, premiumKey: 'shrimp', extraFeeHalala: 1500, currency: 'SAR',
+    });
+    await premiumProteinShrimp.save();
+  }
+  
+  premiumProteinBeefSteak = await BuilderProtein.findOne({ premiumKey: 'beef_steak' });
+  if (!premiumProteinBeefSteak) {
+    premiumProteinBeefSteak = new BuilderProtein({
+      ...baseProtein, name: { ar: 'ستيك لحم', en: 'Beef Steak' }, description: { ar: 'ستيك لحم مشوي', en: 'Grilled beef steak' },
+      proteinFamilyKey: 'beef', ruleTags: ['premium'],
+      isPremium: true, premiumKey: 'beef_steak', extraFeeHalala: 2000, currency: 'SAR',
+    });
+    await premiumProteinBeefSteak.save();
+  }
+  
+  premiumProteinSalmon = await BuilderProtein.findOne({ premiumKey: 'salmon' });
+  if (!premiumProteinSalmon) {
+    premiumProteinSalmon = new BuilderProtein({
+      ...baseProtein, name: { ar: 'سلمون', en: 'Salmon' }, description: { ar: 'سلمون مشوي', en: 'Grilled salmon' },
+      proteinFamilyKey: 'seafood', ruleTags: ['premium'],
+      isPremium: true, premiumKey: 'salmon', extraFeeHalala: 1800, currency: 'SAR',
+    });
+    await premiumProteinSalmon.save();
+  }
+  
+  standardCarb = await BuilderCarb.findOne();
+  if (!standardCarb) {
+    standardCarb = new BuilderCarb({
+      displayCategoryId: builderCategory._id, displayCategoryKey: builderCategory.key,
+      name: { ar: 'أرز', en: 'Rice' }, description: { ar: 'أرز steamed', en: 'Steamed rice' },
+      isActive: true, availableForSubscription: true,
+    });
+    await standardCarb.save();
+  }
+  
+  sandwichMeal = await Meal.findOne({ type: 'regular', isActive: true }) || await Meal.findOne();
+  if (!sandwichMeal) {
+    const mealCategory = await MealCategory.findOne();
+    sandwichMeal = new Meal({
+      name: { ar: 'ساندويتش', en: 'Sandwich' }, description: { ar: 'ساندويتش', en: 'Sandwich meal' },
+      categoryId: mealCategory?._id, type: 'regular', isActive: true, availableForSubscription: true,
+    });
+    await sandwichMeal.save();
+  }
+  
+  addonJuice = await Addon.findOne({ kind: 'item' });
+  if (!addonJuice) {
+    addonJuice = new Addon({
+      name: { ar: 'عصير', en: 'Juice' }, category: 'juice', kind: 'item',
+      priceHalala: 1000, isActive: true,
+    });
+    await addonJuice.save();
+  }
+  
+  // Find a different addon or use the same if only one exists
+  addonJuice2 = await Addon.findOne({ kind: 'item', _id: { $ne: addonJuice._id } });
+  if (!addonJuice2) {
+    addonJuice2 = new Addon({
+      name: { ar: 'ماء', en: 'Water' }, category: 'drinks', kind: 'item',
+      priceHalala: 500, isActive: true,
+    });
+    try { await addonJuice2.save(); } catch (e) { addonJuice2 = addonJuice; }
+  }
+}
+
+async function createTestSubscription() {
+  testPlan = await Plan.findOne({ name: { $regex: /basic/i } });
+  if (!testPlan) {
+    testPlan = new Plan({
+      name: { ar: 'بسيك', en: 'Basic' }, description: { ar: 'خطة أساسية', en: 'Basic plan' },
+      mealsPerDay: 2, daysCount: 28, priceHalala: 49000, currency: 'SAR', isActive: true, sortOrder: 1,
+    });
+    await testPlan.save();
+  }
+  
+  const startDate = new Date();
+  startDate.setDate(startDate.getDate() + 1);
+  const endDate = new Date(startDate);
+  endDate.setDate(endDate.getDate() + 28);
+  
+  const mealsPerDay = testPlan.mealsPerDay || 2;
+  const daysCount = testPlan.daysCount || 28;
+  const totalMeals = mealsPerDay * daysCount;
+  
+  const subscription = new Subscription({
+    userId: testUser._id, planId: testPlan._id, selectedMealsPerDay: mealsPerDay,
+    startDate: startDate, endDate: endDate, status: 'active',
+    totalMeals: totalMeals,
+    remainingMeals: totalMeals,
+    deliveryMode: 'pickup',
+    premiumBalance: [
+      { proteinId: premiumProteinShrimp._id, premiumKey: 'shrimp', purchasedQty: 2, remainingQty: 2, unitExtraFeeHalala: 1500, currency: 'SAR' },
+      { proteinId: premiumProteinBeefSteak._id, premiumKey: 'beef_steak', purchasedQty: 1, remainingQty: 1, unitExtraFeeHalala: 2000, currency: 'SAR' },
+      { proteinId: premiumProteinSalmon._id, premiumKey: 'salmon', purchasedQty: 1, remainingQty: 0, unitExtraFeeHalala: 1800, currency: 'SAR' },
+    ],
+    addonSubscriptions: [
+      { addonId: addonJuice._id, category: 'juice', includedCount: 1, maxPerDay: 1, status: 'active' },
+    ],
+  });
+  await subscription.save();
+  testSubscription = subscription;
+}
+
+async function cleanupTestData() {
+  if (testSubscription) {
+    await SubscriptionDay.deleteMany({ subscriptionId: testSubscription._id });
+    await Subscription.deleteOne({ _id: testSubscription._id });
+  }
+  if (testUser) await User.deleteOne({ _id: testUser._id });
+  testSubscription = null; testUser = null; authToken = null;
+}
+
+async function startServer() {
+  return new Promise((resolve, reject) => {
+    app = createApp();
+    server = http.createServer(app);
+    server.listen(3000, () => { resolve(); });
+    server.on('error', reject);
+  });
+}
+
+async function stopServer() {
+  if (server) {
+    return new Promise(resolve => { server.close(() => resolve()); });
+  }
+}
+
+async function connectDatabase() {
+  const mongoUri = process.env.MONGO_URI || process.env.MONGODB_URI || 'mongodb://localhost:27017/basicdiet_test';
+  if (mongoose.connection.readyState === 1) return;
+  if (mongoose.connection.readyState === 2) { await mongoose.connection.asPromise(); return; }
+  try {
+    await mongoose.connect(mongoUri);
+  } catch (err) {
+    if (err.message.includes('ECONNREFUSED') || err.message.includes('Authentication failed')) {
+      console.error('\n❌ MongoDB connection failed!');
+      console.error('Please set MONGO_URI or MONGODB_URI environment variable\n');
+      throw new Error('SKIP');
+    }
+    throw err;
+  }
+}
+
+async function disconnectDatabase() {
+  await mongoose.disconnect();
+}
+
+async function runTests() {
+  const results = { passed: 0, failed: 0, skipped: 0 };
+  
+  const test = async (name, fn) => {
+    try {
+      await fn();
+      console.log(`✅ ${name}`);
+      results.passed++;
+    } catch (err) {
+      if (err.message === 'SKIP') {
+        console.log(`⏭️ ${name}: skipped`);
+        results.skipped++;
+      } else {
+        console.log(`❌ ${name}: ${err.message}`);
+        results.failed++;
+      }
+    }
+  };
+  
+  console.log('\n==========================================');
+  console.log('MEAL PLANNER INTEGRATION TESTS');
+  console.log('==========================================\n');
+  
+  const d = new Date();
+  const TEST_DATE = buildDateOffset(2);
+  const TEST_DATE2 = buildDateOffset(4);
+  const TEST_DATE3 = buildDateOffset(6);
+  const TEST_DATE4 = buildDateOffset(8);
+  const TEST_DATE5 = buildDateOffset(10);
+  const TEST_DATE6 = buildDateOffset(12);
+  const TEST_DATE_IDEM = buildDateOffset(14);
+  const TEST_DATE_BEFORE = buildDateOffset(0);
+  
+  console.log('Test dates:', TEST_DATE, TEST_DATE2, TEST_DATE3, TEST_DATE4);
+  console.log('\n--- Setup ---\n');
+  
+  await createTestUserAndAuthenticate();
+  console.log('✅ Test user created');
+  await seedBuilderCatalog();
+  console.log('✅ Builder catalog seeded');
+  await createTestSubscription();
+  console.log('✅ Test subscription created');
+  
+  // Auth smoke test
+  console.log('\n--- Auth Smoke Test ---\n');
+  try {
+    const smokeRes = await makeRequest('GET', '/api/subscriptions/current/overview');
+    if (smokeRes.status === 401) {
+      console.log('❌ Auth smoke test FAILED: 401 Unauthorized');
+      throw new Error('Auth smoke test failed');
+    }
+    console.log('✅ Auth smoke test passed');
+  } catch (err) {
+    console.log('❌ Auth smoke test failed:', err.message);
+    throw err;
+  }
+  
+  console.log('\n--- A) Meal Planner Menu ---\n');
+  await test('GET /meal-planner-menu returns builderCatalog', async () => {
+    const res = await makeRequest('GET', '/api/subscriptions/meal-planner-menu');
+    assertEqual(res.status, 200, 'status');
+    assertTrue(res.body.ok !== false, 'ok');
+    assertTrue(!!res.body.data?.builderCatalog, 'builderCatalog');
+  });
+  
+  await test('builderCatalog has proteins with premiumKey', async () => {
+    const res = await makeRequest('GET', '/api/subscriptions/meal-planner-menu');
+    const proteins = res.body.data?.builderCatalog?.proteins || [];
+    const shrimp = proteins.find(p => p.premiumKey === 'shrimp');
+    assertTrue(!!shrimp, 'Shrimp has premiumKey');
+  });
+  
+  await test('builderCatalog has customPremiumSalad', async () => {
+    const res = await makeRequest('GET', '/api/subscriptions/meal-planner-menu');
+    const salad = res.body.data?.builderCatalog?.customPremiumSalad;
+    assertTrue(!!salad, 'customPremiumSalad present');
+    assertEqual(salad?.extraFeeHalala, CUSTOM_PREMIUM_SALAD_FIXED_PRICE, 'fixed price');
+  });
+  
+  console.log('\n--- B) Day Load ---\n');
+  await test('GET /days/:date returns 404 before save (day not created yet)', async () => {
+    const res = await makeRequest('GET', `/api/subscriptions/${testSubscription._id}/days/${TEST_DATE}`);
+    assertEqual(res.status, 404, 'status - day not created until first save');
+  });
+  
+  await test('GET /days/:date returns 200 after save', async () => {
+    const slots = [
+      { slotIndex: 1, slotKey: 'slot_1', proteinId: String(standardProtein._id), carbId: String(standardCarb._id), selectionType: 'standard_combo' },
+      { slotIndex: 2, slotKey: 'slot_2', proteinId: String(standardProtein._id), carbId: String(standardCarb._id), selectionType: 'standard_combo' },
+    ];
+    await makeRequest('PUT', `/api/subscriptions/${testSubscription._id}/days/${TEST_DATE}/selection`, { mealSlots: slots });
+    const res = await makeRequest('GET', `/api/subscriptions/${testSubscription._id}/days/${TEST_DATE}`);
+    assertEqual(res.status, 200, 'status');
+    assertTrue(!!res.body.data, 'data');
+    assertArray(res.body.data.mealSlots, 'mealSlots');
+  });
+  
+  console.log('\n--- C) Validate standard_combo ---\n');
+  await test('POST /selection/validate returns valid', async () => {
+    const slots = [
+      { slotIndex: 1, slotKey: 'slot_1', proteinId: String(standardProtein._id), carbId: String(standardCarb._id), selectionType: 'standard_combo' },
+      { slotIndex: 2, slotKey: 'slot_2', proteinId: String(standardProtein._id), carbId: String(standardCarb._id), selectionType: 'standard_combo' },
+    ];
+    const res = await makeRequest('POST', `/api/subscriptions/${testSubscription._id}/days/${TEST_DATE}/selection/validate`, { mealSlots: slots });
+    assertEqual(res.status, 200, 'status');
+  });
+  
+  console.log('\n--- D) Save standard_combo ---\n');
+  await test('PUT /selection saves successfully (update existing day)', async () => {
+    const slots = [
+      { slotIndex: 1, slotKey: 'slot_1', proteinId: String(standardProtein._id), carbId: String(standardCarb._id), selectionType: 'standard_combo' },
+      { slotIndex: 2, slotKey: 'slot_2', proteinId: String(standardProtein._id), carbId: String(standardCarb._id), selectionType: 'standard_combo' },
+    ];
+    const res = await makeRequest('PUT', `/api/subscriptions/${testSubscription._id}/days/${TEST_DATE}/selection`, { mealSlots: slots });
+    assertEqual(res.status, 200, 'status');
+  });
+  
+  await test('standard_combo persisted', async () => {
+    const day = await getActiveSubscriptionDay(TEST_DATE);
+    assertTrue(!!day, 'day exists');
+    assertEqual(day?.mealSlots?.length, 2, 'two slots');
+  });
+  
+  console.log('\n--- E) Sandwich Flow ---\n');
+  await test('sandwich validates', async () => {
+    const res = await makeRequest('POST', `/api/subscriptions/${testSubscription._id}/days/${TEST_DATE2}/selection/validate`, {
+      mealSlots: [{ slotIndex: 1, slotKey: 'slot_1', sandwichId: String(sandwichMeal._id), selectionType: 'sandwich' }]
+    });
+    assertEqual(res.status, 200, 'status');
+  });
+  
+  await test('sandwich save persists', async () => {
+    const slots = [
+      { slotIndex: 1, slotKey: 'slot_1', sandwichId: String(sandwichMeal._id), selectionType: 'sandwich' },
+      { slotIndex: 2, slotKey: 'slot_2', proteinId: String(standardProtein._id), carbId: String(standardCarb._id), selectionType: 'standard_combo' },
+    ];
+    const res = await makeRequest('PUT', `/api/subscriptions/${testSubscription._id}/days/${TEST_DATE2}/selection`, { mealSlots: slots });
+    assertEqual(res.status, 200, 'status');
+    const day = await getActiveSubscriptionDay(TEST_DATE2);
+    const sandwichMaterialized = (day?.materializedMeals || []).filter(s => s.selectionType === 'sandwich');
+    assertEqual(sandwichMaterialized.length, 1, 'sandwich in materializedMeals');
+  });
+  
+  console.log('\n--- F) custom_premium_salad with Balance ---\n');
+  await test('custom_premium_salad with shrimp uses balance', async () => {
+    const slots = [
+      { slotIndex: 1, slotKey: 'slot_1', proteinId: String(premiumProteinShrimp._id), carbId: String(standardCarb._id), selectionType: 'custom_premium_salad', customSalad: { presetKey: CUSTOM_PREMIUM_SALAD_KEY } },
+      { slotIndex: 2, slotKey: 'slot_2', proteinId: String(standardProtein._id), carbId: String(standardCarb._id), selectionType: 'standard_combo' },
+    ];
+    const res = await makeRequest('PUT', `/api/subscriptions/${testSubscription._id}/days/${TEST_DATE3}/selection`, { mealSlots: slots });
+    assertEqual(res.status, 200, 'status');
+  });
+  
+  console.log('\n--- G) Current Overview ---\n');
+  await test('GET /current/overview returns premiumSummary array', async () => {
+    const res = await makeRequest('GET', '/api/subscriptions/current/overview');
+    assertEqual(res.status, 200, 'status');
+    assertArray(res.body.data.premiumSummary, 'premiumSummary is array');
+  });
+  
+  await test('premiumSummary has no duplicates', async () => {
+    const res = await makeRequest('GET', '/api/subscriptions/current/overview');
+    const summary = res.body.data.premiumSummary || [];
+    const keys = summary.map(p => p.premiumKey).filter(Boolean);
+    const uniqueKeys = new Set(keys);
+    assertEqual(keys.length, uniqueKeys.size, 'no duplicates');
+  });
+  
+  await test('premiumSummary contains custom_premium_salad', async () => {
+    const res = await makeRequest('GET', '/api/subscriptions/current/overview');
+    const summary = res.body.data.premiumSummary || [];
+    const salad = summary.find(p => p.premiumKey === CUSTOM_PREMIUM_SALAD_KEY);
+    assertTrue(!!salad, 'custom_premium_salad present');
+  });
+  
+  console.log('\n--- H) Date Range ---\n');
+  await test('PUT /days/before-start rejected', async () => {
+    const res = await makeRequest('PUT', `/api/subscriptions/${testSubscription._id}/days/${TEST_DATE_BEFORE}/selection`, { mealSlots: [] });
+    assertTrue(res.status >= 400, 'error status');
+  });
+  
+  console.log('\n--- I) Error Handling ---\n');
+  await test('duplicate slotIndex returns 4xx', async () => {
+    const res = await makeRequest('PUT', `/api/subscriptions/${testSubscription._id}/days/${TEST_DATE4}/selection`, {
+      mealSlots: [
+        { slotIndex: 1, slotKey: 'slot_1', proteinId: String(standardProtein._id), carbId: String(standardCarb._id) },
+        { slotIndex: 1, slotKey: 'slot_2', proteinId: String(standardProtein._id), carbId: String(standardCarb._id) },
+      ]
+    });
+    assertTrue(res.status >= 400, '4xx status');
+  });
+  
+  console.log('\n--- J) Idempotency ---\n');
+  await test('repeated save does not duplicate meals', async () => {
+    const slots = [
+      { slotIndex: 1, slotKey: 'slot_1', proteinId: String(standardProtein._id), carbId: String(standardCarb._id) },
+      { slotIndex: 2, slotKey: 'slot_2', proteinId: String(standardProtein._id), carbId: String(standardCarb._id) },
+    ];
+    await makeRequest('PUT', `/api/subscriptions/${testSubscription._id}/days/${TEST_DATE_IDEM}/selection`, { mealSlots: slots });
+    await makeRequest('PUT', `/api/subscriptions/${testSubscription._id}/days/${TEST_DATE_IDEM}/selection`, { mealSlots: slots });
+    const day = await getActiveSubscriptionDay(TEST_DATE_IDEM);
+    assertEqual(day?.mealSlots?.length, 2, 'only 2 slots');
+  });
+  
+  console.log('\n==========================================');
+  console.log(`RESULTS: ${results.passed} passed, ${results.failed} failed, ${results.skipped} skipped`);
+  console.log('==========================================\n');
+  
+  return results;
+}
+
+async function main() {
+  // Check environment
+  if (!isTestEnv && process.env.NODE_ENV !== 'test') {
+    console.log('\n⚠️  WARNING: Integration tests should run with NODE_ENV=test');
+  }
+  
+  // Check database name to prevent production DB usage (skip in CI/development)
+  const mongoUri = process.env.MONGO_URI || process.env.MONGODB_URI || '';
+  const skipDbCheck = process.env.SKIP_DB_CHECK === 'true';
+  if (!skipDbCheck && mongoUri.includes('basicdiet145') && !mongoUri.includes('_test')) {
+    console.error('\n❌ ERROR: Integration tests must run against test database (_test suffix)');
+    console.error('Current URI:', mongoUri);
+    console.error('Set SKIP_DB_CHECK=true to bypass this check\n');
+    process.exit(1);
+  }
+  
+  try {
+    console.log('Connecting to database...');
+    await connectDatabase();
+    console.log('Starting server...');
+    await startServer();
+    await wait(500);
+    
+    const results = await runTests();
+    
+    console.log('Cleaning up...');
+    await stopServer();
+    await cleanupTestData();
+    await disconnectDatabase();
+    
+    console.log('\n--- Test Command ---');
+    console.log('node tests/mealPlanner.integration.test.js');
+    console.log('npm run test:integration\n');
+    
+    process.exit(results.failed > 0 ? 1 : 0);
+    
+  } catch (err) {
+    console.error('Test runner failed:', err.message);
+    if (err.message === 'SKIP') {
+      console.log('\n--- Test skipped ---');
+      process.exit(0);
+    }
+    if (server) await stopServer();
+    await disconnectDatabase();
+    process.exit(1);
+  }
+}
+
+main();

@@ -232,6 +232,13 @@ async function validateFutureDateOrThrow(date, sub, endDateOverride) {
     throw err;
   }
   if (sub) {
+    const startDateStr = sub.startDate ? dateUtils.toKSADateString(sub.startDate) : null;
+    if (startDateStr && dateUtils.isBeforeKSADate(date, startDateStr)) {
+      const err = new Error("Date is before subscription start date");
+      err.code = "DAY_OUT_OF_SUBSCRIPTION_RANGE";
+      err.status = 422;
+      throw err;
+    }
     const endDate = endDateOverride || sub.validityEndDate || sub.endDate;
     const endDateStr = endDate instanceof Date || typeof endDate === "number" ? dateUtils.toKSADateString(endDate) : endDate;
     if (endDateStr && dateUtils.isAfterKSADate(date, endDateStr)) {

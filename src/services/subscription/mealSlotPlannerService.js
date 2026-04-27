@@ -12,6 +12,12 @@ const SYSTEM_CURRENCY = "SAR";
 const MEAL_PLANNER_RULES_VERSION = "meal_planner_rules.v1";
 const DEFAULT_SLOT_KEY_PREFIX = "slot_";
 
+const CUSTOM_PREMIUM_SALAD_TYPE = "custom_premium_salad";
+const SANDWICH_TYPE = "sandwich";
+const STANDARD_COMBO_TYPE = "standard_combo";
+
+const CUSTOM_PREMIUM_SALAD_FIXED_PRICE_HALALA = 3000;
+
 function buildMealPlannerValidationResult({ code, message, slotErrors = [] }) {
   return {
     valid: false,
@@ -144,12 +150,40 @@ function projectMaterializedAndLegacyFromSlots({ processedSlots, now }) {
   const baseMealSlots = [];
 
   for (const slot of Array.isArray(processedSlots) ? processedSlots : []) {
-    if (slot.status !== "complete" || !slot.proteinId || !slot.carbId) continue;
+    if (slot.status !== "complete") continue;
+
+    const selectionType = String(slot.selectionType || "").trim() || STANDARD_COMBO_TYPE;
+    
+    if (selectionType === SANDWICH_TYPE && slot.sandwichId) {
+      const materialized = {
+        slotKey: slot.slotKey,
+        sandwichId: slot.sandwichId,
+        proteinId: null,
+        carbId: null,
+        selectionType: SANDWICH_TYPE,
+        isPremium: false,
+        premiumSource: "none",
+        premiumExtraFeeHalala: 0,
+        operationalSku: `sandwich:${slot.sandwichId}`,
+        generatedAt: now,
+      };
+      materializedMeals.push(materialized);
+      baseMealSlots.push({
+        slotKey: slot.slotKey,
+        mealId: slot.sandwichId,
+        assignmentSource: slot.assignmentSource || "client",
+        assignedAt: slot.assignedAt || now,
+      });
+      continue;
+    }
+
+    if (!slot.proteinId || !slot.carbId) continue;
 
     const materialized = {
       slotKey: slot.slotKey,
       proteinId: slot.proteinId,
       carbId: slot.carbId,
+      selectionType,
       isPremium: Boolean(slot.isPremium),
       premiumSource: slot.premiumSource || "none",
       premiumExtraFeeHalala: Number(slot.premiumExtraFeeHalala || 0),
@@ -207,6 +241,14 @@ function isBaseBeefSlot(slot) {
     slot
     && slot.proteinFamilyKey === "beef"
     && !slot.isPremium
+    && !isSandwichSlot(slot)
+  );
+}
+
+function isSandwichSlot(slot) {
+  return Boolean(
+    slot
+    && String(slot.selectionType || "").trim() === SANDWICH_TYPE
   );
 }
 
@@ -230,13 +272,26 @@ function recomputePlannerMetaFromSlots({ mealSlots, requiredSlotCount = 0 }) {
 
   const slotErrors = collectDuplicateSlotErrors({ mealSlots: normalizedSlots });
   for (const slot of normalizedSlots) {
+    const selectionType = String(slot && slot.selectionType ? slot.selectionType.trim() : "") || STANDARD_COMBO_TYPE;
+    
+    if (selectionType === SANDWICH_TYPE) {
+      plannerMeta.completeSlotCount += 1;
+      continue;
+    }
+
     let status = String(slot && slot.status ? slot.status : "empty");
     const hasProtein = Boolean(slot && slot.proteinId);
     const hasCarb = Boolean(slot && slot.carbId);
 
-    if (hasProtein && hasCarb) status = "complete";
-    else if (hasProtein || hasCarb) status = "partial";
-    else status = "empty";
+    if (selectionType === CUSTOM_PREMIUM_SALAD_TYPE) {
+      if (hasProtein && hasCarb) status = "complete";
+      else if (hasProtein || hasCarb) status = "partial";
+      else status = "empty";
+    } else {
+      if (hasProtein && hasCarb) status = "complete";
+      else if (hasProtein || hasCarb) status = "partial";
+      else status = "empty";
+    }
 
     if (status === "complete") plannerMeta.completeSlotCount += 1;
     else if (status === "partial") plannerMeta.partialSlotCount += 1;
@@ -330,6 +385,93 @@ async function buildMealSlotDraft({ mealSlots, mealsPerDayLimit, subscription, s
   };
 
   for (const slot of normalizedMealSlots) {
+    const selectionType = String(slot && slot.selectionType ? slot.selectionType.trim() : "") || STANDARD_COMBO_TYPE;
+    
+    if (selectionType === SANDWICH_TYPE) {
+      const processedSlot = {
+        slotIndex: slot.slotIndex,
+        slotKey: slot.slotKey,
+        status: "complete",
+        proteinId: null,
+        carbId: null,
+        sandwichId: slot.sandwichId || null,
+        selectionType: SANDWICH_TYPE,
+        customSalad: null,
+        proteinFamilyKey: null,
+        proteinDisplayCategoryKey: null,
+        proteinRuleTags: [],
+        carbDisplayCategoryKey: null,
+        isPremium: false,
+        premiumSource: "none",
+        premiumExtraFeeHalala: 0,
+      };
+      plannerMeta.completeSlotCount += 1;
+      processedSlots.push(processedSlot);
+      continue;
+    }
+
+    if (selectionType === CUSTOM_PREMIUM_SALAD_TYPE) {
+      const protein = slot.proteinId ? proteinMap.get(String(slot.proteinId)) : null;
+      const carb = slot.carbId ? carbMap.get(String(slot.carbId)) : null;
+      
+      const isPremiumProtein = Boolean(protein && protein.isPremium);
+      const hasValidProtein = Boolean(protein);
+      const hasValidCarb = Boolean(carb);
+      
+      let premiumSource = "none";
+      let premiumExtraFeeHalala = 0;
+      
+      if (isPremiumProtein) {
+        const tempBalances = processedSlots._tempBalances || (processedSlots._tempBalances = new Map());
+        if (processedSlots.length === 0 && subscription && Array.isArray(subscription.premiumBalance)) {
+          for (const row of subscription.premiumBalance) {
+            const id = String(row.proteinId);
+            tempBalances.set(id, (tempBalances.get(id) || 0) + Number(row.remainingQty || 0));
+          }
+        }
+        
+        const avail = tempBalances.get(String(slot.proteinId)) || 0;
+        if (avail > 0) {
+          premiumSource = "balance";
+          tempBalances.set(String(slot.proteinId), avail - 1);
+          plannerMeta.premiumSlotCount += 1;
+          plannerMeta.premiumCoveredByBalanceCount += 1;
+        } else {
+          premiumSource = "pending_payment";
+          premiumExtraFeeHalala = CUSTOM_PREMIUM_SALAD_FIXED_PRICE_HALALA;
+          plannerMeta.premiumSlotCount += 1;
+          plannerMeta.premiumPendingPaymentCount += 1;
+          plannerMeta.premiumTotalHalala += CUSTOM_PREMIUM_SALAD_FIXED_PRICE_HALALA;
+        }
+      }
+
+      const processedSlot = {
+        slotIndex: slot.slotIndex,
+        slotKey: slot.slotKey,
+        status: hasValidProtein && hasValidCarb ? "complete" : "partial",
+        proteinId: slot.proteinId || null,
+        carbId: slot.carbId || null,
+        sandwichId: null,
+        selectionType: CUSTOM_PREMIUM_SALAD_TYPE,
+        customSalad: slot.customSalad || null,
+        proteinFamilyKey: protein ? protein.proteinFamilyKey : null,
+        proteinDisplayCategoryKey: protein ? protein.displayCategoryKey : null,
+        proteinRuleTags: protein ? protein.ruleTags : [],
+        carbDisplayCategoryKey: carb ? carb.displayCategoryKey : null,
+        isPremium: isPremiumProtein,
+        premiumSource,
+        premiumExtraFeeHalala: isPremiumProtein ? premiumExtraFeeHalala : CUSTOM_PREMIUM_SALAD_FIXED_PRICE_HALALA,
+      };
+
+      if (processedSlot.status === "complete") {
+        plannerMeta.completeSlotCount += 1;
+      } else {
+        plannerMeta.partialSlotCount += 1;
+      }
+      processedSlots.push(processedSlot);
+      continue;
+    }
+
     const protein = slot.proteinId ? proteinMap.get(String(slot.proteinId)) : null;
     const carb = slot.carbId ? carbMap.get(String(slot.carbId)) : null;
     const processedSlot = {
@@ -338,6 +480,9 @@ async function buildMealSlotDraft({ mealSlots, mealsPerDayLimit, subscription, s
       status: "empty",
       proteinId: slot.proteinId || null,
       carbId: slot.carbId || null,
+      sandwichId: null,
+      selectionType: selectionType,
+      customSalad: null,
       proteinFamilyKey: protein ? protein.proteinFamilyKey : null,
       proteinDisplayCategoryKey: protein ? protein.displayCategoryKey : null,
       proteinRuleTags: protein ? protein.ruleTags : [],
@@ -435,11 +580,21 @@ async function buildMealSlotDraft({ mealSlots, mealsPerDayLimit, subscription, s
 
 module.exports = {
   SYSTEM_CURRENCY,
+  CUSTOM_PREMIUM_SALAD_TYPE,
+  SANDWICH_TYPE,
+  STANDARD_COMBO_TYPE,
+  CUSTOM_PREMIUM_SALAD_FIXED_PRICE_HALALA,
   getMealPlannerRules,
   buildMealSlotKey,
+  normalizeMealSlotsInput,
+  collectDuplicateSlotErrors,
+  collectSlotCountErrors,
   mapPaymentRequirement,
   buildPremiumExtraRevisionHash,
+  isSandwichSlot,
+  isBaseBeefSlot,
   recomputePlannerMetaFromSlots,
+  projectMaterializedAndLegacyFromSlots,
   projectMaterializedAndLegacyForExistingSlots,
   buildPremiumExtraPaymentDraft,
   buildMealSlotDraft,

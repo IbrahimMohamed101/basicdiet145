@@ -64,15 +64,18 @@ const PlannerMetaSchema = new mongoose.Schema(
 const MaterializedMealSchema = new mongoose.Schema(
   {
     slotKey: { type: String, required: true, trim: true },
-    proteinId: { type: mongoose.Schema.Types.ObjectId, ref: "BuilderProtein", required: true },
-    carbId: { type: mongoose.Schema.Types.ObjectId, ref: "BuilderCarb", required: true },
+    selectionType: { type: String, enum: ["sandwich", "standard_combo", "custom_premium_salad"], default: "standard_combo" },
+    sandwichId: { type: mongoose.Schema.Types.ObjectId, ref: "Meal", default: null },
+    proteinId: { type: mongoose.Schema.Types.ObjectId, ref: "BuilderProtein", default: null },
+    carbId: { type: mongoose.Schema.Types.ObjectId, ref: "BuilderCarb", default: null },
     isPremium: { type: Boolean, default: false },
     premiumSource: {
       type: String,
       enum: ["none", "balance", "pending_payment", "paid_extra", "paid"],
       default: "none",
     },
-    comboKey: { type: String, required: true, trim: true },
+    premiumExtraFeeHalala: { type: Number, default: 0 },
+    comboKey: { type: String, trim: true, default: null },
     operationalSku: { type: String, required: true, trim: true },
     generatedAt: { type: Date, default: Date.now },
   },

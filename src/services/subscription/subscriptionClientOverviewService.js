@@ -221,6 +221,7 @@ function buildSubscriptionPremiumBalanceSummary(subscription, premiumCatalog, la
       const mergedData = mergedByCatalogId.get(catalogId);
       result.push({
         premiumMealId: mergedData.premiumMealId,
+        premiumKey: catalogItem.premiumKey || null,
         name: catalogItem.name,
         purchasedQtyTotal: mergedData.purchasedQtyTotal,
         remainingQtyTotal: mergedData.remainingQtyTotal,
@@ -237,6 +238,7 @@ function buildSubscriptionPremiumBalanceSummary(subscription, premiumCatalog, la
     } else {
       result.push({
         premiumMealId: catalogId,
+        premiumKey: catalogItem.premiumKey || null,
         name: catalogItem.name,
         purchasedQtyTotal: 0,
         remainingQtyTotal: 0,
