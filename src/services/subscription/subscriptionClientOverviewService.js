@@ -228,87 +228,69 @@ function buildSubscriptionPremiumBalanceSummary(subscription, premiumCatalog, la
     return [];
   }
 
-  const { byId, byPremiumKey, allItems } = premiumCatalog;
+  const { byPremiumKey, allItems } = premiumCatalog;
   const premiumBalance = Array.isArray(subscription && subscription.premiumBalance)
     ? subscription.premiumBalance
     : [];
 
-  const mergedByPremiumKey = new Map();
+  const summaryMap = new Map();
 
   for (const row of premiumBalance) {
-    if (!row || !row.proteinId) continue;
+    if (!row) continue;
 
     const purchasedQty = Number(row.purchasedQty || 0);
     const remainingQty = Number(row.remainingQty || 0);
 
-    const resolvedKey = resolvePremiumKeyFromRow(row, premiumCatalog);
-
-    if (resolvedKey) {
-      const existing = mergedByPremiumKey.get(resolvedKey) || {
-        premiumKey: resolvedKey,
-        premiumMealId: resolvedKey,
-        name: row.name || resolvedKey,
-        purchasedQtyTotal: 0,
-        remainingQtyTotal: 0,
-      };
-      existing.purchasedQtyTotal += purchasedQty;
-      existing.remainingQtyTotal += remainingQty;
-      if (row.name && !existing.name) {
-        existing.name = row.name;
-      }
-      mergedByPremiumKey.set(resolvedKey, existing);
+    if (purchasedQty === 0 && remainingQty === 0) {
+      continue;
     }
+
+    const key = resolvePremiumKeyFromRow(row, premiumCatalog);
+
+    if (!key || !CANONICAL_PREMIUM_KEYS.includes(key)) {
+      continue;
+    }
+
+    const existing = summaryMap.get(key) || {
+      premiumKey: key,
+      purchasedQtyTotal: 0,
+      remainingQtyTotal: 0,
+    };
+
+    existing.purchasedQtyTotal += purchasedQty;
+    existing.remainingQtyTotal += remainingQty;
+
+    summaryMap.set(key, existing);
   }
 
   const result = [];
-  const existingPremiumKeys = new Set();
-  const existingPremiumMealIds = new Set();
-  const existingNormalizedNames = new Set();
+  const existingKeys = new Set();
 
   for (const catalogItem of allItems) {
-    const catalogId = catalogItem.id;
     const catalogKey = catalogItem.premiumKey;
 
     if (!catalogKey || !CANONICAL_PREMIUM_KEYS.includes(catalogKey)) {
       continue;
     }
 
-    if (mergedByPremiumKey.has(catalogKey)) {
-      const mergedData = mergedByPremiumKey.get(catalogKey);
-      result.push({
-        premiumMealId: mergedData.premiumMealId,
-        premiumKey: catalogKey,
-        name: catalogItem.name || mergedData.name,
-        purchasedQtyTotal: mergedData.purchasedQtyTotal,
-        remainingQtyTotal: mergedData.remainingQtyTotal,
-        consumedQtyTotal: mergedData.purchasedQtyTotal - mergedData.remainingQtyTotal,
-      });
-      existingPremiumMealIds.add(mergedData.premiumMealId);
-      existingPremiumKeys.add(catalogKey);
-      const normalizedName = normalizePremiumName(catalogItem.name);
-      if (normalizedName) {
-        existingNormalizedNames.add(normalizedName);
-      }
-    } else {
-      result.push({
-        premiumMealId: catalogId,
-        premiumKey: catalogKey,
-        name: catalogItem.name,
-        purchasedQtyTotal: 0,
-        remainingQtyTotal: 0,
-        consumedQtyTotal: 0,
-      });
-      existingPremiumMealIds.add(catalogId);
-      existingPremiumKeys.add(catalogKey);
-      const normalizedName = normalizePremiumName(catalogItem.name);
-      if (normalizedName) {
-        existingNormalizedNames.add(normalizedName);
-      }
-    }
+    const summary = summaryMap.get(catalogKey);
+    const purchasedQtyTotal = summary ? summary.purchasedQtyTotal : 0;
+    const remainingQtyTotal = summary ? summary.remainingQtyTotal : 0;
+
+    result.push({
+      premiumMealId: catalogItem.id,
+      premiumKey: catalogKey,
+      name: catalogItem.name,
+      purchasedQtyTotal,
+      remainingQtyTotal,
+      consumedQtyTotal: purchasedQtyTotal - remainingQtyTotal,
+    });
+
+    existingKeys.add(catalogKey);
   }
 
-  for (const [key, data] of mergedByPremiumKey) {
-    if (existingPremiumKeys.has(key)) {
+  for (const [key, summary] of summaryMap) {
+    if (existingKeys.has(key)) {
       continue;
     }
     if (!CANONICAL_PREMIUM_KEYS.includes(key)) {
@@ -321,27 +303,21 @@ function buildSubscriptionPremiumBalanceSummary(subscription, premiumCatalog, la
     }
 
     result.push({
-      premiumMealId: data.premiumMealId,
+      premiumMealId: key,
       premiumKey: key,
-      name: data.name,
-      purchasedQtyTotal: data.purchasedQtyTotal,
-      remainingQtyTotal: data.remainingQtyTotal,
-      consumedQtyTotal: data.purchasedQtyTotal - data.remainingQtyTotal,
+      name: key,
+      purchasedQtyTotal: summary.purchasedQtyTotal,
+      remainingQtyTotal: summary.remainingQtyTotal,
+      consumedQtyTotal: summary.purchasedQtyTotal - summary.remainingQtyTotal,
     });
 
-    existingPremiumKeys.add(key);
-    existingPremiumMealIds.add(data.premiumMealId);
-    const normalizedName = normalizePremiumName(data.name);
-    if (normalizedName) {
-      existingNormalizedNames.add(normalizedName);
-    }
+    existingKeys.add(key);
   }
 
   const customSaladItem = buildCustomPremiumSaladItem(lang);
   const customSaladNormalizedName = normalizePremiumName(customSaladItem.name);
-  if (!existingPremiumKeys.has(CUSTOM_PREMIUM_SALAD_KEY) &&
-      !existingPremiumMealIds.has(customSaladItem.premiumMealId) &&
-      (!customSaladNormalizedName || !existingNormalizedNames.has(customSaladNormalizedName))) {
+  if (!existingKeys.has(CUSTOM_PREMIUM_SALAD_KEY) &&
+      (!customSaladNormalizedName || !existingKeys.has(customSaladNormalizedName))) {
     result.push(customSaladItem);
   }
 
