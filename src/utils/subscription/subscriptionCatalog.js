@@ -2,6 +2,7 @@ const { pickLang } = require("../i18n");
 const { withDefaultMealNutrition } = require("../mealNutrition");
 
 const SYSTEM_CURRENCY = "SAR";
+const PREMIUM_PROTEIN_SELECTION_TYPE = "premium_protein";
 
 function resolveSortValue(value) {
   const parsed = Number(value);
@@ -315,9 +316,15 @@ function resolvePlanCatalogEntry(plan, lang) {
 function resolvePremiumMealCatalogEntry(row, lang) {
   const normalizedRow = withDefaultMealNutrition(row);
   const extraFee = toMoneyParts(normalizedRow && normalizedRow.extraFeeHalala);
+  const premiumKey = normalizedRow.premiumKey || null;
+  const selectionType = premiumKey ? PREMIUM_PROTEIN_SELECTION_TYPE : "premium_protein";
+  const type = premiumKey ? PREMIUM_PROTEIN_SELECTION_TYPE : "premium_protein";
 
   return {
     id: String(normalizedRow._id),
+    premiumKey,
+    selectionType,
+    type,
     name: pickLang(normalizedRow.name, lang),
     description: pickLang(normalizedRow.description, lang),
     imageUrl: normalizedRow.imageUrl || "",

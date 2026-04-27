@@ -10,6 +10,7 @@
     "indexes:production": "node scripts/create-production-indexes.js",
     "test": "node tests/meal_planner_types.test.js",
     "test:integration": "SKIP_DB_CHECK=true NODE_ENV=test node tests/mealPlanner.integration.test.js",
+    "test:checkout": "SKIP_DB_CHECK=true NODE_ENV=test node tests/checkout.integration.test.js",
     "test:all": "npm run test && npm run test:integration",
     "seed": "node scripts/seed-demo-data.js",
     "seed:pickup": "node scripts/seedPickupTestData.js",

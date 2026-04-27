@@ -16,57 +16,49 @@ const {
 } = require("../../constants/phase1Contract");
 const { consumePromoCodeUsageReservation } = require("../promoCodeService");
 const { logger } = require("../../utils/logger");
+const { resolveCanonicalPremiumIdentity } = require("../../utils/subscription/premiumIdentity");
 
 const SYSTEM_CURRENCY = "SAR";
-
-const CANONICAL_PREMIUM_KEYS = ["shrimp", "beef_steak", "salmon", "custom_premium_salad"];
-
-const PREMIUM_KEY_NAME_MAP = {
-  shrimp: ["جمبري", "shrimp", "gambari", "جمبرى"],
-  beef_steak: ["ستيك لحم", "beef steak", "steak", "beefsteak", "لحم"],
-  salmon: ["سالمون", "salmon", "سمك سالمون", "سلمون"],
-};
-
-function normalizeName(value) {
-  if (!value || typeof value !== "string") return "";
-  return value.toLowerCase().trim().replace(/\s+/g, " ");
-}
-
-function resolvePremiumKeyFromProtein(proteinDoc) {
-  if (!proteinDoc) return null;
-
-  if (proteinDoc.premiumKey && CANONICAL_PREMIUM_KEYS.includes(proteinDoc.premiumKey)) {
-    return proteinDoc.premiumKey;
-  }
-
-  const name = proteinDoc.name?.en || proteinDoc.name?.ar || "";
-  const normalized = normalizeName(name);
-
-  for (const [key, aliases] of Object.entries(PREMIUM_KEY_NAME_MAP)) {
-    for (const alias of aliases) {
-      if (normalized.includes(alias) || alias.includes(normalized)) {
-        return key;
-      }
-    }
-  }
-
-  return null;
-}
 
 // Removed isCanonicalCheckoutDraft as the system now assumes a single unified contract model.
 
 
 
-function toCanonicalPremiumBalanceRows(draft) {
-  return (draft.premiumItems || []).map((item) => ({
-    proteinId: item.proteinId,
-    premiumKey: item.premiumKey || null,
-    purchasedQty: Number(item.qty || 0),
-    remainingQty: Number(item.qty || 0),
-    unitExtraFeeHalala: Number(item.unitExtraFeeHalala || 0),
-    currency: item.currency || SYSTEM_CURRENCY,
-    purchasedAt: new Date(),
-  }));
+async function toCanonicalPremiumBalanceRows(draft) {
+  const rows = [];
+  for (const item of (draft.premiumItems || [])) {
+    let resolved;
+    try {
+      resolved = await resolveCanonicalPremiumIdentity({
+        proteinId: item.proteinId,
+        name: item.name,
+        premiumKey: item.premiumKey,
+      });
+    } catch (err) {
+      if (item.premiumKey && item.proteinId) {
+        resolved = {
+          premiumKey: item.premiumKey,
+          canonicalProteinId: item.proteinId,
+          name: item.name,
+          unitExtraFeeHalala: item.unitExtraFeeHalala || 0,
+        };
+      } else {
+        throw err;
+      }
+    }
+
+    rows.push({
+      proteinId: resolved.canonicalProteinId,
+      premiumKey: resolved.premiumKey,
+      name: resolved.name,
+      purchasedQty: Number(item.qty || 0),
+      remainingQty: Number(item.qty || 0),
+      unitExtraFeeHalala: resolved.unitExtraFeeHalala,
+      currency: item.currency || SYSTEM_CURRENCY,
+      purchasedAt: new Date(),
+    });
+  }
+  return rows;
 }
 
 function normalizeProteinIdForPremiumBalance(proteinId) {
@@ -97,13 +89,15 @@ function premiumBalanceRowsAreEquivalent(a, b) {
   return aa.every((v, i) => v === bb[i]);
 }
 
-function toPremiumBalanceRowsFromContractEntitlements(contractSnapshot, lang = "en") {
+async function toPremiumBalanceRowsFromContractEntitlements(contractSnapshot, lang = "en") {
   const snapshot = contractSnapshot && typeof contractSnapshot === "object" ? contractSnapshot : {};
   const ec = snapshot.entitlementContract && typeof snapshot.entitlementContract === "object"
     ? snapshot.entitlementContract
     : null;
   const items = ec && Array.isArray(ec.premiumItems) ? ec.premiumItems : [];
-  return items.map((item) => {
+
+  const rows = [];
+  for (const item of items) {
     const qty = Number(item && item.qty != null ? item.qty : 0);
     if (!Number.isInteger(qty) || qty < 1) {
       throw createLocalizedError({
@@ -112,17 +106,39 @@ function toPremiumBalanceRowsFromContractEntitlements(contractSnapshot, lang = "
         fallbackMessage: "Invalid premium entitlement quantity in contract",
       });
     }
-    const proteinId = normalizeProteinIdForPremiumBalance(item.proteinId);
-    const qtyNum = qty;
-    return {
-      proteinId,
-      purchasedQty: qtyNum,
-      remainingQty: qtyNum,
-      unitExtraFeeHalala: Number(item.unitExtraFeeHalala || 0),
+
+    let resolved;
+    try {
+      resolved = await resolveCanonicalPremiumIdentity({
+        proteinId: item.proteinId,
+        name: item.name,
+        premiumKey: item.premiumKey,
+      });
+    } catch (err) {
+      if (item.premiumKey && item.proteinId) {
+        resolved = {
+          premiumKey: item.premiumKey,
+          canonicalProteinId: item.proteinId,
+          name: item.name,
+          unitExtraFeeHalala: item.unitExtraFeeHalala || 0,
+        };
+      } else {
+        throw err;
+      }
+    }
+
+    rows.push({
+      proteinId: resolved.canonicalProteinId,
+      premiumKey: resolved.premiumKey,
+      name: resolved.name,
+      purchasedQty: qty,
+      remainingQty: qty,
+      unitExtraFeeHalala: resolved.unitExtraFeeHalala,
       currency: String(item.currency || SYSTEM_CURRENCY),
       purchasedAt: new Date(),
-    };
-  });
+    });
+  }
+  return rows;
 }
 
 function assertPremiumBalanceMatchesContractPricing(contractSnapshot, rows) {
@@ -159,13 +175,12 @@ function assertPremiumBalanceMatchesContractPricing(contractSnapshot, rows) {
   }
 }
 
-function resolveActivationPremiumBalanceRows(draft, contractSnapshot) {
-  const fromDraft = toCanonicalPremiumBalanceRows(draft);
-  const fromContract = toPremiumBalanceRowsFromContractEntitlements(contractSnapshot);
+async function resolveActivationPremiumBalanceRows(draft, contractSnapshot) {
+  const fromDraft = await toCanonicalPremiumBalanceRows(draft);
+  const fromContract = await toPremiumBalanceRowsFromContractEntitlements(contractSnapshot);
 
   const draftId = draft && draft._id ? String(draft._id) : "unknown";
 
-  // Prefer contract entitlements if available
   if (fromContract.length > 0) {
     logger.info("Activation: using premium balance from contract snapshot", {
       draftId,
@@ -184,7 +199,6 @@ function resolveActivationPremiumBalanceRows(draft, contractSnapshot) {
     return fromContract;
   }
 
-  // Contract is missing or empty: fall back to draft
   if (fromDraft.length > 0) {
     logger.info("Activation: using premium balance from draft.premiumItems (contract empty/missing)", {
       draftId,
@@ -196,7 +210,6 @@ function resolveActivationPremiumBalanceRows(draft, contractSnapshot) {
     return fromDraft;
   }
 
-  // Neither contract nor draft has premium items
   logger.info("Activation: no premium balance rows found in contract or draft", { draftId });
   return [];
 }
@@ -298,15 +311,15 @@ function buildCanonicalActivationPayload({ userId, planId, contractVersion, cont
   return { subscriptionPayload, dayEntries };
 }
 
-function buildCanonicalSubscriptionActivationPayload({ draft }) {
-  // Try to extract contract fields from snapshot if available, otherwise use draft values with defaults
+async function buildCanonicalSubscriptionActivationPayload({ draft }) {
   const snapshot = (draft.contractSnapshot && typeof draft.contractSnapshot === "object") ? draft.contractSnapshot : {};
   const snapshotContract = snapshot.contract && typeof snapshot.contract === "object" ? snapshot.contract : {};
+
+  const premiumBalanceRows = await resolveActivationPremiumBalanceRows(draft, draft.contractSnapshot);
 
   return buildCanonicalActivationPayload({
     userId: draft.userId,
     planId: draft.planId,
-    // Prefer snapshot contract fields, fallback to draft values, then to defaults
     contractVersion: draft.contractVersion || snapshotContract.contractVersion || PHASE1_CONTRACT_VERSION,
     contractMode: draft.contractMode || snapshotContract.contractMode || CONTRACT_MODES[0],
     contractCompleteness: draft.contractCompleteness || snapshotContract.contractCompleteness || CONTRACT_COMPLETENESS_VALUES[0],
@@ -315,7 +328,7 @@ function buildCanonicalSubscriptionActivationPayload({ draft }) {
     contractSnapshot: draft.contractSnapshot || null,
     renewedFromSubscriptionId: draft.renewedFromSubscriptionId || null,
     legacyRuntimeData: {
-      premiumBalance: resolveActivationPremiumBalanceRows(draft, draft.contractSnapshot),
+      premiumBalance: premiumBalanceRows,
       addonSubscriptions: Array.isArray(draft.addonSubscriptions) ? draft.addonSubscriptions : [],
       startDate: draft.startDate,
       daysCount: draft.daysCount,
@@ -379,7 +392,7 @@ async function activateSubscriptionFromCanonicalDraft({ draft, payment, session,
     throw err;
   }
 
-  const { subscriptionPayload, dayEntries } = buildCanonicalSubscriptionActivationPayload({ draft: draftDoc });
+  const { subscriptionPayload, dayEntries } = await buildCanonicalSubscriptionActivationPayload({ draft: draftDoc });
   const subscription = await persistActivatedSubscription({ subscriptionPayload, dayEntries, session, persistence });
 
   draftDoc.status = "completed";

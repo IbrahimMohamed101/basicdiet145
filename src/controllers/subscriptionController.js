@@ -1056,6 +1056,9 @@ async function checkoutSubscription(req, res, runtimeOverrides = null) {
     if (err.code === "INVALID_SELECTION") {
       return errorResponse(res, 400, "INVALID", err.message);
     }
+    if (err.code === "INVALID_PREMIUM_ITEM" || err.code === "UNKNOWN_PREMIUM_KEY") {
+      return errorResponse(res, 422, "INVALID_PREMIUM_ITEM", err.message);
+    }
     if (err.status === 409 && err.code === "IDEMPOTENCY_CONFLICT") {
       return errorResponse(res, 409, "IDEMPOTENCY_CONFLICT", err.message);
     }

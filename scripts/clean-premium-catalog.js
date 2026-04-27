@@ -373,6 +373,122 @@ async function backfillSubscriptionPremiumBalance() {
   return { totalUpdated, subscriptionsUpdated };
 }
 
+async function backfillContractSnapshotPremiumSelections() {
+  console.log('\n=== Step 4: Backfill Contract Snapshot Premium Selections ===\n');
+
+  const subscriptions = await Subscription.find({
+    contractSnapshot: { $exists: true, $ne: null },
+    $or: [
+      { 'contractSnapshot.premiumSelections.premiumKey': { $exists: false } },
+      { 'contractSnapshot.premiumSelections.premiumKey': null },
+      { 'contractSnapshot.entitlementContract.premiumItems.premiumKey': { $exists: false } },
+      { 'contractSnapshot.entitlementContract.premiumItems.premiumKey': null },
+    ],
+  }).lean();
+
+  console.log(`Found ${subscriptions.length} subscriptions with contract snapshots needing premiumKey backfill`);
+
+  let totalUpdated = 0;
+
+  for (const sub of subscriptions) {
+    const snapshot = sub.contractSnapshot || {};
+    const premiumSelections = snapshot.premiumSelections || [];
+    const entitlementContract = snapshot.entitlementContract || {};
+    const entitlementPremiumItems = entitlementContract.premiumItems || [];
+
+    let needsUpdate = false;
+    const newPremiumSelections = [];
+    const newEntitlementPremiumItems = [];
+
+    for (const item of premiumSelections) {
+      if (!item.premiumKey && item.proteinId) {
+        const resolved = await generatePremiumKeyFromProteinId(item.proteinId);
+        if (resolved) {
+          needsUpdate = true;
+          newPremiumSelections.push({
+            ...item,
+            premiumKey: resolved.premiumKey,
+            proteinId: resolved.canonicalProteinId,
+          });
+        } else {
+          newPremiumSelections.push(item);
+        }
+      } else {
+        newPremiumSelections.push(item);
+      }
+    }
+
+    for (const item of entitlementPremiumItems) {
+      if (!item.premiumKey && item.proteinId) {
+        const resolved = await generatePremiumKeyFromProteinId(item.proteinId);
+        if (resolved) {
+          needsUpdate = true;
+          newEntitlementPremiumItems.push({
+            ...item,
+            premiumKey: resolved.premiumKey,
+            proteinId: resolved.canonicalProteinId,
+          });
+        } else {
+          newEntitlementPremiumItems.push(item);
+        }
+      } else {
+        newEntitlementPremiumItems.push(item);
+      }
+    }
+
+    if (needsUpdate) {
+      await Subscription.updateOne(
+        { _id: sub._id },
+        {
+          $set: {
+            'contractSnapshot.premiumSelections': newPremiumSelections,
+            'contractSnapshot.entitlementContract.premiumItems': newEntitlementPremiumItems,
+          },
+        }
+      );
+      console.log(`  [UPDATED] subscription ${sub._id}: contractSnapshot premiumKey backfilled`);
+      totalUpdated++;
+    }
+  }
+
+  console.log(`\nUpdated contract snapshots for ${totalUpdated} subscriptions`);
+  return totalUpdated;
+}
+
+async function generatePremiumKeyFromProteinId(proteinId) {
+  if (!proteinId) return null;
+
+  const proteinDoc = await BuilderProtein.findById(proteinId).lean();
+  if (!proteinDoc) return null;
+
+  if (proteinDoc.premiumKey && CANONICAL_PREMIUM_KEYS.includes(proteinDoc.premiumKey)) {
+    const canonical = await BuilderProtein.findOne({
+      premiumKey: proteinDoc.premiumKey,
+      isPremium: true,
+      isActive: true,
+    }).lean();
+    return {
+      premiumKey: proteinDoc.premiumKey,
+      canonicalProteinId: canonical?._id || proteinId,
+    };
+  }
+
+  const inferredKey = generatePremiumKeyFromName(proteinDoc.name?.en || proteinDoc.name?.ar || '');
+  if (inferredKey && CANONICAL_PREMIUM_KEYS.includes(inferredKey)) {
+    const canonical = await BuilderProtein.findOne({
+      premiumKey: inferredKey,
+      isPremium: true,
+      isActive: true,
+    }).lean();
+    return {
+      premiumKey: inferredKey,
+      canonicalProteinId: canonical?._id || proteinId,
+    };
+  }
+
+  return null;
+}
+
 async function printSummary() {
   console.log('\n=== Summary ===\n');
 
@@ -400,6 +516,12 @@ async function printSummary() {
 
   console.log(`\nSubscriptions with premiumBalance: ${subsWithBalance}`);
   console.log(`Subscriptions with premiumKey set: ${subsWithPremiumKey}`);
+
+  const subsWithContractSnapshot = await Subscription.countDocuments({
+    contractSnapshot: { $exists: true, $ne: null },
+  });
+
+  console.log(`Subscriptions with contractSnapshot: ${subsWithContractSnapshot}`);
 }
 
 async function main() {
@@ -423,6 +545,7 @@ async function main() {
     await cleanDuplicatePremiumProteins();
     await ensureCanonicalProteinsExist();
     await backfillSubscriptionPremiumBalance();
+    await backfillContractSnapshotPremiumSelections();
     await printSummary();
 
     console.log('\n=== Cleanup Complete ===\n');

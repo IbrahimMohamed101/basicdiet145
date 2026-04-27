@@ -399,6 +399,40 @@ async function runTests() {
     assertTrue(!!salad, 'customPremiumSalad present');
     assertEqual(salad?.extraFeeHalala, CUSTOM_PREMIUM_SALAD_FIXED_PRICE, 'fixed price');
   });
+
+  console.log('\n--- A2) Builder Premium Meals ---\n');
+  await test('GET /api/builder/premium-meals returns 4 items', async () => {
+    const res = await makeRequest('GET', '/api/builder/premium-meals');
+    assertEqual(res.status, 200, 'status');
+    assertTrue(res.body.ok !== false, 'ok');
+    assertArray(res.body.data, 'data is array');
+    assertEqual(res.body.data.length, 4, 'returns 4 items');
+  });
+
+  await test('premium-meals includes shrimp, beef_steak, salmon, custom_premium_salad', async () => {
+    const res = await makeRequest('GET', '/api/builder/premium-meals');
+    const items = res.body.data || [];
+    const hasSalmon = items.some(i => (i.name || '').toLowerCase().includes('salmon'));
+    const hasShrimp = items.some(i => (i.name || '').toLowerCase().includes('shrimp'));
+    const hasBeef = items.some(i => (i.name || '').toLowerCase().includes('beef') || (i.name || '').toLowerCase().includes('steak'));
+    const hasCustomSalad = items.some(i => i.id === 'custom_premium_salad');
+    assertTrue(hasShrimp, 'shrimp present');
+    assertTrue(hasBeef, 'beef_steak present');
+    assertTrue(hasSalmon, 'salmon present');
+    assertTrue(hasCustomSalad, 'custom_premium_salad present');
+  });
+
+  await test('custom_premium_salad has correct shape in premium-meals', async () => {
+    const res = await makeRequest('GET', '/api/builder/premium-meals');
+    const items = res.body.data || [];
+    const salad = items.find(i => i.premiumKey === 'custom_premium_salad' || i.id === 'custom_premium_salad');
+    assertTrue(!!salad, 'custom_premium_salad found');
+    assertEqual(salad.premiumKey, 'custom_premium_salad', 'premiumKey');
+    assertEqual(salad.selectionType, 'custom_premium_salad', 'selectionType');
+    assertEqual(salad.type, 'custom_premium_salad', 'type');
+    assertEqual(salad.extraFeeHalala, 3000, 'extraFeeHalala');
+    assertEqual(salad.ui.selectionStyle, 'builder', 'selectionStyle');
+  });
   
   console.log('\n--- B) Day Load ---\n');
   await test('GET /days/:date returns 404 before save (day not created yet)', async () => {

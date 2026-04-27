@@ -15,6 +15,46 @@ const SYSTEM_CURRENCY = "SAR";
 const PREMIUM_MEAL_IMAGE_FOLDER = "premium-meals";
 const ALLOWED_PROTEIN_FAMILIES = new Set(["chicken", "beef", "seafood", "other"]);
 
+const CUSTOM_PREMIUM_SALAD_KEY = "custom_premium_salad";
+const CUSTOM_PREMIUM_SALAD_PRICE_HALALA = 3000;
+const PREMIUM_PROTEIN_SELECTION_TYPE = "premium_protein";
+const PREMIUM_PROTEIN_TYPE = "premium_protein";
+
+function buildCustomPremiumSaladEntry(lang) {
+  const names = {
+    ar: "سلطة مميزة",
+    en: "Custom Premium Salad",
+  };
+  const descriptions = {
+    ar: "سلطة كبيرة مع بروتين",
+    en: "Large salad with protein",
+  };
+  const name = names[lang] || names.en;
+  const description = descriptions[lang] || descriptions.en;
+
+  return {
+    id: CUSTOM_PREMIUM_SALAD_KEY,
+    premiumKey: CUSTOM_PREMIUM_SALAD_KEY,
+    selectionType: CUSTOM_PREMIUM_SALAD_KEY,
+    type: CUSTOM_PREMIUM_SALAD_KEY,
+    name,
+    description,
+    imageUrl: "",
+    currency: "SAR",
+    extraFeeHalala: CUSTOM_PREMIUM_SALAD_PRICE_HALALA,
+    extraFeeSar: 30,
+    priceHalala: CUSTOM_PREMIUM_SALAD_PRICE_HALALA,
+    priceSar: 30,
+    priceLabel: "30 SAR",
+    ui: {
+      title: name,
+      subtitle: description,
+      ctaLabel: lang === "ar" ? "اصنع" : "Build",
+      selectionStyle: "builder",
+    },
+  };
+}
+
 function mapBuilderProteinToPremiumMealEntry(row, lang) {
   const nutrition = row && row.nutrition && typeof row.nutrition === "object" ? row.nutrition : {};
   return resolvePremiumMealCatalogEntry({
@@ -27,6 +67,7 @@ function mapBuilderProteinToPremiumMealEntry(row, lang) {
     proteinGrams: Number(nutrition.proteinGrams || 0),
     carbGrams: Number(nutrition.carbGrams || 0),
     fatGrams: Number(nutrition.fatGrams || 0),
+    premiumKey: row.premiumKey || null,
   }, lang);
 }
 
@@ -222,7 +263,11 @@ async function listBuilderPremiumMeals(req, res) {
     .sort({ sortOrder: 1, createdAt: -1 })
     .lean();
   const mapped = rows.map((row) => mapBuilderProteinToPremiumMealEntry(row, lang));
-  return res.status(200).json({ ok: true, data: mapped });
+  
+  const customSaladEntry = buildCustomPremiumSaladEntry(lang);
+  const allEntries = [...mapped, customSaladEntry];
+  
+  return res.status(200).json({ ok: true, data: allEntries });
 }
 
 async function listBuilderPremiumMealsAdmin(_req, res) {

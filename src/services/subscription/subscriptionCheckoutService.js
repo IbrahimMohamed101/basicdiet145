@@ -38,14 +38,21 @@ const { resolveReadLabel } = require("../../utils/subscription/subscriptionReadL
 
 /**
  * Normalise a single raw premiumItem into a canonical shape.
+ * Uses canonicalProteinId from resolvedQuote if available, falls back to proteinId.
+ * Preserves premiumKey from resolvedQuote, falls back to protein.premiumKey or item.premiumKey.
  */
 function normalizePremiumItem(item) {
   const proteinId = item.protein && item.protein._id ? item.protein._id : item.proteinId;
   const qty = Number(item.qty || 0);
-  
+
   let premiumKey = item.premiumKey || null;
   if (!premiumKey && item.protein && item.protein.premiumKey) {
     premiumKey = item.protein.premiumKey;
+  }
+
+  let canonicalProteinId = item.canonicalProteinId || null;
+  if (!canonicalProteinId && premiumKey) {
+    canonicalProteinId = proteinId;
   }
 
   let unitExtraFeeHalala = 0;
@@ -55,12 +62,16 @@ function normalizePremiumItem(item) {
     unitExtraFeeHalala = item.protein.extraFeeHalala;
   }
 
+  const name = item.name || (item.protein && (item.protein.name?.en || item.protein.name?.ar)) || null;
+
   return {
-    proteinId,
+    proteinId: canonicalProteinId || proteinId,
     qty,
     unitExtraFeeHalala,
     currency: SYSTEM_CURRENCY,
     premiumKey,
+    name,
+    originalProteinId: proteinId,
   };
 }
 
