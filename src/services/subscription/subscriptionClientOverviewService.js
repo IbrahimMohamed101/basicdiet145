@@ -87,6 +87,37 @@ function normalizePremiumName(value) {
   return value.toLowerCase().trim().replace(/\s+/g, " ");
 }
 
+const PREMIUM_KEY_NAME_MAP = {
+  shrimp: ["جمبري", "shrimp", "gambari", "جمبرى", "جمبرى"],
+  beef_steak: ["ستيك لحم", "beef steak", "steak", "beefsteak", "لحم"],
+  salmon: ["سالمون", "salmon", "سمك سالمون", "سلمون"],
+};
+
+function resolvePremiumKeyFromName(name) {
+  if (!name || typeof name !== "string") return null;
+  const normalized = normalizePremiumName(name);
+
+  for (const [key, aliases] of Object.entries(PREMIUM_KEY_NAME_MAP)) {
+    for (const alias of aliases) {
+      if (normalized.includes(alias) || alias.includes(normalized)) {
+        return key;
+      }
+    }
+  }
+
+  if (normalized.includes("جمبرى") || normalized.includes("shrimp") || normalized.includes("gambari")) {
+    return "shrimp";
+  }
+  if (normalized.includes("ستيك") || normalized.includes("steak") || normalized.includes("beef")) {
+    return "beef_steak";
+  }
+  if (normalized.includes("سالمون") || normalized.includes("salmon") || normalized.includes("سلمون")) {
+    return "salmon";
+  }
+
+  return null;
+}
+
 const CUSTOM_PREMIUM_SALAD_KEY = "custom_premium_salad";
 
 const CANONICAL_PREMIUM_KEYS = ["shrimp", "beef_steak", "salmon", "custom_premium_salad"];
@@ -156,7 +187,7 @@ function findMatchingCatalogItem(balanceRow, premiumCatalog) {
   const { byId, byPremiumKey } = premiumCatalog;
   const balanceProteinId = String(balanceRow.proteinId);
 
-  if (balanceRow.premiumKey) {
+  if (balanceRow.premiumKey && CANONICAL_PREMIUM_KEYS.includes(balanceRow.premiumKey)) {
     const keyMatch = byPremiumKey.get(balanceRow.premiumKey);
     if (keyMatch) {
       return { match: keyMatch, matchType: "premiumKey" };
@@ -171,48 +202,61 @@ function findMatchingCatalogItem(balanceRow, premiumCatalog) {
   return { match: null, matchType: null };
 }
 
+function resolvePremiumKeyFromRow(balanceRow, premiumCatalog) {
+  if (balanceRow.premiumKey && CANONICAL_PREMIUM_KEYS.includes(balanceRow.premiumKey)) {
+    return balanceRow.premiumKey;
+  }
+
+  const matchResult = findMatchingCatalogItem(balanceRow, premiumCatalog);
+  if (matchResult.match && matchResult.match.premiumKey) {
+    return matchResult.match.premiumKey;
+  }
+
+  const name = balanceRow.name || balanceRow.name_ar || "";
+  if (name) {
+    const resolved = resolvePremiumKeyFromName(name);
+    if (resolved && CANONICAL_PREMIUM_KEYS.includes(resolved)) {
+      return resolved;
+    }
+  }
+
+  return null;
+}
+
 function buildSubscriptionPremiumBalanceSummary(subscription, premiumCatalog, lang) {
   if (!premiumCatalog || !premiumCatalog.allItems) {
     return [];
   }
 
-  const { byId, allItems } = premiumCatalog;
+  const { byId, byPremiumKey, allItems } = premiumCatalog;
   const premiumBalance = Array.isArray(subscription && subscription.premiumBalance)
     ? subscription.premiumBalance
     : [];
 
-  const mergedByCatalogId = new Map();
-  const balanceOnlyItems = [];
+  const mergedByPremiumKey = new Map();
 
   for (const row of premiumBalance) {
     if (!row || !row.proteinId) continue;
 
-    const balanceProteinId = String(row.proteinId);
     const purchasedQty = Number(row.purchasedQty || 0);
     const remainingQty = Number(row.remainingQty || 0);
 
-    const matchResult = findMatchingCatalogItem(row, premiumCatalog);
+    const resolvedKey = resolvePremiumKeyFromRow(row, premiumCatalog);
 
-    if (matchResult.match) {
-      const matchedCatalogId = matchResult.match.id;
-      const existing = mergedByCatalogId.get(matchedCatalogId) || {
+    if (resolvedKey) {
+      const existing = mergedByPremiumKey.get(resolvedKey) || {
+        premiumKey: resolvedKey,
+        premiumMealId: resolvedKey,
+        name: row.name || resolvedKey,
         purchasedQtyTotal: 0,
         remainingQtyTotal: 0,
-        premiumMealId: matchedCatalogId,
-        name: matchResult.match.name,
       };
       existing.purchasedQtyTotal += purchasedQty;
       existing.remainingQtyTotal += remainingQty;
-      mergedByCatalogId.set(matchedCatalogId, existing);
-    } else if (row.premiumKey && CANONICAL_PREMIUM_KEYS.includes(row.premiumKey)) {
-      balanceOnlyItems.push({
-        premiumMealId: row.premiumKey,
-        premiumKey: row.premiumKey,
-        name: row.name || row.premiumKey,
-        purchasedQtyTotal: purchasedQty,
-        remainingQtyTotal: remainingQty,
-        consumedQtyTotal: purchasedQty - remainingQty,
-      });
+      if (row.name && !existing.name) {
+        existing.name = row.name;
+      }
+      mergedByPremiumKey.set(resolvedKey, existing);
     }
   }
 
@@ -223,21 +267,24 @@ function buildSubscriptionPremiumBalanceSummary(subscription, premiumCatalog, la
 
   for (const catalogItem of allItems) {
     const catalogId = catalogItem.id;
+    const catalogKey = catalogItem.premiumKey;
 
-    if (mergedByCatalogId.has(catalogId)) {
-      const mergedData = mergedByCatalogId.get(catalogId);
+    if (!catalogKey || !CANONICAL_PREMIUM_KEYS.includes(catalogKey)) {
+      continue;
+    }
+
+    if (mergedByPremiumKey.has(catalogKey)) {
+      const mergedData = mergedByPremiumKey.get(catalogKey);
       result.push({
         premiumMealId: mergedData.premiumMealId,
-        premiumKey: catalogItem.premiumKey || null,
-        name: catalogItem.name,
+        premiumKey: catalogKey,
+        name: catalogItem.name || mergedData.name,
         purchasedQtyTotal: mergedData.purchasedQtyTotal,
         remainingQtyTotal: mergedData.remainingQtyTotal,
         consumedQtyTotal: mergedData.purchasedQtyTotal - mergedData.remainingQtyTotal,
       });
       existingPremiumMealIds.add(mergedData.premiumMealId);
-      if (catalogItem.premiumKey) {
-        existingPremiumKeys.add(catalogItem.premiumKey);
-      }
+      existingPremiumKeys.add(catalogKey);
       const normalizedName = normalizePremiumName(catalogItem.name);
       if (normalizedName) {
         existingNormalizedNames.add(normalizedName);
@@ -245,16 +292,14 @@ function buildSubscriptionPremiumBalanceSummary(subscription, premiumCatalog, la
     } else {
       result.push({
         premiumMealId: catalogId,
-        premiumKey: catalogItem.premiumKey || null,
+        premiumKey: catalogKey,
         name: catalogItem.name,
         purchasedQtyTotal: 0,
         remainingQtyTotal: 0,
         consumedQtyTotal: 0,
       });
       existingPremiumMealIds.add(catalogId);
-      if (catalogItem.premiumKey) {
-        existingPremiumKeys.add(catalogItem.premiumKey);
-      }
+      existingPremiumKeys.add(catalogKey);
       const normalizedName = normalizePremiumName(catalogItem.name);
       if (normalizedName) {
         existingNormalizedNames.add(normalizedName);
@@ -262,39 +307,33 @@ function buildSubscriptionPremiumBalanceSummary(subscription, premiumCatalog, la
     }
   }
 
-  for (const balanceOnly of balanceOnlyItems) {
-    if (!balanceOnly.premiumKey) {
+  for (const [key, data] of mergedByPremiumKey) {
+    if (existingPremiumKeys.has(key)) {
       continue;
     }
-    if (!CANONICAL_PREMIUM_KEYS.includes(balanceOnly.premiumKey)) {
+    if (!CANONICAL_PREMIUM_KEYS.includes(key)) {
       continue;
     }
-    if (balanceOnly.premiumKey && existingPremiumKeys.has(balanceOnly.premiumKey)) {
-      continue;
-    }
-    if (existingPremiumMealIds.has(balanceOnly.premiumMealId)) {
-      continue;
-    }
-    const balanceNormalizedName = normalizePremiumName(balanceOnly.name);
-    if (balanceNormalizedName && existingNormalizedNames.has(balanceNormalizedName)) {
+
+    const catalogItem = byPremiumKey.get(key);
+    if (catalogItem) {
       continue;
     }
 
     result.push({
-      premiumMealId: balanceOnly.premiumMealId,
-      premiumKey: balanceOnly.premiumKey,
-      name: balanceOnly.name,
-      purchasedQtyTotal: balanceOnly.purchasedQtyTotal,
-      remainingQtyTotal: balanceOnly.remainingQtyTotal,
-      consumedQtyTotal: balanceOnly.consumedQtyTotal,
+      premiumMealId: data.premiumMealId,
+      premiumKey: key,
+      name: data.name,
+      purchasedQtyTotal: data.purchasedQtyTotal,
+      remainingQtyTotal: data.remainingQtyTotal,
+      consumedQtyTotal: data.purchasedQtyTotal - data.remainingQtyTotal,
     });
 
-    if (balanceOnly.premiumKey) {
-      existingPremiumKeys.add(balanceOnly.premiumKey);
-    }
-    existingPremiumMealIds.add(balanceOnly.premiumMealId);
-    if (balanceNormalizedName) {
-      existingNormalizedNames.add(balanceNormalizedName);
+    existingPremiumKeys.add(key);
+    existingPremiumMealIds.add(data.premiumMealId);
+    const normalizedName = normalizePremiumName(data.name);
+    if (normalizedName) {
+      existingNormalizedNames.add(normalizedName);
     }
   }
 

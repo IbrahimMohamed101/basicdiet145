@@ -17,7 +17,12 @@ require('dotenv').config();
 const mongoose = require('mongoose');
 const BuilderProtein = require('../src/models/BuilderProtein');
 const Subscription = require('../src/models/Subscription');
-require('../src/db');
+
+const mongoUri = process.env.MONGO_URI || process.env.MONGODB_URI;
+if (!mongoUri) {
+  console.error('\n❌ ERROR: MONGO_URI or MONGODB_URI environment variable is required\n');
+  process.exit(1);
+}
 
 const CANONICAL_PREMIUM_KEYS = ['shrimp', 'beef_steak', 'salmon', 'custom_premium_salad'];
 
@@ -411,16 +416,23 @@ async function main() {
     console.log('CLEAN PREMIUM CATALOG');
     console.log('==========================================\n');
 
+    console.log('Connecting to database...');
+    await mongoose.connect(mongoUri);
+    console.log('Connected to database');
+
     await cleanDuplicatePremiumProteins();
     await ensureCanonicalProteinsExist();
     await backfillSubscriptionPremiumBalance();
     await printSummary();
 
     console.log('\n=== Cleanup Complete ===\n');
+    await mongoose.disconnect();
+    console.log('Disconnected from database');
     process.exit(0);
   } catch (err) {
     console.error('\n❌ Cleanup failed:', err.message);
     console.error(err.stack);
+    await mongoose.disconnect().catch(() => {});
     process.exit(1);
   }
 }
