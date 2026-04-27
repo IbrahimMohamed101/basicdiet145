@@ -488,6 +488,56 @@ async function runTests() {
     const uniqueKeys = new Set(keys);
     assertEqual(keys.length, uniqueKeys.size, 'no duplicates');
   });
+
+  await test('premiumSummary has no premiumKey null rows', async () => {
+    const res = await makeRequest('GET', '/api/subscriptions/current/overview');
+    const summary = res.body.data.premiumSummary || [];
+    const nullKeys = summary.filter(p => p.premiumKey === null || p.premiumKey === undefined || p.premiumKey === '');
+    assertEqual(nullKeys.length, 0, 'no null premiumKey rows');
+  });
+
+  await test('premiumSummary contains exactly canonical keys', async () => {
+    const res = await makeRequest('GET', '/api/subscriptions/current/overview');
+    const summary = res.body.data.premiumSummary || [];
+    const keys = summary.map(p => p.premiumKey).filter(Boolean);
+    const hasShrimp = keys.includes('shrimp');
+    const hasBeefSteak = keys.includes('beef_steak');
+    const hasSalmon = keys.includes('salmon');
+    const hasCustomSalad = keys.includes('custom_premium_salad');
+    assertTrue(hasShrimp, 'shrimp present');
+    assertTrue(hasBeefSteak, 'beef_steak present');
+    assertTrue(hasSalmon, 'salmon present');
+    assertTrue(hasCustomSalad, 'custom_premium_salad present');
+    assertEqual(keys.length, 4, 'exactly 4 canonical premium items');
+  });
+
+  await test('premiumSummary preserves shrimp balance', async () => {
+    const res = await makeRequest('GET', '/api/subscriptions/current/overview');
+    const summary = res.body.data.premiumSummary || [];
+    const shrimp = summary.find(p => p.premiumKey === 'shrimp');
+    assertTrue(!!shrimp, 'shrimp in summary');
+    assertEqual(shrimp?.purchasedQtyTotal, 2, 'shrimp purchasedQtyTotal 2');
+    assertTrue(shrimp?.remainingQtyTotal >= 0, 'shrimp remainingQtyTotal >= 0');
+  });
+
+  await test('premiumSummary preserves beef steak balance', async () => {
+    const res = await makeRequest('GET', '/api/subscriptions/current/overview');
+    const summary = res.body.data.premiumSummary || [];
+    const beefSteak = summary.find(p => p.premiumKey === 'beef_steak');
+    assertTrue(!!beefSteak, 'beef_steak in summary');
+    assertEqual(beefSteak?.purchasedQtyTotal, 1, 'beef_steak purchasedQtyTotal 1');
+    assertEqual(beefSteak?.remainingQtyTotal, 1, 'beef_steak remainingQtyTotal 1');
+  });
+
+  await test('premiumSummary salmon has correct balance', async () => {
+    const res = await makeRequest('GET', '/api/subscriptions/current/overview');
+    const summary = res.body.data.premiumSummary || [];
+    const salmon = summary.find(p => p.premiumKey === 'salmon');
+    assertTrue(!!salmon, 'salmon in summary');
+    assertEqual(salmon?.purchasedQtyTotal, 1, 'salmon purchasedQtyTotal 1');
+    assertEqual(salmon?.remainingQtyTotal, 0, 'salmon remainingQtyTotal 0');
+    assertEqual(salmon?.consumedQtyTotal, 1, 'salmon consumedQtyTotal 1');
+  });
   
   await test('premiumSummary contains custom_premium_salad', async () => {
     const res = await makeRequest('GET', '/api/subscriptions/current/overview');

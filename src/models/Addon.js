@@ -71,4 +71,14 @@ AddonSchema.pre("validate", function syncBillingModeAndKind(next) {
   next();
 });
 
+AddonSchema.index(
+  { kind: 1, category: 1, isActive: 1 },
+  { name: "kind_1_category_1_isActive_1" }
+);
+
+AddonSchema.index(
+  { isActive: 1, sortOrder: 1 },
+  { name: "isActive_1_sortOrder_1" }
+);
+
 module.exports = mongoose.model("Addon", AddonSchema);

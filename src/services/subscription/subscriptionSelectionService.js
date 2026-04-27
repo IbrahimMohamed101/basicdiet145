@@ -102,6 +102,109 @@ async function reconcileAddonInclusions(subscription, day, requestedAddonIds = [
   day.addonSelections = newSelections;
 }
 
+async function consumePremiumBalanceAtomically({ subscription, dayId, date, premiumKey, proteinId, unitExtraFeeHalala = 3000, session }) {
+  if (!session) {
+    throw new Error("consumePremiumBalanceAtomically requires a session");
+  }
+
+  if (!subscription || !Array.isArray(subscription.premiumBalance)) {
+    return { consumed: false, reason: "no_balance_array", premiumSource: "pending_payment", premiumExtraFeeHalala: unitExtraFeeHalala };
+  }
+
+  const matchKey = premiumKey || null;
+  const matchId = proteinId ? String(proteinId) : null;
+
+  let bucketIndex = -1;
+  if (matchKey) {
+    bucketIndex = subscription.premiumBalance.findIndex(
+      (b) => b.premiumKey === matchKey && Number(b.remainingQty || 0) > 0
+    );
+  }
+
+  if (bucketIndex < 0 && matchId) {
+    bucketIndex = subscription.premiumBalance.findIndex(
+      (b) => String(b.proteinId) === matchId && Number(b.remainingQty || 0) > 0
+    );
+  }
+
+  if (bucketIndex < 0) {
+    return { consumed: false, reason: "no_remaining_balance", premiumSource: "pending_payment", premiumExtraFeeHalala: unitExtraFeeHalala };
+  }
+
+  const bucket = subscription.premiumBalance[bucketIndex];
+  const bucketId = subscription._id;
+
+  const atomicResult = await Subscription.findOneAndUpdate(
+    {
+      _id: bucketId,
+      "premiumBalance._id": bucket._id,
+      "premiumBalance.remainingQty": { $gt: 0 },
+    },
+    {
+      $inc: { "premiumBalance.$.remainingQty": -1 },
+    },
+    { session, new: true }
+  );
+
+  if (!atomicResult) {
+    return { consumed: false, reason: "atomic_failed", premiumSource: "pending_payment", premiumExtraFeeHalala: unitExtraFeeHalala };
+  }
+
+  return {
+    consumed: true,
+    remainingQty: atomicResult.premiumBalance[bucketIndex]?.remainingQty || 0,
+    premiumSource: "balance",
+    premiumKey: bucket.premiumKey,
+    proteinId: bucket.proteinId,
+  };
+}
+
+async function releasePremiumBalanceAtomically({ subscription, dayId, date, premiumKey, proteinId, session }) {
+  if (!session) {
+    throw new Error("releasePremiumBalanceAtomically requires a session");
+  }
+
+  if (!subscription || !Array.isArray(subscription.premiumBalance)) {
+    return { released: false, reason: "no_balance_array" };
+  }
+
+  const matchKey = premiumKey || null;
+  const matchId = proteinId ? String(proteinId) : null;
+
+  let bucketIndex = -1;
+  if (matchKey) {
+    bucketIndex = subscription.premiumBalance.findIndex((b) => b.premiumKey === matchKey);
+  }
+
+  if (bucketIndex < 0 && matchId) {
+    bucketIndex = subscription.premiumBalance.findIndex((b) => String(b.proteinId) === matchId);
+  }
+
+  if (bucketIndex < 0) {
+    return { released: false, reason: "bucket_not_found" };
+  }
+
+  const bucket = subscription.premiumBalance[bucketIndex];
+  const bucketId = subscription._id;
+
+  const atomicResult = await Subscription.findOneAndUpdate(
+    {
+      _id: bucketId,
+      "premiumBalance._id": bucket._id,
+    },
+    {
+      $inc: { "premiumBalance.$.remainingQty": 1 },
+    },
+    { session, new: true }
+  );
+
+  if (!atomicResult) {
+    return { released: false, reason: "atomic_failed" };
+  }
+
+  return { released: true, remainingQty: atomicResult.premiumBalance[bucketIndex]?.remainingQty || 0 };
+}
+
 function reconcilePremiumBalanceForDay(subscription, existingDay, newPremiumUpgradeSelections, { dayId, date } = {}) {
   if (!subscription || !Array.isArray(subscription.premiumBalance)) return;
 
@@ -349,8 +452,71 @@ async function performDaySelectionUpdate({ userId, subscriptionId, date, selecti
       now: new Date(),
     });
 
-    // reconcileAddonInclusions already updated day.addonSelections
-    reconcilePremiumBalanceForDay(subInSession, existingDay, draft.premiumUpgradeSelections, { dayId: day._id, date });
+    // ATOMIC premium balance consumption - replaces reconcilePremiumBalanceForDay
+    const processedPremiumSelections = [];
+    if (Array.isArray(draft.premiumUpgradeSelections)) {
+      for (const sel of draft.premiumUpgradeSelections) {
+        if (sel.isPremium === true || (sel.premiumSource && sel.premiumSource !== "none")) {
+          const balanceResult = await consumePremiumBalanceAtomically({
+            subscription: subInSession,
+            dayId: day._id,
+            date,
+            premiumKey: sel.premiumKey || null,
+            proteinId: sel.proteinId,
+            unitExtraFeeHalala: sel.unitExtraFeeHalala || 3000,
+            session,
+          });
+
+          if (balanceResult.consumed) {
+            processedPremiumSelections.push({
+              baseSlotKey: sel.baseSlotKey,
+              proteinId: sel.proteinId,
+              premiumSource: "balance",
+              unitExtraFeeHalala: sel.unitExtraFeeHalala || 3000,
+              date,
+              dayId: day._id,
+            });
+          } else {
+            processedPremiumSelections.push({
+              baseSlotKey: sel.baseSlotKey,
+              proteinId: sel.proteinId,
+              premiumSource: "pending_payment",
+              unitExtraFeeHalala: balanceResult.premiumExtraFeeHalala || 3000,
+              currency: "SAR",
+              date,
+              dayId: day._id,
+            });
+          }
+        } else {
+          processedPremiumSelections.push(sel);
+        }
+      }
+
+      // Update day.premiumUpgradeSelections with processed selections
+      day.premiumUpgradeSelections = processedPremiumSelections;
+      update.premiumUpgradeSelections = processedPremiumSelections;
+    }
+
+    // Also process any changes - restore balance for slots that were using balance but no longer are
+    if (existingDay && Array.isArray(existingDay.premiumUpgradeSelections)) {
+      const existingBalanceSelections = existingDay.premiumUpgradeSelections.filter(
+        (s) => s.premiumSource === "balance"
+      );
+      const newBaseSlotKeys = new Set(processedPremiumSelections.map((s) => s.baseSlotKey));
+
+      for (const sel of existingBalanceSelections) {
+        if (!newBaseSlotKeys.has(sel.baseSlotKey)) {
+          await releasePremiumBalanceAtomically({
+            subscription: subInSession,
+            dayId: day._id,
+            date,
+            premiumKey: sel.premiumKey || null,
+            proteinId: sel.proteinId,
+            session,
+          });
+        }
+      }
+    }
 
     await subInSession.save({ session });
     await day.save({ session });
@@ -434,6 +600,10 @@ async function performDayPlanningConfirmation({ userId, subscriptionId, date, ru
     if (!day) throw { status: 404, code: "NOT_FOUND", message: "Day not found" };
     if (day.status !== "open") throw { status: 409, code: "LOCKED", message: "Day is locked" };
 
+    if (day.plannerState === "confirmed" || day.planningState === "confirmed") {
+      throw { status: 409, code: "DAY_ALREADY_CONFIRMED", message: "Day is already confirmed" };
+    }
+
     const requiredSlotCount = resolveMealsPerDay(subInSession);
     const { plannerMeta, slotErrors } = recomputePlannerMetaFromSlots({ mealSlots: day.mealSlots, requiredSlotCount });
     if (slotErrors.length > 0) {
@@ -475,7 +645,7 @@ async function performDayPlanningConfirmation({ userId, subscriptionId, date, ru
       ),
       selectedPremiumMealCount: Number(day.plannerMeta.premiumSlotCount || 0),
       selectedTotalMealCount: Number(day.plannerMeta.completeSlotCount || 0),
-      isExactCountSatisfied: Boolean(day.plannerMeta.isDraftValid),
+      isExactSatisfied: Boolean(day.plannerMeta.isDraftValid),
       lastEditedAt:
         (day.planningMeta && day.planningMeta.lastEditedAt)
         || (day.planningMeta && day.planningMeta.confirmedAt)
@@ -499,10 +669,39 @@ async function performDayPlanningConfirmation({ userId, subscriptionId, date, ru
       runtime.assertNoPendingOneTimeAddonPayment({ day });
     }
 
-    await day.save({ session });
+    const confirmUpdateResult = await SubscriptionDay.findOneAndUpdate(
+      {
+        _id: day._id,
+        status: "open",
+        $or: [
+          { plannerState: { $ne: "confirmed" } },
+          { plannerState: { $exists: false } },
+        ],
+      },
+      {
+        $set: {
+          plannerState: "confirmed",
+          planningState: "confirmed",
+          plannerMeta: day.plannerMeta,
+          planningMeta: day.planningMeta,
+          materializedMeals: day.materializedMeals,
+          selections: day.selections,
+          premiumUpgradeSelections: day.premiumUpgradeSelections,
+          baseMealSlots: day.baseMealSlots,
+          plannerRevisionHash: day.plannerRevisionHash,
+          premiumExtraPayment: day.premiumExtraPayment,
+        },
+      },
+      { session, new: true }
+    );
+
+    if (!confirmUpdateResult) {
+      throw { status: 409, code: "DAY_ALREADY_CONFIRMED", message: "Day was already confirmed by another request" };
+    }
+
     await session.commitTransaction();
     session.endSession();
-    return { subscription: subInSession, day };
+    return { subscription: subInSession, day: confirmUpdateResult };
   } catch (err) {
     if (session.inTransaction()) await session.abortTransaction();
     session.endSession();
@@ -811,6 +1010,8 @@ async function performRemoveAddonSelection({ userId, subscriptionId, dayId, date
 }
 
 module.exports = {
+  consumePremiumBalanceAtomically,
+  releasePremiumBalanceAtomically,
   performConsumePremiumSelection,
   performRemovePremiumSelection,
   performDaySelectionUpdate,

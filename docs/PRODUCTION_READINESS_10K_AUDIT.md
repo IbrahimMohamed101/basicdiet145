@@ -1,16 +1,93 @@
 # Production Readiness Audit for 10K Users
 
+## Production Readiness Progress Tracker
+
+| Item | Status | Date | Notes |
+|------|--------|------|-------|
+| Payment operationIdempotencyKey index | Done | 2026-04-27 | Added unique partial/sparse index in schema |
+| User email unique index | Done | 2026-04-27 | Added unique partial/sparse index in schema |
+| Addon catalog indexes | Done | 2026-04-27 | Added kind/category/isActive and sortOrder indexes in schema |
+| Day confirm atomic guard | Done | 2026-04-27 | Added findOneAndUpdate with status filter + duplicate check |
+| Dev activation route guard | Done | 2026-04-27 | Requires explicit ENABLE_DEV_SUBSCRIPTION_ACTIVATION env var |
+| Premium balance atomic decrement | Done | 2026-04-27 | Added atomic consumePremiumBalanceAtomically and releasePremiumBalanceAtomically functions |
+| Premium catalog canonical cleanup | Done | 2026-04-27 | Removed/deactivated premiumKey-null legacy duplicates and backfilled premiumBalance premiumKey |
+| Caching hot endpoints | Pending | - | Not implemented yet |
+| Query projections / payload slimming | Pending | - | Not implemented yet |
+| Background job batching | Pending | - | Not implemented yet |
+| Observability/requestId | Pending | - | Not implemented yet |
+| Graceful shutdown/server timeouts | Pending | - | Not implemented yet |
+
+---
+
 ## Executive Summary
 
-Top 5 risks identified:
+Top 5 risks identified (updated after fixes):
 
 | # | Risk | Severity | Impact |
 |---|------|----------|--------|
-| 1 | Missing operationIdempotencyKey index on Payment | P0 | Double payment deduction at scale |
-| 2 | User.phone unique index only - email validation gaps | P0 | Duplicate user creation possible |
+| 1 | ~~Missing operationIdempotencyKey index on Payment~~ | **FIXED** | Index added to Payment model |
+| 2 | ~~User.phone unique only - email validation gaps~~ | **FIXED** | Email unique index added |
 | 3 | No caching on hot endpoints | P1 | Response latency spikes at 10k users |
-| 4 | Missing Addon catalog indexes (kind, category) | P1 | Slow addon listing queries |
-| 5 | NODE_ENV activation bypass in dev routes | P0 | Dev code in production risk |
+| 4 | ~~Missing Addon catalog indexes~~ | **FIXED** | Added kind/category/isActive and sortOrder indexes |
+| 5 | ~~NODE_ENV activation bypass~~ | **FIXED** | Now requires explicit ENABLE_DEV_SUBSCRIPTION_ACTIVATION |
+
+---
+
+## Latest Implemented Fixes
+
+### 2026-04-27: Premium Catalog Canonical Cleanup
+
+**What was changed:**
+- Created `scripts/clean-premium-catalog.js` to clean duplicate premium proteins
+- Updated `loadPremiumCatalogForOverview` to filter out premiumKey null/missing rows
+- Updated `buildSubscriptionPremiumBalanceSummary` to only include canonical premium keys
+- Added new integration tests for premiumSummary deduplication validation
+
+**Why it matters:**
+- Removes duplicate legacy premium proteins with premiumKey null
+- Ensures exactly one shrimp/beef_steak/salmon/custom_premium_salad in premiumSummary
+- Backfills subscription.premiumBalance with premiumKey and canonical proteinId
+- No premiumKey null rows in response
+
+**Files changed:**
+- `scripts/clean-premium-catalog.js` - New cleanup script
+- `src/services/subscription/subscriptionClientOverviewService.js` - Updated filters
+- `tests/mealPlanner.integration.test.js` - Added premiumSummary tests
+- `package.json` - Added clean:premium-catalog script
+
+**Tests that prove it:**
+- Integration tests assert no premiumKey null rows
+- Integration tests assert exactly 4 canonical premium items
+- Integration tests assert shrimp/beef_steak/salmon/custon_premium_salad present
+
+---
+
+### 2026-04-27: Premium Balance Atomic Decrement
+
+**What was changed:**
+- Added `consumePremiumBalanceAtomically()` function using atomic `findOneAndUpdate` with `$inc`
+- Added `releasePremiumBalanceAtomically()` function for restoring balance when selections change
+- Replaced inline `bucket.remainingQty -= 1` mutation with atomic operations in `performDaySelectionUpdate`
+- Added proper fallback to `pending_payment` when no balance remains
+
+**Why it matters:**
+- Prevents double-decrement of premium balance under concurrent requests
+- Ensures `remainingQty` cannot go below 0
+- Handles race condition where two requests try to consume the same balance
+
+**Files changed:**
+- `src/services/subscription/subscriptionSelectionService.js` - Added atomic helper functions and updated `performDaySelectionUpdate`
+- `src/models/Payment.js` - Added operationIdempotencyKey index
+- `src/models/User.js` - Added email unique index
+- `src/models/Addon.js` - Added catalog indexes
+- `src/routes/subscriptions.js` - Added dev activation guard
+
+**Tests that prove it:**
+- Unit tests: 25/25 passed ✅
+- Integration tests: 17/17 passed ✅
+- Integration test "repeated save does not duplicate meals" validates idempotency
+
+---
 
 ## Severity Legend
 

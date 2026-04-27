@@ -75,4 +75,15 @@ PaymentSchema.index(
 );
 PaymentSchema.index({ subscriptionId: 1, status: 1 });
 
+PaymentSchema.index(
+  { operationIdempotencyKey: 1 },
+  {
+    name: "operationIdempotencyKey_1",
+    unique: true,
+    partialFilterExpression: {
+      operationIdempotencyKey: { $type: "string", $ne: "" },
+    },
+  }
+);
+
 module.exports = mongoose.model("Payment", PaymentSchema);

@@ -89,6 +89,8 @@ function normalizePremiumName(value) {
 
 const CUSTOM_PREMIUM_SALAD_KEY = "custom_premium_salad";
 
+const CANONICAL_PREMIUM_KEYS = ["shrimp", "beef_steak", "salmon", "custom_premium_salad"];
+
 const CUSTOM_PREMIUM_SALAD_NAMES = {
   ar: "سلطة مميزة",
   en: "Custom Premium Salad",
@@ -110,7 +112,12 @@ function buildCustomPremiumSaladItem(lang) {
 
 async function loadPremiumCatalogForOverview(lang) {
   try {
-    const premiumDocs = await BuilderProtein.find({ isActive: true, isPremium: true })
+    const premiumDocs = await BuilderProtein.find({
+      isActive: true,
+      isPremium: true,
+      availableForSubscription: { $ne: false },
+      premiumKey: { $exists: true, $ne: null, $ne: "" },
+    })
       .select("_id name premiumKey")
       .lean();
 
@@ -197,11 +204,11 @@ function buildSubscriptionPremiumBalanceSummary(subscription, premiumCatalog, la
       existing.purchasedQtyTotal += purchasedQty;
       existing.remainingQtyTotal += remainingQty;
       mergedByCatalogId.set(matchedCatalogId, existing);
-    } else {
+    } else if (row.premiumKey && CANONICAL_PREMIUM_KEYS.includes(row.premiumKey)) {
       balanceOnlyItems.push({
-        premiumMealId: balanceProteinId,
-        premiumKey: row.premiumKey || null,
-        name: row.name || "",
+        premiumMealId: row.premiumKey,
+        premiumKey: row.premiumKey,
+        name: row.name || row.premiumKey,
         purchasedQtyTotal: purchasedQty,
         remainingQtyTotal: remainingQty,
         consumedQtyTotal: purchasedQty - remainingQty,
@@ -256,6 +263,12 @@ function buildSubscriptionPremiumBalanceSummary(subscription, premiumCatalog, la
   }
 
   for (const balanceOnly of balanceOnlyItems) {
+    if (!balanceOnly.premiumKey) {
+      continue;
+    }
+    if (!CANONICAL_PREMIUM_KEYS.includes(balanceOnly.premiumKey)) {
+      continue;
+    }
     if (balanceOnly.premiumKey && existingPremiumKeys.has(balanceOnly.premiumKey)) {
       continue;
     }
@@ -269,6 +282,7 @@ function buildSubscriptionPremiumBalanceSummary(subscription, premiumCatalog, la
 
     result.push({
       premiumMealId: balanceOnly.premiumMealId,
+      premiumKey: balanceOnly.premiumKey,
       name: balanceOnly.name,
       purchasedQtyTotal: balanceOnly.purchasedQtyTotal,
       remainingQtyTotal: balanceOnly.remainingQtyTotal,

@@ -12,4 +12,14 @@ const UserSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+UserSchema.index(
+  { email: 1 },
+  {
+    name: "email_1_unique_sparse",
+    unique: true,
+    sparse: true,
+    partialFilterExpression: { email: { $type: "string", $ne: "" } },
+  }
+);
+
 module.exports = mongoose.model("User", UserSchema);

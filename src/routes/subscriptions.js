@@ -71,8 +71,13 @@ router.post("/checkout-drafts/:draftId/verify-payment", asyncHandler(controller.
  *         description: Checkout initiated
  */
 router.post("/checkout", checkoutLimiter, asyncHandler(controller.checkoutSubscription));
-if (process.env.NODE_ENV !== "production") {
-  router.post("/:id/activate", asyncHandler(controller.activateSubscription)); // Mock activation — dev only
+
+const ENABLE_DEV_SUBSCRIPTION_ACTIVATION =
+  process.env.ENABLE_DEV_SUBSCRIPTION_ACTIVATION === "true" ||
+  (process.env.NODE_ENV !== "production" && process.env.ENABLE_DEV_SUBSCRIPTION_ACTIVATION !== "false");
+
+if (ENABLE_DEV_SUBSCRIPTION_ACTIVATION) {
+  router.post("/:id/activate", asyncHandler(controller.activateSubscription));
 }
 router.get("/:id/renewal-seed", asyncHandler(controller.getSubscriptionRenewalSeed));
 router.post("/:id/renew", asyncHandler(controller.renewSubscription));
