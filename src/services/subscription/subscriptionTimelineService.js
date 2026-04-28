@@ -252,6 +252,9 @@ function normalizeTimelineMealSlots(dbDay) {
       status: String(slot.status || "empty"),
       proteinId: slot.proteinId ? String(slot.proteinId) : null,
       carbId: slot.carbId ? String(slot.carbId) : null,
+      carbSelections: Array.isArray(slot.carbSelections) && slot.carbSelections.length > 0
+        ? slot.carbSelections.map(cs => ({ carbId: cs.carbId || null, grams: cs.grams || 0 }))
+        : (slot.carbId ? [{ carbId: String(slot.carbId), grams: 300 }] : []),
       isPremium: Boolean(slot.isPremium),
       premiumSource: slot.premiumSource ? String(slot.premiumSource) : "none",
       premiumExtraFeeHalala: Number(slot.premiumExtraFeeHalala || 0),

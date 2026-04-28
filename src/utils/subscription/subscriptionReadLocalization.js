@@ -199,6 +199,9 @@ function localizeTimelineReadPayload(timeline, lang) {
               status: slot.status || "empty",
               proteinId: slot.proteinId || null,
               carbId: slot.carbId || null,
+              carbSelections: Array.isArray(slot.carbSelections) && slot.carbSelections.length > 0
+                ? slot.carbSelections.map(cs => ({ carbId: cs.carbId || null, grams: cs.grams || 0 }))
+                : (slot.carbId ? [{ carbId: String(slot.carbId), grams: 300 }] : []),
               isPremium: Boolean(slot.isPremium),
               premiumSource: slot.premiumSource || "none",
               premiumExtraFeeHalala: Number(slot.premiumExtraFeeHalala || 0),

@@ -17,6 +17,9 @@ const BuilderCategorySchema = new mongoose.Schema(
     rules: {
       dailyLimit: { type: Number, min: 1, default: null },
       ruleKey: { type: String, default: null, trim: true },
+      maxTypes: { type: Number, min: 1, default: null },
+      maxTotalGrams: { type: Number, min: 1, default: null },
+      unit: { type: String, default: null, trim: true },
     },
   },
   { timestamps: true }

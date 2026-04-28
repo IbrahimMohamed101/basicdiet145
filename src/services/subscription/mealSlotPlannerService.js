@@ -6,7 +6,7 @@ const {
   buildPaymentRequirement,
   buildPlannerRevisionHash,
 } = require("./subscriptionDayCommercialStateService");
-
+const { validateCarbSelections } = require("../../utils/subscription/carbSelectionValidator");
 
 const SYSTEM_CURRENCY = "SAR";
 const MEAL_PLANNER_RULES_VERSION = "meal_planner_rules.v1";
@@ -140,6 +140,12 @@ function getMealPlannerRules() {
   return {
     version: MEAL_PLANNER_RULES_VERSION,
     beef: { proteinFamilyKey: "beef", maxSlotsPerDay: 1 },
+    standardCarbs: {
+      categoryKey: "standard_carbs",
+      maxTypes: 2,
+      maxTotalGrams: 300,
+      unit: "grams",
+    },
   };
 }
 
@@ -351,7 +357,17 @@ async function buildMealSlotDraft({ mealSlots, mealsPerDayLimit, subscription, s
   if (normalizedValidation) return normalizedValidation;
 
   const proteinIds = [...new Set(normalizedMealSlots.map((s) => s.proteinId).filter(Boolean))];
-  const carbIds = [...new Set(normalizedMealSlots.map((s) => s.carbId).filter(Boolean))];
+  
+  const carbIdsSet = new Set();
+  for (const s of normalizedMealSlots) {
+    if (s.carbId) carbIdsSet.add(s.carbId);
+    if (Array.isArray(s.carbSelections)) {
+      for (const cs of s.carbSelections) {
+        if (cs.carbId) carbIdsSet.add(cs.carbId);
+      }
+    }
+  }
+  const carbIds = [...carbIdsSet];
 
   const validProteinIds = proteinIds.filter(id => isValidObjectId(id));
   const validCarbIds = carbIds.filter(id => isValidObjectId(id));
@@ -402,6 +418,7 @@ async function buildMealSlotDraft({ mealSlots, mealsPerDayLimit, subscription, s
         proteinDisplayCategoryKey: null,
         proteinRuleTags: [],
         carbDisplayCategoryKey: null,
+        carbSelections: [],
         isPremium: false,
         premiumSource: "none",
         premiumExtraFeeHalala: 0,
@@ -459,6 +476,7 @@ async function buildMealSlotDraft({ mealSlots, mealsPerDayLimit, subscription, s
         proteinDisplayCategoryKey: protein ? protein.displayCategoryKey : null,
         proteinRuleTags: protein ? protein.ruleTags : [],
         carbDisplayCategoryKey: carb ? carb.displayCategoryKey : null,
+        carbSelections: [],
         isPremium: isPremiumProtein,
         premiumSource,
         premiumExtraFeeHalala: isPremiumProtein ? premiumExtraFeeHalala : CUSTOM_PREMIUM_SALAD_FIXED_PRICE_HALALA,
@@ -474,13 +492,39 @@ async function buildMealSlotDraft({ mealSlots, mealsPerDayLimit, subscription, s
     }
 
     const protein = slot.proteinId ? proteinMap.get(String(slot.proteinId)) : null;
-    const carb = slot.carbId ? carbMap.get(String(slot.carbId)) : null;
+    
+    // Resolve and validate carbSelections
+    let requestedCarbSelections = slot.carbSelections;
+    if (requestedCarbSelections === undefined && slot.carbId) {
+      requestedCarbSelections = [{ carbId: slot.carbId, grams: 300 }];
+    }
+    
+    // Here we use the rules explicitly defined
+    const carbRules = getMealPlannerRules().standardCarbs;
+    const carbValidation = validateCarbSelections(requestedCarbSelections, carbMap, carbRules);
+    if (!carbValidation.valid) {
+      return buildMealPlannerValidationResult({
+        code: carbValidation.errorCode,
+        message: carbValidation.errorMessage,
+        slotErrors: [{
+          slotIndex: slot.slotIndex,
+          field: "carb",
+          code: carbValidation.errorCode,
+          message: carbValidation.errorMessage,
+        }]
+      });
+    }
+
+    const validatedCarbSelections = carbValidation.selections;
+    const primaryCarbId = validatedCarbSelections.length > 0 ? validatedCarbSelections[0].carbId : null;
+    const carb = primaryCarbId ? carbMap.get(String(primaryCarbId)) : null;
+
     const processedSlot = {
       slotIndex: slot.slotIndex,
       slotKey: slot.slotKey,
       status: "empty",
       proteinId: slot.proteinId || null,
-      carbId: slot.carbId || null,
+      carbId: primaryCarbId || null,
       sandwichId: null,
       selectionType: selectionType,
       customSalad: null,
@@ -488,6 +532,7 @@ async function buildMealSlotDraft({ mealSlots, mealsPerDayLimit, subscription, s
       proteinDisplayCategoryKey: protein ? protein.displayCategoryKey : null,
       proteinRuleTags: protein ? protein.ruleTags : [],
       carbDisplayCategoryKey: carb ? carb.displayCategoryKey : null,
+      carbSelections: validatedCarbSelections,
       isPremium: Boolean(protein && protein.isPremium),
       premiumCreditCost: 0,
       premiumSource: "none",

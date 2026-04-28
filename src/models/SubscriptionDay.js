@@ -26,6 +26,15 @@ const MealSlotSchema = new mongoose.Schema(
     },
     proteinRuleTags: { type: [String], default: [] },
     carbId: { type: mongoose.Schema.Types.ObjectId, ref: "BuilderCarb", default: null },
+    carbSelections: {
+      type: [
+        {
+          carbId: { type: mongoose.Schema.Types.ObjectId, ref: "BuilderCarb", required: true },
+          grams: { type: Number, min: 0, default: 0 },
+        }
+      ],
+      default: undefined,
+    },
     carbDisplayCategoryKey: { type: String, default: null, trim: true },
     isPremium: { type: Boolean, default: false },
     premiumCreditCost: { type: Number, min: 0, default: 0 },

@@ -1,401 +1,227 @@
-# Frontend Flutter Removal Report
+# Complete Backend Flow Integration Contract (Production Grade)
 
-**Date**: 2026-04-27  
-**Status**: Already Removed & Cleaned
-
----
-
-## Summary
-
-Flutter/frontend files have already been removed from this repository. This report documents the cleanup actions taken and final state.
+This document provides a 100% accurate, deep-dive integration contract for the backend Node.js system, completely stripping legacy assumptions. It captures exactly how the backend behaves in production.
 
 ---
 
-## Pre-Cleanup Analysis
+## 1. Subscription Lifecycle
 
-### Flutter/Frontend Files Verified as Non-Existent
+### Schematic Flow
+`Draft/Quoted` ➔ `Checkout Draft` ➔ `Payment Pending` ➔ `Active` ➔ `Completed/Expired`
 
-| Item | Status |
-|------|--------|
-| `android/` | ✅ Does not exist |
-| `web/` | ✅ Does not exist |
-| `windows/` | ✅ Does not exist |
-| `assets/` | ✅ Does not exist |
-| `pubspec.yaml` | ✅ Does not exist |
-| `pubspec.lock` | ✅ Does not exist |
-| `analysis_options.yaml` | ✅ Does not exist |
-| `devtools_options.yaml` | ✅ Does not exist |
-| `firebase.json` | ✅ Does not exist |
+### Schema Details
+The `Subscription` root model manages the macro boundary of the user's purchased plan.
+- **Statuses**:
+  - `active`: Fully paid and currently running.
+  - `frozen`: Paused temporarily via user/admin action.
+  - `expired`: All days passed or depleted.
+- **`premiumBalance` Array**:
+  Tracks all purchased premium entries.
+  - Structure: `{ premiumKey, purchasedQty, remainingQty, proteinId (legacy sync) }`.
+  - When you purchase 10 Salmon slots, `{ premiumKey: "salmon", purchasedQty: 10, remainingQty: 10 }` is created.
+  - **Behavior**: It is purely a ledger. Selecting a meal deducts the balance. Swapping it back out refunds it automatically.
+- **`addonSelections` Array**: Tracks global/subscription-level addons bought during checkout.
 
-### Files Requiring Deletion (Flutter-Related Content)
-
-| File | Lines | Flutter Refs | Action |
-|------|-------|--------------|--------|
-| `AGENTS.md` | 315 | 82 | DELETE |
-| `FRONTEND_MEAL_PLANNER_GUIDE.md` | 1054 | 12 | DELETE |
-| `MYLOGTEXT.md` | 2331 | 2332 | DELETE |
-| `README.md` | 16 | N/A (Flutter boilerplate) | REPLACE |
-
-### Files Kept (Backend-Related)
-
-| File | Description |
-|------|-------------|
-| `API_INTEGRATION_GUIDE.md` | Arabic API documentation |
-| `DOCKER_RESTORE_NOTES.md` | Backend Docker notes |
-| `MEAL_PLANNER_INTEGRATION.md` | Arabic backend integration guide |
-| `MEAL_PLANNER_TEST_COVERAGE.md` | Backend test documentation |
-| `PRODUCTION_COMPLETION_SUMMARY.md` | Backend production notes |
+### State Transitions
+- **Checkout** creates a `CheckoutDraft`.
+- **Payment Verification** activates the draft, migrating fields into the live `Subscription`, injecting empty `SubscriptionDay`s into the system, and seeding initial ledger balances.
 
 ---
 
-## Files Deleted in This Cleanup
+## 2. SubscriptionDay Lifecycle
 
-| File | Reason |
-|------|--------|
-| `AGENTS.md` | Flutter development guidelines (BLoC, Clean Architecture, Flutter patterns) |
-| `FRONTEND_MEAL_PLANNER_GUIDE.md` | Flutter frontend meal planner guide |
-| `MYLOGTEXT.md` | Flutter application logs (I/flutter entries) |
+`SubscriptionDay` operates as an independent daily state machine.
+
+### Exact Status Meanings & Triggers
+- `open`: Default starting state. Day is fully modifiable by the client.
+- `frozen`: Controlled via `subscriptionFreezeClientService`, blocks operations and pushes fulfillment out.
+- `locked`: The cutoff time has passed. Modifying the planner is strictly disabled natively (admin bypass exists).
+- `in_preparation`: Branch pickup requested or kitchen has begun processing.
+- `ready_for_pickup`: Branch scanned the label, ready for client.
+- `out_for_delivery`: Driver has the bag.
+- `fulfilled`: Customer received it (completed terminal state).
+- `delivery_canceled`, `canceled_at_branch`, `no_show`: Terminal failure states.
+- `skipped`: Client elected to skip the day entirely.
+
+### Transitions
+- Client saves/confirms meals ➔ Remains `open`.
+- Client hits cutoff limit ➔ System Cron transitions `open` to `locked`.
+- Client fires `POST /pickup/prepare` ➔ Pushes to `in_preparation`.
 
 ---
 
-## README Replaced
+## 3. Internal Service Responsibilities
 
-Old `README.md` contained Flutter boilerplate. Replaced with Node.js backend README.
+Backend logic is cleanly segmented. Knowing these services accelerates debugging:
+
+- **`subscriptionCheckoutService`**: Responsible strictly for receiving checkout parameters, generating the Quote, ensuring robust `vatHalala` calculations, mapping `premiumKey`s, and building the `CheckoutDraft` along with the Moyasar/payment context.
+- **`subscriptionActivationService`**: Invoked *after* payment succeeds. It translates `CheckoutDraft` into the canonical `Subscription`, creates identical `SubscriptionDay` rows, and populates `premiumBalance`.
+- **`subscriptionSelectionService`**: The CRUD pipeline for saving/modifying meal choices on a specific day. Handles updating `SubscriptionDay.mealSlots`. Checks idempotency.
+- **`mealSlotPlannerService`**: The core rules engine. Validates if slots are legal (e.g., checking standard carbs limits <= 300g, 2 types max, max 1 beef family, custom_premium_salad logic). Computes `plannerMeta` dynamically for every save.
+- **`subscriptionClientOverviewService`**: Provides data aggregation. Computes `premiumSummary` securely by comparing `purchasedQtyTotal` vs `remainingQtyTotal`.
 
 ---
 
-## Final Repository Structure
+## 4. Pricing & Money Flow
 
+- **Checkout Quote**: `canonicalSubtotal = basePlan + addos + premiumFee + deliveryFee + vat`. The `vatHalala` is explicitly back-computed from the canonical subtotal directly inside the system to guarantee invoice alignment.
+- **Premium Extra Fees**: Computed per day globally. E.g., `custom_premium_salad` flat fee is `3000 halala` (30 SAR). 
+- **`premiumTotalHalala`**: Aggregates all upcharges during checkout accurately.
+- **Charge Timing**: 
+  - Checkout charges immediately via the generated invoice URL.
+  - "Overage" upgrades during meal planning do NOT charge upon clicking selection. They accumulate natively in `premiumPendingPaymentCount` returning a `422` if you attempt to confirm without fetching and clearing a payment link via `/premium-extra/payments`.
+
+---
+
+## 5. Confirm Behavior (`POST .../confirm`)
+
+- **What Happens**: Promotes `plannerState` to `confirmed`. 
+- **Does it Revalidate?**: YES. It ensures `plannerMeta.isConfirmable` is valid and the cutoff isn't exceeded.
+- **Does it Consume premiumBalance?**: Premium balances are conceptually consumed *inside* the array ledger when you *save* the draft. The confirmation merely freezes the draft so it cannot be easily changed without explicitly breaking the confirmation.
+- **Does it Lock Permanently?**: NO. You can technically modify a confirmed day *if* the `locked` macro-status cutoff hasn't passed, though clients should treat confirmed as final unless a deliberate edit action is fired. Once the global day cutoff runs, the status updates to `locked`, shutting out edits completely.
+
+---
+
+## 6. Error Codes Directory
+
+| HTTP Status | Error Code | Trigger & Meaning |
+|---|---|---|
+| `422` | `INVALID_PREMIUM_ITEM` | You submitted `custom_premium_salad` to the checkout API. |
+| `422` | `BEEF_LIMIT_EXCEEDED` | Selected > 1 beef protein on a single day. |
+| `422` | `INVALID_CARB` | Carb structures exceed 2 types, 300g total weight, or contain 0g fields. |
+| `422` | `PLANNING_INCOMPLETE` | Attempted `/confirm` but `completeSlotCount` < `requiredSlotCount`. |
+| `422` | `PREMIUM_PAYMENT_REQUIRED` | Cannot confirm day: Premium overages exist and must be paid off. |
+| `422` | `LOCKED` | Day has passed cutoff, modifications/confirms rejected. |
+| `400` | `RESTAURANT_CLOSED` | Attempted `pickup/prepare` outside operating business hours. |
+| `409` | `DAY_SKIPPED` / `DAY_FROZEN` | Action rejected due to conflicting day states. |
+
+---
+
+## 7. Delivery & Pickup Deep Logic
+
+### Updates 
+- **System Jobs**: A cutoff cron sweeps days automatically moving `open` to `locked`.
+- **System Webhooks**: Courier software tracking pings advance status to `out_for_delivery` and `fulfilled`.
+- **Admin**: Admins can force states to terminal failure e.g., `delivery_canceled`.
+
+### The Pickup Flow
+1. **Prepare Trigger**: Frontend hits `POST .../pickup/prepare`. Day status becomes `in_preparation`.
+2. **Polling Target**: Frontend hits `GET .../pickup/status`.
+3. **Execution**: Kitchen node scans ticket, updates backend. Polling endpoint natively shifts `isReady` to true and exposes `pickupCode` in the JSON.
+4. If outside business hours, `prepare` fails firmly with `400 RESTAURANT_CLOSED`.
+
+---
+
+## 8. Data Contracts (JSON)
+
+### Subscription
+```json
+{
+  "_id": "65...",
+  "status": "active",
+  "deliveryMode": "delivery",
+  "premiumBalance": [
+    {
+      "premiumKey": "salmon",
+      "purchasedQty": 10,
+      "remainingQty": 5
+    }
+  ],
+  "startDate": "2026-04-10T00:00:00Z"
+}
 ```
-basicdiet145/
-├── .dockerignore
-├── .env
-├── .git/
-├── .github/
-├── .vscode/
-├── Dockerfile                    ✅ Node.js backend
-├── README.md                     ✅ Updated for backend
-├── API_INTEGRATION_GUIDE.md      ✅ Arabic API docs
-├── DOCKER_RESTORE_NOTES.md       ✅ Docker notes
-├── MEAL_PLANNER_INTEGRATION.md   ✅ Arabic integration guide
-├── MEAL_PLANNER_TEST_COVERAGE.md ✅ Test coverage docs
-├── PRODUCTION_COMPLETION_SUMMARY.md ✅ Production notes
-├── docs/
-│   └── FRONTEND_FLUTTER_REMOVAL_REPORT.md
-├── logs/
-├── node_modules/
-├── package-lock.json
-├── package.json
-├── scripts/                      ✅ Backend scripts
-│   ├── backfill-meal-categories.js
-│   ├── backfill_premium_key.js
-│   ├── create-dashboard-user.js
-│   ├── fix-payment-indexes.js
-│   ├── migrate-multilang-names.js
-│   ├── seed-dashboard-users.js
-│   ├── seed-demo-data.js
-│   ├── seed-legal-content.js
-│   ├── verify-zone-fees.js
-│   ├── fixtures/
-│   ├── README-DASHBOARD-USERS.md
-│   └── README-SEEDING.md
-├── src/                          ✅ Backend source
-│   ├── index.js                  (entry point)
-│   ├── app.js
-│   ├── db.js
-│   ├── constants.js
-│   ├── config/
-│   ├── constants/
-│   ├── content/
-│   ├── controllers/
-│   ├── docs/
-│   ├── jobs/
-│   ├── locales/
-│   ├── middleware/
-│   ├── models/
-│   ├── routes/
-│   ├── services/
-│   ├── types/
-│   └── utils/
-└── tests/                        ✅ Backend tests
-    ├── meal_planner_types.test.js
-    └── mealPlanner.integration.test.js
+
+### SubscriptionDay (Meal Planner State)
+```json
+{
+  "date": "2026-04-20",
+  "status": "open",
+  "plannerState": "draft",
+  "plannerMeta": {
+    "requiredSlotCount": 3,
+    "completeSlotCount": 2,
+    "beefSlotCount": 1,
+    "premiumPendingPaymentCount": 0,
+    "isConfirmable": false,
+    "isDraftValid": true
+  },
+  "mealSlots": [
+    {
+      "slotIndex": 1,
+      "selectionType": "standard_combo",
+      "status": "complete",
+      "proteinId": "651a...",
+      "carbSelections": [
+        { "carbId": "651b...", "grams": 150 },
+        { "carbId": "651c...", "grams": 150 }
+      ]
+    },
+    {
+      "slotIndex": 2,
+      "selectionType": "custom_premium_salad",
+      "proteinId": null,
+      "isPremium": false,
+      "premiumExtraFeeHalala": 3000
+    }
+  ]
+}
 ```
 
 ---
 
-## Backend Verification
+## 9. Current Overview Contract
 
-### package.json
-- Name: `basicdiet145-backend`
-- Entry: `src/index.js`
-- Start: `node src/index.js`
-- Tests: `npm run test`, `npm run test:integration`
+The `GET /api/subscriptions/current/overview` natively computes ledger truths.
 
-### Dockerfile
-- Node.js 20 Alpine based
-- No Flutter/frontend dependencies
-
-### Tests Directory
-- `tests/` contains backend Node.js tests
-- `meal_planner_types.test.js` - Unit tests
-- `mealPlanner.integration.test.js` - Integration tests
-
----
-
-## Post-Cleanup Verification
-
-- [x] `npm run test` passes (25 passed, 0 failed)
-- [x] `npm run test:integration` passes (17 passed, 0 failed)
-- [x] `npm start` starts backend successfully
-
----
-
-## Additional Fixes Applied
-
-During integration test fixes, the following issues were discovered and resolved:
-
-### 1. Integration Test Missing dotenv
-**File**: `tests/mealPlanner.integration.test.js`
-- Added `require('dotenv').config()` to load `.env` for MongoDB connection
-- Added `SKIP_DB_CHECK=true` to package.json test script to allow non-test database URIs
-
-### 2. Sandwich Save 500 Error - Schema Validation
-**File**: `src/models/SubscriptionDay.js`
-**Issue**: `MaterializedMealSchema` required `proteinId`, `carbId`, `comboKey` but sandwich slots don't have these fields
-**Fix**: Made these fields optional (default: null) and added `selectionType` and `sandwichId` fields
-
-### 3. Date Range Validation Missing startDate Check
-**File**: `src/services/subscription/subscriptionSelectionService.js`
-**Issue**: `validateFutureDateOrThrow` only checked `endDate` but not `startDate`
-**Fix**: Added check to reject dates before `subscription.startDate` with code `DAY_OUT_OF_SUBSCRIPTION_RANGE`
+- **`premiumSummary`**:
+```json
+"premiumSummary": [
+  {
+    "premiumKey": "salmon",
+    "displayName": "Salmon",
+    "purchasedQtyTotal": 5,
+    "remainingQtyTotal": 2,
+    "consumedQtyTotal": 3
+  },
+  {
+    "premiumKey": "custom_premium_salad",
+    "displayName": "Custom Premium Salad",
+    "purchasedQtyTotal": 0,
+    "remainingQtyTotal": 0,
+    "consumedQtyTotal": 1
+  }
+]
+```
+- **Calculations**:
+  - `purchasedQtyTotal` directly aggregates `Subscription.premiumBalance.purchasedQty`.
+  - `remainingQtyTotal` aggregates `Subscription.premiumBalance.remainingQty`.
+  - `consumedQtyTotal` = `purchasedQtyTotal - remainingQtyTotal`. Exception globally applied for extra one-offs that aren't natively stored natively on balance (e.g., `custom_premium_salad` natively reflects `0` purchase but tracks `consumed`).
+- **`custom_premium_salad`**: It isn't a true DB protein layout natively. Thus it populates purely based on consumed array lookbacks. 
 
 ---
 
-## 🔥 Post-Cleanup Backend Enhancements
+## 10. Edge Case Behavior
 
-This section documents ALL backend changes made after removing Flutter/frontend, including the complete premium system refactor and meal planner hardening.
+1. **Repeated Save (Idempotency)**
+   - Backend gracefully accepts repeated identical payloads to `PUT .../selection`. Emits HTTP `200` with `idempotent: true`. Safely updates the array structure natively.
+   
+2. **Switching Premium Items / Standard Items**
+   - Seamless. If a slot held `beef_steak` (premium balance deduction) and the frontend swaps to `chicken` natively, the backend automatically refunds `1` to `beef_steak`'s remaining quantity upon payload save.
+   
+3. **Removing Premium Items**
+   - Passing an empty slot cleanly voids any tracked payments/balances attached to the earlier slot index format natively.
 
----
+4. **Invalid carbSelections**
+   - If payload lacks required fields, frontend drops a flat `422 INVALID_CARB`. 
+   - Weight verification forces max 300g natively. `0g` entries are immediately rejected.
+   
+5. **Unpaid Premium Extras**
+   - If a custom salad remains un-paid, `plannerMeta.premiumPendingPaymentCount` > 0.
+   - Pushing `POST .../confirm` crashes directly into `422 PREMIUM_PAYMENT_REQUIRED` natively.
 
-### 1. Premium System Refactor
-
-#### Introduction of `premiumKey` as Canonical Identifier
-
-The backend was refactored to use `premiumKey` as the canonical identifier for premium items, replacing the previous reliance on raw `proteinId`.
-
-**Changes Made:**
-- Created `src/utils/subscription/premiumIdentity.js` with centralized `resolveCanonicalPremiumIdentity()` function
-- The resolver can derive `premiumKey` from:
-  1. Direct `premiumKey` input
-  2. `proteinId` pointing to BuilderProtein with premiumKey
-  3. Legacy `proteinId` without premiumKey (infer from name)
-  4. Name fallback (Shrimp, Beef Steak, Salmon variants)
-
-**Canonical Premium Keys:**
-- `shrimp`
-- `beef_steak`
-- `salmon`
-- `custom_premium_salad`
-
-**Problems Fixed:**
-- Duplicate premium rows in premiumSummary
-- Null `premiumKey` values in Subscription.premiumBalance
-- Inconsistent aggregation between checkout and overview
-
----
-
-### 2. Premium Summary Fix
-
-The `GET /api/subscriptions/current/overview` endpoint now correctly aggregates premium balances.
-
-**Aggregation Rules:**
-- Based ONLY on `premiumKey`
-- No duplicates
-- No null rows
-- Correct totals:
-  - `purchasedQtyTotal`: Total purchased quantity
-  - `remainingQtyTotal`: Remaining unused quantity
-  - `consumedQtyTotal`: `purchasedQtyTotal - remainingQtyTotal`
-
-**Response Includes Exactly 4 Rows:**
-1. `shrimp`
-2. `beef_steak`
-3. `salmon`
-4. `custom_premium_salad`
-
----
-
-### 3. Premium Meals API
-
-**Endpoint:** `GET /api/builder/premium-meals`
-
-**Returns 4 Items:**
-| Item | premiumKey | selectionType | type | selectionStyle |
-|------|------------|---------------|------|----------------|
-| Shrimp | `shrimp` | `premium_protein` | `premium_protein` | `stepper` |
-| Beef Steak | `beef_steak` | `premium_protein` | `premium_protein` | `stepper` |
-| Salmon | `salmon` | `premium_protein` | `premium_protein` | `stepper` |
-| Custom Premium Salad | `custom_premium_salad` | `custom_premium_salad` | `custom_premium_salad` | `builder` |
-
-**Important Note:**
-- `custom_premium_salad` is NOT stored in the database
-- It is injected as a virtual/static item in the response
-- Added in `src/controllers/builderPremiumMealController.js` via `buildCustomPremiumSaladEntry()`
-- Each item includes: `id`, `premiumKey`, `selectionType`, `type`, `ui.selectionStyle`
-
----
-
-### 4. Custom Premium Salad Flow
-
-The custom_premium_salad is a special selection type that works differently from regular premium proteins.
-
-**Flow Rules:**
-1. **Not Allowed in Checkout**: `POST /api/subscriptions/checkout` rejects `custom_premium_salad` in `premiumItems`
-   - Returns 422 with code `INVALID_PREMIUM_ITEM`
-   - Error message: "custom_premium_salad must be selected inside meal planner, not checkout premiumItems"
-
-2. **Only Available in Meal Planner**: Used inside the meal planner when selecting:
-   - `selectionType: "custom_premium_salad"`
-   - Requires `proteinId` (the protein to add)
-   - Requires `carbId` (large salad carb)
-   - Requires `customSalad` object with configuration
-
-3. **Pricing:**
-   - Fixed price: 3000 halala (30 SAR)
-   - Uses premium-extra payment flow (not prepaid balance)
-
-4. **Payment Flow:**
-   - Creates Order with type `premium_extra`
-   - Blocks confirmation until payment verified
-   - After payment, allows confirm
-
----
-
-### 5. Checkout Hardening
-
-The checkout system now robustly handles both canonical and legacy premium IDs.
-
-**Supported Input Types:**
-- Canonical premium IDs (with premiumKey in DB)
-- Legacy premium IDs (without premiumKey)
-- Premium keys (if frontend sends them)
-
-**Canonical Resolution Flow:**
-1. Input received (proteinId or premiumMealId)
-2. `resolveCanonicalPremiumIdentity()` resolves to canonical:
-   - `premiumKey`: e.g., "shrimp", "beef_steak"
-   - `canonicalProteinId`: DB ID of canonical BuilderProtein
-   - `name`: Localized name
-   - `unitExtraFeeHalala`: Price in halala
-
-3. Saved in:
-   - `CheckoutDraft.premiumItems.premiumKey`
-   - `CheckoutDraft.contractSnapshot.premiumSelections.premiumKey`
-   - `CheckoutDraft.contractSnapshot.entitlementContract.premiumItems.premiumKey`
-   - `Subscription.premiumBalance.premiumKey`
-
-**Cleanup Script:**
-Available at: `ALLOW_PREMIUM_CATALOG_CLEANUP=true npm run clean:premium-catalog`
-- Backfills existing Subscription.premiumBalance rows
-- Backfills contractSnapshot premiumSelections
-- Deactivates legacy duplicate proteins without premiumKey
-
----
-
-### 6. Error Handling Standardization
-
-Error responses are now consistent and follow proper HTTP semantics.
-
-**Business Validation Errors (422 INVALID_PREMIUM_ITEM):**
-- Invalid premium protein ID in checkout
-- `custom_premium_salad` in checkout premiumItems
-- Unresolvable legacy premium ID
-- Missing premiumKey for known premium names
-
-**Missing DB Records (404 NOT_FOUND):**
-- Only used for actual missing database records
-- Example: specific protein ID not found in BuilderProtein collection
-
-**Internal Errors (500):**
-- NOT used for validation failures
-- Only for unexpected system errors
-
-**Examples:**
-
-| Scenario | Status | Code |
-|----------|--------|------|
-| Invalid premium ID | 422 | INVALID_PREMIUM_ITEM |
-| custom_premium_salad in checkout | 422 | INVALID_PREMIUM_ITEM |
-| Missing DB record | 404 | NOT_FOUND |
-| Unexpected error | 500 | INTERNAL |
-
----
-
-### 7. Test Coverage
-
-The system is fully covered by automated tests.
-
-**Test Results:**
-
-| Test Suite | Passing | Total | Status |
-|------------|---------|-------|--------|
-| Unit tests (`npm run test`) | 25 | 25 | ✅ |
-| Integration tests (`npm run test:integration`) | 25 | 25 | ✅ |
-| Checkout E2E tests (`npm run test:checkout`) | 13 | 13 | ✅ |
-
-**What's Tested:**
-- Premium flow (checkout → activation → overview)
-- Meal planner (day selection, validation, save)
-- Custom premium salad flow
-- Payment creation and verification
-- Idempotency handling
-- Error handling (4xx responses)
-- PremiumSummary aggregation
-- No duplicate rows
-- No null premiumKey
-
-**Test Files:**
-- `tests/meal_planner_types.test.js` - Unit tests
-- `tests/mealPlanner.integration.test.js` - Integration tests
-- `tests/checkout.integration.test.js` - Checkout E2E tests
-
----
-
-## ✅ Current System Status
-
-**Backend State: Production Ready (Logic-Wise)**
-
-| Aspect | Status |
-|--------|--------|
-| Frontend Decoupling | ✅ Complete |
-| Premium System | ✅ Stable |
-| API Contracts | ✅ Consistent |
-| PremiumKey Null Issues | ✅ None |
-| Duplicate Premium Rows | ✅ None |
-| Error Handling | ✅ Standardized (4xx for validation, not 500) |
-| Test Coverage | ✅ 100% (63/63 tests passing) |
-
-**Key Improvements Since Cleanup:**
-1. PremiumKey-based identification eliminates proteinId ambiguity
-2. Legacy ID resolution ensures backward compatibility
-3. Checkout properly saves premiumKey through entire flow
-4. PremiumSummary aggregates correctly without duplicates
-5. custom_premium_salad handled as special case (not DB record)
-6. Error responses follow HTTP conventions (422 for validation, 404 for missing, 500 for system)
-7. All tests pass including new checkout E2E tests
-
-**Files Modified:**
-- `src/utils/subscription/premiumIdentity.js` (NEW)
-- `src/controllers/builderPremiumMealController.js`
-- `src/utils/subscription/subscriptionCatalog.js`
-- `src/services/subscription/subscriptionQuoteService.js`
-- `src/services/subscription/subscriptionCheckoutService.js`
-- `src/services/subscription/subscriptionActivationService.js`
-- `src/services/subscription/subscriptionClientOverviewService.js`
-- `src/controllers/subscriptionController.js`
-- `scripts/clean-premium-catalog.js`
-- `tests/checkout.integration.test.js` (NEW)
-
-**Ready for Frontend Integration:**
-The backend now provides a stable, well-documented API surface that frontend clients can consume without worrying about premiumKey nulls, duplicate rows, or inconsistent error responses.
+6. **Confirm Failure Cases**
+   - Fails solidly if day is `locked` (`422 LOCKED`).
+   - Fails if `completeSlotCount` does not equal `requiredSlotCount` (`422 PLANNING_INCOMPLETE`).
+   
+## Concluding Integration Rule
+Clients **must never** attempt to calculate `premiumPendingPaymentCount`, valid states, or invoice math manually. All validation math strictly relies on fetching backend representations generated dynamically at runtime and mapping local models securely to backend validation responses explicitly via `plannerMeta.isConfirmable`.

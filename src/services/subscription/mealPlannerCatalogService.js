@@ -138,6 +138,7 @@ async function getMealPlannerCatalog({ lang }) {
       sortOrder: Number(carb.sortOrder || 0),
     })),
     rules: getMealPlannerRules(),
+    carbRule: getMealPlannerRules().standardCarbs,
     customPremiumSalad,
   });
 }
