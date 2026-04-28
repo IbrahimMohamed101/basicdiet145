@@ -415,7 +415,7 @@ router.get("/:id/days/:date", asyncHandler(controller.getSubscriptionDay));
  * @openapi
  * /subscriptions/{id}/days/selections/bulk:
  *   put:
- *     summary: Update the same day selections for multiple dates
+ *     summary: Bulk update canonical meal planner selections for multiple dates
  *     tags: [Subscriptions]
  *     security:
  *       - bearerAuth: []
@@ -432,21 +432,17 @@ router.get("/:id/days/:date", asyncHandler(controller.getSubscriptionDay));
  *           schema:
  *             oneOf:
  *               - type: object
- *                 required: [dates]
+ *                 required: [dates, mealSlots]
  *                 properties:
  *                   dates:
  *                     type: array
  *                     items:
  *                       type: string
  *                       example: 2026-04-15
- *                   selections:
+ *                   mealSlots:
  *                     type: array
  *                     items:
- *                       type: string
- *                   premiumSelections:
- *                     type: array
- *                     items:
- *                       type: string
+ *                       $ref: '#/components/schemas/MealSlot'
  *                   addonsOneTime:
  *                     type: array
  *                     items:
@@ -458,19 +454,15 @@ router.get("/:id/days/:date", asyncHandler(controller.getSubscriptionDay));
  *                     type: array
  *                     items:
  *                       type: object
- *                       required: [date]
+ *                       required: [date, mealSlots]
  *                       properties:
  *                         date:
  *                           type: string
  *                           example: 2026-04-15
- *                         selections:
+ *                         mealSlots:
  *                           type: array
  *                           items:
- *                             type: string
- *                         premiumSelections:
- *                           type: array
- *                           items:
- *                             type: string
+ *                             $ref: '#/components/schemas/MealSlot'
  *                         addonsOneTime:
  *                           type: array
  *                           items:
@@ -478,6 +470,8 @@ router.get("/:id/days/:date", asyncHandler(controller.getSubscriptionDay));
  *     responses:
  *       200:
  *         description: Bulk day selections processed
+ *       422:
+ *         description: Legacy bulk payloads without canonical mealSlots are rejected per date
  */
 router.put("/:id/days/selections/bulk", asyncHandler(controller.updateBulkDaySelections));
 
@@ -740,8 +734,46 @@ router.post("/:id/skip-range", authMiddleware, asyncHandler(controller.skipRange
 router.post("/:id/days/:date/custom-salad", asyncHandler(customSaladController.addCustomSaladToSubscriptionDay));
 router.post("/:id/days/:date/custom-meal", asyncHandler(customMealController.addCustomMealToSubscriptionDay));
 router.put("/:id/days/:date/delivery", asyncHandler(controller.updateDeliveryDetailsForDate));
+
+/**
+ * @openapi
+ * /subscriptions/{id}/addon-selections:
+ *   post:
+ *     summary: Legacy convenience wrapper to update one-time day addons over canonical planner state
+ *     tags: [Subscriptions]
+ *     deprecated: true
+ *     responses:
+ *       422:
+ *         description: Clients must submit canonical mealSlots via /subscriptions/{id}/days/{date}/selection
+ *   delete:
+ *     summary: Legacy convenience wrapper to remove one-time day addons over canonical planner state
+ *     tags: [Subscriptions]
+ *     deprecated: true
+ *     responses:
+ *       422:
+ *         description: Clients must submit canonical mealSlots via /subscriptions/{id}/days/{date}/selection
+ */
 router.post("/:id/addon-selections", asyncHandler(controller.consumeAddonSelection));
 router.delete("/:id/addon-selections", asyncHandler(controller.removeAddonSelection));
+
+/**
+ * @openapi
+ * /subscriptions/{id}/premium-selections:
+ *   post:
+ *     summary: Deprecated legacy premium helper endpoint
+ *     tags: [Subscriptions]
+ *     deprecated: true
+ *     responses:
+ *       422:
+ *         description: Clients must submit canonical mealSlots via /subscriptions/{id}/days/{date}/selection
+ *   delete:
+ *     summary: Deprecated legacy premium helper endpoint
+ *     tags: [Subscriptions]
+ *     deprecated: true
+ *     responses:
+ *       422:
+ *         description: Clients must submit canonical mealSlots via /subscriptions/{id}/days/{date}/selection
+ */
 router.post("/:id/premium-selections", asyncHandler(controller.consumePremiumSelection));
 router.delete("/:id/premium-selections", asyncHandler(controller.removePremiumSelection));
 router.post("/:id/addons/one-time", asyncHandler(controller.addOneTimeAddon));

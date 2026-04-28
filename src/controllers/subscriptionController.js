@@ -2339,124 +2339,39 @@ async function skipRange(req, res) {
 }
 
 async function consumePremiumSelection(req, res) {
-  const { id } = req.params;
-  const { dayId, date, baseSlotKey, proteinId } = req.body || {};
-
-  try {
-    validateObjectId(id, "subscriptionId");
-    validateObjectId(proteinId, "proteinId");
-    if (dayId) validateObjectId(dayId, "dayId");
-  } catch (err) {
-    return errorResponse(res, err.status, err.code, err.message);
-  }
-  if (!dayId && !date) {
-    return sendValidationError(res, "dayId or date is required");
-  }
-  if (!baseSlotKey || !String(baseSlotKey).trim()) {
-    return sendValidationError(res, "baseSlotKey is required");
-  }
-
-  const result = await consumePremiumSelectionForClient({
-    subscriptionId: id,
-    dayId,
-    date,
-    baseSlotKey,
-    proteinId,
-    userId: req.userId,
-  });
-  if (!result.ok) {
-    return errorResponse(res, result.status, result.code, result.message, result.details);
-  }
-  return res.status(result.status).json({ ok: true, data: result.data });
+  return errorResponse(
+    res,
+    422,
+    "LEGACY_PREMIUM_SELECTION_ENDPOINT_UNSUPPORTED",
+    "Premium helper endpoint is no longer supported. Submit canonical mealSlots via /days/:date/selection."
+  );
 }
 
 async function removePremiumSelection(req, res) {
-  const { id } = req.params;
-  const { dayId, date, baseSlotKey } = req.body || {};
-
-  try {
-    validateObjectId(id, "subscriptionId");
-    if (dayId) validateObjectId(dayId, "dayId");
-  } catch (err) {
-    return errorResponse(res, err.status, err.code, err.message);
-  }
-  if (!dayId && !date) {
-    return sendValidationError(res, "dayId or date is required");
-  }
-  if (!baseSlotKey || !String(baseSlotKey).trim()) {
-    return sendValidationError(res, "baseSlotKey is required");
-  }
-
-  const result = await removePremiumSelectionForClient({
-    subscriptionId: id,
-    dayId,
-    date,
-    baseSlotKey,
-    userId: req.userId,
-  });
-  if (!result.ok) {
-    return errorResponse(res, result.status, result.code, result.message, result.details);
-  }
-  return res.status(result.status).json({ ok: true, data: result.data });
+  return errorResponse(
+    res,
+    422,
+    "LEGACY_PREMIUM_SELECTION_ENDPOINT_UNSUPPORTED",
+    "Premium helper endpoint is no longer supported. Submit canonical mealSlots via /days/:date/selection."
+  );
 }
 
 async function consumeAddonSelection(req, res) {
-  const { id } = req.params;
-  const { dayId, date, addonId, qty } = req.body || {};
-
-  try {
-    validateObjectId(id, "subscriptionId");
-    validateObjectId(addonId, "addonId");
-    if (dayId) validateObjectId(dayId, "dayId");
-  } catch (err) {
-    return errorResponse(res, err.status, err.code, err.message);
-  }
-  if (!dayId && !date) {
-    return sendValidationError(res, "dayId or date is required");
-  }
-  const parsedQty = parsePositiveInteger(qty);
-  if (!parsedQty) {
-    return sendValidationError(res, "qty must be a positive integer");
-  }
-  const result = await consumeAddonSelectionForClient({
-    subscriptionId: id,
-    dayId,
-    date,
-    addonId,
-    qty: parsedQty,
-    userId: req.userId,
-  });
-  if (!result.ok) {
-    return errorResponse(res, result.status, result.code, result.message, result.details);
-  }
-  return res.status(result.status).json({ ok: true, data: result.data });
+  return errorResponse(
+    res,
+    422,
+    "LEGACY_ADDON_SELECTION_ENDPOINT_UNSUPPORTED",
+    "Addon helper endpoint is no longer supported. Submit canonical mealSlots via /days/:date/selection."
+  );
 }
 
 async function removeAddonSelection(req, res) {
-  const { id } = req.params;
-  const { dayId, date, addonId } = req.body || {};
-
-  try {
-    validateObjectId(id, "subscriptionId");
-    validateObjectId(addonId, "addonId");
-    if (dayId) validateObjectId(dayId, "dayId");
-  } catch (err) {
-    return errorResponse(res, err.status, err.code, err.message);
-  }
-  if (!dayId && !date) {
-    return sendValidationError(res, "dayId or date is required");
-  }
-  const result = await removeAddonSelectionForClient({
-    subscriptionId: id,
-    dayId,
-    date,
-    addonId,
-    userId: req.userId,
-  });
-  if (!result.ok) {
-    return errorResponse(res, result.status, result.code, result.message, result.details);
-  }
-  return res.status(result.status).json({ ok: true, data: result.data });
+  return errorResponse(
+    res,
+    422,
+    "LEGACY_ADDON_SELECTION_ENDPOINT_UNSUPPORTED",
+    "Addon helper endpoint is no longer supported. Submit canonical mealSlots via /days/:date/selection."
+  );
 }
 
 async function addOneTimeAddon(_req, res, runtimeOverrides = null) {

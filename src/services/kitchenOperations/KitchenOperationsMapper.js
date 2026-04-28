@@ -50,7 +50,15 @@ function buildMealItemsFromDay(day, mealNameById) {
   const items = [];
   const seen = new Set();
   materializedMeals.forEach((item, index) => {
-    const key = item && item.proteinId && item.carbId ? `${item.proteinId}:${item.carbId}` : `materialized_${index + 1}`;
+    const key = item && item.operationalSku
+      ? String(item.operationalSku)
+      : (item && item.proteinId && item.carbId
+        ? `${item.proteinId}:${item.carbId}`
+        : (item && item.sandwichId
+          ? `sandwich:${item.sandwichId}`
+          : (item && item.selectionType === "premium_large_salad"
+            ? "salad:custom_premium_salad"
+            : `materialized_${index + 1}`)));
     if (seen.has(key)) return;
     seen.add(key);
     items.push({ id: key, name: preferredLocalizedName(mealNameById.get(key), key), kind: "meal" });

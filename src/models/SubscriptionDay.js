@@ -179,7 +179,7 @@ const SubscriptionDaySchema = new mongoose.Schema(
         category: { type: String, required: true },
         source: {
           type: String,
-          enum: ["subscription", "pending_payment", "paid"],
+          enum: ["subscription", "wallet", "pending_payment", "paid"],
           default: "pending_payment",
         },
         priceHalala: { type: Number, min: 0, default: 0 },

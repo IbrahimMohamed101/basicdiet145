@@ -499,6 +499,8 @@ async function runTests() {
   const TEST_DATE5 = buildDateOffset(10);
   const TEST_DATE6 = buildDateOffset(12);
   const TEST_DATE_IDEM = buildDateOffset(14);
+  const TEST_DATE_BULK1 = buildDateOffset(16);
+  const TEST_DATE_BULK2 = buildDateOffset(18);
   const TEST_DATE_BEFORE = buildDateOffset(0);
   
   console.log('Test dates:', TEST_DATE, TEST_DATE2, TEST_DATE3, TEST_DATE4);
@@ -644,6 +646,35 @@ async function runTests() {
     assertTrue(!Object.prototype.hasOwnProperty.call(firstSlot, 'carbId'), 'timeline does not expose top-level carbId');
     assertTrue(!Object.prototype.hasOwnProperty.call(firstSlot, 'customSalad'), 'timeline does not expose customSalad');
   });
+
+  await test('PUT /days/selections/bulk accepts canonical mealSlots payload', async () => {
+    const mealSlots = [
+      { slotIndex: 1, slotKey: 'slot_1', proteinId: String(standardProtein._id), carbs: [{ carbId: String(standardCarb._id), grams: 150 }], selectionType: 'standard_meal' },
+      { slotIndex: 2, slotKey: 'slot_2', proteinId: String(standardProtein._id), carbs: [{ carbId: String(standardCarb._id), grams: 150 }], selectionType: 'standard_meal' },
+    ];
+    const res = await makeRequest('PUT', `/api/subscriptions/${testSubscription._id}/days/selections/bulk`, {
+      days: [
+        { date: TEST_DATE_BULK1, mealSlots },
+        { date: TEST_DATE_BULK2, mealSlots },
+      ],
+    });
+    assertEqual(res.status, 200, 'status');
+    assertEqual(res.body.data.summary.updatedCount, 2, 'two days updated');
+    const day1 = await getActiveSubscriptionDay(TEST_DATE_BULK1);
+    const day2 = await getActiveSubscriptionDay(TEST_DATE_BULK2);
+    assertEqual((day1?.mealSlots || []).length, 2, 'bulk day 1 persisted');
+    assertEqual((day2?.mealSlots || []).length, 2, 'bulk day 2 persisted');
+  });
+
+  await test('PUT /days/selections/bulk rejects legacy payloads without mealSlots', async () => {
+    const res = await makeRequest('PUT', `/api/subscriptions/${testSubscription._id}/days/selections/bulk`, {
+      dates: [TEST_DATE_BULK1],
+      selections: [String(standardProtein._id)],
+    });
+    assertEqual(res.status, 200, 'status');
+    assertEqual(res.body.data.summary.failedCount, 1, 'legacy payload failed');
+    assertEqual(res.body.data.results[0].code, 'LEGACY_DAY_SELECTION_UNSUPPORTED', 'legacy bulk rejected explicitly');
+  });
   
   console.log('\n--- C) Validate canonical standard meals ---\n');
   await test('POST /selection/validate returns valid', async () => {
@@ -727,6 +758,39 @@ async function runTests() {
     const saladBalance = (refreshedSub?.premiumBalance || []).find((row) => row.premiumKey === CUSTOM_PREMIUM_SALAD_KEY);
     assertEqual(Number(shrimpBalance?.remainingQty || 0), 2, 'shrimp balance refunded');
     assertEqual(Number(saladBalance?.remainingQty || 0), 1, 'salad entitlement refunded');
+  });
+
+  await test('addon helper endpoints are explicitly rejected in favor of canonical mealSlots', async () => {
+    const addRes = await makeRequest('POST', `/api/subscriptions/${testSubscription._id}/addon-selections`, {
+      date: TEST_DATE,
+      addonId: String(addonJuice._id),
+      qty: 1,
+    });
+    assertEqual(addRes.status, 422, 'add rejected');
+    assertEqual(addRes.body.error?.code, 'LEGACY_ADDON_SELECTION_ENDPOINT_UNSUPPORTED', 'add code');
+
+    const removeRes = await makeRequest('DELETE', `/api/subscriptions/${testSubscription._id}/addon-selections`, {
+      date: TEST_DATE,
+      addonId: String(addonJuice._id),
+    });
+    assertEqual(removeRes.status, 422, 'remove rejected');
+    assertEqual(removeRes.body.error?.code, 'LEGACY_ADDON_SELECTION_ENDPOINT_UNSUPPORTED', 'remove code');
+  });
+
+  await test('premium helper endpoints are explicitly rejected in favor of canonical mealSlots', async () => {
+    const createRes = await makeRequest('POST', `/api/subscriptions/${testSubscription._id}/premium-selections`, {
+      date: TEST_DATE,
+      baseSlotKey: 'slot_1',
+      proteinId: String(premiumProteinShrimp._id),
+    });
+    assertEqual(createRes.status, 422, 'create rejected');
+    assertEqual(createRes.body.error?.code, 'LEGACY_PREMIUM_SELECTION_ENDPOINT_UNSUPPORTED', 'create code');
+
+    const removeRes = await makeRequest('DELETE', `/api/subscriptions/${testSubscription._id}/premium-selections`, {
+      date: TEST_DATE,
+      baseSlotKey: 'slot_1',
+    });
+    assertTrue(removeRes.status === 422 || removeRes.status === 400, 'remove helper no longer usable');
   });
   
   console.log('\n--- G) Current Overview ---\n');

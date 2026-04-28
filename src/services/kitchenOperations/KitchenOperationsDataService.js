@@ -5,6 +5,7 @@ const Order = require("../../models/Order");
 const Addon = require("../../models/Addon");
 const BuilderProtein = require("../../models/BuilderProtein");
 const BuilderCarb = require("../../models/BuilderCarb");
+const Meal = require("../../models/Meal");
 
 function attachSession(query, session) {
   return session ? query.session(session) : query;
@@ -32,7 +33,15 @@ async function fetchMealNameMap(mealKeys, { session } = {}) {
 
   const proteinIds = [];
   const carbIds = [];
+  const sandwichIds = [];
   for (const key of keys) {
+    if (key.startsWith("sandwich:")) {
+      sandwichIds.push(String(key.split(":")[1] || ""));
+      continue;
+    }
+    if (key.startsWith("salad:")) {
+      continue;
+    }
     const [proteinId, carbId] = String(key).split(":");
     if (proteinId) proteinIds.push(proteinId);
     if (carbId) carbIds.push(carbId);
@@ -40,13 +49,25 @@ async function fetchMealNameMap(mealKeys, { session } = {}) {
 
   let proteinQuery = BuilderProtein.find({ _id: { $in: proteinIds } }).select("_id name");
   let carbQuery = BuilderCarb.find({ _id: { $in: carbIds } }).select("_id name");
+  let sandwichQuery = Meal.find({ _id: { $in: sandwichIds } }).select("_id name");
   proteinQuery = attachSession(proteinQuery, session);
   carbQuery = attachSession(carbQuery, session);
-  const [proteins, carbs] = await Promise.all([proteinQuery.lean(), carbQuery.lean()]);
+  sandwichQuery = attachSession(sandwichQuery, session);
+  const [proteins, carbs, sandwiches] = await Promise.all([proteinQuery.lean(), carbQuery.lean(), sandwichQuery.lean()]);
   const proteinMap = new Map(proteins.map((item) => [String(item._id), item.name]));
   const carbMap = new Map(carbs.map((item) => [String(item._id), item.name]));
+  const sandwichMap = new Map(sandwiches.map((item) => [String(item._id), item.name]));
 
   return new Map(keys.map((key) => {
+    if (String(key).startsWith("sandwich:")) {
+      const sandwichId = String(key).split(":")[1] || "";
+      const sandwichName = sandwichMap.get(String(sandwichId));
+      const name = sandwichName && (sandwichName.ar || sandwichName.en || "");
+      return [key, name || key];
+    }
+    if (String(key).startsWith("salad:")) {
+      return [key, "Premium Large Salad"];
+    }
     const [proteinId, carbId] = String(key).split(":");
     const proteinName = proteinMap.get(proteinId);
     const carbName = carbMap.get(carbId);
@@ -70,7 +91,14 @@ function collectSubscriptionDayMealIds(days) {
     const snapshot = day.lockedSnapshot || day.fulfilledSnapshot || null;
     const materializedMeals = snapshot && Array.isArray(snapshot.materializedMeals) ? snapshot.materializedMeals : (Array.isArray(day.materializedMeals) ? day.materializedMeals : []);
     materializedMeals.forEach((item) => {
-      if (item && item.proteinId && item.carbId) ids.push(`${item.proteinId}:${item.carbId}`);
+      if (!item) return;
+      if (item.operationalSku) {
+        ids.push(String(item.operationalSku));
+        return;
+      }
+      if (item.proteinId && item.carbId) ids.push(`${item.proteinId}:${item.carbId}`);
+      else if (item.sandwichId) ids.push(`sandwich:${item.sandwichId}`);
+      else if (item.selectionType === "premium_large_salad") ids.push("salad:custom_premium_salad");
     });
   });
   return ids;

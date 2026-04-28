@@ -192,8 +192,7 @@ function resolveBulkDaySelectionRequests(req) {
   if (bodyDays && bodyDays.every((entry) => entry && typeof entry === "object" && !Array.isArray(entry))) {
     return bodyDays.map((entry) => ({
       date: typeof entry.date === "string" ? entry.date.trim() : "",
-      selections: Array.isArray(entry.selections) ? entry.selections : (Array.isArray(entry.meals) ? entry.meals : []),
-      premiumSelections: Array.isArray(entry.premiumSelections) ? entry.premiumSelections : [],
+      mealSlots: Array.isArray(entry.mealSlots) ? entry.mealSlots : undefined,
       requestedOneTimeAddonIds:
         entry.addonsOneTime !== undefined
           ? entry.addonsOneTime
@@ -204,8 +203,7 @@ function resolveBulkDaySelectionRequests(req) {
   const bodyDates = Array.isArray(body.dates)
     ? body.dates
     : (Array.isArray(body.days) ? body.days : []);
-  const selections = Array.isArray(body.selections) ? body.selections : (Array.isArray(body.meals) ? body.meals : []);
-  const premiumSelections = Array.isArray(body.premiumSelections) ? body.premiumSelections : [];
+  const mealSlots = Array.isArray(body.mealSlots) ? body.mealSlots : undefined;
   const requestedOneTimeAddonIds = body.addonsOneTime || body.oneTimeAddonSelections;
 
   return bodyDates
@@ -213,8 +211,7 @@ function resolveBulkDaySelectionRequests(req) {
     .filter(Boolean)
     .map((date) => ({
       date,
-      selections,
-      premiumSelections,
+      mealSlots,
       requestedOneTimeAddonIds,
     }));
 }

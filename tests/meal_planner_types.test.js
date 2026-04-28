@@ -221,6 +221,22 @@ async function runTests() {
     expectEqual(result.materializedMeals[0].carbId, 'c1', 'carb ID');
   });
 
+  await test('projectMaterializedAndLegacyFromSlots operationally keeps the first carb for split meals', () => {
+    const slots = [
+      {
+        slotIndex: 1,
+        slotKey: 'slot_1',
+        selectionType: 'standard_meal',
+        proteinId: 'p1',
+        carbs: [{ carbId: 'c1', grams: 150 }, { carbId: 'c2', grams: 150 }],
+        status: 'complete',
+      },
+    ];
+    const result = projectMaterializedAndLegacyFromSlots({ processedSlots: slots, now: new Date() });
+    expectEqual(result.materializedMeals[0].carbId, 'c1', 'primary operational carb');
+    expectEqual(result.materializedMeals[0].operationalSku, 'p1:c1', 'operational SKU uses primary carb');
+  });
+
   await test('recomputePlannerMetaFromSlots allows sandwich without proteinId/carbId', () => {
     const slots = [
       { slotIndex: 1, slotKey: 'slot_1', selectionType: 'sandwich', sandwichId: 'sandwich1', status: 'complete' },

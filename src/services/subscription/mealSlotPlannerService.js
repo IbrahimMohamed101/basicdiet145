@@ -391,6 +391,9 @@ function projectMaterializedAndLegacyFromSlots({ processedSlots, now }) {
 
     if (!slot.proteinId || !Array.isArray(slot.carbs) || slot.carbs.length === 0) continue;
 
+    // Operational materialization intentionally keeps one primary carb key for
+    // downstream kitchen compatibility while canonical planner state retains the
+    // full carbs[] split on mealSlots.
     const primaryCarbId = slot.carbs[0].carbId;
     const materialized = {
       slotKey: slot.slotKey,
