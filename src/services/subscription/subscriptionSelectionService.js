@@ -414,24 +414,43 @@ async function performDaySelectionUpdate({ userId, subscriptionId, date, selecti
   if (totalSelected > mealsPerDayLimit) throw { status: 400, code: "DAILY_CAP", message: "Selections exceed meals per day" };
   ensureActive(subForDraft, date);
 
-  const existingDay = await SubscriptionDay.findOne({ subscriptionId: canonicalSubscriptionId, date }).lean();
-  if (existingDay && existingDay.status !== "open") throw { status: 409, code: "LOCKED", message: "Day is locked" };
-  if (existingDay && existingDay.plannerState === "confirmed") throw { status: 409, code: "LOCKED", message: "Planner is already confirmed for this day" };
+    const existingDay = await SubscriptionDay.findOne({ subscriptionId: canonicalSubscriptionId, date }).lean();
+    if (!Array.isArray(mealSlots)) {
+      throw {
+        status: 422,
+        code: "LEGACY_DAY_SELECTION_UNSUPPORTED",
+        message: "Legacy day selection payload is no longer supported. Submit mealSlots with proteinId, carbId, and selectionType.",
+        details: {
+          expectedPayload: {
+            mealSlots: [
+              {
+                slotIndex: 1,
+                selectionType: "standard_combo",
+                proteinId: "protein_id",
+                carbId: "carb_id",
+              },
+            ],
+          },
+        },
+      };
+    }
+    if (existingDay && existingDay.status !== "open") throw { status: 409, code: "LOCKED", message: "Day is locked" };
+    if (existingDay && existingDay.plannerState === "confirmed") throw { status: 409, code: "LOCKED", message: "Planner is already confirmed for this day" };
 
-  // 2. Build Draft & Reconcile Addons (In-Memory)
-  const planningDraftSubscription = buildPlanningDraftSubscriptionView(subForDraft, existingDay);
-  const draft = await buildMealSlotDraft({ mealSlots, mealsPerDayLimit, subscription: planningDraftSubscription });
-  
-  if (!draft.valid) {
-    throw {
-      status: 422,
-      code: draft.errorCode || "INVALID_MEAL_PLAN",
-      message: draft.errorMessage || "Meal planner validation failed",
-      valid: false,
-      slotErrors: draft.slotErrors,
-      rules: getMealPlannerRules()
-    };
-  }
+    // 2. Build Draft & Reconcile Addons (In-Memory)
+    const planningDraftSubscription = buildPlanningDraftSubscriptionView(subForDraft, existingDay);
+    const draft = await buildMealSlotDraft({ mealSlots, mealsPerDayLimit, subscription: planningDraftSubscription });
+    
+    if (!draft.valid) {
+      throw {
+        status: 422,
+        code: draft.errorCode || "INVALID_MEAL_PLAN",
+        message: draft.errorMessage || "Meal planner validation failed",
+        valid: false,
+        slotErrors: draft.slotErrors,
+        rules: getMealPlannerRules()
+      };
+    }
 
   const addonContainer = {
     addonSelections: existingDay ? JSON.parse(JSON.stringify(existingDay.addonSelections || [])) : [],

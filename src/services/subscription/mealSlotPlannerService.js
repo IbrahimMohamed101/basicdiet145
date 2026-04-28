@@ -438,20 +438,23 @@ async function buildMealSlotDraft({ mealSlots, mealsPerDayLimit, subscription, s
       
       let premiumSource = "none";
       let premiumExtraFeeHalala = 0;
+      const premiumKey = protein ? protein.premiumKey : null;
       
       if (isPremiumProtein) {
         const tempBalances = processedSlots._tempBalances || (processedSlots._tempBalances = new Map());
         if (processedSlots.length === 0 && subscription && Array.isArray(subscription.premiumBalance)) {
           for (const row of subscription.premiumBalance) {
-            const id = String(row.proteinId);
-            tempBalances.set(id, (tempBalances.get(id) || 0) + Number(row.remainingQty || 0));
+            const key = row.premiumKey;
+            if (key) {
+               tempBalances.set(key, (tempBalances.get(key) || 0) + Number(row.remainingQty || 0));
+            }
           }
         }
         
-        const avail = tempBalances.get(String(slot.proteinId)) || 0;
+        const avail = premiumKey ? (tempBalances.get(premiumKey) || 0) : 0;
         if (avail > 0) {
           premiumSource = "balance";
-          tempBalances.set(String(slot.proteinId), avail - 1);
+          tempBalances.set(premiumKey, avail - 1);
           plannerMeta.premiumSlotCount += 1;
           plannerMeta.premiumCoveredByBalanceCount += 1;
         } else {
@@ -478,6 +481,7 @@ async function buildMealSlotDraft({ mealSlots, mealsPerDayLimit, subscription, s
         carbDisplayCategoryKey: carb ? carb.displayCategoryKey : null,
         carbSelections: [],
         isPremium: isPremiumProtein,
+        premiumKey,
         premiumSource,
         premiumExtraFeeHalala: isPremiumProtein ? premiumExtraFeeHalala : CUSTOM_PREMIUM_SALAD_FIXED_PRICE_HALALA,
       };
@@ -534,6 +538,7 @@ async function buildMealSlotDraft({ mealSlots, mealsPerDayLimit, subscription, s
       carbDisplayCategoryKey: carb ? carb.displayCategoryKey : null,
       carbSelections: validatedCarbSelections,
       isPremium: Boolean(protein && protein.isPremium),
+      premiumKey: protein ? protein.premiumKey : null,
       premiumCreditCost: 0,
       premiumSource: "none",
       premiumExtraFeeHalala: protein && protein.isPremium ? Number(protein.extraFeeHalala || 0) : 0,
