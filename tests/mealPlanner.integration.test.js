@@ -1081,6 +1081,20 @@ async function runTests() {
     assertEqual(res.body.error?.code, 'SALAD_PROTEIN_NOT_PREMIUM', 'error code');
   });
 
+  await test('premium_large_salad rejects mismatched top-level proteinId and salad protein group', async () => {
+    const sauceId = (await SaladIngredient.findOne({ groupKey: 'sauce' }))._id;
+    const res = await makeRequest('POST', `/api/subscriptions/${testSubscription._id}/days/${TEST_DATE5}/selection/validate`, {
+      mealSlots: [{
+        slotIndex: 1,
+        selectionType: 'premium_large_salad',
+        proteinId: String(premiumProteinBeefSteak._id),
+        salad: { groups: { protein: [String(premiumProteinShrimp._id)], sauce: [String(sauceId)] } }
+      }]
+    });
+    assertEqual(res.status, 422, 'rejected with 422');
+    assertEqual(res.body.error?.code, 'SALAD_PROTEIN_MISMATCH', 'error code');
+  });
+
   await test('standard_meal rejects unavailable protein', async () => {
     const res = await makeRequest('POST', `/api/subscriptions/${testSubscription._id}/days/${TEST_DATE5}/selection/validate`, {
       mealSlots: [{

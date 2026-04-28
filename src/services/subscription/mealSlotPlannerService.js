@@ -152,6 +152,9 @@ function validatePremiumLargeSalad(slot, proteinMap, saladIngredientMap) {
 
   // Enforce premium protein for premium large salad
   const proteinId = proteinGroup[0];
+  if (slot.proteinId && String(slot.proteinId) !== String(proteinId)) {
+    return { valid: false, code: "SALAD_PROTEIN_MISMATCH", message: "Salad protein mismatch" };
+  }
   const protein = proteinMap ? proteinMap.get(String(proteinId)) : null;
   if (!protein) {
     return { valid: false, code: "SALAD_PROTEIN_INVALID", message: "Invalid salad protein" };
@@ -314,7 +317,6 @@ function getMealPlannerRules() {
 }
 
 function resolveSaladProteinId(slot) {
-  if (slot && slot.proteinId) return slot.proteinId;
   const proteinGroup = slot && slot.salad && slot.salad.groups && Array.isArray(slot.salad.groups.protein)
     ? slot.salad.groups.protein
     : [];
@@ -618,7 +620,7 @@ async function buildMealSlotDraft({ mealSlots, mealsPerDayLimit, subscription, s
       slotKey: slot.slotKey,
       status: "empty",
       selectionType: slot.selectionType,
-      proteinId: slot.proteinId || null,
+      proteinId: slot.selectionType === NEW_TYPES.PREMIUM_LARGE_SALAD ? null : (slot.proteinId || null),
       carbs: slot.carbs || [],
       sandwichId: slot.sandwichId || null,
       salad: slot.salad || null,
@@ -659,8 +661,8 @@ async function buildMealSlotDraft({ mealSlots, mealsPerDayLimit, subscription, s
       plannerMeta.emptySlotCount += 1;
     }
 
-    // Resolve protein metadata for beef limit
-    if (!processedSlot.proteinId && processedSlot.selectionType === NEW_TYPES.PREMIUM_LARGE_SALAD) {
+    // Premium large salad always derives proteinId from salad.groups.protein.
+    if (processedSlot.selectionType === NEW_TYPES.PREMIUM_LARGE_SALAD) {
       processedSlot.proteinId = resolveSaladProteinId(processedSlot);
     }
     if (processedSlot.proteinId) {
