@@ -1447,14 +1447,22 @@ async function createSubscriptionAdmin(req, res, nextOrRuntimeOverrides = null, 
       unitPriceHalala: Number(item.unitPriceHalala || 0),
       currency: item.currency || "SAR",
     }));
-    const premiumBalance = quote.premiumItems.map((item) => ({
-      premiumKey: item.premiumKey || item.protein.premiumKey,
-      proteinId: item.protein._id,
-      purchasedQty: Number(item.qty || 0),
-      remainingQty: Number(item.qty || 0),
-      unitExtraFeeHalala: Number(item.unitExtraFeeHalala || 0),
-      currency: item.currency || "SAR",
-    }));
+    const premiumBalance = quote.premiumItems.map((item) => {
+      const rawProteinId = item.canonicalProteinId || (item.protein && item.protein._id ? item.protein._id : null);
+      const normalizedProteinId = rawProteinId == null
+        ? null
+        : (String(rawProteinId).trim() === "" || String(rawProteinId).trim() === "null" || String(rawProteinId).trim() === "undefined"
+          ? null
+          : rawProteinId);
+      return {
+        premiumKey: item.premiumKey || (item.protein && item.protein.premiumKey) || null,
+        proteinId: normalizedProteinId,
+        purchasedQty: Number(item.qty || 0),
+        remainingQty: Number(item.qty || 0),
+        unitExtraFeeHalala: Number(item.unitExtraFeeHalala || 0),
+        currency: item.currency || "SAR",
+      };
+    });
 
     const addonSubscriptions = quote.addonSubscriptions || [];
 

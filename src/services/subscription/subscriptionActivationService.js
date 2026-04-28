@@ -23,7 +23,9 @@ const SYSTEM_CURRENCY = "SAR";
 function normalizeOptionalObjectId(value) {
   if (value == null) return null;
   const s = String(value).trim();
-  return s ? value : null;
+  if (!s) return null;
+  if (s === "null" || s === "undefined") return null;
+  return value;
 }
 
 function assertValidPremiumBalanceRows(rows) {
@@ -41,18 +43,29 @@ function assertValidPremiumBalanceRows(rows) {
 async function toCanonicalPremiumBalanceRows(draft) {
   const rows = [];
   for (const item of (draft.premiumItems || [])) {
+    // Normalize proteinId before passing to identity resolver (avoids findById("") errors)
+    const normalizedProteinId = normalizeOptionalObjectId(item.proteinId);
+
     let resolved;
     try {
       resolved = await resolveCanonicalPremiumIdentity({
-        proteinId: item.proteinId,
+        proteinId: normalizedProteinId,
         name: item.name,
         premiumKey: item.premiumKey,
       });
     } catch (err) {
-      if (item.premiumKey && item.proteinId) {
+      if (item.premiumKey && normalizedProteinId) {
         resolved = {
           premiumKey: item.premiumKey,
-          canonicalProteinId: item.proteinId,
+          canonicalProteinId: normalizedProteinId,
+          name: item.name,
+          unitExtraFeeHalala: item.unitExtraFeeHalala || 0,
+        };
+      } else if (item.premiumKey) {
+        // Static item (e.g. custom_premium_salad) has no proteinId
+        resolved = {
+          premiumKey: item.premiumKey,
+          canonicalProteinId: null,
           name: item.name,
           unitExtraFeeHalala: item.unitExtraFeeHalala || 0,
         };
@@ -63,7 +76,7 @@ async function toCanonicalPremiumBalanceRows(draft) {
 
     if (!resolved.premiumKey) {
       logger.warn("Activation: premiumKey missing after initial resolution; attempting fallback", {
-        proteinId: item.proteinId,
+        proteinId: normalizedProteinId,
         name: item.name,
       });
       // Fallback: try resolving from name if it wasn't already resolved
@@ -72,18 +85,18 @@ async function toCanonicalPremiumBalanceRows(draft) {
 
     if (!resolved.premiumKey) {
       logger.error("Activation (Draft): FAILING to resolve premiumKey for premium item", {
-        proteinId: item.proteinId,
+        proteinId: normalizedProteinId,
         name: item.name,
       });
       throw createLocalizedError({
         code: "INVALID_DRAFT_CONTRACT",
         key: "errors.activation.invalidPremiumEntitlement",
-        fallbackMessage: `Could not resolve canonical premium identity for ${item.name || item.proteinId}`,
+        fallbackMessage: `Could not resolve canonical premium identity for ${item.name || normalizedProteinId}`,
       });
     }
 
     rows.push({
-      proteinId: normalizeOptionalObjectId(resolved.canonicalProteinId || item.proteinId),
+      proteinId: normalizeOptionalObjectId(resolved.canonicalProteinId || normalizedProteinId),
       premiumKey: resolved.premiumKey,
       name: resolved.name || item.name,
       purchasedQty: Number(item.qty || 0),
@@ -142,18 +155,29 @@ async function toPremiumBalanceRowsFromContractEntitlements(contractSnapshot, la
       });
     }
 
+    // Normalize proteinId before passing to identity resolver to avoid BuilderProtein.findById("")
+    const normalizedProteinId = normalizeOptionalObjectId(item.proteinId);
+
     let resolved;
     try {
       resolved = await resolveCanonicalPremiumIdentity({
-        proteinId: item.proteinId,
+        proteinId: normalizedProteinId,
         name: item.name,
         premiumKey: item.premiumKey,
       });
     } catch (err) {
-      if (item.premiumKey && item.proteinId) {
+      if (item.premiumKey && normalizedProteinId) {
         resolved = {
           premiumKey: item.premiumKey,
-          canonicalProteinId: item.proteinId,
+          canonicalProteinId: normalizedProteinId,
+          name: item.name,
+          unitExtraFeeHalala: item.unitExtraFeeHalala || 0,
+        };
+      } else if (item.premiumKey) {
+        // Static item (custom_premium_salad) has no proteinId — build a minimal resolved shape
+        resolved = {
+          premiumKey: item.premiumKey,
+          canonicalProteinId: null,
           name: item.name,
           unitExtraFeeHalala: item.unitExtraFeeHalala || 0,
         };
@@ -164,7 +188,7 @@ async function toPremiumBalanceRowsFromContractEntitlements(contractSnapshot, la
 
     if (!resolved.premiumKey) {
       logger.warn("Activation: premiumKey missing after initial resolution; attempting fallback", {
-        proteinId: item.proteinId,
+        proteinId: normalizedProteinId,
         name: item.name,
       });
       // Fallback: try resolving from name if it wasn't already resolved
@@ -173,20 +197,18 @@ async function toPremiumBalanceRowsFromContractEntitlements(contractSnapshot, la
 
     if (!resolved.premiumKey) {
       logger.error("Activation: FAILING to resolve premiumKey for premium item", {
-        proteinId: item.proteinId,
+        proteinId: normalizedProteinId,
         name: item.name,
       });
-      // If we still don't have it, we might want to throw or set a known "unknown" key.
-      // Given the prompt "Ensure premiumKey is NEVER null", I will throw if it's missing at activation.
       throw createLocalizedError({
         code: "INVALID_DRAFT_CONTRACT",
         key: "errors.activation.invalidPremiumEntitlement",
-        fallbackMessage: `Could not resolve canonical premium identity for ${item.name || item.proteinId}`,
+        fallbackMessage: `Could not resolve canonical premium identity for ${item.name || normalizedProteinId}`,
       });
     }
 
     rows.push({
-      proteinId: resolved.canonicalProteinId || item.proteinId,
+      proteinId: normalizeOptionalObjectId(resolved.canonicalProteinId || normalizedProteinId),
       premiumKey: resolved.premiumKey,
       name: resolved.name || item.name,
       purchasedQty: qty,

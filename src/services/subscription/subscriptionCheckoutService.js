@@ -36,6 +36,14 @@ const { resolveReadLabel } = require("../../utils/subscription/subscriptionReadL
 // Premium normalization helpers
 // ---------------------------------------------------------------------------
 
+function normalizeOptionalObjectId(value) {
+  if (value == null) return null;
+  const s = String(value).trim();
+  if (!s) return null;
+  if (s === "null" || s === "undefined") return null;
+  return value;
+}
+
 /**
  * Normalise a single raw premiumItem into a canonical shape.
  * Uses canonicalProteinId from resolvedQuote if available, falls back to proteinId.
@@ -65,13 +73,13 @@ function normalizePremiumItem(item) {
   const name = item.name || (item.protein && (item.protein.name?.en || item.protein.name?.ar)) || null;
 
   return {
-    proteinId: canonicalProteinId || proteinId,
+    proteinId: normalizeOptionalObjectId(canonicalProteinId || proteinId),
     qty,
     unitExtraFeeHalala,
     currency: SYSTEM_CURRENCY,
     premiumKey,
     name,
-    originalProteinId: proteinId,
+    originalProteinId: normalizeOptionalObjectId(proteinId),
   };
 }
 

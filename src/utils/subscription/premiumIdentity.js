@@ -116,32 +116,38 @@ async function resolveCanonicalPremiumIdentity(input) {
   }
 
   if (!resolvedPremiumKey && proteinId) {
-    try {
-      const proteinDoc = await BuilderProtein.findById(proteinId).lean();
-      if (proteinDoc) {
-        if (proteinDoc.premiumKey && isCanonicalPremiumKey(proteinDoc.premiumKey)) {
-          resolvedPremiumKey = proteinDoc.premiumKey;
-          resolutionSource = "proteinId.premiumKey";
-          log(resolutionSource, { resolvedPremiumKey });
-        } else if (!proteinDoc.premiumKey) {
-          const inferredKey = resolvePremiumKeyFromName(
-            proteinDoc.name?.en || proteinDoc.name?.ar || ""
-          );
-          if (inferredKey) {
-            resolvedPremiumKey = inferredKey;
-            resolutionSource = "proteinId.name.inferred";
+    // Normalize to null if proteinId is an empty/invalid string
+    const proteinIdStr = String(proteinId).trim();
+    const effectiveProteinId = (proteinIdStr && proteinIdStr !== "null" && proteinIdStr !== "undefined") ? proteinId : null;
+
+    if (effectiveProteinId) {
+      try {
+        const proteinDoc = await BuilderProtein.findById(effectiveProteinId).lean();
+        if (proteinDoc) {
+          if (proteinDoc.premiumKey && isCanonicalPremiumKey(proteinDoc.premiumKey)) {
+            resolvedPremiumKey = proteinDoc.premiumKey;
+            resolutionSource = "proteinId.premiumKey";
             log(resolutionSource, { resolvedPremiumKey });
+          } else if (!proteinDoc.premiumKey) {
+            const inferredKey = resolvePremiumKeyFromName(
+              proteinDoc.name?.en || proteinDoc.name?.ar || ""
+            );
+            if (inferredKey) {
+              resolvedPremiumKey = inferredKey;
+              resolutionSource = "proteinId.name.inferred";
+              log(resolutionSource, { resolvedPremiumKey });
+            }
+          }
+          if (!resolvedName && proteinDoc.name) {
+            resolvedName = proteinDoc.name.en || proteinDoc.name.ar || null;
+          }
+          if (resolvedUnitExtraFeeHalala === 0) {
+            resolvedUnitExtraFeeHalala = Number(proteinDoc.extraFeeHalala || 0);
           }
         }
-        if (!resolvedName && proteinDoc.name) {
-          resolvedName = proteinDoc.name.en || proteinDoc.name.ar || null;
-        }
-        if (resolvedUnitExtraFeeHalala === 0) {
-          resolvedUnitExtraFeeHalala = Number(proteinDoc.extraFeeHalala || 0);
-        }
+      } catch (err) {
+        log("proteinId.error", { error: err.message });
       }
-    } catch (err) {
-      log("proteinId.error", { error: err.message });
     }
   }
 
@@ -209,6 +215,8 @@ async function resolveCanonicalPremiumIdentity(input) {
     canonicalProteinDoc,
     name: resolvedName,
     unitExtraFeeHalala: resolvedUnitExtraFeeHalala,
+    currency: "SAR",
+    type: isStaticPremiumItem(resolvedPremiumKey) ? resolvedPremiumKey : "protein",
     resolutionSource,
   };
 }
