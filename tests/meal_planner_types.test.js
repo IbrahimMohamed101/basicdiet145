@@ -87,10 +87,10 @@ function runTests() {
     expectEqual(result[0].customSalad?.presetKey, 'preset1', 'customSalad');
   });
 
-  test('default selectionType is standard_combo', () => {
+  test('default selectionType is standard_meal', () => {
     const input = [{ slotIndex: 1, slotKey: 'slot_1', proteinId: 'protein1', carbId: 'carb1' }];
     const result = normalizeMealSlotsInput({ mealSlots: input });
-    expectEqual(result[0].selectionType || 'standard_combo', 'standard_combo', 'default selectionType');
+    expectEqual(result[0].selectionType, 'standard_meal', 'default selectionType');
   });
 
   test('collectDuplicateSlotErrors detects duplicate slotIndex', () => {

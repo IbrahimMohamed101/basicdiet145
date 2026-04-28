@@ -18,10 +18,9 @@ const LARGE_SALAD_KEY = "large_salad";
 const SALAD_GROUPS = [
   { key: "leafy_greens", name: { ar: "ورقيات", en: "Leafy Greens" }, minSelect: 0, maxSelect: 99 },
   { key: "vegetables", name: { ar: "خضار", en: "Vegetables" }, minSelect: 0, maxSelect: 99 },
-  { key: "addons", name: { ar: "إضافات", en: "Addons" }, minSelect: 0, maxSelect: 99 },
   { key: "fruits", name: { ar: "فواكه", en: "Fruits" }, minSelect: 0, maxSelect: 99 },
-  { key: "nuts", name: { ar: "مكسرات", en: "Nuts" }, minSelect: 0, maxSelect: 99 },
   { key: "protein", name: { ar: "بروتينات", en: "Protein" }, minSelect: 1, maxSelect: 1 },
+  { key: "cheese_nuts", name: { ar: "أجبان ومكسرات", en: "Cheese & Nuts" }, minSelect: 0, maxSelect: 99 },
   { key: "sauce", name: { ar: "صوصات", en: "Sauce" }, minSelect: 1, maxSelect: 1 },
 ];
 
@@ -55,12 +54,18 @@ async function getMealPlannerCatalog({ lang }) {
       maxSelect: g.maxSelect,
     })),
     ingredients: [
-      ...saladIngredients.map(ing => ({
-        id: String(ing._id),
-        groupKey: ing.groupKey,
-        name: pickLang(ing.name, lang),
-        calories: ing.calories || 0,
-      })),
+      ...saladIngredients.map(ing => {
+        let groupKey = ing.groupKey;
+        if (groupKey === "addons" || groupKey === "nuts") {
+          groupKey = "cheese_nuts";
+        }
+        return {
+          id: String(ing._id),
+          groupKey,
+          name: pickLang(ing.name, lang),
+          calories: ing.calories || 0,
+        };
+      }),
       ...premiumProteins.map(p => ({
         id: String(p._id),
         groupKey: "protein",

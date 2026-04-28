@@ -2,6 +2,8 @@ const mongoose = require("mongoose");
 const BuilderProtein = require("../../models/BuilderProtein");
 const BuilderCarb = require("../../models/BuilderCarb");
 const Meal = require("../../models/Meal");
+const MealCategory = require("../../models/MealCategory");
+const SaladIngredient = require("../../models/SaladIngredient");
 const { isValidObjectId } = mongoose;
 const {
   buildPaymentRequirement,
@@ -123,7 +125,7 @@ function validateCarbSplit(carbs, carbsMap) {
   return { valid: true };
 }
 
-function validatePremiumLargeSalad(slot, proteinMap) {
+function validatePremiumLargeSalad(slot, proteinMap, saladIngredientMap) {
   if (Array.isArray(slot.carbs) && slot.carbs.length > 0) {
     return { valid: false, code: "CARBS_NOT_ALLOWED", message: "Carbs are not allowed with premium large salad" };
   }
@@ -156,16 +158,59 @@ function validatePremiumLargeSalad(slot, proteinMap) {
     return { valid: false, code: "SALAD_PROTEIN_NOT_PREMIUM", message: "Premium large salad requires a premium protein" };
   }
 
+  // Validate group membership for all ingredients
+  const ALLOWED_GROUPS = ["leafy_greens", "vegetables", "fruits", "cheese_nuts", "sauce", "protein"];
+  for (const groupKey of Object.keys(salad.groups)) {
+    if (!ALLOWED_GROUPS.includes(groupKey)) {
+      return { valid: false, code: "INVALID_SALAD_GROUP", message: `Invalid salad group: ${groupKey}` };
+    }
+
+    const groupItems = Array.isArray(salad.groups[groupKey]) ? salad.groups[groupKey] : [];
+    for (const ingredientId of groupItems) {
+      if (groupKey === "protein") {
+        // Protein handled above, but ensure it's the same ID
+        if (String(ingredientId) !== String(proteinId)) {
+          return { valid: false, code: "SALAD_PROTEIN_MISMATCH", message: "Salad protein mismatch" };
+        }
+        continue;
+      }
+
+      const ingredient = saladIngredientMap ? saladIngredientMap.get(String(ingredientId)) : null;
+      if (!ingredient) {
+        return { valid: false, code: "INVALID_SALAD_INGREDIENT", message: "Invalid salad ingredient ID" };
+      }
+
+      // Normalize group check for legacy compatibility
+      let ingredientGroup = ingredient.groupKey;
+      if (ingredientGroup === "addons" || ingredientGroup === "nuts") {
+        ingredientGroup = "cheese_nuts";
+      }
+
+      if (ingredientGroup !== groupKey) {
+        return { 
+          valid: false, 
+          code: "SALAD_INGREDIENT_GROUP_MISMATCH", 
+          message: `Ingredient ${ingredientId} belongs to ${ingredientGroup}, not ${groupKey}` 
+        };
+      }
+    }
+  }
+
   return { valid: true };
 }
 
-function validateSandwichMeal(slot) {
+function validateSandwichMeal(slot, sandwichMap) {
   if (!slot.sandwichId) {
     return { valid: false, code: "SANDWICH_ID_REQUIRED", message: "Sandwich selection is required" };
   }
   if (slot.proteinId || (Array.isArray(slot.carbs) && slot.carbs.length > 0) || slot.salad) {
     return { valid: false, code: "SANDWICH_EXCLUSIVITY_VIOLATION", message: "Sandwich cannot be combined with other components" };
   }
+
+  if (sandwichMap && !sandwichMap.has(String(slot.sandwichId))) {
+    return { valid: false, code: "INVALID_SANDWICH_MEAL", message: "Selected meal is not a valid sandwich option" };
+  }
+
   return { valid: true };
 }
 
@@ -459,6 +504,7 @@ function recomputePlannerMetaFromSlots({ mealSlots, requiredSlotCount = 0 }) {
     plannerMeta.isDraftValid
       && plannerMeta.partialSlotCount === 0
       && plannerMeta.completeSlotCount === plannerMeta.requiredSlotCount
+      && plannerMeta.premiumPendingPaymentCount === 0
   );
 
   return { plannerMeta, slotErrors };
@@ -491,13 +537,22 @@ async function buildMealSlotDraft({ mealSlots, mealsPerDayLimit, subscription, s
   const validProteinIds = proteinIds.filter(id => isValidObjectId(id));
   const validCarbIds = carbIds.filter(id => isValidObjectId(id));
 
-  const [proteins, carbs] = await Promise.all([
+  const [proteins, carbs, sandwichCategory, saladIngredients] = await Promise.all([
     BuilderProtein.find({ _id: { $in: validProteinIds } }).session(session).lean(),
     BuilderCarb.find({ _id: { $in: validCarbIds } }).session(session).lean(),
+    MealCategory.findOne({ key: "sandwich", isActive: true }).session(session).lean(),
+    SaladIngredient.find({ isActive: true }).session(session).lean(),
   ]);
+
+  let sandwichMeals = [];
+  if (sandwichCategory) {
+    sandwichMeals = await Meal.find({ categoryId: sandwichCategory._id, isActive: true, availableForSubscription: { $ne: false } }).session(session).lean();
+  }
 
   const proteinMap = new Map(proteins.map((p) => [String(p._id), p]));
   const carbMap = new Map(carbs.map((c) => [String(c._id), c]));
+  const sandwichMap = new Map(sandwichMeals.map((m) => [String(m._id), m]));
+  const saladIngredientMap = new Map(saladIngredients.map((i) => [String(i._id), i]));
 
   const processedSlots = [];
   const plannerMeta = {
@@ -549,9 +604,9 @@ async function buildMealSlotDraft({ mealSlots, mealsPerDayLimit, subscription, s
     } else if (processedSlot.selectionType === NEW_TYPES.PREMIUM_MEAL) {
       validation = validatePremiumMeal(processedSlot, proteinMap, carbMap);
     } else if (processedSlot.selectionType === NEW_TYPES.PREMIUM_LARGE_SALAD) {
-      validation = validatePremiumLargeSalad(processedSlot, proteinMap);
+      validation = validatePremiumLargeSalad(processedSlot, proteinMap, saladIngredientMap);
     } else if (processedSlot.selectionType === NEW_TYPES.SANDWICH) {
-      validation = validateSandwichMeal(processedSlot);
+      validation = validateSandwichMeal(processedSlot, sandwichMap);
     }
 
     if (validation.valid) {

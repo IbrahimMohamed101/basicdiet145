@@ -275,13 +275,25 @@ async function seedBuilderCatalog() {
     }
   }
 
-  sandwichMeal = await Meal.findOne({ type: 'regular', isActive: true }) || await Meal.findOne();
+  let sandwichCategory = await MealCategory.findOne({ key: 'sandwich' });
+  if (!sandwichCategory) {
+    sandwichCategory = new MealCategory({
+      key: 'sandwich',
+      name: { ar: 'ساندويتش', en: 'Sandwich' },
+      isActive: true,
+    });
+    await sandwichCategory.save();
+  }
+
+  sandwichMeal = await Meal.findOne({ categoryId: sandwichCategory._id, isActive: true }) || await Meal.findOne({ name: { $regex: /sandwich/i } });
   if (!sandwichMeal) {
-    const mealCategory = await MealCategory.findOne();
     sandwichMeal = new Meal({
       name: { ar: 'ساندويتش', en: 'Sandwich' }, description: { ar: 'ساندويتش', en: 'Sandwich meal' },
-      categoryId: mealCategory?._id, type: 'regular', isActive: true, availableForSubscription: true,
+      categoryId: sandwichCategory._id, type: 'regular', isActive: true, availableForSubscription: true,
     });
+    await sandwichMeal.save();
+  } else if (!sandwichMeal.categoryId) {
+    sandwichMeal.categoryId = sandwichCategory._id;
     await sandwichMeal.save();
   }
 

@@ -40,14 +40,14 @@ function mapLegacySelectionType(selectionType, slot = {}) {
   }
 
   // 3. Handle specific transitions for Standard -> Premium
-  if (mappedType === NEW_TYPES.standard_meal && isPremium) {
-    return NEW_TYPES.premium_meal;
+  if (mappedType === NEW_TYPES.STANDARD_MEAL && isPremium) {
+    return NEW_TYPES.PREMIUM_MEAL;
   }
 
   // 4. Final fallback for unknown/empty values as per test requirements
   const isKnownType = Object.values(NEW_TYPES).includes(mappedType);
   if (!mappedType || !isKnownType) {
-    return isPremium ? NEW_TYPES.premium_meal : NEW_TYPES.standard_meal;
+    return isPremium ? NEW_TYPES.PREMIUM_MEAL : NEW_TYPES.STANDARD_MEAL;
   }
 
   return mappedType;
