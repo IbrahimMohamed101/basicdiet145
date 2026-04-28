@@ -3,22 +3,22 @@
  */
 
 const LEGACY_TYPES = {
-  standard_combo: "standard_combo",
-  custom_premium_salad: "custom_premium_salad",
-  sandwich: "sandwich",
+  STANDARD_COMBO: "standard_combo",
+  CUSTOM_PREMIUM_SALAD: "custom_premium_salad",
+  SANDWICH: "sandwich",
 };
 
 const NEW_TYPES = {
-  standard_meal: "standard_meal",
-  premium_meal: "premium_meal",
-  premium_large_salad: "premium_large_salad",
-  sandwich: "sandwich",
+  STANDARD_MEAL: "standard_meal",
+  PREMIUM_MEAL: "premium_meal",
+  PREMIUM_LARGE_SALAD: "premium_large_salad",
+  SANDWICH: "sandwich",
 };
 
 const LEGACY_TO_NEXT_SELECTION_TYPE = {
-  [LEGACY_TYPES.standard_combo]: NEW_TYPES.standard_meal,
-  [LEGACY_TYPES.custom_premium_salad]: NEW_TYPES.premium_large_salad,
-  [LEGACY_TYPES.sandwich]: NEW_TYPES.sandwich,
+  [LEGACY_TYPES.STANDARD_COMBO]: NEW_TYPES.STANDARD_MEAL,
+  [LEGACY_TYPES.CUSTOM_PREMIUM_SALAD]: NEW_TYPES.PREMIUM_LARGE_SALAD,
+  [LEGACY_TYPES.SANDWICH]: NEW_TYPES.SANDWICH,
 };
 
 /**

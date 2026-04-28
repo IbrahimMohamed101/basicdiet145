@@ -118,7 +118,7 @@ function validateCarbSplit(carbs, carbsMap) {
   return { valid: true };
 }
 
-function validatePremiumLargeSalad(slot) {
+function validatePremiumLargeSalad(slot, proteinMap) {
   if (Array.isArray(slot.carbs) && slot.carbs.length > 0) {
     return { valid: false, code: "CARBS_NOT_ALLOWED", message: "Carbs are not allowed with premium large salad" };
   }
@@ -139,6 +139,16 @@ function validatePremiumLargeSalad(slot) {
   }
   if (sauceGroup.length !== 1) {
     return { valid: false, code: "SALAD_SAUCE_REQUIRED", message: "Exactly one sauce is required for large salad" };
+  }
+
+  // Enforce premium protein for premium large salad
+  const proteinId = proteinGroup[0];
+  const protein = proteinMap ? proteinMap.get(String(proteinId)) : null;
+  if (!protein) {
+    return { valid: false, code: "SALAD_PROTEIN_INVALID", message: "Invalid salad protein" };
+  }
+  if (!protein.isPremium) {
+    return { valid: false, code: "SALAD_PROTEIN_NOT_PREMIUM", message: "Premium large salad requires a premium protein" };
   }
 
   return { valid: true };
@@ -295,6 +305,16 @@ function projectMaterializedAndLegacyFromSlots({ processedSlots, now }) {
         generatedAt: now,
       };
       materializedMeals.push(materialized);
+      
+      // For Premium Large Salad, we also push the protein to baseMealSlots if available 
+      if (slot.salad && slot.salad.groups && Array.isArray(slot.salad.groups.protein) && slot.salad.groups.protein[0]) {
+        baseMealSlots.push({
+          slotKey: slot.slotKey,
+          mealId: slot.salad.groups.protein[0],
+          assignmentSource: slot.assignmentSource || "client",
+          assignedAt: slot.assignedAt || now,
+        });
+      }
       continue;
     }
 
@@ -339,6 +359,12 @@ function projectMaterializedAndLegacyFromSlots({ processedSlots, now }) {
   }
 
   return { materializedMeals, selections, premiumSelections, baseMealSlots };
+}
+
+async function projectMaterializedAndLegacyForExistingSlots({ mealSlots, session }) {
+  // Existing slots are expected to be in processed/normalized format already.
+  // We can project directly. If deep metadata resolution was needed, we'd do it here.
+  return projectMaterializedAndLegacyFromSlots({ processedSlots: mealSlots, now: new Date() });
 }
 
 function mapPaymentRequirement({ plannerMeta, premiumExtraPayment = null, plannerState = "draft", status = "open" }) {
@@ -436,7 +462,7 @@ async function buildMealSlotDraft({ mealSlots, mealsPerDayLimit, subscription, s
     ...collectSlotCountErrors({ mealSlots: normalizedMealSlots, requiredSlotCount: mealsPerDayLimit }),
   ];
   
-  const proteinIds = [...new Set(normalizedMealSlots.map((s) => s.proteinId).filter(Boolean))];
+  const proteinIdsSet = new Set(normalizedMealSlots.map((s) => s.proteinId).filter(Boolean));
   const carbIdsSet = new Set();
   for (const s of normalizedMealSlots) {
     if (Array.isArray(s.carbs)) {
@@ -444,7 +470,13 @@ async function buildMealSlotDraft({ mealSlots, mealsPerDayLimit, subscription, s
         if (cs.carbId) carbIdsSet.add(String(cs.carbId));
       }
     }
+    if (s.salad && s.salad.groups && Array.isArray(s.salad.groups.protein)) {
+      for (const pid of s.salad.groups.protein) {
+        if (pid) proteinIdsSet.add(String(pid));
+      }
+    }
   }
+  const proteinIds = [...proteinIdsSet];
   const carbIds = [...carbIdsSet];
 
   const validProteinIds = proteinIds.filter(id => isValidObjectId(id));
@@ -508,7 +540,7 @@ async function buildMealSlotDraft({ mealSlots, mealsPerDayLimit, subscription, s
     } else if (processedSlot.selectionType === NEW_TYPES.PREMIUM_MEAL) {
       validation = validatePremiumMeal(processedSlot, proteinMap, carbMap);
     } else if (processedSlot.selectionType === NEW_TYPES.PREMIUM_LARGE_SALAD) {
-      validation = validatePremiumLargeSalad(processedSlot);
+      validation = validatePremiumLargeSalad(processedSlot, proteinMap);
     } else if (processedSlot.selectionType === NEW_TYPES.SANDWICH) {
       validation = validateSandwichMeal(processedSlot);
     }
@@ -517,6 +549,11 @@ async function buildMealSlotDraft({ mealSlots, mealsPerDayLimit, subscription, s
       processedSlot.status = "complete";
       plannerMeta.completeSlotCount += 1;
     } else if (processedSlot.proteinId || processedSlot.sandwichId || (processedSlot.carbs.length > 0) || processedSlot.salad) {
+      normalizedSlotErrors.push({
+        slotIndex: processedSlot.slotIndex,
+        code: validation.code || "INVALID_SLOT",
+        message: validation.message || "Invalid slot configuration",
+      });
       processedSlot.status = "partial";
       plannerMeta.partialSlotCount += 1;
     } else {
@@ -614,5 +651,6 @@ module.exports = {
   isBaseBeefSlot,
   recomputePlannerMetaFromSlots,
   projectMaterializedAndLegacyFromSlots,
+  projectMaterializedAndLegacyForExistingSlots,
   buildMealSlotDraft,
 };

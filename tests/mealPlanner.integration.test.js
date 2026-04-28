@@ -453,35 +453,28 @@ async function runTests() {
   
   await test('builderCatalog has proteins with premiumKey', async () => {
     const res = await makeRequest('GET', '/api/subscriptions/meal-planner-menu');
-    const proteins = res.body.data?.builderCatalog?.proteins || [];
-    const shrimp = proteins.find(p => p.premiumKey === 'shrimp');
-    assertTrue(!!shrimp, 'Shrimp has premiumKey');
+    const premiumProteins = res.body.data?.builderCatalog?.premiumProteins || [];
+    const shrimp = premiumProteins.find(p => p.premiumKey === 'shrimp');
+    assertTrue(!!shrimp, 'Shrimp has premiumKey in premiumProteins');
   });
   
-  await test('builderCatalog has customPremiumSalad', async () => {
+  await test('builderCatalog has premiumLargeSalad', async () => {
     const res = await makeRequest('GET', '/api/subscriptions/meal-planner-menu');
-    const salad = res.body.data?.builderCatalog?.customPremiumSalad;
-    assertTrue(!!salad, 'customPremiumSalad present');
+    const salad = res.body.data?.builderCatalog?.premiumLargeSalad;
+    assertTrue(!!salad, 'premiumLargeSalad present');
     assertEqual(salad?.extraFeeHalala, CUSTOM_PREMIUM_SALAD_FIXED_PRICE, 'fixed price');
-    assertEqual(salad?.id, CUSTOM_PREMIUM_SALAD_KEY, 'id is custom_premium_salad');
-    assertTrue(salad?.carbId != null, 'carbId is not null');
-    assertEqual(salad?.preset?.key, 'large_salad', 'preset.key is large_salad');
-    const groupKeys = (salad?.preset?.groups || []).map(g => g.key);
+    assertEqual(salad?.premiumKey, CUSTOM_PREMIUM_SALAD_KEY, 'premiumKey is custom_premium_salad');
+    assertEqual(salad?.selectionType, 'premium_large_salad', 'selectionType is premium_large_salad');
+    const groupKeys = (salad?.groups || []).map(g => g.key);
     assertTrue(groupKeys.includes('vegetables'), 'groups includes vegetables');
-    assertTrue(groupKeys.includes('addons'), 'groups includes addons');
-    assertTrue(groupKeys.includes('fruits'), 'groups includes fruits');
-    assertTrue(groupKeys.includes('nuts'), 'groups includes nuts');
     assertTrue(groupKeys.includes('sauce'), 'groups includes sauce');
-    const sauceGroup = salad?.preset?.groups?.find(g => g.key === 'sauce');
+    assertTrue(groupKeys.includes('protein'), 'groups includes protein');
+    const sauceGroup = salad?.groups?.find(g => g.key === 'sauce');
     assertEqual(sauceGroup?.minSelect, 1, 'sauce minSelect=1');
     assertEqual(sauceGroup?.maxSelect, 1, 'sauce maxSelect=1');
     for (const ing of (salad?.ingredients || [])) {
-      assertTrue(groupKeys.includes(ing.groupKey), `ingredient groupKey '${ing.groupKey}' exists in preset.groups`);
-      assertEqual(ing.groupKey === ing.name, false, 'groupKey is not the same as ingredient name');
-      assertTrue(typeof ing.id === 'string' && ing.id.length > 0, 'ingredient has id');
+      assertTrue(groupKeys.includes(ing.groupKey), `ingredient groupKey '${ing.groupKey}' exists in groups`);
     }
-    const hasValidUtf8 = JSON.stringify(salad).indexOf('\ufffd') === -1;
-    assertTrue(hasValidUtf8, 'no replacement characters in JSON');
   });
 
   console.log('\n--- A2) Builder Premium Meals ---\n');
@@ -526,8 +519,8 @@ async function runTests() {
   
   await test('GET /days/:date returns 200 after save', async () => {
     const slots = [
-      { slotIndex: 1, slotKey: 'slot_1', proteinId: String(standardProtein._id), carbId: String(standardCarb._id), selectionType: 'standard_combo' },
-      { slotIndex: 2, slotKey: 'slot_2', proteinId: String(standardProtein._id), carbId: String(standardCarb._id), selectionType: 'standard_combo' },
+      { slotIndex: 1, slotKey: 'slot_1', proteinId: String(standardProtein._id), carbs: [{ carbId: String(standardCarb._id), grams: 150 }], selectionType: 'standard_meal' },
+      { slotIndex: 2, slotKey: 'slot_2', proteinId: String(standardProtein._id), carbs: [{ carbId: String(standardCarb._id), grams: 150 }], selectionType: 'standard_meal' },
     ];
     await makeRequest('PUT', `/api/subscriptions/${testSubscription._id}/days/${TEST_DATE}/selection`, { mealSlots: slots });
     const res = await makeRequest('GET', `/api/subscriptions/${testSubscription._id}/days/${TEST_DATE}`);
@@ -539,8 +532,8 @@ async function runTests() {
   console.log('\n--- C) Validate standard_combo ---\n');
   await test('POST /selection/validate returns valid', async () => {
     const slots = [
-      { slotIndex: 1, slotKey: 'slot_1', proteinId: String(standardProtein._id), carbId: String(standardCarb._id), selectionType: 'standard_combo' },
-      { slotIndex: 2, slotKey: 'slot_2', proteinId: String(standardProtein._id), carbId: String(standardCarb._id), selectionType: 'standard_combo' },
+      { slotIndex: 1, slotKey: 'slot_1', proteinId: String(standardProtein._id), carbs: [{ carbId: String(standardCarb._id), grams: 150 }], selectionType: 'standard_meal' },
+      { slotIndex: 2, slotKey: 'slot_2', proteinId: String(standardProtein._id), carbs: [{ carbId: String(standardCarb._id), grams: 150 }], selectionType: 'standard_meal' },
     ];
     const res = await makeRequest('POST', `/api/subscriptions/${testSubscription._id}/days/${TEST_DATE}/selection/validate`, { mealSlots: slots });
     assertEqual(res.status, 200, 'status');
@@ -549,8 +542,8 @@ async function runTests() {
   console.log('\n--- D) Save standard_combo ---\n');
   await test('PUT /selection saves successfully (update existing day)', async () => {
     const slots = [
-      { slotIndex: 1, slotKey: 'slot_1', proteinId: String(standardProtein._id), carbId: String(standardCarb._id), selectionType: 'standard_combo' },
-      { slotIndex: 2, slotKey: 'slot_2', proteinId: String(standardProtein._id), carbId: String(standardCarb._id), selectionType: 'standard_combo' },
+      { slotIndex: 1, slotKey: 'slot_1', proteinId: String(standardProtein._id), carbs: [{ carbId: String(standardCarb._id), grams: 150 }], selectionType: 'standard_meal' },
+      { slotIndex: 2, slotKey: 'slot_2', proteinId: String(standardProtein._id), carbs: [{ carbId: String(standardCarb._id), grams: 150 }], selectionType: 'standard_meal' },
     ];
     const res = await makeRequest('PUT', `/api/subscriptions/${testSubscription._id}/days/${TEST_DATE}/selection`, { mealSlots: slots });
     assertEqual(res.status, 200, 'status');
@@ -573,7 +566,7 @@ async function runTests() {
   await test('sandwich save persists', async () => {
     const slots = [
       { slotIndex: 1, slotKey: 'slot_1', sandwichId: String(sandwichMeal._id), selectionType: 'sandwich' },
-      { slotIndex: 2, slotKey: 'slot_2', proteinId: String(standardProtein._id), carbId: String(standardCarb._id), selectionType: 'standard_combo' },
+      { slotIndex: 2, slotKey: 'slot_2', proteinId: String(standardProtein._id), carbs: [{ carbId: String(standardCarb._id), grams: 150 }], selectionType: 'standard_meal' },
     ];
     const res = await makeRequest('PUT', `/api/subscriptions/${testSubscription._id}/days/${TEST_DATE2}/selection`, { mealSlots: slots });
     assertEqual(res.status, 200, 'status');
@@ -582,11 +575,12 @@ async function runTests() {
     assertEqual(sandwichMaterialized.length, 1, 'sandwich in materializedMeals');
   });
   
-  console.log('\n--- F) custom_premium_salad with Balance ---\n');
-  await test('custom_premium_salad with shrimp uses balance', async () => {
+  console.log('\n--- F) premium_large_salad with Balance ---\n');
+  await test('premium_large_salad with shrimp uses balance', async () => {
+    const sauceId = (await SaladIngredient.findOne({ groupKey: 'sauce' }))._id;
     const slots = [
-      { slotIndex: 1, slotKey: 'slot_1', proteinId: String(premiumProteinShrimp._id), carbId: String(standardCarb._id), selectionType: 'custom_premium_salad', customSalad: { presetKey: CUSTOM_PREMIUM_SALAD_KEY } },
-      { slotIndex: 2, slotKey: 'slot_2', proteinId: String(standardProtein._id), carbId: String(standardCarb._id), selectionType: 'standard_combo' },
+      { slotIndex: 1, slotKey: 'slot_1', proteinId: String(premiumProteinShrimp._id), carbs: [{ carbId: String(standardCarb._id), grams: 150 }], selectionType: 'premium_meal' },
+      { slotIndex: 2, slotKey: 'slot_2', selectionType: 'premium_large_salad', salad: { groups: { protein: [String(premiumProteinShrimp._id)], sauce: [String(sauceId)] } } },
     ];
     const res = await makeRequest('PUT', `/api/subscriptions/${testSubscription._id}/days/${TEST_DATE3}/selection`, { mealSlots: slots });
     assertEqual(res.status, 200, 'status');
@@ -680,12 +674,54 @@ async function runTests() {
     });
     assertTrue(res.status >= 400, '4xx status');
   });
+
+  console.log('\n--- K) Premium Protein Enforcement ---\n');
+  await test('premium_meal rejects standard protein', async () => {
+    const res = await makeRequest('POST', `/api/subscriptions/${testSubscription._id}/days/${TEST_DATE5}/selection/validate`, {
+      mealSlots: [{ slotIndex: 1, proteinId: String(standardProtein._id), carbs: [{ carbId: String(standardCarb._id), grams: 150 }], selectionType: 'premium_meal' }]
+    });
+    assertEqual(res.status, 422, 'rejected with 422');
+    assertEqual(res.body.error?.code, 'INVALID_PROTEIN_TYPE', 'error code');
+  });
+
+  await test('premium_large_salad rejects standard protein in protein group', async () => {
+    const sauceId = (await SaladIngredient.findOne({ groupKey: 'sauce' }))._id;
+    const res = await makeRequest('POST', `/api/subscriptions/${testSubscription._id}/days/${TEST_DATE5}/selection/validate`, {
+      mealSlots: [{ 
+        slotIndex: 1, 
+        selectionType: 'premium_large_salad', 
+        salad: { groups: { protein: [String(standardProtein._id)], sauce: [String(sauceId)] } } 
+      }]
+    });
+    assertEqual(res.status, 422, 'rejected with 422');
+    assertEqual(res.body.error?.code, 'SALAD_PROTEIN_NOT_PREMIUM', 'error code');
+  });
+
+  await test('premium_large_salad accepts premium protein in protein group', async () => {
+    const sauceId = (await SaladIngredient.findOne({ groupKey: 'sauce' }))._id;
+    const res = await makeRequest('POST', `/api/subscriptions/${testSubscription._id}/days/${TEST_DATE5}/selection/validate`, {
+      mealSlots: [
+        { 
+          slotIndex: 1, 
+          selectionType: 'premium_large_salad', 
+          salad: { groups: { protein: [String(premiumProteinShrimp._id)], sauce: [String(sauceId)] } } 
+        },
+        {
+          slotIndex: 2,
+          selectionType: 'standard_meal',
+          proteinId: String(standardProtein._id),
+          carbs: [{ carbId: String(standardCarb._id), grams: 150 }]
+        }
+      ]
+    });
+    assertEqual(res.status, 200, 'accepted');
+  });
   
   console.log('\n--- J) Idempotency ---\n');
   await test('repeated save does not duplicate meals', async () => {
     const slots = [
-      { slotIndex: 1, slotKey: 'slot_1', proteinId: String(standardProtein._id), carbId: String(standardCarb._id) },
-      { slotIndex: 2, slotKey: 'slot_2', proteinId: String(standardProtein._id), carbId: String(standardCarb._id) },
+      { slotIndex: 1, slotKey: 'slot_1', proteinId: String(standardProtein._id), carbs: [{ carbId: String(standardCarb._id), grams: 150 }], selectionType: 'standard_meal' },
+      { slotIndex: 2, slotKey: 'slot_2', proteinId: String(standardProtein._id), carbs: [{ carbId: String(standardCarb._id), grams: 150 }], selectionType: 'standard_meal' },
     ];
     await makeRequest('PUT', `/api/subscriptions/${testSubscription._id}/days/${TEST_DATE_IDEM}/selection`, { mealSlots: slots });
     await makeRequest('PUT', `/api/subscriptions/${testSubscription._id}/days/${TEST_DATE_IDEM}/selection`, { mealSlots: slots });

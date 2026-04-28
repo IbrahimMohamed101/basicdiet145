@@ -197,12 +197,14 @@ function localizeTimelineReadPayload(timeline, lang) {
               slotIndex: Number(slot.slotIndex || 0),
               slotKey: slot.slotKey || "",
               status: slot.status || "empty",
+              selectionType: slot.selectionType || "empty",
               proteinId: slot.proteinId || null,
-              carbId: slot.carbId || null,
-              carbSelections: Array.isArray(slot.carbSelections) && slot.carbSelections.length > 0
-                ? slot.carbSelections.map(cs => ({ carbId: cs.carbId || null, grams: cs.grams || 0 }))
-                : (slot.carbId ? [{ carbId: String(slot.carbId), grams: 300 }] : []),
+              carbs: Array.isArray(slot.carbs) ? slot.carbs : [],
+              sandwichId: slot.sandwichId || null,
+              salad: slot.salad || null,
+              customSalad: slot.customSalad || null,
               isPremium: Boolean(slot.isPremium),
+              premiumKey: slot.premiumKey || null,
               premiumSource: slot.premiumSource || "none",
               premiumExtraFeeHalala: Number(slot.premiumExtraFeeHalala || 0),
             }))

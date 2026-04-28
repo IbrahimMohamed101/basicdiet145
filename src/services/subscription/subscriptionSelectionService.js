@@ -353,6 +353,15 @@ function ensureActive(subscription, dateStr) {
     throw err;
   }
   if (dateStr) {
+    const startDate = subscription.startDate;
+    const startDateStr = startDate instanceof Date || typeof startDate === "number" ? dateUtils.toKSADateString(startDate) : startDate;
+    if (startDateStr && dateUtils.isBeforeKSADate(dateStr, startDateStr)) {
+      const err = new Error("Date is before subscription start");
+      err.code = "SUB_NOT_STARTED";
+      err.status = 422;
+      throw err;
+    }
+
     const endDate = subscription.validityEndDate || subscription.endDate;
     const endDateStr = endDate instanceof Date || typeof endDate === "number" ? dateUtils.toKSADateString(endDate) : endDate;
     if (endDateStr && dateUtils.isAfterKSADate(dateStr, endDateStr)) {
