@@ -21,17 +21,17 @@ function resolveMealsPerDay(sub) {
 function resolveDayWalletSelections({ day }) {
   return {
     premiumUpgradeSelections: Array.isArray(day && day.premiumUpgradeSelections) ? day.premiumUpgradeSelections : [],
-    addonCreditSelections: Array.isArray(day && day.addonCreditSelections) ? day.addonCreditSelections : [],
+    addonSelections: Array.isArray(day && day.addonSelections) ? day.addonSelections : [],
   };
 }
 
 function applyDayWalletSelections({ day }) {
   if (!day) {
-    return { premiumUpgradeSelections: [], addonCreditSelections: [] };
+    return { premiumUpgradeSelections: [], addonSelections: [] };
   }
   const resolved = resolveDayWalletSelections({ day });
   day.premiumUpgradeSelections = resolved.premiumUpgradeSelections;
-  day.addonCreditSelections = resolved.addonCreditSelections;
+  day.addonSelections = resolved.addonSelections;
   return resolved;
 }
 

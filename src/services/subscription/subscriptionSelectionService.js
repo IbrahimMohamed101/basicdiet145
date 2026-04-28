@@ -946,12 +946,17 @@ async function performConsumeAddonSelection({ userId, subscriptionId, dayId, dat
     if (!day) throw { status: 404, code: "NOT_FOUND", message: "Day not found" };
     if (day.status !== "open") throw { status: 409, code: "LOCKED", message: "Day is locked" };
 
+    const addonDoc = await Addon.findById(addonId).session(session);
+    if (!addonDoc) throw { status: 404, code: "NOT_FOUND", message: "Addon not found" };
+
     const balances = (sub.addonBalance || []).filter((row) => String(row.addonId) === String(addonId) && Number(row.remainingQty) > 0).sort((a, b) => new Date(a.purchasedAt).getTime() - new Date(b.purchasedAt).getTime());
     const totalAvailable = balances.reduce((sum, row) => sum + Number(row.remainingQty || 0), 0);
     if (totalAvailable < qty) throw { status: 400, code: "INSUFFICIENT_ADDON", message: "Not enough addon credits" };
 
     let remaining = qty;
     sub.addonSelections = sub.addonSelections || [];
+    day.addonSelections = day.addonSelections || [];
+
     for (const row of balances) {
       if (remaining <= 0) break;
       const available = Number(row.remainingQty || 0);
@@ -959,6 +964,19 @@ async function performConsumeAddonSelection({ userId, subscriptionId, dayId, dat
       if (!deduct) continue;
       row.remainingQty = available - deduct;
       sub.addonSelections.push({ dayId: day._id, date: day.date, addonId, qty: deduct, unitPriceHalala: Number(row.unitPriceHalala || 0), currency: row.currency || "SAR" });
+      
+      for (let i = 0; i < deduct; i++) {
+        day.addonSelections.push({
+          addonId: addonDoc._id,
+          name: addonDoc.name,
+          category: addonDoc.category,
+          source: "subscription",
+          priceHalala: Number(row.unitPriceHalala || 0),
+          currency: row.currency || "SAR",
+          consumedAt: new Date(),
+        });
+      }
+      
       remaining -= deduct;
     }
 
@@ -995,6 +1013,8 @@ async function performRemoveAddonSelection({ userId, subscriptionId, dayId, date
     if (!toRefund.length) throw { status: 404, code: "NOT_FOUND", message: "Addon selection not found" };
 
     sub.addonSelections = (sub.addonSelections || []).filter((row) => !(String(row.addonId) === String(addonId) && (((row.dayId && String(row.dayId) === targetDayId) || row.date === targetDate))));
+    
+    let totalRefundedQty = 0;
     for (const row of toRefund) {
       const match = (sub.addonBalance || []).find((balance) => String(balance.addonId) === String(addonId) && Number(balance.unitPriceHalala || 0) === Number(row.unitPriceHalala || 0));
       if (!match) throw { status: 409, code: "DATA_INTEGRITY_ERROR", message: "Cannot refund addon credits because the original wallet bucket was not found" };
@@ -1002,7 +1022,17 @@ async function performRemoveAddonSelection({ userId, subscriptionId, dayId, date
       const purchasedQty = Number(match.purchasedQty || 0);
       if (nextRemainingQty > purchasedQty) throw { status: 409, code: "DATA_INTEGRITY_ERROR", message: "Cannot refund addon credits because refund exceeds purchased quantity" };
       match.remainingQty = nextRemainingQty;
+      totalRefundedQty += Number(row.qty || 0);
     }
+
+    let removedDayCount = 0;
+    targetDay.addonSelections = (targetDay.addonSelections || []).filter((sel) => {
+      if (removedDayCount < totalRefundedQty && String(sel.addonId) === String(addonId) && sel.source === "subscription") {
+         removedDayCount++;
+         return false;
+      }
+      return true;
+    });
 
     applyDayWalletSelections({ day: targetDay });
     await sub.save({ session });
