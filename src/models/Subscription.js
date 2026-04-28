@@ -86,7 +86,7 @@ const SubscriptionSchema = new mongoose.Schema(
   {
     userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
     planId: { type: mongoose.Schema.Types.ObjectId, ref: "Plan", required: true },
-    status: { type: String, enum: ["pending_payment", "active", "expired", "canceled"], default: "pending_payment" },
+    status: { type: String, enum: ["pending_payment", "active", "frozen", "expired", "canceled", "completed"], default: "pending_payment" },
     startDate: { type: Date },
     endDate: { type: Date },
     validityEndDate: { type: Date },

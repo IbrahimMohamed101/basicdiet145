@@ -15,6 +15,8 @@ The `Subscription` root model manages the macro boundary of the user's purchased
   - `active`: Fully paid and currently running.
   - `frozen`: Paused temporarily via user/admin action.
   - `expired`: All days passed or depleted.
+  - `canceled`: Terminated before completion.
+  - `completed`: All days fulfilled successfully.
 - **`premiumBalance` Array**:
   Tracks all purchased premium entries.
   - Structure: `{ premiumKey, purchasedQty, remainingQty, proteinId (legacy sync) }`.
@@ -196,7 +198,7 @@ The `GET /api/subscriptions/current/overview` natively computes ledger truths.
   - `purchasedQtyTotal` directly aggregates `Subscription.premiumBalance.purchasedQty`.
   - `remainingQtyTotal` aggregates `Subscription.premiumBalance.remainingQty`.
   - `consumedQtyTotal` = `purchasedQtyTotal - remainingQtyTotal`. Exception globally applied for extra one-offs that aren't natively stored natively on balance (e.g., `custom_premium_salad` natively reflects `0` purchase but tracks `consumed`).
-- **`custom_premium_salad`**: It isn't a true DB protein layout natively. Thus it populates purely based on consumed array lookbacks. 
+- **`custom_premium_salad`**: It isn't a true DB protein layout natively. In the `premiumSummary`, it is currently returned as a static category entry to inform the client of its availability and price, without active consumption aggregation from history.
 
 ---
 

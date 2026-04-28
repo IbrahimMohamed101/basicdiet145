@@ -21,6 +21,13 @@ const {
 const { getRestaurantBusinessDate } = require("../restaurantHoursService");
 const { SYSTEM_CURRENCY } = require("../../utils/currency");
 
+const CATALOG_CACHE_TTL = 300000; // 5 minutes
+const catalogCache = {
+  plans: { data: new Map(), lastFetch: 0 },
+  addons: { data: new Map(), lastFetch: 0 },
+  proteins: { data: new Map(), lastFetch: 0 },
+};
+
 function collectWalletCatalogIds({ subscription, days } = {}) {
   const planIds = new Set();
   const addonIds = new Set();
@@ -69,15 +76,43 @@ function collectWalletCatalogIds({ subscription, days } = {}) {
 
 async function loadWalletCatalogMaps({ subscription = null, days = [], lang = "ar" } = {}) {
   const { planIds, addonIds, premiumIds } = collectWalletCatalogIds({ subscription, days });
-  const validPlanIds = (planIds || []).filter((id) => mongoose.isValidObjectId(id));
-  const validAddonIds = (addonIds || []).filter((id) => mongoose.isValidObjectId(id));
-  const validPremiumIds = (premiumIds || []).filter((id) => mongoose.isValidObjectId(id));
+  const now = Date.now();
 
-  const [planDocs, addonDocs, premiumDocs] = await Promise.all([
-    validPlanIds.length ? Plan.find({ _id: { $in: validPlanIds } }).select("_id name").lean() : Promise.resolve([]),
-    validAddonIds.length ? Addon.find({ _id: { $in: validAddonIds } }).select("_id name").lean() : Promise.resolve([]),
-    validPremiumIds.length ? BuilderProtein.find({ _id: { $in: validPremiumIds } }).select("_id name premiumKey").lean() : Promise.resolve([]),
+  const getCachedOrFetch = async (ids, cacheKey, Model, select) => {
+    const validIds = (ids || []).filter((id) => mongoose.isValidObjectId(id));
+    const result = new Map();
+    const missingIds = [];
+
+    for (const id of validIds) {
+      if (catalogCache[cacheKey].data.has(id) && (now - catalogCache[cacheKey].lastFetch) < CATALOG_CACHE_TTL) {
+        result.set(id, catalogCache[cacheKey].data.get(id));
+      } else {
+        missingIds.push(id);
+      }
+    }
+
+    if (missingIds.length > 0) {
+      const docs = await Model.find({ _id: { $in: missingIds } }).select(select).lean();
+      for (const doc of docs) {
+        const docId = String(doc._id);
+        catalogCache[cacheKey].data.set(docId, doc);
+        result.set(docId, doc);
+      }
+      catalogCache[cacheKey].lastFetch = now;
+    }
+
+    return result;
+  };
+
+  const [planDocsMap, addonDocsMap, premiumDocsMap] = await Promise.all([
+    getCachedOrFetch(planIds, "plans", Plan, "_id name"),
+    getCachedOrFetch(addonIds, "addons", Addon, "_id name"),
+    getCachedOrFetch(premiumIds, "proteins", BuilderProtein, "_id name premiumKey"),
   ]);
+
+  const planDocs = Array.from(planDocsMap.values());
+  const addonDocs = Array.from(addonDocsMap.values());
+  const premiumDocs = Array.from(premiumDocsMap.values());
 
   return {
     lang,

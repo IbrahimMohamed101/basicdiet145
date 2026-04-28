@@ -103,7 +103,15 @@ function buildCustomPremiumSaladItem(lang) {
   };
 }
 
+const PREMIUM_CATALOG_CACHE_TTL = 300000; // 5 minutes
+let premiumCatalogCache = { data: null, lastFetch: 0 };
+
 async function loadPremiumCatalogForOverview(lang) {
+  const now = Date.now();
+  if (premiumCatalogCache.data && (now - premiumCatalogCache.lastFetch) < PREMIUM_CATALOG_CACHE_TTL) {
+    return premiumCatalogCache.data;
+  }
+
   try {
     const premiumDocs = await BuilderProtein.find({
       isActive: true,
@@ -135,7 +143,9 @@ async function loadPremiumCatalogForOverview(lang) {
       }
     }
 
-    return { byId, byPremiumKey, allItems: Array.from(byId.values()) };
+    const result = { byId, byPremiumKey, allItems: Array.from(byId.values()) };
+    premiumCatalogCache = { data: result, lastFetch: now };
+    return result;
   } catch (err) {
     logger.error("currentOverview: failed to load premium catalog", {
       error: err.message,
