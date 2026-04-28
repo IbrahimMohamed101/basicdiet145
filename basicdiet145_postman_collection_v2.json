@@ -1,0 +1,972 @@
+{
+  "info": {
+    "name": "BasicDiet145 Backend API v2",
+    "description": "Full testing collection based on REAL backend code.\nRoutes updated to match: /api/subscriptions/{id}/activate, /api/subscriptions/{id}/days/{date}/selection, etc.\nResponse shapes handled: ok:true, status:true, error objects.",
+    "_postman_id": "basicdiet145-backend-v2-updated",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string",
+      "description": "API base URL"
+    },
+    {
+      "key": "authToken",
+      "value": "YOUR_JWT_TOKEN_HERE",
+      "type": "string",
+      "description": "JWT token from /auth/otp/verify"
+    },
+    {
+      "key": "subscriptionId",
+      "value": "",
+      "type": "string",
+      "description": "Auto-set after Activate Subscription"
+    },
+    {
+      "key": "checkoutDraftId",
+      "value": "",
+      "type": "string",
+      "description": "Auto-set after Checkout"
+    },
+    {
+      "key": "planId",
+      "value": "",
+      "type": "string",
+      "description": "Set from /subscriptions/menu"
+    },
+    {
+      "key": "proteinId",
+      "value": "",
+      "type": "string",
+      "description": "Premium protein from /builder/premium-meals"
+    },
+    {
+      "key": "carbId",
+      "value": "",
+      "type": "string",
+      "description": "Carb/category from /subscriptions/meal-planner-menu"
+    },
+    {
+      "key": "sandwichId",
+      "value": "",
+      "type": "string",
+      "description": "Sandwich meal from /subscriptions/menu"
+    },
+    {
+      "key": "zoneId",
+      "value": "",
+      "type": "string",
+      "description": "Delivery zone from /subscriptions/delivery-options"
+    },
+    {
+      "key": "deliveryWindow",
+      "value": "09:00-12:00",
+      "type": "string",
+      "description": "Delivery time window"
+    },
+    {
+      "key": "startDate",
+      "value": "",
+      "type": "string",
+      "description": "Subscription start date (YYYY-MM-DD)"
+    },
+    {
+      "key": "dayDate",
+      "value": "",
+      "type": "string",
+      "description": "Day date for meal selection (YYYY-MM-DD)"
+    },
+    {
+      "key": "grams",
+      "value": "150",
+      "type": "string",
+      "description": "Plan grams (100, 150, 200, etc)"
+    },
+    {
+      "key": "mealsPerDay",
+      "value": "2",
+      "type": "string",
+      "description": "Meals per day (2, 3)"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{authToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "🔐 Auth",
+      "item": [
+        {
+          "name": "Request OTP",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "console.log('OTP Response:', JSON.stringify(json));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/otp/request",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "otp", "request"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"phoneE164\":\"+201000000000\"}"
+            }
+          }
+        },
+        {
+          "name": "Verify OTP (Login)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "const data = json.data || json;",
+                  "if (data.token) {",
+                  "  pm.collectionVariables.set('authToken', data.token);",
+                  "  console.log('✅ Saved authToken');",
+                  "} else {",
+                  "  console.log('Response:', JSON.stringify(json));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/otp/verify",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "otp", "verify"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"phoneE164\":\"+201000000000\",\"otp\":\"123456\"}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "📋 Subscriptions — Catalog",
+      "item": [
+        {
+          "name": "Get Subscription Menu (plans, meals)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const json = pm.response.json();",
+                  "const data = json.data || json;",
+                  "",
+                  "pm.test('Has plans array', () => pm.expect(data.plans).to.be.an('array'));",
+                  "",
+                  "// Save first planId",
+                  "if (data.plans && data.plans.length > 0) {",
+                  "  const plan = data.plans[0];",
+                  "  pm.collectionVariables.set('planId', plan.id || plan._id);",
+                  "  console.log('✅ Saved planId:', plan.id || plan._id);",
+                  "}",
+                  "",
+                  "// Save meals for sandwichId",
+                  "const regularMeals = data.regularMeals || [];",
+                  "const sandwich = regularMeals.find(m =>",
+                  "  (m.name?.en || m.name?.ar || '').toLowerCase().includes('sandwich') ||",
+                  "  (m.name?.en || m.name?.ar || '').toLowerCase().includes('club')",
+                  ");",
+                  "if (sandwich) {",
+                  "  pm.collectionVariables.set('sandwichId', sandwich.id);",
+                  "  console.log('✅ Saved sandwichId:', sandwich.id);",
+                  "}",
+                  "",
+                  "// Save delivery options if available",
+                  "if (data.delivery && data.delivery.zones) {",
+                  "  const zone = data.delivery.zones.find(z => z.isActive);",
+                  "  if (zone) {",
+                  "    pm.collectionVariables.set('zoneId', zone.id || zone._id);",
+                  "    console.log('✅ Saved zoneId:', zone.id || zone._id);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/subscriptions/menu",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "subscriptions", "menu"]
+            }
+          }
+        },
+        {
+          "name": "Get Meal Planner Menu",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const json = pm.response.json();",
+                  "const data = json.data || json;",
+                  "",
+                  "// Save builder catalog for carbId (from regularMeals)",
+                  "const regularMeals = data.regularMeals || data.builderCatalog?.regularMeals || [];",
+                  "const carb = regularMeals.find(m =>",
+                  "  (m.name?.en || m.name?.ar || '').toLowerCase().includes('salad') ||",
+                  "  (m.name?.en || m.name?.ar || '').toLowerCase().includes('quinoa')",
+                  ");",
+                  "if (carb) {",
+                  "  pm.collectionVariables.set('carbId', carb.id);",
+                  "  console.log('✅ Saved carbId:', carb.id);",
+                  "}",
+                  "",
+                  "// Also save from builder catalog if exists",
+                  "if (data.builderCatalog && data.builderCatalog.carbs) {",
+                  "  const largeCarb = data.builderCatalog.carbs.find(c =>",
+                  "    (c.name?.en || '').toLowerCase().includes('large')",
+                  "  );",
+                  "  if (largeCarb && !pm.collectionVariables.get('carbId')) {",
+                  "    pm.collectionVariables.set('carbId', largeCarb.id || largeCarb._id);",
+                  "    console.log('✅ Saved carbId from builder:', largeCarb.id);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/subscriptions/meal-planner-menu",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "subscriptions", "meal-planner-menu"]
+            }
+          }
+        },
+        {
+          "name": "Get Delivery Options",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const json = pm.response.json();",
+                  "const data = json.data || json;",
+                  "",
+                  "if (data.zones && data.zones.length > 0) {",
+                  "  const zone = data.zones.find(z => z.isActive) || data.zones[0];",
+                  "  pm.collectionVariables.set('zoneId', zone.id || zone._id);",
+                  "  console.log('✅ Saved zoneId from delivery options:', zone.id || zone._id);",
+                  "}",
+                  "",
+                  "if (data.windows && data.windows.length > 0) {",
+                  "  pm.collectionVariables.set('deliveryWindow', data.windows[0]);",
+                  "  console.log('✅ Saved deliveryWindow:', data.windows[0]);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/subscriptions/delivery-options",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "subscriptions", "delivery-options"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🥩 Builder — Premium Meals",
+      "item": [
+        {
+          "name": "Get Premium Meals",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const json = pm.response.json();",
+                  "const data = json.data || json;",
+                  "const items = Array.isArray(data) ? data : (data.items || []);",
+                  "",
+                  "// Save first premium protein",
+                  "const premium = items.find(x => x.selectionType === 'premium_protein');",
+                  "if (premium) {",
+                  "  pm.collectionVariables.set('proteinId', premium.id);",
+                  "  console.log('✅ Saved proteinId:', premium.id);",
+                  "}",
+                  "",
+                  "console.log('Premium items count:', items.length);",
+                  "items.forEach(item => {",
+                  "  console.log(' -', item.premiumKey || item.id, '|', item.selectionType);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/builder/premium-meals",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "builder", "premium-meals"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🛒 Subscriptions — Checkout",
+      "item": [
+        {
+          "name": "Create Checkout Draft",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200 or 201', () => {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "console.log('Checkout Response:', JSON.stringify(json));",
+                  "",
+                  "const ok = json.ok === true || json.status === true;",
+                  "pm.test('Response has ok:true or status:true', () => pm.expect(ok).to.be.true);",
+                  "",
+                  "const data = json.data || json;",
+                  "",
+                  "// Save checkoutDraftId OR subscriptionId (if completed)",
+                  "const draftId = data.id || data._id || data.checkoutDraftId || data.draftId;",
+                  "if (draftId) {",
+                  "  pm.collectionVariables.set('checkoutDraftId', draftId);",
+                  "  console.log('✅ Saved checkoutDraftId:', draftId);",
+                  "}",
+                  "",
+                  "const subId = data.subscriptionId || data.subscription?.id || data.subscription?._id;",
+                  "if (subId) {",
+                  "  pm.collectionVariables.set('subscriptionId', subId);",
+                  "  console.log('✅ Saved subscriptionId from checkout:', subId);",
+                  "}",
+                  "",
+                  "// Save startDate if returned",
+                  "if (data.startDate) {",
+                  "  pm.collectionVariables.set('startDate', data.startDate);",
+                  "  console.log('✅ Saved startDate:', data.startDate);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/subscriptions/checkout",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "subscriptions", "checkout"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"planId\": \"{{planId}}\",\n  \"grams\": {{grams}},\n  \"mealsPerDay\": {{mealsPerDay}},\n  \"startDate\": \"{{startDate}}\",\n  \"delivery\": {\n    \"type\": \"delivery\",\n    \"zoneId\": \"{{zoneId}}\",\n    \"address\": {\n      \"line1\": \"Test Residence\",\n      \"line2\": \"Building 101\",\n      \"city\": \"Riyadh\",\n      \"district\": \"Al Malqa\",\n      \"street\": \"King Fahd Road\",\n      \"building\": \"101\",\n      \"apartment\": \"1A\"\n    },\n    \"slot\": {\n      \"type\": \"delivery\",\n      \"window\": \"{{deliveryWindow}}\"\n    }\n  },\n  \"premiumItems\": [\n    {\n      \"proteinId\": \"{{proteinId}}\",\n      \"qty\": 1\n    }\n  ],\n  \"addons\": [],\n  \"idempotencyKey\": \"checkout-{{$timestamp}}-{{$randomInt}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Create Checkout (Pickup Mode)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200 or 201', () => {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "const data = json.data || json;",
+                  "",
+                  "const ok = json.ok === true || json.status === true;",
+                  "pm.test('Response ok:true', () => pm.expect(ok).to.be.true);",
+                  "",
+                  "const draftId = data.id || data._id || data.checkoutDraftId;",
+                  "if (draftId) {",
+                  "  pm.collectionVariables.set('checkoutDraftId', draftId);",
+                  "  console.log('✅ Saved checkoutDraftId (pickup):', draftId);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/subscriptions/checkout",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "subscriptions", "checkout"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"planId\": \"{{planId}}\",\n  \"grams\": {{grams}},\n  \"mealsPerDay\": {{mealsPerDay}},\n  \"startDate\": \"{{startDate}}\",\n  \"delivery\": {\n    \"type\": \"pickup\",\n    \"pickupLocationId\": \"riyadh-hq\"\n  },\n  \"idempotencyKey\": \"pickup-checkout-{{$timestamp}}-{{$randomInt}}\"\n}"
+            },
+            "description": "Checkout with pickup mode - no address needed"
+          }
+        },
+        {
+          "name": "[Negative] Checkout — Invalid planId",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 400 or 404', () => {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([400, 404]);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "const err = json.error || json;",
+                  "",
+                  "pm.test('Error code present', () => pm.expect(err.code).to.be.a('string'));",
+                  "console.log('Error:', JSON.stringify(json));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/subscriptions/checkout",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "subscriptions", "checkout"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"planId\": \"000000000000000000000000\",\n  \"grams\": 150,\n  \"mealsPerDay\": 2,\n  \"startDate\": \"2026-05-01\",\n  \"delivery\": {\n    \"type\": \"delivery\",\n    \"address\": { \"line1\": \"Test\", \"city\": \"Riyadh\" }\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "[Negative] Checkout — Missing required fields",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
+                  "",
+                  "const json = pm.response.json();",
+                  "const err = json.error || json;",
+                  "pm.test('Error code is VALIDATION_ERROR', () => pm.expect(err.code).to.eql('VALIDATION_ERROR'));",
+                  "console.log('Error:', JSON.stringify(json));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/subscriptions/checkout",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "subscriptions", "checkout"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"planId\": \"{{planId}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "[Negative] Checkout — Invalid premium proteinId",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 400 or 422', () => {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([400, 422]);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "const err = json.error || json;",
+                  "console.log('Error:', JSON.stringify(json));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/subscriptions/checkout",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "subscriptions", "checkout"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"planId\": \"{{planId}}\",\n  \"grams\": 150,\n  \"mealsPerDay\": 2,\n  \"startDate\": \"2026-05-01\",\n  \"delivery\": {\n    \"type\": \"delivery\",\n    \"address\": { \"line1\": \"Test\", \"city\": \"Riyadh\" }\n  },\n  \"premiumItems\": [\n    {\n      \"proteinId\": \"000000000000000000000000\",\n      \"qty\": 2\n    }\n  ]\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "📋 Subscriptions — Activation",
+      "item": [
+        {
+          "name": "Get Checkout Draft Status",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const json = pm.response.json();",
+                  "const data = json.data || json;",
+                  "",
+                  "console.log('Draft Status:', JSON.stringify(json));",
+                  "",
+                  "// Check if draft is completed (has subscriptionId)",
+                  "if (data.subscriptionId) {",
+                  "  pm.collectionVariables.set('subscriptionId', data.subscriptionId);",
+                  "  console.log('✅ Saved subscriptionId from draft:', data.subscriptionId);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/subscriptions/checkout-drafts/{{checkoutDraftId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "subscriptions", "checkout-drafts", "{{checkoutDraftId}}"]
+            }
+          }
+        },
+        {
+          "name": "Activate Subscription",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const json = pm.response.json();",
+                  "console.log('Activation Response:', JSON.stringify(json));",
+                  "",
+                  "const ok = json.ok === true || json.status === true;",
+                  "pm.test('Response ok:true', () => pm.expect(ok).to.be.true);",
+                  "",
+                  "const data = json.data || json;",
+                  "",
+                  "// Extract subscription ID from various possible paths",
+                  "const subId =",
+                  "  data.id ||",
+                  "  data._id ||",
+                  "  data.subscriptionId ||",
+                  "  (data.subscription && (data.subscription.id || data.subscription._id));",
+                  "",
+                  "if (subId) {",
+                  "  pm.collectionVariables.set('subscriptionId', subId);",
+                  "  console.log('✅ Saved subscriptionId:', subId);",
+                  "}",
+                  "",
+                  "if (data.status === 'active') {",
+                  "  console.log('✅ Subscription is ACTIVE');",
+                  "}",
+                  "",
+                  "// Extract dayDate for meal selection",
+                  "if (data.startDate) {",
+                  "  const startDate = new Date(data.startDate);",
+                  "  const dayDate = new Date(startDate.getTime() + 24*60*60*1000);",
+                  "  const dayDateStr = dayDate.toISOString().split('T')[0];",
+                  "  pm.collectionVariables.set('dayDate', dayDateStr);",
+                  "  console.log('✅ Saved dayDate:', dayDateStr);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/subscriptions/{{checkoutDraftId}}/activate",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "subscriptions", "{{checkoutDraftId}}", "activate"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "📊 Subscriptions — Overview",
+      "item": [
+        {
+          "name": "Get Current Subscription Overview",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const json = pm.response.json();",
+                  "const data = json.data || json;",
+                  "",
+                  "const ok = json.ok === true || json.status === true;",
+                  "pm.test('Response ok:true', () => pm.expect(ok).to.be.true);",
+                  "",
+                  "pm.test('Has premiumBalance or premiumSummary', () => {",
+                  "  const hasPremium = data.premiumBalance || data.premiumSummary;",
+                  "  pm.expect(hasPremium).to.exist;",
+                  "});",
+                  "",
+                  "console.log('Overview Response:', JSON.stringify(json, null, 2));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/subscriptions/current/overview",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "subscriptions", "current", "overview"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🍽️ Subscriptions — Day Selection",
+      "item": [
+        {
+          "name": "Get Subscription Day Details",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const json = pm.response.json();",
+                  "console.log('Day Details:', JSON.stringify(json, null, 2));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/subscriptions/{{subscriptionId}}/days/{{dayDate}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "subscriptions", "{{subscriptionId}}", "days", "{{dayDate}}"]
+            }
+          }
+        },
+        {
+          "name": "Update Day Selection (Regular Meal)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const json = pm.response.json();",
+                  "const data = json.data || json;",
+                  "",
+                  "console.log('Selection Response:', JSON.stringify(json));",
+                  "",
+                  "pm.test('Response ok:true', () => {",
+                  "  const ok = json.ok === true || json.status === true;",
+                  "  pm.expect(ok).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/subscriptions/{{subscriptionId}}/days/{{dayDate}}/selection",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "subscriptions", "{{subscriptionId}}", "days", "{{dayDate}}", "selection"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"selections\": [\"{{sandwichId}}\"]\n}"
+            }
+          }
+        },
+        {
+          "name": "Confirm Day Planning",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const json = pm.response.json();",
+                  "console.log('Confirm Response:', JSON.stringify(json, null, 2));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/subscriptions/{{subscriptionId}}/days/{{dayDate}}/confirm",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "subscriptions", "{{subscriptionId}}", "days", "{{dayDate}}", "confirm"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
+          }
+        },
+        {
+          "name": "[Negative] Update Selection — Date out of range",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 400 or 422', () => {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([400, 422]);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "const err = json.error || json;",
+                  "console.log('Error:', JSON.stringify(json));",
+                  "pm.test('Has error code', () => pm.expect(err.code).to.be.a('string'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/subscriptions/{{subscriptionId}}/days/1950-01-01/selection",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "subscriptions", "{{subscriptionId}}", "days", "1950-01-01", "selection"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"selections\": [\"{{sandwichId}}\"]}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "💳 Payments (Mock)",
+      "item": [
+        {
+          "name": "Verify Checkout Payment (Mock)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const json = pm.response.json();",
+                  "console.log('Verify Payment Response:', JSON.stringify(json, null, 2));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/subscriptions/checkout-drafts/{{checkoutDraftId}}/verify-payment",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "subscriptions", "checkout-drafts", "{{checkoutDraftId}}", "verify-payment"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "description": "Mock payment verification for dev/testing"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "⚙️ Subscriptions — Settings",
+      "item": [
+        {
+          "name": "Get Subscription Quote",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const json = pm.response.json();",
+                  "const data = json.data || json;",
+                  "",
+                  "console.log('Quote Response:', JSON.stringify(json, null, 2));",
+                  "",
+                  "pm.test('Has breakdown', () => pm.expect(data.breakdown).to.exist);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/subscriptions/quote",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "subscriptions", "quote"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"planId\": \"{{planId}}\",\n  \"grams\": {{grams}},\n  \"mealsPerDay\": {{mealsPerDay}},\n  \"startDate\": \"2026-06-01\",\n  \"deliveryMode\": \"delivery\",\n  \"deliveryAddress\": {\n    \"line1\": \"Test\",\n    \"city\": \"Riyadh\"\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "Get User Subscriptions List",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const json = pm.response.json();",
+                  "const data = json.data || json;",
+                  "",
+                  "console.log('Subscriptions List:', JSON.stringify(json, null, 2));",
+                  "",
+                  "if.test('Has subscriptions array', () => pm.expect(data).to.be.an('array'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/subscriptions",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "subscriptions"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

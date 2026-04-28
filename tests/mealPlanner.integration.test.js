@@ -24,6 +24,7 @@ const Addon = require('../src/models/Addon');
 const Plan = require('../src/models/Plan');
 const Meal = require('../src/models/Meal');
 const MealCategory = require('../src/models/MealCategory');
+const SaladIngredient = require('../src/models/SaladIngredient');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'supersecret';
 const BASE_URL = 'http://localhost:3000';
@@ -153,11 +154,22 @@ async function seedBuilderCatalog() {
     });
     await builderCategory.save();
   }
-  
+
+  const largeSaladCategory = await BuilderCategory.findOne({ dimension: 'carb', key: 'large_salad' });
+  let largeSaladCat = largeSaladCategory;
+  if (!largeSaladCat) {
+    largeSaladCat = new BuilderCategory({
+      key: 'large_salad', dimension: 'carb',
+      name: { ar: 'سلطة مميزة', en: 'Large Salad' },
+      description: { ar: 'سلطة مميزة', en: 'Large Premium Salad' },
+      isActive: true, sortOrder: 10,
+    });
+    await largeSaladCat.save();
+  }
+
   const baseProtein = { displayCategoryId: builderCategory._id, displayCategoryKey: builderCategory.key, isActive: true, availableForSubscription: true };
-  
-  // Use existing non-premium proteins if available
-  standardProtein = await BuilderProtein.findOne({ isPremium: false, premiumKey: { $exists: true, $ne: null } }) 
+
+  standardProtein = await BuilderProtein.findOne({ isPremium: false, premiumKey: { $exists: true, $ne: null } })
     || await BuilderProtein.findOne({ isPremium: false });
   if (!standardProtein) {
     standardProtein = new BuilderProtein({
@@ -167,8 +179,7 @@ async function seedBuilderCatalog() {
     });
     await standardProtein.save();
   }
-  
-  // Use existing premium proteins if available
+
   premiumProteinShrimp = await BuilderProtein.findOne({ premiumKey: 'shrimp' });
   if (!premiumProteinShrimp) {
     premiumProteinShrimp = new BuilderProtein({
@@ -178,7 +189,7 @@ async function seedBuilderCatalog() {
     });
     await premiumProteinShrimp.save();
   }
-  
+
   premiumProteinBeefSteak = await BuilderProtein.findOne({ premiumKey: 'beef_steak' });
   if (!premiumProteinBeefSteak) {
     premiumProteinBeefSteak = new BuilderProtein({
@@ -188,7 +199,7 @@ async function seedBuilderCatalog() {
     });
     await premiumProteinBeefSteak.save();
   }
-  
+
   premiumProteinSalmon = await BuilderProtein.findOne({ premiumKey: 'salmon' });
   if (!premiumProteinSalmon) {
     premiumProteinSalmon = new BuilderProtein({
@@ -198,7 +209,7 @@ async function seedBuilderCatalog() {
     });
     await premiumProteinSalmon.save();
   }
-  
+
   standardCarb = await BuilderCarb.findOne();
   if (!standardCarb) {
     standardCarb = new BuilderCarb({
@@ -208,7 +219,62 @@ async function seedBuilderCatalog() {
     });
     await standardCarb.save();
   }
-  
+
+  let largeSaladCarb = await BuilderCarb.findOne({ displayCategoryKey: 'large_salad' });
+  if (!largeSaladCarb) {
+    largeSaladCarb = new BuilderCarb({
+      displayCategoryId: largeSaladCat._id, displayCategoryKey: 'large_salad',
+      name: { ar: 'سلطة مميزة', en: 'Custom Premium Salad' },
+      description: { ar: 'سلطة مميزة', en: 'Custom Premium Salad Carb' },
+      isActive: true, availableForSubscription: true,
+    });
+    await largeSaladCarb.save();
+  }
+
+  const GROUP_ORDER = { vegetables: 1, addons: 2, fruits: 3, nuts: 4, sauce: 5 };
+  const SEED_INGREDIENTS = [
+    { name: { ar: 'بصل مخلل', en: 'Pickled Onion' }, groupKey: 'vegetables' },
+    { name: { ar: 'نعناع', en: 'Mint' }, groupKey: 'vegetables' },
+    { name: { ar: 'زيتون أسود', en: 'Black Olive' }, groupKey: 'vegetables' },
+    { name: { ar: 'زيتون أخضر', en: 'Green Olive' }, groupKey: 'vegetables' },
+    { name: { ar: 'بروكلي', en: 'Broccoli' }, groupKey: 'vegetables' },
+    { name: { ar: 'فطر', en: 'Mushroom' }, groupKey: 'vegetables' },
+    { name: { ar: 'كزبرة', en: 'Coriander' }, groupKey: 'vegetables' },
+    { name: { ar: 'فلفل', en: 'Pepper' }, groupKey: 'vegetables' },
+    { name: { ar: 'بنجر', en: 'Beet' }, groupKey: 'vegetables' },
+    { name: { ar: 'هالينو', en: 'Jalapeno' }, groupKey: 'vegetables' },
+    { name: { ar: 'بارميزان', en: 'Parmesan' }, groupKey: 'addons' },
+    { name: { ar: 'فيتا', en: 'Feta' }, groupKey: 'addons' },
+    { name: { ar: 'تمر', en: 'Dates' }, groupKey: 'fruits' },
+    { name: { ar: 'توت أزرق', en: 'Blueberry' }, groupKey: 'fruits' },
+    { name: { ar: 'فراولة', en: 'Strawberry' }, groupKey: 'fruits' },
+    { name: { ar: 'رمان', en: 'Pomegranate' }, groupKey: 'fruits' },
+    { name: { ar: 'سمسم', en: 'Sesame' }, groupKey: 'nuts' },
+    { name: { ar: 'كاجو', en: 'Cashew' }, groupKey: 'nuts' },
+    { name: { ar: 'عين الجمل', en: 'Walnut' }, groupKey: 'nuts' },
+    { name: { ar: 'عسل بالليمون', en: 'Honey Lemon' }, groupKey: 'sauce' },
+    { name: { ar: 'زبادي بالنعناع', en: 'Yogurt Mint' }, groupKey: 'sauce' },
+    { name: { ar: 'هاني ماستر', en: 'Honey Mustard' }, groupKey: 'sauce' },
+    { name: { ar: 'صوص بيستو', en: 'Pesto Sauce' }, groupKey: 'sauce' },
+    { name: { ar: 'سيزر', en: 'Caesar' }, groupKey: 'sauce' },
+    { name: { ar: 'رانش', en: 'Ranch' }, groupKey: 'sauce' },
+  ];
+
+  const existingCount = await SaladIngredient.countDocuments({});
+  if (existingCount === 0) {
+    for (let i = 0; i < SEED_INGREDIENTS.length; i++) {
+      const ing = SEED_INGREDIENTS[i];
+      await SaladIngredient.create({
+        name: ing.name,
+        groupKey: ing.groupKey,
+        price: 0,
+        calories: 50,
+        isActive: true,
+        sortOrder: GROUP_ORDER[ing.groupKey] + (i * 0.01),
+      });
+    }
+  }
+
   sandwichMeal = await Meal.findOne({ type: 'regular', isActive: true }) || await Meal.findOne();
   if (!sandwichMeal) {
     const mealCategory = await MealCategory.findOne();
@@ -218,7 +284,7 @@ async function seedBuilderCatalog() {
     });
     await sandwichMeal.save();
   }
-  
+
   addonJuice = await Addon.findOne({ kind: 'item' });
   if (!addonJuice) {
     addonJuice = new Addon({
@@ -227,8 +293,7 @@ async function seedBuilderCatalog() {
     });
     await addonJuice.save();
   }
-  
-  // Find a different addon or use the same if only one exists
+
   addonJuice2 = await Addon.findOne({ kind: 'item', _id: { $ne: addonJuice._id } });
   if (!addonJuice2) {
     addonJuice2 = new Addon({
@@ -398,6 +463,25 @@ async function runTests() {
     const salad = res.body.data?.builderCatalog?.customPremiumSalad;
     assertTrue(!!salad, 'customPremiumSalad present');
     assertEqual(salad?.extraFeeHalala, CUSTOM_PREMIUM_SALAD_FIXED_PRICE, 'fixed price');
+    assertEqual(salad?.id, CUSTOM_PREMIUM_SALAD_KEY, 'id is custom_premium_salad');
+    assertTrue(salad?.carbId != null, 'carbId is not null');
+    assertEqual(salad?.preset?.key, 'large_salad', 'preset.key is large_salad');
+    const groupKeys = (salad?.preset?.groups || []).map(g => g.key);
+    assertTrue(groupKeys.includes('vegetables'), 'groups includes vegetables');
+    assertTrue(groupKeys.includes('addons'), 'groups includes addons');
+    assertTrue(groupKeys.includes('fruits'), 'groups includes fruits');
+    assertTrue(groupKeys.includes('nuts'), 'groups includes nuts');
+    assertTrue(groupKeys.includes('sauce'), 'groups includes sauce');
+    const sauceGroup = salad?.preset?.groups?.find(g => g.key === 'sauce');
+    assertEqual(sauceGroup?.minSelect, 1, 'sauce minSelect=1');
+    assertEqual(sauceGroup?.maxSelect, 1, 'sauce maxSelect=1');
+    for (const ing of (salad?.ingredients || [])) {
+      assertTrue(groupKeys.includes(ing.groupKey), `ingredient groupKey '${ing.groupKey}' exists in preset.groups`);
+      assertEqual(ing.groupKey === ing.name, false, 'groupKey is not the same as ingredient name');
+      assertTrue(typeof ing.id === 'string' && ing.id.length > 0, 'ingredient has id');
+    }
+    const hasValidUtf8 = JSON.stringify(salad).indexOf('\ufffd') === -1;
+    assertTrue(hasValidUtf8, 'no replacement characters in JSON');
   });
 
   console.log('\n--- A2) Builder Premium Meals ---\n');

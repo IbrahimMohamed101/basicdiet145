@@ -9,6 +9,7 @@ const paymentRoutes = require("./routes/payments");
 const requestLanguageMiddleware = require("./middleware/requestLanguage");
 const errorResponse = require("./utils/errorResponse");
 const { logger } = require("./utils/logger");
+const { validateAndFixResponse } = require("./utils/encoding");
 
 function normalizeTopLevelOkField(payload) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
@@ -87,7 +88,17 @@ function createApp() {
 
   app.use((req, res, next) => {
     const originalJson = res.json.bind(res);
-    res.json = (payload) => originalJson(normalizeTopLevelOkField(payload));
+    res.json = (payload) => {
+      const normalized = normalizeTopLevelOkField(payload);
+      const sanitized = validateAndFixResponse(normalized);
+      try {
+        JSON.stringify(sanitized);
+        return originalJson(sanitized);
+      } catch (e) {
+        logger.error("JSON serialization error after sanitization", { error: e.message });
+        return originalJson({ ok: false, error: "DATA_ERROR" });
+      }
+    };
     next();
   });
   app.use(express.json({ limit: "1mb" }));
