@@ -36,7 +36,14 @@ const MealSlotSchema = new mongoose.Schema(
       default: undefined,
     },
     carbDisplayCategoryKey: { type: String, default: null, trim: true },
+
+    // Selection Type Fields
+    selectionType: { type: String, enum: ["sandwich", "standard_combo", "custom_premium_salad"], default: "standard_combo" },
+    sandwichId: { type: mongoose.Schema.Types.ObjectId, ref: "Meal", default: null },
+    customSalad: { type: mongoose.Schema.Types.Mixed, default: null },
+
     isPremium: { type: Boolean, default: false },
+    premiumKey: { type: String, default: null, trim: true },
     premiumCreditCost: { type: Number, min: 0, default: 0 },
     premiumSource: {
       type: String,
@@ -158,6 +165,7 @@ const SubscriptionDaySchema = new mongoose.Schema(
       {
         baseSlotKey: { type: String, required: true },
         proteinId: { type: mongoose.Schema.Types.ObjectId, ref: "BuilderProtein", required: true },
+        premiumKey: { type: String, default: null, trim: true },
         unitExtraFeeHalala: { type: Number, min: 0, default: 0 },
         currency: { type: String, default: "SAR" },
         premiumSource: {

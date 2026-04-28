@@ -286,6 +286,25 @@ function runTests() {
     expectEqual(day.plannerMeta.isConfirmable, false, 'not confirmable');
   });
 
+  console.log(`\n=== Meal Planner Persistence & Mapping Tests ===\n`);
+
+  test('processedSlot includes all persistence fields', () => {
+    const slot = { slotIndex: 1, selectionType: 'sandwich', sandwichId: 's1' };
+    const normalized = normalizeMealSlotsInput({ mealSlots: [slot] })[0];
+    expectEqual(normalized.selectionType, 'sandwich', 'selectionType preserved');
+    expectEqual(normalized.sandwichId, 's1', 'sandwichId preserved');
+  });
+
+  test('premiumKey is populated in draft processed slots', async () => {
+    // This requires mocking Protein retrieval which is done in buildMealSlotDraft
+    // For unit testing here, we check the mapping logic in projectMaterializedAndLegacyFromSlots
+    const slots = [
+      { slotIndex: 1, selectionType: 'standard_combo', proteinId: 'p1', carbId: 'c1', isPremium: true, premiumKey: 'beef_premium', status: 'complete' }
+    ];
+    const result = projectMaterializedAndLegacyFromSlots({ processedSlots: slots, now: new Date() });
+    expectEqual(result.premiumSelections[0].premiumKey, 'beef_premium', 'premiumKey mapped to selections');
+  });
+
   console.log(`\n=== Results: ${passed} passed, ${failed} failed ===\n`);
   
   if (failed > 0) {
