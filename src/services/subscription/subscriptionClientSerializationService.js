@@ -152,6 +152,10 @@ function resolveSubscriptionPricingSummary(subscription) {
     : {};
   const normalized = normalizeStoredVatBreakdown({
     basePriceHalala:
+      subscription && subscription.basePlanPriceHalala !== undefined
+        ? subscription.basePlanPriceHalala
+        : snapshotPricing.basePlanPriceHalala,
+    subtotalHalala:
       subscription && subscription.subtotalHalala !== undefined
         ? subscription.subtotalHalala
         : snapshotPricing.subtotalHalala,

@@ -45,20 +45,24 @@ function normalizeStoredVatBreakdown({
   const normalizedBasePriceHalala = normalizeHalala(
     basePriceHalala !== undefined ? basePriceHalala : subtotalHalala
   );
+  const normalizedSubtotalHalala = normalizeHalala(
+    subtotalHalala !== undefined ? subtotalHalala : basePriceHalala
+  );
   const normalizedVatPercentage = normalizeVatPercentage(vatPercentage);
   const computed = computeVatBreakdown({
-    basePriceHalala: normalizedBasePriceHalala,
+    basePriceHalala: normalizedSubtotalHalala,
     vatPercentage: normalizedVatPercentage,
   });
 
   const normalizedVatHalala = vatHalala === undefined ? computed.vatHalala : normalizeHalala(vatHalala);
   const normalizedTotalPriceHalala = totalPriceHalala !== undefined
     ? normalizeHalala(totalPriceHalala)
-    : (totalHalala !== undefined ? normalizeHalala(totalHalala) : normalizedBasePriceHalala + normalizedVatHalala);
+    : (totalHalala !== undefined ? normalizeHalala(totalHalala) : normalizedSubtotalHalala + normalizedVatHalala);
 
   return {
     basePriceHalala: normalizedBasePriceHalala,
-    subtotalHalala: normalizedBasePriceHalala,
+    basePlanPriceHalala: normalizedBasePriceHalala,
+    subtotalHalala: normalizedSubtotalHalala,
     vatPercentage: normalizedVatPercentage,
     vatHalala: normalizedVatHalala,
     totalPriceHalala: normalizedTotalPriceHalala,
@@ -67,21 +71,32 @@ function normalizeStoredVatBreakdown({
 }
 
 function buildMoneySummary({
-  basePriceHalala = 0,
+  basePlanPriceHalala = 0,
+  subtotalHalala = 0,
   vatPercentage = DEFAULT_VAT_PERCENTAGE,
   vatHalala = 0,
   totalPriceHalala = 0,
   currency = "SAR",
 } = {}) {
+  const basePlanPrice = normalizeHalala(basePlanPriceHalala);
+  const subtotal = normalizeHalala(subtotalHalala);
+  const vat = normalizeHalala(vatHalala);
+  const total = normalizeHalala(totalPriceHalala);
+
   return {
-    basePriceHalala: normalizeHalala(basePriceHalala),
-    basePriceSar: normalizeHalala(basePriceHalala) / 100,
+    basePlanPriceHalala: basePlanPrice,
+    basePlanPriceSar: basePlanPrice / 100,
+    subtotalHalala: subtotal,
+    subtotalSar: subtotal / 100,
     vatPercentage: normalizeVatPercentage(vatPercentage),
-    vatHalala: normalizeHalala(vatHalala),
-    vatSar: normalizeHalala(vatHalala) / 100,
-    totalPriceHalala: normalizeHalala(totalPriceHalala),
-    totalPriceSar: normalizeHalala(totalPriceHalala) / 100,
+    vatHalala: vat,
+    vatSar: vat / 100,
+    totalPriceHalala: total,
+    totalPriceSar: total / 100,
     currency: String(currency || "SAR").trim().toUpperCase() || "SAR",
+    // Backward compatibility
+    basePriceHalala: basePlanPrice,
+    basePriceSar: basePlanPrice / 100,
   };
 }
 

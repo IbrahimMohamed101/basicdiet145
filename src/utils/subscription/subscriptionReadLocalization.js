@@ -63,7 +63,7 @@ function normalizeCanonicalMealSlots(mealSlots) {
       slotKey: slot && slot.slotKey ? String(slot.slotKey) : "",
       status: slot && slot.status ? String(slot.status) : "empty",
       selectionType: slot && slot.selectionType ? String(slot.selectionType) : "empty",
-      proteinId: slot && slot.proteinId ? String(slot.proteinId) : null,
+      proteinId: (slot && slot.proteinId && String(slot.proteinId).trim()) ? String(slot.proteinId).trim() : null,
       carbs,
       sandwichId: slot && slot.sandwichId ? String(slot.sandwichId) : null,
       salad,
@@ -298,7 +298,8 @@ function localizeSubscriptionReadPayload(subscription, { lang, addonNames = new 
 
   if (Array.isArray(subscription.premiumBalance)) {
     localized.premiumBalance = subscription.premiumBalance.map((item) => {
-      const proteinId = item.proteinId ? String(item.proteinId) : null;
+      const rawProteinId = item.proteinId ? String(item.proteinId).trim() : null;
+      const proteinId = rawProteinId || null;
       let premiumKey = item.premiumKey;
 
       if (!premiumKey && proteinId) {
@@ -319,6 +320,7 @@ function localizeSubscriptionReadPayload(subscription, { lang, addonNames = new 
 
       return {
         ...item,
+        proteinId,
         premiumKey,
         name: getPremiumDisplayName({
           premiumKey,

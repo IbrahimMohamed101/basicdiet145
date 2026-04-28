@@ -531,7 +531,7 @@ async function runTests() {
   await test('GET /meal-planner-menu returns builderCatalog', async () => {
     const res = await makeRequest('GET', '/api/subscriptions/meal-planner-menu');
     assertEqual(res.status, 200, 'status');
-    assertTrue(res.body.ok !== false, 'ok');
+    assertTrue(res.body.status !== false, 'status');
     assertTrue(!!res.body.data?.builderCatalog, 'builderCatalog');
   });
   
@@ -583,7 +583,7 @@ async function runTests() {
   await test('GET /api/builder/premium-meals returns 4 items', async () => {
     const res = await makeRequest('GET', '/api/builder/premium-meals');
     assertEqual(res.status, 200, 'status');
-    assertTrue(res.body.ok !== false, 'ok');
+    assertTrue(res.body.status !== false, 'status');
     assertArray(res.body.data, 'data is array');
     assertEqual(res.body.data.length, 4, 'returns 4 items');
   });
@@ -815,7 +815,7 @@ async function runTests() {
     assertEqual(nullKeys.length, 0, 'no null premiumKey rows');
   });
 
-  await test('premiumSummary contains exactly canonical keys', async () => {
+  await test('premiumSummary contains only items with balance', async () => {
     const res = await makeRequest('GET', '/api/subscriptions/current/overview');
     const summary = res.body.data.premiumSummary || [];
     const keys = summary.map(p => p.premiumKey).filter(Boolean);
@@ -823,11 +823,15 @@ async function runTests() {
     const hasBeefSteak = keys.includes('beef_steak');
     const hasSalmon = keys.includes('salmon');
     const hasCustomSalad = keys.includes('custom_premium_salad');
-    assertTrue(hasShrimp, 'shrimp present');
-    assertTrue(hasBeefSteak, 'beef_steak present');
-    assertTrue(hasSalmon, 'salmon present');
-    assertTrue(hasCustomSalad, 'custom_premium_salad present');
-    assertEqual(keys.length, 4, 'exactly 4 canonical premium items');
+    
+    assertTrue(hasShrimp, 'shrimp present (has balance)');
+    assertTrue(hasBeefSteak, 'beef_steak present (has balance)');
+    assertTrue(hasSalmon, 'salmon present (has balance)');
+    assertTrue(hasCustomSalad, 'custom_premium_salad present (has balance)');
+    
+    // Ensure zero-quantity items are NOT present
+    const zeroQtys = summary.filter(p => p.purchasedQtyTotal === 0 && p.remainingQtyTotal === 0 && p.consumedQtyTotal === 0);
+    assertEqual(zeroQtys.length, 0, 'zero quantity items filtered out');
   });
 
   await test('premiumSummary preserves shrimp balance', async () => {

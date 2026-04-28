@@ -249,14 +249,16 @@ function buildSubscriptionPremiumBalanceSummary(subscription, premiumCatalog, la
     const purchasedQtyTotal = summary ? summary.purchasedQtyTotal : 0;
     const remainingQtyTotal = summary ? summary.remainingQtyTotal : 0;
 
-    result.push({
-      premiumMealId: catalogItem.id,
-      premiumKey: catalogKey,
-      name: catalogItem.name,
-      purchasedQtyTotal,
-      remainingQtyTotal,
-      consumedQtyTotal: purchasedQtyTotal - remainingQtyTotal,
-    });
+    if (purchasedQtyTotal > 0 || remainingQtyTotal > 0) {
+      result.push({
+        premiumMealId: catalogItem.id,
+        premiumKey: catalogKey,
+        name: catalogItem.name,
+        purchasedQtyTotal,
+        remainingQtyTotal,
+        consumedQtyTotal: purchasedQtyTotal - remainingQtyTotal,
+      });
+    }
 
     existingKeys.add(catalogKey);
   }
@@ -274,21 +276,26 @@ function buildSubscriptionPremiumBalanceSummary(subscription, premiumCatalog, la
       continue;
     }
 
-    result.push({
-      premiumMealId: key,
-      premiumKey: key,
-      name: getPremiumDisplayName({ premiumKey: key, lang }),
-      purchasedQtyTotal: summary.purchasedQtyTotal,
-      remainingQtyTotal: summary.remainingQtyTotal,
-      consumedQtyTotal: summary.purchasedQtyTotal - summary.remainingQtyTotal,
-    });
+    if (summary.purchasedQtyTotal > 0 || summary.remainingQtyTotal > 0) {
+      result.push({
+        premiumMealId: key,
+        premiumKey: key,
+        name: getPremiumDisplayName({ premiumKey: key, lang }),
+        purchasedQtyTotal: summary.purchasedQtyTotal,
+        remainingQtyTotal: summary.remainingQtyTotal,
+        consumedQtyTotal: summary.purchasedQtyTotal - summary.remainingQtyTotal,
+      });
+    }
 
     existingKeys.add(key);
   }
 
   const customSaladItem = buildCustomPremiumSaladItem(lang);
   if (!existingKeys.has(CUSTOM_PREMIUM_SALAD_KEY)) {
-    result.push(customSaladItem);
+    // Only add if it has non-zero quantities (handled by the balance processing above)
+    // Actually, for custom_premium_salad, if it's not in existingKeys, it means 0 balance.
+    // The user wants to EXCLUDE items with zero quantities.
+    // So we don't automatically push it anymore.
   }
 
   return result;
@@ -337,7 +344,7 @@ async function buildCurrentSubscriptionOverview({ userId, lang, runtime: runtime
 
   if (!sub) {
     return {
-      ok: true,
+      status: true,
       data: null,
     };
   }
@@ -387,7 +394,7 @@ async function buildCurrentSubscriptionOverview({ userId, lang, runtime: runtime
   }
 
   return {
-    ok: true,
+    status: true,
     data: {
       ...serializedSubscription,
       ...skipUsage,
