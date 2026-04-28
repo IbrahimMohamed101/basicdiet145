@@ -742,6 +742,8 @@ router.post("/:id/days/:date/custom-meal", asyncHandler(customMealController.add
 router.put("/:id/days/:date/delivery", asyncHandler(controller.updateDeliveryDetailsForDate));
 router.post("/:id/addon-selections", asyncHandler(controller.consumeAddonSelection));
 router.delete("/:id/addon-selections", asyncHandler(controller.removeAddonSelection));
+router.post("/:id/premium-selections", asyncHandler(controller.consumePremiumSelection));
+router.delete("/:id/premium-selections", asyncHandler(controller.removePremiumSelection));
 router.post("/:id/addons/one-time", asyncHandler(controller.addOneTimeAddon));
 router.put("/:id/delivery", asyncHandler(controller.updateDeliveryDetails));
 

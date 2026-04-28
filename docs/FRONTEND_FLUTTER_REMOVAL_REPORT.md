@@ -223,5 +223,34 @@ The `GET /api/subscriptions/current/overview` natively computes ledger truths.
    - Fails solidly if day is `locked` (`422 LOCKED`).
    - Fails if `completeSlotCount` does not equal `requiredSlotCount` (`422 PLANNING_INCOMPLETE`).
    
+## 11. Addon Selections (Unified Flow)
+
+Addons (Juices, Snacks, Small Salads) are now managed declaratively within the `SubscriptionDay` to prevent data drift between balances and selections.
+
+### Addon Sources
+- `subscription`: Covered by fixed daily entitlements (e.g., 1 Juice/day plan). `priceHalala` is 0.
+- `wallet`: Covered by a prepaid balance (purchased as a pack). `priceHalala` is 0.
+- `pending_payment`: A one-time addition that will require payment before the day is out for delivery. `priceHalala` > 0.
+- `paid`: Already paid one-time addition.
+
+### Addon Endpoints
+- **Bulk Update**: `PUT /api/subscriptions/:id/days/:date/selections` with `requestedOneTimeAddonIds`. This is the primary atomic path.
+- **Standalone Add**: `POST /api/subscriptions/:id/addon-selections`. merged into the day as a single-item update.
+- **Standalone Remove**: `DELETE /api/subscriptions/:id/addon-selections`. 
+
+---
+
+## 12. Robustness Features
+
+### 1. Repeated Save (Idempotency)
+The backend implements a sophisticated `plannerRevisionHash` that captures the complete state of a day (slots + addons).
+- If the incoming payload results in a hash identical to the existing `plannerRevisionHash`, the backend performs **Short-circuit Idempotency**.
+- It returns HTTP `200` with `idempotent: true`, bypassing all database writes and transaction overhead. This is critical for high-load stability and handling client retries.
+
+### 2. Auto-Refund Logic
+Whenever a day selection is updated, the backend automatically reconciles both `premiumBalance` and `addonBalance`. 
+- If a premium meal is removed, the credit is returned to the wallet atomically.
+- If an addon is removed, the wallet credit is returned atomically.
+
 ## Concluding Integration Rule
 Clients **must never** attempt to calculate `premiumPendingPaymentCount`, valid states, or invoice math manually. All validation math strictly relies on fetching backend representations generated dynamically at runtime and mapping local models securely to backend validation responses explicitly via `plannerMeta.isConfirmable`.

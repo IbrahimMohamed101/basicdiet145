@@ -10,10 +10,6 @@ const {
 } = require("./subscriptionClientSupportService");
 const {
   performDaySelectionUpdate,
-  performConsumePremiumSelection,
-  performRemovePremiumSelection,
-  performConsumeAddonSelection,
-  performRemoveAddonSelection,
 } = require("./subscriptionSelectionService");
 
 function buildErrorResult(status, code, message, details) {
@@ -155,126 +151,108 @@ async function updateBulkDaySelectionsForClient({
   });
 }
 
-async function consumeAddonSelectionForClient({
-  subscriptionId,
-  dayId,
-  date,
-  addonId,
-  qty,
-  userId,
-}) {
-  try {
-    const result = await performConsumeAddonSelection({
-      userId,
-      subscriptionId,
-      dayId,
-      date,
-      addonId,
-      qty,
-    });
 
-    return buildSuccessResult(200, {
-      subscriptionId: result.subscriptionId,
-      addonId: String(result.addonId),
-      remainingQtyTotal: result.remainingQtyTotal,
-    });
-  } catch (err) {
-    if (err.status && err.code) {
-      return buildErrorResult(err.status, err.code, err.message);
-    }
-    logger.error("Addon selection failed", { subscriptionId, date, error: err.message, stack: err.stack });
-    return buildErrorResult(500, "INTERNAL", "Addon selection failed");
-  }
-}
-
-async function removeAddonSelectionForClient({
-  subscriptionId,
-  dayId,
-  date,
-  addonId,
-  userId,
-}) {
-  try {
-    const result = await performRemoveAddonSelection({
-      userId,
-      subscriptionId,
-      dayId,
-      date,
-      addonId,
-    });
-
-    return buildSuccessResult(200, { subscriptionId: result.subscriptionId });
-  } catch (err) {
-    if (err.status && err.code) {
-      return buildErrorResult(err.status, err.code, err.message);
-    }
-    logger.error("Addon selection refund failed", { subscriptionId, date, error: err.message, stack: err.stack });
-    return buildErrorResult(500, "INTERNAL", "Addon selection refund failed");
-  }
-}
-
-async function consumePremiumSelectionForClient({
-  subscriptionId,
-  dayId,
-  date,
-  baseSlotKey,
-  proteinId,
-  userId,
-}) {
-  try {
-    const result = await performConsumePremiumSelection({
-      userId,
-      subscriptionId,
-      dayId,
-      date,
-      baseSlotKey,
-      proteinId,
-    });
-
-    return buildSuccessResult(200, {
-      subscriptionId: result.subscriptionId,
-      proteinId: String(result.proteinId),
-      remainingQtyTotal: result.remainingQtyTotal,
-    });
-  } catch (err) {
-    if (err.status && err.code) {
-      return buildErrorResult(err.status, err.code, err.message);
-    }
-    logger.error("Premium selection failed", { subscriptionId, date, error: err.message, stack: err.stack });
-    return buildErrorResult(500, "INTERNAL", "Premium selection failed");
-  }
-}
-
-async function removePremiumSelectionForClient({
-  subscriptionId,
-  dayId,
-  date,
-  baseSlotKey,
-  userId,
-}) {
-  try {
-    const result = await performRemovePremiumSelection({
-      userId,
-      subscriptionId,
-      dayId,
-      date,
-      baseSlotKey,
-    });
-
-    return buildSuccessResult(200, { subscriptionId: result.subscriptionId });
-  } catch (err) {
-    if (err.status && err.code) {
-      return buildErrorResult(err.status, err.code, err.message);
-    }
-    logger.error("Premium selection refund failed", { subscriptionId, date, error: err.message, stack: err.stack });
-    return buildErrorResult(500, "INTERNAL", "Premium selection refund failed");
-  }
-}
 
 module.exports = {
-  consumePremiumSelectionForClient,
-  consumeAddonSelectionForClient,
-  removeAddonSelectionForClient,
-  removePremiumSelectionForClient,
   updateBulkDaySelectionsForClient,
+  async consumeAddonSelectionForClient({ subscriptionId, dayId, date: dateReq, addonId, qty = 1, userId }) {
+    const date = dateReq || (await SubscriptionDay.findById(dayId)).date;
+    const existingDay = await SubscriptionDay.findOne({ subscriptionId, date }).lean();
+    
+    const requestedAddonIds = (existingDay && existingDay.addonSelections || [])
+      .map(s => String(s.addonId));
+    
+    // Add requested quantity
+    for (let i = 0; i < qty; i++) {
+      requestedAddonIds.push(String(addonId));
+    }
+    
+    const result = await performDaySelectionUpdate({
+      userId,
+      subscriptionId,
+      date,
+      mealSlots: existingDay ? existingDay.mealSlots : [],
+      requestedOneTimeAddonIds: requestedAddonIds,
+    });
+
+    return buildSuccessResult(200, {
+      subscriptionId: result.subscriptionId || subscriptionId,
+      ok: true,
+      idempotent: !!result.idempotent
+    });
+  },
+  async removeAddonSelectionForClient({ subscriptionId, dayId, date: dateReq, addonId, userId }) {
+    const date = dateReq || (await SubscriptionDay.findById(dayId)).date;
+    const existingDay = await SubscriptionDay.findOne({ subscriptionId, date }).lean();
+    if (!existingDay) return buildErrorResult(404, "NOT_FOUND", "Day not found");
+
+    const requestedAddonIds = (existingDay.addonSelections || [])
+      .map(s => String(s.addonId));
+    
+    // Remove one instance
+    const idx = requestedAddonIds.indexOf(String(addonId));
+    if (idx >= 0) {
+      requestedAddonIds.splice(idx, 1);
+    }
+
+    const result = await performDaySelectionUpdate({
+      userId,
+      subscriptionId,
+      date,
+      mealSlots: existingDay.mealSlots,
+      requestedOneTimeAddonIds: requestedAddonIds,
+    });
+
+    return buildSuccessResult(200, { ok: true });
+  },
+  async consumePremiumSelectionForClient({ subscriptionId, dayId, date: dateReq, baseSlotKey, proteinId, userId }) {
+    const date = dateReq || (await SubscriptionDay.findById(dayId)).date;
+    const existingDay = await SubscriptionDay.findOne({ subscriptionId, date }).lean();
+    
+    // Merge protein into specific slot
+    const mealSlots = (existingDay && existingDay.mealSlots || []).map(slot => {
+       if (String(slot.slotKey) === String(baseSlotKey)) {
+          return { ...slot, proteinId, status: "complete" };
+       }
+       return slot;
+    });
+
+    const result = await performDaySelectionUpdate({
+      userId,
+      subscriptionId,
+      date,
+      mealSlots,
+      requestedOneTimeAddonIds: (existingDay && existingDay.addonSelections || []).map(s => s.addonId),
+    });
+
+    return buildSuccessResult(200, {
+      subscriptionId: result.subscriptionId || subscriptionId,
+      proteinId,
+      ok: true,
+      idempotent: !!result.idempotent
+    });
+  },
+  async removePremiumSelectionForClient({ subscriptionId, dayId, date: dateReq, baseSlotKey, userId }) {
+    const date = dateReq || (await SubscriptionDay.findById(dayId)).date;
+    const existingDay = await SubscriptionDay.findOne({ subscriptionId, date }).lean();
+    if (!existingDay) return buildErrorResult(404, "NOT_FOUND", "Day not found");
+
+    const mealSlots = (existingDay.mealSlots || []).map(slot => {
+       if (String(slot.slotKey) === String(baseSlotKey)) {
+          return { ...slot, proteinId: null, status: "partial" };
+       }
+       return slot;
+    });
+
+    await performDaySelectionUpdate({
+      userId,
+      subscriptionId,
+      date,
+      mealSlots,
+      requestedOneTimeAddonIds: (existingDay.addonSelections || []).map(s => s.addonId),
+    });
+
+    return buildSuccessResult(200, { ok: true });
+  },
 };
+

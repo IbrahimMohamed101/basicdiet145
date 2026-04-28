@@ -191,6 +191,63 @@ async function releasePremiumBalanceAtomically({ subscription, dayId, date, prem
   return { released: true, remainingQty: atomicResult.premiumBalance[bucketIndex]?.remainingQty || 0 };
 }
 
+async function consumeAddonBalanceAtomically({ subscription, dayId, date, addonId, session }) {
+  if (!session) throw new Error("consumeAddonBalanceAtomically requires a session");
+  if (!subscription || !Array.isArray(subscription.addonBalance)) return { consumed: false };
+
+  const bucketIndex = subscription.addonBalance.findIndex(
+    (b) => String(b.addonId) === String(addonId) && Number(b.remainingQty || 0) > 0
+  );
+
+  if (bucketIndex < 0) return { consumed: false };
+
+  const bucket = subscription.addonBalance[bucketIndex];
+  const atomicResult = await Subscription.findOneAndUpdate(
+    {
+      _id: subscription._id,
+      "addonBalance._id": bucket._id,
+      "addonBalance.remainingQty": { $gt: 0 },
+    },
+    {
+      $inc: { "addonBalance.$.remainingQty": -1 },
+    },
+    { session, new: true }
+  );
+
+  if (!atomicResult) return { consumed: false };
+
+  return {
+    consumed: true,
+    unitPriceHalala: bucket.unitPriceHalala,
+    currency: bucket.currency,
+  };
+}
+
+async function releaseAddonBalanceAtomically({ subscription, addonId, unitPriceHalala, session }) {
+  if (!session) throw new Error("releaseAddonBalanceAtomically requires a session");
+  if (!subscription || !Array.isArray(subscription.addonBalance)) return { released: false };
+
+  const bucketIndex = subscription.addonBalance.findIndex(
+    (b) => String(b.addonId) === String(addonId) && Number(b.unitPriceHalala || 0) === Number(unitPriceHalala || 0)
+  );
+
+  if (bucketIndex < 0) return { released: false };
+
+  const bucket = subscription.addonBalance[bucketIndex];
+  const atomicResult = await Subscription.findOneAndUpdate(
+    {
+      _id: subscription._id,
+      "addonBalance._id": bucket._id,
+    },
+    {
+      $inc: { "addonBalance.$.remainingQty": 1 },
+    },
+    { session, new: true }
+  );
+
+  return { released: !!atomicResult };
+}
+
 function reconcilePremiumBalanceForDay(subscription, existingDay, newPremiumUpgradeSelections, { dayId, date } = {}) {
   if (!subscription || !Array.isArray(subscription.premiumBalance)) return;
 
@@ -342,68 +399,68 @@ async function validateFutureDateOrThrow(date, sub, endDateOverride) {
 
 async function performDaySelectionUpdate({ userId, subscriptionId, date, selections = [], premiumSelections = [], mealSlots, requestedOneTimeAddonIds, runtime }) {
   await validateFutureDateOrThrow(date);
-  const totalSelected = selections.length + premiumSelections.length;
+  const totalSelected = (selections || []).length + (premiumSelections || []).length;
+
+  // 1. Fetch context (Lean)
+  const requestedSub = await Subscription.findById(subscriptionId).lean();
+  if (!requestedSub) throw { status: 404, code: "NOT_FOUND", message: "Subscription not found" };
+  if (String(requestedSub.userId) !== String(userId)) throw { status: 403, code: "FORBIDDEN", message: "Forbidden" };
+
+  const resolvedPlanningSubscription = await resolvePlanningSubscriptionForOperation(requestedSub);
+  const subForDraft = resolvedPlanningSubscription.subscription;
+  const canonicalSubscriptionId = resolvedPlanningSubscription.subscriptionId;
+
+  const mealsPerDayLimit = resolveMealsPerDay(subForDraft);
+  if (totalSelected > mealsPerDayLimit) throw { status: 400, code: "DAILY_CAP", message: "Selections exceed meals per day" };
+  ensureActive(subForDraft, date);
+
+  const existingDay = await SubscriptionDay.findOne({ subscriptionId: canonicalSubscriptionId, date }).lean();
+  if (existingDay && existingDay.status !== "open") throw { status: 409, code: "LOCKED", message: "Day is locked" };
+  if (existingDay && existingDay.plannerState === "confirmed") throw { status: 409, code: "LOCKED", message: "Planner is already confirmed for this day" };
+
+  // 2. Build Draft & Reconcile Addons (In-Memory)
+  const planningDraftSubscription = buildPlanningDraftSubscriptionView(subForDraft, existingDay);
+  const draft = await buildMealSlotDraft({ mealSlots, mealsPerDayLimit, subscription: planningDraftSubscription });
+  
+  if (!draft.valid) {
+    throw {
+      status: 422,
+      code: draft.errorCode || "INVALID_MEAL_PLAN",
+      message: draft.errorMessage || "Meal planner validation failed",
+      valid: false,
+      slotErrors: draft.slotErrors,
+      rules: getMealPlannerRules()
+    };
+  }
+
+  const addonContainer = {
+    addonSelections: existingDay ? JSON.parse(JSON.stringify(existingDay.addonSelections || [])) : [],
+  };
+  if (requestedOneTimeAddonIds !== undefined) {
+    await reconcileAddonInclusions(subForDraft, addonContainer, requestedOneTimeAddonIds);
+  }
+
+  // 3. Calculate Commercial State & Revision Hash
+  const derivedDraftState = buildDayCommercialState({
+    status: existingDay && existingDay.status ? existingDay.status : "open",
+    plannerState: "draft",
+    mealSlots: draft.processedSlots,
+    plannerMeta: draft.plannerMeta,
+    addonSelections: addonContainer.addonSelections,
+    premiumExtraPayment: existingDay && existingDay.premiumExtraPayment ? existingDay.premiumExtraPayment : null,
+  });
+
+  // 4. Idempotency Short-circuit
+  if (existingDay && existingDay.plannerRevisionHash === derivedDraftState.plannerRevisionHash) {
+    return { subscription: subForDraft, day: existingDay, idempotent: true };
+  }
+
+  // 5. Atomic Update Execution
   const session = await mongoose.startSession();
   session.startTransaction();
-
   try {
-    let subInSession = await Subscription.findById(subscriptionId).session(session);
-    if (!subInSession) throw { status: 404, code: "NOT_FOUND", message: "Subscription not found" };
-
-    const resolvedPlanningSubscription = await resolvePlanningSubscriptionForOperation(subInSession, session);
-    subInSession = resolvedPlanningSubscription.subscription;
-    subscriptionId = resolvedPlanningSubscription.subscriptionId;
-
-    if (String(subInSession.userId) !== String(userId)) throw { status: 403, code: "FORBIDDEN", message: "Forbidden" };
-
-    const mealsPerDayLimit = resolveMealsPerDay(subInSession);
-    if (totalSelected > mealsPerDayLimit) throw { status: 400, code: "DAILY_CAP", message: "Selections exceed meals per day" };
-    ensureActive(subInSession, date);
-    await validateFutureDateOrThrow(date, subInSession);
-
-    const existingDay = await SubscriptionDay.findOne({ subscriptionId, date }).session(session);
-    if (!Array.isArray(mealSlots)) {
-      throw {
-        status: 422,
-        code: "LEGACY_DAY_SELECTION_UNSUPPORTED",
-        message: "Legacy day selection payload is no longer supported. Submit mealSlots with proteinId/carbId only.",
-        details: {
-          expectedPayload: {
-            mealSlots: [
-              {
-                slotIndex: 1,
-                slotKey: "slot_1",
-                proteinId: "protein_id",
-                carbId: "carb_id",
-              },
-            ],
-          },
-        },
-      };
-    }
-    if (existingDay && existingDay.status !== "open") throw { status: 409, code: "LOCKED", message: "Day is locked" };
-    if (existingDay && existingDay.plannerState === "confirmed") throw { status: 409, code: "LOCKED", message: "Planner is already confirmed for this day" };
-
-    const planningDraftSubscription = buildPlanningDraftSubscriptionView(subInSession, existingDay);
-    const draft = await buildMealSlotDraft({ mealSlots, mealsPerDayLimit, subscription: planningDraftSubscription, session });
-    
-    if (!draft.valid) {
-      throw { 
-        status: 422, 
-        code: draft.errorCode || "INVALID_MEAL_PLAN", 
-        message: draft.errorMessage || "Meal planner validation failed", 
-        valid: false, 
-        slotErrors: draft.slotErrors 
-      };
-    }
-
-    const derivedDraftState = buildDayCommercialState({
-      status: existingDay && existingDay.status ? existingDay.status : "open",
-      plannerState: "draft",
-      mealSlots: draft.processedSlots,
-      plannerMeta: draft.plannerMeta,
-      premiumExtraPayment: existingDay && existingDay.premiumExtraPayment ? existingDay.premiumExtraPayment : null,
-    });
+    const subInSession = await Subscription.findById(canonicalSubscriptionId).session(session);
+    if (!subInSession) throw { status: 404, code: "NOT_FOUND", message: "Subscription for session lost" };
 
     const update = {
       mealSlots: draft.processedSlots,
@@ -416,21 +473,16 @@ async function performDaySelectionUpdate({ userId, subscriptionId, date, selecti
       selections: draft.selections,
       premiumUpgradeSelections: draft.premiumUpgradeSelections,
       baseMealSlots: draft.baseMealSlots,
+      addonSelections: addonContainer.addonSelections,
     };
-    if (requestedOneTimeAddonIds !== undefined) {
-      const addonContainer = {
-        addonSelections: existingDay ? JSON.parse(JSON.stringify(existingDay.addonSelections || [])) : [],
-      };
-      await reconcileAddonInclusions(subInSession, addonContainer, requestedOneTimeAddonIds);
-      update.addonSelections = addonContainer.addonSelections;
-    }
 
-    const day = await SubscriptionDay.findOneAndUpdate({ subscriptionId, date }, { $set: update }, { upsert: true, new: true, session });
-    if (!day) {
-        throw new Error("Critical: SubscriptionDay findOneAndUpdate returned null during valid update flow");
-    }
+    const day = await SubscriptionDay.findOneAndUpdate(
+      { subscriptionId: canonicalSubscriptionId, date },
+      { $set: update },
+      { upsert: true, new: true, session }
+    );
 
-    // SYNC: Ensure planning projection is consistent with the new slots
+    // SYNC: Ensure planning projection is consistent
     applyCanonicalDraftPlanningToDay({
       subscription: subInSession,
       day,
@@ -439,7 +491,7 @@ async function performDaySelectionUpdate({ userId, subscriptionId, date, selecti
       now: new Date(),
     });
 
-    // ATOMIC premium balance consumption - replaces reconcilePremiumBalanceForDay
+    // ATOMIC: Premium balance sync
     const existingBalanceMap = new Map();
     if (existingDay && Array.isArray(existingDay.premiumUpgradeSelections)) {
        for (const sel of existingDay.premiumUpgradeSelections) {
@@ -457,16 +509,7 @@ async function performDaySelectionUpdate({ userId, subscriptionId, date, selecti
           const existingClaim = existingBalanceMap.get(mapKey);
 
           if (existingClaim) {
-             processedPremiumSelections.push({
-               baseSlotKey: sel.baseSlotKey,
-               premiumKey: sel.premiumKey,
-               proteinId: sel.proteinId,
-               premiumSource: "balance",
-               unitExtraFeeHalala: existingClaim.unitExtraFeeHalala || sel.unitExtraFeeHalala || 3000,
-               currency: existingClaim.currency || "SAR",
-               date,
-               dayId: day._id,
-             });
+             processedPremiumSelections.push({ ...sel, premiumSource: "balance", unitExtraFeeHalala: existingClaim.unitExtraFeeHalala || 3000 });
              existingBalanceMap.delete(mapKey);
              continue;
           }
@@ -481,59 +524,105 @@ async function performDaySelectionUpdate({ userId, subscriptionId, date, selecti
             session,
           });
 
-          if (balanceResult.consumed) {
-            processedPremiumSelections.push({
-              baseSlotKey: sel.baseSlotKey,
-              premiumKey: sel.premiumKey,
-              proteinId: sel.proteinId,
-              premiumSource: "balance",
-              unitExtraFeeHalala: sel.unitExtraFeeHalala || 3000,
-              date,
-              dayId: day._id,
-            });
-          } else {
-            processedPremiumSelections.push({
-              baseSlotKey: sel.baseSlotKey,
-              premiumKey: sel.premiumKey,
-              proteinId: sel.proteinId,
-              premiumSource: "pending_payment",
-              unitExtraFeeHalala: balanceResult.premiumExtraFeeHalala || 3000,
-              currency: "SAR",
-              date,
-              dayId: day._id,
-            });
-          }
+          processedPremiumSelections.push({
+            ...sel,
+            premiumSource: balanceResult.consumed ? "balance" : "pending_payment",
+            unitExtraFeeHalala: balanceResult.consumed ? 0 : (balanceResult.premiumExtraFeeHalala || 3000)
+          });
         } else {
           processedPremiumSelections.push(sel);
         }
       }
-
-      // Update day.premiumUpgradeSelections with processed selections
       day.premiumUpgradeSelections = processedPremiumSelections;
-      update.premiumUpgradeSelections = processedPremiumSelections;
     }
 
-    // Release balance for selections that NO LONGER exist or whose premiumKey changed
     for (const sel of existingBalanceMap.values()) {
-      await releasePremiumBalanceAtomically({
-        subscription: subInSession,
-        dayId: day._id,
-        date,
-        premiumKey: sel.premiumKey,
-        session,
-      });
+      await releasePremiumBalanceAtomically({ subscription: subInSession, premiumKey: sel.premiumKey, session });
+    }
+
+    // ATOMIC: Addon balance sync
+    const existingAddonWalletMap = new Map();
+    if (existingDay && Array.isArray(existingDay.addonSelections)) {
+       for (const sel of existingDay.addonSelections) {
+         if (sel.source === "wallet") {
+           const key = String(sel.addonId);
+           const list = existingAddonWalletMap.get(key) || [];
+           list.push(sel);
+           existingAddonWalletMap.set(key, list);
+         }
+       }
+    }
+
+    const processedAddonSelections = [];
+    if (Array.isArray(day.addonSelections)) {
+       for (const sel of day.addonSelections) {
+          if (sel.source === "subscription" || sel.source === "paid") {
+             processedAddonSelections.push(sel);
+          } else {
+             // It's pending_payment or newly requested. Try wallet claim if possible.
+             const key = String(sel.addonId);
+             const existingList = existingAddonWalletMap.get(key);
+             if (existingList && existingList.length > 0) {
+                const claim = existingList.shift();
+                processedAddonSelections.push({ ...sel, source: "wallet", priceHalala: 0 });
+             } else {
+                const walletResult = await consumeAddonBalanceAtomically({
+                   subscription: subInSession,
+                   addonId: sel.addonId,
+                   session
+                });
+                if (walletResult.consumed) {
+                   processedAddonSelections.push({ ...sel, source: "wallet", priceHalala: 0 });
+                } else {
+                   processedAddonSelections.push(sel); // keep as pending_payment
+                }
+             }
+          }
+       }
+       day.addonSelections = processedAddonSelections;
+    }
+
+    // Release survivors (addons that were using wallet but are now removed)
+    for (const list of existingAddonWalletMap.values()) {
+       for (const sel of list) {
+          await releaseAddonBalanceAtomically({
+             subscription: subInSession,
+             addonId: sel.addonId,
+             unitPriceHalala: sel.unitPriceHalala || 0,
+             session
+          });
+       }
     }
 
     await subInSession.save({ session });
     await day.save({ session });
 
+    // Ensure Global Sync (redundant but for compatibility)
+    if (Array.isArray(subInSession.addonSelections)) {
+       subInSession.addonSelections = subInSession.addonSelections.filter(s => s.date !== date);
+       for (const sel of day.addonSelections) {
+         if (sel.source === "wallet" || sel.source === "pending_payment" || sel.source === "paid") {
+           subInSession.addonSelections.push({ dayId: day._id, date: day.date, addonId: sel.addonId, qty: 1, unitPriceHalala: sel.priceHalala, currency: sel.currency });
+         }
+       }
+       subInSession.markModified("addonSelections");
+    }
+    if (Array.isArray(subInSession.premiumSelections)) {
+       subInSession.premiumSelections = subInSession.premiumSelections.filter(s => s.date !== date);
+       for (const sel of day.premiumUpgradeSelections) {
+         if (sel.premiumSource === "balance" || sel.premiumSource === "pending_payment" || sel.premiumSource === "paid") {
+           subInSession.premiumSelections.push({ dayId: day._id, date: day.date, baseSlotKey: sel.baseSlotKey, premiumKey: sel.premiumKey, proteinId: sel.proteinId, unitExtraFeeHalala: sel.unitExtraFeeHalala, currency: sel.currency });
+         }
+       }
+       subInSession.markModified("premiumSelections");
+    }
+    await subInSession.save({ session });
+
     await session.commitTransaction();
     session.endSession();
     return { subscription: subInSession, day, idempotent: false };
   } catch (err) {
-    if (session.inTransaction()) {
-      await session.abortTransaction();
-    }
+    if (session.inTransaction()) await session.abortTransaction();
     session.endSession();
     throw err;
   }
@@ -720,338 +809,10 @@ async function performDayPlanningConfirmation({ userId, subscriptionId, date, ru
   }
 }
 
-async function performConsumePremiumSelection({ userId, subscriptionId, dayId, date, baseSlotKey, premiumKey, proteinId }) {
-  const session = await mongoose.startSession();
-  session.startTransaction();
-  try {
-    const sub = await Subscription.findById(subscriptionId).session(session);
-    if (!sub) throw { status: 404, code: "NOT_FOUND", message: "Subscription not found" };
-    if (String(sub.userId) !== String(userId)) throw { status: 403, code: "FORBIDDEN", message: "Forbidden" };
-
-    const day = await resolveSubscriptionDay({ subscriptionId: sub._id, dayId, date, session });
-    if (!day) throw { status: 404, code: "NOT_FOUND", message: "Day not found" };
-    ensureActive(sub, day.date);
-    if (day.status !== "open") throw { status: 409, code: "LOCKED", message: "Day is locked" };
-
-    const normalizedBaseSlotKey = String(baseSlotKey || "").trim();
-
-    if (!premiumKey) {
-      throw { status: 400, code: "INVALID_REQUEST", message: "premiumKey is required for premium selection consumption" };
-    }
-
-    const targetDayId = String(day._id);
-    const targetDate = day.date;
-    const existingSelection = (sub.premiumSelections || []).find((row) => (
-      String(row.baseSlotKey || "") === normalizedBaseSlotKey
-      && row.premiumKey === premiumKey
-      && (((row.dayId && String(row.dayId) === targetDayId) || row.date === targetDate))
-    ));
-    if (existingSelection) {
-      const remainingQtyTotal = (sub.premiumBalance || [])
-        .filter((row) => row.premiumKey === premiumKey)
-        .reduce((sum, row) => sum + Number(row.remainingQty || 0), 0);
-      await session.commitTransaction();
-      session.endSession();
-      return { ok: true, subscriptionId: sub.id, premiumKey, remainingQtyTotal };
-    }
-
-    const balances = (sub.premiumBalance || [])
-      .filter((row) => row.premiumKey === premiumKey && Number(row.remainingQty) > 0)
-      .sort((a, b) => new Date(a.purchasedAt).getTime() - new Date(b.purchasedAt).getTime());
-    if (!balances.length) {
-      throw { status: 400, code: "INSUFFICIENT_PREMIUM", message: "Not enough premium credits" };
-    }
-
-    const bucket = balances[0];
-    bucket.remainingQty = Math.max(0, Number(bucket.remainingQty || 0) - 1);
-    sub.premiumSelections = sub.premiumSelections || [];
-    sub.premiumSelections.push({
-      dayId: day._id,
-      date: day.date,
-      baseSlotKey: normalizedBaseSlotKey,
-      premiumKey,
-      proteinId,
-      unitExtraFeeHalala: Number(bucket.unitExtraFeeHalala || 0),
-      currency: bucket.currency || "SAR",
-      premiumWalletRowId: bucket._id || null,
-    });
-
-    if (Array.isArray(day.premiumUpgradeSelections)) {
-      day.premiumUpgradeSelections = day.premiumUpgradeSelections.map((selection) => {
-        if (
-          selection
-          && String(selection.baseSlotKey || "") === normalizedBaseSlotKey
-          && selection.premiumKey === premiumKey
-        ) {
-          return {
-            ...(selection.toObject ? selection.toObject() : selection),
-            premiumSource: "balance",
-            unitExtraFeeHalala: Number(bucket.unitExtraFeeHalala || selection.unitExtraFeeHalala || 0),
-            currency: bucket.currency || selection.currency || "SAR",
-          };
-        }
-        return selection;
-      });
-    }
-
-    if (Array.isArray(day.mealSlots)) {
-      day.mealSlots = day.mealSlots.map((slot) => {
-        if (
-          slot
-          && String(slot.slotKey || "") === normalizedBaseSlotKey
-          && slot.premiumKey === premiumKey
-        ) {
-          return {
-            ...(slot.toObject ? slot.toObject() : slot),
-            premiumSource: "balance",
-          };
-        }
-        return slot;
-      });
-    }
-
-    if (sub.markModified) {
-      sub.markModified("premiumBalance");
-      sub.markModified("premiumSelections");
-    }
-    day.markModified("premiumUpgradeSelections");
-    day.markModified("mealSlots");
-    applyDayWalletSelections({ day });
-    await sub.save({ session });
-    await day.save({ session });
-    await session.commitTransaction();
-    session.endSession();
-    const remainingQtyTotal = (sub.premiumBalance || [])
-      .filter((row) => row.premiumKey === premiumKey)
-      .reduce((sum, row) => sum + Number(row.remainingQty || 0), 0);
-    return { ok: true, subscriptionId: sub.id, premiumKey, remainingQtyTotal };
-  } catch (err) {
-    if (session.inTransaction()) await session.abortTransaction();
-    session.endSession();
-    throw err;
-  }
-}
-
-async function performRemovePremiumSelection({ userId, subscriptionId, dayId, date, baseSlotKey, premiumKey }) {
-  const session = await mongoose.startSession();
-  session.startTransaction();
-  try {
-    const sub = await Subscription.findById(subscriptionId).session(session);
-    if (!sub) throw { status: 404, code: "NOT_FOUND", message: "Subscription not found" };
-    if (String(sub.userId) !== String(userId)) throw { status: 403, code: "FORBIDDEN", message: "Forbidden" };
-
-    const day = await resolveSubscriptionDay({ subscriptionId: sub._id, dayId, date, session });
-    if (!day) throw { status: 404, code: "NOT_FOUND", message: "Day not found" };
-    ensureActive(sub, day.date);
-    if (day.status !== "open") throw { status: 409, code: "LOCKED", message: "Day is locked" };
-
-    const normalizedBaseSlotKey = String(baseSlotKey || "").trim();
-    const targetDayId = String(day._id);
-    const targetDate = day.date;
-    const selection = (sub.premiumSelections || []).find((row) => (
-      String(row.baseSlotKey || "") === normalizedBaseSlotKey
-      && row.premiumKey === premiumKey
-      && (((row.dayId && String(row.dayId) === targetDayId) || row.date === targetDate))
-    ));
-    if (!selection) {
-      throw { status: 404, code: "NOT_FOUND", message: "Premium selection not found" };
-    }
-
-    sub.premiumSelections = (sub.premiumSelections || []).filter((row) => !(
-      String(row.baseSlotKey || "") === normalizedBaseSlotKey
-      && row.premiumKey === premiumKey
-      && (((row.dayId && String(row.dayId) === targetDayId) || row.date === targetDate))
-    ));
-
-    const match = (sub.premiumBalance || []).find((row) => (
-      (selection.premiumWalletRowId && row._id && String(row._id) === String(selection.premiumWalletRowId))
-      || (
-        !selection.premiumWalletRowId
-        && row.premiumKey === premiumKey
-        && Number(row.unitExtraFeeHalala || 0) === Number(selection.unitExtraFeeHalala || 0)
-      )
-    ));
-    if (!match) {
-      throw { status: 409, code: "DATA_INTEGRITY_ERROR", message: "Cannot refund premium credits because the original wallet bucket was not found" };
-    }
-
-    const nextRemainingQty = Number(match.remainingQty || 0) + 1;
-    const purchasedQty = Number(match.purchasedQty || 0);
-    if (nextRemainingQty > purchasedQty) {
-      throw { status: 409, code: "DATA_INTEGRITY_ERROR", message: "Cannot refund premium credits because refund exceeds purchased quantity" };
-    }
-    match.remainingQty = nextRemainingQty;
-
-    if (Array.isArray(day.premiumUpgradeSelections)) {
-      day.premiumUpgradeSelections = day.premiumUpgradeSelections.map((premiumSelection) => {
-        if (
-          premiumSelection
-          && String(premiumSelection.baseSlotKey || "") === normalizedBaseSlotKey
-          && premiumSelection.premiumKey === premiumKey
-        ) {
-          return {
-            ...(premiumSelection.toObject ? premiumSelection.toObject() : premiumSelection),
-            premiumSource: Number(premiumSelection.unitExtraFeeHalala || 0) > 0 ? "pending_payment" : "paid",
-          };
-        }
-        return premiumSelection;
-      });
-    }
-
-    if (Array.isArray(day.mealSlots)) {
-      day.mealSlots = day.mealSlots.map((slot) => {
-        if (
-          slot
-          && String(slot.slotKey || "") === normalizedBaseSlotKey
-          && slot.premiumKey === premiumKey
-        ) {
-          return {
-            ...(slot.toObject ? slot.toObject() : slot),
-            premiumSource: Number(slot.unitExtraFeeHalala || 0) > 0 ? "pending_payment" : "paid",
-          };
-        }
-        return slot;
-      });
-    }
-
-    if (sub.markModified) {
-      sub.markModified("premiumBalance");
-      sub.markModified("premiumSelections");
-    }
-    day.markModified("premiumUpgradeSelections");
-    day.markModified("mealSlots");
-    applyDayWalletSelections({ day });
-    await sub.save({ session });
-    await day.save({ session });
-    await session.commitTransaction();
-    session.endSession();
-    return { ok: true, subscriptionId: sub.id };
-} catch (err) {
-    if (session.inTransaction()) await session.abortTransaction();
-    session.endSession();
-    throw err;
-  }
-}
-
-async function performConsumeAddonSelection({ userId, subscriptionId, dayId, date, addonId, qty }) {
-  const session = await mongoose.startSession();
-  session.startTransaction();
-  try {
-    const sub = await Subscription.findById(subscriptionId).session(session);
-    if (!sub) throw { status: 404, code: "NOT_FOUND", message: "Subscription not found" };
-    if (String(sub.userId) !== String(userId)) throw { status: 403, code: "FORBIDDEN", message: "Forbidden" };
-    ensureActive(sub, date);
-
-    const day = dayId ? await SubscriptionDay.findById(dayId).session(session) : await SubscriptionDay.findOne({ subscriptionId: sub._id, date }).session(session);
-    if (!day) throw { status: 404, code: "NOT_FOUND", message: "Day not found" };
-    if (day.status !== "open") throw { status: 409, code: "LOCKED", message: "Day is locked" };
-
-    const addonDoc = await Addon.findById(addonId).session(session);
-    if (!addonDoc) throw { status: 404, code: "NOT_FOUND", message: "Addon not found" };
-
-    const balances = (sub.addonBalance || []).filter((row) => String(row.addonId) === String(addonId) && Number(row.remainingQty) > 0).sort((a, b) => new Date(a.purchasedAt).getTime() - new Date(b.purchasedAt).getTime());
-    const totalAvailable = balances.reduce((sum, row) => sum + Number(row.remainingQty || 0), 0);
-    if (totalAvailable < qty) throw { status: 400, code: "INSUFFICIENT_ADDON", message: "Not enough addon credits" };
-
-    let remaining = qty;
-    sub.addonSelections = sub.addonSelections || [];
-    day.addonSelections = day.addonSelections || [];
-
-    for (const row of balances) {
-      if (remaining <= 0) break;
-      const available = Number(row.remainingQty || 0);
-      const deduct = Math.min(available, remaining);
-      if (!deduct) continue;
-      row.remainingQty = available - deduct;
-      sub.addonSelections.push({ dayId: day._id, date: day.date, addonId, qty: deduct, unitPriceHalala: Number(row.unitPriceHalala || 0), currency: row.currency || "SAR" });
-      
-      for (let i = 0; i < deduct; i++) {
-        day.addonSelections.push({
-          addonId: addonDoc._id,
-          name: addonDoc.name,
-          category: addonDoc.category,
-          source: "subscription",
-          priceHalala: Number(row.unitPriceHalala || 0),
-          currency: row.currency || "SAR",
-          consumedAt: new Date(),
-        });
-      }
-      
-      remaining -= deduct;
-    }
-
-    applyDayWalletSelections({ day });
-    await sub.save({ session });
-    await day.save({ session });
-    await session.commitTransaction();
-    session.endSession();
-    const remainingQtyTotal = (sub.addonBalance || []).filter((row) => String(row.addonId) === String(addonId)).reduce((sum, row) => sum + Number(row.remainingQty || 0), 0);
-    return { ok: true, subscriptionId: sub.id, addonId: String(addonId), remainingQtyTotal };
-  } catch (err) {
-    if (session.inTransaction()) await session.abortTransaction();
-    session.endSession();
-    throw err;
-  }
-}
-
-async function performRemoveAddonSelection({ userId, subscriptionId, dayId, date, addonId }) {
-  const session = await mongoose.startSession();
-  session.startTransaction();
-  try {
-    const sub = await Subscription.findById(subscriptionId).session(session);
-    if (!sub) throw { status: 404, code: "NOT_FOUND", message: "Subscription not found" };
-    if (String(sub.userId) !== String(userId)) throw { status: 403, code: "FORBIDDEN", message: "Forbidden" };
-
-    const targetDay = dayId ? await SubscriptionDay.findById(dayId).session(session) : await SubscriptionDay.findOne({ subscriptionId: sub._id, date }).session(session);
-    if (!targetDay) throw { status: 404, code: "NOT_FOUND", message: "Day not found" };
-    ensureActive(sub, targetDay.date);
-    if (targetDay.status !== "open") throw { status: 409, code: "LOCKED", message: "Day is locked" };
-
-    const targetDayId = String(targetDay._id);
-    const targetDate = targetDay.date;
-    const toRefund = (sub.addonSelections || []).filter((row) => String(row.addonId) === String(addonId) && ((row.dayId && String(row.dayId) === targetDayId) || row.date === targetDate));
-    if (!toRefund.length) throw { status: 404, code: "NOT_FOUND", message: "Addon selection not found" };
-
-    sub.addonSelections = (sub.addonSelections || []).filter((row) => !(String(row.addonId) === String(addonId) && (((row.dayId && String(row.dayId) === targetDayId) || row.date === targetDate))));
-    
-    let totalRefundedQty = 0;
-    for (const row of toRefund) {
-      const match = (sub.addonBalance || []).find((balance) => String(balance.addonId) === String(addonId) && Number(balance.unitPriceHalala || 0) === Number(row.unitPriceHalala || 0));
-      if (!match) throw { status: 409, code: "DATA_INTEGRITY_ERROR", message: "Cannot refund addon credits because the original wallet bucket was not found" };
-      const nextRemainingQty = Number(match.remainingQty || 0) + Number(row.qty || 0);
-      const purchasedQty = Number(match.purchasedQty || 0);
-      if (nextRemainingQty > purchasedQty) throw { status: 409, code: "DATA_INTEGRITY_ERROR", message: "Cannot refund addon credits because refund exceeds purchased quantity" };
-      match.remainingQty = nextRemainingQty;
-      totalRefundedQty += Number(row.qty || 0);
-    }
-
-    let removedDayCount = 0;
-    targetDay.addonSelections = (targetDay.addonSelections || []).filter((sel) => {
-      if (removedDayCount < totalRefundedQty && String(sel.addonId) === String(addonId) && sel.source === "subscription") {
-         removedDayCount++;
-         return false;
-      }
-      return true;
-    });
-
-    applyDayWalletSelections({ day: targetDay });
-    await sub.save({ session });
-    await targetDay.save({ session });
-    await session.commitTransaction();
-    session.endSession();
-    return { ok: true, subscriptionId: sub.id };
-  } catch (err) {
-    if (session.inTransaction()) await session.abortTransaction();
-    session.endSession();
-    throw err;
-  }
-}
 
 module.exports = {
   consumePremiumBalanceAtomically,
   releasePremiumBalanceAtomically,
-  performConsumePremiumSelection,
-  performRemovePremiumSelection,
   performDaySelectionUpdate,
   performDaySelectionValidation,
   performDayPlanningConfirmation,
