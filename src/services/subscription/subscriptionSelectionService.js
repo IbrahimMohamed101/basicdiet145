@@ -50,7 +50,12 @@ async function reconcileAddonInclusions(subscription, day, requestedAddonIds = [
   }
 
   // 1. Fetch requested addon items
-  const addonDocs = await Addon.find({ _id: { $in: requestedAddonIds }, kind: "item" }).lean();
+  const addonDocs = await Addon.find({
+    _id: { $in: requestedAddonIds },
+    isActive: true,
+    kind: "item",
+    billingMode: "flat_once",
+  }).lean();
   const addonMap = new Map(addonDocs.map((d) => [String(d._id), d]));
 
   // 2. Track category usage for subscription entitlements
@@ -61,22 +66,33 @@ async function reconcileAddonInclusions(subscription, day, requestedAddonIds = [
 
   for (const addonId of requestedAddonIds) {
     const doc = addonMap.get(String(addonId));
-    if (!doc) continue;
+    if (!doc) {
+      throw {
+        status: 400,
+        code: "INVALID_ONE_TIME_ADDON_SELECTION",
+        message: `Addon ${String(addonId)} is not an active meal-planner add-on item`,
+      };
+    }
 
     const category = doc.category;
     const entitlement = entitlements.find((e) => e.category === category);
+    if (!entitlement) {
+      throw {
+        status: 400,
+        code: "INVALID_ONE_TIME_ADDON_SELECTION",
+        message: `Addon category ${category} is not included in this subscription`,
+      };
+    }
     
     let source = "pending_payment";
     let priceHalala = doc.priceHalala || Math.round((doc.price || 0) * 100);
 
     // Check if inclusive
-    if (entitlement) {
-      const used = entitlementUsage.get(category) || 0;
-      if (used < (entitlement.maxPerDay || 1)) {
-        source = "subscription";
-        priceHalala = 0;
-        entitlementUsage.set(category, used + 1);
-      }
+    const used = entitlementUsage.get(category) || 0;
+    if (used < (entitlement.maxPerDay || 1)) {
+      source = "subscription";
+      priceHalala = 0;
+      entitlementUsage.set(category, used + 1);
     }
 
     // Preserve existing 'paid' selections if they match (to avoid re-charging)

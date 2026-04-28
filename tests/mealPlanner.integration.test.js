@@ -54,8 +54,10 @@ let unavailableProtein = null;
 let unavailableCarb = null;
 let sandwichMeal = null;
 let nonSandwichMeal = null;
+let addonJuicePlan = null;
 let addonJuice = null;
 let addonJuice2 = null;
+let addonSnack = null;
 let testPlan = null;
 
 const TEST_USER_PHONE = '+966501234567';
@@ -372,22 +374,44 @@ async function seedBuilderCatalog() {
     await nonSandwichMeal.save();
   }
 
-  addonJuice = await Addon.findOne({ kind: 'item' });
+  addonJuicePlan = await Addon.findOne({ kind: 'plan', category: 'juice', billingMode: 'per_day' });
+  if (!addonJuicePlan) {
+    addonJuicePlan = new Addon({
+      name: { ar: 'اشتراك العصير', en: 'Juice Subscription' },
+      category: 'juice',
+      kind: 'plan',
+      billingMode: 'per_day',
+      priceHalala: 1000,
+      isActive: true,
+    });
+    await addonJuicePlan.save();
+  }
+
+  addonJuice = await Addon.findOne({ kind: 'item', category: 'juice', billingMode: 'flat_once' });
   if (!addonJuice) {
     addonJuice = new Addon({
-      name: { ar: 'عصير', en: 'Juice' }, category: 'juice', kind: 'item',
+      name: { ar: 'عصير التوت', en: 'Berry Blast' }, category: 'juice', kind: 'item',
       priceHalala: 1000, isActive: true,
     });
     await addonJuice.save();
   }
 
-  addonJuice2 = await Addon.findOne({ kind: 'item', _id: { $ne: addonJuice._id } });
+  addonJuice2 = await Addon.findOne({ kind: 'item', category: 'juice', billingMode: 'flat_once', _id: { $ne: addonJuice._id } });
   if (!addonJuice2) {
     addonJuice2 = new Addon({
-      name: { ar: 'ماء', en: 'Water' }, category: 'drinks', kind: 'item',
+      name: { ar: 'ماء', en: 'Water' }, category: 'juice', kind: 'item',
       priceHalala: 500, isActive: true,
     });
-    try { await addonJuice2.save(); } catch (e) { addonJuice2 = addonJuice; }
+    await addonJuice2.save();
+  }
+
+  addonSnack = await Addon.findOne({ kind: 'item', category: 'snack', billingMode: 'flat_once' });
+  if (!addonSnack) {
+    addonSnack = new Addon({
+      name: { ar: 'بروتين بار', en: 'Protein Bar' }, category: 'snack', kind: 'item',
+      priceHalala: 1500, isActive: true,
+    });
+    await addonSnack.save();
   }
 }
 
@@ -423,7 +447,7 @@ async function createTestSubscription() {
       { proteinId: premiumProteinShrimp._id, premiumKey: CUSTOM_PREMIUM_SALAD_KEY, purchasedQty: 1, remainingQty: 1, unitExtraFeeHalala: 3000, currency: 'SAR' },
     ],
     addonSubscriptions: [
-      { addonId: addonJuice._id, category: 'juice', includedCount: 1, maxPerDay: 1, status: 'active' },
+      { addonId: addonJuicePlan._id, category: 'juice', includedCount: 1, maxPerDay: 1, status: 'active' },
     ],
   });
   await subscription.save();
@@ -540,6 +564,15 @@ async function runTests() {
     assertEqual(res.body.status, true, 'status');
     assertNoTopLevelOk(res.body, 'meal-planner-menu response');
     assertTrue(!!res.body.data?.builderCatalog, 'builderCatalog');
+  });
+
+  await test('meal-planner-menu addons contain only item add-ons', async () => {
+    const res = await makeRequest('GET', '/api/subscriptions/meal-planner-menu');
+    const addons = res.body.data?.addons?.items || [];
+    assertTrue(addons.length > 0, 'addons returned');
+    assertTrue(addons.every((addon) => addon.kind === 'item'), 'all planner addons are items');
+    assertTrue(!addons.some((addon) => addon.id === String(addonJuicePlan._id)), 'plan add-on excluded');
+    assertTrue(addons.some((addon) => addon.id === String(addonJuice._id)), 'juice item included');
   });
   
   await test('builderCatalog has proteins with premiumKey', async () => {
@@ -799,6 +832,39 @@ async function runTests() {
       baseSlotKey: 'slot_1',
     });
     assertTrue(removeRes.status === 422 || removeRes.status === 400, 'remove helper no longer usable');
+  });
+
+  await test('planner allows entitled item addons and keeps item price independent from plan price', async () => {
+    const slots = [
+      { slotIndex: 1, slotKey: 'slot_1', proteinId: String(standardProtein._id), carbs: [{ carbId: String(standardCarb._id), grams: 150 }], selectionType: 'standard_meal' },
+      { slotIndex: 2, slotKey: 'slot_2', proteinId: String(standardProtein._id), carbs: [{ carbId: String(standardCarb._id), grams: 150 }], selectionType: 'standard_meal' },
+    ];
+    const res = await makeRequest('PUT', `/api/subscriptions/${testSubscription._id}/days/${TEST_DATE4}/selection`, {
+      mealSlots: slots,
+      addonsOneTime: [String(addonJuice._id), String(addonJuice2._id)],
+    });
+    assertEqual(res.status, 200, 'status');
+    const day = await getActiveSubscriptionDay(TEST_DATE4);
+    assertEqual((day?.addonSelections || []).length, 2, 'two addon selections persisted');
+    const first = (day?.addonSelections || []).find((item) => String(item.addonId) === String(addonJuice._id));
+    const second = (day?.addonSelections || []).find((item) => String(item.addonId) === String(addonJuice2._id));
+    assertEqual(first?.source, 'subscription', 'first entitled item covered by plan');
+    assertEqual(Number(first?.priceHalala || 0), 0, 'covered item price is zero');
+    assertEqual(second?.source, 'pending_payment', 'second item becomes paid overage');
+    assertEqual(Number(second?.priceHalala || 0), Number(addonJuice2.priceHalala || 0), 'overage uses item price, not plan price');
+  });
+
+  await test('planner rejects item addons outside entitled categories', async () => {
+    const slots = [
+      { slotIndex: 1, slotKey: 'slot_1', proteinId: String(standardProtein._id), carbs: [{ carbId: String(standardCarb._id), grams: 150 }], selectionType: 'standard_meal' },
+      { slotIndex: 2, slotKey: 'slot_2', proteinId: String(standardProtein._id), carbs: [{ carbId: String(standardCarb._id), grams: 150 }], selectionType: 'standard_meal' },
+    ];
+    const res = await makeRequest('PUT', `/api/subscriptions/${testSubscription._id}/days/${TEST_DATE5}/selection`, {
+      mealSlots: slots,
+      addonsOneTime: [String(addonSnack._id)],
+    });
+    assertEqual(res.status, 400, 'status');
+    assertEqual(res.body.error?.code, 'INVALID', 'request rejected');
   });
   
   console.log('\n--- G) Current Overview ---\n');

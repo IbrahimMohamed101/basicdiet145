@@ -870,13 +870,13 @@ async function seedScenarioData({ usersByKey, plansByName, mealsByName, premiumM
   const zoneHittin = zonesByName.get("Hittin");
   const zoneSahafa = zonesByName.get("Al Sahafa");
 
-  const recurringGreenJuice = addonsByName.get("Daily Green Juice");
-  const recurringSoup = addonsByName.get("Daily Soup");
-  const addonSideSalad = addonsByName.get("Extra Side Salad");
-  const addonChia = addonsByName.get("Chia Pudding");
-  const addonGranola = addonsByName.get("Granola Bar");
-  const addonCheesecake = addonsByName.get("Mini Healthy Cheesecake");
-  const addonHummus = addonsByName.get("Hummus Snack Box");
+  const recurringGreenJuice = addonsByName.get("Juice Subscription");
+  const recurringSoup = addonsByName.get("Snack Subscription");
+  const addonSideSalad = addonsByName.get("Small Salad");
+  const addonChia = addonsByName.get("Protein Bar");
+  const addonGranola = addonsByName.get("Classic Bisc");
+  const addonCheesecake = addonsByName.get("Blueberry Cheesecake");
+  const addonHummus = addonsByName.get("Cinnamon Apple Muffin (2 pieces)");
 
   const premiumLobster = premiumMealsByName.get("Lobster Tail Dinner");
   const premiumPrawns = premiumMealsByName.get("Garlic Butter King Prawns");

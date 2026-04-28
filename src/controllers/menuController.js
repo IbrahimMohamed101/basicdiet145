@@ -262,7 +262,7 @@ async function getSubscriptionMenu(req, res) {
           sortOrder: p.sortOrder || 0,
         }))
       ),
-    Addon.find({ isActive: true }).sort({ sortOrder: 1, createdAt: -1 }).lean(),
+    Addon.find({ isActive: true, kind: "plan", billingMode: "per_day" }).sort({ sortOrder: 1, createdAt: -1 }).lean(),
     getSettingValue("delivery_windows", []),
     getSettingValue("subscription_delivery_fee_halala", 0),
     Zone.find({}).sort({ isActive: -1, sortOrder: 1, createdAt: -1 }).lean(),
@@ -340,7 +340,7 @@ async function getSubscriptionMealPlannerMenu(req, res) {
           sortOrder: p.sortOrder || 0,
         }))
       ),
-    Addon.find({ isActive: true }).sort({ sortOrder: 1, createdAt: -1 }).lean(),
+    Addon.find({ isActive: true, kind: "item", billingMode: "flat_once" }).sort({ sortOrder: 1, createdAt: -1 }).lean(),
     getMealPlannerCatalog({ lang }),
   ]);
   const mealCatalog = buildSubscriptionMealCatalog({

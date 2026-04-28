@@ -11,6 +11,7 @@ const { computeVatBreakdown } = require("../../utils/pricing");
 const {
   resolvePickupLocationSelection,
   resolveAddonChargeTotalHalala,
+  resolveSubscriptionAddonBillingMode,
 } = require("../../utils/subscription/subscriptionCatalog");
 const { applyPromoCodeToSubscriptionQuote } = require("../promoCodeService");
 const { getRestaurantBusinessDate } = require("../restaurantHoursService");
@@ -477,11 +478,21 @@ async function resolveCheckoutQuoteOrThrow(
       err.code = "INVALID_SELECTION";
       throw err;
     }
+    if (resolveSubscriptionAddonBillingMode(doc, { defaultMode: "per_day" }) !== "per_day") {
+      const err = new Error(`Addon ${item.id} must use per_day billing for subscription checkout`);
+      err.code = "INVALID_SELECTION";
+      throw err;
+    }
     const unit = resolveAddonUnitPriceHalala(doc);
     assertSystemCurrencyOrThrow(doc.currency || SYSTEM_CURRENCY, `Addon plan ${item.id} currency`);
 
-    const daysCount = Number(plan.daysCount || 0);
-    const lineTotal = unit * daysCount;
+    const lineTotal = resolveAddonChargeTotalHalala({
+      unitPriceHalala: unit,
+      qty: 1,
+      daysCount: Number(plan.daysCount || 0),
+      mealsPerDay: Number(mealsPerDay || 0),
+      addon: doc,
+    });
 
     addonsTotalHalala += lineTotal;
     resolvedAddonItems.push({

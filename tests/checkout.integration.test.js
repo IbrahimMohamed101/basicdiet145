@@ -27,6 +27,7 @@ const Plan = require('../src/models/Plan');
 const CheckoutDraft = require('../src/models/CheckoutDraft');
 const Zone = require('../src/models/Zone');
 const Setting = require('../src/models/Setting');
+const Addon = require('../src/models/Addon');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'supersecret';
 const BASE_URL = 'http://localhost:3000';
@@ -53,6 +54,8 @@ let legacyShrimp = null;
 let legacyBeefSteak = null;
 let testPlan = null;
 let testZone = null;
+let addonPlanJuice = null;
+let addonItemJuice = null;
 
 const TEST_USER_PHONE = '+966501234999';
 const TEST_USER_PASSWORD = 'testpassword123';
@@ -250,6 +253,38 @@ if (proteinsWithoutKey.length >= 2) {
     });
     await testPlan.save();
   }
+
+  addonPlanJuice = await Addon.findOne({ kind: 'plan', category: 'juice', billingMode: 'per_day' });
+  if (!addonPlanJuice) {
+    addonPlanJuice = new Addon({
+      name: { ar: 'اشتراك العصير', en: 'Juice Subscription' },
+      description: { ar: 'اشتراك يومي للعصير', en: 'Daily juice subscription' },
+      kind: 'plan',
+      category: 'juice',
+      billingMode: 'per_day',
+      priceHalala: 1100,
+      currency: 'SAR',
+      isActive: true,
+      sortOrder: 1,
+    });
+    await addonPlanJuice.save();
+  }
+
+  addonItemJuice = await Addon.findOne({ kind: 'item', category: 'juice', billingMode: 'flat_once' });
+  if (!addonItemJuice) {
+    addonItemJuice = new Addon({
+      name: { ar: 'بيري بلاست', en: 'Berry Blast' },
+      description: { ar: 'عنصر عصير', en: 'Juice item' },
+      kind: 'item',
+      category: 'juice',
+      billingMode: 'flat_once',
+      priceHalala: 1100,
+      currency: 'SAR',
+      isActive: true,
+      sortOrder: 2,
+    });
+    await addonItemJuice.save();
+  }
 }
 
 async function cleanupTestData() {
@@ -335,7 +370,87 @@ async function runTests() {
   console.log(`  Delivery Zone ID: ${testZone._id}`);
   
   const startDate = buildDateOffset(1);
-  
+
+  console.log('\n--- A0) Add-on Catalog Separation ---\n');
+
+  await test('GET /api/subscriptions/menu exposes only plan add-ons for checkout', async () => {
+    const res = await makeRequest('GET', '/api/subscriptions/menu');
+    assertEqual(res.status, 200, 'menu status');
+    assertEqual(res.body.status, true, 'status');
+    const addons = res.body.data?.addons || [];
+    assertTrue(addons.length > 0, 'checkout addons returned');
+    assertTrue(addons.every((addon) => addon.kind === 'plan'), 'checkout menu excludes item addons');
+    assertTrue(addons.some((addon) => addon.id === String(addonPlanJuice._id)), 'juice plan included');
+    assertTrue(!addons.some((addon) => addon.id === String(addonItemJuice._id)), 'juice item excluded');
+  });
+
+  await test('POST /api/subscriptions/quote prices per_day add-on plans by subscription duration', async () => {
+    const quotePayload = {
+      planId: String(testPlan._id),
+      grams: 300,
+      mealsPerDay: 2,
+      startDate,
+      delivery: {
+        type: 'delivery',
+        address: { street: 'Test Street', city: 'Riyadh' },
+        zoneId: String(testZone._id),
+      },
+      addons: [String(addonPlanJuice._id)],
+    };
+
+    const res = await makeRequest('POST', '/api/subscriptions/quote', quotePayload);
+    assertEqual(res.status, 200, 'quote status');
+    assertEqual(res.body.status, true, 'status');
+    const expectedAddonsTotal = Number(addonPlanJuice.priceHalala || 0) * Number(testPlan.daysCount || 0);
+    assertEqual(Number(res.body.data?.breakdown?.addonsTotalHalala || 0), expectedAddonsTotal, 'plan add-on total uses per-day pricing');
+  });
+
+  await test('POST /api/subscriptions/quote rejects direct purchase of item add-ons', async () => {
+    const quotePayload = {
+      planId: String(testPlan._id),
+      grams: 300,
+      mealsPerDay: 2,
+      startDate,
+      delivery: {
+        type: 'delivery',
+        address: { street: 'Test Street', city: 'Riyadh' },
+        zoneId: String(testZone._id),
+      },
+      addons: [String(addonItemJuice._id)],
+    };
+
+    const res = await makeRequest('POST', '/api/subscriptions/quote', quotePayload);
+    assertEqual(res.status, 400, 'quote rejected');
+    assertEqual(res.body.error?.code, 'INVALID', 'item add-on purchase rejected');
+  });
+
+  await test('POST /api/subscriptions/checkout purchases plan add-ons into draft entitlements', async () => {
+    const idempotencyKey = `checkout_test_addon_plan_${Date.now()}`;
+    const checkoutPayload = {
+      planId: String(testPlan._id),
+      grams: 300,
+      mealsPerDay: 2,
+      startDate,
+      delivery: {
+        type: 'delivery',
+        address: { street: 'Test Street', city: 'Riyadh' },
+        zoneId: String(testZone._id),
+      },
+      addons: [String(addonPlanJuice._id)],
+      idempotencyKey,
+    };
+
+    const res = await makeRequest('POST', '/api/subscriptions/checkout', checkoutPayload);
+    assertEqual(res.status, 201, 'checkout status');
+    assertEqual(res.body.status, true, 'status');
+    const draft = await CheckoutDraft.findById(res.body.data?.draftId).lean();
+    assertTrue(!!draft, 'draft exists');
+    assertTrue(Array.isArray(draft.addonSubscriptions), 'addonSubscriptions array exists');
+    assertEqual(draft.addonSubscriptions.length, 1, 'one addon entitlement created');
+    assertEqual(draft.addonSubscriptions[0].category, 'juice', 'entitlement category preserved');
+    assertEqual(String(draft.addonSubscriptions[0].addonId), String(addonPlanJuice._id), 'plan addon id persisted');
+  });
+
   console.log('\n--- A) Checkout with Legacy Premium IDs ---\n');
   
   await test('POST /api/subscriptions/checkout with legacy shrimp ID creates draft', async () => {
