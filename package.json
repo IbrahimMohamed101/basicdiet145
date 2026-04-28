@@ -24,7 +24,9 @@
     "seed:dashboard-users": "node scripts/seed-dashboard-users.js",
     "seed:builder": "node scripts/seed-meal-builder-data.js",
     "seed:premium-catalog": "node scripts/seedPremiumCatalog.js",
-    "seed:legal-content": "node scripts/seed-legal-content.js"
+    "seed:legal-content": "node scripts/seed-legal-content.js",
+    "catalog:check": "node scripts/checkCatalogHealth.js",
+    "smoke:integrity": "SKIP_DB_CHECK=true NODE_ENV=test node tests/smoke/integrity.test.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

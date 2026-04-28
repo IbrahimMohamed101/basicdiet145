@@ -1417,7 +1417,7 @@ async function activateSubscription(req, res) {
       return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
     }
     if (sub.status === "active") {
-      return res.status(200).json({ status: true, data: await serializeSubscriptionForClient(sub, lang) });
+      return res.status(200).json({ ok: true, data: await serializeSubscriptionForClient(sub, lang) });
     }
     sub.status = "active";
     const start = new Date(sub.startDate);
@@ -1426,7 +1426,7 @@ async function activateSubscription(req, res) {
       sub.validityEndDate = sub.endDate;
     }
     await sub.save();
-    return res.status(200).json({ status: true, data: await serializeSubscriptionForClient(sub, lang) });
+    return res.status(200).json({ ok: true, data: await serializeSubscriptionForClient(sub, lang) });
   }
 
   if (String(draft.userId) !== String(req.userId)) {
@@ -1538,7 +1538,7 @@ async function getCurrentSubscriptionOverview(req, res) {
   try {
     const result = await buildCurrentSubscriptionOverview({ userId, lang });
     return res.status(200).json({
-      status: result.status,
+      ok: true,
       data: serializeForApi(result.data)
     });
   } catch (err) {
@@ -1706,7 +1706,7 @@ async function getSubscriptionTimeline(req, res) {
   const timeline = await buildSubscriptionTimeline(id);
 
   return res.status(200).json({
-    status: true,
+    ok: true,
     data: localizeTimelineReadPayload(timeline, lang),
   });
 }
@@ -1715,7 +1715,7 @@ async function listCurrentUserSubscriptions(req, res) {
   const subscriptions = await Subscription.find({ userId: req.userId }).sort({ createdAt: -1 }).lean();
   const lang = getRequestLang(req);
   const data = await Promise.all(subscriptions.map((subscription) => serializeSubscriptionForClient(subscription, lang)));
-  return res.status(200).json({ status: true, data });
+  return res.status(200).json({ ok: true, data });
 }
 
 async function getSubscriptionRenewalSeed(req, res, runtimeOverrides = null) {
@@ -2064,7 +2064,7 @@ async function getSubscriptionDays(req, res) {
     }),
     lang,
   }));
-  return res.status(200).json({ status: true, data: mappedDays });
+  return res.status(200).json({ ok: true, data: mappedDays });
 }
 
 async function getSubscriptionDay(req, res) {
@@ -2094,7 +2094,7 @@ async function getSubscriptionDay(req, res) {
     addonNames: catalog.addonNames,
   });
   return res.status(200).json({
-    status: true,
+    ok: true,
     data: shapeMealPlannerReadFields({
       subscription: sub,
       day: localizedDay,
@@ -2131,7 +2131,7 @@ async function getSubscriptionToday(req, res) {
     addonNames: catalog.addonNames,
   });
   return res.status(200).json({
-    status: true,
+    ok: true,
     data: shapeMealPlannerReadFields({
       subscription: sub,
       day: localizedDay,
@@ -2426,7 +2426,7 @@ async function preparePickup(req, res) {
   if (!result.ok) {
     return errorResponse(res, result.status, result.code, result.message, result.details);
   }
-  return res.status(result.status).json({ status: true, data: result.data });
+  return res.status(result.status).json({ ok: true, data: result.data });
 }
 
 async function getPickupStatus(req, res) {
@@ -2442,7 +2442,7 @@ async function getPickupStatus(req, res) {
   if (!result.ok) {
     return errorResponse(res, result.status, result.code, result.message, result.details);
   }
-  return res.status(result.status).json({ status: true, data: result.data });
+  return res.status(result.status).json({ ok: true, data: result.data });
 }
 
 async function updateDeliveryDetails(req, res, runtimeOverrides = null) {

@@ -20,6 +20,7 @@ const courierRoutes = require("./courier");
 const kitchenRoutes = require("./kitchen");
 const dashboardOpsRoutes = require("./dashboardOps");
 const paymentRoutes = require("./payments");
+const healthRoutes = require("./health");
 const { getSettings } = require("../controllers/settingsController");
 const { listCategoriesWithMeals } = require("../controllers/mealController");
 const asyncHandler = require("../middleware/asyncHandler");
@@ -48,6 +49,7 @@ router.use("/content", contentRoutes);
 router.use("/dashboard", adminRoutes);
 router.use("/dashboard/ops", dashboardOpsRoutes);
 router.use("/admin", adminRoutes);
+router.use("/health", healthRoutes);
 
 /**
  * DEPRECATED: Standard Kitchen/Courier operational routes.

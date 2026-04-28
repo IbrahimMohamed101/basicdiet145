@@ -348,7 +348,7 @@ async function listCategoriesWithMeals(req, res) {
     })),
   }));
 
-  return res.status(200).json({ status: true, data });
+  return res.status(200).json({ ok: true, data });
 }
 
 async function deleteMeal(req, res) {

@@ -15,12 +15,18 @@ function normalizeTopLevelOkField(payload) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     return payload;
   }
-  if (!Object.prototype.hasOwnProperty.call(payload, "ok")) {
-    return payload;
+
+  // Ensure 'ok' is present if 'status' exists (unification/migration support)
+  if (Object.prototype.hasOwnProperty.call(payload, "status") && !Object.prototype.hasOwnProperty.call(payload, "ok")) {
+    payload.ok = payload.status;
   }
 
-  const { ok, ...rest } = payload;
-  return { status: ok, ...rest };
+  // Ensure 'status' is present if 'ok' exists (backward compatibility for older clients)
+  if (Object.prototype.hasOwnProperty.call(payload, "ok") && !Object.prototype.hasOwnProperty.call(payload, "status")) {
+    payload.status = payload.ok;
+  }
+
+  return payload;
 }
 
 function mountSwaggerUi(app, { uiPath, rawPath, filePath }) {

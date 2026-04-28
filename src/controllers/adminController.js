@@ -375,7 +375,7 @@ function validatePlanPayloadOrThrow(payload, { requireGramsOptions = true } = {}
     };
   });
 
-  return {
+  const result = {
     name,
     daysCount,
     currency,
@@ -385,6 +385,16 @@ function validatePlanPayloadOrThrow(payload, { requireGramsOptions = true } = {}
     isActive,
     sortOrder,
   };
+
+  if (isActive && !Plan.isViable(result)) {
+    throw createControlledError(
+      400,
+      "INVALID_PLAN_STRUCTURE",
+      "Plan cannot be active because it has no commercially viable path (missing active grams/meals options)"
+    );
+  }
+
+  return result;
 }
 
 function validateMealsOptionPayloadOrThrow(rawMealOption, fieldPath = "mealOption") {

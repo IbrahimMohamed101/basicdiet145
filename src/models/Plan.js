@@ -49,4 +49,16 @@ const PlanSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+PlanSchema.statics.isViable = function (plan) {
+  if (!plan) return false;
+  const activeGramsOptions = (plan.gramsOptions || []).filter((g) => g.isActive !== false);
+  if (activeGramsOptions.length === 0) return false;
+
+  return activeGramsOptions.every((g) => (g.mealsOptions || []).some((m) => m.isActive !== false));
+};
+
+PlanSchema.methods.isViable = function () {
+  return this.constructor.isViable(this);
+};
+
 module.exports = mongoose.model("Plan", PlanSchema);
