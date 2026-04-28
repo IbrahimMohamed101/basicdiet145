@@ -76,20 +76,13 @@ async function reconcileAddonInclusions(subscription, day, requestedAddonIds = [
 
     const category = doc.category;
     const entitlement = entitlements.find((e) => e.category === category);
-    if (!entitlement) {
-      throw {
-        status: 400,
-        code: "INVALID_ONE_TIME_ADDON_SELECTION",
-        message: `Addon category ${category} is not included in this subscription`,
-      };
-    }
     
     let source = "pending_payment";
     let priceHalala = doc.priceHalala || Math.round((doc.price || 0) * 100);
 
     // Check if inclusive
     const used = entitlementUsage.get(category) || 0;
-    if (used < (entitlement.maxPerDay || 1)) {
+    if (entitlement && used < (entitlement.maxPerDay || 1)) {
       source = "subscription";
       priceHalala = 0;
       entitlementUsage.set(category, used + 1);
@@ -105,7 +98,7 @@ async function reconcileAddonInclusions(subscription, day, requestedAddonIds = [
     } else {
       newSelections.push({
         addonId: doc._id,
-        name: doc.name,
+        name: resolveAddonSelectionName(doc),
         category: doc.category,
         source,
         priceHalala,
@@ -116,6 +109,15 @@ async function reconcileAddonInclusions(subscription, day, requestedAddonIds = [
   }
 
   day.addonSelections = newSelections;
+}
+
+function resolveAddonSelectionName(addonDoc) {
+  if (!addonDoc || addonDoc.name == null) return "";
+  if (typeof addonDoc.name === "string") return addonDoc.name;
+  if (typeof addonDoc.name === "object") {
+    return String(addonDoc.name.en || addonDoc.name.ar || "").trim();
+  }
+  return String(addonDoc.name || "").trim();
 }
 
 async function consumePremiumBalanceAtomically({ subscription, dayId, date, premiumKey, unitExtraFeeHalala = 3000, session }) {

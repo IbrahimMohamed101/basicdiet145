@@ -58,6 +58,8 @@ let addonJuicePlan = null;
 let addonJuice = null;
 let addonJuice2 = null;
 let addonSnack = null;
+let addonSmallSalad = null;
+let addonInactive = null;
 let testPlan = null;
 
 const TEST_USER_PHONE = '+966501234567';
@@ -387,7 +389,7 @@ async function seedBuilderCatalog() {
     await addonJuicePlan.save();
   }
 
-  addonJuice = await Addon.findOne({ kind: 'item', category: 'juice', billingMode: 'flat_once' });
+  addonJuice = await Addon.findOne({ kind: 'item', category: 'juice', billingMode: 'flat_once', isActive: true });
   if (!addonJuice) {
     addonJuice = new Addon({
       name: { ar: 'عصير التوت', en: 'Berry Blast' }, category: 'juice', kind: 'item',
@@ -396,7 +398,7 @@ async function seedBuilderCatalog() {
     await addonJuice.save();
   }
 
-  addonJuice2 = await Addon.findOne({ kind: 'item', category: 'juice', billingMode: 'flat_once', _id: { $ne: addonJuice._id } });
+  addonJuice2 = await Addon.findOne({ kind: 'item', category: 'juice', billingMode: 'flat_once', isActive: true, _id: { $ne: addonJuice._id } });
   if (!addonJuice2) {
     addonJuice2 = new Addon({
       name: { ar: 'ماء', en: 'Water' }, category: 'juice', kind: 'item',
@@ -405,13 +407,31 @@ async function seedBuilderCatalog() {
     await addonJuice2.save();
   }
 
-  addonSnack = await Addon.findOne({ kind: 'item', category: 'snack', billingMode: 'flat_once' });
+  addonSnack = await Addon.findOne({ kind: 'item', category: 'snack', billingMode: 'flat_once', isActive: true });
   if (!addonSnack) {
     addonSnack = new Addon({
       name: { ar: 'بروتين بار', en: 'Protein Bar' }, category: 'snack', kind: 'item',
       priceHalala: 1500, isActive: true,
     });
     await addonSnack.save();
+  }
+
+  addonSmallSalad = await Addon.findOne({ kind: 'item', category: 'small_salad', billingMode: 'flat_once', isActive: true });
+  if (!addonSmallSalad) {
+    addonSmallSalad = new Addon({
+      name: { ar: 'سلطة صغيرة', en: 'Small Salad' }, category: 'small_salad', kind: 'item',
+      priceHalala: 1200, isActive: true,
+    });
+    await addonSmallSalad.save();
+  }
+
+  addonInactive = await Addon.findOne({ kind: 'item', category: 'juice', billingMode: 'flat_once', isActive: false });
+  if (!addonInactive) {
+    addonInactive = new Addon({
+      name: { ar: 'عنصر غير نشط', en: 'Inactive Juice Item' }, category: 'juice', kind: 'item',
+      priceHalala: 900, isActive: false,
+    });
+    await addonInactive.save();
   }
 }
 
@@ -531,6 +551,8 @@ async function runTests() {
   const TEST_DATE_IDEM = buildDateOffset(14);
   const TEST_DATE_BULK1 = buildDateOffset(16);
   const TEST_DATE_BULK2 = buildDateOffset(18);
+  const TEST_DATE7 = buildDateOffset(20);
+  const TEST_DATE8 = buildDateOffset(22);
   const TEST_DATE_BEFORE = buildDateOffset(0);
   
   console.log('Test dates:', TEST_DATE, TEST_DATE2, TEST_DATE3, TEST_DATE4);
@@ -854,17 +876,21 @@ async function runTests() {
     assertEqual(Number(second?.priceHalala || 0), Number(addonJuice2.priceHalala || 0), 'overage uses item price, not plan price');
   });
 
-  await test('planner rejects item addons outside entitled categories', async () => {
+  await test('planner accepts non-entitled category items as paid overage using item price', async () => {
     const slots = [
       { slotIndex: 1, slotKey: 'slot_1', proteinId: String(standardProtein._id), carbs: [{ carbId: String(standardCarb._id), grams: 150 }], selectionType: 'standard_meal' },
       { slotIndex: 2, slotKey: 'slot_2', proteinId: String(standardProtein._id), carbs: [{ carbId: String(standardCarb._id), grams: 150 }], selectionType: 'standard_meal' },
     ];
     const res = await makeRequest('PUT', `/api/subscriptions/${testSubscription._id}/days/${TEST_DATE5}/selection`, {
       mealSlots: slots,
-      addonsOneTime: [String(addonSnack._id)],
+      addonsOneTime: [String(addonSmallSalad._id)],
     });
-    assertEqual(res.status, 400, 'status');
-    assertEqual(res.body.error?.code, 'INVALID', 'request rejected');
+    assertEqual(res.status, 200, 'status');
+    const day = await getActiveSubscriptionDay(TEST_DATE5);
+    const selection = (day?.addonSelections || []).find((item) => String(item.addonId) === String(addonSmallSalad._id));
+    assertTrue(!!selection, 'small salad selection persisted');
+    assertEqual(selection?.source, 'pending_payment', 'non-entitled category is paid');
+    assertEqual(Number(selection?.priceHalala || 0), Number(addonSmallSalad.priceHalala || 0), 'charged using item price');
   });
 
   await test('planner rejects plan add-ons directly', async () => {
@@ -878,6 +904,64 @@ async function runTests() {
     });
     assertEqual(res.status, 400, 'status');
     assertEqual(res.body.error?.code, 'INVALID', 'plan add-on request rejected');
+  });
+
+  await test('planner accepts item selection with no add-on subscriptions as paid overage', async () => {
+    const original = await Subscription.findById(testSubscription._id);
+    const originalEntitlements = JSON.parse(JSON.stringify(original.addonSubscriptions || []));
+    original.addonSubscriptions = [];
+    await original.save();
+
+    try {
+      const slots = [
+        { slotIndex: 1, slotKey: 'slot_1', proteinId: String(standardProtein._id), carbs: [{ carbId: String(standardCarb._id), grams: 150 }], selectionType: 'standard_meal' },
+        { slotIndex: 2, slotKey: 'slot_2', proteinId: String(standardProtein._id), carbs: [{ carbId: String(standardCarb._id), grams: 150 }], selectionType: 'standard_meal' },
+      ];
+      const res = await makeRequest('PUT', `/api/subscriptions/${testSubscription._id}/days/${TEST_DATE7}/selection`, {
+        mealSlots: slots,
+        addonsOneTime: [String(addonJuice._id)],
+      });
+      assertEqual(res.status, 200, 'status');
+      const day = await getActiveSubscriptionDay(TEST_DATE7);
+      const selection = (day?.addonSelections || []).find((item) => String(item.addonId) === String(addonJuice._id));
+      assertTrue(!!selection, 'juice selection persisted');
+      assertEqual(selection?.source, 'pending_payment', 'no entitlement means paid');
+      assertEqual(Number(selection?.priceHalala || 0), Number(addonJuice.priceHalala || 0), 'charged using item price');
+    } finally {
+      const restore = await Subscription.findById(testSubscription._id);
+      restore.addonSubscriptions = originalEntitlements;
+      await restore.save();
+    }
+  });
+
+  await test('planner rejects inactive item add-ons', async () => {
+    const slots = [
+      { slotIndex: 1, slotKey: 'slot_1', proteinId: String(standardProtein._id), carbs: [{ carbId: String(standardCarb._id), grams: 150 }], selectionType: 'standard_meal' },
+      { slotIndex: 2, slotKey: 'slot_2', proteinId: String(standardProtein._id), carbs: [{ carbId: String(standardCarb._id), grams: 150 }], selectionType: 'standard_meal' },
+    ];
+    const res = await makeRequest('PUT', `/api/subscriptions/${testSubscription._id}/days/${TEST_DATE7}/selection`, {
+      mealSlots: slots,
+      addonsOneTime: [String(addonInactive._id)],
+    });
+    assertEqual(res.status, 400, 'status');
+    assertEqual(res.body.error?.code, 'INVALID', 'inactive item rejected');
+  });
+
+  await test('included entitlement resets per day', async () => {
+    const slots = [
+      { slotIndex: 1, slotKey: 'slot_1', proteinId: String(standardProtein._id), carbs: [{ carbId: String(standardCarb._id), grams: 150 }], selectionType: 'standard_meal' },
+      { slotIndex: 2, slotKey: 'slot_2', proteinId: String(standardProtein._id), carbs: [{ carbId: String(standardCarb._id), grams: 150 }], selectionType: 'standard_meal' },
+    ];
+    const res = await makeRequest('PUT', `/api/subscriptions/${testSubscription._id}/days/${TEST_DATE8}/selection`, {
+      mealSlots: slots,
+      addonsOneTime: [String(addonJuice._id)],
+    });
+    assertEqual(res.status, 200, 'status');
+    const day = await getActiveSubscriptionDay(TEST_DATE8);
+    const selection = (day?.addonSelections || []).find((item) => String(item.addonId) === String(addonJuice._id));
+    assertTrue(!!selection, 'juice selection persisted');
+    assertEqual(selection?.source, 'subscription', 'first item on a new day is included again');
+    assertEqual(Number(selection?.priceHalala || 0), 0, 'included price reset to zero on new day');
   });
   
   console.log('\n--- G) Current Overview ---\n');

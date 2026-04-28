@@ -1,22 +1,22 @@
 # Frontend Subscription Add-Ons Integration
 
-## 1. Overview
+## Overview
 
-Subscription add-ons now exist in two separate frontend contexts:
+Subscription add-ons are now split into two frontend contexts:
 
 - Checkout / subscription creation shows only add-on plans.
-- Meal planner shows only selectable add-on items after the user has subscribed to the matching add-on category.
+- Meal planner shows only add-on items.
 
-This split is intentional:
+The backend intentionally separates them:
 
-- Checkout is for purchasing recurring add-on categories.
-- Meal planner is for choosing actual daily products inside those categories.
+- Checkout sells recurring category subscriptions.
+- Meal planner lets the user pick real products inside those categories.
 
-## 2. Backend Data Model Summary
+There is no parent-child relation in the database. Plans and items are linked only by `category`.
 
-The frontend will receive add-ons from the existing `Addon` model in a catalog-friendly shape.
+## Data Model Summary
 
-Relevant fields:
+Frontend-relevant add-on fields:
 
 - `id`
 - `name`
@@ -36,45 +36,78 @@ Relevant fields:
 
 Important meanings:
 
-- `kind: "plan"` means purchasable subscription add-on during checkout.
-- `kind: "item"` means selectable daily add-on item in meal planner.
-- `category` is the link between plans and items:
-  - `juice`
-  - `snack`
-  - `small_salad`
-- `billingMode`:
+- `kind: "plan"`
+  - purchasable subscription add-on in checkout
+- `kind: "item"`
+  - selectable add-on product in meal planner
+- `category`
+  - grouping key used to link plans and items
+  - values:
+    - `juice`
+    - `snack`
+    - `small_salad`
+- `billingMode`
   - `per_day` for checkout plans
   - `flat_once` for meal-planner items
 
-## 3. Checkout Integration
+## Checkout Integration
 
-Endpoint:
+### Endpoint
 
 - `GET /api/subscriptions/menu`
 
-Behavior:
+### Current backend behavior
 
-- This endpoint now returns only active add-ons where:
+This response now has two separate add-on areas:
+
+1. Checkout add-ons:
+
+- `data.addons`
+- `data.addonsByType`
+- contain only active add-on plans:
   - `kind = "plan"`
   - `billingMode = "per_day"`
-- Frontend should show only these add-ons during checkout:
-  - `Juice Subscription`
-  - `Snack Subscription`
-  - `Small Salad Subscription`
-- Do not show `kind: "item"` add-ons in checkout.
-- User selection should send selected plan add-on IDs into the existing quote / checkout flow.
 
-Pricing:
+2. Nested meal planner add-ons inside the same response:
 
-- `plan.priceHalala` is the daily add-on plan price.
-- Backend calculates total as:
-  - `plan.priceHalala * subscriptionDurationDays`
-- Frontend may display:
-  - daily price
+- `data.mealPlanner.addons.items`
+- `data.mealPlanner.addons.byType`
+- contain only active add-on items:
+  - `kind = "item"`
+  - `billingMode = "flat_once"`
+
+Frontend checkout must use only:
+
+- `data.addons`
+- or `data.addonsByType`
+
+Do not use:
+
+- `data.mealPlanner.addons.items` for checkout
+
+### Checkout-visible plans
+
+The expected checkout plans are:
+
+- `Juice Subscription`
+- `Snack Subscription`
+- `Small Salad Subscription`
+
+### Submission
+
+Send selected plan add-on IDs into the existing quote / checkout flow.
+
+### Checkout pricing
+
+- Checkout uses `plan.priceHalala`
+- Backend total is:
+  - `plan.priceHalala * subscriptionDaysCount`
+- Frontend may show:
+  - price per day
   - estimated total
-- Backend quote remains the source of truth.
+- Backend quote remains the source of truth
 
-Example checkout add-on response shape:
+### Example checkout add-on shape
 
 ```json
 {
@@ -101,33 +134,87 @@ Example checkout add-on response shape:
 }
 ```
 
-## 4. Meal Planner Integration
+## Meal Planner Integration
 
-Endpoint:
+### Endpoints
 
 - `GET /api/subscriptions/meal-planner-menu`
+- Also note:
+  - `GET /api/subscriptions/menu` contains `data.mealPlanner.addons.items` with the same item-only planner catalog behavior
 
-Behavior:
+### Current backend behavior
 
-- This endpoint now returns only active add-ons where:
-  - `kind = "item"`
-  - `billingMode = "flat_once"`
-- It must not show checkout plan add-ons.
-- Items are selectable only if the current subscription has a matching entitlement in `subscription.addonSubscriptions`.
-- Linkage is by `category`, not `parentId`.
+Meal planner add-on catalogs now return only active add-on items:
 
-Frontend grouping:
+- `kind = "item"`
+- `billingMode = "flat_once"`
 
-- Group planner items by `category`.
-- Use categories:
-  - `juice`
-  - `snack`
-  - `small_salad`
-- Show a category section only if the current subscription has entitlement for that category.
+They do not return checkout plans.
+
+### Important rule
+
+Catalog availability and selection entitlement are different concerns:
+
+- Catalog endpoints return item add-ons.
+- Actual selection rules depend on the current subscription's `addonSubscriptions`.
+
+Linkage is category-based only.
+
+## Meal Planner Selection Rules
+
+The current backend selection behavior is:
+
+### If the user has entitlement for a category
+
+Example: user subscribed to `Juice Subscription`
+
+- first selected juice item on that day:
+  - included
+  - backend stores it with `source: "subscription"`
+  - effective charge `0`
+- second and later juice items on the same day:
+  - charged
+  - backend stores them as `pending_payment`
+  - each one uses that selected item's own `priceHalala`
+
+### If the user does not have entitlement for a category
+
+Example: user subscribed to `juice` only, then selects `Small Salad`
+
+- selection is accepted
+- it is not included
+- it becomes paid immediately
+- backend stores it as `pending_payment`
+- charge uses `Small Salad.priceHalala`
+
+### If the user has no add-on subscriptions at all
+
+- selecting any valid item is still allowed
+- it becomes paid
+- charge uses that item's own `priceHalala`
+
+### Invalid planner selections
+
+- `kind="plan"` is rejected in meal planner
+- inactive items are rejected
+
+## Frontend Grouping
+
+Frontend should group planner items by `category`:
+
+- `juice`
+- `snack`
+- `small_salad`
+
+Recommended UI behavior:
+
+- Show only categories the current subscription is entitled to
+- Optionally keep non-entitled categories hidden if the product UX wants planner to feel subscription-scoped
+- If non-entitled category selection is intentionally exposed in UI, expect backend to treat it as paid overage, not included
 
 Example:
 
-If the user bought `Juice Subscription`, show only juice items such as:
+If the user bought `Juice Subscription`, show juice items such as:
 
 - `Berry Blast`
 - `Berry Brute`
@@ -140,50 +227,73 @@ If the user bought `Juice Subscription`, show only juice items such as:
 - `Diet Soda`
 - `Water`
 
-## 5. Important Pricing Behavior
+## Pricing Behavior
 
-- Checkout price uses `plan.priceHalala`.
-- Meal planner item price uses `item.priceHalala`.
-- These prices are intentionally separate.
-- Covered item selections can be returned / treated as `0` by backend entitlement logic.
-- Overage or additional selections in the same category use the item's own `priceHalala`.
-- Do not use item prices to calculate the initial checkout total.
-- Do not use plan prices to price individual meal planner items.
+### Checkout pricing
 
-## 6. Expected UX Behavior
+- Uses `plan.priceHalala`
+- Formula:
+  - `plan.priceHalala * subscriptionDaysCount`
+- Never use item prices in initial checkout pricing
 
-Checkout screen:
+### Meal planner pricing
 
-- Show only 3 add-on subscription choices.
-- Each choice displays price per day.
+- Uses the selected item's own `item.priceHalala`
+- Never use plan price to charge an item
+
+### Included vs paid in meal planner
+
+- Included item:
+  - returned as included / free
+  - typically `source: "subscription"`
+  - effective price `0`
+- Paid overage or non-entitled category:
+  - typically `source: "pending_payment"`
+  - charge uses selected item's `priceHalala`
+
+## Expected UX
+
+### Checkout screen
+
+- Show only 3 add-on subscription choices
+- Display each as price per day
 - Optionally display estimated total:
   - `price per day x selected subscription days`
 
-Meal planner screen:
+### Meal planner screen
 
-- Show actual selectable products only.
-- Hide categories the user did not subscribe to.
-- Show item `priceLabel` from backend.
-- Do not allow selection of items from unavailable categories.
+- Show only actual selectable products, not plans
+- Group by category
+- Use backend `priceLabel` for item display
+- First entitled item/day should appear as included in the final state returned from backend
+- Additional items in the same category/day should appear as paid overage
+- Non-entitled category items, if selectable in product UX, should appear as paid
 
-## 7. Validation and Error Handling
+## Validation and Error Handling
 
-Backend protections:
+Backend protections currently enforced:
 
-- Checkout rejects direct purchase of `kind="item"`.
-- Checkout accepts `kind="plan"` only.
-- Meal planner rejects `kind="plan"` selection.
-- Meal planner rejects item categories when the user has no entitlement.
+- Checkout rejects direct purchase of `kind="item"`
+- Checkout accepts `kind="plan"` only
+- `GET /api/subscriptions/menu`
+  - top-level add-ons are plans only
+  - nested `mealPlanner.addons.items` are items only
+- `GET /api/subscriptions/meal-planner-menu`
+  - add-ons are items only
+- Meal planner rejects `kind="plan"` selections
+- Meal planner rejects inactive items
+- Meal planner accepts non-entitled category items as paid overage
 
 Frontend guidance:
 
-- Surface backend validation messages directly when possible.
-- Treat backend as the source of truth for:
-  - purchasable checkout add-ons
-  - planner-eligible categories
+- Surface backend validation errors directly when possible
+- Treat backend as source of truth for:
+  - allowed checkout plans
+  - planner item validity
+  - included vs paid state
   - final pricing
 
-## 8. Example Data
+## Example Data
 
 ### Juice Plan
 
@@ -197,7 +307,7 @@ Frontend guidance:
 }
 ```
 
-### Juice Item
+### Juice Items
 
 ```json
 {
@@ -209,10 +319,25 @@ Frontend guidance:
 }
 ```
 
-Other juice examples:
+```json
+{
+  "name": "Berry Brute",
+  "category": "juice",
+  "kind": "item",
+  "billingMode": "flat_once",
+  "priceSar": 13
+}
+```
 
-- `Berry Brute` - `13 SAR`
-- `Classic Green` - `11 SAR`
+```json
+{
+  "name": "Classic Green",
+  "category": "juice",
+  "kind": "item",
+  "billingMode": "flat_once",
+  "priceSar": 11
+}
+```
 
 ### Snack Plan
 
@@ -226,7 +351,7 @@ Other juice examples:
 }
 ```
 
-### Snack Item
+### Snack Items
 
 ```json
 {
@@ -238,9 +363,15 @@ Other juice examples:
 }
 ```
 
-Other snack example:
-
-- `Protein Bar` - `15 SAR`
+```json
+{
+  "name": "Protein Bar",
+  "category": "snack",
+  "kind": "item",
+  "billingMode": "flat_once",
+  "priceSar": 15
+}
+```
 
 ### Small Salad Plan
 
@@ -266,22 +397,44 @@ Other snack example:
 }
 ```
 
-## 9. Developer Notes
+## Seed Notes
 
-- No backend grouping is currently added.
-- No parent-child relationship exists between plans and items.
-- `category` is the grouping key.
-- Dashboard will later manage create / update / delete for these add-ons.
-- Frontend should not hardcode item lists long-term.
-- Frontend should rely on API responses.
+There is now a standalone add-ons seed script:
 
-## 10. Testing Checklist
+- `npm run seed:subscription-addons`
 
-- Checkout does not show item add-ons.
-- Meal planner does not show plan add-ons.
-- Selecting `Juice Subscription` unlocks only juice items.
-- Selecting `Snack Subscription` unlocks only snack items.
-- Selecting `Small Salad Subscription` unlocks only small salad items.
-- Checkout estimated total matches backend quote.
-- Item price labels match backend response.
-- Backend errors are displayed clearly.
+This script seeds only:
+
+- checkout plans
+- meal planner items
+
+for categories:
+
+- `juice`
+- `snack`
+- `small_salad`
+
+## Developer Notes
+
+- No backend grouping object was added specifically for parent-child add-ons
+- No `parentId` exists
+- `category` is the grouping key
+- Dashboard will later manage create / update / delete
+- Frontend should not hardcode item lists long-term
+- Frontend should always rely on API responses
+
+## Frontend Checklist
+
+- Checkout does not show item add-ons
+- `/api/subscriptions/menu` top-level add-ons show only plans
+- `/api/subscriptions/menu` nested `mealPlanner.addons.items` shows only items
+- `/api/subscriptions/meal-planner-menu` shows only items
+- Selecting `Juice Subscription` unlocks included juice behavior
+- Selecting `Snack Subscription` unlocks included snack behavior
+- Selecting `Small Salad Subscription` unlocks included small salad behavior
+- First entitled item per category per day is included
+- Second item in the same entitled category per day is charged using item price
+- Non-entitled category item is charged using item price
+- Checkout estimated total matches backend quote
+- Item price labels match backend response
+- Backend validation and payment states are displayed clearly
