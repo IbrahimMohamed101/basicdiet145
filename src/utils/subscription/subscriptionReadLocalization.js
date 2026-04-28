@@ -5,6 +5,9 @@ const {
   formatWindowLabel,
 } = require("./subscriptionCatalog");
 const {
+  resolvePremiumKeyFromName,
+} = require("./premiumIdentity");
+const {
   localizeAddonRows,
   localizeCustomItemRows,
   resolveCatalogOrStoredName,
@@ -238,7 +241,7 @@ function localizeCheckoutDraftStatusReadPayload(payload, { lang, draft = null } 
   return localized;
 }
 
-function localizeSubscriptionReadPayload(subscription, { lang, addonNames = new Map(), premiumNames = new Map(), planName = "" } = {}) {
+function localizeSubscriptionReadPayload(subscription, { lang, addonNames = new Map(), premiumNames = new Map(), premiumKeys = new Map(), planName = "" } = {}) {
   if (!subscription || typeof subscription !== "object") return subscription;
 
   const statusLabelAr = resolveReadLabel("subscriptionStatuses", subscription.status, "ar");
@@ -269,15 +272,37 @@ function localizeSubscriptionReadPayload(subscription, { lang, addonNames = new 
   }
 
   if (Array.isArray(subscription.premiumBalance)) {
-    localized.premiumBalance = subscription.premiumBalance.map((item) => ({
-      ...item,
-      name: resolveCatalogOrStoredName({ 
-        id: item.proteinId ? String(item.proteinId) : null,
-        liveName: item.proteinId ? premiumNames.get(String(item.proteinId)) || "" : "",
-        storedName: "", 
-        lang 
-      }),
-    }));
+    localized.premiumBalance = subscription.premiumBalance.map((item) => {
+      const proteinId = item.proteinId ? String(item.proteinId) : null;
+      let premiumKey = item.premiumKey;
+
+      if (!premiumKey && proteinId) {
+        premiumKey = premiumKeys.get(proteinId);
+      }
+      if (!premiumKey) {
+        premiumKey = resolvePremiumKeyFromName(item.name || "");
+      }
+
+      // Final safety check: if still null, throw instead of silent fallback
+      if (!premiumKey) {
+        console.error(`[PREMIUM_BALANCE_CONSISTENCY] CRITICAL: Failed to resolve premiumKey for item:`, {
+          proteinId,
+          name: item.name
+        });
+        throw new Error("Invalid premiumBalance row: premiumKey is required");
+      }
+
+      return {
+        ...item,
+        premiumKey,
+        name: resolveCatalogOrStoredName({ 
+          id: proteinId,
+          liveName: proteinId ? premiumNames.get(proteinId) || "" : "",
+          storedName: "", 
+          lang 
+        }),
+      };
+    });
   } else {
     localized.premiumBalance = [];
   }

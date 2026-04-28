@@ -387,6 +387,7 @@ async function buildCurrentSubscriptionOverview({ userId, lang, runtime: runtime
   const restaurantHours = await runtime.getRestaurantHoursSettings();
   const premiumCatalog = await loadPremiumCatalogForOverview(lang);
   const premiumSummary = buildSubscriptionPremiumBalanceSummary(sub, premiumCatalog, lang);
+  await validateAndNormalizePremiumBalance(serializedSubscription, sub, premiumCatalog);
 
   let pickupPreparation = null;
   try {
@@ -425,6 +426,28 @@ async function buildCurrentSubscriptionOverview({ userId, lang, runtime: runtime
       premiumSummary,
     },
   };
+}
+
+async function validateAndNormalizePremiumBalance(serializedSubscription, sub, premiumCatalog) {
+  if (!serializedSubscription || !Array.isArray(serializedSubscription.premiumBalance)) {
+    return;
+  }
+
+  for (const row of serializedSubscription.premiumBalance) {
+    if (!row.premiumKey) {
+      const resolvedKey = resolvePremiumKeyFromRow(row, premiumCatalog);
+      if (resolvedKey) {
+        row.premiumKey = resolvedKey;
+      } else {
+        logger.error("[PREMIUM_BALANCE_CONSISTENCY] CRITICAL: Unresolved premiumKey in overview - failing loudly", {
+          subscriptionId: String(sub._id),
+          proteinId: row.proteinId,
+          name: row.name
+        });
+        throw new Error(`Invalid premiumBalance row: premiumKey is required for subscription ${sub._id}`);
+      }
+    }
+  }
 }
 
 module.exports = {

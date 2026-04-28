@@ -76,7 +76,7 @@ async function loadWalletCatalogMaps({ subscription = null, days = [], lang = "a
   const [planDocs, addonDocs, premiumDocs] = await Promise.all([
     validPlanIds.length ? Plan.find({ _id: { $in: validPlanIds } }).select("_id name").lean() : Promise.resolve([]),
     validAddonIds.length ? Addon.find({ _id: { $in: validAddonIds } }).select("_id name").lean() : Promise.resolve([]),
-    validPremiumIds.length ? BuilderProtein.find({ _id: { $in: validPremiumIds } }).select("_id name").lean() : Promise.resolve([]),
+    validPremiumIds.length ? BuilderProtein.find({ _id: { $in: validPremiumIds } }).select("_id name premiumKey").lean() : Promise.resolve([]),
   ]);
 
   return {
@@ -84,6 +84,7 @@ async function loadWalletCatalogMaps({ subscription = null, days = [], lang = "a
     planNames: new Map(planDocs.map((doc) => [String(doc._id), pickLang(doc.name, lang) || ""])),
     addonNames: new Map(addonDocs.map((doc) => [String(doc._id), pickLang(doc.name, lang) || ""])),
     premiumNames: new Map(premiumDocs.map((doc) => [String(doc._id), pickLang(doc.name, lang) || ""])),
+    premiumKeys: new Map(premiumDocs.map((doc) => [String(doc._id), doc.premiumKey || null])),
   };
 }
 
@@ -168,6 +169,7 @@ async function serializeSubscriptionForClient(subscription, lang) {
     lang,
     addonNames: catalog.addonNames,
     premiumNames: catalog.premiumNames,
+    premiumKeys: catalog.premiumKeys,
     planName: contractReadView.planName || "",
   });
 }

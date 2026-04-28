@@ -58,6 +58,7 @@ const {
 } = require("../utils/subscription/subscriptionWriteLocalization");
 const validateObjectId = require("../utils/validateObjectId");
 const errorResponse = require("../utils/errorResponse");
+const { serializeForApi } = require("../utils/apiSerializer");
 const {
   isPhase1CanonicalCheckoutDraftWriteEnabled,
   isPhase1SharedPaymentDispatcherEnabled,
@@ -1536,7 +1537,10 @@ async function getCurrentSubscriptionOverview(req, res) {
 
   try {
     const result = await buildCurrentSubscriptionOverview({ userId, lang });
-    return res.status(200).json(result);
+    return res.status(200).json({
+      ok: result.ok,
+      data: serializeForApi(result.data)
+    });
   } catch (err) {
     logger.error("subscriptionController.getCurrentSubscriptionOverview failed", {
       error: err.message,

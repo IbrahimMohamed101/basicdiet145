@@ -102,7 +102,7 @@ async function reconcileAddonInclusions(subscription, day, requestedAddonIds = [
   day.addonSelections = newSelections;
 }
 
-async function consumePremiumBalanceAtomically({ subscription, dayId, date, premiumKey, proteinId, unitExtraFeeHalala = 3000, session }) {
+async function consumePremiumBalanceAtomically({ subscription, dayId, date, premiumKey, unitExtraFeeHalala = 3000, session }) {
   if (!session) {
     throw new Error("consumePremiumBalanceAtomically requires a session");
   }
@@ -111,21 +111,13 @@ async function consumePremiumBalanceAtomically({ subscription, dayId, date, prem
     return { consumed: false, reason: "no_balance_array", premiumSource: "pending_payment", premiumExtraFeeHalala: unitExtraFeeHalala };
   }
 
-  const matchKey = premiumKey || null;
-  const matchId = proteinId ? String(proteinId) : null;
-
-  let bucketIndex = -1;
-  if (matchKey) {
-    bucketIndex = subscription.premiumBalance.findIndex(
-      (b) => b.premiumKey === matchKey && Number(b.remainingQty || 0) > 0
-    );
+  if (!premiumKey) {
+    return { consumed: false, reason: "no_premium_key", premiumSource: "pending_payment", premiumExtraFeeHalala: unitExtraFeeHalala };
   }
 
-  if (bucketIndex < 0 && matchId) {
-    bucketIndex = subscription.premiumBalance.findIndex(
-      (b) => String(b.proteinId) === matchId && Number(b.remainingQty || 0) > 0
-    );
-  }
+  const bucketIndex = subscription.premiumBalance.findIndex(
+    (b) => b.premiumKey === premiumKey && Number(b.remainingQty || 0) > 0
+  );
 
   if (bucketIndex < 0) {
     return { consumed: false, reason: "no_remaining_balance", premiumSource: "pending_payment", premiumExtraFeeHalala: unitExtraFeeHalala };
@@ -159,7 +151,7 @@ async function consumePremiumBalanceAtomically({ subscription, dayId, date, prem
   };
 }
 
-async function releasePremiumBalanceAtomically({ subscription, dayId, date, premiumKey, proteinId, session }) {
+async function releasePremiumBalanceAtomically({ subscription, dayId, date, premiumKey, session }) {
   if (!session) {
     throw new Error("releasePremiumBalanceAtomically requires a session");
   }
@@ -168,17 +160,11 @@ async function releasePremiumBalanceAtomically({ subscription, dayId, date, prem
     return { released: false, reason: "no_balance_array" };
   }
 
-  const matchKey = premiumKey || null;
-  const matchId = proteinId ? String(proteinId) : null;
-
-  let bucketIndex = -1;
-  if (matchKey) {
-    bucketIndex = subscription.premiumBalance.findIndex((b) => b.premiumKey === matchKey);
+  if (!premiumKey) {
+    return { released: false, reason: "no_premium_key" };
   }
 
-  if (bucketIndex < 0 && matchId) {
-    bucketIndex = subscription.premiumBalance.findIndex((b) => String(b.proteinId) === matchId);
-  }
+  const bucketIndex = subscription.premiumBalance.findIndex((b) => b.premiumKey === premiumKey);
 
   if (bucketIndex < 0) {
     return { released: false, reason: "bucket_not_found" };
@@ -215,16 +201,16 @@ function reconcilePremiumBalanceForDay(subscription, existingDay, newPremiumUpgr
     }
   }
 
-  // Find matches in premiumBalance and refund
+  // Find matches in premiumBalance and refund by premiumKey
   for (const sel of toRefund) {
-    const bucket = subscription.premiumBalance.find((b) => String(b.proteinId) === String(sel.proteinId));
+    const bucket = subscription.premiumBalance.find((b) => b.premiumKey === sel.premiumKey);
     if (bucket) {
       bucket.remainingQty += 1;
     }
     // Also remove from subscription.premiumSelections if tracked there
     if (Array.isArray(subscription.premiumSelections)) {
        const keyDate = date || (existingDay && existingDay.date) || sel.date;
-       const idx = subscription.premiumSelections.findIndex((ps) => String(ps.proteinId) === String(sel.proteinId) && ps.baseSlotKey === sel.baseSlotKey && ps.date === keyDate);
+       const idx = subscription.premiumSelections.findIndex((ps) => ps.premiumKey === sel.premiumKey && ps.baseSlotKey === sel.baseSlotKey && ps.date === keyDate);
        if (idx >= 0) {
           subscription.premiumSelections.splice(idx, 1);
        }
@@ -236,13 +222,14 @@ function reconcilePremiumBalanceForDay(subscription, existingDay, newPremiumUpgr
       subscription.premiumSelections = subscription.premiumSelections || [];
       for (const sel of newPremiumUpgradeSelections) {
           if (sel.premiumSource === "balance") {
-              const bucket = subscription.premiumBalance.find((b) => String(b.proteinId) === String(sel.proteinId) && b.remainingQty > 0);
+              const bucket = subscription.premiumBalance.find((b) => b.premiumKey === sel.premiumKey && b.remainingQty > 0);
               if (bucket) {
                   bucket.remainingQty -= 1;
                   subscription.premiumSelections.push({
                       dayId: dayId || (existingDay ? existingDay._id : null),
                       date: date || (existingDay ? existingDay.date : null) || sel.date,
                       baseSlotKey: sel.baseSlotKey,
+                      premiumKey: sel.premiumKey,
                       proteinId: sel.proteinId,
                       unitExtraFeeHalala: sel.unitExtraFeeHalala,
                       currency: sel.currency,
@@ -275,7 +262,7 @@ function buildPlanningDraftSubscriptionView(subscription, existingDay) {
   if (existingDay && Array.isArray(existingDay.premiumUpgradeSelections)) {
     for (const selection of existingDay.premiumUpgradeSelections) {
       if (!selection || selection.premiumSource !== "balance") continue;
-      const bucket = premiumBalance.find((row) => String(row.proteinId) === String(selection.proteinId));
+      const bucket = premiumBalance.find((row) => row.premiumKey === selection.premiumKey);
       if (bucket) {
         bucket.remainingQty = Number(bucket.remainingQty || 0) + 1;
       }
@@ -470,6 +457,7 @@ async function performDaySelectionUpdate({ userId, subscriptionId, date, selecti
           if (balanceResult.consumed) {
             processedPremiumSelections.push({
               baseSlotKey: sel.baseSlotKey,
+              premiumKey: sel.premiumKey,
               proteinId: sel.proteinId,
               premiumSource: "balance",
               unitExtraFeeHalala: sel.unitExtraFeeHalala || 3000,
@@ -479,6 +467,7 @@ async function performDaySelectionUpdate({ userId, subscriptionId, date, selecti
           } else {
             processedPremiumSelections.push({
               baseSlotKey: sel.baseSlotKey,
+              premiumKey: sel.premiumKey,
               proteinId: sel.proteinId,
               premiumSource: "pending_payment",
               unitExtraFeeHalala: balanceResult.premiumExtraFeeHalala || 3000,
@@ -510,8 +499,7 @@ async function performDaySelectionUpdate({ userId, subscriptionId, date, selecti
             subscription: subInSession,
             dayId: day._id,
             date,
-            premiumKey: sel.premiumKey || null,
-            proteinId: sel.proteinId,
+            premiumKey: sel.premiumKey,
             session,
           });
         }
@@ -709,7 +697,7 @@ async function performDayPlanningConfirmation({ userId, subscriptionId, date, ru
   }
 }
 
-async function performConsumePremiumSelection({ userId, subscriptionId, dayId, date, baseSlotKey, proteinId }) {
+async function performConsumePremiumSelection({ userId, subscriptionId, dayId, date, baseSlotKey, premiumKey, proteinId }) {
   const session = await mongoose.startSession();
   session.startTransaction();
   try {
@@ -723,35 +711,29 @@ async function performConsumePremiumSelection({ userId, subscriptionId, dayId, d
     if (day.status !== "open") throw { status: 409, code: "LOCKED", message: "Day is locked" };
 
     const normalizedBaseSlotKey = String(baseSlotKey || "").trim();
-    const matchingSlot = Array.isArray(day.mealSlots)
-      ? day.mealSlots.find((slot) => (
-        slot
-        && String(slot.slotKey || "") === normalizedBaseSlotKey
-        && String(slot.proteinId || "") === String(proteinId)
-      ))
-      : null;
-    if (!matchingSlot) {
-      throw { status: 404, code: "NOT_FOUND", message: "Premium selection not found" };
+
+    if (!premiumKey) {
+      throw { status: 400, code: "INVALID_REQUEST", message: "premiumKey is required for premium selection consumption" };
     }
 
     const targetDayId = String(day._id);
     const targetDate = day.date;
     const existingSelection = (sub.premiumSelections || []).find((row) => (
       String(row.baseSlotKey || "") === normalizedBaseSlotKey
-      && String(row.proteinId || "") === String(proteinId)
+      && row.premiumKey === premiumKey
       && (((row.dayId && String(row.dayId) === targetDayId) || row.date === targetDate))
     ));
     if (existingSelection) {
       const remainingQtyTotal = (sub.premiumBalance || [])
-        .filter((row) => String(row.proteinId) === String(proteinId))
+        .filter((row) => row.premiumKey === premiumKey)
         .reduce((sum, row) => sum + Number(row.remainingQty || 0), 0);
       await session.commitTransaction();
       session.endSession();
-      return { ok: true, subscriptionId: sub.id, proteinId: String(proteinId), remainingQtyTotal };
+      return { ok: true, subscriptionId: sub.id, premiumKey, remainingQtyTotal };
     }
 
     const balances = (sub.premiumBalance || [])
-      .filter((row) => String(row.proteinId) === String(proteinId) && Number(row.remainingQty) > 0)
+      .filter((row) => row.premiumKey === premiumKey && Number(row.remainingQty) > 0)
       .sort((a, b) => new Date(a.purchasedAt).getTime() - new Date(b.purchasedAt).getTime());
     if (!balances.length) {
       throw { status: 400, code: "INSUFFICIENT_PREMIUM", message: "Not enough premium credits" };
@@ -764,6 +746,7 @@ async function performConsumePremiumSelection({ userId, subscriptionId, dayId, d
       dayId: day._id,
       date: day.date,
       baseSlotKey: normalizedBaseSlotKey,
+      premiumKey,
       proteinId,
       unitExtraFeeHalala: Number(bucket.unitExtraFeeHalala || 0),
       currency: bucket.currency || "SAR",
@@ -775,7 +758,7 @@ async function performConsumePremiumSelection({ userId, subscriptionId, dayId, d
         if (
           selection
           && String(selection.baseSlotKey || "") === normalizedBaseSlotKey
-          && String(selection.proteinId || "") === String(proteinId)
+          && selection.premiumKey === premiumKey
         ) {
           return {
             ...(selection.toObject ? selection.toObject() : selection),
@@ -793,7 +776,7 @@ async function performConsumePremiumSelection({ userId, subscriptionId, dayId, d
         if (
           slot
           && String(slot.slotKey || "") === normalizedBaseSlotKey
-          && String(slot.proteinId || "") === String(proteinId)
+          && slot.premiumKey === premiumKey
         ) {
           return {
             ...(slot.toObject ? slot.toObject() : slot),
@@ -816,9 +799,9 @@ async function performConsumePremiumSelection({ userId, subscriptionId, dayId, d
     await session.commitTransaction();
     session.endSession();
     const remainingQtyTotal = (sub.premiumBalance || [])
-      .filter((row) => String(row.proteinId) === String(proteinId))
+      .filter((row) => row.premiumKey === premiumKey)
       .reduce((sum, row) => sum + Number(row.remainingQty || 0), 0);
-    return { ok: true, subscriptionId: sub.id, proteinId: String(proteinId), remainingQtyTotal };
+    return { ok: true, subscriptionId: sub.id, premiumKey, remainingQtyTotal };
   } catch (err) {
     if (session.inTransaction()) await session.abortTransaction();
     session.endSession();
@@ -826,7 +809,7 @@ async function performConsumePremiumSelection({ userId, subscriptionId, dayId, d
   }
 }
 
-async function performRemovePremiumSelection({ userId, subscriptionId, dayId, date, baseSlotKey }) {
+async function performRemovePremiumSelection({ userId, subscriptionId, dayId, date, baseSlotKey, premiumKey }) {
   const session = await mongoose.startSession();
   session.startTransaction();
   try {
@@ -844,6 +827,7 @@ async function performRemovePremiumSelection({ userId, subscriptionId, dayId, da
     const targetDate = day.date;
     const selection = (sub.premiumSelections || []).find((row) => (
       String(row.baseSlotKey || "") === normalizedBaseSlotKey
+      && row.premiumKey === premiumKey
       && (((row.dayId && String(row.dayId) === targetDayId) || row.date === targetDate))
     ));
     if (!selection) {
@@ -852,6 +836,7 @@ async function performRemovePremiumSelection({ userId, subscriptionId, dayId, da
 
     sub.premiumSelections = (sub.premiumSelections || []).filter((row) => !(
       String(row.baseSlotKey || "") === normalizedBaseSlotKey
+      && row.premiumKey === premiumKey
       && (((row.dayId && String(row.dayId) === targetDayId) || row.date === targetDate))
     ));
 
@@ -859,7 +844,7 @@ async function performRemovePremiumSelection({ userId, subscriptionId, dayId, da
       (selection.premiumWalletRowId && row._id && String(row._id) === String(selection.premiumWalletRowId))
       || (
         !selection.premiumWalletRowId
-        && String(row.proteinId) === String(selection.proteinId)
+        && row.premiumKey === premiumKey
         && Number(row.unitExtraFeeHalala || 0) === Number(selection.unitExtraFeeHalala || 0)
       )
     ));
@@ -879,7 +864,7 @@ async function performRemovePremiumSelection({ userId, subscriptionId, dayId, da
         if (
           premiumSelection
           && String(premiumSelection.baseSlotKey || "") === normalizedBaseSlotKey
-          && String(premiumSelection.proteinId || "") === String(selection.proteinId)
+          && premiumSelection.premiumKey === premiumKey
         ) {
           return {
             ...(premiumSelection.toObject ? premiumSelection.toObject() : premiumSelection),
@@ -895,11 +880,11 @@ async function performRemovePremiumSelection({ userId, subscriptionId, dayId, da
         if (
           slot
           && String(slot.slotKey || "") === normalizedBaseSlotKey
-          && String(slot.proteinId || "") === String(selection.proteinId)
+          && slot.premiumKey === premiumKey
         ) {
           return {
             ...(slot.toObject ? slot.toObject() : slot),
-            premiumSource: Number(slot.premiumExtraFeeHalala || 0) > 0 ? "pending_payment" : "paid",
+            premiumSource: Number(slot.unitExtraFeeHalala || 0) > 0 ? "pending_payment" : "paid",
           };
         }
         return slot;
@@ -918,7 +903,7 @@ async function performRemovePremiumSelection({ userId, subscriptionId, dayId, da
     await session.commitTransaction();
     session.endSession();
     return { ok: true, subscriptionId: sub.id };
-  } catch (err) {
+} catch (err) {
     if (session.inTransaction()) await session.abortTransaction();
     session.endSession();
     throw err;

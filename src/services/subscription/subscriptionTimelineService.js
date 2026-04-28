@@ -1,5 +1,7 @@
 const Subscription = require("../../models/Subscription");
 const SubscriptionDay = require("../../models/SubscriptionDay");
+const BuilderProtein = require("../../models/BuilderProtein");
+const { resolvePremiumKeyFromName } = require("../../utils/subscription/premiumIdentity");
 const { toKSADateString, addDaysToKSADateString } = require("../../utils/date");
 const { resolveMealsPerDay } = require("../../utils/subscription/subscriptionDaySelectionSync");
 const { formatMealsLabel } = require("../../utils/subscription/subscriptionCatalog");
@@ -415,15 +417,32 @@ async function buildSubscriptionTimeline(subscriptionId) {
     },
     premiumMealsRemaining: Array.isArray(subscription.premiumBalance) ? subscription.premiumBalance.reduce((s, row) => s + Number(row.remainingQty || 0), 0) : 0,
     premiumMealsSelected: Array.isArray(subscription.premiumSelections) ? subscription.premiumSelections.length : 0,
-    premiumBalanceBreakdown: Array.isArray(subscription.premiumBalance)
-      ? subscription.premiumBalance.map((row) => ({
-        proteinId: String(row.proteinId),
+    premiumBalanceBreakdown: await Promise.all((subscription.premiumBalance || []).map(async (row) => {
+      const proteinId = String(row.proteinId);
+      let premiumKey = row.premiumKey;
+
+      if (!premiumKey && mongoose.isValidObjectId(proteinId)) {
+        const doc = await BuilderProtein.findById(proteinId).select("premiumKey").lean();
+        premiumKey = doc ? doc.premiumKey : null;
+      }
+
+      if (!premiumKey) {
+        premiumKey = resolvePremiumKeyFromName(row.name || "");
+      }
+
+      if (!premiumKey) {
+        throw new Error("Invalid premiumBalance row in timeline: premiumKey is required");
+      }
+
+      return {
+        proteinId,
+        premiumKey,
         purchasedQty: Number(row.purchasedQty || 0),
         remainingQty: Number(row.remainingQty || 0),
         unitExtraFeeHalala: Number(row.unitExtraFeeHalala || 0),
         currency: row.currency || "SAR",
-      }))
-      : [],
+      };
+    })),
     days: timelineDays,
   };
 }

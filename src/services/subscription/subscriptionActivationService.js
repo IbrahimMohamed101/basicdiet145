@@ -16,9 +16,17 @@ const {
 } = require("../../constants/phase1Contract");
 const { consumePromoCodeUsageReservation } = require("../promoCodeService");
 const { logger } = require("../../utils/logger");
-const { resolveCanonicalPremiumIdentity } = require("../../utils/subscription/premiumIdentity");
+const { resolveCanonicalPremiumIdentity, resolvePremiumKeyFromName } = require("../../utils/subscription/premiumIdentity");
 
 const SYSTEM_CURRENCY = "SAR";
+
+function assertValidPremiumBalanceRows(rows) {
+  for (const row of rows || []) {
+    if (!row.premiumKey || typeof row.premiumKey !== "string" || !row.premiumKey.trim()) {
+      throw new Error("Invalid premiumBalance row: premiumKey is required");
+    }
+  }
+}
 
 // Removed isCanonicalCheckoutDraft as the system now assumes a single unified contract model.
 
@@ -47,13 +55,34 @@ async function toCanonicalPremiumBalanceRows(draft) {
       }
     }
 
+    if (!resolved.premiumKey) {
+      logger.warn("Activation: premiumKey missing after initial resolution; attempting fallback", {
+        proteinId: item.proteinId,
+        name: item.name,
+      });
+      // Fallback: try resolving from name if it wasn't already resolved
+      resolved.premiumKey = resolved.premiumKey || (typeof resolvePremiumKeyFromName === 'function' ? resolvePremiumKeyFromName(item.name || "") : null);
+    }
+
+    if (!resolved.premiumKey) {
+      logger.error("Activation (Draft): FAILING to resolve premiumKey for premium item", {
+        proteinId: item.proteinId,
+        name: item.name,
+      });
+      throw createLocalizedError({
+        code: "INVALID_DRAFT_CONTRACT",
+        key: "errors.activation.invalidPremiumEntitlement",
+        fallbackMessage: `Could not resolve canonical premium identity for ${item.name || item.proteinId}`,
+      });
+    }
+
     rows.push({
-      proteinId: resolved.canonicalProteinId,
+      proteinId: resolved.canonicalProteinId || item.proteinId,
       premiumKey: resolved.premiumKey,
-      name: resolved.name,
+      name: resolved.name || item.name,
       purchasedQty: Number(item.qty || 0),
       remainingQty: Number(item.qty || 0),
-      unitExtraFeeHalala: resolved.unitExtraFeeHalala,
+      unitExtraFeeHalala: resolved.unitExtraFeeHalala || item.unitExtraFeeHalala || 0,
       currency: item.currency || SYSTEM_CURRENCY,
       purchasedAt: new Date(),
     });
@@ -127,13 +156,36 @@ async function toPremiumBalanceRowsFromContractEntitlements(contractSnapshot, la
       }
     }
 
+    if (!resolved.premiumKey) {
+      logger.warn("Activation: premiumKey missing after initial resolution; attempting fallback", {
+        proteinId: item.proteinId,
+        name: item.name,
+      });
+      // Fallback: try resolving from name if it wasn't already resolved
+      resolved.premiumKey = resolved.premiumKey || resolvePremiumKeyFromName(item.name || "");
+    }
+
+    if (!resolved.premiumKey) {
+      logger.error("Activation: FAILING to resolve premiumKey for premium item", {
+        proteinId: item.proteinId,
+        name: item.name,
+      });
+      // If we still don't have it, we might want to throw or set a known "unknown" key.
+      // Given the prompt "Ensure premiumKey is NEVER null", I will throw if it's missing at activation.
+      throw createLocalizedError({
+        code: "INVALID_DRAFT_CONTRACT",
+        key: "errors.activation.invalidPremiumEntitlement",
+        fallbackMessage: `Could not resolve canonical premium identity for ${item.name || item.proteinId}`,
+      });
+    }
+
     rows.push({
-      proteinId: resolved.canonicalProteinId,
+      proteinId: resolved.canonicalProteinId || item.proteinId,
       premiumKey: resolved.premiumKey,
-      name: resolved.name,
+      name: resolved.name || item.name,
       purchasedQty: qty,
       remainingQty: qty,
-      unitExtraFeeHalala: resolved.unitExtraFeeHalala,
+      unitExtraFeeHalala: resolved.unitExtraFeeHalala || item.unitExtraFeeHalala || 0,
       currency: String(item.currency || SYSTEM_CURRENCY),
       purchasedAt: new Date(),
     });
@@ -196,6 +248,7 @@ async function resolveActivationPremiumBalanceRows(draft, contractSnapshot) {
     if (contractSnapshot) {
       assertPremiumBalanceMatchesContractPricing(contractSnapshot, fromContract);
     }
+    assertValidPremiumBalanceRows(fromContract);
     return fromContract;
   }
 
@@ -207,6 +260,7 @@ async function resolveActivationPremiumBalanceRows(draft, contractSnapshot) {
     if (contractSnapshot) {
       assertPremiumBalanceMatchesContractPricing(contractSnapshot, fromDraft);
     }
+    assertValidPremiumBalanceRows(fromDraft);
     return fromDraft;
   }
 
@@ -243,6 +297,7 @@ function buildCanonicalActivationPayload({ userId, planId, contractVersion, cont
   }
 
   const premiumBalanceRows = Array.isArray(legacyRuntimeData.premiumBalance) ? legacyRuntimeData.premiumBalance : [];
+  assertValidPremiumBalanceRows(premiumBalanceRows);
   const addonSubscriptions = legacyRuntimeData.addonSubscriptions || [];
   const end = addDays(start, daysCount - 1);
 
@@ -469,4 +524,5 @@ module.exports = {
   activateSubscriptionFromCanonicalDraft,
   activateSubscriptionFromCanonicalContract,
   finalizeSubscriptionDraftPaymentFlow,
+  assertValidPremiumBalanceRows,
 };

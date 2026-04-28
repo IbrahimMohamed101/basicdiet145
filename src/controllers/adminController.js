@@ -1448,6 +1448,7 @@ async function createSubscriptionAdmin(req, res, nextOrRuntimeOverrides = null, 
       currency: item.currency || "SAR",
     }));
     const premiumBalance = quote.premiumItems.map((item) => ({
+      premiumKey: item.premiumKey || item.protein.premiumKey,
       proteinId: item.protein._id,
       purchasedQty: Number(item.qty || 0),
       remainingQty: Number(item.qty || 0),

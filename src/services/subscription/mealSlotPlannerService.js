@@ -205,6 +205,7 @@ function projectMaterializedAndLegacyFromSlots({ processedSlots, now }) {
 
     if (materialized.isPremium) {
       premiumSelections.push({
+        premiumKey: slot.premiumKey || null,
         proteinId: slot.proteinId,
         baseSlotKey: slot.slotKey,
         unitExtraFeeHalala: Number(slot.premiumExtraFeeHalala || 0),
@@ -515,17 +516,20 @@ async function buildMealSlotDraft({ mealSlots, mealsPerDayLimit, subscription, s
     // Initialize temporary balances only once per draft build
     if (processedSlots.length === 0 && subscription && Array.isArray(subscription.premiumBalance)) {
         for (const row of subscription.premiumBalance) {
-            const id = String(row.proteinId);
-            tempBalances.set(id, (tempBalances.get(id) || 0) + Number(row.remainingQty || 0));
+            const key = row.premiumKey;
+            if (key) {
+                tempBalances.set(key, (tempBalances.get(key) || 0) + Number(row.remainingQty || 0));
+            }
         }
     }
 
     if (processedSlot.isPremium) {
-      const avail = tempBalances.get(String(processedSlot.proteinId)) || 0;
+      const key = processedSlot.premiumKey;
+      const avail = key ? (tempBalances.get(key) || 0) : 0;
       if (avail > 0) {
         processedSlot.premiumSource = "balance";
         processedSlot.premiumCreditCost = 1;
-        tempBalances.set(String(processedSlot.proteinId), avail - 1);
+        tempBalances.set(key, avail - 1);
         plannerMeta.premiumSlotCount += 1;
         plannerMeta.premiumCoveredByBalanceCount += 1;
       } else {

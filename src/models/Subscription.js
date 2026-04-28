@@ -6,8 +6,8 @@ const {
 } = require("../constants/phase1Contract");
 const PremiumBalanceSchema = new mongoose.Schema(
   {
-    proteinId: { type: mongoose.Schema.Types.ObjectId, ref: "BuilderProtein", required: true },
-    premiumKey: { type: String, default: null, trim: true },
+    premiumKey: { type: String, required: true, trim: true },
+    proteinId: { type: mongoose.Schema.Types.ObjectId, ref: "BuilderProtein", default: null },
     purchasedQty: { type: Number, min: 0, default: 0 },
     remainingQty: { type: Number, min: 0, default: 0 },
     unitExtraFeeHalala: { type: Number, min: 0, default: 0 },
@@ -34,7 +34,8 @@ const PremiumSelectionSchema = new mongoose.Schema(
     dayId: { type: mongoose.Schema.Types.ObjectId, ref: "SubscriptionDay" },
     date: { type: String },
     baseSlotKey: { type: String, required: true },
-    proteinId: { type: mongoose.Schema.Types.ObjectId, ref: "BuilderProtein", required: true },
+    premiumKey: { type: String, required: true },
+    proteinId: { type: mongoose.Schema.Types.ObjectId, ref: "BuilderProtein", default: null },
     unitExtraFeeHalala: { type: Number, min: 0, default: 0 },
     currency: { type: String, default: "SAR" },
     premiumWalletRowId: { type: mongoose.Schema.Types.ObjectId, default: null },
