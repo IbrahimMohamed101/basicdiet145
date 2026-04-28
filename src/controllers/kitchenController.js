@@ -267,7 +267,7 @@ async function listDailyOrders(req, res) {
     };
   });
 
-  return res.status(200).json({ ok: true, data: enrichedDays });
+  return res.status(200).json({ status: true, data: enrichedDays });
 }
 
 async function listPickupsByDate(req, res) {
@@ -298,7 +298,7 @@ async function listPickupsByDate(req, res) {
       return String(left.subscriptionDayId).localeCompare(String(right.subscriptionDayId));
     });
 
-  return res.status(200).json({ ok: true, data: rows });
+  return res.status(200).json({ status: true, data: rows });
 }
 
 async function listTodayPickups(req, res) {
@@ -417,7 +417,7 @@ async function assignMeals(req, res) {
 
     await session.commitTransaction();
     session.endSession();
-    return res.status(200).json({ ok: true, data: day });
+    return res.status(200).json({ status: true, data: day });
   } catch (err) {
     await session.abortTransaction();
     session.endSession();
@@ -531,7 +531,7 @@ async function bulkLockDaysByDate(req, res) {
     )
   );
 
-  return res.status(200).json({ ok: true, data: summary });
+  return res.status(200).json({ status: true, data: summary });
 }
 
 async function transitionDay(req, res, toStatus) {
@@ -700,7 +700,7 @@ async function transitionDay(req, res, toStatus) {
   } catch (err) {
     logger.error("Kitchen transition notification failed", { error: err.message, stack: err.stack, dayId: String(day._id) });
   }
-  return res.status(200).json({ ok: true, data: day });
+  return res.status(200).json({ status: true, data: day });
 }
 
 async function reopenLockedDay(req, res) {
@@ -770,7 +770,7 @@ async function reopenLockedDay(req, res) {
     logger.error("Kitchen reopen log write failed", { error: err.message, stack: err.stack, dayId: String(day._id) });
   }
 
-  return res.status(200).json({ ok: true, data: day });
+  return res.status(200).json({ status: true, data: day });
 }
 
 async function fulfillPickup(req, res) {
@@ -848,7 +848,7 @@ async function fulfillPickup(req, res) {
   } catch (err) {
     logger.error("Kitchen pickup fulfillment log write failed", { error: err.message, stack: err.stack, dayId: String(result.day._id) });
   }
-  return res.status(200).json({ ok: true, data: result.day, alreadyFulfilled: result.alreadyFulfilled });
+  return res.status(200).json({ status: true, data: result.day, alreadyFulfilled: result.alreadyFulfilled });
 }
 
 async function verifyPickup(req, res) {
@@ -878,7 +878,7 @@ async function verifyPickup(req, res) {
     if (day.status === "fulfilled" && day.pickupVerifiedAt) {
       await session.commitTransaction();
       session.endSession();
-      return res.status(200).json({ ok: true, data: day, verified: true, idempotent: true });
+      return res.status(200).json({ status: true, data: day, verified: true, idempotent: true });
     }
     if (day.status !== "ready_for_pickup") {
       await session.abortTransaction();
@@ -961,7 +961,7 @@ async function verifyPickup(req, res) {
   }
 
   return res.status(200).json({
-    ok: true,
+    status: true,
     data: result.day,
     verified: true,
     alreadyFulfilled: result.alreadyFulfilled,
@@ -992,7 +992,7 @@ async function markPickupNoShow(req, res) {
       await session.commitTransaction();
       session.endSession();
       return res.status(200).json({
-        ok: true,
+        status: true,
         data: day,
         deductedCredits: 0,
         restoreCreditsPolicy: false,
@@ -1074,7 +1074,7 @@ async function markPickupNoShow(req, res) {
   }
 
   return res.status(200).json({
-    ok: true,
+    status: true,
     data: day,
     deductedCredits,
     restoreCreditsPolicy: false,
@@ -1119,7 +1119,7 @@ async function cancelAtBranch(req, res) {
     if (day.status === "canceled_at_branch") {
       await session.commitTransaction();
       session.endSession();
-      return res.status(200).json({ ok: true, data: day, restoredCredits: 0, idempotent: true });
+      return res.status(200).json({ status: true, data: day, restoredCredits: 0, idempotent: true });
     }
     if (day.status === "fulfilled") {
       await session.abortTransaction();
@@ -1175,7 +1175,7 @@ async function cancelAtBranch(req, res) {
     logger.error("Kitchen cancel-at-branch log write failed", { error: err.message, stack: err.stack, dayId: String(day._id) });
   }
 
-  return res.status(200).json({ ok: true, data: day, restoredCredits });
+  return res.status(200).json({ status: true, data: day, restoredCredits });
 }
 
 module.exports = {

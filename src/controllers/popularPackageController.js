@@ -31,7 +31,7 @@ async function listPopularPackages(req, res) {
   const plans = await Plan.find({ isActive: true }).sort({ sortOrder: 1, createdAt: -1 }).lean();
   const data = plans.map((plan) => resolvePopularPackage(plan, lang)).filter(Boolean).slice(0, 3);
 
-  return res.status(200).json({ ok: true, data });
+  return res.status(200).json({ status: true, data });
 }
 
 module.exports = { listPopularPackages };

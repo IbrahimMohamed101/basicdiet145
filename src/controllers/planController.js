@@ -21,7 +21,7 @@ async function listPlans(req, res) {
     }
   }
 
-  return res.status(200).json({ ok: true, data: viablePlans.map((plan) => resolvePlanCatalogEntry(plan, lang)) });
+  return res.status(200).json({ status: true, data: viablePlans.map((plan) => resolvePlanCatalogEntry(plan, lang)) });
 }
 
 async function getPlan(req, res) {
@@ -43,7 +43,7 @@ async function getPlan(req, res) {
     return errorResponse(res, 404, "NOT_FOUND", "Plan not available");
   }
 
-  return res.status(200).json({ ok: true, data: resolvePlanCatalogEntry(plan, lang) });
+  return res.status(200).json({ status: true, data: resolvePlanCatalogEntry(plan, lang) });
 }
 
 module.exports = { listPlans, getPlan };

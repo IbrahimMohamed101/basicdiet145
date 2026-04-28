@@ -105,7 +105,7 @@ async function listMealCategoriesAdmin(req, res) {
   const rows = await MealCategory.find().sort({ sortOrder: 1, createdAt: -1 }).lean();
 
   return res.status(200).json({
-    ok: true,
+    status: true,
     data: rows.map((row) => ({
       ...serializeCategoryAdmin(row),
       localized: resolveMealCategoryEntry(row, lang),
@@ -126,7 +126,7 @@ async function getMealCategoryAdmin(req, res) {
     return errorResponse(res, 404, "NOT_FOUND", "Meal category not found");
   }
 
-  return res.status(200).json({ ok: true, data: serializeCategoryAdmin(row) });
+  return res.status(200).json({ status: true, data: serializeCategoryAdmin(row) });
 }
 
 async function createMealCategory(req, res) {
@@ -149,7 +149,7 @@ async function createMealCategory(req, res) {
       sortOrder: req.body && req.body.sortOrder !== undefined ? normalizeSortOrder(req.body.sortOrder) : 0,
     });
 
-    return res.status(201).json({ ok: true, data: { id: row.id, key: row.key } });
+    return res.status(201).json({ status: true, data: { id: row.id, key: row.key } });
   } catch (err) {
     if (err && err.status) {
       return errorResponse(res, err.status, err.code, err.message);
@@ -197,7 +197,7 @@ async function updateMealCategory(req, res) {
     }
 
     await row.save();
-    return res.status(200).json({ ok: true, data: { id: row.id, key: row.key } });
+    return res.status(200).json({ status: true, data: { id: row.id, key: row.key } });
   } catch (err) {
     if (err && err.status) {
       return errorResponse(res, err.status, err.code, err.message);
@@ -225,7 +225,7 @@ async function deleteMealCategory(req, res) {
   }
 
   await MealCategory.deleteOne({ _id: id });
-  return res.status(200).json({ ok: true });
+  return res.status(200).json({ status: true });
 }
 
 async function toggleMealCategoryActive(req, res) {
@@ -244,7 +244,7 @@ async function toggleMealCategoryActive(req, res) {
   row.isActive = !row.isActive;
   await row.save();
 
-  return res.status(200).json({ ok: true, data: { id: row.id, isActive: row.isActive } });
+  return res.status(200).json({ status: true, data: { id: row.id, isActive: row.isActive } });
 }
 
 async function updateMealCategorySortOrder(req, res) {
@@ -262,7 +262,7 @@ async function updateMealCategorySortOrder(req, res) {
       return errorResponse(res, 404, "NOT_FOUND", "Meal category not found");
     }
 
-    return res.status(200).json({ ok: true, data: { id: row.id, sortOrder: row.sortOrder } });
+    return res.status(200).json({ status: true, data: { id: row.id, sortOrder: row.sortOrder } });
   } catch (err) {
     if (err && err.status) {
       return errorResponse(res, err.status, err.code, err.message);

@@ -22,7 +22,7 @@ async function listOperations(req, res) {
     const data = await opsReadService.listOperations({ date, role, lang });
 
     return res.status(200).json({
-      ok: true,
+      status: true,
       data,
     });
   } catch (err) {
@@ -35,7 +35,7 @@ async function searchOperations(req, res) {
   try {
     const q = req.query.q;
     if (!q || q.length < 3) {
-      return res.status(200).json({ ok: true, data: [] });
+      return res.status(200).json({ status: true, data: [] });
     }
 
     const lang = getRequestLang(req);
@@ -43,7 +43,7 @@ async function searchOperations(req, res) {
     const data = await opsSearchService.search({ q, role, lang });
 
     return res.status(200).json({
-      ok: true,
+      status: true,
       data,
     });
   } catch (err) {

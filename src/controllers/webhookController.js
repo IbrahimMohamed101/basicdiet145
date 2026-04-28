@@ -145,7 +145,7 @@ async function handleMoyasarWebhook(req, res, runtimeOverrides = null) {
         internalPaymentId: String(payment._id),
         paymentType: payment.type,
       });
-      return res.status(200).json({ ok: true });
+      return res.status(200).json({ status: true });
     }
 
     const result = await runMongoTransactionWithRetry(async (session, { attempt }) => {
@@ -491,7 +491,7 @@ async function handleMoyasarWebhook(req, res, runtimeOverrides = null) {
         paymentType: result.paymentType,
         status: result.status,
       });
-      return res.status(200).json({ ok: true, message: "Ignored non-paid status" });
+      return res.status(200).json({ status: true, message: "Ignored non-paid status" });
     }
 
     if (result && result.orderNotification) {
@@ -509,7 +509,7 @@ async function handleMoyasarWebhook(req, res, runtimeOverrides = null) {
       applied: result && Object.prototype.hasOwnProperty.call(result, "applied") ? result.applied : true,
       unappliedReason: result && result.unappliedReason ? result.unappliedReason : null,
     });
-    return res.status(200).json({ ok: true });
+    return res.status(200).json({ status: true });
   } catch (err) {
     logger.error("webhookController.handleMoyasarWebhook failed", {
       error: err.message,

@@ -209,7 +209,7 @@ async function getOrderMenu(req, res) {
   });
 
   return res.status(200).json({
-    ok: true,
+    status: true,
     data: {
       currency: SYSTEM_CURRENCY,
       customSalad: resolveCustomSaladSupport(customSaladBasePrice),
@@ -290,7 +290,7 @@ async function getSubscriptionMenu(req, res) {
   });
 
   return res.status(200).json({
-    ok: true,
+    status: true,
     data: {
       ...mealCatalog,
       plans: mappedPlans,
@@ -352,7 +352,7 @@ async function getSubscriptionMealPlannerMenu(req, res) {
   });
 
   return res.status(200).json({
-    ok: true,
+    status: true,
     data: {
       currency: mealCatalog.currency,
       regularMeals: mealCatalog.mealPlanner.regularMeals,
@@ -386,7 +386,7 @@ async function getDeliveryOptions(req, res) {
   });
 
   return res.status(200).json({
-    ok: true,
+    status: true,
     data: deliveryCatalog,
   });
 }

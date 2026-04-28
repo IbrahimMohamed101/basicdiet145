@@ -18,7 +18,7 @@ async function listPromoCodesAdmin(req, res) {
     .lean();
 
   return res.status(200).json({
-    ok: true,
+    status: true,
     data: promos.map((promo) => serializePromoCodeForAdmin(promo)),
   });
 }
@@ -42,7 +42,7 @@ async function getPromoCodeAdmin(req, res) {
     .lean();
 
   return res.status(200).json({
-    ok: true,
+    status: true,
     data: {
       ...serializePromoCodeForAdmin(promo),
       recentUsage: recentUsages.map((usage) => ({
@@ -67,7 +67,7 @@ async function createPromoCodeAdmin(req, res) {
     const normalized = normalizePromoPayload(req.body || {});
     const promo = await PromoCode.create(normalized);
     return res.status(201).json({
-      ok: true,
+      status: true,
       data: serializePromoCodeForAdmin(promo.toObject ? promo.toObject() : promo),
     });
   } catch (err) {
@@ -103,7 +103,7 @@ async function updatePromoCodeAdmin(req, res) {
     Object.assign(existing, normalized);
     await existing.save();
     return res.status(200).json({
-      ok: true,
+      status: true,
       data: serializePromoCodeForAdmin(existing.toObject ? existing.toObject() : existing),
     });
   } catch (err) {
@@ -134,7 +134,7 @@ async function togglePromoCodeActive(req, res) {
   await promo.save();
 
   return res.status(200).json({
-    ok: true,
+    status: true,
     data: serializePromoCodeForAdmin(promo.toObject ? promo.toObject() : promo),
   });
 }
@@ -166,7 +166,7 @@ async function deletePromoCodeAdmin(req, res) {
   await promo.save();
 
   return res.status(200).json({
-    ok: true,
+    status: true,
     data: serializePromoCodeForAdmin(promo.toObject ? promo.toObject() : promo),
   });
 }

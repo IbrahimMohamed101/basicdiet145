@@ -54,12 +54,12 @@ async function listActiveIngredients(req, res) {
   const lang = getRequestLang(req);
   const items = await MealIngredient.find({ isActive: true }).sort({ sortOrder: 1, createdAt: -1 }).lean();
   const resolved = items.map((item) => resolveIngredient(item, lang));
-  return res.status(200).json({ ok: true, data: resolved });
+  return res.status(200).json({ status: true, data: resolved });
 }
 
 async function listIngredientsAdmin(_req, res) {
   const items = await MealIngredient.find().sort({ sortOrder: 1, createdAt: -1 }).lean();
-  return res.status(200).json({ ok: true, data: items });
+  return res.status(200).json({ status: true, data: items });
 }
 
 async function createIngredient(req, res) {
@@ -83,7 +83,7 @@ async function createIngredient(req, res) {
       sortOrder: sortOrder !== undefined ? Number(sortOrder) : 0,
       isActive: true,
     });
-    return res.status(201).json({ ok: true, data: ingredient });
+    return res.status(201).json({ status: true, data: ingredient });
   } catch (_err) {
     return errorResponse(res, 400, "INVALID", "Invalid ingredient payload");
   }
@@ -123,7 +123,7 @@ async function updateIngredient(req, res) {
     if (!ingredient) {
       return errorResponse(res, 404, "NOT_FOUND", "Ingredient not found");
     }
-    return res.status(200).json({ ok: true, data: ingredient });
+    return res.status(200).json({ status: true, data: ingredient });
   } catch (_err) {
     return errorResponse(res, 400, "INVALID", "Invalid ingredient update request");
   }
@@ -144,7 +144,7 @@ async function toggleIngredient(req, res) {
     }
     ingredient.isActive = !ingredient.isActive;
     await ingredient.save();
-    return res.status(200).json({ ok: true, data: ingredient });
+    return res.status(200).json({ status: true, data: ingredient });
   } catch (_err) {
     return errorResponse(res, 400, "INVALID", "Invalid ingredient toggle request");
   }

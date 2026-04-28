@@ -11,21 +11,21 @@ const errorResponse = require("./utils/errorResponse");
 const { logger } = require("./utils/logger");
 const { validateAndFixResponse } = require("./utils/encoding");
 
-function normalizeTopLevelOkField(payload) {
+function normalizeTopLevelStatusField(payload, responseStatusCode) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     return payload;
   }
 
-  // Ensure 'ok' is present if 'status' exists (unification/migration support)
-  if (Object.prototype.hasOwnProperty.call(payload, "status") && !Object.prototype.hasOwnProperty.call(payload, "ok")) {
-    payload.ok = payload.status;
+  const isSuccessResponse = Number(responseStatusCode) < 400 && payload.ok !== false && !payload.error;
+  if (!isSuccessResponse) {
+    return payload;
   }
 
-  // Ensure 'status' is present if 'ok' exists (backward compatibility for older clients)
-  if (Object.prototype.hasOwnProperty.call(payload, "ok") && !Object.prototype.hasOwnProperty.call(payload, "status")) {
-    payload.status = payload.ok;
+  if (Object.prototype.hasOwnProperty.call(payload, "ok")) {
+    delete payload.ok;
   }
 
+  payload.status = true;
   return payload;
 }
 
@@ -95,7 +95,7 @@ function createApp() {
   app.use((req, res, next) => {
     const originalJson = res.json.bind(res);
     res.json = (payload) => {
-      const normalized = normalizeTopLevelOkField(payload);
+      const normalized = normalizeTopLevelStatusField(payload, res.statusCode);
       const sanitized = validateAndFixResponse(normalized);
       try {
         JSON.stringify(sanitized);
@@ -130,7 +130,7 @@ function createApp() {
       if (mongoose.connection.db) {
         await mongoose.connection.db.admin().ping();
       }
-      return res.status(200).json({ ok: true, db: { state: "up" } });
+      return res.status(200).json({ status: true, db: { state: "up" } });
     } catch (err) {
       logger.error("Health check DB ping failed", { error: err.message });
       return res.status(503).json({ ok: false, db: { state: "down" } });
@@ -139,7 +139,7 @@ function createApp() {
 
   // Keep a simple root health endpoint for deployment smoke tests.
   app.get("/", (_req, res) => {
-    res.status(200).json({ ok: true, message: "basicdiet145 backend is running" });
+    res.status(200).json({ status: true, message: "basicdiet145 backend is running" });
   });
 
   const swaggerPath = path.join(__dirname, "..", "swagger.yaml");

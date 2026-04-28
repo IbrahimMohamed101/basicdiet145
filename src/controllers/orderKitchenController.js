@@ -9,7 +9,7 @@ const errorResponse = require("../utils/errorResponse");
 async function listOrdersByDate(req, res) {
   const { date } = req.params;
   const orders = await Order.find({ deliveryDate: date }).sort({ createdAt: -1 }).lean();
-  return res.status(200).json({ ok: true, data: orders });
+  return res.status(200).json({ status: true, data: orders });
 }
 
 async function transitionOrder(req, res, toStatus) {
@@ -93,7 +93,7 @@ async function transitionOrder(req, res, toStatus) {
     });
   }
 
-  return res.status(200).json({ ok: true, data: order });
+  return res.status(200).json({ status: true, data: order });
 }
 
 module.exports = { listOrdersByDate, transitionOrder };

@@ -211,6 +211,16 @@ function validateObjectIdOrRespond(res, value, fieldName = "id") {
   }
 }
 
+function assertActivePlanViabilityOrThrow(plan) {
+  if (plan && plan.isActive && !Plan.isViable(plan)) {
+    throw createControlledError(
+      400,
+      "INVALID_PLAN_STRUCTURE",
+      "Plan cannot be active because it has no commercially viable path (missing active grams/meals options or valid sellable pricing)"
+    );
+  }
+}
+
 function validatePlanPayloadOrThrow(payload, { requireGramsOptions = true } = {}) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     throw createControlledError(400, "INVALID", "Request body must be an object");
@@ -386,13 +396,7 @@ function validatePlanPayloadOrThrow(payload, { requireGramsOptions = true } = {}
     sortOrder,
   };
 
-  if (isActive && !Plan.isViable(result)) {
-    throw createControlledError(
-      400,
-      "INVALID_PLAN_STRUCTURE",
-      "Plan cannot be active because it has no commercially viable path (missing active grams/meals options)"
-    );
-  }
+  assertActivePlanViabilityOrThrow(result);
 
   return result;
 }
@@ -1380,7 +1384,7 @@ async function createAppUserAdmin(req, res) {
     const appUser = createdAppUser[0].toObject();
 
     return res.status(201).json({
-      ok: true,
+      status: true,
       data: serializeAppUserAdmin({
         coreUser,
         appUser,
@@ -1530,7 +1534,7 @@ async function createSubscriptionAdmin(req, res, nextOrRuntimeOverrides = null, 
     }, { subscriptionId: String(subscription._id) });
 
     return res.status(201).json({
-      ok: true,
+      status: true,
       data: await runtime.serializeSubscriptionAdmin(subscription.toObject(), lang, user),
       meta: {
         createdByAdmin: true,
@@ -1637,7 +1641,7 @@ async function searchDashboard(req, res) {
   ]);
 
   return res.status(200).json({
-    ok: true,
+    status: true,
     data: {
       q,
       users: users.map((user) => {
@@ -1705,7 +1709,7 @@ async function getDashboardNotificationSummary(req, res) {
   ]);
 
   return res.status(200).json({
-    ok: true,
+    status: true,
     data: {
       unreadCount: Number(unreadCount || 0),
       unreadWindowHours: 24,
@@ -1859,7 +1863,7 @@ async function getTodayReport(req, res) {
     res.setHeader("Content-Disposition", `attachment; filename=\"dashboard-report-${today}.json\"`);
   }
 
-  return res.status(200).json({ ok: true, data: payload });
+  return res.status(200).json({ status: true, data: payload });
 }
 
 async function listPlansAdmin(req, res) {
@@ -1869,7 +1873,7 @@ async function listPlansAdmin(req, res) {
     const filteredPlans = filterAdminPlans(plans, filters).map((plan) => serializeAdminPlan(plan));
 
     return res.status(200).json({
-      ok: true,
+      status: true,
       data: filteredPlans,
       summary: buildAdminPlanSummary(plans),
       meta: {
@@ -1896,14 +1900,14 @@ async function getPlanAdmin(req, res) {
   if (!plan) {
     return errorResponse(res, 404, "NOT_FOUND", "Plan not found");
   }
-  return res.status(200).json({ ok: true, data: serializeAdminPlan(plan) });
+  return res.status(200).json({ status: true, data: serializeAdminPlan(plan) });
 }
 
 async function createPlan(req, res) {
   try {
     const normalizedPayload = validatePlanPayloadOrThrow(req.body || {}, { requireGramsOptions: true });
     const plan = await Plan.create(normalizedPayload);
-    return res.status(201).json({ ok: true, data: { id: plan.id } });
+    return res.status(201).json({ status: true, data: { id: plan.id } });
   } catch (err) {
     if (isControlledError(err)) {
       return errorResponse(res, err.status, err.code, err.message);
@@ -1930,7 +1934,7 @@ async function updatePlan(req, res) {
       return errorResponse(res, 404, "NOT_FOUND", "Plan not found");
     }
 
-    return res.status(200).json({ ok: true, data: { id: updated.id } });
+    return res.status(200).json({ status: true, data: { id: updated.id } });
   } catch (err) {
     if (isControlledError(err)) {
       return errorResponse(res, err.status, err.code, err.message);
@@ -1950,7 +1954,7 @@ async function deletePlan(req, res) {
     return errorResponse(res, 404, "NOT_FOUND", "Plan not found");
   }
 
-  return res.status(200).json({ ok: true });
+  return res.status(200).json({ status: true });
 }
 
 async function togglePlanActive(req, res) {
@@ -1968,9 +1972,17 @@ async function togglePlanActive(req, res) {
   }
 
   plan.isActive = !plan.isActive;
+  try {
+    assertActivePlanViabilityOrThrow(plan);
+  } catch (err) {
+    if (isControlledError(err)) {
+      return errorResponse(res, err.status, err.code, err.message);
+    }
+    throw err;
+  }
   await plan.save();
 
-  return res.status(200).json({ ok: true, data: { id: plan.id, isActive: plan.isActive } });
+  return res.status(200).json({ status: true, data: { id: plan.id, isActive: plan.isActive } });
 }
 
 async function updatePlanSortOrder(req, res) {
@@ -1985,7 +1997,7 @@ async function updatePlanSortOrder(req, res) {
     if (!updated) {
       return errorResponse(res, 404, "NOT_FOUND", "Plan not found");
     }
-    return res.status(200).json({ ok: true, data: { id: updated.id, sortOrder: updated.sortOrder } });
+    return res.status(200).json({ status: true, data: { id: updated.id, sortOrder: updated.sortOrder } });
   } catch (err) {
     if (isControlledError(err)) {
       return errorResponse(res, err.status, err.code, err.message);
@@ -2021,7 +2033,7 @@ async function clonePlan(req, res) {
     );
 
     const cloned = await Plan.create(normalizedPayload);
-    return res.status(201).json({ ok: true, data: { id: cloned.id } });
+    return res.status(201).json({ status: true, data: { id: cloned.id } });
   } catch (err) {
     if (isControlledError(err)) {
       return errorResponse(res, err.status, err.code, err.message);
@@ -2054,10 +2066,11 @@ async function createGramsRow(req, res) {
     }
 
     plan.gramsOptions.push(normalizedPayload);
+    assertActivePlanViabilityOrThrow(plan);
     await plan.save();
 
     return res.status(201).json({
-      ok: true,
+      status: true,
       data: {
         id: plan.id,
         grams: normalizedPayload.grams,
@@ -2115,8 +2128,9 @@ async function cloneGramsRow(req, res) {
       sortOrder: source.sortOrder,
     });
 
+    assertActivePlanViabilityOrThrow(plan);
     await plan.save();
-    return res.status(201).json({ ok: true, data: { id: plan.id } });
+    return res.status(201).json({ status: true, data: { id: plan.id } });
   } catch (err) {
     if (isControlledError(err)) {
       return errorResponse(res, err.status, err.code, err.message);
@@ -2157,9 +2171,17 @@ async function deleteGramsRow(req, res) {
   }
 
   plan.gramsOptions.splice(gramsIndex, 1);
+  try {
+    assertActivePlanViabilityOrThrow(plan);
+  } catch (err) {
+    if (isControlledError(err)) {
+      return errorResponse(res, err.status, err.code, err.message);
+    }
+    throw err;
+  }
   await plan.save();
 
-  return res.status(200).json({ ok: true });
+  return res.status(200).json({ status: true });
 }
 
 async function toggleGramsRow(req, res) {
@@ -2187,10 +2209,18 @@ async function toggleGramsRow(req, res) {
   }
 
   plan.gramsOptions[gramsIndex].isActive = !plan.gramsOptions[gramsIndex].isActive;
+  try {
+    assertActivePlanViabilityOrThrow(plan);
+  } catch (err) {
+    if (isControlledError(err)) {
+      return errorResponse(res, err.status, err.code, err.message);
+    }
+    throw err;
+  }
   await plan.save();
 
   return res.status(200).json({
-    ok: true,
+    status: true,
     data: {
       id: plan.id,
       grams,
@@ -2229,7 +2259,7 @@ async function updateGramsSortOrder(req, res) {
     plan.gramsOptions[gramsIndex].sortOrder = sortOrder;
     await plan.save();
 
-    return res.status(200).json({ ok: true, data: { id: plan.id, grams, sortOrder } });
+    return res.status(200).json({ status: true, data: { id: plan.id, grams, sortOrder } });
   } catch (err) {
     if (isControlledError(err)) {
       return errorResponse(res, err.status, err.code, err.message);
@@ -2290,8 +2320,9 @@ async function cloneMealsOption(req, res) {
       sortOrder: source.sortOrder,
     });
 
+    assertActivePlanViabilityOrThrow(plan);
     await plan.save();
-    return res.status(201).json({ ok: true, data: { id: plan.id } });
+    return res.status(201).json({ status: true, data: { id: plan.id } });
   } catch (err) {
     if (isControlledError(err)) {
       return errorResponse(res, err.status, err.code, err.message);
@@ -2341,10 +2372,11 @@ async function createMealsOption(req, res) {
     }
 
     gramsOption.mealsOptions.push(normalizedPayload);
+    assertActivePlanViabilityOrThrow(plan);
     await plan.save();
 
     return res.status(201).json({
-      ok: true,
+      status: true,
       data: {
         id: plan.id,
         grams,
@@ -2398,9 +2430,17 @@ async function deleteMealsOption(req, res) {
   }
 
   gramsOption.mealsOptions.splice(mealIndex, 1);
+  try {
+    assertActivePlanViabilityOrThrow(plan);
+  } catch (err) {
+    if (isControlledError(err)) {
+      return errorResponse(res, err.status, err.code, err.message);
+    }
+    throw err;
+  }
   await plan.save();
 
-  return res.status(200).json({ ok: true });
+  return res.status(200).json({ status: true });
 }
 
 async function toggleMealsOption(req, res) {
@@ -2438,10 +2478,18 @@ async function toggleMealsOption(req, res) {
   }
 
   gramsOption.mealsOptions[mealIndex].isActive = !gramsOption.mealsOptions[mealIndex].isActive;
+  try {
+    assertActivePlanViabilityOrThrow(plan);
+  } catch (err) {
+    if (isControlledError(err)) {
+      return errorResponse(res, err.status, err.code, err.message);
+    }
+    throw err;
+  }
   await plan.save();
 
   return res.status(200).json({
-    ok: true,
+    status: true,
     data: {
       id: plan.id,
       grams,
@@ -2491,7 +2539,7 @@ async function updateMealsSortOrder(req, res) {
     gramsOption.mealsOptions[mealIndex].sortOrder = sortOrder;
     await plan.save();
 
-    return res.status(200).json({ ok: true, data: { id: plan.id, grams, mealsPerDay, sortOrder } });
+    return res.status(200).json({ status: true, data: { id: plan.id, grams, mealsPerDay, sortOrder } });
   } catch (err) {
     if (isControlledError(err)) {
       return errorResponse(res, err.status, err.code, err.message);
@@ -2755,7 +2803,7 @@ async function updateCutoff(req, res) {
   try {
     const normalized = normalizeCutoffTimeOrThrow((req.body || {}).time);
     await persistNormalizedSettings({ cutoff_time: normalized });
-    return res.status(200).json({ ok: true });
+    return res.status(200).json({ status: true });
   } catch (err) {
     if (isControlledError(err)) {
       return errorResponse(res, err.status, err.code, err.message);
@@ -2772,7 +2820,7 @@ async function getRestaurantHours(req, res) {
     ]);
 
     return res.status(200).json({
-      ok: true,
+      status: true,
       data: {
         timezone: "Asia/Riyadh",
         restaurant_open_time: openSetting && openSetting.value ? String(openSetting.value) : "00:00",
@@ -2796,7 +2844,7 @@ async function updateRestaurantHours(req, res) {
     });
 
     return res.status(200).json({
-      ok: true,
+      status: true,
       data: {
         timezone: "Asia/Riyadh",
         restaurant_open_time: restaurantOpenTime,
@@ -2815,7 +2863,7 @@ async function updateDeliveryWindows(req, res) {
   try {
     const normalized = normalizeDeliveryWindowsOrThrow((req.body || {}).windows);
     await persistNormalizedSettings({ delivery_windows: normalized });
-    return res.status(200).json({ ok: true });
+    return res.status(200).json({ status: true });
   } catch (err) {
     if (isControlledError(err)) {
       return errorResponse(res, err.status, err.code, err.message);
@@ -2830,7 +2878,7 @@ async function updateSkipAllowance(req, res) {
     const rawValue = skipAllowance !== undefined ? skipAllowance : days;
     const normalized = normalizeSkipAllowanceOrThrow(rawValue);
     await persistNormalizedSettings({ skip_allowance: normalized });
-    return res.status(200).json({ ok: true, data: { skipAllowance: normalized } });
+    return res.status(200).json({ status: true, data: { skipAllowance: normalized } });
   } catch (err) {
     if (isControlledError(err)) {
       return errorResponse(res, err.status, err.code, err.message);
@@ -2843,7 +2891,7 @@ async function updatePremiumPrice(req, res) {
   try {
     const normalized = normalizePremiumPriceOrThrow((req.body || {}).price);
     await persistNormalizedSettings({ premium_price: normalized });
-    return res.status(200).json({ ok: true });
+    return res.status(200).json({ status: true });
   } catch (err) {
     if (isControlledError(err)) {
       return errorResponse(res, err.status, err.code, err.message);
@@ -2860,7 +2908,7 @@ async function updateSubscriptionDeliveryFee(req, res) {
       : body.subscription_delivery_fee_halala;
     const normalized = normalizeSubscriptionDeliveryFeeHalalaOrThrow(rawValue);
     const persisted = await persistNormalizedSettings({ subscription_delivery_fee_halala: normalized });
-    return res.status(200).json({ ok: true, data: persisted });
+    return res.status(200).json({ status: true, data: persisted });
   } catch (err) {
     if (isControlledError(err)) {
       return errorResponse(res, err.status, err.code, err.message);
@@ -2875,7 +2923,7 @@ async function updateVatPercentage(req, res) {
     const rawValue = body.percentage !== undefined ? body.percentage : body.vat_percentage;
     const normalized = normalizeVatPercentageOrThrow(rawValue);
     const persisted = await persistNormalizedSettings({ vat_percentage: normalized });
-    return res.status(200).json({ ok: true, data: persisted });
+    return res.status(200).json({ status: true, data: persisted });
   } catch (err) {
     if (isControlledError(err)) {
       return errorResponse(res, err.status, err.code, err.message);
@@ -2890,7 +2938,7 @@ async function updateCustomSaladBasePrice(req, res) {
     const rawValue = body.price !== undefined ? body.price : body.custom_salad_base_price;
     const normalized = normalizeCustomSaladBasePriceOrThrow(rawValue);
     const persisted = await persistNormalizedSettings({ custom_salad_base_price: normalized });
-    return res.status(200).json({ ok: true, data: persisted });
+    return res.status(200).json({ status: true, data: persisted });
   } catch (err) {
     if (isControlledError(err)) {
       return errorResponse(res, err.status, err.code, err.message);
@@ -2905,7 +2953,7 @@ async function updateCustomMealBasePrice(req, res) {
     const rawValue = body.price !== undefined ? body.price : body.custom_meal_base_price;
     const normalized = normalizeCustomMealBasePriceOrThrow(rawValue);
     const persisted = await persistNormalizedSettings({ custom_meal_base_price: normalized });
-    return res.status(200).json({ ok: true, data: persisted });
+    return res.status(200).json({ status: true, data: persisted });
   } catch (err) {
     if (isControlledError(err)) {
       return errorResponse(res, err.status, err.code, err.message);
@@ -2918,7 +2966,7 @@ async function patchSettings(req, res) {
   try {
     const normalized = normalizeSettingsPatchPayloadOrThrow(req.body || {});
     const persisted = await persistNormalizedSettings(normalized);
-    return res.status(200).json({ ok: true, data: persisted });
+    return res.status(200).json({ status: true, data: persisted });
   } catch (err) {
     if (isControlledError(err)) {
       return errorResponse(res, err.status, err.code, err.message);
@@ -2944,7 +2992,7 @@ async function listDashboardUsers(req, res) {
   ]);
 
   return res.status(200).json({
-    ok: true,
+    status: true,
     data: users.map((user) => serializeDashboardUserAdmin(user)),
     meta: buildPaginationMeta(pagination.page, pagination.limit, total),
   });
@@ -2977,7 +3025,7 @@ async function listAppUsers(req, res) {
   const { byCoreUserId, byPhone } = buildAppUserMaps(appUsers);
 
   return res.status(200).json({
-    ok: true,
+    status: true,
     data: users.map((user) => {
       const appUser = byCoreUserId.get(String(user._id)) || byPhone.get(user.phone) || null;
       const counts = countsByUserId.get(String(user._id)) || {};
@@ -3007,7 +3055,7 @@ async function getAppUser(req, res) {
   const counts = countsByUserId.get(String(result.coreUser._id)) || {};
 
   return res.status(200).json({
-    ok: true,
+    status: true,
     data: serializeAppUserAdmin({
       coreUser: result.coreUser,
       appUser: result.appUser,
@@ -3048,7 +3096,7 @@ async function updateAppUser(req, res) {
   const counts = countsByUserId.get(String(user._id)) || {};
 
   return res.status(200).json({
-    ok: true,
+    status: true,
     data: serializeAppUserAdmin({
       coreUser: user,
       appUser: result.appUser,
@@ -3074,7 +3122,7 @@ async function listAppUserSubscriptions(req, res) {
   const catalog = await loadSubscriptionSummaryCatalog(subscriptions, lang);
   const data = subscriptions.map((subscription) => serializeSubscriptionForClientFromCatalog(subscription, catalog));
 
-  return res.status(200).json({ ok: true, data });
+  return res.status(200).json({ status: true, data });
 }
 
 async function listSubscriptionsAdmin(req, res) {
@@ -3086,7 +3134,7 @@ async function listSubscriptionsAdmin(req, res) {
     });
 
     return res.status(200).json({
-      ok: true,
+      status: true,
       data: payload.data,
       meta: buildPaginationMeta(payload.pagination.page, payload.pagination.limit, payload.total),
       filters: {
@@ -3132,7 +3180,7 @@ async function getSubscriptionsSummaryAdmin(req, res) {
     ]);
 
     return res.status(200).json({
-      ok: true,
+      status: true,
       data: {
         filters: {
           q: filters.q,
@@ -3171,7 +3219,7 @@ async function exportSubscriptionsAdmin(req, res) {
     res.setHeader("Content-Disposition", `attachment; filename=\"subscriptions-export-${today}.json\"`);
 
     return res.status(200).json({
-      ok: true,
+      status: true,
       data: {
         exportedAt: new Date().toISOString(),
         filters: {
@@ -3273,7 +3321,7 @@ async function getDashboardOverview(req, res) {
   };
 
   return res.status(200).json({
-    ok: true,
+    status: true,
     data: {
       today,
       stats,
@@ -3353,7 +3401,7 @@ async function getSubscriptionAdmin(req, res) {
   const user = subscription.userId ? await User.findById(subscription.userId).lean() : null;
   const lang = getRequestLang(req);
   return res.status(200).json({
-    ok: true,
+    status: true,
     data: await serializeSubscriptionAdmin(subscription, lang, user),
   });
 }
@@ -3370,7 +3418,7 @@ async function listSubscriptionDaysAdmin(req, res) {
   }
 
   const days = await SubscriptionDay.find({ subscriptionId: id }).sort({ date: 1 }).lean();
-  return res.status(200).json({ ok: true, data: days });
+  return res.status(200).json({ status: true, data: days });
 }
 
 async function cancelSubscriptionAdmin(req, res) {
@@ -3421,7 +3469,7 @@ async function cancelSubscriptionAdmin(req, res) {
     }
 
     return res.status(200).json({
-      ok: true,
+      status: true,
       data: result.data,
       idempotent: result.idempotent,
     });
@@ -3547,7 +3595,7 @@ async function extendSubscriptionAdmin(req, res) {
     }, { subscriptionId: id });
 
     return res.status(200).json({
-      ok: true,
+      status: true,
       data: await serializeSubscriptionAdmin(subscription.toObject(), lang, user),
       meta: {
         days,
@@ -3587,7 +3635,7 @@ async function listOrdersAdmin(req, res) {
   );
 
   return res.status(200).json({
-    ok: true,
+    status: true,
     data: orders.map((order) => serializeOrderAdmin(order, userMap.get(String(order.userId)) || null)),
     meta: buildPaginationMeta(pagination.page, pagination.limit, total),
   });
@@ -3606,7 +3654,7 @@ async function getOrderAdmin(req, res) {
 
   const user = order.userId ? await User.findById(order.userId).lean() : null;
   return res.status(200).json({
-    ok: true,
+    status: true,
     data: serializeOrderAdmin(order, user),
   });
 }
@@ -3630,7 +3678,7 @@ async function listPaymentsAdmin(req, res) {
   );
 
   return res.status(200).json({
-    ok: true,
+    status: true,
     data: payments.map((payment) => serializePaymentAdmin(payment, userMap.get(String(payment.userId)) || null)),
     meta: buildPaginationMeta(pagination.page, pagination.limit, total),
   });
@@ -3649,7 +3697,7 @@ async function getPaymentAdmin(req, res) {
 
   const user = payment.userId ? await User.findById(payment.userId).lean() : null;
   return res.status(200).json({
-    ok: true,
+    status: true,
     data: serializePaymentAdmin(payment, user),
   });
 }
@@ -4068,7 +4116,7 @@ async function verifyPaymentAdmin(req, res, runtimeOverrides = null) {
   }, { paymentId: id });
 
   return res.status(200).json({
-    ok: true,
+    status: true,
     data: {
       payment: serializePaymentAdmin(latestPayment, user),
       providerInvoice: buildProviderInvoiceSummary(providerInvoice, latestPayment),
@@ -4090,7 +4138,7 @@ async function getDashboardUser(req, res) {
     return errorResponse(res, 404, "NOT_FOUND", "Dashboard user not found");
   }
 
-  return res.status(200).json({ ok: true, data: serializeDashboardUserAdmin(user) });
+  return res.status(200).json({ status: true, data: serializeDashboardUserAdmin(user) });
 }
 
 async function createDashboardUser(req, res) {
@@ -4123,7 +4171,7 @@ async function createDashboardUser(req, res) {
     isActive: isActive === undefined ? true : Boolean(isActive),
     passwordChangedAt: new Date(),
   });
-  return res.status(201).json({ ok: true, data: { id: user.id } });
+  return res.status(201).json({ status: true, data: { id: user.id } });
 }
 
 async function updateDashboardUser(req, res) {
@@ -4166,7 +4214,7 @@ async function updateDashboardUser(req, res) {
   }
 
   await user.save();
-  return res.status(200).json({ ok: true, data: serializeDashboardUserAdmin(user) });
+  return res.status(200).json({ status: true, data: serializeDashboardUserAdmin(user) });
 }
 
 async function deleteDashboardUser(req, res) {
@@ -4184,7 +4232,7 @@ async function deleteDashboardUser(req, res) {
     return errorResponse(res, 404, "NOT_FOUND", "Dashboard user not found");
   }
 
-  return res.status(200).json({ ok: true });
+  return res.status(200).json({ status: true });
 }
 
 async function resetDashboardUserPassword(req, res) {
@@ -4215,7 +4263,7 @@ async function resetDashboardUserPassword(req, res) {
   await user.save();
 
   return res.status(200).json({
-    ok: true,
+    status: true,
     data: {
       id: user.id,
       user: serializeDashboardUserAdmin(user),
@@ -4279,7 +4327,7 @@ async function listActivityLogs(req, res) {
   ]);
 
   return res.status(200).json({
-    ok: true,
+    status: true,
     data: logs,
     meta: buildPaginationMeta(pagination.page, pagination.limit, total),
   });
@@ -4334,7 +4382,7 @@ async function listNotificationLogs(req, res) {
   ]);
 
   return res.status(200).json({
-    ok: true,
+    status: true,
     data: logs,
     meta: buildPaginationMeta(pagination.page, pagination.limit, total),
   });
@@ -4403,7 +4451,7 @@ module.exports = {
   triggerDailyCutoff: async (req, res) => {
     try {
       await processDailyCutoff();
-      return res.status(200).json({ ok: true, message: "Cutoff processed successfully" });
+      return res.status(200).json({ status: true, message: "Cutoff processed successfully" });
     } catch (err) {
       if (err && err.code === "JOB_RUNNING") {
         // MEDIUM AUDIT FIX: Surface cutoff lock contention as explicit 409 so callers can retry safely.

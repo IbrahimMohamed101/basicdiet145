@@ -121,12 +121,12 @@ async function listAddons(req, res) {
   const lang = getRequestLang(req);
   const rows = await Addon.find({ isActive: true }).sort({ sortOrder: 1, createdAt: -1 }).lean();
   const mapped = rows.map((row) => resolveAddonCatalogEntry(row, lang));
-  return res.status(200).json({ ok: true, data: mapped });
+  return res.status(200).json({ status: true, data: mapped });
 }
 
 async function listAddonsAdmin(_req, res) {
   const rows = await Addon.find().sort({ sortOrder: 1, createdAt: -1 }).lean();
-  return res.status(200).json({ ok: true, data: rows });
+  return res.status(200).json({ status: true, data: rows });
 }
 
 async function getAddonAdmin(req, res) {
@@ -141,7 +141,7 @@ async function getAddonAdmin(req, res) {
   if (!row) {
     return errorResponse(res, 404, "NOT_FOUND", "Addon not found");
   }
-  return res.status(200).json({ ok: true, data: row });
+  return res.status(200).json({ status: true, data: row });
 }
 
 async function createAddon(req, res) {
@@ -157,7 +157,7 @@ async function createAddon(req, res) {
       ...payload,
       imageUrl: imageState.imageUrl,
     });
-    return res.status(201).json({ ok: true, data: { id: row.id } });
+    return res.status(201).json({ status: true, data: { id: row.id } });
   } catch (err) {
     if (err && err.status) {
       return errorResponse(res, err.status, err.code, err.message);
@@ -194,7 +194,7 @@ async function updateAddon(req, res) {
     });
     await existing.save();
 
-    return res.status(200).json({ ok: true, data: { id: existing.id } });
+    return res.status(200).json({ status: true, data: { id: existing.id } });
   } catch (err) {
     if (err && err.status) {
       return errorResponse(res, err.status, err.code, err.message);
@@ -215,7 +215,7 @@ async function deleteAddon(req, res) {
   if (!deleted) {
     return errorResponse(res, 404, "NOT_FOUND", "Addon not found");
   }
-  return res.status(200).json({ ok: true });
+  return res.status(200).json({ status: true });
 }
 
 async function toggleAddonActive(req, res) {
@@ -233,7 +233,7 @@ async function toggleAddonActive(req, res) {
   row.isActive = !row.isActive;
   await row.save();
 
-  return res.status(200).json({ ok: true, data: { id: row.id, isActive: row.isActive } });
+  return res.status(200).json({ status: true, data: { id: row.id, isActive: row.isActive } });
 }
 
 async function updateAddonSortOrder(req, res) {
@@ -250,7 +250,7 @@ async function updateAddonSortOrder(req, res) {
     if (!row) {
       return errorResponse(res, 404, "NOT_FOUND", "Addon not found");
     }
-    return res.status(200).json({ ok: true, data: { id: row.id, sortOrder: row.sortOrder } });
+    return res.status(200).json({ status: true, data: { id: row.id, sortOrder: row.sortOrder } });
   } catch (err) {
     if (err && err.status) {
       return errorResponse(res, err.status, err.code, err.message);
@@ -284,7 +284,7 @@ async function cloneAddon(req, res) {
   });
 
   const cloned = await Addon.create(payload);
-  return res.status(201).json({ ok: true, data: { id: cloned.id } });
+  return res.status(201).json({ status: true, data: { id: cloned.id } });
 }
 
 module.exports = {

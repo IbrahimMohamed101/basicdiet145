@@ -7,7 +7,7 @@ const { listKitchenOperations } = require("../services/kitchenOperations/Kitchen
 async function getSummary(req, res) {
   try {
     const data = await getKitchenOperationsSummary(req.query);
-    return res.status(200).json({ ok: true, data });
+    return res.status(200).json({ status: true, data });
   } catch (err) {
     if (err && err.status && err.code) {
       return errorResponse(res, err.status, err.code, err.message);
@@ -19,7 +19,7 @@ async function getSummary(req, res) {
 async function getList(req, res) {
   try {
     const data = await listKitchenOperations(req.query);
-    return res.status(200).json({ ok: true, data });
+    return res.status(200).json({ status: true, data });
   } catch (err) {
     if (err && err.status && err.code) {
       return errorResponse(res, err.status, err.code, err.message);

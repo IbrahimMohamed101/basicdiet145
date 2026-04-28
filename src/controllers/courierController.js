@@ -36,7 +36,7 @@ async function listTodayDeliveries(req, res) {
     const dayDocs = await SubscriptionDay.find({ date: today }).select("_id").lean();
     const dayIds = dayDocs.map((d) => d._id);
     const deliveries = await Delivery.find({ dayId: { $in: dayIds } }).sort({ createdAt: -1 }).lean();
-    return res.status(200).json({ ok: true, data: deliveries });
+    return res.status(200).json({ status: true, data: deliveries });
   } catch (err) {
     // MEDIUM AUDIT FIX: Express 4 does not catch async errors automatically; return controlled 500.
     logger.error("courierController.listTodayDeliveries failed", { error: err.message, stack: err.stack });
@@ -63,7 +63,7 @@ async function markArrivingSoon(req, res) {
 
     if (delivery.arrivingSoonReminderSentAt) {
       return res.status(200).json({
-        ok: true,
+        status: true,
         deduped: true,
         data: {
           deliveryId: String(delivery._id),
@@ -84,7 +84,7 @@ async function markArrivingSoon(req, res) {
     );
     if (!updated) {
       return res.status(200).json({
-        ok: true,
+        status: true,
         deduped: true,
         data: {
           deliveryId: String(delivery._id),
@@ -111,7 +111,7 @@ async function markArrivingSoon(req, res) {
       });
     }
     return res.status(200).json({
-      ok: true,
+      status: true,
       data: {
         deliveryId: String(updated._id),
         status: normalizeDeliveryStatus(updated.status),
@@ -141,7 +141,7 @@ async function markDelivered(req, res) {
 
     if (isDeliveryDeliveredStatus(delivery.status)) {
       return res.status(200).json({
-        ok: true,
+        status: true,
         idempotent: true,
         data: {
           deliveryId: String(delivery._id),
@@ -225,7 +225,7 @@ async function markDelivered(req, res) {
     }
 
     return res.status(200).json({
-      ok: true,
+      status: true,
       data: {
         deliveryId: String(delivery._id),
         subscriptionDayId: String(delivery.dayId),
@@ -258,7 +258,7 @@ async function markCancelled(req, res) {
 
     if (isDeliveryCanceledStatus(delivery.status)) {
       return res.status(200).json({
-        ok: true,
+        status: true,
         idempotent: true,
         data: {
           deliveryId: String(delivery._id),
@@ -310,7 +310,7 @@ async function markCancelled(req, res) {
         await session.commitTransaction();
         session.endSession();
         return res.status(200).json({
-          ok: true,
+          status: true,
           idempotent: true,
           data: {
             deliveryId: String(delivery._id),
@@ -397,7 +397,7 @@ async function markCancelled(req, res) {
     }
 
     return res.status(200).json({
-      ok: true,
+      status: true,
       data: {
         deliveryId: String(delivery._id),
         subscriptionDayId: day ? String(day._id) : String(delivery.dayId),

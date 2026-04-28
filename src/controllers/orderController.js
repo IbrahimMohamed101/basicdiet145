@@ -562,7 +562,7 @@ async function checkoutOrder(req, res) {
         const existingPayment = await findOrderPayment(existingByKey, req.userId);
         if (isPendingOrderCheckoutReusable(existingByKey, existingPayment) || existingByKey.paymentStatus === "paid") {
           return res.status(200).json({
-            ok: true,
+            status: true,
             data: buildOrderCheckoutPayload(existingByKey, existingPayment, { reused: true }),
           });
         }
@@ -598,7 +598,7 @@ async function checkoutOrder(req, res) {
       const existingPayment = await findOrderPayment(existingByHash, req.userId);
       if (isPendingOrderCheckoutReusable(existingByHash, existingPayment)) {
         return res.status(200).json({
-          ok: true,
+          status: true,
           data: buildOrderCheckoutPayload(existingByHash, existingPayment, { reused: true }),
         });
       }
@@ -762,7 +762,7 @@ async function checkoutOrder(req, res) {
     });
 
     return res.status(201).json({
-      ok: true,
+      status: true,
       data: buildOrderCheckoutPayload(createdOrder, createdPayment),
     });
   } catch (err) {
@@ -787,7 +787,7 @@ async function checkoutOrder(req, res) {
         const existingPayment = await findOrderPayment(existingOrder, req.userId);
         if (isPendingOrderCheckoutReusable(existingOrder, existingPayment) || existingOrder.paymentStatus === "paid") {
           return res.status(200).json({
-            ok: true,
+            status: true,
             data: buildOrderCheckoutPayload(existingOrder, existingPayment, { reused: true }),
           });
         }
@@ -907,7 +907,7 @@ async function confirmOrder(req, res) {
 
     await notifyOrderUser({ order, type: "paid", paymentId: order.paymentId });
 
-    return res.status(200).json({ ok: true, data: serializeOrderForClient(order.toObject ? order.toObject() : order) });
+    return res.status(200).json({ status: true, data: serializeOrderForClient(order.toObject ? order.toObject() : order) });
   } catch (err) {
     await session.abortTransaction();
     session.endSession();
@@ -926,7 +926,7 @@ async function listOrders(req, res) {
   }
 
   const orders = await Order.find({ userId: req.userId }).sort({ createdAt: -1 }).lean();
-  return res.status(200).json({ ok: true, data: orders.map((order) => serializeOrderForClient(order)) });
+  return res.status(200).json({ status: true, data: orders.map((order) => serializeOrderForClient(order)) });
 }
 
 async function getOrder(req, res) {
@@ -942,7 +942,7 @@ async function getOrder(req, res) {
     return errorResponse(res, 404, "NOT_FOUND", "Order not found");
   }
 
-  return res.status(200).json({ ok: true, data: serializeOrderForClient(order) });
+  return res.status(200).json({ status: true, data: serializeOrderForClient(order) });
 }
 
 async function cancelOrder(req, res) {
@@ -978,7 +978,7 @@ async function cancelOrder(req, res) {
     });
 
     return res.status(200).json({
-      ok: true,
+      status: true,
       data: serializeOrderForClient(result.order.toObject ? result.order.toObject() : result.order),
       ...(result.idempotent ? { idempotent: true } : {}),
     });
@@ -1039,7 +1039,7 @@ async function rejectAdjustedDeliveryDate(req, res) {
     });
 
     return res.status(200).json({
-      ok: true,
+      status: true,
       data: {
         order: serializeOrderForClient(result.order.toObject ? result.order.toObject() : result.order),
         requestedDeliveryDate,
@@ -1077,7 +1077,7 @@ async function getOrderPaymentStatus(req, res) {
   const payment = await findOrderPayment(order, req.userId);
 
   return res.status(200).json({
-    ok: true,
+    status: true,
     data: serializePaymentStatus(order, payment),
   });
 }
@@ -1319,7 +1319,7 @@ async function verifyOrderPayment(req, res) {
   }
 
   return res.status(200).json({
-    ok: true,
+    status: true,
     data: serializePaymentStatus(latestOrder, latestPayment, {
       providerInvoice,
       checkedProvider: true,

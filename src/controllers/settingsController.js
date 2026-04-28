@@ -25,7 +25,7 @@ async function getSettings(_req, res) {
     data.custom_meal_base_price = data.custom_meal_base_price ?? 0;
     delete data.skipAllowance;
 
-    return res.status(200).json({ ok: true, data });
+    return res.status(200).json({ status: true, data });
 }
 
 module.exports = { getSettings };

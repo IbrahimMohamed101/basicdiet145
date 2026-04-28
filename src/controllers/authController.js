@@ -55,7 +55,7 @@ async function requestOtp(req, res) {
   try {
     const { phoneE164 } = req.body || {};
     await requestOtpForPhone(phoneE164);
-    return res.status(200).json({ ok: true });
+    return res.status(200).json({ status: true });
   } catch (err) {
     return handleError(res, err);
   }
@@ -106,7 +106,7 @@ async function verifyOtp(req, res) {
     }
 
     return res.status(200).json({
-      ok: true,
+      status: true,
       token: issueAppAccessToken(coreUser),
       user: serializeCoreUser(coreUser),
     });
@@ -126,7 +126,7 @@ async function updateDeviceToken(req, res) {
     return errorResponse(res, 400, "INVALID", "Missing token");
   }
   await User.findByIdAndUpdate(req.userId, { $addToSet: { fcmTokens: token } });
-  return res.status(200).json({ ok: true });
+  return res.status(200).json({ status: true });
 }
 
 async function deleteDeviceToken(req, res) {
@@ -140,7 +140,7 @@ async function deleteDeviceToken(req, res) {
     AppUser.updateMany({ coreUserId: req.userId }, { $pull: { fcmTokens: token } }),
   ]);
 
-  return res.status(200).json({ ok: true });
+  return res.status(200).json({ status: true });
 }
 
 module.exports = { requestOtp, verifyOtp, updateDeviceToken, deleteDeviceToken };

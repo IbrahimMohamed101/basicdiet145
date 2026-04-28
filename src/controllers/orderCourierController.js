@@ -41,7 +41,7 @@ async function listTodayOrders(_req, res) {
         delivery: deliveriesByOrderId.get(String(order._id)),
       }));
 
-    return res.status(200).json({ ok: true, data: queue });
+    return res.status(200).json({ status: true, data: queue });
   } catch (err) {
     logger.error("orderCourierController.listTodayOrders failed", {
       error: err.message,
@@ -80,7 +80,7 @@ async function markArrivingSoon(req, res) {
     }
     if (existingDelivery.arrivingSoonReminderSentAt) {
       return res.status(200).json({
-        ok: true,
+        status: true,
         deduped: true,
         data: {
           orderId: String(order._id),
@@ -108,7 +108,7 @@ async function markArrivingSoon(req, res) {
 
     if (!delivery) {
       return res.status(200).json({
-        ok: true,
+        status: true,
         deduped: true,
         data: {
           orderId: String(order._id),
@@ -136,7 +136,7 @@ async function markArrivingSoon(req, res) {
     });
 
     return res.status(200).json({
-      ok: true,
+      status: true,
       data: {
         orderId: String(order._id),
         deliveryId: String(delivery._id),
@@ -184,7 +184,7 @@ async function markDelivered(req, res) {
       await session.abortTransaction();
       session.endSession();
       return res.status(200).json({
-        ok: true,
+        status: true,
         idempotent: true,
         data: {
           orderId: String(order._id),
@@ -228,7 +228,7 @@ async function markDelivered(req, res) {
 
     await notifyOrderUser({ order, type: "delivered" });
     return res.status(200).json({
-      ok: true,
+      status: true,
       data: {
         orderId: String(order._id),
         deliveryId: String(delivery._id),
@@ -278,7 +278,7 @@ async function markCancelled(req, res) {
       await session.abortTransaction();
       session.endSession();
       return res.status(200).json({
-        ok: true,
+        status: true,
         idempotent: true,
         data: {
           orderId: String(order._id),
@@ -347,7 +347,7 @@ async function markCancelled(req, res) {
 
     await notifyOrderUser({ order, type: "canceled" });
     return res.status(200).json({
-      ok: true,
+      status: true,
       data: {
         orderId: String(order._id),
         deliveryId: String(delivery._id),

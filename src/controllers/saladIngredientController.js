@@ -68,12 +68,12 @@ async function listActiveIngredients(req, res) {
   const lang = getRequestLang(req);
   const items = await SaladIngredient.find({ isActive: true }).sort({ createdAt: -1 }).lean();
   const resolved = items.map((item) => resolveIngredient(item, lang));
-  return res.status(200).json({ ok: true, data: resolved });
+  return res.status(200).json({ status: true, data: resolved });
 }
 
 async function listIngredientsAdmin(_req, res) {
   const items = await SaladIngredient.find().sort({ createdAt: -1 }).lean();
-  return res.status(200).json({ ok: true, data: items });
+  return res.status(200).json({ status: true, data: items });
 }
 
 async function createIngredient(req, res) {
@@ -95,7 +95,7 @@ async function createIngredient(req, res) {
       maxQuantity: maxQuantity !== undefined ? Number(maxQuantity) : undefined,
       isActive: true,
     });
-    return res.status(201).json({ ok: true, data: ingredient });
+    return res.status(201).json({ status: true, data: ingredient });
   } catch (_err) {
     // MEDIUM AUDIT FIX: Map controller errors to controlled client responses (400/404 contract).
     return errorResponse(res, 400, "INVALID", "Invalid ingredient payload");
@@ -137,7 +137,7 @@ async function updateIngredient(req, res) {
     if (!ingredient) {
       return errorResponse(res, 404, "NOT_FOUND", "Ingredient not found");
     }
-    return res.status(200).json({ ok: true, data: ingredient });
+    return res.status(200).json({ status: true, data: ingredient });
   } catch (_err) {
     // MEDIUM AUDIT FIX: Map controller errors to controlled client responses (400/404 contract).
     return errorResponse(res, 400, "INVALID", "Invalid ingredient update request");
@@ -158,7 +158,7 @@ async function toggleIngredient(req, res) {
     }
     ingredient.isActive = !ingredient.isActive;
     await ingredient.save();
-    return res.status(200).json({ ok: true, data: ingredient });
+    return res.status(200).json({ status: true, data: ingredient });
   } catch (_err) {
     // MEDIUM AUDIT FIX: Map controller errors to controlled client responses (400/404 contract).
     return errorResponse(res, 400, "INVALID", "Invalid ingredient toggle request");

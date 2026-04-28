@@ -71,6 +71,12 @@ function assertTrue(actual, msg) {
   if (actual !== true) throw new Error(`${msg || 'Assertion failed'}: expected true, got ${actual}`);
 }
 
+function assertNoTopLevelOk(body, msg) {
+  if (Object.prototype.hasOwnProperty.call(body || {}, 'ok')) {
+    throw new Error(`${msg || 'Assertion failed'}: top-level ok must be absent`);
+  }
+}
+
 function assertArray(actual, msg) {
   if (!Array.isArray(actual)) throw new Error(`${msg || 'Assertion failed'}: expected array`);
 }
@@ -531,7 +537,8 @@ async function runTests() {
   await test('GET /meal-planner-menu returns builderCatalog', async () => {
     const res = await makeRequest('GET', '/api/subscriptions/meal-planner-menu');
     assertEqual(res.status, 200, 'status');
-    assertTrue(res.body.status !== false, 'status');
+    assertEqual(res.body.status, true, 'status');
+    assertNoTopLevelOk(res.body, 'meal-planner-menu response');
     assertTrue(!!res.body.data?.builderCatalog, 'builderCatalog');
   });
   
@@ -583,7 +590,8 @@ async function runTests() {
   await test('GET /api/builder/premium-meals returns 4 items', async () => {
     const res = await makeRequest('GET', '/api/builder/premium-meals');
     assertEqual(res.status, 200, 'status');
-    assertTrue(res.body.status !== false, 'status');
+    assertEqual(res.body.status, true, 'status');
+    assertNoTopLevelOk(res.body, 'builder premium meals response');
     assertArray(res.body.data, 'data is array');
     assertEqual(res.body.data.length, 4, 'returns 4 items');
   });
@@ -797,6 +805,8 @@ async function runTests() {
   await test('GET /current/overview returns premiumSummary array', async () => {
     const res = await makeRequest('GET', '/api/subscriptions/current/overview');
     assertEqual(res.status, 200, 'status');
+    assertEqual(res.body.status, true, 'status');
+    assertNoTopLevelOk(res.body, 'current overview response');
     assertArray(res.body.data.premiumSummary, 'premiumSummary is array');
   });
   

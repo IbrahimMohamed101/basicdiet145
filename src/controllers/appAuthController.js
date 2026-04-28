@@ -108,7 +108,7 @@ async function login(req, res) {
     await requestOtpForPhone(phone, { context: "app_login" });
 
     return res.status(200).json({
-      ok: true,
+      status: true,
       message: "OTP sent successfully",
       data: {
         phoneE164: phone,
@@ -137,7 +137,7 @@ async function register(req, res) {
     });
 
     return res.status(200).json({
-      ok: true,
+      status: true,
       message: "OTP sent successfully",
       data: {
         phoneE164: phone,
@@ -153,7 +153,7 @@ async function getProfile(req, res) {
   try {
     const coreUser = await getAuthenticatedCoreUserOrThrow(req.userId);
     return res.status(200).json({
-      ok: true,
+      status: true,
       user: serializeCoreUser(coreUser),
     });
   } catch (err) {
@@ -195,7 +195,7 @@ async function updateProfile(req, res) {
     await ensureLinkedAppUser(coreUser);
 
     return res.status(200).json({
-      ok: true,
+      status: true,
       user: serializeCoreUser(coreUser),
     });
   } catch (err) {
@@ -258,7 +258,7 @@ async function getTodayPickup(req, res) {
     const snapshot = selectedDay.lockedSnapshot || selectedDay.fulfilledSnapshot || {};
 
     return res.status(200).json({
-      ok: true,
+      status: true,
       data: {
         status: selectedDay.status || "open",
         branchName: snapshot.pickupLocationName || "",

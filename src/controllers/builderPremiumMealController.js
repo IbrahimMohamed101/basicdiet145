@@ -271,7 +271,7 @@ async function listBuilderPremiumMeals(req, res) {
   const customSaladEntry = buildCustomPremiumSaladEntry(lang);
   const allEntries = [...mapped, customSaladEntry];
   
-  return res.status(200).json({ ok: true, data: allEntries });
+  return res.status(200).json({ status: true, data: allEntries });
 }
 
 async function listBuilderPremiumMealsAdmin(_req, res) {
@@ -280,7 +280,7 @@ async function listBuilderPremiumMealsAdmin(_req, res) {
     .lean();
 
   return res.status(200).json({
-    ok: true,
+    status: true,
     data: rows.map((row) => ({
       ...row,
       id: String(row._id),
@@ -304,7 +304,7 @@ async function getBuilderPremiumMealAdmin(req, res) {
   }
 
   return res.status(200).json({
-    ok: true,
+    status: true,
     data: {
       ...row,
       id: String(row._id),
@@ -328,7 +328,7 @@ async function createBuilderPremiumMeal(req, res) {
       imageUrl: imageState.imageUrl,
     });
 
-    return res.status(201).json({ ok: true, data: { id: row.id } });
+    return res.status(201).json({ status: true, data: { id: row.id } });
   } catch (err) {
     if (err && err.status) {
       return errorResponse(res, err.status, err.code, err.message, err.details);
@@ -366,7 +366,7 @@ async function updateBuilderPremiumMeal(req, res) {
     });
     await existing.save();
 
-    return res.status(200).json({ ok: true, data: { id: existing.id } });
+    return res.status(200).json({ status: true, data: { id: existing.id } });
   } catch (err) {
     if (err && err.status) {
       return errorResponse(res, err.status, err.code, err.message, err.details);
@@ -387,7 +387,7 @@ async function deleteBuilderPremiumMeal(req, res) {
   if (!deleted) {
     return errorResponse(res, 404, "NOT_FOUND", "Premium meal not found");
   }
-  return res.status(200).json({ ok: true });
+  return res.status(200).json({ status: true });
 }
 
 async function toggleBuilderPremiumMealActive(req, res) {
@@ -406,7 +406,7 @@ async function toggleBuilderPremiumMealActive(req, res) {
   row.isActive = !row.isActive;
   await row.save();
 
-  return res.status(200).json({ ok: true, data: { id: row.id, isActive: row.isActive } });
+  return res.status(200).json({ status: true, data: { id: row.id, isActive: row.isActive } });
 }
 
 async function updateBuilderPremiumMealSortOrder(req, res) {
@@ -427,7 +427,7 @@ async function updateBuilderPremiumMealSortOrder(req, res) {
     if (!row) {
       return errorResponse(res, 404, "NOT_FOUND", "Premium meal not found");
     }
-    return res.status(200).json({ ok: true, data: { id: row.id, sortOrder: row.sortOrder } });
+    return res.status(200).json({ status: true, data: { id: row.id, sortOrder: row.sortOrder } });
   } catch (err) {
     if (err && err.status) {
       return errorResponse(res, err.status, err.code, err.message);
@@ -467,7 +467,7 @@ async function cloneBuilderPremiumMeal(req, res) {
     nutrition: row.nutrition || {},
   });
 
-  return res.status(201).json({ ok: true, data: { id: cloned.id } });
+  return res.status(201).json({ status: true, data: { id: cloned.id } });
 }
 
 module.exports = {

@@ -52,7 +52,7 @@ function renderPaymentPage({ title, heading, body, tone = "success" }) {
 async function verifyPayment(req, res) {
   try {
     const result = await synchronizePaymentForRedirect(req.query, { source: "api_verify" });
-    return res.status(200).json({ ok: true, data: result });
+    return res.status(200).json({ status: true, data: result });
   } catch (err) {
     logger.error("Payment verify endpoint failed", {
       error: err.message,

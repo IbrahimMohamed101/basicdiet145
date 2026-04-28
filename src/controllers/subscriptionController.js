@@ -535,7 +535,7 @@ async function maybeHandleNonCheckoutIdempotency({
       return {
         shouldContinue: false,
         response: res.status(200).json({
-          ok: true,
+          status: true,
           data: buildNonCheckoutInitiationPayload(existingByKey, fallbackResponseShape),
         }),
       };
@@ -562,7 +562,7 @@ async function maybeHandleNonCheckoutIdempotency({
     return {
       shouldContinue: false,
       response: res.status(200).json({
-        ok: true,
+        status: true,
         data: buildNonCheckoutInitiationPayload(existingByHash, fallbackResponseShape),
       }),
     };
@@ -985,7 +985,7 @@ async function quoteSubscription(req, res, runtimeOverrides = null) {
       allowMissingDeliveryAddress: true,
     });
     return res.status(200).json({
-      ok: true,
+      status: true,
       data: {
         breakdown: quote.breakdown,
         totalSar: quote.breakdown.totalHalala / 100,
@@ -1105,7 +1105,7 @@ async function getCheckoutDraftStatus(req, res) {
     }
 
     return res.status(200).json({
-      ok: true,
+      status: true,
       data: localizeCheckoutDraftStatusReadPayload({
         ...buildSubscriptionCheckoutStatusPayload({ draft, payment, providerInvoice: invoice }),
         checkedProvider: Boolean(invoice),
@@ -1164,7 +1164,7 @@ async function verifyCheckoutDraftPayment(req, res, runtimeOverrides = null) {
       providerInvoice,
     });
     return res.status(200).json({
-      ok: true,
+      status: true,
       data: localizeWriteCheckoutStatusPayload({
         ...payload,
         checkedProvider: Boolean(providerInvoice),
@@ -1301,7 +1301,7 @@ async function verifyCheckoutDraftPayment(req, res, runtimeOverrides = null) {
         synchronized,
       };
       return res.status(200).json({
-        ok: true,
+        status: true,
         data: localizeWriteCheckoutStatusPayload(payload, { lang, draft: latestDraft }),
       });
     }
@@ -1366,7 +1366,7 @@ async function verifyCheckoutDraftPayment(req, res, runtimeOverrides = null) {
     };
 
     return res.status(200).json({
-      ok: true,
+      status: true,
       data: localizeWriteCheckoutStatusPayload(payload, { lang, draft: latestDraft }),
     });
   } catch (err) {
@@ -1417,7 +1417,7 @@ async function activateSubscription(req, res) {
       return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
     }
     if (sub.status === "active") {
-      return res.status(200).json({ ok: true, data: await serializeSubscriptionForClient(sub, lang) });
+      return res.status(200).json({ status: true, data: await serializeSubscriptionForClient(sub, lang) });
     }
     sub.status = "active";
     const start = new Date(sub.startDate);
@@ -1426,7 +1426,7 @@ async function activateSubscription(req, res) {
       sub.validityEndDate = sub.endDate;
     }
     await sub.save();
-    return res.status(200).json({ ok: true, data: await serializeSubscriptionForClient(sub, lang) });
+    return res.status(200).json({ status: true, data: await serializeSubscriptionForClient(sub, lang) });
   }
 
   if (String(draft.userId) !== String(req.userId)) {
@@ -1437,7 +1437,7 @@ async function activateSubscription(req, res) {
   if (draft.subscriptionId) {
     const existingSub = await Subscription.findById(draft.subscriptionId).lean();
     if (existingSub) {
-      return res.status(200).json({ ok: true, data: await serializeSubscriptionForClient(existingSub, lang) });
+      return res.status(200).json({ status: true, data: await serializeSubscriptionForClient(existingSub, lang) });
     }
   }
 
@@ -1496,7 +1496,7 @@ async function activateSubscription(req, res) {
     }
 
     return res.status(200).json({
-      ok: true,
+      status: true,
       data: await serializeSubscriptionForClient(activatedSub, lang),
     });
   } catch (err) {
@@ -1526,7 +1526,7 @@ async function getSubscription(req, res) {
   const lang = getRequestLang(req);
 
   return res.status(200).json({
-    ok: true,
+    status: true,
     data: await serializeSubscriptionForClient(sub, lang),
   });
 }
@@ -1538,7 +1538,7 @@ async function getCurrentSubscriptionOverview(req, res) {
   try {
     const result = await buildCurrentSubscriptionOverview({ userId, lang });
     return res.status(200).json({
-      ok: true,
+      status: true,
       data: serializeForApi(result.data)
     });
   } catch (err) {
@@ -1605,7 +1605,7 @@ async function getSubscriptionOperationsMeta(req, res, runtimeOverrides = null) 
     }
 
     return res.status(200).json({
-      ok: true,
+      status: true,
       data: result.data,
     });
   } catch (err) {
@@ -1657,7 +1657,7 @@ async function getSubscriptionFreezePreview(req, res, runtimeOverrides = null) {
     }
 
     return res.status(200).json({
-      ok: true,
+      status: true,
       data: result.data,
     });
   } catch (err) {
@@ -1673,7 +1673,7 @@ async function getSubscriptionFreezePreview(req, res, runtimeOverrides = null) {
 
 async function getSubscriptionPaymentMethods(_req, res) {
   return res.status(200).json({
-    ok: true,
+    status: true,
     data: {
       supported: false,
       canManage: false,
@@ -1706,7 +1706,7 @@ async function getSubscriptionTimeline(req, res) {
   const timeline = await buildSubscriptionTimeline(id);
 
   return res.status(200).json({
-    ok: true,
+    status: true,
     data: localizeTimelineReadPayload(timeline, lang),
   });
 }
@@ -1715,7 +1715,7 @@ async function listCurrentUserSubscriptions(req, res) {
   const subscriptions = await Subscription.find({ userId: req.userId }).sort({ createdAt: -1 }).lean();
   const lang = getRequestLang(req);
   const data = await Promise.all(subscriptions.map((subscription) => serializeSubscriptionForClient(subscription, lang)));
-  return res.status(200).json({ ok: true, data });
+  return res.status(200).json({ status: true, data });
 }
 
 async function getSubscriptionRenewalSeed(req, res, runtimeOverrides = null) {
@@ -1764,7 +1764,7 @@ async function getSubscriptionRenewalSeed(req, res, runtimeOverrides = null) {
       livePlan,
     });
     return res.status(200).json({
-      ok: true,
+      status: true,
       data: localizeRenewalSeedReadPayload(renewalSeed, {
         lang,
         livePlan,
@@ -1791,7 +1791,7 @@ async function renewSubscription(req, res, runtimeOverrides = null) {
 
   try {
     const result = await performSubscriptionRenewal(req.userId, id, body, lang, runtimeOverrides);
-    return res.status(result.status).json({ ok: true, data: result.data });
+    return res.status(result.status).json({ status: true, data: result.data });
   } catch (err) {
     if (err.data) {
       return errorResponse(res, err.status, err.code, err.message, err.data);
@@ -1827,7 +1827,7 @@ async function createPremiumOverageDayPayment(req, res, runtimeOverrides = null)
   if (!result.ok) {
     return errorResponse(res, result.status, result.code, result.message, result.details);
   }
-  return res.status(result.status).json({ ok: true, data: result.data });
+  return res.status(result.status).json({ status: true, data: result.data });
 }
 
 async function createPremiumExtraDayPayment(req, res, runtimeOverrides = null) {
@@ -1849,7 +1849,7 @@ async function createPremiumExtraDayPayment(req, res, runtimeOverrides = null) {
     if (!result.ok) {
       return errorResponse(res, result.status, result.code, result.message, result.details);
     }
-    return res.status(result.status).json({ ok: true, data: result.data });
+    return res.status(result.status).json({ status: true, data: result.data });
   } catch (err) {
     logger.error("Premium extra payment initiation: unexpected error", { error: err.message, stack: err.stack, subscriptionId: id, date });
     if (err.status && err.code) {
@@ -1883,7 +1883,7 @@ async function verifyPremiumExtraDayPayment(req, res, runtimeOverrides = null) {
   if (!result.ok) {
     return errorResponse(res, result.status, result.code, result.message, result.details);
   }
-  return res.status(result.status).json({ ok: true, data: result.data });
+  return res.status(result.status).json({ status: true, data: result.data });
 }
 
 async function verifyPremiumOverageDayPayment(req, res, runtimeOverrides = null) {
@@ -1918,7 +1918,7 @@ async function verifyPremiumOverageDayPayment(req, res, runtimeOverrides = null)
     return errorResponse(res, result.status, result.code, result.message, result.details);
   }
   return res.status(result.status).json({
-    ok: true,
+    status: true,
     data: localizeWritePremiumOverageStatusPayload(result.data, { lang }),
   });
 }
@@ -1949,7 +1949,7 @@ async function createOneTimeAddonDayPlanningPayment(req, res, runtimeOverrides =
   if (!result.ok) {
     return errorResponse(res, result.status, result.code, result.message, result.details);
   }
-  return res.status(result.status).json({ ok: true, data: result.data });
+  return res.status(result.status).json({ status: true, data: result.data });
 }
 
 async function verifyOneTimeAddonDayPlanningPayment(req, res, runtimeOverrides = null) {
@@ -1984,7 +1984,7 @@ async function verifyOneTimeAddonDayPlanningPayment(req, res, runtimeOverrides =
   if (!result.ok) {
     return errorResponse(res, result.status, result.code, result.message, result.details);
   }
-  return res.status(result.status).json({ ok: true, data: result.data });
+  return res.status(result.status).json({ status: true, data: result.data });
 }
 
 async function freezeSubscription(req, res) {
@@ -2009,7 +2009,7 @@ async function freezeSubscription(req, res) {
   if (!result.ok) {
     return errorResponse(res, result.status, result.code, result.message, result.details);
   }
-  return res.status(result.status).json({ ok: true, data: result.data });
+  return res.status(result.status).json({ status: true, data: result.data });
 }
 
 async function unfreezeSubscription(req, res) {
@@ -2034,7 +2034,7 @@ async function unfreezeSubscription(req, res) {
   if (!result.ok) {
     return errorResponse(res, result.status, result.code, result.message, result.details);
   }
-  return res.status(result.status).json({ ok: true, data: result.data });
+  return res.status(result.status).json({ status: true, data: result.data });
 }
 
 async function getSubscriptionDays(req, res) {
@@ -2064,7 +2064,7 @@ async function getSubscriptionDays(req, res) {
     }),
     lang,
   }));
-  return res.status(200).json({ ok: true, data: mappedDays });
+  return res.status(200).json({ status: true, data: mappedDays });
 }
 
 async function getSubscriptionDay(req, res) {
@@ -2094,7 +2094,7 @@ async function getSubscriptionDay(req, res) {
     addonNames: catalog.addonNames,
   });
   return res.status(200).json({
-    ok: true,
+    status: true,
     data: shapeMealPlannerReadFields({
       subscription: sub,
       day: localizedDay,
@@ -2131,7 +2131,7 @@ async function getSubscriptionToday(req, res) {
     addonNames: catalog.addonNames,
   });
   return res.status(200).json({
-    ok: true,
+    status: true,
     data: shapeMealPlannerReadFields({
       subscription: sub,
       day: localizedDay,
@@ -2164,7 +2164,7 @@ async function updateDaySelection(req, res, runtimeOverrides = null) {
   if (!result.ok) {
     return errorResponse(res, result.status, result.code, result.message, result.details);
   }
-  const payload = { ok: true, data: result.data };
+  const payload = { status: true, data: result.data };
   if (result.idempotent) {
     payload.idempotent = true;
   }
@@ -2190,7 +2190,7 @@ async function validateDaySelection(req, res) {
   if (!result.ok) {
     return errorResponse(res, result.status, result.code, result.message, result.details);
   }
-  return res.status(result.status).json({ ok: true, data: result.data });
+  return res.status(result.status).json({ status: true, data: result.data });
 }
 
 async function updateBulkDaySelections(req, res, runtimeOverrides = null) {
@@ -2229,7 +2229,7 @@ async function updateBulkDaySelections(req, res, runtimeOverrides = null) {
   if (!result.ok) {
     return errorResponse(res, result.status, result.code, result.message, result.details);
   }
-  return res.status(result.status).json({ ok: true, data: result.data });
+  return res.status(result.status).json({ status: true, data: result.data });
 }
 
 async function confirmDayPlanning(req, res, runtimeOverrides = null) {
@@ -2255,7 +2255,7 @@ async function confirmDayPlanning(req, res, runtimeOverrides = null) {
     return errorResponse(res, result.status, result.code, result.message, result.details);
   }
   return res.status(result.status).json({
-    ok: true,
+    status: true,
     success: true,
     plannerState: result.plannerState,
     data: result.data,
@@ -2283,7 +2283,7 @@ async function skipDay(req, res) {
   if (!result.ok) {
     return errorResponse(res, result.status, result.code, result.message, result.details);
   }
-  return res.status(result.status).json({ ok: true, data: result.data });
+  return res.status(result.status).json({ status: true, data: result.data });
 }
 
 async function unskipDay(req, res) {
@@ -2306,7 +2306,7 @@ async function unskipDay(req, res) {
   if (!result.ok) {
     return errorResponse(res, result.status, result.code, result.message, result.details);
   }
-  return res.status(result.status).json({ ok: true, data: result.data });
+  return res.status(result.status).json({ status: true, data: result.data });
 }
 
 async function skipRange(req, res) {
@@ -2335,7 +2335,7 @@ async function skipRange(req, res) {
   if (!result.ok) {
     return errorResponse(res, result.status, result.code, result.message, result.details);
   }
-  return res.status(result.status).json({ ok: true, data: result.data });
+  return res.status(result.status).json({ status: true, data: result.data });
 }
 
 async function consumePremiumSelection(req, res) {
@@ -2399,7 +2399,7 @@ async function addOneTimeAddon(_req, res, runtimeOverrides = null) {
     if (!result.ok) {
       return errorResponse(res, result.status, result.code, result.message, result.details);
     }
-    return res.status(result.status).json({ ok: true, data: result.data });
+    return res.status(result.status).json({ status: true, data: result.data });
   } catch (err) {
     if (err.code === "VALIDATION_ERROR") {
       return sendValidationError(res, err.message);
@@ -2426,7 +2426,7 @@ async function preparePickup(req, res) {
   if (!result.ok) {
     return errorResponse(res, result.status, result.code, result.message, result.details);
   }
-  return res.status(result.status).json({ ok: true, data: result.data });
+  return res.status(result.status).json({ status: true, data: result.data });
 }
 
 async function getPickupStatus(req, res) {
@@ -2442,7 +2442,7 @@ async function getPickupStatus(req, res) {
   if (!result.ok) {
     return errorResponse(res, result.status, result.code, result.message, result.details);
   }
-  return res.status(result.status).json({ ok: true, data: result.data });
+  return res.status(result.status).json({ status: true, data: result.data });
 }
 
 async function updateDeliveryDetails(req, res, runtimeOverrides = null) {
@@ -2468,7 +2468,7 @@ async function updateDeliveryDetails(req, res, runtimeOverrides = null) {
     }, { subscriptionId: id });
 
     return res.status(200).json({
-      ok: true,
+      status: true,
       data: localizeWriteSubscriptionPayload(result.sub.toObject ? result.sub.toObject() : result.sub, { lang }),
     });
   } catch (err) {
@@ -2506,7 +2506,7 @@ async function updateDeliveryDetailsForDate(req, res) {
       meta: { date: result.date, deliveryWindow: result.updatedDay.deliveryWindowOverride },
     }, { subscriptionId: id, date: result.date });
 
-    return res.status(200).json({ ok: true, data: { subscriptionId: result.subscriptionId } });
+    return res.status(200).json({ status: true, data: { subscriptionId: result.subscriptionId } });
   } catch (err) {
     if (err.status && err.code) {
       return errorResponse(res, err.status, err.code, err.message);
@@ -2550,7 +2550,7 @@ async function transitionDay(req, res, toStatus) {
 
     await session.commitTransaction();
     session.endSession();
-    return res.status(200).json({ ok: true, data: day });
+    return res.status(200).json({ status: true, data: day });
   } catch (err) {
     await session.abortTransaction();
     session.endSession();
@@ -2578,7 +2578,7 @@ async function fulfillDay(req, res) {
 
     await session.commitTransaction();
     session.endSession();
-    return res.status(200).json({ ok: true, data: result.day, alreadyFulfilled: result.alreadyFulfilled });
+    return res.status(200).json({ status: true, data: result.day, alreadyFulfilled: result.alreadyFulfilled });
   } catch (err) {
     await session.abortTransaction();
     session.endSession();

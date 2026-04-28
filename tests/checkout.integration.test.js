@@ -65,6 +65,12 @@ function assertTrue(actual, msg) {
   if (actual !== true) throw new Error(`${msg || 'Assertion failed'}: expected true, got ${actual}`);
 }
 
+function assertNoTopLevelOk(body, msg) {
+  if (Object.prototype.hasOwnProperty.call(body || {}, 'ok')) {
+    throw new Error(`${msg || 'Assertion failed'}: top-level ok must be absent`);
+  }
+}
+
 function assertNotNull(actual, msg) {
   if (actual === null || actual === undefined) throw new Error(`${msg || 'Assertion failed'}: expected non-null value`);
 }
@@ -357,7 +363,8 @@ async function runTests() {
       console.log('DEBUG: Response body:', JSON.stringify(res.body, null, 2));
     }
     assertEqual(res.status, 201, 'checkout status');
-    assertTrue(res.body.ok !== false, 'ok');
+    assertEqual(res.body.status, true, 'status');
+    assertNoTopLevelOk(res.body, 'checkout response');
     assertTrue(!!res.body.data?.draftId, 'draftId present');
   });
   
@@ -461,7 +468,8 @@ async function runTests() {
   await test('GET /api/subscriptions/current/overview returns premiumSummary', async () => {
     const res = await makeRequest('GET', '/api/subscriptions/current/overview');
     assertEqual(res.status, 200, 'overview status');
-    assertTrue(res.body.ok !== false, 'ok');
+    assertEqual(res.body.status, true, 'status');
+    assertNoTopLevelOk(res.body, 'overview response');
     assertTrue(Array.isArray(res.body.data?.premiumSummary), 'premiumSummary is array');
   });
   

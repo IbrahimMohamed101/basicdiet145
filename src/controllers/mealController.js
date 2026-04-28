@@ -85,7 +85,7 @@ function assertRegularType(body) {
   if (body && body.type !== undefined && body.type !== "regular") {
     return { ok: false, message: "Only regular meals are supported by this endpoint" };
   }
-  return { ok: true };
+  return { status: true };
 }
 
 async function listMeals(req, res) {
@@ -96,13 +96,13 @@ async function listMeals(req, res) {
   ]);
   const { categoryMapById } = buildCategoryLookupMaps(categories);
   const data = meals.map((meal) => resolveMeal(meal, lang, categoryMapById));
-  return res.status(200).json({ ok: true, data });
+  return res.status(200).json({ status: true, data });
 }
 
 async function listMealsAdmin(_req, res) {
   const meals = await Meal.find({ type: "regular" }).sort({ sortOrder: 1, createdAt: -1 }).lean();
   return res.status(200).json({
-    ok: true,
+    status: true,
     data: meals.map((meal) => {
       const normalizedMeal = withDefaultMealNutrition(meal);
       return {
@@ -128,7 +128,7 @@ async function getMealAdmin(req, res) {
   }
 
   return res.status(200).json({
-    ok: true,
+    status: true,
     data: {
       ...withDefaultMealNutrition(meal),
       id: String(meal._id),
@@ -188,7 +188,7 @@ async function createMeal(req, res) {
       ...nutrition,
     });
 
-    return res.status(201).json({ ok: true, data: { id: meal.id } });
+    return res.status(201).json({ status: true, data: { id: meal.id } });
   } catch (err) {
     if (err && err.status) {
       return errorResponse(res, err.status, err.code, err.message);
@@ -287,7 +287,7 @@ async function updateMeal(req, res) {
     meal.set(update);
     await meal.save();
 
-    return res.status(200).json({ ok: true, data: { id: meal.id } });
+    return res.status(200).json({ status: true, data: { id: meal.id } });
   } catch (err) {
     if (err && err.status) {
       return errorResponse(res, err.status, err.code, err.message);
@@ -348,7 +348,7 @@ async function listCategoriesWithMeals(req, res) {
     })),
   }));
 
-  return res.status(200).json({ ok: true, data });
+  return res.status(200).json({ status: true, data });
 }
 
 async function deleteMeal(req, res) {
@@ -364,7 +364,7 @@ async function deleteMeal(req, res) {
     return errorResponse(res, 404, "NOT_FOUND", "Meal not found");
   }
 
-  return res.status(200).json({ ok: true });
+  return res.status(200).json({ status: true });
 }
 
 async function toggleMealActive(req, res) {
@@ -383,7 +383,7 @@ async function toggleMealActive(req, res) {
   meal.isActive = !meal.isActive;
   await meal.save();
 
-  return res.status(200).json({ ok: true, data: { id: meal.id, isActive: meal.isActive } });
+  return res.status(200).json({ status: true, data: { id: meal.id, isActive: meal.isActive } });
 }
 
 module.exports = {

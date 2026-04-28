@@ -13,7 +13,7 @@ async function uploadAdminImage(req, res, deps = {}) {
     });
 
     return res.status(201).json({
-      ok: true,
+      status: true,
       data: responseData,
     });
   } catch (err) {

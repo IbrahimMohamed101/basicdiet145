@@ -54,7 +54,12 @@ PlanSchema.statics.isViable = function (plan) {
   const activeGramsOptions = (plan.gramsOptions || []).filter((g) => g.isActive !== false);
   if (activeGramsOptions.length === 0) return false;
 
-  return activeGramsOptions.every((g) => (g.mealsOptions || []).some((m) => m.isActive !== false));
+  return activeGramsOptions.every((gramsOption) => {
+    const activeMealsOptions = (gramsOption.mealsOptions || []).filter((mealOption) => mealOption.isActive !== false);
+    if (activeMealsOptions.length === 0) return false;
+
+    return activeMealsOptions.every((mealOption) => Number.isInteger(mealOption.priceHalala) && mealOption.priceHalala > 0);
+  });
 };
 
 PlanSchema.methods.isViable = function () {

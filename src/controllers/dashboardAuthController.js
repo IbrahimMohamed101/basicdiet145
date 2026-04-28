@@ -66,7 +66,7 @@ async function login(req, res) {
 
   const token = issueDashboardAccessToken(user);
   return res.status(200).json({
-    ok: true,
+    status: true,
     token,
     user: sanitizeDashboardUser(user),
   });
@@ -83,12 +83,12 @@ async function me(req, res) {
   if (!user) {
     return res.status(200).json({ ok: false, user: null });
   }
-  return res.status(200).json({ ok: true, user: sanitizeDashboardUser(user) });
+  return res.status(200).json({ status: true, user: sanitizeDashboardUser(user) });
 }
 
 async function logout(_req, res) {
   // JWT is stateless. Server-side logout is a no-op unless token blacklist is introduced.
-  return res.status(200).json({ ok: true });
+  return res.status(200).json({ status: true });
 }
 
 module.exports = { login, me, logout };

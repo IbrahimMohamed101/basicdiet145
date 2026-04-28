@@ -12,7 +12,7 @@ async function getSubscriptionTerms(req, res) {
     return errorResponse(res, 404, "NOT_FOUND", "Active subscription terms were not found");
   }
 
-  return res.status(200).json({ ok: true, data });
+  return res.status(200).json({ status: true, data });
 }
 
 async function getSubscriptionTermsAdmin(req, res) {
@@ -27,7 +27,7 @@ async function getSubscriptionTermsAdmin(req, res) {
     return errorResponse(res, 404, "NOT_FOUND", "Active subscription terms were not found");
   }
 
-  return res.status(200).json({ ok: true, data });
+  return res.status(200).json({ status: true, data });
 }
 
 async function upsertSubscriptionTermsAdmin(req, res) {
@@ -41,7 +41,7 @@ async function upsertSubscriptionTermsAdmin(req, res) {
       updatedBy: req.dashboardUserId || req.userId || null,
     });
 
-    return res.status(200).json({ ok: true, data });
+    return res.status(200).json({ status: true, data });
   } catch (error) {
     if (error && Number.isInteger(error.status) && error.code) {
       return errorResponse(res, error.status, error.code, error.message);

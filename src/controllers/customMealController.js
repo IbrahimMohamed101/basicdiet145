@@ -51,7 +51,7 @@ async function previewCustomMealPrice(req, res) {
   try {
     const { ingredients } = req.body || {};
     const snapshot = await buildCustomMealSnapshot(ingredients);
-    return res.status(200).json({ ok: true, data: snapshot });
+    return res.status(200).json({ status: true, data: snapshot });
   } catch (err) {
     const status = err.code === "NOT_FOUND" ? 404 : 400;
     return errorResponse(res, status, err.code || "INVALID", err.message);
@@ -137,7 +137,7 @@ async function addCustomMealToOrder(req, res) {
       meta: { orderId: String(order._id), totalPrice: snapshot.totalPrice },
     });
 
-    return res.status(200).json({ ok: true, data: order });
+    return res.status(200).json({ status: true, data: order });
   } catch (err) {
     await session.abortTransaction();
     session.endSession();
@@ -253,7 +253,7 @@ async function addCustomMealToSubscriptionDay(req, res) {
     });
 
     return res.status(200).json({
-      ok: true,
+      status: true,
       data: {
         payment_url: invoice.url,
         invoice_id: invoice.id,

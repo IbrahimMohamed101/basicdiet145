@@ -19,9 +19,8 @@ async function checkPlanCatalogHealth() {
   for (const plan of activePlans) {
     const issues = [];
     
-    // Check viability using the static method
     if (!Plan.isViable(plan)) {
-      issues.push("NON_VIABLE: Missing or inactive grams/meals options");
+      issues.push("NON_VIABLE: Missing sellable active grams/meals options or valid active pricing");
     }
 
     // Check for zero prices in active options
