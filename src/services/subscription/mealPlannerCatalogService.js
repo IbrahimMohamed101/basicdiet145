@@ -34,18 +34,19 @@ async function getMealPlannerCatalog({ lang }) {
     Meal.find({ isActive: true, availableForSubscription: { $ne: false } }).sort({ sortOrder: 1 }).lean(),
   ]);
 
-  const sandwichCategory = mealCategories.find(c => c.key === "sandwich");
-  const sandwiches = sandwichCategory 
-    ? allMeals.filter(m => String(m.categoryId) === String(sandwichCategory._id))
-    : [];
+  const sandwiches = allMeals.filter(m => {
+    const catKey = m.category ? String(m.category).toLowerCase().trim() : "";
+    return catKey === "sandwich" || catKey === "sandwiches";
+  });
 
   const proteins = allProteins.filter(p => !p.isPremium);
   const premiumProteins = allProteins.filter(p => p.isPremium);
 
   const saladConfig = {
+    id: "premium_large_salad",
     enabled: true,
-    premiumKey: CANONICAL_PREMIUM_SALAD_KEY,
-    selectionType: NEW_TYPES.PREMIUM_LARGE_SALAD,
+    premiumKey: "custom_premium_salad",
+    selectionType: "premium_large_salad",
     extraFeeHalala: PREMIUM_LARGE_SALAD_FIXED_PRICE_HALALA,
     groups: SALAD_GROUPS.map(g => ({
       key: g.key,

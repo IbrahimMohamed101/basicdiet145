@@ -86,7 +86,7 @@ function validateStandardMeal(slot, proteins, carbsMap) {
 function validatePremiumMeal(slot, proteins, carbsMap) {
   const protein = proteins.get(String(slot.proteinId));
   if (!protein) return { valid: false, code: "PROTEIN_REQUIRED", message: "Premium meal requires a valid protein" };
-  if (!protein.isPremium) return { valid: false, code: "INVALID_PROTEIN_TYPE", message: "Premium meal requires a premium protein" };
+  if (protein.isPremium !== true) return { valid: false, code: "INVALID_PROTEIN_TYPE", message: "Premium meal requires a premium protein" };
   
   return validateCarbSplit(slot.carbs, carbsMap);
 }
@@ -154,7 +154,7 @@ function validatePremiumLargeSalad(slot, proteinMap, saladIngredientMap) {
   if (!protein) {
     return { valid: false, code: "SALAD_PROTEIN_INVALID", message: "Invalid salad protein" };
   }
-  if (!protein.isPremium) {
+  if (protein.isPremium !== true) {
     return { valid: false, code: "SALAD_PROTEIN_NOT_PREMIUM", message: "Premium large salad requires a premium protein" };
   }
 
