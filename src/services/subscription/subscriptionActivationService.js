@@ -20,6 +20,12 @@ const { resolveCanonicalPremiumIdentity, resolvePremiumKeyFromName } = require("
 
 const SYSTEM_CURRENCY = "SAR";
 
+function normalizeOptionalObjectId(value) {
+  if (value == null) return null;
+  const s = String(value).trim();
+  return s ? value : null;
+}
+
 function assertValidPremiumBalanceRows(rows) {
   for (const row of rows || []) {
     if (!row.premiumKey || typeof row.premiumKey !== "string" || !row.premiumKey.trim()) {
@@ -77,7 +83,7 @@ async function toCanonicalPremiumBalanceRows(draft) {
     }
 
     rows.push({
-      proteinId: resolved.canonicalProteinId || item.proteinId,
+      proteinId: normalizeOptionalObjectId(resolved.canonicalProteinId || item.proteinId),
       premiumKey: resolved.premiumKey,
       name: resolved.name || item.name,
       purchasedQty: Number(item.qty || 0),
