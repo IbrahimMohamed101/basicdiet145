@@ -23,6 +23,7 @@
     "create:dashboard-user": "node scripts/create-dashboard-user.js",
     "seed:dashboard-users": "node scripts/seed-dashboard-users.js",
     "seed:builder": "node scripts/seed-meal-builder-data.js",
+    "seed:premium-catalog": "node scripts/seedPremiumCatalog.js",
     "seed:legal-content": "node scripts/seed-legal-content.js"
   },
   "dependencies": {

@@ -6,14 +6,21 @@ const {
 } = require("../constants/phase1Contract");
 const DraftPremiumItemSchema = new mongoose.Schema(
   {
-    proteinId: { type: mongoose.Schema.Types.ObjectId, ref: "BuilderProtein", required: true },
-    premiumKey: { type: String, default: null, trim: true },
+    proteinId: { type: mongoose.Schema.Types.ObjectId, ref: "BuilderProtein", default: null },
+    premiumKey: { type: String, required: true, trim: true },
     qty: { type: Number, min: 1, required: true },
     unitExtraFeeHalala: { type: Number, min: 0, required: true },
     currency: { type: String, default: "SAR" },
   },
   { _id: false }
 );
+
+DraftPremiumItemSchema.pre("validate", function (next) {
+  if (!this.proteinId && !this.premiumKey) {
+    next(new Error("Either proteinId or premiumKey must be provided"));
+  }
+  next();
+});
 
 
 const DraftAddonSubscriptionSchema = new mongoose.Schema(

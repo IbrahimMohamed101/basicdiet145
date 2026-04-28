@@ -83,7 +83,7 @@ function buildNormalizedPremiumRows(rawPremiumItems) {
     .map(normalizePremiumItem)
     .filter(
       (row) =>
-        row.proteinId &&
+        (row.proteinId || row.premiumKey) &&
         Number.isInteger(row.qty) &&
         row.qty > 0
     );

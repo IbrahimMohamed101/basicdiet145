@@ -90,13 +90,16 @@ function normalizePremiumCheckoutPayloadItems(rawItems) {
     }
     const explicitProtein = item.proteinId;
     const legacyMealKey = item.premiumMealId;
+    const premiumKeyInput = item.premiumKey;
     const resolved = explicitProtein != null ? explicitProtein : legacyMealKey;
     const resolvedStr = String(resolved || "");
+
+    if (premiumKeyInput && typeof premiumKeyInput === "string" && premiumKeyInput.trim()) {
+      return { ...item, premiumKey: premiumKeyInput.trim() };
+    }
     
     if (resolvedStr === "custom_premium_salad" || resolvedStr.includes("custom_premium_salad")) {
-      const err = new Error("custom_premium_salad must be selected inside meal planner, not checkout premiumItems");
-      err.code = "INVALID_PREMIUM_ITEM";
-      throw err;
+      return { ...item, premiumKey: "custom_premium_salad" };
     }
     
     if (explicitProtein != null && legacyMealKey != null && String(explicitProtein) !== String(legacyMealKey)) {
@@ -104,6 +107,7 @@ function normalizePremiumCheckoutPayloadItems(rawItems) {
       err.code = "VALIDATION_ERROR";
       throw err;
     }
+    
     if (resolved == null) {
       return item;
     }
@@ -149,6 +153,45 @@ function normalizeCheckoutItemsOrThrow(rawItems, idField, itemName) {
   }
 
   return Array.from(byId.entries()).map(([id, qty]) => ({ id, qty }));
+}
+
+function normalizePremiumItemsByKey(rawItems) {
+  if (rawItems === undefined || rawItems === null) {
+    return [];
+  }
+  if (!Array.isArray(rawItems)) {
+    const err = new Error("premiumItems must be an array");
+    err.code = "VALIDATION_ERROR";
+    throw err;
+  }
+
+  const byKey = new Map();
+  for (const item of rawItems) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      const err = new Error("premiumItems must contain objects");
+      err.code = "VALIDATION_ERROR";
+      throw err;
+    }
+
+    const premiumKey = item.premiumKey;
+    if (!premiumKey || typeof premiumKey !== "string" || !premiumKey.trim()) {
+      const err = new Error("premiumItems entry must have premiumKey");
+      err.code = "VALIDATION_ERROR";
+      throw err;
+    }
+
+    const qty = parsePositiveInteger(item.qty);
+    if (!qty) {
+      const err = new Error("qty must be a positive integer for premiumItems");
+      err.code = "VALIDATION_ERROR";
+      throw err;
+    }
+
+    const key = premiumKey.trim();
+    byKey.set(key, (byKey.get(key) || 0) + qty);
+  }
+
+  return Array.from(byKey.entries()).map(([premiumKey, qty]) => ({ premiumKey, qty }));
 }
 
 function normalizeCheckoutAddonSelectionsOrThrow(rawItems, itemName = "addons") {
@@ -315,21 +358,33 @@ async function resolveCheckoutQuoteOrThrow(
     throw err;
   }
 
-  const premiumItems = normalizeCheckoutItemsOrThrow(
-    normalizePremiumCheckoutPayloadItems(payload.premiumItems),
-    "proteinId",
-    "premiumItems"
-  );
-  const addonItems = normalizeCheckoutAddonSelectionsOrThrow(payload.addons, "addons");
+  const normalizedPremiumItems = normalizePremiumCheckoutPayloadItems(payload.premiumItems);
+  const hasPremiumKey = normalizedPremiumItems && 
+    Array.isArray(normalizedPremiumItems) && 
+    normalizedPremiumItems.some(item => item && item.premiumKey && typeof item.premiumKey === "string");
+
+  let premiumItems, addonItems;
+  if (hasPremiumKey) {
+    premiumItems = normalizePremiumItemsByKey(normalizedPremiumItems);
+  } else {
+    premiumItems = normalizeCheckoutItemsOrThrow(
+      normalizedPremiumItems,
+      "proteinId",
+      "premiumItems"
+    );
+  }
+  addonItems = normalizeCheckoutAddonSelectionsOrThrow(payload.addons, "addons");
 
   const premiumCountInput = parseOptionalNonNegativeInteger(payload.premiumCount);
   const compatibilityPremiumCount = sumCheckoutPremiumItemsQty(premiumItems);
 
-  const premiumIds = premiumItems.map((item) => item.id);
+  const premiumIds = premiumItems.map((item) => item.id || item.premiumKey);
   const addonIds = addonItems.map((item) => item.id);
 
   const [premiumDocs, addonDocs] = await Promise.all([
-    premiumIds.length ? BuilderProtein.find({ _id: { $in: premiumIds }, isActive: true, isPremium: true }).lean() : Promise.resolve([]),
+    hasPremiumKey 
+      ? Promise.resolve([])
+      : (premiumIds.length ? BuilderProtein.find({ _id: { $in: premiumIds }, isActive: true, isPremium: true }).lean() : Promise.resolve([])),
     addonIds.length ? Addon.find({ _id: { $in: addonIds }, isActive: true }).lean() : Promise.resolve([]),
   ]);
 
@@ -342,45 +397,70 @@ async function resolveCheckoutQuoteOrThrow(
   let premiumUnitPriceHalala = 0;
 
   for (const item of premiumItems) {
-    const doc = premiumById.get(item.id);
-    if (!doc) {
-      const err = new Error(`Invalid premium protein: ${item.id}`);
-      err.code = "INVALID_PREMIUM_ITEM";
-      throw err;
-    }
-    const unit = parseNonNegativeInteger(doc.extraFeeHalala);
-    if (unit === null) {
-      const err = new Error(`Premium protein ${item.id} has invalid price`);
-      err.code = "INVALID_PREMIUM_ITEM";
-      throw err;
-    }
-    assertSystemCurrencyOrThrow(doc.currency || SYSTEM_CURRENCY, `Premium protein ${item.id} currency`);
-
     let resolved;
-    try {
-      resolved = await resolveCanonicalPremiumIdentity({
-        proteinId: item.id,
-        builderProteinDoc: doc,
-      });
-    } catch (resolveErr) {
-      if (resolveErr.code === "UNKNOWN_PREMIUM_KEY" || resolveErr.code === "INVALID_PREMIUM_ITEM") {
-        const err = new Error(`Cannot resolve premium identity: ${resolveErr.message}`);
+    
+    if (hasPremiumKey) {
+      try {
+        resolved = await resolveCanonicalPremiumIdentity({
+          premiumKey: item.premiumKey,
+        });
+      } catch (resolveErr) {
+        const err = new Error(`Invalid premiumKey: ${item.premiumKey} - ${resolveErr.message}`);
         err.code = "INVALID_PREMIUM_ITEM";
         throw err;
       }
-      throw resolveErr;
-    }
+      
+      const doc = resolved.canonicalProteinDoc || null;
+      premiumTotalHalala += resolved.unitExtraFeeHalala * item.qty;
+      resolvedPremiumItems.push({
+        protein: doc,
+        qty: item.qty,
+        unitExtraFeeHalala: resolved.unitExtraFeeHalala,
+        currency: SYSTEM_CURRENCY,
+        premiumKey: resolved.premiumKey,
+        canonicalProteinId: resolved.canonicalProteinId,
+        name: resolved.name,
+      });
+    } else {
+      const doc = premiumById.get(item.id);
+      if (!doc) {
+        const err = new Error(`Invalid premium protein: ${item.id}`);
+        err.code = "INVALID_PREMIUM_ITEM";
+        throw err;
+      }
+      const unit = parseNonNegativeInteger(doc.extraFeeHalala);
+      if (unit === null) {
+        const err = new Error(`Premium protein ${item.id} has invalid price`);
+        err.code = "INVALID_PREMIUM_ITEM";
+        throw err;
+      }
+      assertSystemCurrencyOrThrow(doc.currency || SYSTEM_CURRENCY, `Premium protein ${item.id} currency`);
 
-    premiumTotalHalala += resolved.unitExtraFeeHalala * item.qty;
-    resolvedPremiumItems.push({
-      protein: doc,
-      qty: item.qty,
-      unitExtraFeeHalala: resolved.unitExtraFeeHalala,
-      currency: SYSTEM_CURRENCY,
-      premiumKey: resolved.premiumKey,
-      canonicalProteinId: resolved.canonicalProteinId,
-      name: resolved.name,
-    });
+      try {
+        resolved = await resolveCanonicalPremiumIdentity({
+          proteinId: item.id,
+          builderProteinDoc: doc,
+        });
+      } catch (resolveErr) {
+        if (resolveErr.code === "UNKNOWN_PREMIUM_KEY" || resolveErr.code === "INVALID_PREMIUM_ITEM") {
+          const err = new Error(`Cannot resolve premium identity: ${resolveErr.message}`);
+          err.code = "INVALID_PREMIUM_ITEM";
+          throw err;
+        }
+        throw resolveErr;
+      }
+
+      premiumTotalHalala += resolved.unitExtraFeeHalala * item.qty;
+      resolvedPremiumItems.push({
+        protein: doc,
+        qty: item.qty,
+        unitExtraFeeHalala: resolved.unitExtraFeeHalala,
+        currency: SYSTEM_CURRENCY,
+        premiumKey: resolved.premiumKey,
+        canonicalProteinId: resolved.canonicalProteinId,
+        name: resolved.name,
+      });
+    }
   }
 
   let addonsTotalHalala = 0;

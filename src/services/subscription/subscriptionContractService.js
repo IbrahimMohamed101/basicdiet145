@@ -116,7 +116,13 @@ function buildPhase1SubscriptionContract({ payload = {}, resolvedQuote, actorCon
   const delivery = resolvedQuote.delivery && typeof resolvedQuote.delivery === "object" ? resolvedQuote.delivery : {};
   const slot = delivery.slot && typeof delivery.slot === "object" ? delivery.slot : {};
   const deliveryMode = delivery.type === "pickup" ? "pickup" : "delivery";
-  const premiumItems = (resolvedQuote.premiumItems || []).map((item) => ({ proteinId: String(item.protein && item.protein._id ? item.protein._id : item.proteinId || ""), qty: Number(item.qty || 0), unitExtraFeeHalala: Number(item.unitExtraFeeHalala || 0), currency: String(item.currency || "SAR") }));
+  const premiumItems = (resolvedQuote.premiumItems || []).map((item) => ({
+    proteinId: item.canonicalProteinId ? String(item.canonicalProteinId) : (item.protein && item.protein._id ? String(item.protein._id) : item.proteinId || ""),
+    premiumKey: item.premiumKey || null,
+    qty: Number(item.qty || 0),
+    unitExtraFeeHalala: Number(item.unitExtraFeeHalala || 0),
+    currency: String(item.currency || "SAR"),
+  }));
   const promo = resolvedQuote.promoCode && typeof resolvedQuote.promoCode === "object"
     ? resolvedQuote.promoCode
     : null;
