@@ -9,6 +9,11 @@ const { resolvePickupPreparationState } = require("./subscriptionPickupPreparati
 const { serializeSubscriptionForClientWithGuard } = require("./subscriptionClientSerializationService");
 const { getRestaurantHours } = require("../restaurantHoursService");
 const { pickLang } = require("../../utils/i18n");
+const { 
+  getPremiumDisplayName, 
+  resolvePremiumKeyFromName,
+  CANONICAL_PREMIUM_KEYS 
+} = require("../../utils/subscription/premiumIdentity");
 
 function isPopulatedPlanDocument(plan) {
   return Boolean(
@@ -82,58 +87,15 @@ async function buildSubscriptionOverviewSkipUsageSafe(subscription, runtime) {
   };
 }
 
-function normalizePremiumName(value) {
-  if (!value || typeof value !== "string") return "";
-  return value.toLowerCase().trim().replace(/\s+/g, " ");
-}
-
-const PREMIUM_KEY_NAME_MAP = {
-  shrimp: ["جمبري", "shrimp", "gambari", "جمبرى", "جمبرى"],
-  beef_steak: ["ستيك لحم", "beef steak", "steak", "beefsteak", "لحم"],
-  salmon: ["سالمون", "salmon", "سمك سالمون", "سلمون"],
-};
-
-function resolvePremiumKeyFromName(name) {
-  if (!name || typeof name !== "string") return null;
-  const normalized = normalizePremiumName(name);
-
-  for (const [key, aliases] of Object.entries(PREMIUM_KEY_NAME_MAP)) {
-    for (const alias of aliases) {
-      if (normalized.includes(alias) || alias.includes(normalized)) {
-        return key;
-      }
-    }
-  }
-
-  if (normalized.includes("جمبرى") || normalized.includes("shrimp") || normalized.includes("gambari")) {
-    return "shrimp";
-  }
-  if (normalized.includes("ستيك") || normalized.includes("steak") || normalized.includes("beef")) {
-    return "beef_steak";
-  }
-  if (normalized.includes("سالمون") || normalized.includes("salmon") || normalized.includes("سلمون")) {
-    return "salmon";
-  }
-
-  return null;
-}
-
 const CUSTOM_PREMIUM_SALAD_KEY = "custom_premium_salad";
 
-const CANONICAL_PREMIUM_KEYS = ["shrimp", "beef_steak", "salmon", "custom_premium_salad"];
-
-const CUSTOM_PREMIUM_SALAD_NAMES = {
-  ar: "سلطة مميزة",
-  en: "Custom Premium Salad",
-};
-
 function buildCustomPremiumSaladItem(lang) {
-  const name = lang === "en" ? CUSTOM_PREMIUM_SALAD_NAMES.en : CUSTOM_PREMIUM_SALAD_NAMES.ar;
+  const name = getPremiumDisplayName({ premiumKey: CUSTOM_PREMIUM_SALAD_KEY, lang });
   return {
     premiumMealId: CUSTOM_PREMIUM_SALAD_KEY,
     premiumKey: CUSTOM_PREMIUM_SALAD_KEY,
     name,
-    type: "custom_premium_salad",
+    type: CUSTOM_PREMIUM_SALAD_KEY,
     extraFeeHalala: 3000,
     purchasedQtyTotal: 0,
     remainingQtyTotal: 0,
@@ -305,7 +267,7 @@ function buildSubscriptionPremiumBalanceSummary(subscription, premiumCatalog, la
     result.push({
       premiumMealId: key,
       premiumKey: key,
-      name: key,
+      name: getPremiumDisplayName({ premiumKey: key, lang }),
       purchasedQtyTotal: summary.purchasedQtyTotal,
       remainingQtyTotal: summary.remainingQtyTotal,
       consumedQtyTotal: summary.purchasedQtyTotal - summary.remainingQtyTotal,
@@ -315,9 +277,7 @@ function buildSubscriptionPremiumBalanceSummary(subscription, premiumCatalog, la
   }
 
   const customSaladItem = buildCustomPremiumSaladItem(lang);
-  const customSaladNormalizedName = normalizePremiumName(customSaladItem.name);
-  if (!existingKeys.has(CUSTOM_PREMIUM_SALAD_KEY) &&
-      (!customSaladNormalizedName || !existingKeys.has(customSaladNormalizedName))) {
+  if (!existingKeys.has(CUSTOM_PREMIUM_SALAD_KEY)) {
     result.push(customSaladItem);
   }
 

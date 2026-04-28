@@ -221,6 +221,31 @@ async function resolveCanonicalPremiumIdentity(input) {
   };
 }
 
+function getPremiumDisplayName({ premiumKey, name, lang = "en" }) {
+  if (name && String(name).trim() && name !== premiumKey) {
+    return String(name).trim();
+  }
+
+  if (premiumKey === "custom_premium_salad") {
+    return lang === "ar"
+      ? "سلطة مميزة مخصصة"
+      : "Custom Premium Salad";
+  }
+
+  // Fallback for known canonical keys if name is missing or equal to key
+  const fallbacks = {
+    shrimp: { en: "Shrimp", ar: "جمبري" },
+    beef_steak: { en: "Beef Steak", ar: "ستيك لحم" },
+    salmon: { en: "Salmon", ar: "سالمون" },
+  };
+
+  if (premiumKey && fallbacks[premiumKey]) {
+    return lang === "ar" ? fallbacks[premiumKey].ar : fallbacks[premiumKey].en;
+  }
+
+  return name || premiumKey || "";
+}
+
 module.exports = {
   resolveCanonicalPremiumIdentity,
   resolvePremiumKeyFromName,
@@ -231,4 +256,5 @@ module.exports = {
   isStaticPremiumItem,
   getStaticPremiumItem,
   STATIC_PREMIUM_ITEMS,
+  getPremiumDisplayName,
 };

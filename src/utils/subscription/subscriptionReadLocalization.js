@@ -6,6 +6,7 @@ const {
 } = require("./subscriptionCatalog");
 const {
   resolvePremiumKeyFromName,
+  getPremiumDisplayName,
 } = require("./premiumIdentity");
 const {
   localizeAddonRows,
@@ -295,10 +296,14 @@ function localizeSubscriptionReadPayload(subscription, { lang, addonNames = new 
       return {
         ...item,
         premiumKey,
-        name: resolveCatalogOrStoredName({ 
-          id: proteinId,
-          liveName: proteinId ? premiumNames.get(proteinId) || "" : "",
-          storedName: "", 
+        name: getPremiumDisplayName({
+          premiumKey,
+          name: resolveCatalogOrStoredName({ 
+            id: proteinId,
+            liveName: proteinId ? premiumNames.get(proteinId) || "" : "",
+            storedName: item.name || "", 
+            lang 
+          }),
           lang 
         }),
       };

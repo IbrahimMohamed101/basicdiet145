@@ -16,7 +16,7 @@ const {
 } = require("../../constants/phase1Contract");
 const { consumePromoCodeUsageReservation } = require("../promoCodeService");
 const { logger } = require("../../utils/logger");
-const { resolveCanonicalPremiumIdentity, resolvePremiumKeyFromName } = require("../../utils/subscription/premiumIdentity");
+const { resolveCanonicalPremiumIdentity, resolvePremiumKeyFromName, getPremiumDisplayName } = require("../../utils/subscription/premiumIdentity");
 
 const SYSTEM_CURRENCY = "SAR";
 
@@ -98,7 +98,7 @@ async function toCanonicalPremiumBalanceRows(draft) {
     rows.push({
       proteinId: normalizeOptionalObjectId(resolved.canonicalProteinId || normalizedProteinId),
       premiumKey: resolved.premiumKey,
-      name: resolved.name || item.name,
+      name: getPremiumDisplayName({ premiumKey: resolved.premiumKey, name: resolved.name || item.name, lang: "en" }),
       purchasedQty: Number(item.qty || 0),
       remainingQty: Number(item.qty || 0),
       unitExtraFeeHalala: resolved.unitExtraFeeHalala || item.unitExtraFeeHalala || 0,
@@ -210,7 +210,7 @@ async function toPremiumBalanceRowsFromContractEntitlements(contractSnapshot, la
     rows.push({
       proteinId: normalizeOptionalObjectId(resolved.canonicalProteinId || normalizedProteinId),
       premiumKey: resolved.premiumKey,
-      name: resolved.name || item.name,
+      name: getPremiumDisplayName({ premiumKey: resolved.premiumKey, name: resolved.name || item.name, lang: "en" }),
       purchasedQty: qty,
       remainingQty: qty,
       unitExtraFeeHalala: resolved.unitExtraFeeHalala || item.unitExtraFeeHalala || 0,

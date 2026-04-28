@@ -43,6 +43,7 @@ const {
   isPhase2GenericPremiumWalletEnabled,
 } = require("../utils/featureFlags");
 const { getSubscriptionContractReadView } = require("../services/subscription/subscriptionContractReadService");
+const { getPremiumDisplayName } = require("../utils/subscription/premiumIdentity");
 const {
   normalizeDashboardEmail,
   isValidEmailFormat,
@@ -1454,13 +1455,19 @@ async function createSubscriptionAdmin(req, res, nextOrRuntimeOverrides = null, 
         : (String(rawProteinId).trim() === "" || String(rawProteinId).trim() === "null" || String(rawProteinId).trim() === "undefined"
           ? null
           : rawProteinId);
+      const premiumKey = item.premiumKey || (item.protein && item.protein.premiumKey) || null;
       return {
-        premiumKey: item.premiumKey || (item.protein && item.protein.premiumKey) || null,
+        premiumKey,
         proteinId: normalizedProteinId,
         purchasedQty: Number(item.qty || 0),
         remainingQty: Number(item.qty || 0),
         unitExtraFeeHalala: Number(item.unitExtraFeeHalala || 0),
         currency: item.currency || "SAR",
+        name: getPremiumDisplayName({ 
+          premiumKey, 
+          name: item.name || (item.protein && pickLang(item.protein.name, "en")) || null, 
+          lang: "en" 
+        }),
       };
     });
 
