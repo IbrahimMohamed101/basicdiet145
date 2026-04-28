@@ -12,6 +12,7 @@ const NutritionSchema = new mongoose.Schema(
 
 const BuilderProteinSchema = new mongoose.Schema(
   {
+    key: { type: String, trim: true },
     name: {
       ar: { type: String, default: "" },
       en: { type: String, default: "" },
@@ -30,7 +31,7 @@ const BuilderProteinSchema = new mongoose.Schema(
     },
     ruleTags: { type: [String], default: [] },
     isPremium: { type: Boolean, default: false },
-    premiumKey: { type: String, default: null, trim: true },
+    premiumKey: { type: String, trim: true },
     premiumCreditCost: { type: Number, min: 0, default: 0 },
     extraFeeHalala: { type: Number, min: 0, default: 0 },
     currency: { type: String, default: "SAR" },
@@ -42,8 +43,23 @@ const BuilderProteinSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+BuilderProteinSchema.index(
+  { key: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { key: { $type: "string" } }
+  }
+);
+
+BuilderProteinSchema.index(
+  { premiumKey: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { premiumKey: { $type: "string" } }
+  }
+);
+
 BuilderProteinSchema.index({ displayCategoryId: 1, isActive: 1, sortOrder: 1, createdAt: -1 });
 BuilderProteinSchema.index({ proteinFamilyKey: 1, isActive: 1, sortOrder: 1, createdAt: -1 });
-BuilderProteinSchema.index({ premiumKey: 1 }, { unique: true, sparse: true });
 
 module.exports = mongoose.model("BuilderProtein", BuilderProteinSchema);

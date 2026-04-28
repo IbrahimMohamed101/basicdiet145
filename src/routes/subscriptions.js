@@ -72,9 +72,7 @@ router.post("/checkout-drafts/:draftId/verify-payment", asyncHandler(controller.
  */
 router.post("/checkout", checkoutLimiter, asyncHandler(controller.checkoutSubscription));
 
-const ENABLE_DEV_SUBSCRIPTION_ACTIVATION =
-  process.env.ENABLE_DEV_SUBSCRIPTION_ACTIVATION === "true" ||
-  (process.env.NODE_ENV !== "production" && process.env.ENABLE_DEV_SUBSCRIPTION_ACTIVATION !== "false");
+const ENABLE_DEV_SUBSCRIPTION_ACTIVATION = process.env.ENABLE_DEV_SUBSCRIPTION_ACTIVATION === "true";
 
 if (ENABLE_DEV_SUBSCRIPTION_ACTIVATION) {
   router.post("/:id/activate", asyncHandler(controller.activateSubscription));

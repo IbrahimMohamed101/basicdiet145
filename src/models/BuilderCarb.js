@@ -19,6 +19,7 @@ const LegacyCarbMappingsSchema = new mongoose.Schema(
 
 const BuilderCarbSchema = new mongoose.Schema(
   {
+    key: { type: String, trim: true },
     name: {
       ar: { type: String, default: "" },
       en: { type: String, default: "" },
@@ -38,6 +39,13 @@ const BuilderCarbSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+BuilderCarbSchema.index(
+  { key: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { key: { $type: "string" } }
+  }
+);
 BuilderCarbSchema.index({ displayCategoryId: 1, isActive: 1, sortOrder: 1, createdAt: -1 });
 
 module.exports = mongoose.model("BuilderCarb", BuilderCarbSchema);

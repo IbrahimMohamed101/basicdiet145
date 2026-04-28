@@ -607,7 +607,7 @@ async function performSubscriptionRenewal(userId, subscriptionId, body, lang, ru
       paymentUrl,
     });
     logger.error("Subscription renewal failed", { error: err.message, stack: err.stack });
-    throw { status: 500, code: "INTERNAL", message: `Renewal failed: ${err.message} \n ${err.stack}` };
+    throw { status: 500, code: "INTERNAL", message: `Renewal failed: ${err.message}` };
   }
 }
 

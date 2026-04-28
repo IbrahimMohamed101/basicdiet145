@@ -94,6 +94,8 @@ const SubscriptionSchema = new mongoose.Schema(
     totalMeals: { type: Number, required: true },
     remainingMeals: { type: Number, required: true },
     addonSubscriptions: { type: [AddonSubscriptionEntitlementSchema], default: [] },
+    addonBalance: { type: [AddonBalanceSchema], default: [] },
+    addonSelections: { type: [AddonSelectionSchema], default: [] },
 
     selectedGrams: { type: Number },
     selectedMealsPerDay: { type: Number },

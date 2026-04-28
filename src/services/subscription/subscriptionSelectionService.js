@@ -440,10 +440,37 @@ async function performDaySelectionUpdate({ userId, subscriptionId, date, selecti
     });
 
     // ATOMIC premium balance consumption - replaces reconcilePremiumBalanceForDay
+    const existingBalanceMap = new Map();
+    if (existingDay && Array.isArray(existingDay.premiumUpgradeSelections)) {
+       for (const sel of existingDay.premiumUpgradeSelections) {
+         if (sel.premiumSource === "balance") {
+           existingBalanceMap.set(`${sel.baseSlotKey}_${sel.premiumKey}`, sel);
+         }
+       }
+    }
+
     const processedPremiumSelections = [];
     if (Array.isArray(draft.premiumUpgradeSelections)) {
       for (const sel of draft.premiumUpgradeSelections) {
         if (sel.isPremium === true || (sel.premiumSource && sel.premiumSource !== "none")) {
+          const mapKey = `${sel.baseSlotKey}_${sel.premiumKey}`;
+          const existingClaim = existingBalanceMap.get(mapKey);
+
+          if (existingClaim) {
+             processedPremiumSelections.push({
+               baseSlotKey: sel.baseSlotKey,
+               premiumKey: sel.premiumKey,
+               proteinId: sel.proteinId,
+               premiumSource: "balance",
+               unitExtraFeeHalala: existingClaim.unitExtraFeeHalala || sel.unitExtraFeeHalala || 3000,
+               currency: existingClaim.currency || "SAR",
+               date,
+               dayId: day._id,
+             });
+             existingBalanceMap.delete(mapKey);
+             continue;
+          }
+
           const balanceResult = await consumePremiumBalanceAtomically({
             subscription: subInSession,
             dayId: day._id,
@@ -486,24 +513,15 @@ async function performDaySelectionUpdate({ userId, subscriptionId, date, selecti
       update.premiumUpgradeSelections = processedPremiumSelections;
     }
 
-    // Also process any changes - restore balance for slots that were using balance but no longer are
-    if (existingDay && Array.isArray(existingDay.premiumUpgradeSelections)) {
-      const existingBalanceSelections = existingDay.premiumUpgradeSelections.filter(
-        (s) => s.premiumSource === "balance"
-      );
-      const newBaseSlotKeys = new Set(processedPremiumSelections.map((s) => s.baseSlotKey));
-
-      for (const sel of existingBalanceSelections) {
-        if (!newBaseSlotKeys.has(sel.baseSlotKey)) {
-          await releasePremiumBalanceAtomically({
-            subscription: subInSession,
-            dayId: day._id,
-            date,
-            premiumKey: sel.premiumKey,
-            session,
-          });
-        }
-      }
+    // Release balance for selections that NO LONGER exist or whose premiumKey changed
+    for (const sel of existingBalanceMap.values()) {
+      await releasePremiumBalanceAtomically({
+        subscription: subInSession,
+        dayId: day._id,
+        date,
+        premiumKey: sel.premiumKey,
+        session,
+      });
     }
 
     await subInSession.save({ session });
@@ -542,7 +560,7 @@ async function performDaySelectionValidation({ userId, subscriptionId, date, mea
   const planningDraftSubscription = buildPlanningDraftSubscriptionView(sub, day);
   const draft = await buildMealSlotDraft({ mealSlots, mealsPerDayLimit, subscription: planningDraftSubscription });
   if (!draft.valid) {
-    return { valid: false, code: draft.errorCode || "INVALID_MEAL_PLAN", message: draft.errorMessage || "Meal planner validation failed", slotErrors: draft.slotErrors, rules: getMealPlannerRules() };
+    throw { status: 422, code: draft.errorCode || "INVALID_MEAL_PLAN", message: draft.errorMessage || "Meal planner validation failed", slotErrors: draft.slotErrors, rules: getMealPlannerRules(), valid: false };
   }
 
   const derivedDraftState = buildDayCommercialState({
@@ -578,8 +596,13 @@ async function performDayPlanningConfirmation({ userId, subscriptionId, date, ru
   const session = await mongoose.startSession();
   session.startTransaction();
   try {
-    const subInSession = await Subscription.findById(subscriptionId).session(session);
+    let subInSession = await Subscription.findById(subscriptionId).session(session);
     if (!subInSession) throw { status: 404, code: "NOT_FOUND", message: "Subscription not found" };
+
+    const resolvedPlanningSubscription = await resolvePlanningSubscriptionForOperation(subInSession, session);
+    subInSession = resolvedPlanningSubscription.subscription;
+    subscriptionId = resolvedPlanningSubscription.subscriptionId;
+
     if (String(subInSession.userId) !== String(userId)) throw { status: 403, code: "FORBIDDEN", message: "Forbidden" };
     ensureActive(subInSession, date);
     await validateFutureDateOrThrow(date, subInSession);

@@ -317,8 +317,16 @@ function resolvePremiumMealCatalogEntry(row, lang) {
   const normalizedRow = withDefaultMealNutrition(row);
   const extraFee = toMoneyParts(normalizedRow && normalizedRow.extraFeeHalala);
   const premiumKey = normalizedRow.premiumKey || null;
-  const selectionType = premiumKey ? PREMIUM_PROTEIN_SELECTION_TYPE : "premium_protein";
-  const type = premiumKey ? PREMIUM_PROTEIN_SELECTION_TYPE : "premium_protein";
+  const isPremium = normalizedRow.isPremium === true;
+
+  if (isPremium && !premiumKey) {
+    const err = new Error(`Data Integrity Error: Premium record [${normalizedRow._id}] is missing canonical premiumKey`);
+    err.code = "PREMIUM_INTEGRITY_VIOLATION";
+    throw err;
+  }
+
+  const selectionType = premiumKey ? premiumKey : "premium_protein";
+  const type = premiumKey ? premiumKey : "premium_protein";
 
   return {
     id: String(normalizedRow._id),

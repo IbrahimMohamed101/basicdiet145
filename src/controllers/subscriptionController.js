@@ -1067,7 +1067,7 @@ async function checkoutSubscription(req, res, runtimeOverrides = null) {
       return errorResponse(res, 400, "CHECKOUT_FAILED", err.message);
     }
     logger.error("Subscription checkout failed", { error: err.message, stack: err.stack });
-    return errorResponse(res, 500, "INTERNAL", `Checkout failed: ${err.message} \n ${err.stack}`);
+    return errorResponse(res, 500, "INTERNAL", `Checkout failed: ${err.message}`);
   }
 }
 

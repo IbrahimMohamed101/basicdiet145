@@ -399,12 +399,13 @@ async function validateAndNormalizePremiumBalance(serializedSubscription, sub, p
       if (resolvedKey) {
         row.premiumKey = resolvedKey;
       } else {
-        logger.error("[PREMIUM_BALANCE_CONSISTENCY] CRITICAL: Unresolved premiumKey in overview - failing loudly", {
+        logger.error("[PREMIUM_BALANCE_CONSISTENCY] CRITICAL: Unresolved premiumKey in overview - failing gracefully", {
           subscriptionId: String(sub._id),
           proteinId: row.proteinId,
           name: row.name
         });
-        throw new Error(`Invalid premiumBalance row: premiumKey is required for subscription ${sub._id}`);
+        row.validationError = true;
+        row.premiumKey = `legacy_${row.proteinId}`;
       }
     }
   }

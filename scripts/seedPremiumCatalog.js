@@ -66,6 +66,13 @@ async function seedPremiumCatalog() {
   let updated = 0;
 
   for (const meal of PREMIUM_MEALS) {
+    // Explicitly do NOT seed custom_premium_salad into BuilderProtein
+    // It is handled statically in premiumIdentity.js
+    if (meal.premiumKey === "custom_premium_salad") {
+      console.log(`Skipping DB entry for static premium item: ${meal.premiumKey}`);
+      continue;
+    }
+
     const query = { premiumKey: meal.premiumKey };
     const update = {
       $set: {
@@ -96,7 +103,7 @@ async function seedPremiumCatalog() {
     }
   }
 
-  console.log(`\nPremium meals: ${created} created, ${updated} updated`);
+  console.log(`\nPremium meals seeded to BuilderProtein: ${created} created, ${updated} updated`);
 
   created = 0;
   updated = 0;
@@ -126,11 +133,12 @@ async function seedPremiumCatalog() {
 
   console.log(`\nSalad groups: ${created} created, ${updated} updated`);
 
-  const docs = await BuilderProtein.find({ premiumKey: { $in: PREMIUM_MEALS.map(m => m.premiumKey) } })
+  const dbPremiumKeys = ["beef_steak", "salmon", "shrimp"];
+  const docs = await BuilderProtein.find({ premiumKey: { $in: dbPremiumKeys } })
     .select("premiumKey name extraFeeHalala isActive")
     .lean();
 
-  console.log("\nSeeded premium meals:");
+  console.log("\nPremium meals in BuilderProtein:");
   console.log(JSON.stringify(docs.map(d => ({
     premiumKey: d.premiumKey,
     name: d.name,

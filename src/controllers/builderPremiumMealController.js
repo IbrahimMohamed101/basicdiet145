@@ -68,6 +68,7 @@ function mapBuilderProteinToPremiumMealEntry(row, lang) {
     carbGrams: Number(nutrition.carbGrams || 0),
     fatGrams: Number(nutrition.fatGrams || 0),
     premiumKey: row.premiumKey || null,
+    isPremium: row.isPremium,
   }, lang);
 }
 

@@ -256,6 +256,8 @@ async function getSubscriptionMenu(req, res) {
           proteinGrams: Number((p.nutrition && p.nutrition.proteinGrams) || 0),
           carbGrams: Number((p.nutrition && p.nutrition.carbGrams) || 0),
           fatGrams: Number((p.nutrition && p.nutrition.fatGrams) || 0),
+          isPremium: p.isPremium,
+          premiumKey: p.premiumKey,
           isActive: p.isActive,
           sortOrder: p.sortOrder || 0,
         }))
@@ -332,6 +334,8 @@ async function getSubscriptionMealPlannerMenu(req, res) {
           proteinGrams: Number((p.nutrition && p.nutrition.proteinGrams) || 0),
           carbGrams:    Number((p.nutrition && p.nutrition.carbGrams)    || 0),
           fatGrams:     Number((p.nutrition && p.nutrition.fatGrams)     || 0),
+          isPremium: p.isPremium,
+          premiumKey: p.premiumKey,
           isActive: p.isActive,
           sortOrder: p.sortOrder || 0,
         }))

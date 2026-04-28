@@ -32,7 +32,7 @@ async function getMealPlannerCatalog({ lang }) {
   const [categories, proteins, carbs, saladIngredients] = await Promise.all([
     BuilderCategory.find({ isActive: true }).sort({ dimension: 1, sortOrder: 1, createdAt: -1 }).lean(),
     BuilderProtein.find({ isActive: true, availableForSubscription: { $ne: false } }).sort({ sortOrder: 1, createdAt: -1 }).lean(),
-    BuilderCarb.find({ isActive: true, availableForSubscription: { $ne: false }, displayCategoryKey: LARGE_SALAD_KEY }).sort({ sortOrder: 1, createdAt: -1 }).lean(),
+    BuilderCarb.find({ isActive: true, availableForSubscription: { $ne: false } }).sort({ sortOrder: 1, createdAt: -1 }).lean(),
     SaladIngredient.find({ isActive: true }).sort({ groupKey: 1, sortOrder: 1, createdAt: -1 }).lean(),
   ]);
 
