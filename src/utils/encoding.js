@@ -52,14 +52,33 @@ function sanitizeString(str) {
 function sanitizeObject(obj) {
   if (obj === null || obj === undefined) return obj;
   if (typeof obj === 'string') return sanitizeString(obj);
+
+  // Handle Dates - return as is so JSON.stringify can handle them
+  if (obj instanceof Date || (obj.constructor && obj.constructor.name === 'Date')) {
+    return obj;
+  }
+
+  // Handle ObjectIds - return as is so JSON.stringify can handle them via toJSON()
+  if (
+    obj._bsontype === 'ObjectId' || 
+    (obj.constructor && obj.constructor.name === 'ObjectId')
+  ) {
+    return obj;
+  }
+
   if (typeof obj !== 'object') return obj;
 
   if (Array.isArray(obj)) {
     return obj.map(item => sanitizeObject(item));
   }
 
+  // Handle Mongoose documents or objects with toObject
+  const plain = (typeof obj.toObject === 'function') 
+    ? obj.toObject() 
+    : obj;
+
   const sanitized = {};
-  for (const [key, value] of Object.entries(obj)) {
+  for (const [key, value] of Object.entries(plain)) {
     sanitized[key] = sanitizeObject(value);
   }
   return sanitized;

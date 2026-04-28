@@ -1,11 +1,14 @@
 function serializeForApi(value) {
   if (value == null) return value;
 
-  if (value instanceof Date) return value.toISOString();
+  if (value instanceof Date || (value.constructor && value.constructor.name === 'Date')) {
+    return value.toISOString();
+  }
 
   if (
     value._bsontype === "ObjectId" ||
-    value.constructor?.name === "ObjectId"
+    value.constructor?.name === "ObjectId" ||
+    (typeof value.toHexString === 'function')
   ) {
     return value.toString();
   }
@@ -15,7 +18,8 @@ function serializeForApi(value) {
   }
 
   if (typeof value === "object") {
-    const plain = value.toObject
+    // Handle Mongoose documents
+    const plain = (typeof value.toObject === 'function')
       ? value.toObject({ virtuals: true })
       : value;
 
