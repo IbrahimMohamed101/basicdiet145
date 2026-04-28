@@ -1,22 +1,27 @@
 const mongoose = require("mongoose");
 const BuilderProtein = require("../../models/BuilderProtein");
 const BuilderCarb = require("../../models/BuilderCarb");
+const Meal = require("../../models/Meal");
 const { isValidObjectId } = mongoose;
 const {
   buildPaymentRequirement,
   buildPlannerRevisionHash,
 } = require("./subscriptionDayCommercialStateService");
 const { validateCarbSelections } = require("../../utils/subscription/carbSelectionValidator");
+const { 
+  NEW_TYPES, 
+  mapLegacySelectionType, 
+  normalizeCarbs 
+} = require("../../utils/subscription/mealTypeMapper");
 
 const SYSTEM_CURRENCY = "SAR";
-const MEAL_PLANNER_RULES_VERSION = "meal_planner_rules.v1";
+const MEAL_PLANNER_RULES_VERSION = "meal_planner_rules.v2";
 const DEFAULT_SLOT_KEY_PREFIX = "slot_";
 
-const CUSTOM_PREMIUM_SALAD_TYPE = "custom_premium_salad";
-const SANDWICH_TYPE = "sandwich";
-const STANDARD_COMBO_TYPE = "standard_combo";
+// Canonical Premium Keys for Entitlements
+const CANONICAL_PREMIUM_SALAD_KEY = "custom_premium_salad";
 
-const CUSTOM_PREMIUM_SALAD_FIXED_PRICE_HALALA = 3000;
+const PREMIUM_LARGE_SALAD_FIXED_PRICE_HALALA = 3000;
 
 function buildMealPlannerValidationResult({ code, message, slotErrors = [] }) {
   return {
@@ -46,8 +51,107 @@ function normalizeMealSlotsInput({ mealSlots }) {
     const normalizedSlot = rawSlot && typeof rawSlot === "object" ? { ...rawSlot } : {};
     normalizedSlot.slotIndex = resolvedSlotIndex;
     normalizedSlot.slotKey = resolveMealSlotKey({ ...rawSlot, slotIndex: resolvedSlotIndex });
+    normalizedSlot.selectionType = mapLegacySelectionType(normalizedSlot.selectionType, normalizedSlot);
+    normalizedSlot.carbs = normalizeCarbs(normalizedSlot);
     return normalizedSlot;
   });
+}
+
+/** 
+ * Validation Suite 
+ */
+
+function validateMealSlotShape(slot) {
+  if (!slot.slotIndex || !slot.selectionType) {
+    return { valid: false, code: "INVALID_SLOT_STRUCTURE", message: "Slot index and selection type are required" };
+  }
+  return { valid: true };
+}
+
+function validateStandardMeal(slot, proteins, carbsMap) {
+  const protein = proteins.get(String(slot.proteinId));
+  if (!protein) return { valid: false, code: "PROTEIN_REQUIRED", message: "Standard meal requires a valid protein" };
+  if (protein.isPremium) return { valid: false, code: "INVALID_PROTEIN_TYPE", message: "Standard meal cannot use premium protein" };
+  
+  return validateCarbSplit(slot.carbs, carbsMap);
+}
+
+function validatePremiumMeal(slot, proteins, carbsMap) {
+  const protein = proteins.get(String(slot.proteinId));
+  if (!protein) return { valid: false, code: "PROTEIN_REQUIRED", message: "Premium meal requires a valid protein" };
+  if (!protein.isPremium) return { valid: false, code: "INVALID_PROTEIN_TYPE", message: "Premium meal requires a premium protein" };
+  
+  return validateCarbSplit(slot.carbs, carbsMap);
+}
+
+function validateCarbSplit(carbs, carbsMap) {
+  if (!Array.isArray(carbs) || carbs.length === 0) {
+    return { valid: false, code: "CARBS_REQUIRED", message: "At least one carb selection is required" };
+  }
+  if (carbs.length > 2) {
+    return { valid: false, code: "TOO_MANY_CARBS", message: "Maximum 2 carb types allowed per meal" };
+  }
+
+  let totalGrams = 0;
+  const seenIds = new Set();
+  
+  for (const selection of carbs) {
+    if (!selection.carbId || !carbsMap.has(String(selection.carbId))) {
+      return { valid: false, code: "INVALID_CARB_ID", message: "Invalid carb selection" };
+    }
+    if (seenIds.has(String(selection.carbId))) {
+      return { valid: false, code: "DUPLICATE_CARB", message: "Duplicate carb type in same meal" };
+    }
+    seenIds.add(String(selection.carbId));
+    
+    const grams = Number(selection.grams);
+    if (!Number.isInteger(grams) || grams <= 0) {
+      return { valid: false, code: "INVALID_GRAMS", message: "Carb grams must be a positive integer" };
+    }
+    totalGrams += grams;
+  }
+
+  if (totalGrams > 300) {
+    return { valid: false, code: "CARB_LIMIT_EXCEEDED", message: "Total carb grams cannot exceed 300g" };
+  }
+
+  return { valid: true };
+}
+
+function validatePremiumLargeSalad(slot) {
+  if (Array.isArray(slot.carbs) && slot.carbs.length > 0) {
+    return { valid: false, code: "CARBS_NOT_ALLOWED", message: "Carbs are not allowed with premium large salad" };
+  }
+  if (slot.sandwichId) {
+    return { valid: false, code: "SANDWICH_NOT_ALLOWED", message: "Sandwich is not allowed with premium large salad" };
+  }
+
+  const salad = slot.salad;
+  if (!salad || !salad.groups) {
+    return { valid: false, code: "SALAD_STRUCTURE_REQUIRED", message: "Salad groups must be defined" };
+  }
+
+  const proteinGroup = Array.isArray(salad.groups.protein) ? salad.groups.protein : [];
+  const sauceGroup = Array.isArray(salad.groups.sauce) ? salad.groups.sauce : [];
+
+  if (proteinGroup.length !== 1) {
+    return { valid: false, code: "SALAD_PROTEIN_REQUIRED", message: "Exactly one protein is required for large salad" };
+  }
+  if (sauceGroup.length !== 1) {
+    return { valid: false, code: "SALAD_SAUCE_REQUIRED", message: "Exactly one sauce is required for large salad" };
+  }
+
+  return { valid: true };
+}
+
+function validateSandwichMeal(slot) {
+  if (!slot.sandwichId) {
+    return { valid: false, code: "SANDWICH_ID_REQUIRED", message: "Sandwich selection is required" };
+  }
+  if (slot.proteinId || (Array.isArray(slot.carbs) && slot.carbs.length > 0) || slot.salad) {
+    return { valid: false, code: "SANDWICH_EXCLUSIVITY_VIOLATION", message: "Sandwich cannot be combined with other components" };
+  }
+  return { valid: true };
 }
 
 function collectDuplicateSlotErrors({ mealSlots }) {
@@ -141,10 +245,8 @@ function getMealPlannerRules() {
     version: MEAL_PLANNER_RULES_VERSION,
     beef: { proteinFamilyKey: "beef", maxSlotsPerDay: 1 },
     standardCarbs: {
-      categoryKey: "standard_carbs",
       maxTypes: 2,
       maxTotalGrams: 300,
-      unit: "grams",
     },
   };
 }
@@ -158,15 +260,13 @@ function projectMaterializedAndLegacyFromSlots({ processedSlots, now }) {
   for (const slot of Array.isArray(processedSlots) ? processedSlots : []) {
     if (slot.status !== "complete") continue;
 
-    const selectionType = String(slot.selectionType || "").trim() || STANDARD_COMBO_TYPE;
+    const selectionType = slot.selectionType;
     
-    if (selectionType === SANDWICH_TYPE && slot.sandwichId) {
+    if (selectionType === NEW_TYPES.SANDWICH && slot.sandwichId) {
       const materialized = {
         slotKey: slot.slotKey,
         sandwichId: slot.sandwichId,
-        proteinId: null,
-        carbId: null,
-        selectionType: SANDWICH_TYPE,
+        selectionType: NEW_TYPES.SANDWICH,
         isPremium: false,
         premiumSource: "none",
         premiumExtraFeeHalala: 0,
@@ -183,18 +283,35 @@ function projectMaterializedAndLegacyFromSlots({ processedSlots, now }) {
       continue;
     }
 
-    if (!slot.proteinId || !slot.carbId) continue;
+    if (selectionType === NEW_TYPES.PREMIUM_LARGE_SALAD) {
+       const materialized = {
+        slotKey: slot.slotKey,
+        selectionType: NEW_TYPES.PREMIUM_LARGE_SALAD,
+        isPremium: true,
+        premiumKey: CANONICAL_PREMIUM_SALAD_KEY,
+        premiumSource: slot.premiumSource || "none",
+        premiumExtraFeeHalala: Number(slot.premiumExtraFeeHalala || 0),
+        operationalSku: `salad:${CANONICAL_PREMIUM_SALAD_KEY}`,
+        generatedAt: now,
+      };
+      materializedMeals.push(materialized);
+      continue;
+    }
 
+    if (!slot.proteinId || !Array.isArray(slot.carbs) || slot.carbs.length === 0) continue;
+
+    const primaryCarbId = slot.carbs[0].carbId;
     const materialized = {
       slotKey: slot.slotKey,
       proteinId: slot.proteinId,
-      carbId: slot.carbId,
+      carbId: primaryCarbId,
       selectionType,
       isPremium: Boolean(slot.isPremium),
       premiumSource: slot.premiumSource || "none",
+      premiumKey: slot.premiumKey || null,
       premiumExtraFeeHalala: Number(slot.premiumExtraFeeHalala || 0),
-      comboKey: `${slot.proteinId}:${slot.carbId}`,
-      operationalSku: `${slot.proteinId}:${slot.carbId}`,
+      comboKey: `${slot.proteinId}:${primaryCarbId}`,
+      operationalSku: `${slot.proteinId}:${primaryCarbId}`,
       generatedAt: now,
     };
     materializedMeals.push(materialized);
@@ -248,14 +365,8 @@ function isBaseBeefSlot(slot) {
     slot
     && slot.proteinFamilyKey === "beef"
     && !slot.isPremium
-    && !isSandwichSlot(slot)
-  );
-}
-
-function isSandwichSlot(slot) {
-  return Boolean(
-    slot
-    && String(slot.selectionType || "").trim() === SANDWICH_TYPE
+    && slot.selectionType !== NEW_TYPES.SANDWICH
+    && slot.selectionType !== NEW_TYPES.PREMIUM_LARGE_SALAD
   );
 }
 
@@ -279,29 +390,8 @@ function recomputePlannerMetaFromSlots({ mealSlots, requiredSlotCount = 0 }) {
 
   const slotErrors = collectDuplicateSlotErrors({ mealSlots: normalizedSlots });
   for (const slot of normalizedSlots) {
-    const selectionType = String(slot && slot.selectionType ? slot.selectionType.trim() : "") || STANDARD_COMBO_TYPE;
-    
-    if (selectionType === SANDWICH_TYPE) {
-      plannerMeta.completeSlotCount += 1;
-      continue;
-    }
-
-    let status = String(slot && slot.status ? slot.status : "empty");
-    const hasProtein = Boolean(slot && slot.proteinId);
-    const hasCarb = Boolean(slot && slot.carbId);
-
-    if (selectionType === CUSTOM_PREMIUM_SALAD_TYPE) {
-      if (hasProtein && hasCarb) status = "complete";
-      else if (hasProtein || hasCarb) status = "partial";
-      else status = "empty";
-    } else {
-      if (hasProtein && hasCarb) status = "complete";
-      else if (hasProtein || hasCarb) status = "partial";
-      else status = "empty";
-    }
-
-    if (status === "complete") plannerMeta.completeSlotCount += 1;
-    else if (status === "partial") plannerMeta.partialSlotCount += 1;
+    if (slot.status === "complete") plannerMeta.completeSlotCount += 1;
+    else if (slot.status === "partial") plannerMeta.partialSlotCount += 1;
     else plannerMeta.emptySlotCount += 1;
 
     if (isBaseBeefSlot(slot)) plannerMeta.beefSlotCount += 1;
@@ -339,31 +429,19 @@ function recomputePlannerMetaFromSlots({ mealSlots, requiredSlotCount = 0 }) {
   return { plannerMeta, slotErrors };
 }
 
-async function projectMaterializedAndLegacyForExistingSlots({ mealSlots, now = new Date() }) {
-  return projectMaterializedAndLegacyFromSlots({ processedSlots: Array.isArray(mealSlots) ? mealSlots : [], now });
-}
-
-function buildPremiumExtraPaymentDraft() {
-  return undefined;
-}
-
 async function buildMealSlotDraft({ mealSlots, mealsPerDayLimit, subscription, session = null }) {
   const normalizedMealSlots = normalizeMealSlotsInput({ mealSlots });
   const normalizedSlotErrors = [
     ...collectDuplicateSlotErrors({ mealSlots: normalizedMealSlots }),
     ...collectSlotCountErrors({ mealSlots: normalizedMealSlots, requiredSlotCount: mealsPerDayLimit }),
   ];
-  const normalizedValidation = mapPlannerValidationResult(normalizedSlotErrors);
-  if (normalizedValidation) return normalizedValidation;
-
-  const proteinIds = [...new Set(normalizedMealSlots.map((s) => s.proteinId).filter(Boolean))];
   
+  const proteinIds = [...new Set(normalizedMealSlots.map((s) => s.proteinId).filter(Boolean))];
   const carbIdsSet = new Set();
   for (const s of normalizedMealSlots) {
-    if (s.carbId) carbIdsSet.add(s.carbId);
-    if (Array.isArray(s.carbSelections)) {
-      for (const cs of s.carbSelections) {
-        if (cs.carbId) carbIdsSet.add(cs.carbId);
+    if (Array.isArray(s.carbs)) {
+      for (const cs of s.carbs) {
+        if (cs.carbId) carbIdsSet.add(String(cs.carbId));
       }
     }
   }
@@ -372,17 +450,13 @@ async function buildMealSlotDraft({ mealSlots, mealsPerDayLimit, subscription, s
   const validProteinIds = proteinIds.filter(id => isValidObjectId(id));
   const validCarbIds = carbIds.filter(id => isValidObjectId(id));
 
+  const [proteins, carbs] = await Promise.all([
+    BuilderProtein.find({ _id: { $in: validProteinIds } }).session(session).lean(),
+    BuilderCarb.find({ _id: { $in: validCarbIds } }).session(session).lean(),
+  ]);
 
-  const proteinsQuery = BuilderProtein.find({ _id: { $in: validProteinIds } });
-  const carbsQuery = BuilderCarb.find({ _id: { $in: validCarbIds } });
-  if (session) {
-    proteinsQuery.session(session);
-    carbsQuery.session(session);
-  }
-
-  const [proteins, carbs] = await Promise.all([proteinsQuery.lean(), carbsQuery.lean()]);
-  const proteinMap = new Map(proteins.map((protein) => [String(protein._id), protein]));
-  const carbMap = new Map(carbs.map((carb) => [String(carb._id), carb]));
+  const proteinMap = new Map(proteins.map((p) => [String(p._id), p]));
+  const carbMap = new Map(carbs.map((c) => [String(c._id), c]));
 
   const processedSlots = [];
   const plannerMeta = {
@@ -401,222 +475,117 @@ async function buildMealSlotDraft({ mealSlots, mealsPerDayLimit, subscription, s
     lastEditedAt: new Date(),
   };
 
+  const tempBalances = new Map();
+  if (subscription && Array.isArray(subscription.premiumBalance)) {
+    for (const row of subscription.premiumBalance) {
+      if (row.premiumKey) {
+        tempBalances.set(row.premiumKey, (tempBalances.get(row.premiumKey) || 0) + Number(row.remainingQty || 0));
+      }
+    }
+  }
+
   for (const slot of normalizedMealSlots) {
-    const selectionType = String(slot && slot.selectionType ? slot.selectionType.trim() : "") || STANDARD_COMBO_TYPE;
-    
-    if (selectionType === SANDWICH_TYPE) {
-      const processedSlot = {
-        slotIndex: slot.slotIndex,
-        slotKey: slot.slotKey,
-        status: "complete",
-        proteinId: null,
-        carbId: null,
-        sandwichId: slot.sandwichId || null,
-        selectionType: SANDWICH_TYPE,
-        customSalad: null,
-        proteinFamilyKey: null,
-        proteinDisplayCategoryKey: null,
-        proteinRuleTags: [],
-        carbDisplayCategoryKey: null,
-        carbSelections: [],
-        isPremium: false,
-        premiumSource: "none",
-        premiumExtraFeeHalala: 0,
-      };
-      plannerMeta.completeSlotCount += 1;
-      processedSlots.push(processedSlot);
-      continue;
-    }
-
-    if (selectionType === CUSTOM_PREMIUM_SALAD_TYPE) {
-      const protein = slot.proteinId ? proteinMap.get(String(slot.proteinId)) : null;
-      const carb = slot.carbId ? carbMap.get(String(slot.carbId)) : null;
-      
-      const isPremiumProtein = Boolean(protein && protein.isPremium);
-      const hasValidProtein = Boolean(protein);
-      const hasValidCarb = Boolean(carb);
-      
-      let premiumSource = "none";
-      let premiumExtraFeeHalala = 0;
-      const premiumKey = protein ? protein.premiumKey : null;
-      
-      if (isPremiumProtein) {
-        const tempBalances = processedSlots._tempBalances || (processedSlots._tempBalances = new Map());
-        if (processedSlots.length === 0 && subscription && Array.isArray(subscription.premiumBalance)) {
-          for (const row of subscription.premiumBalance) {
-            const key = row.premiumKey;
-            if (key) {
-               tempBalances.set(key, (tempBalances.get(key) || 0) + Number(row.remainingQty || 0));
-            }
-          }
-        }
-        
-        const avail = premiumKey ? (tempBalances.get(premiumKey) || 0) : 0;
-        if (avail > 0) {
-          premiumSource = "balance";
-          tempBalances.set(premiumKey, avail - 1);
-          plannerMeta.premiumSlotCount += 1;
-          plannerMeta.premiumCoveredByBalanceCount += 1;
-        } else {
-          premiumSource = "pending_payment";
-          premiumExtraFeeHalala = CUSTOM_PREMIUM_SALAD_FIXED_PRICE_HALALA;
-          plannerMeta.premiumSlotCount += 1;
-          plannerMeta.premiumPendingPaymentCount += 1;
-          plannerMeta.premiumTotalHalala += CUSTOM_PREMIUM_SALAD_FIXED_PRICE_HALALA;
-        }
-      }
-
-      const processedSlot = {
-        slotIndex: slot.slotIndex,
-        slotKey: slot.slotKey,
-        status: hasValidProtein && hasValidCarb ? "complete" : "partial",
-        proteinId: slot.proteinId || null,
-        carbId: slot.carbId || null,
-        sandwichId: null,
-        selectionType: CUSTOM_PREMIUM_SALAD_TYPE,
-        customSalad: slot.customSalad || null,
-        proteinFamilyKey: protein ? protein.proteinFamilyKey : null,
-        proteinDisplayCategoryKey: protein ? protein.displayCategoryKey : null,
-        proteinRuleTags: protein ? protein.ruleTags : [],
-        carbDisplayCategoryKey: carb ? carb.displayCategoryKey : null,
-        carbSelections: [],
-        isPremium: isPremiumProtein,
-        premiumKey,
-        premiumSource,
-        premiumExtraFeeHalala: isPremiumProtein ? premiumExtraFeeHalala : CUSTOM_PREMIUM_SALAD_FIXED_PRICE_HALALA,
-      };
-
-      if (processedSlot.status === "complete") {
-        plannerMeta.completeSlotCount += 1;
-      } else {
-        plannerMeta.partialSlotCount += 1;
-      }
-      processedSlots.push(processedSlot);
-      continue;
-    }
-
-    const protein = slot.proteinId ? proteinMap.get(String(slot.proteinId)) : null;
-    
-    // Resolve and validate carbSelections
-    let requestedCarbSelections = slot.carbSelections;
-    if (requestedCarbSelections === undefined && slot.carbId) {
-      requestedCarbSelections = [{ carbId: slot.carbId, grams: 300 }];
-    }
-    
-    // Here we use the rules explicitly defined
-    const carbRules = getMealPlannerRules().standardCarbs;
-    const carbValidation = validateCarbSelections(requestedCarbSelections, carbMap, carbRules);
-    if (!carbValidation.valid) {
-      return buildMealPlannerValidationResult({
-        code: carbValidation.errorCode,
-        message: carbValidation.errorMessage,
-        slotErrors: [{
-          slotIndex: slot.slotIndex,
-          field: "carb",
-          code: carbValidation.errorCode,
-          message: carbValidation.errorMessage,
-        }]
-      });
-    }
-
-    const validatedCarbSelections = carbValidation.selections;
-    const primaryCarbId = validatedCarbSelections.length > 0 ? validatedCarbSelections[0].carbId : null;
-    const carb = primaryCarbId ? carbMap.get(String(primaryCarbId)) : null;
-
     const processedSlot = {
       slotIndex: slot.slotIndex,
       slotKey: slot.slotKey,
       status: "empty",
+      selectionType: slot.selectionType,
       proteinId: slot.proteinId || null,
-      carbId: primaryCarbId || null,
-      sandwichId: null,
-      selectionType: selectionType,
-      customSalad: null,
-      proteinFamilyKey: protein ? protein.proteinFamilyKey : null,
-      proteinDisplayCategoryKey: protein ? protein.displayCategoryKey : null,
-      proteinRuleTags: protein ? protein.ruleTags : [],
-      carbDisplayCategoryKey: carb ? carb.displayCategoryKey : null,
-      carbSelections: validatedCarbSelections,
-      isPremium: Boolean(protein && protein.isPremium),
-      premiumKey: protein ? protein.premiumKey : null,
-      premiumCreditCost: 0,
+      carbs: slot.carbs || [],
+      sandwichId: slot.sandwichId || null,
+      salad: slot.salad || null,
+      customSalad: slot.customSalad || null,
+      isPremium: false,
+      premiumKey: null,
       premiumSource: "none",
-      premiumExtraFeeHalala: protein && protein.isPremium ? Number(protein.extraFeeHalala || 0) : 0,
+      premiumExtraFeeHalala: 0,
     };
 
-    if (processedSlot.proteinId && processedSlot.carbId) {
-      if (protein && carb) {
-        processedSlot.status = "complete";
-        plannerMeta.completeSlotCount += 1;
-      } else {
-        processedSlot.status = "partial";
-        plannerMeta.partialSlotCount += 1;
-      }
-    } else if (processedSlot.proteinId || processedSlot.carbId) {
+    let validation = { valid: false };
+
+    if (processedSlot.selectionType === NEW_TYPES.STANDARD_MEAL) {
+      validation = validateStandardMeal(processedSlot, proteinMap, carbMap);
+    } else if (processedSlot.selectionType === NEW_TYPES.PREMIUM_MEAL) {
+      validation = validatePremiumMeal(processedSlot, proteinMap, carbMap);
+    } else if (processedSlot.selectionType === NEW_TYPES.PREMIUM_LARGE_SALAD) {
+      validation = validatePremiumLargeSalad(processedSlot);
+    } else if (processedSlot.selectionType === NEW_TYPES.SANDWICH) {
+      validation = validateSandwichMeal(processedSlot);
+    }
+
+    if (validation.valid) {
+      processedSlot.status = "complete";
+      plannerMeta.completeSlotCount += 1;
+    } else if (processedSlot.proteinId || processedSlot.sandwichId || (processedSlot.carbs.length > 0) || processedSlot.salad) {
       processedSlot.status = "partial";
       plannerMeta.partialSlotCount += 1;
     } else {
+      processedSlot.status = "empty";
       plannerMeta.emptySlotCount += 1;
     }
 
-    if (isBaseBeefSlot(processedSlot)) plannerMeta.beefSlotCount += 1;
-
-    const tempBalances = processedSlots._tempBalances || (processedSlots._tempBalances = new Map());
-    
-    // Initialize temporary balances only once per draft build
-    if (processedSlots.length === 0 && subscription && Array.isArray(subscription.premiumBalance)) {
-        for (const row of subscription.premiumBalance) {
-            const key = row.premiumKey;
-            if (key) {
-                tempBalances.set(key, (tempBalances.get(key) || 0) + Number(row.remainingQty || 0));
-            }
-        }
-    }
-
-    if (processedSlot.isPremium) {
-      const key = processedSlot.premiumKey;
-      const avail = key ? (tempBalances.get(key) || 0) : 0;
-      if (avail > 0) {
-        processedSlot.premiumSource = "balance";
-        processedSlot.premiumCreditCost = 1;
-        tempBalances.set(key, avail - 1);
-        plannerMeta.premiumSlotCount += 1;
-        plannerMeta.premiumCoveredByBalanceCount += 1;
-      } else {
-        processedSlot.premiumSource = "pending_payment";
-        plannerMeta.premiumSlotCount += 1;
-        plannerMeta.premiumPendingPaymentCount += 1;
-        plannerMeta.premiumTotalHalala += processedSlot.premiumExtraFeeHalala;
+    // Resolve protein metadata for beef limit
+    if (processedSlot.proteinId) {
+      const p = proteinMap.get(String(processedSlot.proteinId));
+      if (p) {
+        processedSlot.proteinFamilyKey = p.proteinFamilyKey;
+        processedSlot.proteinDisplayCategoryKey = p.displayCategoryKey;
+        processedSlot.isPremium = Boolean(p.isPremium);
+        processedSlot.premiumKey = p.premiumKey;
       }
     }
 
+    // Handle Premium Entitlement Consumption
+    const isPremiumSalad = processedSlot.selectionType === NEW_TYPES.PREMIUM_LARGE_SALAD;
+    if (processedSlot.isPremium || isPremiumSalad) {
+      const key = isPremiumSalad ? CANONICAL_PREMIUM_SALAD_KEY : processedSlot.premiumKey;
+      const avail = key ? (tempBalances.get(key) || 0) : 0;
+      
+      processedSlot.isPremium = true;
+      processedSlot.premiumKey = key;
+
+      if (avail > 0) {
+        processedSlot.premiumSource = "balance";
+        tempBalances.set(key, avail - 1);
+        plannerMeta.premiumCoveredByBalanceCount += 1;
+      } else {
+        processedSlot.premiumSource = "pending_payment";
+        const fee = isPremiumSalad ? PREMIUM_LARGE_SALAD_FIXED_PRICE_HALALA : (proteinMap.get(String(processedSlot.proteinId))?.extraFeeHalala || 0);
+        processedSlot.premiumExtraFeeHalala = Number(fee);
+        plannerMeta.premiumPendingPaymentCount += 1;
+        plannerMeta.premiumTotalHalala += processedSlot.premiumExtraFeeHalala;
+      }
+      plannerMeta.premiumSlotCount += 1;
+    }
+
+    if (isBaseBeefSlot(processedSlot)) plannerMeta.beefSlotCount += 1;
     processedSlots.push(processedSlot);
   }
 
-  const countValidation = mapPlannerValidationResult(collectSlotCountErrors({
+  // Final count validations
+  normalizedSlotErrors.push(...collectSlotCountErrors({
     mealSlots: processedSlots,
     requiredSlotCount: mealsPerDayLimit,
     completeSlotCount: plannerMeta.completeSlotCount,
   }));
-  if (countValidation) return countValidation;
 
   if (plannerMeta.beefSlotCount > 1) {
-    return buildMealPlannerValidationResult({
+    normalizedSlotErrors.push(...processedSlots.filter((slot) => isBaseBeefSlot(slot)).map((slot) => ({
+      slotIndex: slot.slotIndex,
+      field: "protein",
       code: "BEEF_LIMIT_EXCEEDED",
       message: "Only one beef meal is allowed per day",
-      slotErrors: processedSlots.filter((slot) => isBaseBeefSlot(slot)).map((slot) => ({
-        slotIndex: slot.slotIndex,
-        field: "protein",
-        code: "BEEF_LIMIT_EXCEEDED",
-        message: "Only one beef meal is allowed per day",
-      })),
-    });
+    })));
   }
+
+  const normalizedValidation = mapPlannerValidationResult(normalizedSlotErrors);
+  if (normalizedValidation) return normalizedValidation;
 
   plannerMeta.isConfirmable = Boolean(
     plannerMeta.isDraftValid
       && plannerMeta.partialSlotCount === 0
       && plannerMeta.completeSlotCount === plannerMeta.requiredSlotCount
+      && plannerMeta.premiumPendingPaymentCount === 0 // Requirement 11: No pending premium payment
   );
 
   const materializedProjection = projectMaterializedAndLegacyFromSlots({ processedSlots, now: new Date() });
@@ -628,16 +597,13 @@ async function buildMealSlotDraft({ mealSlots, mealsPerDayLimit, subscription, s
     selections: materializedProjection.selections,
     premiumUpgradeSelections: materializedProjection.premiumSelections,
     baseMealSlots: materializedProjection.baseMealSlots,
-    consumedPremiumByProtein: {},
   };
 }
 
 module.exports = {
   SYSTEM_CURRENCY,
-  CUSTOM_PREMIUM_SALAD_TYPE,
-  SANDWICH_TYPE,
-  STANDARD_COMBO_TYPE,
-  CUSTOM_PREMIUM_SALAD_FIXED_PRICE_HALALA,
+  CANONICAL_PREMIUM_SALAD_KEY,
+  PREMIUM_LARGE_SALAD_FIXED_PRICE_HALALA,
   getMealPlannerRules,
   buildMealSlotKey,
   normalizeMealSlotsInput,
@@ -645,11 +611,8 @@ module.exports = {
   collectSlotCountErrors,
   mapPaymentRequirement,
   buildPremiumExtraRevisionHash,
-  isSandwichSlot,
   isBaseBeefSlot,
   recomputePlannerMetaFromSlots,
   projectMaterializedAndLegacyFromSlots,
-  projectMaterializedAndLegacyForExistingSlots,
-  buildPremiumExtraPaymentDraft,
   buildMealSlotDraft,
 };

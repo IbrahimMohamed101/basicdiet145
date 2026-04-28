@@ -31,10 +31,26 @@ const definition = {
           slotIndex: { type: "integer" },
           slotKey: { type: "string" },
           status: { type: "string", enum: ["empty", "partial", "complete"] },
-          selectionType: { type: "string", enum: ["standard_combo", "sandwich", "custom_premium_salad"] },
+          selectionType: { type: "string", enum: ["standard_meal", "premium_meal", "premium_large_salad", "sandwich"] },
           proteinId: { type: "string", nullable: true },
-          carbId: { type: "string", nullable: true },
           sandwichId: { type: "string", nullable: true },
+          carbs: { 
+            type: "array", 
+            items: {
+              type: "object",
+              properties: {
+                carbId: { type: "string" },
+                grams: { type: "integer" }
+              }
+            }
+          },
+          salad: { 
+            type: "object", 
+            nullable: true,
+            properties: {
+              groups: { type: "object" }
+            }
+          },
           customSalad: { type: "object", nullable: true },
           proteinFamilyKey: { type: "string", nullable: true },
           isPremium: { type: "boolean" },

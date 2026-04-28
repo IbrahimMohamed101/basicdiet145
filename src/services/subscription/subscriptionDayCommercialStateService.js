@@ -28,15 +28,26 @@ function normalizeString(value, fallback = "") {
 
 function buildPlannerRevisionHash({ day, mealSlots }) {
   const normalized = (Array.isArray(mealSlots) ? mealSlots : [])
-    .map((slot) => ({
-      slotIndex: normalizeNumber(slot && slot.slotIndex),
-      slotKey: normalizeString(slot && slot.slotKey),
-      status: normalizeString(slot && slot.status, "empty"),
-      proteinId: slot && slot.proteinId ? String(slot.proteinId) : null,
-      carbId: slot && slot.carbId ? String(slot.carbId) : null,
-      isPremium: Boolean(slot && slot.isPremium),
-      premiumSource: normalizeString(slot && slot.premiumSource, "none"),
-    }))
+    .map((slot) => {
+      // Sort carbs by ID for consistent hashing
+      const normalizedCarbs = (Array.isArray(slot.carbs) ? slot.carbs : [])
+        .map(c => ({ carbId: String(c.carbId), grams: normalizeNumber(c.grams) }))
+        .sort((a, b) => a.carbId.localeCompare(b.carbId));
+
+      return {
+        slotIndex: normalizeNumber(slot && slot.slotIndex),
+        slotKey: normalizeString(slot && slot.slotKey),
+        status: normalizeString(slot && slot.status, "empty"),
+        selectionType: normalizeString(slot && slot.selectionType),
+        proteinId: slot && slot.proteinId ? String(slot.proteinId) : null,
+        sandwichId: slot && slot.sandwichId ? String(slot.sandwichId) : null,
+        carbs: normalizedCarbs,
+        salad: slot && slot.salad ? slot.salad : null,
+        isPremium: Boolean(slot && slot.isPremium),
+        premiumSource: normalizeString(slot && slot.premiumSource, "none"),
+        premiumExtraFeeHalala: normalizeNumber(slot && slot.premiumExtraFeeHalala),
+      };
+    })
     .sort((a, b) => (a.slotIndex - b.slotIndex) || a.slotKey.localeCompare(b.slotKey));
 
   const addonSelectionPart = (Array.isArray(day && day.addonSelections) ? day.addonSelections : [])
@@ -112,12 +123,14 @@ function buildEffectivePremiumSummary({ plannerMeta, mealSlots = [], premiumExtr
   const summary = buildPremiumSummary({ plannerMeta, currency });
   const slotSummary = countMealSlotState(mealSlots);
   const normalizedPayment = normalizePremiumExtraPayment(premiumExtraPayment);
+  
   const slotHasPremiumState = Boolean(
     slotSummary.premiumSelected > 0
       || slotSummary.premiumPending > 0
       || slotSummary.premiumBalance > 0
       || slotSummary.premiumPaid > 0
   );
+  
   const metaHasPremiumState = Boolean(
     summary.selectedCount > 0
       || summary.pendingPaymentCount > 0
@@ -125,24 +138,19 @@ function buildEffectivePremiumSummary({ plannerMeta, mealSlots = [], premiumExtr
       || summary.coveredByBalanceCount > 0
   );
 
+  // If slot summary says there are premium slots but meta doesn't, or they mismatch, trust slot summary
   if (slotHasPremiumState) {
     const slotPendingAmount = slotSummary.pendingAmount > 0
       ? slotSummary.pendingAmount
       : (slotSummary.premiumPending > 0 ? normalizedPayment.amountHalala : 0);
-    const hasAmountDivergence = Boolean(
-      slotSummary.premiumPending > 0
-        && (
-          (slotPendingAmount > 0 && summary.totalExtraHalala !== slotPendingAmount)
-          || (summary.totalExtraHalala <= 0 && slotPendingAmount > 0)
-        )
-    );
+      
     const hasDivergence = Boolean(
       !metaHasPremiumState
         || summary.selectedCount !== slotSummary.premiumSelected
         || summary.coveredByBalanceCount !== slotSummary.premiumBalance
         || summary.pendingPaymentCount !== slotSummary.premiumPending
         || summary.paidExtraCount !== slotSummary.premiumPaid
-        || hasAmountDivergence
+        || (slotSummary.premiumPending > 0 && Math.abs(summary.totalExtraHalala - slotPendingAmount) > 1)
     );
 
     if (hasDivergence) {
@@ -157,19 +165,7 @@ function buildEffectivePremiumSummary({ plannerMeta, mealSlots = [], premiumExtr
     }
   }
 
-  if (summary.selectedCount > 0 || summary.pendingPaymentCount > 0 || summary.paidExtraCount > 0 || summary.coveredByBalanceCount > 0) {
-    return summary;
-  }
-  const pendingAmount = slotSummary.pendingAmount > 0 ? slotSummary.pendingAmount : normalizedPayment.amountHalala;
-
-  return {
-    selectedCount: slotSummary.premiumSelected,
-    coveredByBalanceCount: slotSummary.premiumBalance,
-    pendingPaymentCount: slotSummary.premiumPending,
-    paidExtraCount: slotSummary.premiumPaid,
-    totalExtraHalala: pendingAmount,
-    currency,
-  };
+  return summary;
 }
 
 function hasPlannerWorkflow(day = {}, plannerMeta = null) {
@@ -182,8 +178,8 @@ function hasPlannerWorkflow(day = {}, plannerMeta = null) {
 
 function isPlanningComplete(plannerMeta, mealSlots = []) {
   const meta = plannerMeta && typeof plannerMeta === "object" ? plannerMeta : {};
-  const slotSummary = countMealSlotState(mealSlots);
   const effectiveRequired = normalizeNumber(meta.requiredSlotCount);
+  
   if (effectiveRequired > 0) {
     return Boolean(
       normalizeBoolean(meta.isDraftValid)
@@ -191,10 +187,9 @@ function isPlanningComplete(plannerMeta, mealSlots = []) {
         && normalizeNumber(meta.completeSlotCount) === effectiveRequired
     );
   }
-  return Boolean(
-    slotSummary.partial === 0
-      && slotSummary.complete > 0
-  );
+  
+  const slotSummary = countMealSlotState(mealSlots);
+  return Boolean(slotSummary.partial === 0 && slotSummary.complete > 0);
 }
 
 function normalizePremiumExtraPayment(rawPayment = null) {
@@ -274,14 +269,11 @@ function buildDerivedPremiumExtraPayment({
     };
   }
 
-  const addonSummary = buildAddonSummary({ addonSelections: (mealSlots ? mealSlots.addonSelections : []), currency });
   const status = normalizedExisting.status !== "none" ? normalizedExisting.status : "none";
-  const totalPending = summary.totalExtraHalala + addonSummary.totalExtraHalala;
-
   return {
     ...normalizedExisting,
     status,
-    amountHalala: totalPending,
+    amountHalala: summary.totalExtraHalala,
     currency,
     revisionHash: plannerRevisionHash,
     extraPremiumCount: summary.pendingPaymentCount,
@@ -368,12 +360,11 @@ function buildCommercialState({
 }) {
   const planningComplete = isPlanningComplete(plannerMeta);
   const normalizedPlannerState = normalizeString(plannerState, "draft");
-  const plannerFlowEnabled = hasPlannerWorkflow({ plannerState, mealSlots: [] }, plannerMeta);
   const requirement = paymentRequirement && typeof paymentRequirement === "object" ? paymentRequirement : { requiresPayment: false };
 
   if (!planningComplete) return "draft";
   if (requirement.requiresPayment) return "payment_required";
-  if (plannerFlowEnabled && normalizedPlannerState === "confirmed") return "confirmed";
+  if (normalizedPlannerState === "confirmed") return "confirmed";
   return "ready_to_confirm";
 }
 
@@ -382,6 +373,7 @@ function buildDayCommercialState(day = {}) {
   const normalizedPlannerState = normalizeString(day.plannerState, "draft");
   const plannerMeta = day && typeof day.plannerMeta === "object" ? day.plannerMeta : {};
   const plannerRevisionHash = buildPlannerRevisionHash({ day, mealSlots: day.mealSlots });
+  
   const premiumSummary = buildEffectivePremiumSummary({
     plannerMeta,
     mealSlots: day.mealSlots,
@@ -390,6 +382,7 @@ function buildDayCommercialState(day = {}) {
       ? day.premiumExtraPayment.currency
       : SYSTEM_CURRENCY,
   });
+  
   const premiumExtraPayment = buildDerivedPremiumExtraPayment({
     plannerMeta,
     mealSlots: day.mealSlots,
@@ -397,6 +390,7 @@ function buildDayCommercialState(day = {}) {
     existingPremiumExtraPayment: day.premiumExtraPayment || null,
     currency: premiumSummary.currency,
   });
+  
   const paymentRequirement = buildPaymentRequirement({
     day,
     plannerMeta,
@@ -406,13 +400,15 @@ function buildDayCommercialState(day = {}) {
     premiumExtraPayment,
     currency: premiumSummary.currency,
   });
+  
   const commercialState = buildCommercialState({
     plannerMeta,
     plannerState: normalizedPlannerState,
     paymentRequirement,
   });
+  
   const isFulfillable = Boolean(
-    (!hasPlannerWorkflow(day, plannerMeta) || normalizedPlannerState === "confirmed")
+    normalizedPlannerState === "confirmed"
       && commercialState === "confirmed"
       && paymentRequirement.requiresPayment === false
       && FULFILLABLE_DAY_STATUSES.has(normalizedStatus)

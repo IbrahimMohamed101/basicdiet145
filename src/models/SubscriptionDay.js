@@ -38,9 +38,29 @@ const MealSlotSchema = new mongoose.Schema(
     carbDisplayCategoryKey: { type: String, default: null, trim: true },
 
     // Selection Type Fields
-    selectionType: { type: String, enum: ["sandwich", "standard_combo", "custom_premium_salad"], default: "standard_combo" },
+    selectionType: {
+      type: String,
+      enum: ["standard_meal", "premium_meal", "premium_large_salad", "sandwich"],
+      default: "standard_meal",
+    },
     sandwichId: { type: mongoose.Schema.Types.ObjectId, ref: "Meal", default: null },
-    customSalad: { type: mongoose.Schema.Types.Mixed, default: null },
+    carbs: {
+      type: [
+        {
+          carbId: { type: mongoose.Schema.Types.ObjectId, ref: "BuilderCarb", required: true },
+          grams: { type: Number, min: 0, default: 0 },
+        },
+      ],
+      default: undefined,
+    },
+    salad: {
+      type: {
+        presetKey: { type: String, trim: true },
+        groups: { type: mongoose.Schema.Types.Mixed }, // Temporary Mixed fallback for migration
+      },
+      default: null,
+    },
+    customSalad: { type: mongoose.Schema.Types.Mixed, default: null }, // Legacy fallback
 
     isPremium: { type: Boolean, default: false },
     premiumKey: { type: String, default: null, trim: true },
@@ -80,7 +100,11 @@ const PlannerMetaSchema = new mongoose.Schema(
 const MaterializedMealSchema = new mongoose.Schema(
   {
     slotKey: { type: String, required: true, trim: true },
-    selectionType: { type: String, enum: ["sandwich", "standard_combo", "custom_premium_salad"], default: "standard_combo" },
+    selectionType: {
+      type: String,
+      enum: ["standard_meal", "premium_meal", "premium_large_salad", "sandwich"],
+      default: "standard_meal",
+    },
     sandwichId: { type: mongoose.Schema.Types.ObjectId, ref: "Meal", default: null },
     proteinId: { type: mongoose.Schema.Types.ObjectId, ref: "BuilderProtein", default: null },
     carbId: { type: mongoose.Schema.Types.ObjectId, ref: "BuilderCarb", default: null },
@@ -90,6 +114,7 @@ const MaterializedMealSchema = new mongoose.Schema(
       enum: ["none", "balance", "pending_payment", "paid_extra", "paid"],
       default: "none",
     },
+    premiumKey: { type: String, default: null },
     premiumExtraFeeHalala: { type: Number, default: 0 },
     comboKey: { type: String, trim: true, default: null },
     operationalSku: { type: String, required: true, trim: true },
