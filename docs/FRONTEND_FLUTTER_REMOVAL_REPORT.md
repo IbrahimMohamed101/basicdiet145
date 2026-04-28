@@ -44,6 +44,7 @@ Use this file as the source of truth for Flutter work. If any old report, stale 
 - `POST /api/subscriptions/:id/days/:date/premium-extra/payments/:paymentId/verify`
 - `POST /api/subscriptions/:id/days/:date/one-time-addons/payments`
 - `POST /api/subscriptions/:id/days/:date/one-time-addons/payments/:paymentId/verify`
+- `POST /api/subscriptions/:id/days/:date/one-time-addons/payments/verify`
 
 ### Deprecated or unsupported endpoints Flutter must not use
 - `POST /api/subscriptions/:id/addon-selections`
@@ -1469,6 +1470,13 @@ No request body.
 - **Status:** canonical
 - **Request body:** none
 
+#### Backward-compatible Flutter alias
+
+- **Method:** `POST`
+- **Path:** `/api/subscriptions/:id/days/:date/one-time-addons/payments/verify`
+- **Purpose:** verify and apply the latest matching day payment when `paymentId` is not available
+- **Status:** supported compatibility alias
+
 #### Request Body Example
 
 No request body.
@@ -1745,6 +1753,7 @@ They are useful for display, but payment/confirmation flow must still rely on `p
 4. Open returned `payment_url`.
 5. After payment UI returns, call:
    - `POST /one-time-addons/payments/:paymentId/verify`
+   - or compatibility alias `POST /one-time-addons/payments/verify`
 6. Replace local day state after success.
 
 ### 11.3 Meaning of `revision_mismatch`

@@ -1967,7 +1967,9 @@ async function verifyOneTimeAddonDayPlanningPayment(req, res, runtimeOverrides =
 
   try {
     validateObjectId(id, "subscriptionId");
-    validateObjectId(paymentId, "paymentId");
+    if (paymentId !== undefined) {
+      validateObjectId(paymentId, "paymentId");
+    }
   } catch (err) {
     return errorResponse(res, err.status, err.code, err.message);
   }

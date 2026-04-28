@@ -269,6 +269,22 @@ If the user bought `Juice Subscription`, show juice items such as:
 - Additional items in the same category/day should appear as paid overage
 - Non-entitled category items, if selectable in product UX, should appear as paid
 
+## One-Time Add-On Payment Verification
+
+- Create payment:
+  - `POST /api/subscriptions/:id/days/:date/one-time-addons/payments`
+- Canonical verify path:
+  - `POST /api/subscriptions/:id/days/:date/one-time-addons/payments/:paymentId/verify`
+- Supported backward-compatible alias for Flutter:
+  - `POST /api/subscriptions/:id/days/:date/one-time-addons/payments/verify`
+
+Verification applies the existing pending add-on selections already stored on that day.
+
+- Backend verifies against the day payment lifecycle
+- Pending selections become `source: "paid"` on success
+- Stored `addonSelections[].priceHalala` is preserved
+- Already paid selections are not charged again
+
 ## Validation and Error Handling
 
 Backend protections currently enforced:

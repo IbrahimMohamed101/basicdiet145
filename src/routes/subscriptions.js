@@ -633,6 +633,7 @@ router.post("/:id/days/:date/premium-extra/payments", asyncHandler(controller.cr
 router.post("/:id/days/:date/premium-extra/payments/:paymentId/verify", asyncHandler(controller.verifyPremiumExtraDayPayment));
 
 router.post("/:id/days/:date/one-time-addons/payments", asyncHandler(controller.createOneTimeAddonDayPlanningPayment));
+router.post("/:id/days/:date/one-time-addons/payments/verify", asyncHandler(controller.verifyOneTimeAddonDayPlanningPayment));
 router.post("/:id/days/:date/one-time-addons/payments/:paymentId/verify", asyncHandler(controller.verifyOneTimeAddonDayPlanningPayment));
 /**
  * @openapi

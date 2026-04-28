@@ -222,6 +222,32 @@ async function createOneTimeAddonDayPlanningPaymentFlow({
   });
 }
 
+async function findLatestOneTimeAddonDayPlanningPaymentForDay({
+  subscriptionId,
+  userId,
+  date,
+  dayId = null,
+}) {
+  const payments = await Payment.find({
+    subscriptionId,
+    userId,
+    type: ONE_TIME_ADDON_DAY_PLANNING_PAYMENT_TYPE,
+  })
+    .sort({ createdAt: -1 })
+    .lean();
+
+  return payments.find((payment) => {
+    const metadata = getPaymentMetadata(payment);
+    if (String(metadata.date || "") === String(date)) {
+      return true;
+    }
+    if (dayId && String(metadata.dayId || "") === String(dayId)) {
+      return true;
+    }
+    return false;
+  }) || null;
+}
+
 async function verifyOneTimeAddonDayPlanningPaymentFlow({
   subscriptionId,
   date,
@@ -240,20 +266,33 @@ async function verifyOneTimeAddonDayPlanningPaymentFlow({
     return buildErrorResult(403, "FORBIDDEN", "Forbidden");
   }
 
-  const payment = await Payment.findOne({
-    _id: paymentId,
-    subscriptionId,
-    userId,
-    type: ONE_TIME_ADDON_DAY_PLANNING_PAYMENT_TYPE,
-  }).lean();
+  const requestedDay = await SubscriptionDay.findOne({ subscriptionId, date }).lean();
+  if (!requestedDay) {
+    return buildErrorResult(404, "NOT_FOUND", "Day not found");
+  }
+
+  const payment = paymentId
+    ? await Payment.findOne({
+      _id: paymentId,
+      subscriptionId,
+      userId,
+      type: ONE_TIME_ADDON_DAY_PLANNING_PAYMENT_TYPE,
+    }).lean()
+    : await findLatestOneTimeAddonDayPlanningPaymentForDay({
+      subscriptionId,
+      userId,
+      date,
+      dayId: requestedDay._id,
+    });
   if (!payment) {
     return buildErrorResult(404, "NOT_FOUND", "One-time add-on payment not found");
   }
+  const effectivePaymentId = String(payment._id);
   const paymentMetadata = getPaymentMetadata(payment);
   if (String(paymentMetadata.date || "") !== String(date)) {
     logger.warn("One-time add-on payment mismatch", {
       subscriptionId,
-      paymentId,
+      paymentId: effectivePaymentId,
       expectedDate: date,
       paymentDate: paymentMetadata.date,
       code: "MISMATCH",
@@ -261,18 +300,30 @@ async function verifyOneTimeAddonDayPlanningPaymentFlow({
     });
     return buildErrorResult(409, "MISMATCH", "Payment day mismatch");
   }
-  if (!payment.providerInvoiceId) {
-    return buildErrorResult(409, "CHECKOUT_IN_PROGRESS", "One-time add-on invoice is not initialized yet");
-  }
 
-  let day = null;
+  let day = requestedDay;
   if (paymentMetadata.dayId && mongoose.Types.ObjectId.isValid(String(paymentMetadata.dayId))) {
     day = await SubscriptionDay.findById(paymentMetadata.dayId).lean();
-  } else {
-    day = await SubscriptionDay.findOne({ subscriptionId, date }).lean();
   }
   if (!day) {
     return buildErrorResult(404, "NOT_FOUND", "Day not found");
+  }
+  if (String(day.subscriptionId) !== String(subscriptionId) || String(day.date) !== String(date)) {
+    logger.warn("One-time add-on payment mismatch", {
+      subscriptionId,
+      paymentId: effectivePaymentId,
+      expectedDate: date,
+      actualDate: day.date,
+      expectedDayId: String(requestedDay._id),
+      actualDayId: String(day._id),
+      code: "MISMATCH",
+      message: "Payment day mismatch",
+    });
+    return buildErrorResult(409, "MISMATCH", "Payment day mismatch");
+  }
+
+  if (!payment.providerInvoiceId) {
+    return buildErrorResult(409, "CHECKOUT_IN_PROGRESS", "One-time add-on invoice is not initialized yet");
   }
 
   if (payment.status === "paid" && payment.applied === true) {
@@ -333,7 +384,7 @@ async function verifyOneTimeAddonDayPlanningPaymentFlow({
     }
 
     const paymentInSession = await Payment.findOne({
-      _id: paymentId,
+      _id: effectivePaymentId,
       subscriptionId,
       userId,
       type: ONE_TIME_ADDON_DAY_PLANNING_PAYMENT_TYPE,
@@ -348,7 +399,7 @@ async function verifyOneTimeAddonDayPlanningPaymentFlow({
     if (String(metadataInSession.date || "") !== String(date)) {
       logger.warn("One-time add-on payment mismatch", {
         subscriptionId,
-        paymentId,
+        paymentId: effectivePaymentId,
         expectedDate: date,
         paymentDate: metadataInSession.date,
         code: "MISMATCH",
@@ -363,7 +414,7 @@ async function verifyOneTimeAddonDayPlanningPaymentFlow({
     if (providerInvoiceId && paymentInSession.providerInvoiceId && String(paymentInSession.providerInvoiceId) !== providerInvoiceId) {
       logger.warn("One-time add-on payment mismatch", {
         subscriptionId,
-        paymentId,
+        paymentId: effectivePaymentId,
         expectedInvoiceId: providerInvoiceId,
         paymentInvoiceId: paymentInSession.providerInvoiceId,
         code: "MISMATCH",
@@ -376,7 +427,7 @@ async function verifyOneTimeAddonDayPlanningPaymentFlow({
     if (providerPayment && providerPayment.id && paymentInSession.providerPaymentId && String(paymentInSession.providerPaymentId) !== String(providerPayment.id)) {
       logger.warn("One-time add-on payment mismatch", {
         subscriptionId,
-        paymentId,
+        paymentId: effectivePaymentId,
         expectedPaymentId: providerPayment.id,
         paymentPaymentId: paymentInSession.providerPaymentId,
         code: "MISMATCH",
@@ -391,7 +442,7 @@ async function verifyOneTimeAddonDayPlanningPaymentFlow({
     if (Number.isFinite(providerAmount) && providerAmount !== Number(paymentInSession.amount)) {
       logger.warn("One-time add-on payment mismatch", {
         subscriptionId,
-        paymentId,
+        paymentId: effectivePaymentId,
         expectedAmount: providerAmount,
         paymentAmount: paymentInSession.amount,
         code: "MISMATCH",
@@ -408,7 +459,7 @@ async function verifyOneTimeAddonDayPlanningPaymentFlow({
     if (providerCurrency !== normalizeCurrencyValue(paymentInSession.currency)) {
       logger.warn("One-time add-on payment mismatch", {
         subscriptionId,
-        paymentId,
+        paymentId: effectivePaymentId,
         expectedCurrency: providerCurrency,
         paymentCurrency: paymentInSession.currency,
         code: "MISMATCH",
@@ -465,7 +516,7 @@ async function verifyOneTimeAddonDayPlanningPaymentFlow({
     session.endSession();
     logger.error("One-time add-on verification failed", {
       subscriptionId,
-      paymentId,
+      paymentId: effectivePaymentId,
       date,
       error: err.message,
       stack: err.stack,
@@ -475,7 +526,7 @@ async function verifyOneTimeAddonDayPlanningPaymentFlow({
 
   const [latestSub, latestPayment] = await Promise.all([
     Subscription.findById(subscriptionId).lean(),
-    Payment.findById(paymentId).lean(),
+    Payment.findById(effectivePaymentId).lean(),
   ]);
   const latestPaymentMetadata = getPaymentMetadata(latestPayment);
   const latestDay = latestPaymentMetadata.dayId && mongoose.Types.ObjectId.isValid(String(latestPaymentMetadata.dayId))
@@ -507,4 +558,5 @@ async function verifyOneTimeAddonDayPlanningPaymentFlow({
 module.exports = {
   createOneTimeAddonDayPlanningPaymentFlow,
   verifyOneTimeAddonDayPlanningPaymentFlow,
+  findLatestOneTimeAddonDayPlanningPaymentForDay,
 };
