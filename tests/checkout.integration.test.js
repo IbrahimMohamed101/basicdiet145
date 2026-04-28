@@ -384,6 +384,16 @@ async function runTests() {
     assertTrue(!addons.some((addon) => addon.id === String(addonItemJuice._id)), 'juice item excluded');
   });
 
+  await test('GET /api/subscriptions/menu nests only item add-ons under mealPlanner.addons', async () => {
+    const res = await makeRequest('GET', '/api/subscriptions/menu');
+    assertEqual(res.status, 200, 'menu status');
+    const plannerAddons = res.body.data?.mealPlanner?.addons?.items || [];
+    assertTrue(plannerAddons.length > 0, 'planner addons returned');
+    assertTrue(plannerAddons.every((addon) => addon.kind === 'item'), 'nested planner addons exclude plans');
+    assertTrue(plannerAddons.some((addon) => addon.id === String(addonItemJuice._id)), 'planner item included');
+    assertTrue(!plannerAddons.some((addon) => addon.id === String(addonPlanJuice._id)), 'planner plan excluded');
+  });
+
   await test('POST /api/subscriptions/quote prices per_day add-on plans by subscription duration', async () => {
     const quotePayload = {
       planId: String(testPlan._id),

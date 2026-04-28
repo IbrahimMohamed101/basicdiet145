@@ -866,6 +866,19 @@ async function runTests() {
     assertEqual(res.status, 400, 'status');
     assertEqual(res.body.error?.code, 'INVALID', 'request rejected');
   });
+
+  await test('planner rejects plan add-ons directly', async () => {
+    const slots = [
+      { slotIndex: 1, slotKey: 'slot_1', proteinId: String(standardProtein._id), carbs: [{ carbId: String(standardCarb._id), grams: 150 }], selectionType: 'standard_meal' },
+      { slotIndex: 2, slotKey: 'slot_2', proteinId: String(standardProtein._id), carbs: [{ carbId: String(standardCarb._id), grams: 150 }], selectionType: 'standard_meal' },
+    ];
+    const res = await makeRequest('PUT', `/api/subscriptions/${testSubscription._id}/days/${TEST_DATE5}/selection`, {
+      mealSlots: slots,
+      addonsOneTime: [String(addonJuicePlan._id)],
+    });
+    assertEqual(res.status, 400, 'status');
+    assertEqual(res.body.error?.code, 'INVALID', 'plan add-on request rejected');
+  });
   
   console.log('\n--- G) Current Overview ---\n');
   await test('GET /current/overview returns premiumSummary array', async () => {

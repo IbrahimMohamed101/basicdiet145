@@ -81,11 +81,14 @@ function buildSubscriptionMealCatalog({
   mealCategories,
   premiumMeals,
   addons,
+  mealPlannerAddons,
   customSaladBasePrice,
   customMealBasePrice,
 } = {}) {
   const mappedPremiumMeals = premiumMeals.map((meal) => resolvePremiumMealCatalogEntry(meal, lang));
   const mappedAddons = addons.map((addon) => resolveAddonCatalogEntry(addon, lang));
+  const mappedMealPlannerAddons = (Array.isArray(mealPlannerAddons) ? mealPlannerAddons : addons)
+    .map((addon) => resolveAddonCatalogEntry(addon, lang));
   const mealCategoryMap = buildMealCategoryMap(mealCategories, lang);
   const resolvedRegularMeals = regularMeals.map((meal) => {
     const category = resolveMealCategoryForKey(
@@ -127,6 +130,8 @@ function buildSubscriptionMealCatalog({
   }));
   const subscriptionAddons = mappedAddons.filter((addon) => addon.type === "subscription");
   const oneTimeAddons = mappedAddons.filter((addon) => addon.type === "one_time");
+  const mealPlannerSubscriptionAddons = mappedMealPlannerAddons.filter((addon) => addon.type === "subscription");
+  const mealPlannerOneTimeAddons = mappedMealPlannerAddons.filter((addon) => addon.type === "one_time");
 
   return {
     currency: SYSTEM_CURRENCY,
@@ -153,12 +158,12 @@ function buildSubscriptionMealCatalog({
         totalCount: premiumMealsPayload.length,
       },
       addons: {
-        items: mappedAddons,
+        items: mappedMealPlannerAddons,
         byType: {
-          subscription: subscriptionAddons,
-          oneTime: oneTimeAddons,
+          subscription: mealPlannerSubscriptionAddons,
+          oneTime: mealPlannerOneTimeAddons,
         },
-        totalCount: mappedAddons.length,
+        totalCount: mappedMealPlannerAddons.length,
       },
     },
   };
@@ -229,6 +234,7 @@ async function getSubscriptionMenu(req, res) {
     mealCategories,
     premiumMeals,
     addons,
+    mealPlannerAddons,
     deliveryWindows,
     subscriptionDeliveryFeeHalala,
     zones,
@@ -263,6 +269,7 @@ async function getSubscriptionMenu(req, res) {
         }))
       ),
     Addon.find({ isActive: true, kind: "plan", billingMode: "per_day" }).sort({ sortOrder: 1, createdAt: -1 }).lean(),
+    Addon.find({ isActive: true, kind: "item", billingMode: "flat_once" }).sort({ sortOrder: 1, createdAt: -1 }).lean(),
     getSettingValue("delivery_windows", []),
     getSettingValue("subscription_delivery_fee_halala", 0),
     Zone.find({}).sort({ isActive: -1, sortOrder: 1, createdAt: -1 }).lean(),
@@ -285,6 +292,7 @@ async function getSubscriptionMenu(req, res) {
     mealCategories,
     premiumMeals,
     addons,
+    mealPlannerAddons,
     customSaladBasePrice,
     customMealBasePrice,
   });
