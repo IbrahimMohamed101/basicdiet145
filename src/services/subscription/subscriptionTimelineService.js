@@ -1,3 +1,4 @@
+const mongoose = require("mongoose");
 const Subscription = require("../../models/Subscription");
 const SubscriptionDay = require("../../models/SubscriptionDay");
 const BuilderProtein = require("../../models/BuilderProtein");
@@ -248,7 +249,7 @@ function normalizeTimelineMealSlots(dbDay) {
     .filter((slot) => slot && (slot.slotIndex || slot.slotKey))
     .map((slot) => {
       const carbs = Array.isArray(slot.carbs) && slot.carbs.length > 0
-        ? slot.carbs.map((carb) => ({ carbId: String(carb.carbId), grams: Number(carb.grams || 0) }))
+        ? slot.carbs.map((carb) => ({ carbId: carb.carbId ? String(carb.carbId) : null, grams: Number(carb.grams || 0) }))
         : (slot.carbId ? [{ carbId: String(slot.carbId), grams: 300 }] : []);
       const salad = slot.salad || (slot.customSalad && typeof slot.customSalad === "object" ? slot.customSalad : null);
 
@@ -430,7 +431,7 @@ async function buildSubscriptionTimeline(subscriptionId) {
     premiumMealsRemaining: Array.isArray(subscription.premiumBalance) ? subscription.premiumBalance.reduce((s, row) => s + Number(row.remainingQty || 0), 0) : 0,
     premiumMealsSelected: Array.isArray(subscription.premiumSelections) ? subscription.premiumSelections.length : 0,
     premiumBalanceBreakdown: await Promise.all((subscription.premiumBalance || []).map(async (row) => {
-      const proteinId = String(row.proteinId);
+      const proteinId = row.proteinId ? String(row.proteinId) : null;
       let premiumKey = row.premiumKey;
 
       if (!premiumKey && mongoose.isValidObjectId(proteinId)) {
