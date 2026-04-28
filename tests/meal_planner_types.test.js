@@ -13,16 +13,32 @@ const {
   isBaseBeefSlot,
   buildMealSlotDraft,
 } = require('../src/services/subscription/mealSlotPlannerService');
+const BuilderProtein = require('../src/models/BuilderProtein');
+const BuilderCarb = require('../src/models/BuilderCarb');
+const MealCategory = require('../src/models/MealCategory');
+const Meal = require('../src/models/Meal');
+const SaladIngredient = require('../src/models/SaladIngredient');
 
 const assert = require('assert');
 
-function runTests() {
+function mockQuery(result) {
+  return {
+    session() {
+      return this;
+    },
+    lean() {
+      return Promise.resolve(result);
+    },
+  };
+}
+
+async function runTests() {
   let passed = 0;
   let failed = 0;
   
-  function test(name, fn) {
+  async function test(name, fn) {
     try {
-      fn();
+      await fn();
       console.log(`✅ ${name}`);
       passed++;
     } catch (err) {
@@ -51,14 +67,14 @@ function runTests() {
 
   console.log('\n=== Meal Planner Selection Type Tests ===\n');
 
-  test('Constants are defined correctly', () => {
+  await test('Constants are defined correctly', () => {
     expectEqual(CUSTOM_PREMIUM_SALAD_TYPE, 'custom_premium_salad', 'CUSTOM_PREMIUM_SALAD_TYPE');
     expectEqual(SANDWICH_TYPE, 'sandwich', 'SANDWICH_TYPE');
     expectEqual(STANDARD_COMBO_TYPE, 'standard_combo', 'STANDARD_COMBO_TYPE');
     expectEqual(CUSTOM_PREMIUM_SALAD_FIXED_PRICE_HALALA, 3000, 'CUSTOM_PREMIUM_SALAD_FIXED_PRICE_HALALA');
   });
 
-  test('normalizeMealSlotsInput handles standard_meal', () => {
+  await test('normalizeMealSlotsInput handles standard_meal', () => {
     const input = [
       { slotIndex: 1, slotKey: 'slot_1', proteinId: 'protein1', carbId: 'carb1', selectionType: 'standard_combo' },
     ];
@@ -67,7 +83,7 @@ function runTests() {
     expectEqual(result[0].selectionType, 'standard_meal', 'selectionType normalized');
   });
 
-  test('normalizeMealSlotsInput handles sandwich', () => {
+  await test('normalizeMealSlotsInput handles sandwich', () => {
     const input = [
       { slotIndex: 1, slotKey: 'slot_1', sandwichId: 'sandwich1', selectionType: 'sandwich' },
     ];
@@ -77,23 +93,23 @@ function runTests() {
     expectEqual(result[0].sandwichId, 'sandwich1', 'sandwichId');
   });
 
-  test('normalizeMealSlotsInput handles premium_large_salad', () => {
+  await test('normalizeMealSlotsInput handles premium_large_salad', () => {
     const input = [
       { slotIndex: 1, slotKey: 'slot_1', proteinId: 'protein1', carbId: 'carb1', selectionType: 'custom_premium_salad', customSalad: { presetKey: 'preset1' } },
     ];
     const result = normalizeMealSlotsInput({ mealSlots: input });
     expectEqual(result.length, 1, 'slot count');
     expectEqual(result[0].selectionType, 'premium_large_salad', 'selectionType normalized');
-    expectEqual(result[0].customSalad?.presetKey, 'preset1', 'customSalad');
+    expectEqual(result[0].salad?.presetKey, 'preset1', 'customSalad normalized to salad');
   });
 
-  test('default selectionType is standard_meal', () => {
+  await test('default selectionType is standard_meal', () => {
     const input = [{ slotIndex: 1, slotKey: 'slot_1', proteinId: 'protein1', carbId: 'carb1' }];
     const result = normalizeMealSlotsInput({ mealSlots: input });
     expectEqual(result[0].selectionType, 'standard_meal', 'default selectionType');
   });
 
-  test('collectDuplicateSlotErrors detects duplicate slotIndex', () => {
+  await test('collectDuplicateSlotErrors detects duplicate slotIndex', () => {
     const input = [
       { slotIndex: 1, slotKey: 'slot_1', proteinId: 'protein1', carbId: 'carb1' },
       { slotIndex: 1, slotKey: 'slot_2', proteinId: 'protein2', carbId: 'carb2' },
@@ -103,7 +119,7 @@ function runTests() {
     expectEqual(errors[0].code, 'DUPLICATE_SLOT_INDEX', 'error code');
   });
 
-  test('collectDuplicateSlotErrors detects duplicate slotKey', () => {
+  await test('collectDuplicateSlotErrors detects duplicate slotKey', () => {
     const input = [
       { slotIndex: 1, slotKey: 'slot_1', proteinId: 'protein1', carbId: 'carb1' },
       { slotIndex: 2, slotKey: 'slot_1', proteinId: 'protein2', carbId: 'carb2' },
@@ -113,7 +129,7 @@ function runTests() {
     expectEqual(errors[0].code, 'DUPLICATE_SLOT_KEY', 'error code');
   });
 
-  test('collectSlotCountErrors detects excess slots', () => {
+  await test('collectSlotCountErrors detects excess slots', () => {
     const input = [
       { slotIndex: 1, slotKey: 'slot_1', proteinId: 'protein1', carbId: 'carb1' },
       { slotIndex: 2, slotKey: 'slot_2', proteinId: 'protein2', carbId: 'carb2' },
@@ -124,22 +140,22 @@ function runTests() {
     expectEqual(errors[0].code, 'MEAL_SLOT_COUNT_EXCEEDED', 'error code');
   });
 
-  test('isSandwichSlot returns true for sandwich selectionType', () => {
+  await test('isSandwichSlot returns true for sandwich selectionType', () => {
     const slot = { slotIndex: 1, slotKey: 'slot_1', selectionType: 'sandwich', sandwichId: 'sandwich1' };
     expectTrue(isSandwichSlot(slot), 'sandwich detected');
   });
 
-  test('isSandwichSlot returns false for standard_combo', () => {
+  await test('isSandwichSlot returns false for standard_combo', () => {
     const slot = { slotIndex: 1, slotKey: 'slot_1', selectionType: 'standard_combo', proteinId: 'p1', carbId: 'c1' };
     expectFalse(isSandwichSlot(slot), 'not sandwich');
   });
 
-  test('isBaseBeefSlot returns false for sandwich', () => {
+  await test('isBaseBeefSlot returns false for sandwich', () => {
     const slot = { slotIndex: 1, slotKey: 'slot_1', selectionType: 'sandwich', proteinFamilyKey: 'beef' };
     expectFalse(isBaseBeefSlot(slot), 'sandwich not beef');
   });
 
-  test('recomputePlannerMetaFromSlots counts sandwich as complete', () => {
+  await test('recomputePlannerMetaFromSlots counts sandwich as complete', () => {
     const slots = [
       { slotIndex: 1, slotKey: 'slot_1', selectionType: 'sandwich', sandwichId: 'sandwich1', status: 'complete' },
     ];
@@ -149,7 +165,7 @@ function runTests() {
     expectEqual(result.plannerMeta.emptySlotCount, 0, 'empty slot count');
   });
 
-  test('recomputePlannerMetaFromSlots counts standard_combo with protein+carb as complete', () => {
+  await test('recomputePlannerMetaFromSlots counts standard_combo with protein+carb as complete', () => {
     const slots = [
       { slotIndex: 1, slotKey: 'slot_1', selectionType: 'standard_combo', proteinId: 'p1', carbId: 'c1', status: 'complete' },
     ];
@@ -157,7 +173,7 @@ function runTests() {
     expectEqual(result.plannerMeta.completeSlotCount, 1, 'complete slot count');
   });
 
-  test('recomputePlannerMetaFromSlots counts custom_premium_salad properly', () => {
+  await test('recomputePlannerMetaFromSlots counts custom_premium_salad properly', () => {
     const slots = [
       { slotIndex: 1, slotKey: 'slot_1', selectionType: 'custom_premium_salad', proteinId: 'p1', carbId: 'c1', status: 'complete', isPremium: true, premiumSource: 'balance' },
     ];
@@ -167,7 +183,7 @@ function runTests() {
     expectEqual(result.plannerMeta.premiumCoveredByBalanceCount, 1, 'covered by balance');
   });
 
-  test('recomputePlannerMetaFromSlots counts pending payment for custom_premium_salad without balance', () => {
+  await test('recomputePlannerMetaFromSlots counts pending payment for custom_premium_salad without balance', () => {
     const slots = [
       { slotIndex: 1, slotKey: 'slot_1', selectionType: 'custom_premium_salad', proteinId: 'p1', carbId: 'c1', status: 'complete', isPremium: true, premiumSource: 'pending_payment', premiumExtraFeeHalala: 3000 },
     ];
@@ -176,7 +192,7 @@ function runTests() {
     expectEqual(result.plannerMeta.premiumTotalHalala, 3000, 'total halala');
   });
 
-  test('recomputePlannerMetaFromSlots marks isConfirmable when all slots complete and no partial', () => {
+  await test('recomputePlannerMetaFromSlots marks isConfirmable when all slots complete and no partial', () => {
     const slots = [
       { slotIndex: 1, slotKey: 'slot_1', selectionType: 'sandwich', sandwichId: 'sandwich1', status: 'complete' },
       { slotIndex: 2, slotKey: 'slot_2', selectionType: 'sandwich', sandwichId: 'sandwich2', status: 'complete' },
@@ -185,7 +201,7 @@ function runTests() {
     expectTrue(result.plannerMeta.isConfirmable, 'isConfirmable');
   });
 
-  test('projectMaterializedAndLegacyFromSlots creates sandwich meal', () => {
+  await test('projectMaterializedAndLegacyFromSlots creates sandwich meal', () => {
     const slots = [
       { slotIndex: 1, slotKey: 'slot_1', selectionType: 'sandwich', sandwichId: 'sandwich1', status: 'complete', assignmentSource: 'client' },
     ];
@@ -195,7 +211,7 @@ function runTests() {
     expectEqual(result.materializedMeals[0].operationalSku, 'sandwich:sandwich1', 'operational SKU');
   });
 
-  test('projectMaterializedAndLegacyFromSlots creates standard_meal', () => {
+  await test('projectMaterializedAndLegacyFromSlots creates standard_meal', () => {
     const slots = [
       { slotIndex: 1, slotKey: 'slot_1', selectionType: 'standard_meal', proteinId: 'p1', carbs: [{ carbId: 'c1', grams: 150 }], status: 'complete' },
     ];
@@ -205,7 +221,7 @@ function runTests() {
     expectEqual(result.materializedMeals[0].carbId, 'c1', 'carb ID');
   });
 
-  test('recomputePlannerMetaFromSlots allows sandwich without proteinId/carbId', () => {
+  await test('recomputePlannerMetaFromSlots allows sandwich without proteinId/carbId', () => {
     const slots = [
       { slotIndex: 1, slotKey: 'slot_1', selectionType: 'sandwich', sandwichId: 'sandwich1', status: 'complete' },
     ];
@@ -215,7 +231,7 @@ function runTests() {
     expectEqual(result.plannerMeta.partialSlotCount, 0, 'partial');
   });
 
-  test('recomputePlannerMetaFromSlots requires proteinId+carbId for standard_combo', () => {
+  await test('recomputePlannerMetaFromSlots requires proteinId+carbId for standard_combo', () => {
     const slots = [
       { slotIndex: 1, slotKey: 'slot_1', selectionType: 'standard_combo', proteinId: null, carbId: null },
     ];
@@ -225,7 +241,7 @@ function runTests() {
     expectEqual(result.plannerMeta.emptySlotCount, 1, 'empty');
   });
 
-  test('recomputePlannerMetaFromSlots counts premium_large_salad as complete when salad groups provided', () => {
+  await test('recomputePlannerMetaFromSlots counts premium_large_salad as complete when salad groups provided', () => {
     const slots = [
       { slotIndex: 1, slotKey: 'slot_1', selectionType: 'premium_large_salad', salad: { groups: { protein: ['p1'], sauce: ['s1'] } }, status: 'complete', isPremium: true },
     ];
@@ -235,7 +251,7 @@ function runTests() {
 
   console.log(`\n=== Meal Planner Premium Balance Tests ===\n`);
 
-  test('premium balance covers custom_premium_salad when available', () => {
+  await test('premium balance covers custom_premium_salad when available', () => {
     const subscription = {
       premiumBalance: [
         { proteinId: 'premium1', premiumKey: 'shrimp', remainingQty: 2, purchasedQty: 2, currency: 'SAR' }
@@ -250,13 +266,13 @@ function runTests() {
     expectEqual(subscription.premiumBalance[0].remainingQty, 2, 'remaining qty');
   });
 
-  test('custom_premium_salad fixed price is 3000', () => {
+  await test('custom_premium_salad fixed price is 3000', () => {
     expectEqual(CUSTOM_PREMIUM_SALAD_FIXED_PRICE_HALALA, 3000, 'fixed price');
   });
 
   console.log(`\n=== Meal Planner Commercial State Tests ===\n`);
 
-  test('confirmed day isFulfillable = true', () => {
+  await test('confirmed day isFulfillable = true', () => {
     const day = {
       status: 'open',
       plannerState: 'confirmed',
@@ -271,7 +287,7 @@ function runTests() {
     expectEqual(day.plannerState, 'confirmed', 'planner confirmed');
   });
 
-  test('paymentRequired day isConfirmable but blocked', () => {
+  await test('paymentRequired day isConfirmable but blocked', () => {
     const day = {
       status: 'open',
       plannerState: 'draft',
@@ -287,19 +303,78 @@ function runTests() {
 
   console.log(`\n=== Meal Planner Persistence & Mapping Tests ===\n`);
 
-  test('processedSlot includes all persistence fields', () => {
+  await test('processedSlot includes all persistence fields', () => {
     const slot = { slotIndex: 1, selectionType: 'sandwich', sandwichId: 's1' };
     const normalized = normalizeMealSlotsInput({ mealSlots: [slot] })[0];
     expectEqual(normalized.selectionType, 'sandwich', 'selectionType preserved');
     expectEqual(normalized.sandwichId, 's1', 'sandwichId preserved');
   });
 
-  test('premiumKey is populated in draft processed slots', async () => {
+  await test('premiumKey is populated in draft processed slots', async () => {
     const slots = [
       { slotIndex: 1, selectionType: 'premium_meal', proteinId: 'p1', carbs: [{ carbId: 'c1', grams: 150 }], isPremium: true, premiumKey: 'beef_premium', status: 'complete' }
     ];
     const result = projectMaterializedAndLegacyFromSlots({ processedSlots: slots, now: new Date() });
     expectEqual(result.premiumSelections[0].premiumKey, 'beef_premium', 'premiumKey mapped to selections');
+  });
+
+  await test('premium_large_salad creates canonical premium selection entry', () => {
+    const slots = [
+      {
+        slotIndex: 1,
+        slotKey: 'slot_1',
+        selectionType: 'premium_large_salad',
+        proteinId: 'premium1',
+        salad: { groups: { protein: ['premium1'], sauce: ['s1'] } },
+        status: 'complete',
+        isPremium: true,
+        premiumKey: 'custom_premium_salad',
+        premiumSource: 'balance',
+      },
+    ];
+    const result = projectMaterializedAndLegacyFromSlots({ processedSlots: slots, now: new Date() });
+    expectEqual(result.premiumSelections.length, 1, 'premium selection count');
+    expectEqual(result.premiumSelections[0].premiumKey, 'custom_premium_salad', 'canonical premium key');
+    expectEqual(result.premiumSelections[0].baseSlotKey, 'slot_1', 'base slot key');
+    expectEqual(result.premiumSelections[0].proteinId, 'premium1', 'selected protein carried through');
+  });
+
+  await test('buildMealSlotDraft rejects inactive or unavailable items', async () => {
+    const originalProteinFind = BuilderProtein.find;
+    const originalCarbFind = BuilderCarb.find;
+    const originalMealCategoryFindOne = MealCategory.findOne;
+    const originalMealFind = Meal.find;
+    const originalSaladIngredientFind = SaladIngredient.find;
+
+    BuilderProtein.find = () => mockQuery([]);
+    BuilderCarb.find = () => mockQuery([]);
+    MealCategory.findOne = () => mockQuery(null);
+    Meal.find = () => mockQuery([]);
+    SaladIngredient.find = () => mockQuery([]);
+
+    try {
+      const result = await buildMealSlotDraft({
+        mealSlots: [
+          {
+            slotIndex: 1,
+            slotKey: 'slot_1',
+            selectionType: 'standard_meal',
+            proteinId: '507f191e810c19729de860ea',
+            carbs: [{ carbId: '507f191e810c19729de860eb', grams: 150 }],
+          },
+        ],
+        mealsPerDayLimit: 1,
+        subscription: { premiumBalance: [] },
+      });
+      expectEqual(result.valid, false, 'draft invalid');
+      expectEqual(result.errorCode, 'PROTEIN_REQUIRED', 'inactive protein rejected');
+    } finally {
+      BuilderProtein.find = originalProteinFind;
+      BuilderCarb.find = originalCarbFind;
+      MealCategory.findOne = originalMealCategoryFindOne;
+      Meal.find = originalMealFind;
+      SaladIngredient.find = originalSaladIngredientFind;
+    }
   });
 
   console.log(`\n=== Results: ${passed} passed, ${failed} failed ===\n`);
@@ -309,4 +384,7 @@ function runTests() {
   }
 }
 
-runTests();
+runTests().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

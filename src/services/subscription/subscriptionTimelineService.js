@@ -246,23 +246,27 @@ function normalizeTimelineMealSlots(dbDay) {
 
   return dbDay.mealSlots
     .filter((slot) => slot && (slot.slotIndex || slot.slotKey))
-    .map((slot) => ({
-      slotIndex: Number(slot.slotIndex || 0),
-      slotKey: String(slot.slotKey || ""),
-      status: String(slot.status || "empty"),
-      selectionType: slot.selectionType || "empty",
-      proteinId: slot.proteinId ? String(slot.proteinId) : null,
-      carbs: Array.isArray(slot.carbs) && slot.carbs.length > 0
-        ? slot.carbs.map(c => ({ carbId: String(c.carbId), grams: Number(c.grams || 0) }))
-        : (slot.carbId ? [{ carbId: String(slot.carbId), grams: 300 }] : []),
-      sandwichId: slot.sandwichId ? String(slot.sandwichId) : null,
-      salad: slot.salad || null,
-      customSalad: slot.customSalad || null,
-      isPremium: Boolean(slot.isPremium),
-      premiumKey: slot.premiumKey || null,
-      premiumSource: slot.premiumSource ? String(slot.premiumSource) : "none",
-      premiumExtraFeeHalala: Number(slot.premiumExtraFeeHalala || 0),
-    }));
+    .map((slot) => {
+      const carbs = Array.isArray(slot.carbs) && slot.carbs.length > 0
+        ? slot.carbs.map((carb) => ({ carbId: String(carb.carbId), grams: Number(carb.grams || 0) }))
+        : (slot.carbId ? [{ carbId: String(slot.carbId), grams: 300 }] : []);
+      const salad = slot.salad || (slot.customSalad && typeof slot.customSalad === "object" ? slot.customSalad : null);
+
+      return {
+        slotIndex: Number(slot.slotIndex || 0),
+        slotKey: String(slot.slotKey || ""),
+        status: String(slot.status || "empty"),
+        selectionType: slot.selectionType || "empty",
+        proteinId: slot.proteinId ? String(slot.proteinId) : null,
+        carbs,
+        sandwichId: slot.sandwichId ? String(slot.sandwichId) : null,
+        salad,
+        isPremium: Boolean(slot.isPremium),
+        premiumKey: slot.premiumKey || null,
+        premiumSource: slot.premiumSource ? String(slot.premiumSource) : "none",
+        premiumExtraFeeHalala: Number(slot.premiumExtraFeeHalala || 0),
+      };
+    });
 }
 
 function normalizeLegacySelectionIds(dbDay) {
@@ -318,6 +322,7 @@ async function buildSubscriptionTimeline(subscriptionId) {
       }).sort({ createdAt: -1 }).lean();
       if (canonicalSub) {
           subscription = canonicalSub;
+          subscriptionId = canonicalSub._id;
       }
   }
 

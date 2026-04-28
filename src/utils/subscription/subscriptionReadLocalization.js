@@ -44,6 +44,37 @@ function localizePlanningView(planning, lang) {
   };
 }
 
+function normalizeCanonicalMealSlots(mealSlots) {
+  if (!Array.isArray(mealSlots)) return [];
+
+  return mealSlots.map((slot) => {
+    const carbs = Array.isArray(slot && slot.carbs) && slot.carbs.length > 0
+      ? slot.carbs.map((carb) => ({
+        carbId: carb && carb.carbId ? String(carb.carbId) : "",
+        grams: Number(carb && carb.grams || 0),
+      }))
+      : (slot && slot.carbId ? [{ carbId: String(slot.carbId), grams: 300 }] : []);
+    const salad = slot && slot.salad
+      ? slot.salad
+      : (slot && slot.customSalad && typeof slot.customSalad === "object" ? slot.customSalad : null);
+
+    return {
+      slotIndex: Number(slot && slot.slotIndex || 0),
+      slotKey: slot && slot.slotKey ? String(slot.slotKey) : "",
+      status: slot && slot.status ? String(slot.status) : "empty",
+      selectionType: slot && slot.selectionType ? String(slot.selectionType) : "empty",
+      proteinId: slot && slot.proteinId ? String(slot.proteinId) : null,
+      carbs,
+      sandwichId: slot && slot.sandwichId ? String(slot.sandwichId) : null,
+      salad,
+      isPremium: Boolean(slot && slot.isPremium),
+      premiumKey: slot && slot.premiumKey ? String(slot.premiumKey) : null,
+      premiumSource: slot && slot.premiumSource ? String(slot.premiumSource) : "none",
+      premiumExtraFeeHalala: Number(slot && slot.premiumExtraFeeHalala || 0),
+    };
+  });
+}
+
 function localizeDaySnapshot(snapshot, { lang, addonNames = new Map() } = {}) {
   if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
     return snapshot;
@@ -116,6 +147,10 @@ function localizeSubscriptionDayReadPayload(day, { lang, addonNames = new Map() 
 
   if (day.planning && typeof day.planning === "object") {
     localized.planning = localizePlanningView(day.planning, lang);
+  }
+
+  if (Array.isArray(day.mealSlots)) {
+    localized.mealSlots = normalizeCanonicalMealSlots(day.mealSlots);
   }
 
   if (day.oneTimeAddonPaymentStatus) {
@@ -192,23 +227,7 @@ function localizeTimelineReadPayload(timeline, lang) {
           planningReady: Boolean(day.planningReady),
           fulfillmentReady: Boolean(day.fulfillmentReady),
           selectedMealIds: Array.isArray(day.selectedMealIds) ? day.selectedMealIds : [],
-          mealSlots: Array.isArray(day.mealSlots)
-            ? day.mealSlots.map((slot) => ({
-              slotIndex: Number(slot.slotIndex || 0),
-              slotKey: slot.slotKey || "",
-              status: slot.status || "empty",
-              selectionType: slot.selectionType || "empty",
-              proteinId: slot.proteinId || null,
-              carbs: Array.isArray(slot.carbs) ? slot.carbs : [],
-              sandwichId: slot.sandwichId || null,
-              salad: slot.salad || null,
-              customSalad: slot.customSalad || null,
-              isPremium: Boolean(slot.isPremium),
-              premiumKey: slot.premiumKey || null,
-              premiumSource: slot.premiumSource || "none",
-              premiumExtraFeeHalala: Number(slot.premiumExtraFeeHalala || 0),
-            }))
-            : [],
+          mealSlots: normalizeCanonicalMealSlots(day.mealSlots),
         };
       })
       : [],

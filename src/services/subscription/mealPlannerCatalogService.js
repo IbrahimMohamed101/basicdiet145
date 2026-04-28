@@ -34,18 +34,21 @@ async function getMealPlannerCatalog({ lang }) {
     Meal.find({ isActive: true, availableForSubscription: { $ne: false } }).sort({ sortOrder: 1 }).lean(),
   ]);
 
-  const sandwiches = allMeals.filter(m => {
-    const catKey = m.category ? String(m.category).toLowerCase().trim() : "";
-    return catKey === "sandwich" || catKey === "sandwiches";
-  });
+  const sandwichCategoryIds = new Set(
+    mealCategories
+      .filter((category) => ["sandwich", "sandwiches"].includes(String(category.key || "").toLowerCase().trim()))
+      .map((category) => String(category._id))
+  );
+  const sandwiches = allMeals.filter((meal) => sandwichCategoryIds.has(String(meal.categoryId || "")));
 
   const proteins = allProteins.filter(p => !p.isPremium);
   const premiumProteins = allProteins.filter(p => p.isPremium);
+  const selectableCarbs = carbs.filter((carb) => String(carb.displayCategoryKey || "").trim().toLowerCase() !== LARGE_SALAD_KEY);
 
   const saladConfig = {
     id: "premium_large_salad",
     enabled: true,
-    premiumKey: "custom_premium_salad",
+    premiumKey: CANONICAL_PREMIUM_SALAD_KEY,
     selectionType: "premium_large_salad",
     extraFeeHalala: PREMIUM_LARGE_SALAD_FIXED_PRICE_HALALA,
     groups: SALAD_GROUPS.map(g => ({
@@ -110,7 +113,7 @@ async function getMealPlannerCatalog({ lang }) {
       extraFeeHalala: p.extraFeeHalala || 0,
       sortOrder: p.sortOrder || 0,
     })),
-    carbs: carbs.map((carb) => ({
+    carbs: selectableCarbs.map((carb) => ({
       id: String(carb._id),
       displayCategoryKey: carb.displayCategoryKey,
       name: pickLang(carb.name, lang),

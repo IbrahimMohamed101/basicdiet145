@@ -48,14 +48,17 @@ const definition = {
             type: "object", 
             nullable: true,
             properties: {
-              groups: { type: "object" }
+              presetKey: { type: "string", nullable: true },
+              groups: {
+                type: "object",
+                description: "Canonical grouped premium_large_salad selections keyed by leafy_greens, vegetables, fruits, protein, cheese_nuts, or sauce",
+              }
             }
           },
-          customSalad: { type: "object", nullable: true },
           proteinFamilyKey: { type: "string", nullable: true },
           isPremium: { type: "boolean" },
           premiumKey: { type: "string", nullable: true },
-          premiumSource: { type: "string", enum: ["none", "balance", "pending_payment", "paid_extra"] },
+          premiumSource: { type: "string", enum: ["none", "balance", "pending_payment", "paid_extra", "paid"] },
         },
       },
       AddonSelection: {

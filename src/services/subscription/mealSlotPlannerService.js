@@ -9,7 +9,6 @@ const {
   buildPaymentRequirement,
   buildPlannerRevisionHash,
 } = require("./subscriptionDayCommercialStateService");
-const { validateCarbSelections } = require("../../utils/subscription/carbSelectionValidator");
 const { 
   NEW_TYPES, 
   mapLegacySelectionType, 
@@ -60,6 +59,9 @@ function normalizeMealSlotsInput({ mealSlots }) {
     normalizedSlot.slotKey = resolveMealSlotKey({ ...rawSlot, slotIndex: resolvedSlotIndex });
     normalizedSlot.selectionType = mapLegacySelectionType(normalizedSlot.selectionType, normalizedSlot);
     normalizedSlot.carbs = normalizeCarbs(normalizedSlot);
+    if (!normalizedSlot.salad && normalizedSlot.customSalad && typeof normalizedSlot.customSalad === "object") {
+      normalizedSlot.salad = normalizedSlot.customSalad;
+    }
     return normalizedSlot;
   });
 }
@@ -311,6 +313,14 @@ function getMealPlannerRules() {
   };
 }
 
+function resolveSaladProteinId(slot) {
+  if (slot && slot.proteinId) return slot.proteinId;
+  const proteinGroup = slot && slot.salad && slot.salad.groups && Array.isArray(slot.salad.groups.protein)
+    ? slot.salad.groups.protein
+    : [];
+  return proteinGroup[0] || null;
+}
+
 function projectMaterializedAndLegacyFromSlots({ processedSlots, now }) {
   const materializedMeals = [];
   const selections = [];
@@ -344,9 +354,11 @@ function projectMaterializedAndLegacyFromSlots({ processedSlots, now }) {
     }
 
     if (selectionType === NEW_TYPES.PREMIUM_LARGE_SALAD) {
+       const saladProteinId = resolveSaladProteinId(slot);
        const materialized = {
         slotKey: slot.slotKey,
         selectionType: NEW_TYPES.PREMIUM_LARGE_SALAD,
+        proteinId: saladProteinId,
         isPremium: true,
         premiumKey: CANONICAL_PREMIUM_SALAD_KEY,
         premiumSource: slot.premiumSource || "none",
@@ -357,10 +369,19 @@ function projectMaterializedAndLegacyFromSlots({ processedSlots, now }) {
       materializedMeals.push(materialized);
       
       // For Premium Large Salad, we also push the protein to baseMealSlots if available 
-      if (slot.salad && slot.salad.groups && Array.isArray(slot.salad.groups.protein) && slot.salad.groups.protein[0]) {
+      if (saladProteinId) {
+        selections.push(saladProteinId);
+        premiumSelections.push({
+          premiumKey: CANONICAL_PREMIUM_SALAD_KEY,
+          proteinId: saladProteinId,
+          baseSlotKey: slot.slotKey,
+          unitExtraFeeHalala: Number(slot.premiumExtraFeeHalala || 0),
+          currency: SYSTEM_CURRENCY,
+          premiumSource: slot.premiumSource || "paid",
+        });
         baseMealSlots.push({
           slotKey: slot.slotKey,
-          mealId: slot.salad.groups.protein[0],
+          mealId: saladProteinId,
           assignmentSource: slot.assignmentSource || "client",
           assignedAt: slot.assignedAt || now,
         });
@@ -538,9 +559,17 @@ async function buildMealSlotDraft({ mealSlots, mealsPerDayLimit, subscription, s
   const validCarbIds = carbIds.filter(id => isValidObjectId(id));
 
   const [proteins, carbs, sandwichCategory, saladIngredients] = await Promise.all([
-    BuilderProtein.find({ _id: { $in: validProteinIds } }).session(session).lean(),
-    BuilderCarb.find({ _id: { $in: validCarbIds } }).session(session).lean(),
-    MealCategory.findOne({ key: "sandwich", isActive: true }).session(session).lean(),
+    BuilderProtein.find({
+      _id: { $in: validProteinIds },
+      isActive: true,
+      availableForSubscription: { $ne: false },
+    }).session(session).lean(),
+    BuilderCarb.find({
+      _id: { $in: validCarbIds },
+      isActive: true,
+      availableForSubscription: { $ne: false },
+    }).session(session).lean(),
+    MealCategory.findOne({ key: { $in: ["sandwich", "sandwiches"] }, isActive: true }).session(session).lean(),
     SaladIngredient.find({ isActive: true }).session(session).lean(),
   ]);
 
@@ -590,16 +619,18 @@ async function buildMealSlotDraft({ mealSlots, mealsPerDayLimit, subscription, s
       carbs: slot.carbs || [],
       sandwichId: slot.sandwichId || null,
       salad: slot.salad || null,
-      customSalad: slot.customSalad || null,
       isPremium: false,
       premiumKey: null,
       premiumSource: "none",
       premiumExtraFeeHalala: 0,
     };
 
-    let validation = { valid: false };
+    const shapeValidation = validateMealSlotShape(processedSlot);
+    let validation = shapeValidation.valid ? { valid: false } : shapeValidation;
 
-    if (processedSlot.selectionType === NEW_TYPES.STANDARD_MEAL) {
+    if (!shapeValidation.valid) {
+      validation = shapeValidation;
+    } else if (processedSlot.selectionType === NEW_TYPES.STANDARD_MEAL) {
       validation = validateStandardMeal(processedSlot, proteinMap, carbMap);
     } else if (processedSlot.selectionType === NEW_TYPES.PREMIUM_MEAL) {
       validation = validatePremiumMeal(processedSlot, proteinMap, carbMap);
@@ -626,6 +657,9 @@ async function buildMealSlotDraft({ mealSlots, mealsPerDayLimit, subscription, s
     }
 
     // Resolve protein metadata for beef limit
+    if (!processedSlot.proteinId && processedSlot.selectionType === NEW_TYPES.PREMIUM_LARGE_SALAD) {
+      processedSlot.proteinId = resolveSaladProteinId(processedSlot);
+    }
     if (processedSlot.proteinId) {
       const p = proteinMap.get(String(processedSlot.proteinId));
       if (p) {

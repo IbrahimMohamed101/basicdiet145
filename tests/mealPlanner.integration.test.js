@@ -50,7 +50,10 @@ let premiumProteinShrimp = null;
 let premiumProteinBeefSteak = null;
 let premiumProteinSalmon = null;
 let standardCarb = null;
+let unavailableProtein = null;
+let unavailableCarb = null;
 let sandwichMeal = null;
+let nonSandwichMeal = null;
 let addonJuice = null;
 let addonJuice2 = null;
 let testPlan = null;
@@ -169,8 +172,17 @@ async function seedBuilderCatalog() {
 
   const baseProtein = { displayCategoryId: builderCategory._id, displayCategoryKey: builderCategory.key, isActive: true, availableForSubscription: true };
 
-  standardProtein = await BuilderProtein.findOne({ isPremium: false, premiumKey: { $exists: true, $ne: null } })
-    || await BuilderProtein.findOne({ isPremium: false });
+  standardProtein = await BuilderProtein.findOne({
+    isPremium: false,
+    isActive: true,
+    availableForSubscription: { $ne: false },
+    premiumKey: { $exists: true, $ne: null },
+  })
+    || await BuilderProtein.findOne({
+      isPremium: false,
+      isActive: true,
+      availableForSubscription: { $ne: false },
+    });
   if (!standardProtein) {
     standardProtein = new BuilderProtein({
       ...baseProtein, name: { ar: 'دجاج', en: 'Chicken' }, description: { ar: 'دجاج مشوي', en: 'Grilled chicken' },
@@ -210,7 +222,11 @@ async function seedBuilderCatalog() {
     await premiumProteinSalmon.save();
   }
 
-  standardCarb = await BuilderCarb.findOne();
+  standardCarb = await BuilderCarb.findOne({
+    displayCategoryKey: { $ne: 'large_salad' },
+    isActive: true,
+    availableForSubscription: { $ne: false },
+  });
   if (!standardCarb) {
     standardCarb = new BuilderCarb({
       displayCategoryId: builderCategory._id, displayCategoryKey: builderCategory.key,
@@ -229,6 +245,36 @@ async function seedBuilderCatalog() {
       isActive: true, availableForSubscription: true,
     });
     await largeSaladCarb.save();
+  }
+
+  unavailableProtein = await BuilderProtein.findOne({ premiumKey: 'inactive_test_protein' });
+  if (!unavailableProtein) {
+    unavailableProtein = new BuilderProtein({
+      ...baseProtein,
+      name: { ar: 'بروتين غير متاح', en: 'Unavailable Protein' },
+      description: { ar: 'غير متاح', en: 'Unavailable protein' },
+      proteinFamilyKey: 'chicken',
+      ruleTags: [],
+      isPremium: false,
+      premiumKey: 'inactive_test_protein',
+      extraFeeHalala: 0,
+      currency: 'SAR',
+      availableForSubscription: false,
+    });
+    await unavailableProtein.save();
+  }
+
+  unavailableCarb = await BuilderCarb.findOne({ name: { en: 'Unavailable Carb' } });
+  if (!unavailableCarb) {
+    unavailableCarb = new BuilderCarb({
+      displayCategoryId: builderCategory._id,
+      displayCategoryKey: builderCategory.key,
+      name: { ar: 'كارب غير متاح', en: 'Unavailable Carb' },
+      description: { ar: 'غير متاح', en: 'Unavailable carb' },
+      isActive: true,
+      availableForSubscription: false,
+    });
+    await unavailableCarb.save();
   }
 
   const GROUP_ORDER = { vegetables: 1, addons: 2, fruits: 3, nuts: 4, sauce: 5 };
@@ -297,6 +343,29 @@ async function seedBuilderCatalog() {
     await sandwichMeal.save();
   }
 
+  let bowlCategory = await MealCategory.findOne({ key: 'bowl' });
+  if (!bowlCategory) {
+    bowlCategory = new MealCategory({
+      key: 'bowl',
+      name: { ar: 'باول', en: 'Bowl' },
+      isActive: true,
+    });
+    await bowlCategory.save();
+  }
+
+  nonSandwichMeal = await Meal.findOne({ categoryId: bowlCategory._id, isActive: true });
+  if (!nonSandwichMeal) {
+    nonSandwichMeal = new Meal({
+      name: { ar: 'باول دجاج', en: 'Chicken Bowl' },
+      description: { ar: 'طبق عادي', en: 'Regular bowl meal' },
+      categoryId: bowlCategory._id,
+      type: 'regular',
+      isActive: true,
+      availableForSubscription: true,
+    });
+    await nonSandwichMeal.save();
+  }
+
   addonJuice = await Addon.findOne({ kind: 'item' });
   if (!addonJuice) {
     addonJuice = new Addon({
@@ -345,6 +414,7 @@ async function createTestSubscription() {
       { proteinId: premiumProteinShrimp._id, premiumKey: 'shrimp', purchasedQty: 2, remainingQty: 2, unitExtraFeeHalala: 1500, currency: 'SAR' },
       { proteinId: premiumProteinBeefSteak._id, premiumKey: 'beef_steak', purchasedQty: 1, remainingQty: 1, unitExtraFeeHalala: 2000, currency: 'SAR' },
       { proteinId: premiumProteinSalmon._id, premiumKey: 'salmon', purchasedQty: 1, remainingQty: 0, unitExtraFeeHalala: 1800, currency: 'SAR' },
+      { proteinId: premiumProteinShrimp._id, premiumKey: CUSTOM_PREMIUM_SALAD_KEY, purchasedQty: 1, remainingQty: 1, unitExtraFeeHalala: 3000, currency: 'SAR' },
     ],
     addonSubscriptions: [
       { addonId: addonJuice._id, category: 'juice', includedCount: 1, maxPerDay: 1, status: 'active' },
@@ -484,9 +554,27 @@ async function runTests() {
     const sauceGroup = salad?.groups?.find(g => g.key === 'sauce');
     assertEqual(sauceGroup?.minSelect, 1, 'sauce minSelect=1');
     assertEqual(sauceGroup?.maxSelect, 1, 'sauce maxSelect=1');
+    assertEqual(groupKeys.length, 6, 'exactly 6 canonical groups');
+    assertTrue(!groupKeys.includes('addons'), 'addons group removed');
+    assertTrue(!groupKeys.includes('nuts'), 'nuts group removed');
     for (const ing of (salad?.ingredients || [])) {
       assertTrue(groupKeys.includes(ing.groupKey), `ingredient groupKey '${ing.groupKey}' exists in groups`);
+      assertTrue(ing.groupKey !== 'addons', 'ingredient groupKey addons removed');
+      assertTrue(ing.groupKey !== 'nuts', 'ingredient groupKey nuts removed');
     }
+  });
+
+  await test('builderCatalog sandwiches contain only real sandwich meals', async () => {
+    const res = await makeRequest('GET', '/api/subscriptions/meal-planner-menu');
+    const sandwiches = res.body.data?.builderCatalog?.sandwiches || [];
+    assertTrue(sandwiches.some((item) => item.id === String(sandwichMeal._id)), 'seed sandwich present');
+    assertTrue(!sandwiches.some((item) => item.id === String(nonSandwichMeal._id)), 'non-sandwich meal excluded');
+  });
+
+  await test('builderCatalog carbs exclude legacy large_salad pseudo-carb', async () => {
+    const res = await makeRequest('GET', '/api/subscriptions/meal-planner-menu');
+    const carbs = res.body.data?.builderCatalog?.carbs || [];
+    assertTrue(!carbs.some((item) => item.displayCategoryKey === 'large_salad'), 'large_salad carb excluded');
   });
 
   console.log('\n--- A2) Builder Premium Meals ---\n');
@@ -539,6 +627,10 @@ async function runTests() {
     assertEqual(res.status, 200, 'status');
     assertTrue(!!res.body.data, 'data');
     assertArray(res.body.data.mealSlots, 'mealSlots');
+    const firstSlot = res.body.data.mealSlots[0] || {};
+    assertArray(firstSlot.carbs, 'carbs array persisted');
+    assertTrue(!Object.prototype.hasOwnProperty.call(firstSlot, 'carbId'), 'top-level carbId not exposed');
+    assertTrue(!Object.prototype.hasOwnProperty.call(firstSlot, 'customSalad'), 'customSalad not exposed');
   });
   
   console.log('\n--- C) Validate standard_combo ---\n');
@@ -596,6 +688,33 @@ async function runTests() {
     ];
     const res = await makeRequest('PUT', `/api/subscriptions/${testSubscription._id}/days/${TEST_DATE3}/selection`, { mealSlots: slots });
     assertEqual(res.status, 200, 'status');
+    const day = await getActiveSubscriptionDay(TEST_DATE3);
+    assertEqual((day?.premiumUpgradeSelections || []).length, 2, 'two premium selections persisted');
+    const saladSelection = (day?.premiumUpgradeSelections || []).find((item) => item.baseSlotKey === 'slot_2');
+    assertTrue(!!saladSelection, 'salad premium selection persisted');
+    assertEqual(saladSelection?.premiumKey, CUSTOM_PREMIUM_SALAD_KEY, 'salad uses canonical premium key');
+    assertEqual(saladSelection?.premiumSource, 'balance', 'salad used balance');
+    const refreshedSub = await Subscription.findById(testSubscription._id).lean();
+    const shrimpBalance = (refreshedSub?.premiumBalance || []).find((row) => row.premiumKey === 'shrimp');
+    const saladBalance = (refreshedSub?.premiumBalance || []).find((row) => row.premiumKey === CUSTOM_PREMIUM_SALAD_KEY);
+    assertEqual(Number(shrimpBalance?.remainingQty || 0), 1, 'shrimp balance decremented once for premium meal');
+    assertEqual(Number(saladBalance?.remainingQty || 0), 0, 'salad entitlement decremented');
+  });
+
+  await test('editing away premium salad refunds premium entitlement consistently', async () => {
+    const slots = [
+      { slotIndex: 1, slotKey: 'slot_1', proteinId: String(standardProtein._id), carbs: [{ carbId: String(standardCarb._id), grams: 150 }], selectionType: 'standard_meal' },
+      { slotIndex: 2, slotKey: 'slot_2', proteinId: String(standardProtein._id), carbs: [{ carbId: String(standardCarb._id), grams: 150 }], selectionType: 'standard_meal' },
+    ];
+    const res = await makeRequest('PUT', `/api/subscriptions/${testSubscription._id}/days/${TEST_DATE3}/selection`, { mealSlots: slots });
+    assertEqual(res.status, 200, 'status');
+    const day = await getActiveSubscriptionDay(TEST_DATE3);
+    assertEqual((day?.premiumUpgradeSelections || []).length, 0, 'premium selections cleared after edit');
+    const refreshedSub = await Subscription.findById(testSubscription._id).lean();
+    const shrimpBalance = (refreshedSub?.premiumBalance || []).find((row) => row.premiumKey === 'shrimp');
+    const saladBalance = (refreshedSub?.premiumBalance || []).find((row) => row.premiumKey === CUSTOM_PREMIUM_SALAD_KEY);
+    assertEqual(Number(shrimpBalance?.remainingQty || 0), 2, 'shrimp balance refunded');
+    assertEqual(Number(saladBalance?.remainingQty || 0), 1, 'salad entitlement refunded');
   });
   
   console.log('\n--- G) Current Overview ---\n');
@@ -709,6 +828,32 @@ async function runTests() {
     assertEqual(res.body.error?.code, 'SALAD_PROTEIN_NOT_PREMIUM', 'error code');
   });
 
+  await test('standard_meal rejects unavailable protein', async () => {
+    const res = await makeRequest('POST', `/api/subscriptions/${testSubscription._id}/days/${TEST_DATE5}/selection/validate`, {
+      mealSlots: [{
+        slotIndex: 1,
+        selectionType: 'standard_meal',
+        proteinId: String(unavailableProtein._id),
+        carbs: [{ carbId: String(standardCarb._id), grams: 150 }],
+      }],
+    });
+    assertEqual(res.status, 422, 'rejected with 422');
+    assertEqual(res.body.error?.code, 'PROTEIN_REQUIRED', 'unavailable protein rejected');
+  });
+
+  await test('standard_meal rejects unavailable carb', async () => {
+    const res = await makeRequest('POST', `/api/subscriptions/${testSubscription._id}/days/${TEST_DATE5}/selection/validate`, {
+      mealSlots: [{
+        slotIndex: 1,
+        selectionType: 'standard_meal',
+        proteinId: String(standardProtein._id),
+        carbs: [{ carbId: String(unavailableCarb._id), grams: 150 }],
+      }],
+    });
+    assertEqual(res.status, 422, 'rejected with 422');
+    assertEqual(res.body.error?.code, 'INVALID_CARB_ID', 'unavailable carb rejected');
+  });
+
   await test('premium_large_salad accepts premium protein in protein group', async () => {
     const sauceId = (await SaladIngredient.findOne({ groupKey: 'sauce' }))._id;
     const res = await makeRequest('POST', `/api/subscriptions/${testSubscription._id}/days/${TEST_DATE5}/selection/validate`, {
@@ -727,6 +872,25 @@ async function runTests() {
       ]
     });
     assertEqual(res.status, 200, 'accepted');
+  });
+
+  await test('confirm fails if stored slots violate real validators', async () => {
+    const validSlots = [
+      { slotIndex: 1, slotKey: 'slot_1', proteinId: String(standardProtein._id), carbs: [{ carbId: String(standardCarb._id), grams: 150 }], selectionType: 'standard_meal' },
+      { slotIndex: 2, slotKey: 'slot_2', proteinId: String(standardProtein._id), carbs: [{ carbId: String(standardCarb._id), grams: 150 }], selectionType: 'standard_meal' },
+    ];
+    const saveRes = await makeRequest('PUT', `/api/subscriptions/${testSubscription._id}/days/${TEST_DATE6}/selection`, { mealSlots: validSlots });
+    assertEqual(saveRes.status, 200, 'save status');
+
+    const day = await getActiveSubscriptionDay(TEST_DATE6);
+    const corruptedSlots = JSON.parse(JSON.stringify(day.mealSlots || []));
+    corruptedSlots[0].selectionType = 'sandwich';
+    corruptedSlots[0].sandwichId = String(sandwichMeal._id);
+    await SubscriptionDay.updateOne({ _id: day._id }, { $set: { mealSlots: corruptedSlots } });
+
+    const confirmRes = await makeRequest('POST', `/api/subscriptions/${testSubscription._id}/days/${TEST_DATE6}/confirm`);
+    assertEqual(confirmRes.status, 422, 'confirm rejected');
+    assertEqual(confirmRes.body.error?.code, 'SANDWICH_EXCLUSIVITY_VIOLATION', 'real validator error surfaced');
   });
   
   console.log('\n--- J) Idempotency ---\n');

@@ -5,7 +5,7 @@ const Addon = require("../../models/Addon");
 const dateUtils = require("../../utils/date");
 const { getRestaurantBusinessDate } = require("../restaurantHoursService");
 const { resolveMealsPerDay, applyDayWalletSelections } = require("../../utils/subscription/subscriptionDaySelectionSync");
-const { getMealPlannerRules, mapPaymentRequirement, buildMealSlotDraft, recomputePlannerMetaFromSlots, projectMaterializedAndLegacyForExistingSlots } = require("./mealSlotPlannerService");
+const { getMealPlannerRules, mapPaymentRequirement, buildMealSlotDraft } = require("./mealSlotPlannerService");
 const { applyCanonicalDraftPlanningToDay } = require("./subscriptionDayPlanningService");
 const {
   buildDayCommercialState,
@@ -428,15 +428,15 @@ async function performDaySelectionUpdate({ userId, subscriptionId, date, selecti
       throw {
         status: 422,
         code: "LEGACY_DAY_SELECTION_UNSUPPORTED",
-        message: "Legacy day selection payload is no longer supported. Submit mealSlots with proteinId, carbId, and selectionType.",
+        message: "Legacy day selection payload is no longer supported. Submit mealSlots with canonical planner fields.",
         details: {
           expectedPayload: {
             mealSlots: [
               {
                 slotIndex: 1,
-                selectionType: "standard_combo",
+                selectionType: "standard_meal",
                 proteinId: "protein_id",
-                carbId: "carb_id",
+                carbs: [{ carbId: "carb_id", grams: 150 }],
               },
             ],
           },
@@ -551,6 +551,13 @@ async function performDaySelectionUpdate({ userId, subscriptionId, date, selecti
             unitExtraFeeHalala: sel.unitExtraFeeHalala || 3000,
             session,
           });
+          if (balanceResult.consumed && Array.isArray(subInSession.premiumBalance)) {
+            const balanceRow = subInSession.premiumBalance.find((row) => row.premiumKey === (sel.premiumKey || null));
+            if (balanceRow && Number(balanceRow.remainingQty || 0) > 0) {
+              balanceRow.remainingQty -= 1;
+            }
+            subInSession.markModified("premiumBalance");
+          }
 
           processedPremiumSelections.push({
             ...sel,
@@ -566,6 +573,13 @@ async function performDaySelectionUpdate({ userId, subscriptionId, date, selecti
 
     for (const sel of existingBalanceMap.values()) {
       await releasePremiumBalanceAtomically({ subscription: subInSession, premiumKey: sel.premiumKey, session });
+      if (Array.isArray(subInSession.premiumBalance)) {
+        const balanceRow = subInSession.premiumBalance.find((row) => row.premiumKey === sel.premiumKey);
+        if (balanceRow) {
+          balanceRow.remainingQty = Number(balanceRow.remainingQty || 0) + 1;
+        }
+        subInSession.markModified("premiumBalance");
+      }
     }
 
     // ATOMIC: Addon balance sync
@@ -733,19 +747,32 @@ async function performDayPlanningConfirmation({ userId, subscriptionId, date, ru
     }
 
     const requiredSlotCount = resolveMealsPerDay(subInSession);
-    const { plannerMeta, slotErrors } = recomputePlannerMetaFromSlots({ mealSlots: day.mealSlots, requiredSlotCount });
-    if (slotErrors.length > 0) {
-      const firstError = slotErrors[0] || {};
-      throw { status: 422, code: firstError.code || "INVALID_MEAL_PLAN", message: firstError.message || "Meal planner validation failed", valid: false, slotErrors };
+    const planningDraftSubscription = buildPlanningDraftSubscriptionView(subInSession, day);
+    const validatedDraft = await buildMealSlotDraft({
+      mealSlots: day.mealSlots,
+      mealsPerDayLimit: requiredSlotCount,
+      subscription: planningDraftSubscription,
+      session,
+    });
+    if (!validatedDraft.valid) {
+      throw {
+        status: 422,
+        code: validatedDraft.errorCode || "INVALID_MEAL_PLAN",
+        message: validatedDraft.errorMessage || "Meal planner validation failed",
+        valid: false,
+        slotErrors: validatedDraft.slotErrors,
+      };
     }
+
+    const plannerMeta = validatedDraft.plannerMeta;
     if (plannerMeta.partialSlotCount > 0) throw { status: 422, code: "PLANNING_INCOMPLETE", message: "Planner has partial slots" };
     if (plannerMeta.completeSlotCount !== plannerMeta.requiredSlotCount) throw { status: 422, code: "PLANNING_INCOMPLETE", message: "Planner must have all required slots complete" };
 
-    const projection = await projectMaterializedAndLegacyForExistingSlots({ mealSlots: day.mealSlots, session });
-    day.materializedMeals = projection.materializedMeals;
-    day.selections = projection.selections;
-    day.premiumUpgradeSelections = projection.premiumSelections;
-    day.baseMealSlots = projection.baseMealSlots;
+    day.mealSlots = validatedDraft.processedSlots;
+    day.materializedMeals = validatedDraft.materializedMeals;
+    day.selections = validatedDraft.selections;
+    day.premiumUpgradeSelections = validatedDraft.premiumUpgradeSelections;
+    day.baseMealSlots = validatedDraft.baseMealSlots;
     const preConfirmState = buildDayCommercialState({
       ...(typeof day.toObject === "function" ? day.toObject() : day),
       plannerState: day.plannerState || "draft",

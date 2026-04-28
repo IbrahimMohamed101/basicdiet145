@@ -25,6 +25,7 @@ const MealSlotSchema = new mongoose.Schema(
       default: null,
     },
     proteinRuleTags: { type: [String], default: [] },
+    // Legacy fallback fields kept only for backward-compatible reads of old records.
     carbId: { type: mongoose.Schema.Types.ObjectId, ref: "BuilderCarb", default: null },
     carbSelections: {
       type: [
