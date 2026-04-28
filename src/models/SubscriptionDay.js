@@ -34,6 +34,7 @@ const MealSlotSchema = new mongoose.Schema(
           grams: { type: Number, min: 0, default: 0 },
         }
       ],
+      // Legacy fallback retained for old planner records only.
       default: undefined,
     },
     carbDisplayCategoryKey: { type: String, default: null, trim: true },
@@ -61,7 +62,7 @@ const MealSlotSchema = new mongoose.Schema(
       },
       default: null,
     },
-    customSalad: { type: mongoose.Schema.Types.Mixed, default: null }, // Legacy fallback
+    customSalad: { type: mongoose.Schema.Types.Mixed, default: null }, // Legacy fallback for old slot records only.
 
     isPremium: { type: Boolean, default: false },
     premiumKey: { type: String, default: null, trim: true },

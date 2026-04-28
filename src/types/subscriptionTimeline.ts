@@ -79,12 +79,11 @@ export type TimelineDay = {
     slotIndex: number;
     slotKey: string;
     status: "empty" | "partial" | "complete";
-    selectionType: string;
+    selectionType: "standard_meal" | "premium_meal" | "premium_large_salad" | "sandwich";
     proteinId: string | null;
     carbs: Array<{ carbId: string; grams: number }>;
     sandwichId?: string | null;
     salad?: any;
-    customSalad?: any;
     isPremium: boolean;
     premiumKey?: string | null;
     premiumSource: "none" | "balance" | "pending_payment" | "paid_extra" | "paid";

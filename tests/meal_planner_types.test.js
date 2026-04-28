@@ -165,7 +165,7 @@ async function runTests() {
     expectEqual(result.plannerMeta.emptySlotCount, 0, 'empty slot count');
   });
 
-  await test('recomputePlannerMetaFromSlots counts standard_combo with protein+carb as complete', () => {
+  await test('recomputePlannerMetaFromSlots normalizes legacy standard_combo as complete', () => {
     const slots = [
       { slotIndex: 1, slotKey: 'slot_1', selectionType: 'standard_combo', proteinId: 'p1', carbId: 'c1', status: 'complete' },
     ];
@@ -173,7 +173,7 @@ async function runTests() {
     expectEqual(result.plannerMeta.completeSlotCount, 1, 'complete slot count');
   });
 
-  await test('recomputePlannerMetaFromSlots counts custom_premium_salad properly', () => {
+  await test('recomputePlannerMetaFromSlots normalizes legacy custom_premium_salad properly', () => {
     const slots = [
       { slotIndex: 1, slotKey: 'slot_1', selectionType: 'custom_premium_salad', proteinId: 'p1', carbId: 'c1', status: 'complete', isPremium: true, premiumSource: 'balance' },
     ];
@@ -183,7 +183,7 @@ async function runTests() {
     expectEqual(result.plannerMeta.premiumCoveredByBalanceCount, 1, 'covered by balance');
   });
 
-  await test('recomputePlannerMetaFromSlots counts pending payment for custom_premium_salad without balance', () => {
+  await test('recomputePlannerMetaFromSlots counts pending payment for legacy custom_premium_salad without balance', () => {
     const slots = [
       { slotIndex: 1, slotKey: 'slot_1', selectionType: 'custom_premium_salad', proteinId: 'p1', carbId: 'c1', status: 'complete', isPremium: true, premiumSource: 'pending_payment', premiumExtraFeeHalala: 3000 },
     ];
@@ -231,7 +231,7 @@ async function runTests() {
     expectEqual(result.plannerMeta.partialSlotCount, 0, 'partial');
   });
 
-  await test('recomputePlannerMetaFromSlots requires proteinId+carbId for standard_combo', () => {
+  await test('recomputePlannerMetaFromSlots treats incomplete legacy standard_combo as empty', () => {
     const slots = [
       { slotIndex: 1, slotKey: 'slot_1', selectionType: 'standard_combo', proteinId: null, carbId: null },
     ];
@@ -251,7 +251,7 @@ async function runTests() {
 
   console.log(`\n=== Meal Planner Premium Balance Tests ===\n`);
 
-  await test('premium balance covers custom_premium_salad when available', () => {
+  await test('legacy premium key rows can still represent custom_premium_salad balance', () => {
     const subscription = {
       premiumBalance: [
         { proteinId: 'premium1', premiumKey: 'shrimp', remainingQty: 2, purchasedQty: 2, currency: 'SAR' }
@@ -266,7 +266,7 @@ async function runTests() {
     expectEqual(subscription.premiumBalance[0].remainingQty, 2, 'remaining qty');
   });
 
-  await test('custom_premium_salad fixed price is 3000', () => {
+  await test('custom_premium_salad entitlement fixed price remains 3000', () => {
     expectEqual(CUSTOM_PREMIUM_SALAD_FIXED_PRICE_HALALA, 3000, 'fixed price');
   });
 

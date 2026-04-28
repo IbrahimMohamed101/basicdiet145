@@ -21,6 +21,9 @@ const PREMIUM_PROTEIN_SELECTION_TYPE = "premium_protein";
 const PREMIUM_PROTEIN_TYPE = "premium_protein";
 
 function buildCustomPremiumSaladEntry(lang) {
+  // This endpoint intentionally preserves the legacy premium-meals catalog contract.
+  // The planner uses selectionType "premium_large_salad"; /builder/premium-meals
+  // keeps "custom_premium_salad" for backward-compatible catalog consumers.
   const names = {
     ar: "سلطة مميزة",
     en: "Custom Premium Salad",

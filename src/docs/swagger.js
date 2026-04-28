@@ -36,6 +36,7 @@ const definition = {
           sandwichId: { type: "string", nullable: true },
           carbs: { 
             type: "array", 
+            description: "Canonical carb split for standard_meal or premium_meal selections.",
             items: {
               type: "object",
               properties: {
@@ -47,6 +48,7 @@ const definition = {
           salad: { 
             type: "object", 
             nullable: true,
+            description: "Canonical premium_large_salad payload. Legacy customSalad input may still be accepted on write, but canonical reads use this field.",
             properties: {
               presetKey: { type: "string", nullable: true },
               groups: {

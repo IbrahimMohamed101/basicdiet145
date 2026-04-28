@@ -599,7 +599,7 @@ async function runTests() {
     assertTrue(hasCustomSalad, 'custom_premium_salad present');
   });
 
-  await test('custom_premium_salad has correct shape in premium-meals', async () => {
+  await test('legacy premium-meals catalog keeps custom_premium_salad compatibility shape', async () => {
     const res = await makeRequest('GET', '/api/builder/premium-meals');
     const items = res.body.data || [];
     const salad = items.find(i => i.premiumKey === 'custom_premium_salad' || i.id === 'custom_premium_salad');
@@ -632,8 +632,20 @@ async function runTests() {
     assertTrue(!Object.prototype.hasOwnProperty.call(firstSlot, 'carbId'), 'top-level carbId not exposed');
     assertTrue(!Object.prototype.hasOwnProperty.call(firstSlot, 'customSalad'), 'customSalad not exposed');
   });
+
+  await test('GET /timeline returns canonical mealSlots without legacy slot fields', async () => {
+    const res = await makeRequest('GET', `/api/subscriptions/${testSubscription._id}/timeline`);
+    assertEqual(res.status, 200, 'status');
+    const days = res.body.data?.days || [];
+    const day = days.find((item) => item.date === TEST_DATE);
+    assertTrue(!!day, 'saved day present in timeline');
+    const firstSlot = (day.mealSlots || [])[0] || {};
+    assertArray(firstSlot.carbs, 'timeline exposes carbs array');
+    assertTrue(!Object.prototype.hasOwnProperty.call(firstSlot, 'carbId'), 'timeline does not expose top-level carbId');
+    assertTrue(!Object.prototype.hasOwnProperty.call(firstSlot, 'customSalad'), 'timeline does not expose customSalad');
+  });
   
-  console.log('\n--- C) Validate standard_combo ---\n');
+  console.log('\n--- C) Validate canonical standard meals ---\n');
   await test('POST /selection/validate returns valid', async () => {
     const slots = [
       { slotIndex: 1, slotKey: 'slot_1', proteinId: String(standardProtein._id), carbs: [{ carbId: String(standardCarb._id), grams: 150 }], selectionType: 'standard_meal' },
@@ -643,7 +655,7 @@ async function runTests() {
     assertEqual(res.status, 200, 'status');
   });
   
-  console.log('\n--- D) Save standard_combo ---\n');
+  console.log('\n--- D) Save canonical standard meals ---\n');
   await test('PUT /selection saves successfully (update existing day)', async () => {
     const slots = [
       { slotIndex: 1, slotKey: 'slot_1', proteinId: String(standardProtein._id), carbs: [{ carbId: String(standardCarb._id), grams: 150 }], selectionType: 'standard_meal' },
@@ -653,7 +665,7 @@ async function runTests() {
     assertEqual(res.status, 200, 'status');
   });
   
-  await test('standard_combo persisted', async () => {
+  await test('canonical standard meal slots persisted', async () => {
     const day = await getActiveSubscriptionDay(TEST_DATE);
     assertTrue(!!day, 'day exists');
     assertEqual(day?.mealSlots?.length, 2, 'two slots');
