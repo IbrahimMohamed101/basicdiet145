@@ -16,17 +16,21 @@ function normalizeTopLevelStatusField(payload, responseStatusCode) {
     return payload;
   }
 
-  const isSuccessResponse = Number(responseStatusCode) < 400 && payload.ok !== false && !payload.error;
-  if (!isSuccessResponse) {
+  const isHttpSuccess = Number(responseStatusCode) < 400;
+  const isErrorPayload = payload.ok === false || Object.prototype.hasOwnProperty.call(payload, "error");
+  if (!isHttpSuccess || isErrorPayload) {
     return payload;
   }
 
-  if (Object.prototype.hasOwnProperty.call(payload, "ok")) {
-    delete payload.ok;
+  if (payload.status === true && !Object.prototype.hasOwnProperty.call(payload, "ok")) {
+    return payload;
   }
 
-  payload.status = true;
-  return payload;
+  const normalized = { ...payload, status: true };
+  if (Object.prototype.hasOwnProperty.call(normalized, "ok")) {
+    delete normalized.ok;
+  }
+  return normalized;
 }
 
 function mountSwaggerUi(app, { uiPath, rawPath, filePath }) {

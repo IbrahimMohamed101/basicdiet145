@@ -124,7 +124,7 @@ async function performClientSubscriptionCancellation({ subscriptionId, userId, l
       kind: "success",
       status: 200,
       body: {
-        ok: true,
+        status: true,
         data: serialized,
         idempotent: true,
       },
@@ -147,7 +147,7 @@ async function performClientSubscriptionCancellation({ subscriptionId, userId, l
     kind: "success",
     status: 200,
     body: {
-      ok: true,
+      status: true,
       data: serialized,
     },
   };

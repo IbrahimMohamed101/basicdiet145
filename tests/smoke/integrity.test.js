@@ -21,6 +21,7 @@ const http = require("http");
 const { createApp } = require("../../src/app");
 const User = require("../../src/models/User");
 const Plan = require("../../src/models/Plan");
+const Subscription = require("../../src/models/Subscription");
 const DashboardUser = require("../../src/models/DashboardUser");
 
 const JWT_SECRET = process.env.JWT_SECRET || "supersecret";
@@ -63,6 +64,7 @@ let testUser = null;
 let dashboardUser = null;
 let appAuthToken = null;
 let dashboardAuthToken = null;
+let pendingSubscription = null;
 
 const planRefs = {
   viablePlan: null,
@@ -123,6 +125,12 @@ function assertNoTopLevelOk(body, msg) {
   }
 }
 
+function assertNoTopLevelStatus(body, msg) {
+  if (Object.prototype.hasOwnProperty.call(body || {}, "status")) {
+    throw new Error(`${msg || "Assertion failed"}: top-level status must be absent`);
+  }
+}
+
 async function setup() {
   const mongoUri = process.env.MONGO_URI || "mongodb://localhost:27017/basicdiet_test";
   if (mongoose.connection.readyState === 0) {
@@ -154,6 +162,7 @@ async function setup() {
   dashboardAuthToken = issueDashboardAccessToken(dashboardUser._id, dashboardUser.role);
 
   await Plan.deleteMany({ "name.en": { $in: PLAN_NAMES } });
+  await Subscription.deleteMany({ userId: testUser._id });
 
   planRefs.viablePlan = await Plan.create({
     name: { ar: "Integrity Viable Plan", en: "Integrity Viable Plan" },
@@ -283,6 +292,9 @@ async function setup() {
 async function teardown() {
   await Plan.deleteMany({ "name.en": { $in: PLAN_NAMES } });
   if (testUser) {
+    await Subscription.deleteMany({ userId: testUser._id });
+  }
+  if (testUser) {
     await User.deleteOne({ _id: testUser._id });
   }
   if (dashboardUser) {
@@ -314,6 +326,41 @@ async function runTests() {
   assertNoTopLevelOk(overviewRes.body, "overview response");
   assertEqual(overviewRes.body.data, null, "overview returns null without active subscription");
 
+  pendingSubscription = await Subscription.create({
+    userId: testUser._id,
+    planId: planRefs.viablePlan._id,
+    status: "pending_payment",
+    startDate: new Date(),
+    endDate: new Date(),
+    validityEndDate: new Date(),
+    totalMeals: 56,
+    remainingMeals: 56,
+    selectedGrams: 300,
+    selectedMealsPerDay: 2,
+    basePlanPriceHalala: 50000,
+    subtotalHalala: 50000,
+    vatPercentage: 15,
+    vatHalala: 7500,
+    totalPriceHalala: 57500,
+    checkoutCurrency: "SAR",
+    deliveryMode: "delivery",
+    deliveryAddress: { city: "Riyadh", street: "Test Street" },
+    deliveryWindow: "10:00-12:00",
+  });
+
+  const pendingOverviewRes = await makeRequest("GET", "/api/subscriptions/current/overview");
+  assertEqual(pendingOverviewRes.status, 200, "pending overview status");
+  assertEqual(pendingOverviewRes.body.status, true, "pending overview status envelope");
+  assertNoTopLevelOk(pendingOverviewRes.body, "pending overview response");
+  assertTrue(Boolean(pendingOverviewRes.body.data), "overview returns data for pending subscription");
+
+  const listAfterPendingRes = await makeRequest("GET", "/api/subscriptions");
+  assertEqual(listAfterPendingRes.status, 200, "subscriptions after pending status");
+  assertEqual(listAfterPendingRes.body.status, true, "subscriptions after pending status envelope");
+  assertNoTopLevelOk(listAfterPendingRes.body, "subscriptions after pending response");
+  assertTrue(Array.isArray(listAfterPendingRes.body.data), "subscriptions after pending data is array");
+  assertEqual(listAfterPendingRes.body.data.length >= 1, true, "subscriptions list includes pending subscription");
+
   console.log("--- B) Plan Viability Filtering ---");
 
   const plans = plansRes.body.data || [];
@@ -325,13 +372,25 @@ async function runTests() {
 
   console.log("--- C) Health Authorization & Detection ---");
 
+  const invalidPlanRes = await makeRequest("GET", "/api/plans/not-an-object-id");
+  assertEqual(invalidPlanRes.status, 400, "invalid plan id returns 400");
+  assertEqual(invalidPlanRes.body.ok, false, "invalid plan id uses error envelope");
+  assertNoTopLevelStatus(invalidPlanRes.body, "invalid plan id error response");
+
+  const invalidSubscriptionRes = await makeRequest("GET", "/api/subscriptions/not-an-object-id");
+  assertEqual(invalidSubscriptionRes.status, 400, "invalid subscription id returns 400");
+  assertEqual(invalidSubscriptionRes.body.ok, false, "invalid subscription id uses error envelope");
+  assertNoTopLevelStatus(invalidSubscriptionRes.body, "invalid subscription id error response");
+
   const unauthorizedCatalogRes = await makeRequest("GET", "/api/health/catalog", null, { token: null });
   assertEqual(unauthorizedCatalogRes.status, 401, "health catalog requires auth");
   assertEqual(unauthorizedCatalogRes.body.ok, false, "unauthorized catalog uses error envelope");
+  assertNoTopLevelStatus(unauthorizedCatalogRes.body, "unauthorized health catalog response");
 
   const unauthorizedSubscriptionsHealthRes = await makeRequest("GET", "/api/health/subscriptions", null, { token: null });
   assertEqual(unauthorizedSubscriptionsHealthRes.status, 401, "health subscriptions requires auth");
   assertEqual(unauthorizedSubscriptionsHealthRes.body.ok, false, "unauthorized subscriptions health uses error envelope");
+  assertNoTopLevelStatus(unauthorizedSubscriptionsHealthRes.body, "unauthorized health subscriptions response");
 
   const healthCatalogRes = await makeRequest("GET", "/api/health/catalog", null, { token: dashboardAuthToken });
   assertEqual(healthCatalogRes.status, 200, "authorized health catalog status");
