@@ -18,6 +18,11 @@ const SYSTEM_CURRENCY = "SAR";
 const MEAL_PLANNER_RULES_VERSION = "meal_planner_rules.v2";
 const DEFAULT_SLOT_KEY_PREFIX = "slot_";
 
+const CUSTOM_PREMIUM_SALAD_TYPE = "custom_premium_salad";
+const SANDWICH_TYPE = "sandwich";
+const STANDARD_COMBO_TYPE = "standard_combo";
+const CUSTOM_PREMIUM_SALAD_FIXED_PRICE_HALALA = 3000;
+
 // Canonical Premium Keys for Entitlements
 const CANONICAL_PREMIUM_SALAD_KEY = "custom_premium_salad";
 
@@ -396,6 +401,10 @@ function isBaseBeefSlot(slot) {
   );
 }
 
+function isSandwichSlot(slot) {
+  return Boolean(slot && slot.selectionType === NEW_TYPES.SANDWICH);
+}
+
 function recomputePlannerMetaFromSlots({ mealSlots, requiredSlotCount = 0 }) {
   const normalizedSlots = normalizeMealSlotsInput({ mealSlots });
   const plannerMeta = {
@@ -641,6 +650,10 @@ module.exports = {
   SYSTEM_CURRENCY,
   CANONICAL_PREMIUM_SALAD_KEY,
   PREMIUM_LARGE_SALAD_FIXED_PRICE_HALALA,
+  CUSTOM_PREMIUM_SALAD_TYPE,
+  SANDWICH_TYPE,
+  STANDARD_COMBO_TYPE,
+  CUSTOM_PREMIUM_SALAD_FIXED_PRICE_HALALA,
   getMealPlannerRules,
   buildMealSlotKey,
   normalizeMealSlotsInput,
@@ -649,6 +662,7 @@ module.exports = {
   mapPaymentRequirement,
   buildPremiumExtraRevisionHash,
   isBaseBeefSlot,
+  isSandwichSlot,
   recomputePlannerMetaFromSlots,
   projectMaterializedAndLegacyFromSlots,
   projectMaterializedAndLegacyForExistingSlots,

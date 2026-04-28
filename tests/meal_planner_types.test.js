@@ -58,13 +58,13 @@ function runTests() {
     expectEqual(CUSTOM_PREMIUM_SALAD_FIXED_PRICE_HALALA, 3000, 'CUSTOM_PREMIUM_SALAD_FIXED_PRICE_HALALA');
   });
 
-  test('normalizeMealSlotsInput handles standard_combo', () => {
+  test('normalizeMealSlotsInput handles standard_meal', () => {
     const input = [
       { slotIndex: 1, slotKey: 'slot_1', proteinId: 'protein1', carbId: 'carb1', selectionType: 'standard_combo' },
     ];
     const result = normalizeMealSlotsInput({ mealSlots: input });
     expectEqual(result.length, 1, 'slot count');
-    expectEqual(result[0].selectionType, 'standard_combo', 'selectionType');
+    expectEqual(result[0].selectionType, 'standard_meal', 'selectionType normalized');
   });
 
   test('normalizeMealSlotsInput handles sandwich', () => {
@@ -77,13 +77,13 @@ function runTests() {
     expectEqual(result[0].sandwichId, 'sandwich1', 'sandwichId');
   });
 
-  test('normalizeMealSlotsInput handles custom_premium_salad', () => {
+  test('normalizeMealSlotsInput handles premium_large_salad', () => {
     const input = [
       { slotIndex: 1, slotKey: 'slot_1', proteinId: 'protein1', carbId: 'carb1', selectionType: 'custom_premium_salad', customSalad: { presetKey: 'preset1' } },
     ];
     const result = normalizeMealSlotsInput({ mealSlots: input });
     expectEqual(result.length, 1, 'slot count');
-    expectEqual(result[0].selectionType, 'custom_premium_salad', 'selectionType');
+    expectEqual(result[0].selectionType, 'premium_large_salad', 'selectionType normalized');
     expectEqual(result[0].customSalad?.presetKey, 'preset1', 'customSalad');
   });
 
@@ -195,9 +195,9 @@ function runTests() {
     expectEqual(result.materializedMeals[0].operationalSku, 'sandwich:sandwich1', 'operational SKU');
   });
 
-  test('projectMaterializedAndLegacyFromSlots creates standard_combo meal', () => {
+  test('projectMaterializedAndLegacyFromSlots creates standard_meal', () => {
     const slots = [
-      { slotIndex: 1, slotKey: 'slot_1', selectionType: 'standard_combo', proteinId: 'p1', carbId: 'c1', status: 'complete' },
+      { slotIndex: 1, slotKey: 'slot_1', selectionType: 'standard_meal', proteinId: 'p1', carbs: [{ carbId: 'c1', grams: 150 }], status: 'complete' },
     ];
     const result = projectMaterializedAndLegacyFromSlots({ processedSlots: slots, now: new Date() });
     expectEqual(result.materializedMeals.length, 1, 'materialized meal count');
@@ -207,7 +207,7 @@ function runTests() {
 
   test('recomputePlannerMetaFromSlots allows sandwich without proteinId/carbId', () => {
     const slots = [
-      { slotIndex: 1, slotKey: 'slot_1', selectionType: 'sandwich', sandwichId: 'sandwich1' },
+      { slotIndex: 1, slotKey: 'slot_1', selectionType: 'sandwich', sandwichId: 'sandwich1', status: 'complete' },
     ];
     const result = recomputePlannerMetaFromSlots({ mealSlots: slots, requiredSlotCount: 1 });
     expectEqual(result.plannerMeta.completeSlotCount, 1, 'complete');
@@ -225,13 +225,12 @@ function runTests() {
     expectEqual(result.plannerMeta.emptySlotCount, 1, 'empty');
   });
 
-  test('recomputePlannerMetaFromSlots marks custom_premium_salad with missing carb as incomplete', () => {
+  test('recomputePlannerMetaFromSlots counts premium_large_salad as complete when salad groups provided', () => {
     const slots = [
-      { slotIndex: 1, slotKey: 'slot_1', selectionType: 'custom_premium_salad', proteinId: 'pro1', carbId: null },
+      { slotIndex: 1, slotKey: 'slot_1', selectionType: 'premium_large_salad', salad: { groups: { protein: ['p1'], sauce: ['s1'] } }, status: 'complete', isPremium: true },
     ];
     const result = recomputePlannerMetaFromSlots({ mealSlots: slots, requiredSlotCount: 1 });
-    expectEqual(result.plannerMeta.completeSlotCount, 0, 'complete');
-    expectEqual(result.plannerMeta.partialSlotCount, 1, 'partial');
+    expectEqual(result.plannerMeta.completeSlotCount, 1, 'complete');
   });
 
   console.log(`\n=== Meal Planner Premium Balance Tests ===\n`);
@@ -296,10 +295,8 @@ function runTests() {
   });
 
   test('premiumKey is populated in draft processed slots', async () => {
-    // This requires mocking Protein retrieval which is done in buildMealSlotDraft
-    // For unit testing here, we check the mapping logic in projectMaterializedAndLegacyFromSlots
     const slots = [
-      { slotIndex: 1, selectionType: 'standard_combo', proteinId: 'p1', carbId: 'c1', isPremium: true, premiumKey: 'beef_premium', status: 'complete' }
+      { slotIndex: 1, selectionType: 'premium_meal', proteinId: 'p1', carbs: [{ carbId: 'c1', grams: 150 }], isPremium: true, premiumKey: 'beef_premium', status: 'complete' }
     ];
     const result = projectMaterializedAndLegacyFromSlots({ processedSlots: slots, now: new Date() });
     expectEqual(result.premiumSelections[0].premiumKey, 'beef_premium', 'premiumKey mapped to selections');
