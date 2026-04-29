@@ -194,9 +194,10 @@ CTA الدفع والمبلغ وحالة Readiness قد تنحرف عن الحق
 **الإصلاح المطلوب:**
 > استخدم `status` فقط كحالة تشغيلية لليوم، واجعل قابلية التعديل والجاهزية مبنية على:
 > - `commercialState`
-> - `plannerState`
+> - `plannerState` 
 > - `paymentRequirement`
 > - `canBePrepared`
+
 
 ---
 
