@@ -6,11 +6,12 @@
   "scripts": {
     "start": "node src/index.js",
     "diagnose:mongo": "node scripts/diagnose-mongo.js",
+    "diagnose:subscription-menu": "node scripts/diagnose-subscription-menu-data.js",
     "fix:payment-indexes": "node scripts/fix-payment-indexes.js",
     "indexes:production": "node scripts/create-production-indexes.js",
     "test": "node tests/meal_planner_types.test.js",
-    "test:integration": "SKIP_DB_CHECK=true NODE_ENV=test node tests/mealPlanner.integration.test.js",
-    "test:checkout": "SKIP_DB_CHECK=true NODE_ENV=test node tests/checkout.integration.test.js",
+    "test:integration": "NODE_ENV=test node tests/mealPlanner.integration.test.js",
+    "test:checkout": "NODE_ENV=test node tests/checkout.integration.test.js",
     "test:all": "npm run test && npm run test:integration",
     "seed": "node scripts/seed-demo-data.js",
     "seed:subscription-addons": "node scripts/seed-subscription-addons.js",
@@ -27,7 +28,7 @@
     "seed:premium-catalog": "node scripts/seedPremiumCatalog.js",
     "seed:legal-content": "node scripts/seed-legal-content.js",
     "catalog:check": "node scripts/checkCatalogHealth.js",
-    "smoke:integrity": "SKIP_DB_CHECK=true NODE_ENV=test node tests/smoke/integrity.test.js"
+    "smoke:integrity": "NODE_ENV=test node tests/smoke/integrity.test.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

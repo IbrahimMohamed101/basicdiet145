@@ -1,4 +1,9 @@
 const mongoose = require("mongoose");
+const {
+  LEGACY_PROTEIN_FAMILY_ALIASES,
+  PREMIUM_LARGE_SALAD_PRESET_KEY,
+  PROTEIN_FAMILY_KEYS,
+} = require("../config/mealPlannerContract");
 
 const MealSlotSchema = new mongoose.Schema(
   {
@@ -21,7 +26,7 @@ const MealSlotSchema = new mongoose.Schema(
     proteinDisplayCategoryKey: { type: String, default: null, trim: true },
     proteinFamilyKey: {
       type: String,
-      enum: ["chicken", "beef", "seafood", "other"],
+      enum: [...PROTEIN_FAMILY_KEYS, ...Object.keys(LEGACY_PROTEIN_FAMILY_ALIASES)],
       default: null,
     },
     proteinRuleTags: { type: [String], default: [] },
@@ -57,7 +62,7 @@ const MealSlotSchema = new mongoose.Schema(
     },
     salad: {
       type: {
-        presetKey: { type: String, trim: true },
+        presetKey: { type: String, trim: true, default: PREMIUM_LARGE_SALAD_PRESET_KEY },
         groups: { type: mongoose.Schema.Types.Mixed }, // Temporary Mixed fallback for migration
       },
       default: null,

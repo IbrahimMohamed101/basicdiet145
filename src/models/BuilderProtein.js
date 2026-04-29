@@ -1,4 +1,8 @@
 const mongoose = require("mongoose");
+const {
+  LEGACY_PROTEIN_FAMILY_ALIASES,
+  PROTEIN_FAMILY_KEYS,
+} = require("../config/mealPlannerContract");
 
 const NutritionSchema = new mongoose.Schema(
   {
@@ -26,7 +30,7 @@ const BuilderProteinSchema = new mongoose.Schema(
     displayCategoryKey: { type: String, required: true, trim: true },
     proteinFamilyKey: {
       type: String,
-      enum: ["chicken", "beef", "seafood", "other"],
+      enum: [...PROTEIN_FAMILY_KEYS, ...Object.keys(LEGACY_PROTEIN_FAMILY_ALIASES)],
       required: true,
     },
     ruleTags: { type: [String], default: [] },

@@ -688,7 +688,13 @@ async function performDaySelectionUpdate({ userId, subscriptionId, date, selecti
   }
 }
 
-async function performDaySelectionValidation({ userId, subscriptionId, date, mealSlots = [] }) {
+async function performDaySelectionValidation({
+  userId,
+  subscriptionId,
+  date,
+  mealSlots = [],
+  requestedOneTimeAddonIds,
+}) {
   await validateFutureDateOrThrow(date);
 
   const requestedSub = await Subscription.findById(subscriptionId);
@@ -712,11 +718,22 @@ async function performDaySelectionValidation({ userId, subscriptionId, date, mea
     throw { status: 422, code: draft.errorCode || "INVALID_MEAL_PLAN", message: draft.errorMessage || "Meal planner validation failed", slotErrors: draft.slotErrors, rules: getMealPlannerRules(), valid: false };
   }
 
+  let addonSelections = Array.isArray(day && day.addonSelections)
+    ? JSON.parse(JSON.stringify(day.addonSelections))
+    : [];
+
+  if (requestedOneTimeAddonIds !== undefined) {
+    const addonContainer = { addonSelections };
+    await reconcileAddonInclusions(sub, addonContainer, requestedOneTimeAddonIds);
+    addonSelections = addonContainer.addonSelections;
+  }
+
   const derivedDraftState = buildDayCommercialState({
     plannerState: "draft",
     status: day && day.status ? day.status : "open",
     mealSlots: draft.processedSlots,
     plannerMeta: draft.plannerMeta,
+    addonSelections,
     premiumExtraPayment: day && day.premiumExtraPayment ? day.premiumExtraPayment : null,
   });
 
@@ -725,6 +742,7 @@ async function performDaySelectionValidation({ userId, subscriptionId, date, mea
     plannerState: "draft",
     mealSlots: draft.processedSlots,
     plannerMeta: draft.plannerMeta,
+    addonSelections,
     plannerRevisionHash: derivedDraftState.plannerRevisionHash,
     premiumSummary: derivedDraftState.premiumSummary,
     premiumExtraPayment: derivedDraftState.premiumExtraPayment,

@@ -25,6 +25,7 @@ const Plan = require('../src/models/Plan');
 const Meal = require('../src/models/Meal');
 const MealCategory = require('../src/models/MealCategory');
 const SaladIngredient = require('../src/models/SaladIngredient');
+const { ensureSafeForDestructiveOp } = require('../src/utils/dbSafety');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'supersecret';
 const BASE_URL = 'http://localhost:3000';
@@ -45,11 +46,14 @@ let testUser = null;
 let testSubscription = null;
 let authToken = null;
 let builderCategory = null;
+let standardCarbCategory = null;
+let premiumProteinCategory = null;
 let standardProtein = null;
 let premiumProteinShrimp = null;
 let premiumProteinBeefSteak = null;
 let premiumProteinSalmon = null;
 let standardCarb = null;
+let standardCarb2 = null;
 let unavailableProtein = null;
 let unavailableCarb = null;
 let sandwichMeal = null;
@@ -157,15 +161,38 @@ async function createTestUserAndAuthenticate() {
 }
 
 async function seedBuilderCatalog() {
-  builderCategory = await BuilderCategory.findOne({ dimension: 'protein' });
+  builderCategory = await BuilderCategory.findOne({ dimension: 'protein', key: 'chicken' });
   if (!builderCategory) {
     builderCategory = new BuilderCategory({
-      key: 'protein_category', dimension: 'protein',
-      name: { ar: 'بروتين', en: 'Protein' },
-      description: { ar: 'مصادر البروتين', en: 'Protein sources' },
-      isActive: true, sortOrder: 1,
+      key: 'chicken', dimension: 'protein',
+      name: { ar: 'دجاج', en: 'Chicken' },
+      description: { ar: 'مصادر بروتين الدجاج', en: 'Chicken protein options' },
+      isActive: true, sortOrder: 10,
     });
     await builderCategory.save();
+  }
+
+  standardCarbCategory = await BuilderCategory.findOne({ dimension: 'carb', key: 'standard_carbs' });
+  if (!standardCarbCategory) {
+    standardCarbCategory = new BuilderCategory({
+      key: 'standard_carbs', dimension: 'carb',
+      name: { ar: 'كربوهيدرات', en: 'Standard Carbs' },
+      description: { ar: 'اختيارات الكربوهيدرات', en: 'Carb selections for plate meals' },
+      isActive: true, sortOrder: 10,
+      rules: { maxTypes: 2, maxTotalGrams: 300, unit: 'grams', ruleKey: 'carb_split' },
+    });
+    await standardCarbCategory.save();
+  }
+
+  premiumProteinCategory = await BuilderCategory.findOne({ dimension: 'protein', key: 'premium' });
+  if (!premiumProteinCategory) {
+    premiumProteinCategory = new BuilderCategory({
+      key: 'premium', dimension: 'protein',
+      name: { ar: 'بريميوم', en: 'Premium' },
+      description: { ar: 'خيارات البروتينات المميزة', en: 'Premium protein options' },
+      isActive: true, sortOrder: 50,
+    });
+    await premiumProteinCategory.save();
   }
 
   const largeSaladCategory = await BuilderCategory.findOne({ dimension: 'carb', key: 'large_salad' });
@@ -181,6 +208,7 @@ async function seedBuilderCatalog() {
   }
 
   const baseProtein = { displayCategoryId: builderCategory._id, displayCategoryKey: builderCategory.key, isActive: true, availableForSubscription: true };
+  const basePremiumProtein = { displayCategoryId: premiumProteinCategory._id, displayCategoryKey: premiumProteinCategory.key, isActive: true, availableForSubscription: true };
 
   standardProtein = await BuilderProtein.findOne({
     isPremium: false,
@@ -205,8 +233,8 @@ async function seedBuilderCatalog() {
   premiumProteinShrimp = await BuilderProtein.findOne({ premiumKey: 'shrimp' });
   if (!premiumProteinShrimp) {
     premiumProteinShrimp = new BuilderProtein({
-      ...baseProtein, name: { ar: 'جمبري', en: 'Shrimp' }, description: { ar: 'جمبري مشوي', en: 'Grilled shrimp' },
-      proteinFamilyKey: 'seafood', ruleTags: ['premium'],
+      ...basePremiumProtein, name: { ar: 'جمبري', en: 'Shrimp' }, description: { ar: 'جمبري مشوي', en: 'Grilled shrimp' },
+      proteinFamilyKey: 'fish', ruleTags: ['premium'],
       isPremium: true, premiumKey: 'shrimp', extraFeeHalala: 1500, currency: 'SAR',
     });
     await premiumProteinShrimp.save();
@@ -215,7 +243,7 @@ async function seedBuilderCatalog() {
   premiumProteinBeefSteak = await BuilderProtein.findOne({ premiumKey: 'beef_steak' });
   if (!premiumProteinBeefSteak) {
     premiumProteinBeefSteak = new BuilderProtein({
-      ...baseProtein, name: { ar: 'ستيك لحم', en: 'Beef Steak' }, description: { ar: 'ستيك لحم مشوي', en: 'Grilled beef steak' },
+      ...basePremiumProtein, name: { ar: 'ستيك لحم', en: 'Beef Steak' }, description: { ar: 'ستيك لحم مشوي', en: 'Grilled beef steak' },
       proteinFamilyKey: 'beef', ruleTags: ['premium'],
       isPremium: true, premiumKey: 'beef_steak', extraFeeHalala: 2000, currency: 'SAR',
     });
@@ -225,8 +253,8 @@ async function seedBuilderCatalog() {
   premiumProteinSalmon = await BuilderProtein.findOne({ premiumKey: 'salmon' });
   if (!premiumProteinSalmon) {
     premiumProteinSalmon = new BuilderProtein({
-      ...baseProtein, name: { ar: 'سلمون', en: 'Salmon' }, description: { ar: 'سلمون مشوي', en: 'Grilled salmon' },
-      proteinFamilyKey: 'seafood', ruleTags: ['premium'],
+      ...basePremiumProtein, name: { ar: 'سلمون', en: 'Salmon' }, description: { ar: 'سلمون مشوي', en: 'Grilled salmon' },
+      proteinFamilyKey: 'fish', ruleTags: ['premium'],
       isPremium: true, premiumKey: 'salmon', extraFeeHalala: 1800, currency: 'SAR',
     });
     await premiumProteinSalmon.save();
@@ -239,11 +267,26 @@ async function seedBuilderCatalog() {
   });
   if (!standardCarb) {
     standardCarb = new BuilderCarb({
-      displayCategoryId: builderCategory._id, displayCategoryKey: builderCategory.key,
+      displayCategoryId: standardCarbCategory._id, displayCategoryKey: standardCarbCategory.key,
       name: { ar: 'أرز', en: 'Rice' }, description: { ar: 'أرز steamed', en: 'Steamed rice' },
       isActive: true, availableForSubscription: true,
     });
     await standardCarb.save();
+  }
+
+  standardCarb2 = await BuilderCarb.findOne({
+    displayCategoryKey: 'standard_carbs',
+    isActive: true,
+    availableForSubscription: { $ne: false },
+    _id: { $ne: standardCarb._id },
+  });
+  if (!standardCarb2) {
+    standardCarb2 = new BuilderCarb({
+      displayCategoryId: standardCarbCategory._id, displayCategoryKey: standardCarbCategory.key,
+      name: { ar: 'كينوا', en: 'Quinoa' }, description: { ar: 'كينوا', en: 'Quinoa' },
+      isActive: true, availableForSubscription: true,
+    });
+    await standardCarb2.save();
   }
 
   let largeSaladCarb = await BuilderCarb.findOne({ displayCategoryKey: 'large_salad' });
@@ -277,8 +320,8 @@ async function seedBuilderCatalog() {
   unavailableCarb = await BuilderCarb.findOne({ name: { en: 'Unavailable Carb' } });
   if (!unavailableCarb) {
     unavailableCarb = new BuilderCarb({
-      displayCategoryId: builderCategory._id,
-      displayCategoryKey: builderCategory.key,
+      displayCategoryId: standardCarbCategory._id,
+      displayCategoryKey: standardCarbCategory.key,
       name: { ar: 'كارب غير متاح', en: 'Unavailable Carb' },
       description: { ar: 'غير متاح', en: 'Unavailable carb' },
       isActive: true,
@@ -287,8 +330,10 @@ async function seedBuilderCatalog() {
     await unavailableCarb.save();
   }
 
-  const GROUP_ORDER = { vegetables: 1, addons: 2, fruits: 3, nuts: 4, sauce: 5 };
+  const GROUP_ORDER = { leafy_greens: 10, vegetables: 20, cheese_nuts: 40, fruits: 50, sauce: 60 };
   const SEED_INGREDIENTS = [
+    { name: { ar: 'خس روماني', en: 'Romaine Lettuce' }, groupKey: 'leafy_greens' },
+    { name: { ar: 'جرجير', en: 'Arugula' }, groupKey: 'leafy_greens' },
     { name: { ar: 'بصل مخلل', en: 'Pickled Onion' }, groupKey: 'vegetables' },
     { name: { ar: 'نعناع', en: 'Mint' }, groupKey: 'vegetables' },
     { name: { ar: 'زيتون أسود', en: 'Black Olive' }, groupKey: 'vegetables' },
@@ -299,15 +344,15 @@ async function seedBuilderCatalog() {
     { name: { ar: 'فلفل', en: 'Pepper' }, groupKey: 'vegetables' },
     { name: { ar: 'بنجر', en: 'Beet' }, groupKey: 'vegetables' },
     { name: { ar: 'هالينو', en: 'Jalapeno' }, groupKey: 'vegetables' },
-    { name: { ar: 'بارميزان', en: 'Parmesan' }, groupKey: 'addons' },
-    { name: { ar: 'فيتا', en: 'Feta' }, groupKey: 'addons' },
+    { name: { ar: 'بارميزان', en: 'Parmesan' }, groupKey: 'cheese_nuts' },
+    { name: { ar: 'فيتا', en: 'Feta' }, groupKey: 'cheese_nuts' },
     { name: { ar: 'تمر', en: 'Dates' }, groupKey: 'fruits' },
     { name: { ar: 'توت أزرق', en: 'Blueberry' }, groupKey: 'fruits' },
     { name: { ar: 'فراولة', en: 'Strawberry' }, groupKey: 'fruits' },
     { name: { ar: 'رمان', en: 'Pomegranate' }, groupKey: 'fruits' },
-    { name: { ar: 'سمسم', en: 'Sesame' }, groupKey: 'nuts' },
-    { name: { ar: 'كاجو', en: 'Cashew' }, groupKey: 'nuts' },
-    { name: { ar: 'عين الجمل', en: 'Walnut' }, groupKey: 'nuts' },
+    { name: { ar: 'سمسم', en: 'Sesame' }, groupKey: 'cheese_nuts' },
+    { name: { ar: 'كاجو', en: 'Cashew' }, groupKey: 'cheese_nuts' },
+    { name: { ar: 'عين الجمل', en: 'Walnut' }, groupKey: 'cheese_nuts' },
     { name: { ar: 'عسل بالليمون', en: 'Honey Lemon' }, groupKey: 'sauce' },
     { name: { ar: 'زبادي بالنعناع', en: 'Yogurt Mint' }, groupKey: 'sauce' },
     { name: { ar: 'هاني ماستر', en: 'Honey Mustard' }, groupKey: 'sauce' },
@@ -316,19 +361,22 @@ async function seedBuilderCatalog() {
     { name: { ar: 'رانش', en: 'Ranch' }, groupKey: 'sauce' },
   ];
 
-  const existingCount = await SaladIngredient.countDocuments({});
-  if (existingCount === 0) {
-    for (let i = 0; i < SEED_INGREDIENTS.length; i++) {
-      const ing = SEED_INGREDIENTS[i];
-      await SaladIngredient.create({
-        name: ing.name,
-        groupKey: ing.groupKey,
-        price: 0,
-        calories: 50,
-        isActive: true,
-        sortOrder: GROUP_ORDER[ing.groupKey] + (i * 0.01),
-      });
-    }
+  for (let i = 0; i < SEED_INGREDIENTS.length; i++) {
+    const ing = SEED_INGREDIENTS[i];
+    await SaladIngredient.updateOne(
+      { "name.en": ing.name.en },
+      {
+        $set: {
+          name: ing.name,
+          groupKey: ing.groupKey,
+          price: 0,
+          calories: 50,
+          isActive: true,
+          sortOrder: GROUP_ORDER[ing.groupKey] + (i * 0.01),
+        },
+      },
+      { upsert: true }
+    );
   }
 
   let sandwichCategory = await MealCategory.findOne({ key: 'sandwich' });
@@ -500,17 +548,29 @@ async function stopServer() {
 
 async function connectDatabase() {
   const mongoUri = process.env.MONGO_URI || process.env.MONGODB_URI || 'mongodb://localhost:27017/basicdiet_test';
+  
+  // Extract database name from URI for safe logging
+  let dbName = 'unknown';
+  try {
+    const cleanUri = mongoUri.replace('mongodb+srv://', 'mongodb://');
+    const url = new URL(cleanUri);
+    dbName = url.pathname.split('/').pop().split('?')[0] || 'default';
+  } catch (e) {
+    dbName = mongoUri.split('/').pop().split('?')[0] || 'unknown';
+  }
+
+  console.log(`Connecting to database: ${dbName}...`);
+
   if (mongoose.connection.readyState === 1) return;
   if (mongoose.connection.readyState === 2) { await mongoose.connection.asPromise(); return; }
+  
   try {
     await mongoose.connect(mongoUri);
   } catch (err) {
-    if (err.message.includes('ECONNREFUSED') || err.message.includes('Authentication failed')) {
-      console.error('\n❌ MongoDB connection failed!');
-      console.error('Please set MONGO_URI or MONGODB_URI environment variable\n');
-      throw new Error('SKIP');
-    }
-    throw err;
+    console.error(`\n❌ MongoDB connection failed for ${dbName}!`);
+    console.error(`URI tried: ${mongoUri.replace(/:([^@]+)@/, ':****@')}`); // Hide password
+    console.error(`Error: ${err.message}\n`);
+    throw new Error('SKIP');
   }
 }
 
@@ -608,11 +668,16 @@ async function runTests() {
     const res = await makeRequest('GET', '/api/subscriptions/meal-planner-menu');
     const salad = res.body.data?.builderCatalog?.premiumLargeSalad;
     assertTrue(!!salad, 'premiumLargeSalad present');
+    assertTrue(!!salad?.carbId, 'large salad carb identity is present');
+    assertEqual(salad?.presetKey, 'large_salad', 'preset key');
+    assertEqual(salad?.preset?.key, 'large_salad', 'preset object key');
     assertEqual(salad?.extraFeeHalala, CUSTOM_PREMIUM_SALAD_FIXED_PRICE, 'fixed price');
     assertEqual(salad?.premiumKey, CUSTOM_PREMIUM_SALAD_KEY, 'premiumKey is custom_premium_salad');
     assertEqual(salad?.selectionType, 'premium_large_salad', 'selectionType is premium_large_salad');
     const groupKeys = (salad?.groups || []).map(g => g.key);
+    assertTrue(groupKeys.includes('leafy_greens'), 'groups includes leafy_greens');
     assertTrue(groupKeys.includes('vegetables'), 'groups includes vegetables');
+    assertTrue(groupKeys.includes('cheese_nuts'), 'groups includes cheese_nuts');
     assertTrue(groupKeys.includes('sauce'), 'groups includes sauce');
     assertTrue(groupKeys.includes('protein'), 'groups includes protein');
     const sauceGroup = salad?.groups?.find(g => g.key === 'sauce');
@@ -626,6 +691,9 @@ async function runTests() {
       assertTrue(ing.groupKey !== 'addons', 'ingredient groupKey addons removed');
       assertTrue(ing.groupKey !== 'nuts', 'ingredient groupKey nuts removed');
     }
+    const proteinItems = (salad?.ingredients || []).filter((item) => item.groupKey === 'protein');
+    assertTrue(proteinItems.some((item) => item.id === String(standardProtein._id)), 'regular protein available for premium_large_salad');
+    assertTrue(proteinItems.some((item) => item.id === String(premiumProteinShrimp._id)), 'premium protein available for premium_large_salad');
   });
 
   await test('builderCatalog sandwiches contain only real sandwich meals', async () => {
@@ -747,6 +815,26 @@ async function runTests() {
     ];
     const res = await makeRequest('POST', `/api/subscriptions/${testSubscription._id}/days/${TEST_DATE}/selection/validate`, { mealSlots: slots });
     assertEqual(res.status, 200, 'status');
+  });
+
+  await test('POST /selection/validate dry-runs addon entitlements and overage pricing', async () => {
+    const slots = [
+      { slotIndex: 1, slotKey: 'slot_1', proteinId: String(standardProtein._id), carbs: [{ carbId: String(standardCarb._id), grams: 150 }], selectionType: 'standard_meal' },
+      { slotIndex: 2, slotKey: 'slot_2', proteinId: String(standardProtein._id), carbs: [{ carbId: String(standardCarb._id), grams: 150 }], selectionType: 'standard_meal' },
+    ];
+    const res = await makeRequest('POST', `/api/subscriptions/${testSubscription._id}/days/${TEST_DATE}/selection/validate`, {
+      mealSlots: slots,
+      addonsOneTime: [String(addonJuice._id), String(addonJuice2._id)],
+    });
+    assertEqual(res.status, 200, 'status');
+    const addonSelections = res.body.data?.addonSelections || [];
+    assertEqual(addonSelections.length, 2, 'two addon selections returned');
+    const first = addonSelections.find((item) => item.addonId === String(addonJuice._id));
+    const second = addonSelections.find((item) => item.addonId === String(addonJuice2._id));
+    assertEqual(first?.source, 'subscription', 'entitled addon is free in validation');
+    assertEqual(Number(first?.priceHalala || 0), 0, 'free addon has zero price');
+    assertEqual(second?.source, 'pending_payment', 'overage remains pending in validation');
+    assertEqual(Number(second?.priceHalala || 0), Number(addonJuice2.priceHalala || 0), 'overage uses item price in validation');
   });
   
   console.log('\n--- D) Save canonical standard meals ---\n');
@@ -1068,7 +1156,7 @@ async function runTests() {
     assertEqual(res.body.error?.code, 'INVALID_PROTEIN_TYPE', 'error code');
   });
 
-  await test('premium_large_salad rejects standard protein in protein group', async () => {
+  await test('premium_large_salad accepts standard protein in protein group', async () => {
     const sauceId = (await SaladIngredient.findOne({ groupKey: 'sauce' }))._id;
     const res = await makeRequest('POST', `/api/subscriptions/${testSubscription._id}/days/${TEST_DATE5}/selection/validate`, {
       mealSlots: [{ 
@@ -1077,8 +1165,7 @@ async function runTests() {
         salad: { groups: { protein: [String(standardProtein._id)], sauce: [String(sauceId)] } } 
       }]
     });
-    assertEqual(res.status, 422, 'rejected with 422');
-    assertEqual(res.body.error?.code, 'SALAD_PROTEIN_NOT_PREMIUM', 'error code');
+    assertEqual(res.status, 200, 'accepted');
   });
 
   await test('premium_large_salad rejects mismatched top-level proteinId and salad protein group', async () => {
@@ -1180,24 +1267,12 @@ async function runTests() {
 }
 
 async function main() {
-  // Check environment
-  if (!isTestEnv && process.env.NODE_ENV !== 'test') {
-    console.log('\n⚠️  WARNING: Integration tests should run with NODE_ENV=test');
-  }
-  
-  // Check database name to prevent production DB usage (skip in CI/development)
-  const mongoUri = process.env.MONGO_URI || process.env.MONGODB_URI || '';
-  const skipDbCheck = process.env.SKIP_DB_CHECK === 'true';
-  if (!skipDbCheck && mongoUri.includes('basicdiet145') && !mongoUri.includes('_test')) {
-    console.error('\n❌ ERROR: Integration tests must run against test database (_test suffix)');
-    console.error('Current URI:', mongoUri);
-    console.error('Set SKIP_DB_CHECK=true to bypass this check\n');
-    process.exit(1);
-  }
-  
   try {
-    console.log('Connecting to database...');
     await connectDatabase();
+    
+    // Enforce safety checks
+    ensureSafeForDestructiveOp('meal planner integration tests');
+
     console.log('Starting server...');
     await startServer();
     await wait(500);

@@ -28,6 +28,7 @@ const CheckoutDraft = require('../src/models/CheckoutDraft');
 const Zone = require('../src/models/Zone');
 const Setting = require('../src/models/Setting');
 const Addon = require('../src/models/Addon');
+const { ensureSafeForDestructiveOp } = require('../src/utils/dbSafety');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'supersecret';
 const BASE_URL = 'http://localhost:3000';
@@ -316,17 +317,29 @@ async function stopServer() {
 
 async function connectDatabase() {
   const mongoUri = process.env.MONGO_URI || process.env.MONGODB_URI || 'mongodb://localhost:27017/basicdiet_test';
+  
+  // Extract database name from URI for safe logging
+  let dbName = 'unknown';
+  try {
+    const cleanUri = mongoUri.replace('mongodb+srv://', 'mongodb://');
+    const url = new URL(cleanUri);
+    dbName = url.pathname.split('/').pop().split('?')[0] || 'default';
+  } catch (e) {
+    dbName = mongoUri.split('/').pop().split('?')[0] || 'unknown';
+  }
+
+  console.log(`Connecting to database: ${dbName}...`);
+
   if (mongoose.connection.readyState === 1) return;
   if (mongoose.connection.readyState === 2) { await mongoose.connection.asPromise(); return; }
+  
   try {
     await mongoose.connect(mongoUri);
   } catch (err) {
-    if (err.message.includes('ECONNREFUSED') || err.message.includes('Authentication failed')) {
-      console.error('\n❌ MongoDB connection failed!');
-      console.error('Please set MONGO_URI or MONGODB_URI environment variable\n');
-      throw new Error('SKIP');
-    }
-    throw err;
+    console.error(`\n❌ MongoDB connection failed for ${dbName}!`);
+    console.error(`URI tried: ${mongoUri.replace(/:([^@]+)@/, ':****@')}`); // Hide password
+    console.error(`Error: ${err.message}\n`);
+    throw new Error('SKIP');
   }
 }
 
@@ -691,22 +704,12 @@ async function runTests() {
 }
 
 async function main() {
-  if (!isTestEnv && process.env.NODE_ENV !== 'test') {
-    console.log('\n⚠️  WARNING: Integration tests should run with NODE_ENV=test');
-  }
-  
-  const mongoUri = process.env.MONGO_URI || process.env.MONGODB_URI || '';
-  const skipDbCheck = process.env.SKIP_DB_CHECK === 'true';
-  if (!skipDbCheck && mongoUri.includes('basicdiet145') && !mongoUri.includes('_test')) {
-    console.error('\n❌ ERROR: Integration tests must run against test database (_test suffix)');
-    console.error('Current URI:', mongoUri);
-    console.error('Set SKIP_DB_CHECK=true to bypass this check\n');
-    process.exit(1);
-  }
-  
   try {
-    console.log('Connecting to database...');
     await connectDatabase();
+    
+    // Enforce safety checks
+    ensureSafeForDestructiveOp('checkout integration tests');
+
     console.log('Starting server...');
     await startServer();
     await wait(500);

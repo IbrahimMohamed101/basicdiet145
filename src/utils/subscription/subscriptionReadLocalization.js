@@ -16,6 +16,10 @@ const {
   resolveLocalizedText,
   resolveReadLabel,
 } = require("./subscriptionLocalizationCommon");
+const {
+  mapLegacySelectionType,
+  NEW_TYPES,
+} = require("./mealTypeMapper");
 
 function resolveWindowLabel(windowValue, lang) {
   const raw = String(windowValue || "").trim();
@@ -48,12 +52,16 @@ function normalizeCanonicalMealSlots(mealSlots) {
   if (!Array.isArray(mealSlots)) return [];
 
   return mealSlots.map((slot) => {
+    const selectionType = slot && slot.selectionType
+      ? mapLegacySelectionType(slot.selectionType, slot || {})
+      : "empty";
+    const shouldUseLegacyCarbId = selectionType === NEW_TYPES.STANDARD_MEAL || selectionType === NEW_TYPES.PREMIUM_MEAL;
     const carbs = Array.isArray(slot && slot.carbs) && slot.carbs.length > 0
       ? slot.carbs.map((carb) => ({
         carbId: carb && carb.carbId ? String(carb.carbId) : "",
         grams: Number(carb && carb.grams || 0),
       }))
-      : (slot && slot.carbId ? [{ carbId: String(slot.carbId), grams: 300 }] : []);
+      : (shouldUseLegacyCarbId && slot && slot.carbId ? [{ carbId: String(slot.carbId), grams: 300 }] : []);
     const salad = slot && slot.salad
       ? slot.salad
       : (slot && slot.customSalad && typeof slot.customSalad === "object" ? slot.customSalad : null);
@@ -62,7 +70,7 @@ function normalizeCanonicalMealSlots(mealSlots) {
       slotIndex: Number(slot && slot.slotIndex || 0),
       slotKey: slot && slot.slotKey ? String(slot.slotKey) : "",
       status: slot && slot.status ? String(slot.status) : "empty",
-      selectionType: slot && slot.selectionType ? String(slot.selectionType) : "empty",
+      selectionType,
       proteinId: (slot && slot.proteinId && String(slot.proteinId).trim()) ? String(slot.proteinId).trim() : null,
       carbs,
       sandwichId: slot && slot.sandwichId ? String(slot.sandwichId) : null,

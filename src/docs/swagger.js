@@ -48,12 +48,12 @@ const definition = {
           salad: { 
             type: "object", 
             nullable: true,
-            description: "Canonical premium_large_salad payload. Legacy customSalad input may still be accepted on write, but canonical reads use this field.",
+            description: "Canonical premium_large_salad payload. Legacy customSalad input may still be accepted on write, but canonical reads use this field. proteinId may be sent only as a compatibility mirror of salad.groups.protein[0].",
             properties: {
               presetKey: { type: "string", nullable: true },
               groups: {
                 type: "object",
-                description: "Canonical grouped premium_large_salad selections keyed by leafy_greens, vegetables, fruits, protein, cheese_nuts, or sauce",
+                description: "Canonical grouped premium_large_salad selections keyed by leafy_greens, vegetables, protein, cheese_nuts, fruits, and sauce. protein selects one BuilderProtein; the other groups select SaladIngredient IDs.",
               }
             }
           },

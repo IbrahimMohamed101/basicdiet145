@@ -3,14 +3,40 @@
 require("dotenv").config();
 
 const mongoose = require("mongoose");
-const fs = require("fs");
-const path = require("path");
-
 const SaladIngredient = require("../src/models/SaladIngredient");
+const {
+  SALAD_SELECTION_GROUPS,
+  normalizeSaladIngredientGroupKey,
+} = require("../src/config/mealPlannerContract");
 
-const VALID_GROUP_KEYS = new Set(["vegetables", "addons", "fruits", "nuts", "sauce"]);
+const VALID_GROUP_KEYS = new Set(
+  SALAD_SELECTION_GROUPS
+    .filter((group) => group.source === "ingredient")
+    .map((group) => group.key)
+);
 
-const NAME_TO_GROUP_MAP = {
+const GROUP_ORDER = {
+  leafy_greens: 10,
+  vegetables: 20,
+  cheese_nuts: 40,
+  fruits: 50,
+  sauce: 60,
+};
+
+const EXACT_NAME_GROUP_MAP = {
+  "خس روماني": "leafy_greens",
+  "خس": "leafy_greens",
+  "جرجير": "leafy_greens",
+  "سبانخ": "leafy_greens",
+  "كرنب": "leafy_greens",
+  "ميكس جرينز": "leafy_greens",
+  "romaine lettuce": "leafy_greens",
+  lettuce: "leafy_greens",
+  arugula: "leafy_greens",
+  spinach: "leafy_greens",
+  kale: "leafy_greens",
+  "mixed greens": "leafy_greens",
+
   "عسل بالليمون": "sauce",
   "زبادي بالنعناع": "sauce",
   "هاني ماستر": "sauce",
@@ -18,9 +44,27 @@ const NAME_TO_GROUP_MAP = {
   "صوص بيستو": "sauce",
   "سيزر": "sauce",
   "رانش": "sauce",
-  "سمسم": "nuts",
-  "كاجو": "nuts",
-  "عين الجمل": "nuts",
+  "honey lemon": "sauce",
+  "yogurt mint": "sauce",
+  "honey mustard": "sauce",
+  "fish sauce": "sauce",
+  "pesto sauce": "sauce",
+  caesar: "sauce",
+  ranch: "sauce",
+
+  "سمسم": "cheese_nuts",
+  "كاجو": "cheese_nuts",
+  "عين الجمل": "cheese_nuts",
+  sesame: "cheese_nuts",
+  cashew: "cheese_nuts",
+  walnut: "cheese_nuts",
+  walnuts: "cheese_nuts",
+  pecan: "cheese_nuts",
+  parmesan: "cheese_nuts",
+  feta: "cheese_nuts",
+  "بارميزان": "cheese_nuts",
+  "فيتا": "cheese_nuts",
+
   "تمر": "fruits",
   "شمام": "fruits",
   "بطيخ": "fruits",
@@ -29,8 +73,14 @@ const NAME_TO_GROUP_MAP = {
   "رمان": "fruits",
   "تفاح أخضر": "fruits",
   "مانجا": "fruits",
-  "بارميزان": "addons",
-  "فيتا": "addons",
+  dates: "fruits",
+  melon: "fruits",
+  watermelon: "fruits",
+  blueberry: "fruits",
+  strawberry: "fruits",
+  pomegranate: "fruits",
+  mango: "fruits",
+
   "بصل مخلل": "vegetables",
   "نعناع": "vegetables",
   "زيتون أسود": "vegetables",
@@ -46,83 +96,63 @@ const NAME_TO_GROUP_MAP = {
   "فاصوليا حمراء": "vegetables",
   "هالينو": "vegetables",
   "ه��لينو": "vegetables",
-  "هالينو": "vegetables",
+  "pickled onion": "vegetables",
+  mint: "vegetables",
+  "black olive": "vegetables",
+  "green olive": "vegetables",
+  "green onion": "vegetables",
+  "red onion": "vegetables",
+  "grilled vegetables": "vegetables",
+  broccoli: "vegetables",
+  mushroom: "vegetables",
+  mushrooms: "vegetables",
+  coriander: "vegetables",
+  cilantro: "vegetables",
+  pepper: "vegetables",
+  peppers: "vegetables",
+  beet: "vegetables",
+  beetroot: "vegetables",
+  "red beans": "vegetables",
+  "kidney beans": "vegetables",
+  jalapeno: "vegetables",
+  "jalapeño": "vegetables",
+  halapeno: "vegetables",
 };
 
-const GROUP_ORDER = {
-  vegetables: 1,
-  addons: 2,
-  fruits: 3,
-  nuts: 4,
-  sauce: 5,
-};
-
-function fixString(str) {
-  if (typeof str !== "string") return str;
-  let fixed = str;
-  fixed = fixed.replace(/\ufffd/g, "");
-  return fixed;
+function fixString(value) {
+  if (typeof value !== "string") return "";
+  return value.replace(/\ufffd/g, "").trim().toLowerCase();
 }
 
 function resolveGroupKey(doc) {
-  const arName = fixString(doc.name && doc.name.ar ? doc.name.ar.trim() : "");
-  const enName = fixString(doc.name && doc.name.en ? doc.name.en.trim() : "");
+  const existing = normalizeSaladIngredientGroupKey(doc.groupKey);
+  if (existing) return existing;
 
-  if (NAME_TO_GROUP_MAP[arName]) {
-    return NAME_TO_GROUP_MAP[arName];
+  const arName = fixString(doc.name && doc.name.ar ? doc.name.ar : "");
+  const enName = fixString(doc.name && doc.name.en ? doc.name.en : "");
+
+  if (EXACT_NAME_GROUP_MAP[arName]) return EXACT_NAME_GROUP_MAP[arName];
+  if (EXACT_NAME_GROUP_MAP[enName]) return EXACT_NAME_GROUP_MAP[enName];
+
+  if (
+    arName.includes("خس")
+    || arName.includes("جرجير")
+    || arName.includes("سبانخ")
+    || enName.includes("lettuce")
+    || enName.includes("arugula")
+    || enName.includes("spinach")
+    || enName.includes("greens")
+  ) {
+    return "leafy_greens";
   }
-  if (NAME_TO_GROUP_MAP[enName]) {
-    return NAME_TO_GROUP_MAP[enName];
-  }
-
-  const enLower = enName.toLowerCase().trim();
-  const arLower = arName.toLowerCase().trim();
-
-  if (enLower === "honey lemon" || enLower === "honey with lemon") return "sauce";
-  if (enLower === "yogurt mint" || enLower === "yogurt with mint") return "sauce";
-  if (enLower === "honey mustard" || enLower === "honey musturd") return "sauce";
-  if (enLower === "fish sauce" || enLower === "with fish") return "sauce";
-  if (enLower === "pesto sauce" || enLower === "besto") return "sauce";
-  if (enLower === "caesar") return "sauce";
-  if (enLower === "ranch") return "sauce";
-  if (enLower === "sesame" || enLower === "tahini") return "nuts";
-  if (enLower === "cashew") return "nuts";
-  if (enLower === "walnut" || enLower === "walnuts" || enLower === "pecan") return "nuts";
-  if (enLower === "date" || enLower === "dates") return "fruits";
-  if (enLower === "melon" || enLower === "canteloupe") return "fruits";
-  if (enLower === "watermelon") return "fruits";
-  if (enLower === "blueberry" || enLower === "blue berries") return "fruits";
-  if (enLower === "strawberry" || enLower === "strawberries") return "fruits";
-  if (enLower === "pomegranate") return "fruits";
-  if (enLower === "green apple" || enLower === "apple green") return "fruits";
-  if (enLower === "mango") return "fruits";
-  if (enLower === "parmesan" || enLower === "parmigiano") return "addons";
-  if (enLower === "feta") return "addons";
-  if (enLower === "pickled onion" || enLower === "pickled onions") return "vegetables";
-  if (enLower === "mint") return "vegetables";
-  if (enLower === "black olive" || enLower === "black olives") return "vegetables";
-  if (enLower === "green olive" || enLower === "green olives") return "vegetables";
-  if (enLower === "green onion" || enLower === "green onions") return "vegetables";
-  if (enLower === "red onion" || enLower === "onion") return "vegetables";
-  if (enLower === "grilled vegetables" || enLower === "mixed grill vegetables") return "vegetables";
-  if (enLower === "broccoli") return "vegetables";
-  if (enLower === "mushroom" || enLower === "mushrooms" || enLower === "fungi") return "vegetables";
-  if (enLower === "coriander" || enLower === "cilantro") return "vegetables";
-  if (enLower === "pepper" || enLower === "peppers") return "vegetables";
-  if (enLower === "beet" || enLower === "beetroot") return "vegetables";
-  if (enLower === "red beans" || enLower === "kidney beans") return "vegetables";
-  if (enLower === "jalapeno" || enLower === "jalape\u00f1o" || enLower === "halapeno") return "vegetables";
-
-  if (arLower === "\u0647\u0627\u0644\u064a\u0646\u0648" || arLower === "\u0647\u0644\u064a\u0646\u0648" || arLower === "\u0647\u0644\u064a\u0646") return "vegetables";
-  if (arLower === "\u0641\u0644\u0641" || arLower === "\u0641\u0644\u0641%") return "vegetables";
 
   return null;
 }
 
 async function main() {
-  const uri = process.env.MONGO_URI || process.env.MONGODB_URI;
+  const uri = process.env.MONGO_URI || process.env.MONGODB_URI || process.env.MONGO_URL;
   if (!uri) {
-    console.error("Missing MongoDB connection string (MONGO_URI or MONGODB_URI)");
+    console.error("Missing MongoDB connection string (MONGO_URI, MONGODB_URI, or MONGO_URL)");
     process.exit(1);
   }
 
@@ -132,45 +162,56 @@ async function main() {
   const docs = await SaladIngredient.find({}).lean();
   console.log(`Found ${docs.length} SaladIngredient documents\n`);
 
-  let assigned = 0;
+  let processed = 0;
+  let updated = 0;
   let skipped = 0;
-  let errors = 0;
+  let failed = 0;
 
   for (const doc of docs) {
-    const arName = doc.name && doc.name.ar ? doc.name.ar : "";
-    const enName = doc.name && doc.name.en ? doc.name.en : "";
-    const currentGroupKey = doc.groupKey || "";
+    processed += 1;
+    try {
+      const resolvedGroupKey = resolveGroupKey(doc);
+      if (!resolvedGroupKey || !VALID_GROUP_KEYS.has(resolvedGroupKey)) {
+        console.warn(`  SKIPPED: unmapped ingredient '${doc.name?.ar || ""}' / '${doc.name?.en || ""}' (current='${doc.groupKey || ""}')`);
+        skipped += 1;
+        continue;
+      }
 
-    if (currentGroupKey && VALID_GROUP_KEYS.has(currentGroupKey)) {
-      skipped++;
-      continue;
+      const sortOrder = Number(doc.sortOrder || 0) > 0
+        ? Number(doc.sortOrder)
+        : GROUP_ORDER[resolvedGroupKey];
+
+      if (doc.groupKey === resolvedGroupKey && Number(doc.sortOrder || 0) === sortOrder) {
+        skipped += 1;
+        continue;
+      }
+
+      await SaladIngredient.updateOne(
+        { _id: doc._id },
+        {
+          $set: {
+            groupKey: resolvedGroupKey,
+            sortOrder,
+          },
+        }
+      );
+
+      console.log(`  MAPPED: '${doc.name?.ar || ""}' / '${doc.name?.en || ""}' -> ${resolvedGroupKey}`);
+      updated += 1;
+    } catch (error) {
+      console.warn(`  FAILED: '${doc.name?.ar || ""}' / '${doc.name?.en || ""}' -> ${error.message}`);
+      failed += 1;
     }
-
-    const resolved = resolveGroupKey(doc);
-
-    if (!resolved) {
-      console.log(`  UNKNOWN: ${arName} / ${enName} (current: '${currentGroupKey}')`);
-      errors++;
-      continue;
-    }
-
-    await SaladIngredient.findByIdAndUpdate(doc._id, {
-      groupKey: resolved,
-      sortOrder: GROUP_ORDER[resolved] || 0,
-    });
-
-    console.log(`  MAPPED: '${arName}' / '${enName}' -> ${resolved}`);
-    assigned++;
   }
 
-  console.log(`\n=== Summary ===`);
-  console.log(`Total: ${docs.length}`);
-  console.log(`Assigned groupKey: ${assigned}`);
-  console.log(`Already had valid groupKey: ${skipped}`);
-  console.log(`Unknown (not mapped): ${errors}`);
+  console.log("\n=== Summary ===");
+  console.log(`Processed: ${processed}`);
+  console.log(`Updated: ${updated}`);
+  console.log(`Skipped: ${skipped}`);
+  console.log(`Failed: ${failed}`);
 
   await mongoose.disconnect();
-  process.exit(errors > 0 ? 1 : 0);
+  process.exit(0);
 }
 
 main().catch((err) => {

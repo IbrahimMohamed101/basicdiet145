@@ -6,6 +6,10 @@ const { resolvePremiumKeyFromName } = require("../../utils/subscription/premiumI
 const { toKSADateString, addDaysToKSADateString } = require("../../utils/date");
 const { resolveMealsPerDay } = require("../../utils/subscription/subscriptionDaySelectionSync");
 const { formatMealsLabel } = require("../../utils/subscription/subscriptionCatalog");
+const {
+  mapLegacySelectionType,
+  NEW_TYPES,
+} = require("../../utils/subscription/mealTypeMapper");
 const { getCompensationSnapshot } = require("./subscriptionCompensationService");
 const { buildDayCommercialState } = require("./subscriptionDayCommercialStateService");
 const { buildSubscriptionDayFulfillmentState } = require("./subscriptionDayFulfillmentStateService");
@@ -248,16 +252,20 @@ function normalizeTimelineMealSlots(dbDay) {
   return dbDay.mealSlots
     .filter((slot) => slot && (slot.slotIndex || slot.slotKey))
     .map((slot) => {
+      const selectionType = slot && slot.selectionType
+        ? mapLegacySelectionType(slot.selectionType, slot || {})
+        : "empty";
+      const shouldUseLegacyCarbId = selectionType === NEW_TYPES.STANDARD_MEAL || selectionType === NEW_TYPES.PREMIUM_MEAL;
       const carbs = Array.isArray(slot.carbs) && slot.carbs.length > 0
         ? slot.carbs.map((carb) => ({ carbId: carb.carbId ? String(carb.carbId) : null, grams: Number(carb.grams || 0) }))
-        : (slot.carbId ? [{ carbId: String(slot.carbId), grams: 300 }] : []);
+        : (shouldUseLegacyCarbId && slot.carbId ? [{ carbId: String(slot.carbId), grams: 300 }] : []);
       const salad = slot.salad || (slot.customSalad && typeof slot.customSalad === "object" ? slot.customSalad : null);
 
       return {
         slotIndex: Number(slot.slotIndex || 0),
         slotKey: String(slot.slotKey || ""),
         status: String(slot.status || "empty"),
-        selectionType: slot.selectionType || "empty",
+        selectionType,
         proteinId: slot.proteinId ? String(slot.proteinId) : null,
         carbs,
         sandwichId: slot.sandwichId ? String(slot.sandwichId) : null,

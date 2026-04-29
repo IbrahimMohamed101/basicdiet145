@@ -10,10 +10,13 @@ const {
   parseBooleanField,
   parseLocalizedFieldFromBody,
 } = require("../utils/requestFields");
+const {
+  normalizeProteinFamilyKey: normalizeProteinFamilyKeyFromContract,
+} = require("../config/mealPlannerContract");
 
 const SYSTEM_CURRENCY = "SAR";
 const PREMIUM_MEAL_IMAGE_FOLDER = "premium-meals";
-const ALLOWED_PROTEIN_FAMILIES = new Set(["chicken", "beef", "seafood", "other"]);
+const ALLOWED_PROTEIN_FAMILIES = new Set(["chicken", "beef", "fish", "eggs", "other", "seafood"]);
 
 const CUSTOM_PREMIUM_SALAD_KEY = "custom_premium_salad";
 const CUSTOM_PREMIUM_SALAD_PRICE_HALALA = 3000;
@@ -134,9 +137,9 @@ function normalizeSortOrder(value, fieldName = "sortOrder") {
 }
 
 function normalizeProteinFamilyKey(value) {
-  const normalized = normalizeOptionalString(value).toLowerCase();
+  const normalized = normalizeProteinFamilyKeyFromContract(normalizeOptionalString(value).toLowerCase());
   if (!ALLOWED_PROTEIN_FAMILIES.has(normalized)) {
-    throw { status: 400, code: "INVALID", message: "proteinFamilyKey must be one of: chicken, beef, seafood, other" };
+    throw { status: 400, code: "INVALID", message: "proteinFamilyKey must be one of: chicken, beef, fish, eggs, other" };
   }
   return normalized;
 }

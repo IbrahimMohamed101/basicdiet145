@@ -1,19 +1,14 @@
 /**
- * Utility to map legacy meal selection types to the new canonical types.
+ * Utility to map legacy meal selection types to the canonical planner types.
  */
 
-const LEGACY_TYPES = {
-  STANDARD_COMBO: "standard_combo",
-  CUSTOM_PREMIUM_SALAD: "custom_premium_salad",
-  SANDWICH: "sandwich",
-};
+const {
+  LEGACY_MEAL_SELECTION_TYPES,
+  MEAL_SELECTION_TYPES,
+} = require("../../config/mealPlannerContract");
 
-const NEW_TYPES = {
-  STANDARD_MEAL: "standard_meal",
-  PREMIUM_MEAL: "premium_meal",
-  PREMIUM_LARGE_SALAD: "premium_large_salad",
-  SANDWICH: "sandwich",
-};
+const LEGACY_TYPES = LEGACY_MEAL_SELECTION_TYPES;
+const NEW_TYPES = MEAL_SELECTION_TYPES;
 
 const LEGACY_TO_NEXT_SELECTION_TYPE = {
   [LEGACY_TYPES.STANDARD_COMBO]: NEW_TYPES.STANDARD_MEAL,
@@ -56,13 +51,28 @@ function mapLegacySelectionType(selectionType, slot = {}) {
 /**
  * Normalizes carb selections from legacy carbId to the new carbs array structure.
  */
-function normalizeCarbs(slot) {
+function normalizeCarbs(slot, selectionType = slot && slot.selectionType) {
   if (Array.isArray(slot.carbs) && slot.carbs.length > 0) {
     return slot.carbs;
   }
   
   if (Array.isArray(slot.carbSelections) && slot.carbSelections.length > 0) {
+    if (
+      selectionType !== NEW_TYPES.STANDARD_MEAL
+      && selectionType !== NEW_TYPES.PREMIUM_MEAL
+      && selectionType !== LEGACY_TYPES.STANDARD_COMBO
+    ) {
+      return slot.carbSelections;
+    }
     return slot.carbSelections;
+  }
+
+  if (
+    selectionType !== NEW_TYPES.STANDARD_MEAL
+    && selectionType !== NEW_TYPES.PREMIUM_MEAL
+    && selectionType !== LEGACY_TYPES.STANDARD_COMBO
+  ) {
+    return [];
   }
 
   if (slot.carbId) {

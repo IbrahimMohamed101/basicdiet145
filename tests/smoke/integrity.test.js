@@ -23,6 +23,7 @@ const User = require("../../src/models/User");
 const Plan = require("../../src/models/Plan");
 const Subscription = require("../../src/models/Subscription");
 const DashboardUser = require("../../src/models/DashboardUser");
+const { ensureSafeForDestructiveOp } = require("../../src/utils/dbSafety");
 
 const JWT_SECRET = process.env.JWT_SECRET || "supersecret";
 const DASHBOARD_JWT_SECRET = process.env.DASHBOARD_JWT_SECRET;
@@ -132,10 +133,32 @@ function assertNoTopLevelStatus(body, msg) {
 }
 
 async function setup() {
-  const mongoUri = process.env.MONGO_URI || "mongodb://localhost:27017/basicdiet_test";
-  if (mongoose.connection.readyState === 0) {
-    await mongoose.connect(mongoUri);
+  const mongoUri = process.env.MONGO_URI || process.env.MONGODB_URI || "mongodb://localhost:27017/basicdiet_test";
+  
+  // Extract database name from URI for safe logging
+  let dbName = "unknown";
+  try {
+    const cleanUri = mongoUri.replace("mongodb+srv://", "mongodb://");
+    const url = new URL(cleanUri);
+    dbName = url.pathname.split("/").pop().split("?")[0] || "default";
+  } catch (e) {
+    dbName = mongoUri.split("/").pop().split("?")[0] || "unknown";
   }
+
+  console.log(`Connecting to database: ${dbName}...`);
+
+  if (mongoose.connection.readyState === 0) {
+    try {
+      await mongoose.connect(mongoUri);
+    } catch (err) {
+      console.error(`\n❌ MongoDB connection failed for ${dbName}!`);
+      console.error(`URI tried: ${mongoUri.replace(/:([^@]+)@/, ":****@")}`);
+      console.error(`Error: ${err.message}\n`);
+      process.exit(1);
+    }
+  }
+
+  ensureSafeForDestructiveOp("integrity test setup (delete specific plans)");
 
   testUser = await User.findOne({ phone: TEST_USER_PHONE });
   if (!testUser) {
@@ -290,6 +313,7 @@ async function setup() {
 }
 
 async function teardown() {
+  ensureSafeForDestructiveOp("integrity test teardown (delete specific plans)");
   await Plan.deleteMany({ "name.en": { $in: PLAN_NAMES } });
   if (testUser) {
     await Subscription.deleteMany({ userId: testUser._id });

@@ -1,52 +1,19 @@
 require("dotenv").config();
-const mongoose = require("mongoose");
 const { connectDb } = require("../src/db");
 const BuilderCategory = require("../src/models/BuilderCategory");
 const BuilderCarb = require("../src/models/BuilderCarb");
 const BuilderProtein = require("../src/models/BuilderProtein");
+const {
+  LARGE_SALAD_CATEGORY_KEY,
+  MEAL_PLANNER_CATEGORY_DEFINITIONS,
+  STANDARD_CARB_CATEGORY_KEY,
+  SYSTEM_CURRENCY,
+} = require("../src/config/mealPlannerContract");
 
 /**
  * Reusable seed script for Builder catalog data.
  * Safe, idempotent, and protective of premium records.
  */
-
-const CATEGORIES = [
-  {
-    key: "standard_carbs",
-    dimension: "carb",
-    name: { ar: "كارب", en: "Carbs" },
-    rules: { maxTypes: 2, maxTotalGrams: 300, unit: "grams" },
-    sortOrder: 1,
-  },
-  {
-    key: "eggs",
-    dimension: "protein",
-    name: { ar: "بيض", en: "Eggs" },
-    rules: { dailyLimit: 1 },
-    sortOrder: 2,
-  },
-  {
-    key: "chicken",
-    dimension: "protein",
-    name: { ar: "فراخ", en: "Chicken" },
-    rules: { dailyLimit: 1 },
-    sortOrder: 3,
-  },
-  {
-    key: "beef",
-    dimension: "protein",
-    name: { ar: "لحم", en: "Beef" },
-    rules: { dailyLimit: 1 },
-    sortOrder: 4,
-  },
-  {
-    key: "fish",
-    dimension: "protein",
-    name: { ar: "سمك", en: "Fish" },
-    rules: { dailyLimit: 1 },
-    sortOrder: 5,
-  },
-];
 
 const CARB_OPTIONS = [
   { key: "white_rice", name: { ar: "رز أبيض", en: "White Rice" }, sortOrder: 1 },
@@ -62,9 +29,9 @@ const CARB_OPTIONS = [
 
 const PROTEIN_OPTIONS = [
   // Eggs
-  { key: "boiled_eggs", name: { ar: "بيض مسلوق", en: "Boiled Eggs" }, sortOrder: 1, categoryKey: "eggs", family: "other" },
+  { key: "boiled_eggs", name: { ar: "بيض مسلوق", en: "Boiled Eggs" }, sortOrder: 1, categoryKey: "eggs", family: "eggs" },
   // Fish
-  { key: "tuna", name: { ar: "تونا", en: "Tuna" }, sortOrder: 1, categoryKey: "fish", family: "seafood" },
+  { key: "tuna", name: { ar: "تونا", en: "Tuna" }, sortOrder: 1, categoryKey: "fish", family: "fish" },
   // Chicken
   { key: "fajita", name: { ar: "فاهيتا", en: "Fajita" }, sortOrder: 1, categoryKey: "chicken", family: "chicken" },
   { key: "butter_chicken", name: { ar: "دجاج زبدة", en: "Butter Chicken" }, sortOrder: 2, categoryKey: "chicken", family: "chicken" },
@@ -82,20 +49,70 @@ const PROTEIN_OPTIONS = [
   { key: "beef_stroganoff", name: { ar: "لحم استرغانوف", en: "Beef Stroganoff" }, sortOrder: 2, categoryKey: "beef", family: "beef" },
 ];
 
+const PROTECTED_PREMIUM_PROTEIN_KEYS = new Set(["beef_steak", "salmon", "shrimp", "custom_premium_salad"]);
+const CANONICAL_STANDARD_PROTEIN_GROUP_KEYS = new Set(["chicken", "beef", "fish", "eggs", "other"]);
+
+function assertUnique(items, { label, getKey }) {
+  const seen = new Set();
+
+  for (const item of items) {
+    const key = getKey(item);
+    if (seen.has(key)) {
+      throw new Error(`Duplicate ${label}: ${key}`);
+    }
+    seen.add(key);
+  }
+}
+
+function assertSeedIntegrity() {
+  assertUnique(MEAL_PLANNER_CATEGORY_DEFINITIONS, {
+    label: "category definition",
+    getKey: (item) => `${item.dimension}:${item.key}`,
+  });
+  assertUnique(CARB_OPTIONS, {
+    label: "carb seed key",
+    getKey: (item) => item.key,
+  });
+  assertUnique(PROTEIN_OPTIONS, {
+    label: "protein seed key",
+    getKey: (item) => item.key,
+  });
+
+  const proteinCategoryKeys = new Set(
+    MEAL_PLANNER_CATEGORY_DEFINITIONS
+      .filter((item) => item.dimension === "protein")
+      .map((item) => item.key)
+  );
+
+  for (const protein of PROTEIN_OPTIONS) {
+    if (!CANONICAL_STANDARD_PROTEIN_GROUP_KEYS.has(protein.categoryKey)) {
+      throw new Error(`Protein ${protein.key} has unsupported categoryKey: ${protein.categoryKey}`);
+    }
+    if (protein.family !== protein.categoryKey) {
+      throw new Error(`Protein ${protein.key} must keep family/category aligned: ${protein.family} vs ${protein.categoryKey}`);
+    }
+    if (!proteinCategoryKeys.has(protein.categoryKey)) {
+      throw new Error(`Protein ${protein.key} references missing category definition: ${protein.categoryKey}`);
+    }
+  }
+}
+
 async function seed() {
   try {
+    assertSeedIntegrity();
     await connectDb();
     console.log("Connected to database.");
 
     // 1. Seed Categories
     console.log("\n--- Seeding Categories ---");
     const categoryIdMap = new Map();
-    for (const cat of CATEGORIES) {
+    for (const cat of MEAL_PLANNER_CATEGORY_DEFINITIONS) {
       const result = await BuilderCategory.findOneAndUpdate(
         { key: cat.key, dimension: cat.dimension },
         { 
           $set: { 
             name: cat.name, 
+            description: cat.description || { ar: "", en: "" },
             rules: cat.rules, 
             sortOrder: cat.sortOrder,
             isActive: true 
@@ -109,7 +126,10 @@ async function seed() {
 
     // 2. Seed Carbs
     console.log("\n--- Seeding Carbs ---");
-    const carbCatId = categoryIdMap.get("standard_carbs");
+    const carbCatId = categoryIdMap.get(STANDARD_CARB_CATEGORY_KEY);
+    if (!carbCatId) {
+      throw new Error(`Missing BuilderCategory for ${STANDARD_CARB_CATEGORY_KEY}`);
+    }
     for (const carb of CARB_OPTIONS) {
       // Protect premium records
       const existing = await BuilderCarb.findOne({ key: carb.key }).lean();
@@ -125,7 +145,7 @@ async function seed() {
           $set: {
             name: carb.name,
             displayCategoryId: carbCatId,
-            displayCategoryKey: "standard_carbs",
+            displayCategoryKey: STANDARD_CARB_CATEGORY_KEY,
             sortOrder: carb.sortOrder,
             isActive: true,
             availableForSubscription: true,
@@ -136,15 +156,39 @@ async function seed() {
       console.log(`Carb ${carb.key}: ${carb.name.en}`);
     }
 
+    const largeSaladCategoryId = categoryIdMap.get(LARGE_SALAD_CATEGORY_KEY);
+    if (!largeSaladCategoryId) {
+      throw new Error(`Missing BuilderCategory for ${LARGE_SALAD_CATEGORY_KEY}`);
+    }
+    await BuilderCarb.updateOne(
+      { key: LARGE_SALAD_CATEGORY_KEY },
+      {
+        $set: {
+          name: { ar: "سلطة كبيرة مميزة", en: "Premium Large Salad" },
+          description: { ar: "هوية مرجعية للسلطة الكبيرة المميزة", en: "Reference identity for premium large salad" },
+          displayCategoryId: largeSaladCategoryId,
+          displayCategoryKey: LARGE_SALAD_CATEGORY_KEY,
+          sortOrder: 999,
+          isActive: true,
+          availableForSubscription: true,
+        },
+      },
+      { upsert: true }
+    );
+    console.log(`Carb ${LARGE_SALAD_CATEGORY_KEY}: Premium Large Salad identity`);
+
     // 3. Seed Proteins
     console.log("\n--- Seeding Proteins ---");
     for (const protein of PROTEIN_OPTIONS) {
       const catId = categoryIdMap.get(protein.categoryKey);
-      
+      if (!catId) {
+        throw new Error(`Missing BuilderCategory for protein category ${protein.categoryKey}`);
+      }
+
       // Explicit protect legacy premium keys
-      if (["beef_steak", "salmon", "shrimp", "custom_premium_salad"].includes(protein.key)) {
-          console.log(`Skipping premium canonical identity: ${protein.key}`);
-          continue;
+      if (PROTECTED_PREMIUM_PROTEIN_KEYS.has(protein.key)) {
+        console.log(`Skipping premium canonical identity: ${protein.key}`);
+        continue;
       }
 
       const existing = await BuilderProtein.findOne({ key: protein.key }).lean();
@@ -167,7 +211,7 @@ async function seed() {
             isPremium: false,
             extraFeeHalala: 0,
             premiumCreditCost: 0,
-            currency: "SAR",
+            currency: SYSTEM_CURRENCY,
           },
           $unset: { premiumKey: "" }
         },
@@ -178,15 +222,71 @@ async function seed() {
 
     // 4. Verification
     console.log("\n--- Verification ---");
-    const carbCount = await BuilderCarb.countDocuments({ displayCategoryKey: "standard_carbs", isActive: true });
-    const proteinCount = await BuilderProtein.countDocuments({ isPremium: false, isActive: true });
-    const proteinCatCount = await BuilderCategory.countDocuments({ dimension: "protein", isActive: true });
-    const carbCatCount = await BuilderCategory.countDocuments({ dimension: "carb", isActive: true });
+    const canonicalStandardCarbKeys = new Set(CARB_OPTIONS.map((row) => row.key));
+    const canonicalStandardProteinKeys = new Set(PROTEIN_OPTIONS.map((row) => row.key));
+    const [selectableStandardCarbs, activeLargeSaladCarbs, activeStandardProteins, proteinCatCount, carbCatCount] = await Promise.all([
+      BuilderCarb.find({
+        displayCategoryKey: STANDARD_CARB_CATEGORY_KEY,
+        isActive: true,
+        availableForSubscription: { $ne: false },
+      }).select("key name").lean(),
+      BuilderCarb.find({
+        displayCategoryKey: LARGE_SALAD_CATEGORY_KEY,
+        isActive: true,
+        availableForSubscription: { $ne: false },
+      }).select("key name sortOrder").lean(),
+      BuilderProtein.find({
+        isPremium: false,
+        isActive: true,
+      }).select("key name premiumKey").lean(),
+      BuilderCategory.countDocuments({ dimension: "protein", isActive: true }),
+      BuilderCategory.countDocuments({ dimension: "carb", isActive: true }),
+    ]);
 
-    console.log(`Carbs found: ${carbCount} (expected 9)`);
-    console.log(`Standard Proteins found: ${proteinCount} (expected 15)`);
-    console.log(`Protein categories found: ${proteinCatCount} (expected 4+)`);
-    console.log(`Carb categories found: ${carbCatCount} (expected 1+)`);
+    const canonicalSelectableStandardCarbs = selectableStandardCarbs.filter((row) => canonicalStandardCarbKeys.has(String(row.key || "").trim()));
+    const extraSelectableStandardCarbs = selectableStandardCarbs.filter((row) => !canonicalStandardCarbKeys.has(String(row.key || "").trim()));
+    const canonicalLargeSaladIdentity = activeLargeSaladCarbs.find((row) => String(row.key || "").trim() === LARGE_SALAD_CATEGORY_KEY) || null;
+    const extraActiveLargeSaladRows = activeLargeSaladCarbs.filter((row) => String(row.key || "").trim() !== LARGE_SALAD_CATEGORY_KEY);
+
+    const canonicalActiveStandardProteins = activeStandardProteins.filter((row) => canonicalStandardProteinKeys.has(String(row.key || "").trim()));
+    const extraLegacyActiveStandardProteins = activeStandardProteins.filter((row) => !canonicalStandardProteinKeys.has(String(row.key || "").trim()));
+
+    console.log(`Selectable standard carbs: ${canonicalSelectableStandardCarbs.length}/${CARB_OPTIONS.length}`);
+    console.log(`large_salad identity carb present: ${canonicalLargeSaladIdentity ? "yes" : "no"}`);
+    console.log(`Canonical standard proteins active: ${canonicalActiveStandardProteins.length}/${PROTEIN_OPTIONS.length}`);
+    console.log(`Protein categories found: ${proteinCatCount}/${MEAL_PLANNER_CATEGORY_DEFINITIONS.filter((row) => row.dimension === "protein").length}`);
+    console.log(`Carb categories found: ${carbCatCount}/${MEAL_PLANNER_CATEGORY_DEFINITIONS.filter((row) => row.dimension === "carb").length}`);
+
+    if (!canonicalLargeSaladIdentity) {
+      throw new Error("Missing canonical large_salad identity carb after seed");
+    }
+    if (canonicalSelectableStandardCarbs.length !== CARB_OPTIONS.length) {
+      console.warn(`WARNING: Canonical selectable standard carb count mismatch: ${canonicalSelectableStandardCarbs.length}/${CARB_OPTIONS.length}`);
+    }
+    if (canonicalActiveStandardProteins.length !== PROTEIN_OPTIONS.length) {
+      console.warn(`WARNING: Canonical active standard protein count mismatch: ${canonicalActiveStandardProteins.length}/${PROTEIN_OPTIONS.length}`);
+    }
+
+    if (extraSelectableStandardCarbs.length > 0) {
+      console.warn(`WARNING: Extra selectable standard carbs outside canonical seed: ${extraSelectableStandardCarbs.length}`);
+      extraSelectableStandardCarbs.forEach((row) => {
+        console.warn(` - ${(row.name && row.name.en) || "(unnamed)"} [key=${row.key || "missing"}]`);
+      });
+    }
+
+    if (extraActiveLargeSaladRows.length > 0) {
+      console.warn(`WARNING: Extra active large_salad rows outside canonical identity: ${extraActiveLargeSaladRows.length}`);
+      extraActiveLargeSaladRows.forEach((row) => {
+        console.warn(` - ${(row.name && row.name.en) || "(unnamed)"} [key=${row.key || "missing"}]`);
+      });
+    }
+
+    if (extraLegacyActiveStandardProteins.length > 0) {
+      console.warn(`WARNING: Extra legacy active standard proteins: ${extraLegacyActiveStandardProteins.length}`);
+      extraLegacyActiveStandardProteins.forEach((row) => {
+        console.warn(` - ${(row.name && row.name.en) || "(unnamed)"} [key=${row.key || "missing"}]`);
+      });
+    }
 
     // Specific Premium Checks
     const premiumProteins = await BuilderProtein.find({ 
@@ -203,13 +303,20 @@ async function seed() {
     }).lean();
     console.log(`Custom premium salad in proteins: ${customSaladInProteins ? "FOUND (Unexpected!)" : "NOT FOUND (Good)"}`);
 
-    const invalidStandardProteins = await BuilderProtein.find({
-        isPremium: false,
-        $or: [
-            { premiumKey: { $exists: true, $ne: null, $ne: "" } }
-        ]
-    }).lean();
-    console.log(`Standard proteins with invalid premiumKey: ${invalidStandardProteins.length} (expected 0)`);
+    const invalidCanonicalStandardProteins = canonicalActiveStandardProteins.filter((row) => String(row.premiumKey || "").trim());
+    const invalidLegacyStandardProteins = extraLegacyActiveStandardProteins.filter((row) => String(row.premiumKey || "").trim());
+
+    if (invalidCanonicalStandardProteins.length > 0) {
+      throw new Error(`Canonical standard proteins must not have premiumKey: ${invalidCanonicalStandardProteins.map((row) => row.key).join(", ")}`);
+    }
+    console.log("Canonical standard proteins with invalid premiumKey: 0");
+
+    if (invalidLegacyStandardProteins.length > 0) {
+      console.warn(`WARNING: Legacy standard proteins with invalid premiumKey: ${invalidLegacyStandardProteins.length}`);
+      invalidLegacyStandardProteins.forEach((row) => {
+        console.warn(` - ${(row.name && row.name.en) || "(unnamed)"} [key=${row.key || "missing"}] premiumKey=${row.premiumKey}`);
+      });
+    }
 
     const duplicates = await BuilderProtein.aggregate([
         { $group: { _id: "$key", count: { $sum: 1 } } },

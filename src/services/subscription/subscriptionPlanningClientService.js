@@ -124,6 +124,7 @@ async function validateDaySelectionForClient({
   subscriptionId,
   date,
   mealSlots,
+  requestedOneTimeAddonIds,
   userId,
   lang,
 }) {
@@ -145,6 +146,7 @@ async function validateDaySelectionForClient({
       subscriptionId,
       date,
       mealSlots,
+      requestedOneTimeAddonIds,
     });
     return buildSuccessResult(200, shapeMealPlannerReadFields({
       subscription: sub,
@@ -152,6 +154,13 @@ async function validateDaySelectionForClient({
       lang,
     }));
   } catch (err) {
+    if (
+      err.code === "VALIDATION_ERROR"
+      || err.code === "INVALID_ONE_TIME_ADDON_SELECTION"
+      || err.code === "ONE_TIME_ADDON_CATEGORY_CONFLICT"
+    ) {
+      return buildErrorResult(400, "INVALID", err.message);
+    }
     if (err.status && err.code) {
       return buildErrorResult(err.status, err.code, err.message, buildControllerErrorDetails(err));
     }

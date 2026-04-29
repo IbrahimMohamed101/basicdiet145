@@ -13,6 +13,7 @@ const Addon = require("../src/models/Addon");
 const Subscription = require("../src/models/Subscription");
 const SubscriptionDay = require("../src/models/SubscriptionDay");
 const Payment = require("../src/models/Payment");
+const { ensureSafeForDestructiveOp } = require("../src/utils/dbSafety");
 
 const JWT_SECRET = process.env.JWT_SECRET || "supersecret";
 const BASE_URL = "http://localhost:3000";
@@ -235,6 +236,7 @@ async function createFixtures() {
 }
 
 async function cleanupFixtures() {
+  ensureSafeForDestructiveOp("cleanupFixtures (wipe all test data)");
   await Promise.all([
     Payment.deleteMany({}),
     SubscriptionDay.deleteMany({}),

@@ -4,22 +4,22 @@ const mongoose = require("mongoose");
 const BuilderCategory = require("../src/models/BuilderCategory");
 const BuilderCarb = require("../src/models/BuilderCarb");
 const BuilderProtein = require("../src/models/BuilderProtein");
+const {
+  LARGE_SALAD_CATEGORY_KEY,
+  MEAL_PLANNER_CATEGORY_DEFINITIONS,
+  STANDARD_CARB_CATEGORY_KEY,
+  SYSTEM_CURRENCY,
+} = require("../src/config/mealPlannerContract");
 
-const MONGO_URI = process.env.MONGO_URI || process.env.MONGO_URL;
+const MONGO_URI = process.env.MONGO_URI || process.env.MONGODB_URI || process.env.MONGO_URL;
 
 if (!MONGO_URI) {
-  console.error("Error: MONGO_URI or MONGO_URL must be set in .env");
+  console.error("Error: MONGO_URI, MONGODB_URI, or MONGO_URL must be set in .env");
   process.exit(1);
 }
 
-const CARB_CATEGORIES = [
-  { key: "standard_carbs", name: { en: "Standard Carbs", ar: "كربوهيدرات قياسية" }, sortOrder: 1 },
-  { key: "large_salad", name: { en: "Large Salad", ar: "سلطة كبيرة" }, sortOrder: 2 },
-];
-
-const PROTEIN_CATEGORIES = [
-  { key: "standard_proteins", name: { en: "Standard Proteins", ar: "بروتينات قياسية" }, sortOrder: 1 },
-];
+const CARB_CATEGORIES = MEAL_PLANNER_CATEGORY_DEFINITIONS.filter((category) => category.dimension === "carb");
+const PROTEIN_CATEGORIES = MEAL_PLANNER_CATEGORY_DEFINITIONS.filter((category) => category.dimension === "protein");
 
 const CARB_OPTIONS = [
   { key: "white_rice", name: { en: "White Rice", ar: "أرز أبيض" }, sortOrder: 1 },
@@ -34,22 +34,57 @@ const CARB_OPTIONS = [
 ];
 
 const PROTEIN_OPTIONS = [
-  { key: "boiled_eggs", name: { en: "Boiled Eggs", ar: "بيض مسلوق" }, sortOrder: 1, proteinFamilyKey: "other" },
-  { key: "tuna", name: { en: "Tuna", ar: "تونا" }, sortOrder: 2, proteinFamilyKey: "seafood" },
-  { key: "fajita", name: { en: "Fajita", ar: "فاهيتا" }, sortOrder: 3, proteinFamilyKey: "chicken" },
-  { key: "butter_chicken", name: { en: "Butter Chicken", ar: "دجاج زبدة" }, sortOrder: 4, proteinFamilyKey: "chicken" },
-  { key: "cream_chicken", name: { en: "Cream Chicken", ar: "دجاج كريمة" }, sortOrder: 5, proteinFamilyKey: "chicken" },
-  { key: "coconut_curry_chicken", name: { en: "Coconut Curry Chicken", ar: "دجاج كاري وجوز الهند" }, sortOrder: 6, proteinFamilyKey: "chicken" },
-  { key: "spicy_chicken", name: { en: "Spicy Chicken", ar: "دجاج سبايسي" }, sortOrder: 7, proteinFamilyKey: "chicken" },
-  { key: "italian_chicken", name: { en: "Italian Chicken", ar: "دجاج توابل إيطالية" }, sortOrder: 8, proteinFamilyKey: "chicken" },
-  { key: "chicken_tikka", name: { en: "Chicken Tikka", ar: "دجاج تكا" }, sortOrder: 9, proteinFamilyKey: "chicken" },
-  { key: "asian_chicken", name: { en: "Asian Chicken", ar: "دجاج آسيوي" }, sortOrder: 10, proteinFamilyKey: "chicken" },
-  { key: "strips", name: { en: "Strips", ar: "استربس" }, sortOrder: 11, proteinFamilyKey: "chicken" },
-  { key: "grilled_chicken", name: { en: "Grilled Chicken", ar: "دجاج مشوي" }, sortOrder: 12, proteinFamilyKey: "chicken" },
-  { key: "mexican_chicken", name: { en: "Mexican Chicken", ar: "دجاج مكسيكي" }, sortOrder: 13, proteinFamilyKey: "chicken" },
-  { key: "meatballs", name: { en: "Meatballs", ar: "كرات لحم" }, sortOrder: 14, proteinFamilyKey: "beef" },
-  { key: "beef_stroganoff", name: { en: "Beef Stroganoff", ar: "لحم استرغانوف" }, sortOrder: 15, proteinFamilyKey: "beef" },
+  { key: "boiled_eggs", name: { en: "Boiled Eggs", ar: "بيض مسلوق" }, sortOrder: 1, displayCategoryKey: "eggs", proteinFamilyKey: "eggs" },
+  { key: "tuna", name: { en: "Tuna", ar: "تونا" }, sortOrder: 2, displayCategoryKey: "fish", proteinFamilyKey: "fish" },
+  { key: "fajita", name: { en: "Fajita", ar: "فاهيتا" }, sortOrder: 3, displayCategoryKey: "chicken", proteinFamilyKey: "chicken" },
+  { key: "butter_chicken", name: { en: "Butter Chicken", ar: "دجاج زبدة" }, sortOrder: 4, displayCategoryKey: "chicken", proteinFamilyKey: "chicken" },
+  { key: "cream_chicken", name: { en: "Cream Chicken", ar: "دجاج كريمة" }, sortOrder: 5, displayCategoryKey: "chicken", proteinFamilyKey: "chicken" },
+  { key: "coconut_curry_chicken", name: { en: "Coconut Curry Chicken", ar: "دجاج كاري وجوز الهند" }, sortOrder: 6, displayCategoryKey: "chicken", proteinFamilyKey: "chicken" },
+  { key: "spicy_chicken", name: { en: "Spicy Chicken", ar: "دجاج سبايسي" }, sortOrder: 7, displayCategoryKey: "chicken", proteinFamilyKey: "chicken" },
+  { key: "italian_chicken", name: { en: "Italian Chicken", ar: "دجاج توابل إيطالية" }, sortOrder: 8, displayCategoryKey: "chicken", proteinFamilyKey: "chicken" },
+  { key: "chicken_tikka", name: { en: "Chicken Tikka", ar: "دجاج تكا" }, sortOrder: 9, displayCategoryKey: "chicken", proteinFamilyKey: "chicken" },
+  { key: "asian_chicken", name: { en: "Asian Chicken", ar: "دجاج آسيوي" }, sortOrder: 10, displayCategoryKey: "chicken", proteinFamilyKey: "chicken" },
+  { key: "strips", name: { en: "Strips", ar: "استربس" }, sortOrder: 11, displayCategoryKey: "chicken", proteinFamilyKey: "chicken" },
+  { key: "grilled_chicken", name: { en: "Grilled Chicken", ar: "دجاج مشوي" }, sortOrder: 12, displayCategoryKey: "chicken", proteinFamilyKey: "chicken" },
+  { key: "mexican_chicken", name: { en: "Mexican Chicken", ar: "دجاج مكسيكي" }, sortOrder: 13, displayCategoryKey: "chicken", proteinFamilyKey: "chicken" },
+  { key: "meatballs", name: { en: "Meatballs", ar: "كرات لحم" }, sortOrder: 14, displayCategoryKey: "beef", proteinFamilyKey: "beef" },
+  { key: "beef_stroganoff", name: { en: "Beef Stroganoff", ar: "لحم استرغانوف" }, sortOrder: 15, displayCategoryKey: "beef", proteinFamilyKey: "beef" },
 ];
+
+const PROTECTED_PREMIUM_PROTEIN_KEYS = new Set(["beef_steak", "salmon", "shrimp", "custom_premium_salad"]);
+
+function assertUnique(items, { label, getKey }) {
+  const seen = new Set();
+
+  for (const item of items) {
+    const key = getKey(item);
+    if (seen.has(key)) {
+      throw new Error(`Duplicate ${label}: ${key}`);
+    }
+    seen.add(key);
+  }
+}
+
+function assertSeedIntegrity() {
+  assertUnique(CARB_OPTIONS, {
+    label: "carb seed key",
+    getKey: (item) => item.key,
+  });
+  assertUnique(PROTEIN_OPTIONS, {
+    label: "protein seed key",
+    getKey: (item) => item.key,
+  });
+
+  const proteinCategoryKeys = new Set(PROTEIN_CATEGORIES.map((category) => category.key));
+  for (const protein of PROTEIN_OPTIONS) {
+    if (protein.displayCategoryKey !== protein.proteinFamilyKey) {
+      throw new Error(`Protein ${protein.key} must keep displayCategoryKey/proteinFamilyKey aligned`);
+    }
+    if (!proteinCategoryKeys.has(protein.displayCategoryKey)) {
+      throw new Error(`Protein ${protein.key} references missing category ${protein.displayCategoryKey}`);
+    }
+  }
+}
 
 async function seedCategories() {
   console.log("\n=== Seeding Categories ===\n");
@@ -57,8 +92,14 @@ async function seedCategories() {
   for (const cat of CARB_CATEGORIES) {
     const query = { key: cat.key, dimension: "carb" };
     const update = {
-      $set: { name: cat.name, isActive: true, sortOrder: cat.sortOrder },
-      $setOnInsert: { key: cat.key, dimension: "carb", rules: {} },
+      $set: {
+        name: cat.name,
+        description: cat.description || { ar: "", en: "" },
+        rules: cat.rules || {},
+        isActive: true,
+        sortOrder: cat.sortOrder,
+      },
+      $setOnInsert: { key: cat.key, dimension: "carb" },
     };
     const result = await BuilderCategory.updateOne(query, update, { upsert: true });
     console.log(`Category (carb/${cat.key}): ${result.upserted ? "created" : "updated"}`);
@@ -67,8 +108,14 @@ async function seedCategories() {
   for (const cat of PROTEIN_CATEGORIES) {
     const query = { key: cat.key, dimension: "protein" };
     const update = {
-      $set: { name: cat.name, isActive: true, sortOrder: cat.sortOrder },
-      $setOnInsert: { key: cat.key, dimension: "protein", rules: {} },
+      $set: {
+        name: cat.name,
+        description: cat.description || { ar: "", en: "" },
+        rules: cat.rules || {},
+        isActive: true,
+        sortOrder: cat.sortOrder,
+      },
+      $setOnInsert: { key: cat.key, dimension: "protein" },
     };
     const result = await BuilderCategory.updateOne(query, update, { upsert: true });
     console.log(`Category (protein/${cat.key}): ${result.upserted ? "created" : "updated"}`);
@@ -78,15 +125,23 @@ async function seedCategories() {
 async function seedCarbs() {
   console.log("\n=== Seeding BuilderCarb Options ===\n");
 
-  const carbCategory = await BuilderCategory.findOne({ key: "standard_carbs", dimension: "carb" });
+  const carbCategory = await BuilderCategory.findOne({ key: STANDARD_CARB_CATEGORY_KEY, dimension: "carb" });
   if (!carbCategory) {
     throw new Error("carbCategory not found - run seedCategories first");
   }
 
   let created = 0;
   let updated = 0;
+  let skippedProtected = 0;
 
   for (const carb of CARB_OPTIONS) {
+    const existing = await BuilderCarb.findOne({ key: carb.key }).lean();
+    if (existing && (existing.isPremium || existing.premiumKey)) {
+      console.log(`Skipped protected carb: ${carb.key}`);
+      skippedProtected += 1;
+      continue;
+    }
+
     const query = { key: carb.key };
     const update = {
       $set: {
@@ -94,10 +149,10 @@ async function seedCarbs() {
         isActive: true,
         sortOrder: carb.sortOrder,
         availableForSubscription: true,
-        displayCategoryKey: "standard_carbs",
+        displayCategoryKey: STANDARD_CARB_CATEGORY_KEY,
+        displayCategoryId: carbCategory._id,
       },
       $setOnInsert: {
-        displayCategoryId: carbCategory._id,
         description: { ar: "", en: "" },
         legacyMappings: {},
         nutrition: {},
@@ -115,24 +170,56 @@ async function seedCarbs() {
     }
   }
 
-  console.log(`\nCarbs: ${created} created, ${updated} updated`);
+  const largeSaladCategory = await BuilderCategory.findOne({ key: LARGE_SALAD_CATEGORY_KEY, dimension: "carb" });
+  if (!largeSaladCategory) {
+    throw new Error(`Missing BuilderCategory for ${LARGE_SALAD_CATEGORY_KEY}`);
+  }
+  await BuilderCarb.updateOne(
+    { key: LARGE_SALAD_CATEGORY_KEY },
+    {
+      $set: {
+        name: { en: "Premium Large Salad", ar: "سلطة كبيرة مميزة" },
+        description: { en: "Reference identity for premium large salad", ar: "هوية مرجعية للسلطة الكبيرة المميزة" },
+        isActive: true,
+        sortOrder: 999,
+        availableForSubscription: true,
+        displayCategoryKey: LARGE_SALAD_CATEGORY_KEY,
+        displayCategoryId: largeSaladCategory._id,
+      },
+      $setOnInsert: {
+        legacyMappings: {},
+        nutrition: {},
+      },
+    },
+    { upsert: true, new: false }
+  );
+
+  console.log(`\nCarbs: ${created} created, ${updated} updated, ${skippedProtected} protected skips`);
 }
 
 async function seedProteins() {
   console.log("\n=== Seeding BuilderProtein Options ===\n");
 
-  const proteinCategory = await BuilderCategory.findOne({ key: "standard_proteins", dimension: "protein" });
-  if (!proteinCategory) {
-    throw new Error("proteinCategory not found - run seedCategories first");
-  }
-
   let created = 0;
   let updated = 0;
+  let skippedProtected = 0;
 
   for (const protein of PROTEIN_OPTIONS) {
     // Explicitly skip premium canonical identities
-    if (["beef_steak", "salmon", "shrimp", "custom_premium_salad"].includes(protein.key)) {
+    if (PROTECTED_PREMIUM_PROTEIN_KEYS.has(protein.key)) {
       console.log(`Skipping premium identity: ${protein.key}`);
+      continue;
+    }
+
+    const proteinCategory = await BuilderCategory.findOne({ key: protein.displayCategoryKey, dimension: "protein" });
+    if (!proteinCategory) {
+      throw new Error(`proteinCategory not found for key=${protein.displayCategoryKey} - run seedCategories first`);
+    }
+
+    const existing = await BuilderProtein.findOne({ key: protein.key }).lean();
+    if (existing && (existing.isPremium || existing.premiumKey)) {
+      console.log(`Skipped protected protein: ${protein.key}`);
+      skippedProtected += 1;
       continue;
     }
 
@@ -144,19 +231,19 @@ async function seedProteins() {
         sortOrder: protein.sortOrder,
         proteinFamilyKey: protein.proteinFamilyKey,
         availableForSubscription: true,
-        displayCategoryKey: "standard_proteins",
+        displayCategoryKey: protein.displayCategoryKey,
+        displayCategoryId: proteinCategory._id,
         isPremium: false,
       },
       $unset: {
         premiumKey: "",
       },
       $setOnInsert: {
-        displayCategoryId: proteinCategory._id,
         description: { ar: "", en: "" },
         imageUrl: "",
         premiumCreditCost: 0,
         extraFeeHalala: 0,
-        currency: "SAR",
+        currency: SYSTEM_CURRENCY,
         ruleTags: [],
         nutrition: {},
       },
@@ -173,7 +260,7 @@ async function seedProteins() {
     }
   }
 
-  console.log(`\nProteins: ${created} created, ${updated} updated`);
+  console.log(`\nProteins: ${created} created, ${updated} updated, ${skippedProtected} protected skips`);
 }
 
 async function verifyData() {
@@ -244,6 +331,7 @@ async function verifyData() {
 
 async function seedStandardBuilderData() {
   console.log("Starting standard Builder data seed...");
+  assertSeedIntegrity();
 
   await mongoose.connect(MONGO_URI);
   console.log(`Connected to MongoDB: ${MONGO_URI}`);

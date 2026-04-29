@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { SALAD_INGREDIENT_GROUP_KEYS } = require("../config/mealPlannerContract");
 
 const SaladIngredientSchema = new mongoose.Schema(
   {
@@ -6,7 +7,7 @@ const SaladIngredientSchema = new mongoose.Schema(
       ar: { type: String, default: "" },
       en: { type: String, default: "" },
     },
-    groupKey: { type: String, required: true, enum: ["vegetables", "addons", "fruits", "nuts", "sauce"] },
+    groupKey: { type: String, required: true, enum: Array.from(SALAD_INGREDIENT_GROUP_KEYS) },
     price: { type: Number, required: true },
     calories: { type: Number },
     maxQuantity: { type: Number },
