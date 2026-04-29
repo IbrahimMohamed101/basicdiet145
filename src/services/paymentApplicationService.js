@@ -45,6 +45,21 @@ function isValidObjectId(value) {
   return Boolean(value) && mongoose.Types.ObjectId.isValid(String(value));
 }
 
+function normalizeOneTimeAddonSnapshotKey(item = {}) {
+  const addonId = String(item.addonId || "");
+  const unitPriceHalala = Number(item.unitPriceHalala || item.priceHalala || 0);
+  const currency = String(item.currency || "").toUpperCase();
+  return `${addonId}::${unitPriceHalala}::${currency}`;
+}
+
+function buildOneTimeAddonSnapshotCountMap(items = []) {
+  return items.reduce((map, item) => {
+    const key = normalizeOneTimeAddonSnapshotKey(item);
+    map.set(key, (map.get(key) || 0) + 1);
+    return map;
+  }, new Map());
+}
+
 async function maybeWriteWebhookLog({ source, entityType, entityId, action, meta }, runtime) {
   if (source !== "webhook") return;
   await runtime.writeLog({ entityType, entityId, action, byRole: "system", meta });
@@ -130,6 +145,17 @@ async function applyOneTimeAddonDayPlanningPayment({ payment, session, source = 
 
   const pendingSelections = (day.addonSelections || []).filter(s => s.source === "pending_payment");
   if (pendingSelections.length === 0) return { applied: false, reason: "no_pending_one_time_addons" };
+
+  const expectedSnapshotMap = buildOneTimeAddonSnapshotCountMap(metadata.oneTimeAddonSelections);
+  const pendingSnapshotMap = buildOneTimeAddonSnapshotCountMap(pendingSelections);
+  if (expectedSnapshotMap.size !== pendingSnapshotMap.size) {
+    return { applied: false, reason: "payment_snapshot_mismatch" };
+  }
+  for (const [key, count] of expectedSnapshotMap.entries()) {
+    if (pendingSnapshotMap.get(key) !== count) {
+      return { applied: false, reason: "payment_snapshot_mismatch" };
+    }
+  }
 
   // Update them to paid
   day.addonSelections = (day.addonSelections || []).map(s => {

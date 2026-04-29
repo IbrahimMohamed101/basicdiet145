@@ -422,6 +422,68 @@ async function runTests() {
     assertEqual(payments, 1, "payment count unchanged");
   });
 
+  await test("payment application rejects day selections that do not match paid one-time snapshot", async () => {
+    const mismatchDate = buildDateOffset(11);
+    const expensiveAddon = await Addon.create({
+      name: { ar: "فاخر", en: "Expensive Addon" },
+      description: { ar: "فاخر", en: "Expensive Addon" },
+      category: "juice",
+      kind: "item",
+      billingMode: "flat_once",
+      priceHalala: 9900,
+      isActive: true,
+    });
+
+    const day = await SubscriptionDay.create({
+      subscriptionId: ownerSubscription._id,
+      date: mismatchDate,
+      status: "open",
+      addonSelections: [
+        {
+          addonId: addon._id,
+          name: "Alias Juice",
+          category: "juice",
+          source: "pending_payment",
+          priceHalala: 1100,
+          currency: "SAR",
+        },
+        {
+          addonId: expensiveAddon._id,
+          name: "Expensive Addon",
+          category: "juice",
+          source: "pending_payment",
+          priceHalala: 9900,
+          currency: "SAR",
+        },
+      ],
+    });
+
+    const mismatchPayment = {
+      _id: new mongoose.Types.ObjectId(),
+      type: "one_time_addon_day_planning",
+      metadata: {
+        subscriptionId: String(ownerSubscription._id),
+        dayId: String(day._id),
+        date: mismatchDate,
+        oneTimeAddonSelections: [
+          {
+            addonId: String(addon._id),
+            unitPriceHalala: 1100,
+            currency: "SAR",
+          },
+        ],
+      },
+    };
+
+    const result = await applyPaymentSideEffects({ payment: mismatchPayment });
+    assertEqual(result.applied, false, "mismatch should not apply");
+    assertEqual(result.reason, "payment_snapshot_mismatch", "mismatch reason");
+
+    const refreshedDay = await SubscriptionDay.findById(day._id).lean();
+    const pendingSources = (refreshedDay.addonSelections || []).map((item) => item.source);
+    assertTrue(pendingSources.every((source) => source === "pending_payment"), "pending selections must remain unpaid");
+  });
+
   await test("alias verify returns 403 for non-owner", async () => {
     const req = buildMockReq({
       userId: otherUser._id,
