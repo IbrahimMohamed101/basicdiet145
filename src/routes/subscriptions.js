@@ -14,11 +14,62 @@ router.get("/menu", asyncHandler(menuController.getSubscriptionMenu));
  * @openapi
  * /subscriptions/meal-planner-menu:
  *   get:
- *     summary: Get meal planner catalog (proteins, carbs, categories)
+ *     summary: Get canonical meal planner catalog
  *     tags: [Subscriptions]
+ *     parameters:
+ *       - name: includeLegacy
+ *         in: query
+ *         required: false
+ *         description: When `true`, also includes deprecated legacy planner fields for backward compatibility. Default response is canonical only.
+ *         schema:
+ *           type: boolean
  *     responses:
  *       200:
- *         description: Meal planner catalog
+ *         description: Canonical meal planner catalog response
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               required: [status, data]
+ *               properties:
+ *                 status:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   required: [builderCatalog]
+ *                   properties:
+ *                     builderCatalog:
+ *                       type: object
+ *                       description: Canonical planner source of truth used by the frontend.
+ *                       additionalProperties: true
+ *                     regularMeals:
+ *                       type: object
+ *                       deprecated: true
+ *                       description: Legacy planner field. Returned only when `includeLegacy=true`.
+ *                       additionalProperties: true
+ *                     premiumMeals:
+ *                       type: object
+ *                       deprecated: true
+ *                       description: Legacy planner field. Returned only when `includeLegacy=true`.
+ *                       additionalProperties: true
+ *                     addons:
+ *                       type: object
+ *                       deprecated: true
+ *                       description: Legacy planner field. Returned only when `includeLegacy=true`.
+ *                       additionalProperties: true
+ *             examples:
+ *               canonicalOnly:
+ *                 summary: Default canonical response
+ *                 value:
+ *                   status: true
+ *                   data:
+ *                     builderCatalog:
+ *                       proteins: []
+ *                       premiumProteins: []
+ *                       carbs: []
+ *                       sandwiches: []
+ *                       premiumLargeSalad: {}
  */
 router.get("/meal-planner-menu", asyncHandler(menuController.getSubscriptionMealPlannerMenu));
 router.get("/delivery-options", asyncHandler(menuController.getDeliveryOptions));

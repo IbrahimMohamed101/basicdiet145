@@ -28,6 +28,10 @@ const {
 } = require("./mealSlotPlannerService");
 const { getPaymentMetadata } = require("./subscriptionCheckoutHelpers");
 const { applyCommercialStateToDay } = require("./subscriptionDayCommercialStateService");
+const {
+  assertSubscriptionDayModifiable,
+  localizePolicyErrorMessage,
+} = require("./subscriptionDayModificationPolicyService");
 
 const SYSTEM_CURRENCY = "SAR";
 const PREMIUM_EXTRA_DAY_PAYMENT_TYPE = "premium_extra_day";
@@ -254,7 +258,6 @@ async function createPremiumExtraDayPaymentFlow({
   body = {},
   runtime,
   ensureActiveFn,
-  validateFutureDateOrThrowFn,
 }) {
   try {
     const sub = await Subscription.findById(subscriptionId);
@@ -266,11 +269,19 @@ async function createPremiumExtraDayPaymentFlow({
     }
 
     ensureActiveFn(sub, date);
-    await validateFutureDateOrThrowFn(date, sub, null, { allowToday: true });
 
     const day = await SubscriptionDay.findOne({ subscriptionId, date });
     if (!day) {
       return buildErrorResult(404, "NOT_FOUND", "Day not found");
+    }
+    try {
+      await assertSubscriptionDayModifiable({
+        subscription: sub,
+        day,
+        date,
+      });
+    } catch (err) {
+      return buildErrorResult(err.status || 400, err.code || "INVALID_DATE", localizePolicyErrorMessage(err, lang), err.details);
     }
     if (day.status !== "open") {
       return buildErrorResult(409, "LOCKED", "Day is locked");

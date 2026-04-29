@@ -11,6 +11,7 @@ const {
 const {
   performDaySelectionUpdate,
 } = require("./subscriptionSelectionService");
+const { localizePolicyErrorMessage } = require("./subscriptionDayModificationPolicyService");
 
 function buildErrorResult(status, code, message, details) {
   return {
@@ -112,7 +113,7 @@ async function updateBulkDaySelectionsForClient({
         date,
         ok: false,
         code: err && err.code ? err.code : "INTERNAL",
-        message: err && err.message ? err.message : "Selection failed",
+        message: err ? (localizePolicyErrorMessage(err, lang) || err.message || "Selection failed") : "Selection failed",
         ...(buildControllerErrorDetails(err) ? { details: buildControllerErrorDetails(err) } : {}),
       });
     }

@@ -646,10 +646,13 @@ async function runTests() {
     assertEqual(res.body.status, true, 'status');
     assertNoTopLevelOk(res.body, 'meal-planner-menu response');
     assertTrue(!!res.body.data?.builderCatalog, 'builderCatalog');
+    assertEqual(Object.prototype.hasOwnProperty.call(res.body.data || {}, 'regularMeals'), false, 'regularMeals hidden by default');
+    assertEqual(Object.prototype.hasOwnProperty.call(res.body.data || {}, 'premiumMeals'), false, 'premiumMeals hidden by default');
+    assertEqual(Object.prototype.hasOwnProperty.call(res.body.data || {}, 'addons'), false, 'addons hidden by default');
   });
 
-  await test('meal-planner-menu addons contain only item add-ons', async () => {
-    const res = await makeRequest('GET', '/api/subscriptions/meal-planner-menu');
+  await test('meal-planner-menu legacy fields are available only with includeLegacy=true', async () => {
+    const res = await makeRequest('GET', '/api/subscriptions/meal-planner-menu?includeLegacy=true');
     const addons = res.body.data?.addons?.items || [];
     assertTrue(addons.length > 0, 'addons returned');
     assertTrue(addons.every((addon) => addon.kind === 'item'), 'all planner addons are items');

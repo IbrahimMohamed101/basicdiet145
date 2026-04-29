@@ -7,6 +7,7 @@ const { getRestaurantBusinessDate } = require("../restaurantHoursService");
 const { resolveMealsPerDay, applyDayWalletSelections } = require("../../utils/subscription/subscriptionDaySelectionSync");
 const { getMealPlannerRules, mapPaymentRequirement, buildMealSlotDraft } = require("./mealSlotPlannerService");
 const { applyCanonicalDraftPlanningToDay } = require("./subscriptionDayPlanningService");
+const { assertSubscriptionDayModifiable } = require("./subscriptionDayModificationPolicyService");
 const {
   buildDayCommercialState,
 } = require("./subscriptionDayCommercialStateService");
@@ -391,16 +392,9 @@ function ensureActive(subscription, dateStr) {
   }
 }
 
-async function validateFutureDateOrThrow(date, sub, endDateOverride) {
+async function validateSelectionDateRangeOrThrow(date, sub, endDateOverride) {
   if (!dateUtils.isValidKSADateString(date)) {
     const err = new Error("Invalid date format");
-    err.code = "INVALID_DATE";
-    err.status = 400;
-    throw err;
-  }
-  const today = await getRestaurantBusinessDate();
-  if (dateUtils.isBeforeKSADate(date, today)) {
-    const err = new Error("Date cannot be in the past");
     err.code = "INVALID_DATE";
     err.status = 400;
     throw err;
@@ -425,7 +419,6 @@ async function validateFutureDateOrThrow(date, sub, endDateOverride) {
 }
 
 async function performDaySelectionUpdate({ userId, subscriptionId, date, selections = [], premiumSelections = [], mealSlots, requestedOneTimeAddonIds, runtime }) {
-  await validateFutureDateOrThrow(date);
   const totalSelected = (selections || []).length + (premiumSelections || []).length;
 
   // 1. Fetch context (Lean)
@@ -440,8 +433,15 @@ async function performDaySelectionUpdate({ userId, subscriptionId, date, selecti
   const mealsPerDayLimit = resolveMealsPerDay(subForDraft);
   if (totalSelected > mealsPerDayLimit) throw { status: 400, code: "DAILY_CAP", message: "Selections exceed meals per day" };
   ensureActive(subForDraft, date);
+  await validateSelectionDateRangeOrThrow(date, subForDraft);
 
     const existingDay = await SubscriptionDay.findOne({ subscriptionId: canonicalSubscriptionId, date }).lean();
+    await assertSubscriptionDayModifiable({
+      subscription: subForDraft,
+      day: existingDay,
+      date,
+      getBusinessDateFn: getRestaurantBusinessDate,
+    });
     if (!Array.isArray(mealSlots)) {
       throw {
         status: 422,
@@ -695,8 +695,6 @@ async function performDaySelectionValidation({
   mealSlots = [],
   requestedOneTimeAddonIds,
 }) {
-  await validateFutureDateOrThrow(date);
-
   const requestedSub = await Subscription.findById(subscriptionId);
   if (!requestedSub) throw { status: 404, code: "NOT_FOUND", message: "Subscription not found" };
   if (String(requestedSub.userId) !== String(userId)) throw { status: 403, code: "FORBIDDEN", message: "Forbidden" };
@@ -706,9 +704,15 @@ async function performDaySelectionValidation({
   const resolvedSubscriptionId = resolvedPlanningSubscription.subscriptionId;
   if (!sub) throw { status: 404, code: "NOT_FOUND", message: "Subscription not found" };
   ensureActive(sub, date);
-  await validateFutureDateOrThrow(date, sub);
+  await validateSelectionDateRangeOrThrow(date, sub);
 
   const day = await SubscriptionDay.findOne({ subscriptionId: resolvedSubscriptionId, date });
+  await assertSubscriptionDayModifiable({
+    subscription: sub,
+    day,
+    date,
+    getBusinessDateFn: getRestaurantBusinessDate,
+  });
   if (day && day.status !== "open") throw { status: 409, code: "LOCKED", message: "Day is locked" };
 
   const mealsPerDayLimit = resolveMealsPerDay(sub);
@@ -772,10 +776,16 @@ async function performDayPlanningConfirmation({ userId, subscriptionId, date, ru
 
     if (String(subInSession.userId) !== String(userId)) throw { status: 403, code: "FORBIDDEN", message: "Forbidden" };
     ensureActive(subInSession, date);
-    await validateFutureDateOrThrow(date, subInSession);
+    await validateSelectionDateRangeOrThrow(date, subInSession);
 
     const day = await SubscriptionDay.findOne({ subscriptionId, date }).session(session);
     if (!day) throw { status: 404, code: "NOT_FOUND", message: "Day not found" };
+    await assertSubscriptionDayModifiable({
+      subscription: subInSession,
+      day,
+      date,
+      getBusinessDateFn: getRestaurantBusinessDate,
+    });
     if (day.status !== "open") throw { status: 409, code: "LOCKED", message: "Day is locked" };
 
     if (day.plannerState === "confirmed" || day.planningState === "confirmed") {

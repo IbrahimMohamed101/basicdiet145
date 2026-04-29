@@ -318,6 +318,7 @@ async function getSubscriptionMenu(req, res) {
 
 async function getSubscriptionMealPlannerMenu(req, res) {
   const lang = getRequestLang(req);
+  const includeLegacy = String(req.query?.includeLegacy || "").toLowerCase() === "true";
   const [regularMeals, mealCategories, premiumMeals, addons, builderCatalog] = await Promise.all([
     Meal.find({ type: "regular", isActive: true, availableForSubscription: { $ne: false }, categoryId: { $ne: null } })
       .sort({ sortOrder: 1, createdAt: -1 })
@@ -359,15 +360,20 @@ async function getSubscriptionMealPlannerMenu(req, res) {
     addons,
   });
 
+  const data = {
+    builderCatalog,
+  };
+
+  if (includeLegacy) {
+    data.currency = mealCatalog.currency;
+    data.regularMeals = mealCatalog.mealPlanner.regularMeals;
+    data.premiumMeals = mealCatalog.mealPlanner.premiumMeals;
+    data.addons = mealCatalog.mealPlanner.addons;
+  }
+
   return res.status(200).json({
     status: true,
-    data: {
-      currency: mealCatalog.currency,
-      regularMeals: mealCatalog.mealPlanner.regularMeals,
-      premiumMeals: mealCatalog.mealPlanner.premiumMeals,
-      addons: mealCatalog.mealPlanner.addons,
-      builderCatalog,
-    },
+    data,
   });
 }
 

@@ -18,6 +18,10 @@ const {
   normalizeProviderPaymentStatus,
   pickProviderInvoicePayment,
 } = require("../paymentProviderMetadataService");
+const {
+  assertSubscriptionDayModifiable,
+  localizePolicyErrorMessage,
+} = require("./subscriptionDayModificationPolicyService");
 
 const SYSTEM_CURRENCY = "SAR";
 const ONE_TIME_ADDON_DAY_PLANNING_PAYMENT_TYPE = "one_time_addon_day_planning";
@@ -85,9 +89,6 @@ async function createOneTimeAddonDayPlanningPaymentFlow({
   body = {},
   runtime,
   ensureActiveFn,
-  validateFutureDateOrThrowFn,
-  assertTomorrowCutoffAllowedFn,
-  cutoffAction,
   isEligibleForDayFn,
 }) {
   const sub = await Subscription.findById(subscriptionId).populate("planId");
@@ -100,19 +101,23 @@ async function createOneTimeAddonDayPlanningPaymentFlow({
 
   try {
     ensureActiveFn(sub, date);
-    await validateFutureDateOrThrowFn(date, sub);
-    await assertTomorrowCutoffAllowedFn({
-      action: cutoffAction,
-      date,
-    });
   } catch (err) {
     const status = err.code === "SUB_INACTIVE" || err.code === "SUB_EXPIRED" ? 422 : 400;
-    return buildErrorResult(status, err.code || "INVALID_DATE", err.message);
+    return buildErrorResult(status, err.code || "INVALID_DATE", localizePolicyErrorMessage(err, lang));
   }
 
   const day = await SubscriptionDay.findOne({ subscriptionId, date });
   if (!day) {
     return buildErrorResult(404, "NOT_FOUND", "Day not found");
+  }
+  try {
+    await assertSubscriptionDayModifiable({
+      subscription: sub,
+      day,
+      date,
+    });
+  } catch (err) {
+    return buildErrorResult(err.status || 400, err.code || "INVALID_DATE", localizePolicyErrorMessage(err, lang), err.details);
   }
   if (!isEligibleForDayFn(sub, day)) {
     return buildErrorResult(409, "ONE_TIME_ADDON_PAYMENT_NOT_SUPPORTED", "One-time add-on payment is not enabled for this day");

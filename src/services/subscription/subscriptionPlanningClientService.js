@@ -13,6 +13,7 @@ const {
   performDaySelectionValidation,
   performDayPlanningConfirmation,
 } = require("./subscriptionSelectionService");
+const { localizePolicyErrorMessage } = require("./subscriptionDayModificationPolicyService");
 
 function buildErrorResult(status, code, message, details) {
   return {
@@ -31,6 +32,10 @@ function buildSuccessResult(status, data, extra = {}) {
     data,
     ...extra,
   };
+}
+
+function resolveClientFacingErrorMessage(err, lang) {
+  return localizePolicyErrorMessage(err, lang) || (err && err.message) || "";
 }
 
 async function updateDaySelectionForClient({
@@ -113,7 +118,7 @@ async function updateDaySelectionForClient({
       return buildErrorResult(400, "INVALID", err.message);
     }
     if (err.status && err.code) {
-      return buildErrorResult(err.status, err.code, err.message, buildControllerErrorDetails(err));
+      return buildErrorResult(err.status, err.code, resolveClientFacingErrorMessage(err, lang), buildControllerErrorDetails(err));
     }
     logger.error("Update day selection failed", { subscriptionId, date, error: err.message, stack: err.stack });
     return buildErrorResult(500, "INTERNAL", "Selection failed");
@@ -162,7 +167,7 @@ async function validateDaySelectionForClient({
       return buildErrorResult(400, "INVALID", err.message);
     }
     if (err.status && err.code) {
-      return buildErrorResult(err.status, err.code, err.message, buildControllerErrorDetails(err));
+      return buildErrorResult(err.status, err.code, resolveClientFacingErrorMessage(err, lang), buildControllerErrorDetails(err));
     }
     logger.error("Validate day selection failed", { subscriptionId, date, error: err.message, stack: err.stack });
     return buildErrorResult(500, "INTERNAL", "Validation failed");
@@ -175,7 +180,6 @@ async function confirmDayPlanningForClient({
   userId,
   lang,
   runtime,
-  validateFutureDateOrThrowFn,
   writeLogSafelyFn,
   loadWalletCatalogMapsSafelyFn,
 }) {
@@ -185,13 +189,6 @@ async function confirmDayPlanningForClient({
   }
   if (String(sub.userId) !== String(userId)) {
     return buildErrorResult(403, "FORBIDDEN", "Forbidden");
-  }
-
-  try {
-    await validateFutureDateOrThrowFn(date, sub, null, { allowToday: true });
-  } catch (err) {
-    const status = err.code === "SUB_INACTIVE" || err.code === "SUB_EXPIRED" ? 422 : 400;
-    return buildErrorResult(status, err.code || "INVALID_DATE", err.message);
   }
 
   try {
@@ -237,7 +234,7 @@ async function confirmDayPlanningForClient({
     });
   } catch (err) {
     if (err.status && err.code) {
-      return buildErrorResult(err.status, err.code, err.message, buildControllerErrorDetails(err));
+      return buildErrorResult(err.status, err.code, resolveClientFacingErrorMessage(err, lang), buildControllerErrorDetails(err));
     }
     if (
       err.code === "PLANNING_INCOMPLETE"
@@ -255,7 +252,7 @@ async function confirmDayPlanningForClient({
         code: err.code,
         message: err.message,
       });
-      return buildErrorResult(422, err.code, err.message);
+      return buildErrorResult(422, err.code, resolveClientFacingErrorMessage(err, lang));
     }
     logger.error("Confirm day planning failed", { subscriptionId, date, error: err.message, stack: err.stack });
     return buildErrorResult(500, "INTERNAL", "Day planning confirmation failed");
