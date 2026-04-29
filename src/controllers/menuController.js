@@ -93,6 +93,17 @@ function buildAddonCatalog(addonItems = []) {
   };
 }
 
+function buildAddonCatalogFromLegacyPlannerAddons(legacyPlannerAddons = {}) {
+  const items = Array.isArray(legacyPlannerAddons?.items) ? legacyPlannerAddons.items : [];
+  const grouped = buildAddonCatalog(items);
+
+  return {
+    items,
+    byCategory: grouped.byCategory,
+    totalCount: Number(legacyPlannerAddons?.totalCount ?? items.length),
+  };
+}
+
 function buildSubscriptionMealCatalog({
   lang,
   regularMeals,
@@ -377,17 +388,18 @@ async function getSubscriptionMealPlannerMenu(req, res) {
     premiumMeals,
     addons,
   });
+  const legacyPlannerAddons = mealCatalog?.mealPlanner?.addons || { items: [], totalCount: 0 };
 
   const data = {
     builderCatalog,
-    addonCatalog: buildAddonCatalog(mealCatalog.mealPlanner?.addons?.items),
+    addonCatalog: buildAddonCatalogFromLegacyPlannerAddons(legacyPlannerAddons),
   };
 
   if (includeLegacy) {
     data.currency = mealCatalog.currency;
     data.regularMeals = mealCatalog.mealPlanner.regularMeals;
     data.premiumMeals = mealCatalog.mealPlanner.premiumMeals;
-    data.addons = mealCatalog.mealPlanner.addons;
+    data.addons = legacyPlannerAddons;
   }
 
   return res.status(200).json({

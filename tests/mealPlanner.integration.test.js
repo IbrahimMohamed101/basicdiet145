@@ -679,37 +679,49 @@ async function runTests() {
   }
   
   console.log('\n--- A) Meal Planner Menu ---\n');
-  await test('GET /meal-planner-menu returns builderCatalog', async () => {
-    const res = await makeRequest('GET', '/api/subscriptions/meal-planner-menu');
-    assertEqual(res.status, 200, 'status');
-    assertEqual(res.body.status, true, 'status');
-    assertNoTopLevelOk(res.body, 'meal-planner-menu response');
-    assertTrue(!!res.body.data?.builderCatalog, 'builderCatalog');
-    assertTrue(!!res.body.data?.addonCatalog, 'addonCatalog');
-    assertTrue(Array.isArray(res.body.data?.addonCatalog?.items), 'addonCatalog.items');
-    assertTrue(!!res.body.data?.addonCatalog?.byCategory && typeof res.body.data?.addonCatalog?.byCategory === 'object', 'addonCatalog.byCategory');
-    assertEqual(
-      Number(res.body.data?.addonCatalog?.totalCount || 0),
-      (res.body.data?.addonCatalog?.items || []).length,
-      'addonCatalog.totalCount matches items length'
-    );
-    assertEqual(Object.prototype.hasOwnProperty.call(res.body.data || {}, 'regularMeals'), false, 'regularMeals hidden by default');
-    assertEqual(Object.prototype.hasOwnProperty.call(res.body.data || {}, 'premiumMeals'), false, 'premiumMeals hidden by default');
-    assertEqual(Object.prototype.hasOwnProperty.call(res.body.data || {}, 'addons'), false, 'addons hidden by default');
-  });
+  await test('meal-planner-menu default addonCatalog reuses the exact legacy add-on list while hiding legacy fields', async () => {
+    const defaultRes = await makeRequest('GET', '/api/subscriptions/meal-planner-menu');
+    const legacyRes = await makeRequest('GET', '/api/subscriptions/meal-planner-menu?includeLegacy=true');
 
-  await test('meal-planner-menu legacy fields are available only with includeLegacy=true', async () => {
-    const res = await makeRequest('GET', '/api/subscriptions/meal-planner-menu?includeLegacy=true');
-    const addons = res.body.data?.addons?.items || [];
-    const addonCatalog = res.body.data?.addonCatalog || {};
+    assertEqual(defaultRes.status, 200, 'default status');
+    assertEqual(defaultRes.body.status, true, 'default response status');
+    assertNoTopLevelOk(defaultRes.body, 'default meal-planner-menu response');
+    assertTrue(!!defaultRes.body.data?.builderCatalog, 'default builderCatalog');
+    assertTrue(!!defaultRes.body.data?.addonCatalog, 'default addonCatalog');
+    assertTrue(Array.isArray(defaultRes.body.data?.addonCatalog?.items), 'default addonCatalog.items');
+    assertTrue(!!defaultRes.body.data?.addonCatalog?.byCategory && typeof defaultRes.body.data?.addonCatalog?.byCategory === 'object', 'default addonCatalog.byCategory');
+    assertEqual(Object.prototype.hasOwnProperty.call(defaultRes.body.data || {}, 'regularMeals'), false, 'regularMeals hidden by default');
+    assertEqual(Object.prototype.hasOwnProperty.call(defaultRes.body.data || {}, 'premiumMeals'), false, 'premiumMeals hidden by default');
+    assertEqual(Object.prototype.hasOwnProperty.call(defaultRes.body.data || {}, 'addons'), false, 'addons hidden by default');
+
+    assertEqual(legacyRes.status, 200, 'legacy status');
+    const addons = legacyRes.body.data?.addons?.items || [];
+    const addonCatalog = legacyRes.body.data?.addonCatalog || {};
+    const defaultAddonCatalog = defaultRes.body.data?.addonCatalog || {};
     assertTrue(addons.length > 0, 'addons returned');
     assertTrue(addons.every((addon) => addon.kind === 'item'), 'all planner addons are items');
     assertTrue(!addons.some((addon) => addon.id === String(addonJuicePlan._id)), 'plan add-on excluded');
     assertTrue(addons.some((addon) => addon.id === String(addonJuice._id)), 'juice item included');
+
     assertEqual(
-      JSON.stringify(addonCatalog.items || []),
+      Number(defaultAddonCatalog.totalCount || 0),
+      addons.length,
+      'default addonCatalog.totalCount matches legacy addons.items length'
+    );
+    assertEqual(
+      Number(defaultAddonCatalog.totalCount || 0),
+      Number(legacyRes.body.data?.addons?.totalCount || 0),
+      'default addonCatalog.totalCount matches legacy addons.totalCount'
+    );
+    assertEqual(
+      JSON.stringify(defaultAddonCatalog.items || []),
       JSON.stringify(addons),
-      'addonCatalog.items matches legacy addons.items'
+      'default addonCatalog.items matches legacy addons.items'
+    );
+    assertEqual(
+      JSON.stringify(defaultAddonCatalog.byCategory || {}),
+      JSON.stringify(addonCatalog.byCategory || {}),
+      'default addonCatalog.byCategory is grouped from the same legacy items'
     );
   });
   
