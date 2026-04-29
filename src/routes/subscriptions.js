@@ -37,11 +37,15 @@ router.get("/menu", asyncHandler(menuController.getSubscriptionMenu));
  *                   example: true
  *                 data:
  *                   type: object
- *                   required: [builderCatalog]
+ *                   required: [builderCatalog, addonCatalog]
  *                   properties:
  *                     builderCatalog:
  *                       type: object
  *                       description: Canonical planner source of truth used by the frontend.
+ *                       additionalProperties: true
+ *                     addonCatalog:
+ *                       type: object
+ *                       description: Canonical add-on catalog for the planner. Returned by default.
  *                       additionalProperties: true
  *                     regularMeals:
  *                       type: object
@@ -70,6 +74,10 @@ router.get("/menu", asyncHandler(menuController.getSubscriptionMenu));
  *                       carbs: []
  *                       sandwiches: []
  *                       premiumLargeSalad: {}
+ *                     addonCatalog:
+ *                       items: []
+ *                       byCategory: {}
+ *                       totalCount: 0
  */
 router.get("/meal-planner-menu", asyncHandler(menuController.getSubscriptionMealPlannerMenu));
 router.get("/delivery-options", asyncHandler(menuController.getDeliveryOptions));

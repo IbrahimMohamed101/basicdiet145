@@ -646,6 +646,14 @@ async function runTests() {
     assertEqual(res.body.status, true, 'status');
     assertNoTopLevelOk(res.body, 'meal-planner-menu response');
     assertTrue(!!res.body.data?.builderCatalog, 'builderCatalog');
+    assertTrue(!!res.body.data?.addonCatalog, 'addonCatalog');
+    assertTrue(Array.isArray(res.body.data?.addonCatalog?.items), 'addonCatalog.items');
+    assertTrue(!!res.body.data?.addonCatalog?.byCategory && typeof res.body.data?.addonCatalog?.byCategory === 'object', 'addonCatalog.byCategory');
+    assertEqual(
+      Number(res.body.data?.addonCatalog?.totalCount || 0),
+      (res.body.data?.addonCatalog?.items || []).length,
+      'addonCatalog.totalCount matches items length'
+    );
     assertEqual(Object.prototype.hasOwnProperty.call(res.body.data || {}, 'regularMeals'), false, 'regularMeals hidden by default');
     assertEqual(Object.prototype.hasOwnProperty.call(res.body.data || {}, 'premiumMeals'), false, 'premiumMeals hidden by default');
     assertEqual(Object.prototype.hasOwnProperty.call(res.body.data || {}, 'addons'), false, 'addons hidden by default');
@@ -654,10 +662,16 @@ async function runTests() {
   await test('meal-planner-menu legacy fields are available only with includeLegacy=true', async () => {
     const res = await makeRequest('GET', '/api/subscriptions/meal-planner-menu?includeLegacy=true');
     const addons = res.body.data?.addons?.items || [];
+    const addonCatalog = res.body.data?.addonCatalog || {};
     assertTrue(addons.length > 0, 'addons returned');
     assertTrue(addons.every((addon) => addon.kind === 'item'), 'all planner addons are items');
     assertTrue(!addons.some((addon) => addon.id === String(addonJuicePlan._id)), 'plan add-on excluded');
     assertTrue(addons.some((addon) => addon.id === String(addonJuice._id)), 'juice item included');
+    assertEqual(
+      JSON.stringify(addonCatalog.items || []),
+      JSON.stringify(addons),
+      'addonCatalog.items matches legacy addons.items'
+    );
   });
   
   await test('builderCatalog has proteins with premiumKey', async () => {

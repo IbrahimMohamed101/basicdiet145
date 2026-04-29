@@ -75,6 +75,24 @@ function resolveCustomMealSupport(basePriceSar) {
   };
 }
 
+function buildAddonCatalog(addonItems = []) {
+  const items = Array.isArray(addonItems) ? addonItems : [];
+  const byCategory = items.reduce((accumulator, item) => {
+    const categoryKey = String(item && item.category ? item.category : "other").trim() || "other";
+    if (!accumulator[categoryKey]) {
+      accumulator[categoryKey] = [];
+    }
+    accumulator[categoryKey].push(item);
+    return accumulator;
+  }, {});
+
+  return {
+    items,
+    byCategory,
+    totalCount: items.length,
+  };
+}
+
 function buildSubscriptionMealCatalog({
   lang,
   regularMeals,
@@ -362,6 +380,7 @@ async function getSubscriptionMealPlannerMenu(req, res) {
 
   const data = {
     builderCatalog,
+    addonCatalog: buildAddonCatalog(mealCatalog.mealPlanner?.addons?.items),
   };
 
   if (includeLegacy) {
