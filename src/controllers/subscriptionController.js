@@ -86,6 +86,7 @@ const {
   confirmCanonicalDayPlanning,
   assertCanonicalPlanningExactCount,
   assertNoPendingPremiumOverage,
+  assertNoPendingOneTimeAddonPayment,
   buildCanonicalPlanningView,
   isCanonicalPremiumOverageEligible,
 } = require("../services/subscription/subscriptionDayPlanningService");

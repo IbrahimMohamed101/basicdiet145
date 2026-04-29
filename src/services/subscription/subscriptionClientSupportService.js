@@ -140,9 +140,11 @@ function shapeMealPlannerReadFields({ subscription = null, day, lang = "ar" }) {
     }),
   });
   const commercialStateLabel = resolveReadLabel("commercialStates", shaped.commercialState, lang);
-  const premiumExtraPaymentStatusLabel = resolveReadLabel("premiumExtraPaymentStatuses", shaped.premiumExtraPayment.status, lang);
-  const pricingStatusLabel = resolveReadLabel("pricingStatuses", shaped.paymentRequirement.pricingStatus, lang);
-  const blockingReasonLabel = shaped.paymentRequirement.blockingReason
+  const premiumExtraPaymentStatus = (shaped.premiumExtraPayment && shaped.premiumExtraPayment.status) || "none";
+  const premiumExtraPaymentStatusLabel = resolveReadLabel("premiumExtraPaymentStatuses", premiumExtraPaymentStatus, lang);
+  const pricingStatus = (shaped.paymentRequirement && shaped.paymentRequirement.pricingStatus) || "none";
+  const pricingStatusLabel = resolveReadLabel("pricingStatuses", pricingStatus, lang);
+  const blockingReasonLabel = shaped.paymentRequirement && shaped.paymentRequirement.blockingReason
     ? resolveReadLabel("paymentBlockingReasons", shaped.paymentRequirement.blockingReason, lang)
     : null;
 

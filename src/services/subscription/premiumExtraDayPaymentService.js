@@ -24,7 +24,6 @@ const { resolveMealsPerDay } = require("../../utils/subscription/subscriptionDay
 const {
   recomputePlannerMetaFromSlots,
   projectMaterializedAndLegacyForExistingSlots,
-  buildPremiumExtraRevisionHash,
 } = require("./mealSlotPlannerService");
 const { getPaymentMetadata } = require("./subscriptionCheckoutHelpers");
 const { applyCommercialStateToDay } = require("./subscriptionDayCommercialStateService");
@@ -35,6 +34,14 @@ const {
 
 const SYSTEM_CURRENCY = "SAR";
 const PREMIUM_EXTRA_DAY_PAYMENT_TYPE = "premium_extra_day";
+
+function toPlainObject(doc) {
+  return doc && typeof doc.toObject === "function" ? doc.toObject() : { ...(doc || {}) };
+}
+
+function buildCanonicalPlannerRevisionHashForPayment(dayLike = {}) {
+  return applyCommercialStateToDay(toPlainObject(dayLike)).plannerRevisionHash;
+}
 
 function normalizeCurrencyValue(value) {
   return String(value || SYSTEM_CURRENCY).trim().toUpperCase();
@@ -155,7 +162,7 @@ async function settlePaidPremiumExtraDayPayment({
 }) {
   const paymentMetadata = getPaymentMetadata(payment);
   const currentMealSlots = Array.isArray(day.mealSlots) ? day.mealSlots : [];
-  const currentRevisionHash = buildPremiumExtraRevisionHash({ mealSlots: currentMealSlots });
+  const currentRevisionHash = buildCanonicalPlannerRevisionHashForPayment(day);
   const hasPendingPremiumSlots = currentMealSlots.some(
     (slot) => slot && slot.isPremium && slot.premiumSource === "pending_payment"
   );
@@ -196,11 +203,15 @@ async function settlePaidPremiumExtraDayPayment({
     }
     return slot;
   });
-  const settledRevisionHash = buildPremiumExtraRevisionHash({ mealSlots: settledMealSlots });
   const requiredSlotCount = resolveMealsPerDay(subscription);
   const { plannerMeta } = recomputePlannerMetaFromSlots({
     mealSlots: settledMealSlots,
     requiredSlotCount,
+  });
+  const settledRevisionHash = buildCanonicalPlannerRevisionHashForPayment({
+    ...toPlainObject(day),
+    mealSlots: settledMealSlots,
+    plannerMeta,
   });
   const projection = await projectMaterializedAndLegacyForExistingSlots({
     mealSlots: settledMealSlots,
@@ -303,7 +314,22 @@ async function createPremiumExtraDayPaymentFlow({
       return buildErrorResult(409, "PREMIUM_EXTRA_PAYMENT_NOT_REQUIRED", "This day has no payable premium extra state", notRequiredDetails);
     }
 
-    const currentRevisionHash = buildPremiumExtraRevisionHash({ mealSlots: day.mealSlots });
+    const currentRevisionHash = derivedDay.plannerRevisionHash;
+    if (
+      body
+      && body.plannerRevisionHash !== undefined
+      && String(body.plannerRevisionHash || "") !== String(derivedDay.plannerRevisionHash)
+    ) {
+      return buildErrorResult(
+        409,
+        "PREMIUM_EXTRA_REVISION_MISMATCH",
+        "Planner changed since payment creation",
+        {
+          expectedPlannerRevisionHash: derivedDay.plannerRevisionHash,
+          receivedPlannerRevisionHash: String(body.plannerRevisionHash || ""),
+        }
+      );
+    }
     const extraPremiumCount = Number(derivedDay.premiumExtraPayment.extraPremiumCount || 0);
     const amountHalala = Number(derivedDay.premiumExtraPayment.amountHalala || 0);
     if (extraPremiumCount <= 0 || amountHalala <= 0) {

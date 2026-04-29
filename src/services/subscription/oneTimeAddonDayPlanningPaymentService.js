@@ -91,140 +91,170 @@ async function createOneTimeAddonDayPlanningPaymentFlow({
   ensureActiveFn,
   isEligibleForDayFn,
 }) {
-  const sub = await Subscription.findById(subscriptionId).populate("planId");
-  if (!sub) {
-    return buildErrorResult(404, "NOT_FOUND", "Subscription not found");
-  }
-  if (String(sub.userId) !== String(userId)) {
-    return buildErrorResult(403, "FORBIDDEN", "Forbidden");
-  }
-
   try {
-    ensureActiveFn(sub, date);
-  } catch (err) {
-    const status = err.code === "SUB_INACTIVE" || err.code === "SUB_EXPIRED" ? 422 : 400;
-    return buildErrorResult(status, err.code || "INVALID_DATE", localizePolicyErrorMessage(err, lang));
-  }
+    const sub = await Subscription.findById(subscriptionId).populate("planId");
+    if (!sub) {
+      return buildErrorResult(404, "NOT_FOUND", "Subscription not found");
+    }
+    if (String(sub.userId) !== String(userId)) {
+      return buildErrorResult(403, "FORBIDDEN", "Forbidden");
+    }
 
-  const day = await SubscriptionDay.findOne({ subscriptionId, date });
-  if (!day) {
-    return buildErrorResult(404, "NOT_FOUND", "Day not found");
-  }
-  try {
-    await assertSubscriptionDayModifiable({
-      subscription: sub,
-      day,
-      date,
+    try {
+      ensureActiveFn(sub, date);
+    } catch (err) {
+      const status = err.code === "SUB_INACTIVE" || err.code === "SUB_EXPIRED" ? 422 : 400;
+      return buildErrorResult(status, err.code || "INVALID_DATE", localizePolicyErrorMessage(err, lang));
+    }
+
+    const day = await SubscriptionDay.findOne({ subscriptionId, date });
+    if (!day) {
+      return buildErrorResult(404, "NOT_FOUND", "Day not found");
+    }
+    try {
+      await assertSubscriptionDayModifiable({
+        subscription: sub,
+        day,
+        date,
+      });
+    } catch (err) {
+      return buildErrorResult(err.status || 400, err.code || "INVALID_DATE", localizePolicyErrorMessage(err, lang), err.details);
+    }
+    if (!isEligibleForDayFn(sub, day)) {
+      return buildErrorResult(409, "ONE_TIME_ADDON_PAYMENT_NOT_SUPPORTED", "One-time add-on payment is not enabled for this day");
+    }
+
+    let pricedSnapshot;
+    try {
+      pricedSnapshot = await buildPricedOneTimeAddonPaymentSnapshot({ day });
+    } catch (err) {
+      if (err.code === "ONE_TIME_ADDON_PRICING_NOT_FOUND") {
+        return buildErrorResult(404, "NOT_FOUND", err.message);
+      }
+      if (err.code === "CONFIG" || err.code === "VALIDATION_ERROR") {
+        return buildErrorResult(409, err.code, err.message);
+      }
+      throw err;
+    }
+
+    if (pricedSnapshot.oneTimeAddonCount <= 0) {
+      return buildErrorResult(409, "NO_PENDING_ONE_TIME_ADDONS", "This day has no unpaid one-time add-ons");
+    }
+
+    const idempotency = await resolveNonCheckoutIdempotency({
+      headers,
+      body,
+      userId,
+      operationScope: ONE_TIME_ADDON_DAY_PLANNING_PAYMENT_TYPE,
+      effectivePayload: {
+        subscriptionId: String(sub._id),
+        dayId: String(day._id),
+        date: String(day.date),
+        oneTimeAddonSelections: pricedSnapshot.oneTimeAddonSelections,
+      },
+      fallbackResponseShape: ONE_TIME_ADDON_DAY_PLANNING_PAYMENT_TYPE,
+      runtime,
+    });
+    if (!idempotency.ok) {
+      return idempotency;
+    }
+    if (!idempotency.shouldContinue) {
+      return idempotency;
+    }
+
+    const appUrl = process.env.APP_URL || "https://example.com";
+    const redirectContext = buildPaymentRedirectContext({
+      appUrl,
+      paymentType: ONE_TIME_ADDON_DAY_PLANNING_PAYMENT_TYPE,
+      subscriptionId: String(sub._id),
+      dayId: String(day._id),
+      date: String(day.date),
+      successUrl: body && body.successUrl,
+      backUrl: body && body.backUrl,
+    });
+
+    let invoice;
+    try {
+      invoice = await runtime.createInvoice({
+        amount: pricedSnapshot.totalHalala,
+        description: buildPaymentDescription("oneTimeAddons", lang, {
+          count: pricedSnapshot.oneTimeAddonCount,
+        }),
+        callbackUrl: `${appUrl}/api/webhooks/moyasar`,
+        successUrl: redirectContext.providerSuccessUrl,
+        backUrl: redirectContext.providerCancelUrl,
+        metadata: {
+          type: ONE_TIME_ADDON_DAY_PLANNING_PAYMENT_TYPE,
+          subscriptionId: String(sub._id),
+          userId: String(userId),
+          dayId: String(day._id),
+          date: String(day.date),
+          oneTimeAddonSelections: pricedSnapshot.oneTimeAddonSelections,
+          oneTimeAddonCount: pricedSnapshot.oneTimeAddonCount,
+          pricedItems: pricedSnapshot.pricedItems,
+          currency: pricedSnapshot.currency,
+          redirectToken: redirectContext.token,
+        },
+      });
+    } catch (err) {
+      logger.error("One-time add-on payment initiation: createInvoice failed", { error: err.message, subscriptionId, date });
+      return buildErrorResult(err.status || 502, "PAYMENT_PROVIDER_ERROR", "Failed to create payment provider invoice");
+    }
+    const invoiceCurrency = assertSystemCurrencyOrThrow(invoice.currency || SYSTEM_CURRENCY, "Invoice currency");
+
+    let payment;
+    try {
+      payment = await runtime.createPayment({
+        provider: "moyasar",
+        type: ONE_TIME_ADDON_DAY_PLANNING_PAYMENT_TYPE,
+        status: "initiated",
+        amount: pricedSnapshot.totalHalala,
+        currency: invoiceCurrency,
+        userId,
+        subscriptionId: sub._id,
+        providerInvoiceId: invoice.id,
+        metadata: buildPaymentMetadataWithInitiationFields(invoice.metadata || {}, {
+          paymentUrl: invoice.url,
+          responseShape: ONE_TIME_ADDON_DAY_PLANNING_PAYMENT_TYPE,
+          totalHalala: pricedSnapshot.totalHalala,
+          redirectContext,
+        }),
+        ...(idempotency.idempotencyKey
+          ? {
+            operationScope: ONE_TIME_ADDON_DAY_PLANNING_PAYMENT_TYPE,
+            operationIdempotencyKey: idempotency.idempotencyKey,
+            operationRequestHash: idempotency.operationRequestHash,
+          }
+          : {}),
+      });
+    } catch (err) {
+      logger.error("One-time add-on payment initiation: createPayment failed", {
+        error: err.message,
+        code: err.code,
+        subscriptionId,
+        date,
+      });
+      return buildErrorResult(500, "PAYMENT_PERSISTENCE_ERROR", "Failed to record payment initiation");
+    }
+
+    return buildSuccessResult(200, {
+      payment_url: invoice.url,
+      invoice_id: invoice.id,
+      payment_id: payment.id || (payment._id ? String(payment._id) : null),
+      totalHalala: pricedSnapshot.totalHalala,
     });
   } catch (err) {
-    return buildErrorResult(err.status || 400, err.code || "INVALID_DATE", localizePolicyErrorMessage(err, lang), err.details);
-  }
-  if (!isEligibleForDayFn(sub, day)) {
-    return buildErrorResult(409, "ONE_TIME_ADDON_PAYMENT_NOT_SUPPORTED", "One-time add-on payment is not enabled for this day");
-  }
-
-  let pricedSnapshot;
-  try {
-    pricedSnapshot = await buildPricedOneTimeAddonPaymentSnapshot({ day });
-  } catch (err) {
-    if (err.code === "ONE_TIME_ADDON_PRICING_NOT_FOUND") {
-      return buildErrorResult(404, "NOT_FOUND", err.message);
+    logger.error("One-time add-on payment initiation: unexpected error", {
+      error: err.message,
+      stack: err.stack,
+      subscriptionId,
+      date,
+    });
+    if (err.status && err.code) {
+      return buildErrorResult(err.status, err.code, err.message);
     }
-    if (err.code === "CONFIG" || err.code === "VALIDATION_ERROR") {
-      return buildErrorResult(409, err.code, err.message);
-    }
-    throw err;
+    return buildErrorResult(500, "INTERNAL", "One-time add-on payment initiation failed");
   }
-
-  if (pricedSnapshot.oneTimeAddonCount <= 0) {
-    return buildErrorResult(409, "NO_PENDING_ONE_TIME_ADDONS", "This day has no unpaid one-time add-ons");
-  }
-
-  const idempotency = await resolveNonCheckoutIdempotency({
-    headers,
-    body,
-    userId,
-    operationScope: ONE_TIME_ADDON_DAY_PLANNING_PAYMENT_TYPE,
-    effectivePayload: {
-      subscriptionId: String(sub._id),
-      dayId: String(day._id),
-      date: String(day.date),
-      oneTimeAddonSelections: pricedSnapshot.oneTimeAddonSelections,
-    },
-    fallbackResponseShape: ONE_TIME_ADDON_DAY_PLANNING_PAYMENT_TYPE,
-    runtime,
-  });
-  if (!idempotency.ok) {
-    return idempotency;
-  }
-  if (!idempotency.shouldContinue) {
-    return idempotency;
-  }
-
-  const appUrl = process.env.APP_URL || "https://example.com";
-  const redirectContext = buildPaymentRedirectContext({
-    appUrl,
-    paymentType: ONE_TIME_ADDON_DAY_PLANNING_PAYMENT_TYPE,
-    subscriptionId: String(sub._id),
-    dayId: String(day._id),
-    date: String(day.date),
-    successUrl: body && body.successUrl,
-    backUrl: body && body.backUrl,
-  });
-
-  const invoice = await runtime.createInvoice({
-    amount: pricedSnapshot.totalHalala,
-    description: buildPaymentDescription("oneTimeAddons", lang, {
-      count: pricedSnapshot.oneTimeAddonCount,
-    }),
-    callbackUrl: `${appUrl}/api/webhooks/moyasar`,
-    successUrl: redirectContext.providerSuccessUrl,
-    backUrl: redirectContext.providerCancelUrl,
-    metadata: {
-      type: ONE_TIME_ADDON_DAY_PLANNING_PAYMENT_TYPE,
-      subscriptionId: String(sub._id),
-      userId: String(userId),
-      dayId: String(day._id),
-      date: String(day.date),
-      oneTimeAddonSelections: pricedSnapshot.oneTimeAddonSelections,
-      oneTimeAddonCount: pricedSnapshot.oneTimeAddonCount,
-      pricedItems: pricedSnapshot.pricedItems,
-      currency: pricedSnapshot.currency,
-      redirectToken: redirectContext.token,
-    },
-  });
-  const invoiceCurrency = assertSystemCurrencyOrThrow(invoice.currency || SYSTEM_CURRENCY, "Invoice currency");
-
-  const payment = await runtime.createPayment({
-    provider: "moyasar",
-    type: ONE_TIME_ADDON_DAY_PLANNING_PAYMENT_TYPE,
-    status: "initiated",
-    amount: pricedSnapshot.totalHalala,
-    currency: invoiceCurrency,
-    userId,
-    subscriptionId: sub._id,
-    providerInvoiceId: invoice.id,
-    metadata: buildPaymentMetadataWithInitiationFields(invoice.metadata || {}, {
-      paymentUrl: invoice.url,
-      responseShape: ONE_TIME_ADDON_DAY_PLANNING_PAYMENT_TYPE,
-      totalHalala: pricedSnapshot.totalHalala,
-      redirectContext,
-    }),
-    ...(idempotency.idempotencyKey
-      ? {
-        operationScope: ONE_TIME_ADDON_DAY_PLANNING_PAYMENT_TYPE,
-        operationIdempotencyKey: idempotency.idempotencyKey,
-        operationRequestHash: idempotency.operationRequestHash,
-      }
-      : {}),
-  });
-
-  return buildSuccessResult(200, {
-    payment_url: invoice.url,
-    invoice_id: invoice.id,
-    payment_id: payment.id,
-    totalHalala: pricedSnapshot.totalHalala,
-  });
 }
 
 async function findLatestOneTimeAddonDayPlanningPaymentForDay({

@@ -314,22 +314,22 @@ function buildPaymentRequirement({
   }
 
   if (isLocked) {
-    blockingReason = "locked";
-  } else if (!planningComplete) {
-    blockingReason = "planning_incomplete";
+    blockingReason = "LOCKED";
   } else if (hasAnythingPending) {
     requiresPayment = true;
     if (normalizedPremiumExtraPayment.status === "revision_mismatch") {
-      blockingReason = "payment_revision_mismatch";
+      blockingReason = "PAYMENT_REVISION_MISMATCH";
     } else if (pricingStatus === "failed") {
-      blockingReason = "pricing_failed";
+      blockingReason = "PRICING_FAILED";
     } else if (pricingStatus === "pending") {
-      blockingReason = "pricing_pending";
+      blockingReason = "PRICING_PENDING";
     } else {
-      blockingReason = hasPendingPremium ? "premium_pending_payment" : "addons_pending_payment";
+      blockingReason = hasPendingPremium ? "PREMIUM_PAYMENT_REQUIRED" : "ADDON_PAYMENT_REQUIRED";
     }
+  } else if (!planningComplete) {
+    blockingReason = "PLANNING_INCOMPLETE";
   } else if (plannerFlowEnabled && normalizeString(plannerState, "draft") !== "confirmed") {
-    blockingReason = "planner_unconfirmed";
+    blockingReason = "PLANNER_UNCONFIRMED";
   }
 
   return {
@@ -339,7 +339,6 @@ function buildPaymentRequirement({
     blockingReason,
     canCreatePayment: Boolean(
       !isLocked
-        && planningComplete
         && hasAnythingPending
         && pricingStatus === "priced"
     ),

@@ -74,7 +74,17 @@ function normalizeCanonicalMealSlots(mealSlots) {
       proteinId: (slot && slot.proteinId && String(slot.proteinId).trim()) ? String(slot.proteinId).trim() : null,
       carbs,
       sandwichId: slot && slot.sandwichId ? String(slot.sandwichId) : null,
-      salad,
+      salad: (salad && typeof salad === "object") ? {
+        presetKey: salad.presetKey || null,
+        groups: {
+          leafy_greens: Array.isArray(salad.groups && salad.groups.leafy_greens) ? salad.groups.leafy_greens : [],
+          vegetables: Array.isArray(salad.groups && salad.groups.vegetables) ? salad.groups.vegetables : [],
+          protein: Array.isArray(salad.groups && salad.groups.protein) ? salad.groups.protein : [],
+          cheese_nuts: Array.isArray(salad.groups && salad.groups.cheese_nuts) ? salad.groups.cheese_nuts : [],
+          fruits: Array.isArray(salad.groups && salad.groups.fruits) ? salad.groups.fruits : [],
+          sauce: Array.isArray(salad.groups && salad.groups.sauce) ? salad.groups.sauce : [],
+        }
+      } : null,
       isPremium: Boolean(slot && slot.isPremium),
       premiumKey: slot && slot.premiumKey ? String(slot.premiumKey) : null,
       premiumSource: slot && slot.premiumSource ? String(slot.premiumSource) : "none",
@@ -345,6 +355,19 @@ function localizeSubscriptionReadPayload(subscription, { lang, addonNames = new 
   } else {
     localized.premiumBalance = [];
   }
+  if (planName) {
+    localized.planName = planName;
+  }
+
+  // Canonical aliases for frontend compatibility
+  localized.premiumSummary = localized.premiumBalance || [];
+  localized.addonsSummary = (localized.addonBalance || []).map(row => ({
+    addonId: row.addonId,
+    name: row.name,
+    purchasedQtyTotal: row.qty || 0,
+    remainingQtyTotal: (row.qty || 0) - (row.consumedQty || 0),
+    consumedQtyTotal: row.consumedQty || 0
+  }));
 
   return localized;
 }

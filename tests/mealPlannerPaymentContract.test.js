@@ -1,0 +1,418 @@
+/**
+ * Meal Planner payment contract verification.
+ *
+ * This intentionally exercises the HTTP endpoints while stubbing Moyasar at the
+ * HTTPS boundary. It must not silently pass if initiation or verification fails.
+ */
+
+require("dotenv").config();
+
+process.env.MONGODB_URI = process.env.MONGODB_URI || process.env.MONGO_URI || "mongodb://localhost:27017/basicdiet_test";
+
+const { EventEmitter } = require("events");
+const https = require("https");
+const mongoose = require("mongoose");
+const jwt = require("jsonwebtoken");
+const sinon = require("sinon");
+const supertest = require("supertest");
+
+const { createApp } = require("../src/app");
+const { ensureSafeForDestructiveOp } = require("../src/utils/dbSafety");
+const Addon = require("../src/models/Addon");
+const BuilderCarb = require("../src/models/BuilderCarb");
+const BuilderCategory = require("../src/models/BuilderCategory");
+const BuilderProtein = require("../src/models/BuilderProtein");
+const Payment = require("../src/models/Payment");
+const Plan = require("../src/models/Plan");
+const Subscription = require("../src/models/Subscription");
+const SubscriptionDay = require("../src/models/SubscriptionDay");
+const User = require("../src/models/User");
+
+const JWT_SECRET = process.env.JWT_SECRET || "supersecret";
+const app = createApp();
+
+function issueAppAccessToken(userId) {
+  return jwt.sign(
+    { userId: String(userId), role: "client", tokenType: "app_access" },
+    JWT_SECRET,
+    { expiresIn: "31d" }
+  );
+}
+
+function dateOffset(days) {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function assertTrue(condition, message, context) {
+  if (!condition) {
+    console.error(`Assertion failed: ${message}`);
+    if (context) console.error("Context:", JSON.stringify(context, null, 2));
+    process.exit(1);
+  }
+}
+
+function assertEqual(actual, expected, message, context) {
+  if (actual !== expected) {
+    console.error(`Assertion failed: ${message}. Expected ${expected}, got ${actual}`);
+    if (context) console.error("Context:", JSON.stringify(context, null, 2));
+    process.exit(1);
+  }
+}
+
+function assertCanonicalResponse(res, label) {
+  assertTrue(res.status < 500, `${label} must not return 5xx`, res.body);
+  assertTrue(res.body, `${label} must return JSON body`);
+  assertTrue(res.body.error?.code !== "INTERNAL", `${label} must not return INTERNAL`, res.body);
+}
+
+function assertPaymentRequirementConsistent(requirement, label) {
+  assertTrue(requirement && typeof requirement === "object", `${label} missing paymentRequirement`);
+  if (Number(requirement.premiumPendingPaymentCount || 0) > 0) {
+    assertEqual(requirement.requiresPayment, true, `${label} premium pending must require payment`, requirement);
+    assertEqual(requirement.blockingReason, "PREMIUM_PAYMENT_REQUIRED", `${label} premium blocking reason`, requirement);
+  }
+  if (Number(requirement.addonPendingPaymentCount || 0) > 0) {
+    assertEqual(requirement.requiresPayment, true, `${label} add-on pending must require payment`, requirement);
+    assertEqual(requirement.blockingReason, "ADDON_PAYMENT_REQUIRED", `${label} add-on blocking reason`, requirement);
+  }
+  if (requirement.requiresPayment) {
+    assertTrue(/^[A-Z0-9_]+$/.test(String(requirement.blockingReason || "")), `${label} blockingReason must be uppercase canonical`, requirement);
+  }
+}
+
+function installMoyasarStub() {
+  let invoiceSeq = 0;
+  const invoices = new Map();
+
+  const stub = sinon.stub(https, "request").callsFake((options, callback) => {
+    const req = new EventEmitter();
+    let requestBody = "";
+
+    req.write = (chunk) => {
+      requestBody += String(chunk || "");
+    };
+    req.setTimeout = () => req;
+    req.destroy = (err) => {
+      process.nextTick(() => req.emit("error", err));
+    };
+    req.end = () => {
+      process.nextTick(() => {
+        const method = String(options.method || "GET").toUpperCase();
+        const path = String(options.path || "");
+        let payload;
+        let statusCode = 200;
+
+        if (method === "POST" && path === "/v1/invoices") {
+          const body = requestBody ? JSON.parse(requestBody) : {};
+          const id = `inv_contract_${++invoiceSeq}`;
+          payload = {
+            id,
+            status: "initiated",
+            amount: body.amount,
+            currency: body.currency || "SAR",
+            url: `https://pay.test/${id}`,
+            metadata: body.metadata || {},
+          };
+          invoices.set(id, payload);
+        } else if (method === "GET" && path.startsWith("/v1/invoices?")) {
+          const params = new URLSearchParams(path.split("?")[1] || "");
+          const id = params.get("id");
+          const invoice = invoices.get(id);
+          if (!invoice) {
+            statusCode = 404;
+            payload = { message: "Invoice not found" };
+          } else {
+            payload = {
+              invoices: [
+                {
+                  ...invoice,
+                  status: "paid",
+                  payments: [
+                    {
+                      id: `pay_${id}`,
+                      status: "paid",
+                      amount: invoice.amount,
+                      currency: invoice.currency,
+                    },
+                  ],
+                },
+              ],
+            };
+          }
+        } else {
+          statusCode = 500;
+          payload = { message: `Unexpected Moyasar stub request ${method} ${path}` };
+        }
+
+        const res = new EventEmitter();
+        res.statusCode = statusCode;
+        callback(res);
+        res.emit("data", JSON.stringify(payload));
+        res.emit("end");
+      });
+    };
+
+    return req;
+  });
+
+  return () => stub.restore();
+}
+
+async function request(method, url, body, token) {
+  let req = supertest(app)[method.toLowerCase()](url);
+  if (token) req = req.set("Authorization", `Bearer ${token}`);
+  if (body !== undefined && body !== null) req = req.send(body);
+  const res = await req;
+  assertCanonicalResponse(res, `${method} ${url}`);
+  return res;
+}
+
+async function seedBase() {
+  await Promise.all([
+    Addon.deleteMany({}),
+    BuilderCarb.deleteMany({}),
+    BuilderCategory.deleteMany({}),
+    BuilderProtein.deleteMany({}),
+    Payment.deleteMany({}),
+    Plan.deleteMany({}),
+    Subscription.deleteMany({}),
+    SubscriptionDay.deleteMany({}),
+    User.deleteMany({}),
+  ]);
+
+  const user = await User.create({ name: "Payment Contract User", phone: "+966500000901", email: "payment-contract@example.com" });
+  const token = issueAppAccessToken(user._id);
+  const plan = await Plan.create({
+    name: { ar: "خطة", en: "Plan" },
+    daysCount: 40,
+    mealsPerDay: 3,
+    basePriceHalala: 100000,
+    isActive: true,
+    isCommerciallyViable: true,
+    price: 1000,
+  });
+  const proteinCategory = await BuilderCategory.create({ key: "protein", dimension: "protein", name: { ar: "بروتين", en: "Protein" }, isActive: true });
+  const carbCategory = await BuilderCategory.create({ key: "standard_carbs", dimension: "carb", name: { ar: "كربوهيدرات", en: "Standard Carbs" }, isActive: true });
+  const standardProtein = await BuilderProtein.create({
+    name: { ar: "دجاج", en: "Chicken" },
+    isPremium: false,
+    displayCategoryKey: "chicken",
+    displayCategoryId: proteinCategory._id,
+    proteinFamilyKey: "chicken",
+    isActive: true,
+  });
+  const premiumProtein = await BuilderProtein.create({
+    name: { ar: "روبيان", en: "Shrimp" },
+    isPremium: true,
+    displayCategoryKey: "premium",
+    displayCategoryId: proteinCategory._id,
+    proteinFamilyKey: "seafood",
+    premiumKey: "shrimp",
+    extraFeeHalala: 1500,
+    isActive: true,
+  });
+  const carb = await BuilderCarb.create({
+    name: { ar: "أرز", en: "Rice" },
+    displayCategoryKey: "standard_carbs",
+    displayCategoryId: carbCategory._id,
+    isActive: true,
+  });
+  const addon = await Addon.create({
+    name: { ar: "عصير برتقال", en: "Orange Juice" },
+    priceHalala: 1000,
+    currency: "SAR",
+    kind: "item",
+    category: "juice",
+    billingMode: "flat_once",
+    isActive: true,
+  });
+  const subscription = await Subscription.create({
+    userId: user._id,
+    planId: plan._id,
+    status: "active",
+    startDate: dateOffset(1),
+    endDate: dateOffset(35),
+    totalMeals: 120,
+    remainingMeals: 120,
+    selectedMealsPerDay: 3,
+    deliveryMode: "delivery",
+    premiumBalance: [],
+    addonSubscriptions: [],
+    contractVersion: "subscription_contract.v1",
+    contractMode: "canonical",
+    contractSnapshot: {
+      plan: { planId: plan._id, daysCount: 40, mealsPerDay: 3 },
+      pricing: { basePlanPriceHalala: 100000, totalHalala: 100000, vatPercentage: 15 },
+      delivery: { mode: "delivery" },
+    },
+  });
+
+  return { user, token, subscription, standardProtein, premiumProtein, carb, addon };
+}
+
+function fullSelection({ standardProtein, premiumProtein, carb }) {
+  return {
+    mealSlots: [
+      {
+        slotIndex: 1,
+        selectionType: "premium_meal",
+        proteinId: String(premiumProtein._id),
+        carbs: [{ carbId: String(carb._id), grams: 150 }],
+      },
+      {
+        slotIndex: 2,
+        selectionType: "standard_meal",
+        proteinId: String(standardProtein._id),
+        carbs: [{ carbId: String(carb._id), grams: 150 }],
+      },
+      {
+        slotIndex: 3,
+        selectionType: "standard_meal",
+        proteinId: String(standardProtein._id),
+        carbs: [{ carbId: String(carb._id), grams: 150 }],
+      },
+    ],
+  };
+}
+
+function standardSelection({ standardProtein, carb }) {
+  return {
+    mealSlots: [1, 2, 3].map((slotIndex) => ({
+      slotIndex,
+      selectionType: "standard_meal",
+      proteinId: String(standardProtein._id),
+      carbs: [{ carbId: String(carb._id), grams: 150 }],
+    })),
+  };
+}
+
+async function runPremiumFlow(ctx) {
+  const date = dateOffset(8);
+  await SubscriptionDay.create({ subscriptionId: ctx.subscription._id, date, status: "open" });
+
+  const saveRes = await request("PUT", `/api/subscriptions/${ctx.subscription._id}/days/${date}/selection`, fullSelection(ctx), ctx.token);
+  assertEqual(saveRes.status, 200, "Premium save status", saveRes.body);
+  assertPaymentRequirementConsistent(saveRes.body.data.paymentRequirement, "premium save");
+  assertEqual(saveRes.body.data.paymentRequirement.blockingReason, "PREMIUM_PAYMENT_REQUIRED", "Premium save blocking reason", saveRes.body.data.paymentRequirement);
+
+  const confirmBlockedRes = await request("POST", `/api/subscriptions/${ctx.subscription._id}/days/${date}/confirm`, {}, ctx.token);
+  assertEqual(confirmBlockedRes.status, 422, "Premium confirm should be blocked", confirmBlockedRes.body);
+  assertEqual(confirmBlockedRes.body.error.code, "PREMIUM_PAYMENT_REQUIRED", "Premium confirm error code", confirmBlockedRes.body);
+
+  const createRes = await request("POST", `/api/subscriptions/${ctx.subscription._id}/days/${date}/premium-extra/payments`, {
+    plannerRevisionHash: saveRes.body.data.plannerRevisionHash,
+  }, ctx.token);
+  assertEqual(createRes.status, 201, "Premium payment creation status", createRes.body);
+  const premiumCreate = createRes.body.data;
+  assertTrue(premiumCreate.paymentId || premiumCreate.payment_id, "Premium payment creation returns payment id", premiumCreate);
+  assertTrue(premiumCreate.payment_url, "Premium payment creation returns payment_url", premiumCreate);
+  assertTrue(premiumCreate.invoice_id || premiumCreate.providerInvoiceId, "Premium payment creation returns invoice id", premiumCreate);
+  assertEqual(premiumCreate.amountHalala, 1500, "Premium amountHalala", premiumCreate);
+  assertEqual(premiumCreate.totalHalala, 1500, "Premium totalHalala", premiumCreate);
+  assertTrue(premiumCreate.plannerRevisionHash, "Premium creation returns plannerRevisionHash", premiumCreate);
+  assertTrue(premiumCreate.premiumExtraPayment, "Premium creation returns premiumExtraPayment", premiumCreate);
+  assertTrue(premiumCreate.premiumSummary, "Premium creation returns premiumSummary", premiumCreate);
+  assertPaymentRequirementConsistent(premiumCreate.paymentRequirement, "premium create");
+
+  const verifyRes = await request("POST", `/api/subscriptions/${ctx.subscription._id}/days/${date}/premium-extra/payments/${premiumCreate.paymentId || premiumCreate.payment_id}/verify`, {}, ctx.token);
+  assertEqual(verifyRes.status, 200, "Premium verify status", verifyRes.body);
+  const premiumVerify = verifyRes.body.data;
+  assertEqual(premiumVerify.paymentStatus, "paid", "Premium verify payment status", premiumVerify);
+  assertEqual(premiumVerify.applied, true, "Premium verify applies side effects", premiumVerify);
+  assertEqual(premiumVerify.paymentRequirement.requiresPayment, false, "Premium verify clears payment requirement", premiumVerify.paymentRequirement);
+  assertEqual(premiumVerify.premiumSummary.pendingPaymentCount, 0, "Premium verify clears pending count", premiumVerify.premiumSummary);
+
+  const dayRes = await request("GET", `/api/subscriptions/${ctx.subscription._id}/days/${date}`, null, ctx.token);
+  assertEqual(dayRes.status, 200, "Premium reload status", dayRes.body);
+  assertEqual(dayRes.body.data.paymentRequirement.requiresPayment, false, "Premium reload no payment", dayRes.body.data.paymentRequirement);
+  assertTrue(dayRes.body.data.mealSlots.some((slot) => slot.premiumSource === "paid_extra" || slot.premiumSource === "paid"), "Premium slot settled after verify", dayRes.body.data.mealSlots);
+
+  const staleDate = dateOffset(9);
+  await SubscriptionDay.create({ subscriptionId: ctx.subscription._id, date: staleDate, status: "open" });
+  const staleSaveRes = await request("PUT", `/api/subscriptions/${ctx.subscription._id}/days/${staleDate}/selection`, fullSelection(ctx), ctx.token);
+  const staleRes = await request("POST", `/api/subscriptions/${ctx.subscription._id}/days/${staleDate}/premium-extra/payments`, {
+    plannerRevisionHash: `stale_${staleSaveRes.body.data.plannerRevisionHash}`,
+  }, ctx.token);
+  assertEqual(staleRes.status, 409, "Stale premium payment creation status", staleRes.body);
+  assertEqual(staleRes.body.error.code, "PREMIUM_EXTRA_REVISION_MISMATCH", "Stale premium payment code", staleRes.body);
+
+  return { create: premiumCreate, verify: premiumVerify, noPaymentRequirement: dayRes.body.data.paymentRequirement };
+}
+
+async function runAddonFlow(ctx) {
+  const date = dateOffset(10);
+  await SubscriptionDay.create({ subscriptionId: ctx.subscription._id, date, status: "open" });
+
+  const saveRes = await request("PUT", `/api/subscriptions/${ctx.subscription._id}/days/${date}/selection`, {
+    ...standardSelection(ctx),
+    addonsOneTime: [String(ctx.addon._id)],
+  }, ctx.token);
+  assertEqual(saveRes.status, 200, "Add-on save status", saveRes.body);
+  assertPaymentRequirementConsistent(saveRes.body.data.paymentRequirement, "add-on save");
+  assertEqual(saveRes.body.data.paymentRequirement.blockingReason, "ADDON_PAYMENT_REQUIRED", "Add-on save blocking reason", saveRes.body.data.paymentRequirement);
+
+  const createRes = await request("POST", `/api/subscriptions/${ctx.subscription._id}/days/${date}/one-time-addons/payments`, {}, ctx.token);
+  assertEqual(createRes.status, 200, "Add-on payment creation status", createRes.body);
+  const addonCreate = createRes.body.data;
+  assertTrue(addonCreate.payment_id, "Add-on payment creation returns payment_id", addonCreate);
+  assertTrue(addonCreate.payment_url, "Add-on payment creation returns payment_url", addonCreate);
+  assertTrue(addonCreate.invoice_id, "Add-on payment creation returns invoice_id", addonCreate);
+  assertEqual(addonCreate.totalHalala, 1000, "Add-on totalHalala", addonCreate);
+
+  const verifyRes = await request("POST", `/api/subscriptions/${ctx.subscription._id}/days/${date}/one-time-addons/payments/${addonCreate.payment_id}/verify`, {}, ctx.token);
+  assertEqual(verifyRes.status, 200, "Add-on verify status", verifyRes.body);
+  const addonVerify = verifyRes.body.data;
+  assertEqual(addonVerify.paymentStatus, "paid", "Add-on verify payment status", addonVerify);
+  assertEqual(addonVerify.applied, true, "Add-on verify applies side effects", addonVerify);
+  assertEqual(addonVerify.pendingCount, 0, "Add-on verify clears pending count", addonVerify);
+  assertTrue(addonVerify.addonSelections.every((selection) => selection.source === "paid"), "Add-on selections are paid", addonVerify.addonSelections);
+
+  const dayRes = await request("GET", `/api/subscriptions/${ctx.subscription._id}/days/${date}`, null, ctx.token);
+  assertEqual(dayRes.status, 200, "Add-on reload status", dayRes.body);
+  assertEqual(dayRes.body.data.paymentRequirement.requiresPayment, false, "Add-on reload no payment", dayRes.body.data.paymentRequirement);
+  assertEqual(dayRes.body.data.paymentRequirement.addonPendingPaymentCount, 0, "Add-on reload clears pending count", dayRes.body.data.paymentRequirement);
+
+  const noPendingRes = await request("POST", `/api/subscriptions/${ctx.subscription._id}/days/${date}/one-time-addons/payments`, {}, ctx.token);
+  assertEqual(noPendingRes.status, 409, "No-pending add-on creation status", noPendingRes.body);
+  assertEqual(noPendingRes.body.error.code, "NO_PENDING_ONE_TIME_ADDONS", "No-pending add-on code", noPendingRes.body);
+
+  return { create: addonCreate, verify: addonVerify };
+}
+
+async function run() {
+  if (process.env.NODE_ENV !== "test") {
+    console.error("NODE_ENV must be test");
+    process.exit(1);
+  }
+  if (!process.env.MONGODB_URI || !process.env.MONGODB_URI.includes("_test")) {
+    console.error("MONGODB_URI must point at a _test database");
+    process.exit(1);
+  }
+
+  const restoreMoyasar = installMoyasarStub();
+  try {
+    await mongoose.connect(process.env.MONGODB_URI);
+    await ensureSafeForDestructiveOp(mongoose.connection.db);
+
+    const ctx = await seedBase();
+    const premium = await runPremiumFlow(ctx);
+    const addon = await runAddonFlow(ctx);
+
+    console.log("Premium payment creation example:", JSON.stringify(premium.create, null, 2));
+    console.log("Premium verify example:", JSON.stringify(premium.verify, null, 2));
+    console.log("No-payment requirement example:", JSON.stringify(premium.noPaymentRequirement, null, 2));
+    console.log("Add-on payment creation example:", JSON.stringify(addon.create, null, 2));
+    console.log("Add-on verify example:", JSON.stringify(addon.verify, null, 2));
+    console.log("\n--- PAYMENT CONTRACT CHECKS PASSED ---");
+  } catch (err) {
+    console.error("Test failed:", err);
+    process.exitCode = 1;
+  } finally {
+    restoreMoyasar();
+    await mongoose.disconnect();
+  }
+}
+
+run();

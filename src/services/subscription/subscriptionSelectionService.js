@@ -750,12 +750,7 @@ async function performDaySelectionValidation({
     plannerRevisionHash: derivedDraftState.plannerRevisionHash,
     premiumSummary: derivedDraftState.premiumSummary,
     premiumExtraPayment: derivedDraftState.premiumExtraPayment,
-    paymentRequirement: mapPaymentRequirement({
-      plannerMeta: draft.plannerMeta,
-      plannerState: "draft",
-      status: day && day.status ? day.status : "open",
-      premiumExtraPayment: derivedDraftState.premiumExtraPayment,
-    }),
+    paymentRequirement: derivedDraftState.paymentRequirement,
     commercialState: derivedDraftState.commercialState,
     isFulfillable: derivedDraftState.isFulfillable,
     canBePrepared: derivedDraftState.canBePrepared,
