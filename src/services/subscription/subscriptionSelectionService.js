@@ -828,7 +828,13 @@ async function performDayPlanningConfirmation({ userId, subscriptionId, date, ru
       premiumExtraPayment: day.premiumExtraPayment || null,
     });
     if (preConfirmState.paymentRequirement.requiresPayment) {
-      throw { status: 422, code: "PREMIUM_PAYMENT_REQUIRED", message: "Premium payment is required before confirmation" };
+      if (Number(preConfirmState.paymentRequirement.premiumPendingPaymentCount || 0) > 0) {
+        throw { status: 422, code: "PREMIUM_PAYMENT_REQUIRED", message: "Premium payment is required before confirmation" };
+      }
+      if (Number(preConfirmState.paymentRequirement.addonPendingPaymentCount || 0) > 0) {
+        throw { status: 422, code: "ADDON_PAYMENT_REQUIRED", message: "Add-on payment is required before confirmation" };
+      }
+      throw { status: 422, code: "PAYMENT_REQUIRED", message: "Pending payment must be settled before confirmation" };
     }
     if (preConfirmState.commercialState !== "ready_to_confirm") {
       throw { status: 422, code: "PLANNING_INCOMPLETE", message: "Day is not ready for confirmation" };

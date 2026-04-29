@@ -14,9 +14,12 @@ const jwt = require('jsonwebtoken');
 const http = require('http');
 
 const { createApp } = require('../src/app');
+const subscriptionController = require('../src/controllers/subscriptionController');
+const { applyPaymentSideEffects } = require('../src/services/paymentApplicationService');
 const User = require('../src/models/User');
 const Subscription = require('../src/models/Subscription');
 const SubscriptionDay = require('../src/models/SubscriptionDay');
+const Payment = require('../src/models/Payment');
 const BuilderProtein = require('../src/models/BuilderProtein');
 const BuilderCarb = require('../src/models/BuilderCarb');
 const BuilderCategory = require('../src/models/BuilderCategory');
@@ -126,6 +129,42 @@ async function makeRequest(method, path, body = null) {
     if (body) req.write(JSON.stringify(body));
     req.end();
   });
+}
+
+function invokeController(handler, req, runtimeOverrides = null) {
+  return new Promise((resolve, reject) => {
+    const res = {
+      statusCode: 200,
+      req,
+      status(code) {
+        this.statusCode = code;
+        return this;
+      },
+      json(payload) {
+        resolve({ status: this.statusCode, body: payload });
+        return this;
+      },
+    };
+
+    Promise.resolve(handler(req, res, runtimeOverrides)).catch(reject);
+  });
+}
+
+function buildMockReq({
+  userId,
+  params = {},
+  body = {},
+  headers = {},
+} = {}) {
+  return {
+    userId: String(userId),
+    params,
+    body,
+    headers: {
+      'accept-language': 'en',
+      ...headers,
+    },
+  };
 }
 
 async function getActiveSubscriptionDay(date) {
@@ -979,6 +1018,112 @@ async function runTests() {
     assertEqual(Number(first?.priceHalala || 0), 0, 'covered item price is zero');
     assertEqual(second?.source, 'pending_payment', 'second item becomes paid overage');
     assertEqual(Number(second?.priceHalala || 0), Number(addonJuice2.priceHalala || 0), 'overage uses item price, not plan price');
+  });
+
+  await test('add-on payment verify clears pending state and confirm succeeds', async () => {
+    const paymentDate = buildDateOffset(14);
+    const slots = [
+      { slotIndex: 1, slotKey: 'slot_1', proteinId: String(standardProtein._id), carbs: [{ carbId: String(standardCarb._id), grams: 150 }], selectionType: 'standard_meal' },
+      { slotIndex: 2, slotKey: 'slot_2', proteinId: String(standardProtein._id), carbs: [{ carbId: String(standardCarb._id), grams: 150 }], selectionType: 'standard_meal' },
+    ];
+
+    const saveRes = await makeRequest('PUT', `/api/subscriptions/${testSubscription._id}/days/${paymentDate}/selection`, {
+      mealSlots: slots,
+      addonsOneTime: [String(addonJuice._id), String(addonJuice2._id)],
+    });
+    assertEqual(saveRes.status, 200, 'save status');
+    assertEqual(saveRes.body.data?.paymentRequirement?.addonPendingPaymentCount, 1, 'one paid add-on pending after save');
+    assertEqual(saveRes.body.data?.paymentRequirement?.premiumPendingPaymentCount, 0, 'no premium payment pending after save');
+
+    const confirmBlockedRes = await makeRequest('POST', `/api/subscriptions/${testSubscription._id}/days/${paymentDate}/confirm`);
+    assertEqual(confirmBlockedRes.status, 422, 'confirm blocked before payment');
+    assertEqual(confirmBlockedRes.body.error?.code, 'ADDON_PAYMENT_REQUIRED', 'add-on-only blocking code is returned');
+
+    const storedDayBeforePayment = await getActiveSubscriptionDay(paymentDate);
+    const pendingSelections = (storedDayBeforePayment?.addonSelections || []).filter((item) => item.source === 'pending_payment');
+    assertEqual(pendingSelections.length, 1, 'exactly one add-on requires payment');
+
+    const payment = await Payment.create({
+      provider: 'moyasar',
+      type: 'one_time_addon_day_planning',
+      status: 'initiated',
+      amount: Number(pendingSelections[0].priceHalala || 0),
+      currency: 'SAR',
+      userId: testUser._id,
+      subscriptionId: testSubscription._id,
+      providerInvoiceId: `inv_meal_planner_${Date.now()}`,
+      applied: false,
+      metadata: {
+        subscriptionId: String(testSubscription._id),
+        userId: String(testUser._id),
+        dayId: String(storedDayBeforePayment._id),
+        date: paymentDate,
+        oneTimeAddonSelections: pendingSelections.map((item) => ({
+          addonId: String(item.addonId),
+          name: item.name,
+          category: item.category,
+          unitPriceHalala: Number(item.priceHalala || 0),
+          currency: item.currency || 'SAR',
+        })),
+        paymentUrl: 'https://example.com/pay',
+      },
+    });
+
+    const verifyReq = buildMockReq({
+      userId: testUser._id,
+      params: {
+        id: String(testSubscription._id),
+        date: paymentDate,
+        paymentId: String(payment._id),
+      },
+    });
+
+    const verifyRes = await invokeController(
+      subscriptionController.verifyOneTimeAddonDayPlanningPayment,
+      verifyReq,
+      {
+        getInvoice: async () => ({
+          id: payment.providerInvoiceId,
+          status: 'paid',
+          amount: Number(payment.amount || 0),
+          currency: 'SAR',
+          payments: [
+            {
+              id: `pay_meal_planner_${Date.now()}`,
+              status: 'paid',
+              amount: Number(payment.amount || 0),
+              currency: 'SAR',
+            },
+          ],
+        }),
+        startSession: () => mongoose.startSession(),
+        applyPaymentSideEffects,
+      }
+    );
+
+    assertEqual(verifyRes.status, 200, 'verify status');
+    assertEqual(verifyRes.body.data?.paymentStatus, 'paid', 'verify marks payment paid');
+    assertEqual(verifyRes.body.data?.applied, true, 'verify marks payment applied');
+    assertEqual(verifyRes.body.data?.pendingCount, 0, 'verify reports no pending add-ons');
+
+    const getRes = await makeRequest('GET', `/api/subscriptions/${testSubscription._id}/days/${paymentDate}`);
+    assertEqual(getRes.status, 200, 'reload day status');
+    assertEqual(getRes.body.data?.paymentRequirement?.addonPendingPaymentCount, 0, 'reloaded day has no pending add-on count');
+    assertEqual(getRes.body.data?.paymentRequirement?.pendingAmountHalala, 0, 'reloaded day has no pending amount');
+    assertEqual(getRes.body.data?.paymentRequirement?.premiumPendingPaymentCount, 0, 'reloaded day still has no premium pending amount');
+    assertEqual(getRes.body.data?.commercialState, 'ready_to_confirm', 'day becomes ready to confirm after payment');
+
+    const storedDayAfterPayment = await getActiveSubscriptionDay(paymentDate);
+    const paidSelection = (storedDayAfterPayment?.addonSelections || []).find((item) => String(item.addonId) === String(addonJuice2._id));
+    assertTrue(!!paidSelection, 'paid add-on selection still exists');
+    assertEqual(paidSelection?.source, 'paid', 'paid add-on source updated');
+    assertEqual(String(paidSelection?.paymentId), String(payment._id), 'paid add-on linked to payment');
+    const includedSelection = (storedDayAfterPayment?.addonSelections || []).find((item) => String(item.addonId) === String(addonJuice._id));
+    assertEqual(includedSelection?.source, 'subscription', 'included add-on remains subscription-funded');
+
+    const confirmPaidRes = await makeRequest('POST', `/api/subscriptions/${testSubscription._id}/days/${paymentDate}/confirm`);
+    assertEqual(confirmPaidRes.status, 200, 'confirm succeeds after add-on payment');
+    assertEqual(confirmPaidRes.body.data?.plannerState, 'confirmed', 'planner is confirmed after payment');
   });
 
   await test('planner accepts non-entitled category items as paid overage using item price', async () => {

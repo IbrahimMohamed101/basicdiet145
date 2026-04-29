@@ -422,7 +422,7 @@ async function runTests() {
     assertEqual(payments, 1, "payment count unchanged");
   });
 
-  await test("payment application rejects day selections that do not match paid one-time snapshot", async () => {
+  await test("payment application only settles the pending add-ons included in the paid snapshot", async () => {
     const mismatchDate = buildDateOffset(11);
     const expensiveAddon = await Addon.create({
       name: { ar: "فاخر", en: "Expensive Addon" },
@@ -476,12 +476,125 @@ async function runTests() {
     };
 
     const result = await applyPaymentSideEffects({ payment: mismatchPayment });
-    assertEqual(result.applied, false, "mismatch should not apply");
-    assertEqual(result.reason, "payment_snapshot_mismatch", "mismatch reason");
+    assertEqual(result.applied, true, "matching subset should apply");
+
+    const refreshedDay = await SubscriptionDay.findById(day._id).lean();
+    const paidSelection = (refreshedDay.addonSelections || []).find((item) => Number(item.priceHalala || 0) === 1100);
+    const stillPendingSelection = (refreshedDay.addonSelections || []).find((item) => Number(item.priceHalala || 0) === 9900);
+    assertEqual(paidSelection?.source, "paid", "snapshot-matched add-on becomes paid");
+    assertEqual(stillPendingSelection?.source, "pending_payment", "unmatched pending add-on stays pending");
+  });
+
+  await test("verify does not persist applied=true when one-time add-on snapshot mismatches", async () => {
+    const mismatchDate = buildDateOffset(12);
+    const day = await SubscriptionDay.create({
+      subscriptionId: ownerSubscription._id,
+      date: mismatchDate,
+      status: "open",
+      addonSelections: [
+        {
+          addonId: addon._id,
+          name: "Alias Juice",
+          category: "juice",
+          source: "pending_payment",
+          priceHalala: 1100,
+          currency: "SAR",
+        },
+        {
+          addonId: addon._id,
+          name: "Alias Juice",
+          category: "juice",
+          source: "pending_payment",
+          priceHalala: 1100,
+          currency: "SAR",
+        },
+      ],
+    });
+
+    const payment = await Payment.create({
+      provider: "moyasar",
+      type: "one_time_addon_day_planning",
+      status: "initiated",
+      amount: 1100,
+      currency: "SAR",
+      userId: ownerUser._id,
+      subscriptionId: ownerSubscription._id,
+      providerInvoiceId: "inv_alias_mismatch",
+      applied: false,
+      metadata: {
+        subscriptionId: String(ownerSubscription._id),
+        userId: String(ownerUser._id),
+        dayId: String(day._id),
+        date: mismatchDate,
+        oneTimeAddonSelections: [
+          {
+            addonId: String(addon._id),
+            name: "Alias Juice",
+            category: "juice",
+            unitPriceHalala: 1100,
+            currency: "SAR",
+          },
+          {
+            addonId: String(addon._id),
+            name: "Alias Juice",
+            category: "juice",
+            unitPriceHalala: 1100,
+            currency: "SAR",
+          },
+          {
+            addonId: String(addon._id),
+            name: "Alias Juice",
+            category: "juice",
+            unitPriceHalala: 1100,
+            currency: "SAR",
+          },
+        ],
+        paymentUrl: "https://example.com/pay",
+      },
+    });
+
+    const req = buildMockReq({
+      userId: ownerUser._id,
+      params: {
+        id: String(ownerSubscription._id),
+        date: mismatchDate,
+        paymentId: String(payment._id),
+      },
+    });
+
+    const res = await invokeController(
+      subscriptionController.verifyOneTimeAddonDayPlanningPayment,
+      req,
+      {
+        getInvoice: async () => ({
+          id: payment.providerInvoiceId,
+          status: "paid",
+          amount: 1100,
+          currency: "SAR",
+          payments: [
+            {
+              id: "pay_alias_mismatch",
+              status: "paid",
+              amount: 1100,
+              currency: "SAR",
+            },
+          ],
+        }),
+        startSession: () => mongoose.startSession(),
+        applyPaymentSideEffects,
+      }
+    );
+
+    assertEqual(res.status, 200, "verify mismatch status");
+    assertEqual(res.body.data.paymentStatus, "paid", "provider paid status surfaced");
+    assertEqual(res.body.data.applied, false, "payment remains unapplied when snapshot mismatches");
+
+    const refreshedPayment = await Payment.findById(payment._id).lean();
+    assertEqual(Boolean(refreshedPayment.applied), false, "stored payment applied flag remains false");
 
     const refreshedDay = await SubscriptionDay.findById(day._id).lean();
     const pendingSources = (refreshedDay.addonSelections || []).map((item) => item.source);
-    assertTrue(pendingSources.every((source) => source === "pending_payment"), "pending selections must remain unpaid");
+    assertTrue(pendingSources.every((source) => source === "pending_payment"), "day selections stay pending after failed apply");
   });
 
   await test("alias verify returns 403 for non-owner", async () => {

@@ -60,6 +60,16 @@ function buildOneTimeAddonSnapshotCountMap(items = []) {
   }, new Map());
 }
 
+function buildOneTimeAddonSelectionIndexMap(items = []) {
+  return items.reduce((map, item, index) => {
+    const key = normalizeOneTimeAddonSnapshotKey(item);
+    const indexes = map.get(key) || [];
+    indexes.push(index);
+    map.set(key, indexes);
+    return map;
+  }, new Map());
+}
+
 async function maybeWriteWebhookLog({ source, entityType, entityId, action, meta }, runtime) {
   if (source !== "webhook") return;
   await runtime.writeLog({ entityType, entityId, action, byRole: "system", meta });
@@ -147,22 +157,26 @@ async function applyOneTimeAddonDayPlanningPayment({ payment, session, source = 
   if (pendingSelections.length === 0) return { applied: false, reason: "no_pending_one_time_addons" };
 
   const expectedSnapshotMap = buildOneTimeAddonSnapshotCountMap(metadata.oneTimeAddonSelections);
-  const pendingSnapshotMap = buildOneTimeAddonSnapshotCountMap(pendingSelections);
-  if (expectedSnapshotMap.size !== pendingSnapshotMap.size) {
-    return { applied: false, reason: "payment_snapshot_mismatch" };
-  }
+  const pendingSelectionIndexMap = buildOneTimeAddonSelectionIndexMap(day.addonSelections || []);
+  const matchedIndexes = new Set();
+
   for (const [key, count] of expectedSnapshotMap.entries()) {
-    if (pendingSnapshotMap.get(key) !== count) {
+    const pendingIndexes = (pendingSelectionIndexMap.get(key) || []).filter((index) => {
+      const selection = day.addonSelections[index];
+      return selection && selection.source === "pending_payment";
+    });
+    if (pendingIndexes.length < count) {
       return { applied: false, reason: "payment_snapshot_mismatch" };
     }
+    pendingIndexes.slice(0, count).forEach((index) => matchedIndexes.add(index));
   }
 
-  // Update them to paid
-  day.addonSelections = (day.addonSelections || []).map(s => {
-    if (s.source === "pending_payment") {
-      return { ...s, source: "paid", paidAt: new Date(), paymentId: payment._id };
+  const paidAt = new Date();
+  day.addonSelections = (day.addonSelections || []).map((selection, index) => {
+    if (matchedIndexes.has(index)) {
+      return { ...selection, source: "paid", paidAt, paymentId: payment._id };
     }
-    return s;
+    return selection;
   });
 
   day.markModified("addonSelections");

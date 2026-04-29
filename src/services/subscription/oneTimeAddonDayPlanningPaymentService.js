@@ -505,7 +505,7 @@ async function verifyOneTimeAddonDayPlanningPaymentFlow({
           const metadata = Object.assign({}, claimedPayment.metadata || {}, { unappliedReason: result.reason });
           await Payment.updateOne(
             { _id: claimedPayment._id },
-            { $set: { applied: true, status: "paid", metadata } },
+            { $set: { applied: false, status: "paid", metadata } },
             { session }
           );
         }

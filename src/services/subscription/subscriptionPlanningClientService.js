@@ -239,6 +239,7 @@ async function confirmDayPlanningForClient({
     if (
       err.code === "PLANNING_INCOMPLETE"
       || err.code === "PREMIUM_PAYMENT_REQUIRED"
+      || err.code === "ADDON_PAYMENT_REQUIRED"
       || err.code === "PREMIUM_OVERAGE_PAYMENT_REQUIRED"
       || err.code === "ONE_TIME_ADDON_PAYMENT_REQUIRED"
       || err.code === "SUB_INACTIVE"
