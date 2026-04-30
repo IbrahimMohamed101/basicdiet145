@@ -654,6 +654,19 @@ async function performDaySelectionUpdate({ userId, subscriptionId, date, selecti
        }
     }
 
+    const finalDayState = typeof day.toObject === "function" ? day.toObject() : day;
+    const finalDerivedState = buildDayCommercialState({
+      ...finalDayState,
+      status: day.status || "open",
+      plannerState: day.plannerState || "draft",
+      mealSlots: day.mealSlots,
+      plannerMeta: day.plannerMeta,
+      addonSelections: day.addonSelections,
+      premiumExtraPayment: day.premiumExtraPayment || null,
+    });
+    day.plannerRevisionHash = finalDerivedState.plannerRevisionHash;
+    day.premiumExtraPayment = finalDerivedState.premiumExtraPayment;
+
     await subInSession.save({ session });
     await day.save({ session });
 

@@ -210,7 +210,7 @@ async function seedBase() {
     displayCategoryId: proteinCategory._id,
     proteinFamilyKey: "seafood",
     premiumKey: "shrimp",
-    extraFeeHalala: 1500,
+    extraFeeHalala: 3000,
     isActive: true,
   });
   const carb = await BuilderCarb.create({
@@ -225,6 +225,24 @@ async function seedBase() {
     currency: "SAR",
     kind: "item",
     category: "juice",
+    billingMode: "flat_once",
+    isActive: true,
+  });
+  const addon1300 = await Addon.create({
+    name: { ar: "لبن", en: "Laban" },
+    priceHalala: 1300,
+    currency: "SAR",
+    kind: "item",
+    category: "snack",
+    billingMode: "flat_once",
+    isActive: true,
+  });
+  const addon1900 = await Addon.create({
+    name: { ar: "سلطة جانبية", en: "Side Salad" },
+    priceHalala: 1900,
+    currency: "SAR",
+    kind: "item",
+    category: "small_salad",
     billingMode: "flat_once",
     isActive: true,
   });
@@ -249,7 +267,7 @@ async function seedBase() {
     },
   });
 
-  return { user, token, subscription, standardProtein, premiumProtein, carb, addon };
+  return { user, token, subscription, standardProtein, premiumProtein, carb, addon, addon1300, addon1900 };
 }
 
 function fullSelection({ standardProtein, premiumProtein, carb }) {
@@ -309,8 +327,8 @@ async function runPremiumFlow(ctx) {
   assertTrue(premiumCreate.paymentId || premiumCreate.payment_id, "Premium payment creation returns payment id", premiumCreate);
   assertTrue(premiumCreate.payment_url, "Premium payment creation returns payment_url", premiumCreate);
   assertTrue(premiumCreate.invoice_id || premiumCreate.providerInvoiceId, "Premium payment creation returns invoice id", premiumCreate);
-  assertEqual(premiumCreate.amountHalala, 1500, "Premium amountHalala", premiumCreate);
-  assertEqual(premiumCreate.totalHalala, 1500, "Premium totalHalala", premiumCreate);
+  assertEqual(premiumCreate.amountHalala, 3000, "Premium amountHalala", premiumCreate);
+  assertEqual(premiumCreate.totalHalala, 3000, "Premium totalHalala", premiumCreate);
   assertTrue(premiumCreate.plannerRevisionHash, "Premium creation returns plannerRevisionHash", premiumCreate);
   assertTrue(premiumCreate.premiumExtraPayment, "Premium creation returns premiumExtraPayment", premiumCreate);
   assertTrue(premiumCreate.premiumSummary, "Premium creation returns premiumSummary", premiumCreate);
@@ -389,9 +407,9 @@ async function runUnifiedDayPaymentFlow(ctx) {
     plannerRevisionHash: premiumSaveRes.body.data.plannerRevisionHash,
   }, ctx.token);
   assertEqual(premiumCreateRes.status, 201, "Unified premium-only creation status", premiumCreateRes.body);
-  assertEqual(premiumCreateRes.body.data.premiumAmountHalala, 1500, "Unified premium-only premium amount", premiumCreateRes.body.data);
+  assertEqual(premiumCreateRes.body.data.premiumAmountHalala, 3000, "Unified premium-only premium amount", premiumCreateRes.body.data);
   assertEqual(premiumCreateRes.body.data.addonsAmountHalala, 0, "Unified premium-only add-on amount", premiumCreateRes.body.data);
-  assertEqual(premiumCreateRes.body.data.totalHalala, 1500, "Unified premium-only total", premiumCreateRes.body.data);
+  assertEqual(premiumCreateRes.body.data.totalHalala, 3000, "Unified premium-only total", premiumCreateRes.body.data);
 
   const premiumVerifyRes = await request("POST", `/api/subscriptions/${ctx.subscription._id}/days/${premiumOnlyDate}/payments/${premiumCreateRes.body.data.paymentId}/verify`, {}, ctx.token);
   assertEqual(premiumVerifyRes.status, 200, "Unified premium-only verify status", premiumVerifyRes.body);
@@ -402,27 +420,28 @@ async function runUnifiedDayPaymentFlow(ctx) {
   await SubscriptionDay.create({ subscriptionId: ctx.subscription._id, date: addonOnlyDate, status: "open" });
   const addonSaveRes = await request("PUT", `/api/subscriptions/${ctx.subscription._id}/days/${addonOnlyDate}/selection`, {
     ...standardSelection(ctx),
-    addonsOneTime: [String(ctx.addon._id)],
+    addonsOneTime: [String(ctx.addon1300._id), String(ctx.addon1900._id)],
   }, ctx.token);
   const addonCreateRes = await request("POST", `/api/subscriptions/${ctx.subscription._id}/days/${addonOnlyDate}/payments`, {
     plannerRevisionHash: addonSaveRes.body.data.plannerRevisionHash,
   }, ctx.token);
   assertEqual(addonCreateRes.status, 201, "Unified add-on-only creation status", addonCreateRes.body);
   assertEqual(addonCreateRes.body.data.premiumAmountHalala, 0, "Unified add-on-only premium amount", addonCreateRes.body.data);
-  assertEqual(addonCreateRes.body.data.addonsAmountHalala, 1000, "Unified add-on-only add-on amount", addonCreateRes.body.data);
-  assertEqual(addonCreateRes.body.data.totalHalala, 1000, "Unified add-on-only total", addonCreateRes.body.data);
+  assertEqual(addonCreateRes.body.data.addonsAmountHalala, 3200, "Unified add-on-only add-on amount", addonCreateRes.body.data);
+  assertEqual(addonCreateRes.body.data.totalHalala, 3200, "Unified add-on-only total", addonCreateRes.body.data);
 
   const addonVerifyRes = await request("POST", `/api/subscriptions/${ctx.subscription._id}/days/${addonOnlyDate}/payments/${addonCreateRes.body.data.paymentId}/verify`, {}, ctx.token);
   assertEqual(addonVerifyRes.status, 200, "Unified add-on-only verify status", addonVerifyRes.body);
   assertEqual(addonVerifyRes.body.data.paymentStatus, "paid", "Unified add-on-only paid", addonVerifyRes.body.data);
   assertEqual(addonVerifyRes.body.data.paymentRequirement.requiresPayment, false, "Unified add-on-only clears payment", addonVerifyRes.body.data.paymentRequirement);
   assertTrue(addonVerifyRes.body.data.addonSelections.every((selection) => selection.source === "paid"), "Unified add-on-only settles add-ons", addonVerifyRes.body.data.addonSelections);
+  assertTrue(addonVerifyRes.body.data.addonSelections.every((selection) => String(selection.paymentId) === String(addonCreateRes.body.data.paymentId)), "Unified add-on-only stamps paymentId", addonVerifyRes.body.data.addonSelections);
 
   const combinedDate = dateOffset(13);
   await SubscriptionDay.create({ subscriptionId: ctx.subscription._id, date: combinedDate, status: "open" });
   const combinedSaveRes = await request("PUT", `/api/subscriptions/${ctx.subscription._id}/days/${combinedDate}/selection`, {
     ...fullSelection(ctx),
-    addonsOneTime: [String(ctx.addon._id)],
+    addonsOneTime: [String(ctx.addon1300._id), String(ctx.addon1900._id)],
   }, ctx.token);
   assertEqual(combinedSaveRes.body.data.paymentRequirement.requiresPayment, true, "Unified combined save requires payment", combinedSaveRes.body.data.paymentRequirement);
 
@@ -433,13 +452,16 @@ async function runUnifiedDayPaymentFlow(ctx) {
   const combinedCreate = combinedCreateRes.body.data;
   assertTrue(combinedCreate.payment_id && combinedCreate.paymentId, "Unified combined returns both payment id aliases", combinedCreate);
   assertTrue(combinedCreate.invoice_id && combinedCreate.providerInvoiceId, "Unified combined returns both invoice id aliases", combinedCreate);
-  assertEqual(combinedCreate.premiumAmountHalala, 1500, "Unified combined premium amount", combinedCreate);
-  assertEqual(combinedCreate.addonsAmountHalala, 1000, "Unified combined add-on amount", combinedCreate);
-  assertEqual(combinedCreate.totalHalala, 2500, "Unified combined single invoice total", combinedCreate);
+  assertEqual(combinedCreate.premiumAmountHalala, 3000, "Unified combined premium amount", combinedCreate);
+  assertEqual(combinedCreate.addonsAmountHalala, 3200, "Unified combined add-on amount", combinedCreate);
+  assertEqual(combinedCreate.totalHalala, 6200, "Unified combined single invoice total", combinedCreate);
 
   const combinedPayment = await Payment.findById(combinedCreate.paymentId).lean();
   assertEqual(combinedPayment.type, "day_planning_payment", "Unified combined payment type", combinedPayment);
-  assertEqual(combinedPayment.amount, 2500, "Unified combined payment record amount", combinedPayment);
+  assertEqual(combinedPayment.amount, 6200, "Unified combined payment record amount", combinedPayment);
+  assertEqual(combinedPayment.metadata.premiumAmountHalala, 3000, "Unified combined payment metadata premium amount", combinedPayment.metadata);
+  assertEqual(combinedPayment.metadata.addonsAmountHalala, 3200, "Unified combined payment metadata add-on amount", combinedPayment.metadata);
+  assertEqual(combinedPayment.metadata.oneTimeAddonSelections.length, 2, "Unified combined payment snapshots add-ons", combinedPayment.metadata);
 
   const combinedVerifyRes = await request("POST", `/api/subscriptions/${ctx.subscription._id}/days/${combinedDate}/payments/${combinedCreate.paymentId}/verify`, {}, ctx.token);
   assertEqual(combinedVerifyRes.status, 200, "Unified combined verify status", combinedVerifyRes.body);
@@ -451,6 +473,7 @@ async function runUnifiedDayPaymentFlow(ctx) {
   assertEqual(combinedVerify.premiumSummary.pendingPaymentCount, 0, "Unified combined verify settles premium", combinedVerify.premiumSummary);
   assertEqual(combinedVerify.paymentRequirement.addonPendingPaymentCount, 0, "Unified combined verify settles add-ons", combinedVerify.paymentRequirement);
   assertTrue(combinedVerify.addonSelections.every((selection) => selection.source === "paid"), "Unified combined add-ons paid", combinedVerify.addonSelections);
+  assertTrue(combinedVerify.addonSelections.every((selection) => String(selection.paymentId) === String(combinedCreate.paymentId)), "Unified combined add-ons stamped with unified payment id", combinedVerify.addonSelections);
 
   const confirmRes = await request("POST", `/api/subscriptions/${ctx.subscription._id}/days/${combinedDate}/confirm`, {}, ctx.token);
   assertEqual(confirmRes.status, 200, "Unified combined confirm works after verify", confirmRes.body);
@@ -468,6 +491,39 @@ async function runUnifiedDayPaymentFlow(ctx) {
   }, ctx.token);
   assertEqual(staleRes.status, 409, "Unified stale plannerRevisionHash status", staleRes.body);
   assertEqual(staleRes.body.error.code, "DAY_PAYMENT_REVISION_MISMATCH", "Unified stale plannerRevisionHash code", staleRes.body);
+
+  const mutationDate = dateOffset(15);
+  await SubscriptionDay.create({ subscriptionId: ctx.subscription._id, date: mutationDate, status: "open" });
+  const mutationSaveRes = await request("PUT", `/api/subscriptions/${ctx.subscription._id}/days/${mutationDate}/selection`, {
+    ...standardSelection(ctx),
+    addonsOneTime: [String(ctx.addon1300._id)],
+  }, ctx.token);
+  const mutationCreateRes = await request("POST", `/api/subscriptions/${ctx.subscription._id}/days/${mutationDate}/payments`, {
+    plannerRevisionHash: mutationSaveRes.body.data.plannerRevisionHash,
+  }, ctx.token);
+  assertEqual(mutationCreateRes.status, 201, "Unified mutation safety creation status", mutationCreateRes.body);
+  assertEqual(mutationCreateRes.body.data.addonsAmountHalala, 1300, "Unified mutation safety original amount", mutationCreateRes.body.data);
+  await SubscriptionDay.updateOne(
+    { subscriptionId: ctx.subscription._id, date: mutationDate },
+    {
+      $push: {
+        addonSelections: {
+          addonId: ctx.addon1900._id,
+          name: "Side Salad",
+          category: "small_salad",
+          source: "pending_payment",
+          priceHalala: 1900,
+          currency: "SAR",
+          consumedAt: new Date(),
+        },
+      },
+    }
+  );
+  const mutationVerifyRes = await request("POST", `/api/subscriptions/${ctx.subscription._id}/days/${mutationDate}/payments/${mutationCreateRes.body.data.paymentId}/verify`, {}, ctx.token);
+  assertEqual(mutationVerifyRes.status, 409, "Unified mutation safety rejects changed add-ons", mutationVerifyRes.body);
+  assertEqual(mutationVerifyRes.body.error.code, "DAY_PAYMENT_REVISION_MISMATCH", "Unified mutation safety code", mutationVerifyRes.body);
+  const mutatedDay = await SubscriptionDay.findOne({ subscriptionId: ctx.subscription._id, date: mutationDate }).lean();
+  assertEqual(mutatedDay.addonSelections.filter((selection) => selection.source === "pending_payment").length, 2, "Unified mutation safety leaves pending add-ons unpaid", mutatedDay.addonSelections);
 
   return { create: combinedCreate, verify: combinedVerify };
 }
