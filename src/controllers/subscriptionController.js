@@ -169,6 +169,12 @@ const {
   preparePickupForClient,
 } = require("../services/subscription/subscriptionPickupClientService");
 const {
+  getPickupLocationsSetting,
+} = require("../services/subscription/subscriptionFulfillmentSummaryService");
+const {
+  getDayFulfillmentStatusForClient,
+} = require("../services/subscription/subscriptionDayFulfillmentStatusService");
+const {
   skipDayForClient,
   skipRangeForClient,
   unskipDayForClient,
@@ -1708,7 +1714,7 @@ async function getSubscriptionTimeline(req, res) {
     return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
   }
 
-  const timeline = await buildSubscriptionTimeline(id);
+  const timeline = await buildSubscriptionTimeline(id, { lang });
 
   return res.status(200).json({
     status: true,
@@ -2125,6 +2131,7 @@ async function getSubscriptionDays(req, res) {
   const days = await SubscriptionDay.find({ subscriptionId: id }).sort({ date: 1 }).lean();
   const serializedDays = days.map((day) => serializeSubscriptionDayForClient(sub, day));
   const catalog = await loadWalletCatalogMaps({ days: serializedDays, lang });
+  const pickupLocations = await getPickupLocationsSetting();
   const mappedDays = serializedDays.map((day) => shapeMealPlannerReadFields({
     subscription: sub,
     day: localizeSubscriptionDayReadPayload(day, {
@@ -2132,6 +2139,7 @@ async function getSubscriptionDays(req, res) {
       addonNames: catalog.addonNames,
     }),
     lang,
+    pickupLocations,
   }));
   return res.status(200).json({ status: true, data: mappedDays });
 }
@@ -2158,6 +2166,7 @@ async function getSubscriptionDay(req, res) {
   }
   const serializedDay = serializeSubscriptionDayForClient(sub, day);
   const catalog = await loadWalletCatalogMaps({ days: [serializedDay], lang });
+  const pickupLocations = await getPickupLocationsSetting();
   const localizedDay = localizeSubscriptionDayReadPayload(serializedDay, {
     lang,
     addonNames: catalog.addonNames,
@@ -2168,6 +2177,7 @@ async function getSubscriptionDay(req, res) {
       subscription: sub,
       day: localizedDay,
       lang,
+      pickupLocations,
     }),
   });
 }
@@ -2195,6 +2205,7 @@ async function getSubscriptionToday(req, res) {
   }
   const serializedDay = serializeSubscriptionDayForClient(sub, day);
   const catalog = await loadWalletCatalogMaps({ days: [serializedDay], lang });
+  const pickupLocations = await getPickupLocationsSetting();
   const localizedDay = localizeSubscriptionDayReadPayload(serializedDay, {
     lang,
     addonNames: catalog.addonNames,
@@ -2205,6 +2216,7 @@ async function getSubscriptionToday(req, res) {
       subscription: sub,
       day: localizedDay,
       lang,
+      pickupLocations,
     }),
   });
 }
@@ -2518,6 +2530,21 @@ async function getPickupStatus(req, res) {
   return res.status(result.status).json({ status: true, data: result.data });
 }
 
+async function getDayFulfillmentStatus(req, res) {
+  const { id, date } = req.params;
+  const result = await getDayFulfillmentStatusForClient({
+    subscriptionId: id,
+    date,
+    userId: req.userId,
+    lang: getRequestLang(req),
+    ensureActiveFn: ensureActive,
+  });
+  if (!result.ok) {
+    return errorResponse(res, result.status, result.code, result.message, result.details);
+  }
+  return res.status(result.status).json({ status: true, data: result.data });
+}
+
 async function updateDeliveryDetails(req, res, runtimeOverrides = null) {
   const { id } = req.params;
   const lang = getRequestLang(req);
@@ -2705,6 +2732,7 @@ module.exports = {
   addOneTimeAddon,
   preparePickup,
   getPickupStatus,
+  getDayFulfillmentStatus,
   updateDeliveryDetails,
   updateDeliveryDetailsForDate,
   transitionDay,

@@ -17,6 +17,9 @@ const {
   applySubscriptionDayFulfillmentState,
 } = require("./subscriptionDayFulfillmentStateService");
 const {
+  buildFulfillmentReadFields,
+} = require("./subscriptionFulfillmentSummaryService");
+const {
   buildCanonicalPlanningView,
   isCanonicalDayPlanningEligible,
 } = require("./subscriptionDayPlanningService");
@@ -128,7 +131,7 @@ function applyLegacyMealPlannerResponseMirrors({ subscription = null, day, lang 
   return mirrored;
 }
 
-function shapeMealPlannerReadFields({ subscription = null, day, lang = "ar" }) {
+function shapeMealPlannerReadFields({ subscription = null, day, lang = "ar", pickupLocations = [] }) {
   if (!day || typeof day !== "object") return day;
 
   const shaped = applySubscriptionDayFulfillmentState({
@@ -148,8 +151,20 @@ function shapeMealPlannerReadFields({ subscription = null, day, lang = "ar" }) {
     ? resolveReadLabel("paymentBlockingReasons", shaped.paymentRequirement.blockingReason, lang)
     : null;
 
+  const fulfillmentReadFields = subscription
+    ? buildFulfillmentReadFields({
+      subscription,
+      day: shaped,
+      pickupLocations,
+      lang,
+      fulfillmentState: shaped,
+      statusLabel: resolveReadLabel("dayStatuses", shaped.status, lang),
+    })
+    : {};
+
   return {
     ...shaped,
+    ...fulfillmentReadFields,
     rules: getMealPlannerRules(),
     commercialStateLabel,
     premiumExtraPayment: {

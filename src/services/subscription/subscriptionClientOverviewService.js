@@ -9,6 +9,10 @@ const { resolvePickupPreparationState } = require("./subscriptionPickupPreparati
 const { serializeSubscriptionForClientWithGuard } = require("./subscriptionClientSerializationService");
 const { getRestaurantHours } = require("../restaurantHoursService");
 const { pickLang } = require("../../utils/i18n");
+const {
+  buildFulfillmentReadFields,
+  getPickupLocationsSetting,
+} = require("./subscriptionFulfillmentSummaryService");
 const { 
   getPremiumDisplayName, 
   resolvePremiumKeyFromName,
@@ -326,6 +330,7 @@ function defaultRuntime() {
         date,
       }).lean();
     },
+    getPickupLocationsSetting,
     resolvePickupPreparationState,
   };
 }
@@ -364,6 +369,7 @@ async function buildCurrentSubscriptionOverview({ userId, lang, runtime: runtime
   const restaurantHours = await runtime.getRestaurantHoursSettings();
   const premiumCatalog = await loadPremiumCatalogForOverview(lang);
   const premiumSummary = buildSubscriptionPremiumBalanceSummary(sub, premiumCatalog, lang);
+  const pickupLocations = await runtime.getPickupLocationsSetting();
   await validateAndNormalizePremiumBalance(serializedSubscription, sub, premiumCatalog);
 
   let pickupPreparation = null;
@@ -397,6 +403,14 @@ async function buildCurrentSubscriptionOverview({ userId, lang, runtime: runtime
     status: true,
     data: {
       ...serializedSubscription,
+      ...buildFulfillmentReadFields({
+        subscription: sub,
+        day: null,
+        pickupLocations,
+        lang,
+        fulfillmentState: pickupPreparation || {},
+        statusLabel: serializedSubscription.statusLabel,
+      }),
       ...skipUsage,
       businessDate: restaurantHours.businessDate,
       pickupPreparation,

@@ -12,6 +12,10 @@ const {
   buildPickupStatusLabel,
   buildPickupStatusMessage,
 } = require("./pickupLocalizationService");
+const {
+  buildPickupLocationSummary,
+  getPickupLocationsSetting,
+} = require("./subscriptionFulfillmentSummaryService");
 
 const PICKUP_STEP_MAP = {
   open: 1,
@@ -246,6 +250,8 @@ async function getPickupStatusForClient({
     }
 
     const restaurantHours = await getRestaurantHoursSettingsFn();
+    const pickupLocations = await getPickupLocationsSetting();
+    const pickupLocation = buildPickupLocationSummary(subscription, pickupLocations, lang);
     const blockReason = resolvePickupPrepareBlockReason({
       subscription,
       day,
@@ -289,6 +295,7 @@ async function getPickupStatusForClient({
       requestBlockedMessage: blockReason ? blockReason.message : null,
       requestBlockedMessageAr: blockReason ? blockReason.messageAr : null,
       requestBlockedMessageEn: blockReason ? blockReason.messageEn : null,
+      pickupLocation,
       restaurantHours: {
         openTime: restaurantHours.openTime,
         closeTime: restaurantHours.closeTime,

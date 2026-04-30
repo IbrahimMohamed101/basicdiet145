@@ -452,6 +452,87 @@ router.get("/:id/days/:date/pickup/status", asyncHandler(controller.getPickupSta
 
 /**
  * @openapi
+ * /subscriptions/{id}/days/{date}/fulfillment/status:
+ *   get:
+ *     summary: Get unified fulfillment status for a day (pickup or delivery)
+ *     description: >
+ *       Lightweight polling endpoint for mobile. Returns the current SubscriptionDay.status,
+ *       fulfillment summary, and scheduling hints. Mobile should poll this endpoint and stop
+ *       when isTerminal is true. pollingIntervalSeconds advises the recommended poll frequency.
+ *     tags: [Subscriptions]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - name: date
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: date
+ *     responses:
+ *       200:
+ *         description: Fulfillment status retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     subscriptionId:
+ *                       type: string
+ *                     date:
+ *                       type: string
+ *                     deliveryMode:
+ *                       type: string
+ *                       enum: [pickup, delivery]
+ *                     status:
+ *                       type: string
+ *                       description: Raw SubscriptionDay.status
+ *                     statusLabel:
+ *                       type: string
+ *                     message:
+ *                       type: string
+ *                     nextAction:
+ *                       type: string
+ *                     isTerminal:
+ *                       type: boolean
+ *                       description: If true, mobile should stop polling
+ *                     pollingIntervalSeconds:
+ *                       type: integer
+ *                       nullable: true
+ *                       description: Recommended polling interval in seconds, or null when terminal
+ *                     lastUpdatedAt:
+ *                       type: string
+ *                       format: date-time
+ *                       nullable: true
+ *                     pickupCode:
+ *                       type: string
+ *                       nullable: true
+ *                     planningReady:
+ *                       type: boolean
+ *                     fulfillmentReady:
+ *                       type: boolean
+ *                     isFulfillable:
+ *                       type: boolean
+ *                     canBePrepared:
+ *                       type: boolean
+ *       404:
+ *         description: Subscription or day not found
+ */
+router.get("/:id/days/:date/fulfillment/status", asyncHandler(controller.getDayFulfillmentStatus));
+
+/**
+ * @openapi
  * /subscriptions/{id}/days/{date}:
  *   get:
  *     summary: Get subscription day details including planner view

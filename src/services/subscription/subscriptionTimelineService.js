@@ -14,6 +14,11 @@ const { getCompensationSnapshot } = require("./subscriptionCompensationService")
 const { buildDayCommercialState } = require("./subscriptionDayCommercialStateService");
 const { buildSubscriptionDayFulfillmentState } = require("./subscriptionDayFulfillmentStateService");
 const { getRestaurantBusinessDate } = require("../restaurantHoursService");
+const {
+  buildFulfillmentReadFields,
+  getPickupLocationsSetting,
+} = require("./subscriptionFulfillmentSummaryService");
+const { resolveReadLabel } = require("../../utils/subscription/subscriptionLocalizationCommon");
 
 /**
  * @typedef {import("../../types/subscriptionTimeline").TimelineDay} TimelineDay
@@ -312,7 +317,8 @@ function buildTimelineMonthSummary(days = []) {
   return Array.from(byMonth.values());
 }
 
-async function buildSubscriptionTimeline(subscriptionId) {
+async function buildSubscriptionTimeline(subscriptionId, options = {}) {
+  const lang = options && options.lang === "en" ? "en" : "ar";
   const businessDate = await getRestaurantBusinessDate();
   let subscription = await Subscription.findById(subscriptionId).lean();
   if (!subscription) {
@@ -339,9 +345,10 @@ async function buildSubscriptionTimeline(subscriptionId) {
   const endDateStr = toKSADateString(subscription.endDate);
   const validityEndDateStr = toKSADateString(subscription.validityEndDate || subscription.endDate);
 
-  const [days, compensation] = await Promise.all([
+  const [days, compensation, pickupLocations] = await Promise.all([
     SubscriptionDay.find({ subscriptionId }).lean(),
     getCompensationSnapshot(subscriptionId),
+    getPickupLocationsSetting(),
   ]);
   const dayMap = new Map(days.map((day) => [day.date, day]));
   const extensionSourceMap = buildExtensionSourceMap(compensation.tokens, endDateStr);
@@ -397,10 +404,25 @@ async function buildSubscriptionTimeline(subscriptionId) {
       derivedState: commercialState,
       today: businessDate,
     });
+    const dayForFulfillment = dbDay || { date: currentDate, status: "open" };
+    const statusLabel = resolveReadLabel("timelineStatuses", status, lang)
+      || resolveReadLabel("dayStatuses", dayForFulfillment.status, lang);
+    const fulfillmentReadFields = buildFulfillmentReadFields({
+      subscription,
+      day: dayForFulfillment,
+      pickupLocations,
+      lang,
+      fulfillmentState: {
+        ...commercialState,
+        ...fulfillmentState,
+      },
+      statusLabel,
+    });
 
     timelineDays.push({
       date: currentDate,
       status,
+      deliveryMode: subscription.deliveryMode || null,
       source: isExtension ? (extensionSourceMap.get(currentDate) || "freeze_compensation") : "base",
       locked: Boolean(dbDay && (dbDay.lockedSnapshot || status === "locked")),
       isExtension,
@@ -411,6 +433,7 @@ async function buildSubscriptionTimeline(subscriptionId) {
       mealSlots: normalizeTimelineMealSlots(dbDay),
       ...commercialState,
       ...fulfillmentState,
+      ...fulfillmentReadFields,
     });
   }
 
