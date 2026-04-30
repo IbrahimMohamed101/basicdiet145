@@ -36,6 +36,28 @@ function normalizeCurrencyValue(value) {
   return String(value || SYSTEM_CURRENCY).trim().toUpperCase();
 }
 
+function buildPendingPremiumSnapshot(day) {
+  const pending = (Array.isArray(day && day.mealSlots) ? day.mealSlots : [])
+    .filter((slot) => slot && slot.isPremium && slot.premiumSource === "pending_payment");
+
+  const premiumSelections = pending.map((slot) => ({
+    slotIndex: normalizeNumber(slot.slotIndex),
+    slotKey: slot.slotKey ? String(slot.slotKey) : "",
+    selectionType: slot.selectionType ? String(slot.selectionType) : "",
+    proteinId: slot.proteinId ? String(slot.proteinId) : null,
+    premiumKey: slot.premiumKey ? String(slot.premiumKey) : null,
+    unitExtraFeeHalala: normalizeNumber(slot.premiumExtraFeeHalala),
+    currency: SYSTEM_CURRENCY,
+  }));
+
+  return {
+    premiumSelections,
+    extraPremiumCount: premiumSelections.length,
+    premiumAmountHalala: premiumSelections.reduce((sum, item) => sum + normalizeNumber(item.unitExtraFeeHalala), 0),
+    currency: SYSTEM_CURRENCY,
+  };
+}
+
 function buildPendingAddonSnapshot(day) {
   const pending = (Array.isArray(day && day.addonSelections) ? day.addonSelections : [])
     .filter((selection) => selection && selection.source === "pending_payment");
@@ -123,7 +145,8 @@ async function createUnifiedDayPaymentFlow({
       });
     }
 
-    const premiumAmountHalala = normalizeNumber(derivedDay.premiumExtraPayment && derivedDay.premiumExtraPayment.amountHalala);
+    const premiumSnapshot = buildPendingPremiumSnapshot(derivedDay);
+    const premiumAmountHalala = premiumSnapshot.premiumAmountHalala;
     const addonSnapshot = buildPendingAddonSnapshot(derivedDay);
     const addonsAmountHalala = addonSnapshot.addonsAmountHalala;
     const totalHalala = premiumAmountHalala + addonsAmountHalala;
@@ -147,7 +170,7 @@ async function createUnifiedDayPaymentFlow({
       invoice = await runtime.createInvoice({
         amount: totalHalala,
         description: buildPaymentDescription("mealPlannerPayment", lang, {
-          count: normalizeNumber(derivedDay.premiumSummary && derivedDay.premiumSummary.pendingPaymentCount)
+          count: premiumSnapshot.extraPremiumCount
             + addonSnapshot.oneTimeAddonCount,
         }),
         callbackUrl: `${appUrl}/api/webhooks/moyasar`,
@@ -163,7 +186,8 @@ async function createUnifiedDayPaymentFlow({
           premiumAmountHalala,
           addonsAmountHalala,
           totalHalala,
-          extraPremiumCount: normalizeNumber(derivedDay.premiumExtraPayment && derivedDay.premiumExtraPayment.extraPremiumCount),
+          premiumSelections: premiumSnapshot.premiumSelections,
+          extraPremiumCount: premiumSnapshot.extraPremiumCount,
           oneTimeAddonSelections: addonSnapshot.oneTimeAddonSelections,
           oneTimeAddonCount: addonSnapshot.oneTimeAddonCount,
           currency: SYSTEM_CURRENCY,
@@ -216,7 +240,7 @@ async function createUnifiedDayPaymentFlow({
             "premiumExtraPayment.providerInvoiceId": invoice.id,
             "premiumExtraPayment.createdAt": derivedDay.premiumExtraPayment.createdAt || new Date(),
             "premiumExtraPayment.amountHalala": premiumAmountHalala,
-            "premiumExtraPayment.extraPremiumCount": normalizeNumber(derivedDay.premiumExtraPayment.extraPremiumCount),
+            "premiumExtraPayment.extraPremiumCount": premiumSnapshot.extraPremiumCount,
             "premiumExtraPayment.currency": invoiceCurrency,
             "premiumExtraPayment.reused": false,
           },

@@ -84,6 +84,55 @@ function sumOneTimeAddonSnapshot(items = []) {
   );
 }
 
+function normalizePremiumSnapshotKey(item = {}) {
+  const slotIndex = normalizeNumber(item.slotIndex);
+  const slotKey = String(item.slotKey || "");
+  const premiumKey = String(item.premiumKey || "");
+  const unitExtraFeeHalala = normalizeNumber(item.unitExtraFeeHalala || item.premiumExtraFeeHalala || 0);
+  return `${slotIndex}::${slotKey}::${premiumKey}::${unitExtraFeeHalala}`;
+}
+
+function buildPremiumSnapshotCountMap(items = []) {
+  return (Array.isArray(items) ? items : []).reduce((map, item) => {
+    const key = normalizePremiumSnapshotKey(item);
+    map.set(key, (map.get(key) || 0) + 1);
+    return map;
+  }, new Map());
+}
+
+function sumPremiumSnapshot(items = []) {
+  return (Array.isArray(items) ? items : []).reduce(
+    (sum, item) => sum + normalizeNumber(item && (item.unitExtraFeeHalala !== undefined ? item.unitExtraFeeHalala : item.premiumExtraFeeHalala)),
+    0
+  );
+}
+
+function validatePendingPremiumSnapshot({ day, expectedSelections, expectedAmountHalala = null }) {
+  if (!Array.isArray(expectedSelections)) return { valid: true, skipped: true };
+
+  const expectedAmount = sumPremiumSnapshot(expectedSelections);
+  if (
+    expectedAmountHalala !== null
+    && expectedAmountHalala !== undefined
+    && expectedAmount !== normalizeNumber(expectedAmountHalala)
+  ) {
+    return { valid: false, reason: "payment_snapshot_mismatch" };
+  }
+
+  const expectedSnapshotMap = buildPremiumSnapshotCountMap(expectedSelections);
+  const pendingSlots = (Array.isArray(day && day.mealSlots) ? day.mealSlots : [])
+    .filter((slot) => slot && slot.isPremium && slot.premiumSource === "pending_payment");
+  const pendingMap = buildPremiumSnapshotCountMap(pendingSlots);
+
+  for (const [key, count] of expectedSnapshotMap.entries()) {
+    if ((pendingMap.get(key) || 0) < count) {
+      return { valid: false, reason: "payment_snapshot_mismatch" };
+    }
+  }
+
+  return { valid: true, premiumSelectionsSettled: expectedSelections.length };
+}
+
 async function settlePaidOneTimeAddonSelections({
   day,
   payment,
@@ -296,6 +345,15 @@ async function applyUnifiedDayPlanningPayment({ payment, session, source = "syst
 
   const results = [];
   if (Number(metadata.premiumAmountHalala || 0) > 0) {
+    const premiumSnapshotResult = validatePendingPremiumSnapshot({
+      day,
+      expectedSelections: metadata.premiumSelections,
+      expectedAmountHalala: metadata.premiumAmountHalala,
+    });
+    if (!premiumSnapshotResult.valid) {
+      return { applied: false, reason: premiumSnapshotResult.reason || "payment_snapshot_mismatch" };
+    }
+
     const premiumResult = await settlePaidPremiumExtraDayPayment({
       subscription,
       day,
@@ -308,7 +366,11 @@ async function applyUnifiedDayPlanningPayment({ payment, session, source = "syst
         : null,
     });
     if (!premiumResult.applied) return premiumResult;
-    results.push(premiumResult);
+    results.push({
+      ...premiumResult,
+      premiumSelectionsSettled: premiumSnapshotResult.premiumSelectionsSettled,
+      premiumSnapshotValidated: !premiumSnapshotResult.skipped,
+    });
   }
 
   if (Number(metadata.addonsAmountHalala || 0) > 0) {

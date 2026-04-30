@@ -416,6 +416,57 @@ async function runUnifiedDayPaymentFlow(ctx) {
   assertEqual(premiumVerifyRes.body.data.paymentStatus, "paid", "Unified premium-only paid", premiumVerifyRes.body.data);
   assertEqual(premiumVerifyRes.body.data.paymentRequirement.requiresPayment, false, "Unified premium-only clears payment", premiumVerifyRes.body.data.paymentRequirement);
 
+  await SubscriptionDay.updateOne(
+    { subscriptionId: ctx.subscription._id, date: premiumOnlyDate },
+    {
+      $set: {
+        addonSelections: [
+          {
+            addonId: ctx.addon1300._id,
+            name: "Laban",
+            category: "snack",
+            source: "pending_payment",
+            priceHalala: 1300,
+            currency: "SAR",
+            consumedAt: new Date(),
+          },
+          {
+            addonId: ctx.addon1900._id,
+            name: "Side Salad",
+            category: "small_salad",
+            source: "pending_payment",
+            priceHalala: 1900,
+            currency: "SAR",
+            consumedAt: new Date(),
+          },
+        ],
+      },
+    }
+  );
+  const premiumPaidAddonDayRes = await request("GET", `/api/subscriptions/${ctx.subscription._id}/days/${premiumOnlyDate}`, null, ctx.token);
+  assertEqual(premiumPaidAddonDayRes.status, 200, "Unified premium-paid add-on day status", premiumPaidAddonDayRes.body);
+  assertEqual(premiumPaidAddonDayRes.body.data.premiumSummary.pendingPaymentCount, 0, "Unified premium-paid add-on state keeps premium settled", premiumPaidAddonDayRes.body.data.premiumSummary);
+  assertEqual(premiumPaidAddonDayRes.body.data.premiumSummary.paidExtraCount, 1, "Unified premium-paid add-on state keeps paid premium count", premiumPaidAddonDayRes.body.data.premiumSummary);
+  assertEqual(premiumPaidAddonDayRes.body.data.paymentRequirement.addonPendingPaymentCount, 2, "Unified premium-paid add-on state has pending add-ons", premiumPaidAddonDayRes.body.data.paymentRequirement);
+
+  const premiumPaidAddonCreateRes = await request("POST", `/api/subscriptions/${ctx.subscription._id}/days/${premiumOnlyDate}/payments`, {
+    plannerRevisionHash: premiumPaidAddonDayRes.body.data.plannerRevisionHash,
+  }, ctx.token);
+  assertEqual(premiumPaidAddonCreateRes.status, 201, "Unified premium-paid add-on creation status", premiumPaidAddonCreateRes.body);
+  assertEqual(premiumPaidAddonCreateRes.body.data.premiumAmountHalala, 0, "Unified premium-paid add-on does not recharge premium", premiumPaidAddonCreateRes.body.data);
+  assertEqual(premiumPaidAddonCreateRes.body.data.addonsAmountHalala, 3200, "Unified premium-paid add-on charges add-ons", premiumPaidAddonCreateRes.body.data);
+  assertEqual(premiumPaidAddonCreateRes.body.data.totalHalala, 3200, "Unified premium-paid add-on total", premiumPaidAddonCreateRes.body.data);
+  const premiumPaidAddonPayment = await Payment.findById(premiumPaidAddonCreateRes.body.data.paymentId).lean();
+  assertEqual(premiumPaidAddonPayment.metadata.premiumSelections.length, 0, "Unified premium-paid add-on metadata has no premium snapshot", premiumPaidAddonPayment.metadata);
+  assertEqual(premiumPaidAddonPayment.metadata.oneTimeAddonSelections.length, 2, "Unified premium-paid add-on metadata snapshots add-ons", premiumPaidAddonPayment.metadata);
+
+  const premiumPaidAddonVerifyRes = await request("POST", `/api/subscriptions/${ctx.subscription._id}/days/${premiumOnlyDate}/payments/${premiumPaidAddonCreateRes.body.data.paymentId}/verify`, {}, ctx.token);
+  assertEqual(premiumPaidAddonVerifyRes.status, 200, "Unified premium-paid add-on verify status", premiumPaidAddonVerifyRes.body);
+  assertEqual(premiumPaidAddonVerifyRes.body.data.premiumSummary.pendingPaymentCount, 0, "Unified premium-paid add-on verify leaves premium settled", premiumPaidAddonVerifyRes.body.data.premiumSummary);
+  assertEqual(premiumPaidAddonVerifyRes.body.data.premiumSummary.paidExtraCount, 1, "Unified premium-paid add-on verify does not duplicate paid premium", premiumPaidAddonVerifyRes.body.data.premiumSummary);
+  assertEqual(premiumPaidAddonVerifyRes.body.data.paymentRequirement.addonPendingPaymentCount, 0, "Unified premium-paid add-on verify settles add-ons", premiumPaidAddonVerifyRes.body.data.paymentRequirement);
+  assertTrue(premiumPaidAddonVerifyRes.body.data.addonSelections.every((selection) => selection.source === "paid"), "Unified premium-paid add-ons paid", premiumPaidAddonVerifyRes.body.data.addonSelections);
+
   const addonOnlyDate = dateOffset(12);
   await SubscriptionDay.create({ subscriptionId: ctx.subscription._id, date: addonOnlyDate, status: "open" });
   const addonSaveRes = await request("PUT", `/api/subscriptions/${ctx.subscription._id}/days/${addonOnlyDate}/selection`, {
@@ -436,6 +487,31 @@ async function runUnifiedDayPaymentFlow(ctx) {
   assertEqual(addonVerifyRes.body.data.paymentRequirement.requiresPayment, false, "Unified add-on-only clears payment", addonVerifyRes.body.data.paymentRequirement);
   assertTrue(addonVerifyRes.body.data.addonSelections.every((selection) => selection.source === "paid"), "Unified add-on-only settles add-ons", addonVerifyRes.body.data.addonSelections);
   assertTrue(addonVerifyRes.body.data.addonSelections.every((selection) => String(selection.paymentId) === String(addonCreateRes.body.data.paymentId)), "Unified add-on-only stamps paymentId", addonVerifyRes.body.data.addonSelections);
+
+  const addonPaidPremiumSaveRes = await request("PUT", `/api/subscriptions/${ctx.subscription._id}/days/${addonOnlyDate}/selection`, {
+    ...fullSelection(ctx),
+    addonsOneTime: [String(ctx.addon1300._id), String(ctx.addon1900._id)],
+  }, ctx.token);
+  assertEqual(addonPaidPremiumSaveRes.status, 200, "Unified addon-paid premium save status", addonPaidPremiumSaveRes.body);
+  assertEqual(addonPaidPremiumSaveRes.body.data.paymentRequirement.premiumPendingPaymentCount, 1, "Unified addon-paid premium save has pending premium", addonPaidPremiumSaveRes.body.data.paymentRequirement);
+  assertEqual(addonPaidPremiumSaveRes.body.data.paymentRequirement.addonPendingPaymentCount, 0, "Unified addon-paid premium save keeps add-ons settled", addonPaidPremiumSaveRes.body.data.paymentRequirement);
+
+  const addonPaidPremiumCreateRes = await request("POST", `/api/subscriptions/${ctx.subscription._id}/days/${addonOnlyDate}/payments`, {
+    plannerRevisionHash: addonPaidPremiumSaveRes.body.data.plannerRevisionHash,
+  }, ctx.token);
+  assertEqual(addonPaidPremiumCreateRes.status, 201, "Unified addon-paid premium creation status", addonPaidPremiumCreateRes.body);
+  assertEqual(addonPaidPremiumCreateRes.body.data.premiumAmountHalala, 3000, "Unified addon-paid premium charges premium", addonPaidPremiumCreateRes.body.data);
+  assertEqual(addonPaidPremiumCreateRes.body.data.addonsAmountHalala, 0, "Unified addon-paid premium does not recharge add-ons", addonPaidPremiumCreateRes.body.data);
+  assertEqual(addonPaidPremiumCreateRes.body.data.totalHalala, 3000, "Unified addon-paid premium total", addonPaidPremiumCreateRes.body.data);
+  const addonPaidPremiumPayment = await Payment.findById(addonPaidPremiumCreateRes.body.data.paymentId).lean();
+  assertEqual(addonPaidPremiumPayment.metadata.premiumSelections.length, 1, "Unified addon-paid premium metadata snapshots premium", addonPaidPremiumPayment.metadata);
+  assertEqual(addonPaidPremiumPayment.metadata.oneTimeAddonSelections.length, 0, "Unified addon-paid premium metadata has no add-on snapshot", addonPaidPremiumPayment.metadata);
+
+  const addonPaidPremiumVerifyRes = await request("POST", `/api/subscriptions/${ctx.subscription._id}/days/${addonOnlyDate}/payments/${addonPaidPremiumCreateRes.body.data.paymentId}/verify`, {}, ctx.token);
+  assertEqual(addonPaidPremiumVerifyRes.status, 200, "Unified addon-paid premium verify status", addonPaidPremiumVerifyRes.body);
+  assertEqual(addonPaidPremiumVerifyRes.body.data.premiumSummary.pendingPaymentCount, 0, "Unified addon-paid premium verify settles premium", addonPaidPremiumVerifyRes.body.data.premiumSummary);
+  assertEqual(addonPaidPremiumVerifyRes.body.data.paymentRequirement.addonPendingPaymentCount, 0, "Unified addon-paid premium verify leaves add-ons settled", addonPaidPremiumVerifyRes.body.data.paymentRequirement);
+  assertTrue(addonPaidPremiumVerifyRes.body.data.addonSelections.every((selection) => selection.source === "paid"), "Unified addon-paid premium add-ons remain paid", addonPaidPremiumVerifyRes.body.data.addonSelections);
 
   const combinedDate = dateOffset(13);
   await SubscriptionDay.create({ subscriptionId: ctx.subscription._id, date: combinedDate, status: "open" });
@@ -474,6 +550,12 @@ async function runUnifiedDayPaymentFlow(ctx) {
   assertEqual(combinedVerify.paymentRequirement.addonPendingPaymentCount, 0, "Unified combined verify settles add-ons", combinedVerify.paymentRequirement);
   assertTrue(combinedVerify.addonSelections.every((selection) => selection.source === "paid"), "Unified combined add-ons paid", combinedVerify.addonSelections);
   assertTrue(combinedVerify.addonSelections.every((selection) => String(selection.paymentId) === String(combinedCreate.paymentId)), "Unified combined add-ons stamped with unified payment id", combinedVerify.addonSelections);
+
+  const satisfiedCreateRes = await request("POST", `/api/subscriptions/${ctx.subscription._id}/days/${combinedDate}/payments`, {
+    plannerRevisionHash: combinedVerify.plannerRevisionHash,
+  }, ctx.token);
+  assertEqual(satisfiedCreateRes.status, 409, "Unified satisfied payment creation status", satisfiedCreateRes.body);
+  assertEqual(satisfiedCreateRes.body.error.code, "DAY_PAYMENT_NOT_REQUIRED", "Unified satisfied payment creation code", satisfiedCreateRes.body);
 
   const confirmRes = await request("POST", `/api/subscriptions/${ctx.subscription._id}/days/${combinedDate}/confirm`, {}, ctx.token);
   assertEqual(confirmRes.status, 200, "Unified combined confirm works after verify", confirmRes.body);
