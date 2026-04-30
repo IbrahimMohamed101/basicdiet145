@@ -63,6 +63,7 @@ async function buildPricedOneTimeAddonPaymentSnapshot({ day } = {}) {
 
   const pricedItems = pending.map((item) => {
     return {
+      addonSelectionId: item._id ? String(item._id) : null,
       addonId: String(item.addonId),
       name: item.name,
       category: item.category,

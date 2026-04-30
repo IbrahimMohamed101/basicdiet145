@@ -54,22 +54,65 @@ function normalizeOneTimeAddonSnapshotKey(item = {}) {
   return `${addonId}::${unitPriceHalala}::${currency}`;
 }
 
-function buildOneTimeAddonSnapshotCountMap(items = []) {
-  return items.reduce((map, item) => {
-    const key = normalizeOneTimeAddonSnapshotKey(item);
-    map.set(key, (map.get(key) || 0) + 1);
-    return map;
-  }, new Map());
+function normalizeOneTimeAddonSelectionId(item = {}) {
+  const rawId = item.addonSelectionId || item.selectionId || item._id || item.id || "";
+  return rawId ? String(rawId) : "";
 }
 
-function buildOneTimeAddonSelectionIndexMap(items = []) {
-  return items.reduce((map, item, index) => {
-    const key = normalizeOneTimeAddonSnapshotKey(item);
-    const indexes = map.get(key) || [];
-    indexes.push(index);
-    map.set(key, indexes);
-    return map;
-  }, new Map());
+function isSelectionPaidByPayment(selection = {}, payment) {
+  return Boolean(
+    selection
+      && selection.source === "paid"
+      && selection.paymentId
+      && payment
+      && payment._id
+      && String(selection.paymentId) === String(payment._id)
+  );
+}
+
+function matchesOneTimeAddonSnapshotItem(selection = {}, snapshot = {}, payment) {
+  const snapshotSelectionId = normalizeOneTimeAddonSelectionId(snapshot);
+  const persistedSelectionId = normalizeOneTimeAddonSelectionId(selection);
+  const sourceMatches = selection.source === "pending_payment" || isSelectionPaidByPayment(selection, payment);
+  if (!sourceMatches) return false;
+  if (snapshotSelectionId && persistedSelectionId) {
+    return snapshotSelectionId === persistedSelectionId;
+  }
+  return normalizeOneTimeAddonSnapshotKey(selection) === normalizeOneTimeAddonSnapshotKey(snapshot);
+}
+
+function matchOneTimeAddonSnapshotSelections({ day, payment, expectedSelections }) {
+  const selections = Array.isArray(day && day.addonSelections) ? day.addonSelections : [];
+  const matchedIndexes = new Set();
+  const pendingIndexes = new Set();
+  let alreadyPaidCount = 0;
+
+  for (const snapshot of expectedSelections) {
+    let matchedIndex = -1;
+    for (let index = 0; index < selections.length; index += 1) {
+      if (matchedIndexes.has(index)) continue;
+      if (matchesOneTimeAddonSnapshotItem(selections[index], snapshot, payment)) {
+        matchedIndex = index;
+        break;
+      }
+    }
+    if (matchedIndex < 0) {
+      return { valid: false, reason: "payment_snapshot_mismatch" };
+    }
+    matchedIndexes.add(matchedIndex);
+    if (selections[matchedIndex].source === "pending_payment") {
+      pendingIndexes.add(matchedIndex);
+    } else {
+      alreadyPaidCount += 1;
+    }
+  }
+
+  return {
+    valid: true,
+    matchedIndexes,
+    pendingIndexes,
+    alreadyPaidCount,
+  };
 }
 
 function normalizeNumber(value) {
@@ -154,35 +197,34 @@ async function settlePaidOneTimeAddonSelections({
   }
 
   const pendingSelections = (day.addonSelections || []).filter(s => s.source === "pending_payment");
-  if (pendingSelections.length === 0) return { applied: true, alreadySettled: true };
+  if (pendingSelections.length === 0) {
+    const alreadySettledMatch = matchOneTimeAddonSnapshotSelections({ day, payment, expectedSelections });
+    if (!alreadySettledMatch.valid) return { applied: false, reason: alreadySettledMatch.reason };
+    return { applied: true, alreadySettled: true, addonSelectionsSettled: 0 };
+  }
 
-  const expectedSnapshotMap = buildOneTimeAddonSnapshotCountMap(expectedSelections);
-  const pendingSelectionIndexMap = buildOneTimeAddonSelectionIndexMap(day.addonSelections || []);
-  const matchedIndexes = new Set();
-
-  for (const [key, count] of expectedSnapshotMap.entries()) {
-    const pendingIndexes = (pendingSelectionIndexMap.get(key) || []).filter((index) => {
-      const selection = day.addonSelections[index];
-      return selection && selection.source === "pending_payment";
-    });
-    if (pendingIndexes.length < count) {
-      return { applied: false, reason: "payment_snapshot_mismatch" };
-    }
-    pendingIndexes.slice(0, count).forEach((index) => matchedIndexes.add(index));
+  const matchResult = matchOneTimeAddonSnapshotSelections({ day, payment, expectedSelections });
+  if (!matchResult.valid) return { applied: false, reason: matchResult.reason };
+  const matchedIndexes = matchResult.pendingIndexes;
+  if (matchedIndexes.size === 0) {
+    return { applied: true, alreadySettled: true, addonSelectionsSettled: 0 };
   }
 
   const paidAt = payment.paidAt || new Date();
   day.addonSelections = (day.addonSelections || []).map((selection, index) => {
+    const plainSelection = selection && typeof selection.toObject === "function"
+      ? selection.toObject()
+      : { ...selection };
     if (matchedIndexes.has(index)) {
       return {
-        ...selection,
+        ...plainSelection,
         source: "paid",
         paidAt,
-        consumedAt: selection.consumedAt || paidAt,
+        consumedAt: plainSelection.consumedAt || paidAt,
         paymentId: payment._id,
       };
     }
-    return selection;
+    return plainSelection;
   });
 
   const settledState = applyCommercialStateToDay(day.toObject ? day.toObject() : day);
@@ -320,7 +362,7 @@ async function applyPremiumExtraDayPayment({ payment, session, source = "system"
   });
 }
 
-async function applyUnifiedDayPlanningPayment({ payment, session, source = "system" }, runtimeOverrides = null) {
+async function applyUnifiedDayPlanningPayment({ payment, session, source = "system", allowAppliedReconciliation = false }, runtimeOverrides = null) {
   const runtime = runtimeOverrides || defaultRuntime();
   const metadata = metadataOf(payment);
   if (!isValidObjectId(metadata.subscriptionId) || !metadata.date) {
@@ -340,37 +382,47 @@ async function applyUnifiedDayPlanningPayment({ payment, session, source = "syst
 
   const currentRevisionHash = applyCommercialStateToDay(day.toObject ? day.toObject() : day).plannerRevisionHash;
   if (metadata.revisionHash && String(metadata.revisionHash) !== String(currentRevisionHash)) {
-    return { applied: false, reason: "revision_mismatch" };
+    if (!allowAppliedReconciliation) {
+      return { applied: false, reason: "revision_mismatch" };
+    }
   }
 
   const results = [];
   if (Number(metadata.premiumAmountHalala || 0) > 0) {
-    const premiumSnapshotResult = validatePendingPremiumSnapshot({
-      day,
-      expectedSelections: metadata.premiumSelections,
-      expectedAmountHalala: metadata.premiumAmountHalala,
-    });
-    if (!premiumSnapshotResult.valid) {
-      return { applied: false, reason: premiumSnapshotResult.reason || "payment_snapshot_mismatch" };
-    }
+    const hasPendingPremium = (Array.isArray(day.mealSlots) ? day.mealSlots : [])
+      .some((slot) => slot && slot.isPremium && slot.premiumSource === "pending_payment");
+    if (hasPendingPremium) {
+      const premiumSnapshotResult = validatePendingPremiumSnapshot({
+        day,
+        expectedSelections: metadata.premiumSelections,
+        expectedAmountHalala: metadata.premiumAmountHalala,
+      });
+      if (!premiumSnapshotResult.valid) {
+        return { applied: false, reason: premiumSnapshotResult.reason || "payment_snapshot_mismatch" };
+      }
 
-    const premiumResult = await settlePaidPremiumExtraDayPayment({
-      subscription,
-      day,
-      payment,
-      session,
-      userId: payment && payment.userId ? payment.userId : null,
-      logDate: metadata.date,
-      writeLogFn: source === "webhook"
-        ? async (payload) => runtime.writeLog({ ...payload, byRole: "system" })
-        : null,
-    });
-    if (!premiumResult.applied) return premiumResult;
-    results.push({
-      ...premiumResult,
-      premiumSelectionsSettled: premiumSnapshotResult.premiumSelectionsSettled,
-      premiumSnapshotValidated: !premiumSnapshotResult.skipped,
-    });
+      const premiumResult = await settlePaidPremiumExtraDayPayment({
+        subscription,
+        day,
+        payment,
+        session,
+        userId: payment && payment.userId ? payment.userId : null,
+        logDate: metadata.date,
+        writeLogFn: source === "webhook"
+          ? async (payload) => runtime.writeLog({ ...payload, byRole: "system" })
+          : null,
+      });
+      if (!premiumResult.applied) return premiumResult;
+      results.push({
+        ...premiumResult,
+        premiumSelectionsSettled: premiumSnapshotResult.premiumSelectionsSettled,
+        premiumSnapshotValidated: !premiumSnapshotResult.skipped,
+      });
+    } else if (allowAppliedReconciliation) {
+      results.push({ applied: true, alreadySettled: true, premiumSelectionsSettled: 0 });
+    } else {
+      return { applied: false, reason: "payment_snapshot_mismatch" };
+    }
   }
 
   if (Number(metadata.addonsAmountHalala || 0) > 0) {
@@ -404,7 +456,7 @@ async function applySubscriptionActivationPayment({ payment, session, source = "
   return { applied: false, reason: "invalid_metadata" };
 }
 
-async function applyPaymentSideEffects({ payment, session, source = "system" }, runtimeOverrides = null) {
+async function applyPaymentSideEffects({ payment, session, source = "system", allowAppliedReconciliation = false }, runtimeOverrides = null) {
   if (!payment || !payment.type) {
     logger.warn("applyPaymentSideEffects failed: invalid payment", { paymentId: payment && payment._id ? String(payment._id) : null, source });
     return { applied: false, reason: "invalid_payment" };
@@ -420,7 +472,7 @@ async function applyPaymentSideEffects({ payment, session, source = "system" }, 
       result = await applyPremiumExtraDayPayment({ payment, session, source }, runtimeOverrides);
       break;
     case "day_planning_payment":
-      result = await applyUnifiedDayPlanningPayment({ payment, session, source }, runtimeOverrides);
+      result = await applyUnifiedDayPlanningPayment({ payment, session, source, allowAppliedReconciliation }, runtimeOverrides);
       break;
     case "one_time_addon_day_planning":
       result = await applyOneTimeAddonDayPlanningPayment({ payment, session, source }, runtimeOverrides);

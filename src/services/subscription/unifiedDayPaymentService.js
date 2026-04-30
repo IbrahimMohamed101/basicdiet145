@@ -63,6 +63,7 @@ function buildPendingAddonSnapshot(day) {
     .filter((selection) => selection && selection.source === "pending_payment");
 
   const oneTimeAddonSelections = pending.map((item) => ({
+    addonSelectionId: item._id ? String(item._id) : null,
     addonId: String(item.addonId),
     name: item.name,
     category: item.category,
@@ -303,13 +304,51 @@ async function verifyUnifiedDayPaymentFlow({
   if (!payment.providerInvoiceId) return buildErrorResult(409, "CHECKOUT_IN_PROGRESS", "Day payment invoice is not initialized yet");
 
   if (payment.status === "paid" && payment.applied === true) {
-    const latestDay = metadata.dayId && mongoose.Types.ObjectId.isValid(String(metadata.dayId))
-      ? await SubscriptionDay.findById(metadata.dayId).lean()
+    let reconcileResult = null;
+    let synchronized = true;
+    const session = await startSessionFn();
+    try {
+      session.startTransaction();
+      const paymentInSession = await Payment.findOne({
+        _id: paymentId,
+        subscriptionId,
+        userId,
+        type: UNIFIED_DAY_PAYMENT_TYPE,
+      }).session(session);
+      if (paymentInSession && paymentInSession.status === "paid" && paymentInSession.applied === true) {
+        reconcileResult = await applyPaymentSideEffectsFn({
+          payment: paymentInSession,
+          session,
+          source: "client_manual_verify_reconcile",
+          allowAppliedReconciliation: true,
+        });
+        synchronized = Boolean(reconcileResult && reconcileResult.applied);
+      }
+      await session.commitTransaction();
+      session.endSession();
+    } catch (err) {
+      if (session.inTransaction()) await session.abortTransaction();
+      session.endSession();
+      logger.error("Unified day payment already-applied reconciliation failed", {
+        subscriptionId,
+        paymentId,
+        date,
+        error: err.message,
+        stack: err.stack,
+      });
+      return buildErrorResult(500, "INTERNAL", "Unified day payment verification failed");
+    }
+
+    const latestPayment = await Payment.findById(paymentId).lean();
+    const latestMetadata = getPaymentMetadata(latestPayment);
+    const latestDay = latestMetadata.dayId && mongoose.Types.ObjectId.isValid(String(latestMetadata.dayId))
+      ? await SubscriptionDay.findById(latestMetadata.dayId).lean()
       : await SubscriptionDay.findOne({ subscriptionId, date }).lean();
     return buildSuccessResult(200, {
-      ...buildUnifiedPaymentPayload({ subscription: sub, day: latestDay, payment }),
+      ...buildUnifiedPaymentPayload({ subscription: sub, day: latestDay, payment: latestPayment }),
       checkedProvider: false,
-      synchronized: true,
+      synchronized,
+      sideEffectResult: reconcileResult,
     });
   }
 

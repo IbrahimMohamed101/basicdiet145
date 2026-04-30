@@ -562,6 +562,56 @@ async function runUnifiedDayPaymentFlow(ctx) {
   assertEqual(confirmRes.body.data.paymentRequirement.requiresPayment, false, "Unified combined confirmed day no payment", confirmRes.body.data.paymentRequirement);
   assertEqual(confirmRes.body.data.commercialState, "confirmed", "Unified combined commercial state confirmed", confirmRes.body.data);
 
+  const repairDate = dateOffset(16);
+  await SubscriptionDay.create({ subscriptionId: ctx.subscription._id, date: repairDate, status: "open" });
+  const repairSaveRes = await request("PUT", `/api/subscriptions/${ctx.subscription._id}/days/${repairDate}/selection`, {
+    ...fullSelection(ctx),
+    addonsOneTime: [String(ctx.addon1300._id), String(ctx.addon1900._id)],
+  }, ctx.token);
+  const repairCreateRes = await request("POST", `/api/subscriptions/${ctx.subscription._id}/days/${repairDate}/payments`, {
+    plannerRevisionHash: repairSaveRes.body.data.plannerRevisionHash,
+  }, ctx.token);
+  assertEqual(repairCreateRes.status, 201, "Unified snapshot repair creation status", repairCreateRes.body);
+  assertEqual(repairCreateRes.body.data.premiumAmountHalala, 3000, "Unified snapshot repair premium amount", repairCreateRes.body.data);
+  assertEqual(repairCreateRes.body.data.addonsAmountHalala, 3200, "Unified snapshot repair add-on amount", repairCreateRes.body.data);
+  assertEqual(repairCreateRes.body.data.totalHalala, 6200, "Unified snapshot repair total", repairCreateRes.body.data);
+
+  const repairPayment = await Payment.findById(repairCreateRes.body.data.paymentId).lean();
+  const repairDayBeforePartial = await SubscriptionDay.findOne({ subscriptionId: ctx.subscription._id, date: repairDate });
+  repairDayBeforePartial.mealSlots = repairDayBeforePartial.mealSlots.map((slot) => (
+    slot && slot.isPremium && slot.premiumSource === "pending_payment"
+      ? { ...(slot.toObject ? slot.toObject() : slot), premiumSource: "paid_extra" }
+      : slot
+  ));
+  repairDayBeforePartial.premiumExtraPayment = {
+    ...(repairDayBeforePartial.premiumExtraPayment ? repairDayBeforePartial.premiumExtraPayment.toObject() : {}),
+    status: "paid",
+    paymentId: repairPayment._id,
+    providerInvoiceId: repairPayment.providerInvoiceId,
+    amountHalala: 3000,
+    currency: "SAR",
+    paidAt: new Date(),
+  };
+  await repairDayBeforePartial.save();
+  await Payment.updateOne(
+    { _id: repairPayment._id },
+    { $set: { status: "paid", applied: true, paidAt: new Date() } }
+  );
+
+  const repairVerifyRes = await request("POST", `/api/subscriptions/${ctx.subscription._id}/days/${repairDate}/payments/${repairCreateRes.body.data.paymentId}/verify`, {}, ctx.token);
+  assertEqual(repairVerifyRes.status, 200, "Unified paid snapshot repair verify status", repairVerifyRes.body);
+  const repairVerify = repairVerifyRes.body.data;
+  assertEqual(repairVerify.paymentStatus, "paid", "Unified paid snapshot repair payment status", repairVerify);
+  assertEqual(repairVerify.applied, true, "Unified paid snapshot repair remains applied", repairVerify);
+  assertEqual(repairVerify.isFinal, true, "Unified paid snapshot repair is final", repairVerify);
+  assertEqual(repairVerify.paymentRequirement.requiresPayment, false, "Unified paid snapshot repair clears payment requirement", repairVerify.paymentRequirement);
+  assertEqual(repairVerify.paymentRequirement.premiumPendingPaymentCount, 0, "Unified paid snapshot repair clears premium pending", repairVerify.paymentRequirement);
+  assertEqual(repairVerify.paymentRequirement.addonPendingPaymentCount, 0, "Unified paid snapshot repair clears add-on pending", repairVerify.paymentRequirement);
+  assertEqual(repairVerify.paymentRequirement.pendingAmountHalala, 0, "Unified paid snapshot repair clears pending amount", repairVerify.paymentRequirement);
+  assertTrue(repairVerify.addonSelections.every((selection) => selection.source === "paid"), "Unified paid snapshot repair add-ons paid", repairVerify.addonSelections);
+  assertTrue(repairVerify.addonSelections.every((selection) => String(selection.paymentId) === String(repairCreateRes.body.data.paymentId)), "Unified paid snapshot repair add-ons stamped", repairVerify.addonSelections);
+  assertEqual(repairVerify.addonSelections.filter((selection) => selection.source === "pending_payment").length, 0, "Unified paid snapshot repair leaves no snapshot add-on pending", repairVerify.addonSelections);
+
   const staleDate = dateOffset(14);
   await SubscriptionDay.create({ subscriptionId: ctx.subscription._id, date: staleDate, status: "open" });
   const staleSaveRes = await request("PUT", `/api/subscriptions/${ctx.subscription._id}/days/${staleDate}/selection`, {
