@@ -194,21 +194,33 @@ async function ensureCanonicalProteinsExist() {
     {
       key: 'shrimp',
       name: { ar: 'جمبري', en: 'Shrimp' },
-      description: { ar: 'جمبري مشوي', en: 'Grilled shrimp' },
+      description: {
+        ar: 'طبق روبيان مشوي مع خضار ملونة وصوص خفيف بنكهة غنية.',
+        en: 'Grilled shrimp platter with colorful vegetables and a bright savory sauce.',
+      },
+      imageUrl: 'https://images.pexels.com/photos/30749023/pexels-photo-30749023.jpeg?auto=compress&cs=tinysrgb&w=1200',
       proteinFamilyKey: 'seafood',
       extraFeeHalala: 1500,
     },
     {
       key: 'beef_steak',
       name: { ar: 'ستيك لحم', en: 'Beef Steak' },
-      description: { ar: 'ستيك لحم مشوي', en: 'Grilled beef steak' },
+      description: {
+        ar: 'ستيك لحم طري مشوي يقدم بتتبيلة غنية ولمسة مطاعم راقية.',
+        en: 'Tender grilled beef steak served with a classic steakhouse garnish.',
+      },
+      imageUrl: 'https://images.pexels.com/photos/4663245/pexels-photo-4663245.jpeg?auto=compress&cs=tinysrgb&w=1200',
       proteinFamilyKey: 'beef',
       extraFeeHalala: 2000,
     },
     {
       key: 'salmon',
       name: { ar: 'سلمون', en: 'Salmon' },
-      description: { ar: 'سلمون مشوي', en: 'Grilled salmon' },
+      description: {
+        ar: 'فيليه سلمون مشوي مع خضار طازجة ولمسة ليمون وأعشاب خفيفة.',
+        en: 'Grilled salmon fillet with fresh greens, lemon, and a light herb finish.',
+      },
+      imageUrl: 'https://images.pexels.com/photos/3763847/pexels-photo-3763847.jpeg?auto=compress&cs=tinysrgb&w=1200',
       proteinFamilyKey: 'seafood',
       extraFeeHalala: 1800,
     },
@@ -220,6 +232,16 @@ async function ensureCanonicalProteinsExist() {
     const existing = await BuilderProtein.findOne({ premiumKey: canon.key, isPremium: true });
 
     if (existing) {
+      await BuilderProtein.updateOne(
+        { _id: existing._id },
+        {
+          $set: {
+            name: canon.name,
+            description: canon.description,
+            imageUrl: canon.imageUrl,
+          },
+        }
+      );
       console.log(`  [EXISTS] ${canon.key} = ${existing._id}`);
       continue;
     }
@@ -229,6 +251,7 @@ async function ensureCanonicalProteinsExist() {
       ...canon,
       name: canon.name,
       description: canon.description,
+      imageUrl: canon.imageUrl,
       proteinFamilyKey: canon.proteinFamilyKey,
       ruleTags: ['premium'],
       isPremium: true,
@@ -268,12 +291,11 @@ async function backfillSubscriptionPremiumBalance() {
       if (normalized) {
         canonicalByName[normalized] = protein;
       }
-    }
-  }
 
-    if (PREMIUM_KEY_NAMES[key]) {
-      for (const alias of PREMIUM_KEY_NAMES[key]) {
-        canonicalByName[alias] = canonicalByKey[key];
+      if (PREMIUM_KEY_NAMES[key]) {
+        for (const alias of PREMIUM_KEY_NAMES[key]) {
+          canonicalByName[alias] = protein;
+        }
       }
     }
   }

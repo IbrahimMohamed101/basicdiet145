@@ -22,6 +22,11 @@ const PREMIUM_MEALS = [
   {
     premiumKey: "beef_steak",
     name: { en: "Beef Steak", ar: "ستيك لحم" },
+    description: {
+      en: "Tender grilled beef steak served with a classic steakhouse garnish.",
+      ar: "ستيك لحم طري مشوي يقدم بتتبيلة غنية ولمسة مطاعم راقية.",
+    },
+    imageUrl: "https://images.pexels.com/photos/4663245/pexels-photo-4663245.jpeg?auto=compress&cs=tinysrgb&w=1200",
     displayCategoryKey: "premium",
     proteinFamilyKey: "beef",
     extraFeeHalala: 2200,
@@ -32,6 +37,11 @@ const PREMIUM_MEALS = [
   {
     premiumKey: "salmon",
     name: { en: "Salmon", ar: "سلمون" },
+    description: {
+      en: "Grilled salmon fillet with fresh greens, lemon, and a light herb finish.",
+      ar: "فيليه سلمون مشوي مع خضار طازجة ولمسة ليمون وأعشاب خفيفة.",
+    },
+    imageUrl: "https://images.pexels.com/photos/3763847/pexels-photo-3763847.jpeg?auto=compress&cs=tinysrgb&w=1200",
     displayCategoryKey: "premium",
     proteinFamilyKey: "fish",
     extraFeeHalala: 2500,
@@ -42,6 +52,11 @@ const PREMIUM_MEALS = [
   {
     premiumKey: "shrimp",
     name: { en: "Shrimp", ar: "روبيان" },
+    description: {
+      en: "Grilled shrimp platter with colorful vegetables and a bright savory sauce.",
+      ar: "طبق روبيان مشوي مع خضار ملونة وصوص خفيف بنكهة غنية.",
+    },
+    imageUrl: "https://images.pexels.com/photos/30749023/pexels-photo-30749023.jpeg?auto=compress&cs=tinysrgb&w=1200",
     displayCategoryKey: "premium",
     proteinFamilyKey: "fish",
     extraFeeHalala: 2000,
@@ -129,6 +144,8 @@ async function seedPremiumCatalog() {
       {
         $set: {
           name: meal.name,
+          description: meal.description,
+          imageUrl: meal.imageUrl,
           isPremium: true,
           premiumKey: meal.premiumKey,
           extraFeeHalala: meal.extraFeeHalala,

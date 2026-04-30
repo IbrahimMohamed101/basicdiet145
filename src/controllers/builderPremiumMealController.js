@@ -20,6 +20,7 @@ const ALLOWED_PROTEIN_FAMILIES = new Set(["chicken", "beef", "fish", "eggs", "ot
 
 const CUSTOM_PREMIUM_SALAD_KEY = "custom_premium_salad";
 const CUSTOM_PREMIUM_SALAD_PRICE_HALALA = 3000;
+const CUSTOM_PREMIUM_SALAD_IMAGE_URL = "https://images.pexels.com/photos/27969809/pexels-photo-27969809.jpeg?auto=compress&cs=tinysrgb&w=1200";
 const PREMIUM_PROTEIN_SELECTION_TYPE = "premium_protein";
 const PREMIUM_PROTEIN_TYPE = "premium_protein";
 
@@ -32,8 +33,8 @@ function buildCustomPremiumSaladEntry(lang) {
     en: "Custom Premium Salad",
   };
   const descriptions = {
-    ar: "سلطة كبيرة مع بروتين",
-    en: "Large salad with protein",
+    ar: "سلطة كبيرة قابلة للتخصيص مع بروتين وخضار طازجة وصوص من اختيارك",
+    en: "Large customizable salad with protein, fresh vegetables, and your choice of dressing",
   };
   const name = names[lang] || names.en;
   const description = descriptions[lang] || descriptions.en;
@@ -45,7 +46,7 @@ function buildCustomPremiumSaladEntry(lang) {
     type: CUSTOM_PREMIUM_SALAD_KEY,
     name,
     description,
-    imageUrl: "",
+    imageUrl: CUSTOM_PREMIUM_SALAD_IMAGE_URL,
     currency: "SAR",
     extraFeeHalala: CUSTOM_PREMIUM_SALAD_PRICE_HALALA,
     extraFeeSar: 30,
