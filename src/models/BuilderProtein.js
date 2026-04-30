@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 const {
   LEGACY_PROTEIN_FAMILY_ALIASES,
+  MEAL_SELECTION_TYPES,
   PROTEIN_FAMILY_KEYS,
 } = require("../config/mealPlannerContract");
 
@@ -34,6 +35,14 @@ const BuilderProteinSchema = new mongoose.Schema(
       required: true,
     },
     ruleTags: { type: [String], default: [] },
+    selectionType: {
+      type: String,
+      enum: [
+        MEAL_SELECTION_TYPES.STANDARD_MEAL,
+        MEAL_SELECTION_TYPES.PREMIUM_MEAL,
+      ],
+      default: MEAL_SELECTION_TYPES.STANDARD_MEAL,
+    },
     isPremium: { type: Boolean, default: false },
     premiumKey: { type: String, trim: true },
     premiumCreditCost: { type: Number, min: 0, default: 0 },

@@ -18,6 +18,7 @@ const BuilderCarb = require('../src/models/BuilderCarb');
 const MealCategory = require('../src/models/MealCategory');
 const Meal = require('../src/models/Meal');
 const SaladIngredient = require('../src/models/SaladIngredient');
+const Sandwich = require('../src/models/Sandwich');
 
 const assert = require('assert');
 
@@ -105,6 +106,7 @@ async function withMockedPlannerCatalog(overrides, fn) {
   const originalMealCategoryFindOne = MealCategory.findOne;
   const originalMealFind = Meal.find;
   const originalSaladIngredientFind = SaladIngredient.find;
+  const originalSandwichFind = Sandwich.find;
 
   const catalog = {
     ...buildMockPlannerCatalog(),
@@ -116,6 +118,7 @@ async function withMockedPlannerCatalog(overrides, fn) {
   MealCategory.findOne = () => mockQuery(catalog.sandwichCategory || null);
   Meal.find = () => mockQuery(catalog.sandwiches || []);
   SaladIngredient.find = () => mockQuery(catalog.saladIngredients || []);
+  Sandwich.find = () => mockQuery(catalog.catalogSandwiches || []);
 
   try {
     return await fn(catalog);
@@ -125,6 +128,7 @@ async function withMockedPlannerCatalog(overrides, fn) {
     MealCategory.findOne = originalMealCategoryFindOne;
     Meal.find = originalMealFind;
     SaladIngredient.find = originalSaladIngredientFind;
+    Sandwich.find = originalSandwichFind;
   }
 }
 

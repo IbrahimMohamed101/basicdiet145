@@ -4,6 +4,7 @@ const BuilderCarb = require("../../models/BuilderCarb");
 const Meal = require("../../models/Meal");
 const MealCategory = require("../../models/MealCategory");
 const SaladIngredient = require("../../models/SaladIngredient");
+const Sandwich = require("../../models/Sandwich");
 const { isValidObjectId } = mongoose;
 const {
   LEGACY_MEAL_SELECTION_TYPES,
@@ -634,6 +635,7 @@ async function buildMealSlotDraft({ mealSlots, mealsPerDayLimit, subscription, s
   ];
   
   const proteinIdsSet = new Set(normalizedMealSlots.map((s) => s.proteinId).filter(Boolean));
+  const sandwichIdsSet = new Set(normalizedMealSlots.map((s) => s.sandwichId).filter(Boolean));
   const carbIdsSet = new Set();
   for (const s of normalizedMealSlots) {
     if (Array.isArray(s.carbs)) {
@@ -649,11 +651,14 @@ async function buildMealSlotDraft({ mealSlots, mealsPerDayLimit, subscription, s
   }
   const proteinIds = [...proteinIdsSet];
   const carbIds = [...carbIdsSet];
+  const sandwichIds = [...sandwichIdsSet];
 
   const validProteinIds = proteinIds.filter(id => isValidObjectId(id));
   const validCarbIds = carbIds.filter(id => isValidObjectId(id));
+  const validSandwichIds = sandwichIds.filter(id => isValidObjectId(id));
+  const shouldLoadSandwiches = validSandwichIds.length > 0;
 
-  const [proteins, carbs, sandwichCategory, saladIngredients] = await Promise.all([
+  const [proteins, carbs, sandwichCategory, saladIngredients, catalogSandwiches] = await Promise.all([
     BuilderProtein.find({
       _id: { $in: validProteinIds },
       isActive: true,
@@ -664,18 +669,30 @@ async function buildMealSlotDraft({ mealSlots, mealsPerDayLimit, subscription, s
       isActive: true,
       availableForSubscription: { $ne: false },
     }).session(session).lean(),
-    MealCategory.findOne({ key: { $in: SANDWICH_CATEGORY_KEYS }, isActive: true }).session(session).lean(),
+    shouldLoadSandwiches
+      ? MealCategory.findOne({ key: { $in: SANDWICH_CATEGORY_KEYS }, isActive: true }).session(session).lean()
+      : Promise.resolve(null),
     SaladIngredient.find({ isActive: true }).session(session).lean(),
+    shouldLoadSandwiches
+      ? Sandwich.find({ _id: { $in: validSandwichIds }, isActive: true }).session(session).lean()
+      : Promise.resolve([]),
   ]);
 
   let sandwichMeals = [];
   if (sandwichCategory) {
-    sandwichMeals = await Meal.find({ categoryId: sandwichCategory._id, isActive: true, availableForSubscription: { $ne: false } }).session(session).lean();
+    sandwichMeals = await Meal.find({
+      _id: { $in: validSandwichIds },
+      categoryId: sandwichCategory._id,
+      isActive: true,
+      availableForSubscription: { $ne: false },
+    }).session(session).lean();
   }
 
   const proteinMap = new Map(proteins.map((p) => [String(p._id), p]));
   const carbMap = new Map(carbs.map((c) => [String(c._id), c]));
-  const sandwichMap = new Map(sandwichMeals.map((m) => [String(m._id), m]));
+  const sandwichMap = new Map(
+    catalogSandwiches.concat(sandwichMeals).map((m) => [String(m._id), m])
+  );
   const saladIngredientMap = new Map(
     saladIngredients.map((ingredient) => [
       String(ingredient._id),

@@ -2,6 +2,7 @@ const BuilderCategory = require("../../models/BuilderCategory");
 const BuilderProtein = require("../../models/BuilderProtein");
 const BuilderCarb = require("../../models/BuilderCarb");
 const SaladIngredient = require("../../models/SaladIngredient");
+const Sandwich = require("../../models/Sandwich");
 const Meal = require("../../models/Meal");
 const MealCategory = require("../../models/MealCategory");
 const { pickLang } = require("../../utils/i18n");
@@ -84,13 +85,22 @@ function buildSaladGroupPayload(group, lang) {
 }
 
 async function getMealPlannerCatalog({ lang }) {
-  const [categories, allProteins, carbs, saladIngredients, mealCategories, allMeals] = await Promise.all([
+  const [
+    categories,
+    allProteins,
+    carbs,
+    saladIngredients,
+    sandwiches,
+    mealCategories,
+    legacyMeals,
+  ] = await Promise.all([
     BuilderCategory.find({ isActive: true }).sort({ dimension: 1, sortOrder: 1, createdAt: -1 }).lean(),
     BuilderProtein.find({ isActive: true, availableForSubscription: { $ne: false } }).sort({ sortOrder: 1, createdAt: -1 }).lean(),
     BuilderCarb.find({ isActive: true, availableForSubscription: { $ne: false } }).sort({ sortOrder: 1, createdAt: -1 }).lean(),
     SaladIngredient.find({ isActive: true }).sort({ sortOrder: 1, createdAt: -1 }).lean(),
+    Sandwich.find({ isActive: true }).sort({ sortOrder: 1, createdAt: -1 }).lean(),
     MealCategory.find({ isActive: true }).lean(),
-    Meal.find({ isActive: true, availableForSubscription: { $ne: false } }).sort({ sortOrder: 1 }).lean(),
+    Meal.find({ isActive: true, availableForSubscription: { $ne: false } }).sort({ sortOrder: 1, createdAt: -1 }).lean(),
   ]);
 
   const sandwichCategoryIds = new Set(
@@ -98,7 +108,7 @@ async function getMealPlannerCatalog({ lang }) {
       .filter((category) => SANDWICH_CATEGORY_KEYS.includes(String(category.key || "").toLowerCase().trim()))
       .map((category) => String(category._id))
   );
-  const sandwiches = allMeals.filter((meal) => sandwichCategoryIds.has(String(meal.categoryId || "")));
+  const legacySandwiches = legacyMeals.filter((meal) => sandwichCategoryIds.has(String(meal.categoryId || "")));
 
   const normalizedProteins = allProteins.map((protein) => buildProteinPayload(protein, lang));
   const proteins = normalizedProteins.filter((protein) => !protein.isPremium);
@@ -224,14 +234,36 @@ async function getMealPlannerCatalog({ lang }) {
       name: pickLang(sandwich.name, lang),
       description: pickLang(sandwich.description, lang),
       imageUrl: sandwich.imageUrl,
-      calories: sandwich.calories,
+      calories: Number(sandwich.calories || 0),
       selectionType: MEAL_SELECTION_TYPES.SANDWICH,
-    })),
+      categoryKey: "sandwich",
+      pricingModel: "included",
+      priceHalala: 0,
+      proteinFamilyKey: sandwich.proteinFamilyKey,
+      sortOrder: Number(sandwich.sortOrder || 0),
+    })).concat(legacySandwiches.map((sandwich) => ({
+      id: String(sandwich._id),
+      name: pickLang(sandwich.name, lang),
+      description: pickLang(sandwich.description, lang),
+      imageUrl: sandwich.imageUrl,
+      calories: Number(sandwich.calories || 0),
+      selectionType: MEAL_SELECTION_TYPES.SANDWICH,
+      categoryKey: "sandwich",
+      pricingModel: "included",
+      priceHalala: 0,
+      proteinFamilyKey: "other",
+      sortOrder: Number(sandwich.sortOrder || 0),
+    }))),
     premiumLargeSalad: saladConfig,
     rules: getMealPlannerRules(),
   });
 }
 
+async function invalidateMealPlannerCatalogCache() {
+  return true;
+}
+
 module.exports = {
   getMealPlannerCatalog,
+  invalidateMealPlannerCatalogCache,
 };
