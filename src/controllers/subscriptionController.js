@@ -131,6 +131,10 @@ const {
   verifyOneTimeAddonDayPlanningPaymentFlow,
 } = require("../services/subscription/oneTimeAddonDayPlanningPaymentService");
 const {
+  createUnifiedDayPaymentFlow,
+  verifyUnifiedDayPaymentFlow,
+} = require("../services/subscription/unifiedDayPaymentService");
+const {
   createLegacyOneTimeAddonPaymentFlow,
 } = require("../services/subscription/legacyOneTimeAddonPaymentService");
 const {
@@ -1860,6 +1864,34 @@ async function createPremiumExtraDayPayment(req, res, runtimeOverrides = null) {
   }
 }
 
+async function createUnifiedDayPayment(req, res, runtimeOverrides = null) {
+  const { id, date } = req.params;
+  try {
+    const runtime = runtimeOverrides ? { ...sliceEDefaultRuntime, ...runtimeOverrides } : sliceEDefaultRuntime;
+    validateObjectId(id, "subscriptionId");
+    const result = await createUnifiedDayPaymentFlow({
+      subscriptionId: id,
+      date,
+      userId: req.userId,
+      lang: getRequestLang(req),
+      headers: req.headers || {},
+      body: req.body || {},
+      runtime,
+      ensureActiveFn: ensureActive,
+    });
+    if (!result.ok) {
+      return errorResponse(res, result.status, result.code, result.message, result.details);
+    }
+    return res.status(result.status).json({ status: true, data: result.data });
+  } catch (err) {
+    logger.error("Unified day payment initiation: unexpected error", { error: err.message, stack: err.stack, subscriptionId: id, date });
+    if (err.status && err.code) {
+      return errorResponse(res, err.status, err.code, err.message);
+    }
+    return errorResponse(res, 500, "INTERNAL", "An unexpected error occurred during payment initiation");
+  }
+}
+
 async function verifyPremiumExtraDayPayment(req, res, runtimeOverrides = null) {
   const { id, date, paymentId } = req.params;
   const getInvoiceFn = runtimeOverrides && runtimeOverrides.getInvoice
@@ -1880,6 +1912,40 @@ async function verifyPremiumExtraDayPayment(req, res, runtimeOverrides = null) {
     userId: req.userId,
     getInvoiceFn,
     writeLogFn: writeLogSafely,
+  });
+  if (!result.ok) {
+    return errorResponse(res, result.status, result.code, result.message, result.details);
+  }
+  return res.status(result.status).json({ status: true, data: result.data });
+}
+
+async function verifyUnifiedDayPayment(req, res, runtimeOverrides = null) {
+  const { id, date, paymentId } = req.params;
+  const getInvoiceFn = runtimeOverrides && runtimeOverrides.getInvoice
+    ? runtimeOverrides.getInvoice
+    : getInvoice;
+  const startSessionFn = runtimeOverrides && runtimeOverrides.startSession
+    ? runtimeOverrides.startSession
+    : () => mongoose.startSession();
+  const applyPaymentSideEffectsFn = runtimeOverrides && runtimeOverrides.applyPaymentSideEffects
+    ? runtimeOverrides.applyPaymentSideEffects
+    : applyPaymentSideEffects;
+
+  try {
+    validateObjectId(id, "subscriptionId");
+    validateObjectId(paymentId, "paymentId");
+  } catch (err) {
+    return errorResponse(res, err.status, err.code, err.message);
+  }
+
+  const result = await verifyUnifiedDayPaymentFlow({
+    subscriptionId: id,
+    date,
+    paymentId,
+    userId: req.userId,
+    getInvoiceFn,
+    startSessionFn,
+    applyPaymentSideEffectsFn,
   });
   if (!result.ok) {
     return errorResponse(res, result.status, result.code, result.message, result.details);
@@ -2612,6 +2678,8 @@ module.exports = {
   renewSubscription,
   listCurrentUserSubscriptions,
   serializeSubscriptionForClient,
+  createUnifiedDayPayment,
+  verifyUnifiedDayPayment,
   createPremiumExtraDayPayment,
   verifyPremiumExtraDayPayment,
   createPremiumOverageDayPayment,

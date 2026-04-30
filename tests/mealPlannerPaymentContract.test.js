@@ -381,6 +381,97 @@ async function runAddonFlow(ctx) {
   return { create: addonCreate, verify: addonVerify };
 }
 
+async function runUnifiedDayPaymentFlow(ctx) {
+  const premiumOnlyDate = dateOffset(11);
+  await SubscriptionDay.create({ subscriptionId: ctx.subscription._id, date: premiumOnlyDate, status: "open" });
+  const premiumSaveRes = await request("PUT", `/api/subscriptions/${ctx.subscription._id}/days/${premiumOnlyDate}/selection`, fullSelection(ctx), ctx.token);
+  const premiumCreateRes = await request("POST", `/api/subscriptions/${ctx.subscription._id}/days/${premiumOnlyDate}/payments`, {
+    plannerRevisionHash: premiumSaveRes.body.data.plannerRevisionHash,
+  }, ctx.token);
+  assertEqual(premiumCreateRes.status, 201, "Unified premium-only creation status", premiumCreateRes.body);
+  assertEqual(premiumCreateRes.body.data.premiumAmountHalala, 1500, "Unified premium-only premium amount", premiumCreateRes.body.data);
+  assertEqual(premiumCreateRes.body.data.addonsAmountHalala, 0, "Unified premium-only add-on amount", premiumCreateRes.body.data);
+  assertEqual(premiumCreateRes.body.data.totalHalala, 1500, "Unified premium-only total", premiumCreateRes.body.data);
+
+  const premiumVerifyRes = await request("POST", `/api/subscriptions/${ctx.subscription._id}/days/${premiumOnlyDate}/payments/${premiumCreateRes.body.data.paymentId}/verify`, {}, ctx.token);
+  assertEqual(premiumVerifyRes.status, 200, "Unified premium-only verify status", premiumVerifyRes.body);
+  assertEqual(premiumVerifyRes.body.data.paymentStatus, "paid", "Unified premium-only paid", premiumVerifyRes.body.data);
+  assertEqual(premiumVerifyRes.body.data.paymentRequirement.requiresPayment, false, "Unified premium-only clears payment", premiumVerifyRes.body.data.paymentRequirement);
+
+  const addonOnlyDate = dateOffset(12);
+  await SubscriptionDay.create({ subscriptionId: ctx.subscription._id, date: addonOnlyDate, status: "open" });
+  const addonSaveRes = await request("PUT", `/api/subscriptions/${ctx.subscription._id}/days/${addonOnlyDate}/selection`, {
+    ...standardSelection(ctx),
+    addonsOneTime: [String(ctx.addon._id)],
+  }, ctx.token);
+  const addonCreateRes = await request("POST", `/api/subscriptions/${ctx.subscription._id}/days/${addonOnlyDate}/payments`, {
+    plannerRevisionHash: addonSaveRes.body.data.plannerRevisionHash,
+  }, ctx.token);
+  assertEqual(addonCreateRes.status, 201, "Unified add-on-only creation status", addonCreateRes.body);
+  assertEqual(addonCreateRes.body.data.premiumAmountHalala, 0, "Unified add-on-only premium amount", addonCreateRes.body.data);
+  assertEqual(addonCreateRes.body.data.addonsAmountHalala, 1000, "Unified add-on-only add-on amount", addonCreateRes.body.data);
+  assertEqual(addonCreateRes.body.data.totalHalala, 1000, "Unified add-on-only total", addonCreateRes.body.data);
+
+  const addonVerifyRes = await request("POST", `/api/subscriptions/${ctx.subscription._id}/days/${addonOnlyDate}/payments/${addonCreateRes.body.data.paymentId}/verify`, {}, ctx.token);
+  assertEqual(addonVerifyRes.status, 200, "Unified add-on-only verify status", addonVerifyRes.body);
+  assertEqual(addonVerifyRes.body.data.paymentStatus, "paid", "Unified add-on-only paid", addonVerifyRes.body.data);
+  assertEqual(addonVerifyRes.body.data.paymentRequirement.requiresPayment, false, "Unified add-on-only clears payment", addonVerifyRes.body.data.paymentRequirement);
+  assertTrue(addonVerifyRes.body.data.addonSelections.every((selection) => selection.source === "paid"), "Unified add-on-only settles add-ons", addonVerifyRes.body.data.addonSelections);
+
+  const combinedDate = dateOffset(13);
+  await SubscriptionDay.create({ subscriptionId: ctx.subscription._id, date: combinedDate, status: "open" });
+  const combinedSaveRes = await request("PUT", `/api/subscriptions/${ctx.subscription._id}/days/${combinedDate}/selection`, {
+    ...fullSelection(ctx),
+    addonsOneTime: [String(ctx.addon._id)],
+  }, ctx.token);
+  assertEqual(combinedSaveRes.body.data.paymentRequirement.requiresPayment, true, "Unified combined save requires payment", combinedSaveRes.body.data.paymentRequirement);
+
+  const combinedCreateRes = await request("POST", `/api/subscriptions/${ctx.subscription._id}/days/${combinedDate}/payments`, {
+    plannerRevisionHash: combinedSaveRes.body.data.plannerRevisionHash,
+  }, ctx.token);
+  assertEqual(combinedCreateRes.status, 201, "Unified combined creation status", combinedCreateRes.body);
+  const combinedCreate = combinedCreateRes.body.data;
+  assertTrue(combinedCreate.payment_id && combinedCreate.paymentId, "Unified combined returns both payment id aliases", combinedCreate);
+  assertTrue(combinedCreate.invoice_id && combinedCreate.providerInvoiceId, "Unified combined returns both invoice id aliases", combinedCreate);
+  assertEqual(combinedCreate.premiumAmountHalala, 1500, "Unified combined premium amount", combinedCreate);
+  assertEqual(combinedCreate.addonsAmountHalala, 1000, "Unified combined add-on amount", combinedCreate);
+  assertEqual(combinedCreate.totalHalala, 2500, "Unified combined single invoice total", combinedCreate);
+
+  const combinedPayment = await Payment.findById(combinedCreate.paymentId).lean();
+  assertEqual(combinedPayment.type, "day_planning_payment", "Unified combined payment type", combinedPayment);
+  assertEqual(combinedPayment.amount, 2500, "Unified combined payment record amount", combinedPayment);
+
+  const combinedVerifyRes = await request("POST", `/api/subscriptions/${ctx.subscription._id}/days/${combinedDate}/payments/${combinedCreate.paymentId}/verify`, {}, ctx.token);
+  assertEqual(combinedVerifyRes.status, 200, "Unified combined verify status", combinedVerifyRes.body);
+  const combinedVerify = combinedVerifyRes.body.data;
+  assertEqual(combinedVerify.paymentStatus, "paid", "Unified combined verify payment status", combinedVerify);
+  assertEqual(combinedVerify.applied, true, "Unified combined verify applies side effects", combinedVerify);
+  assertEqual(combinedVerify.paymentRequirement.requiresPayment, false, "Unified combined verify clears payment requirement", combinedVerify.paymentRequirement);
+  assertEqual(combinedVerify.paymentRequirement.blockingReason, "PLANNER_UNCONFIRMED", "Unified combined verify leaves planner unconfirmed", combinedVerify.paymentRequirement);
+  assertEqual(combinedVerify.premiumSummary.pendingPaymentCount, 0, "Unified combined verify settles premium", combinedVerify.premiumSummary);
+  assertEqual(combinedVerify.paymentRequirement.addonPendingPaymentCount, 0, "Unified combined verify settles add-ons", combinedVerify.paymentRequirement);
+  assertTrue(combinedVerify.addonSelections.every((selection) => selection.source === "paid"), "Unified combined add-ons paid", combinedVerify.addonSelections);
+
+  const confirmRes = await request("POST", `/api/subscriptions/${ctx.subscription._id}/days/${combinedDate}/confirm`, {}, ctx.token);
+  assertEqual(confirmRes.status, 200, "Unified combined confirm works after verify", confirmRes.body);
+  assertEqual(confirmRes.body.data.paymentRequirement.requiresPayment, false, "Unified combined confirmed day no payment", confirmRes.body.data.paymentRequirement);
+  assertEqual(confirmRes.body.data.commercialState, "confirmed", "Unified combined commercial state confirmed", confirmRes.body.data);
+
+  const staleDate = dateOffset(14);
+  await SubscriptionDay.create({ subscriptionId: ctx.subscription._id, date: staleDate, status: "open" });
+  const staleSaveRes = await request("PUT", `/api/subscriptions/${ctx.subscription._id}/days/${staleDate}/selection`, {
+    ...fullSelection(ctx),
+    addonsOneTime: [String(ctx.addon._id)],
+  }, ctx.token);
+  const staleRes = await request("POST", `/api/subscriptions/${ctx.subscription._id}/days/${staleDate}/payments`, {
+    plannerRevisionHash: `stale_${staleSaveRes.body.data.plannerRevisionHash}`,
+  }, ctx.token);
+  assertEqual(staleRes.status, 409, "Unified stale plannerRevisionHash status", staleRes.body);
+  assertEqual(staleRes.body.error.code, "DAY_PAYMENT_REVISION_MISMATCH", "Unified stale plannerRevisionHash code", staleRes.body);
+
+  return { create: combinedCreate, verify: combinedVerify };
+}
+
 async function run() {
   if (process.env.NODE_ENV !== "test") {
     console.error("NODE_ENV must be test");
@@ -399,12 +490,15 @@ async function run() {
     const ctx = await seedBase();
     const premium = await runPremiumFlow(ctx);
     const addon = await runAddonFlow(ctx);
+    const unified = await runUnifiedDayPaymentFlow(ctx);
 
     console.log("Premium payment creation example:", JSON.stringify(premium.create, null, 2));
     console.log("Premium verify example:", JSON.stringify(premium.verify, null, 2));
     console.log("No-payment requirement example:", JSON.stringify(premium.noPaymentRequirement, null, 2));
     console.log("Add-on payment creation example:", JSON.stringify(addon.create, null, 2));
     console.log("Add-on verify example:", JSON.stringify(addon.verify, null, 2));
+    console.log("Unified payment creation example:", JSON.stringify(unified.create, null, 2));
+    console.log("Unified verify example:", JSON.stringify(unified.verify, null, 2));
     console.log("\n--- PAYMENT CONTRACT CHECKS PASSED ---");
   } catch (err) {
     console.error("Test failed:", err);

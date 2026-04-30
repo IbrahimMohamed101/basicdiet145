@@ -13,6 +13,7 @@ const PaymentSchema = new mongoose.Schema(
       type: String,
       enum: [
         "one_time_addon_day_planning",
+        "day_planning_payment",
         "one_time_addon",
         "subscription_activation",
         "subscription_renewal",

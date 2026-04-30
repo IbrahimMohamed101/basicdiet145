@@ -782,11 +782,19 @@ async function buildMealSlotDraft({ mealSlots, mealsPerDayLimit, subscription, s
     if (processedSlot.isPremium || isPremiumSalad) {
       const key = isPremiumSalad ? CANONICAL_PREMIUM_SALAD_KEY : processedSlot.premiumKey;
       const avail = key ? (tempBalances.get(key) || 0) : 0;
+      const persistedPremiumSource = String(slot.premiumSource || "").trim();
       
       processedSlot.isPremium = true;
       processedSlot.premiumKey = key;
 
-      if (avail > 0) {
+      if (persistedPremiumSource === "paid_extra" || persistedPremiumSource === "paid") {
+        processedSlot.premiumSource = persistedPremiumSource === "paid" ? "paid" : "paid_extra";
+        const fee = isPremiumSalad
+          ? PREMIUM_LARGE_SALAD_FIXED_PRICE_HALALA
+          : (proteinMap.get(String(processedSlot.proteinId))?.extraFeeHalala || 0);
+        processedSlot.premiumExtraFeeHalala = Number(processedSlot.premiumExtraFeeHalala || fee || 0);
+        plannerMeta.premiumPaidExtraCount += 1;
+      } else if (avail > 0) {
         processedSlot.premiumSource = "balance";
         tempBalances.set(key, avail - 1);
         plannerMeta.premiumCoveredByBalanceCount += 1;

@@ -665,6 +665,9 @@ router.post("/:id/days/:date/confirm", asyncHandler(controller.confirmDayPlannin
  *       200:
  *         description: Existing reusable initiated payment returned
  */
+router.post("/:id/days/:date/payments", asyncHandler(controller.createUnifiedDayPayment));
+router.post("/:id/days/:date/payments/:paymentId/verify", asyncHandler(controller.verifyUnifiedDayPayment));
+
 router.post("/:id/days/:date/premium-extra/payments", asyncHandler(controller.createPremiumExtraDayPayment));
 
 /**

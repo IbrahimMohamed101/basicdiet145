@@ -10,11 +10,13 @@ const { logger } = require("../utils/logger");
 const { finalizeSubscriptionDraftPaymentFlow } = require("./subscription/subscriptionActivationService");
 const { settlePaidPremiumExtraDayPayment } = require("./subscription/premiumExtraDayPaymentService");
 const { getPaymentMetadata } = require("./subscription/subscriptionCheckoutHelpers");
+const { applyCommercialStateToDay } = require("./subscription/subscriptionDayCommercialStateService");
 
 const SUPPORTED_PHASE1_SHARED_PAYMENT_TYPES = new Set([
   "subscription_activation",
   "subscription_renewal",
   "premium_extra_day",
+  "day_planning_payment",
   "one_time_addon_day_planning",
   "one_time_addon",
   "custom_salad_day",
@@ -216,6 +218,89 @@ async function applyPremiumExtraDayPayment({ payment, session, source = "system"
   });
 }
 
+async function applyUnifiedDayPlanningPayment({ payment, session, source = "system" }, runtimeOverrides = null) {
+  const runtime = runtimeOverrides || defaultRuntime();
+  const metadata = metadataOf(payment);
+  if (!isValidObjectId(metadata.subscriptionId) || !metadata.date) {
+    return { applied: false, reason: "invalid_metadata" };
+  }
+
+  const subscription = await runtime.findSubscriptionById(metadata.subscriptionId, { session });
+  if (!subscription) return { applied: false, reason: "subscription_not_found" };
+
+  const day = isValidObjectId(metadata.dayId)
+    ? await runtime.findDayById(metadata.dayId, { session })
+    : await runtime.findDay({ subscriptionId: metadata.subscriptionId, date: metadata.date, session });
+  if (!day) return { applied: false, reason: "day_not_found" };
+  if (String(day.subscriptionId) !== String(subscription._id)) return { applied: false, reason: "day_subscription_mismatch" };
+  if (String(day.date) !== String(metadata.date)) return { applied: false, reason: "day_date_mismatch" };
+  if (day.status !== "open") return { applied: false, reason: `day_not_open:${day.status}` };
+
+  const currentRevisionHash = applyCommercialStateToDay(day.toObject ? day.toObject() : day).plannerRevisionHash;
+  if (metadata.revisionHash && String(metadata.revisionHash) !== String(currentRevisionHash)) {
+    return { applied: false, reason: "revision_mismatch" };
+  }
+
+  const results = [];
+  if (Number(metadata.premiumAmountHalala || 0) > 0) {
+    const premiumResult = await settlePaidPremiumExtraDayPayment({
+      subscription,
+      day,
+      payment,
+      session,
+      userId: payment && payment.userId ? payment.userId : null,
+      logDate: metadata.date,
+      writeLogFn: source === "webhook"
+        ? async (payload) => runtime.writeLog({ ...payload, byRole: "system" })
+        : null,
+    });
+    if (!premiumResult.applied) return premiumResult;
+    results.push(premiumResult);
+  }
+
+  if (Number(metadata.addonsAmountHalala || 0) > 0) {
+    if (!Array.isArray(metadata.oneTimeAddonSelections)) {
+      return { applied: false, reason: "invalid_addon_metadata" };
+    }
+
+    const pendingSelections = (day.addonSelections || []).filter(s => s.source === "pending_payment");
+    if (pendingSelections.length > 0) {
+      const expectedSnapshotMap = buildOneTimeAddonSnapshotCountMap(metadata.oneTimeAddonSelections);
+      const pendingSelectionIndexMap = buildOneTimeAddonSelectionIndexMap(day.addonSelections || []);
+      const matchedIndexes = new Set();
+
+      for (const [key, count] of expectedSnapshotMap.entries()) {
+        const pendingIndexes = (pendingSelectionIndexMap.get(key) || []).filter((index) => {
+          const selection = day.addonSelections[index];
+          return selection && selection.source === "pending_payment";
+        });
+        if (pendingIndexes.length < count) {
+          return { applied: false, reason: "payment_snapshot_mismatch" };
+        }
+        pendingIndexes.slice(0, count).forEach((index) => matchedIndexes.add(index));
+      }
+
+      const paidAt = new Date();
+      day.addonSelections = (day.addonSelections || []).map((selection, index) => {
+        if (matchedIndexes.has(index)) {
+          return { ...selection, source: "paid", paidAt, paymentId: payment._id };
+        }
+        return selection;
+      });
+
+      day.markModified("addonSelections");
+      await day.save({ session });
+      results.push({ applied: true, addonSelectionsSettled: matchedIndexes.size });
+    } else {
+      results.push({ applied: true, alreadySettled: true });
+    }
+  }
+
+  const anyApplied = results.some((result) => result && result.applied);
+  if (!anyApplied) return { applied: false, reason: "nothing_to_settle" };
+  return { applied: true, results };
+}
+
 async function applySubscriptionActivationPayment({ payment, session, source = "system" }, runtimeOverrides = null) {
   const runtime = runtimeOverrides || defaultRuntime();
   const metadata = metadataOf(payment);
@@ -240,6 +325,9 @@ async function applyPaymentSideEffects({ payment, session, source = "system" }, 
       break;
     case "premium_extra_day":
       result = await applyPremiumExtraDayPayment({ payment, session, source }, runtimeOverrides);
+      break;
+    case "day_planning_payment":
+      result = await applyUnifiedDayPlanningPayment({ payment, session, source }, runtimeOverrides);
       break;
     case "one_time_addon_day_planning":
       result = await applyOneTimeAddonDayPlanningPayment({ payment, session, source }, runtimeOverrides);
@@ -267,6 +355,7 @@ module.exports = {
   SUPPORTED_PHASE1_SHARED_PAYMENT_TYPES,
   applyOneTimeAddonDayPlanningPayment,
   applyPremiumExtraDayPayment,
+  applyUnifiedDayPlanningPayment,
   applyOneTimeAddonPayment,
   applyCustomSaladDayPayment,
   applyCustomMealDayPayment,
