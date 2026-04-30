@@ -67,8 +67,9 @@ async function buildPricedOneTimeAddonPaymentSnapshot({ day } = {}) {
       addonId: String(item.addonId),
       name: item.name,
       category: item.category,
-      unitPriceHalala: normalizeNumber(item.priceHalala),
+      priceHalala: normalizeNumber(item.priceHalala),
       currency: normalizeCurrencyValue(item.currency),
+      source: "pending_payment",
     };
   });
 
@@ -76,7 +77,7 @@ async function buildPricedOneTimeAddonPaymentSnapshot({ day } = {}) {
     oneTimeAddonSelections: pricedItems,
     oneTimeAddonCount: pricedItems.length,
     pricedItems,
-    totalHalala: pricedItems.reduce((sum, item) => sum + Number(item.unitPriceHalala || 0), 0),
+    totalHalala: pricedItems.reduce((sum, item) => sum + Number(item.priceHalala || 0), 0),
     currency: pricedItems[0] && pricedItems[0].currency ? pricedItems[0].currency : SYSTEM_CURRENCY,
   };
 }
@@ -174,6 +175,19 @@ async function createOneTimeAddonDayPlanningPaymentFlow({
       backUrl: body && body.backUrl,
     });
 
+    const invoiceMetadata = {
+      type: ONE_TIME_ADDON_DAY_PLANNING_PAYMENT_TYPE,
+      subscriptionId: String(sub._id),
+      userId: String(userId),
+      dayId: String(day._id),
+      date: String(day.date),
+      oneTimeAddonSelections: pricedSnapshot.oneTimeAddonSelections,
+      oneTimeAddonCount: pricedSnapshot.oneTimeAddonCount,
+      pricedItems: pricedSnapshot.pricedItems,
+      currency: pricedSnapshot.currency,
+      redirectToken: redirectContext.token,
+    };
+
     let invoice;
     try {
       invoice = await runtime.createInvoice({
@@ -184,18 +198,7 @@ async function createOneTimeAddonDayPlanningPaymentFlow({
         callbackUrl: `${appUrl}/api/webhooks/moyasar`,
         successUrl: redirectContext.providerSuccessUrl,
         backUrl: redirectContext.providerCancelUrl,
-        metadata: {
-          type: ONE_TIME_ADDON_DAY_PLANNING_PAYMENT_TYPE,
-          subscriptionId: String(sub._id),
-          userId: String(userId),
-          dayId: String(day._id),
-          date: String(day.date),
-          oneTimeAddonSelections: pricedSnapshot.oneTimeAddonSelections,
-          oneTimeAddonCount: pricedSnapshot.oneTimeAddonCount,
-          pricedItems: pricedSnapshot.pricedItems,
-          currency: pricedSnapshot.currency,
-          redirectToken: redirectContext.token,
-        },
+        metadata: invoiceMetadata,
       });
     } catch (err) {
       logger.error("One-time add-on payment initiation: createInvoice failed", { error: err.message, subscriptionId, date });
@@ -214,7 +217,7 @@ async function createOneTimeAddonDayPlanningPaymentFlow({
         userId,
         subscriptionId: sub._id,
         providerInvoiceId: invoice.id,
-        metadata: buildPaymentMetadataWithInitiationFields(invoice.metadata || {}, {
+        metadata: buildPaymentMetadataWithInitiationFields(invoiceMetadata, {
           paymentUrl: invoice.url,
           responseShape: ONE_TIME_ADDON_DAY_PLANNING_PAYMENT_TYPE,
           totalHalala: pricedSnapshot.totalHalala,

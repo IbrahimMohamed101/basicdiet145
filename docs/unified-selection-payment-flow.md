@@ -50,3 +50,25 @@ Correct state after verification:
 ```
 
 For already-applied paid payments, verification runs an idempotent reconciliation pass. It matches add-ons by the snapshot row id when present, then falls back to `addonId`, unit price, and currency for older snapshots. Only matched snapshot add-ons are settled and stamped with the unified payment id.
+
+### `invalid_addon_metadata` on fresh unified payments
+
+This means create payment did not store add-on snapshot metadata in the shape verify expects. The backend must persist its locally-built payment snapshot, not rely on provider-returned metadata for nested add-on rows.
+
+Correct metadata shape:
+
+```json
+{
+  "metadata": {
+    "oneTimeAddonSelections": [
+      {
+        "addonSelectionId": "DAY_ADDON_ROW_ID",
+        "addonId": "ADDON_ID",
+        "priceHalala": 1300,
+        "currency": "SAR",
+        "source": "pending_payment"
+      }
+    ]
+  }
+}
+```

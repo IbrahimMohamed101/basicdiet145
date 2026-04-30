@@ -67,14 +67,15 @@ function buildPendingAddonSnapshot(day) {
     addonId: String(item.addonId),
     name: item.name,
     category: item.category,
-    unitPriceHalala: normalizeNumber(item.priceHalala),
+    priceHalala: normalizeNumber(item.priceHalala),
     currency: normalizeCurrencyValue(item.currency),
+    source: "pending_payment",
   }));
 
   return {
     oneTimeAddonSelections,
     oneTimeAddonCount: oneTimeAddonSelections.length,
-    addonsAmountHalala: oneTimeAddonSelections.reduce((sum, item) => sum + normalizeNumber(item.unitPriceHalala), 0),
+    addonsAmountHalala: oneTimeAddonSelections.reduce((sum, item) => sum + normalizeNumber(item.priceHalala), 0),
     currency: oneTimeAddonSelections[0] && oneTimeAddonSelections[0].currency
       ? oneTimeAddonSelections[0].currency
       : SYSTEM_CURRENCY,
@@ -166,6 +167,24 @@ async function createUnifiedDayPaymentFlow({
       backUrl: body && body.backUrl,
     });
 
+    const invoiceMetadata = {
+      type: UNIFIED_DAY_PAYMENT_TYPE,
+      subscriptionId: String(sub._id),
+      userId: String(userId),
+      dayId: String(day._id),
+      date: String(day.date),
+      revisionHash: derivedDay.plannerRevisionHash,
+      premiumAmountHalala,
+      addonsAmountHalala,
+      totalHalala,
+      premiumSelections: premiumSnapshot.premiumSelections,
+      extraPremiumCount: premiumSnapshot.extraPremiumCount,
+      oneTimeAddonSelections: addonSnapshot.oneTimeAddonSelections,
+      oneTimeAddonCount: addonSnapshot.oneTimeAddonCount,
+      currency: SYSTEM_CURRENCY,
+      redirectToken: redirectContext.token,
+    };
+
     let invoice;
     try {
       invoice = await runtime.createInvoice({
@@ -177,23 +196,7 @@ async function createUnifiedDayPaymentFlow({
         callbackUrl: `${appUrl}/api/webhooks/moyasar`,
         successUrl: redirectContext.providerSuccessUrl,
         backUrl: redirectContext.providerCancelUrl,
-        metadata: {
-          type: UNIFIED_DAY_PAYMENT_TYPE,
-          subscriptionId: String(sub._id),
-          userId: String(userId),
-          dayId: String(day._id),
-          date: String(day.date),
-          revisionHash: derivedDay.plannerRevisionHash,
-          premiumAmountHalala,
-          addonsAmountHalala,
-          totalHalala,
-          premiumSelections: premiumSnapshot.premiumSelections,
-          extraPremiumCount: premiumSnapshot.extraPremiumCount,
-          oneTimeAddonSelections: addonSnapshot.oneTimeAddonSelections,
-          oneTimeAddonCount: addonSnapshot.oneTimeAddonCount,
-          currency: SYSTEM_CURRENCY,
-          redirectToken: redirectContext.token,
-        },
+        metadata: invoiceMetadata,
       });
     } catch (err) {
       logger.error("Unified day payment initiation: createInvoice failed", { error: err.message, subscriptionId, date });
@@ -216,7 +219,7 @@ async function createUnifiedDayPaymentFlow({
         userId,
         subscriptionId: sub._id,
         providerInvoiceId: invoice.id,
-        metadata: buildPaymentMetadataWithInitiationFields(invoice.metadata || {}, {
+        metadata: buildPaymentMetadataWithInitiationFields(invoiceMetadata, {
           paymentUrl: invoice.url,
           responseShape: UNIFIED_DAY_PAYMENT_TYPE,
           totalHalala,
@@ -323,6 +326,15 @@ async function verifyUnifiedDayPaymentFlow({
           allowAppliedReconciliation: true,
         });
         synchronized = Boolean(reconcileResult && reconcileResult.applied);
+        if (reconcileResult && !reconcileResult.applied) {
+          const nextMetadata = Object.assign({}, paymentInSession.metadata || {}, {
+            unappliedReason: reconcileResult.reason,
+          });
+          paymentInSession.applied = false;
+          paymentInSession.metadata = nextMetadata;
+          paymentInSession.markModified("metadata");
+          await paymentInSession.save({ session });
+        }
       }
       await session.commitTransaction();
       session.endSession();

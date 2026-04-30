@@ -49,7 +49,7 @@ function isValidObjectId(value) {
 
 function normalizeOneTimeAddonSnapshotKey(item = {}) {
   const addonId = String(item.addonId || "");
-  const unitPriceHalala = Number(item.unitPriceHalala || item.priceHalala || 0);
+  const unitPriceHalala = Number(item.priceHalala !== undefined ? item.priceHalala : item.unitPriceHalala || 0);
   const currency = String(item.currency || "").toUpperCase();
   return `${addonId}::${unitPriceHalala}::${currency}`;
 }
@@ -120,9 +120,24 @@ function normalizeNumber(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function isValidOneTimeAddonSnapshotItem(item = {}) {
+  if (!item || typeof item !== "object") return false;
+  const hasPrice = item.priceHalala !== undefined || item.unitPriceHalala !== undefined;
+  return Boolean(
+    item.addonId
+      && hasPrice
+      && Number.isFinite(Number(item.priceHalala !== undefined ? item.priceHalala : item.unitPriceHalala))
+      && String(item.currency || "").trim()
+  );
+}
+
+function hasValidOneTimeAddonSnapshotMetadata(items) {
+  return Array.isArray(items) && items.every((item) => isValidOneTimeAddonSnapshotItem(item));
+}
+
 function sumOneTimeAddonSnapshot(items = []) {
   return (Array.isArray(items) ? items : []).reduce(
-    (sum, item) => sum + normalizeNumber(item && (item.unitPriceHalala !== undefined ? item.unitPriceHalala : item.priceHalala)),
+    (sum, item) => sum + normalizeNumber(item && (item.priceHalala !== undefined ? item.priceHalala : item.unitPriceHalala)),
     0
   );
 }
@@ -183,7 +198,7 @@ async function settlePaidOneTimeAddonSelections({
   expectedAmountHalala = null,
   session,
 }) {
-  if (!day || !payment || !Array.isArray(expectedSelections)) {
+  if (!day || !payment || !hasValidOneTimeAddonSnapshotMetadata(expectedSelections)) {
     return { applied: false, reason: "invalid_addon_metadata" };
   }
 

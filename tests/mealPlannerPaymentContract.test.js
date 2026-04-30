@@ -82,6 +82,22 @@ function assertPaymentRequirementConsistent(requirement, label) {
   }
 }
 
+function assertOneTimeAddonPaymentMetadataShape(payment, expectedCount, label) {
+  assertTrue(payment && payment.metadata, `${label} missing payment metadata`, payment);
+  const snapshots = payment.metadata.oneTimeAddonSelections;
+  assertTrue(Array.isArray(snapshots), `${label} oneTimeAddonSelections must be an array`, payment.metadata);
+  assertEqual(snapshots.length, expectedCount, `${label} oneTimeAddonSelections length`, payment.metadata);
+  snapshots.forEach((snapshot, index) => {
+    assertTrue(snapshot.addonSelectionId, `${label} snapshot ${index} addonSelectionId`, snapshot);
+    assertTrue(snapshot.addonId, `${label} snapshot ${index} addonId`, snapshot);
+    assertTrue(snapshot.priceHalala !== undefined && snapshot.priceHalala !== null, `${label} snapshot ${index} priceHalala present`, snapshot);
+    assertTrue(Number.isInteger(Number(snapshot.priceHalala)), `${label} snapshot ${index} priceHalala`, snapshot);
+    assertEqual(snapshot.currency, "SAR", `${label} snapshot ${index} currency`, snapshot);
+    assertEqual(snapshot.source, "pending_payment", `${label} snapshot ${index} source`, snapshot);
+  });
+  return snapshots;
+}
+
 function installMoyasarStub() {
   let invoiceSeq = 0;
   const invoices = new Map();
@@ -113,7 +129,12 @@ function installMoyasarStub() {
             amount: body.amount,
             currency: body.currency || "SAR",
             url: `https://pay.test/${id}`,
-            metadata: body.metadata || {},
+            metadata: ["day_planning_payment", "one_time_addon_day_planning"].includes(String(body.metadata?.type || ""))
+              ? {
+                type: body.metadata.type,
+                oneTimeAddonSelections: "provider-mutated-metadata",
+              }
+              : (body.metadata || {}),
           };
           invoices.set(id, payload);
         } else if (method === "GET" && path.startsWith("/v1/invoices?")) {
@@ -458,10 +479,11 @@ async function runUnifiedDayPaymentFlow(ctx) {
   assertEqual(premiumPaidAddonCreateRes.body.data.totalHalala, 3200, "Unified premium-paid add-on total", premiumPaidAddonCreateRes.body.data);
   const premiumPaidAddonPayment = await Payment.findById(premiumPaidAddonCreateRes.body.data.paymentId).lean();
   assertEqual(premiumPaidAddonPayment.metadata.premiumSelections.length, 0, "Unified premium-paid add-on metadata has no premium snapshot", premiumPaidAddonPayment.metadata);
-  assertEqual(premiumPaidAddonPayment.metadata.oneTimeAddonSelections.length, 2, "Unified premium-paid add-on metadata snapshots add-ons", premiumPaidAddonPayment.metadata);
+  assertOneTimeAddonPaymentMetadataShape(premiumPaidAddonPayment, 2, "Unified premium-paid add-on metadata snapshots add-ons");
 
   const premiumPaidAddonVerifyRes = await request("POST", `/api/subscriptions/${ctx.subscription._id}/days/${premiumOnlyDate}/payments/${premiumPaidAddonCreateRes.body.data.paymentId}/verify`, {}, ctx.token);
   assertEqual(premiumPaidAddonVerifyRes.status, 200, "Unified premium-paid add-on verify status", premiumPaidAddonVerifyRes.body);
+  assertTrue(premiumPaidAddonVerifyRes.body.data.sideEffectResult?.reason !== "invalid_addon_metadata", "Unified premium-paid add-on verify must not report invalid add-on metadata", premiumPaidAddonVerifyRes.body.data.sideEffectResult);
   assertEqual(premiumPaidAddonVerifyRes.body.data.premiumSummary.pendingPaymentCount, 0, "Unified premium-paid add-on verify leaves premium settled", premiumPaidAddonVerifyRes.body.data.premiumSummary);
   assertEqual(premiumPaidAddonVerifyRes.body.data.premiumSummary.paidExtraCount, 1, "Unified premium-paid add-on verify does not duplicate paid premium", premiumPaidAddonVerifyRes.body.data.premiumSummary);
   assertEqual(premiumPaidAddonVerifyRes.body.data.paymentRequirement.addonPendingPaymentCount, 0, "Unified premium-paid add-on verify settles add-ons", premiumPaidAddonVerifyRes.body.data.paymentRequirement);
@@ -480,9 +502,12 @@ async function runUnifiedDayPaymentFlow(ctx) {
   assertEqual(addonCreateRes.body.data.premiumAmountHalala, 0, "Unified add-on-only premium amount", addonCreateRes.body.data);
   assertEqual(addonCreateRes.body.data.addonsAmountHalala, 3200, "Unified add-on-only add-on amount", addonCreateRes.body.data);
   assertEqual(addonCreateRes.body.data.totalHalala, 3200, "Unified add-on-only total", addonCreateRes.body.data);
+  const addonOnlyPayment = await Payment.findById(addonCreateRes.body.data.paymentId).lean();
+  assertOneTimeAddonPaymentMetadataShape(addonOnlyPayment, 2, "Unified add-on-only metadata snapshots add-ons");
 
   const addonVerifyRes = await request("POST", `/api/subscriptions/${ctx.subscription._id}/days/${addonOnlyDate}/payments/${addonCreateRes.body.data.paymentId}/verify`, {}, ctx.token);
   assertEqual(addonVerifyRes.status, 200, "Unified add-on-only verify status", addonVerifyRes.body);
+  assertTrue(addonVerifyRes.body.data.sideEffectResult?.reason !== "invalid_addon_metadata", "Unified add-on-only verify must not report invalid add-on metadata", addonVerifyRes.body.data.sideEffectResult);
   assertEqual(addonVerifyRes.body.data.paymentStatus, "paid", "Unified add-on-only paid", addonVerifyRes.body.data);
   assertEqual(addonVerifyRes.body.data.paymentRequirement.requiresPayment, false, "Unified add-on-only clears payment", addonVerifyRes.body.data.paymentRequirement);
   assertTrue(addonVerifyRes.body.data.addonSelections.every((selection) => selection.source === "paid"), "Unified add-on-only settles add-ons", addonVerifyRes.body.data.addonSelections);
@@ -537,11 +562,13 @@ async function runUnifiedDayPaymentFlow(ctx) {
   assertEqual(combinedPayment.amount, 6200, "Unified combined payment record amount", combinedPayment);
   assertEqual(combinedPayment.metadata.premiumAmountHalala, 3000, "Unified combined payment metadata premium amount", combinedPayment.metadata);
   assertEqual(combinedPayment.metadata.addonsAmountHalala, 3200, "Unified combined payment metadata add-on amount", combinedPayment.metadata);
-  assertEqual(combinedPayment.metadata.oneTimeAddonSelections.length, 2, "Unified combined payment snapshots add-ons", combinedPayment.metadata);
+  const combinedAddonSnapshots = assertOneTimeAddonPaymentMetadataShape(combinedPayment, 2, "Unified combined payment snapshots add-ons");
+  assertTrue(combinedAddonSnapshots.every((snapshot) => [1300, 1900].includes(Number(snapshot.priceHalala))), "Unified combined payment snapshots add-on prices", combinedAddonSnapshots);
 
   const combinedVerifyRes = await request("POST", `/api/subscriptions/${ctx.subscription._id}/days/${combinedDate}/payments/${combinedCreate.paymentId}/verify`, {}, ctx.token);
   assertEqual(combinedVerifyRes.status, 200, "Unified combined verify status", combinedVerifyRes.body);
   const combinedVerify = combinedVerifyRes.body.data;
+  assertTrue(combinedVerify.sideEffectResult?.reason !== "invalid_addon_metadata", "Unified combined verify must not report invalid add-on metadata", combinedVerify.sideEffectResult);
   assertEqual(combinedVerify.paymentStatus, "paid", "Unified combined verify payment status", combinedVerify);
   assertEqual(combinedVerify.applied, true, "Unified combined verify applies side effects", combinedVerify);
   assertEqual(combinedVerify.paymentRequirement.requiresPayment, false, "Unified combined verify clears payment requirement", combinedVerify.paymentRequirement);
