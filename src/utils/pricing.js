@@ -15,7 +15,7 @@ function normalizeVatPercentage(value, fallback = DEFAULT_VAT_PERCENTAGE) {
   return parsed;
 }
 
-function computeVatBreakdown({
+function computeExclusiveVatBreakdown({
   basePriceHalala = 0,
   vatPercentage = DEFAULT_VAT_PERCENTAGE,
 } = {}) {
@@ -34,58 +34,107 @@ function computeVatBreakdown({
   };
 }
 
+function computeInclusiveVatBreakdown(totalInclusiveHalala = 0, vatPercentage = DEFAULT_VAT_PERCENTAGE) {
+  const normalizedTotalInclusiveHalala = normalizeHalala(totalInclusiveHalala);
+  const normalizedVatPercentage = normalizeVatPercentage(vatPercentage);
+  const divisor = 1 + (normalizedVatPercentage / 100);
+  const subtotalHalala = divisor > 0
+    ? Math.round(normalizedTotalInclusiveHalala / divisor)
+    : normalizedTotalInclusiveHalala;
+  const vatHalala = normalizedTotalInclusiveHalala - subtotalHalala;
+
+  return {
+    basePriceHalala: subtotalHalala, // Keep for backward compatibility but it refers to net
+    subtotalHalala,
+    subtotalBeforeVatHalala: subtotalHalala,
+    vatPercentage: normalizedVatPercentage,
+    vatHalala,
+    totalPriceHalala: normalizedTotalInclusiveHalala,
+    totalHalala: normalizedTotalInclusiveHalala,
+    netHalala: subtotalHalala,
+    grossHalala: normalizedTotalInclusiveHalala,
+  };
+}
+
+const computeVatBreakdown = computeExclusiveVatBreakdown;
+
 function normalizeStoredVatBreakdown({
   basePriceHalala,
+  basePlanPriceHalala,
+  basePlanGrossHalala,
+  basePlanNetHalala,
   subtotalHalala,
+  subtotalBeforeVatHalala,
   vatPercentage,
   vatHalala,
   totalPriceHalala,
   totalHalala,
 } = {}) {
-  const normalizedBasePriceHalala = normalizeHalala(
-    basePriceHalala !== undefined ? basePriceHalala : subtotalHalala
-  );
-  const normalizedSubtotalHalala = normalizeHalala(
-    subtotalHalala !== undefined ? subtotalHalala : basePriceHalala
-  );
   const normalizedVatPercentage = normalizeVatPercentage(vatPercentage);
-  const computed = computeVatBreakdown({
-    basePriceHalala: normalizedSubtotalHalala,
-    vatPercentage: normalizedVatPercentage,
-  });
+  
+  // Use explicit gross fields if available, otherwise fall back to basePlanPriceHalala or basePriceHalala.
+  // DO NOT fall back to subtotalHalala for the gross price.
+  const gross = normalizeHalala(
+    basePlanGrossHalala !== undefined ? basePlanGrossHalala : (basePlanPriceHalala !== undefined ? basePlanPriceHalala : basePriceHalala)
+  );
 
-  const normalizedVatHalala = vatHalala === undefined ? computed.vatHalala : normalizeHalala(vatHalala);
-  const normalizedTotalPriceHalala = totalPriceHalala !== undefined
+  const subtotal = normalizeHalala(
+    subtotalBeforeVatHalala !== undefined ? subtotalBeforeVatHalala : subtotalHalala
+  );
+
+  const total = totalPriceHalala !== undefined
     ? normalizeHalala(totalPriceHalala)
-    : (totalHalala !== undefined ? normalizeHalala(totalHalala) : normalizedSubtotalHalala + normalizedVatHalala);
+    : (totalHalala !== undefined ? normalizeHalala(totalHalala) : (subtotal + normalizeHalala(vatHalala)));
+
+  // If net is not provided, we use subtotal. Do NOT recompute from gross here to avoid double extraction.
+  const net = basePlanNetHalala !== undefined ? normalizeHalala(basePlanNetHalala) : subtotal;
 
   return {
-    basePriceHalala: normalizedBasePriceHalala,
-    basePlanPriceHalala: normalizedBasePriceHalala,
-    subtotalHalala: normalizedSubtotalHalala,
+    basePriceHalala: gross,
+    basePlanPriceHalala: gross,
+    basePlanGrossHalala: gross,
+    basePlanNetHalala: net,
+    subtotalHalala: subtotal,
+    subtotalBeforeVatHalala: subtotal,
     vatPercentage: normalizedVatPercentage,
-    vatHalala: normalizedVatHalala,
-    totalPriceHalala: normalizedTotalPriceHalala,
-    totalHalala: normalizedTotalPriceHalala,
+    vatHalala: normalizeHalala(vatHalala),
+    totalPriceHalala: total,
+    totalHalala: total,
   };
 }
 
 function buildMoneySummary({
-  basePlanPriceHalala = 0,
+  basePlanPriceHalala,
+  basePriceHalala,
+  basePlanGrossHalala,
+  basePlanNetHalala,
   subtotalHalala = 0,
+  subtotalBeforeVatHalala,
   vatPercentage = DEFAULT_VAT_PERCENTAGE,
   vatHalala = 0,
   totalPriceHalala = 0,
   currency = "SAR",
 } = {}) {
-  const basePlanPrice = normalizeHalala(basePlanPriceHalala);
-  const subtotal = normalizeHalala(subtotalHalala);
+  // Directly use provided values. DO NOT recompute VAT or Net here.
+  const gross = normalizeHalala(
+    basePlanGrossHalala !== undefined ? basePlanGrossHalala : (basePlanPriceHalala !== undefined ? basePlanPriceHalala : basePriceHalala)
+  );
+  
+  const subtotal = normalizeHalala(
+    subtotalBeforeVatHalala !== undefined ? subtotalBeforeVatHalala : subtotalHalala
+  );
+
+  const net = basePlanNetHalala !== undefined ? normalizeHalala(basePlanNetHalala) : subtotal;
   const vat = normalizeHalala(vatHalala);
   const total = normalizeHalala(totalPriceHalala);
 
   return {
-    basePlanPriceHalala: basePlanPrice,
-    basePlanPriceSar: basePlanPrice / 100,
+    basePlanPriceHalala: gross,
+    basePlanPriceSar: gross / 100,
+    basePlanGrossHalala: gross,
+    basePlanGrossSar: gross / 100,
+    basePlanNetHalala: net,
+    basePlanNetSar: net / 100,
     subtotalHalala: subtotal,
     subtotalSar: subtotal / 100,
     vatPercentage: normalizeVatPercentage(vatPercentage),
@@ -95,13 +144,15 @@ function buildMoneySummary({
     totalPriceSar: total / 100,
     currency: String(currency || "SAR").trim().toUpperCase() || "SAR",
     // Backward compatibility
-    basePriceHalala: basePlanPrice,
-    basePriceSar: basePlanPrice / 100,
+    basePriceHalala: gross,
+    basePriceSar: gross / 100,
   };
 }
 
 module.exports = {
   computeVatBreakdown,
+  computeExclusiveVatBreakdown,
+  computeInclusiveVatBreakdown,
   normalizeStoredVatBreakdown,
   buildMoneySummary,
   normalizeVatPercentage,

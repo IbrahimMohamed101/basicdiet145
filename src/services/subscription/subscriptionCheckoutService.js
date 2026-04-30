@@ -13,7 +13,7 @@ const { getInvoiceResponseId, getInvoiceResponseUrl } = require("../../utils/pay
 const { buildCheckoutRequestHash } = require("../../utils/checkout");
 const { normalizeCheckoutDeliveryForPersistence } = require("../../utils/checkout");
 const { isPhase1CanonicalCheckoutDraftWriteEnabled } = require("../../utils/featureFlags");
-const { buildMoneySummary, computeVatBreakdown, normalizeVatPercentage } = require("../../utils/pricing");
+const { buildMoneySummary, computeInclusiveVatBreakdown } = require("../../utils/pricing");
 const { resolveQuoteSummary } = require("../../utils/subscription/subscriptionCatalog");
 const {
   reservePromoCodeUsageForCheckout,
@@ -107,12 +107,57 @@ function computePremiumTotalHalala(rows) {
   );
 }
 
+function buildCanonicalSubscriptionCheckoutBreakdown(quote, normalizedPremiumItems = null) {
+  const rows = Array.isArray(normalizedPremiumItems)
+    ? normalizedPremiumItems
+    : buildNormalizedPremiumRows(quote && quote.premiumItems);
+  const premiumTotalHalala = computePremiumTotalHalala(rows);
+  const quoteBreakdown = quote && quote.breakdown && typeof quote.breakdown === "object"
+    ? quote.breakdown
+    : {};
+  const basePlanPriceHalala = Number(quoteBreakdown.basePlanPriceHalala || 0);
+  const addonsTotalHalala = Number(quoteBreakdown.addonsTotalHalala || 0);
+  const deliveryFeeHalala = Number(quoteBreakdown.deliveryFeeHalala || 0);
+  const discountHalala = Number(quoteBreakdown.discountHalala || 0);
+  const grossTotalHalala =
+    basePlanPriceHalala +
+    premiumTotalHalala +
+    addonsTotalHalala +
+    deliveryFeeHalala;
+  const totalInclusiveHalala = Math.max(0, grossTotalHalala - Math.max(0, discountHalala));
+  const vatBreakdown = recomputeVatBreakdown(totalInclusiveHalala, quoteBreakdown);
+  const vatPercentage = vatBreakdown.vatPercentage;
+  const divisor = 1 + (vatPercentage / 100);
+  const basePlanNetHalala = divisor > 0 ? Math.round(basePlanPriceHalala / divisor) : basePlanPriceHalala;
+
+  return {
+    breakdown: {
+      basePlanPriceHalala,
+      basePlanGrossHalala: basePlanPriceHalala,
+      basePlanNetHalala,
+      premiumTotalHalala,
+      addonsTotalHalala,
+      deliveryFeeHalala,
+      grossTotalHalala,
+      discountHalala,
+      subtotalHalala: vatBreakdown.subtotalHalala,
+      subtotalBeforeVatHalala: vatBreakdown.subtotalBeforeVatHalala,
+      vatPercentage: vatBreakdown.vatPercentage,
+      vatHalala: vatBreakdown.vatHalala,
+      totalPriceHalala: vatBreakdown.totalPriceHalala,
+      totalHalala: vatBreakdown.totalHalala,
+      currency: SYSTEM_CURRENCY,
+    },
+    premiumTotalHalala,
+  };
+}
+
 /**
- * Recompute VAT from the canonical subtotal.
+ * Recompute included VAT from the canonical customer-facing total.
  *
- * WHY: quote.breakdown.vatHalala was calculated against the *raw* (un-normalised)
- * premiumTotalHalala.  Once we recompute premiumTotalHalala from normalizedPremiumItems
- * the subtotal changes, so VAT must follow — otherwise the three values
+ * WHY: once we recompute premiumTotalHalala from normalizedPremiumItems, the
+ * customer-facing inclusive total may change, so the included VAT portion must
+ * follow. Otherwise the three values
  *   contractSnapshot.pricing.totalHalala
  *   breakdown.totalHalala
  *   actual invoice amount
@@ -121,26 +166,25 @@ function computePremiumTotalHalala(rows) {
  * The VAT rate comes from quote.breakdown.vatPercentage when available and
  * falls back to the derived rate for older quote shapes.
  */
-function recomputeVatBreakdown(canonicalSubtotal, quoteBreakdown) {
-  const explicitVatPercentage = normalizeVatPercentage(
-    quoteBreakdown && quoteBreakdown.vatPercentage,
-    NaN
-  );
+function recomputeVatBreakdown(canonicalTotalInclusive, quoteBreakdown) {
+  const explicitVatPercentage = Number(quoteBreakdown && quoteBreakdown.vatPercentage);
   const rawSubtotal =
     Number(quoteBreakdown.basePlanPriceHalala || 0) +
     Number(quoteBreakdown.premiumTotalHalala  || 0) +
     Number(quoteBreakdown.addonsTotalHalala   || 0) +
     Number(quoteBreakdown.deliveryFeeHalala   || 0);
-  const derivedVatPercentage = rawSubtotal === 0
+  const quoteVatHalala = Number(quoteBreakdown.vatHalala || 0);
+  const quoteTotalHalala = Number(quoteBreakdown.totalHalala || 0);
+  const derivedVatBase = quoteTotalHalala > 0
+    ? Math.max(0, quoteTotalHalala - quoteVatHalala)
+    : rawSubtotal;
+  const derivedVatPercentage = derivedVatBase === 0
     ? 0
-    : (Number(quoteBreakdown.vatHalala || 0) / rawSubtotal) * 100;
-  const vatPercentage = Number.isFinite(explicitVatPercentage)
+    : (quoteVatHalala / derivedVatBase) * 100;
+  const vatPercentage = Number.isFinite(explicitVatPercentage) && explicitVatPercentage >= 0
     ? explicitVatPercentage
     : derivedVatPercentage;
-  return computeVatBreakdown({
-    basePriceHalala: canonicalSubtotal,
-    vatPercentage,
-  });
+  return computeInclusiveVatBreakdown(canonicalTotalInclusive, vatPercentage);
 }
 
 // ---------------------------------------------------------------------------
@@ -259,48 +303,25 @@ async function performSubscriptionCheckout(userId, idempotencyKey, body, lang, r
       // STEP 1: Build normalised premium rows — single source of truth.
       // ----------------------------------------------------------------
       normalizedPremiumItems = buildNormalizedPremiumRows(quote.premiumItems);
-      const premiumTotalHalala = computePremiumTotalHalala(normalizedPremiumItems);
+      const {
+        breakdown: canonicalBreakdown,
+        premiumTotalHalala,
+      } = buildCanonicalSubscriptionCheckoutBreakdown(quote, normalizedPremiumItems);
 
       // ----------------------------------------------------------------
       // STEP 2: Rebuild the full breakdown.
       //
       //   KEY FIX (VAT):
-      //   vatHalala is NOT read from quote.breakdown.vatHalala because that
-      //   value was computed against the *raw* (un-normalised) premiumTotal.
-      //   Instead we back-derive the VAT rate from quote.breakdown and apply
-      //   it to the *canonical* subtotal so that:
+      //   Customer-facing subscription prices are already VAT-inclusive.
+      //   We recompute the canonical inclusive total from normalized rows, then
+      //   extract the included VAT portion so that:
       //     invoice amount == breakdown.totalHalala
       //              == contractSnapshot.pricing.totalHalala
       //   at all times.
       // ----------------------------------------------------------------
-      const basePlanPriceHalala = Number(quote.breakdown.basePlanPriceHalala || 0);
-      const addonsTotalHalala   = Number(quote.breakdown.addonsTotalHalala   || 0);
-      const deliveryFeeHalala   = Number(quote.breakdown.deliveryFeeHalala   || 0);
-
-      // Canonical subtotal (pre-VAT).
-      const canonicalSubtotal =
-        basePlanPriceHalala +
-        premiumTotalHalala +
-        addonsTotalHalala +
-        deliveryFeeHalala;
-
-      // VAT recomputed from canonical subtotal using the rate from the quote.
-      const vatBreakdown = recomputeVatBreakdown(canonicalSubtotal, quote.breakdown);
-      const vatHalala = vatBreakdown.vatHalala;
-      const totalHalala = vatBreakdown.totalHalala;
-
-      breakdown = {
-        basePlanPriceHalala,
-        premiumTotalHalala,
-        addonsTotalHalala,
-        deliveryFeeHalala,
-        discountHalala: Number(quote.breakdown.discountHalala || 0),
-        subtotalHalala: vatBreakdown.subtotalHalala,
-        vatPercentage: vatBreakdown.vatPercentage,
-        vatHalala,
-        totalHalala,
-        currency: SYSTEM_CURRENCY,
-      };
+      const vatHalala = canonicalBreakdown.vatHalala;
+      const totalHalala = canonicalBreakdown.totalHalala;
+      breakdown = canonicalBreakdown;
 
       // ----------------------------------------------------------------
       // STEP 3: Build canonical persistence fields.
@@ -323,9 +344,12 @@ async function performSubscriptionCheckout(userId, idempotencyKey, body, lang, r
             },
             pricing: {
               ...((canonicalContract && canonicalContract.pricing) || {}),
-              addonsTotalHalala,
-              discountHalala: Number(quote.breakdown.discountHalala || 0),
+              addonsTotalHalala: breakdown.addonsTotalHalala,
+              discountHalala: breakdown.discountHalala,
               premiumTotalHalala,
+              grossTotalHalala: breakdown.grossTotalHalala,
+              subtotalHalala: breakdown.subtotalHalala,
+              subtotalBeforeVatHalala: breakdown.subtotalBeforeVatHalala,
               vatHalala,       // ← propagate recomputed VAT into the contract snapshot
               totalHalala,
             },
@@ -585,10 +609,14 @@ async function performSubscriptionCheckout(userId, idempotencyKey, body, lang, r
             { reused: false }
           ),
           pricingSummary: buildMoneySummary({
-            basePriceHalala: breakdown.subtotalHalala || 0,
-            vatPercentage: breakdown.vatPercentage || 0,
-            vatHalala: breakdown.vatHalala || 0,
-            totalPriceHalala: breakdown.totalHalala || 0,
+            basePlanPriceHalala: breakdown.basePlanPriceHalala,
+            basePlanGrossHalala: breakdown.basePlanGrossHalala,
+            basePlanNetHalala: breakdown.basePlanNetHalala,
+            subtotalBeforeVatHalala: breakdown.subtotalBeforeVatHalala,
+            subtotalHalala: breakdown.subtotalHalala,
+            vatPercentage: breakdown.vatPercentage,
+            vatHalala: breakdown.vatHalala,
+            totalPriceHalala: breakdown.totalPriceHalala || breakdown.totalHalala,
             currency: breakdown.currency || SYSTEM_CURRENCY,
           }),
           promoCode: buildPromoResponseBlock(quote && quote.promoCode ? quote.promoCode : null),
@@ -664,4 +692,5 @@ async function performSubscriptionCheckout(userId, idempotencyKey, body, lang, r
 
 module.exports = {
   performSubscriptionCheckout,
+  buildCanonicalSubscriptionCheckoutBreakdown,
 };

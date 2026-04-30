@@ -341,11 +341,14 @@ function buildCanonicalActivationPayload({ userId, planId, contractVersion, cont
     selectedGrams: Number(plan.selectedGrams || 0),
     selectedMealsPerDay: mealsPerDay,
     basePlanPriceHalala: Number(pricing.basePlanPriceHalala || 0),
+    basePlanGrossHalala: Number(pricing.basePlanGrossHalala || pricing.basePlanPriceHalala || 0),
+    basePlanNetHalala: Number(pricing.basePlanNetHalala || 0),
     discountHalala: Number(pricing.discountHalala || 0),
     subtotalHalala: Number(pricing.subtotalHalala || 0),
+    subtotalBeforeVatHalala: Number(pricing.subtotalBeforeVatHalala || pricing.subtotalHalala || 0),
     vatPercentage: Number(pricing.vatPercentage || 0),
     vatHalala: Number(pricing.vatHalala || 0),
-    totalPriceHalala: Number(pricing.totalHalala || 0),
+    totalPriceHalala: Number(pricing.totalPriceHalala || pricing.totalHalala || 0),
     checkoutCurrency: pricing.currency ? String(pricing.currency) : SYSTEM_CURRENCY,
     appliedPromo:
       snapshot.promo && typeof snapshot.promo === "object"

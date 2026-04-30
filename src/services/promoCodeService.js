@@ -4,7 +4,7 @@ const PromoCode = require("../models/PromoCode");
 const PromoUsage = require("../models/PromoUsage");
 const Subscription = require("../models/Subscription");
 const CheckoutDraft = require("../models/CheckoutDraft");
-const { computeVatBreakdown } = require("../utils/pricing");
+const { computeInclusiveVatBreakdown } = require("../utils/pricing");
 const { runMongoTransactionWithRetry } = require("./mongoTransactionRetryService");
 
 const SYSTEM_CURRENCY = "SAR";
@@ -85,16 +85,15 @@ function applyPromoDiscountToBreakdown(breakdown, discountAmountHalala) {
     addonsTotalHalala +
     deliveryFeeHalala;
   const normalizedDiscount = Math.max(0, Math.min(Math.round(Number(discountAmountHalala || 0)), rawSubtotal));
-  const discountedSubtotal = Math.max(0, rawSubtotal - normalizedDiscount);
-  const vatBreakdown = computeVatBreakdown({
-    basePriceHalala: discountedSubtotal,
-    vatPercentage,
-  });
+  const discountedTotalInclusive = Math.max(0, rawSubtotal - normalizedDiscount);
+  const vatBreakdown = computeInclusiveVatBreakdown(discountedTotalInclusive, vatPercentage);
 
   return {
     ...breakdown,
     discountHalala: normalizedDiscount,
+    grossTotalHalala: rawSubtotal,
     subtotalHalala: vatBreakdown.subtotalHalala,
+    subtotalBeforeVatHalala: vatBreakdown.subtotalBeforeVatHalala,
     vatPercentage: vatBreakdown.vatPercentage,
     vatHalala: vatBreakdown.vatHalala,
     totalHalala: vatBreakdown.totalHalala,

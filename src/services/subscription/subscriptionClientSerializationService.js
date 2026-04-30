@@ -151,6 +151,18 @@ function resolveSubscriptionPricingSummary(subscription) {
     ? subscription.contractSnapshot.pricing
     : {};
   const normalized = normalizeStoredVatBreakdown({
+    basePlanGrossHalala:
+      subscription && subscription.basePlanGrossHalala !== undefined
+        ? subscription.basePlanGrossHalala
+        : snapshotPricing.basePlanGrossHalala,
+    basePlanNetHalala:
+      subscription && subscription.basePlanNetHalala !== undefined
+        ? subscription.basePlanNetHalala
+        : snapshotPricing.basePlanNetHalala,
+    basePlanPriceHalala:
+      subscription && subscription.basePlanPriceHalala !== undefined
+        ? subscription.basePlanPriceHalala
+        : snapshotPricing.basePlanPriceHalala,
     basePriceHalala:
       subscription && subscription.basePlanPriceHalala !== undefined
         ? subscription.basePlanPriceHalala
@@ -159,6 +171,10 @@ function resolveSubscriptionPricingSummary(subscription) {
       subscription && subscription.subtotalHalala !== undefined
         ? subscription.subtotalHalala
         : snapshotPricing.subtotalHalala,
+    subtotalBeforeVatHalala:
+      subscription && (subscription.subtotalBeforeVatHalala !== undefined || subscription.subtotalHalala !== undefined)
+        ? (subscription.subtotalBeforeVatHalala || subscription.subtotalHalala)
+        : (snapshotPricing.subtotalBeforeVatHalala || snapshotPricing.subtotalHalala),
     vatPercentage:
       subscription && subscription.vatPercentage !== undefined
         ? subscription.vatPercentage
@@ -170,11 +186,26 @@ function resolveSubscriptionPricingSummary(subscription) {
     totalPriceHalala:
       subscription && subscription.totalPriceHalala !== undefined
         ? subscription.totalPriceHalala
-        : snapshotPricing.totalHalala,
+        : (snapshotPricing.totalPriceHalala || snapshotPricing.totalHalala),
+    vatPercentage:
+      subscription && subscription.vatPercentage !== undefined
+        ? subscription.vatPercentage
+        : snapshotPricing.vatPercentage,
+    vatHalala:
+      subscription && subscription.vatHalala !== undefined
+        ? subscription.vatHalala
+        : snapshotPricing.vatHalala,
   });
 
   return buildMoneySummary({
-    ...normalized,
+    basePlanPriceHalala: normalized.basePlanPriceHalala,
+    basePlanGrossHalala: normalized.basePlanGrossHalala,
+    basePlanNetHalala: normalized.basePlanNetHalala,
+    subtotalBeforeVatHalala: normalized.subtotalBeforeVatHalala,
+    subtotalHalala: normalized.subtotalHalala,
+    vatPercentage: normalized.vatPercentage,
+    vatHalala: normalized.vatHalala,
+    totalPriceHalala: normalized.totalPriceHalala,
     currency: subscription && subscription.checkoutCurrency ? subscription.checkoutCurrency : SYSTEM_CURRENCY,
   });
 }

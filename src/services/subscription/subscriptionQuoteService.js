@@ -7,7 +7,7 @@ const dateUtils = require("../../utils/date");
 const validateObjectId = require("../../utils/validateObjectId");
 const { pickLang } = require("../../utils/i18n");
 const { SYSTEM_CURRENCY, assertSystemCurrencyOrThrow } = require("../../utils/currency");
-const { computeVatBreakdown } = require("../../utils/pricing");
+const { computeInclusiveVatBreakdown } = require("../../utils/pricing");
 const {
   resolvePickupLocationSelection,
   resolveAddonChargeTotalHalala,
@@ -567,13 +567,13 @@ async function resolveCheckoutQuoteOrThrow(
     premiumUnitPriceHalala = uniqueUnitPrices.length === 1 ? uniqueUnitPrices[0] : 0;
   }
 
-  const subtotalHalala = basePlanPriceHalala + premiumTotalHalala + addonsTotalHalala + deliveryFeeHalala;
+  const grossTotalHalala = basePlanPriceHalala + premiumTotalHalala + addonsTotalHalala + deliveryFeeHalala;
   const vatPercentageRaw = await getSettingValue("vat_percentage", null);
   const vatPercentage = Number(vatPercentageRaw);
-  const vatBreakdown = computeVatBreakdown({
-    basePriceHalala: subtotalHalala,
-    vatPercentage,
-  });
+  const vatBreakdown = computeInclusiveVatBreakdown(grossTotalHalala, vatPercentage);
+
+  const divisor = 1 + (vatPercentage / 100);
+  const basePlanNetHalala = divisor > 0 ? Math.round(basePlanPriceHalala / divisor) : basePlanPriceHalala;
 
   let quote = {
     plan,
@@ -587,10 +587,14 @@ async function resolveCheckoutQuoteOrThrow(
     addonItems: resolvedAddonItems,
     breakdown: {
       basePlanPriceHalala,
+      basePlanGrossHalala: basePlanPriceHalala,
+      basePlanNetHalala,
       premiumTotalHalala,
       addonsTotalHalala,
       deliveryFeeHalala,
+      grossTotalHalala,
       subtotalHalala: vatBreakdown.subtotalHalala,
+      subtotalBeforeVatHalala: vatBreakdown.subtotalBeforeVatHalala,
       vatPercentage: vatBreakdown.vatPercentage,
       vatHalala: vatBreakdown.vatHalala,
       totalHalala: vatBreakdown.totalHalala,

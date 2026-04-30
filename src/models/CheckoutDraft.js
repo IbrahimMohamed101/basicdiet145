@@ -106,11 +106,15 @@ const CheckoutDraftSchema = new mongoose.Schema(
 
     breakdown: {
       basePlanPriceHalala: { type: Number, min: 0, required: true },
+      basePlanGrossHalala: { type: Number, min: 0 },
+      basePlanNetHalala: { type: Number, min: 0 },
       premiumTotalHalala: { type: Number, min: 0, required: true },
       addonsTotalHalala: { type: Number, min: 0, required: true },
       deliveryFeeHalala: { type: Number, min: 0, required: true },
+      grossTotalHalala: { type: Number, min: 0, default: 0 },
       discountHalala: { type: Number, min: 0, default: 0 },
       subtotalHalala: { type: Number, min: 0, default: 0 },
+      subtotalBeforeVatHalala: { type: Number, min: 0, default: 0 },
       vatPercentage: { type: Number, min: 0, default: 0 },
       vatHalala: { type: Number, min: 0, required: true },
       totalHalala: { type: Number, min: 0, required: true },
