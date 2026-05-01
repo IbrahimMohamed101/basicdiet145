@@ -26,6 +26,25 @@ function normalizeString(value, fallback = "") {
   return normalized || fallback;
 }
 
+function normalizeSaladForRevision(salad) {
+  if (!salad || typeof salad !== "object" || Array.isArray(salad)) return null;
+  const groups = salad.groups && typeof salad.groups === "object" && !Array.isArray(salad.groups)
+    ? Object.keys(salad.groups).sort().reduce((acc, groupKey) => {
+      const groupItems = Array.isArray(salad.groups[groupKey]) ? salad.groups[groupKey] : [];
+      const normalizedItems = groupItems.map((item) => String(item || "").trim()).filter(Boolean).sort();
+      if (normalizedItems.length > 0) {
+        acc[groupKey] = normalizedItems;
+      }
+      return acc;
+    }, {})
+    : {};
+
+  return {
+    presetKey: normalizeString(salad.presetKey),
+    groups,
+  };
+}
+
 function buildPlannerRevisionHash({ day, mealSlots }) {
   const normalized = (Array.isArray(mealSlots) ? mealSlots : [])
     .map((slot) => {
@@ -42,7 +61,7 @@ function buildPlannerRevisionHash({ day, mealSlots }) {
         proteinId: slot && slot.proteinId ? String(slot.proteinId) : null,
         sandwichId: slot && slot.sandwichId ? String(slot.sandwichId) : null,
         carbs: normalizedCarbs,
-        salad: slot && slot.salad ? slot.salad : null,
+        salad: normalizeSaladForRevision(slot && slot.salad),
         isPremium: Boolean(slot && slot.isPremium),
         premiumSource: normalizeString(slot && slot.premiumSource, "none"),
         premiumExtraFeeHalala: normalizeNumber(slot && slot.premiumExtraFeeHalala),
@@ -55,7 +74,12 @@ function buildPlannerRevisionHash({ day, mealSlots }) {
       addonId: String(s.addonId),
       source: s.source,
       priceHalala: normalizeNumber(s.priceHalala),
-    }));
+    }))
+    .sort((a, b) => (
+      a.addonId.localeCompare(b.addonId)
+      || normalizeString(a.source).localeCompare(normalizeString(b.source))
+      || (a.priceHalala - b.priceHalala)
+    ));
 
   return crypto
     .createHash("sha256")
@@ -439,6 +463,54 @@ function applyCommercialStateToDay(day = {}) {
   };
 }
 
+function assignCommercialStateToDayDocument(day, shapedDay) {
+  if (!day || !shapedDay) return day;
+  day.plannerRevisionHash = shapedDay.plannerRevisionHash;
+  day.premiumExtraPayment = shapedDay.premiumExtraPayment;
+  return day;
+}
+
+async function finalizeDayCommercialStateForPersistence(day, { session = null, save = true } = {}) {
+  if (!day || typeof day !== "object") return applyCommercialStateToDay(day || {});
+
+  const initialPlainDay = typeof day.toObject === "function" ? day.toObject() : day;
+  let shapedDay = applyCommercialStateToDay(initialPlainDay);
+  assignCommercialStateToDayDocument(day, shapedDay);
+
+  if (save && typeof day.save === "function") {
+    await day.save(session ? { session } : undefined);
+
+    // Recompute after Mongoose casting/defaults so the persisted hash is the same
+    // hash that read and payment flows derive from the saved document.
+    const persistedPlainDay = typeof day.toObject === "function" ? day.toObject() : day;
+    const persistedShapedDay = applyCommercialStateToDay(persistedPlainDay);
+    if (
+      String(persistedShapedDay.plannerRevisionHash || "") !== String(shapedDay.plannerRevisionHash || "")
+      || String(
+        persistedShapedDay.premiumExtraPayment && persistedShapedDay.premiumExtraPayment.revisionHash
+          ? persistedShapedDay.premiumExtraPayment.revisionHash
+          : ""
+      ) !== String(
+        shapedDay.premiumExtraPayment && shapedDay.premiumExtraPayment.revisionHash
+          ? shapedDay.premiumExtraPayment.revisionHash
+          : ""
+      )
+    ) {
+      shapedDay = persistedShapedDay;
+      assignCommercialStateToDayDocument(day, shapedDay);
+      await day.save(session ? { session } : undefined);
+    } else {
+      shapedDay = persistedShapedDay;
+    }
+  }
+
+  return {
+    ...shapedDay,
+    plannerRevisionHash: day.plannerRevisionHash || shapedDay.plannerRevisionHash,
+    premiumExtraPayment: day.premiumExtraPayment || shapedDay.premiumExtraPayment,
+  };
+}
+
 module.exports = {
   SYSTEM_CURRENCY,
   applyCommercialStateToDay,
@@ -448,6 +520,7 @@ module.exports = {
   buildPaymentRequirement,
   buildPlannerRevisionHash,
   buildPremiumSummary,
+  finalizeDayCommercialStateForPersistence,
   isPlanningComplete,
   normalizePremiumExtraPayment,
 };

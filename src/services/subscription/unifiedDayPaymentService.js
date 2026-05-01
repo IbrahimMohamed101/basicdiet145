@@ -17,7 +17,10 @@ const {
 } = require("./subscriptionPaymentPayloadService");
 const { getPaymentMetadata } = require("./subscriptionCheckoutHelpers");
 const { buildErrorResult, buildSuccessResult } = require("./subscriptionNonCheckoutPaymentService");
-const { applyCommercialStateToDay } = require("./subscriptionDayCommercialStateService");
+const {
+  applyCommercialStateToDay,
+  finalizeDayCommercialStateForPersistence,
+} = require("./subscriptionDayCommercialStateService");
 const {
   assertSubscriptionDayModifiable,
   localizePolicyErrorMessage,
@@ -130,7 +133,7 @@ async function createUnifiedDayPaymentFlow({
     }
     if (day.status !== "open") return buildErrorResult(409, "LOCKED", "Day is locked");
 
-    const derivedDay = applyCommercialStateToDay(day.toObject ? day.toObject() : day);
+    const derivedDay = await finalizeDayCommercialStateForPersistence(day);
     const requirement = derivedDay.paymentRequirement || {};
     if (!requirement.requiresPayment || !requirement.canCreatePayment) {
       return buildErrorResult(409, "DAY_PAYMENT_NOT_REQUIRED", "This day has no payable pending amount", requirement);

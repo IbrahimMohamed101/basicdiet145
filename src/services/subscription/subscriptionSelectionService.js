@@ -10,6 +10,7 @@ const { applyCanonicalDraftPlanningToDay } = require("./subscriptionDayPlanningS
 const { assertSubscriptionDayModifiable } = require("./subscriptionDayModificationPolicyService");
 const {
   buildDayCommercialState,
+  finalizeDayCommercialStateForPersistence,
 } = require("./subscriptionDayCommercialStateService");
 
 async function resolvePlanningSubscriptionForOperation(subscription, session = null) {
@@ -498,6 +499,7 @@ async function performDaySelectionUpdate({ userId, subscriptionId, date, selecti
 
   // 4. Idempotency Short-circuit
   if (existingDay && existingDay.plannerRevisionHash === derivedDraftState.plannerRevisionHash) {
+    await finalizeDayCommercialStateForPersistence(existingDay);
     return { subscription: subForDraft, day: existingDay, idempotent: true };
   }
 
@@ -654,21 +656,8 @@ async function performDaySelectionUpdate({ userId, subscriptionId, date, selecti
        }
     }
 
-    const finalDayState = typeof day.toObject === "function" ? day.toObject() : day;
-    const finalDerivedState = buildDayCommercialState({
-      ...finalDayState,
-      status: day.status || "open",
-      plannerState: day.plannerState || "draft",
-      mealSlots: day.mealSlots,
-      plannerMeta: day.plannerMeta,
-      addonSelections: day.addonSelections,
-      premiumExtraPayment: day.premiumExtraPayment || null,
-    });
-    day.plannerRevisionHash = finalDerivedState.plannerRevisionHash;
-    day.premiumExtraPayment = finalDerivedState.premiumExtraPayment;
-
     await subInSession.save({ session });
-    await day.save({ session });
+    await finalizeDayCommercialStateForPersistence(day, { session });
 
     // Ensure Global Sync (redundant but for compatibility)
     if (Array.isArray(subInSession.addonSelections)) {

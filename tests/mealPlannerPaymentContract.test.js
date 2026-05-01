@@ -24,6 +24,7 @@ const BuilderCategory = require("../src/models/BuilderCategory");
 const BuilderProtein = require("../src/models/BuilderProtein");
 const Payment = require("../src/models/Payment");
 const Plan = require("../src/models/Plan");
+const SaladIngredient = require("../src/models/SaladIngredient");
 const Subscription = require("../src/models/Subscription");
 const SubscriptionDay = require("../src/models/SubscriptionDay");
 const User = require("../src/models/User");
@@ -198,6 +199,7 @@ async function seedBase() {
     BuilderProtein.deleteMany({}),
     Payment.deleteMany({}),
     Plan.deleteMany({}),
+    SaladIngredient.deleteMany({}),
     Subscription.deleteMany({}),
     SubscriptionDay.deleteMany({}),
     User.deleteMany({}),
@@ -267,6 +269,12 @@ async function seedBase() {
     billingMode: "flat_once",
     isActive: true,
   });
+  const sauce = await SaladIngredient.create({
+    name: { ar: "سيزر", en: "Caesar" },
+    groupKey: "sauce",
+    price: 0,
+    isActive: true,
+  });
   const subscription = await Subscription.create({
     userId: user._id,
     planId: plan._id,
@@ -288,7 +296,7 @@ async function seedBase() {
     },
   });
 
-  return { user, token, subscription, standardProtein, premiumProtein, carb, addon, addon1300, addon1900 };
+  return { user, token, subscription, standardProtein, premiumProtein, carb, addon, addon1300, addon1900, sauce };
 }
 
 function fullSelection({ standardProtein, premiumProtein, carb }) {
@@ -324,6 +332,35 @@ function standardSelection({ standardProtein, carb }) {
       proteinId: String(standardProtein._id),
       carbs: [{ carbId: String(carb._id), grams: 150 }],
     })),
+  };
+}
+
+function premiumLargeSaladSelection({ standardProtein, sauce, carb }) {
+  return {
+    mealSlots: [
+      {
+        slotIndex: 1,
+        selectionType: "premium_large_salad",
+        salad: {
+          groups: {
+            protein: [String(standardProtein._id)],
+            sauce: [String(sauce._id)],
+          },
+        },
+      },
+      {
+        slotIndex: 2,
+        selectionType: "standard_meal",
+        proteinId: String(standardProtein._id),
+        carbs: [{ carbId: String(carb._id), grams: 150 }],
+      },
+      {
+        slotIndex: 3,
+        selectionType: "standard_meal",
+        proteinId: String(standardProtein._id),
+        carbs: [{ carbId: String(carb._id), grams: 150 }],
+      },
+    ],
   };
 }
 
@@ -421,6 +458,55 @@ async function runAddonFlow(ctx) {
 }
 
 async function runUnifiedDayPaymentFlow(ctx) {
+  const saladDate = dateOffset(21);
+  await SubscriptionDay.create({ subscriptionId: ctx.subscription._id, date: saladDate, status: "open" });
+  const saladSaveRes = await request("PUT", `/api/subscriptions/${ctx.subscription._id}/days/${saladDate}/selection`, premiumLargeSaladSelection(ctx), ctx.token);
+  assertEqual(saladSaveRes.status, 200, "Unified premium large salad save status", saladSaveRes.body);
+  const persistedSaladDay = await SubscriptionDay.findOne({ subscriptionId: ctx.subscription._id, date: saladDate }).lean();
+  assertEqual(persistedSaladDay.plannerRevisionHash, saladSaveRes.body.data.plannerRevisionHash, "Selection response hash is persisted", persistedSaladDay);
+  assertEqual(persistedSaladDay.premiumExtraPayment.revisionHash, saladSaveRes.body.data.plannerRevisionHash, "Selection response premium payment hash is persisted", persistedSaladDay.premiumExtraPayment);
+  const saladCreateRes = await request("POST", `/api/subscriptions/${ctx.subscription._id}/days/${saladDate}/payments`, {
+    plannerRevisionHash: saladSaveRes.body.data.plannerRevisionHash,
+  }, ctx.token);
+  assertEqual(saladCreateRes.status, 201, "Unified premium large salad creation accepts selection hash", saladCreateRes.body);
+  assertEqual(saladCreateRes.body.data.premiumAmountHalala, 3000, "Unified premium large salad premium amount", saladCreateRes.body.data);
+  assertEqual(saladCreateRes.body.data.addonsAmountHalala, 0, "Unified premium large salad add-on amount", saladCreateRes.body.data);
+
+  const saladReadDate = dateOffset(22);
+  await SubscriptionDay.create({ subscriptionId: ctx.subscription._id, date: saladReadDate, status: "open" });
+  const saladReadSaveRes = await request("PUT", `/api/subscriptions/${ctx.subscription._id}/days/${saladReadDate}/selection`, {
+    ...premiumLargeSaladSelection(ctx),
+    addonsOneTime: [String(ctx.addon1300._id), String(ctx.addon1900._id)],
+  }, ctx.token);
+  assertEqual(saladReadSaveRes.status, 200, "Unified premium large salad add-on save status", saladReadSaveRes.body);
+  const saladDayRes = await request("GET", `/api/subscriptions/${ctx.subscription._id}/days/${saladReadDate}`, null, ctx.token);
+  assertEqual(saladDayRes.status, 200, "Unified premium large salad add-on read status", saladDayRes.body);
+  assertEqual(saladDayRes.body.data.plannerRevisionHash, saladReadSaveRes.body.data.plannerRevisionHash, "GET day hash matches selection response", saladDayRes.body.data);
+  const saladAddonCreateRes = await request("POST", `/api/subscriptions/${ctx.subscription._id}/days/${saladReadDate}/payments`, {
+    plannerRevisionHash: saladDayRes.body.data.plannerRevisionHash,
+  }, ctx.token);
+  assertEqual(saladAddonCreateRes.status, 201, "Unified premium large salad add-on creation accepts GET hash", saladAddonCreateRes.body);
+  assertEqual(saladAddonCreateRes.body.data.premiumAmountHalala, 3000, "Unified premium large salad add-on premium amount", saladAddonCreateRes.body.data);
+  assertEqual(saladAddonCreateRes.body.data.addonsAmountHalala, 3200, "Unified premium large salad add-on add-on amount", saladAddonCreateRes.body.data);
+  assertEqual(saladAddonCreateRes.body.data.totalHalala, 6200, "Unified premium large salad add-on total", saladAddonCreateRes.body.data);
+
+  const staleAfterChangeDate = dateOffset(23);
+  await SubscriptionDay.create({ subscriptionId: ctx.subscription._id, date: staleAfterChangeDate, status: "open" });
+  const oldSelectionRes = await request("PUT", `/api/subscriptions/${ctx.subscription._id}/days/${staleAfterChangeDate}/selection`, standardSelection(ctx), ctx.token);
+  const changedSelectionRes = await request("PUT", `/api/subscriptions/${ctx.subscription._id}/days/${staleAfterChangeDate}/selection`, {
+    ...fullSelection(ctx),
+    addonsOneTime: [String(ctx.addon1300._id)],
+  }, ctx.token);
+  assertTrue(oldSelectionRes.body.data.plannerRevisionHash !== changedSelectionRes.body.data.plannerRevisionHash, "Selection change updates planner hash", {
+    oldHash: oldSelectionRes.body.data.plannerRevisionHash,
+    newHash: changedSelectionRes.body.data.plannerRevisionHash,
+  });
+  const changedStaleRes = await request("POST", `/api/subscriptions/${ctx.subscription._id}/days/${staleAfterChangeDate}/payments`, {
+    plannerRevisionHash: oldSelectionRes.body.data.plannerRevisionHash,
+  }, ctx.token);
+  assertEqual(changedStaleRes.status, 409, "Unified changed selection stale hash status", changedStaleRes.body);
+  assertEqual(changedStaleRes.body.error.code, "DAY_PAYMENT_REVISION_MISMATCH", "Unified changed selection stale hash code", changedStaleRes.body);
+
   const premiumOnlyDate = dateOffset(11);
   await SubscriptionDay.create({ subscriptionId: ctx.subscription._id, date: premiumOnlyDate, status: "open" });
   const premiumSaveRes = await request("PUT", `/api/subscriptions/${ctx.subscription._id}/days/${premiumOnlyDate}/selection`, fullSelection(ctx), ctx.token);
