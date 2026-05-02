@@ -4,6 +4,7 @@ const { resolveAddonCatalogEntry } = require("../utils/subscription/subscription
 const validateObjectId = require("../utils/validateObjectId");
 const errorResponse = require("../utils/errorResponse");
 const { resolveManagedImageFromRequest } = require("../services/adminImageService");
+const { writeLog } = require("../utils/log");
 const {
   normalizeOptionalString,
   parseBooleanField,
@@ -13,6 +14,10 @@ const {
 const SYSTEM_CURRENCY = "SAR";
 const ADDON_IMAGE_FOLDER = "addons";
 const ADDON_BILLING_MODES = new Set(["flat_once", "per_day", "per_meal"]);
+const ADDON_KINDS = new Set(["plan", "item"]);
+const ADDON_CATEGORIES = new Set(["juice", "snack", "small_salad"]);
+const PLAN_BILLING_MODES = new Set(["per_day", "per_meal"]);
+const ITEM_BILLING_MODES = new Set(["flat_once"]);
 
 function isNonNegativeInteger(value) {
   return Number.isInteger(value) && value >= 0;
@@ -61,11 +66,92 @@ function normalizeSortOrder(value, fieldName = "sortOrder") {
   return parsed;
 }
 
-function validateAddonPayloadOrThrow(payload) {
+async function writeAddonActivityLogSafely(req, addon, action, meta = {}) {
+  if (!req || !req.dashboardUserId || !addon || !addon._id) return;
+  try {
+    await writeLog({
+      entityType: "addon",
+      entityId: addon._id,
+      action,
+      byUserId: req.dashboardUserId,
+      byRole: req.dashboardUserRole,
+      meta,
+    });
+  } catch (_err) {
+    // Activity logging must not block catalog writes.
+  }
+}
+
+function normalizeAddonKind(value, { forceKind = null } = {}) {
+  if (forceKind && value !== undefined && value !== null && String(value).trim() && String(value).trim() !== forceKind) {
+    throw { status: 400, code: "INVALID", message: `kind must be ${forceKind}` };
+  }
+  const raw = forceKind || value || "item";
+  const kind = String(raw || "").trim();
+  if (!ADDON_KINDS.has(kind)) {
+    throw { status: 400, code: "INVALID", message: "kind must be one of: plan, item" };
+  }
+  return kind;
+}
+
+function normalizeAddonCategory(value) {
+  const category = String(value || "").trim();
+  if (!category) {
+    throw { status: 400, code: "INVALID", message: "category is required" };
+  }
+  if (!ADDON_CATEGORIES.has(category)) {
+    throw { status: 400, code: "INVALID", message: "category must be one of: juice, snack, small_salad" };
+  }
+  return category;
+}
+
+function resolveAddonBillingMode({ kind, rawBillingMode }) {
+  const billingMode = rawBillingMode
+    ? normalizeOptionalString(rawBillingMode)
+    : kind === "plan"
+      ? "per_day"
+      : "flat_once";
+
+  if (!ADDON_BILLING_MODES.has(billingMode)) {
+    throw {
+      status: 400,
+      code: "INVALID",
+      message: "billingMode must be one of: flat_once, per_day, per_meal",
+    };
+  }
+
+  const allowedModes = kind === "plan" ? PLAN_BILLING_MODES : ITEM_BILLING_MODES;
+  if (!allowedModes.has(billingMode)) {
+    throw {
+      status: 400,
+      code: "INVALID",
+      message:
+        kind === "plan"
+          ? "kind=plan supports billingMode per_day or per_meal"
+          : "kind=item supports billingMode flat_once only",
+    };
+  }
+
+  return billingMode;
+}
+
+function buildAddonDerivedBillingFields(billingMode) {
+  if (billingMode === "flat_once") {
+    return { type: "one_time", pricingModel: "one_time", billingUnit: "item" };
+  }
+  if (billingMode === "per_day") {
+    return { type: "subscription", pricingModel: "subscription", billingUnit: "day" };
+  }
+  return { type: "subscription", pricingModel: "subscription", billingUnit: "meal" };
+}
+
+function validateAddonPayloadOrThrow(payload, { forceKind = null } = {}) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     throw { status: 400, code: "INVALID", message: "Request body must be an object" };
   }
 
+  const kind = normalizeAddonKind(payload.kind, { forceKind });
+  const category = normalizeAddonCategory(payload.category);
   const name = normalizeName(parseLocalizedFieldFromBody(payload, "name", { allowString: true }) ?? payload.name);
   const description = normalizeLocalizedOptional(
     parseLocalizedFieldFromBody(payload, "description", { allowString: true }) ?? payload.description
@@ -87,21 +173,11 @@ function validateAddonPayloadOrThrow(payload) {
 
   const isActive = parseBooleanField(payload.isActive, "isActive", { defaultValue: true });
   const sortOrder = payload.sortOrder === undefined ? 0 : normalizeSortOrder(payload.sortOrder, "sortOrder");
-  const type = payload.type && ["subscription", "one_time"].includes(payload.type)
-    ? payload.type
-    : "subscription";
   const rawBillingMode = payload.billingMode === undefined || payload.billingMode === null
     ? ""
-    : normalizeOptionalString(payload.billingMode);
-  if (rawBillingMode && !ADDON_BILLING_MODES.has(rawBillingMode)) {
-    throw {
-      status: 400,
-      code: "INVALID",
-      message: "billingMode must be one of: flat_once, per_day, per_meal",
-    };
-  }
-  const billingMode = rawBillingMode || (type === "one_time" ? "flat_once" : "per_day");
-  const normalizedType = billingMode === "flat_once" ? "one_time" : "subscription";
+    : payload.billingMode;
+  const billingMode = resolveAddonBillingMode({ kind, rawBillingMode });
+  const derivedBillingFields = buildAddonDerivedBillingFields(billingMode);
 
   return {
     name,
@@ -109,12 +185,38 @@ function validateAddonPayloadOrThrow(payload) {
     imageUrl,
     priceHalala,
     price: priceHalala / 100,
+    priceSar: priceHalala / 100,
+    priceLabel: `${priceHalala / 100} SAR`,
     currency,
+    kind,
+    category,
     isActive,
     sortOrder,
-    type: normalizedType,
+    ...derivedBillingFields,
     billingMode,
   };
+}
+
+function resolveAdminAddonFilters(query = {}, { forceKind = null } = {}) {
+  const filters = {};
+  const kind = forceKind || query.kind;
+  if (kind !== undefined && kind !== null && String(kind).trim() !== "") {
+    filters.kind = normalizeAddonKind(kind, { forceKind });
+  }
+  if (query.category !== undefined && query.category !== null && String(query.category).trim() !== "") {
+    filters.category = normalizeAddonCategory(query.category);
+  }
+  if (query.billingMode !== undefined && query.billingMode !== null && String(query.billingMode).trim() !== "") {
+    const billingMode = normalizeOptionalString(query.billingMode);
+    if (!ADDON_BILLING_MODES.has(billingMode)) {
+      throw { status: 400, code: "INVALID", message: "billingMode must be one of: flat_once, per_day, per_meal" };
+    }
+    filters.billingMode = billingMode;
+  }
+  if (query.isActive !== undefined && query.isActive !== null && String(query.isActive).trim() !== "") {
+    filters.isActive = parseBooleanField(query.isActive, "isActive");
+  }
+  return filters;
 }
 
 async function listAddons(req, res) {
@@ -124,12 +226,20 @@ async function listAddons(req, res) {
   return res.status(200).json({ status: true, data: mapped });
 }
 
-async function listAddonsAdmin(_req, res) {
-  const rows = await Addon.find().sort({ sortOrder: 1, createdAt: -1 }).lean();
-  return res.status(200).json({ status: true, data: rows });
+async function listAddonsAdmin(req, res, options = {}) {
+  try {
+    const filters = resolveAdminAddonFilters(req.query || {}, options);
+    const rows = await Addon.find(filters).sort({ sortOrder: 1, createdAt: -1 }).lean();
+    return res.status(200).json({ status: true, data: rows, meta: { filters, totalCount: rows.length } });
+  } catch (err) {
+    if (err && err.status) {
+      return errorResponse(res, err.status, err.code, err.message);
+    }
+    throw err;
+  }
 }
 
-async function getAddonAdmin(req, res) {
+async function getAddonAdmin(req, res, options = {}) {
   const { id } = req.params;
   try {
     validateObjectId(id, "id");
@@ -137,16 +247,18 @@ async function getAddonAdmin(req, res) {
     return errorResponse(res, err.status, err.code, err.message);
   }
 
-  const row = await Addon.findById(id).lean();
+  const query = { _id: id };
+  if (options.forceKind) query.kind = options.forceKind;
+  const row = await Addon.findOne(query).lean();
   if (!row) {
     return errorResponse(res, 404, "NOT_FOUND", "Addon not found");
   }
   return res.status(200).json({ status: true, data: row });
 }
 
-async function createAddon(req, res) {
+async function createAddon(req, res, options = {}) {
   try {
-    const payload = validateAddonPayloadOrThrow(req.body || {});
+    const payload = validateAddonPayloadOrThrow(req.body || {}, options);
     const imageState = await resolveManagedImageFromRequest({
       body: req.body,
       file: req.file,
@@ -157,6 +269,11 @@ async function createAddon(req, res) {
       ...payload,
       imageUrl: imageState.imageUrl,
     });
+    await writeAddonActivityLogSafely(req, row, "addon_created_by_admin", {
+      kind: row.kind,
+      category: row.category,
+      billingMode: row.billingMode,
+    });
     return res.status(201).json({ status: true, data: { id: row.id } });
   } catch (err) {
     if (err && err.status) {
@@ -166,7 +283,7 @@ async function createAddon(req, res) {
   }
 }
 
-async function updateAddon(req, res) {
+async function updateAddon(req, res, options = {}) {
   const { id } = req.params;
   try {
     validateObjectId(id, "id");
@@ -175,8 +292,10 @@ async function updateAddon(req, res) {
   }
 
   try {
-    const payload = validateAddonPayloadOrThrow(req.body || {});
-    const existing = await Addon.findById(id);
+    const payload = validateAddonPayloadOrThrow(req.body || {}, options);
+    const query = { _id: id };
+    if (options.forceKind) query.kind = options.forceKind;
+    const existing = await Addon.findOne(query);
     if (!existing) {
       return errorResponse(res, 404, "NOT_FOUND", "Addon not found");
     }
@@ -194,6 +313,11 @@ async function updateAddon(req, res) {
     });
     await existing.save();
 
+    await writeAddonActivityLogSafely(req, existing, "addon_updated_by_admin", {
+      kind: existing.kind,
+      category: existing.category,
+      billingMode: existing.billingMode,
+    });
     return res.status(200).json({ status: true, data: { id: existing.id } });
   } catch (err) {
     if (err && err.status) {
@@ -203,7 +327,7 @@ async function updateAddon(req, res) {
   }
 }
 
-async function deleteAddon(req, res) {
+async function deleteAddon(req, res, options = {}) {
   const { id } = req.params;
   try {
     validateObjectId(id, "id");
@@ -211,14 +335,20 @@ async function deleteAddon(req, res) {
     return errorResponse(res, err.status, err.code, err.message);
   }
 
-  const deleted = await Addon.findByIdAndDelete(id).lean();
-  if (!deleted) {
+  const query = { _id: id };
+  if (options.forceKind) query.kind = options.forceKind;
+  const row = await Addon.findOneAndUpdate(query, { $set: { isActive: false } }, { new: true });
+  if (!row) {
     return errorResponse(res, 404, "NOT_FOUND", "Addon not found");
   }
-  return res.status(200).json({ status: true });
+  await writeAddonActivityLogSafely(req, row, "addon_soft_deleted_by_admin", {
+    kind: row.kind,
+    category: row.category,
+  });
+  return res.status(200).json({ status: true, data: { id: row.id, isActive: row.isActive } });
 }
 
-async function toggleAddonActive(req, res) {
+async function toggleAddonActive(req, res, options = {}) {
   const { id } = req.params;
   try {
     validateObjectId(id, "id");
@@ -226,13 +356,20 @@ async function toggleAddonActive(req, res) {
     return errorResponse(res, err.status, err.code, err.message);
   }
 
-  const row = await Addon.findById(id);
+  const query = { _id: id };
+  if (options.forceKind) query.kind = options.forceKind;
+  const row = await Addon.findOne(query);
   if (!row) {
     return errorResponse(res, 404, "NOT_FOUND", "Addon not found");
   }
   row.isActive = !row.isActive;
   await row.save();
 
+  await writeAddonActivityLogSafely(req, row, "addon_toggled_by_admin", {
+    kind: row.kind,
+    category: row.category,
+    isActive: row.isActive,
+  });
   return res.status(200).json({ status: true, data: { id: row.id, isActive: row.isActive } });
 }
 
@@ -280,11 +417,40 @@ async function cloneAddon(req, res) {
     currency: row.currency,
     isActive: row.isActive,
     sortOrder: row.sortOrder,
-    type: row.type,
+    kind: row.kind,
+    category: row.category,
+    billingMode: row.billingMode,
   });
 
   const cloned = await Addon.create(payload);
+  await writeAddonActivityLogSafely(req, cloned, "addon_cloned_by_admin", {
+    sourceAddonId: String(row._id),
+    kind: cloned.kind,
+    category: cloned.category,
+  });
   return res.status(201).json({ status: true, data: { id: cloned.id } });
+}
+
+const forcePlanKind = { forceKind: "plan" };
+
+async function listAddonPlansAdmin(req, res) {
+  return listAddonsAdmin(req, res, forcePlanKind);
+}
+
+async function getAddonPlanAdmin(req, res) {
+  return getAddonAdmin(req, res, forcePlanKind);
+}
+
+async function createAddonPlan(req, res) {
+  return createAddon(req, res, forcePlanKind);
+}
+
+async function updateAddonPlan(req, res) {
+  return updateAddon(req, res, forcePlanKind);
+}
+
+async function toggleAddonPlanActive(req, res) {
+  return toggleAddonActive(req, res, forcePlanKind);
 }
 
 module.exports = {
@@ -297,5 +463,10 @@ module.exports = {
   toggleAddonActive,
   updateAddonSortOrder,
   cloneAddon,
+  listAddonPlansAdmin,
+  getAddonPlanAdmin,
+  createAddonPlan,
+  updateAddonPlan,
+  toggleAddonPlanActive,
   validateAddonPayloadOrThrow,
 };

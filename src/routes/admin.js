@@ -9,6 +9,8 @@ const builderPremiumMealController = require("../controllers/builderPremiumMealC
 const promoCodeController = require("../controllers/promoCodeController");
 const uploadController = require("../controllers/uploadController");
 const contentController = require("../controllers/contentController");
+const zoneController = require("../controllers/zoneController");
+const dashboardHealthController = require("../controllers/dashboardHealthController");
 const { dashboardAuthMiddleware, dashboardRoleMiddleware } = require("../middleware/dashboardAuth");
 const asyncHandler = require("../middleware/asyncHandler");
 const { adminImageUploadMiddleware } = require("../middleware/imageUpload");
@@ -130,6 +132,10 @@ router.get("/overview", asyncHandler(controller.getDashboardOverview));
 router.get("/search", asyncHandler(controller.searchDashboard));
 router.get("/notifications/summary", asyncHandler(controller.getDashboardNotificationSummary));
 router.get("/reports/today", asyncHandler(controller.getTodayReport));
+router.get("/health/catalog", asyncHandler(dashboardHealthController.getCatalogHealth));
+router.get("/health/subscription-menu", asyncHandler(dashboardHealthController.getSubscriptionMenuHealth));
+router.get("/health/meal-planner", asyncHandler(dashboardHealthController.getMealPlannerHealth));
+router.get("/health/indexes", asyncHandler(dashboardHealthController.getIndexesHealth));
 router.get("/plans", asyncHandler(controller.listPlansAdmin));
 router.get("/plans/:id", asyncHandler(controller.getPlanAdmin));
 router.post("/plans", asyncHandler(controller.createPlan));
@@ -165,6 +171,12 @@ router.delete("/addons/:id", asyncHandler(addonController.deleteAddon));
 router.patch("/addons/:id/toggle", asyncHandler(addonController.toggleAddonActive));
 router.patch("/addons/:id/sort", asyncHandler(addonController.updateAddonSortOrder));
 router.post("/addons/:id/clone", asyncHandler(addonController.cloneAddon));
+
+router.get("/addon-plans", asyncHandler(addonController.listAddonPlansAdmin));
+router.post("/addon-plans", adminImageUploadMiddleware, asyncHandler(addonController.createAddonPlan));
+router.get("/addon-plans/:id", asyncHandler(addonController.getAddonPlanAdmin));
+router.put("/addon-plans/:id", adminImageUploadMiddleware, asyncHandler(addonController.updateAddonPlan));
+router.patch("/addon-plans/:id/toggle", asyncHandler(addonController.toggleAddonPlanActive));
 router.get("/builder-premium-meals", asyncHandler(builderPremiumMealController.listBuilderPremiumMealsAdmin));
 router.get("/builder-premium-meals/:id", asyncHandler(builderPremiumMealController.getBuilderPremiumMealAdmin));
 router.post(
@@ -297,6 +309,12 @@ router.put("/settings/subscription-delivery-fee", asyncHandler(controller.update
 router.put("/settings/vat-percentage", asyncHandler(controller.updateVatPercentage));
 router.put("/settings/custom-salad-base-price", asyncHandler(controller.updateCustomSaladBasePrice));
 router.put("/settings/custom-meal-base-price", asyncHandler(controller.updateCustomMealBasePrice));
+router.get("/zones", asyncHandler(zoneController.listZonesAdmin));
+router.post("/zones", asyncHandler(zoneController.createZoneAdmin));
+router.get("/zones/:id", asyncHandler(zoneController.getZoneAdmin));
+router.put("/zones/:id", asyncHandler(zoneController.updateZoneAdmin));
+router.patch("/zones/:id/toggle", asyncHandler(zoneController.toggleZoneActiveAdmin));
+router.delete("/zones/:id", asyncHandler(zoneController.deleteZoneAdmin));
 router.get("/users", asyncHandler(controller.listAppUsers));
 router.post("/users", asyncHandler(controller.createAppUserAdmin));
 router.get("/users/:id/subscriptions", asyncHandler(controller.listAppUserSubscriptions));
@@ -305,9 +323,18 @@ router.put("/users/:id", asyncHandler(controller.updateAppUser));
 router.get("/subscriptions/summary", asyncHandler(controller.getSubscriptionsSummaryAdmin));
 router.get("/subscriptions/export", asyncHandler(controller.exportSubscriptionsAdmin));
 router.get("/subscriptions", asyncHandler(controller.listSubscriptionsAdmin));
+router.post("/subscriptions/quote", asyncHandler(controller.quoteSubscriptionAdmin));
 router.post("/subscriptions", asyncHandler(controller.createSubscriptionAdmin));
 router.get("/subscriptions/:id/days", asyncHandler(controller.listSubscriptionDaysAdmin));
+router.get("/subscriptions/:id/audit-log", asyncHandler(controller.getSubscriptionAuditLogAdmin));
 router.get("/subscriptions/:id", asyncHandler(controller.getSubscriptionAdmin));
+router.put("/subscriptions/:id/delivery", asyncHandler(controller.updateSubscriptionDeliveryAdmin));
+router.patch("/subscriptions/:id/addon-entitlements", asyncHandler(controller.updateSubscriptionAddonEntitlementsAdmin));
+router.patch(
+  "/subscriptions/:id/balances",
+  dashboardRoleMiddleware(["superadmin"]),
+  asyncHandler(controller.updateSubscriptionBalancesAdmin)
+);
 router.post("/subscriptions/:id/cancel", asyncHandler(controller.cancelSubscriptionAdmin));
 router.put("/subscriptions/:id/extend", asyncHandler(controller.extendSubscriptionAdmin));
 router.post("/subscriptions/:id/freeze", asyncHandler(controller.freezeSubscriptionAdmin));

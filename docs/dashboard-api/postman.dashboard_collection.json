@@ -1,0 +1,5077 @@
+{
+  "info": {
+    "name": "BasicDiet145 Dashboard API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Dashboard/Admin API collection generated from docs/dashboard-api/openapi.dashboard.json"
+  },
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login to dashboard",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@basicdiet.test\",\n  \"password\": \"change-me\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get current dashboard user",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "auth",
+                "me"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Logout dashboard session",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "auth",
+                "logout"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Dashboard operation\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Overview",
+      "item": [
+        {
+          "name": "Dashboard overview",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/overview",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "overview"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Global dashboard search",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/search",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "search"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Notification summary",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/notifications/summary",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "notifications",
+                "summary"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Today report",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/reports/today",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "reports",
+                "today"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Subscriptions",
+      "item": [
+        {
+          "name": "List subscriptions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/subscriptions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "subscriptions"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create subscription from dashboard",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/subscriptions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "subscriptions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"planId\": \"{{planId}}\",\n  \"startDate\": \"2026-05-01\",\n  \"grams\": 200,\n  \"mealsPerDay\": 2,\n  \"deliveryMethod\": \"pickup\",\n  \"addonPlans\": [\n    \"{{addonId}}\"\n  ],\n  \"premiumSelections\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Subscription summary",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/subscriptions/summary",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "subscriptions",
+                "summary"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Export subscriptions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/subscriptions/export",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "subscriptions",
+                "export"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Quote subscription before create",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/subscriptions/quote",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "subscriptions",
+                "quote"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"planId\": \"{{planId}}\",\n  \"startDate\": \"2026-05-01\",\n  \"grams\": 200,\n  \"mealsPerDay\": 2,\n  \"deliveryMethod\": \"pickup\",\n  \"addonPlans\": [\n    \"{{addonId}}\"\n  ],\n  \"premiumSelections\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get subscription detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/subscriptions/{{subscriptionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "subscriptions",
+                "{id}"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Subscription Management",
+      "item": [
+        {
+          "name": "List subscription days",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/subscriptions/{{subscriptionId}}/days",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "subscriptions",
+                "{id}",
+                "days"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Skip subscription day",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/subscriptions/{{subscriptionId}}/days/{{dayDate}}/skip",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "subscriptions",
+                "{id}",
+                "days",
+                "{date}",
+                "skip"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Dashboard operation\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Unskip subscription day",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/subscriptions/{{subscriptionId}}/days/{{dayDate}}/unskip",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "subscriptions",
+                "{id}",
+                "days",
+                "{date}",
+                "unskip"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Dashboard operation\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update subscription delivery",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/subscriptions/{{subscriptionId}}/delivery",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "subscriptions",
+                "{id}",
+                "delivery"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"deliveryMethod\": \"delivery\",\n  \"zoneId\": \"6630f0f5d8f9f5a21b8c2222\",\n  \"address\": {\n    \"line1\": \"Building 12\",\n    \"district\": \"Al Olaya\",\n    \"city\": \"Riyadh\"\n  },\n  \"deliveryWindow\": {\n    \"from\": \"16:00\",\n    \"to\": \"22:00\"\n  },\n  \"reason\": \"Customer requested delivery update\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Replace addon entitlements",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/subscriptions/{{subscriptionId}}/addon-entitlements",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "subscriptions",
+                "{id}",
+                "addon-entitlements"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Customer purchased juice entitlement\",\n  \"addonSubscriptions\": [\n    {\n      \"addonId\": \"6630f0f5d8f9f5a21b8c3333\",\n      \"maxPerDay\": 1\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Replace premium/addon balances",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/subscriptions/{{subscriptionId}}/balances",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "subscriptions",
+                "{id}",
+                "balances"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Manual compensation\",\n  \"premiumBalance\": [\n    {\n      \"premiumKey\": \"custom_premium_salad\",\n      \"purchasedQty\": 1,\n      \"remainingQty\": 1,\n      \"unitExtraFeeHalala\": 0\n    }\n  ],\n  \"addonBalance\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get subscription audit log",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/subscriptions/{{subscriptionId}}/audit-log",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "subscriptions",
+                "{id}",
+                "audit-log"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Cancel subscription",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/subscriptions/{{subscriptionId}}/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "subscriptions",
+                "{id}",
+                "cancel"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Dashboard operation\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Extend active subscription",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/subscriptions/{{subscriptionId}}/extend",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "subscriptions",
+                "{id}",
+                "extend"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Dashboard operation\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Freeze subscription",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/subscriptions/{{subscriptionId}}/freeze",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "subscriptions",
+                "{id}",
+                "freeze"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Dashboard operation\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Unfreeze subscription",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/subscriptions/{{subscriptionId}}/unfreeze",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "subscriptions",
+                "{id}",
+                "unfreeze"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Dashboard operation\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Addons",
+      "item": [
+        {
+          "name": "List addons",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/addons",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "addons"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create addon",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/addons",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "addons"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": {\n    \"ar\": \"Berry Blast\",\n    \"en\": \"Berry Blast\"\n  },\n  \"kind\": \"item\",\n  \"category\": \"juice\",\n  \"billingMode\": \"flat_once\",\n  \"priceHalala\": 1300,\n  \"currency\": \"SAR\",\n  \"isActive\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get addon",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/addons/{{addonId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "addons",
+                "{id}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update addon",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/addons/{{addonId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "addons",
+                "{id}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": {\n    \"ar\": \"Berry Blast\",\n    \"en\": \"Berry Blast\"\n  },\n  \"kind\": \"item\",\n  \"category\": \"juice\",\n  \"billingMode\": \"flat_once\",\n  \"priceHalala\": 1300,\n  \"currency\": \"SAR\",\n  \"isActive\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Soft delete addon",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/addons/{{addonId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "addons",
+                "{id}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Toggle addon",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/addons/{{addonId}}/toggle",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "addons",
+                "{id}",
+                "toggle"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": {\n    \"ar\": \"Berry Blast\",\n    \"en\": \"Berry Blast\"\n  },\n  \"kind\": \"item\",\n  \"category\": \"juice\",\n  \"billingMode\": \"flat_once\",\n  \"priceHalala\": 1300,\n  \"currency\": \"SAR\",\n  \"isActive\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update addon sort order",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/addons/{{addonId}}/sort",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "addons",
+                "{id}",
+                "sort"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": {\n    \"ar\": \"Berry Blast\",\n    \"en\": \"Berry Blast\"\n  },\n  \"kind\": \"item\",\n  \"category\": \"juice\",\n  \"billingMode\": \"flat_once\",\n  \"priceHalala\": 1300,\n  \"currency\": \"SAR\",\n  \"isActive\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Clone addon",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/addons/{{addonId}}/clone",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "addons",
+                "{id}",
+                "clone"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": {\n    \"ar\": \"Berry Blast\",\n    \"en\": \"Berry Blast\"\n  },\n  \"kind\": \"item\",\n  \"category\": \"juice\",\n  \"billingMode\": \"flat_once\",\n  \"priceHalala\": 1300,\n  \"currency\": \"SAR\",\n  \"isActive\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Addon Plans",
+      "item": [
+        {
+          "name": "List addon-plans",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/addon-plans",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "addon-plans"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create addon-plan",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/addon-plans",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "addon-plans"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": {\n    \"ar\": \"عصير يومي\",\n    \"en\": \"Daily Juice\"\n  },\n  \"kind\": \"plan\",\n  \"category\": \"juice\",\n  \"billingMode\": \"per_day\",\n  \"priceHalala\": 500,\n  \"currency\": \"SAR\",\n  \"isActive\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get addon-plan",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/addon-plans/{{subscriptionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "addon-plans",
+                "{id}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update addon-plan",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/addon-plans/{{subscriptionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "addon-plans",
+                "{id}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": {\n    \"ar\": \"عصير يومي\",\n    \"en\": \"Daily Juice\"\n  },\n  \"kind\": \"plan\",\n  \"category\": \"juice\",\n  \"billingMode\": \"per_day\",\n  \"priceHalala\": 500,\n  \"currency\": \"SAR\",\n  \"isActive\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Toggle addon-plan",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/addon-plans/{{subscriptionId}}/toggle",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "addon-plans",
+                "{id}",
+                "toggle"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": {\n    \"ar\": \"عصير يومي\",\n    \"en\": \"Daily Juice\"\n  },\n  \"kind\": \"plan\",\n  \"category\": \"juice\",\n  \"billingMode\": \"per_day\",\n  \"priceHalala\": 500,\n  \"currency\": \"SAR\",\n  \"isActive\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Plans",
+      "item": [
+        {
+          "name": "List plans",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/plans",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "plans"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create plan",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/plans",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "plans"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": {\n    \"ar\": \"باقة أسبوعية\",\n    \"en\": \"Weekly Plan\"\n  },\n  \"daysCount\": 7,\n  \"currency\": \"SAR\",\n  \"gramsOptions\": [\n    {\n      \"grams\": 200,\n      \"mealsOptions\": [\n        {\n          \"mealsPerDay\": 2,\n          \"priceHalala\": 70000,\n          \"compareAtHalala\": 80000,\n          \"isActive\": true\n        }\n      ]\n    }\n  ],\n  \"isActive\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get plan",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/plans/{{planId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "plans",
+                "{id}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update plan",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/plans/{{planId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "plans",
+                "{id}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": {\n    \"ar\": \"باقة أسبوعية\",\n    \"en\": \"Weekly Plan\"\n  },\n  \"daysCount\": 7,\n  \"currency\": \"SAR\",\n  \"gramsOptions\": [\n    {\n      \"grams\": 200,\n      \"mealsOptions\": [\n        {\n          \"mealsPerDay\": 2,\n          \"priceHalala\": 70000,\n          \"compareAtHalala\": 80000,\n          \"isActive\": true\n        }\n      ]\n    }\n  ],\n  \"isActive\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Soft delete/deactivate plan",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/plans/{{planId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "plans",
+                "{id}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Toggle plan active state",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/plans/{{planId}}/toggle",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "plans",
+                "{id}",
+                "toggle"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": {\n    \"ar\": \"باقة أسبوعية\",\n    \"en\": \"Weekly Plan\"\n  },\n  \"daysCount\": 7,\n  \"currency\": \"SAR\",\n  \"gramsOptions\": [\n    {\n      \"grams\": 200,\n      \"mealsOptions\": [\n        {\n          \"mealsPerDay\": 2,\n          \"priceHalala\": 70000,\n          \"compareAtHalala\": 80000,\n          \"isActive\": true\n        }\n      ]\n    }\n  ],\n  \"isActive\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update plan sort order",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/plans/{{planId}}/sort",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "plans",
+                "{id}",
+                "sort"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": {\n    \"ar\": \"باقة أسبوعية\",\n    \"en\": \"Weekly Plan\"\n  },\n  \"daysCount\": 7,\n  \"currency\": \"SAR\",\n  \"gramsOptions\": [\n    {\n      \"grams\": 200,\n      \"mealsOptions\": [\n        {\n          \"mealsPerDay\": 2,\n          \"priceHalala\": 70000,\n          \"compareAtHalala\": 80000,\n          \"isActive\": true\n        }\n      ]\n    }\n  ],\n  \"isActive\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Clone plan",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/plans/{{planId}}/clone",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "plans",
+                "{id}",
+                "clone"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": {\n    \"ar\": \"باقة أسبوعية\",\n    \"en\": \"Weekly Plan\"\n  },\n  \"daysCount\": 7,\n  \"currency\": \"SAR\",\n  \"gramsOptions\": [\n    {\n      \"grams\": 200,\n      \"mealsOptions\": [\n        {\n          \"mealsPerDay\": 2,\n          \"priceHalala\": 70000,\n          \"compareAtHalala\": 80000,\n          \"isActive\": true\n        }\n      ]\n    }\n  ],\n  \"isActive\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create grams option",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/plans/{{planId}}/grams",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "plans",
+                "{id}",
+                "grams"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": {\n    \"ar\": \"باقة أسبوعية\",\n    \"en\": \"Weekly Plan\"\n  },\n  \"daysCount\": 7,\n  \"currency\": \"SAR\",\n  \"gramsOptions\": [\n    {\n      \"grams\": 200,\n      \"mealsOptions\": [\n        {\n          \"mealsPerDay\": 2,\n          \"priceHalala\": 70000,\n          \"compareAtHalala\": 80000,\n          \"isActive\": true\n        }\n      ]\n    }\n  ],\n  \"isActive\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Clone grams option",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/plans/{{planId}}/grams/clone",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "plans",
+                "{id}",
+                "grams",
+                "clone"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": {\n    \"ar\": \"باقة أسبوعية\",\n    \"en\": \"Weekly Plan\"\n  },\n  \"daysCount\": 7,\n  \"currency\": \"SAR\",\n  \"gramsOptions\": [\n    {\n      \"grams\": 200,\n      \"mealsOptions\": [\n        {\n          \"mealsPerDay\": 2,\n          \"priceHalala\": 70000,\n          \"compareAtHalala\": 80000,\n          \"isActive\": true\n        }\n      ]\n    }\n  ],\n  \"isActive\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete grams option",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/plans/{{planId}}/grams/{grams}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "plans",
+                "{id}",
+                "grams",
+                "{grams}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Toggle grams option",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/plans/{{planId}}/grams/{grams}/toggle",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "plans",
+                "{id}",
+                "grams",
+                "{grams}",
+                "toggle"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": {\n    \"ar\": \"باقة أسبوعية\",\n    \"en\": \"Weekly Plan\"\n  },\n  \"daysCount\": 7,\n  \"currency\": \"SAR\",\n  \"gramsOptions\": [\n    {\n      \"grams\": 200,\n      \"mealsOptions\": [\n        {\n          \"mealsPerDay\": 2,\n          \"priceHalala\": 70000,\n          \"compareAtHalala\": 80000,\n          \"isActive\": true\n        }\n      ]\n    }\n  ],\n  \"isActive\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update grams sort order",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/plans/{{planId}}/grams/{grams}/sort",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "plans",
+                "{id}",
+                "grams",
+                "{grams}",
+                "sort"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": {\n    \"ar\": \"باقة أسبوعية\",\n    \"en\": \"Weekly Plan\"\n  },\n  \"daysCount\": 7,\n  \"currency\": \"SAR\",\n  \"gramsOptions\": [\n    {\n      \"grams\": 200,\n      \"mealsOptions\": [\n        {\n          \"mealsPerDay\": 2,\n          \"priceHalala\": 70000,\n          \"compareAtHalala\": 80000,\n          \"isActive\": true\n        }\n      ]\n    }\n  ],\n  \"isActive\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create meals option",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/plans/{{planId}}/grams/{grams}/meals",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "plans",
+                "{id}",
+                "grams",
+                "{grams}",
+                "meals"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": {\n    \"ar\": \"باقة أسبوعية\",\n    \"en\": \"Weekly Plan\"\n  },\n  \"daysCount\": 7,\n  \"currency\": \"SAR\",\n  \"gramsOptions\": [\n    {\n      \"grams\": 200,\n      \"mealsOptions\": [\n        {\n          \"mealsPerDay\": 2,\n          \"priceHalala\": 70000,\n          \"compareAtHalala\": 80000,\n          \"isActive\": true\n        }\n      ]\n    }\n  ],\n  \"isActive\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Clone meals option",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/plans/{{planId}}/grams/{grams}/meals/clone",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "plans",
+                "{id}",
+                "grams",
+                "{grams}",
+                "meals",
+                "clone"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": {\n    \"ar\": \"باقة أسبوعية\",\n    \"en\": \"Weekly Plan\"\n  },\n  \"daysCount\": 7,\n  \"currency\": \"SAR\",\n  \"gramsOptions\": [\n    {\n      \"grams\": 200,\n      \"mealsOptions\": [\n        {\n          \"mealsPerDay\": 2,\n          \"priceHalala\": 70000,\n          \"compareAtHalala\": 80000,\n          \"isActive\": true\n        }\n      ]\n    }\n  ],\n  \"isActive\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete meals option",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/plans/{{planId}}/grams/{grams}/meals/{mealsPerDay}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "plans",
+                "{id}",
+                "grams",
+                "{grams}",
+                "meals",
+                "{mealsPerDay}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Toggle meals option",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/plans/{{planId}}/grams/{grams}/meals/{mealsPerDay}/toggle",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "plans",
+                "{id}",
+                "grams",
+                "{grams}",
+                "meals",
+                "{mealsPerDay}",
+                "toggle"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": {\n    \"ar\": \"باقة أسبوعية\",\n    \"en\": \"Weekly Plan\"\n  },\n  \"daysCount\": 7,\n  \"currency\": \"SAR\",\n  \"gramsOptions\": [\n    {\n      \"grams\": 200,\n      \"mealsOptions\": [\n        {\n          \"mealsPerDay\": 2,\n          \"priceHalala\": 70000,\n          \"compareAtHalala\": 80000,\n          \"isActive\": true\n        }\n      ]\n    }\n  ],\n  \"isActive\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update meals sort order",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/plans/{{planId}}/grams/{grams}/meals/{mealsPerDay}/sort",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "plans",
+                "{id}",
+                "grams",
+                "{grams}",
+                "meals",
+                "{mealsPerDay}",
+                "sort"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": {\n    \"ar\": \"باقة أسبوعية\",\n    \"en\": \"Weekly Plan\"\n  },\n  \"daysCount\": 7,\n  \"currency\": \"SAR\",\n  \"gramsOptions\": [\n    {\n      \"grams\": 200,\n      \"mealsOptions\": [\n        {\n          \"mealsPerDay\": 2,\n          \"priceHalala\": 70000,\n          \"compareAtHalala\": 80000,\n          \"isActive\": true\n        }\n      ]\n    }\n  ],\n  \"isActive\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Users",
+      "item": [
+        {
+          "name": "List app users",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "users"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create app user",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "users"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Dashboard operation\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get app user",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/users/{{userId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "users",
+                "{id}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update app user",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/users/{{userId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "users",
+                "{id}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Dashboard operation\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List user subscriptions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/users/{{userId}}/subscriptions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "users",
+                "{id}",
+                "subscriptions"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Payments",
+      "item": [
+        {
+          "name": "List payments",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/payments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "payments"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get payment",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/payments/{{paymentId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "payments",
+                "{id}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Verify Moyasar payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/payments/{{paymentId}}/verify",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "payments",
+                "{id}",
+                "verify"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Dashboard operation\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Delivery Zones",
+      "item": [
+        {
+          "name": "List delivery zones",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/zones",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "zones"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create delivery zone",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/zones",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "zones"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": {\n    \"ar\": \"شمال الرياض\",\n    \"en\": \"North Riyadh\"\n  },\n  \"deliveryFeeHalala\": 1200,\n  \"isActive\": true,\n  \"sortOrder\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get delivery zone",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/zones/{{zoneId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "zones",
+                "{id}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update delivery zone",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/zones/{{zoneId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "zones",
+                "{id}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": {\n    \"ar\": \"شمال الرياض\",\n    \"en\": \"North Riyadh\"\n  },\n  \"deliveryFeeHalala\": 1200,\n  \"isActive\": true,\n  \"sortOrder\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Soft delete delivery zone",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/zones/{{zoneId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "zones",
+                "{id}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Toggle delivery zone",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/zones/{{zoneId}}/toggle",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "zones",
+                "{id}",
+                "toggle"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": {\n    \"ar\": \"شمال الرياض\",\n    \"en\": \"North Riyadh\"\n  },\n  \"deliveryFeeHalala\": 1200,\n  \"isActive\": true,\n  \"sortOrder\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Catalog health",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/health/catalog",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "health",
+                "catalog"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Subscription menu health",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/health/subscription-menu",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "health",
+                "subscription-menu"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Meal planner health",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/health/meal-planner",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "health",
+                "meal-planner"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Index health",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/health/indexes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "health",
+                "indexes"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Meal Planner Catalog",
+      "item": [
+        {
+          "name": "List proteins",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/meal-planner-menu/proteins",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "meal-planner-menu",
+                "proteins"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create proteins",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/meal-planner-menu/proteins",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "meal-planner-menu",
+                "proteins"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"grilled_chicken\",\n  \"name\": {\n    \"en\": \"Grilled Chicken\"\n  },\n  \"displayCategoryKey\": \"chicken\",\n  \"proteinFamilyKey\": \"chicken\",\n  \"extraFeeHalala\": 0,\n  \"sortOrder\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update proteins",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/meal-planner-menu/proteins/{{subscriptionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "meal-planner-menu",
+                "proteins",
+                "{id}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"grilled_chicken\",\n  \"name\": {\n    \"en\": \"Grilled Chicken\"\n  },\n  \"displayCategoryKey\": \"chicken\",\n  \"proteinFamilyKey\": \"chicken\",\n  \"extraFeeHalala\": 0,\n  \"sortOrder\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Soft delete proteins",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/meal-planner-menu/proteins/{{subscriptionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "meal-planner-menu",
+                "proteins",
+                "{id}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List premium proteins",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/meal-planner-menu/premium-proteins",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "meal-planner-menu",
+                "premium-proteins"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create premium proteins",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/meal-planner-menu/premium-proteins",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "meal-planner-menu",
+                "premium-proteins"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"shrimp\",\n  \"premiumKey\": \"shrimp\",\n  \"name\": {\n    \"en\": \"Shrimp\"\n  },\n  \"proteinFamilyKey\": \"fish\",\n  \"extraFeeHalala\": 2200,\n  \"sortOrder\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update premium proteins",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/meal-planner-menu/premium-proteins/{{subscriptionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "meal-planner-menu",
+                "premium-proteins",
+                "{id}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"shrimp\",\n  \"premiumKey\": \"shrimp\",\n  \"name\": {\n    \"en\": \"Shrimp\"\n  },\n  \"proteinFamilyKey\": \"fish\",\n  \"extraFeeHalala\": 2200,\n  \"sortOrder\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Soft delete premium proteins",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/meal-planner-menu/premium-proteins/{{subscriptionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "meal-planner-menu",
+                "premium-proteins",
+                "{id}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List carbs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/meal-planner-menu/carbs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "meal-planner-menu",
+                "carbs"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create carbs",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/meal-planner-menu/carbs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "meal-planner-menu",
+                "carbs"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"rice\",\n  \"name\": {\n    \"en\": \"Rice\"\n  },\n  \"sortOrder\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update carbs",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/meal-planner-menu/carbs/{{subscriptionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "meal-planner-menu",
+                "carbs",
+                "{id}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"rice\",\n  \"name\": {\n    \"en\": \"Rice\"\n  },\n  \"sortOrder\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Soft delete carbs",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/meal-planner-menu/carbs/{{subscriptionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "meal-planner-menu",
+                "carbs",
+                "{id}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List sandwiches",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/meal-planner-menu/sandwiches",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "meal-planner-menu",
+                "sandwiches"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create sandwiches",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/meal-planner-menu/sandwiches",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "meal-planner-menu",
+                "sandwiches"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": {\n    \"en\": \"Chicken Sandwich\"\n  },\n  \"proteinFamilyKey\": \"chicken\",\n  \"calories\": 420,\n  \"sortOrder\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update sandwiches",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/meal-planner-menu/sandwiches/{{subscriptionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "meal-planner-menu",
+                "sandwiches",
+                "{id}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": {\n    \"en\": \"Chicken Sandwich\"\n  },\n  \"proteinFamilyKey\": \"chicken\",\n  \"calories\": 420,\n  \"sortOrder\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Soft delete sandwiches",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/meal-planner-menu/sandwiches/{{subscriptionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "meal-planner-menu",
+                "sandwiches",
+                "{id}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List addons",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/meal-planner-menu/addons",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "meal-planner-menu",
+                "addons"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create addons",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/meal-planner-menu/addons",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "meal-planner-menu",
+                "addons"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": {\n    \"ar\": \"Berry Blast\",\n    \"en\": \"Berry Blast\"\n  },\n  \"kind\": \"item\",\n  \"category\": \"juice\",\n  \"billingMode\": \"flat_once\",\n  \"priceHalala\": 1300,\n  \"currency\": \"SAR\",\n  \"isActive\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update addons",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/meal-planner-menu/addons/{{addonId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "meal-planner-menu",
+                "addons",
+                "{id}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": {\n    \"ar\": \"Berry Blast\",\n    \"en\": \"Berry Blast\"\n  },\n  \"kind\": \"item\",\n  \"category\": \"juice\",\n  \"billingMode\": \"flat_once\",\n  \"priceHalala\": 1300,\n  \"currency\": \"SAR\",\n  \"isActive\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Soft delete addons",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/meal-planner-menu/addons/{{addonId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "meal-planner-menu",
+                "addons",
+                "{id}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List salad ingredients",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/meal-planner-menu/salad-ingredients",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "meal-planner-menu",
+                "salad-ingredients"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create salad ingredients",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/meal-planner-menu/salad-ingredients",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "meal-planner-menu",
+                "salad-ingredients"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": {\n    \"en\": \"Lettuce\"\n  },\n  \"groupKey\": \"leafy_greens\",\n  \"price\": 0,\n  \"calories\": 10,\n  \"maxQuantity\": 3,\n  \"sortOrder\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update salad ingredients",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/meal-planner-menu/salad-ingredients/{{subscriptionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "meal-planner-menu",
+                "salad-ingredients",
+                "{id}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": {\n    \"en\": \"Lettuce\"\n  },\n  \"groupKey\": \"leafy_greens\",\n  \"price\": 0,\n  \"calories\": 10,\n  \"maxQuantity\": 3,\n  \"sortOrder\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Soft delete salad ingredients",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/meal-planner-menu/salad-ingredients/{{subscriptionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "meal-planner-menu",
+                "salad-ingredients",
+                "{id}"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Ops",
+      "item": [
+        {
+          "name": "List operations board",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/ops/list",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "ops",
+                "list"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Search operations",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/ops/search",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "ops",
+                "search"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Execute operations action",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/ops/actions/mark_preparing",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "ops",
+                "actions",
+                "{action}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"entityId\": \"{{subscriptionDayId}}\",\n  \"entityType\": \"subscription\",\n  \"payload\": {}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Settings",
+      "item": [
+        {
+          "name": "Patch settings",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/settings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "settings"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Dashboard operation\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get restaurant hours",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/settings/restaurant-hours",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "settings",
+                "restaurant-hours"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update restaurant hours",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/settings/restaurant-hours",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "settings",
+                "restaurant-hours"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Dashboard operation\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update cutoff",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/settings/cutoff",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "settings",
+                "cutoff"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Dashboard operation\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update delivery windows",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/settings/delivery-windows",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "settings",
+                "delivery-windows"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"deliveryMethod\": \"delivery\",\n  \"zoneId\": \"6630f0f5d8f9f5a21b8c2222\",\n  \"address\": {\n    \"line1\": \"Building 12\",\n    \"district\": \"Al Olaya\",\n    \"city\": \"Riyadh\"\n  },\n  \"deliveryWindow\": {\n    \"from\": \"16:00\",\n    \"to\": \"22:00\"\n  },\n  \"reason\": \"Customer requested delivery update\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update skip allowance",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/settings/skip-allowance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "settings",
+                "skip-allowance"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Dashboard operation\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update premium price",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/settings/premium-price",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "settings",
+                "premium-price"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Dashboard operation\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update subscription delivery fee",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/settings/subscription-delivery-fee",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "settings",
+                "subscription-delivery-fee"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Dashboard operation\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update VAT percentage",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/settings/vat-percentage",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "settings",
+                "vat-percentage"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Dashboard operation\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update custom salad base price",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/settings/custom-salad-base-price",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "settings",
+                "custom-salad-base-price"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Dashboard operation\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update custom meal base price",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/settings/custom-meal-base-price",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "settings",
+                "custom-meal-base-price"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Dashboard operation\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Content",
+      "item": [
+        {
+          "name": "Get subscription terms content",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/content/terms/subscription",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "content",
+                "terms",
+                "subscription"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Upsert subscription terms content",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/content/terms/subscription",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "content",
+                "terms",
+                "subscription"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Dashboard operation\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Dashboard Users",
+      "item": [
+        {
+          "name": "List dashboard users",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/dashboard-users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "dashboard-users"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create dashboard user",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/dashboard-users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "dashboard-users"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Dashboard operation\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get dashboard user",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/dashboard-users/{{dashboardUserId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "dashboard-users",
+                "{id}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update dashboard user",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/dashboard-users/{{dashboardUserId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "dashboard-users",
+                "{id}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Dashboard operation\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete dashboard user",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/dashboard-users/{{dashboardUserId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "dashboard-users",
+                "{id}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Reset dashboard user password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/dashboard-users/{{dashboardUserId}}/reset-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "dashboard-users",
+                "{id}",
+                "reset-password"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Dashboard operation\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://basicdiet145.onrender.com/api"
+    },
+    {
+      "key": "dashboardToken",
+      "value": ""
+    },
+    {
+      "key": "subscriptionId",
+      "value": ""
+    },
+    {
+      "key": "dayDate",
+      "value": "2026-05-01"
+    },
+    {
+      "key": "addonId",
+      "value": ""
+    },
+    {
+      "key": "zoneId",
+      "value": ""
+    },
+    {
+      "key": "paymentId",
+      "value": ""
+    },
+    {
+      "key": "planId",
+      "value": ""
+    },
+    {
+      "key": "userId",
+      "value": ""
+    },
+    {
+      "key": "dashboardUserId",
+      "value": ""
+    },
+    {
+      "key": "subscriptionDayId",
+      "value": ""
+    }
+  ]
+}
