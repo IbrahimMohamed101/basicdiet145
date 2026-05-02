@@ -44,4 +44,16 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
+# Graphify / local AI tooling
+graphify-out/
+.codex/
+AGENTS.md
+.graphifyignore
+
+# Local dependency graphs
+graph.png
+graph.svg
+graph.dot
+
+
 .env

@@ -16,7 +16,7 @@ const {
   serializeCheckoutPayment,
 } = require("./subscriptionPaymentPayloadService");
 const { getPaymentMetadata } = require("./subscriptionCheckoutHelpers");
-const { buildErrorResult, buildSuccessResult } = require("./subscriptionNonCheckoutPaymentService");
+const { buildErrorResult, buildSuccessResult, resolveNonCheckoutIdempotency } = require("./subscriptionNonCheckoutPaymentService");
 const {
   applyCommercialStateToDay,
   finalizeDayCommercialStateForPersistence,
@@ -37,6 +37,48 @@ function normalizeNumber(value) {
 
 function normalizeCurrencyValue(value) {
   return String(value || SYSTEM_CURRENCY).trim().toUpperCase();
+}
+
+function getUpdateMatchedCount(result) {
+  if (!result) return 0;
+  if (typeof result.matchedCount === "number") return result.matchedCount;
+  if (typeof result.n === "number") return result.n;
+  if (typeof result.modifiedCount === "number" && result.modifiedCount > 0) return result.modifiedCount;
+  if (typeof result.nModified === "number" && result.nModified > 0) return result.nModified;
+  return 0;
+}
+
+function getUpdateModifiedCount(result) {
+  if (!result) return 0;
+  if (typeof result.modifiedCount === "number") return result.modifiedCount;
+  if (typeof result.nModified === "number") return result.nModified;
+  return 0;
+}
+
+function isDayLinkedToPayment(day, payment, expectedRevisionHash) {
+  const premiumExtraPayment = day && day.premiumExtraPayment ? day.premiumExtraPayment : {};
+  return Boolean(
+    premiumExtraPayment.status === "pending"
+    && String(premiumExtraPayment.paymentId || "") === String(payment && payment._id ? payment._id : "")
+    && String(premiumExtraPayment.providerInvoiceId || "") === String(payment && payment.providerInvoiceId ? payment.providerInvoiceId : "")
+    && String(premiumExtraPayment.revisionHash || "") === String(expectedRevisionHash || "")
+  );
+}
+
+async function markPaymentInitiationFailed(payment, reason) {
+  if (!payment || !payment._id) return;
+  await Payment.updateOne(
+    { _id: payment._id },
+    {
+      $set: {
+        status: "failed",
+        applied: false,
+        metadata: Object.assign({}, payment.metadata || {}, {
+          initiationFailureReason: reason,
+        }),
+      },
+    }
+  );
 }
 
 function buildPendingPremiumSnapshot(day) {
@@ -170,6 +212,48 @@ async function createUnifiedDayPaymentFlow({
       backUrl: body && body.backUrl,
     });
 
+    const idempotency = await resolveNonCheckoutIdempotency({
+      headers,
+      body,
+      userId,
+      operationScope: UNIFIED_DAY_PAYMENT_TYPE,
+      effectivePayload: {
+        subscriptionId: String(sub._id),
+        dayId: String(day._id),
+        date: String(day.date),
+        plannerRevisionHash: derivedDay.plannerRevisionHash,
+        totalHalala,
+      },
+      fallbackResponseShape: UNIFIED_DAY_PAYMENT_TYPE,
+      runtime,
+    });
+    if (!idempotency.ok) return idempotency;
+    if (!idempotency.shouldContinue) {
+      const reusedPayment = await runtime.findReusableInitiatedPaymentByHash({
+        userId,
+        operationScope: UNIFIED_DAY_PAYMENT_TYPE,
+        operationRequestHash: idempotency.operationRequestHash,
+      });
+      if (!reusedPayment) return idempotency;
+
+      const metadata = getPaymentMetadata(reusedPayment);
+      const publicPaymentId = String(reusedPayment._id);
+      return buildSuccessResult(200, {
+        ...buildUnifiedPaymentPayload({
+          subscription: sub,
+          day,
+          payment: reusedPayment,
+        }),
+        payment_id: publicPaymentId,
+        paymentId: publicPaymentId,
+        payment_url: metadata.paymentUrl || "",
+        invoice_id: reusedPayment.providerInvoiceId,
+        providerInvoiceId: reusedPayment.providerInvoiceId,
+        totalHalala: reusedPayment.amount,
+        plannerRevisionHash: derivedDay.plannerRevisionHash,
+      });
+    }
+
     const invoiceMetadata = {
       type: UNIFIED_DAY_PAYMENT_TYPE,
       subscriptionId: String(sub._id),
@@ -228,6 +312,13 @@ async function createUnifiedDayPaymentFlow({
           totalHalala,
           redirectContext,
         }),
+        ...(idempotency.idempotencyKey
+          ? {
+            operationScope: UNIFIED_DAY_PAYMENT_TYPE,
+            operationIdempotencyKey: idempotency.idempotencyKey,
+            operationRequestHash: idempotency.operationRequestHash,
+          }
+          : {}),
       });
     } catch (err) {
       logger.error("Unified day payment initiation: createPayment failed", { error: err.message, code: err.code, subscriptionId, date });
@@ -236,23 +327,44 @@ async function createUnifiedDayPaymentFlow({
 
     const paymentId = payment && payment._id ? payment._id : payment && payment.id ? payment.id : null;
     if (premiumAmountHalala > 0) {
-      await SubscriptionDay.updateOne(
-        { _id: day._id, status: "open" },
-        {
-          $set: {
-            plannerRevisionHash: derivedDay.plannerRevisionHash,
-            "premiumExtraPayment.status": "pending",
-            "premiumExtraPayment.revisionHash": derivedDay.plannerRevisionHash,
-            "premiumExtraPayment.paymentId": paymentId,
-            "premiumExtraPayment.providerInvoiceId": invoice.id,
-            "premiumExtraPayment.createdAt": derivedDay.premiumExtraPayment.createdAt || new Date(),
-            "premiumExtraPayment.amountHalala": premiumAmountHalala,
-            "premiumExtraPayment.extraPremiumCount": premiumSnapshot.extraPremiumCount,
-            "premiumExtraPayment.currency": invoiceCurrency,
-            "premiumExtraPayment.reused": false,
-          },
+      let dayUpdateResult;
+      try {
+        dayUpdateResult = await SubscriptionDay.updateOne(
+          { _id: day._id, status: "open" },
+          {
+            $set: {
+              plannerRevisionHash: derivedDay.plannerRevisionHash,
+              "premiumExtraPayment.status": "pending",
+              "premiumExtraPayment.revisionHash": derivedDay.plannerRevisionHash,
+              "premiumExtraPayment.paymentId": paymentId,
+              "premiumExtraPayment.providerInvoiceId": invoice.id,
+              "premiumExtraPayment.createdAt": derivedDay.premiumExtraPayment.createdAt || new Date(),
+              "premiumExtraPayment.amountHalala": premiumAmountHalala,
+              "premiumExtraPayment.extraPremiumCount": premiumSnapshot.extraPremiumCount,
+              "premiumExtraPayment.currency": invoiceCurrency,
+              "premiumExtraPayment.reused": false,
+            },
+          }
+        );
+      } catch (err) {
+        logger.error("Unified day payment initiation: day update failed", { error: err.message, subscriptionId, date });
+        await markPaymentInitiationFailed(payment, "subscription_day_update_failed");
+        return buildErrorResult(500, "PAYMENT_PERSISTENCE_ERROR", "Failed to link payment to meal planner day");
+      }
+
+      const matchedCount = getUpdateMatchedCount(dayUpdateResult);
+      const modifiedCount = getUpdateModifiedCount(dayUpdateResult);
+      if (matchedCount === 0) {
+        await markPaymentInitiationFailed(payment, "subscription_day_not_open");
+        return buildErrorResult(409, "LOCKED", "Day is locked");
+      }
+      if (modifiedCount === 0) {
+        const latestDay = await SubscriptionDay.findById(day._id).lean();
+        if (!isDayLinkedToPayment(latestDay, payment, derivedDay.plannerRevisionHash)) {
+          await markPaymentInitiationFailed(payment, "subscription_day_update_failed");
+          return buildErrorResult(500, "PAYMENT_PERSISTENCE_ERROR", "Failed to link payment to meal planner day");
         }
-      );
+      }
     }
 
     const responseDay = await SubscriptionDay.findById(day._id).lean();
@@ -430,6 +542,7 @@ async function verifyUnifiedDayPaymentFlow({
           payment: claimedPayment,
           session,
           source: "client_manual_verify",
+          allowAppliedReconciliation: true,
         });
         if (sideEffectResult.applied) {
           synchronized = true;

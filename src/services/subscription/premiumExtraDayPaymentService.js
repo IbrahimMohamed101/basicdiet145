@@ -58,6 +58,48 @@ function assertSystemCurrencyOrThrow(value, fieldName) {
   return currency;
 }
 
+function getUpdateMatchedCount(result) {
+  if (!result) return 0;
+  if (typeof result.matchedCount === "number") return result.matchedCount;
+  if (typeof result.n === "number") return result.n;
+  if (typeof result.modifiedCount === "number" && result.modifiedCount > 0) return result.modifiedCount;
+  if (typeof result.nModified === "number" && result.nModified > 0) return result.nModified;
+  return 0;
+}
+
+function getUpdateModifiedCount(result) {
+  if (!result) return 0;
+  if (typeof result.modifiedCount === "number") return result.modifiedCount;
+  if (typeof result.nModified === "number") return result.nModified;
+  return 0;
+}
+
+function isPremiumExtraDayLinkedToPayment(day, payment, expectedRevisionHash) {
+  const premiumExtraPayment = day && day.premiumExtraPayment ? day.premiumExtraPayment : {};
+  return Boolean(
+    premiumExtraPayment.status === "pending"
+    && String(premiumExtraPayment.paymentId || "") === String(payment && payment._id ? payment._id : "")
+    && String(premiumExtraPayment.providerInvoiceId || "") === String(payment && payment.providerInvoiceId ? payment.providerInvoiceId : "")
+    && String(premiumExtraPayment.revisionHash || "") === String(expectedRevisionHash || "")
+  );
+}
+
+async function markPremiumExtraInitiationFailed(payment, reason) {
+  if (!payment || !payment._id) return;
+  await Payment.updateOne(
+    { _id: payment._id },
+    {
+      $set: {
+        status: "failed",
+        applied: false,
+        metadata: Object.assign({}, payment.metadata || {}, {
+          initiationFailureReason: reason,
+        }),
+      },
+    }
+  );
+}
+
 
 function buildPremiumExtraRequestPayload({ sub, day, revisionHash, extraPremiumCount, amountHalala }) {
   return {
@@ -560,39 +602,24 @@ async function createPremiumExtraDayPaymentFlow({
         }
       );
 
-      if (!updateResult || updateResult.modifiedCount !== 1) {
-        const latestDay = await SubscriptionDay.findById(day._id).lean();
-        if (latestDay && latestDay.premiumExtraPayment && latestDay.premiumExtraPayment.paymentId) {
-          const racedPayment = await Payment.findById(latestDay.premiumExtraPayment.paymentId).lean();
-          const racedClassification = classifyPremiumExtraExistingPayment({
-            payment: racedPayment,
-            expectedRequestHash: operationRequestHash,
-            subscriptionId: sub._id,
-            dayId: day._id,
-          });
+      const matchedCount = getUpdateMatchedCount(updateResult);
+      const modifiedCount = getUpdateModifiedCount(updateResult);
 
-          if (racedClassification.kind === "reusable") {
-            const racedDayState = applyCommercialStateToDay(latestDay);
-            return buildSuccessResult(200, {
-              ...buildPremiumExtraInitiationSuccessPayload({
-                payment: racedPayment,
-                amountHalala,
-                currency: racedPayment.currency || latestDay.premiumExtraPayment.currency || SYSTEM_CURRENCY,
-                reused: true,
-              }),
-              plannerRevisionHash: racedDayState.plannerRevisionHash,
-              premiumExtraPayment: racedDayState.premiumExtraPayment,
-              premiumSummary: racedDayState.premiumSummary,
-              paymentRequirement: racedDayState.paymentRequirement,
-              commercialState: racedDayState.commercialState,
-            });
-          }
-        }
-
+      if (matchedCount === 0) {
+        await markPremiumExtraInitiationFailed(payment, "premium_extra_day_not_open");
         return buildErrorResult(500, "PAYMENT_PERSISTENCE_ERROR", "Failed to link payment to meal planner day");
+      }
+
+      if (modifiedCount === 0) {
+        const latestDay = await SubscriptionDay.findById(day._id).lean();
+        if (!isPremiumExtraDayLinkedToPayment(latestDay, payment, currentRevisionHash)) {
+          await markPremiumExtraInitiationFailed(payment, "premium_extra_day_update_failed");
+          return buildErrorResult(500, "PAYMENT_PERSISTENCE_ERROR", "Failed to link payment to meal planner day");
+        }
       }
     } catch (err) {
       logger.error("Premium extra payment initiation: day save failed", { error: err.message, subscriptionId, date });
+      await markPremiumExtraInitiationFailed(payment, "premium_extra_day_update_failed");
       return buildErrorResult(500, "PAYMENT_PERSISTENCE_ERROR", "Failed to link payment to meal planner day");
     }
 
@@ -718,12 +745,25 @@ async function verifyPremiumExtraDayPaymentFlow({
         logDate: date,
         writeLogFn,
       });
+      if (settlement.applied) {
+        paymentInSession.applied = true;
+        paymentInSession.status = "paid";
+      } else {
+        paymentInSession.applied = false;
+        paymentInSession.status = "paid";
+        paymentInSession.metadata = Object.assign({}, paymentInSession.metadata || {}, {
+          unappliedReason: settlement.reason || "premium_extra_settlement_unapplied",
+        });
+        paymentInSession.markModified("metadata");
+      }
       if (!settlement.applied && settlement.reason === "revision_mismatch") {
+        await paymentInSession.save({ session });
         await session.commitTransaction();
         session.endSession();
         return buildErrorResult(409, "PREMIUM_EXTRA_REVISION_MISMATCH", "Planner changed since payment creation");
       }
 
+      await paymentInSession.save({ session });
       synchronized = Boolean(settlement.applied);
       await session.commitTransaction();
       session.endSession();
@@ -815,18 +855,29 @@ async function verifyPremiumExtraDayPaymentFlow({
         logDate: date,
         writeLogFn,
       });
+      if (!settlement.applied) {
+        paymentInSession.applied = false;
+        paymentInSession.status = "paid";
+        paymentInSession.metadata = Object.assign({}, paymentInSession.metadata || {}, {
+          unappliedReason: settlement.reason || "premium_extra_settlement_unapplied",
+        });
+        paymentInSession.markModified("metadata");
+        await paymentInSession.save({ session });
+      }
       if (!settlement.applied && settlement.reason === "revision_mismatch") {
         await session.commitTransaction();
         session.endSession();
         return buildErrorResult(409, "PREMIUM_EXTRA_REVISION_MISMATCH", "Planner changed since payment creation");
       }
 
-      const claimed = await Payment.findOneAndUpdate(
-        { _id: paymentInSession._id, applied: false },
-        { $set: { applied: true, status: "paid" } },
-        { new: true, session }
-      );
-      synchronized = Boolean(claimed || settlement.applied);
+      if (settlement.applied) {
+        const claimed = await Payment.findOneAndUpdate(
+          { _id: paymentInSession._id, applied: false },
+          { $set: { applied: true, status: "paid" } },
+          { new: true, session }
+        );
+        synchronized = Boolean(claimed || settlement.applied);
+      }
     }
 
     await session.commitTransaction();

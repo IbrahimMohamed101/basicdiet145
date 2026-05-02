@@ -401,6 +401,7 @@ async function verifyPremiumOverageDayPaymentFlow({
           payment: claimedPayment,
           session,
           source: "client_manual_verify",
+          allowAppliedReconciliation: true,
         });
         if (result.applied) {
           synchronized = true;
@@ -408,7 +409,7 @@ async function verifyPremiumOverageDayPaymentFlow({
           const metadata = Object.assign({}, claimedPayment.metadata || {}, { unappliedReason: result.reason });
           await Payment.updateOne(
             { _id: claimedPayment._id },
-            { $set: { applied: true, status: "paid", metadata } },
+            { $set: { applied: false, status: "paid", metadata } },
             { session }
           );
         }

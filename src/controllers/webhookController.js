@@ -444,7 +444,7 @@ async function handleMoyasarWebhook(req, res, runtimeOverrides = null) {
           const mergedMetadata = Object.assign({}, claim.metadata || {}, { unappliedReason });
           await Payment.updateOne(
             { _id: claim._id },
-          { $set: { applied: true, status: "paid", metadata: mergedMetadata } },
+          { $set: { applied: false, status: "paid", metadata: mergedMetadata } },
           { session }
         );
         await writeLogFn({
@@ -455,7 +455,7 @@ async function handleMoyasarWebhook(req, res, runtimeOverrides = null) {
           meta: { reason: unappliedReason, paymentId },
         });
       } else {
-        await Payment.updateOne({ _id: claim._id }, { $set: { applied: false } }, { session });
+        await Payment.updateOne({ _id: claim._id }, { $set: { applied: true } }, { session });
       }
 
         return {

@@ -81,9 +81,7 @@ async function resolveNonCheckoutIdempotency({
   fallbackResponseShape,
   runtime,
 }) {
-  if (!isPhase1NonCheckoutPaidIdempotencyEnabled()) {
-    return { ok: true, status: 200, shouldContinue: true, idempotencyKey: "", operationRequestHash: "" };
-  }
+  // Early return moved after key computation to preserve them in the result payload.
 
   let operationIdempotencyKey = "";
   try {
@@ -104,6 +102,16 @@ async function resolveNonCheckoutIdempotency({
     userId,
     effectivePayload,
   });
+
+  if (!isPhase1NonCheckoutPaidIdempotencyEnabled()) {
+    return {
+      ok: true,
+      status: 200,
+      shouldContinue: true,
+      idempotencyKey: operationIdempotencyKey,
+      operationRequestHash,
+    };
+  }
 
   const existingByKey = await runtime.findPaymentByOperationKey({
     userId,

@@ -11,6 +11,7 @@ const Order = require("../models/Order");
 const Payment = require("../models/Payment");
 const CheckoutDraft = require("../models/CheckoutDraft");
 const SubscriptionDay = require("../models/SubscriptionDay");
+const SubscriptionAuditLog = require("../models/SubscriptionAuditLog");
 const DashboardUser = require("../models/DashboardUser");
 const ActivityLog = require("../models/ActivityLog");
 const NotificationLog = require("../models/NotificationLog");
@@ -53,8 +54,11 @@ const {
 const { assertValidPhoneE164 } = require("../services/otpService");
 const SubscriptionLifecycleService = require("../services/subscription/subscriptionLifecycleService");
 const SubscriptionOperationsReadService = require("../services/subscription/subscriptionOperationsReadService");
+const { resolveSubscriptionDeliveryDefaultsUpdate } = require("../services/subscription/subscriptionDeliveryUpdateService");
+const { writeAuditLog } = require("../services/subscription/subscriptionAuditLogService");
 const { getRestaurantBusinessDate } = require("../services/restaurantHoursService");
 const { normalizeStoredVatBreakdown, buildMoneySummary } = require("../utils/pricing");
+const { resolveSubscriptionAddonBillingMode } = require("../utils/subscription/subscriptionCatalog");
 
 const MAX_PREMIUM_PRICE = 10000;
 const MAX_VAT_PERCENTAGE = 100;
@@ -1229,6 +1233,128 @@ async function writeActivityLogSafely(payload, context = {}) {
   }
 }
 
+async function writeSubscriptionAuditSafely({
+  subscriptionId,
+  action,
+  req,
+  fromStatus,
+  toStatus,
+  note,
+  meta,
+  session,
+}) {
+  await writeAuditLog({
+    entityType: "subscription",
+    entityId: subscriptionId,
+    action,
+    fromStatus,
+    toStatus,
+    actorType: req && req.dashboardUserRole ? req.dashboardUserRole : "admin",
+    actorId: req && req.dashboardUserId ? req.dashboardUserId : undefined,
+    note,
+    meta,
+    session,
+  });
+}
+
+function requireAdminReasonOrRespond(req, res) {
+  const reason = String(req.body && req.body.reason ? req.body.reason : "").trim();
+  if (!reason) {
+    errorResponse(res, 400, "INVALID", "reason is required");
+    return null;
+  }
+  return reason;
+}
+
+function normalizeDashboardQuotePayload(body = {}) {
+  const payload = { ...(body || {}) };
+  if (payload.addons === undefined && payload.addonPlans !== undefined) {
+    payload.addons = payload.addonPlans;
+  }
+  if (payload.premiumItems === undefined && payload.premiumSelections !== undefined) {
+    payload.premiumItems = payload.premiumSelections;
+  }
+
+  const delivery = payload.delivery && typeof payload.delivery === "object" && !Array.isArray(payload.delivery)
+    ? { ...payload.delivery }
+    : {};
+  if (!delivery.type && payload.deliveryMethod) {
+    delivery.type = payload.deliveryMethod;
+  }
+  if (!delivery.type && payload.deliveryMode) {
+    delivery.type = payload.deliveryMode;
+  }
+  if (!delivery.zoneId && payload.zoneId) {
+    delivery.zoneId = payload.zoneId;
+  }
+  if (!delivery.zoneId && payload.deliveryZoneId) {
+    delivery.zoneId = payload.deliveryZoneId;
+  }
+  if (!delivery.address && payload.deliveryAddress) {
+    delivery.address = payload.deliveryAddress;
+  }
+  if (!delivery.window && payload.deliveryWindow) {
+    delivery.window = payload.deliveryWindow;
+  }
+  if (!delivery.pickupLocationId && payload.pickupLocationId) {
+    delivery.pickupLocationId = payload.pickupLocationId;
+  }
+  if (Object.keys(delivery).length > 0) {
+    payload.delivery = delivery;
+  }
+  return payload;
+}
+
+function serializeDashboardQuote(quote, lang) {
+  const planName = pickLang(quote.plan && quote.plan.name, lang) || "";
+  return {
+    plan: quote.plan
+      ? {
+        id: String(quote.plan._id),
+        name: planName,
+        daysCount: Number(quote.plan.daysCount || 0),
+        currency: normalizeCurrencyValue(quote.plan.currency || "SAR"),
+      }
+      : null,
+    selectedOptions: {
+      grams: quote.grams,
+      mealsPerDay: quote.mealsPerDay,
+      startDate: quote.startDate ? dateUtils.toKSADateString(quote.startDate) : null,
+    },
+    delivery: quote.delivery || null,
+    premiumItems: (quote.premiumItems || []).map((item) => ({
+      proteinId: item.canonicalProteinId || (item.protein && item.protein._id ? String(item.protein._id) : null),
+      premiumKey: item.premiumKey || null,
+      name: item.name || (item.protein ? pickLang(item.protein.name, lang) : ""),
+      qty: Number(item.qty || 0),
+      unitExtraFeeHalala: Number(item.unitExtraFeeHalala || 0),
+      totalHalala: Number(item.qty || 0) * Number(item.unitExtraFeeHalala || 0),
+      currency: item.currency || "SAR",
+    })),
+    addonPlans: (quote.addonItems || []).map((item) => ({
+      addonId: item.addon && item.addon._id ? String(item.addon._id) : null,
+      name: item.addon ? pickLang(item.addon.name, lang) : "",
+      category: item.category || (item.addon && item.addon.category) || "",
+      unitPriceHalala: Number(item.unitPriceHalala || 0),
+      totalHalala: Number(item.totalHalala || 0),
+      currency: item.currency || "SAR",
+    })),
+    breakdown: quote.breakdown,
+    pricingSummary: buildMoneySummary({
+      basePlanPriceHalala: quote.breakdown.basePlanPriceHalala,
+      basePlanGrossHalala: quote.breakdown.basePlanGrossHalala,
+      basePlanNetHalala: quote.breakdown.basePlanNetHalala,
+      subtotalBeforeVatHalala: quote.breakdown.subtotalBeforeVatHalala,
+      subtotalHalala: quote.breakdown.subtotalHalala,
+      vatPercentage: quote.breakdown.vatPercentage,
+      vatHalala: quote.breakdown.vatHalala,
+      totalPriceHalala: quote.breakdown.totalHalala,
+      currency: quote.breakdown.currency || "SAR",
+    }),
+    validation: { status: true },
+  };
+}
+
 function buildAppUserMaps(appUsers) {
   const byCoreUserId = new Map();
   const byPhone = new Map();
@@ -1409,7 +1535,7 @@ async function createSubscriptionAdmin(req, res, nextOrRuntimeOverrides = null, 
     nextOrRuntimeOverrides,
     explicitRuntimeOverrides
   );
-  const body = req.body || {};
+  const body = normalizeDashboardQuotePayload(req.body || {});
   const { userId } = body;
   if (!validateObjectIdOrRespond(res, userId, "userId")) {
     return undefined;
@@ -1532,6 +1658,17 @@ async function createSubscriptionAdmin(req, res, nextOrRuntimeOverrides = null, 
         startDate: dateUtils.toKSADateString(startDate),
       },
     }, { subscriptionId: String(subscription._id) });
+    await writeSubscriptionAuditSafely({
+      subscriptionId: subscription._id,
+      action: "subscription_created_by_admin",
+      req,
+      toStatus: subscription.status,
+      meta: {
+        userId: String(user._id),
+        planId: String(quote.plan._id),
+        startDate: dateUtils.toKSADateString(startDate),
+      },
+    });
 
     return res.status(201).json({
       status: true,
@@ -1554,6 +1691,47 @@ async function createSubscriptionAdmin(req, res, nextOrRuntimeOverrides = null, 
       userId: String(userId),
     });
     return errorResponse(res, 500, "INTERNAL", "Subscription creation failed");
+  }
+}
+
+async function quoteSubscriptionAdmin(req, res, nextOrRuntimeOverrides = null, explicitRuntimeOverrides = null) {
+  const runtime = resolveAdminRuntimeOverrides(
+    sliceCAdminRuntime,
+    nextOrRuntimeOverrides,
+    explicitRuntimeOverrides
+  );
+  const body = normalizeDashboardQuotePayload(req.body || {});
+  const { userId } = body;
+  if (!validateObjectIdOrRespond(res, userId, "userId")) {
+    return undefined;
+  }
+
+  const user = await runtime.findClientUserById(userId);
+  if (!user) {
+    return errorResponse(res, 404, "NOT_FOUND", "App user not found");
+  }
+  if (user.isActive === false) {
+    return errorResponse(res, 409, "INVALID", "App user is inactive");
+  }
+
+  try {
+    const lang = getRequestLang(req);
+    const quote = await runtime.resolveCheckoutQuoteOrThrow(body, {
+      enforceActivePlan: true,
+      lang,
+      userId,
+      allowMissingDeliveryAddress: true,
+      useGenericPremiumWallet:
+        isPhase1CanonicalAdminCreateEnabled()
+        && isPhase2GenericPremiumWalletEnabled(),
+    });
+    return res.status(200).json({
+      status: true,
+      data: serializeDashboardQuote(quote, lang),
+    });
+  } catch (err) {
+    const mapped = mapSubscriptionQuoteError(err);
+    return errorResponse(res, mapped.status, mapped.code, mapped.message);
   }
 }
 
@@ -1907,6 +2085,14 @@ async function createPlan(req, res) {
   try {
     const normalizedPayload = validatePlanPayloadOrThrow(req.body || {}, { requireGramsOptions: true });
     const plan = await Plan.create(normalizedPayload);
+    await writeActivityLogSafely({
+      entityType: "plan",
+      entityId: plan._id,
+      action: "plan_created_by_admin",
+      byUserId: req.dashboardUserId,
+      byRole: req.dashboardUserRole,
+      meta: { daysCount: plan.daysCount, isActive: plan.isActive },
+    }, { planId: plan.id });
     return res.status(201).json({ status: true, data: { id: plan.id } });
   } catch (err) {
     if (isControlledError(err)) {
@@ -1934,6 +2120,14 @@ async function updatePlan(req, res) {
       return errorResponse(res, 404, "NOT_FOUND", "Plan not found");
     }
 
+    await writeActivityLogSafely({
+      entityType: "plan",
+      entityId: updated._id,
+      action: "plan_updated_by_admin",
+      byUserId: req.dashboardUserId,
+      byRole: req.dashboardUserRole,
+      meta: { daysCount: updated.daysCount, isActive: updated.isActive },
+    }, { planId: updated.id });
     return res.status(200).json({ status: true, data: { id: updated.id } });
   } catch (err) {
     if (isControlledError(err)) {
@@ -1949,12 +2143,20 @@ async function deletePlan(req, res) {
     return undefined;
   }
 
-  const deleted = await Plan.findByIdAndDelete(id).lean();
-  if (!deleted) {
+  const plan = await Plan.findByIdAndUpdate(id, { $set: { isActive: false } }, { new: true });
+  if (!plan) {
     return errorResponse(res, 404, "NOT_FOUND", "Plan not found");
   }
 
-  return res.status(200).json({ status: true });
+  await writeActivityLogSafely({
+    entityType: "plan",
+    entityId: plan._id,
+    action: "plan_soft_deleted_by_admin",
+    byUserId: req.dashboardUserId,
+    byRole: req.dashboardUserRole,
+    meta: { isActive: false },
+  }, { planId: id });
+  return res.status(200).json({ status: true, data: { id: plan.id, isActive: plan.isActive } });
 }
 
 async function togglePlanActive(req, res) {
@@ -1982,6 +2184,14 @@ async function togglePlanActive(req, res) {
   }
   await plan.save();
 
+  await writeActivityLogSafely({
+    entityType: "plan",
+    entityId: plan._id,
+    action: "plan_toggled_by_admin",
+    byUserId: req.dashboardUserId,
+    byRole: req.dashboardUserRole,
+    meta: { isActive: plan.isActive },
+  }, { planId: id });
   return res.status(200).json({ status: true, data: { id: plan.id, isActive: plan.isActive } });
 }
 
@@ -3421,6 +3631,394 @@ async function listSubscriptionDaysAdmin(req, res) {
   return res.status(200).json({ status: true, data: days });
 }
 
+async function updateSubscriptionDeliveryAdmin(req, res) {
+  const { id } = req.params;
+  if (!validateObjectIdOrRespond(res, id, "id")) {
+    return undefined;
+  }
+
+  const lang = getRequestLang(req);
+  const subscription = await Subscription.findById(id);
+  if (!subscription) {
+    return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
+  }
+
+  const before = {
+    deliveryMode: subscription.deliveryMode,
+    deliveryAddress: subscription.deliveryAddress || null,
+    deliveryZoneId: subscription.deliveryZoneId ? String(subscription.deliveryZoneId) : null,
+    deliveryZoneName: subscription.deliveryZoneName || "",
+    deliveryFeeHalala: Number(subscription.deliveryFeeHalala || 0),
+    pickupLocationId: subscription.pickupLocationId || "",
+    deliveryWindow: subscription.deliveryWindow || "",
+    deliverySlot: subscription.deliverySlot || null,
+  };
+
+  try {
+    const resolvedUpdate = await resolveSubscriptionDeliveryDefaultsUpdate({
+      subscription: subscription.toObject(),
+      payload: req.body || {},
+      lang,
+      allowModeChange: true,
+    });
+
+    Object.assign(subscription, resolvedUpdate.patch);
+    subscription.deliveryMode = resolvedUpdate.currentMode;
+    await subscription.save();
+
+    const after = {
+      deliveryMode: subscription.deliveryMode,
+      deliveryAddress: subscription.deliveryAddress || null,
+      deliveryZoneId: subscription.deliveryZoneId ? String(subscription.deliveryZoneId) : null,
+      deliveryZoneName: subscription.deliveryZoneName || "",
+      deliveryFeeHalala: Number(subscription.deliveryFeeHalala || 0),
+      pickupLocationId: subscription.pickupLocationId || "",
+      deliveryWindow: subscription.deliveryWindow || "",
+      deliverySlot: subscription.deliverySlot || null,
+    };
+
+    await writeSubscriptionAuditSafely({
+      subscriptionId: subscription._id,
+      action: "subscription_delivery_updated_by_admin",
+      req,
+      note: req.body && req.body.reason ? String(req.body.reason) : undefined,
+      meta: { before, after, ...resolvedUpdate.logMeta },
+    });
+    await writeActivityLogSafely({
+      entityType: "subscription",
+      entityId: subscription._id,
+      action: "subscription_delivery_updated_by_admin",
+      byUserId: req.dashboardUserId,
+      byRole: req.dashboardUserRole,
+      meta: { before, after },
+    }, { subscriptionId: id });
+
+    const user = subscription.userId ? await User.findById(subscription.userId).lean() : null;
+    return res.status(200).json({
+      status: true,
+      data: await serializeSubscriptionAdmin(subscription.toObject(), lang, user),
+    });
+  } catch (err) {
+    if (err && err.status) {
+      return errorResponse(res, err.status, err.code, err.message);
+    }
+    logger.error("adminController.updateSubscriptionDeliveryAdmin failed", {
+      error: err.message,
+      stack: err.stack,
+      subscriptionId: id,
+    });
+    return errorResponse(res, 500, "INTERNAL", "Subscription delivery update failed");
+  }
+}
+
+function normalizePositiveInteger(value, fieldName, defaultValue = null) {
+  if ((value === undefined || value === null || value === "") && defaultValue !== null) {
+    return defaultValue;
+  }
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    throw createControlledError(400, "INVALID", `${fieldName} must be a positive integer`);
+  }
+  return parsed;
+}
+
+function normalizeNonNegativeIntegerField(value, fieldName, defaultValue = 0) {
+  if (value === undefined || value === null || value === "") {
+    return defaultValue;
+  }
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    throw createControlledError(400, "INVALID", `${fieldName} must be an integer >= 0`);
+  }
+  return parsed;
+}
+
+async function normalizeAddonEntitlementsOrThrow(rows) {
+  if (!Array.isArray(rows)) {
+    throw createControlledError(400, "INVALID", "addonSubscriptions must be an array");
+  }
+
+  const addonIds = [];
+  for (const row of rows) {
+    const addonId = typeof row === "string" ? row : row && row.addonId;
+    try {
+      validateObjectId(addonId, "addonId");
+    } catch (_err) {
+      throw createControlledError(400, "INVALID", "addonId must be a valid ObjectId");
+    }
+    addonIds.push(String(addonId));
+  }
+
+  const addons = addonIds.length
+    ? await Addon.find({ _id: { $in: addonIds } }).lean()
+    : [];
+  const addonById = new Map(addons.map((addon) => [String(addon._id), addon]));
+  const categories = new Set();
+
+  return rows.map((row) => {
+    const addonId = typeof row === "string" ? row : row.addonId;
+    const addon = addonById.get(String(addonId));
+    if (!addon) {
+      throw createControlledError(404, "NOT_FOUND", `Addon plan ${addonId} not found`);
+    }
+    if (addon.kind !== "plan") {
+      throw createControlledError(400, "INVALID", `Addon ${addonId} is not a subscription plan`);
+    }
+    if (!["per_day", "per_meal"].includes(resolveSubscriptionAddonBillingMode(addon, { defaultMode: "per_day" }))) {
+      throw createControlledError(400, "INVALID", `Addon ${addonId} has invalid subscription billingMode`);
+    }
+    if (categories.has(addon.category)) {
+      throw createControlledError(409, "CONFLICT", `Duplicate addon entitlement category ${addon.category}`);
+    }
+    categories.add(addon.category);
+    return {
+      addonId: addon._id,
+      name: pickLang(addon.name, "en") || pickLang(addon.name, "ar") || "",
+      category: addon.category,
+      maxPerDay: normalizePositiveInteger(row && row.maxPerDay, "maxPerDay", 1),
+    };
+  });
+}
+
+async function updateSubscriptionAddonEntitlementsAdmin(req, res) {
+  const { id } = req.params;
+  if (!validateObjectIdOrRespond(res, id, "id")) {
+    return undefined;
+  }
+  const reason = requireAdminReasonOrRespond(req, res);
+  if (!reason) return undefined;
+
+  const rows = req.body && (req.body.addonSubscriptions || req.body.entitlements || req.body.addonEntitlements);
+  try {
+    const normalizedRows = await normalizeAddonEntitlementsOrThrow(rows);
+    const subscription = await Subscription.findById(id);
+    if (!subscription) {
+      return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
+    }
+    const before = (subscription.addonSubscriptions || []).map((row) => ({
+      addonId: row.addonId ? String(row.addonId) : null,
+      category: row.category,
+      maxPerDay: row.maxPerDay,
+    }));
+    subscription.addonSubscriptions = normalizedRows;
+    await subscription.save();
+
+    const after = normalizedRows.map((row) => ({
+      addonId: row.addonId ? String(row.addonId) : null,
+      category: row.category,
+      maxPerDay: row.maxPerDay,
+    }));
+    await writeSubscriptionAuditSafely({
+      subscriptionId: subscription._id,
+      action: "subscription_addon_entitlements_updated_by_admin",
+      req,
+      note: reason,
+      meta: { before, after },
+    });
+    await writeActivityLogSafely({
+      entityType: "subscription",
+      entityId: subscription._id,
+      action: "subscription_addon_entitlements_updated_by_admin",
+      byUserId: req.dashboardUserId,
+      byRole: req.dashboardUserRole,
+      meta: { before, after, reason },
+    }, { subscriptionId: id });
+
+    return res.status(200).json({ status: true, data: { addonSubscriptions: subscription.addonSubscriptions } });
+  } catch (err) {
+    if (isControlledError(err)) {
+      return errorResponse(res, err.status, err.code, err.message);
+    }
+    logger.error("adminController.updateSubscriptionAddonEntitlementsAdmin failed", {
+      error: err.message,
+      stack: err.stack,
+      subscriptionId: id,
+    });
+    return errorResponse(res, 500, "INTERNAL", "Subscription addon entitlements update failed");
+  }
+}
+
+async function normalizePremiumBalanceRowsOrThrow(rows) {
+  if (!Array.isArray(rows)) {
+    throw createControlledError(400, "INVALID", "premiumBalance must be an array");
+  }
+  for (const row of rows) {
+    if (!row || typeof row !== "object" || Array.isArray(row)) {
+      throw createControlledError(400, "INVALID", "premiumBalance rows must be objects");
+    }
+    if (!row.premiumKey || !String(row.premiumKey).trim()) {
+      throw createControlledError(400, "INVALID", "premiumBalance.premiumKey is required");
+    }
+    if (row.proteinId !== undefined && row.proteinId !== null && row.proteinId !== "") {
+      try {
+        validateObjectId(row.proteinId, "proteinId");
+      } catch (_err) {
+        throw createControlledError(400, "INVALID", "premiumBalance.proteinId must be a valid ObjectId");
+      }
+    }
+  }
+  return rows.map((row) => ({
+    premiumKey: String(row.premiumKey).trim(),
+    proteinId: row.proteinId || null,
+    purchasedQty: normalizeNonNegativeIntegerField(row.purchasedQty, "premiumBalance.purchasedQty"),
+    remainingQty: normalizeNonNegativeIntegerField(row.remainingQty, "premiumBalance.remainingQty"),
+    unitExtraFeeHalala: normalizeNonNegativeIntegerField(row.unitExtraFeeHalala, "premiumBalance.unitExtraFeeHalala"),
+    currency: String(row.currency || "SAR").trim().toUpperCase(),
+    purchasedAt: row.purchasedAt ? new Date(row.purchasedAt) : new Date(),
+  }));
+}
+
+async function normalizeAddonBalanceRowsOrThrow(rows) {
+  if (!Array.isArray(rows)) {
+    throw createControlledError(400, "INVALID", "addonBalance must be an array");
+  }
+  const addonIds = rows.map((row) => row && row.addonId).filter(Boolean);
+  for (const addonId of addonIds) {
+    try {
+      validateObjectId(addonId, "addonId");
+    } catch (_err) {
+      throw createControlledError(400, "INVALID", "addonBalance.addonId must be a valid ObjectId");
+    }
+  }
+  const existingCount = addonIds.length ? await Addon.countDocuments({ _id: { $in: addonIds } }) : 0;
+  if (existingCount !== new Set(addonIds.map(String)).size) {
+    throw createControlledError(404, "NOT_FOUND", "One or more addonBalance addonIds were not found");
+  }
+  return rows.map((row) => ({
+    addonId: row.addonId,
+    purchasedQty: normalizeNonNegativeIntegerField(row.purchasedQty, "addonBalance.purchasedQty"),
+    remainingQty: normalizeNonNegativeIntegerField(row.remainingQty, "addonBalance.remainingQty"),
+    unitPriceHalala: normalizeNonNegativeIntegerField(row.unitPriceHalala, "addonBalance.unitPriceHalala"),
+    currency: String(row.currency || "SAR").trim().toUpperCase(),
+    purchasedAt: row.purchasedAt ? new Date(row.purchasedAt) : new Date(),
+  }));
+}
+
+async function updateSubscriptionBalancesAdmin(req, res) {
+  const { id } = req.params;
+  if (!validateObjectIdOrRespond(res, id, "id")) {
+    return undefined;
+  }
+  const reason = requireAdminReasonOrRespond(req, res);
+  if (!reason) return undefined;
+
+  const body = req.body || {};
+  if (!Object.prototype.hasOwnProperty.call(body, "premiumBalance") && !Object.prototype.hasOwnProperty.call(body, "addonBalance")) {
+    return errorResponse(res, 400, "INVALID", "At least one of premiumBalance or addonBalance is required");
+  }
+
+  try {
+    const subscription = await Subscription.findById(id);
+    if (!subscription) {
+      return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
+    }
+
+    const before = {
+      premiumBalance: (subscription.premiumBalance || []).map((row) => ({
+        premiumKey: row.premiumKey,
+        proteinId: row.proteinId ? String(row.proteinId) : null,
+        purchasedQty: row.purchasedQty,
+        remainingQty: row.remainingQty,
+      })),
+      addonBalance: (subscription.addonBalance || []).map((row) => ({
+        addonId: row.addonId ? String(row.addonId) : null,
+        purchasedQty: row.purchasedQty,
+        remainingQty: row.remainingQty,
+      })),
+    };
+
+    if (Object.prototype.hasOwnProperty.call(body, "premiumBalance")) {
+      subscription.premiumBalance = await normalizePremiumBalanceRowsOrThrow(body.premiumBalance);
+    }
+    if (Object.prototype.hasOwnProperty.call(body, "addonBalance")) {
+      subscription.addonBalance = await normalizeAddonBalanceRowsOrThrow(body.addonBalance);
+    }
+    await subscription.save();
+
+    const after = {
+      premiumBalance: (subscription.premiumBalance || []).map((row) => ({
+        premiumKey: row.premiumKey,
+        proteinId: row.proteinId ? String(row.proteinId) : null,
+        purchasedQty: row.purchasedQty,
+        remainingQty: row.remainingQty,
+      })),
+      addonBalance: (subscription.addonBalance || []).map((row) => ({
+        addonId: row.addonId ? String(row.addonId) : null,
+        purchasedQty: row.purchasedQty,
+        remainingQty: row.remainingQty,
+      })),
+    };
+
+    await writeSubscriptionAuditSafely({
+      subscriptionId: subscription._id,
+      action: "subscription_balances_updated_by_admin",
+      req,
+      note: reason,
+      meta: { before, after },
+    });
+    await writeActivityLogSafely({
+      entityType: "subscription",
+      entityId: subscription._id,
+      action: "subscription_balances_updated_by_admin",
+      byUserId: req.dashboardUserId,
+      byRole: req.dashboardUserRole,
+      meta: { before, after, reason },
+    }, { subscriptionId: id });
+
+    return res.status(200).json({
+      status: true,
+      data: {
+        premiumBalance: subscription.premiumBalance,
+        addonBalance: subscription.addonBalance,
+      },
+    });
+  } catch (err) {
+    if (isControlledError(err)) {
+      return errorResponse(res, err.status, err.code, err.message);
+    }
+    logger.error("adminController.updateSubscriptionBalancesAdmin failed", {
+      error: err.message,
+      stack: err.stack,
+      subscriptionId: id,
+    });
+    return errorResponse(res, 500, "INTERNAL", "Subscription balances update failed");
+  }
+}
+
+async function getSubscriptionAuditLogAdmin(req, res) {
+  const { id } = req.params;
+  if (!validateObjectIdOrRespond(res, id, "id")) {
+    return undefined;
+  }
+  const subscription = await Subscription.findById(id).select("_id").lean();
+  if (!subscription) {
+    return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
+  }
+  const days = await SubscriptionDay.find({ subscriptionId: id }).select("_id").lean();
+  const dayIds = days.map((day) => day._id);
+  const [auditLogs, activityLogs] = await Promise.all([
+    SubscriptionAuditLog.find({
+      $or: [
+        { entityType: "subscription", entityId: id },
+        ...(dayIds.length ? [{ entityType: "subscription_day", entityId: { $in: dayIds } }] : []),
+      ],
+    }).sort({ createdAt: -1 }).lean(),
+    ActivityLog.find({
+      $or: [
+        { entityType: "subscription", entityId: id },
+        ...(dayIds.length ? [{ entityType: "subscription_day", entityId: { $in: dayIds } }] : []),
+      ],
+    }).sort({ createdAt: -1 }).lean(),
+  ]);
+  return res.status(200).json({
+    status: true,
+    data: {
+      auditLogs,
+      activityLogs,
+    },
+  });
+}
+
 async function cancelSubscriptionAdmin(req, res) {
   const { id } = req.params;
   if (!validateObjectIdOrRespond(res, id, "id")) {
@@ -3467,6 +4065,16 @@ async function cancelSubscriptionAdmin(req, res) {
       });
       return errorResponse(res, 500, "INTERNAL", "Subscription cancellation failed");
     }
+
+    await writeSubscriptionAuditSafely({
+      subscriptionId: id,
+      action: "subscription_canceled_by_admin",
+      req,
+      fromStatus: result.outcome === "already_canceled" ? "canceled" : undefined,
+      toStatus: "canceled",
+      note: req.body && req.body.reason ? String(req.body.reason) : undefined,
+      meta: { idempotent: result.idempotent, outcome: result.outcome },
+    });
 
     return res.status(200).json({
       status: true,
@@ -3593,6 +4201,18 @@ async function extendSubscriptionAdmin(req, res) {
         validityEndDate: dateUtils.toKSADateString(subscription.validityEndDate),
       },
     }, { subscriptionId: id });
+    await writeSubscriptionAuditSafely({
+      subscriptionId: subscription._id,
+      action: "subscription_extended_by_admin",
+      req,
+      note: req.body && req.body.reason ? String(req.body.reason) : undefined,
+      meta: {
+        days,
+        addedMeals,
+        endDate: dateUtils.toKSADateString(subscription.endDate),
+        validityEndDate: dateUtils.toKSADateString(subscription.validityEndDate),
+      },
+    });
 
     return res.status(200).json({
       status: true,
@@ -4073,7 +4693,7 @@ async function verifyPaymentAdmin(req, res, runtimeOverrides = null) {
           const mergedMetadata = Object.assign({}, claimedPayment.metadata || {}, { unappliedReason: result.reason });
           await Payment.updateOne(
             { _id: claimedPayment._id },
-            { $set: { applied: true, status: "paid", metadata: mergedMetadata } },
+            { $set: { applied: false, status: "paid", metadata: mergedMetadata } },
             { session }
           );
         }
@@ -4114,6 +4734,21 @@ async function verifyPaymentAdmin(req, res, runtimeOverrides = null) {
       providerPaymentId: latestPayment ? latestPayment.providerPaymentId || null : null,
     },
   }, { paymentId: id });
+  if (latestPayment && latestPayment.subscriptionId) {
+    await writeSubscriptionAuditSafely({
+      subscriptionId: latestPayment.subscriptionId,
+      action: "subscription_payment_verified_by_admin",
+      req,
+      meta: {
+        paymentId: id,
+        provider: latestPayment.provider,
+        type: latestPayment.type,
+        status: latestPayment.status,
+        applied: Boolean(latestPayment.applied),
+        synchronized,
+      },
+    });
+  }
 
   return res.status(200).json({
     status: true,
@@ -4430,9 +5065,14 @@ module.exports = {
   getSubscriptionsSummaryAdmin,
   exportSubscriptionsAdmin,
   getDashboardOverview,
+  quoteSubscriptionAdmin,
   createSubscriptionAdmin,
   getSubscriptionAdmin,
   listSubscriptionDaysAdmin,
+  updateSubscriptionDeliveryAdmin,
+  updateSubscriptionAddonEntitlementsAdmin,
+  updateSubscriptionBalancesAdmin,
+  getSubscriptionAuditLogAdmin,
   cancelSubscriptionAdmin,
   extendSubscriptionAdmin,
   listOrdersAdmin,
@@ -4465,28 +5105,78 @@ module.exports = {
   freezeSubscriptionAdmin: async (req, res) => {
     const sub = await Subscription.findById(req.params.id);
     if (!sub) return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
-    req.userId = sub.userId; 
-    return freezeSubscription(req, res);
+    req.userId = sub.userId;
+    const result = await freezeSubscription(req, res);
+    if (res.statusCode < 400) {
+      await writeSubscriptionAuditSafely({
+        subscriptionId: sub._id,
+        action: "subscription_frozen_by_admin",
+        req,
+        fromStatus: sub.status,
+        toStatus: "frozen",
+        note: req.body && req.body.reason ? String(req.body.reason) : undefined,
+      });
+    }
+    return result;
   },
 
   unfreezeSubscriptionAdmin: async (req, res) => {
     const sub = await Subscription.findById(req.params.id);
     if (!sub) return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
-    req.userId = sub.userId; 
-    return unfreezeSubscription(req, res);
+    req.userId = sub.userId;
+    const result = await unfreezeSubscription(req, res);
+    if (res.statusCode < 400) {
+      await writeSubscriptionAuditSafely({
+        subscriptionId: sub._id,
+        action: "subscription_unfrozen_by_admin",
+        req,
+        fromStatus: sub.status,
+        toStatus: "active",
+        note: req.body && req.body.reason ? String(req.body.reason) : undefined,
+      });
+    }
+    return result;
   },
 
   skipSubscriptionDayAdmin: async (req, res) => {
     const sub = await Subscription.findById(req.params.id);
     if (!sub) return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
-    req.userId = sub.userId; 
-    return skipDay(req, res);
+    req.userId = sub.userId;
+    const result = await skipDay(req, res);
+    if (res.statusCode < 400) {
+      const day = await SubscriptionDay.findOne({ subscriptionId: sub._id, date: req.params.date }).select("_id status").lean();
+      await writeAuditLog({
+        entityType: "subscription_day",
+        entityId: day ? day._id : sub._id,
+        action: "subscription_day_skipped_by_admin",
+        toStatus: "skipped",
+        actorType: req.dashboardUserRole || "admin",
+        actorId: req.dashboardUserId,
+        note: req.body && req.body.reason ? String(req.body.reason) : undefined,
+        meta: { subscriptionId: String(sub._id), date: req.params.date },
+      });
+    }
+    return result;
   },
 
   unskipSubscriptionDayAdmin: async (req, res) => {
     const sub = await Subscription.findById(req.params.id);
     if (!sub) return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
-    req.userId = sub.userId; 
-    return unskipDay(req, res);
+    req.userId = sub.userId;
+    const result = await unskipDay(req, res);
+    if (res.statusCode < 400) {
+      const day = await SubscriptionDay.findOne({ subscriptionId: sub._id, date: req.params.date }).select("_id status").lean();
+      await writeAuditLog({
+        entityType: "subscription_day",
+        entityId: day ? day._id : sub._id,
+        action: "subscription_day_unskipped_by_admin",
+        toStatus: day ? day.status : "open",
+        actorType: req.dashboardUserRole || "admin",
+        actorId: req.dashboardUserId,
+        note: req.body && req.body.reason ? String(req.body.reason) : undefined,
+        meta: { subscriptionId: String(sub._id), date: req.params.date },
+      });
+    }
+    return result;
   }
 };

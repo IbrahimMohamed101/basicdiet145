@@ -2,8 +2,29 @@ const https = require("https");
 
 const MOYASAR_HOST = "api.moyasar.com";
 const DEFAULT_MOYASAR_TIMEOUT_MS = 15000;
+const DEFAULT_MOYASAR_GET_RETRY_ATTEMPTS = 3;
+const MOYASAR_GET_RETRY_BACKOFF_MS = [150, 300];
 
-function requestJson(path, method, body, apiKey) {
+function getMoyasarGetRetryAttempts() {
+  const parsed = Number(process.env.MOYASAR_GET_RETRY_ATTEMPTS || DEFAULT_MOYASAR_GET_RETRY_ATTEMPTS);
+  return Number.isFinite(parsed) && parsed > 0
+    ? Math.floor(parsed)
+    : DEFAULT_MOYASAR_GET_RETRY_ATTEMPTS;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetriableGetError(err) {
+  if (!err) return false;
+  if (err.code === "PAYMENT_PROVIDER_TIMEOUT" || err.code === "ECONNRESET" || err.code === "ETIMEDOUT") {
+    return true;
+  }
+  return [500, 502, 503, 504].includes(Number(err.status));
+}
+
+function requestJsonOnce(path, method, body, apiKey) {
   return new Promise((resolve, reject) => {
     const payload = body ? JSON.stringify(body) : undefined;
     const auth = Buffer.from(`${apiKey}:`).toString("base64");
@@ -55,6 +76,26 @@ function requestJson(path, method, body, apiKey) {
     if (payload) req.write(payload);
     req.end();
   });
+}
+
+async function requestJson(path, method, body, apiKey) {
+  const normalizedMethod = String(method || "GET").toUpperCase();
+  if (normalizedMethod !== "GET") {
+    return requestJsonOnce(path, normalizedMethod, body, apiKey);
+  }
+
+  const attempts = getMoyasarGetRetryAttempts();
+  let lastError;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await requestJsonOnce(path, normalizedMethod, body, apiKey);
+    } catch (err) {
+      lastError = err;
+      if (attempt >= attempts || !isRetriableGetError(err)) throw err;
+      await sleep(MOYASAR_GET_RETRY_BACKOFF_MS[attempt - 1] || MOYASAR_GET_RETRY_BACKOFF_MS[MOYASAR_GET_RETRY_BACKOFF_MS.length - 1]);
+    }
+  }
+  throw lastError;
 }
 
 async function createInvoice({ amount, currency = "SAR", description, callbackUrl, successUrl, backUrl, metadata }) {
