@@ -63,11 +63,15 @@ function mapSubscriptionDayToDTO(day, delivery, subscription, user, role, lang) 
   });
   
   return {
+    source: "subscription",
+    entityType: "subscription_day",
+    entityId: String(day._id),
     id: String(day._id),
     type: "subscription",
     mode,
     reference: `SUB-${String(day.subscriptionId).slice(-6).toUpperCase()}`,
     status,
+    statusLabel: day.status, // To be localized
     ui: {
       ...ui,
       label: day.status, // To be localized in opsReadService
@@ -104,7 +108,7 @@ function mapSubscriptionDayToDTO(day, delivery, subscription, user, role, lang) 
 
 function mapOrderToDTO(order, delivery, user, role, lang) {
   const status = order.status;
-  const mode = order.deliveryMode;
+  const mode = order.deliveryMode || order.fulfillmentMethod;
   const ui = resolveUiMetadata(status, lang);
 
   const allowedActions = opsActionPolicy.getAllowedActions({
@@ -116,11 +120,19 @@ function mapOrderToDTO(order, delivery, user, role, lang) {
   });
 
   return {
+    source: "one_time_order",
+    entityType: "order",
+    entityId: String(order._id),
     id: String(order._id),
+    orderId: String(order._id),
     type: "order",
     mode,
     reference: `ORD-${String(order._id).slice(-6).toUpperCase()}`,
+    orderNumber: order.orderNumber || "",
     status,
+    statusLabel: order.status,
+    paymentStatus: order.paymentStatus || "paid",
+    fulfillmentMethod: mode,
     ui: {
       ...ui,
       label: order.status, // To be localized in opsReadService
@@ -130,13 +142,18 @@ function mapOrderToDTO(order, delivery, user, role, lang) {
       name: user ? user.name : "Unknown",
       phone: user ? user.phone : "",
     },
+    items: order.items || [],
+    pricing: order.pricing || {},
+    delivery: mode === "delivery" ? (order.delivery || {}) : {},
+    pickup: mode === "pickup" ? (order.pickup || {}) : {},
     context: {
-      date: order.deliveryDate,
-      window: order.deliveryWindow || "",
-      address: order.deliveryAddress || null,
+      date: order.deliveryDate || order.fulfillmentDate,
+      window: order.deliveryWindow || (order.delivery && order.delivery.deliveryWindow ? order.delivery.deliveryWindow : ""),
+      address: order.deliveryAddress || (order.delivery && order.delivery.address ? order.delivery.address : null),
       branch: mode === "pickup" ? "Main Branch" : null,
     },
     allowedActions,
+    createdAt: order.createdAt || null,
     timestamps: {
       createdAt: order.createdAt,
       updatedAt: order.updatedAt,

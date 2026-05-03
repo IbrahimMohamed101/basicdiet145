@@ -2,20 +2,22 @@ const { Router } = require("express");
 const controller = require("../controllers/orderController");
 const customSaladController = require("../controllers/customSaladController");
 const customMealController = require("../controllers/customMealController");
-const menuController = require("../controllers/menuController");
 const { authMiddleware } = require("../middleware/auth");
 const { checkoutLimiter } = require("../middleware/rateLimit");
 const asyncHandler = require("../middleware/asyncHandler");
 
 const router = Router();
 
-router.get("/menu", asyncHandler(menuController.getOrderMenu));
+router.get("/menu", asyncHandler(controller.getOrderMenu));
 
 router.use(authMiddleware);
 
+router.post("/quote", asyncHandler(controller.quoteOrder));
+router.post("/", checkoutLimiter, asyncHandler(controller.createOrder));
 router.post("/checkout", checkoutLimiter, asyncHandler(controller.checkoutOrder));
 router.post("/:id/confirm", asyncHandler(controller.confirmOrder)); // Mock confirm — dev only
 router.get("/:id/payment-status", asyncHandler(controller.getOrderPaymentStatus));
+router.post("/:orderId/payments/:paymentId/verify", asyncHandler(controller.verifyOrderPayment));
 router.post("/:id/verify-payment", asyncHandler(controller.verifyOrderPayment));
 router.post("/:id/reject-adjusted-date", asyncHandler(controller.rejectAdjustedDeliveryDate));
 /**

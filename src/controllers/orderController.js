@@ -5,11 +5,13 @@ const Meal = require("../models/Meal");
 const Payment = require("../models/Payment");
 const Delivery = require("../models/Delivery");
 const Setting = require("../models/Setting");
+const moyasarService = require("../services/moyasarService");
 const { createInvoice, getInvoice } = require("../services/moyasarService");
 const { notifyOrderUser } = require("../services/orderNotificationService");
 const { buildCustomSaladSnapshot } = require("../services/customSaladService");
 const { buildCustomMealSnapshot } = require("../services/customMealService");
 const {
+  getTodayKSADate,
   getTomorrowKSADate,
   isOnOrAfterKSADate,
   isValidKSADateString,
@@ -30,9 +32,390 @@ const {
   normalizeStoredVatBreakdown,
   buildMoneySummary,
 } = require("../utils/pricing");
+const { getOneTimeOrderMenu } = require("../services/orders/orderMenuService");
+const { buildRequestHash, priceOrderCart } = require("../services/orders/orderPricingService");
+const { expireOrderIfNeeded } = require("../services/orders/orderExpiryService");
+const orderPaymentService = require("../services/orders/orderPaymentService");
+const {
+  serializeOrderForClient: serializeFinalOrderForClient,
+  serializeOrderSummaryForClient,
+} = require("../services/orders/orderSerializationService");
+const { ORDER_STATUSES, normalizeLegacyOrderStatus } = require("../utils/orderState");
 
 const SYSTEM_CURRENCY = "SAR";
 const TERMINAL_PAYMENT_FAILURE_STATUSES = new Set(["failed", "canceled", "expired"]);
+
+async function getOrderMenu(req, res) {
+  const lang = getRequestLang(req);
+  const menu = await getOneTimeOrderMenu({
+    lang,
+    fulfillmentMethod: req.query && req.query.fulfillmentMethod,
+  });
+
+  return res.status(200).json({ status: true, data: menu });
+}
+
+async function quoteOrder(req, res) {
+  try {
+    const body = req.body || {};
+    const quote = await priceOrderCart({
+      userId: req.userId,
+      items: body.items,
+      fulfillmentMethod: body.fulfillmentMethod,
+      delivery: body.delivery || {},
+      pickup: body.pickup || {},
+      promoCode: body.promoCode,
+      lang: getRequestLang(req),
+    });
+
+    return res.status(200).json({
+      status: true,
+      data: {
+        currency: quote.currency,
+        items: quote.items,
+        pricing: quote.pricing,
+        appliedPromo: quote.appliedPromo,
+      },
+    });
+  } catch (err) {
+    if (err && err.code && err.status) {
+      return errorResponse(res, err.status, err.code, err.message, err.details);
+    }
+    logger.error("orderController.quoteOrder failed", { error: err.message, stack: err.stack });
+    return errorResponse(res, 500, "INTERNAL", "Order quote failed");
+  }
+}
+
+function buildFinalOrderRequestHash({ userId, quote, body }) {
+  const canonicalItems = (quote.items || []).map((item) => ({
+    itemType: item.itemType,
+    catalogRef: {
+      model: item.catalogRef && item.catalogRef.model,
+      id: item.catalogRef && item.catalogRef.id ? String(item.catalogRef.id) : "",
+    },
+    qty: Number(item.qty || 1),
+    selections: item.selections || {},
+  }));
+
+  return buildRequestHash({
+    userId: String(userId),
+    fulfillmentMethod: quote.fulfillmentMethod,
+    fulfillmentDate: String(body.fulfillmentDate || body.requestedFulfillmentDate || body.deliveryDate || ""),
+    delivery: quote.delivery
+      ? {
+        zoneId: quote.delivery.zoneId || "",
+        deliveryWindow: quote.delivery.deliveryWindow || "",
+      }
+      : null,
+    pickup: quote.pickup
+      ? {
+        branchId: quote.pickup.branchId || "",
+        pickupWindow: quote.pickup.pickupWindow || "",
+      }
+      : null,
+    items: canonicalItems,
+    promoCode: body.promoCode ? String(body.promoCode).trim().toUpperCase() : "",
+  });
+}
+
+function buildFinalOrderCheckoutPayload(order, payment, { reused = false } = {}) {
+  return {
+    orderId: String(order._id),
+    paymentId: payment ? String(payment._id) : (order.paymentId ? String(order.paymentId) : null),
+    paymentUrl: order.paymentUrl || (payment && payment.metadata && payment.metadata.paymentUrl) || "",
+    invoiceId: order.providerInvoiceId || (payment && payment.providerInvoiceId) || null,
+    status: order.status,
+    paymentStatus: payment && payment.status ? payment.status : order.paymentStatus,
+    expiresAt: order.expiresAt || null,
+    pricing: order.pricing || {},
+    items: order.items || [],
+    ...(reused ? { reused: true } : {}),
+  };
+}
+
+function normalizeFulfillmentDate(body = {}) {
+  const date = String(
+    body.fulfillmentDate
+    || body.requestedFulfillmentDate
+    || body.deliveryDate
+    || ""
+  ).trim() || getTodayKSADate();
+
+  if (!isValidKSADateString(date)) {
+    const err = new Error("fulfillmentDate must be YYYY-MM-DD");
+    err.code = "INVALID_REQUEST";
+    err.status = 400;
+    throw err;
+  }
+  return date;
+}
+
+function normalizeOrderDeliveryAddress(address = {}) {
+  return {
+    label: String(address.label || "").trim(),
+    line1: String(address.line1 || "").trim(),
+    line2: String(address.line2 || "").trim(),
+    district: String(address.district || "").trim(),
+    city: String(address.city || "").trim(),
+    phone: String(address.phone || "").trim(),
+    notes: String(address.notes || "").trim(),
+  };
+}
+
+async function findFinalOrderPayment(order, userId) {
+  if (!order) return null;
+  if (order.paymentId) {
+    const byId = await Payment.findOne({
+      _id: order.paymentId,
+      ...(userId ? { userId } : {}),
+    }).lean();
+    if (byId) return byId;
+  }
+  return Payment.findOne({
+    orderId: order._id,
+    ...(userId ? { userId } : {}),
+    type: "one_time_order",
+  }).sort({ createdAt: -1 }).lean();
+}
+
+async function createOrder(req, res) {
+  let order = null;
+  let payment = null;
+  let idempotencyKey = "";
+  let requestHash = "";
+
+  try {
+    const body = req.body || {};
+    idempotencyKey = parseIdempotencyKey(
+      req.get("Idempotency-Key")
+      || req.get("X-Idempotency-Key")
+      || body.idempotencyKey
+    );
+
+    const quote = await priceOrderCart({
+      userId: req.userId,
+      items: body.items,
+      fulfillmentMethod: body.fulfillmentMethod,
+      delivery: body.delivery || {},
+      pickup: body.pickup || {},
+      promoCode: body.promoCode,
+      lang: getRequestLang(req),
+    });
+    const fulfillmentDate = normalizeFulfillmentDate(body);
+    requestHash = buildFinalOrderRequestHash({ userId: req.userId, quote, body: { ...body, fulfillmentDate } });
+
+    if (idempotencyKey) {
+      const existingByKey = await Order.findOne({ userId: req.userId, idempotencyKey })
+        .sort({ createdAt: -1 })
+        .lean();
+      if (existingByKey) {
+        if (existingByKey.requestHash && existingByKey.requestHash !== requestHash) {
+          return errorResponse(
+            res,
+            409,
+            "IDEMPOTENCY_CONFLICT",
+            "idempotencyKey is already used with a different order payload"
+          );
+        }
+        if (
+          existingByKey.status === ORDER_STATUSES.PENDING_PAYMENT
+          && existingByKey.paymentStatus === "initiated"
+          && existingByKey.paymentUrl
+        ) {
+          const existingPayment = await findFinalOrderPayment(existingByKey, req.userId);
+          return res.status(200).json({
+            status: true,
+            data: buildFinalOrderCheckoutPayload(existingByKey, existingPayment, { reused: true }),
+          });
+        }
+        return errorResponse(res, 409, "IDEMPOTENCY_CONFLICT", "idempotencyKey is already finalized");
+      }
+    }
+
+    const existingByHash = await Order.findOne({
+      userId: req.userId,
+      requestHash,
+      status: ORDER_STATUSES.PENDING_PAYMENT,
+      paymentStatus: "initiated",
+    }).sort({ createdAt: -1 }).lean();
+    if (existingByHash) {
+      const existingPayment = await findFinalOrderPayment(existingByHash, req.userId);
+      if (existingByHash.paymentUrl) {
+        return res.status(200).json({
+          status: true,
+          data: buildFinalOrderCheckoutPayload(existingByHash, existingPayment, { reused: true }),
+        });
+      }
+      return errorResponse(res, 409, "CHECKOUT_IN_PROGRESS", "Checkout initialization is still in progress");
+    }
+
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 30 * 60 * 1000);
+    order = await Order.create({
+      orderNumber: `ORD-${String(new mongoose.Types.ObjectId()).slice(-8).toUpperCase()}`,
+      userId: req.userId,
+      status: ORDER_STATUSES.PENDING_PAYMENT,
+      paymentStatus: "initiated",
+      fulfillmentMethod: quote.fulfillmentMethod,
+      fulfillmentDate,
+      requestedFulfillmentDate: fulfillmentDate,
+      deliveryMode: quote.fulfillmentMethod,
+      deliveryDate: fulfillmentDate,
+      requestedDeliveryDate: fulfillmentDate,
+      items: quote.items,
+      pricing: {
+        ...quote.pricing,
+        appliedPromo: quote.appliedPromo,
+        subtotal: quote.pricing.subtotalHalala,
+        deliveryFee: quote.pricing.deliveryFeeHalala,
+        vatAmount: quote.pricing.vatHalala,
+        total: quote.pricing.totalHalala,
+        totalPrice: quote.pricing.totalHalala,
+      },
+      pickup: quote.fulfillmentMethod === "pickup"
+        ? {
+          branchId: quote.pickup && quote.pickup.branchId ? quote.pickup.branchId : "main",
+          pickupWindow: quote.pickup && quote.pickup.pickupWindow ? quote.pickup.pickupWindow : "",
+        }
+        : undefined,
+      delivery: quote.fulfillmentMethod === "delivery"
+        ? {
+          zoneId: quote.delivery && quote.delivery.zoneId ? quote.delivery.zoneId : undefined,
+          zoneName: quote.delivery && quote.delivery.zoneName ? quote.delivery.zoneName : undefined,
+          deliveryFeeHalala: quote.pricing.deliveryFeeHalala,
+          address: normalizeOrderDeliveryAddress(body.delivery && body.delivery.address),
+        }
+        : undefined,
+      deliveryAddress: quote.fulfillmentMethod === "delivery"
+        ? normalizeOrderDeliveryAddress(body.delivery && body.delivery.address)
+        : undefined,
+      deliveryWindow: quote.delivery && quote.delivery.deliveryWindow ? quote.delivery.deliveryWindow : "",
+      paymentUrl: "",
+      idempotencyKey,
+      requestHash,
+      expiresAt,
+    });
+
+    payment = await Payment.create({
+      provider: "moyasar",
+      type: "one_time_order",
+      status: "initiated",
+      amount: quote.pricing.totalHalala,
+      currency: quote.pricing.currency || SYSTEM_CURRENCY,
+      userId: req.userId,
+      orderId: order._id,
+      metadata: {
+        source: "one_time_order",
+        type: "one_time_order",
+        orderId: String(order._id),
+        userId: String(req.userId),
+        expiresAt: expiresAt.toISOString(),
+        requestHash,
+        paymentUrl: "",
+      },
+    });
+
+    const appUrl = process.env.APP_URL || "https://example.com";
+    const invoice = await moyasarService.createInvoice({
+      amount: quote.pricing.totalHalala,
+      currency: quote.pricing.currency || SYSTEM_CURRENCY,
+      description: `One-time order ${order.orderNumber || String(order._id)}`,
+      callbackUrl: `${appUrl}/api/webhooks/moyasar`,
+      successUrl: validateRedirectUrl(body.successUrl, `${appUrl}/payments/success`),
+      backUrl: validateRedirectUrl(body.backUrl, `${appUrl}/payments/cancel`),
+      metadata: {
+        source: "one_time_order",
+        type: "one_time_order",
+        orderId: String(order._id),
+        userId: String(req.userId),
+        paymentId: String(payment._id),
+        expiresAt: expiresAt.toISOString(),
+      },
+    });
+
+    if (Number.isFinite(Number(invoice.amount)) && Number(invoice.amount) !== Number(quote.pricing.totalHalala)) {
+      const err = new Error("Invoice amount mismatch");
+      err.code = "PAYMENT_PROVIDER_ERROR";
+      err.status = 502;
+      throw err;
+    }
+    const invoiceCurrency = assertSystemCurrencyOrThrow(invoice.currency || quote.pricing.currency || SYSTEM_CURRENCY, "Invoice currency");
+
+    payment.providerInvoiceId = invoice.id;
+    payment.providerPaymentId = invoice.payment_id || invoice.paymentId || undefined;
+    payment.currency = invoiceCurrency;
+    payment.metadata = {
+      ...(payment.metadata && typeof payment.metadata === "object" ? payment.metadata : {}),
+      providerInvoiceId: invoice.id,
+      paymentUrl: invoice.url || "",
+    };
+    await payment.save();
+
+    order.paymentId = payment._id;
+    order.providerInvoiceId = invoice.id;
+    order.providerPaymentId = payment.providerPaymentId;
+    order.paymentUrl = invoice.url || "";
+    await order.save();
+
+    await writeLog({
+      entityType: "order",
+      entityId: order._id,
+      action: "order_created",
+      byUserId: req.userId,
+      byRole: "client",
+      meta: {
+        source: "one_time_order",
+        totalHalala: quote.pricing.totalHalala,
+        fulfillmentMethod: quote.fulfillmentMethod,
+        fulfillmentDate,
+      },
+    });
+
+    return res.status(201).json({
+      status: true,
+      data: buildFinalOrderCheckoutPayload(order.toObject ? order.toObject() : order, payment.toObject ? payment.toObject() : payment),
+    });
+  } catch (err) {
+    if (order && (!order.paymentUrl || !order.providerInvoiceId)) {
+      try {
+        await Order.updateOne(
+          { _id: order._id, status: ORDER_STATUSES.PENDING_PAYMENT },
+          {
+            $set: {
+              status: ORDER_STATUSES.CANCELLED,
+              paymentStatus: "failed",
+              cancelledAt: new Date(),
+              cancellationReason: "payment_initialization_failed",
+            },
+          }
+        );
+        if (payment) {
+          await Payment.updateOne(
+            { _id: payment._id, status: "initiated" },
+            { $set: { status: "failed" } }
+          );
+        }
+      } catch (recoveryErr) {
+        logger.error("orderController.createOrder recovery failed", {
+          orderId: String(order._id),
+          error: recoveryErr.message,
+        });
+      }
+    }
+
+    if (err && err.code && err.status) {
+      return errorResponse(res, err.status, err.code, err.message, err.details);
+    }
+    if (err && err.code === "CONFIG") {
+      return errorResponse(res, 500, "CONFIG_MISSING", err.message);
+    }
+    if (err && err.code === 11000) {
+      return errorResponse(res, 409, "CHECKOUT_IN_PROGRESS", "A matching pending order already exists");
+    }
+    logger.error("orderController.createOrder failed", { error: err.message, stack: err.stack });
+    return errorResponse(res, 502, "PAYMENT_INIT_ERROR", "Order payment initialization failed");
+  }
+}
 
 async function getSettingValue(key, fallback) {
   const setting = await Setting.findOne({ key }).lean();
@@ -916,77 +1299,152 @@ async function confirmOrder(req, res) {
   }
 }
 
+function buildOrderOwnerLookup(id, userId) {
+  const value = String(id || "").trim();
+  if (!value) return null;
+  if (mongoose.Types.ObjectId.isValid(value)) {
+    return { _id: value, userId };
+  }
+  return { orderNumber: value, userId };
+}
+
+function parsePositiveInteger(value, fallback, { max = null } = {}) {
+  const parsed = Number(value);
+  const normalized = Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+  return max ? Math.min(normalized, max) : normalized;
+}
+
 async function listOrders(req, res) {
-  if (req.params && req.params.id) {
-    try {
-      validateObjectId(req.params.id, "orderId");
-    } catch (err) {
-      return errorResponse(res, err.status, err.code, err.message);
-    }
+  const page = parsePositiveInteger(req.query && req.query.page, 1);
+  const limit = parsePositiveInteger(req.query && req.query.limit, 10, { max: 50 });
+  const query = { userId: req.userId };
+
+  const statusFilter = String((req.query && req.query.status) || "").trim();
+  if (statusFilter) {
+    const statuses = statusFilter.split(",").map((item) => normalizeLegacyOrderStatus(item.trim())).filter(Boolean);
+    query.status = { $in: statuses };
   }
 
-  const orders = await Order.find({ userId: req.userId }).sort({ createdAt: -1 }).lean();
-  return res.status(200).json({ status: true, data: orders.map((order) => serializeOrderForClient(order)) });
+  const paymentStatus = String((req.query && req.query.paymentStatus) || "").trim();
+  if (paymentStatus) {
+    query.paymentStatus = paymentStatus;
+  }
+
+  const from = req.query && req.query.from ? new Date(req.query.from) : null;
+  const to = req.query && req.query.to ? new Date(req.query.to) : null;
+  if ((from && Number.isNaN(from.getTime())) || (to && Number.isNaN(to.getTime()))) {
+    return errorResponse(res, 400, "INVALID_QUERY", "Invalid date range");
+  }
+  if (from || to) {
+    query.createdAt = {};
+    if (from) query.createdAt.$gte = from;
+    if (to) query.createdAt.$lte = to;
+  }
+
+  const [items, total] = await Promise.all([
+    Order.find(query)
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .lean(),
+    Order.countDocuments(query),
+  ]);
+
+  return res.status(200).json({
+    status: true,
+    data: {
+      items: items.map((order) => serializeOrderSummaryForClient(order)),
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit),
+      },
+    },
+  });
 }
 
 async function getOrder(req, res) {
-  const { id } = req.params;
-  try {
-    validateObjectId(id, "orderId");
-  } catch (err) {
-    return errorResponse(res, err.status, err.code, err.message);
+  const lookup = buildOrderOwnerLookup(req.params && req.params.id, req.userId);
+  if (!lookup) {
+    return errorResponse(res, 400, "INVALID_OBJECT_ID", "Invalid orderId");
   }
 
-  const order = await Order.findOne({ _id: id, userId: req.userId }).lean();
+  const order = await Order.findOne(lookup);
   if (!order) {
     return errorResponse(res, 404, "NOT_FOUND", "Order not found");
   }
 
-  return res.status(200).json({ status: true, data: serializeOrderForClient(order) });
+  const result = await expireOrderIfNeeded(order, { byUserId: req.userId });
+  return res.status(200).json({
+    status: true,
+    data: serializeFinalOrderForClient(result.order),
+  });
 }
 
 async function cancelOrder(req, res) {
-  const { id } = req.params;
-  try {
-    validateObjectId(id, "orderId");
-  } catch (err) {
-    return errorResponse(res, err.status, err.code, err.message);
+  const lookup = buildOrderOwnerLookup(req.params && req.params.id, req.userId);
+  if (!lookup) {
+    return errorResponse(res, 400, "INVALID_OBJECT_ID", "Invalid orderId");
   }
 
-  const session = await mongoose.startSession();
-  session.startTransaction();
   try {
-    const order = await Order.findOne({ _id: id, userId: req.userId }).session(session);
+    const order = await Order.findOne(lookup);
     if (!order) {
-      await session.abortTransaction();
-      session.endSession();
       return errorResponse(res, 404, "NOT_FOUND", "Order not found");
     }
 
-    const result = await cancelOrderForClient({ order, session });
+    await expireOrderIfNeeded(order, { byUserId: req.userId });
+    if (String(order.status || "") !== ORDER_STATUSES.PENDING_PAYMENT) {
+      return errorResponse(res, 409, "INVALID_TRANSITION", "Only pending payment orders can be cancelled by the client");
+    }
 
-    await session.commitTransaction();
-    session.endSession();
+    const payment = await (order.paymentId
+      ? Payment.findById(order.paymentId)
+      : Payment.findOne({ orderId: order._id, type: "one_time_order" }).sort({ createdAt: -1 }));
+    if ((payment && payment.status === "paid") || order.paymentStatus === "paid") {
+      return errorResponse(res, 409, "PAYMENT_ALREADY_PAID", "Paid orders cannot be cancelled from mobile");
+    }
+
+    const now = new Date();
+    order.status = ORDER_STATUSES.CANCELLED;
+    if (order.paymentStatus === "initiated") {
+      order.paymentStatus = "canceled";
+    }
+    order.cancelledAt = now;
+    order.canceledAt = now;
+    order.cancellationReason = String((req.body && req.body.reason) || "client_cancelled_pending_payment").trim();
+    order.cancelledBy = "client";
+    order.canceledBy = "client";
+    await order.save();
+
+    if (payment && payment.status === "initiated") {
+      payment.status = "canceled";
+      await payment.save();
+    }
 
     await writeLog({
       entityType: "order",
       entityId: order._id,
-      action: "order_canceled_by_client",
+      action: "order_cancelled",
       byUserId: req.userId,
       byRole: "client",
-      meta: { orderId: String(order._id) },
+      meta: {
+        source: "one_time_order",
+        orderId: String(order._id),
+        reason: order.cancellationReason,
+      },
     });
 
     return res.status(200).json({
       status: true,
-      data: serializeOrderForClient(result.order.toObject ? result.order.toObject() : result.order),
-      ...(result.idempotent ? { idempotent: true } : {}),
+      data: {
+        orderId: String(order._id),
+        status: order.status,
+        paymentStatus: order.paymentStatus,
+      },
     });
   } catch (err) {
-    if (session.inTransaction()) {
-      await session.abortTransaction();
-    }
-    session.endSession();
     if (err && err.code && err.status) {
       return errorResponse(res, err.status, err.code, err.message);
     }
@@ -1083,252 +1541,45 @@ async function getOrderPaymentStatus(req, res) {
 }
 
 async function verifyOrderPayment(req, res) {
-  const { id } = req.params;
+  const orderId = req.params && (req.params.orderId || req.params.id);
+  const paymentId = req.params && req.params.paymentId;
+  const body = req.body || {};
   try {
-    validateObjectId(id, "orderId");
-  } catch (err) {
-    return errorResponse(res, err.status, err.code, err.message);
-  }
-
-  const order = await Order.findOne({ _id: id, userId: req.userId }).lean();
-  if (!order) {
-    return errorResponse(res, 404, "NOT_FOUND", "Order not found");
-  }
-
-  let payment = await findOrderPayment(order, req.userId);
-  if (payment && payment.type !== "one_time_order") {
-    return errorResponse(res, 409, "INVALID", "Payment does not belong to a one-time order checkout");
-  }
-
-  const invoiceId = payment && payment.providerInvoiceId
-    ? payment.providerInvoiceId
-    : order.providerInvoiceId;
-  if (!invoiceId) {
-    return errorResponse(res, 409, "CHECKOUT_IN_PROGRESS", "Checkout invoice is not initialized yet");
-  }
-
-  let providerInvoice;
-  try {
-    providerInvoice = await getInvoice(invoiceId);
-  } catch (err) {
-    if (err.code === "CONFIG") {
-      return errorResponse(res, 500, "CONFIG", err.message);
-    }
-    if (err.code === "NOT_FOUND") {
-      return errorResponse(res, 502, "PAYMENT_PROVIDER_ERROR", "Invoice not found at payment provider");
-    }
-    logger.error("orderController.verifyOrderPayment failed to fetch invoice", {
-      orderId: id,
-      paymentId: payment ? String(payment._id) : null,
-      error: err.message,
-      stack: err.stack,
+    const result = await orderPaymentService.verifyOrderPayment({
+      orderId,
+      paymentId,
+      userId: req.userId,
+      providerPaymentId: body.providerPaymentId,
+      providerInvoiceId: body.providerInvoiceId,
     });
-    return errorResponse(res, 502, "PAYMENT_PROVIDER_ERROR", "Failed to fetch payment status from provider");
-  }
 
-  const providerPayment = pickProviderInvoicePayment(providerInvoice, payment);
-  const normalizedStatus = normalizeProviderPaymentStatus(
-    providerPayment && providerPayment.status ? providerPayment.status : providerInvoice.status
-  );
-  if (!normalizedStatus) {
-    return errorResponse(res, 409, "PAYMENT_PROVIDER_ERROR", "Unsupported provider payment status");
-  }
-
-  const providerInvoiceId = providerInvoice && providerInvoice.id ? String(providerInvoice.id) : "";
-  const providerPaymentId = providerPayment && providerPayment.id ? String(providerPayment.id) : "";
-  const providerAmount = Number(
-    providerPayment && providerPayment.amount !== undefined ? providerPayment.amount : providerInvoice.amount
-  );
-  const providerCurrency = normalizeCurrencyValue(
-    providerPayment && providerPayment.currency ? providerPayment.currency : providerInvoice.currency
-  );
-  const invoiceUrl = providerInvoice && providerInvoice.url ? String(providerInvoice.url) : resolveOrderPaymentUrl(order, payment);
-
-  if (order.providerInvoiceId && providerInvoiceId && String(order.providerInvoiceId) !== providerInvoiceId) {
-    return errorResponse(res, 409, "MISMATCH", "Invoice ID mismatch");
-  }
-
-  const session = await mongoose.startSession();
-  let synchronized = false;
-  try {
-    session.startTransaction();
-
-    const orderInSession = await Order.findOne({ _id: id, userId: req.userId }).session(session);
-    if (!orderInSession) {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 404, "NOT_FOUND", "Order not found");
+    if (result.paymentStatus === "paid" && result.applied && !result.idempotent) {
+      await notifyOrderUser({
+        order: { _id: result.orderId, userId: req.userId },
+        type: "paid",
+        paymentId: result.paymentId,
+      });
     }
 
-    let paymentInSession = null;
-    if (payment && payment._id) {
-      paymentInSession = await Payment.findOne({ _id: payment._id, userId: req.userId }).session(session);
-    }
-    if (!paymentInSession && orderInSession.paymentId) {
-      paymentInSession = await Payment.findOne({ _id: orderInSession.paymentId, userId: req.userId }).session(session);
-    }
-    if (!paymentInSession) {
-      paymentInSession = await Payment.findOne({
-        orderId: orderInSession._id,
-        userId: req.userId,
-        provider: "moyasar",
-      })
-        .sort({ createdAt: -1 })
-        .session(session);
-    }
-
-    if (!Number.isFinite(providerAmount) || providerAmount < 0) {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 409, "PAYMENT_PROVIDER_ERROR", "Invalid provider payment amount");
-    }
-    if (Number(orderInSession.pricing && orderInSession.pricing.total) !== providerAmount) {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 409, "MISMATCH", "Amount mismatch");
-    }
-    assertSystemCurrencyOrThrow(providerCurrency, "Invoice currency");
-
-    if (paymentInSession) {
-      if (paymentInSession.type !== "one_time_order") {
-        await session.abortTransaction();
-        session.endSession();
-        return errorResponse(res, 409, "INVALID", "Payment does not belong to a one-time order checkout");
-      }
-      if (
-        paymentInSession.providerInvoiceId
-        && providerInvoiceId
-        && String(paymentInSession.providerInvoiceId) !== providerInvoiceId
-      ) {
-        await session.abortTransaction();
-        session.endSession();
-        return errorResponse(res, 409, "MISMATCH", "Invoice ID mismatch");
-      }
-      if (
-        paymentInSession.providerPaymentId
-        && providerPaymentId
-        && String(paymentInSession.providerPaymentId) !== providerPaymentId
-      ) {
-        await session.abortTransaction();
-        session.endSession();
-        return errorResponse(res, 409, "MISMATCH", "Payment ID mismatch");
-      }
-      if (Number(paymentInSession.amount) !== providerAmount) {
-        await session.abortTransaction();
-        session.endSession();
-        return errorResponse(res, 409, "MISMATCH", "Amount mismatch");
-      }
-      if (normalizeCurrencyValue(paymentInSession.currency) !== providerCurrency) {
-        await session.abortTransaction();
-        session.endSession();
-        return errorResponse(res, 409, "MISMATCH", "Currency mismatch");
-      }
-    } else {
-      const createdPayments = await Payment.create(
-        [
-          {
-            provider: "moyasar",
-            type: "one_time_order",
-            status: "initiated",
-            amount: providerAmount,
-            currency: providerCurrency,
-            userId: req.userId,
-            orderId: orderInSession._id,
-            providerInvoiceId,
-            ...(providerPaymentId ? { providerPaymentId } : {}),
-            metadata: {
-              type: "one_time_order",
-              orderId: String(orderInSession._id),
-              userId: String(req.userId),
-              requestedDeliveryDate: orderInSession.requestedDeliveryDate,
-              deliveryDate: orderInSession.deliveryDate,
-              deliveryDateAdjusted: Boolean(orderInSession.deliveryDateAdjusted),
-              paymentUrl: invoiceUrl,
-            },
-          },
-        ],
-        { session }
-      );
-      paymentInSession = createdPayments[0];
-      synchronized = true;
-    }
-
-    if (providerInvoiceId && !paymentInSession.providerInvoiceId) {
-      paymentInSession.providerInvoiceId = providerInvoiceId;
-    }
-    if (providerPaymentId && !paymentInSession.providerPaymentId) {
-      paymentInSession.providerPaymentId = providerPaymentId;
-    }
-    paymentInSession.status = normalizedStatus;
-    if (normalizedStatus === "paid" && !paymentInSession.paidAt) {
-      paymentInSession.paidAt = new Date();
-    }
-    await paymentInSession.save({ session });
-
-    await synchronizeOrderWithPaymentStatus({
-      order: orderInSession,
-      payment: paymentInSession,
-      status: normalizedStatus,
-      paymentUrl: invoiceUrl,
-      providerInvoiceId,
-      providerPaymentId,
-      session,
-    });
-    synchronized = true;
-
-    if (normalizedStatus === "paid" && !paymentInSession.applied) {
-      const claimedPayment = await Payment.findOneAndUpdate(
-        { _id: paymentInSession._id, applied: false },
-        { $set: { applied: true, status: "paid" } },
-        { new: true, session }
-      );
-
-      if (claimedPayment) {
-        synchronized = true;
-      }
-    }
-
-    await session.commitTransaction();
-    session.endSession();
+    return res.status(200).json({ status: true, data: result });
   } catch (err) {
-    if (session.inTransaction()) {
-      await session.abortTransaction();
+    if (err && err.code && err.status) {
+      return errorResponse(res, err.status, err.code, err.message, err.details);
     }
-    session.endSession();
     logger.error("orderController.verifyOrderPayment failed", {
-      orderId: id,
+      orderId,
+      paymentId,
       error: err.message,
       stack: err.stack,
     });
     return errorResponse(res, 500, "INTERNAL", "Order payment verification failed");
   }
-
-  const [latestOrder, latestPayment] = await Promise.all([
-    Order.findOne({ _id: id, userId: req.userId }).lean(),
-    Payment.findOne({
-      orderId: id,
-      userId: req.userId,
-      provider: "moyasar",
-    })
-      .sort({ createdAt: -1 })
-      .lean(),
-  ]);
-
-  if (normalizedStatus === "paid" && latestOrder) {
-    await notifyOrderUser({ order: latestOrder, type: "paid", paymentId: latestPayment && latestPayment._id });
-  }
-
-  return res.status(200).json({
-    status: true,
-    data: serializePaymentStatus(latestOrder, latestPayment, {
-      providerInvoice,
-      checkedProvider: true,
-      synchronized,
-    }),
-  });
 }
 
 module.exports = {
+  getOrderMenu,
+  quoteOrder,
+  createOrder,
   checkoutOrder,
   confirmOrder,
   listOrders,

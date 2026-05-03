@@ -33,11 +33,16 @@ async function search({ q, role, lang = "ar" }) {
   const isReferenceSearch = query.startsWith("SUB-") || query.startsWith("ORD-");
   const referenceId = isReferenceSearch ? query.split("-")[1] : null;
 
+  const orderSearchConditions = [];
+  if (isReferenceSearch && query.startsWith("ORD-") && referenceId && referenceId.length >= 6) {
+    orderSearchConditions.push({ _id: { $regex: referenceId, $options: "i" } });
+  } else {
+    orderSearchConditions.push({ orderNumber: { $regex: query, $options: "i" } });
+  }
+
   const [subscriptions, ordersByRef] = await Promise.all([
     Subscription.find({ userId: { $in: userIds } }).lean(),
-    isReferenceSearch && query.startsWith("ORD-") && referenceId && referenceId.length >= 6
-      ? Order.find({ _id: { $regex: referenceId, $options: "i" } }).limit(5).lean()
-      : Promise.resolve([])
+    Order.find({ $or: orderSearchConditions }).limit(5).lean()
   ]);
   
   const subIds = subscriptions.map(s => s._id);

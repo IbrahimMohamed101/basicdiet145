@@ -11,6 +11,7 @@ const {
   applyPaymentSideEffects,
   SUPPORTED_PHASE1_SHARED_PAYMENT_TYPES,
 } = require("../services/paymentApplicationService");
+const { applyOrderWebhookInvoice } = require("../services/orders/orderPaymentService");
 const { releasePromoCodeUsageReservation } = require("../services/promoCodeService");
 const { runMongoTransactionWithRetry } = require("../services/mongoTransactionRetryService");
 const { writeLog } = require("../utils/log");
@@ -66,10 +67,12 @@ async function handleMoyasarWebhook(req, res, runtimeOverrides = null) {
   const payload = req.body || {};
   const eventType = payload.type || payload.event;
   const data = payload.data || payload.payment || payload;
+  const metadata = data && data.metadata && typeof data.metadata === "object" ? data.metadata : {};
   const paymentStatus = normalizePaymentStatus(data, eventType);
   const isPaid = paymentStatus === "paid";
   const paymentId = data.id;
   const invoiceId = data.invoice_id || data.invoiceId;
+  const metadataOrderId = metadata.orderId;
   const logContext = {
     eventType: eventType || null,
     paymentStatus: paymentStatus || null,
@@ -88,12 +91,40 @@ async function handleMoyasarWebhook(req, res, runtimeOverrides = null) {
     return errorResponse(res, 401, "UNAUTHORIZED", "Invalid webhook token" );
   }
 
-  if (!paymentId && !invoiceId) {
+  if (!paymentId && !invoiceId && !metadataOrderId) {
+    if (!paymentStatus) {
+      logger.info("Moyasar webhook ignored: unknown event without payment identifiers", logContext);
+      return res.status(200).json({ status: true, ignored: true });
+    }
     logger.warn("Moyasar webhook rejected: missing payment identifiers", logContext);
     return errorResponse(res, 400, "INVALID", "Missing payment identifiers" );
   }
 
   try {
+    let orderWebhookResult;
+    try {
+      orderWebhookResult = await applyOrderWebhookInvoice({ providerInvoice: data, eventType });
+    } catch (err) {
+      if (err && err.code && err.status) {
+        logger.warn("Moyasar order webhook rejected", {
+          ...logContext,
+          code: err.code,
+          error: err.message,
+        });
+        return errorResponse(res, err.status, err.code, err.message, err.details);
+      }
+      throw err;
+    }
+    if (orderWebhookResult && orderWebhookResult.handled) {
+      logger.info("Moyasar webhook processed by one-time order branch", {
+        ...logContext,
+        alreadyProcessed: Boolean(orderWebhookResult.alreadyProcessed),
+        ignored: Boolean(orderWebhookResult.ignored),
+        reason: orderWebhookResult.reason || null,
+      });
+      return res.status(200).json({ status: true });
+    }
+
     const payment = await Payment.findOne({
       provider: "moyasar",
       $or: [

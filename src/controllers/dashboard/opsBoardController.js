@@ -2,11 +2,13 @@
 
 const SubscriptionDay = require("../../models/SubscriptionDay");
 const Subscription = require("../../models/Subscription");
+const Order = require("../../models/Order");
 const Delivery = require("../../models/Delivery");
 const Zone = require("../../models/Zone");
 const ActivityLog = require("../../models/ActivityLog");
 const opsTransitionService = require("../../services/dashboard/opsTransitionService");
 const opsActionPolicy = require("../../services/dashboard/opsActionPolicy");
+const dashboardDtoService = require("../../services/dashboard/dashboardDtoService");
 const errorResponse = require("../../utils/errorResponse");
 const dateUtils = require("../../utils/date");
 const { getRequestLang } = require("../../utils/i18n");
@@ -139,10 +141,15 @@ function matchesSearch(item, q) {
   if (!q) return true;
   const needle = q.toLowerCase();
   return [
-    item.user.name,
-    item.user.phone,
+    item.user && item.user.name,
+    item.user && item.user.phone,
+    item.customer && item.customer.name,
+    item.customer && item.customer.phone,
     item.subscriptionId,
     item.subscriptionDayId,
+    item.orderId,
+    item.orderNumber,
+    item.reference
   ].filter(Boolean).join(" ").toLowerCase().includes(needle);
 }
 
@@ -203,11 +210,65 @@ async function queryBoardDays(req, { screen }) {
     role
   ));
 
+  let activeOrderStatuses = [];
+  if (req.query.status) {
+    const requested = normalizeStatusList(req.query.status, []);
+    for (const s of requested) {
+      if (s === "open" || s === "locked" || s === "confirmed") activeOrderStatuses.push("confirmed");
+      if (s === "in_preparation") activeOrderStatuses.push("in_preparation");
+      if (s === "out_for_delivery") activeOrderStatuses.push("out_for_delivery");
+      if (s === "ready_for_pickup") activeOrderStatuses.push("ready_for_pickup");
+      if (s === "fulfilled") activeOrderStatuses.push("fulfilled");
+      if (s === "delivery_canceled" || s === "canceled_at_branch" || s === "cancelled" || s === "canceled") {
+        activeOrderStatuses.push("cancelled", "canceled");
+      }
+    }
+  } else {
+    // Default statuses
+    if (screen === "kitchen") {
+      activeOrderStatuses = ["confirmed", "in_preparation"];
+    } else if (screen === "courier") {
+      activeOrderStatuses = ["in_preparation", "out_for_delivery"];
+    } else if (screen === "pickup") {
+      activeOrderStatuses = ["in_preparation", "ready_for_pickup"];
+    } else {
+      activeOrderStatuses = ["confirmed", "in_preparation", "out_for_delivery", "ready_for_pickup"];
+    }
+  }
+
+  const orderQuery = {
+    $or: [{ deliveryDate: date }, { fulfillmentDate: date }],
+    paymentStatus: "paid",
+  };
+  if (activeOrderStatuses.length > 0) {
+    orderQuery.status = { $in: activeOrderStatuses };
+  }
+
+  const orders = await Order.find(orderQuery)
+    .populate("userId", "_id name phone")
+    .sort({ updatedAt: -1, createdAt: -1 })
+    .lean();
+
+  const filteredOrderItems = orders.filter((order) => {
+    const oMode = order.fulfillmentMethod || order.deliveryMode || "delivery";
+    if (method === "all") return true;
+    return oMode === method;
+  });
+
+  const orderItems = filteredOrderItems.map((order) => {
+    return dashboardDtoService.mapOrderToDTO(order, null, order.userId, role, lang);
+  });
+
+  items = [...items, ...orderItems];
+
   if (req.query.zoneId) {
-    items = items.filter((item) => item.delivery.zoneId === String(req.query.zoneId));
+    items = items.filter((item) => (item.delivery && item.delivery.zoneId) === String(req.query.zoneId));
   }
   if (req.query.branchId) {
-    items = items.filter((item) => item.pickup.pickupLocationId === String(req.query.branchId));
+    items = items.filter((item) => {
+      const p = item.pickup || {};
+      return p.pickupLocationId === String(req.query.branchId) || p.branchId === String(req.query.branchId);
+    });
   }
   items = items.filter((item) => matchesSearch(item, q));
 
@@ -266,6 +327,36 @@ async function action(req, res) {
   const payload = req.body && req.body.payload ? req.body.payload : {};
   if (!entityId) return errorResponse(res, 400, "INVALID_REQUEST", "entityId is required");
 
+  let entityType = "subscription_day";
+  if (req.body && (req.body.entityType === "order" || req.body.source === "one_time_order")) {
+    entityType = "order";
+  }
+
+  if (entityType === "order") {
+    const order = await Order.findById(entityId).lean();
+    if (!order) return errorResponse(res, 404, "NOT_FOUND", "Order not found");
+    const mode = order.fulfillmentMethod || order.deliveryMode || "delivery";
+    const validation = opsActionPolicy.validateAction({
+      entityType: "order",
+      status: order.status,
+      mode,
+      role: req.dashboardUserRole,
+      actionId,
+    });
+    if (!validation.allowed) {
+      return errorResponse(res, 409, validation.reason, `Action ${actionId} is not allowed in current state`);
+    }
+    
+    await opsTransitionService.executeAction(actionId, {
+      entityId,
+      entityType: "order",
+      userId: req.dashboardUserId,
+      role: req.dashboardUserRole,
+      payload,
+    });
+    return res.status(200).json({ status: true, data: { action: "dispatched" } });
+  }
+
   const existingDay = await SubscriptionDay.findById(entityId).select("date").lean();
   if (existingDay) {
     await settlePastSubscriptionDaysForDate({
@@ -313,8 +404,8 @@ async function deliverySchedule(req, res) {
   const groupedByWindow = {};
   const groupedByZone = {};
   for (const item of items) {
-    const window = item.delivery.deliveryWindow || "unscheduled";
-    const zone = item.delivery.zoneId || "unassigned";
+    const window = (item.context && item.context.window) || (item.delivery && item.delivery.deliveryWindow) || "unscheduled";
+    const zone = (item.delivery && item.delivery.zoneId) || "unassigned";
     groupedByWindow[window] = (groupedByWindow[window] || 0) + 1;
     groupedByZone[zone] = (groupedByZone[zone] || 0) + 1;
   }
@@ -324,11 +415,11 @@ async function deliverySchedule(req, res) {
       date: data.date,
       summary: {
         total: items.length,
-        pendingPreparation: countBy(items, (item) => ["open", "locked", "in_preparation"].includes(item.status)),
-        ready: countBy(items, (item) => item.status === "in_preparation"),
+        pendingPreparation: countBy(items, (item) => ["open", "locked", "in_preparation", "confirmed"].includes(item.status)),
+        ready: countBy(items, (item) => item.status === "in_preparation" || item.status === "ready_for_pickup"),
         outForDelivery: countBy(items, (item) => item.status === "out_for_delivery"),
         fulfilled: countBy(items, (item) => item.status === "fulfilled"),
-        canceled: countBy(items, (item) => item.status === "delivery_canceled"),
+        canceled: countBy(items, (item) => ["delivery_canceled", "canceled_at_branch", "cancelled", "canceled", "no_show"].includes(item.status)),
       },
       groupedByWindow,
       groupedByZone,
