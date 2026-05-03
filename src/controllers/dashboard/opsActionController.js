@@ -6,6 +6,9 @@ const Subscription = require("../../models/Subscription");
 const Order = require("../../models/Order");
 const errorResponse = require("../../utils/errorResponse");
 const { getRequestLang } = require("../../utils/i18n");
+const {
+  settlePastSubscriptionDaysForDate,
+} = require("../../services/subscription/pastSubscriptionDaySettlementService");
 
 /**
  * Controller for the Unified Actions API.
@@ -18,14 +21,30 @@ async function handleAction(req, res) {
 
   try {
     const { action } = req.params;
-    const { entityId, entityType, payload = {} } = req.body;
+    const { entityId, entityType: rawEntityType, payload = {} } = req.body;
+    const entityType = rawEntityType === "subscription_day" || rawEntityType === "pickup_day"
+      ? "subscription"
+      : rawEntityType;
 
-    if (!entityId || !entityType) {
+    if (!entityId || !rawEntityType) {
       return errorResponse(res, 400, "INVALID_REQUEST", "entityId and entityType are required");
+    }
+    if (!["subscription", "subscription_day", "pickup_day", "order"].includes(rawEntityType)) {
+      return errorResponse(res, 400, "INVALID_ENTITY_TYPE", "entityType must be subscription_day, subscription, pickup_day, or order");
     }
 
     // 1. Fetch current state for validation
     const Model = entityType === "subscription" ? SubscriptionDay : Order;
+    const existingDoc = await Model.findById(entityId).lean();
+    if (entityType === "subscription" && existingDoc) {
+      await settlePastSubscriptionDaysForDate({
+        date: existingDoc.date,
+        actor: {
+          actorType: role || "admin",
+          dashboardUserId: req.dashboardUserId || req.userId || null,
+        },
+      });
+    }
     const doc = await Model.findById(entityId).lean();
     if (!doc) {
       return errorResponse(res, 404, "NOT_FOUND", "Entity not found");

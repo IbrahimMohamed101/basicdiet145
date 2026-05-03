@@ -119,6 +119,67 @@ function normalizeRuleTags(value, defaultValue = []) {
   return value.map((item) => String(item).trim()).filter(Boolean);
 }
 
+function normalizeBoolean(value, fieldName, defaultValue = true) {
+  if (value === undefined || value === null || value === "") return defaultValue;
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (["true", "1", "yes", "on"].includes(normalized)) return true;
+    if (["false", "0", "no", "off"].includes(normalized)) return false;
+  }
+  throw new ValidationError(`${fieldName} must be a boolean`);
+}
+
+function normalizeCategoryRules(value) {
+  if (value === undefined || value === null) return {};
+  if (!isPlainObject(value)) {
+    throw new ValidationError("rules must be an object");
+  }
+  const normalized = {};
+  if (value.dailyLimit !== undefined && value.dailyLimit !== null) {
+    normalized.dailyLimit = validatePositiveNumber(value.dailyLimit, "rules.dailyLimit");
+  }
+  if (value.ruleKey !== undefined && value.ruleKey !== null) {
+    normalized.ruleKey = String(value.ruleKey).trim() || null;
+  }
+  if (value.maxTypes !== undefined && value.maxTypes !== null) {
+    normalized.maxTypes = validatePositiveNumber(value.maxTypes, "rules.maxTypes");
+  }
+  if (value.maxTotalGrams !== undefined && value.maxTotalGrams !== null) {
+    normalized.maxTotalGrams = validatePositiveNumber(value.maxTotalGrams, "rules.maxTotalGrams");
+  }
+  if (value.unit !== undefined && value.unit !== null) {
+    normalized.unit = String(value.unit).trim() || null;
+  }
+  return normalized;
+}
+
+function normalizeCategoryPayload(body, { existing = null } = {}) {
+  if (!isPlainObject(body)) {
+    throw new ValidationError("Request body must be an object");
+  }
+  const key = normalizeKey(body.key) || existing?.key;
+  if (!key) {
+    throw new ValidationError("key is required");
+  }
+  if (!SNAKE_CASE_PATTERN.test(key)) {
+    throw new ValidationError("key must be a snake_case string");
+  }
+  const dimension = String(body.dimension || existing?.dimension || "").trim();
+  validateEnum(dimension, ["protein", "carb"], "dimension");
+  return {
+    key,
+    dimension,
+    name: validateName(body.name),
+    description: optionalLocalizedString(body.description, "description"),
+    rules: normalizeCategoryRules(body.rules),
+    isActive: normalizeBoolean(body.isActive, "isActive", true),
+    sortOrder: body.sortOrder === undefined && existing
+      ? existing.sortOrder
+      : validateNonNegativeNumber(body.sortOrder, "sortOrder"),
+  };
+}
+
 function serializeDoc(doc) {
   if (!doc) return null;
   const obj = typeof doc.toObject === "function" ? doc.toObject() : { ...doc };
@@ -300,11 +361,35 @@ function normalizeSaladIngredientPayload(body) {
   };
 }
 
-async function list(Model, query, includeInactive) {
-  const rows = await Model.find(includeInactive ? query : { ...query, isActive: true })
+function buildListQuery(baseQuery, { includeInactive = false, isActive, q } = {}) {
+  const query = { ...baseQuery };
+  if (isActive !== undefined && isActive !== null && String(isActive).trim() !== "") {
+    query.isActive = normalizeBoolean(isActive, "isActive");
+  } else if (!includeInactive) {
+    query.isActive = true;
+  }
+  if (q !== undefined && q !== null && String(q).trim()) {
+    const escaped = String(q).trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const regex = new RegExp(escaped, "i");
+    query.$or = [{ key: regex }, { "name.ar": regex }, { "name.en": regex }];
+  }
+  return query;
+}
+
+async function list(Model, query, options = {}) {
+  const rows = await Model.find(buildListQuery(query, options))
     .sort({ sortOrder: 1, createdAt: -1 })
     .lean();
   return rows.map(serializeDoc);
+}
+
+async function getOne(Model, id, extraQuery = {}) {
+  validateObjectId(id);
+  const row = await Model.findOne({ _id: id, ...extraQuery }).lean();
+  if (!row) {
+    throw new NotFoundError();
+  }
+  return serializeDoc(row);
 }
 
 async function create(Model, payload) {
@@ -316,6 +401,18 @@ async function create(Model, payload) {
 async function update(Model, id, payload) {
   validateObjectId(id);
   const row = await Model.findById(id);
+  if (!row) {
+    throw new NotFoundError();
+  }
+  row.set(payload);
+  await row.save();
+  await invalidateMealPlannerCatalogCache();
+  return serializeDoc(row);
+}
+
+async function updateWhere(Model, id, extraQuery, payload) {
+  validateObjectId(id);
+  const row = await Model.findOne({ _id: id, ...extraQuery });
   if (!row) {
     throw new NotFoundError();
   }
@@ -349,8 +446,41 @@ async function softDeleteWhere(Model, id, extraQuery) {
   return serializeDoc(row);
 }
 
-async function listStandardProteins({ includeInactive = false } = {}) {
-  return list(BuilderProtein, { isPremium: false }, includeInactive);
+async function toggleWhere(Model, id, extraQuery = {}) {
+  validateObjectId(id);
+  const row = await Model.findOne({ _id: id, ...extraQuery });
+  if (!row) {
+    throw new NotFoundError();
+  }
+  row.isActive = !row.isActive;
+  await row.save();
+  await invalidateMealPlannerCatalogCache();
+  return serializeDoc(row);
+}
+
+async function listCategories(options = {}) {
+  return list(BuilderCategory, {}, options);
+}
+
+async function createCategory(body) {
+  return create(BuilderCategory, normalizeCategoryPayload(body));
+}
+
+async function getCategory(id) {
+  return getOne(BuilderCategory, id);
+}
+
+async function updateCategory(id, body) {
+  validateObjectId(id);
+  const existing = await BuilderCategory.findById(id);
+  if (!existing) {
+    throw new NotFoundError();
+  }
+  return update(BuilderCategory, id, normalizeCategoryPayload(body, { existing }));
+}
+
+async function listStandardProteins(options = {}) {
+  return list(BuilderProtein, { isPremium: false }, options);
 }
 
 async function createStandardProtein(body) {
@@ -370,8 +500,8 @@ async function updateStandardProtein(id, body) {
   return update(BuilderProtein, id, { ...payload, displayCategoryId: category._id });
 }
 
-async function listPremiumProteins({ includeInactive = false } = {}) {
-  return list(BuilderProtein, { isPremium: true }, includeInactive);
+async function listPremiumProteins(options = {}) {
+  return list(BuilderProtein, { isPremium: true }, options);
 }
 
 async function createPremiumProtein(body) {
@@ -393,8 +523,8 @@ async function updatePremiumProtein(id, body) {
   return update(BuilderProtein, id, { ...payload, displayCategoryId: category._id });
 }
 
-async function listCarbs({ includeInactive = false } = {}) {
-  return list(BuilderCarb, { displayCategoryKey: STANDARD_CARB_CATEGORY_KEY }, includeInactive);
+async function listCarbs(options = {}) {
+  return list(BuilderCarb, { displayCategoryKey: STANDARD_CARB_CATEGORY_KEY }, options);
 }
 
 async function createCarb(body) {
@@ -417,28 +547,46 @@ async function updateCarb(id, body) {
 module.exports = {
   ValidationError,
   NotFoundError,
+  listCategories,
+  createCategory,
+  getCategory,
+  updateCategory,
+  toggleCategory: (id) => toggleWhere(BuilderCategory, id),
+  deleteCategory: (id) => softDelete(BuilderCategory, id),
   listStandardProteins,
   createStandardProtein,
+  getStandardProtein: (id) => getOne(BuilderProtein, id, { isPremium: false }),
   updateStandardProtein,
+  toggleStandardProtein: (id) => toggleWhere(BuilderProtein, id, { isPremium: false }),
   deleteStandardProtein: (id) => softDeleteWhere(BuilderProtein, id, { isPremium: false }),
   listPremiumProteins,
   createPremiumProtein,
+  getPremiumProtein: (id) => getOne(BuilderProtein, id, { isPremium: true }),
   updatePremiumProtein,
+  togglePremiumProtein: (id) => toggleWhere(BuilderProtein, id, { isPremium: true }),
   deletePremiumProtein: (id) => softDeleteWhere(BuilderProtein, id, { isPremium: true }),
-  listSandwiches: ({ includeInactive = false } = {}) => list(Sandwich, {}, includeInactive),
+  listSandwiches: (options = {}) => list(Sandwich, {}, options),
   createSandwich: (body) => create(Sandwich, normalizeSandwichPayload(body)),
+  getSandwich: (id) => getOne(Sandwich, id),
   updateSandwich: (id, body) => update(Sandwich, id, normalizeSandwichPayload(body)),
+  toggleSandwich: (id) => toggleWhere(Sandwich, id),
   deleteSandwich: (id) => softDelete(Sandwich, id),
   listCarbs,
   createCarb,
+  getCarb: (id) => getOne(BuilderCarb, id, { displayCategoryKey: STANDARD_CARB_CATEGORY_KEY }),
   updateCarb,
+  toggleCarb: (id) => toggleWhere(BuilderCarb, id, { displayCategoryKey: STANDARD_CARB_CATEGORY_KEY }),
   deleteCarb: (id) => softDeleteWhere(BuilderCarb, id, { displayCategoryKey: STANDARD_CARB_CATEGORY_KEY }),
-  listAddons: ({ includeInactive = false } = {}) => list(Addon, { kind: "item", billingMode: "flat_once" }, includeInactive),
+  listAddons: (options = {}) => list(Addon, { kind: "item", billingMode: "flat_once" }, options),
   createAddon: (body) => create(Addon, normalizeAddonPayload(body)),
-  updateAddon: (id, body) => update(Addon, id, normalizeAddonPayload(body)),
-  deleteAddon: (id) => softDelete(Addon, id),
-  listSaladIngredients: ({ includeInactive = false } = {}) => list(SaladIngredient, {}, includeInactive),
+  getAddon: (id) => getOne(Addon, id, { kind: "item", billingMode: "flat_once" }),
+  updateAddon: (id, body) => updateWhere(Addon, id, { kind: "item", billingMode: "flat_once" }, normalizeAddonPayload(body)),
+  toggleAddon: (id) => toggleWhere(Addon, id, { kind: "item", billingMode: "flat_once" }),
+  deleteAddon: (id) => softDeleteWhere(Addon, id, { kind: "item", billingMode: "flat_once" }),
+  listSaladIngredients: (options = {}) => list(SaladIngredient, {}, options),
   createSaladIngredient: (body) => create(SaladIngredient, normalizeSaladIngredientPayload(body)),
+  getSaladIngredient: (id) => getOne(SaladIngredient, id),
   updateSaladIngredient: (id, body) => update(SaladIngredient, id, normalizeSaladIngredientPayload(body)),
+  toggleSaladIngredient: (id) => toggleWhere(SaladIngredient, id),
   deleteSaladIngredient: (id) => softDelete(SaladIngredient, id),
 };

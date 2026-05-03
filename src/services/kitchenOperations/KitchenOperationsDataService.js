@@ -6,12 +6,21 @@ const Addon = require("../../models/Addon");
 const BuilderProtein = require("../../models/BuilderProtein");
 const BuilderCarb = require("../../models/BuilderCarb");
 const Meal = require("../../models/Meal");
+const {
+  settlePastSubscriptionDaysForDate,
+} = require("../subscription/pastSubscriptionDaySettlementService");
 
 function attachSession(query, session) {
   return session ? query.session(session) : query;
 }
 
 async function fetchSubscriptionDaysByDate(date, { session } = {}) {
+  if (!session) {
+    await settlePastSubscriptionDaysForDate({
+      date,
+      actor: { actorType: "system" },
+    });
+  }
   let query = SubscriptionDay.find({ date: String(date), status: { $nin: ["skipped", "frozen"] } })
     .select(["_id","subscriptionId","date","status","materializedMeals","mealSlots","plannerMeta","planningMeta","selections","recurringAddons","oneTimeAddonSelections","addonsOneTime","assignedByKitchen","pickupRequested","pickupRequestedAt","pickupPreparationStartedAt","pickupPreparedAt","pickupCode","pickupVerifiedAt","pickupNoShowAt","creditsDeducted","dayEndConsumptionReason","deliveryWindowOverride","customSalads","customMeals","lockedSnapshot","fulfilledSnapshot","lockedAt","fulfilledAt","createdAt"].join(" "))
     .populate({ path: "subscriptionId", select: "_id userId deliveryMode deliveryWindow pickupLocationId deliveryAddress", populate: { path: "userId", select: "_id name phone" } });

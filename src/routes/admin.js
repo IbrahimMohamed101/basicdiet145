@@ -164,19 +164,27 @@ router.patch(
 );
 
 router.get("/addons", asyncHandler(addonController.listAddonsAdmin));
-router.get("/addons/:id", asyncHandler(addonController.getAddonAdmin));
 router.post("/addons", adminImageUploadMiddleware, asyncHandler(addonController.createAddon));
-router.put("/addons/:id", adminImageUploadMiddleware, asyncHandler(addonController.updateAddon));
-router.delete("/addons/:id", asyncHandler(addonController.deleteAddon));
 router.patch("/addons/:id/toggle", asyncHandler(addonController.toggleAddonActive));
 router.patch("/addons/:id/sort", asyncHandler(addonController.updateAddonSortOrder));
 router.post("/addons/:id/clone", asyncHandler(addonController.cloneAddon));
+router.get("/addons/:id", asyncHandler(addonController.getAddonAdmin));
+router.put("/addons/:id", adminImageUploadMiddleware, asyncHandler(addonController.updateAddon));
+router.delete("/addons/:id", asyncHandler(addonController.deleteAddon));
 
 router.get("/addon-plans", asyncHandler(addonController.listAddonPlansAdmin));
 router.post("/addon-plans", adminImageUploadMiddleware, asyncHandler(addonController.createAddonPlan));
+router.patch("/addon-plans/:id/toggle", asyncHandler(addonController.toggleAddonPlanActive));
 router.get("/addon-plans/:id", asyncHandler(addonController.getAddonPlanAdmin));
 router.put("/addon-plans/:id", adminImageUploadMiddleware, asyncHandler(addonController.updateAddonPlan));
-router.patch("/addon-plans/:id/toggle", asyncHandler(addonController.toggleAddonPlanActive));
+router.delete("/addon-plans/:id", asyncHandler(addonController.deleteAddonPlan));
+
+router.get("/addon-items", asyncHandler(addonController.listAddonItemsAdmin));
+router.post("/addon-items", adminImageUploadMiddleware, asyncHandler(addonController.createAddonItem));
+router.patch("/addon-items/:id/toggle", asyncHandler(addonController.toggleAddonItemActive));
+router.get("/addon-items/:id", asyncHandler(addonController.getAddonItemAdmin));
+router.put("/addon-items/:id", adminImageUploadMiddleware, asyncHandler(addonController.updateAddonItem));
+router.delete("/addon-items/:id", asyncHandler(addonController.deleteAddonItem));
 router.get("/builder-premium-meals", asyncHandler(builderPremiumMealController.listBuilderPremiumMealsAdmin));
 router.get("/builder-premium-meals/:id", asyncHandler(builderPremiumMealController.getBuilderPremiumMealAdmin));
 router.post(
@@ -203,6 +211,7 @@ router.post(
   asyncHandler(builderPremiumMealController.cloneBuilderPremiumMeal)
 );
 router.get("/promo-codes", asyncHandler(promoCodeController.listPromoCodesAdmin));
+router.post("/promo-codes/validate", asyncHandler(promoCodeController.validatePromoCodeAdmin));
 router.get("/promo-codes/:id", asyncHandler(promoCodeController.getPromoCodeAdmin));
 router.post("/promo-codes", asyncHandler(promoCodeController.createPromoCodeAdmin));
 router.put("/promo-codes/:id", asyncHandler(promoCodeController.updatePromoCodeAdmin));
@@ -301,6 +310,9 @@ router.patch("/settings", asyncHandler(controller.patchSettings));
  */
 router.get("/settings/restaurant-hours", asyncHandler(controller.getRestaurantHours));
 router.put("/settings/restaurant-hours", asyncHandler(controller.updateRestaurantHours));
+router.get("/restaurant-hours", asyncHandler(controller.getRestaurantHours));
+router.put("/restaurant-hours", asyncHandler(controller.updateRestaurantHours));
+router.patch("/restaurant-hours/toggle-open", asyncHandler(controller.toggleRestaurantOpen));
 router.put("/settings/cutoff", asyncHandler(controller.updateCutoff));
 router.put("/settings/delivery-windows", asyncHandler(controller.updateDeliveryWindows));
 router.put("/settings/skip-allowance", asyncHandler(controller.updateSkipAllowance));
@@ -344,6 +356,7 @@ router.post("/subscriptions/:id/days/:date/unskip", asyncHandler(controller.unsk
 router.get("/orders", asyncHandler(controller.listOrdersAdmin));
 router.get("/orders/:id", asyncHandler(controller.getOrderAdmin));
 router.get("/payments", asyncHandler(controller.listPaymentsAdmin));
+router.get("/payments/:id/breakdown", asyncHandler(controller.getPaymentAdmin));
 router.get("/payments/:id", asyncHandler(controller.getPaymentAdmin));
 router.post("/payments/:id/verify", asyncHandler(controller.verifyPaymentAdmin));
 router.get("/dashboard-users", asyncHandler(controller.listDashboardUsers));

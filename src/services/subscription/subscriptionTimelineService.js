@@ -15,6 +15,9 @@ const { buildDayCommercialState } = require("./subscriptionDayCommercialStateSer
 const { buildSubscriptionDayFulfillmentState } = require("./subscriptionDayFulfillmentStateService");
 const { getRestaurantBusinessDate } = require("../restaurantHoursService");
 const {
+  settlePastSubscriptionDaysForSubscription,
+} = require("./pastSubscriptionDaySettlementService");
+const {
   buildFulfillmentReadFields,
   getPickupLocationsSetting,
 } = require("./subscriptionFulfillmentSummaryService");
@@ -136,7 +139,7 @@ function normalizeTimelineStatus(rawStatus) {
     case "no_show":
       return "no_show";
     case "consumed_without_preparation":
-      return "delivered";
+      return "consumed_without_preparation";
     case "locked":
     case "in_preparation":
     case "out_for_delivery":
@@ -319,7 +322,7 @@ function buildTimelineMonthSummary(days = []) {
 
 async function buildSubscriptionTimeline(subscriptionId, options = {}) {
   const lang = options && options.lang === "en" ? "en" : "ar";
-  const businessDate = await getRestaurantBusinessDate();
+  const businessDate = options.businessDate || await getRestaurantBusinessDate();
   let subscription = await Subscription.findById(subscriptionId).lean();
   if (!subscription) {
     const err = new Error("Subscription not found");
@@ -340,6 +343,13 @@ async function buildSubscriptionTimeline(subscriptionId, options = {}) {
           subscriptionId = canonicalSub._id;
       }
   }
+
+  await settlePastSubscriptionDaysForSubscription({
+    subscriptionId,
+    businessDate,
+    now: options.now || new Date(),
+    actor: options.actor || { actorType: "system" },
+  });
 
   const startDateStr = toKSADateString(subscription.startDate);
   const endDateStr = toKSADateString(subscription.endDate);
@@ -363,6 +373,7 @@ async function buildSubscriptionTimeline(subscriptionId, options = {}) {
   ) {
     const dbDay = dayMap.get(currentDate);
     const isExtension = currentDate > endDateStr;
+    const isPast = currentDate < businessDate;
     const meals = buildTimelineMeals(subscription, dbDay);
     const calendar = buildTimelineCalendar(currentDate);
 
@@ -422,6 +433,11 @@ async function buildSubscriptionTimeline(subscriptionId, options = {}) {
     timelineDays.push({
       date: currentDate,
       status,
+      isPast,
+      autoSettled: Boolean(dbDay && dbDay.autoSettled),
+      settledAt: dbDay && dbDay.settledAt ? dbDay.settledAt : null,
+      settlementReason: dbDay && dbDay.settlementReason ? dbDay.settlementReason : null,
+      consumedByPolicy: Boolean(dbDay && dbDay.autoSettled && dbDay.creditsDeducted),
       deliveryMode: subscription.deliveryMode || null,
       source: isExtension ? (extensionSourceMap.get(currentDate) || "freeze_compensation") : "base",
       locked: Boolean(dbDay && (dbDay.lockedSnapshot || status === "locked")),

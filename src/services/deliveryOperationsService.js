@@ -2,6 +2,9 @@ const mongoose = require("mongoose");
 const SubscriptionDay = require("../models/SubscriptionDay");
 const Subscription = require("../models/Subscription");
 const { buildSubscriptionDayFulfillmentState } = require("./subscription/subscriptionDayFulfillmentStateService");
+const {
+  settlePastSubscriptionDaysForDate,
+} = require("./subscription/pastSubscriptionDaySettlementService");
 
 function hasOperationalMeals(day) {
   const materializedCount = Array.isArray(day && day.materializedMeals) ? day.materializedMeals.filter(Boolean).length : 0;
@@ -16,6 +19,12 @@ function hasOperationalMeals(day) {
 }
 
 async function buildRoutingReadModel(date, { zoneId, session } = {}) {
+  if (!session) {
+    await settlePastSubscriptionDaysForDate({
+      date,
+      actor: { actorType: "system" },
+    });
+  }
   const query = { date: String(date), status: { $in: ["open", "locked", "fulfilled"] } };
   const days = await SubscriptionDay.find(query).populate("subscriptionId").session(session).lean();
   
@@ -58,6 +67,12 @@ async function buildRoutingReadModel(date, { zoneId, session } = {}) {
 }
 
 async function buildKitchenBatchReadModel(date, { session } = {}) {
+  if (!session) {
+    await settlePastSubscriptionDaysForDate({
+      date,
+      actor: { actorType: "system" },
+    });
+  }
   const query = {
     date: String(date),
     status: { $in: ["locked", "in_preparation", "out_for_delivery", "ready_for_pickup", "fulfilled"] },

@@ -216,6 +216,11 @@ function resolveAdminAddonFilters(query = {}, { forceKind = null } = {}) {
   if (query.isActive !== undefined && query.isActive !== null && String(query.isActive).trim() !== "") {
     filters.isActive = parseBooleanField(query.isActive, "isActive");
   }
+  if (query.q !== undefined && query.q !== null && String(query.q).trim() !== "") {
+    const escaped = String(query.q).trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const regex = new RegExp(escaped, "i");
+    filters.$or = [{ "name.ar": regex }, { "name.en": regex }];
+  }
   return filters;
 }
 
@@ -432,6 +437,7 @@ async function cloneAddon(req, res) {
 }
 
 const forcePlanKind = { forceKind: "plan" };
+const forceItemKind = { forceKind: "item" };
 
 async function listAddonPlansAdmin(req, res) {
   return listAddonsAdmin(req, res, forcePlanKind);
@@ -453,6 +459,34 @@ async function toggleAddonPlanActive(req, res) {
   return toggleAddonActive(req, res, forcePlanKind);
 }
 
+async function deleteAddonPlan(req, res) {
+  return deleteAddon(req, res, forcePlanKind);
+}
+
+async function listAddonItemsAdmin(req, res) {
+  return listAddonsAdmin(req, res, forceItemKind);
+}
+
+async function getAddonItemAdmin(req, res) {
+  return getAddonAdmin(req, res, forceItemKind);
+}
+
+async function createAddonItem(req, res) {
+  return createAddon(req, res, forceItemKind);
+}
+
+async function updateAddonItem(req, res) {
+  return updateAddon(req, res, forceItemKind);
+}
+
+async function toggleAddonItemActive(req, res) {
+  return toggleAddonActive(req, res, forceItemKind);
+}
+
+async function deleteAddonItem(req, res) {
+  return deleteAddon(req, res, forceItemKind);
+}
+
 module.exports = {
   listAddons,
   listAddonsAdmin,
@@ -468,5 +502,12 @@ module.exports = {
   createAddonPlan,
   updateAddonPlan,
   toggleAddonPlanActive,
+  deleteAddonPlan,
+  listAddonItemsAdmin,
+  getAddonItemAdmin,
+  createAddonItem,
+  updateAddonItem,
+  toggleAddonItemActive,
+  deleteAddonItem,
   validateAddonPayloadOrThrow,
 };

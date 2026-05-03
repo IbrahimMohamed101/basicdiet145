@@ -8,6 +8,9 @@ const User = require("../../models/User");
 const dashboardDtoService = require("./dashboardDtoService");
 const ar = require("../../locales/ar");
 const en = require("../../locales/en");
+const {
+  settlePastSubscriptionDaysForDate,
+} = require("../subscription/pastSubscriptionDaySettlementService");
 
 const LOCALES = { ar, en };
 
@@ -19,6 +22,10 @@ function getLocalizedLabel(status, lang) {
 }
 
 async function listOperations({ date, role, lang = "ar" }) {
+  await settlePastSubscriptionDaysForDate({
+    date,
+    actor: { actorType: role || "system" },
+  });
   // 1. Fetch SubscriptionDays for the date
   const days = await SubscriptionDay.find({ date }).lean();
   
@@ -27,17 +34,19 @@ async function listOperations({ date, role, lang = "ar" }) {
   
   // 3. Collect IDs for mass fetching
   const subscriptionIds = [...new Set(days.map(d => d.subscriptionId))];
-  const userIds = [
-    ...new Set([
-      ...days.map(d => d.subscriptionId), // Will be mapped to userId via subscriptions
-      ...orders.map(o => o.userId)
-    ])
-  ];
   
   // 4. Enrich data
   const [subscriptions, users, deliveries] = await Promise.all([
     Subscription.find({ _id: { $in: subscriptionIds } }).lean(),
-    User.find({ _id: { $in: userIds } }).lean(),
+    Subscription.find({ _id: { $in: subscriptionIds } }).lean().then((subs) => {
+      const userIds = [
+        ...new Set([
+          ...subs.map((subscription) => subscription.userId),
+          ...orders.map((order) => order.userId),
+        ].filter(Boolean).map(String)),
+      ];
+      return User.find({ _id: { $in: userIds } }).lean();
+    }),
     Delivery.find({ 
       $or: [
         { dayId: { $in: days.map(d => d._id) } },
@@ -92,6 +101,13 @@ async function listOperations({ date, role, lang = "ar" }) {
 
 async function getEnrichedDTO({ entityId, entityType, role, lang = "ar" }) {
   if (entityType === "subscription") {
+    const existingDay = await SubscriptionDay.findById(entityId).select("date").lean();
+    if (existingDay) {
+      await settlePastSubscriptionDaysForDate({
+        date: existingDay.date,
+        actor: { actorType: role || "system" },
+      });
+    }
     const day = await SubscriptionDay.findById(entityId).lean();
     if (!day) return null;
 

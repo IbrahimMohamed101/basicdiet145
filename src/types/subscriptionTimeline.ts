@@ -3,6 +3,7 @@ export type TimelineDayStatus =
   | "planned"
   | "locked"
   | "delivered"
+  | "consumed_without_preparation"
   | "delivery_canceled"
   | "canceled_at_branch"
   | "no_show"

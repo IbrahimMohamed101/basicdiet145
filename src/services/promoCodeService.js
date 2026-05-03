@@ -154,7 +154,7 @@ async function validatePromoEligibilityOrThrow({
     return null;
   }
 
-  if (promo.appliesTo !== "subscription") {
+  if (!["subscription", "all"].includes(promo.appliesTo)) {
     throw createPromoError("PROMO_NOT_APPLICABLE_TO_ORDER_TYPE");
   }
   if (!promo.isActive) {
@@ -526,10 +526,16 @@ function serializePromoCodeForAdmin(promo) {
   return {
     id: String(promo._id),
     code: promo.code,
+    name: {
+      ar: promo.metadata && promo.metadata.name && promo.metadata.name.ar ? promo.metadata.name.ar : promo.title || "",
+      en: promo.metadata && promo.metadata.name && promo.metadata.name.en ? promo.metadata.name.en : promo.title || "",
+    },
     title: promo.title || "",
     description: promo.description || "",
+    discountValue: Number(promo.discountValue || 0),
     isActive: Boolean(promo.isActive),
     appliesTo: promo.appliesTo,
+    appliesToList: promo.appliesTo === "all" ? ["subscriptions", "addon_plans", "all"] : [promo.appliesTo === "subscription" ? "subscriptions" : promo.appliesTo],
     discountType: promo.discountType,
     discountValue: Number(promo.discountValue || 0),
     maxDiscountAmountHalala:
@@ -551,7 +557,11 @@ function serializePromoCodeForAdmin(promo) {
         ? Number(promo.usageLimitPerUser)
         : null,
     currentUsageCount: Number(promo.currentUsageCount || 0),
+    usedCount: Number(promo.currentUsageCount || 0),
     eligiblePlanIds: Array.isArray(promo.eligiblePlanIds)
+      ? promo.eligiblePlanIds.map((id) => String(id))
+      : [],
+    planIds: Array.isArray(promo.eligiblePlanIds)
       ? promo.eligiblePlanIds.map((id) => String(id))
       : [],
     eligiblePlanDaysCounts: Array.isArray(promo.eligiblePlanDaysCounts)
@@ -617,9 +627,10 @@ function normalizePromoPayload(payload = {}) {
     throw createPromoError("PROMO_INVALID_CONFIGURATION", "code is required");
   }
 
-  const discountType = String(payload.discountType || "").trim().toLowerCase();
+  let discountType = String(payload.discountType || "").trim().toLowerCase();
+  if (discountType === "fixed_amount") discountType = "fixed";
   if (!["percentage", "fixed"].includes(discountType)) {
-    throw createPromoError("PROMO_INVALID_CONFIGURATION", "discountType must be percentage or fixed");
+    throw createPromoError("PROMO_INVALID_CONFIGURATION", "discountType must be percentage or fixed_amount");
   }
 
   const discountValue = Number(payload.discountValue);
@@ -627,28 +638,44 @@ function normalizePromoPayload(payload = {}) {
     throw createPromoError("PROMO_INVALID_CONFIGURATION", "discountValue must be >= 0");
   }
 
+  const rawName = payload.name && typeof payload.name === "object" ? payload.name : null;
+  const title = String(payload.title || (rawName && (rawName.en || rawName.ar)) || "").trim();
+  const rawDescription = payload.description && typeof payload.description === "object" ? payload.description : null;
+  const description = String(
+    (rawDescription && (rawDescription.en || rawDescription.ar))
+    || payload.description
+    || ""
+  ).trim();
+  const appliesToInput = Array.isArray(payload.appliesTo) ? payload.appliesTo[0] : payload.appliesTo;
+  const appliesToRaw = String(appliesToInput || "subscriptions").trim();
+  const appliesTo = appliesToRaw === "all"
+    ? "all"
+    : appliesToRaw === "addon_plans"
+      ? "addon_plans"
+      : "subscription";
+
   return {
     code,
     codeNormalized: code,
-    title: String(payload.title || "").trim(),
-    description: String(payload.description || "").trim(),
+    title,
+    description,
     isActive: payload.isActive === undefined ? true : Boolean(payload.isActive),
-    appliesTo: "subscription",
+    appliesTo,
     discountType,
     discountValue,
     maxDiscountAmountHalala: normalizeNullableMoneyMinorUnits({
-      halalaValue: payload.maxDiscountAmountHalala,
+      halalaValue: payload.maxDiscountAmountHalala || payload.maxDiscountHalala,
       sarValue: payload.maxDiscountAmountSar,
       fieldName: "maxDiscountAmount",
     }),
     minimumSubscriptionAmountHalala: normalizeNullableMoneyMinorUnits({
-      halalaValue: payload.minimumSubscriptionAmountHalala,
+      halalaValue: payload.minimumSubscriptionAmountHalala || payload.minOrderHalala,
       sarValue: payload.minimumSubscriptionAmountSar,
       fieldName: "minimumSubscriptionAmount",
     }),
     startsAt: normalizeOptionalDate(payload.startsAt, { fieldName: "startsAt" }),
-    expiresAt: normalizeOptionalDate(payload.expiresAt, { fieldName: "expiresAt" }),
-    usageLimitTotal: normalizeNullableInteger(payload.usageLimitTotal, {
+    expiresAt: normalizeOptionalDate(payload.expiresAt || payload.endsAt, { fieldName: "expiresAt" }),
+    usageLimitTotal: normalizeNullableInteger(payload.usageLimitTotal !== undefined ? payload.usageLimitTotal : payload.usageLimit, {
       fieldName: "usageLimitTotal",
       min: 0,
     }),
@@ -656,8 +683,8 @@ function normalizePromoPayload(payload = {}) {
       fieldName: "usageLimitPerUser",
       min: 0,
     }),
-    eligiblePlanIds: Array.isArray(payload.eligiblePlanIds)
-      ? payload.eligiblePlanIds
+    eligiblePlanIds: Array.isArray(payload.eligiblePlanIds || payload.planIds)
+      ? (payload.eligiblePlanIds || payload.planIds)
         .filter((id) => mongoose.Types.ObjectId.isValid(String(id)))
         .map((id) => new mongoose.Types.ObjectId(String(id)))
       : [],
@@ -673,10 +700,15 @@ function normalizePromoPayload(payload = {}) {
         .map((id) => new mongoose.Types.ObjectId(String(id)))
       : [],
     currency: String(payload.currency || SYSTEM_CURRENCY).trim().toUpperCase() || SYSTEM_CURRENCY,
-    metadata:
-      payload.metadata && typeof payload.metadata === "object" && !Array.isArray(payload.metadata)
+    metadata: {
+      ...(payload.metadata && typeof payload.metadata === "object" && !Array.isArray(payload.metadata)
         ? payload.metadata
-        : null,
+        : {}),
+      ...(rawName ? { name: rawName } : {}),
+      ...(rawDescription ? { description: rawDescription } : {}),
+      ...(Array.isArray(payload.addonPlanIds) ? { addonPlanIds: payload.addonPlanIds } : {}),
+      sortOrder: Number(payload.sortOrder || (payload.metadata && payload.metadata.sortOrder) || 0),
+    },
   };
 }
 

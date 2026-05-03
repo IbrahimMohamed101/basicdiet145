@@ -1,5 +1,5 @@
 const transitions = {
-  open: ["locked", "skipped", "frozen"],
+  open: ["locked", "in_preparation", "skipped", "frozen"],
   frozen: [],
   locked: ["in_preparation", "out_for_delivery", "canceled_at_branch"],
   in_preparation: ["out_for_delivery", "ready_for_pickup", "canceled_at_branch"],
@@ -7,9 +7,9 @@ const transitions = {
   ready_for_pickup: ["fulfilled", "canceled_at_branch", "no_show"],
   fulfilled: [],
   consumed_without_preparation: [],
-  delivery_canceled: [],
-  canceled_at_branch: [],
-  no_show: [],
+  delivery_canceled: ["open"],
+  canceled_at_branch: ["open"],
+  no_show: ["open"],
   skipped: [],
 };
 

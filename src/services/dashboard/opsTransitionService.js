@@ -4,6 +4,7 @@ const SubscriptionDay = require("../../models/SubscriptionDay");
 const Order = require("../../models/Order");
 const Delivery = require("../../models/Delivery");
 const Subscription = require("../../models/Subscription");
+const SubscriptionAuditLog = require("../../models/SubscriptionAuditLog");
 const { fulfillSubscriptionDay } = require("../fulfillmentService");
 const { canTransition } = require("../../utils/state");
 const { canOrderTransition } = require("../../utils/orderState");
@@ -18,31 +19,34 @@ const { logger } = require("../../utils/logger");
  */
 
 async function executeAction(actionId, { entityId, entityType, userId, role, payload = {} }) {
+  const normalizedEntityType = entityType === "subscription_day" || entityType === "pickup_day"
+    ? "subscription"
+    : entityType;
   const session = await mongoose.startSession();
   session.startTransaction();
   try {
     let result;
     switch (actionId) {
       case "prepare":
-        result = await handlePrepare({ entityId, entityType, userId, role, session });
+        result = await handlePrepare({ entityId, entityType: normalizedEntityType, userId, role, payload, session });
         break;
       case "dispatch":
-        result = await handleDispatch({ entityId, entityType, userId, role, payload, session });
+        result = await handleDispatch({ entityId, entityType: normalizedEntityType, userId, role, payload, session });
         break;
       case "ready_for_pickup":
-        result = await handleReadyForPickup({ entityId, entityType, userId, role, session });
+        result = await handleReadyForPickup({ entityId, entityType: normalizedEntityType, userId, role, payload, session });
         break;
       case "fulfill":
-        result = await handleFulfill({ entityId, entityType, userId, role, payload, session });
+        result = await handleFulfill({ entityId, entityType: normalizedEntityType, userId, role, payload, session });
         break;
       case "cancel":
-        result = await handleCancel({ entityId, entityType, userId, role, payload, session });
+        result = await handleCancel({ entityId, entityType: normalizedEntityType, userId, role, payload, session });
         break;
       case "reopen":
-        result = await handleReopen({ entityId, entityType, userId, role, session });
+        result = await handleReopen({ entityId, entityType: normalizedEntityType, userId, role, payload, session });
         break;
       case "notify_arrival":
-        result = await handleNotifyArrival({ entityId, entityType, userId, role, session });
+        result = await handleNotifyArrival({ entityId, entityType: normalizedEntityType, userId, role, payload, session });
         break;
       default:
         throw new Error(`Unsupported action: ${actionId}`);
@@ -64,7 +68,36 @@ async function executeAction(actionId, { entityId, entityType, userId, role, pay
   }
 }
 
-async function handlePrepare({ entityId, entityType, session }) {
+function appendOperationAudit(doc, action, userId, role) {
+  if (!doc || doc.constructor.modelName !== "SubscriptionDay") return;
+  doc.operationAuditLog = Array.isArray(doc.operationAuditLog) ? doc.operationAuditLog : [];
+  doc.operationAuditLog.push({
+    action,
+    by: [role, userId].filter(Boolean).join(":"),
+    at: new Date(),
+  });
+}
+
+async function writeSubscriptionDayAudit({ day, action, fromStatus, toStatus, userId, role, payload, session }) {
+  if (!day || !day._id) return;
+  await SubscriptionAuditLog.create([{
+    entityType: "subscription_day",
+    entityId: day._id,
+    action: `dashboard_${action}`,
+    fromStatus,
+    toStatus,
+    actorType: role || "admin",
+    actorId: userId || undefined,
+    note: payload && (payload.reason || payload.notes || payload.note) ? String(payload.reason || payload.notes || payload.note) : undefined,
+    meta: {
+      subscriptionId: day.subscriptionId ? String(day.subscriptionId) : null,
+      reason: payload && payload.reason ? String(payload.reason) : null,
+      notes: payload && (payload.notes || payload.note) ? String(payload.notes || payload.note) : null,
+    },
+  }], { session });
+}
+
+async function handlePrepare({ entityId, entityType, userId, role, payload, session }) {
   const Model = entityType === "subscription" ? SubscriptionDay : Order;
   const doc = await Model.findById(entityId).session(session);
   if (!doc) throw new Error("Entity not found");
@@ -82,14 +115,19 @@ async function handlePrepare({ entityId, entityType, session }) {
     }
   }
 
-  validateTransition(entityType, doc.status, toStatus);
+  const fromStatus = doc.status;
+  validateTransition(entityType, fromStatus, toStatus);
 
   doc.status = toStatus;
   if (entityType === "subscription" && !doc.pickupPreparationStartedAt) {
     doc.pickupPreparationStartedAt = new Date();
   }
   if (entityType === "order" && !doc.confirmedAt) doc.confirmedAt = new Date();
+  appendOperationAudit(doc, "prepare", userId, role);
   await doc.save({ session });
+  if (entityType === "subscription") {
+    await writeSubscriptionDayAudit({ day: doc, action: "prepare", fromStatus, toStatus, userId, role, payload, session });
+  }
 
   return {
     data: doc,
@@ -102,7 +140,7 @@ async function handlePrepare({ entityId, entityType, session }) {
   };
 }
 
-async function handleDispatch({ entityId, entityType, payload, session }) {
+async function handleDispatch({ entityId, entityType, userId, role, payload, session }) {
   const Model = entityType === "subscription" ? SubscriptionDay : Order;
   const doc = await Model.findById(entityId).session(session);
   if (!doc) throw new Error("Entity not found");
@@ -112,9 +150,11 @@ async function handleDispatch({ entityId, entityType, payload, session }) {
     return { data: doc, idempotent: true };
   }
 
-  validateTransition(entityType, doc.status, toStatus);
+  const fromStatus = doc.status;
+  validateTransition(entityType, fromStatus, toStatus);
 
   doc.status = toStatus;
+  appendOperationAudit(doc, "dispatch", userId, role);
   await doc.save({ session });
 
   // Sync Delivery SoT
@@ -125,6 +165,7 @@ async function handleDispatch({ entityId, entityType, payload, session }) {
 
   if (entityType === "subscription") {
     const sub = await Subscription.findById(doc.subscriptionId).session(session).lean();
+    if (sub && sub.deliveryMode === "pickup") throw new Error("INVALID_STATE_TRANSITION");
     await Delivery.updateOne(
       { dayId: doc._id },
       {
@@ -151,6 +192,18 @@ async function handleDispatch({ entityId, entityType, payload, session }) {
       { upsert: true, session }
     );
   }
+  if (entityType === "subscription") {
+    await writeSubscriptionDayAudit({
+      day: doc,
+      action: "dispatch",
+      fromStatus,
+      toStatus,
+      userId,
+      role,
+      payload,
+      session,
+    });
+  }
 
   return {
     data: doc,
@@ -163,7 +216,7 @@ async function handleDispatch({ entityId, entityType, payload, session }) {
   };
 }
 
-async function handleFulfill({ entityId, entityType, payload, userId, session }) {
+async function handleFulfill({ entityId, entityType, payload, userId, role, session }) {
   if (entityType === "subscription") {
     const day = await SubscriptionDay.findById(entityId).session(session);
     if (!day) throw new Error("Subscription day not found");
@@ -176,8 +229,23 @@ async function handleFulfill({ entityId, entityType, payload, userId, session })
       await verifyPickupCode(entityId, payload.pickupCode, userId, session);
     }
 
+    const fromStatus = day.status;
     const result = await fulfillSubscriptionDay({ dayId: entityId, session });
     if (!result.ok) throw new Error(result.message || "Fulfillment failed");
+    appendOperationAudit(result.day || day, "fulfill", userId, role);
+    if (result.day && typeof result.day.save === "function") {
+      await result.day.save({ session });
+    }
+    await writeSubscriptionDayAudit({
+      day: result.day || day,
+      action: "fulfill",
+      fromStatus,
+      toStatus: "fulfilled",
+      userId,
+      role,
+      payload,
+      session,
+    });
     
     // Sync Delivery status
     await Delivery.updateOne(
@@ -225,7 +293,7 @@ async function handleFulfill({ entityId, entityType, payload, userId, session })
   }
 }
 
-async function handleReadyForPickup({ entityId, entityType, session }) {
+async function handleReadyForPickup({ entityId, entityType, userId, role, payload, session }) {
   const Model = entityType === "subscription" ? SubscriptionDay : Order;
   const doc = await Model.findById(entityId).session(session);
   if (!doc) throw new Error("Entity not found");
@@ -238,7 +306,8 @@ async function handleReadyForPickup({ entityId, entityType, session }) {
       throw new Error("PICKUP_PREPARE_REQUIRED");
     }
   }
-  validateTransition(entityType, doc.status, toStatus);
+  const fromStatus = doc.status;
+  validateTransition(entityType, fromStatus, toStatus);
 
   doc.status = toStatus;
   if (entityType === "subscription") {
@@ -246,7 +315,11 @@ async function handleReadyForPickup({ entityId, entityType, session }) {
     doc.pickupCode = String(crypto.randomInt(100000, 999999));
     doc.pickupCodeIssuedAt = new Date();
   }
+  appendOperationAudit(doc, "ready_for_pickup", userId, role);
   await doc.save({ session });
+  if (entityType === "subscription") {
+    await writeSubscriptionDayAudit({ day: doc, action: "ready_for_pickup", fromStatus, toStatus, userId, role, payload, session });
+  }
 
   return {
     data: doc,
@@ -271,22 +344,34 @@ async function verifyPickupCode(dayId, code, userId, session) {
   await day.save({ session });
 }
 
-async function handleCancel({ entityId, entityType, payload, userId, session }) {
+async function handleCancel({ entityId, entityType, payload, userId, role, session }) {
   const Model = entityType === "subscription" ? SubscriptionDay : Order;
   const doc = await Model.findById(entityId).session(session);
   if (!doc) throw new Error("Entity not found");
 
-  const toStatus = entityType === "subscription" ? "delivery_canceled" : "canceled";
+  let toStatus = entityType === "subscription" ? "delivery_canceled" : "canceled";
+  if (entityType === "subscription") {
+    const sub = await Subscription.findById(doc.subscriptionId).session(session).lean();
+    if (sub && sub.deliveryMode === "pickup") {
+      toStatus = payload && payload.noShow ? "no_show" : "canceled_at_branch";
+    }
+  }
   if (doc.status === toStatus) {
     return { data: doc, idempotent: true };
   }
 
+  const fromStatus = doc.status;
+  validateTransition(entityType, fromStatus, toStatus);
   doc.status = toStatus;
   doc.canceledAt = new Date();
   doc.canceledBy = String(userId || "");
   doc.cancellationReason = payload.reason;
-  doc.cancellationNote = payload.note;
+  doc.cancellationNote = payload.notes || payload.note;
+  appendOperationAudit(doc, "cancel", userId, role);
   await doc.save({ session });
+  if (entityType === "subscription") {
+    await writeSubscriptionDayAudit({ day: doc, action: "cancel", fromStatus, toStatus, userId, role, payload, session });
+  }
 
   // Sync Delivery
   await Delivery.updateOne(
@@ -314,6 +399,39 @@ async function handleCancel({ entityId, entityType, payload, userId, session }) 
   };
 }
 
+async function handleReopen({ entityId, entityType, userId, role, payload, session }) {
+  const Model = entityType === "subscription" ? SubscriptionDay : Order;
+  const doc = await Model.findById(entityId).session(session);
+  if (!doc) throw new Error("Entity not found");
+
+  const fromStatus = doc.status;
+  const toStatus = entityType === "subscription" ? "open" : "confirmed";
+  if (fromStatus === toStatus) {
+    return { data: doc, idempotent: true };
+  }
+  validateTransition(entityType, fromStatus, toStatus);
+
+  doc.status = toStatus;
+  if (entityType === "subscription") {
+    doc.canceledAt = null;
+    doc.canceledBy = null;
+    doc.cancellationReason = null;
+    doc.cancellationNote = null;
+    doc.pickupNoShowAt = null;
+    appendOperationAudit(doc, "reopen", userId, role);
+  }
+  await doc.save({ session });
+
+  if (entityType === "subscription") {
+    await writeSubscriptionDayAudit({ day: doc, action: "reopen", fromStatus, toStatus, userId, role, payload, session });
+  }
+
+  return {
+    data: doc,
+    sideEffects: { action: "reopen", entityType, entityId, toStatus },
+  };
+}
+
 async function handleNotifyArrival({ entityId, entityType, session }) {
   const query = entityType === "subscription" ? { dayId: entityId } : { orderId: entityId };
   const delivery = await Delivery.findOne(query).session(session);
@@ -336,7 +454,7 @@ async function handleNotifyArrival({ entityId, entityType, session }) {
 function validateTransition(type, from, to) {
   const allowed = type === "subscription" ? canTransition(from, to) : canOrderTransition(from, to);
   if (!allowed) {
-    throw new Error(`Invalid state transition from ${from} to ${to}`);
+    throw new Error("INVALID_STATE_TRANSITION");
   }
 }
 

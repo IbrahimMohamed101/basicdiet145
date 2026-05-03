@@ -54,6 +54,9 @@ const {
 const { assertValidPhoneE164 } = require("../services/otpService");
 const SubscriptionLifecycleService = require("../services/subscription/subscriptionLifecycleService");
 const SubscriptionOperationsReadService = require("../services/subscription/subscriptionOperationsReadService");
+const {
+  settlePastSubscriptionDaysForSubscription,
+} = require("../services/subscription/pastSubscriptionDaySettlementService");
 const { resolveSubscriptionDeliveryDefaultsUpdate } = require("../services/subscription/subscriptionDeliveryUpdateService");
 const { writeAuditLog } = require("../services/subscription/subscriptionAuditLogService");
 const { getRestaurantBusinessDate } = require("../services/restaurantHoursService");
@@ -878,8 +881,45 @@ function serializeOrderAdmin(order, userDoc) {
 }
 
 function serializePaymentAdmin(payment, userDoc) {
+  const metadata = payment && payment.metadata && typeof payment.metadata === "object" ? payment.metadata : {};
+  const sourceBreakdown = metadata.breakdown || metadata.pricing || metadata.quoteBreakdown || {};
+  const normalizedBreakdown = normalizeStoredVatBreakdown({
+    basePriceHalala: sourceBreakdown.basePlanGrossHalala || sourceBreakdown.basePriceHalala || payment.amount,
+    subtotalBeforeVatHalala: sourceBreakdown.subtotalBeforeVatHalala || sourceBreakdown.subtotalHalala,
+    vatPercentage: sourceBreakdown.vatPercentage,
+    vatHalala: sourceBreakdown.vatHalala,
+    totalPriceHalala: sourceBreakdown.totalHalala || sourceBreakdown.totalPriceHalala || payment.amount,
+  });
+  const discountHalala = Number(sourceBreakdown.discountHalala || metadata.discountHalala || 0);
   return {
     ...payment,
+    subtotalHalala: normalizedBreakdown.subtotalBeforeVatHalala,
+    discountHalala,
+    vatHalala: normalizedBreakdown.vatHalala,
+    totalHalala: normalizedBreakdown.totalHalala,
+    paidHalala: payment.status === "paid" ? Number(payment.amount || 0) : 0,
+    paymentMethod: metadata.paymentMethod || payment.provider || null,
+    paymentProvider: payment.provider || null,
+    providerReference: payment.providerPaymentId || payment.providerInvoiceId || null,
+    subscriptionId: payment.subscriptionId ? String(payment.subscriptionId) : (metadata.subscriptionId || null),
+    verifiedAt: payment.paidAt || null,
+    verifiedBy: metadata.verifiedBy || null,
+    lineItems: Array.isArray(metadata.lineItems) ? metadata.lineItems : [],
+    breakdown: {
+      ...sourceBreakdown,
+      subtotalHalala: normalizedBreakdown.subtotalBeforeVatHalala,
+      discountHalala,
+      vatHalala: normalizedBreakdown.vatHalala,
+      totalHalala: normalizedBreakdown.totalHalala,
+      paidHalala: payment.status === "paid" ? Number(payment.amount || 0) : 0,
+      currency: payment.currency || sourceBreakdown.currency || "SAR",
+      vatInclusive: true,
+    },
+    pricingSummary: buildMoneySummary({
+      ...normalizedBreakdown,
+      totalPriceHalala: normalizedBreakdown.totalHalala,
+      currency: payment.currency || "SAR",
+    }),
     user: serializeClientUserSummary(userDoc),
   };
 }
@@ -1231,6 +1271,21 @@ async function writeActivityLogSafely(payload, context = {}) {
       ...context,
     });
   }
+}
+
+async function writeSettingsActivityLogSafely(req, persisted, context = {}) {
+  if (!req || !req.dashboardUserId || !persisted || typeof persisted !== "object") return;
+  await writeActivityLogSafely({
+    entityType: "settings",
+    entityId: req.dashboardUserId,
+    action: "settings_updated_by_admin",
+    byUserId: req.dashboardUserId,
+    byRole: req.dashboardUserRole,
+    meta: {
+      keys: Object.keys(persisted),
+      values: persisted,
+    },
+  }, context);
 }
 
 async function writeSubscriptionAuditSafely({
@@ -2900,6 +2955,18 @@ async function persistNormalizedSettings(normalizedSettings) {
     operations.push(persistSettingValue("restaurant_close_time", normalizedSettings.restaurant_close_time));
     persisted.restaurant_close_time = normalizedSettings.restaurant_close_time;
   }
+  if (Object.prototype.hasOwnProperty.call(normalizedSettings, "restaurant_is_open")) {
+    operations.push(persistSettingValue("restaurant_is_open", normalizedSettings.restaurant_is_open));
+    persisted.restaurant_is_open = normalizedSettings.restaurant_is_open;
+  }
+  if (Object.prototype.hasOwnProperty.call(normalizedSettings, "restaurant_hours")) {
+    operations.push(persistSettingValue("restaurant_hours", normalizedSettings.restaurant_hours));
+    persisted.restaurant_hours = normalizedSettings.restaurant_hours;
+  }
+  if (Object.prototype.hasOwnProperty.call(normalizedSettings, "temporary_closure")) {
+    operations.push(persistSettingValue("temporary_closure", normalizedSettings.temporary_closure));
+    persisted.temporary_closure = normalizedSettings.temporary_closure;
+  }
 
   if (Object.prototype.hasOwnProperty.call(normalizedSettings, "delivery_windows")) {
     operations.push(persistSettingValue("delivery_windows", normalizedSettings.delivery_windows));
@@ -2954,6 +3021,9 @@ function normalizeSettingsPatchPayloadOrThrow(payload) {
     "cutoff_time",
     "restaurant_open_time",
     "restaurant_close_time",
+    "restaurant_is_open",
+    "restaurant_hours",
+    "temporary_closure",
     "delivery_windows",
     "skip_allowance",
     "premium_price",
@@ -2962,7 +3032,7 @@ function normalizeSettingsPatchPayloadOrThrow(payload) {
     "custom_salad_base_price",
     "custom_meal_base_price",
   ]);
-  const providedKeys = Object.keys(payload);
+  const providedKeys = Object.keys(payload).filter((key) => key !== "reason");
   if (!providedKeys.length) {
     throw createControlledError(400, "INVALID", "At least one setting is required");
   }
@@ -2981,6 +3051,17 @@ function normalizeSettingsPatchPayloadOrThrow(payload) {
   }
   if (Object.prototype.hasOwnProperty.call(payload, "restaurant_close_time")) {
     normalized.restaurant_close_time = normalizeCutoffTimeOrThrow(payload.restaurant_close_time);
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, "restaurant_is_open")) {
+    normalized.restaurant_is_open = Boolean(payload.restaurant_is_open);
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, "restaurant_hours")) {
+    normalized.restaurant_hours = Array.isArray(payload.restaurant_hours) ? payload.restaurant_hours : [];
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, "temporary_closure")) {
+    normalized.temporary_closure = payload.temporary_closure && typeof payload.temporary_closure === "object"
+      ? payload.temporary_closure
+      : null;
   }
   if (Object.prototype.hasOwnProperty.call(payload, "delivery_windows")) {
     normalized.delivery_windows = normalizeDeliveryWindowsOrThrow(payload.delivery_windows);
@@ -3011,8 +3092,11 @@ function normalizeSettingsPatchPayloadOrThrow(payload) {
 
 async function updateCutoff(req, res) {
   try {
-    const normalized = normalizeCutoffTimeOrThrow((req.body || {}).time);
-    await persistNormalizedSettings({ cutoff_time: normalized });
+    const body = req.body || {};
+    const rawValue = body.time !== undefined ? body.time : body.cutoffTime;
+    const normalized = normalizeCutoffTimeOrThrow(rawValue);
+    const persisted = await persistNormalizedSettings({ cutoff_time: normalized });
+    await writeSettingsActivityLogSafely(req, persisted, { setting: "cutoff_time" });
     return res.status(200).json({ status: true });
   } catch (err) {
     if (isControlledError(err)) {
@@ -3024,17 +3108,30 @@ async function updateCutoff(req, res) {
 
 async function getRestaurantHours(req, res) {
   try {
-    const [openSetting, closeSetting] = await Promise.all([
+    const [openSetting, closeSetting, isOpenSetting, deliveryWindowsSetting, cutoffSetting, temporaryClosureSetting, weeklyScheduleSetting] = await Promise.all([
       Setting.findOne({ key: "restaurant_open_time" }).lean(),
       Setting.findOne({ key: "restaurant_close_time" }).lean(),
+      Setting.findOne({ key: "restaurant_is_open" }).lean(),
+      Setting.findOne({ key: "delivery_windows" }).lean(),
+      Setting.findOne({ key: "cutoff_time" }).lean(),
+      Setting.findOne({ key: "temporary_closure" }).lean(),
+      Setting.findOne({ key: "restaurant_hours" }).lean(),
     ]);
+    const openTime = openSetting && openSetting.value ? String(openSetting.value) : "00:00";
+    const closeTime = closeSetting && closeSetting.value ? String(closeSetting.value) : "23:59";
 
     return res.status(200).json({
       status: true,
       data: {
         timezone: "Asia/Riyadh",
-        restaurant_open_time: openSetting && openSetting.value ? String(openSetting.value) : "00:00",
-        restaurant_close_time: closeSetting && closeSetting.value ? String(closeSetting.value) : "23:59",
+        restaurant_open_time: openTime,
+        restaurant_close_time: closeTime,
+        restaurant_is_open: isOpenSetting ? Boolean(isOpenSetting.value) : true,
+        restaurant_hours: weeklyScheduleSetting && weeklyScheduleSetting.value ? weeklyScheduleSetting.value : null,
+        delivery_windows: deliveryWindowsSetting && Array.isArray(deliveryWindowsSetting.value) ? deliveryWindowsSetting.value : [],
+        cutoff_time: cutoffSetting && cutoffSetting.value ? String(cutoffSetting.value) : null,
+        temporary_closure: temporaryClosureSetting && temporaryClosureSetting.value ? temporaryClosureSetting.value : null,
+        isOpenNow: dateUtils.isCurrentTimeWithinWindow(openTime, closeTime),
       },
     });
   } catch (err) {
@@ -3045,13 +3142,35 @@ async function getRestaurantHours(req, res) {
 async function updateRestaurantHours(req, res) {
   try {
     const body = req.body || {};
-    const restaurantOpenTime = normalizeCutoffTimeOrThrow(body.restaurant_open_time);
-    const restaurantCloseTime = normalizeCutoffTimeOrThrow(body.restaurant_close_time);
-
-    await persistNormalizedSettings({
+    const restaurantOpenTime = normalizeCutoffTimeOrThrow(body.restaurant_open_time || body.openTime);
+    const restaurantCloseTime = normalizeCutoffTimeOrThrow(body.restaurant_close_time || body.closeTime);
+    const normalized = {
       restaurant_open_time: restaurantOpenTime,
       restaurant_close_time: restaurantCloseTime,
-    });
+    };
+    if (body.deliveryWindows || body.delivery_windows) {
+      normalized.delivery_windows = normalizeDeliveryWindowsOrThrow(body.deliveryWindows || body.delivery_windows);
+    }
+    if (body.cutoffTime || body.cutoff_time) {
+      normalized.cutoff_time = normalizeCutoffTimeOrThrow(body.cutoffTime || body.cutoff_time);
+    }
+
+    await persistNormalizedSettings(normalized);
+    if (body.isOpen !== undefined || body.restaurant_is_open !== undefined) {
+      await persistSettingValue("restaurant_is_open", body.isOpen !== undefined ? Boolean(body.isOpen) : Boolean(body.restaurant_is_open));
+    }
+    if (body.weeklySchedule !== undefined || body.weekly_schedule !== undefined) {
+      await persistSettingValue("restaurant_hours", body.weeklySchedule || body.weekly_schedule || []);
+    }
+    if (body.temporaryClosure !== undefined || body.temporary_closure !== undefined) {
+      await persistSettingValue("temporary_closure", body.temporaryClosure || body.temporary_closure || null);
+    }
+    await writeSettingsActivityLogSafely(req, {
+      ...normalized,
+      ...(body.isOpen !== undefined || body.restaurant_is_open !== undefined
+        ? { restaurant_is_open: body.isOpen !== undefined ? Boolean(body.isOpen) : Boolean(body.restaurant_is_open) }
+        : {}),
+    }, { setting: "restaurant_hours" });
 
     return res.status(200).json({
       status: true,
@@ -3059,6 +3178,9 @@ async function updateRestaurantHours(req, res) {
         timezone: "Asia/Riyadh",
         restaurant_open_time: restaurantOpenTime,
         restaurant_close_time: restaurantCloseTime,
+        restaurant_is_open: body.isOpen !== undefined ? Boolean(body.isOpen) : body.restaurant_is_open !== undefined ? Boolean(body.restaurant_is_open) : undefined,
+        delivery_windows: normalized.delivery_windows,
+        cutoff_time: normalized.cutoff_time,
       },
     });
   } catch (err) {
@@ -3069,10 +3191,35 @@ async function updateRestaurantHours(req, res) {
   }
 }
 
+async function toggleRestaurantOpen(req, res) {
+  try {
+    const body = req.body || {};
+    const isOpen = body.isOpen !== undefined
+      ? Boolean(body.isOpen)
+      : body.restaurant_is_open !== undefined
+        ? Boolean(body.restaurant_is_open)
+        : true;
+    await persistSettingValue("restaurant_is_open", isOpen);
+    await writeSettingsActivityLogSafely(req, { restaurant_is_open: isOpen }, { setting: "restaurant_is_open" });
+    return res.status(200).json({
+      status: true,
+      data: {
+        restaurant_is_open: isOpen,
+        isOpen,
+      },
+    });
+  } catch (err) {
+    throw err;
+  }
+}
+
 async function updateDeliveryWindows(req, res) {
   try {
-    const normalized = normalizeDeliveryWindowsOrThrow((req.body || {}).windows);
-    await persistNormalizedSettings({ delivery_windows: normalized });
+    const body = req.body || {};
+    const rawValue = body.windows !== undefined ? body.windows : body.deliveryWindows;
+    const normalized = normalizeDeliveryWindowsOrThrow(rawValue);
+    const persisted = await persistNormalizedSettings({ delivery_windows: normalized });
+    await writeSettingsActivityLogSafely(req, persisted, { setting: "delivery_windows" });
     return res.status(200).json({ status: true });
   } catch (err) {
     if (isControlledError(err)) {
@@ -3087,7 +3234,8 @@ async function updateSkipAllowance(req, res) {
     const { days, skipAllowance } = req.body || {};
     const rawValue = skipAllowance !== undefined ? skipAllowance : days;
     const normalized = normalizeSkipAllowanceOrThrow(rawValue);
-    await persistNormalizedSettings({ skip_allowance: normalized });
+    const persisted = await persistNormalizedSettings({ skip_allowance: normalized });
+    await writeSettingsActivityLogSafely(req, persisted, { setting: "skip_allowance" });
     return res.status(200).json({ status: true, data: { skipAllowance: normalized } });
   } catch (err) {
     if (isControlledError(err)) {
@@ -3099,8 +3247,11 @@ async function updateSkipAllowance(req, res) {
 
 async function updatePremiumPrice(req, res) {
   try {
-    const normalized = normalizePremiumPriceOrThrow((req.body || {}).price);
-    await persistNormalizedSettings({ premium_price: normalized });
+    const body = req.body || {};
+    const rawValue = body.price !== undefined ? body.price : body.premiumPriceHalala;
+    const normalized = normalizePremiumPriceOrThrow(rawValue);
+    const persisted = await persistNormalizedSettings({ premium_price: normalized });
+    await writeSettingsActivityLogSafely(req, persisted, { setting: "premium_price" });
     return res.status(200).json({ status: true });
   } catch (err) {
     if (isControlledError(err)) {
@@ -3115,9 +3266,12 @@ async function updateSubscriptionDeliveryFee(req, res) {
     const body = req.body || {};
     const rawValue = body.deliveryFeeHalala !== undefined
       ? body.deliveryFeeHalala
-      : body.subscription_delivery_fee_halala;
+      : body.subscriptionDeliveryFeeHalala !== undefined
+        ? body.subscriptionDeliveryFeeHalala
+        : body.subscription_delivery_fee_halala;
     const normalized = normalizeSubscriptionDeliveryFeeHalalaOrThrow(rawValue);
     const persisted = await persistNormalizedSettings({ subscription_delivery_fee_halala: normalized });
+    await writeSettingsActivityLogSafely(req, persisted, { setting: "subscription_delivery_fee_halala" });
     return res.status(200).json({ status: true, data: persisted });
   } catch (err) {
     if (isControlledError(err)) {
@@ -3130,9 +3284,14 @@ async function updateSubscriptionDeliveryFee(req, res) {
 async function updateVatPercentage(req, res) {
   try {
     const body = req.body || {};
-    const rawValue = body.percentage !== undefined ? body.percentage : body.vat_percentage;
+    const rawValue = body.percentage !== undefined
+      ? body.percentage
+      : body.vatPercentage !== undefined
+        ? body.vatPercentage
+        : body.vat_percentage;
     const normalized = normalizeVatPercentageOrThrow(rawValue);
     const persisted = await persistNormalizedSettings({ vat_percentage: normalized });
+    await writeSettingsActivityLogSafely(req, persisted, { setting: "vat_percentage" });
     return res.status(200).json({ status: true, data: persisted });
   } catch (err) {
     if (isControlledError(err)) {
@@ -3145,9 +3304,14 @@ async function updateVatPercentage(req, res) {
 async function updateCustomSaladBasePrice(req, res) {
   try {
     const body = req.body || {};
-    const rawValue = body.price !== undefined ? body.price : body.custom_salad_base_price;
+    const rawValue = body.price !== undefined
+      ? body.price
+      : body.customSaladBasePriceHalala !== undefined
+        ? body.customSaladBasePriceHalala
+        : body.custom_salad_base_price;
     const normalized = normalizeCustomSaladBasePriceOrThrow(rawValue);
     const persisted = await persistNormalizedSettings({ custom_salad_base_price: normalized });
+    await writeSettingsActivityLogSafely(req, persisted, { setting: "custom_salad_base_price" });
     return res.status(200).json({ status: true, data: persisted });
   } catch (err) {
     if (isControlledError(err)) {
@@ -3160,9 +3324,14 @@ async function updateCustomSaladBasePrice(req, res) {
 async function updateCustomMealBasePrice(req, res) {
   try {
     const body = req.body || {};
-    const rawValue = body.price !== undefined ? body.price : body.custom_meal_base_price;
+    const rawValue = body.price !== undefined
+      ? body.price
+      : body.customMealBasePriceHalala !== undefined
+        ? body.customMealBasePriceHalala
+        : body.custom_meal_base_price;
     const normalized = normalizeCustomMealBasePriceOrThrow(rawValue);
     const persisted = await persistNormalizedSettings({ custom_meal_base_price: normalized });
+    await writeSettingsActivityLogSafely(req, persisted, { setting: "custom_meal_base_price" });
     return res.status(200).json({ status: true, data: persisted });
   } catch (err) {
     if (isControlledError(err)) {
@@ -3176,6 +3345,7 @@ async function patchSettings(req, res) {
   try {
     const normalized = normalizeSettingsPatchPayloadOrThrow(req.body || {});
     const persisted = await persistNormalizedSettings(normalized);
+    await writeSettingsActivityLogSafely(req, persisted, { setting: "patch" });
     return res.status(200).json({ status: true, data: persisted });
   } catch (err) {
     if (isControlledError(err)) {
@@ -3608,11 +3778,19 @@ async function getSubscriptionAdmin(req, res) {
     return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
   }
 
+  await settlePastSubscriptionDaysForSubscription({
+    subscriptionId: id,
+    actor: {
+      actorType: req.userRole || req.dashboardUserRole || "admin",
+      dashboardUserId: req.dashboardUserId || req.userId || null,
+    },
+  });
+  const settledSubscription = await Subscription.findById(id).lean();
   const user = subscription.userId ? await User.findById(subscription.userId).lean() : null;
   const lang = getRequestLang(req);
   return res.status(200).json({
     status: true,
-    data: await serializeSubscriptionAdmin(subscription, lang, user),
+    data: await serializeSubscriptionAdmin(settledSubscription || subscription, lang, user),
   });
 }
 
@@ -3627,6 +3805,13 @@ async function listSubscriptionDaysAdmin(req, res) {
     return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
   }
 
+  await settlePastSubscriptionDaysForSubscription({
+    subscriptionId: id,
+    actor: {
+      actorType: req.userRole || req.dashboardUserRole || "admin",
+      dashboardUserId: req.dashboardUserId || req.userId || null,
+    },
+  });
   const days = await SubscriptionDay.find({ subscriptionId: id }).sort({ date: 1 }).lean();
   return res.status(200).json({ status: true, data: days });
 }
@@ -5044,6 +5229,7 @@ module.exports = {
   updateMealsSortOrder,
   getRestaurantHours,
   updateRestaurantHours,
+  toggleRestaurantOpen,
   updateCutoff,
   updateDeliveryWindows,
   updateSkipAllowance,

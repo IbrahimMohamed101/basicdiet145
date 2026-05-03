@@ -9,7 +9,7 @@ const PromoCodeSchema = new mongoose.Schema(
     isActive: { type: Boolean, default: true },
     appliesTo: {
       type: String,
-      enum: ["subscription"],
+      enum: ["subscription", "addon_plans", "all"],
       default: "subscription",
       required: true,
     },

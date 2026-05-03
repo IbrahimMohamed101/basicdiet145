@@ -2,10 +2,27 @@ const PromoCode = require("../models/PromoCode");
 const PromoUsage = require("../models/PromoUsage");
 const errorResponse = require("../utils/errorResponse");
 const validateObjectId = require("../utils/validateObjectId");
+const { writeLog } = require("../utils/log");
 const {
   serializePromoCodeForAdmin,
   normalizePromoPayload,
+  applyPromoCodeToSubscriptionQuote,
 } = require("../services/promoCodeService");
+
+async function writePromoActivityLog(req, promo, action) {
+  try {
+    await writeLog({
+      entityType: "promo_code",
+      entityId: promo._id || promo.id,
+      action,
+      byUserId: req.dashboardUserId || req.userId,
+      byRole: req.dashboardUserRole || req.userRole,
+      meta: { code: promo.code },
+    });
+  } catch (_err) {
+    // Activity logging must never make catalog administration fail.
+  }
+}
 
 function buildPromoQuery(includeDeleted = false) {
   return includeDeleted ? {} : { deletedAt: null };
@@ -66,6 +83,7 @@ async function createPromoCodeAdmin(req, res) {
   try {
     const normalized = normalizePromoPayload(req.body || {});
     const promo = await PromoCode.create(normalized);
+    await writePromoActivityLog(req, promo, "promo_code_created_by_admin");
     return res.status(201).json({
       status: true,
       data: serializePromoCodeForAdmin(promo.toObject ? promo.toObject() : promo),
@@ -102,6 +120,7 @@ async function updatePromoCodeAdmin(req, res) {
     });
     Object.assign(existing, normalized);
     await existing.save();
+    await writePromoActivityLog(req, existing, "promo_code_updated_by_admin");
     return res.status(200).json({
       status: true,
       data: serializePromoCodeForAdmin(existing.toObject ? existing.toObject() : existing),
@@ -132,6 +151,7 @@ async function togglePromoCodeActive(req, res) {
 
   promo.isActive = !promo.isActive;
   await promo.save();
+  await writePromoActivityLog(req, promo, "promo_code_toggled_by_admin");
 
   return res.status(200).json({
     status: true,
@@ -164,11 +184,49 @@ async function deletePromoCodeAdmin(req, res) {
   promo.deletedAt = new Date();
   promo.isActive = false;
   await promo.save();
+  await writePromoActivityLog(req, promo, "promo_code_deleted_by_admin");
 
   return res.status(200).json({
     status: true,
     data: serializePromoCodeForAdmin(promo.toObject ? promo.toObject() : promo),
   });
+}
+
+async function validatePromoCodeAdmin(req, res) {
+  const body = req.body || {};
+  try {
+    const quote = {
+      plan: {
+        _id: body.planId || (body.quote && body.quote.planId) || undefined,
+        daysCount: body.daysCount || (body.quote && body.quote.daysCount) || 0,
+      },
+      breakdown: body.breakdown || (body.quote && body.quote.breakdown) || {
+        basePlanPriceHalala: Number(body.subtotalHalala || body.totalHalala || 0),
+        premiumTotalHalala: 0,
+        addonsTotalHalala: 0,
+        deliveryFeeHalala: 0,
+        vatPercentage: Number(body.vatPercentage || 0),
+      },
+    };
+    const result = await applyPromoCodeToSubscriptionQuote({
+      promoCode: body.promoCode || body.code,
+      userId: body.userId || req.dashboardUserId,
+      quote,
+    });
+    return res.status(200).json({
+      status: true,
+      data: {
+        valid: true,
+        promo: result.appliedPromo,
+        breakdown: result.quote.breakdown,
+      },
+    });
+  } catch (err) {
+    if (String(err.code || "").startsWith("PROMO_")) {
+      return errorResponse(res, err.status || 400, err.code, err.message);
+    }
+    throw err;
+  }
 }
 
 module.exports = {
@@ -178,4 +236,5 @@ module.exports = {
   updatePromoCodeAdmin,
   togglePromoCodeActive,
   deletePromoCodeAdmin,
+  validatePromoCodeAdmin,
 };

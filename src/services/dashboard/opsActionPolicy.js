@@ -19,40 +19,40 @@ const ACTION_REGISTRY = {
     label: { ar: "بدء التحضير", en: "Start Preparation" },
     color: "orange",
     icon: "chef-hat",
-    roles: ["kitchen"],
+    roles: ["admin", "kitchen"],
   },
   dispatch: {
     label: { ar: "خروج للتوصيل", en: "Dispatch" },
     color: "indigo",
     icon: "truck",
-    roles: ["kitchen"],
+    roles: ["admin", "kitchen", "courier"],
     modes: ["delivery"],
   },
   ready_for_pickup: {
     label: { ar: "جاهز للاستلام", en: "Ready for Pickup" },
     color: "green",
     icon: "shopping-bag",
-    roles: ["kitchen"],
+    roles: ["admin", "kitchen"],
     modes: ["pickup"],
   },
   notify_arrival: {
     label: { ar: "تنبيه بالوصول", en: "Notify Arrival" },
     color: "yellow",
     icon: "bell",
-    roles: ["courier", "admin"],
+    roles: ["admin", "courier"],
     modes: ["delivery"],
   },
   fulfill: {
     label: { ar: "إتمام العملية", en: "Fulfill" },
     color: "green",
     icon: "check-circle",
-    roles: ["courier", "kitchen", "admin"], // Courier for delivery, Kitchen for pickup
+    roles: ["admin", "courier", "kitchen"], // Courier for delivery, Kitchen for pickup
   },
   cancel: {
     label: { ar: "إلغاء", en: "Cancel" },
     color: "red",
     icon: "x-circle",
-    roles: ["admin", "kitchen"],
+    roles: ["admin", "kitchen", "courier"],
     requiresReason: true,
   },
   reopen: {
@@ -65,13 +65,15 @@ const ACTION_REGISTRY = {
 
 const TRANSITION_RULES = {
   subscription: {
-    open: ["lock", "cancel"],
+    open: ["prepare", "lock", "cancel"],
     locked: ["prepare", "reopen", "cancel"],
     in_preparation: ["dispatch", "ready_for_pickup", "cancel"],
     out_for_delivery: ["notify_arrival", "fulfill", "cancel"],
     ready_for_pickup: ["fulfill", "cancel"],
     fulfilled: [],
-    delivery_canceled: [],
+    delivery_canceled: ["reopen"],
+    canceled_at_branch: ["reopen"],
+    no_show: ["reopen"],
     skipped: ["cancel"],
     frozen: ["cancel"],
   },
@@ -90,7 +92,10 @@ const TRANSITION_RULES = {
  * Get all allowed actions for an entity.
  */
 function getAllowedActions({ entityType, status, mode, role, lang = "ar" }) {
-  const typeRules = TRANSITION_RULES[entityType] || {};
+  const normalizedEntityType = entityType === "subscription_day" || entityType === "pickup_day"
+    ? "subscription"
+    : entityType;
+  const typeRules = TRANSITION_RULES[normalizedEntityType] || {};
   const allowedIds = typeRules[status] || [];
 
   return allowedIds
@@ -119,6 +124,9 @@ function getAllowedActions({ entityType, status, mode, role, lang = "ar" }) {
  * Validate if an action is allowed.
  */
 function validateAction({ entityType, status, mode, role, actionId }) {
+  const normalizedEntityType = entityType === "subscription_day" || entityType === "pickup_day"
+    ? "subscription"
+    : entityType;
   const config = ACTION_REGISTRY[actionId];
   if (!config) {
     return { allowed: false, reason: "UNKNOWN_ACTION" };
@@ -135,7 +143,14 @@ function validateAction({ entityType, status, mode, role, actionId }) {
   }
 
   // State check
-  const typeRules = TRANSITION_RULES[entityType] || {};
+  if (actionId === "fulfill" && role === "kitchen" && mode !== "pickup") {
+    return { allowed: false, reason: "INVALID_ROLE_FOR_MODE" };
+  }
+  if (actionId === "cancel" && role === "courier" && mode !== "delivery") {
+    return { allowed: false, reason: "INVALID_ROLE_FOR_MODE" };
+  }
+
+  const typeRules = TRANSITION_RULES[normalizedEntityType] || {};
   const allowedIds = typeRules[status] || [];
   if (!allowedIds.includes(actionId)) {
     return { allowed: false, reason: "INVALID_STATE_TRANSITION" };

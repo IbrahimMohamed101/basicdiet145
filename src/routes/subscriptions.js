@@ -197,7 +197,7 @@ router.post("/:id/cancel", asyncHandler(controller.cancelSubscription));
  *                             type: integer
  *                           status:
  *                             type: string
- *                             enum: [open, planned, locked, delivered, delivery_canceled, canceled_at_branch, no_show, frozen, skipped, extension]
+   *                             enum: [open, planned, locked, delivered, consumed_without_preparation, delivery_canceled, canceled_at_branch, no_show, frozen, skipped, extension]
  *                           statusLabel:
  *                             type: string
  *                           selectedMeals:

@@ -1,5 +1,26 @@
 const appContentService = require("../services/appContentService");
 const errorResponse = require("../utils/errorResponse");
+const { writeLog } = require("../utils/log");
+
+async function writeContentActivityLogSafely(req, data) {
+  if (!req || !req.dashboardUserId) return;
+  try {
+    await writeLog({
+      entityType: "content",
+      entityId: req.dashboardUserId,
+      action: "subscription_terms_content_upserted_by_admin",
+      byUserId: req.dashboardUserId,
+      byRole: req.dashboardUserRole,
+      meta: {
+        key: data && data.key,
+        locale: data && data.locale,
+        version: data && data.version,
+      },
+    });
+  } catch (_err) {
+    // Content writes should not fail because activity logging failed.
+  }
+}
 
 async function getSubscriptionTerms(req, res) {
   const locale = req.query.locale || appContentService.DEFAULT_LOCALE;
@@ -40,6 +61,7 @@ async function upsertSubscriptionTermsAdmin(req, res) {
       locale: payload.locale,
       updatedBy: req.dashboardUserId || req.userId || null,
     });
+    await writeContentActivityLogSafely(req, data);
 
     return res.status(200).json({ status: true, data });
   } catch (error) {

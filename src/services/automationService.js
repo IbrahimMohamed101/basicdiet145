@@ -4,6 +4,9 @@ const SubscriptionDay = require("../models/SubscriptionDay");
 const { getTodayKSADate } = require("../utils/date");
 const { logger } = require("../utils/logger");
 const { consumeSubscriptionDayCredits } = require("./subscription/subscriptionDayConsumptionService");
+const {
+  settlePastSubscriptionDaysForRange,
+} = require("./subscription/pastSubscriptionDaySettlementService");
 
 let isCutoffJobRunning = false;
 
@@ -20,6 +23,11 @@ async function processDailyCutoff() {
     session.startTransaction();
 
     const today = getTodayKSADate();
+    const pastSettlement = await settlePastSubscriptionDaysForRange({
+      dateBefore: today,
+      now: new Date(),
+      actor: { actorType: "system" },
+    });
     const days = await SubscriptionDay.find({
       date: today,
       status: { $nin: ["skipped", "frozen", "fulfilled", "no_show", "consumed_without_preparation"] },
@@ -65,6 +73,7 @@ async function processDailyCutoff() {
     logger.info("Automation cutoff processed pickup end-of-day consumption", {
       date: today,
       consumedCount,
+      pastSettlement,
     });
   } catch (err) {
     await session.abortTransaction();
