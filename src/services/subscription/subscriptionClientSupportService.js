@@ -23,6 +23,7 @@ const {
   buildCanonicalPlanningView,
   isCanonicalDayPlanningEligible,
 } = require("./subscriptionDayPlanningService");
+const { toKSADateString } = require("../../utils/date");
 const { logger } = require("../../utils/logger");
 
 function buildSupportRuntime(runtimeOverrides = null) {
@@ -131,7 +132,7 @@ function applyLegacyMealPlannerResponseMirrors({ subscription = null, day, lang 
   return mirrored;
 }
 
-function shapeMealPlannerReadFields({ subscription = null, day, lang = "ar", pickupLocations = [] }) {
+function shapeMealPlannerReadFields({ subscription = null, day, lang = "ar", pickupLocations = [], businessDate = null }) {
   if (!day || typeof day !== "object") return day;
 
   const shaped = applySubscriptionDayFulfillmentState({
@@ -141,6 +142,7 @@ function shapeMealPlannerReadFields({ subscription = null, day, lang = "ar", pic
       day: applyCommercialStateToDay(day),
       lang,
     }),
+    today: businessDate || undefined,
   });
   const commercialStateLabel = resolveReadLabel("commercialStates", shaped.commercialState, lang);
   const premiumExtraPaymentStatus = (shaped.premiumExtraPayment && shaped.premiumExtraPayment.status) || "none";
@@ -162,9 +164,16 @@ function shapeMealPlannerReadFields({ subscription = null, day, lang = "ar", pic
     })
     : {};
 
+  const effectiveBusinessDate = businessDate || shaped.today || toKSADateString(new Date());
+
+  const mealBalance = (subscription && effectiveBusinessDate)
+    ? buildMealBalance(subscription, effectiveBusinessDate)
+    : undefined;
+
   return {
     ...shaped,
     ...fulfillmentReadFields,
+    mealBalance,
     rules: getMealPlannerRules(),
     commercialStateLabel,
     premiumExtraPayment: {
@@ -259,6 +268,36 @@ function logWalletIntegrityError(context, meta = {}) {
   logger.error(`WALLET_INTEGRITY_ERROR: ${context}`, meta);
 }
 
+function buildMealBalance(subscription, businessDate) {
+  const remainingMeals = Number(subscription.remainingMeals || 0);
+  const totalMeals = Number(subscription.totalMeals || 0);
+  const consumedMeals = Math.max(0, totalMeals - remainingMeals);
+  const isSubscriptionActive = subscription.status === "active";
+
+  const validityEndDateStr = subscription.validityEndDate
+    ? toKSADateString(subscription.validityEndDate)
+    : (subscription.endDate ? toKSADateString(subscription.endDate) : null);
+
+  const isInsideValidity = !validityEndDateStr || businessDate <= validityEndDateStr;
+
+  // canConsumeNow is true only if active, in validity, AND has remaining meals
+  const canConsumeNow = isSubscriptionActive && isInsideValidity && remainingMeals > 0;
+
+  // maxConsumableMealsNow is remainingMeals if active and in validity, else 0
+  const maxConsumableMealsNow = (isSubscriptionActive && isInsideValidity) ? remainingMeals : 0;
+
+  return {
+    totalMeals,
+    remainingMeals,
+    consumedMeals,
+    canConsumeNow,
+    maxConsumableMealsNow,
+    mealBalancePolicy: "TOTAL_BALANCE_WITHIN_VALIDITY",
+    dailyMealLimitEnforced: false,
+    dailyMealsDefault: Number(subscription.selectedMealsPerDay || subscription.mealsPerDay || 0),
+  };
+}
+
 module.exports = {
   buildControllerErrorDetails,
   buildProjectedOpenDayForClient,
@@ -268,4 +307,5 @@ module.exports = {
   resolveRequestedDate,
   serializeSubscriptionDayForClient,
   shapeMealPlannerReadFields,
+  buildMealBalance,
 };

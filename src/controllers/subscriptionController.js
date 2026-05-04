@@ -2144,6 +2144,7 @@ async function getSubscriptionDays(req, res) {
   const serializedDays = days.map((day) => serializeSubscriptionDayForClient(sub, day));
   const catalog = await loadWalletCatalogMaps({ days: serializedDays, lang });
   const pickupLocations = await getPickupLocationsSetting();
+  const businessDate = await getRestaurantBusinessDate();
   const mappedDays = serializedDays.map((day) => shapeMealPlannerReadFields({
     subscription: sub,
     day: localizeSubscriptionDayReadPayload(day, {
@@ -2152,6 +2153,7 @@ async function getSubscriptionDays(req, res) {
     }),
     lang,
     pickupLocations,
+    businessDate,
   }));
   return res.status(200).json({ status: true, data: mappedDays });
 }
@@ -2191,6 +2193,7 @@ async function getSubscriptionDay(req, res) {
       day: localizedDay,
       lang,
       pickupLocations,
+      businessDate: await getRestaurantBusinessDate(),
     }),
   });
 }
@@ -2230,6 +2233,7 @@ async function getSubscriptionToday(req, res) {
       day: localizedDay,
       lang,
       pickupLocations,
+      businessDate: await getRestaurantBusinessDate(),
     }),
   });
 }

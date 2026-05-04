@@ -20,6 +20,7 @@ const {
   getPickupLocationsSetting,
 } = require("./subscriptionFulfillmentSummaryService");
 const { resolveReadLabel } = require("../../utils/subscription/subscriptionLocalizationCommon");
+const { buildMealBalance } = require("./subscriptionClientSupportService");
 
 /**
  * @typedef {import("../../types/subscriptionTimeline").TimelineDay} TimelineDay
@@ -447,12 +448,9 @@ async function buildSubscriptionTimeline(subscriptionId, options = {}) {
   }
 
   // ── Additive meal balance fields (new policy) ──────────────────────────────
-  const remainingMeals = Number(subscription.remainingMeals || 0);
-  const totalMeals = Number(subscription.totalMeals || 0);
-  const consumedMeals = Math.max(0, totalMeals - remainingMeals);
-  const isSubscriptionActive = subscription.status === "active";
-  const canConsumeNow = isSubscriptionActive && businessDate <= validityEndDateStr;
-  const maxConsumableMealsNow = canConsumeNow ? remainingMeals : 0;
+  const mealBalance = buildMealBalance(subscription, businessDate);
+  // Optional override for dailyMealsDefault if timeline needs specifically requiredMealsPerDay
+  mealBalance.dailyMealsDefault = requiredMealsPerDay;
   // ────────────────────────────────────────────────────────────────────────────
 
   return {
@@ -465,18 +463,7 @@ async function buildSubscriptionTimeline(subscriptionId, options = {}) {
       freezeCompensationDays: compensation.freezeCount,
       skipCompensationDays: compensation.skipCount,
     },
-    // Additive meal balance block — frontend must use these values instead of
-    // inferring consumption from past dates.
-    mealBalance: {
-      totalMeals,
-      remainingMeals,
-      consumedMeals,
-      canConsumeNow,
-      maxConsumableMealsNow,
-      mealBalancePolicy: "TOTAL_BALANCE_WITHIN_VALIDITY",
-      dailyMealLimitEnforced: false,
-      dailyMealsDefault: requiredMealsPerDay,
-    },
+    mealBalance,
     months: buildTimelineMonthSummary(timelineDays),
     dailyMealsConfig: {
       required: requiredMealsPerDay,
