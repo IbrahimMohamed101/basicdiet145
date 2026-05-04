@@ -335,7 +335,7 @@ async function applyOperationalSkipForDate({ sub, date, session }) {
         status: "skipped",
         skippedByUser: false,
         skipCompensated: false,
-        creditsDeducted: true,
+        creditsDeducted: false,
         canonicalDayActionType: "skip",
       }],
       { session }
@@ -349,7 +349,7 @@ async function applyOperationalSkipForDate({ sub, date, session }) {
           status: "skipped",
           skippedByUser: false,
           skipCompensated: false,
-          creditsDeducted: true,
+          creditsDeducted: false,
           canonicalDayActionType: "skip",
         },
       },
@@ -361,8 +361,8 @@ async function applyOperationalSkipForDate({ sub, date, session }) {
   }
 
   const updatedSubscription = await Subscription.findOneAndUpdate(
-    { _id: sub._id, remainingMeals: { $gte: mealsToDeduct } },
-    { $inc: { remainingMeals: -mealsToDeduct, skippedCount: 1 } },
+    { _id: sub._id },
+    { $inc: { skippedCount: 1 } },
     { new: true, session }
   );
 

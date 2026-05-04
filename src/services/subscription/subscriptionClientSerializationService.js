@@ -19,6 +19,7 @@ const {
   resolveEffectiveSubscriptionStatus,
 } = require("./subscriptionOperationsReadService");
 const { getRestaurantBusinessDate } = require("../restaurantHoursService");
+const dateUtils = require("../../utils/date");
 const { SYSTEM_CURRENCY } = require("../../utils/currency");
 
 const CATALOG_CACHE_TTL = 300000; // 5 minutes
@@ -227,10 +228,33 @@ async function serializeSubscriptionForClient(subscription, lang) {
   const data = { ...subscription };
   delete data.__v;
 
-  data.status = resolveEffectiveSubscriptionStatus(data, await getRestaurantBusinessDate()) || data.status;
+  const businessDate = await getRestaurantBusinessDate();
+  data.status = resolveEffectiveSubscriptionStatus(data, businessDate) || data.status;
+
+  // ── Additive meal balance fields (new policy) ──────────────────────────────
+  const remainingMeals = Number(data.remainingMeals || 0);
+  const totalMeals = Number(data.totalMeals || 0);
+  const consumedMeals = Math.max(0, totalMeals - remainingMeals);
+  const isSubscriptionActive = data.status === "active";
+  const validityEndDateStr = data.validityEndDate ? dateUtils.toKSADateString(data.validityEndDate) : (data.endDate ? dateUtils.toKSADateString(data.endDate) : null);
+  const canConsumeNow = isSubscriptionActive && (!validityEndDateStr || businessDate <= validityEndDateStr);
+  const maxConsumableMealsNow = canConsumeNow ? remainingMeals : 0;
+  
+  const mealBalance = {
+    totalMeals,
+    remainingMeals,
+    consumedMeals,
+    canConsumeNow,
+    maxConsumableMealsNow,
+    mealBalancePolicy: "TOTAL_BALANCE_WITHIN_VALIDITY",
+    dailyMealLimitEnforced: false,
+    dailyMealsDefault: Number(data.selectedMealsPerDay || data.mealsPerDay || 0),
+  };
+  // ────────────────────────────────────────────────────────────────────────────
 
   return localizeSubscriptionReadPayload({
     ...data,
+    mealBalance,
     deliveryAddress: subscription.deliveryAddress || null,
     deliverySlot,
     pricingSummary: resolveSubscriptionPricingSummary(subscription),

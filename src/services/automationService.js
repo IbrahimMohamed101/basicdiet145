@@ -1,12 +1,24 @@
-const mongoose = require("mongoose");
-const Subscription = require("../models/Subscription");
-const SubscriptionDay = require("../models/SubscriptionDay");
-const { getTodayKSADate } = require("../utils/date");
+"use strict";
+
+/**
+ * Automation Service
+ *
+ * NOTE (2026-05-04): The daily cutoff job that previously auto-settled past
+ * subscription days and auto-consumed pickup-mode days has been DISABLED as part
+ * of the new meal balance policy.
+ *
+ * Old behavior (removed):
+ *   1. settlePastSubscriptionDaysForRange() — marked past days as
+ *      consumed_without_preparation and deducted remainingMeals.
+ *   2. Pickup-day loop — deducted meals for today's pickup days that did not
+ *      have pickupRequested=true when the window ended.
+ *
+ * New policy: meals are only deducted on actual operational fulfillment or an
+ * explicit cashier/manual consumption action. Calendar-day passage never
+ * consumes meals.
+ */
+
 const { logger } = require("../utils/logger");
-const { consumeSubscriptionDayCredits } = require("./subscription/subscriptionDayConsumptionService");
-const {
-  settlePastSubscriptionDaysForRange,
-} = require("./subscription/pastSubscriptionDaySettlementService");
 
 let isCutoffJobRunning = false;
 
@@ -17,68 +29,15 @@ async function processDailyCutoff() {
     throw err;
   }
   isCutoffJobRunning = true;
-
-  const session = await mongoose.startSession();
   try {
-    session.startTransaction();
-
-    const today = getTodayKSADate();
-    const pastSettlement = await settlePastSubscriptionDaysForRange({
-      dateBefore: today,
-      now: new Date(),
-      actor: { actorType: "system" },
+    // DISABLED: Calendar-day auto-consumption is no longer performed.
+    // Under the new meal balance policy, meals are only deducted on actual
+    // operational fulfillment or an explicit cashier/manual consumption action.
+    // This function is kept as a no-op to preserve the scheduler integration
+    // without breaking the job invocation.
+    logger.info("processDailyCutoff: auto-settlement and pickup auto-consumption are disabled (new meal balance policy)", {
+      policyVersion: "TOTAL_BALANCE_WITHIN_VALIDITY",
     });
-    const days = await SubscriptionDay.find({
-      date: today,
-      status: { $nin: ["skipped", "frozen", "fulfilled", "no_show", "consumed_without_preparation"] },
-      pickupRequested: { $ne: true },
-      creditsDeducted: { $ne: true },
-    }).session(session);
-
-    const subscriptionIds = Array.from(new Set(days.map((day) => String(day.subscriptionId))));
-    const subscriptions = subscriptionIds.length
-      ? await Subscription.find({ _id: { $in: subscriptionIds }, deliveryMode: "pickup" }).session(session)
-      : [];
-    const subscriptionMap = new Map(subscriptions.map((sub) => [String(sub._id), sub]));
-
-    let consumedCount = 0;
-    for (const day of days) {
-      const subscription = subscriptionMap.get(String(day.subscriptionId));
-      if (!subscription) {
-        continue;
-      }
-      if (["in_preparation", "ready_for_pickup"].includes(day.status)) {
-        continue;
-      }
-
-      await consumeSubscriptionDayCredits({
-        day,
-        subscription,
-        session,
-        reason: "pickup_window_ended_without_prepare",
-      });
-
-      day.status = "consumed_without_preparation";
-      day.dayEndConsumptionReason = "pickup_window_ended_without_prepare";
-      day.pickupRequested = false;
-      day.pickupCode = null;
-      day.pickupCodeIssuedAt = null;
-      await day.save({ session });
-      consumedCount += 1;
-    }
-
-    await session.commitTransaction();
-    session.endSession();
-
-    logger.info("Automation cutoff processed pickup end-of-day consumption", {
-      date: today,
-      consumedCount,
-      pastSettlement,
-    });
-  } catch (err) {
-    await session.abortTransaction();
-    session.endSession();
-    throw err;
   } finally {
     isCutoffJobRunning = false;
   }

@@ -280,9 +280,31 @@ function serializeSubscriptionForClientFromCatalog(subscription, catalog, contra
   delete data.__v;
   delete data.addonBalance;
   delete data.addonSelections;
-  data.status = resolveEffectiveSubscriptionStatus(data, dateUtils.getTodayKSADate()) || data.status;
+  const businessDate = dateUtils.getTodayKSADate();
+  data.status = resolveEffectiveSubscriptionStatus(data, businessDate) || data.status;
 
-  return { ...data, id, displayId: id ? buildAdminSubscriptionDisplayId(subscription) : null, plan: planId ? { id: planId, name: planName } : null, planName, deliveryAddress: subscription.deliveryAddress || null, deliverySlot, premiumSummary, addonsSummary, contract: contractView.contract };
+  // ── Additive meal balance fields (new policy) ──────────────────────────────
+  const remainingMeals = Number(data.remainingMeals || 0);
+  const totalMeals = Number(data.totalMeals || 0);
+  const consumedMeals = Math.max(0, totalMeals - remainingMeals);
+  const isSubscriptionActive = data.status === "active";
+  const validityEndDateStr = data.validityEndDate ? dateUtils.toKSADateString(data.validityEndDate) : (data.endDate ? dateUtils.toKSADateString(data.endDate) : null);
+  const canConsumeNow = isSubscriptionActive && (!validityEndDateStr || businessDate <= validityEndDateStr);
+  const maxConsumableMealsNow = canConsumeNow ? remainingMeals : 0;
+  
+  const mealBalance = {
+    totalMeals,
+    remainingMeals,
+    consumedMeals,
+    canConsumeNow,
+    maxConsumableMealsNow,
+    mealBalancePolicy: "TOTAL_BALANCE_WITHIN_VALIDITY",
+    dailyMealLimitEnforced: false,
+    dailyMealsDefault: Number(data.selectedMealsPerDay || data.mealsPerDay || 0),
+  };
+  // ────────────────────────────────────────────────────────────────────────────
+
+  return { ...data, id, displayId: id ? buildAdminSubscriptionDisplayId(subscription) : null, mealBalance, plan: planId ? { id: planId, name: planName } : null, planName, deliveryAddress: subscription.deliveryAddress || null, deliverySlot, premiumSummary, addonsSummary, contract: contractView.contract };
 }
 
 function serializeClientUserSummary(userDoc) {

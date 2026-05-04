@@ -13,9 +13,7 @@ const errorResponse = require("../../utils/errorResponse");
 const dateUtils = require("../../utils/date");
 const { getRequestLang } = require("../../utils/i18n");
 const { getRestaurantBusinessDate } = require("../../services/restaurantHoursService");
-const {
-  settlePastSubscriptionDaysForDate,
-} = require("../../services/subscription/pastSubscriptionDaySettlementService");
+// Settlement on read is DISABLED — see pastSubscriptionDaySettlementService.js
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -173,13 +171,7 @@ async function queryBoardDays(req, { screen }) {
       : defaultStatuses
   );
 
-  await settlePastSubscriptionDaysForDate({
-    date,
-    actor: {
-      actorType: role,
-      dashboardUserId: req.dashboardUserId || req.userId || null,
-    },
-  });
+  // Settlement on read intentionally removed — meals are not consumed by date passage.
 
   const dayQuery = { date, status: { $in: statuses } };
   const days = await SubscriptionDay.find(dayQuery)
@@ -294,15 +286,7 @@ async function queue(req, res) {
 
 async function queueDetail(req, res) {
   const existingDay = await SubscriptionDay.findById(req.params.dayId).select("date").lean();
-  if (existingDay) {
-    await settlePastSubscriptionDaysForDate({
-      date: existingDay.date,
-      actor: {
-        actorType: req.dashboardUserRole || req.userRole || "admin",
-        dashboardUserId: req.dashboardUserId || req.userId || null,
-      },
-    });
-  }
+  // Settlement on read intentionally removed — meals are not consumed by date passage.
   const day = await SubscriptionDay.findById(req.params.dayId)
     .populate({
       path: "subscriptionId",
@@ -358,15 +342,7 @@ async function action(req, res) {
   }
 
   const existingDay = await SubscriptionDay.findById(entityId).select("date").lean();
-  if (existingDay) {
-    await settlePastSubscriptionDaysForDate({
-      date: existingDay.date,
-      actor: {
-        actorType: req.dashboardUserRole || req.userRole || "admin",
-        dashboardUserId: req.dashboardUserId || req.userId || null,
-      },
-    });
-  }
+  // Settlement on read intentionally removed — meals are not consumed by date passage.
   const day = await SubscriptionDay.findById(entityId).populate("subscriptionId", "deliveryMode").lean();
   if (!day) return errorResponse(res, 404, "NOT_FOUND", "Subscription day not found");
   const mode = getDeliveryMode(day.subscriptionId || {});

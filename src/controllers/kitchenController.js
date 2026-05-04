@@ -1022,22 +1022,9 @@ async function markPickupNoShow(req, res) {
       return errorResponse(res, 409, "PICKUP_PREPARE_REQUIRED", "Cannot mark no-show without a pickup prepare request");
     }
 
-    try {
-      const consumption = await consumeSubscriptionDayCredits({
-        day,
-        subscription: sub,
-        session,
-        reason: "pickup_no_show",
-      });
-      deductedCredits = consumption.deductedCredits;
-    } catch (err) {
-      if (err.code === "INSUFFICIENT_CREDITS") {
-        await session.abortTransaction();
-        session.endSession();
-        return errorResponse(res, 409, "INSUFFICIENT_CREDITS", "Not enough credits");
-      }
-      throw err;
-    }
+    // No-show under the new TOTAL_BALANCE_WITHIN_VALIDITY policy does not consume meals
+    // Only explicit operational fulfillments or Cashier operations consume meals.
+    deductedCredits = 0;
 
     day.status = "no_show";
     day.pickupRequested = false;

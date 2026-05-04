@@ -19,9 +19,7 @@ const {
 const {
   buildSubscriptionTimeline,
 } = require("../services/subscription/subscriptionService");
-const {
-  settlePastSubscriptionDaysForSubscription,
-} = require("../services/subscription/pastSubscriptionDaySettlementService");
+// Settlement on read is DISABLED — see pastSubscriptionDaySettlementService.js
 const {
   buildPhase1SubscriptionContract,
   buildCanonicalDraftPersistenceFields,
@@ -2141,10 +2139,7 @@ async function getSubscriptionDays(req, res) {
   if (sub.userId.toString() !== req.userId.toString()) {
     return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
   }
-  await settlePastSubscriptionDaysForSubscription({
-    subscriptionId: id,
-    actor: { actorType: "client", userId: req.userId },
-  });
+  // Settlement on read intentionally removed — meals are not consumed by date passage.
   const days = await SubscriptionDay.find({ subscriptionId: id }).sort({ date: 1 }).lean();
   const serializedDays = days.map((day) => serializeSubscriptionDayForClient(sub, day));
   const catalog = await loadWalletCatalogMaps({ days: serializedDays, lang });
@@ -2177,10 +2172,7 @@ async function getSubscriptionDay(req, res) {
   if (sub.userId.toString() !== req.userId.toString()) {
     return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
   }
-  await settlePastSubscriptionDaysForSubscription({
-    subscriptionId: id,
-    actor: { actorType: "client", userId: req.userId },
-  });
+  // Settlement on read intentionally removed — meals are not consumed by date passage.
   const day = await SubscriptionDay.findOne({ subscriptionId: id, date }).lean();
   if (!day) {
     return errorResponse(res, 404, "NOT_FOUND", "Day not found");

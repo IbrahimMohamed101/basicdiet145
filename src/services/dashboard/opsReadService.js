@@ -8,9 +8,7 @@ const User = require("../../models/User");
 const dashboardDtoService = require("./dashboardDtoService");
 const ar = require("../../locales/ar");
 const en = require("../../locales/en");
-const {
-  settlePastSubscriptionDaysForDate,
-} = require("../subscription/pastSubscriptionDaySettlementService");
+// Settlement on read is DISABLED — see pastSubscriptionDaySettlementService.js
 
 const LOCALES = { ar, en };
 
@@ -22,10 +20,7 @@ function getLocalizedLabel(status, lang) {
 }
 
 async function listOperations({ date, role, lang = "ar" }) {
-  await settlePastSubscriptionDaysForDate({
-    date,
-    actor: { actorType: role || "system" },
-  });
+  // Settlement on read intentionally removed — meals are not consumed by date passage.
   // 1. Fetch SubscriptionDays for the date
   const days = await SubscriptionDay.find({ date }).lean();
   
@@ -102,12 +97,7 @@ async function listOperations({ date, role, lang = "ar" }) {
 async function getEnrichedDTO({ entityId, entityType, role, lang = "ar" }) {
   if (entityType === "subscription") {
     const existingDay = await SubscriptionDay.findById(entityId).select("date").lean();
-    if (existingDay) {
-      await settlePastSubscriptionDaysForDate({
-        date: existingDay.date,
-        actor: { actorType: role || "system" },
-      });
-    }
+    // Settlement on read intentionally removed — meals are not consumed by date passage.
     const day = await SubscriptionDay.findById(entityId).lean();
     if (!day) return null;
 

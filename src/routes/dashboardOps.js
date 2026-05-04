@@ -3,6 +3,7 @@ const controller = require("../controllers/dashboard/opsController");
 const actionController = require("../controllers/dashboard/opsActionController");
 const asyncHandler = require("../middleware/asyncHandler");
 const { dashboardAuthMiddleware, dashboardRoleMiddleware } = require("../middleware/dashboardAuth");
+const cashierController = require("../controllers/dashboard/cashierController");
 
 const router = Router();
 
@@ -27,6 +28,21 @@ router.post(
   dashboardAuthMiddleware,
   dashboardRoleMiddleware(["admin", "kitchen", "courier"]),
   asyncHandler(actionController.handleAction)
+);
+
+// Phase 5: Cashier Flow
+router.get(
+  "/cashier/customer-lookup",
+  dashboardAuthMiddleware,
+  dashboardRoleMiddleware(["admin", "kitchen", "cashier"]),
+  asyncHandler(cashierController.customerLookup)
+);
+
+router.post(
+  "/cashier/customer-consumption",
+  dashboardAuthMiddleware,
+  dashboardRoleMiddleware(["admin", "kitchen", "cashier"]),
+  asyncHandler(cashierController.customerConsumption)
 );
 
 module.exports = router;

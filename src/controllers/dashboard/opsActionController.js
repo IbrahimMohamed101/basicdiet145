@@ -6,9 +6,7 @@ const Subscription = require("../../models/Subscription");
 const Order = require("../../models/Order");
 const errorResponse = require("../../utils/errorResponse");
 const { getRequestLang } = require("../../utils/i18n");
-const {
-  settlePastSubscriptionDaysForDate,
-} = require("../../services/subscription/pastSubscriptionDaySettlementService");
+// Settlement on read is DISABLED — see pastSubscriptionDaySettlementService.js
 
 /**
  * Controller for the Unified Actions API.
@@ -56,15 +54,7 @@ async function handleAction(req, res) {
       // 1. Fetch current state for validation
       const Model = SubscriptionDay;
       const existingDoc = await Model.findById(entityId).lean();
-      if (existingDoc) {
-        await settlePastSubscriptionDaysForDate({
-          date: existingDoc.date,
-          actor: {
-            actorType: role || "admin",
-            dashboardUserId: req.dashboardUserId || req.userId || null,
-          },
-        });
-      }
+      // Settlement on read intentionally removed — meals are not consumed by date passage.
       const doc = await Model.findById(entityId).lean();
       if (!doc) {
         return errorResponse(res, 404, "NOT_FOUND", "Entity not found");

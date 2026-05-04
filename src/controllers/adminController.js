@@ -54,9 +54,7 @@ const {
 const { assertValidPhoneE164 } = require("../services/otpService");
 const SubscriptionLifecycleService = require("../services/subscription/subscriptionLifecycleService");
 const SubscriptionOperationsReadService = require("../services/subscription/subscriptionOperationsReadService");
-const {
-  settlePastSubscriptionDaysForSubscription,
-} = require("../services/subscription/pastSubscriptionDaySettlementService");
+// Settlement on read is DISABLED — see pastSubscriptionDaySettlementService.js
 const { resolveSubscriptionDeliveryDefaultsUpdate } = require("../services/subscription/subscriptionDeliveryUpdateService");
 const { writeAuditLog } = require("../services/subscription/subscriptionAuditLogService");
 const { getRestaurantBusinessDate } = require("../services/restaurantHoursService");
@@ -3778,14 +3776,8 @@ async function getSubscriptionAdmin(req, res) {
     return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
   }
 
-  await settlePastSubscriptionDaysForSubscription({
-    subscriptionId: id,
-    actor: {
-      actorType: req.userRole || req.dashboardUserRole || "admin",
-      dashboardUserId: req.dashboardUserId || req.userId || null,
-    },
-  });
-  const settledSubscription = await Subscription.findById(id).lean();
+  // Settlement on read intentionally removed — meals are not consumed by date passage.
+  const settledSubscription = subscription;
   const user = subscription.userId ? await User.findById(subscription.userId).lean() : null;
   const lang = getRequestLang(req);
   return res.status(200).json({
@@ -3805,13 +3797,7 @@ async function listSubscriptionDaysAdmin(req, res) {
     return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
   }
 
-  await settlePastSubscriptionDaysForSubscription({
-    subscriptionId: id,
-    actor: {
-      actorType: req.userRole || req.dashboardUserRole || "admin",
-      dashboardUserId: req.dashboardUserId || req.userId || null,
-    },
-  });
+  // Settlement on read intentionally removed — meals are not consumed by date passage.
   const days = await SubscriptionDay.find({ subscriptionId: id }).sort({ date: 1 }).lean();
   return res.status(200).json({ status: true, data: days });
 }

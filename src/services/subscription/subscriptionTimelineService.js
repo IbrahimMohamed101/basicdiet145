@@ -14,9 +14,7 @@ const { getCompensationSnapshot } = require("./subscriptionCompensationService")
 const { buildDayCommercialState } = require("./subscriptionDayCommercialStateService");
 const { buildSubscriptionDayFulfillmentState } = require("./subscriptionDayFulfillmentStateService");
 const { getRestaurantBusinessDate } = require("../restaurantHoursService");
-const {
-  settlePastSubscriptionDaysForSubscription,
-} = require("./pastSubscriptionDaySettlementService");
+// Settlement on read is DISABLED — see pastSubscriptionDaySettlementService.js
 const {
   buildFulfillmentReadFields,
   getPickupLocationsSetting,
@@ -344,12 +342,7 @@ async function buildSubscriptionTimeline(subscriptionId, options = {}) {
       }
   }
 
-  await settlePastSubscriptionDaysForSubscription({
-    subscriptionId,
-    businessDate,
-    now: options.now || new Date(),
-    actor: options.actor || { actorType: "system" },
-  });
+  // Settlement on read intentionally removed — meals are not consumed by date passage.
 
   const startDateStr = toKSADateString(subscription.startDate);
   const endDateStr = toKSADateString(subscription.endDate);
@@ -453,6 +446,15 @@ async function buildSubscriptionTimeline(subscriptionId, options = {}) {
     });
   }
 
+  // ── Additive meal balance fields (new policy) ──────────────────────────────
+  const remainingMeals = Number(subscription.remainingMeals || 0);
+  const totalMeals = Number(subscription.totalMeals || 0);
+  const consumedMeals = Math.max(0, totalMeals - remainingMeals);
+  const isSubscriptionActive = subscription.status === "active";
+  const canConsumeNow = isSubscriptionActive && businessDate <= validityEndDateStr;
+  const maxConsumableMealsNow = canConsumeNow ? remainingMeals : 0;
+  // ────────────────────────────────────────────────────────────────────────────
+
   return {
     subscriptionId: String(subscription._id),
     validity: {
@@ -462,6 +464,18 @@ async function buildSubscriptionTimeline(subscriptionId, options = {}) {
       compensationDays: compensation.totalCount,
       freezeCompensationDays: compensation.freezeCount,
       skipCompensationDays: compensation.skipCount,
+    },
+    // Additive meal balance block — frontend must use these values instead of
+    // inferring consumption from past dates.
+    mealBalance: {
+      totalMeals,
+      remainingMeals,
+      consumedMeals,
+      canConsumeNow,
+      maxConsumableMealsNow,
+      mealBalancePolicy: "TOTAL_BALANCE_WITHIN_VALIDITY",
+      dailyMealLimitEnforced: false,
+      dailyMealsDefault: requiredMealsPerDay,
     },
     months: buildTimelineMonthSummary(timelineDays),
     dailyMealsConfig: {

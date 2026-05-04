@@ -4199,6 +4199,90 @@
             }
           },
           "response": []
+        },
+        {
+          "name": "Cashier - Lookup Customer",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept-Language",
+                "value": "ar",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/dashboard/ops/cashier/customer-lookup?phone=0500000000",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "dashboard",
+                "ops",
+                "cashier",
+                "customer-lookup"
+              ],
+              "query": [
+                {
+                  "key": "phone",
+                  "value": "0500000000"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Cashier - Consume Meals",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept-Language",
+                "value": "ar",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"0500000000\",\n  \"mealCount\": 1,\n  \"note\": \"Ate in branch\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/dashboard/ops/cashier/customer-consumption",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "dashboard",
+                "ops",
+                "cashier",
+                "customer-consumption"
+              ]
+            }
+          },
+          "response": []
         }
       ]
     },
