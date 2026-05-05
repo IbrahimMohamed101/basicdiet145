@@ -29,6 +29,7 @@ const {
 const SYSTEM_CURRENCY = "SAR";
 const UNIFIED_DAY_PAYMENT_TYPE = "day_planning_payment";
 const FINAL_PAYMENT_STATUSES = new Set(["paid", "failed", "canceled", "expired", "refunded"]);
+const TERMINAL_NON_PAYABLE_STATUSES = new Set(["failed", "canceled", "expired", "refunded"]);
 
 function normalizeNumber(value) {
   const parsed = Number(value);
@@ -146,6 +147,69 @@ function buildUnifiedPaymentPayload({ subscription, day, payment, providerInvoic
     providerInvoice: buildProviderInvoicePayload(providerInvoice, payment, metadata.paymentUrl || ""),
     payment: serializeCheckoutPayment(payment),
   };
+}
+
+function buildVerifyLogContext({ subscriptionId, date, paymentId, userId, payment = null, day = null, providerInvoice = null, providerPayment = null }) {
+  const metadata = getPaymentMetadata(payment);
+  const derivedDay = day ? applyCommercialStateToDay(day) : null;
+  return {
+    subscriptionId: String(subscriptionId || ""),
+    date: String(date || ""),
+    paymentId: String(paymentId || ""),
+    userId: String(userId || ""),
+    paymentType: payment && payment.type ? String(payment.type) : null,
+    paymentStatus: payment && payment.status ? String(payment.status) : null,
+    paymentUserId: payment && payment.userId ? String(payment.userId) : null,
+    paymentSubscriptionId: payment && payment.subscriptionId ? String(payment.subscriptionId) : null,
+    paymentDayId: metadata.dayId ? String(metadata.dayId) : null,
+    paymentDate: metadata.date ? String(metadata.date) : null,
+    providerInvoiceId: payment && payment.providerInvoiceId ? String(payment.providerInvoiceId) : null,
+    providerPaymentId: payment && payment.providerPaymentId ? String(payment.providerPaymentId) : null,
+    responseProviderInvoiceId: providerInvoice && providerInvoice.id ? String(providerInvoice.id) : null,
+    responseProviderPaymentId: providerPayment && providerPayment.id ? String(providerPayment.id) : null,
+    dayId: day && day._id ? String(day._id) : null,
+    daySubscriptionId: day && day.subscriptionId ? String(day.subscriptionId) : null,
+    dayDate: day && day.date ? String(day.date) : null,
+    paymentRequirement: derivedDay ? derivedDay.paymentRequirement : null,
+    commercialState: derivedDay ? derivedDay.commercialState : null,
+  };
+}
+
+async function resolvePaymentDayOrError({ subscriptionId, date, payment, metadata }) {
+  const day = metadata.dayId && mongoose.Types.ObjectId.isValid(String(metadata.dayId))
+    ? await SubscriptionDay.findById(metadata.dayId).lean()
+    : await SubscriptionDay.findOne({ subscriptionId, date }).lean();
+
+  if (!day) return { ok: false, result: buildErrorResult(404, "NOT_FOUND", "Day not found") };
+  if (String(day.subscriptionId || "") !== String(subscriptionId)) {
+    return { ok: false, day, result: buildErrorResult(409, "MISMATCH", "Payment day mismatch") };
+  }
+  if (String(day.date || "") !== String(date)) {
+    return { ok: false, day, result: buildErrorResult(409, "MISMATCH", "Payment day mismatch") };
+  }
+  if (metadata.subscriptionId && String(metadata.subscriptionId) !== String(subscriptionId)) {
+    return { ok: false, day, result: buildErrorResult(409, "MISMATCH", "Payment subscription mismatch") };
+  }
+  if (metadata.dayId && String(day._id) !== String(metadata.dayId)) {
+    return { ok: false, day, result: buildErrorResult(409, "MISMATCH", "Payment day mismatch") };
+  }
+  if (payment && payment.subscriptionId && String(payment.subscriptionId) !== String(subscriptionId)) {
+    return { ok: false, day, result: buildErrorResult(409, "MISMATCH", "Payment subscription mismatch") };
+  }
+
+  return { ok: true, day };
+}
+
+function buildTerminalPaymentError(payment, providerStatus = null) {
+  const status = String(providerStatus || (payment && payment.status) || "").trim();
+  const code = status === "expired" ? "PAYMENT_EXPIRED" : "PAYMENT_NOT_PAYABLE";
+  const message = status === "expired" ? "Payment expired" : "Day payment is not payable";
+  return buildErrorResult(409, code, message, {
+    paymentId: payment && payment._id ? String(payment._id) : null,
+    paymentStatus: status || null,
+    providerInvoiceStatus: providerStatus || null,
+    isFinal: true,
+  });
 }
 
 async function createUnifiedDayPaymentFlow({
@@ -415,11 +479,26 @@ async function verifyUnifiedDayPaymentFlow({
     userId,
     type: UNIFIED_DAY_PAYMENT_TYPE,
   }).lean();
-  if (!payment) return buildErrorResult(404, "NOT_FOUND", "Day payment not found");
+  if (!payment) return buildErrorResult(404, "PAYMENT_NOT_FOUND", "Day payment not found");
 
   const metadata = getPaymentMetadata(payment);
   if (String(metadata.date || "") !== String(date)) return buildErrorResult(409, "MISMATCH", "Payment day mismatch");
+  const dayResolution = await resolvePaymentDayOrError({ subscriptionId, date, payment, metadata });
+  if (!dayResolution.ok) {
+    logger.warn("Unified day payment verification rejected before provider check", buildVerifyLogContext({
+      subscriptionId,
+      date,
+      paymentId,
+      userId,
+      payment,
+      day: dayResolution.day || null,
+    }));
+    return dayResolution.result;
+  }
   if (!payment.providerInvoiceId) return buildErrorResult(409, "CHECKOUT_IN_PROGRESS", "Day payment invoice is not initialized yet");
+  if (TERMINAL_NON_PAYABLE_STATUSES.has(String(payment.status || ""))) {
+    return buildTerminalPaymentError(payment);
+  }
 
   if (payment.status === "paid" && payment.applied === true) {
     let reconcileResult = null;
@@ -457,9 +536,14 @@ async function verifyUnifiedDayPaymentFlow({
       if (session.inTransaction()) await session.abortTransaction();
       session.endSession();
       logger.error("Unified day payment already-applied reconciliation failed", {
-        subscriptionId,
-        paymentId,
-        date,
+        ...buildVerifyLogContext({
+          subscriptionId,
+          date,
+          paymentId,
+          userId,
+          payment,
+          day: dayResolution.day,
+        }),
         error: err.message,
         stack: err.stack,
       });
@@ -500,6 +584,22 @@ async function verifyUnifiedDayPaymentFlow({
   const providerCurrency = normalizeCurrencyValue(providerPayment && providerPayment.currency ? providerPayment.currency : providerInvoice.currency);
   if (providerCurrency !== normalizeCurrencyValue(payment.currency)) return buildErrorResult(409, "MISMATCH", "Currency mismatch");
 
+  if (TERMINAL_NON_PAYABLE_STATUSES.has(normalizedStatus)) {
+    await Payment.updateOne(
+      { _id: paymentId, subscriptionId, userId, type: UNIFIED_DAY_PAYMENT_TYPE },
+      {
+        $set: {
+          status: normalizedStatus,
+          applied: false,
+          ...(providerPayment && providerPayment.id && !payment.providerPaymentId
+            ? { providerPaymentId: String(providerPayment.id) }
+            : {}),
+        },
+      }
+    );
+    return buildTerminalPaymentError({ ...payment, status: normalizedStatus }, normalizedStatus);
+  }
+
   const session = await startSessionFn();
   let synchronized = false;
   let sideEffectResult = null;
@@ -515,7 +615,7 @@ async function verifyUnifiedDayPaymentFlow({
     if (!paymentInSession) {
       await session.abortTransaction();
       session.endSession();
-      return buildErrorResult(404, "NOT_FOUND", "Day payment not found");
+      return buildErrorResult(404, "PAYMENT_NOT_FOUND", "Day payment not found");
     }
 
     const providerInvoiceId = providerInvoice && providerInvoice.id ? String(providerInvoice.id) : "";
@@ -563,9 +663,16 @@ async function verifyUnifiedDayPaymentFlow({
     if (session.inTransaction()) await session.abortTransaction();
     session.endSession();
     logger.error("Unified day payment verification failed", {
-      subscriptionId,
-      paymentId,
-      date,
+      ...buildVerifyLogContext({
+        subscriptionId,
+        date,
+        paymentId,
+        userId,
+        payment,
+        day: dayResolution.day,
+        providerInvoice,
+        providerPayment,
+      }),
       error: err.message,
       stack: err.stack,
     });

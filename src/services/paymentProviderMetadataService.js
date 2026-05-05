@@ -84,7 +84,7 @@ function normalizeProviderPaymentStatus(value) {
   if (!normalized) return null;
   if (normalized === "cancelled" || normalized === "voided") return "canceled";
   if (normalized === "captured") return "paid";
-  if (["authorized", "verified", "on_hold"].includes(normalized)) return "initiated";
+  if (["authorized", "verified", "on_hold", "pending"].includes(normalized)) return "initiated";
   if (["initiated", "paid", "failed", "canceled", "expired", "refunded"].includes(normalized)) {
     return normalized;
   }
