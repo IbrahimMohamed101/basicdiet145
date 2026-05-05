@@ -14,17 +14,23 @@ const {
 const { logger } = require("../utils/logger");
 const validateObjectId = require("../utils/validateObjectId");
 const errorResponse = require("../utils/errorResponse");
+const { ORDER_STATUSES } = require("../utils/orderState");
+const { getOrderFulfillmentMethod, shouldBlockOneTimeOrderDelivery } = require("../utils/oneTimeOrderDeliveryGate");
 
 async function listTodayOrders(_req, res) {
   try {
     const today = getTodayKSADate();
     const orders = await Order.find({
-      deliveryDate: today,
-      deliveryMode: "delivery",
-      status: { $in: ["out_for_delivery", "fulfilled", "canceled"] },
+      $and: [
+        { $or: [{ fulfillmentDate: today }, { deliveryDate: today }] },
+        { $or: [{ fulfillmentMethod: "delivery" }, { deliveryMode: "delivery" }] },
+      ],
+      paymentStatus: "paid",
+      status: { $in: [ORDER_STATUSES.OUT_FOR_DELIVERY, ORDER_STATUSES.FULFILLED, ORDER_STATUSES.CANCELLED, "canceled"] },
     }).sort({ createdAt: -1 }).lean();
+    const visibleOrders = orders.filter((order) => !shouldBlockOneTimeOrderDelivery(order));
 
-    const orderIds = orders.map((order) => order._id);
+    const orderIds = visibleOrders.map((order) => order._id);
     const deliveries = orderIds.length
       ? await Delivery.find({ orderId: { $in: orderIds } }).lean()
       : [];
@@ -34,7 +40,7 @@ async function listTodayOrders(_req, res) {
         .map((delivery) => [String(delivery.orderId), delivery])
     );
 
-    const queue = orders
+    const queue = visibleOrders
       .filter((order) => deliveriesByOrderId.has(String(order._id)))
       .map((order) => ({
         ...order,
@@ -63,7 +69,10 @@ async function markArrivingSoon(req, res) {
     if (!order) {
       return errorResponse(res, 404, "NOT_FOUND", "Order not found");
     }
-    if (order.deliveryMode !== "delivery") {
+    if (shouldBlockOneTimeOrderDelivery(order)) {
+      return errorResponse(res, 409, "ONE_TIME_ORDER_DELIVERY_DISABLED", "One-time order delivery is disabled");
+    }
+    if (getOrderFulfillmentMethod(order) !== "delivery") {
       return errorResponse(res, 400, "INVALID", "Order is not delivery");
     }
 
@@ -168,7 +177,12 @@ async function markDelivered(req, res) {
       session.endSession();
       return errorResponse(res, 404, "NOT_FOUND", "Order not found");
     }
-    if (order.deliveryMode !== "delivery") {
+    if (shouldBlockOneTimeOrderDelivery(order)) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 409, "ONE_TIME_ORDER_DELIVERY_DISABLED", "One-time order delivery is disabled");
+    }
+    if (getOrderFulfillmentMethod(order) !== "delivery") {
       await session.abortTransaction();
       session.endSession();
       return errorResponse(res, 400, "INVALID", "Order is not delivery");
@@ -195,7 +209,7 @@ async function markDelivered(req, res) {
         },
       });
     }
-    if (order.status === "canceled" || isDeliveryCanceledStatus(delivery.status)) {
+    if (order.status === ORDER_STATUSES.CANCELLED || order.status === "canceled" || isDeliveryCanceledStatus(delivery.status)) {
       await session.abortTransaction();
       session.endSession();
       return errorResponse(res, 409, "ALREADY_CANCELED", "Cannot deliver a canceled order");
@@ -262,7 +276,12 @@ async function markCancelled(req, res) {
       session.endSession();
       return errorResponse(res, 404, "NOT_FOUND", "Order not found");
     }
-    if (order.deliveryMode !== "delivery") {
+    if (shouldBlockOneTimeOrderDelivery(order)) {
+      await session.abortTransaction();
+      session.endSession();
+      return errorResponse(res, 409, "ONE_TIME_ORDER_DELIVERY_DISABLED", "One-time order delivery is disabled");
+    }
+    if (getOrderFulfillmentMethod(order) !== "delivery") {
       await session.abortTransaction();
       session.endSession();
       return errorResponse(res, 400, "INVALID", "Order is not delivery");
@@ -274,7 +293,7 @@ async function markCancelled(req, res) {
       session.endSession();
       return errorResponse(res, 404, "NOT_FOUND", "Delivery not found");
     }
-    if (order.status === "canceled" || isDeliveryCanceledStatus(delivery.status)) {
+    if (order.status === ORDER_STATUSES.CANCELLED || order.status === "canceled" || isDeliveryCanceledStatus(delivery.status)) {
       await session.abortTransaction();
       session.endSession();
       return res.status(200).json({
@@ -283,7 +302,7 @@ async function markCancelled(req, res) {
         data: {
           orderId: String(order._id),
           deliveryId: String(delivery._id),
-          orderStatus: "canceled",
+          orderStatus: ORDER_STATUSES.CANCELLED,
           deliveryStatus: "canceled",
           canceledAt: order.canceledAt || delivery.canceledAt || null,
           cancellationReason: delivery.cancellationReason || null,
@@ -313,7 +332,8 @@ async function markCancelled(req, res) {
     }
 
     const canceledAt = new Date();
-    order.status = "canceled";
+    order.status = ORDER_STATUSES.CANCELLED;
+    order.cancelledAt = canceledAt;
     order.canceledAt = canceledAt;
     await order.save({ session });
 
@@ -351,7 +371,7 @@ async function markCancelled(req, res) {
       data: {
         orderId: String(order._id),
         deliveryId: String(delivery._id),
-        orderStatus: "canceled",
+        orderStatus: ORDER_STATUSES.CANCELLED,
         deliveryStatus: "canceled",
         canceledAt: order.canceledAt,
         cancellationReason: cancellation.reason,

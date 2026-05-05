@@ -17,6 +17,7 @@ const ActivityLog = require("../src/models/ActivityLog");
 const { buildSubscriptionTimeline } = require("../src/services/subscription/subscriptionTimelineService");
 const { applyOperationalSkipForDate } = require("../src/services/subscription/subscriptionSkipService");
 const { recordCashierConsumption } = require("../src/services/dashboard/cashierConsumptionService");
+const { fulfillSubscriptionDay } = require("../src/services/fulfillmentService");
 const {
   performDaySelectionUpdate,
   performDaySelectionValidation,
@@ -258,6 +259,36 @@ async function runTests() {
     const noShowDay = await SubscriptionDay.findOne({ subscriptionId: sub2._id, date: "2026-04-01" }).lean();
     assert.strictEqual(noShowDay.status, "no_show", "Pickup day transitioned to no_show");
 
+    // Test 4b: repeated fulfillment deducts exactly once
+    await SubscriptionDay.create({
+      subscriptionId: sub1._id,
+      date: "2026-04-05",
+      status: "out_for_delivery",
+      lockedSnapshot: { mealsPerDay: 2 },
+    });
+    let fulfillResult = await fulfillSubscriptionDay({ subscriptionId: sub1._id, date: "2026-04-05" });
+    assert.strictEqual(fulfillResult.ok, true, "First fulfillment should succeed");
+    fulfillResult = await fulfillSubscriptionDay({ subscriptionId: sub1._id, date: "2026-04-05" });
+    assert.strictEqual(fulfillResult.ok, true, "Repeated fulfillment should be idempotent");
+    const sub1AfterRepeatedFulfill = await Subscription.findById(sub1._id).lean();
+    assert.strictEqual(sub1AfterRepeatedFulfill.remainingMeals, 28, "Repeated fulfill deducts only once");
+
+    // Test 4c: concurrent fulfillment deducts exactly once
+    await SubscriptionDay.create({
+      subscriptionId: sub1._id,
+      date: "2026-04-06",
+      status: "out_for_delivery",
+      lockedSnapshot: { mealsPerDay: 2 },
+    });
+    const concurrentFulfillResults = await Promise.all([
+      fulfillSubscriptionDay({ subscriptionId: sub1._id, date: "2026-04-06" }),
+      fulfillSubscriptionDay({ subscriptionId: sub1._id, date: "2026-04-06" }),
+      fulfillSubscriptionDay({ subscriptionId: sub1._id, date: "2026-04-06" }),
+    ]);
+    assert(concurrentFulfillResults.every((result) => result.ok), "Concurrent fulfillment calls should resolve successfully");
+    const sub1AfterConcurrentFulfill = await Subscription.findById(sub1._id).lean();
+    assert.strictEqual(sub1AfterConcurrentFulfill.remainingMeals, 26, "Concurrent fulfill deducts only once");
+
     // Test 5 & 9: Cashier can consume more than dailyMealsDefault, creates audit log
     const cashierConsumption = await recordCashierConsumption({
       phone: sub1Phone,
@@ -267,7 +298,7 @@ async function runTests() {
     });
     assert.strictEqual(cashierConsumption.consumption.mealCount, 7, "Cashier deduced 7 meals, ignoring dailyMealsDefault");
     const sub1AfterCashier = await Subscription.findById(sub1._id).lean();
-    assert.strictEqual(sub1AfterCashier.remainingMeals, 23, "Remaining meals correctly decoupled from calendar and decremented");
+    assert.strictEqual(sub1AfterCashier.remainingMeals, 19, "Remaining meals correctly decoupled from calendar and decremented");
     
     const auditLogs = await SubscriptionAuditLog.find({ entityId: sub1._id, action: "cashier_manual_consumption" }).lean();
     assert.strictEqual(auditLogs.length, 1, "Audit log correctly generated");

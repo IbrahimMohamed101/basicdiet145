@@ -1,4 +1,5 @@
 const SYSTEM_CURRENCY = "SAR";
+const { normalizeLegacyOrderStatus } = require("../../utils/orderState");
 
 function toPlain(order) {
   if (!order) return null;
@@ -80,7 +81,7 @@ function serializeOrderForClient(order) {
     orderId: String(plain._id),
     orderNumber: plain.orderNumber || "",
     source: "one_time_order",
-    status: plain.status,
+    status: normalizeLegacyOrderStatus(plain.status, { paymentStatus: plain.paymentStatus }),
     paymentStatus: plain.paymentStatus,
     ...(shouldExposePaymentUrl(plain) ? { paymentUrl: plain.paymentUrl || "" } : {}),
     expiresAt: plain.expiresAt || null,
@@ -105,7 +106,7 @@ function serializeOrderSummaryForClient(order) {
     orderId: String(plain._id),
     orderNumber: plain.orderNumber || "",
     source: "one_time_order",
-    status: plain.status,
+    status: normalizeLegacyOrderStatus(plain.status, { paymentStatus: plain.paymentStatus }),
     paymentStatus: plain.paymentStatus,
     fulfillmentMethod: plain.fulfillmentMethod || plain.deliveryMode || "",
     fulfillmentDate: plain.fulfillmentDate || plain.deliveryDate || "",
@@ -166,7 +167,7 @@ function serializeOrderForDashboard(order, { allowedActions = [], payment = null
     entityId: String(plain._id),
     orderId: String(plain._id),
     orderNumber: plain.orderNumber || "",
-    status: plain.status,
+    status: normalizeLegacyOrderStatus(plain.status, { paymentStatus: plain.paymentStatus }),
     paymentStatus: plain.paymentStatus,
     fulfillmentMethod,
     customer: normalizeCustomer(plain),

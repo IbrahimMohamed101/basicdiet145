@@ -142,10 +142,11 @@ function mapOrderItems(order, mealNameById) {
 }
 
 function mapOrderToRow(order, context = {}) {
-  const mode = order.deliveryMode === "pickup" ? "pickup" : "delivery";
+  const mode = (order.fulfillmentMethod || order.deliveryMode) === "pickup" ? "pickup" : "delivery";
+  const date = order.fulfillmentDate || order.deliveryDate;
   const items = mapOrderItems(order, context.mealNameById || new Map());
   const statusMeta = resolveStatusMeta({ entityType: "order", rawStatus: order.status, mode, items });
-  const row = { id: stringifyId(order._id), entityType: "order", reference: formatReference("ORD", order.deliveryDate, order._id), customer: buildCustomerFromOrder(order), date: order.deliveryDate, mode, modeLabel: MODE_LABELS[mode] || mode, timeWindow: parseTimeWindow(order.deliveryWindow), items, status: statusMeta.status, statusLabel: statusMeta.statusLabel, progress: statusMeta.progress, actions: [], badges: { locked: ["preparing", "out_for_delivery", "ready_for_pickup", "fulfilled"].includes(order.status), assignedByKitchen: false, pickupRequested: false }, verification: buildVerification(order, mode), ui: { layout: "table" }, timing: buildTiming(order.createdAt || order.confirmedAt || order.fulfilledAt || null), meta: { subscriptionId: null, orderId: stringifyId(order._id), dayId: null }, operationFlags: { creditsDeducted: false, pickupCodeIssued: false, pickupVerified: false }, rawStatus: order.status, sortStatusOrder: 0, branchId: null };
+  const row = { id: stringifyId(order._id), entityType: "order", reference: formatReference("ORD", date, order._id), customer: buildCustomerFromOrder(order), date, mode, modeLabel: MODE_LABELS[mode] || mode, timeWindow: parseTimeWindow(order.deliveryWindow), items, status: statusMeta.status, statusLabel: statusMeta.statusLabel, progress: statusMeta.progress, actions: [], badges: { locked: ["in_preparation", "out_for_delivery", "ready_for_pickup", "fulfilled"].includes(order.status), assignedByKitchen: false, pickupRequested: false }, verification: buildVerification(order, mode), ui: { layout: "table" }, timing: buildTiming(order.createdAt || order.confirmedAt || order.fulfilledAt || null), meta: { subscriptionId: null, orderId: stringifyId(order._id), dayId: null }, operationFlags: { creditsDeducted: false, pickupCodeIssued: false, pickupVerified: false }, rawStatus: order.status, sortStatusOrder: 0, branchId: null };
   row.actions = resolveActions(row);
   return row;
 }

@@ -7,11 +7,15 @@ const Subscription = require("../../models/Subscription");
 const SubscriptionAuditLog = require("../../models/SubscriptionAuditLog");
 const { fulfillSubscriptionDay } = require("../fulfillmentService");
 const { canTransition } = require("../../utils/state");
-const { canOrderTransition } = require("../../utils/orderState");
+const { ORDER_STATUSES, canOrderTransition } = require("../../utils/orderState");
 const { writeLog } = require("../../utils/log");
 const { notifyUser } = require("../../utils/notify");
 const { notifyOrderUser } = require("../orderNotificationService");
 const { logger } = require("../../utils/logger");
+const {
+  shouldBlockOneTimeOrderDelivery,
+  createOneTimeOrderDeliveryDisabledError,
+} = require("../../utils/oneTimeOrderDeliveryGate");
 
 /**
  * Unified Operations Transition Service.
@@ -25,6 +29,12 @@ async function executeAction(actionId, { entityId, entityType, userId, role, pay
   const session = await mongoose.startSession();
   session.startTransaction();
   try {
+    if (normalizedEntityType === "order") {
+      const order = await Order.findById(entityId).session(session).lean();
+      if (shouldBlockOneTimeOrderDelivery(order)) {
+        throw createOneTimeOrderDeliveryDisabledError();
+      }
+    }
     let result;
     switch (actionId) {
       case "prepare":
@@ -102,7 +112,7 @@ async function handlePrepare({ entityId, entityType, userId, role, payload, sess
   const doc = await Model.findById(entityId).session(session);
   if (!doc) throw new Error("Entity not found");
 
-  const toStatus = entityType === "subscription" ? "in_preparation" : "preparing";
+  const toStatus = entityType === "subscription" ? "in_preparation" : ORDER_STATUSES.IN_PREPARATION;
   if (doc.status === toStatus) {
     return { data: doc, idempotent: true };
   }
@@ -349,7 +359,7 @@ async function handleCancel({ entityId, entityType, payload, userId, role, sessi
   const doc = await Model.findById(entityId).session(session);
   if (!doc) throw new Error("Entity not found");
 
-  let toStatus = entityType === "subscription" ? "delivery_canceled" : "canceled";
+  let toStatus = entityType === "subscription" ? "delivery_canceled" : ORDER_STATUSES.CANCELLED;
   if (entityType === "subscription") {
     const sub = await Subscription.findById(doc.subscriptionId).session(session).lean();
     if (sub && sub.deliveryMode === "pickup") {

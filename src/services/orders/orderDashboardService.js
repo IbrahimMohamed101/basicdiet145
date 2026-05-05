@@ -10,6 +10,7 @@ const {
   executeOrderAction,
   getAllowedOrderActions,
 } = require("./orderOpsTransitionService");
+const { isOneTimeOrderDeliveryEnabled } = require("../../utils/oneTimeOrderDeliveryGate");
 
 const MAX_LIMIT = 100;
 
@@ -91,6 +92,7 @@ async function buildSearchFilter(q) {
 async function buildOrderFilter(filters = {}, actor = {}) {
   const visibility = roleVisibilityFilter(actor);
   const query = {};
+  const deliveryEnabled = isOneTimeOrderDeliveryEnabled();
   if (visibility.fulfillmentMethod) query.fulfillmentMethod = visibility.fulfillmentMethod;
   const statuses = parseStatusFilter(filters.status);
   const visibleStatuses = Array.isArray(visibility.statuses) ? visibility.statuses : null;
@@ -103,7 +105,13 @@ async function buildOrderFilter(filters = {}, actor = {}) {
   }
   if (filters.paymentStatus) query.paymentStatus = String(filters.paymentStatus).trim();
   if (filters.fulfillmentMethod && !visibility.fulfillmentMethod) query.fulfillmentMethod = String(filters.fulfillmentMethod).trim();
-  if (filters.date) query.fulfillmentDate = String(filters.date).trim();
+  if (!deliveryEnabled && (visibility.fulfillmentMethod === "delivery" || query.fulfillmentMethod === "delivery")) {
+    query._id = { $exists: false };
+  }
+  if (filters.date) {
+    query.$and = query.$and || [];
+    query.$and.push({ $or: [{ fulfillmentDate: String(filters.date).trim() }, { deliveryDate: String(filters.date).trim() }] });
+  }
   if (filters.zoneId && mongoose.Types.ObjectId.isValid(filters.zoneId)) {
     query["delivery.zoneId"] = new mongoose.Types.ObjectId(filters.zoneId);
   }

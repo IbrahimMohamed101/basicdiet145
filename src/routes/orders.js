@@ -12,13 +12,13 @@ router.get("/menu", asyncHandler(controller.getOrderMenu));
 
 router.use(authMiddleware);
 
-router.post("/quote", asyncHandler(controller.quoteOrder));
+router.post("/quote", checkoutLimiter, asyncHandler(controller.quoteOrder));
 router.post("/", checkoutLimiter, asyncHandler(controller.createOrder));
 router.post("/checkout", checkoutLimiter, asyncHandler(controller.checkoutOrder));
 router.post("/:id/confirm", asyncHandler(controller.confirmOrder)); // Mock confirm — dev only
 router.get("/:id/payment-status", asyncHandler(controller.getOrderPaymentStatus));
-router.post("/:orderId/payments/:paymentId/verify", asyncHandler(controller.verifyOrderPayment));
-router.post("/:id/verify-payment", asyncHandler(controller.verifyOrderPayment));
+router.post("/:orderId/payments/:paymentId/verify", checkoutLimiter, asyncHandler(controller.verifyOrderPayment));
+router.post("/:id/verify-payment", checkoutLimiter, asyncHandler(controller.verifyOrderPayment));
 router.post("/:id/reject-adjusted-date", asyncHandler(controller.rejectAdjustedDeliveryDate));
 /**
  * @openapi

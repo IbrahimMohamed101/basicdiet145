@@ -17,6 +17,8 @@ const { ORDER_STATUSES } = require("../src/utils/orderState");
 
 const TEST_TAG = `one-time-order-ops-${Date.now()}`;
 const results = { passed: 0, failed: 0 };
+const ORIGINAL_ONE_TIME_ORDER_DELIVERY_ENABLED = process.env.ONE_TIME_ORDER_DELIVERY_ENABLED;
+delete process.env.ONE_TIME_ORDER_DELIVERY_ENABLED;
 
 async function test(name, fn) {
   try {
@@ -40,6 +42,17 @@ function dashboardToken(role = "admin") {
 
 function auth(role = "admin") {
   return { Authorization: `Bearer ${dashboardToken(role)}`, "Accept-Language": "en" };
+}
+
+async function withOneTimeDeliveryEnabled(fn) {
+  const previous = process.env.ONE_TIME_ORDER_DELIVERY_ENABLED;
+  process.env.ONE_TIME_ORDER_DELIVERY_ENABLED = "true";
+  try {
+    return await fn();
+  } finally {
+    if (previous === undefined) delete process.env.ONE_TIME_ORDER_DELIVERY_ENABLED;
+    else process.env.ONE_TIME_ORDER_DELIVERY_ENABLED = previous;
+  }
 }
 
 async function connectDatabase() {
@@ -84,6 +97,7 @@ async function createOrder(user, overrides = {}) {
     paymentStatus: "paid",
     fulfillmentMethod,
     fulfillmentDate: "2026-05-04",
+    deliveryDate: "2026-05-04",
     items: [{
       itemType: "sandwich",
       name: { ar: "", en: `${TEST_TAG} Sandwich` },
@@ -211,15 +225,17 @@ async function createOrder(user, overrides = {}) {
     });
 
     await test("dispatch works only for delivery in_preparation", async () => {
-      const order = await createOrder(user, {
-        fulfillmentMethod: "delivery",
-        status: ORDER_STATUSES.IN_PREPARATION,
+      await withOneTimeDeliveryEnabled(async () => {
+        const order = await createOrder(user, {
+          fulfillmentMethod: "delivery",
+          status: ORDER_STATUSES.IN_PREPARATION,
+        });
+        const res = await api.post(`/api/dashboard/orders/${order._id}/actions/dispatch`).set(auth()).send({
+          etaAt: "2026-05-03T15:30:00.000Z",
+        });
+        expectStatus(res, 200, "dispatch action");
+        assert.strictEqual(res.body.data.status, ORDER_STATUSES.OUT_FOR_DELIVERY);
       });
-      const res = await api.post(`/api/dashboard/orders/${order._id}/actions/dispatch`).set(auth()).send({
-        etaAt: "2026-05-03T15:30:00.000Z",
-      });
-      expectStatus(res, 200, "dispatch action");
-      assert.strictEqual(res.body.data.status, ORDER_STATUSES.OUT_FOR_DELIVERY);
     });
 
     await test("dispatch rejects pickup order", async () => {
@@ -229,6 +245,28 @@ async function createOrder(user, overrides = {}) {
       });
       const res = await api.post(`/api/dashboard/orders/${order._id}/actions/dispatch`).set(auth()).send({});
       expectStatus(res, 409, "dispatch rejects pickup");
+    });
+
+    await test("delivery order actions are blocked by default", async () => {
+      const dispatchOrder = await createOrder(user, {
+        fulfillmentMethod: "delivery",
+        status: ORDER_STATUSES.IN_PREPARATION,
+      });
+      let res = await api.post(`/api/dashboard/orders/${dispatchOrder._id}/actions/dispatch`).set(auth()).send({});
+      expectStatus(res, 409, "dispatch delivery disabled");
+      assert.strictEqual(res.body.error.code, "ONE_TIME_ORDER_DELIVERY_DISABLED");
+
+      const notifyOrder = await createOrder(user, {
+        fulfillmentMethod: "delivery",
+        status: ORDER_STATUSES.OUT_FOR_DELIVERY,
+      });
+      res = await api.post(`/api/dashboard/orders/${notifyOrder._id}/actions/notify_arrival`).set(auth()).send({});
+      expectStatus(res, 409, "notify delivery disabled");
+      assert.strictEqual(res.body.error.code, "ONE_TIME_ORDER_DELIVERY_DISABLED");
+
+      res = await api.post(`/api/dashboard/orders/${notifyOrder._id}/actions/fulfill`).set(auth()).send({});
+      expectStatus(res, 409, "fulfill delivery disabled");
+      assert.strictEqual(res.body.error.code, "ONE_TIME_ORDER_DELIVERY_DISABLED");
     });
 
     await test("fulfill pickup ready_for_pickup -> fulfilled", async () => {
@@ -242,13 +280,15 @@ async function createOrder(user, overrides = {}) {
     });
 
     await test("fulfill delivery out_for_delivery -> fulfilled", async () => {
-      const order = await createOrder(user, {
-        fulfillmentMethod: "delivery",
-        status: ORDER_STATUSES.OUT_FOR_DELIVERY,
+      await withOneTimeDeliveryEnabled(async () => {
+        const order = await createOrder(user, {
+          fulfillmentMethod: "delivery",
+          status: ORDER_STATUSES.OUT_FOR_DELIVERY,
+        });
+        const res = await api.post(`/api/dashboard/orders/${order._id}/actions/fulfill`).set(auth()).send({});
+        expectStatus(res, 200, "fulfill delivery");
+        assert.strictEqual(res.body.data.status, ORDER_STATUSES.FULFILLED);
       });
-      const res = await api.post(`/api/dashboard/orders/${order._id}/actions/fulfill`).set(auth()).send({});
-      expectStatus(res, 200, "fulfill delivery");
-      assert.strictEqual(res.body.data.status, ORDER_STATUSES.FULFILLED);
     });
 
     await test("cancel confirmed/in_preparation -> cancelled", async () => {
@@ -299,7 +339,44 @@ async function createOrder(user, overrides = {}) {
       const after = await SubscriptionDay.countDocuments();
       assert.strictEqual(after, before);
     });
+
+    await test("Board order action routes to order service and returns order DTO", async () => {
+      const order = await createOrder(user, { status: ORDER_STATUSES.CONFIRMED });
+      const res = await api.post("/api/dashboard/kitchen/actions/prepare").set(auth()).send({
+        entityType: "order",
+        entityId: String(order._id),
+      });
+      expectStatus(res, 200, "board order prepare");
+      assert.strictEqual(res.body.data.source, "one_time_order");
+      assert.strictEqual(res.body.data.entityType, "order");
+      assert.strictEqual(res.body.data.entityId, String(order._id));
+      assert.strictEqual(res.body.data.status, ORDER_STATUSES.IN_PREPARATION);
+      assert(Array.isArray(res.body.data.allowedActions));
+    });
+
+    await test("Kitchen queue excludes unpaid orders and includes paid pickup orders", async () => {
+      const paid = await createOrder(user, {
+        fulfillmentMethod: "pickup",
+        status: ORDER_STATUSES.CONFIRMED,
+        paymentStatus: "paid",
+      });
+      const unpaid = await createOrder(user, {
+        fulfillmentMethod: "pickup",
+        status: ORDER_STATUSES.PENDING_PAYMENT,
+        paymentStatus: "initiated",
+      });
+      const res = await api.get("/api/dashboard/kitchen/queue?date=2026-05-04&method=pickup").set(auth());
+      expectStatus(res, 200, "kitchen queue payment filter");
+      const ids = res.body.data.items.map((item) => item.entityId);
+      assert(ids.includes(String(paid._id)));
+      assert(!ids.includes(String(unpaid._id)));
+    });
   } finally {
+    if (ORIGINAL_ONE_TIME_ORDER_DELIVERY_ENABLED === undefined) {
+      delete process.env.ONE_TIME_ORDER_DELIVERY_ENABLED;
+    } else {
+      process.env.ONE_TIME_ORDER_DELIVERY_ENABLED = ORIGINAL_ONE_TIME_ORDER_DELIVERY_ENABLED;
+    }
     await cleanup();
     await mongoose.disconnect();
   }

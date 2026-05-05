@@ -1,6 +1,7 @@
 "use strict";
 
 const Subscription = require("../../models/Subscription");
+const SubscriptionDay = require("../../models/SubscriptionDay");
 const { resolveMealsPerDay } = require("../../utils/subscription/subscriptionDaySelectionSync");
 
 function resolveDayMealsToDeduct({ subscription, day }) {
@@ -33,10 +34,38 @@ async function consumeSubscriptionDayCredits({
 
   const mealsToDeduct = resolveDayMealsToDeduct({ subscription, day });
   if (mealsToDeduct <= 0) {
+    const guardedDay = await SubscriptionDay.findOneAndUpdate(
+      { _id: day._id, creditsDeducted: { $ne: true } },
+      { $set: { creditsDeducted: true } },
+      { new: true, session }
+    );
+    if (!guardedDay) {
+      day.creditsDeducted = true;
+      return {
+        deductedCredits: 0,
+        alreadyDeducted: true,
+        reason,
+      };
+    }
     day.creditsDeducted = true;
     return {
       deductedCredits: 0,
       alreadyDeducted: false,
+      reason,
+    };
+  }
+
+  const guardedDay = await SubscriptionDay.findOneAndUpdate(
+    { _id: day._id, creditsDeducted: { $ne: true } },
+    { $set: { creditsDeducted: true } },
+    { new: true, session }
+  );
+
+  if (!guardedDay) {
+    day.creditsDeducted = true;
+    return {
+      deductedCredits: 0,
+      alreadyDeducted: true,
       reason,
     };
   }
@@ -48,6 +77,13 @@ async function consumeSubscriptionDayCredits({
   );
 
   if (!updateResult.modifiedCount) {
+    if (!session) {
+      await SubscriptionDay.updateOne(
+        { _id: day._id },
+        { $set: { creditsDeducted: false } }
+      );
+      day.creditsDeducted = false;
+    }
     const err = new Error("Not enough credits");
     err.code = "INSUFFICIENT_CREDITS";
     throw err;
@@ -129,7 +165,13 @@ async function consumeSubscriptionMealBalance({
     throw err;
   }
 
-  const remainingMealsAfter = remainingMealsBefore - mealCount;
+  // Re-read subscription to get actual remainingMeals after atomic update
+  const updatedSubscription = await SubscriptionModel.findById(resolvedId)
+    .select('remainingMeals')
+    .session(session || null)
+    .lean();
+
+  const remainingMealsAfter = Number(updatedSubscription?.remainingMeals || 0);
   const actorType = (actor && actor.actorType) || "dashboard";
   const actorId = (actor && actor.actorId) || undefined;
 
@@ -177,4 +219,3 @@ module.exports = {
   consumeSubscriptionMealBalance,
   resolveDayMealsToDeduct,
 };
-

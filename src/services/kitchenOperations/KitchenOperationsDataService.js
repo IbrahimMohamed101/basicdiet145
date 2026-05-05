@@ -6,6 +6,7 @@ const Addon = require("../../models/Addon");
 const BuilderProtein = require("../../models/BuilderProtein");
 const BuilderCarb = require("../../models/BuilderCarb");
 const Meal = require("../../models/Meal");
+const { shouldBlockOneTimeOrderDelivery } = require("../../utils/oneTimeOrderDeliveryGate");
 // Settlement on read is DISABLED — see pastSubscriptionDaySettlementService.js
 
 function attachSession(query, session) {
@@ -21,11 +22,16 @@ async function fetchSubscriptionDaysByDate(date, { session } = {}) {
 }
 
 async function fetchOrdersByDate(date, { session } = {}) {
-  let query = Order.find({ deliveryDate: String(date) })
-    .select(["_id","userId","status","deliveryMode","deliveryDate","deliveryWindow","items","customSalads","customMeals","createdAt","confirmedAt","fulfilledAt"].join(" "))
+  let query = Order.find({
+    $or: [{ fulfillmentDate: String(date) }, { deliveryDate: String(date) }],
+    paymentStatus: "paid",
+    status: { $in: ["confirmed", "in_preparation", "preparing", "ready_for_pickup"] },
+  })
+    .select(["_id","userId","status","paymentStatus","fulfillmentMethod","deliveryMode","fulfillmentDate","deliveryDate","deliveryWindow","items","customSalads","customMeals","createdAt","confirmedAt","fulfilledAt"].join(" "))
     .populate({ path: "userId", select: "_id name phone" });
   query = attachSession(query, session);
-  return query.lean();
+  const orders = await query.lean();
+  return orders.filter((order) => !shouldBlockOneTimeOrderDelivery(order));
 }
 
 async function fetchMealNameMap(mealKeys, { session } = {}) {

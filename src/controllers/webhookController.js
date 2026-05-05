@@ -82,6 +82,9 @@ async function handleMoyasarWebhook(req, res, runtimeOverrides = null) {
   };
 
   const secret = process.env.MOYASAR_WEBHOOK_SECRET;
+  const allowedWebhookIPs = process.env.MOYASAR_WEBHOOK_ALLOWED_IPS ? 
+    process.env.MOYASAR_WEBHOOK_ALLOWED_IPS.split(',').map(ip => ip.trim()) : [];
+  
   // SECURITY FIX: Fail closed when webhook secret is missing or mismatched.
   if (!secret || payload.secret_token !== secret) {
     logger.warn("Moyasar webhook rejected: invalid token", {
@@ -89,6 +92,19 @@ async function handleMoyasarWebhook(req, res, runtimeOverrides = null) {
       hasConfiguredSecret: Boolean(secret),
     });
     return errorResponse(res, 401, "UNAUTHORIZED", "Invalid webhook token" );
+  }
+
+  // SECURITY FIX: IP whitelist validation for webhooks
+  if (allowedWebhookIPs.length > 0) {
+    const clientIP = req.ip || req.connection.remoteAddress || req.headers['x-forwarded-for']?.split(',')[0]?.trim();
+    if (!clientIP || !allowedWebhookIPs.includes(clientIP)) {
+      logger.warn("Moyasar webhook rejected: IP not allowed", {
+        ...logContext,
+        clientIP: clientIP || 'unknown',
+        allowedIPs: allowedWebhookIPs,
+      });
+      return errorResponse(res, 403, "FORBIDDEN", "IP not allowed" );
+    }
   }
 
   if (!paymentId && !invoiceId && !metadataOrderId) {

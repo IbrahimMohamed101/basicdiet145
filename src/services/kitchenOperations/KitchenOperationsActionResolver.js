@@ -168,6 +168,7 @@ function resolveOrderActions(row) {
         }),
       ];
     case "preparing":
+    case "in_preparation":
       if (mode === "pickup") {
         return [
           buildAction({

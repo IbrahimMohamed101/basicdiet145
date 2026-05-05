@@ -4,10 +4,14 @@ const ORDER_STATUS_TO_UI_STATUS = {
   created: "received",
   confirmed: "open",
   preparing: "in_preparation",
+  in_preparation: "in_preparation",
   out_for_delivery: "out_for_delivery",
   ready_for_pickup: "ready_for_pickup",
   fulfilled: "fulfilled",
   canceled: "cancelled",
+  cancelled: "cancelled",
+  expired: "cancelled",
+  pending_payment: "received",
 };
 
 const SUBSCRIPTION_STATUS_TO_UI_STATUS = {

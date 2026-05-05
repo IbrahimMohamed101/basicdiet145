@@ -9,10 +9,12 @@ const ActivityLog = require("../../models/ActivityLog");
 const opsTransitionService = require("../../services/dashboard/opsTransitionService");
 const opsActionPolicy = require("../../services/dashboard/opsActionPolicy");
 const dashboardDtoService = require("../../services/dashboard/dashboardDtoService");
+const { executeDashboardOrderAction } = require("../../services/orders/orderDashboardService");
 const errorResponse = require("../../utils/errorResponse");
 const dateUtils = require("../../utils/date");
 const { getRequestLang } = require("../../utils/i18n");
 const { getRestaurantBusinessDate } = require("../../services/restaurantHoursService");
+const { shouldBlockOneTimeOrderDelivery } = require("../../utils/oneTimeOrderDeliveryGate");
 // Settlement on read is DISABLED — see pastSubscriptionDaySettlementService.js
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -207,7 +209,7 @@ async function queryBoardDays(req, { screen }) {
     const requested = normalizeStatusList(req.query.status, []);
     for (const s of requested) {
       if (s === "open" || s === "locked" || s === "confirmed") activeOrderStatuses.push("confirmed");
-      if (s === "in_preparation") activeOrderStatuses.push("in_preparation");
+      if (s === "in_preparation") activeOrderStatuses.push("in_preparation", "preparing");
       if (s === "out_for_delivery") activeOrderStatuses.push("out_for_delivery");
       if (s === "ready_for_pickup") activeOrderStatuses.push("ready_for_pickup");
       if (s === "fulfilled") activeOrderStatuses.push("fulfilled");
@@ -218,13 +220,13 @@ async function queryBoardDays(req, { screen }) {
   } else {
     // Default statuses
     if (screen === "kitchen") {
-      activeOrderStatuses = ["confirmed", "in_preparation"];
+      activeOrderStatuses = ["confirmed", "in_preparation", "preparing"];
     } else if (screen === "courier") {
-      activeOrderStatuses = ["in_preparation", "out_for_delivery"];
+      activeOrderStatuses = ["in_preparation", "preparing", "out_for_delivery"];
     } else if (screen === "pickup") {
-      activeOrderStatuses = ["in_preparation", "ready_for_pickup"];
+      activeOrderStatuses = ["in_preparation", "preparing", "ready_for_pickup"];
     } else {
-      activeOrderStatuses = ["confirmed", "in_preparation", "out_for_delivery", "ready_for_pickup"];
+      activeOrderStatuses = ["confirmed", "in_preparation", "preparing", "out_for_delivery", "ready_for_pickup"];
     }
   }
 
@@ -243,6 +245,7 @@ async function queryBoardDays(req, { screen }) {
 
   const filteredOrderItems = orders.filter((order) => {
     const oMode = order.fulfillmentMethod || order.deliveryMode || "delivery";
+    if (shouldBlockOneTimeOrderDelivery(order)) return false;
     if (method === "all") return true;
     return oMode === method;
   });
@@ -317,28 +320,23 @@ async function action(req, res) {
   }
 
   if (entityType === "order") {
-    const order = await Order.findById(entityId).lean();
-    if (!order) return errorResponse(res, 404, "NOT_FOUND", "Order not found");
-    const mode = order.fulfillmentMethod || order.deliveryMode || "delivery";
-    const validation = opsActionPolicy.validateAction({
-      entityType: "order",
-      status: order.status,
-      mode,
-      role: req.dashboardUserRole,
-      actionId,
-    });
-    if (!validation.allowed) {
-      return errorResponse(res, 409, validation.reason, `Action ${actionId} is not allowed in current state`);
+    try {
+      const data = await executeDashboardOrderAction({
+        orderId: entityId,
+        action: actionId,
+        actor: { userId: req.dashboardUserId, role: req.dashboardUserRole },
+        payload,
+      });
+      return res.status(200).json({ status: true, data });
+    } catch (err) {
+      return errorResponse(
+        res,
+        err.status || 500,
+        err.code || "INTERNAL",
+        err.message || "Dashboard order action failed",
+        err.details
+      );
     }
-    
-    await opsTransitionService.executeAction(actionId, {
-      entityId,
-      entityType: "order",
-      userId: req.dashboardUserId,
-      role: req.dashboardUserRole,
-      payload,
-    });
-    return res.status(200).json({ status: true, data: { action: "dispatched" } });
   }
 
   const existingDay = await SubscriptionDay.findById(entityId).select("date").lean();

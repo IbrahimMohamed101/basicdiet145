@@ -74,17 +74,21 @@ const TRANSITION_RULES = {
     delivery_canceled: ["reopen"],
     canceled_at_branch: ["reopen"],
     no_show: ["reopen"],
-    skipped: ["cancel"],
-    frozen: ["cancel"],
+    skipped: [],
+    frozen: [],
   },
   order: {
     created: ["lock", "cancel"],
     confirmed: ["prepare", "cancel"],
     preparing: ["dispatch", "ready_for_pickup", "cancel"],
+    in_preparation: ["dispatch", "ready_for_pickup", "cancel"],
     out_for_delivery: ["notify_arrival", "fulfill", "cancel"],
     ready_for_pickup: ["fulfill", "cancel"],
     fulfilled: [],
     canceled: [],
+    cancelled: [],
+    expired: [],
+    pending_payment: [],
   },
 };
 

@@ -3,7 +3,12 @@ const mongoose = require("mongoose");
 
 const ActivityLog = require("../../models/ActivityLog");
 const Order = require("../../models/Order");
-const { ORDER_STATUSES, canTransitionOrderStatus, isFinalOrderStatus } = require("../../utils/orderState");
+const { ORDER_STATUSES, canTransitionOrderStatus, isFinalOrderStatus, normalizeLegacyOrderStatus } = require("../../utils/orderState");
+const {
+  getOrderFulfillmentMethod,
+  shouldBlockOneTimeOrderDelivery,
+  createOneTimeOrderDeliveryDisabledError,
+} = require("../../utils/oneTimeOrderDeliveryGate");
 
 const ACTIONS = Object.freeze({
   PREPARE: "prepare",
@@ -40,7 +45,7 @@ function normalizeRole(role) {
 }
 
 function getOrderMode(order) {
-  return String(order.fulfillmentMethod || order.deliveryMode || "").trim();
+  return getOrderFulfillmentMethod(order);
 }
 
 function isPaidOperationalOrder(order) {
@@ -75,25 +80,32 @@ function roleCan(action, order, actor) {
 }
 
 function getAllowedOrderActions(order, actor = {}) {
-  if (!order || !order.status || isFinalOrderStatus(order.status) || !isPaidOperationalOrder(order)) {
+  const status = normalizeLegacyOrderStatus(order && order.status, { paymentStatus: order && order.paymentStatus });
+  if (
+    !order
+    || !status
+    || shouldBlockOneTimeOrderDelivery(order)
+    || isFinalOrderStatus(status)
+    || !isPaidOperationalOrder(order)
+  ) {
     return [];
   }
 
   const mode = getOrderMode(order);
   const candidates = [];
-  if (order.status === ORDER_STATUSES.CONFIRMED) {
+  if (status === ORDER_STATUSES.CONFIRMED) {
     candidates.push(ACTIONS.PREPARE, ACTIONS.CANCEL);
   }
-  if (order.status === ORDER_STATUSES.IN_PREPARATION && mode === "pickup") {
+  if (status === ORDER_STATUSES.IN_PREPARATION && mode === "pickup") {
     candidates.push(ACTIONS.READY_FOR_PICKUP, ACTIONS.CANCEL);
   }
-  if (order.status === ORDER_STATUSES.IN_PREPARATION && mode === "delivery") {
+  if (status === ORDER_STATUSES.IN_PREPARATION && mode === "delivery") {
     candidates.push(ACTIONS.DISPATCH, ACTIONS.CANCEL);
   }
-  if (order.status === ORDER_STATUSES.READY_FOR_PICKUP) {
+  if (status === ORDER_STATUSES.READY_FOR_PICKUP) {
     candidates.push(ACTIONS.FULFILL, ACTIONS.CANCEL);
   }
-  if (order.status === ORDER_STATUSES.OUT_FOR_DELIVERY) {
+  if (status === ORDER_STATUSES.OUT_FOR_DELIVERY) {
     candidates.push(ACTIONS.NOTIFY_ARRIVAL, ACTIONS.FULFILL, ACTIONS.CANCEL);
   }
 
@@ -113,6 +125,9 @@ function assertActionAllowed(order, action, actor) {
   assertSupportedAction(action);
   if (!order) {
     throw createServiceError(404, "ORDER_NOT_FOUND", "Order not found");
+  }
+  if (shouldBlockOneTimeOrderDelivery(order)) {
+    throw createOneTimeOrderDeliveryDisabledError();
   }
   if (isFinalOrderStatus(order.status)) {
     throw createServiceError(409, "FINAL_STATUS", "Final order statuses do not accept dashboard actions");

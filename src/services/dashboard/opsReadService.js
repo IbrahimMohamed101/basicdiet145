@@ -6,6 +6,7 @@ const Delivery = require("../../models/Delivery");
 const Subscription = require("../../models/Subscription");
 const User = require("../../models/User");
 const dashboardDtoService = require("./dashboardDtoService");
+const { shouldBlockOneTimeOrderDelivery } = require("../../utils/oneTimeOrderDeliveryGate");
 const ar = require("../../locales/ar");
 const en = require("../../locales/en");
 // Settlement on read is DISABLED — see pastSubscriptionDaySettlementService.js
@@ -25,7 +26,11 @@ async function listOperations({ date, role, lang = "ar" }) {
   const days = await SubscriptionDay.find({ date }).lean();
   
   // 2. Fetch One-time Orders for the date
-  const orders = await Order.find({ deliveryDate: date, paymentStatus: "paid" }).lean();
+  const orders = await Order.find({
+    $or: [{ fulfillmentDate: date }, { deliveryDate: date }],
+    paymentStatus: "paid",
+    status: { $in: ["confirmed", "in_preparation", "preparing", "ready_for_pickup", "out_for_delivery"] },
+  }).lean();
   
   // 3. Collect IDs for mass fetching
   const subscriptionIds = [...new Set(days.map(d => d.subscriptionId))];
@@ -37,7 +42,7 @@ async function listOperations({ date, role, lang = "ar" }) {
       const userIds = [
         ...new Set([
           ...subs.map((subscription) => subscription.userId),
-          ...orders.map((order) => order.userId),
+          ...orders.filter((order) => !shouldBlockOneTimeOrderDelivery(order)).map((order) => order.userId),
         ].filter(Boolean).map(String)),
       ];
       return User.find({ _id: { $in: userIds } }).lean();
@@ -45,7 +50,7 @@ async function listOperations({ date, role, lang = "ar" }) {
     Delivery.find({ 
       $or: [
         { dayId: { $in: days.map(d => d._id) } },
-        { orderId: { $in: orders.map(o => o._id) } }
+        { orderId: { $in: orders.filter((order) => !shouldBlockOneTimeOrderDelivery(order)).map(o => o._id) } }
       ]
     }).lean()
   ]);
@@ -71,7 +76,7 @@ async function listOperations({ date, role, lang = "ar" }) {
     return dto;
   });
 
-  const orderDTOs = orders.map(order => {
+  const orderDTOs = orders.filter((order) => !shouldBlockOneTimeOrderDelivery(order)).map(order => {
     const user = userMap.get(String(order.userId));
     const dto = dashboardDtoService.mapOrderToDTO(
       order,

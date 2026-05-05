@@ -18,12 +18,11 @@ async function fulfillSubscriptionDay({ subscriptionId, date, dayId, session }) 
     return { ok: false, code: "SKIPPED", message: "Cannot fulfill skipped day" };
   }
 
-  // CR-02 FIX: Check already fulfilled with snapshot BEFORE any state transition
-  if (day.status === "fulfilled" && day.fulfilledSnapshot && day.fulfilledSnapshot.deductedCredits !== undefined) {
-    return { ok: true, alreadyFulfilled: true, day, deductedCredits: day.fulfilledSnapshot.deductedCredits };
+  if (day.status === "fulfilled" && day.creditsDeducted) {
+    return { ok: true, alreadyFulfilled: true, day, deductedCredits: day.fulfilledSnapshot?.deductedCredits || 0 };
   }
 
-  if (!canTransition(day.status, "fulfilled")) {
+  if (day.status !== "fulfilled" && !canTransition(day.status, "fulfilled")) {
     return { ok: false, code: "INVALID_TRANSITION", message: "Invalid state transition" };
   }
 
@@ -61,28 +60,30 @@ async function fulfillSubscriptionDay({ subscriptionId, date, dayId, session }) 
   }
 
   // CR-02 FIX: First update day to fulfilled with snapshot (idempotent)
-  const updatedDay = await SubscriptionDay.findOneAndUpdate(
-    { _id: day._id, status: { $ne: "fulfilled" } },
-    {
-      $set: {
-        status: "fulfilled",
-        fulfilledAt: new Date(),
-        pickupRequested: false,
-        pickupPreparedAt: day.pickupPreparedAt || new Date(),
-        premiumUpgradeSelections,
-        fulfilledSnapshot,
+  const updatedDay = day.status === "fulfilled"
+    ? day
+    : await SubscriptionDay.findOneAndUpdate(
+      { _id: day._id, status: { $ne: "fulfilled" } },
+      {
+        $set: {
+          status: "fulfilled",
+          fulfilledAt: new Date(),
+          pickupRequested: false,
+          pickupPreparedAt: day.pickupPreparedAt || new Date(),
+          premiumUpgradeSelections,
+          fulfilledSnapshot,
+        },
       },
-    },
-    { new: true, session }
-  );
+      { new: true, session }
+    );
 
   if (!updatedDay) {
-    // Already fulfilled - return existing state
-    return { 
-      ok: true, 
-      alreadyFulfilled: true, 
-      day, 
-      deductedCredits: day.fulfilledSnapshot?.deductedCredits || 0 
+    const currentDay = await SubscriptionDay.findById(day._id).session(session);
+    return {
+      ok: true,
+      alreadyFulfilled: true,
+      day: currentDay || day,
+      deductedCredits: currentDay?.fulfilledSnapshot?.deductedCredits || day.fulfilledSnapshot?.deductedCredits || 0
     };
   }
 

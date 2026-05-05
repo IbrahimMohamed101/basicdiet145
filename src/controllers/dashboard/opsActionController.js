@@ -45,8 +45,8 @@ async function handleAction(req, res) {
           payload,
         });
       } catch (err) {
-        if (err.code === "REOPEN_NOT_SUPPORTED") {
-          return errorResponse(res, 409, "REOPEN_NOT_SUPPORTED", err.message);
+        if (err.status || err.code) {
+          return errorResponse(res, err.status || 500, err.code || "INTERNAL", err.message, err.details);
         }
         throw err;
       }
@@ -107,6 +107,9 @@ async function handleAction(req, res) {
     }
     if (err.message === "PICKUP_PREPARE_REQUIRED") {
       return errorResponse(res, 409, "PICKUP_PREPARE_REQUIRED", "Pickup preparation requires an explicit client request");
+    }
+    if (err.status || err.code) {
+      return errorResponse(res, err.status || 500, err.code || "INTERNAL", err.message, err.details);
     }
     
     console.error("Dashboard Action Error:", err);

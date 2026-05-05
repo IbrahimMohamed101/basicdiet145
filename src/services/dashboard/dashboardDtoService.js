@@ -1,6 +1,9 @@
 const { pickLang } = require("../../utils/i18n");
 const opsActionPolicy = require("./opsActionPolicy");
 const { buildSubscriptionDayFulfillmentState } = require("../subscription/subscriptionDayFulfillmentStateService");
+const { getAllowedOrderActions } = require("../orders/orderOpsTransitionService");
+const { normalizeLegacyOrderStatus } = require("../../utils/orderState");
+const { getOrderFulfillmentMethod } = require("../../utils/oneTimeOrderDeliveryGate");
 
 /**
  * Service to map internal models to the UnifiedOperationalDTO.
@@ -12,6 +15,7 @@ const STATUS_METADATA = {
   open: { badge: "info", icon: "clock" },
   frozen: { badge: "info", icon: "cloud-snow" },
   locked: { badge: "info", icon: "lock" },
+  in_preparation: { badge: "warning", icon: "chef-hat" },
   preparing: { badge: "warning", icon: "chef-hat" },
   ready_for_pickup: { badge: "success", icon: "shopping-bag" },
   fulfilled: { badge: "success", icon: "check-circle" },
@@ -25,6 +29,7 @@ const STATUS_METADATA = {
   out_for_delivery: { badge: "info", icon: "truck" },
   on_the_way: { badge: "info", icon: "truck" }, // Alias for ui
   canceled: { badge: "danger", icon: "x-circle" },
+  cancelled: { badge: "danger", icon: "x-circle" },
   confirmed: { badge: "info", icon: "check" },
 };
 
@@ -107,17 +112,23 @@ function mapSubscriptionDayToDTO(day, delivery, subscription, user, role, lang) 
 }
 
 function mapOrderToDTO(order, delivery, user, role, lang) {
-  const status = order.status;
-  const mode = order.deliveryMode || order.fulfillmentMethod;
+  const status = normalizeLegacyOrderStatus(order.status, { paymentStatus: order.paymentStatus });
+  const mode = getOrderFulfillmentMethod(order);
   const ui = resolveUiMetadata(status, lang);
 
-  const allowedActions = opsActionPolicy.getAllowedActions({
-    entityType: "order",
-    status,
-    mode,
-    role,
-    lang,
-  });
+  const allowedActions = getAllowedOrderActions(order, { role })
+    .map((actionId) => {
+      const config = opsActionPolicy.ACTION_REGISTRY[actionId];
+      if (!config) return null;
+      return {
+        id: actionId,
+        label: config.label[lang] || config.label.en,
+        color: config.color,
+        icon: config.icon,
+        requiresReason: !!config.requiresReason,
+      };
+    })
+    .filter(Boolean);
 
   return {
     source: "one_time_order",
@@ -147,7 +158,7 @@ function mapOrderToDTO(order, delivery, user, role, lang) {
     delivery: mode === "delivery" ? (order.delivery || {}) : {},
     pickup: mode === "pickup" ? (order.pickup || {}) : {},
     context: {
-      date: order.deliveryDate || order.fulfillmentDate,
+      date: order.fulfillmentDate || order.deliveryDate,
       window: order.deliveryWindow || (order.delivery && order.delivery.deliveryWindow ? order.delivery.deliveryWindow : ""),
       address: order.deliveryAddress || (order.delivery && order.delivery.address ? order.delivery.address : null),
       branch: mode === "pickup" ? "Main Branch" : null,

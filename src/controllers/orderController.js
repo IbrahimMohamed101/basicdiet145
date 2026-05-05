@@ -58,6 +58,13 @@ async function getOrderMenu(req, res) {
 async function quoteOrder(req, res) {
   try {
     const body = req.body || {};
+    
+    // Feature gate: One-time order delivery disabled by default
+    const ONE_TIME_ORDER_DELIVERY_ENABLED = process.env.ONE_TIME_ORDER_DELIVERY_ENABLED === "true";
+    if (body.fulfillmentMethod === "delivery" && !ONE_TIME_ORDER_DELIVERY_ENABLED) {
+      return errorResponse(res, 400, "DELIVERY_NOT_SUPPORTED", "Delivery is not currently supported for one-time orders");
+    }
+    
     const quote = await priceOrderCart({
       userId: req.userId,
       items: body.items,
@@ -186,6 +193,12 @@ async function createOrder(req, res) {
 
   try {
     const body = req.body || {};
+    
+    // Feature gate: One-time order delivery disabled by default
+    const ONE_TIME_ORDER_DELIVERY_ENABLED = process.env.ONE_TIME_ORDER_DELIVERY_ENABLED === "true";
+    if (body.fulfillmentMethod === "delivery" && !ONE_TIME_ORDER_DELIVERY_ENABLED) {
+      return errorResponse(res, 400, "DELIVERY_NOT_SUPPORTED", "Delivery is not currently supported for one-time orders");
+    }
     idempotencyKey = parseIdempotencyKey(
       req.get("Idempotency-Key")
       || req.get("X-Idempotency-Key")
