@@ -646,6 +646,103 @@
 
 ---
 
+# One-Time Orders / الطلبات المفردة
+
+## 1. الفرق بين One-Time Order والاشتراك
+
+الطلب المفرد مسار مستقل عن الاشتراكات. لا تستخدم endpoints الخاصة بـ `subscriptions` لإنشاء أو تعديل طلب مفرد، ولا ترسل `mealSlots`، ولا تعتمد على `SubscriptionDay`. الطلب المفرد يعتمد على `items[]` و `orderId`، ولا يوجد فيه skip/freeze أو `remainingMeals`.
+
+## 2. Menu Screen
+
+**Endpoint**: `GET /api/orders/menu`
+
+هذه الشاشة تعرض كتالوج الطلبات المفردة فقط. الاستجابة قد تحتوي على `standardMeals`، `sandwiches`، `salad`، `addons`، خيارات مناطق وأوقات التوصيل، وحالة/ساعات المطعم. استخدم هذه البيانات لبناء شاشة القائمة والسلة، ولا تفترض أن كتالوج الاشتراك هو نفس كتالوج الطلب المفرد.
+
+## 3. Cart Screen
+
+السلة في Flutter تكون local state فقط إلى أن يتم طلب Quote أو Create. يمكن للواجهة حساب subtotal تقديري للعرض السريع، لكن لا تعتمد على أسعار Flutter كقيمة نهائية. السعر النهائي دائماً من الباكند.
+
+## 4. Quote
+
+**Endpoint**: `POST /api/orders/quote`
+
+استخدمه قبل إنشاء الطلب لعرض التسعير النهائي. هذا الطلب لا ينشئ `Order` ولا `Payment` ولا رابط Moyasar. الاستجابة تعرض السعر النهائي مع VAT ضمن حسابات الباكند. حالياً `promoCode` غير مدعوم للطلبات المفردة إلا إذا غيّر الباكند ذلك صراحة، وقد يرجع `PROMO_NOT_SUPPORTED_FOR_ORDERS`.
+
+## 5. Checkout/Create
+
+**Endpoint**: `POST /api/orders`
+
+هذا المسار يعيد حساب السعر من جديد، ثم ينشئ طلباً بحالة `pending_payment` وينشئ رابط الدفع. أرسل header:
+
+```http
+Idempotency-Key: <stable-key-per-checkout-attempt>
+```
+
+بعد الاستجابة افتح `paymentUrl` داخل WebView. لا تنشئ طلباً جديداً عند كل رجوع أو إعادة محاولة طالما نفس محاولة checkout مستمرة.
+
+## 6. Payment WebView and Verify
+
+**Endpoint**: `POST /api/orders/:orderId/payments/:paymentId/verify`
+
+بعد رجوع WebView من Moyasar، استدع هذا المسار دائماً. إذا رجعت الاستجابة `isFinal=false` فهذا يعني أن حالة الدفع لم تحسم بعد ويمكن إعادة المحاولة لاحقاً. تكرار verify آمن. عندما تكون فاتورة Moyasar مدفوعة، يؤكد الباكند الطلب وينقله إلى مسار التشغيل.
+
+## 7. Order Detail and History
+
+**Endpoints**:
+- `GET /api/orders/:orderId`
+- `GET /api/orders`
+- `DELETE /api/orders/:orderId`
+
+`GET /api/orders/:orderId` يعرض تفاصيل طلب يملكه المستخدم فقط. `GET /api/orders` يعرض سجل الطلبات. `DELETE` يعمل فقط على طلب `pending_payment` غير مدفوع، ولا يحذف الطلب من التاريخ. الطلبات المعلقة قد تنتهي صلاحيتها، والطلبات `expired` تبقى في السجل.
+
+## 8. Status lifecycle
+
+حالات الطلب المفرد:
+
+- `pending_payment`
+- `confirmed`
+- `in_preparation`
+- `ready_for_pickup`
+- `out_for_delivery`
+- `fulfilled`
+- `cancelled`
+- `expired`
+
+الحالات النهائية هي `fulfilled` و `cancelled` و `expired`. لا تعرض أزرار تشغيل بعد الوصول لحالة نهائية.
+
+## 9. Dashboard Orders
+
+لوحة التحكم تستطيع عرض قائمة وتفاصيل الطلبات المفردة عبر:
+
+- `GET /api/dashboard/orders`
+- `GET /api/dashboard/orders/:orderId`
+- `POST /api/dashboard/orders/:orderId/actions/:action`
+
+أكشنات الداشبورد تشغيلية فقط مثل التحضير، التجهيز للاستلام، الإرسال، الإكمال، أو الإلغاء. `cancel` لا يعني تنفيذ refund مالي إلا إذا أضاف الباكند ذلك لاحقاً.
+
+## 10. Ops Boards
+
+شاشات Kitchen/Courier/Pickup/Delivery Schedule قد تعرض صفوف اشتراكات وصفوف طلبات مفردة في نفس الاستجابة. اعتمد على `source` و `entityType` قبل اختيار UI أو الأزرار:
+
+- الطلب المفرد: `source=one_time_order`
+- الطلب المفرد: `entityType=order`
+- الاشتراك اليومي: غالباً `entityType=subscription_day`
+
+لا تفترض أن كل صف هو `subscription_day`، ولا تستخدم `mealSlots` كشرط أساسي لعرض الصف.
+
+## 11. Common mistakes
+
+- استخدام subscription endpoints لإنشاء طلب مفرد.
+- إرسال `mealSlots` أو التعامل مع `SubscriptionDay`.
+- حساب الإجمالي النهائي في Flutter.
+- إضافة VAT مرة ثانية فوق سعر الباكند.
+- تجاهل verify بعد رجوع WebView.
+- إنشاء عدة طلبات بدون `Idempotency-Key`.
+- استخدام أكشنات التوصيل على طلب pickup.
+- افتراض أن cancel يعني refund.
+
+---
+
 ## 23-B. Cashier Consumption (محاسب الفرع)
 
 **الهدف**: الخصم المباشر (Manual Deduction) من رصيد وجبات العميل عند استلامه لوجبة بدون طلب مسبق أو خارج سياق الفلتر التشغيلي، دعماً لسياسة `TOTAL_BALANCE_WITHIN_VALIDITY`.

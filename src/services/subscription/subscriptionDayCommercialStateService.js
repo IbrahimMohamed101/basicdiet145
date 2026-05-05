@@ -208,7 +208,7 @@ function isPlanningComplete(plannerMeta, mealSlots = []) {
     return Boolean(
       normalizeBoolean(meta.isDraftValid)
         && normalizeNumber(meta.partialSlotCount) === 0
-        && normalizeNumber(meta.completeSlotCount) === effectiveRequired
+        && normalizeNumber(meta.completeSlotCount) >= effectiveRequired
     );
   }
   

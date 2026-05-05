@@ -41,11 +41,13 @@ const otpVerifyLimiter = buildLimiter({
   message: "errors.rateLimit.otpVerify",
 });
 
-const checkoutLimiter = buildLimiter({
-  windowMs: Number(process.env.RATE_LIMIT_CHECKOUT_WINDOW_MS) || 5 * 60 * 1000,
-  max: Number(process.env.RATE_LIMIT_CHECKOUT_MAX) || 20,
-  message: "errors.rateLimit.checkout",
-});
+const checkoutLimiter = process.env.NODE_ENV === "test"
+  ? (req, res, next) => next()
+  : buildLimiter({
+    windowMs: Number(process.env.RATE_LIMIT_CHECKOUT_WINDOW_MS) || 5 * 60 * 1000,
+    max: Number(process.env.RATE_LIMIT_CHECKOUT_MAX) || 20,
+    message: "errors.rateLimit.checkout",
+  });
 
 const dashboardLoginLimiter = buildLimiter({
   windowMs: Number(process.env.RATE_LIMIT_DASHBOARD_LOGIN_WINDOW_MS) || 15 * 60 * 1000,

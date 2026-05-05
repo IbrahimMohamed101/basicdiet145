@@ -240,6 +240,16 @@ async function runTests() {
     expectEqual(errors[0].code, 'MEAL_SLOT_COUNT_EXCEEDED', 'error code');
   });
 
+  await test('collectSlotCountErrors uses maxSlotCount separately from requiredSlotCount', () => {
+    const input = [
+      { slotIndex: 1, slotKey: 'slot_1' },
+      { slotIndex: 2, slotKey: 'slot_2' },
+      { slotIndex: 3, slotKey: 'slot_3' },
+    ];
+    const errors = collectSlotCountErrors({ mealSlots: input, requiredSlotCount: 1, maxSlotCount: 7 });
+    expectEqual(errors.length, 0, 'no errors up to balance max');
+  });
+
   await test('isSandwichSlot returns true for sandwich selectionType', () => {
     const slot = { slotIndex: 1, slotKey: 'slot_1', selectionType: 'sandwich', sandwichId: 'sandwich1' };
     expectTrue(isSandwichSlot(slot), 'sandwich detected');
@@ -473,6 +483,61 @@ async function runTests() {
       });
       expectTrue(result.valid, 'draft valid');
       expectEqual(result.processedSlots[0].status, 'complete', 'slot complete');
+    });
+  });
+
+  await test('draft allows extra slots up to maxSlotCount while required count remains default', async () => {
+    await withMockedPlannerCatalog({}, async () => {
+      const result = await buildMealSlotDraft({
+        mealSlots: [1, 2, 3].map((slotIndex) => ({
+          slotIndex,
+          selectionType: 'standard_meal',
+          proteinId: IDS.regularProtein,
+          carbs: [{ carbId: IDS.carbOne, grams: 150 }],
+        })),
+        mealsPerDayLimit: 1,
+        maxSlotCount: 7,
+        subscription: { premiumBalance: [] },
+      });
+      expectTrue(result.valid, 'draft valid');
+      expectEqual(result.plannerMeta.requiredSlotCount, 1, 'default planning count preserved');
+      expectEqual(result.plannerMeta.maxSlotCount, 7, 'balance max persisted in meta');
+      expectEqual(result.plannerMeta.completeSlotCount, 3, 'complete slot count');
+    });
+  });
+
+  await test('draft rejects slots over maxSlotCount', async () => {
+    await withMockedPlannerCatalog({}, async () => {
+      const result = await buildMealSlotDraft({
+        mealSlots: Array.from({ length: 8 }, (_, index) => ({
+          slotIndex: index + 1,
+          selectionType: 'standard_meal',
+          proteinId: IDS.regularProtein,
+          carbs: [{ carbId: IDS.carbOne, grams: 150 }],
+        })),
+        mealsPerDayLimit: 1,
+        maxSlotCount: 7,
+        subscription: { premiumBalance: [] },
+      });
+      expectFalse(result.valid, 'draft invalid');
+      expectEqual(result.errorCode, 'MEAL_SLOT_COUNT_EXCEEDED', 'error code');
+    });
+  });
+
+  await test('draft keeps old required-count cap when maxSlotCount is unavailable', async () => {
+    await withMockedPlannerCatalog({}, async () => {
+      const result = await buildMealSlotDraft({
+        mealSlots: [1, 2].map((slotIndex) => ({
+          slotIndex,
+          selectionType: 'standard_meal',
+          proteinId: IDS.regularProtein,
+          carbs: [{ carbId: IDS.carbOne, grams: 150 }],
+        })),
+        mealsPerDayLimit: 1,
+        subscription: { premiumBalance: [] },
+      });
+      expectFalse(result.valid, 'draft invalid');
+      expectEqual(result.errorCode, 'MEAL_SLOT_COUNT_EXCEEDED', 'error code');
     });
   });
 

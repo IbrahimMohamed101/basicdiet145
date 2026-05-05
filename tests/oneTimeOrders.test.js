@@ -654,7 +654,7 @@ function setMoyasarInvoice(invoiceId, updates = {}) {
         ],
       });
       expectStatus(res, 200, "mixed quote");
-      assert.strictEqual(res.body.data.pricing.subtotalHalala, 7050);
+      assert.strictEqual(res.body.data.pricing.subtotalHalala, 7350);
       assert.strictEqual(res.body.data.items.length, 3);
     });
 

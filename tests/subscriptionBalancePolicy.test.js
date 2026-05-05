@@ -17,9 +17,92 @@ const ActivityLog = require("../src/models/ActivityLog");
 const { buildSubscriptionTimeline } = require("../src/services/subscription/subscriptionTimelineService");
 const { applyOperationalSkipForDate } = require("../src/services/subscription/subscriptionSkipService");
 const { recordCashierConsumption } = require("../src/services/dashboard/cashierConsumptionService");
+const {
+  performDaySelectionUpdate,
+  performDaySelectionValidation,
+} = require("../src/services/subscription/subscriptionSelectionService");
 const { markPickupNoShow } = require("../src/controllers/kitchenController");
+const BuilderProtein = require("../src/models/BuilderProtein");
+const BuilderCarb = require("../src/models/BuilderCarb");
+const MealCategory = require("../src/models/MealCategory");
+const Meal = require("../src/models/Meal");
+const SaladIngredient = require("../src/models/SaladIngredient");
+const Sandwich = require("../src/models/Sandwich");
 
 const TEST_TAG = `balance-policy-${Date.now()}`;
+const PLANNER_IDS = {
+  regularProtein: "507f191e810c19729de870a1",
+  premiumProtein: "507f191e810c19729de870a2",
+  carbOne: "507f191e810c19729de870b1",
+};
+
+function mockQuery(result) {
+  return {
+    session() {
+      return this;
+    },
+    lean() {
+      return Promise.resolve(result);
+    },
+  };
+}
+
+async function withMockedPlannerCatalog(fn) {
+  const originalProteinFind = BuilderProtein.find;
+  const originalCarbFind = BuilderCarb.find;
+  const originalMealCategoryFindOne = MealCategory.findOne;
+  const originalMealFind = Meal.find;
+  const originalSaladIngredientFind = SaladIngredient.find;
+  const originalSandwichFind = Sandwich.find;
+
+  BuilderProtein.find = () => mockQuery([
+    {
+      _id: PLANNER_IDS.regularProtein,
+      isPremium: false,
+      premiumKey: null,
+      displayCategoryKey: "chicken",
+      proteinFamilyKey: "chicken",
+      ruleTags: [],
+      extraFeeHalala: 0,
+    },
+    {
+      _id: PLANNER_IDS.premiumProtein,
+      isPremium: true,
+      premiumKey: "shrimp",
+      displayCategoryKey: "premium",
+      proteinFamilyKey: "fish",
+      ruleTags: ["premium"],
+      extraFeeHalala: 1500,
+    },
+  ]);
+  BuilderCarb.find = () => mockQuery([
+    { _id: PLANNER_IDS.carbOne, isActive: true, availableForSubscription: true, displayCategoryKey: "standard_carbs" },
+  ]);
+  MealCategory.findOne = () => mockQuery(null);
+  Meal.find = () => mockQuery([]);
+  SaladIngredient.find = () => mockQuery([]);
+  Sandwich.find = () => mockQuery([]);
+
+  try {
+    return await fn();
+  } finally {
+    BuilderProtein.find = originalProteinFind;
+    BuilderCarb.find = originalCarbFind;
+    MealCategory.findOne = originalMealCategoryFindOne;
+    Meal.find = originalMealFind;
+    SaladIngredient.find = originalSaladIngredientFind;
+    Sandwich.find = originalSandwichFind;
+  }
+}
+
+function buildStandardSlots(count) {
+  return Array.from({ length: count }, (_, index) => ({
+    slotIndex: index + 1,
+    selectionType: "standard_meal",
+    proteinId: PLANNER_IDS.regularProtein,
+    carbs: [{ carbId: PLANNER_IDS.carbOne, grams: 150 }],
+  }));
+}
 
 async function connect() {
   if (mongoose.connection.readyState === 0) {
@@ -47,7 +130,14 @@ async function cleanup() {
   ]);
 }
 
-async function seedSubscription({ deliveryMode = "delivery", remainingMeals = 30, phoneSuffix = "000" } = {}) {
+async function seedSubscription({
+  deliveryMode = "delivery",
+  remainingMeals = 30,
+  totalMeals = 30,
+  selectedMealsPerDay = 2,
+  contractMode,
+  phoneSuffix = "000",
+} = {}) {
   const phone = `+1555${Date.now()}${phoneSuffix}${TEST_TAG}`;
   const user = await User.create({
     phone,
@@ -73,10 +163,11 @@ async function seedSubscription({ deliveryMode = "delivery", remainingMeals = 30
     startDate: new Date("2026-04-01T00:00:00+03:00"),
     endDate: new Date("2026-04-15T00:00:00+03:00"),
     validityEndDate: new Date("2026-05-30T00:00:00+03:00"),
-    totalMeals: 30,
+    totalMeals,
     remainingMeals,
     selectedGrams: 200,
-    selectedMealsPerDay: 2,
+    selectedMealsPerDay,
+    ...(contractMode ? { contractMode } : {}),
     deliveryMode,
     deliveryAddress: deliveryMode === "delivery" ? { line1: "Test address" } : undefined,
     deliveryWindow: deliveryMode === "delivery" ? "13:00-16:00" : "",
@@ -93,6 +184,21 @@ async function runTests() {
     console.log("Setting up testing payload...");
     const { subscription: sub1, phone: sub1Phone } = await seedSubscription({ deliveryMode: "delivery", remainingMeals: 30, phoneSuffix: "001" });
     const { subscription: sub2, phone: sub2Phone } = await seedSubscription({ deliveryMode: "pickup", remainingMeals: 30, phoneSuffix: "002" });
+    const { subscription: sub3 } = await seedSubscription({
+      deliveryMode: "pickup",
+      remainingMeals: 7,
+      totalMeals: 7,
+      selectedMealsPerDay: 1,
+      contractMode: "canonical",
+      phoneSuffix: "003",
+    });
+    const { subscription: legacySub } = await seedSubscription({
+      deliveryMode: "pickup",
+      remainingMeals: 7,
+      totalMeals: 7,
+      selectedMealsPerDay: 1,
+      phoneSuffix: "004",
+    });
 
     // Populate old days
     await SubscriptionDay.create([
@@ -191,6 +297,77 @@ async function runTests() {
     } catch (err) {
       assert.strictEqual(err.code, "SUBSCRIPTION_EXPIRED", "Expired subscriptions block further consumption");
     }
+
+    await withMockedPlannerCatalog(async () => {
+      // Test 10: Validate endpoint/service accepts more than selectedMealsPerDay up to maxConsumableMealsNow
+      const validation3 = await performDaySelectionValidation({
+        userId: sub3.userId,
+        subscriptionId: sub3._id,
+        date: "2026-05-20",
+        mealSlots: buildStandardSlots(3),
+      });
+      assert.strictEqual(validation3.valid, true, "Validation accepts 3 slots when requiredMealCount is 1 and remainingMeals is 7");
+      assert.strictEqual(validation3.plannerMeta.requiredSlotCount, 1, "requiredSlotCount stays the default planning count");
+      assert.strictEqual(validation3.plannerMeta.maxSlotCount, 7, "maxSlotCount comes from maxConsumableMealsNow");
+      assert.strictEqual(validation3.plannerMeta.completeSlotCount, 3, "all 3 slots are complete");
+
+      // Test 11: Validate endpoint/service rejects over remaining meal balance
+      try {
+        await performDaySelectionValidation({
+          userId: sub3.userId,
+          subscriptionId: sub3._id,
+          date: "2026-05-20",
+          mealSlots: buildStandardSlots(8),
+        });
+        assert.fail("Should have thrown MEAL_SLOT_COUNT_EXCEEDED");
+      } catch (err) {
+        assert.strictEqual(err.code, "MEAL_SLOT_COUNT_EXCEEDED", "Cannot select more than maxConsumableMealsNow");
+        assert.strictEqual(err.slotErrors.length, 1, "Only the 8th slot is over balance");
+      }
+
+      // Test 12: Save endpoint/service accepts extra slots and does not deduct remainingMeals
+      const saveResult = await performDaySelectionUpdate({
+        userId: sub3.userId,
+        subscriptionId: sub3._id,
+        date: "2026-05-21",
+        mealSlots: buildStandardSlots(3),
+      });
+      assert.strictEqual(saveResult.day.mealSlots.length, 3, "Save accepts 3 slots");
+      const sub3AfterSave = await Subscription.findById(sub3._id).lean();
+      assert.strictEqual(sub3AfterSave.remainingMeals, 7, "Save must not deduct remainingMeals");
+
+      // Test 13: Old behavior remains when mealBalance is unavailable
+      try {
+        await performDaySelectionValidation({
+          userId: legacySub.userId,
+          subscriptionId: legacySub._id,
+          date: "2026-05-20",
+          mealSlots: buildStandardSlots(2),
+        });
+        assert.fail("Should have kept requiredMealCount cap for legacy subscriptions");
+      } catch (err) {
+        assert.strictEqual(err.code, "MEAL_SLOT_COUNT_EXCEEDED", "Legacy subscription keeps daily cap");
+      }
+
+      // Test 14: Premium payment requirement still applies inside expanded slot count
+      const premiumValidation = await performDaySelectionValidation({
+        userId: sub3.userId,
+        subscriptionId: sub3._id,
+        date: "2026-05-22",
+        mealSlots: [
+          ...buildStandardSlots(2),
+          {
+            slotIndex: 3,
+            selectionType: "premium_meal",
+            proteinId: PLANNER_IDS.premiumProtein,
+            carbs: [{ carbId: PLANNER_IDS.carbOne, grams: 150 }],
+          },
+        ],
+      });
+      assert.strictEqual(premiumValidation.valid, true, "Premium validation remains valid structurally");
+      assert.strictEqual(premiumValidation.paymentRequirement.requiresPayment, true, "Premium extra still requires payment");
+      assert.strictEqual(premiumValidation.paymentRequirement.premiumPendingPaymentCount, 1, "One unpaid premium extra is counted");
+    });
 
     console.log("All subscription balance policy automated tests passed perfectly.");
     await cleanup();

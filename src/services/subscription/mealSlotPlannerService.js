@@ -364,9 +364,14 @@ function collectDuplicateSlotErrors({ mealSlots }) {
   return slotErrors;
 }
 
-function collectSlotCountErrors({ mealSlots, requiredSlotCount = 0, completeSlotCount = null }) {
+function collectSlotCountErrors({
+  mealSlots,
+  requiredSlotCount = 0,
+  maxSlotCount = null,
+  completeSlotCount = null,
+}) {
   const normalizedSlots = Array.isArray(mealSlots) ? mealSlots : [];
-  const maxSlots = Number(requiredSlotCount || 0);
+  const maxSlots = Number(maxSlotCount === null || maxSlotCount === undefined ? (requiredSlotCount || 0) : maxSlotCount);
   const slotErrors = [];
 
   if (maxSlots >= 0 && normalizedSlots.length > maxSlots) {
@@ -567,10 +572,12 @@ function isSandwichSlot(slot) {
   return Boolean(slot && slot.selectionType === NEW_TYPES.SANDWICH);
 }
 
-function recomputePlannerMetaFromSlots({ mealSlots, requiredSlotCount = 0 }) {
+function recomputePlannerMetaFromSlots({ mealSlots, requiredSlotCount = 0, maxSlotCount = null }) {
   const normalizedSlots = normalizeMealSlotsInput({ mealSlots });
+  const resolvedMaxSlotCount = Number(maxSlotCount === null || maxSlotCount === undefined ? requiredSlotCount : maxSlotCount);
   const plannerMeta = {
     requiredSlotCount: Number(requiredSlotCount || 0),
+    maxSlotCount: resolvedMaxSlotCount,
     emptySlotCount: 0,
     partialSlotCount: 0,
     completeSlotCount: 0,
@@ -605,7 +612,12 @@ function recomputePlannerMetaFromSlots({ mealSlots, requiredSlotCount = 0 }) {
     }
   }
 
-  slotErrors.push(...collectSlotCountErrors({ mealSlots: normalizedSlots, requiredSlotCount, completeSlotCount: plannerMeta.completeSlotCount }));
+  slotErrors.push(...collectSlotCountErrors({
+    mealSlots: normalizedSlots,
+    requiredSlotCount,
+    maxSlotCount: resolvedMaxSlotCount,
+    completeSlotCount: plannerMeta.completeSlotCount,
+  }));
 
   if (plannerMeta.beefSlotCount > 1) {
     plannerMeta.isDraftValid = false;
@@ -620,18 +632,18 @@ function recomputePlannerMetaFromSlots({ mealSlots, requiredSlotCount = 0 }) {
   plannerMeta.isConfirmable = Boolean(
     plannerMeta.isDraftValid
       && plannerMeta.partialSlotCount === 0
-      && plannerMeta.completeSlotCount === plannerMeta.requiredSlotCount
+      && plannerMeta.completeSlotCount >= plannerMeta.requiredSlotCount
       && plannerMeta.premiumPendingPaymentCount === 0
   );
 
   return { plannerMeta, slotErrors };
 }
 
-async function buildMealSlotDraft({ mealSlots, mealsPerDayLimit, subscription, session = null }) {
+async function buildMealSlotDraft({ mealSlots, mealsPerDayLimit, maxSlotCount = null, subscription, session = null }) {
   const normalizedMealSlots = normalizeMealSlotsInput({ mealSlots });
+  const resolvedMaxSlotCount = Number(maxSlotCount === null || maxSlotCount === undefined ? mealsPerDayLimit : maxSlotCount);
   const normalizedSlotErrors = [
     ...collectDuplicateSlotErrors({ mealSlots: normalizedMealSlots }),
-    ...collectSlotCountErrors({ mealSlots: normalizedMealSlots, requiredSlotCount: mealsPerDayLimit }),
   ];
   
   const proteinIdsSet = new Set(normalizedMealSlots.map((s) => s.proteinId).filter(Boolean));
@@ -715,6 +727,7 @@ async function buildMealSlotDraft({ mealSlots, mealsPerDayLimit, subscription, s
     premiumPendingPaymentCount: 0,
     premiumPaidExtraCount: 0,
     premiumTotalHalala: 0,
+    maxSlotCount: resolvedMaxSlotCount,
     isDraftValid: true,
     isConfirmable: false,
     lastEditedAt: new Date(),
@@ -835,6 +848,7 @@ async function buildMealSlotDraft({ mealSlots, mealsPerDayLimit, subscription, s
   normalizedSlotErrors.push(...collectSlotCountErrors({
     mealSlots: processedSlots,
     requiredSlotCount: mealsPerDayLimit,
+    maxSlotCount: resolvedMaxSlotCount,
     completeSlotCount: plannerMeta.completeSlotCount,
   }));
 
@@ -853,7 +867,7 @@ async function buildMealSlotDraft({ mealSlots, mealsPerDayLimit, subscription, s
   plannerMeta.isConfirmable = Boolean(
     plannerMeta.isDraftValid
       && plannerMeta.partialSlotCount === 0
-      && plannerMeta.completeSlotCount === plannerMeta.requiredSlotCount
+      && plannerMeta.completeSlotCount >= plannerMeta.requiredSlotCount
       && plannerMeta.premiumPendingPaymentCount === 0 // Requirement 11: No pending premium payment
   );
 

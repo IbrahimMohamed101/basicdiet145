@@ -121,3 +121,19 @@
 | GET | `/api/dashboard/ops/list` | Operations Board | admin/kitchen/courier | No | List operations board |
 | GET | `/api/dashboard/ops/search` | Operations Board | admin/kitchen/courier | No | Search operations |
 | POST | `/api/dashboard/ops/actions/{action}` | Operations Board | admin/kitchen/courier | Yes | Execute operations action |
+| GET | `/api/orders/menu` | One-Time Orders - Mobile | public | No | Public one-time order menu/catalog |
+| POST | `/api/orders/quote` | One-Time Orders - Mobile | mobile user | Yes | Quote cart only; does not create Order or Payment |
+| POST | `/api/orders` | One-Time Orders - Mobile | mobile user | Yes | Create pending_payment order and Moyasar invoice |
+| GET | `/api/orders/{orderId}` | One-Time Orders - Mobile | mobile user owner-only | No | Get one-time order detail |
+| GET | `/api/orders` | One-Time Orders - Mobile | mobile user owner-only | No | List current user's one-time order history |
+| DELETE | `/api/orders/{orderId}` | One-Time Orders - Mobile | mobile user owner-only | No | Cancel unpaid pending_payment order only |
+| POST | `/api/orders/{orderId}/payments/{paymentId}/verify` | One-Time Orders - Payment | mobile user owner-only | Yes | Verify Moyasar invoice/payment and confirm paid order |
+| GET | `/api/dashboard/orders` | One-Time Orders - Dashboard | admin/kitchen/courier | No | List one-time orders with operational filters |
+| GET | `/api/dashboard/orders/{orderId}` | One-Time Orders - Dashboard | admin/kitchen/courier | No | Dashboard one-time order detail |
+| POST | `/api/dashboard/orders/{orderId}/actions/{action}` | One-Time Orders - Dashboard | admin/kitchen/courier | Yes | Run order action: prepare, ready_for_pickup, dispatch, notify_arrival, fulfill, cancel; reopen is unsupported |
+| GET | `/api/dashboard/kitchen/queue` | One-Time Orders - Ops | admin/kitchen/courier | No | Board can include subscription_day and one_time_order rows |
+| GET | `/api/dashboard/courier/queue` | One-Time Orders - Ops | admin/kitchen/courier | No | Board can include delivery one-time order rows |
+| GET | `/api/dashboard/pickup/queue` | One-Time Orders - Ops | admin/kitchen/courier | No | Board can include pickup one-time order rows |
+| GET | `/api/dashboard/delivery-schedule` | One-Time Orders - Ops | admin/courier | No | Delivery schedule can include delivery one-time order rows |
+| POST | `/api/dashboard/ops/actions/{action}` | One-Time Orders - Ops | admin/kitchen/courier | Yes | Unified ops action with `entityType=order` and `entityId={orderId}` |
+| POST | `/api/webhooks/moyasar` | One-Time Orders - Webhook | Moyasar webhook secret | Yes | Moyasar webhook includes one-time order branch; subscription branch unchanged |

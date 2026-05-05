@@ -125,6 +125,54 @@
     {
       "key": "promoCode",
       "value": "WELCOME10"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "orderId",
+      "value": ""
+    },
+    {
+      "key": "orderPaymentId",
+      "value": ""
+    },
+    {
+      "key": "orderPromoCode",
+      "value": ""
+    },
+    {
+      "key": "orderItemId",
+      "value": ""
+    },
+    {
+      "key": "orderProviderInvoiceId",
+      "value": ""
+    },
+    {
+      "key": "orderProviderPaymentId",
+      "value": ""
+    },
+    {
+      "key": "orderIdempotencyKey",
+      "value": "one-time-order-{{$timestamp}}"
+    },
+    {
+      "key": "orderAction",
+      "value": "prepare"
+    },
+    {
+      "key": "orderPaymentUrl",
+      "value": ""
+    },
+    {
+      "key": "moyasarWebhookSecret",
+      "value": ""
+    },
+    {
+      "key": "moyasarWebhookSignature",
+      "value": ""
     }
   ],
   "item": [
@@ -14848,6 +14896,1893 @@
                   "if (id) pm.collectionVariables.set('opsItemId', id);",
                   "if (item?.id && item?.code) pm.collectionVariables.set('promoCodeId', item.id);",
                   "if (item?.id && item?.amount !== undefined) pm.collectionVariables.set('paymentId', item.id);"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "One-Time Orders - Mobile",
+      "item": [
+        {
+          "name": "Get one-time order menu",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              }
+            ],
+            "description": "Public menu for the one-time order flow. Returns builder catalog sections such as standardMeals, sandwiches, salad, addons, delivery options, windows/zones, and restaurant-hours metadata. No order or payment is created.",
+            "url": {
+              "raw": "{{baseUrl}}/orders/menu?fulfillmentMethod=delivery",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders",
+                "menu"
+              ],
+              "query": [
+                {
+                  "key": "fulfillmentMethod",
+                  "value": "delivery"
+                }
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 2xx', function () {",
+                  "  pm.expect(pm.response.code).to.be.within(200, 299);",
+                  "});",
+                  "",
+                  "let json = {};",
+                  "try { json = pm.response.json(); } catch (e) { json = {}; }",
+                  "const pickFirstEntity = (value) => {",
+                  "  if (!value) return null;",
+                  "  if (Array.isArray(value)) return value[0] || null;",
+                  "  if (Array.isArray(value.items)) return value.items[0] || null;",
+                  "  if (Array.isArray(value.data)) return value.data[0] || null;",
+                  "  if (value.data) return pickFirstEntity(value.data) || value.data;",
+                  "  if (value.order) return value.order;",
+                  "  return value;",
+                  "};",
+                  "const entity = pickFirstEntity(json);",
+                  "const firstSandwich = pickFirstEntity(json?.data?.sandwiches || json?.data?.items?.sandwiches);",
+                  "if (firstSandwich?.id || firstSandwich?._id) pm.collectionVariables.set('sandwichId', firstSandwich.id || firstSandwich._id);",
+                  "const firstAddon = pickFirstEntity(json?.data?.addons);",
+                  "if (firstAddon?.id || firstAddon?._id) pm.collectionVariables.set('orderItemId', firstAddon.id || firstAddon._id);"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Quote one-time order",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "disabled": false
+              }
+            ],
+            "description": "Prices the cart without creating Order, Payment, or Moyasar invoice records. Use this before create; backend pricing is the source of truth. Sending promoCode currently returns PROMO_NOT_SUPPORTED_FOR_ORDERS until order promos are enabled.",
+            "url": {
+              "raw": "{{baseUrl}}/orders/quote",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders",
+                "quote"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fulfillmentMethod\": \"delivery\",\n  \"delivery\": {\n    \"zoneId\": \"{{zoneId}}\",\n    \"address\": {\n      \"label\": \"Home\",\n      \"line1\": \"Street 1\",\n      \"line2\": \"\",\n      \"district\": \"North\",\n      \"city\": \"Riyadh\",\n      \"phone\": \"+966500000000\",\n      \"notes\": \"\"\n    },\n    \"deliveryWindow\": \"18:00-20:00\"\n  },\n  \"items\": [\n    {\n      \"itemType\": \"sandwich\",\n      \"qty\": 1,\n      \"selections\": {\n        \"sandwichId\": \"{{sandwichId}}\"\n      }\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 2xx', function () {",
+                  "  pm.expect(pm.response.code).to.be.within(200, 299);",
+                  "});",
+                  "",
+                  "let json = {};",
+                  "try { json = pm.response.json(); } catch (e) { json = {}; }",
+                  "const pickFirstEntity = (value) => {",
+                  "  if (!value) return null;",
+                  "  if (Array.isArray(value)) return value[0] || null;",
+                  "  if (Array.isArray(value.items)) return value.items[0] || null;",
+                  "  if (Array.isArray(value.data)) return value.data[0] || null;",
+                  "  if (value.data) return pickFirstEntity(value.data) || value.data;",
+                  "  if (value.order) return value.order;",
+                  "  return value;",
+                  "};",
+                  "const entity = pickFirstEntity(json);",
+                  "const firstItem = pickFirstEntity(entity?.items || json?.data?.items);",
+                  "if (firstItem?.catalogRef?.id || firstItem?.id) pm.collectionVariables.set('orderItemId', firstItem.catalogRef?.id || firstItem.id);"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Create one-time order checkout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "disabled": false
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{orderIdempotencyKey}}"
+              }
+            ],
+            "description": "Creates a pending_payment one-time order, recalculates pricing, creates Payment.type=one_time_order, initializes a Moyasar invoice, and returns paymentUrl. Use Idempotency-Key to avoid duplicate pending orders.",
+            "url": {
+              "raw": "{{baseUrl}}/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fulfillmentMethod\": \"delivery\",\n  \"delivery\": {\n    \"zoneId\": \"{{zoneId}}\",\n    \"address\": {\n      \"label\": \"Home\",\n      \"line1\": \"Street 1\",\n      \"line2\": \"\",\n      \"district\": \"North\",\n      \"city\": \"Riyadh\",\n      \"phone\": \"+966500000000\",\n      \"notes\": \"\"\n    },\n    \"deliveryWindow\": \"18:00-20:00\"\n  },\n  \"items\": [\n    {\n      \"itemType\": \"sandwich\",\n      \"qty\": 1,\n      \"selections\": {\n        \"sandwichId\": \"{{sandwichId}}\"\n      }\n    }\n  ],\n  \"successUrl\": \"basicdiet://orders/payment-success\",\n  \"backUrl\": \"basicdiet://orders/payment-cancel\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 2xx', function () {",
+                  "  pm.expect(pm.response.code).to.be.within(200, 299);",
+                  "});",
+                  "",
+                  "let json = {};",
+                  "try { json = pm.response.json(); } catch (e) { json = {}; }",
+                  "const pickFirstEntity = (value) => {",
+                  "  if (!value) return null;",
+                  "  if (Array.isArray(value)) return value[0] || null;",
+                  "  if (Array.isArray(value.items)) return value.items[0] || null;",
+                  "  if (Array.isArray(value.data)) return value.data[0] || null;",
+                  "  if (value.data) return pickFirstEntity(value.data) || value.data;",
+                  "  if (value.order) return value.order;",
+                  "  return value;",
+                  "};",
+                  "const entity = pickFirstEntity(json);",
+                  "const orderId = entity?.orderId || entity?._id || entity?.id || entity?.order?.id || entity?.order?._id;",
+                  "const paymentId = entity?.paymentId || entity?.payment?._id || entity?.payment?.id;",
+                  "const invoiceId = entity?.invoiceId || entity?.providerInvoiceId || entity?.payment?.providerInvoiceId;",
+                  "const providerPaymentId = entity?.providerPaymentId || entity?.payment?.providerPaymentId;",
+                  "const paymentUrl = entity?.paymentUrl || entity?.payment?.metadata?.paymentUrl;",
+                  "if (orderId) pm.collectionVariables.set('orderId', orderId);",
+                  "if (paymentId) pm.collectionVariables.set('orderPaymentId', paymentId);",
+                  "if (invoiceId) pm.collectionVariables.set('orderProviderInvoiceId', invoiceId);",
+                  "if (providerPaymentId) pm.collectionVariables.set('orderProviderPaymentId', providerPaymentId);",
+                  "if (paymentUrl) pm.collectionVariables.set('orderPaymentUrl', paymentUrl);"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Get one-time order detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "disabled": false
+              }
+            ],
+            "description": "Owner-only order detail. Pending unpaid orders may lazily expire when read after expiresAt.",
+            "url": {
+              "raw": "{{baseUrl}}/orders/{{orderId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders",
+                "{{orderId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 2xx', function () {",
+                  "  pm.expect(pm.response.code).to.be.within(200, 299);",
+                  "});",
+                  "",
+                  "let json = {};",
+                  "try { json = pm.response.json(); } catch (e) { json = {}; }",
+                  "const pickFirstEntity = (value) => {",
+                  "  if (!value) return null;",
+                  "  if (Array.isArray(value)) return value[0] || null;",
+                  "  if (Array.isArray(value.items)) return value.items[0] || null;",
+                  "  if (Array.isArray(value.data)) return value.data[0] || null;",
+                  "  if (value.data) return pickFirstEntity(value.data) || value.data;",
+                  "  if (value.order) return value.order;",
+                  "  return value;",
+                  "};",
+                  "const entity = pickFirstEntity(json);",
+                  "const orderId = entity?.orderId || entity?._id || entity?.id || entity?.order?.id || entity?.order?._id;",
+                  "const paymentId = entity?.paymentId || entity?.payment?._id || entity?.payment?.id;",
+                  "const invoiceId = entity?.invoiceId || entity?.providerInvoiceId || entity?.payment?.providerInvoiceId;",
+                  "const providerPaymentId = entity?.providerPaymentId || entity?.payment?.providerPaymentId;",
+                  "const paymentUrl = entity?.paymentUrl || entity?.payment?.metadata?.paymentUrl;",
+                  "if (orderId) pm.collectionVariables.set('orderId', orderId);",
+                  "if (paymentId) pm.collectionVariables.set('orderPaymentId', paymentId);",
+                  "if (invoiceId) pm.collectionVariables.set('orderProviderInvoiceId', invoiceId);",
+                  "if (providerPaymentId) pm.collectionVariables.set('orderProviderPaymentId', providerPaymentId);",
+                  "if (paymentUrl) pm.collectionVariables.set('orderPaymentUrl', paymentUrl);"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "List my one-time orders",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "disabled": false
+              }
+            ],
+            "description": "Owner-only order history. Expired orders remain visible in history.",
+            "url": {
+              "raw": "{{baseUrl}}/orders?page=1&limit=20&status=&paymentStatus=&from=&to=",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "status",
+                  "value": ""
+                },
+                {
+                  "key": "paymentStatus",
+                  "value": ""
+                },
+                {
+                  "key": "from",
+                  "value": ""
+                },
+                {
+                  "key": "to",
+                  "value": ""
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 2xx', function () {",
+                  "  pm.expect(pm.response.code).to.be.within(200, 299);",
+                  "});",
+                  "",
+                  "let json = {};",
+                  "try { json = pm.response.json(); } catch (e) { json = {}; }",
+                  "const pickFirstEntity = (value) => {",
+                  "  if (!value) return null;",
+                  "  if (Array.isArray(value)) return value[0] || null;",
+                  "  if (Array.isArray(value.items)) return value.items[0] || null;",
+                  "  if (Array.isArray(value.data)) return value.data[0] || null;",
+                  "  if (value.data) return pickFirstEntity(value.data) || value.data;",
+                  "  if (value.order) return value.order;",
+                  "  return value;",
+                  "};",
+                  "const entity = pickFirstEntity(json);",
+                  "const item = pickFirstEntity(json?.data?.items || json?.data?.orders || json?.data || json);",
+                  "const orderId = item?.orderId || item?._id || item?.id || item?.entityId;",
+                  "if (orderId) pm.collectionVariables.set('orderId', orderId);",
+                  "const paymentId = item?.paymentId || item?.payment?._id || item?.payment?.id;",
+                  "if (paymentId) pm.collectionVariables.set('orderPaymentId', paymentId);"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Cancel unpaid pending one-time order",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "disabled": false
+              }
+            ],
+            "description": "Cancels only the owner's unpaid pending_payment order. It does not delete the order from history and does not cancel paid/confirmed orders.",
+            "url": {
+              "raw": "{{baseUrl}}/orders/{{orderId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders",
+                "{{orderId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 2xx', function () {",
+                  "  pm.expect(pm.response.code).to.be.within(200, 299);",
+                  "});",
+                  "",
+                  "let json = {};",
+                  "try { json = pm.response.json(); } catch (e) { json = {}; }",
+                  "const pickFirstEntity = (value) => {",
+                  "  if (!value) return null;",
+                  "  if (Array.isArray(value)) return value[0] || null;",
+                  "  if (Array.isArray(value.items)) return value.items[0] || null;",
+                  "  if (Array.isArray(value.data)) return value.data[0] || null;",
+                  "  if (value.data) return pickFirstEntity(value.data) || value.data;",
+                  "  if (value.order) return value.order;",
+                  "  return value;",
+                  "};",
+                  "const entity = pickFirstEntity(json);",
+                  "const orderId = entity?.orderId || entity?._id || entity?.id || entity?.order?.id || entity?.order?._id;",
+                  "const paymentId = entity?.paymentId || entity?.payment?._id || entity?.payment?.id;",
+                  "const invoiceId = entity?.invoiceId || entity?.providerInvoiceId || entity?.payment?.providerInvoiceId;",
+                  "const providerPaymentId = entity?.providerPaymentId || entity?.payment?.providerPaymentId;",
+                  "const paymentUrl = entity?.paymentUrl || entity?.payment?.metadata?.paymentUrl;",
+                  "if (orderId) pm.collectionVariables.set('orderId', orderId);",
+                  "if (paymentId) pm.collectionVariables.set('orderPaymentId', paymentId);",
+                  "if (invoiceId) pm.collectionVariables.set('orderProviderInvoiceId', invoiceId);",
+                  "if (providerPaymentId) pm.collectionVariables.set('orderProviderPaymentId', providerPaymentId);",
+                  "if (paymentUrl) pm.collectionVariables.set('orderPaymentUrl', paymentUrl);"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "One-Time Orders - Payment",
+      "item": [
+        {
+          "name": "Verify one-time order payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "disabled": false
+              }
+            ],
+            "description": "Call after the Moyasar WebView returns. Safe to call repeatedly. Returns isFinal=false when provider status is still pending. Confirms the order when the provider invoice is paid.",
+            "url": {
+              "raw": "{{baseUrl}}/orders/{{orderId}}/payments/{{orderPaymentId}}/verify",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders",
+                "{{orderId}}",
+                "payments",
+                "{{orderPaymentId}}",
+                "verify"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"providerPaymentId\": \"{{orderProviderPaymentId}}\",\n  \"providerInvoiceId\": \"{{orderProviderInvoiceId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 2xx', function () {",
+                  "  pm.expect(pm.response.code).to.be.within(200, 299);",
+                  "});",
+                  "",
+                  "let json = {};",
+                  "try { json = pm.response.json(); } catch (e) { json = {}; }",
+                  "const pickFirstEntity = (value) => {",
+                  "  if (!value) return null;",
+                  "  if (Array.isArray(value)) return value[0] || null;",
+                  "  if (Array.isArray(value.items)) return value.items[0] || null;",
+                  "  if (Array.isArray(value.data)) return value.data[0] || null;",
+                  "  if (value.data) return pickFirstEntity(value.data) || value.data;",
+                  "  if (value.order) return value.order;",
+                  "  return value;",
+                  "};",
+                  "const entity = pickFirstEntity(json);",
+                  "const orderId = entity?.orderId || entity?._id || entity?.id || entity?.order?.id || entity?.order?._id;",
+                  "const paymentId = entity?.paymentId || entity?.payment?._id || entity?.payment?.id;",
+                  "const invoiceId = entity?.invoiceId || entity?.providerInvoiceId || entity?.payment?.providerInvoiceId;",
+                  "const providerPaymentId = entity?.providerPaymentId || entity?.payment?.providerPaymentId;",
+                  "const paymentUrl = entity?.paymentUrl || entity?.payment?.metadata?.paymentUrl;",
+                  "if (orderId) pm.collectionVariables.set('orderId', orderId);",
+                  "if (paymentId) pm.collectionVariables.set('orderPaymentId', paymentId);",
+                  "if (invoiceId) pm.collectionVariables.set('orderProviderInvoiceId', invoiceId);",
+                  "if (providerPaymentId) pm.collectionVariables.set('orderProviderPaymentId', providerPaymentId);",
+                  "if (paymentUrl) pm.collectionVariables.set('orderPaymentUrl', paymentUrl);",
+                  "const isFinal = entity?.isFinal ?? json?.data?.isFinal;",
+                  "if (isFinal !== undefined) pm.collectionVariables.set('orderPaymentIsFinal', String(isFinal));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "One-Time Orders - Dashboard",
+      "item": [
+        {
+          "name": "List dashboard one-time orders",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}",
+                "disabled": false
+              }
+            ],
+            "description": "Dashboard list for one-time orders. Supports status, paymentStatus, fulfillmentMethod, page, limit, q, from/to, date, and zoneId filters.",
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/orders?status=&paymentStatus=&fulfillmentMethod=&page=1&limit=20&q=&from=&to=&zoneId=",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "orders"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": ""
+                },
+                {
+                  "key": "paymentStatus",
+                  "value": ""
+                },
+                {
+                  "key": "fulfillmentMethod",
+                  "value": ""
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "q",
+                  "value": ""
+                },
+                {
+                  "key": "from",
+                  "value": ""
+                },
+                {
+                  "key": "to",
+                  "value": ""
+                },
+                {
+                  "key": "zoneId",
+                  "value": ""
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 2xx', function () {",
+                  "  pm.expect(pm.response.code).to.be.within(200, 299);",
+                  "});",
+                  "",
+                  "let json = {};",
+                  "try { json = pm.response.json(); } catch (e) { json = {}; }",
+                  "const pickFirstEntity = (value) => {",
+                  "  if (!value) return null;",
+                  "  if (Array.isArray(value)) return value[0] || null;",
+                  "  if (Array.isArray(value.items)) return value.items[0] || null;",
+                  "  if (Array.isArray(value.data)) return value.data[0] || null;",
+                  "  if (value.data) return pickFirstEntity(value.data) || value.data;",
+                  "  if (value.order) return value.order;",
+                  "  return value;",
+                  "};",
+                  "const entity = pickFirstEntity(json);",
+                  "const item = pickFirstEntity(json?.data?.items || json?.data?.orders || json?.data || json);",
+                  "const orderId = item?.orderId || item?._id || item?.id || item?.entityId;",
+                  "if (orderId) pm.collectionVariables.set('orderId', orderId);",
+                  "const paymentId = item?.paymentId || item?.payment?._id || item?.payment?.id;",
+                  "if (paymentId) pm.collectionVariables.set('orderPaymentId', paymentId);"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Get dashboard one-time order detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}",
+                "disabled": false
+              }
+            ],
+            "description": "Dashboard detail for a one-time order, including operational state and payment summary.",
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/orders/{{orderId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "orders",
+                "{{orderId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 2xx', function () {",
+                  "  pm.expect(pm.response.code).to.be.within(200, 299);",
+                  "});",
+                  "",
+                  "let json = {};",
+                  "try { json = pm.response.json(); } catch (e) { json = {}; }",
+                  "const pickFirstEntity = (value) => {",
+                  "  if (!value) return null;",
+                  "  if (Array.isArray(value)) return value[0] || null;",
+                  "  if (Array.isArray(value.items)) return value.items[0] || null;",
+                  "  if (Array.isArray(value.data)) return value.data[0] || null;",
+                  "  if (value.data) return pickFirstEntity(value.data) || value.data;",
+                  "  if (value.order) return value.order;",
+                  "  return value;",
+                  "};",
+                  "const entity = pickFirstEntity(json);",
+                  "const orderId = entity?.orderId || entity?._id || entity?.id || entity?.order?.id || entity?.order?._id;",
+                  "const paymentId = entity?.paymentId || entity?.payment?._id || entity?.payment?.id;",
+                  "const invoiceId = entity?.invoiceId || entity?.providerInvoiceId || entity?.payment?.providerInvoiceId;",
+                  "const providerPaymentId = entity?.providerPaymentId || entity?.payment?.providerPaymentId;",
+                  "const paymentUrl = entity?.paymentUrl || entity?.payment?.metadata?.paymentUrl;",
+                  "if (orderId) pm.collectionVariables.set('orderId', orderId);",
+                  "if (paymentId) pm.collectionVariables.set('orderPaymentId', paymentId);",
+                  "if (invoiceId) pm.collectionVariables.set('orderProviderInvoiceId', invoiceId);",
+                  "if (providerPaymentId) pm.collectionVariables.set('orderProviderPaymentId', providerPaymentId);",
+                  "if (paymentUrl) pm.collectionVariables.set('orderPaymentUrl', paymentUrl);"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Run dashboard order action (variable)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}",
+                "disabled": false
+              }
+            ],
+            "description": "Runs the action named by {{orderAction}}. Default orderAction=prepare. Valid order actions include prepare, ready_for_pickup, dispatch, notify_arrival, fulfill, cancel, and reopen. Reopen returns REOPEN_NOT_SUPPORTED for one-time orders.",
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/orders/{{orderId}}/actions/{{orderAction}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "orders",
+                "{{orderId}}",
+                "actions",
+                "{{orderAction}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Start preparing one-time order\",\n  \"notes\": \"From dashboard\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 2xx', function () {",
+                  "  pm.expect(pm.response.code).to.be.within(200, 299);",
+                  "});",
+                  "",
+                  "let json = {};",
+                  "try { json = pm.response.json(); } catch (e) { json = {}; }",
+                  "const pickFirstEntity = (value) => {",
+                  "  if (!value) return null;",
+                  "  if (Array.isArray(value)) return value[0] || null;",
+                  "  if (Array.isArray(value.items)) return value.items[0] || null;",
+                  "  if (Array.isArray(value.data)) return value.data[0] || null;",
+                  "  if (value.data) return pickFirstEntity(value.data) || value.data;",
+                  "  if (value.order) return value.order;",
+                  "  return value;",
+                  "};",
+                  "const entity = pickFirstEntity(json);",
+                  "const orderId = entity?.orderId || entity?._id || entity?.id || entity?.order?.id || entity?.order?._id;",
+                  "const paymentId = entity?.paymentId || entity?.payment?._id || entity?.payment?.id;",
+                  "const invoiceId = entity?.invoiceId || entity?.providerInvoiceId || entity?.payment?.providerInvoiceId;",
+                  "const providerPaymentId = entity?.providerPaymentId || entity?.payment?.providerPaymentId;",
+                  "const paymentUrl = entity?.paymentUrl || entity?.payment?.metadata?.paymentUrl;",
+                  "if (orderId) pm.collectionVariables.set('orderId', orderId);",
+                  "if (paymentId) pm.collectionVariables.set('orderPaymentId', paymentId);",
+                  "if (invoiceId) pm.collectionVariables.set('orderProviderInvoiceId', invoiceId);",
+                  "if (providerPaymentId) pm.collectionVariables.set('orderProviderPaymentId', providerPaymentId);",
+                  "if (paymentUrl) pm.collectionVariables.set('orderPaymentUrl', paymentUrl);"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Action - prepare",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}",
+                "disabled": false
+              }
+            ],
+            "description": "Dashboard operational action for one-time orders: prepare. Cancel does not imply refund handling.",
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/orders/{{orderId}}/actions/prepare",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "orders",
+                "{{orderId}}",
+                "actions",
+                "prepare"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Start preparing one-time order\",\n  \"notes\": \"From dashboard\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 2xx', function () {",
+                  "  pm.expect(pm.response.code).to.be.within(200, 299);",
+                  "});",
+                  "",
+                  "let json = {};",
+                  "try { json = pm.response.json(); } catch (e) { json = {}; }",
+                  "const pickFirstEntity = (value) => {",
+                  "  if (!value) return null;",
+                  "  if (Array.isArray(value)) return value[0] || null;",
+                  "  if (Array.isArray(value.items)) return value.items[0] || null;",
+                  "  if (Array.isArray(value.data)) return value.data[0] || null;",
+                  "  if (value.data) return pickFirstEntity(value.data) || value.data;",
+                  "  if (value.order) return value.order;",
+                  "  return value;",
+                  "};",
+                  "const entity = pickFirstEntity(json);",
+                  "const orderId = entity?.orderId || entity?._id || entity?.id || entity?.order?.id || entity?.order?._id;",
+                  "const paymentId = entity?.paymentId || entity?.payment?._id || entity?.payment?.id;",
+                  "const invoiceId = entity?.invoiceId || entity?.providerInvoiceId || entity?.payment?.providerInvoiceId;",
+                  "const providerPaymentId = entity?.providerPaymentId || entity?.payment?.providerPaymentId;",
+                  "const paymentUrl = entity?.paymentUrl || entity?.payment?.metadata?.paymentUrl;",
+                  "if (orderId) pm.collectionVariables.set('orderId', orderId);",
+                  "if (paymentId) pm.collectionVariables.set('orderPaymentId', paymentId);",
+                  "if (invoiceId) pm.collectionVariables.set('orderProviderInvoiceId', invoiceId);",
+                  "if (providerPaymentId) pm.collectionVariables.set('orderProviderPaymentId', providerPaymentId);",
+                  "if (paymentUrl) pm.collectionVariables.set('orderPaymentUrl', paymentUrl);"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Action - ready_for_pickup",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}",
+                "disabled": false
+              }
+            ],
+            "description": "Dashboard operational action for one-time orders: ready_for_pickup. Cancel does not imply refund handling.",
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/orders/{{orderId}}/actions/ready_for_pickup",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "orders",
+                "{{orderId}}",
+                "actions",
+                "ready_for_pickup"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Ready for pickup\",\n  \"notes\": \"Pickup code generated by backend if supported\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 2xx', function () {",
+                  "  pm.expect(pm.response.code).to.be.within(200, 299);",
+                  "});",
+                  "",
+                  "let json = {};",
+                  "try { json = pm.response.json(); } catch (e) { json = {}; }",
+                  "const pickFirstEntity = (value) => {",
+                  "  if (!value) return null;",
+                  "  if (Array.isArray(value)) return value[0] || null;",
+                  "  if (Array.isArray(value.items)) return value.items[0] || null;",
+                  "  if (Array.isArray(value.data)) return value.data[0] || null;",
+                  "  if (value.data) return pickFirstEntity(value.data) || value.data;",
+                  "  if (value.order) return value.order;",
+                  "  return value;",
+                  "};",
+                  "const entity = pickFirstEntity(json);",
+                  "const orderId = entity?.orderId || entity?._id || entity?.id || entity?.order?.id || entity?.order?._id;",
+                  "const paymentId = entity?.paymentId || entity?.payment?._id || entity?.payment?.id;",
+                  "const invoiceId = entity?.invoiceId || entity?.providerInvoiceId || entity?.payment?.providerInvoiceId;",
+                  "const providerPaymentId = entity?.providerPaymentId || entity?.payment?.providerPaymentId;",
+                  "const paymentUrl = entity?.paymentUrl || entity?.payment?.metadata?.paymentUrl;",
+                  "if (orderId) pm.collectionVariables.set('orderId', orderId);",
+                  "if (paymentId) pm.collectionVariables.set('orderPaymentId', paymentId);",
+                  "if (invoiceId) pm.collectionVariables.set('orderProviderInvoiceId', invoiceId);",
+                  "if (providerPaymentId) pm.collectionVariables.set('orderProviderPaymentId', providerPaymentId);",
+                  "if (paymentUrl) pm.collectionVariables.set('orderPaymentUrl', paymentUrl);"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Action - dispatch",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}",
+                "disabled": false
+              }
+            ],
+            "description": "Dashboard operational action for one-time orders: dispatch. Cancel does not imply refund handling.",
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/orders/{{orderId}}/actions/dispatch",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "orders",
+                "{{orderId}}",
+                "actions",
+                "dispatch"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Dispatched with courier\",\n  \"notes\": \"Courier left branch\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 2xx', function () {",
+                  "  pm.expect(pm.response.code).to.be.within(200, 299);",
+                  "});",
+                  "",
+                  "let json = {};",
+                  "try { json = pm.response.json(); } catch (e) { json = {}; }",
+                  "const pickFirstEntity = (value) => {",
+                  "  if (!value) return null;",
+                  "  if (Array.isArray(value)) return value[0] || null;",
+                  "  if (Array.isArray(value.items)) return value.items[0] || null;",
+                  "  if (Array.isArray(value.data)) return value.data[0] || null;",
+                  "  if (value.data) return pickFirstEntity(value.data) || value.data;",
+                  "  if (value.order) return value.order;",
+                  "  return value;",
+                  "};",
+                  "const entity = pickFirstEntity(json);",
+                  "const orderId = entity?.orderId || entity?._id || entity?.id || entity?.order?.id || entity?.order?._id;",
+                  "const paymentId = entity?.paymentId || entity?.payment?._id || entity?.payment?.id;",
+                  "const invoiceId = entity?.invoiceId || entity?.providerInvoiceId || entity?.payment?.providerInvoiceId;",
+                  "const providerPaymentId = entity?.providerPaymentId || entity?.payment?.providerPaymentId;",
+                  "const paymentUrl = entity?.paymentUrl || entity?.payment?.metadata?.paymentUrl;",
+                  "if (orderId) pm.collectionVariables.set('orderId', orderId);",
+                  "if (paymentId) pm.collectionVariables.set('orderPaymentId', paymentId);",
+                  "if (invoiceId) pm.collectionVariables.set('orderProviderInvoiceId', invoiceId);",
+                  "if (providerPaymentId) pm.collectionVariables.set('orderProviderPaymentId', providerPaymentId);",
+                  "if (paymentUrl) pm.collectionVariables.set('orderPaymentUrl', paymentUrl);"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Action - notify_arrival",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}",
+                "disabled": false
+              }
+            ],
+            "description": "Dashboard operational action for one-time orders: notify_arrival. Cancel does not imply refund handling.",
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/orders/{{orderId}}/actions/notify_arrival",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "orders",
+                "{{orderId}}",
+                "actions",
+                "notify_arrival"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Courier arrived near customer\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 2xx', function () {",
+                  "  pm.expect(pm.response.code).to.be.within(200, 299);",
+                  "});",
+                  "",
+                  "let json = {};",
+                  "try { json = pm.response.json(); } catch (e) { json = {}; }",
+                  "const pickFirstEntity = (value) => {",
+                  "  if (!value) return null;",
+                  "  if (Array.isArray(value)) return value[0] || null;",
+                  "  if (Array.isArray(value.items)) return value.items[0] || null;",
+                  "  if (Array.isArray(value.data)) return value.data[0] || null;",
+                  "  if (value.data) return pickFirstEntity(value.data) || value.data;",
+                  "  if (value.order) return value.order;",
+                  "  return value;",
+                  "};",
+                  "const entity = pickFirstEntity(json);",
+                  "const orderId = entity?.orderId || entity?._id || entity?.id || entity?.order?.id || entity?.order?._id;",
+                  "const paymentId = entity?.paymentId || entity?.payment?._id || entity?.payment?.id;",
+                  "const invoiceId = entity?.invoiceId || entity?.providerInvoiceId || entity?.payment?.providerInvoiceId;",
+                  "const providerPaymentId = entity?.providerPaymentId || entity?.payment?.providerPaymentId;",
+                  "const paymentUrl = entity?.paymentUrl || entity?.payment?.metadata?.paymentUrl;",
+                  "if (orderId) pm.collectionVariables.set('orderId', orderId);",
+                  "if (paymentId) pm.collectionVariables.set('orderPaymentId', paymentId);",
+                  "if (invoiceId) pm.collectionVariables.set('orderProviderInvoiceId', invoiceId);",
+                  "if (providerPaymentId) pm.collectionVariables.set('orderProviderPaymentId', providerPaymentId);",
+                  "if (paymentUrl) pm.collectionVariables.set('orderPaymentUrl', paymentUrl);"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Action - fulfill",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}",
+                "disabled": false
+              }
+            ],
+            "description": "Dashboard operational action for one-time orders: fulfill. Cancel does not imply refund handling.",
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/orders/{{orderId}}/actions/fulfill",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "orders",
+                "{{orderId}}",
+                "actions",
+                "fulfill"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Order fulfilled\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 2xx', function () {",
+                  "  pm.expect(pm.response.code).to.be.within(200, 299);",
+                  "});",
+                  "",
+                  "let json = {};",
+                  "try { json = pm.response.json(); } catch (e) { json = {}; }",
+                  "const pickFirstEntity = (value) => {",
+                  "  if (!value) return null;",
+                  "  if (Array.isArray(value)) return value[0] || null;",
+                  "  if (Array.isArray(value.items)) return value.items[0] || null;",
+                  "  if (Array.isArray(value.data)) return value.data[0] || null;",
+                  "  if (value.data) return pickFirstEntity(value.data) || value.data;",
+                  "  if (value.order) return value.order;",
+                  "  return value;",
+                  "};",
+                  "const entity = pickFirstEntity(json);",
+                  "const orderId = entity?.orderId || entity?._id || entity?.id || entity?.order?.id || entity?.order?._id;",
+                  "const paymentId = entity?.paymentId || entity?.payment?._id || entity?.payment?.id;",
+                  "const invoiceId = entity?.invoiceId || entity?.providerInvoiceId || entity?.payment?.providerInvoiceId;",
+                  "const providerPaymentId = entity?.providerPaymentId || entity?.payment?.providerPaymentId;",
+                  "const paymentUrl = entity?.paymentUrl || entity?.payment?.metadata?.paymentUrl;",
+                  "if (orderId) pm.collectionVariables.set('orderId', orderId);",
+                  "if (paymentId) pm.collectionVariables.set('orderPaymentId', paymentId);",
+                  "if (invoiceId) pm.collectionVariables.set('orderProviderInvoiceId', invoiceId);",
+                  "if (providerPaymentId) pm.collectionVariables.set('orderProviderPaymentId', providerPaymentId);",
+                  "if (paymentUrl) pm.collectionVariables.set('orderPaymentUrl', paymentUrl);"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Action - cancel",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}",
+                "disabled": false
+              }
+            ],
+            "description": "Dashboard operational action for one-time orders: cancel. Cancel does not imply refund handling.",
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/orders/{{orderId}}/actions/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "orders",
+                "{{orderId}}",
+                "actions",
+                "cancel"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Cancelled by operations\",\n  \"notes\": \"No refund handled here\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 2xx', function () {",
+                  "  pm.expect(pm.response.code).to.be.within(200, 299);",
+                  "});",
+                  "",
+                  "let json = {};",
+                  "try { json = pm.response.json(); } catch (e) { json = {}; }",
+                  "const pickFirstEntity = (value) => {",
+                  "  if (!value) return null;",
+                  "  if (Array.isArray(value)) return value[0] || null;",
+                  "  if (Array.isArray(value.items)) return value.items[0] || null;",
+                  "  if (Array.isArray(value.data)) return value.data[0] || null;",
+                  "  if (value.data) return pickFirstEntity(value.data) || value.data;",
+                  "  if (value.order) return value.order;",
+                  "  return value;",
+                  "};",
+                  "const entity = pickFirstEntity(json);",
+                  "const orderId = entity?.orderId || entity?._id || entity?.id || entity?.order?.id || entity?.order?._id;",
+                  "const paymentId = entity?.paymentId || entity?.payment?._id || entity?.payment?.id;",
+                  "const invoiceId = entity?.invoiceId || entity?.providerInvoiceId || entity?.payment?.providerInvoiceId;",
+                  "const providerPaymentId = entity?.providerPaymentId || entity?.payment?.providerPaymentId;",
+                  "const paymentUrl = entity?.paymentUrl || entity?.payment?.metadata?.paymentUrl;",
+                  "if (orderId) pm.collectionVariables.set('orderId', orderId);",
+                  "if (paymentId) pm.collectionVariables.set('orderPaymentId', paymentId);",
+                  "if (invoiceId) pm.collectionVariables.set('orderProviderInvoiceId', invoiceId);",
+                  "if (providerPaymentId) pm.collectionVariables.set('orderProviderPaymentId', providerPaymentId);",
+                  "if (paymentUrl) pm.collectionVariables.set('orderPaymentUrl', paymentUrl);"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Action - reopen",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}",
+                "disabled": false
+              }
+            ],
+            "description": "Documents the unsupported reopen action for one-time orders. Backend returns REOPEN_NOT_SUPPORTED.",
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/orders/{{orderId}}/actions/reopen",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "orders",
+                "{{orderId}}",
+                "actions",
+                "reopen"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Attempt reopen one-time order\",\n  \"notes\": \"One-time orders return REOPEN_NOT_SUPPORTED\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Reopen returns unsupported for one-time orders', function () {",
+                  "  pm.expect(pm.response.code).to.equal(409);",
+                  "});",
+                  "let json = {};",
+                  "try { json = pm.response.json(); } catch (e) { json = {}; }",
+                  "pm.test('Error code is REOPEN_NOT_SUPPORTED when present', function () {",
+                  "  const code = json?.code || json?.error?.code;",
+                  "  if (code) pm.expect(code).to.equal('REOPEN_NOT_SUPPORTED');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "One-Time Orders - Ops",
+      "item": [
+        {
+          "name": "Unified ops action for one-time order",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}",
+                "disabled": false
+              }
+            ],
+            "description": "Runs a one-time order action through the unified ops endpoint. Use entityType=order and entityId={{orderId}}. One-time board rows identify as source=one_time_order and entityType=order.",
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/ops/actions/{{orderAction}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "ops",
+                "actions",
+                "{{orderAction}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"entityType\": \"order\",\n  \"entityId\": \"{{orderId}}\",\n  \"payload\": {\n    \"reason\": \"Updated from unified ops\",\n    \"notes\": \"One-time order ops action\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 2xx', function () {",
+                  "  pm.expect(pm.response.code).to.be.within(200, 299);",
+                  "});",
+                  "",
+                  "let json = {};",
+                  "try { json = pm.response.json(); } catch (e) { json = {}; }",
+                  "const pickFirstEntity = (value) => {",
+                  "  if (!value) return null;",
+                  "  if (Array.isArray(value)) return value[0] || null;",
+                  "  if (Array.isArray(value.items)) return value.items[0] || null;",
+                  "  if (Array.isArray(value.data)) return value.data[0] || null;",
+                  "  if (value.data) return pickFirstEntity(value.data) || value.data;",
+                  "  if (value.order) return value.order;",
+                  "  return value;",
+                  "};",
+                  "const entity = pickFirstEntity(json);",
+                  "const orderId = entity?.orderId || entity?._id || entity?.id || entity?.order?.id || entity?.order?._id;",
+                  "const paymentId = entity?.paymentId || entity?.payment?._id || entity?.payment?.id;",
+                  "const invoiceId = entity?.invoiceId || entity?.providerInvoiceId || entity?.payment?.providerInvoiceId;",
+                  "const providerPaymentId = entity?.providerPaymentId || entity?.payment?.providerPaymentId;",
+                  "const paymentUrl = entity?.paymentUrl || entity?.payment?.metadata?.paymentUrl;",
+                  "if (orderId) pm.collectionVariables.set('orderId', orderId);",
+                  "if (paymentId) pm.collectionVariables.set('orderPaymentId', paymentId);",
+                  "if (invoiceId) pm.collectionVariables.set('orderProviderInvoiceId', invoiceId);",
+                  "if (providerPaymentId) pm.collectionVariables.set('orderProviderPaymentId', providerPaymentId);",
+                  "if (paymentUrl) pm.collectionVariables.set('orderPaymentUrl', paymentUrl);"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Kitchen queue including one-time orders",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}",
+                "disabled": false
+              }
+            ],
+            "description": "Kitchen board may include subscription rows and one-time order rows. Identify one-time rows by source=one_time_order and entityType=order; do not assume every row is subscription_day.",
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/kitchen/queue?date={{dayDate}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "kitchen",
+                "queue"
+              ],
+              "query": [
+                {
+                  "key": "date",
+                  "value": "{{dayDate}}"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 2xx', function () {",
+                  "  pm.expect(pm.response.code).to.be.within(200, 299);",
+                  "});",
+                  "",
+                  "let json = {};",
+                  "try { json = pm.response.json(); } catch (e) { json = {}; }",
+                  "const pickFirstEntity = (value) => {",
+                  "  if (!value) return null;",
+                  "  if (Array.isArray(value)) return value[0] || null;",
+                  "  if (Array.isArray(value.items)) return value.items[0] || null;",
+                  "  if (Array.isArray(value.data)) return value.data[0] || null;",
+                  "  if (value.data) return pickFirstEntity(value.data) || value.data;",
+                  "  if (value.order) return value.order;",
+                  "  return value;",
+                  "};",
+                  "const entity = pickFirstEntity(json);",
+                  "const item = pickFirstEntity(json?.data?.items || json?.data?.orders || json?.data || json);",
+                  "const orderId = item?.orderId || item?._id || item?.id || item?.entityId;",
+                  "if (orderId) pm.collectionVariables.set('orderId', orderId);",
+                  "const paymentId = item?.paymentId || item?.payment?._id || item?.payment?.id;",
+                  "if (paymentId) pm.collectionVariables.set('orderPaymentId', paymentId);"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Courier queue including one-time orders",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}",
+                "disabled": false
+              }
+            ],
+            "description": "Courier board may include subscription rows and delivery one-time order rows. Identify one-time rows by source=one_time_order and entityType=order.",
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/courier/queue?date={{dayDate}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "courier",
+                "queue"
+              ],
+              "query": [
+                {
+                  "key": "date",
+                  "value": "{{dayDate}}"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 2xx', function () {",
+                  "  pm.expect(pm.response.code).to.be.within(200, 299);",
+                  "});",
+                  "",
+                  "let json = {};",
+                  "try { json = pm.response.json(); } catch (e) { json = {}; }",
+                  "const pickFirstEntity = (value) => {",
+                  "  if (!value) return null;",
+                  "  if (Array.isArray(value)) return value[0] || null;",
+                  "  if (Array.isArray(value.items)) return value.items[0] || null;",
+                  "  if (Array.isArray(value.data)) return value.data[0] || null;",
+                  "  if (value.data) return pickFirstEntity(value.data) || value.data;",
+                  "  if (value.order) return value.order;",
+                  "  return value;",
+                  "};",
+                  "const entity = pickFirstEntity(json);",
+                  "const item = pickFirstEntity(json?.data?.items || json?.data?.orders || json?.data || json);",
+                  "const orderId = item?.orderId || item?._id || item?.id || item?.entityId;",
+                  "if (orderId) pm.collectionVariables.set('orderId', orderId);",
+                  "const paymentId = item?.paymentId || item?.payment?._id || item?.payment?.id;",
+                  "if (paymentId) pm.collectionVariables.set('orderPaymentId', paymentId);"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Pickup queue including one-time orders",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}",
+                "disabled": false
+              }
+            ],
+            "description": "Pickup board may include subscription rows and pickup one-time order rows. Identify one-time rows by source=one_time_order and entityType=order.",
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/pickup/queue?date={{dayDate}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "pickup",
+                "queue"
+              ],
+              "query": [
+                {
+                  "key": "date",
+                  "value": "{{dayDate}}"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 2xx', function () {",
+                  "  pm.expect(pm.response.code).to.be.within(200, 299);",
+                  "});",
+                  "",
+                  "let json = {};",
+                  "try { json = pm.response.json(); } catch (e) { json = {}; }",
+                  "const pickFirstEntity = (value) => {",
+                  "  if (!value) return null;",
+                  "  if (Array.isArray(value)) return value[0] || null;",
+                  "  if (Array.isArray(value.items)) return value.items[0] || null;",
+                  "  if (Array.isArray(value.data)) return value.data[0] || null;",
+                  "  if (value.data) return pickFirstEntity(value.data) || value.data;",
+                  "  if (value.order) return value.order;",
+                  "  return value;",
+                  "};",
+                  "const entity = pickFirstEntity(json);",
+                  "const item = pickFirstEntity(json?.data?.items || json?.data?.orders || json?.data || json);",
+                  "const orderId = item?.orderId || item?._id || item?.id || item?.entityId;",
+                  "if (orderId) pm.collectionVariables.set('orderId', orderId);",
+                  "const paymentId = item?.paymentId || item?.payment?._id || item?.payment?.id;",
+                  "if (paymentId) pm.collectionVariables.set('orderPaymentId', paymentId);"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Delivery schedule including one-time orders",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{dashboardToken}}",
+                "disabled": false
+              }
+            ],
+            "description": "Delivery schedule may include subscriptions and delivery one-time orders. Rows should be rendered by source/entityType; one-time rows use source=one_time_order and entityType=order.",
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/delivery-schedule?date={{dayDate}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "delivery-schedule"
+              ],
+              "query": [
+                {
+                  "key": "date",
+                  "value": "{{dayDate}}"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 2xx', function () {",
+                  "  pm.expect(pm.response.code).to.be.within(200, 299);",
+                  "});",
+                  "",
+                  "let json = {};",
+                  "try { json = pm.response.json(); } catch (e) { json = {}; }",
+                  "const pickFirstEntity = (value) => {",
+                  "  if (!value) return null;",
+                  "  if (Array.isArray(value)) return value[0] || null;",
+                  "  if (Array.isArray(value.items)) return value.items[0] || null;",
+                  "  if (Array.isArray(value.data)) return value.data[0] || null;",
+                  "  if (value.data) return pickFirstEntity(value.data) || value.data;",
+                  "  if (value.order) return value.order;",
+                  "  return value;",
+                  "};",
+                  "const entity = pickFirstEntity(json);",
+                  "const item = pickFirstEntity(json?.data?.items || json?.data?.orders || json?.data || json);",
+                  "const orderId = item?.orderId || item?._id || item?.id || item?.entityId;",
+                  "if (orderId) pm.collectionVariables.set('orderId', orderId);",
+                  "const paymentId = item?.paymentId || item?.payment?._id || item?.payment?.id;",
+                  "if (paymentId) pm.collectionVariables.set('orderPaymentId', paymentId);"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "One-Time Orders - Webhooks",
+      "item": [
+        {
+          "name": "Moyasar webhook - one-time order invoice paid simulation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar"
+              },
+              {
+                "key": "X-Moyasar-Signature",
+                "value": "{{moyasarWebhookSignature}}",
+                "disabled": true
+              },
+              {
+                "key": "X-Moyasar-Webhook-Secret",
+                "value": "{{moyasarWebhookSecret}}",
+                "disabled": true
+              }
+            ],
+            "description": "Documentation/manual simulation only. Real Moyasar webhooks require the configured secret token/signature validation; never put a production secret in this collection. The webhook has a one-time order branch; subscription webhook behavior is unchanged. Unknown events without identifiers return 2xx according to existing behavior.",
+            "url": {
+              "raw": "{{baseUrl}}/webhooks/moyasar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "webhooks",
+                "moyasar"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"invoice.paid\",\n  \"secret_token\": \"{{moyasarWebhookSecret}}\",\n  \"data\": {\n    \"id\": \"{{orderProviderInvoiceId}}\",\n    \"status\": \"paid\",\n    \"metadata\": {\n      \"source\": \"one_time_order\",\n      \"type\": \"one_time_order\",\n      \"orderId\": \"{{orderId}}\"\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 2xx', function () {",
+                  "  pm.expect(pm.response.code).to.be.within(200, 299);",
+                  "});",
+                  "",
+                  "let json = {};",
+                  "try { json = pm.response.json(); } catch (e) { json = {}; }",
+                  "const pickFirstEntity = (value) => {",
+                  "  if (!value) return null;",
+                  "  if (Array.isArray(value)) return value[0] || null;",
+                  "  if (Array.isArray(value.items)) return value.items[0] || null;",
+                  "  if (Array.isArray(value.data)) return value.data[0] || null;",
+                  "  if (value.data) return pickFirstEntity(value.data) || value.data;",
+                  "  if (value.order) return value.order;",
+                  "  return value;",
+                  "};",
+                  "const entity = pickFirstEntity(json);"
                 ]
               }
             }

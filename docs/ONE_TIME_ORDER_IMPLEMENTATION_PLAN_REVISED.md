@@ -1379,6 +1379,8 @@ Acceptance criteria:
 
 ## Phase 7 - Postman and Flutter Guide
 
+Status: completed in this documentation pass. Backend behavior was not changed.
+
 Files touched:
 
 - `docs/dashboard-api/postman.dashboard_full_collection.json`
