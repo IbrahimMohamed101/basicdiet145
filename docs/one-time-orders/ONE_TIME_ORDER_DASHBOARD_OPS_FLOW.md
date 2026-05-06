@@ -2,68 +2,51 @@
 
 ## Scope
 
-This guide documents the final dashboard and operations lifecycle for pickup-only One-Time Orders.
+This is the official dashboard and operations reference for pickup-only One-Time Orders after the dynamic Menu Catalog launch.
 
-One-Time Orders are pickup-only for launch. Kitchen and branch staff receive paid one-time pickup orders, prepare them, mark them ready for pickup, and fulfill them when the customer picks them up from the branch.
+The document has two parts:
 
-User story:
+- A) Operations lifecycle for paid pickup orders.
+- B) Dashboard Menu Management for the dynamic one-time menu.
 
-> As kitchen/branch staff, I want to receive paid one-time pickup orders, prepare them, mark them ready, and fulfill them when the customer picks them up.
+One-Time Orders are separate from subscriptions. Do not use subscription endpoints, `SubscriptionDay`, `mealSlots`, `remainingMeals`, skip/freeze, courier dispatch, delivery address, delivery zone, delivery window, or notify-arrival controls for this launch.
 
-This guide is for dashboard frontend developers building order lists, order detail, kitchen queue, pickup queue, and operational actions for one-time pickup orders.
+All prices are Halala, VAT is included, and dashboard must not calculate final totals or add VAT.
 
-## Important Business Rules
+## A) Operations Lifecycle
 
-- One-Time Orders are separate from subscriptions.
-- Do not use subscription endpoints.
-- Do not send `SubscriptionDay` IDs.
-- Do not send `mealSlots`.
-- Do not consume subscription `remainingMeals`.
-- Do not use skip/freeze.
-- One-Time Orders use `Order` documents.
-- One-Time Orders use `Payment.type = "one_time_order"`.
-- Prices are calculated by the backend.
-- Frontend must not calculate final totals.
-- VAT is already included.
-- Frontend must not add VAT again.
-- The final lifecycle for launch is pickup-only.
-- No home delivery is supported in this One-Time Order cycle.
-- No courier board flow is supported for One-Time Orders in this launch cycle.
-- Pending payment orders expire after 30 minutes.
-- Expired orders stay in history and are not deleted.
-- If older backend code or older docs mention delivery for one-time orders, the final product decision for this launch cycle is: **One-Time Orders are pickup-only for launch.**
-
-## User Stories
-
-- As kitchen staff, I can see paid one-time pickup orders that are ready to prepare.
-- As kitchen staff, I can move a paid order from `confirmed` to `in_preparation`.
-- As kitchen staff, I can mark a prepared order as `ready_for_pickup`.
-- As branch pickup staff, I can fulfill an order when the customer picks it up.
-- As an admin, I can list, inspect, and perform valid pickup actions on one-time orders.
-- As dashboard staff, I can distinguish one-time orders from subscription days.
-- As dashboard staff, I do not need delivery, courier, or subscription day controls for one-time pickup orders.
-
-## Dashboard Order Lifecycle
-
-Normal pickup-only dashboard lifecycle:
+Normal pickup ops lifecycle:
 
 ```text
 confirmed -> in_preparation -> ready_for_pickup -> fulfilled
 ```
 
-Other states:
+Final states:
 
-- `pending_payment`: visible in list if the backend returns it, but not operational.
-- `cancelled`: final.
-- `expired`: final.
+- `fulfilled`
+- `cancelled`
+- `expired`
 
-Statuses such as `out_for_delivery`, `dispatch`, and `notify_arrival` may exist in backend code for generic compatibility, but they are not used in the pickup-only one-time order flow.
+`pending_payment` is non-operational. Do not prepare an order before `paymentStatus = "paid"`.
 
-Do not include delivery or courier steps in the normal dashboard cycle.
+Supported actions:
 
-## Step-by-Step Flow
+- `prepare`
+- `ready_for_pickup`
+- `fulfill`
+- `cancel`
 
-## Step 1 - Dashboard Order List
+Unsupported for pickup-only One-Time Orders:
+
+- `dispatch`
+- `notify_arrival`
+- courier assignment
+- courier fulfillment
+- delivery address/zone/window edits
+
+Always use `allowedActions` returned by the backend. The dashboard UI may hide buttons by role, but backend authorization and transition validation remain authoritative.
+
+## Dashboard Order List
 
 Endpoint:
 
@@ -71,28 +54,28 @@ Endpoint:
 GET /api/dashboard/orders
 ```
 
-Query params:
+Query params supported by `src/controllers/dashboard/orderDashboardController.js` and `src/services/orders/orderDashboardService.js`:
 
 | Param | Purpose |
 | --- | --- |
-| `status` | Filter by order status such as `confirmed`, `in_preparation`, or `ready_for_pickup`. |
-| `paymentStatus` | Filter by payment state such as `paid` or `initiated`. |
-| `fulfillmentMethod` | For pickup-only launch, use `pickup`. |
-| `date` | Filter by one date when supported by backend. |
-| `from` | Start date/time filter. |
-| `to` | End date/time filter. |
-| `branchId` | Filter by pickup branch. |
-| `q` | Search by customer/order text when supported. |
+| `status` | Comma-separated normalized order statuses. |
+| `paymentStatus` | Payment filter, usually `paid` for operations. |
+| `fulfillmentMethod` | Use `pickup` for this launch. |
+| `date` | Exact `fulfillmentDate`. |
+| `from` | Created-at start datetime. |
+| `to` | Created-at end datetime. |
+| `zoneId` | Legacy delivery filter; not used for pickup launch. |
+| `q` | Search by order/customer text or ObjectId. |
 | `page` | Page number. |
-| `limit` | Page size. |
+| `limit` | Page size, capped by backend. |
 
-For pickup-only launch:
+Pickup example:
 
 ```http
-GET /api/dashboard/orders?fulfillmentMethod=pickup&page=1&limit=20
+GET /api/dashboard/orders?fulfillmentMethod=pickup&paymentStatus=paid&page=1&limit=20
 ```
 
-Response example:
+Response shape:
 
 ```json
 {
@@ -102,15 +85,15 @@ Response example:
       {
         "source": "one_time_order",
         "entityType": "order",
-        "entityId": "...",
-        "orderNumber": "OT-1001",
+        "entityId": "663000000000000000001001",
+        "orderId": "663000000000000000001001",
+        "orderNumber": "ORD-ABC12345",
         "status": "confirmed",
         "paymentStatus": "paid",
         "fulfillmentMethod": "pickup",
-        "customer": {},
-        "items": [],
-        "pricing": {},
-        "allowedActions": ["prepare"]
+        "customer": { "id": "...", "name": "Customer", "phone": "+966..." },
+        "pricing": { "totalHalala": 7400, "currency": "SAR", "vatIncluded": true },
+        "allowedActions": ["prepare", "cancel"]
       }
     ],
     "pagination": {
@@ -123,18 +106,15 @@ Response example:
 }
 ```
 
-UI behavior:
+UI rules:
 
-- Show one-time order rows separately or clearly tagged.
-- Display `source = one_time_order`.
-- Use `entityType = order` to choose one-time order behavior.
-- Do not render subscription day UI for orders.
-- Do not require `mealSlots`.
-- Do not show delivery address, delivery zone, delivery window, dispatch, or courier fields.
-- Use `allowedActions` from the backend to decide visible buttons.
-- Treat `pending_payment` as non-operational; kitchen should not prepare unpaid orders.
+- Treat rows with `source = "one_time_order"` and `entityType = "order"` as One-Time Orders.
+- Do not assume `entityType = "subscription_day"`.
+- Hide subscription-day controls and fields.
+- Hide delivery/courier fields.
+- Treat `pending_payment` as non-operational.
 
-## Step 2 - Dashboard Order Detail
+## Dashboard Order Detail
 
 Endpoint:
 
@@ -142,37 +122,19 @@ Endpoint:
 GET /api/dashboard/orders/:orderId
 ```
 
-Response example:
+Detail adds:
 
-```json
-{
-  "status": true,
-  "data": {
-    "source": "one_time_order",
-    "entityType": "order",
-    "entityId": "...",
-    "status": "confirmed",
-    "payment": {},
-    "activity": [],
-    "items": [],
-    "pickup": {},
-    "allowedActions": ["prepare"]
-  }
-}
-```
+- `items`
+- `payment`
+- `pickup`
+- `activity`
+- `updatedAt`
 
-UI behavior:
+For pickup orders, `delivery` is `{}` and `pickup` contains branch/window/code fields when present.
 
-- Show customer info.
-- Show pickup branch/window.
-- Show order items.
-- Show payment summary.
-- Show activity log.
-- Show only backend-provided `allowedActions`.
-- Hide subscription fields such as subscription day, plan, skip/freeze, and meal slots.
-- Hide delivery/courier fields for one-time pickup orders.
+## Actions
 
-## Step 3 - Action: Prepare
+### Prepare
 
 Endpoint:
 
@@ -188,7 +150,7 @@ Result:
 
 - `in_preparation`
 
-Request body:
+Body:
 
 ```json
 {
@@ -197,29 +159,7 @@ Request body:
 }
 ```
 
-Response example:
-
-```json
-{
-  "status": true,
-  "data": {
-    "source": "one_time_order",
-    "entityType": "order",
-    "entityId": "...",
-    "status": "in_preparation",
-    "allowedActions": ["ready_for_pickup", "cancel"]
-  }
-}
-```
-
-UI behavior:
-
-- Show this action only when `allowedActions` includes `prepare`.
-- Optimistically disabling the button during the request is fine, but final state must come from the response.
-- After success, update the row/detail status to `in_preparation`.
-- Do not call subscription day prepare endpoints.
-
-## Step 4 - Action: Ready for Pickup
+### Ready for Pickup
 
 Endpoint:
 
@@ -235,7 +175,7 @@ Result:
 
 - `ready_for_pickup`
 
-Request body:
+Body:
 
 ```json
 {
@@ -245,29 +185,9 @@ Request body:
 }
 ```
 
-Response example:
+If `pickupCode` is omitted, `src/services/orders/orderOpsTransitionService.js` generates a six-digit code when needed.
 
-```json
-{
-  "status": true,
-  "data": {
-    "source": "one_time_order",
-    "entityType": "order",
-    "entityId": "...",
-    "status": "ready_for_pickup",
-    "allowedActions": ["fulfill", "cancel"]
-  }
-}
-```
-
-UI behavior:
-
-- Show this action only when `allowedActions` includes `ready_for_pickup`.
-- If backend requires `pickupCode`, collect it before submitting.
-- After success, move the order to the pickup board or ready section.
-- Do not show dispatch or courier assignment controls.
-
-## Step 5 - Action: Fulfill
+### Fulfill
 
 Endpoint:
 
@@ -283,7 +203,7 @@ Result:
 
 - `fulfilled`
 
-Request body:
+Body:
 
 ```json
 {
@@ -293,29 +213,7 @@ Request body:
 }
 ```
 
-Response example:
-
-```json
-{
-  "status": true,
-  "data": {
-    "source": "one_time_order",
-    "entityType": "order",
-    "entityId": "...",
-    "status": "fulfilled",
-    "allowedActions": []
-  }
-}
-```
-
-UI behavior:
-
-- Show this action only when `allowedActions` includes `fulfill`.
-- Ask staff to confirm customer pickup before submitting.
-- If a pickup code is returned/required by backend, validate it through this endpoint.
-- After success, remove the order from active ops queues and keep it available in history/reporting.
-
-## Step 6 - Action: Cancel
+### Cancel
 
 Endpoint:
 
@@ -323,7 +221,7 @@ Endpoint:
 POST /api/dashboard/orders/:orderId/actions/cancel
 ```
 
-Allowed from:
+Allowed from paid operational states when backend `allowedActions` includes `cancel`:
 
 - `confirmed`
 - `in_preparation`
@@ -333,7 +231,7 @@ Result:
 
 - `cancelled`
 
-Request body:
+Body:
 
 ```json
 {
@@ -342,104 +240,22 @@ Request body:
 }
 ```
 
-Important:
+Cancel does not mean refund. Do not trigger provider refund behavior unless a dedicated backend refund API is added later.
 
-- Cancel does not automatically mean refund.
-- Refund is out of scope unless the backend later adds an explicit refund endpoint.
-- Do not trigger provider refund behavior from the dashboard unless a dedicated backend refund API is added.
+## Kitchen and Pickup Queues
 
-Response example:
-
-```json
-{
-  "status": true,
-  "data": {
-    "source": "one_time_order",
-    "entityType": "order",
-    "entityId": "...",
-    "status": "cancelled",
-    "allowedActions": []
-  }
-}
-```
-
-UI behavior:
-
-- Show cancel only when `allowedActions` includes `cancel`.
-- Require a reason from staff if product policy requires auditability.
-- After success, keep the order visible in final-state history/reporting.
-
-## Unsupported Actions for Pickup-Only One-Time Orders
-
-Do not show these actions for one-time pickup orders:
-
-- `dispatch`
-- `notify_arrival`
-- courier fulfill
-- delivery assignment
-- delivery zone assignment
-- delivery address editing
-- delivery window editing
-
-If the backend exposes these actions for generic compatibility, hide them in the pickup-only UI unless `fulfillmentMethod = delivery` is explicitly supported later.
-
-## Kitchen Queue Integration
-
-Endpoint:
+Endpoints mounted by `src/routes/dashboardBoards.js`:
 
 ```http
 GET /api/dashboard/kitchen/queue
-```
-
-One-time pickup orders may appear with:
-
-```json
-{
-  "source": "one_time_order",
-  "entityType": "order",
-  "entityId": "...",
-  "status": "confirmed",
-  "fulfillmentMethod": "pickup",
-  "allowedActions": ["prepare"]
-}
-```
-
-UI behavior:
-
-- Use `source` and `entityType` to choose the correct UI.
-- Do not assume every row is `subscription_day`.
-- Do not call subscription actions for one-time orders.
-- Show pickup branch/window when available.
-- Hide delivery and courier controls.
-- Only prepare orders with paid payment status and a valid backend action.
-
-## Pickup Board Integration
-
-Endpoint:
-
-```http
 GET /api/dashboard/pickup/queue
+POST /api/dashboard/kitchen/actions/:action
+POST /api/dashboard/pickup/actions/:action
 ```
 
-One-time pickup orders may appear with:
+Queue filters include `date`, `status`, `method`, `q`, `branchId`, and `zoneId`. For One-Time Orders in this launch, use pickup filtering.
 
-```json
-{
-  "source": "one_time_order",
-  "entityType": "order",
-  "entityId": "...",
-  "status": "ready_for_pickup",
-  "fulfillmentMethod": "pickup",
-  "allowedActions": ["fulfill", "cancel"]
-}
-```
-
-UI behavior:
-
-- Use this board for branch pickup handoff.
-- Show the order number, customer summary, pickup branch/window, pickup code if returned, and item summary.
-- Show `fulfill` only when allowed by backend.
-- Do not call courier fulfillment or delivery-arrival actions.
+One-time order rows are included when the board query finds paid orders for the selected `fulfillmentDate`. Use `source`/`entityType` and `allowedActions` to route actions correctly.
 
 ## Unified Ops Action Endpoint
 
@@ -449,21 +265,19 @@ Endpoint:
 POST /api/dashboard/ops/actions/:action
 ```
 
-Body for one-time order:
+Body for One-Time Orders:
 
 ```json
 {
-  "entityId": "...",
-  "entityType": "order",
   "source": "one_time_order",
+  "entityType": "order",
+  "entityId": "663000000000000000001001",
   "payload": {
     "reason": "Kitchen started preparing order",
     "notes": "Optional"
   }
 }
 ```
-
-Use this endpoint if the dashboard screen is built on the unified ops board.
 
 Action examples:
 
@@ -474,122 +288,364 @@ POST /api/dashboard/ops/actions/fulfill
 POST /api/dashboard/ops/actions/cancel
 ```
 
-UI behavior:
+Do not send subscription day identifiers for One-Time Orders.
 
-- Always include `entityType = order` and `source = one_time_order`.
-- Put action-specific fields such as `pickupCode`, `reason`, and `notes` under `payload`.
-- Do not send subscription day identifiers for one-time orders.
-
-## Endpoint Per Step
-
-| Step | Purpose | Endpoint |
-| --- | --- | --- |
-| 1 | List dashboard orders | `GET /api/dashboard/orders` |
-| 2 | View order detail | `GET /api/dashboard/orders/:orderId` |
-| 3 | Prepare order | `POST /api/dashboard/orders/:orderId/actions/prepare` |
-| 4 | Mark ready for pickup | `POST /api/dashboard/orders/:orderId/actions/ready_for_pickup` |
-| 5 | Fulfill pickup | `POST /api/dashboard/orders/:orderId/actions/fulfill` |
-| 6 | Cancel order | `POST /api/dashboard/orders/:orderId/actions/cancel` |
-| Queue | Kitchen queue | `GET /api/dashboard/kitchen/queue` |
-| Queue | Pickup queue | `GET /api/dashboard/pickup/queue` |
-| Unified | Unified ops action | `POST /api/dashboard/ops/actions/:action` |
-
-## Role Behavior
-
-| Role | Expected behavior |
-| --- | --- |
-| `admin` / `superadmin` | Can list, view detail, and perform all valid pickup actions returned by backend. |
-| `kitchen` | Can prepare and mark orders `ready_for_pickup` when allowed. |
-| `branch` / pickup role if present | Can fulfill pickup orders when the customer arrives. |
-| `courier` | No normal role in the pickup-only one-time order cycle. |
-
-The dashboard must still respect backend authorization. Role-based UI hiding is only a convenience; backend errors remain authoritative.
-
-## Error Handling
-
-Use backend error codes to drive UI behavior. Refresh the order after transition errors because another staff member may have already acted on the order.
+## Operations Error Handling
 
 | Error code | Meaning | Dashboard behavior |
 | --- | --- | --- |
-| `INVALID_TRANSITION` | Requested status change is not allowed from the current status. | Refresh row/detail and show current state. |
-| `ORDER_NOT_FOUND` | Order does not exist or is not visible to this dashboard scope. | Remove stale row or show not found. |
-| `FORBIDDEN` | Staff role is not allowed to perform the action. | Hide/disable action and show permission message. |
-| `REOPEN_NOT_SUPPORTED` | Final orders cannot be reopened. | Keep final state; do not retry as another action. |
-| `ACTION_NOT_ALLOWED` | Backend does not allow this action for this order. | Refresh allowed actions. |
-| `PAYMENT_NOT_PAID` | Operational action requires paid payment. | Keep as non-operational; do not prepare unpaid order. |
-| `ORDER_FINAL` | Order is already final. | Move to final-state history/reporting view. |
-| `INVALID_OBJECT_ID` | `orderId` or `entityId` is malformed. | Treat as implementation bug or stale route. |
+| `INVALID_TRANSITION` | Action is not allowed from current state. | Refresh row/detail and use returned state. |
+| `ORDER_NOT_FOUND` | Order does not exist or is not visible. | Remove stale row or show not found. |
+| `FORBIDDEN` | Staff role cannot perform action. | Hide/disable action and show permission message. |
+| `REOPEN_NOT_SUPPORTED` | Final orders cannot be reopened. | Keep final state. |
+| `PAYMENT_NOT_PAID` | Operational action requires paid payment. | Keep as non-operational. |
+| `FINAL_STATUS` / `ORDER_FINAL` | Order is already terminal. | Move to history/reporting. |
+| `INVALID_ORDER_ID` / `INVALID_OBJECT_ID` | ID is malformed. | Treat as stale route or implementation bug. |
+| `DELIVERY_NOT_SUPPORTED` | Delivery order/action blocked by launch gate. | Remove from pickup-only UI. |
 
-Example error response shape:
+## B) Dashboard Menu Management
+
+The dashboard controls the dynamic one-time customer menu through:
+
+```http
+/api/dashboard/menu/*
+```
+
+Routes are defined in `src/routes/dashboardMenu.js` and require dashboard auth with `admin` or `superadmin`.
+
+Managed resources:
+
+- categories
+- products
+- option groups
+- options
+- product group relations
+- product group option relations
+- publish
+- audit logs
+
+The customer app reads only active published catalog data through `GET /api/orders/menu`.
+
+## Menu Management Endpoints
+
+### Categories
+
+```http
+GET /api/dashboard/menu/categories
+POST /api/dashboard/menu/categories
+GET /api/dashboard/menu/categories/:id
+PATCH /api/dashboard/menu/categories/:id
+DELETE /api/dashboard/menu/categories/:id
+PATCH /api/dashboard/menu/categories/reorder
+```
+
+### Products
+
+```http
+GET /api/dashboard/menu/products
+POST /api/dashboard/menu/products
+GET /api/dashboard/menu/products/:id
+PATCH /api/dashboard/menu/products/:id
+DELETE /api/dashboard/menu/products/:id
+PATCH /api/dashboard/menu/products/reorder
+PATCH /api/dashboard/menu/products/:productId/availability
+```
+
+### Option Groups
+
+```http
+GET /api/dashboard/menu/option-groups
+POST /api/dashboard/menu/option-groups
+GET /api/dashboard/menu/option-groups/:id
+PATCH /api/dashboard/menu/option-groups/:id
+DELETE /api/dashboard/menu/option-groups/:id
+```
+
+### Options
+
+```http
+GET /api/dashboard/menu/options
+POST /api/dashboard/menu/options
+GET /api/dashboard/menu/options/:id
+PATCH /api/dashboard/menu/options/:id
+DELETE /api/dashboard/menu/options/:id
+```
+
+`GET /api/dashboard/menu/options` supports `groupId` filtering.
+
+### Product Relations
+
+Actual relation endpoints in code:
+
+```http
+PUT /api/dashboard/menu/products/:productId/groups
+PUT /api/dashboard/menu/products/:productId/groups/:groupId/options
+```
+
+`PUT /products/:productId/groups` replaces all `ProductOptionGroup` relations for a product.
+
+Request:
 
 ```json
 {
-  "status": false,
-  "code": "INVALID_TRANSITION",
-  "message": "Action is not allowed from the current status"
+  "groups": [
+    {
+      "groupId": "663000000000000000000201",
+      "minSelections": 0,
+      "maxSelections": 1,
+      "isRequired": false,
+      "isActive": true,
+      "sortOrder": 10
+    }
+  ]
 }
 ```
 
-## Status Lifecycle
+`PUT /products/:productId/groups/:groupId/options` replaces allowed `ProductGroupOption` rows for that product/group.
 
-Operational statuses:
+Request:
 
-```text
-confirmed -> in_preparation -> ready_for_pickup -> fulfilled
+```json
+{
+  "options": [
+    {
+      "optionId": "663000000000000000000301",
+      "extraPriceHalala": 1600,
+      "extraWeightPriceHalala": 1000,
+      "isActive": true,
+      "sortOrder": 10
+    }
+  ]
+}
 ```
 
-Non-operational or final statuses:
+Note: `extraWeightUnitGrams` belongs to `MenuOption`; product-option relation overrides only `extraPriceHalala`, `extraWeightPriceHalala`, `isActive`, and `sortOrder`.
 
-- `pending_payment`: not ready for kitchen work.
-- `cancelled`: final.
-- `expired`: final.
+### Publish and Audit
 
-Normal pickup actions:
+```http
+POST /api/dashboard/menu/publish
+GET /api/dashboard/menu/audit-logs
+```
 
-| Current status | Action | Next status |
-| --- | --- | --- |
-| `confirmed` | `prepare` | `in_preparation` |
-| `in_preparation` | `ready_for_pickup` | `ready_for_pickup` |
-| `ready_for_pickup` | `fulfill` | `fulfilled` |
-| `confirmed` | `cancel` | `cancelled` |
-| `in_preparation` | `cancel` | `cancelled` |
-| `ready_for_pickup` | `cancel` | `cancelled` |
+Publish archives existing published `MenuVersion` rows, creates a new published version with a snapshot, stamps active categories/products/groups/options with `publishedAt`, and assigns the new `versionId` to active products.
 
-Not used in the normal pickup-only one-time order flow:
+## Dashboard Menu Concepts
 
-- `out_for_delivery`
-- `dispatch`
-- `notify_arrival`
+### MenuCategory
 
-## Final States
+Model: `src/models/MenuCategory.js`
 
-Final states:
+Fields:
 
-- `fulfilled`
-- `cancelled`
-- `expired`
+- `key`
+- `name.ar`, `name.en`
+- `description.ar`, `description.en`
+- `imageUrl`
+- `sortOrder`
+- `isActive`
+- `availability.branchIds`
+- `publishedAt`
 
-Dashboard UI behavior for final states:
+### MenuProduct
 
-- Show no operational actions unless backend explicitly returns one.
-- Keep final orders visible in history/reporting.
-- Do not hard delete expired or cancelled orders.
-- Do not reopen final orders unless a future backend feature explicitly supports it.
+Model: `src/models/MenuProduct.js`
 
-## Notes / Common Mistakes
+Fields:
 
-- Do not use subscription day endpoints for one-time orders.
-- Do not assume `entityType = subscription_day`.
-- Do not send `SubscriptionDay` IDs.
-- Do not send `mealSlots`.
-- Do not use cashier consumption endpoints for one-time orders.
-- Do not consume subscription `remainingMeals`.
-- Do not use skip/freeze.
-- Do not use courier actions for pickup-only orders.
+- `categoryId`
+- `key`
+- `name.ar`, `name.en`
+- `description.ar`, `description.en`
+- `itemType`
+- `pricingModel`: `fixed` or `per_100g`
+- `priceHalala`
+- `baseUnitGrams`
+- `defaultWeightGrams`
+- `minWeightGrams`
+- `maxWeightGrams`
+- `weightStepGrams`
+- `imageUrl`
+- `branchAvailability`
+- `sortOrder`
+- `isActive`
+- `versionId`
+- `publishedAt`
+
+Current `itemType` enum:
+
+```text
+basic_salad, basic_meal, fruit_salad, greek_yogurt, green_salad,
+cold_sandwich, sourdough, dessert, juice, drink, ice_cream, product
+```
+
+### MenuOptionGroup
+
+Model: `src/models/MenuOptionGroup.js`
+
+Fields:
+
+- `key`
+- `name.ar`, `name.en`
+- `description.ar`, `description.en`
+- `sortOrder`
+- `isActive`
+- `publishedAt`
+
+### MenuOption
+
+Model: `src/models/MenuOption.js`
+
+Fields:
+
+- `groupId`
+- `key`
+- `name.ar`, `name.en`
+- `description.ar`, `description.en`
+- `imageUrl`
+- `extraPriceHalala`
+- `extraWeightUnitGrams`
+- `extraWeightPriceHalala`
+- `currency`
+- `sortOrder`
+- `isActive`
+- `publishedAt`
+
+### ProductOptionGroup
+
+Model: `src/models/ProductOptionGroup.js`
+
+Fields:
+
+- `productId`
+- `groupId`
+- `minSelections`
+- `maxSelections`
+- `isRequired`
+- `isActive`
+- `sortOrder`
+
+### ProductGroupOption
+
+Model: `src/models/ProductGroupOption.js`
+
+Fields:
+
+- `productId`
+- `groupId`
+- `optionId`
+- overrides:
+  - `extraPriceHalala`
+  - `extraWeightPriceHalala`
+  - `isActive`
+  - `sortOrder`
+
+If a relation override is `null`, customer pricing falls back to the base `MenuOption` value.
+
+## Soft Delete
+
+Dashboard delete endpoints perform soft delete:
+
+```text
+isActive = false
+```
+
+Do not hard delete menu entities. Old orders store snapshots (`productSnapshot`, `selectedOptions`, `pricingSnapshot`, `menuVersionId`) and must remain readable even after products/options are hidden.
+
+## Publish Rules
+
+- Customer menu reads active published catalog entities.
+- Seed creates/publishes the launch menu.
+- Dashboard changes do not become customer-visible until publish, unless an entity was already published and updated in place.
+- Current draft isolation is lightweight: edits are made on the same model rows and publish stamps active rows / creates a `MenuVersion` snapshot. It is not a full separate draft collection.
+
+## Audit Logs
+
+Endpoint:
+
+```http
+GET /api/dashboard/menu/audit-logs
+```
+
+Actions written by `menuCatalogService`:
+
+- `create`
+- `update`
+- `soft_delete`
+- `reorder`
+- `replace` for relation replacement
+- `publish`
+
+Audit rows include `entityType`, `entityId`, `action`, `before`, `after`, `actorId`, `actorRole`, `meta`, and timestamps.
+
+## Seed
+
+Command:
+
+```bash
+npm run seed:one-time-menu
+```
+
+Use this on local or staging.
+
+Production guard:
+
+```bash
+NODE_ENV=production
+```
+
+refuses to seed unless explicitly overridden:
+
+```bash
+MENU_SEED_ALLOW_PRODUCTION=true
+```
+
+Only use the production override with clear operational approval.
+
+## Testing
+
+Commands:
+
+```bash
+npm run test:one-time-menu
+npm test
+```
+
+`npm run test:one-time-menu` uses `mongodb-memory-server` and does not require a local MongoDB instance.
+
+## E2E Staging Checklist
+
+1. Run `npm run seed:one-time-menu` against staging.
+2. Request `GET /api/orders/menu`.
+3. Quote a fixed product.
+4. Quote a `per_100g` product.
+5. Quote an option with fixed extra price.
+6. Quote an option with `extraWeightGrams`.
+7. Create an order with Moyasar test credentials or payment mock.
+8. Verify payment and confirm the order moves to `confirmed`.
+9. Update a product price from dashboard.
+10. Verify old order `productSnapshot`, `selectedOptions`, `pricingSnapshot`, and `menuVersionId` remain unchanged.
+11. Hide a product with dashboard delete or `isActive=false`.
+12. Publish if needed and verify hidden product disappears from `GET /api/orders/menu`.
+13. Restore product and publish again if needed.
+
+## Known Risks / Tech Debt
+
+- Real Moyasar callback and verify behavior still needs staging credentials for end-to-end confidence.
+- Long-term cleaner catalog shape would use generic `itemType` plus `productId`/`productKey`; current code persists catalog-specific item types such as `basic_salad`.
+- Draft isolation is lightweight: dashboard edits affect the same rows and publish snapshots the current active state. A full draft/published separation would be cleaner later.
+- Queue endpoints still share infrastructure with subscription boards, so dashboard UI must branch by `source = "one_time_order"` and `entityType = "order"`.
+
+## Common Mistakes
+
+- Do not use subscription day endpoints for One-Time Orders.
+- Do not assume every queue row is a subscription day.
+- Do not prepare `pending_payment` orders.
+- Do not prepare anything without `paymentStatus = "paid"`.
+- Do not ignore `allowedActions`.
+- Do not use courier or delivery actions for pickup-only orders.
 - Do not show delivery fields.
-- Do not show dispatch, notify arrival, delivery assignment, delivery zone, delivery address, or delivery window controls.
-- Do not trigger refund on cancel unless the backend explicitly adds a refund endpoint.
-- Do not hard delete expired/cancelled orders.
-- Do not calculate final totals in the dashboard.
-- Do not add VAT again; VAT is already included.
-- Do not ignore `allowedActions`; the backend is the source of truth for operational actions.
+- Do not trigger refund on cancel unless a dedicated refund endpoint exists.
+- Do not hard delete menu entities.
+- Do not calculate totals in dashboard.
+- Do not add VAT again.
