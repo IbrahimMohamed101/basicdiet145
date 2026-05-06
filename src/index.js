@@ -5,10 +5,9 @@ const { createApp } = require("./app");
 const { connectDb } = require("./db");
 const { startJobs } = require("./jobs");
 const { validateEnv } = require("./utils/validateEnv");
-const { logger } = require("./utils/logger");
 
 process.on("unhandledRejection", (reason, promise) => {
-  logger.error("Unhandled Rejection at Promise", {
+  console.error("[railway-startup] Unhandled Rejection at Promise", {
     reason: reason instanceof Error ? reason.message : reason,
     stack: reason instanceof Error ? reason.stack : undefined
   });
@@ -16,7 +15,7 @@ process.on("unhandledRejection", (reason, promise) => {
 });
 
 process.on("uncaughtException", (error) => {
-  logger.error("Uncaught Exception thrown", {
+  console.error("[railway-startup] Uncaught Exception thrown", {
     message: error.message,
     stack: error.stack
   });
@@ -42,21 +41,21 @@ if (!envCheck.ok) {
 
 console.log(`Resolved PORT: ${PORT} (env.PORT: ${process.env.PORT || 'undefined'})`);
 
-logger.info("[startup] Starting database connection");
+console.log("[railway-startup] Starting database connection");
 connectDb()
   .then(async () => {
-    logger.info("[startup] Database startup complete");
+    console.log("[railway-startup] MongoDB connected");
 
-    logger.info("[startup] Starting background jobs");
+    console.log("[railway-startup] Starting background jobs");
     startJobs();
-    logger.info("[startup] Background jobs started");
+    console.log("[railway-startup] Background jobs started");
 
-    logger.info("[startup] Starting HTTP server", { port: PORT, host: "0.0.0.0" });
+    console.log(`[railway-startup] Starting HTTP server on port: ${PORT}`);
     server.listen(PORT, "0.0.0.0", () => {
-      logger.info("API listening", { port: PORT, host: "0.0.0.0" });
+      console.log(`[railway-startup] API listening on port: ${PORT}, host: 0.0.0.0`);
     });
   })
   .catch((err) => {
-    logger.error("Failed to connect DB", { error: err.message, stack: err.stack });
+    console.error("[railway-startup] Failed to connect DB", { error: err.message, stack: err.stack });
     process.exit(1);
   });

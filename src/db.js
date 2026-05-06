@@ -1,6 +1,5 @@
 const mongoose = require("mongoose");
 const { ensurePaymentIndexes } = require("./services/paymentIndexService");
-const { logger } = require("./utils/logger");
 
 /**
  * Mask MongoDB URI to prevent logging credentials.
@@ -21,11 +20,8 @@ async function connectDb() {
   const hasMongodbUri = Boolean(process.env.MONGODB_URI);
   const maskedUri = maskMongoUri(uri);
 
-  logger.info("[startup] Connecting to MongoDB", {
-    hasMongoUri,
-    hasMongodbUri,
-    maskedUri
-  });
+  console.log(`[railway-startup] Connecting to MongoDB (hasMongoUri: ${hasMongoUri}, hasMongodbUri: ${hasMongodbUri}, maskedUri: ${maskedUri})`);
+
   if (!uri) {
     throw new Error("Missing MongoDB connection string (set MONGO_URI or MONGODB_URI)");
   }
@@ -33,11 +29,11 @@ async function connectDb() {
   const connection = await mongoose.connect(uri, {
     serverSelectionTimeoutMS: 10000
   });
-  logger.info("[startup] MongoDB connected");
+  console.log("[railway-startup] MongoDB connected");
 
-  logger.info("[startup] Ensuring payment indexes");
+  console.log("[railway-startup] Ensuring payment indexes");
   await ensurePaymentIndexes();
-  logger.info("[startup] Payment indexes ensured");
+  console.log("[railway-startup] Payment indexes ensured");
 
   return connection;
 }
