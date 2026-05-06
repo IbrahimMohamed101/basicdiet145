@@ -6,6 +6,24 @@ const {
 } = require("../utils/orderState");
 
 const SYSTEM_CURRENCY = "SAR";
+const ORDER_ITEM_TYPES = [
+  "standard_meal",
+  "sandwich",
+  "salad",
+  "addon_item",
+  "drink",
+  "dessert",
+  "basic_salad",
+  "basic_meal",
+  "fruit_salad",
+  "greek_yogurt",
+  "green_salad",
+  "cold_sandwich",
+  "sourdough",
+  "juice",
+  "ice_cream",
+  "product",
+];
 
 const LocalizedStringSchema = new mongoose.Schema(
   {
@@ -19,13 +37,15 @@ const OrderItemSchema = new mongoose.Schema(
   {
     itemType: {
       type: String,
-      enum: ["standard_meal", "sandwich", "salad", "addon_item", "drink", "dessert"],
+      enum: ORDER_ITEM_TYPES,
       default: "standard_meal",
     },
     catalogRef: {
       model: { type: String, default: "" },
       id: { type: mongoose.Schema.Types.ObjectId },
     },
+    productId: { type: mongoose.Schema.Types.ObjectId, ref: "MenuProduct" },
+    menuVersionId: { type: mongoose.Schema.Types.ObjectId, ref: "MenuVersion" },
     name: { type: LocalizedStringSchema, default: () => ({}) },
     qty: { type: Number, min: 1, default: 1 },
     unitPriceHalala: { type: Number, min: 0, default: 0 },
@@ -55,7 +75,24 @@ const OrderItemSchema = new mongoose.Schema(
         ],
       },
       addonItemId: { type: mongoose.Schema.Types.ObjectId, ref: "Addon" },
+      selectedOptions: [
+        {
+          groupId: { type: mongoose.Schema.Types.ObjectId, ref: "MenuOptionGroup" },
+          groupName: { type: LocalizedStringSchema, default: () => ({}) },
+          optionId: { type: mongoose.Schema.Types.ObjectId, ref: "MenuOption" },
+          name: { type: LocalizedStringSchema, default: () => ({}) },
+          qty: { type: Number, min: 1, default: 1 },
+          extraPriceHalala: { type: Number, min: 0, default: 0 },
+          extraWeightGrams: { type: Number, min: 0, default: 0 },
+          extraWeightUnitGrams: { type: Number, min: 0, default: 0 },
+          extraWeightPriceHalala: { type: Number, min: 0, default: 0 },
+          totalHalala: { type: Number, min: 0, default: 0 },
+        },
+      ],
     },
+    productSnapshot: { type: mongoose.Schema.Types.Mixed, default: {} },
+    selectedOptions: { type: [mongoose.Schema.Types.Mixed], default: [] },
+    pricingSnapshot: { type: mongoose.Schema.Types.Mixed, default: {} },
     nutrition: { type: mongoose.Schema.Types.Mixed },
 
     // Legacy one-time order item fields. Keep these during migration so older

@@ -58,21 +58,20 @@ async function getOrderMenu(req, res) {
 async function quoteOrder(req, res) {
   try {
     const body = req.body || {};
-    
-    // Feature gate: One-time order delivery disabled by default
-    const ONE_TIME_ORDER_DELIVERY_ENABLED = process.env.ONE_TIME_ORDER_DELIVERY_ENABLED === "true";
-    if (body.fulfillmentMethod === "delivery" && !ONE_TIME_ORDER_DELIVERY_ENABLED) {
+
+    if (body.fulfillmentMethod && body.fulfillmentMethod !== "pickup") {
       return errorResponse(res, 400, "DELIVERY_NOT_SUPPORTED", "Delivery is not currently supported for one-time orders");
     }
-    
+
     const quote = await priceOrderCart({
       userId: req.userId,
       items: body.items,
-      fulfillmentMethod: body.fulfillmentMethod,
-      delivery: body.delivery || {},
+      fulfillmentMethod: body.fulfillmentMethod || "pickup",
+      delivery: {},
       pickup: body.pickup || {},
       promoCode: body.promoCode,
       lang: getRequestLang(req),
+      requestBody: body,
     });
 
     return res.status(200).json({
@@ -101,6 +100,7 @@ function buildFinalOrderRequestHash({ userId, quote, body }) {
       id: item.catalogRef && item.catalogRef.id ? String(item.catalogRef.id) : "",
     },
     qty: Number(item.qty || 1),
+    weightGrams: Number(item.weightGrams || 0),
     selections: item.selections || {},
   }));
 
@@ -193,10 +193,8 @@ async function createOrder(req, res) {
 
   try {
     const body = req.body || {};
-    
-    // Feature gate: One-time order delivery disabled by default
-    const ONE_TIME_ORDER_DELIVERY_ENABLED = process.env.ONE_TIME_ORDER_DELIVERY_ENABLED === "true";
-    if (body.fulfillmentMethod === "delivery" && !ONE_TIME_ORDER_DELIVERY_ENABLED) {
+
+    if (body.fulfillmentMethod && body.fulfillmentMethod !== "pickup") {
       return errorResponse(res, 400, "DELIVERY_NOT_SUPPORTED", "Delivery is not currently supported for one-time orders");
     }
     idempotencyKey = parseIdempotencyKey(
@@ -208,11 +206,12 @@ async function createOrder(req, res) {
     const quote = await priceOrderCart({
       userId: req.userId,
       items: body.items,
-      fulfillmentMethod: body.fulfillmentMethod,
-      delivery: body.delivery || {},
+      fulfillmentMethod: body.fulfillmentMethod || "pickup",
+      delivery: {},
       pickup: body.pickup || {},
       promoCode: body.promoCode,
       lang: getRequestLang(req),
+      requestBody: body,
     });
     const fulfillmentDate = normalizeFulfillmentDate(body);
     requestHash = buildFinalOrderRequestHash({ userId: req.userId, quote, body: { ...body, fulfillmentDate } });

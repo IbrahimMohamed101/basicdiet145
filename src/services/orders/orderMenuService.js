@@ -4,10 +4,13 @@ const BuilderProtein = require("../../models/BuilderProtein");
 const SaladIngredient = require("../../models/SaladIngredient");
 const Sandwich = require("../../models/Sandwich");
 const Setting = require("../../models/Setting");
-const Zone = require("../../models/Zone");
 const { SALAD_SELECTION_GROUPS, SYSTEM_CURRENCY } = require("../../config/mealPlannerContract");
 const { pickLang } = require("../../utils/i18n");
 const { getRestaurantHours } = require("../restaurantHoursService");
+const {
+  getPublishedMenu,
+  hasPublishedMenuCatalog,
+} = require("./menuCatalogService");
 
 function localizeName(value, lang) {
   return pickLang(value, lang) || "";
@@ -53,14 +56,16 @@ async function getSettingValue(key, fallback) {
 }
 
 async function getOneTimeOrderMenu({ lang = "en", fulfillmentMethod } = {}) {
+  if (await hasPublishedMenuCatalog()) {
+    return getPublishedMenu({ lang, branchId: "" });
+  }
+
   const [
     proteins,
     carbs,
     sandwiches,
     saladIngredients,
     addonItems,
-    zones,
-    deliveryWindows,
     restaurantHours,
   ] = await Promise.all([
     BuilderProtein.find({ isActive: true }).sort({ sortOrder: 1, createdAt: -1 }).lean(),
@@ -68,8 +73,6 @@ async function getOneTimeOrderMenu({ lang = "en", fulfillmentMethod } = {}) {
     Sandwich.find({ isActive: true }).sort({ sortOrder: 1, createdAt: -1 }).lean(),
     SaladIngredient.find({ isActive: true }).sort({ groupKey: 1, sortOrder: 1, createdAt: -1 }).lean(),
     Addon.find({ kind: "item", isActive: true }).sort({ category: 1, sortOrder: 1, createdAt: -1 }).lean(),
-    Zone.find({ isActive: true }).sort({ sortOrder: 1, createdAt: -1 }).lean(),
-    getSettingValue("delivery_windows", []),
     getRestaurantHours().catch(() => ({})),
   ]);
 
@@ -88,6 +91,9 @@ async function getOneTimeOrderMenu({ lang = "en", fulfillmentMethod } = {}) {
 
   return {
     currency: SYSTEM_CURRENCY,
+    source: "one_time_order",
+    fulfillmentMethod: "pickup",
+    vatIncluded: true,
     itemTypes: ["standard_meal", "sandwich", "salad", "addon_item"],
     standardMeals: {
       proteins: proteins.map((protein) => toCatalogItem(protein, lang, {
@@ -130,19 +136,9 @@ async function getOneTimeOrderMenu({ lang = "en", fulfillmentMethod } = {}) {
       items: serializedAddons,
       byCategory: addonsByCategory,
     },
-    delivery: {
-      windows: normalizeWindows(deliveryWindows),
-      zones: zones.map((zone) => ({
-        id: String(zone._id),
-        name: localizeName(zone.name, lang),
-        deliveryFeeHalala: Number(zone.deliveryFeeHalala || 0),
-        sortOrder: Number(zone.sortOrder || 0),
-        isActive: zone.isActive !== false,
-      })),
-    },
     restaurantHours: {
       ...restaurantHours,
-      fulfillmentMethod: fulfillmentMethod || undefined,
+      fulfillmentMethod: "pickup",
     },
   };
 }

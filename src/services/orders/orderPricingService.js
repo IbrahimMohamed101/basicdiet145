@@ -13,6 +13,10 @@ const { pickLang } = require("../../utils/i18n");
 const { computeInclusiveVatBreakdown } = require("../../utils/pricing");
 const { getRestaurantHours } = require("../restaurantHoursService");
 const { normalizeWindows } = require("./orderMenuService");
+const {
+  assertNoForbiddenOneTimeFields,
+  priceMenuCart,
+} = require("./menuPricingService");
 
 const SUPPORTED_ITEM_TYPES = new Set(["standard_meal", "sandwich", "salad", "addon_item"]);
 
@@ -373,18 +377,32 @@ async function priceOrderCart({
   pickup = {},
   promoCode,
   lang = "en",
+  requestBody = {},
 }) {
   if (!userId) {
     throw createOrderPricingError("UNAUTHORIZED", "User is required", 401);
   }
+  assertNoForbiddenOneTimeFields(requestBody);
   const normalizedItems = Array.isArray(items) ? items : [];
   if (!normalizedItems.length) {
     throw createOrderPricingError("EMPTY_ORDER", "Order must include at least one item");
   }
 
-  const method = String(fulfillmentMethod || "").trim();
-  if (!["pickup", "delivery"].includes(method)) {
-    throw createOrderPricingError("INVALID_SELECTION", "fulfillmentMethod must be pickup or delivery");
+  const usesMenuCatalog = normalizedItems.some((item) => item && (item.productId || item.menuProductId));
+  if (usesMenuCatalog) {
+    return priceMenuCart({
+      userId,
+      items: normalizedItems,
+      fulfillmentMethod,
+      pickup,
+      lang,
+      requestBody,
+    });
+  }
+
+  const method = String(fulfillmentMethod || "pickup").trim();
+  if (method !== "pickup") {
+    throw createOrderPricingError("DELIVERY_NOT_SUPPORTED", "Delivery is not currently supported for one-time orders");
   }
   if (promoCode !== undefined && promoCode !== null && String(promoCode).trim()) {
     throw createOrderPricingError(

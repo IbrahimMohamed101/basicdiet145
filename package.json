@@ -12,9 +12,11 @@
     "test:balance-policy": "NODE_ENV=test node tests/subscriptionBalancePolicy.test.js",
     "test:integration": "NODE_ENV=test node tests/mealPlanner.integration.test.js",
     "test:checkout": "NODE_ENV=test node tests/checkout.integration.test.js",
+    "test:one-time-menu": "NODE_ENV=test node tests/oneTimeMenuCatalog.test.js",
     "test:all": "npm run test && npm run test:integration && npm run test:balance-policy",
     "seed": "node scripts/seed-demo-data.js",
     "seed:subscription-addons": "node scripts/seed-subscription-addons.js",
+    "seed:one-time-menu": "node scripts/seed-one-time-menu.js",
     "seed:clear": "node scripts/seed-demo-data.js --clear",
     "seed:full": "node scripts/seed-demo-data.js --clear --users=50 --subscriptions=80 --orders=50",
     "backfill:meal-categories": "node scripts/backfill-meal-categories.js",
@@ -48,6 +50,7 @@
   "devDependencies": {
     "chai": "^6.2.2",
     "mocha": "^11.7.5",
+    "mongodb-memory-server": "^10.1.4",
     "sinon": "^21.1.2",
     "supertest": "^7.2.2"
   }
