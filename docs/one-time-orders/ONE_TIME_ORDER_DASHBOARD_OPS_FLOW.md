@@ -358,11 +358,12 @@ POST /api/dashboard/menu/products
 GET /api/dashboard/menu/products/:id
 PATCH /api/dashboard/menu/products/:id
 PATCH /api/dashboard/menu/products/:id/visibility
-PATCH /api/dashboard/menu/products/:id/availability
 DELETE /api/dashboard/menu/products/:id
 PATCH /api/dashboard/menu/products/reorder
 PATCH /api/dashboard/menu/products/:productId/availability
 ```
+
+`PATCH /api/dashboard/menu/products/:productId/availability` is the canonical product availability route. It updates sold-out state when sent `{ "isAvailable": false }`, and preserves the legacy branch-availability behavior when sent `branchAvailability` or `branchIds`.
 
 ### Option Groups
 
@@ -541,6 +542,7 @@ juices, desserts, drinks, ice_cream
 
 The mobile frontend URL section `custom-order` maps to backend category key `custom_order`.
 The seeded configurable products `basic_salad`, `basic_meal`, `fruit_salad`, and `greek_yogurt` live under `custom_order`.
+`light_options` is available as a catalog category for future/internal use; current configurable launch products live under `custom_order`, and customer responses may omit `light_options` when it has no active visible available products.
 
 Customer menu product responses include optional derived helpers:
 
@@ -687,8 +689,9 @@ Client-sent prices are ignored. Pricing uses current `MenuProduct`, `MenuOption`
 
 - Customer menu reads active, visible, available, published catalog entities.
 - Seed creates/publishes the launch menu.
-- Dashboard changes do not become customer-visible until publish, unless an entity was already published and updated in place.
-- Current draft isolation is lightweight: edits are made on the same model rows and publish stamps active rows / creates a `MenuVersion` snapshot. It is not a full separate draft collection.
+- Dashboard edits update the same catalog rows used by runtime menu reads.
+- Publish stamps active rows with `publishedAt`, assigns product `versionId`, archives the previous published `MenuVersion`, and creates a new `MenuVersion` snapshot.
+- This launch does not implement full draft isolation with separate draft and published collections.
 
 ## Audit Logs
 
