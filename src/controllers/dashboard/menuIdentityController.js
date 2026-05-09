@@ -1,5 +1,7 @@
 const SharedMenuIdentity = require("../../models/SharedMenuIdentity");
 const MenuIdentityLink = require("../../models/MenuIdentityLink");
+const MenuIdentitySuggestion = require("../../models/MenuIdentitySuggestion");
+const ActivityLog = require("../../models/ActivityLog");
 const { resolveOptionalPagination, buildPaginationMeta } = require("../../utils/optionalPagination");
 const { pickLang, getRequestLang } = require("../../utils/i18n");
 const asyncHandler = require("../../middleware/asyncHandler");
@@ -111,4 +113,148 @@ exports.listMenuIdentityLinks = asyncHandler(async (req, res) => {
     data: summaryItems,
     meta: buildPaginationMeta(pagination.page, pagination.limit, total),
   });
+});
+
+/**
+ * GET /api/dashboard/menu-identity-suggestions
+ */
+exports.listSuggestions = asyncHandler(async (req, res) => {
+  try {
+    const pagination = resolveOptionalPagination(req.query, 100, 50) || { page: 1, limit: 50 };
+    const filter = {};
+    if (req.query.status) filter.status = req.query.status;
+    if (req.query.type) filter.type = req.query.type;
+    if (req.query.confidence) filter.confidence = req.query.confidence;
+
+    const total = await MenuIdentitySuggestion.countDocuments(filter);
+    const items = await MenuIdentitySuggestion.find(filter)
+      .sort({ createdAt: -1 })
+      .skip((pagination.page - 1) * pagination.limit)
+      .limit(pagination.limit)
+      .lean();
+
+    res.json({
+      status: true,
+      data: items,
+      meta: buildPaginationMeta(pagination.page, pagination.limit, total),
+    });
+  } catch (err) {
+    res.status(500).json({ status: false, message: err.message });
+  }
+});
+
+/**
+ * GET /api/dashboard/menu-identity-suggestions/:id
+ */
+exports.getSuggestion = asyncHandler(async (req, res) => {
+  try {
+    const data = await MenuIdentitySuggestion.findById(req.params.id).lean();
+    if (!data) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+    res.json({ status: true, data });
+  } catch (err) {
+    res.status(500).json({ status: false, message: err.message });
+  }
+});
+
+/**
+ * POST /api/dashboard/menu-identity-suggestions/:id/approve
+ */
+exports.approveSuggestion = asyncHandler(async (req, res) => {
+  try {
+    const suggestion = await MenuIdentitySuggestion.findById(req.params.id);
+    if (!suggestion) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+    if (suggestion.status !== "pending") {
+      return res.status(400).json({ ok: false, error: "ALREADY_PROCESSED", status: suggestion.status });
+    }
+
+    // 1. Conflict Check: Do any of the proposed links already have an active identity?
+    for (const link of suggestion.proposedLinks) {
+      const existing = await MenuIdentityLink.findOne({
+        channel: link.channel,
+        sourceModel: link.sourceModel,
+        sourceId: link.sourceId,
+        isActive: true,
+      });
+      if (existing) {
+        return res.status(409).json({
+          ok: false,
+          error: "CONFLICT",
+          message: `Source ${link.sourceModel} (${link.sourceId}) already linked to identity ${existing.identityId}`,
+        });
+      }
+    }
+
+    // 2. Create/Find SharedMenuIdentity
+    let identity = await SharedMenuIdentity.findOne({ key: suggestion.identityKey });
+    if (!identity) {
+      identity = await SharedMenuIdentity.create({
+        key: suggestion.identityKey,
+        type: suggestion.type,
+        name: suggestion.identityName,
+      });
+    }
+
+    // 3. Create Links
+    const createdLinks = [];
+    for (const l of suggestion.proposedLinks) {
+      const linkDoc = await MenuIdentityLink.create({
+        identityId: identity._id,
+        channel: l.channel,
+        sourceModel: l.sourceModel,
+        sourceId: l.sourceId,
+        confidence: suggestion.confidence,
+        status: "confirmed",
+        isActive: true,
+      });
+      createdLinks.push(linkDoc._id);
+    }
+
+    // 4. Update Suggestion
+    suggestion.status = "approved";
+    suggestion.reviewedBy = req.dashboardUserId;
+    suggestion.reviewedAt = new Date();
+    suggestion.notes = req.body.notes;
+    await suggestion.save();
+
+    // 5. Activity Log
+    await ActivityLog.create({
+      entityType: "menu_identity_suggestion",
+      entityId: suggestion._id,
+      action: "approve",
+      byUserId: req.dashboardUserId,
+      byRole: req.dashboardUserRole,
+      meta: { identityId: identity._id, linksCount: createdLinks.length },
+    });
+
+    res.json({
+      status: true,
+      message: "Suggestion approved and mapping established",
+      data: { identityId: identity._id, linksCount: createdLinks.length },
+    });
+  } catch (err) {
+    res.status(500).json({ status: false, message: err.message });
+  }
+});
+
+/**
+ * POST /api/dashboard/menu-identity-suggestions/:id/reject
+ */
+exports.rejectSuggestion = asyncHandler(async (req, res) => {
+  try {
+    const suggestion = await MenuIdentitySuggestion.findById(req.params.id);
+    if (!suggestion) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+    if (suggestion.status !== "pending") {
+      return res.status(400).json({ ok: false, error: "ALREADY_PROCESSED", status: suggestion.status });
+    }
+
+    suggestion.status = "rejected";
+    suggestion.reviewedBy = req.dashboardUserId;
+    suggestion.reviewedAt = new Date();
+    suggestion.notes = req.body.notes;
+    await suggestion.save();
+
+    res.json({ status: true, message: "Suggestion rejected" });
+  } catch (err) {
+    res.status(500).json({ status: false, message: err.message });
+  }
 });

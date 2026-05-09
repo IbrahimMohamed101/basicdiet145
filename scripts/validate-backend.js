@@ -58,6 +58,18 @@ const steps = [
     requiredScript: "test:dashboard-menu-identity",
   },
   {
+    title: "Menu identity mapping suggestion logic",
+    command: "npm",
+    args: ["run", "test:menu-identity-suggestions"],
+    requiredScript: "test:menu-identity-suggestions",
+  },
+  {
+    title: "Menu identity mapping approval workflow",
+    command: "npm",
+    args: ["run", "test:menu-identity-suggestions-approval"],
+    requiredScript: "test:menu-identity-suggestions-approval",
+  },
+  {
     title: "Moyasar retry safety",
     command: "node",
     args: ["tests/moyasar_retry.test.js"],

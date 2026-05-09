@@ -33,7 +33,10 @@
     "validate:backend": "node scripts/validate-backend.js",
     "test:menu-identity": "NODE_ENV=test node tests/menuIdentityMapping.test.js",
     "test:dashboard-menu-identity": "NODE_ENV=test node tests/dashboardMenuIdentity.test.js",
+    "test:menu-identity-suggestions": "NODE_ENV=test node tests/menuIdentitySuggestions.test.js",
+    "test:menu-identity-suggestions-approval": "NODE_ENV=test node tests/menuIdentitySuggestionsApproval.test.js",
     "validate:menu-identity": "node scripts/validate-menu-identity-links.js",
+    "suggest:menu-identity": "node scripts/suggest-menu-identity-mappings.js",
     "validate:staging": "node scripts/validate-staging.js",
     "validate:data": "node scripts/validate-data-integrity.js"
   },
