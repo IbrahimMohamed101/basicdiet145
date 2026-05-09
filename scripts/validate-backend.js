@@ -52,6 +52,12 @@ const steps = [
     requiredScript: "test:menu-identity",
   },
   {
+    title: "Menu identity mapping dashboard visibility",
+    command: "npm",
+    args: ["run", "test:dashboard-menu-identity"],
+    requiredScript: "test:dashboard-menu-identity",
+  },
+  {
     title: "Moyasar retry safety",
     command: "node",
     args: ["tests/moyasar_retry.test.js"],

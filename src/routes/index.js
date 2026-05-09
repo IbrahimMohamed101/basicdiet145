@@ -23,6 +23,7 @@ const kitchenRoutes = require("./kitchen");
 const dashboardOpsRoutes = require("./dashboardOps");
 const dashboardOrderRoutes = require("./dashboardOrders");
 const dashboardBoardRoutes = require("./dashboardBoards");
+const dashboardMenuIdentityRoutes = require("./dashboardMenuIdentity");
 const paymentRoutes = require("./payments");
 const healthRoutes = require("./health");
 const { getSettings } = require("../controllers/settingsController");
@@ -55,6 +56,8 @@ router.use("/dashboard/meal-planner", adminMealPlannerMenuRoutes);
 router.use("/dashboard/menu", dashboardMenuRoutes);
 router.use("/dashboard/ops", dashboardOpsRoutes);
 router.use("/dashboard/orders", dashboardOrderRoutes);
+router.use("/dashboard/menu-identities-audit", dashboardMenuIdentityRoutes); // For internal audit
+router.use("/dashboard", dashboardMenuIdentityRoutes);
 router.use("/dashboard", dashboardBoardRoutes);
 router.use("/dashboard", adminRoutes);
 router.use("/admin", adminRoutes);
