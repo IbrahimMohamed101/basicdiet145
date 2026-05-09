@@ -31,6 +31,8 @@
     "catalog:check": "node scripts/checkCatalogHealth.js",
     "smoke:integrity": "NODE_ENV=test node tests/smoke/integrity.test.js",
     "validate:backend": "node scripts/validate-backend.js",
+    "test:menu-identity": "NODE_ENV=test node tests/menuIdentityMapping.test.js",
+    "validate:menu-identity": "node scripts/validate-menu-identity-links.js",
     "validate:staging": "node scripts/validate-staging.js",
     "validate:data": "node scripts/validate-data-integrity.js"
   },

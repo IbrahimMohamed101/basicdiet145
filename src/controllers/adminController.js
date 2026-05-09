@@ -761,6 +761,7 @@ function resolvePagination(query = {}) {
   return { page, limit: Math.min(Math.floor(parsedLimit), 200) };
 }
 
+
 function resolvePaginationOrRespond(res, query = {}) {
   const pagination = resolvePagination(query);
   if (pagination.error) {
@@ -3790,27 +3791,8 @@ async function listSubscriptionDaysAdmin(req, res) {
   }
 
   // Settlement on read intentionally removed — meals are not consumed by date passage.
-  const query = { subscriptionId: id };
-  const pagination = resolveOptionalPagination(req.query, 365, 50);
-
-  if (!pagination) {
-    // No pagination requested - return all (current behavior)
-    const days = await SubscriptionDay.find(query).sort({ date: 1 }).lean();
-    return res.status(200).json({ status: true, data: days });
-  }
-
-  // Pagination requested - apply it
-  const skip = (pagination.page - 1) * pagination.limit;
-  const [days, total] = await Promise.all([
-    SubscriptionDay.find(query).sort({ date: 1 }).skip(skip).limit(pagination.limit).lean(),
-    SubscriptionDay.countDocuments(query),
-  ]);
-
-  return res.status(200).json({
-    status: true,
-    data: days,
-    meta: buildPaginationMeta(pagination.page, pagination.limit, total),
-  });
+  const days = await SubscriptionDay.find({ subscriptionId: id }).sort({ date: 1 }).lean();
+  return res.status(200).json({ status: true, data: days });
 }
 
 async function updateSubscriptionDeliveryAdmin(req, res) {

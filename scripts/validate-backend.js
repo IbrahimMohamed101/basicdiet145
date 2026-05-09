@@ -46,6 +46,12 @@ const steps = [
     requiredScript: "test:payment-init-logging",
   },
   {
+    title: "Menu identity mapping safety",
+    command: "npm",
+    args: ["run", "test:menu-identity"],
+    requiredScript: "test:menu-identity",
+  },
+  {
     title: "Moyasar retry safety",
     command: "node",
     args: ["tests/moyasar_retry.test.js"],
