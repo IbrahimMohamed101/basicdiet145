@@ -14,6 +14,8 @@
     "test:integration": "NODE_ENV=test node tests/mealPlanner.integration.test.js",
     "test:checkout": "NODE_ENV=test node tests/checkout.integration.test.js",
     "test:one-time-menu": "NODE_ENV=test node tests/oneTimeMenuCatalog.test.js",
+    "test:one-time-full-flow": "NODE_ENV=test node tests/oneTimeOrderFullFlow.test.js",
+    "test:mobile-contracts": "NODE_ENV=test node tests/mobileApiContracts.test.js",
     "test:all": "npm run test && npm run test:integration && npm run test:balance-policy",
     "seed": "node scripts/seed-demo-data.js",
     "seed:subscription-addons": "node scripts/seed-subscription-addons.js",
@@ -27,7 +29,8 @@
     "seed:premium-catalog": "node scripts/seedPremiumCatalog.js",
     "seed:legal-content": "node scripts/seed-legal-content.js",
     "catalog:check": "node scripts/checkCatalogHealth.js",
-    "smoke:integrity": "NODE_ENV=test node tests/smoke/integrity.test.js"
+    "smoke:integrity": "NODE_ENV=test node tests/smoke/integrity.test.js",
+    "validate:backend": "node scripts/validate-backend.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
