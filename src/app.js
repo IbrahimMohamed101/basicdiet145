@@ -10,6 +10,7 @@ const requestLanguageMiddleware = require("./middleware/requestLanguage");
 const errorResponse = require("./utils/errorResponse");
 const { logger } = require("./utils/logger");
 const { validateAndFixResponse } = require("./utils/encoding");
+const swaggerSpec = require("./docs/swagger");
 
 function normalizeTopLevelStatusField(payload, responseStatusCode) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
@@ -33,20 +34,15 @@ function normalizeTopLevelStatusField(payload, responseStatusCode) {
   return normalized;
 }
 
-function mountSwaggerUi(app, { uiPath, rawPath, filePath }) {
+function mountSwaggerUi(app, { uiPath, rawPath, spec }) {
   app.get(rawPath, (_req, res) => {
-    res.type("text/yaml");
-    res.sendFile(filePath);
+    res.json(spec);
   });
 
   app.use(
     uiPath,
     swaggerUi.serve,
-    swaggerUi.setup(null, {
-      swaggerOptions: {
-        url: rawPath,
-      },
-    })
+    swaggerUi.setup(spec)
   );
 }
 
@@ -146,17 +142,15 @@ function createApp() {
     res.status(200).json({ status: true, message: "basicdiet145 backend is running" });
   });
 
-  const swaggerPath = path.join(__dirname, "..", "swagger.yaml");
-
   mountSwaggerUi(app, {
     uiPath: "/api-docs",
-    rawPath: "/api-docs/swagger.yaml",
-    filePath: swaggerPath,
+    rawPath: "/api-docs/swagger.json",
+    spec: swaggerSpec,
   });
   mountSwaggerUi(app, {
     uiPath: "/subscriptions-api-docs",
-    rawPath: "/subscriptions-api-docs/swagger.yaml",
-    filePath: swaggerPath,
+    rawPath: "/subscriptions-api-docs/swagger.json",
+    spec: swaggerSpec,
   });
 
   app.use("/", paymentRoutes.publicRouter);

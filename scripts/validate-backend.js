@@ -40,6 +40,12 @@ const steps = [
     requiredScript: "test:mobile-contracts",
   },
   {
+    title: "Weekly menu dashboard validation",
+    command: "npm",
+    args: ["run", "test:weekly-menu-dashboard"],
+    requiredScript: "test:weekly-menu-dashboard",
+  },
+  {
     title: "Payment init logging and redirect safety",
     command: "npm",
     args: ["run", "test:payment-init-logging"],

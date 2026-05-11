@@ -12,6 +12,7 @@ const ProductGroupOptionSchema = new mongoose.Schema(
     groupId: { type: mongoose.Schema.Types.ObjectId, ref: "MenuOptionGroup", required: true, index: true },
     optionId: { type: mongoose.Schema.Types.ObjectId, ref: "MenuOption", required: true, index: true },
     extraPriceHalala: { type: Number, min: 0, default: null, validate: integerOrNull },
+    extraWeightUnitGrams: { type: Number, min: 0, default: null, validate: integerOrNull },
     extraWeightPriceHalala: { type: Number, min: 0, default: null, validate: integerOrNull },
     isActive: { type: Boolean, default: true, index: true },
     isVisible: { type: Boolean, default: true, index: true },

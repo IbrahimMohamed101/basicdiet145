@@ -61,6 +61,7 @@ function normalizeItems(items = []) {
       currency: item.currency || SYSTEM_CURRENCY,
       selections: item.selections || {},
       nutrition: item.nutrition || {},
+      productSnapshot: item.productSnapshot || undefined,
     };
   });
 }

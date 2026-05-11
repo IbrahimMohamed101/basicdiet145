@@ -254,7 +254,9 @@ function validateAndPriceOptions({ selections, context, lang }) {
     const extraWeightPriceHalala = optionRelation.extraWeightPriceHalala === null || optionRelation.extraWeightPriceHalala === undefined
       ? Number(option.extraWeightPriceHalala || 0)
       : Number(optionRelation.extraWeightPriceHalala || 0);
-    const extraWeightUnitGrams = Number(option.extraWeightUnitGrams || 0);
+    const extraWeightUnitGrams = optionRelation.extraWeightUnitGrams === null || optionRelation.extraWeightUnitGrams === undefined
+      ? Number(option.extraWeightUnitGrams || 0)
+      : Number(optionRelation.extraWeightUnitGrams || 0);
     const extraWeightGrams = Number(selection.extraWeightGrams || 0);
     if (extraWeightGrams < 0 || !Number.isInteger(extraWeightGrams)) {
       throw createMenuPricingError("INVALID_WEIGHT", "extraWeightGrams must be an integer >= 0");

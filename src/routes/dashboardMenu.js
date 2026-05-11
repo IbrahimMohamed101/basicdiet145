@@ -60,6 +60,7 @@ router.patch("/options/:id/availability", asyncHandler(controller.updateOptionAv
 router.delete("/options/:id", asyncHandler(controller.deleteOption));
 
 router.post("/publish", asyncHandler(controller.publishMenu));
+router.post("/validate", asyncHandler(controller.validateMenu));
 router.get("/audit-logs", asyncHandler(controller.listAuditLogs));
 
 module.exports = router;

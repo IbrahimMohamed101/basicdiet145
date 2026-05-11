@@ -112,6 +112,8 @@ const updateProductGroupOptionAvailability = wrap(async (req, res) => send(res, 
 const publishMenu = wrap(async (req, res) => send(res, await service.publishMenu({ actor: actorFromRequest(req), notes: req.body.notes })));
 const listAuditLogs = wrap(async (req, res) => send(res, await service.listAuditLogs(listOptions(req))));
 
+const validateMenu = wrap(async (req, res) => send(res, await service.validateMenu()));
+
 module.exports = {
   listCategories,
   createCategory,
@@ -161,5 +163,6 @@ module.exports = {
   updateProductGroupOptionVisibility,
   updateProductGroupOptionAvailability,
   publishMenu,
+  validateMenu,
   listAuditLogs,
 };

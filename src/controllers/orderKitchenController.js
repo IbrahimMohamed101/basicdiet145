@@ -13,35 +13,14 @@ const { resolveOptionalPagination, buildPaginationMeta } = require("../utils/opt
 
 async function listOrdersByDate(req, res) {
   const { date } = req.params;
-  const query = {
+  const orders = await Order.find({
     $or: [{ fulfillmentDate: date }, { deliveryDate: date }],
     paymentStatus: "paid",
     status: { $in: [ORDER_STATUSES.CONFIRMED, ORDER_STATUSES.IN_PREPARATION, ORDER_STATUSES.READY_FOR_PICKUP] },
-  };
-  const pagination = resolveOptionalPagination(req.query, 300, 50);
-
-  if (!pagination) {
-    // No pagination requested - return all (current behavior)
-    const orders = await Order.find(query).sort({ createdAt: -1 }).lean();
-    return res.status(200).json({
-      status: true,
-      data: orders.filter((order) => !shouldBlockOneTimeOrderDelivery(order)),
-    });
-  }
-
-  // Pagination requested - apply it
-  const skip = (pagination.page - 1) * pagination.limit;
-  const [orders, total] = await Promise.all([
-    Order.find(query).sort({ createdAt: -1 }).skip(skip).limit(pagination.limit).lean(),
-    Order.countDocuments(query),
-  ]);
-
-  const filteredOrders = orders.filter((order) => !shouldBlockOneTimeOrderDelivery(order));
-
+  }).sort({ createdAt: -1 }).lean();
   return res.status(200).json({
     status: true,
-    data: filteredOrders,
-    meta: buildPaginationMeta(pagination.page, pagination.limit, total),
+    data: orders.filter((order) => !shouldBlockOneTimeOrderDelivery(order)),
   });
 }
 
