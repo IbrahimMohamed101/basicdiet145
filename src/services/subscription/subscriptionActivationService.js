@@ -17,6 +17,7 @@ const {
 const { consumePromoCodeUsageReservation } = require("../promoCodeService");
 const { logger } = require("../../utils/logger");
 const { resolveCanonicalPremiumIdentity, resolvePremiumKeyFromName, getPremiumDisplayName } = require("../../utils/subscription/premiumIdentity");
+const { getPickupLocationsSetting } = require("./subscriptionFulfillmentSummaryService");
 
 const SYSTEM_CURRENCY = "SAR";
 
@@ -372,7 +373,7 @@ function buildCanonicalActivationPayload({ userId, planId, contractVersion, cont
     deliverySlot: { type: slot.type === "pickup" ? "pickup" : (delivery.mode === "pickup" ? "pickup" : "delivery"), window: String(slot.window || ""), slotId: String(slot.slotId || "") },
     deliveryZoneId: delivery.zoneId || null,
     deliveryZoneName: delivery.zoneName || "",
-    pickupLocationId: String(delivery.pickupLocationId || legacyRuntimeData.delivery?.pickupLocationId || ""),
+    pickupLocationId: String(delivery.pickupLocationId || legacyRuntimeData.delivery?.pickupLocationId || legacyRuntimeData.resolvedPickupLocationId || ""),
     deliveryFeeHalala: Number(pricing.deliveryFeeHalala || 0),
     contractVersion,
     contractMode,
@@ -403,6 +404,31 @@ async function buildCanonicalSubscriptionActivationPayload({ draft }) {
 
   const premiumBalanceRows = await resolveActivationPremiumBalanceRows(draft, draft.contractSnapshot);
 
+  // Auto-resolve pickupLocationId when deliveryMode=pickup but no locationId was captured.
+  // Guards against checkouts where the frontend omitted pickupLocationId (single-branch setups).
+  const deliveryFromDraft = draft.delivery && typeof draft.delivery === "object" ? draft.delivery : {};
+  const deliveryFromSnapshot = snapshot.delivery && typeof snapshot.delivery === "object" ? snapshot.delivery : {};
+  const deliveryMode = deliveryFromSnapshot.mode || deliveryFromDraft.type || "";
+  const hasPickupLocationId = !!(deliveryFromSnapshot.pickupLocationId || deliveryFromDraft.pickupLocationId);
+  let resolvedPickupLocationId = null;
+  if (deliveryMode === "pickup" && !hasPickupLocationId) {
+    try {
+      const availableLocations = await getPickupLocationsSetting();
+      if (Array.isArray(availableLocations) && availableLocations.length === 1) {
+        const loc = availableLocations[0];
+        resolvedPickupLocationId = (loc && (loc.id || loc.locationId)) || null;
+        if (resolvedPickupLocationId) {
+          logger.info("Activation: auto-resolved pickupLocationId from single-location setting", {
+            draftId: String(draft._id || ""),
+            resolvedPickupLocationId,
+          });
+        }
+      }
+    } catch (err) {
+      logger.warn("Activation: failed to auto-resolve pickupLocationId", { err: err.message });
+    }
+  }
+
   return buildCanonicalActivationPayload({
     userId: draft.userId,
     planId: draft.planId,
@@ -420,6 +446,7 @@ async function buildCanonicalSubscriptionActivationPayload({ draft }) {
       daysCount: draft.daysCount,
       mealsPerDay: draft.mealsPerDay,
       delivery: draft.delivery,
+      resolvedPickupLocationId,
     },
   });
 }

@@ -208,9 +208,24 @@ function buildFulfillmentReadFields({
   statusLabel = "",
 } = {}) {
   const mode = subscription && subscription.deliveryMode === "pickup" ? "pickup" : "delivery";
-  const effectivePickupLocationId = (mode === "pickup" && !subscription.pickupLocationId)
-    ? (subscription.contractSnapshot && subscription.contractSnapshot.delivery && subscription.contractSnapshot.delivery.pickupLocationId)
-    : (subscription && subscription.pickupLocationId);
+  // Resolve pickupLocationId: prefer stored value, fall back to contractSnapshot, then
+  // auto-select the only available location when pickup mode has exactly one option.
+  let effectivePickupLocationId = subscription && subscription.pickupLocationId
+    ? subscription.pickupLocationId
+    : null;
+  if (mode === "pickup" && !effectivePickupLocationId) {
+    const fromSnapshot = subscription
+      && subscription.contractSnapshot
+      && subscription.contractSnapshot.delivery
+      && subscription.contractSnapshot.delivery.pickupLocationId;
+    if (fromSnapshot) {
+      effectivePickupLocationId = fromSnapshot;
+    } else if (Array.isArray(pickupLocations) && pickupLocations.length === 1) {
+      // Single-location setup: auto-resolve so the subscription is never blocked.
+      const soleLoc = pickupLocations[0];
+      effectivePickupLocationId = (soleLoc && (soleLoc.id || soleLoc.locationId)) || null;
+    }
+  }
     
   const pickupLocation = mode === "pickup"
     ? buildPickupLocationSummary({ ...subscription, pickupLocationId: effectivePickupLocationId }, pickupLocations, lang)
