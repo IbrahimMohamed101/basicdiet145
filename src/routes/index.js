@@ -26,6 +26,8 @@ const dashboardBoardRoutes = require("./dashboardBoards");
 const dashboardMenuIdentityRoutes = require("./dashboardMenuIdentity");
 const paymentRoutes = require("./payments");
 const healthRoutes = require("./health");
+const clientRoutes = require("./client");
+
 const { getSettings } = require("../controllers/settingsController");
 const { listCategoriesWithMeals } = require("../controllers/mealController");
 const asyncHandler = require("../middleware/asyncHandler");
@@ -62,6 +64,8 @@ router.use("/dashboard", dashboardMenuIdentityRoutes);
 router.use("/dashboard", adminRoutes);
 router.use("/admin", adminRoutes);
 router.use("/health", healthRoutes);
+router.use("/client", clientRoutes);
+
 
 /**
  * DEPRECATED: Standard Kitchen/Courier operational routes.
