@@ -3,6 +3,7 @@
 const SubscriptionDay = require("../../models/SubscriptionDay");
 const SubscriptionPickupRequest = require("../../models/SubscriptionPickupRequest");
 const Subscription = require("../../models/Subscription");
+const mongoose = require("mongoose");
 const Order = require("../../models/Order");
 const Delivery = require("../../models/Delivery");
 const Zone = require("../../models/Zone");
@@ -164,6 +165,19 @@ function matchesSearch(item, q) {
   ].filter(Boolean).join(" ").toLowerCase().includes(needle);
 }
 
+function respondToActionError(res, err) {
+  if (err && (err.status || err.code)) {
+    return errorResponse(res, err.status || 500, err.code || "INTERNAL", err.message || "Action failed", err.details);
+  }
+  if (err && err.message === "INVALID_STATE_TRANSITION") {
+    return errorResponse(res, 409, "INVALID_TRANSITION", "This transition is not allowed");
+  }
+  if (err && err.message === "INVALID_PICKUP_CODE") {
+    return errorResponse(res, 400, "INVALID_PICKUP_CODE", "The provided pickup code is incorrect");
+  }
+  throw err;
+}
+
 async function queryBoardDays(req, { screen }) {
   const date = normalizeDate(req.query.date);
   const method = String(req.query.method || (screen === "pickup" ? "pickup" : screen === "courier" ? "delivery" : "all")).trim();
@@ -196,11 +210,14 @@ async function queryBoardDays(req, { screen }) {
     .sort({ updatedAt: -1, createdAt: -1 })
     .lean();
 
-  const filteredByMethod = days.filter((day) => {
+  let filteredByMethod = days.filter((day) => {
     const mode = getDeliveryMode(day.subscriptionId || {});
     if (method === "all") return true;
     return mode === method;
   });
+  if (screen === "pickup") {
+    filteredByMethod = filteredByMethod.filter((day) => getDeliveryMode(day.subscriptionId || {}) !== "pickup");
+  }
 
   const [latestActionMap, zoneMap] = await Promise.all([
     buildLatestActionMap(filteredByMethod.map((day) => day._id)),
@@ -366,16 +383,26 @@ async function queueDetail(req, res) {
 }
 
 async function action(req, res) {
-  const actionId = req.params.action;
+  const actionId = opsActionPolicy.normalizeActionId(req.params.action);
   const entityId = req.body && req.body.entityId;
-  const payload = req.body && req.body.payload ? req.body.payload : {};
+  const payload = { ...((req.body && req.body.payload) ? req.body.payload : {}) };
+  if (req.body && req.body.code !== undefined) payload.code = req.body.code;
+  if (req.body && req.body.pickupCode !== undefined) payload.pickupCode = req.body.pickupCode;
   if (!entityId) return errorResponse(res, 400, "INVALID_REQUEST", "entityId is required");
+  if (req.body && req.body.entityType === undefined && req.body.source !== "one_time_order") {
+    return errorResponse(res, 400, "INVALID_REQUEST", "entityType is required");
+  }
+  if (!mongoose.Types.ObjectId.isValid(entityId)) {
+    return errorResponse(res, 400, "INVALID_ENTITY_ID", "Invalid entityId");
+  }
 
   let entityType = "subscription_day";
   if (req.body && (req.body.entityType === "order" || req.body.source === "one_time_order")) {
     entityType = "order";
   } else if (req.body && req.body.entityType === "subscription_pickup_request") {
     entityType = "subscription_pickup_request";
+  } else if (req.body && req.body.entityType && !["subscription_day", "pickup_day", "subscription", "order"].includes(req.body.entityType)) {
+    return errorResponse(res, 400, "INVALID_ENTITY_TYPE", "Unsupported entityType");
   }
 
   if (entityType === "order") {
@@ -409,16 +436,21 @@ async function action(req, res) {
       actionId,
     });
     if (!validation.allowed) {
-      return errorResponse(res, 409, validation.reason, `Action ${actionId} is not allowed in current state`);
+      const code = validation.reason === "INVALID_STATE_TRANSITION" ? "INVALID_TRANSITION" : validation.reason;
+      return errorResponse(res, 409, code, `Action ${actionId} is not allowed in current state`);
     }
 
-    await opsTransitionService.executeAction(actionId, {
-      entityId,
-      entityType: "subscription_pickup_request",
-      userId: req.dashboardUserId,
-      role: req.dashboardUserRole,
-      payload,
-    });
+    try {
+      await opsTransitionService.executeAction(actionId, {
+        entityId,
+        entityType: "subscription_pickup_request",
+        userId: req.dashboardUserId,
+        role: req.dashboardUserRole,
+        payload,
+      });
+    } catch (err) {
+      return respondToActionError(res, err);
+    }
 
     req.params.dayId = entityId;
     return queueDetail(req, res);
@@ -437,7 +469,8 @@ async function action(req, res) {
     actionId,
   });
   if (!validation.allowed) {
-    return errorResponse(res, 409, validation.reason, `Action ${actionId} is not allowed in current state`);
+    const code = validation.reason === "INVALID_STATE_TRANSITION" ? "INVALID_TRANSITION" : validation.reason;
+    return errorResponse(res, 409, code, `Action ${actionId} is not allowed in current state`);
   }
 
   await opsTransitionService.executeAction(actionId, {

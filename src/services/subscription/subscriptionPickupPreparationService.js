@@ -46,6 +46,7 @@ function resolvePickupPreparationState(subscription, todayDay, deps = {}) {
     validatePickupDay = validateDayBeforeLockOrPrepare,
     activePickupRequestCount = 0,
     latestPickupRequest = null,
+    restaurantHours = null,
   } = deps;
 
   const buttonLabelAr = translate("read.pickupPreparation.buttonLabel", "ar");
@@ -53,6 +54,22 @@ function resolvePickupPreparationState(subscription, todayDay, deps = {}) {
   const mealPlannerCtaLabelAr = translate("read.pickupPreparation.mealPlannerCtaLabel", "ar");
   const mealPlannerCtaLabelEn = translate("read.pickupPreparation.mealPlannerCtaLabel", "en");
   const preferredLang = lang === "en" ? "en" : "ar";
+  const restaurantHoursPayload = restaurantHours
+    ? {
+      openTime: restaurantHours.openTime || null,
+      closeTime: restaurantHours.closeTime || null,
+      isOpenNow: Boolean(restaurantHours.isOpenNow),
+    }
+    : null;
+  const multiRequestExtra = (canCreatePickupRequest, extra = {}) => ({
+    mode: "multi_request",
+    canCreatePickupRequest,
+    availableMealBalance: Number(subscription.remainingMeals || 0),
+    activePickupRequestCount,
+    latestPickupRequest,
+    ...(restaurantHoursPayload ? { restaurantHours: restaurantHoursPayload } : {}),
+    ...extra,
+  });
 
   const buildResponse = (flowStatus, reason = null, messageKey = null, messageParams = {}, state = {}) => {
     const messageAr = messageKey ? translate(`read.pickupPreparation.messages.${messageKey}`, "ar", messageParams) : null;
@@ -113,40 +130,32 @@ function resolvePickupPreparationState(subscription, todayDay, deps = {}) {
   
   if (subscription.status !== "active" || isExpired) {
     return buildResponse("disabled", "SUBSCRIPTION_INACTIVE", "SUBSCRIPTION_INACTIVE", {}, {
-      extra: {
-        mode: "multi_request",
-        canCreatePickupRequest: false,
-        availableMealBalance: Number(subscription.remainingMeals || 0),
-        activePickupRequestCount,
-        latestPickupRequest,
-      },
+      extra: multiRequestExtra(false),
     });
   }
 
   // 3. todayDay is missing -> disabled (PLANNING_INCOMPLETE)
   if (!todayDay) {
     return buildResponse("disabled", "PLANNING_INCOMPLETE", "PLANNING_INCOMPLETE", {}, {
-      extra: {
-        mode: "multi_request",
-        canCreatePickupRequest: false,
-        availableMealBalance: Number(subscription.remainingMeals || 0),
-        activePickupRequestCount,
-        latestPickupRequest,
-      },
+      extra: multiRequestExtra(false),
     });
   }
-
-  const multiRequestExtra = (canCreatePickupRequest) => ({
-    mode: "multi_request",
-    canCreatePickupRequest,
-    availableMealBalance: Number(subscription.remainingMeals || 0),
-    activePickupRequestCount,
-    latestPickupRequest,
-  });
 
   if (["skipped", "frozen"].includes(todayDay.status)) {
     return buildResponse("disabled", "DAY_SKIPPED", "DAY_SKIPPED", {}, {
       extra: multiRequestExtra(false),
+    });
+  }
+
+  if (restaurantHours && restaurantHours.isOpenNow === false) {
+    return buildResponse("disabled", "RESTAURANT_CLOSED", null, {}, {
+      canRequestPrepare: false,
+      extra: multiRequestExtra(false, {
+        reason: "RESTAURANT_CLOSED",
+        message: "Restaurant is currently closed",
+        messageAr: "المطعم مغلق حاليًا. يمكنك الطلب خلال ساعات العمل.",
+        messageEn: "Restaurant is currently closed. Please order during working hours.",
+      }),
     });
   }
 

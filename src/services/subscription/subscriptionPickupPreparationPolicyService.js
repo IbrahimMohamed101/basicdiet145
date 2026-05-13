@@ -197,7 +197,14 @@ function buildPickupPreparationPolicy({
   if (restaurantHours && restaurantHours.isOpenNow === false) {
     return {
       canRequestPrepare: false,
-      blockReason: { code: "RESTAURANT_CLOSED", status: 400, messageKey: null },
+      blockReason: {
+        code: "RESTAURANT_CLOSED",
+        status: 409,
+        messageKey: null,
+        message: "Restaurant is currently closed",
+        messageAr: "المطعم مغلق حاليًا. يمكنك الطلب خلال ساعات العمل.",
+        messageEn: "Restaurant is currently closed. Please order during working hours.",
+      },
       derivedState,
       fulfillmentState,
     };

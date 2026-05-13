@@ -145,7 +145,18 @@ async function preparePickupForClient({
     if (blockReason) {
       await session.abortTransaction();
       session.endSession();
-      return buildErrorResult(blockReason.status, blockReason.code, blockReason.message);
+      return buildErrorResult(blockReason.status, blockReason.code, blockReason.message, {
+        reason: blockReason.code,
+        messageAr: blockReason.messageAr,
+        messageEn: blockReason.messageEn,
+        restaurantHours: restaurantHours
+          ? {
+            openTime: restaurantHours.openTime,
+            closeTime: restaurantHours.closeTime,
+            isOpenNow: restaurantHours.isOpenNow,
+          }
+          : undefined,
+      });
     }
 
     try {

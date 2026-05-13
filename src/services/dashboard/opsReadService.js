@@ -36,6 +36,11 @@ async function listOperations({ date, role, lang = "ar" }) {
     date,
     status: { $in: ["locked", "in_preparation", "ready_for_pickup"] },
   }).lean();
+  const pickupRequestDayKeys = new Set(
+    pickupRequests
+      .filter((request) => request.subscriptionId && request.date)
+      .map((request) => `${String(request.subscriptionId)}:${request.date}`)
+  );
   
   // 3. Collect IDs for mass fetching
   const subscriptionIds = [...new Set(days.map(d => d.subscriptionId).concat(pickupRequests.map((request) => request.subscriptionId)).filter(Boolean).map(String))];
@@ -67,7 +72,13 @@ async function listOperations({ date, role, lang = "ar" }) {
   const deliveryByOrderMap = new Map(deliveries.filter(d => d.orderId).map(d => [String(d.orderId), d]));
 
   // 5. Map to DTOs
-  const dayDTOs = days.map(day => {
+  const dayDTOs = days.filter((day) => {
+    const sub = subMap.get(String(day.subscriptionId));
+    if (sub && sub.deliveryMode === "pickup" && pickupRequestDayKeys.has(`${String(day.subscriptionId)}:${day.date}`)) {
+      return false;
+    }
+    return true;
+  }).map(day => {
     const sub = subMap.get(String(day.subscriptionId));
     const user = sub ? userMap.get(String(sub.userId)) : null;
     const dto = dashboardDtoService.mapSubscriptionDayToDTO(

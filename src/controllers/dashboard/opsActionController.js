@@ -1,6 +1,7 @@
 const opsTransitionService = require("../../services/dashboard/opsTransitionService");
 const opsActionPolicy = require("../../services/dashboard/opsActionPolicy");
 const opsReadService = require("../../services/dashboard/opsReadService");
+const mongoose = require("mongoose");
 const SubscriptionDay = require("../../models/SubscriptionDay");
 const SubscriptionPickupRequest = require("../../models/SubscriptionPickupRequest");
 const Subscription = require("../../models/Subscription");
@@ -19,8 +20,11 @@ async function handleAction(req, res) {
   const role = req.userRole;
 
   try {
-    const { action } = req.params;
-    const { entityId, payload = {} } = req.body;
+    const action = opsActionPolicy.normalizeActionId(req.params.action);
+    const { entityId } = req.body;
+    const payload = { ...(req.body.payload || {}) };
+    if (req.body.code !== undefined) payload.code = req.body.code;
+    if (req.body.pickupCode !== undefined) payload.pickupCode = req.body.pickupCode;
     let rawEntityType = req.body.entityType;
     if (req.body.source === "one_time_order") {
       rawEntityType = "order";
@@ -29,11 +33,17 @@ async function handleAction(req, res) {
       ? "subscription"
       : rawEntityType;
 
-    if (!entityId || !rawEntityType) {
-      return errorResponse(res, 400, "INVALID_REQUEST", "entityId and entityType are required");
+    if (!rawEntityType) {
+      return errorResponse(res, 400, "INVALID_REQUEST", "entityType is required");
+    }
+    if (!entityId) {
+      return errorResponse(res, 400, "INVALID_REQUEST", "entityId is required");
     }
     if (!["subscription", "subscription_day", "pickup_day", "subscription_pickup_request", "order"].includes(rawEntityType)) {
-      return errorResponse(res, 400, "INVALID_ENTITY_TYPE", "entityType must be subscription_day, subscription, pickup_day, subscription_pickup_request, or order");
+      return errorResponse(res, 400, "INVALID_ENTITY_TYPE", "Unsupported entityType");
+    }
+    if (!mongoose.Types.ObjectId.isValid(entityId)) {
+      return errorResponse(res, 400, "INVALID_ENTITY_ID", "Invalid entityId");
     }
 
     if (entityType === "order") {
@@ -65,7 +75,8 @@ async function handleAction(req, res) {
       });
 
       if (!validation.allowed) {
-        return errorResponse(res, 409, validation.reason, `Action ${action} is not allowed in current state`);
+        const code = validation.reason === "INVALID_STATE_TRANSITION" ? "INVALID_TRANSITION" : validation.reason;
+        return errorResponse(res, 409, code, `Action ${action} is not allowed in current state`);
       }
 
       await opsTransitionService.executeAction(action, {
@@ -97,7 +108,8 @@ async function handleAction(req, res) {
       });
 
       if (!validation.allowed) {
-        return errorResponse(res, 409, validation.reason, `Action ${action} is not allowed in current state`);
+        const code = validation.reason === "INVALID_STATE_TRANSITION" ? "INVALID_TRANSITION" : validation.reason;
+        return errorResponse(res, 409, code, `Action ${action} is not allowed in current state`);
       }
 
       // 3. Execute Transition
@@ -127,7 +139,7 @@ async function handleAction(req, res) {
       return errorResponse(res, 400, "INVALID_PICKUP_CODE", "The provided pickup code is incorrect");
     }
     if (err.message === "INVALID_STATE_TRANSITION") {
-      return errorResponse(res, 409, "INVALID_STATE_TRANSITION", "This transition is not allowed");
+      return errorResponse(res, 409, "INVALID_TRANSITION", "This transition is not allowed");
     }
     if (err.message === "PICKUP_PREPARE_REQUIRED") {
       return errorResponse(res, 409, "PICKUP_PREPARE_REQUIRED", "Pickup preparation requires an explicit client request");

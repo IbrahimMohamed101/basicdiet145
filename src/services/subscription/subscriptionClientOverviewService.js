@@ -407,6 +407,7 @@ async function buildCurrentSubscriptionOverview({ userId, lang, runtime: runtime
       getTodayKSADate: () => todayKSA,
       activePickupRequestCount: pickupRequestOverview.activePickupRequestCount,
       latestPickupRequest: pickupRequestOverview.latestPickupRequest,
+      restaurantHours,
     });
 
     logger.info("currentOverview: pickupPreparation resolved", {

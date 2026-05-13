@@ -11,6 +11,12 @@ const { normalizeLegacyOrderStatus } = require("../../utils/orderState");
  */
 
 const ACTION_REGISTRY = {
+  start_preparation: {
+    label: { ar: "بدء التحضير", en: "Start Preparation" },
+    color: "orange",
+    icon: "chef-hat",
+    roles: ["admin", "kitchen"],
+  },
   lock: {
     label: { ar: "إغلاق لليوم", en: "Lock Day" },
     color: "blue",
@@ -99,7 +105,7 @@ const TRANSITION_RULES = {
     pending_payment: [],
   },
   subscription_pickup_request: {
-    locked: ["prepare", "ready_for_pickup", "cancel", "no_show"],
+    locked: ["start_preparation", "ready_for_pickup", "cancel", "no_show"],
     in_preparation: ["ready_for_pickup", "cancel", "no_show"],
     ready_for_pickup: ["fulfill", "no_show"],
     fulfilled: [],
@@ -107,6 +113,12 @@ const TRANSITION_RULES = {
     canceled: [],
   },
 };
+
+function normalizeActionId(actionId) {
+  if (actionId === "prepare") return "start_preparation";
+  if (actionId === "ready-for-pickup") return "ready_for_pickup";
+  return actionId;
+}
 
 /**
  * Get all allowed actions for an entity.
@@ -147,13 +159,14 @@ function getAllowedActions({ entityType, status, mode, role, lang = "ar" }) {
  * Validate if an action is allowed.
  */
 function validateAction({ entityType, status, mode, role, actionId }) {
+  const normalizedActionId = normalizeActionId(actionId);
   const normalizedEntityType = entityType === "subscription_day" || entityType === "pickup_day"
     ? "subscription"
     : entityType;
   const normalizedStatus = normalizedEntityType === "order"
     ? normalizeLegacyOrderStatus(status)
     : status;
-  const config = ACTION_REGISTRY[actionId];
+  const config = ACTION_REGISTRY[normalizedActionId];
   if (!config) {
     return { allowed: false, reason: "UNKNOWN_ACTION" };
   }
@@ -169,16 +182,16 @@ function validateAction({ entityType, status, mode, role, actionId }) {
   }
 
   // State check
-  if (actionId === "fulfill" && role === "kitchen" && mode !== "pickup") {
+  if (normalizedActionId === "fulfill" && role === "kitchen" && mode !== "pickup") {
     return { allowed: false, reason: "INVALID_ROLE_FOR_MODE" };
   }
-  if (actionId === "cancel" && role === "courier" && mode !== "delivery") {
+  if (normalizedActionId === "cancel" && role === "courier" && mode !== "delivery") {
     return { allowed: false, reason: "INVALID_ROLE_FOR_MODE" };
   }
 
   const typeRules = TRANSITION_RULES[normalizedEntityType] || {};
   const allowedIds = typeRules[normalizedStatus] || [];
-  if (!allowedIds.includes(actionId)) {
+  if (!allowedIds.includes(normalizedActionId)) {
     return { allowed: false, reason: "INVALID_STATE_TRANSITION" };
   }
 
@@ -189,4 +202,5 @@ module.exports = {
   getAllowedActions,
   validateAction,
   ACTION_REGISTRY,
+  normalizeActionId,
 };

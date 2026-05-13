@@ -28,6 +28,11 @@ const {
  */
 
 async function executeAction(actionId, { entityId, entityType, userId, role, payload = {} }) {
+  const normalizedActionId = actionId === "start_preparation"
+    ? "prepare"
+    : actionId === "ready-for-pickup"
+      ? "ready_for_pickup"
+      : actionId;
   const normalizedEntityType = entityType === "subscription_day" || entityType === "pickup_day"
     ? "subscription"
     : entityType;
@@ -41,7 +46,7 @@ async function executeAction(actionId, { entityId, entityType, userId, role, pay
       }
     }
     let result;
-    switch (actionId) {
+    switch (normalizedActionId) {
       case "prepare":
         result = await handlePrepare({ entityId, entityType: normalizedEntityType, userId, role, payload, session });
         break;
@@ -269,8 +274,30 @@ async function handleFulfill({ entityId, entityType, payload, userId, role, sess
     if (doc.status === "fulfilled") {
       return { data: doc, idempotent: true };
     }
-    if (payload.pickupCode && doc.pickupCode !== String(payload.pickupCode).trim()) {
-      throw new Error("INVALID_PICKUP_CODE");
+    if (doc.status !== "ready_for_pickup") {
+      const err = new Error("Only ready pickup requests can be fulfilled");
+      err.code = "INVALID_TRANSITION";
+      err.status = 409;
+      throw err;
+    }
+    const submittedCode = String(payload.code || payload.pickupCode || "").trim();
+    if (!submittedCode) {
+      const err = new Error("Pickup code is required");
+      err.code = "INVALID_PICKUP_CODE";
+      err.status = 400;
+      throw err;
+    }
+    if (!/^\d{6}$/.test(submittedCode)) {
+      const err = new Error("Pickup code must be a 6-digit value");
+      err.code = "INVALID_PICKUP_CODE";
+      err.status = 400;
+      throw err;
+    }
+    if (doc.pickupCode !== submittedCode) {
+      const err = new Error("Pickup code does not match");
+      err.code = "PICKUP_CODE_MISMATCH";
+      err.status = 422;
+      throw err;
     }
     const fromStatus = doc.status;
     validateTransition(entityType, fromStatus, "fulfilled");
@@ -378,7 +405,7 @@ async function handleReadyForPickup({ entityId, entityType, userId, role, payloa
     const fromStatus = doc.status;
     validateTransition(entityType, fromStatus, toStatus);
     doc.status = toStatus;
-    doc.pickupCode = doc.pickupCode || String(crypto.randomInt(100000, 999999));
+    doc.pickupCode = doc.pickupCode || String(crypto.randomInt(0, 1000000)).padStart(6, "0");
     doc.pickupCodeIssuedAt = doc.pickupCodeIssuedAt || new Date();
     doc.pickupPreparedAt = doc.pickupPreparedAt || new Date();
     appendPickupRequestAudit(doc, "ready_for_pickup", userId, role);

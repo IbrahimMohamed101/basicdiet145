@@ -11,7 +11,7 @@ const Zone = require("../../models/Zone");
 const { SYSTEM_CURRENCY } = require("../../config/mealPlannerContract");
 const { pickLang } = require("../../utils/i18n");
 const { computeInclusiveVatBreakdown } = require("../../utils/pricing");
-const { getRestaurantHours } = require("../restaurantHoursService");
+const { assertRestaurantOpenForOrdering } = require("../restaurantHoursService");
 const { normalizeWindows } = require("./orderMenuService");
 const {
   assertNoForbiddenOneTimeFields,
@@ -168,14 +168,6 @@ async function validateWindows({ fulfillmentMethod, delivery, pickup }) {
   if (pickupWindows.length && !pickupWindows.some((window) => window.value === pickupWindow)) {
     throw createOrderPricingError("INVALID_DELIVERY_WINDOW", "Invalid pickup window");
   }
-}
-
-async function assertRestaurantOpen() {
-  const hours = await getRestaurantHours().catch(() => null);
-  if (hours && hours.isOpenNow === false) {
-    throw createOrderPricingError("RESTAURANT_CLOSED", "Restaurant is currently closed", 409);
-  }
-  return hours || {};
 }
 
 async function priceSandwichItem({ item, qty, lang }) {
@@ -387,20 +379,26 @@ async function priceOrderCart({
   if (!normalizedItems.length) {
     throw createOrderPricingError("EMPTY_ORDER", "Order must include at least one item");
   }
+  const method = String(fulfillmentMethod || "pickup").trim();
+
+  await assertRestaurantOpenForOrdering({
+    pickupLocationId: pickup && pickup.pickupLocationId,
+    branchId: pickup && pickup.branchId,
+    deliveryMode: method,
+  });
 
   const usesMenuCatalog = normalizedItems.some((item) => item && (item.productId || item.menuProductId));
   if (usesMenuCatalog) {
     return priceMenuCart({
       userId,
       items: normalizedItems,
-      fulfillmentMethod,
+      fulfillmentMethod: method,
       pickup,
       lang,
       requestBody,
     });
   }
 
-  const method = String(fulfillmentMethod || "pickup").trim();
   if (method !== "pickup") {
     throw createOrderPricingError("DELIVERY_NOT_SUPPORTED", "Delivery is not currently supported for one-time orders");
   }
@@ -411,7 +409,6 @@ async function priceOrderCart({
     );
   }
 
-  await assertRestaurantOpen();
   await validateWindows({ fulfillmentMethod: method, delivery, pickup });
 
   const pricedItems = [];

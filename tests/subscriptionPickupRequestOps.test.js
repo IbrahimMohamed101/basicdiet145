@@ -209,6 +209,65 @@ async function getRemainingMeals(subscriptionId) {
       assert.strictEqual(await getRemainingMeals(subscription._id), 8);
     });
 
+    await test("fulfill rejects missing, malformed, and mismatched pickup codes", async () => {
+      const { pickupRequest } = await seedReservedPickupRequest({ status: "ready_for_pickup" });
+      await SubscriptionPickupRequest.updateOne(
+        { _id: pickupRequest._id },
+        { $set: { pickupCode: "123456", pickupCodeIssuedAt: new Date() } }
+      );
+
+      const missing = await api.post("/api/dashboard/ops/actions/fulfill").set(dashboardAuth("kitchen")).send({
+        entityType: "subscription_pickup_request",
+        entityId: String(pickupRequest._id),
+      });
+      const malformed = await api.post("/api/dashboard/ops/actions/fulfill").set(dashboardAuth("kitchen")).send({
+        entityType: "subscription_pickup_request",
+        entityId: String(pickupRequest._id),
+        code: "123",
+      });
+      const mismatch = await api.post("/api/dashboard/ops/actions/fulfill").set(dashboardAuth("kitchen")).send({
+        entityType: "subscription_pickup_request",
+        entityId: String(pickupRequest._id),
+        code: "654321",
+      });
+
+      assert.strictEqual(missing.status, 400, JSON.stringify(missing.body));
+      assert.strictEqual(missing.body.error.code, "INVALID_PICKUP_CODE");
+      assert.strictEqual(malformed.status, 400, JSON.stringify(malformed.body));
+      assert.strictEqual(malformed.body.error.code, "INVALID_PICKUP_CODE");
+      assert.strictEqual(mismatch.status, 422, JSON.stringify(mismatch.body));
+      assert.strictEqual(mismatch.body.error.code, "PICKUP_CODE_MISMATCH");
+    });
+
+    await test("pickup action endpoint returns validation errors for request fulfill", async () => {
+      const { pickupRequest } = await seedReservedPickupRequest({ status: "ready_for_pickup" });
+      await SubscriptionPickupRequest.updateOne(
+        { _id: pickupRequest._id },
+        { $set: { pickupCode: "222333", pickupCodeIssuedAt: new Date() } }
+      );
+
+      const res = await api.post("/api/dashboard/pickup/actions/fulfill").set(dashboardAuth("kitchen")).send({
+        entityType: "subscription_pickup_request",
+        entityId: String(pickupRequest._id),
+      });
+
+      assert.strictEqual(res.status, 400, JSON.stringify(res.body));
+      assert.strictEqual(res.body.error.code, "INVALID_PICKUP_CODE");
+    });
+
+    await test("fulfill requires ready_for_pickup status", async () => {
+      const { pickupRequest } = await seedReservedPickupRequest({ status: "locked" });
+
+      const res = await api.post("/api/dashboard/ops/actions/fulfill").set(dashboardAuth("kitchen")).send({
+        entityType: "subscription_pickup_request",
+        entityId: String(pickupRequest._id),
+        code: "123456",
+      });
+
+      assert.strictEqual(res.status, 409, JSON.stringify(res.body));
+      assert.strictEqual(res.body.error.code, "INVALID_TRANSITION");
+    });
+
     await test("no_show consumes reserved credits without releasing balance", async () => {
       const { subscription, pickupRequest } = await seedReservedPickupRequest({ status: "ready_for_pickup", remainingMeals: 8 });
 
@@ -281,6 +340,42 @@ async function getRemainingMeals(subscriptionId) {
       const row = res.body.data.items.find((item) => item.requestId === String(pickupRequest._id));
       assert(row, "pickup request should appear in pickup queue");
       assert.strictEqual(row.entityType, "subscription_pickup_request");
+      assert.deepStrictEqual(row.allowedActions.map((action) => action.id), ["start_preparation", "ready_for_pickup", "cancel", "no_show"]);
+      assert.strictEqual(row.pickupCode, null);
+    });
+
+    await test("pickup queue does not mix legacy SubscriptionDay rows with request-level rows", async () => {
+      const { pickupRequest, day } = await seedReservedPickupRequest({ status: "locked" });
+      await SubscriptionDay.updateOne(
+        { _id: day._id },
+        {
+          $set: {
+            status: "ready_for_pickup",
+            pickupRequested: true,
+            pickupCode: "111222",
+            pickupCodeIssuedAt: new Date(),
+          },
+        }
+      );
+
+      const res = await api.get(`/api/dashboard/pickup/queue?date=${TODAY}`).set(dashboardAuth("kitchen"));
+
+      assert.strictEqual(res.status, 200, JSON.stringify(res.body));
+      const requestRow = res.body.data.items.find((item) => item.requestId === String(pickupRequest._id));
+      const legacyDayRow = res.body.data.items.find((item) => item.entityType === "subscription_day" && item.entityId === String(day._id));
+      assert(requestRow, "request row should appear");
+      assert.strictEqual(legacyDayRow, undefined);
+    });
+
+    await test("invalid request entityId returns 400 instead of 500", async () => {
+      const res = await api.post("/api/dashboard/ops/actions/fulfill").set(dashboardAuth("kitchen")).send({
+        entityType: "subscription_pickup_request",
+        entityId: "REQUEST_ID_HERE",
+        code: "123456",
+      });
+
+      assert.strictEqual(res.status, 400, JSON.stringify(res.body));
+      assert.strictEqual(res.body.error.code, "INVALID_ENTITY_ID");
     });
 
     await test("ops list includes active SubscriptionPickupRequest", async () => {

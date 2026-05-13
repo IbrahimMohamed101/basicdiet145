@@ -8,10 +8,14 @@ const mongoose = require("mongoose");
 const Subscription = require("../src/models/Subscription");
 const SubscriptionDay = require("../src/models/SubscriptionDay");
 const SubscriptionPickupRequest = require("../src/models/SubscriptionPickupRequest");
+const Setting = require("../src/models/Setting");
 const dateUtils = require("../src/utils/date");
 const {
   createSubscriptionPickupRequestForClient,
+  getSubscriptionPickupRequestStatusForClient,
 } = require("../src/services/subscription/subscriptionPickupRequestClientService");
+const { resolveRestaurantOpenState } = require("../src/services/restaurantHoursService");
+const { buildPickupPreparationPolicy } = require("../src/services/subscription/subscriptionPickupPreparationPolicyService");
 
 const TEST_TAG = `pickup-request-client-${Date.now()}`;
 const TEST_USER_ID = new mongoose.Types.ObjectId();
@@ -51,6 +55,14 @@ async function cleanup() {
     SubscriptionDay.deleteMany({ subscriptionId: { $in: subscriptionIds } }),
     Subscription.deleteMany({ _id: { $in: subscriptionIds } }),
   ]);
+}
+
+async function upsertSetting(key, value) {
+  await Setting.updateOne(
+    { key },
+    { $set: { value, description: `${TEST_TAG} test setting` } },
+    { upsert: true }
+  );
 }
 
 function buildCompleteDayFields({ status = "open", pickupRequested = false } = {}) {
@@ -125,6 +137,11 @@ async function getRemainingMeals(subscriptionId) {
   try {
     await connect();
     await cleanup();
+    await Promise.all([
+      upsertSetting("restaurant_is_open", true),
+      upsertSetting("restaurant_open_time", "00:00"),
+      upsertSetting("restaurant_close_time", "23:59"),
+    ]);
 
     await test("creates pickup request when pickup subscription has enough balance", async () => {
       const { subscription } = await seedSubscriptionWithDay({ remainingMeals: 10 });
@@ -178,6 +195,98 @@ async function getRemainingMeals(subscriptionId) {
       });
 
       assert.strictEqual(await getRemainingMeals(subscription._id), 7);
+    });
+
+    await test("blocks pickup request when restaurant is closed without creating request or reserving meals", async () => {
+      const { subscription } = await seedSubscriptionWithDay({ remainingMeals: 10 });
+      await upsertSetting("restaurant_is_open", false);
+
+      try {
+        await assert.rejects(
+          () => createSubscriptionPickupRequestForClient({
+            userId: TEST_USER_ID,
+            subscriptionId: subscription._id,
+            date: TODAY,
+            mealCount: 3,
+            idempotencyKey: `${TEST_TAG}-closed`,
+          }),
+          (err) => err && err.code === "RESTAURANT_CLOSED" && err.status === 409
+        );
+        assert.strictEqual(await getRemainingMeals(subscription._id), 10);
+        const requests = await SubscriptionPickupRequest.find({ subscriptionId: subscription._id }).lean();
+        assert.strictEqual(requests.length, 0);
+      } finally {
+        await upsertSetting("restaurant_is_open", true);
+      }
+    });
+
+    await test("status polling still works while restaurant is closed", async () => {
+      const { subscription } = await seedSubscriptionWithDay({ remainingMeals: 10 });
+      const created = await createSubscriptionPickupRequestForClient({
+        userId: TEST_USER_ID,
+        subscriptionId: subscription._id,
+        date: TODAY,
+        mealCount: 1,
+      });
+      await upsertSetting("restaurant_is_open", false);
+      try {
+        const status = await getSubscriptionPickupRequestStatusForClient({
+          userId: TEST_USER_ID,
+          subscriptionId: subscription._id,
+          requestId: created.data.requestId,
+        });
+        assert.strictEqual(status.requestId, created.data.requestId);
+        assert.strictEqual(status.status, "locked");
+      } finally {
+        await upsertSetting("restaurant_is_open", true);
+      }
+    });
+
+    await test("restaurant hours are open at openTime and closed at closeTime", async () => {
+      try {
+        await Promise.all([
+          upsertSetting("restaurant_is_open", true),
+          upsertSetting("restaurant_open_time", "10:00"),
+          upsertSetting("restaurant_close_time", "23:00"),
+        ]);
+
+        const atOpen = await resolveRestaurantOpenState({ now: new Date("2026-05-13T07:00:00.000Z") });
+        assert.strictEqual(atOpen.isOpenNow, true);
+        const atClose = await resolveRestaurantOpenState({ now: new Date("2026-05-13T20:00:00.000Z") });
+        assert.strictEqual(atClose.isOpenNow, false);
+        const overnight = await resolveRestaurantOpenState({ now: new Date("2026-05-13T21:30:00.000Z") });
+        await upsertSetting("restaurant_open_time", "22:00");
+        await upsertSetting("restaurant_close_time", "02:00");
+        const overnightOpen = await resolveRestaurantOpenState({ now: new Date("2026-05-13T21:30:00.000Z") });
+        assert.strictEqual(overnight.isOpenNow, false);
+        assert.strictEqual(overnightOpen.isOpenNow, true);
+      } finally {
+        await Promise.all([
+          upsertSetting("restaurant_is_open", true),
+          upsertSetting("restaurant_open_time", "00:00"),
+          upsertSetting("restaurant_close_time", "23:59"),
+        ]);
+      }
+    });
+
+    await test("legacy pickup prepare policy is blocked when restaurant is closed", async () => {
+      const { subscription, day } = await seedSubscriptionWithDay({ remainingMeals: 10 });
+      const policy = buildPickupPreparationPolicy({
+        subscription,
+        day,
+        today: TODAY,
+        restaurantHours: {
+          openTime: "10:00",
+          closeTime: "23:00",
+          isOpenNow: false,
+        },
+      });
+      assert.strictEqual(policy.canRequestPrepare, false);
+      assert.strictEqual(policy.blockReason.code, "RESTAURANT_CLOSED");
+      assert.strictEqual(policy.blockReason.status, 409);
+      const updatedDay = await SubscriptionDay.findById(day._id).lean();
+      assert.strictEqual(updatedDay.status, "open");
+      assert.strictEqual(Boolean(updatedDay.pickupRequested), false);
     });
 
     await test("can create multiple requests same day if balance is enough", async () => {

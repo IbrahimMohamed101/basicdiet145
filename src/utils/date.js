@@ -4,8 +4,8 @@ const { env } = require("../config/env");
 
 const KSA_TIMEZONE = env.timezone || "Asia/Riyadh";
 
-function getCurrentKSA() {
-    return toDate(new Date(), { timeZone: KSA_TIMEZONE });
+function getCurrentKSA(now = new Date()) {
+    return toDate(now, { timeZone: KSA_TIMEZONE });
 }
 
 function toKSADateString(date) {
@@ -16,8 +16,8 @@ function formatKSA(date, pattern = "yyyy-MM-dd HH:mm:ss") {
     return formatInTimeZone(date, KSA_TIMEZONE, pattern);
 }
 
-function getTodayKSADate() {
-    return toKSADateString(getCurrentKSA());
+function getTodayKSADate(now = new Date()) {
+    return toKSADateString(getCurrentKSA(now));
 }
 
 function getTomorrowKSADate() {
@@ -64,14 +64,14 @@ function isBeforeCutoff(cutoffTimeStr) {
     return toMinutes(nowTime) < toMinutes(cutoffTimeStr);
 }
 
-function isCurrentTimeWithinWindow(openTimeStr, closeTimeStr) {
+function isCurrentTimeWithinWindow(openTimeStr, closeTimeStr, now = new Date()) {
     if (!isValidTimeString(openTimeStr) || !isValidTimeString(closeTimeStr)) {
         throw new Error("Invalid time format. Expected HH:mm");
     }
 
     const openMinutes = toMinutes(openTimeStr);
     const closeMinutes = toMinutes(closeTimeStr);
-    const nowTime = formatInTimeZone(new Date(), KSA_TIMEZONE, "HH:mm");
+    const nowTime = formatInTimeZone(now, KSA_TIMEZONE, "HH:mm");
     const currentMinutes = toMinutes(nowTime);
 
     if (openMinutes === closeMinutes) {
@@ -85,15 +85,15 @@ function isCurrentTimeWithinWindow(openTimeStr, closeTimeStr) {
     return currentMinutes >= openMinutes || currentMinutes < closeMinutes;
 }
 
-function getCurrentBusinessDate(openTimeStr, closeTimeStr) {
+function getCurrentBusinessDate(openTimeStr, closeTimeStr, now = new Date()) {
     if (!isValidTimeString(openTimeStr) || !isValidTimeString(closeTimeStr)) {
         throw new Error("Invalid time format. Expected HH:mm");
     }
 
-    const today = getTodayKSADate();
+    const today = getTodayKSADate(now);
     const openMinutes = toMinutes(openTimeStr);
     const closeMinutes = toMinutes(closeTimeStr);
-    const nowTime = formatInTimeZone(new Date(), KSA_TIMEZONE, "HH:mm");
+    const nowTime = formatInTimeZone(now, KSA_TIMEZONE, "HH:mm");
     const currentMinutes = toMinutes(nowTime);
 
     if (openMinutes === closeMinutes) {

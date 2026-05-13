@@ -40,6 +40,7 @@ const SETTING_KEYS = [
   "vat_percentage",
   "restaurant_open_time",
   "restaurant_close_time",
+  "restaurant_is_open",
 ];
 const settingSnapshots = new Map();
 let invoiceCounter = 0;
@@ -208,6 +209,7 @@ async function seedOneTimeOrderCatalog() {
     upsertSetting("pickup_windows", ["18:00-20:00"]),
     upsertSetting("restaurant_open_time", "00:00"),
     upsertSetting("restaurant_close_time", "23:59"),
+    upsertSetting("restaurant_is_open", true),
   ]);
 
   const user = await User.create({
@@ -702,6 +704,24 @@ function setMoyasarInvoice(invoiceId, updates = {}) {
       assert.strictEqual(order.status, "pending_payment");
       assert.strictEqual(order.paymentStatus, "initiated");
       assert.strictEqual(order.fulfillmentMethod, "pickup");
+    });
+
+    await test("POST /api/orders is blocked when restaurant is closed without creating order or payment", async () => {
+      await Order.deleteMany({ userId: ctx.user._id });
+      await Payment.deleteMany({ userId: ctx.user._id });
+      await upsertSetting("restaurant_is_open", false);
+      try {
+        const res = await api.post("/api/orders").set(auth(ctx.token)).send(sandwichQuotePayload(ctx));
+        expectStatus(res, 409, "restaurant closed order");
+        assert.strictEqual(res.body.error.code, "RESTAURANT_CLOSED");
+        assert.strictEqual(res.body.error.message, "Restaurant is currently closed");
+        assert.strictEqual(res.body.error.details.messageAr, "المطعم مغلق حاليًا. يمكنك الطلب خلال ساعات العمل.");
+        assert.strictEqual(res.body.error.details.messageEn, "Restaurant is currently closed. Please order during working hours.");
+        assert.strictEqual(await Order.countDocuments({ userId: ctx.user._id }), 0);
+        assert.strictEqual(await Payment.countDocuments({ userId: ctx.user._id }), 0);
+      } finally {
+        await upsertSetting("restaurant_is_open", true);
+      }
     });
 
     await test("POST /api/orders passes valid HTTPS redirects to Moyasar unchanged", async () => {

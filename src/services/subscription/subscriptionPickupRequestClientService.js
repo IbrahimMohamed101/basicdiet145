@@ -9,6 +9,7 @@ const { validateDayBeforeLockOrPrepare } = require("./subscriptionDayExecutionVa
 const {
   reserveSubscriptionMealsForPickupRequest,
 } = require("./subscriptionPickupRequestBalanceService");
+const { assertRestaurantOpenForOrdering } = require("../restaurantHoursService");
 
 const PICKUP_REQUEST_ALLOWED_DAY_STATUSES = [
   "open",
@@ -196,6 +197,11 @@ async function createSubscriptionPickupRequestForClient({
   if (subscription.deliveryMode !== "pickup") {
     throw createServiceError("INVALID_DELIVERY_MODE", "Delivery mode is not pickup", 400);
   }
+
+  await assertRestaurantOpenForOrdering({
+    pickupLocationId: subscription.pickupLocationId,
+    deliveryMode: subscription.deliveryMode,
+  });
 
   const today = dateUtils.getTodayKSADate();
   if (date !== today) {

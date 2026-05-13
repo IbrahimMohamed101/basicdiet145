@@ -57,7 +57,17 @@ async function getSettingValue(key, fallback) {
 
 async function getOneTimeOrderMenu({ lang = "en", fulfillmentMethod } = {}) {
   if (await hasPublishedMenuCatalog()) {
-    return getPublishedMenu({ lang, branchId: "" });
+    const [menu, restaurantHours] = await Promise.all([
+      getPublishedMenu({ lang, branchId: "" }),
+      getRestaurantHours().catch(() => ({})),
+    ]);
+    return {
+      ...menu,
+      restaurantHours: {
+        ...restaurantHours,
+        fulfillmentMethod: "pickup",
+      },
+    };
   }
 
   const [
