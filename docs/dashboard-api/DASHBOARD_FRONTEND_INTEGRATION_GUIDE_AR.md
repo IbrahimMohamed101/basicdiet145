@@ -1,3 +1,5 @@
+> Status: Needs human review. This guide may conflict with the current OpenAPI/dashboard API guide on route namespaces. Verify against `docs/dashboard-api/openapi.dashboard.json` and `docs/dashboard-api/DASHBOARD_API_GUIDE.md` before implementation.
+
 # دليل تكامل Flutter مع Dashboard API
 
 هذا الدليل الشامل مخصص لمطور Flutter لبناء لوحة التحكم (Dashboard) بالكامل. لا تعتمد على Postman بشكل مباشر كمرجع نهائي، بل اعتمد على هذا الدليل لبناء الشاشات الـ 29.

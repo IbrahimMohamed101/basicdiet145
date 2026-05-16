@@ -4,6 +4,9 @@ Files in this package:
 
 - `openapi.dashboard.json`: OpenAPI 3.0.3 spec for Dashboard/Admin APIs.
 - `DASHBOARD_API_GUIDE.md`: Developer guide with auth, roles, business flows, audit, soft delete, and safety notes.
+- `DASHBOARD_API_README_AR.md`: Arabic dashboard API reference and operational notes. Merge candidate; review `docs/DOCS_CLEANUP_RECOMMENDATIONS.md` before using it as source of truth.
+- `DASHBOARD_FRONTEND_INTEGRATION_GUIDE_AR.md`: Arabic frontend integration guide. Needs human review because route namespace guidance may conflict with the OpenAPI/dashboard API guide.
+- `SUBSCRIPTION_TIMELINE_AND_DAY_CONSUMPTION_LOGIC_AR.md`: Arabic subscription timeline and day consumption logic reference.
 - `postman.dashboard_collection.json`: Compact Postman v2.1 collection generated from the OpenAPI contract.
 - `postman.dashboard_full_collection.json`: Full QA-ready Postman v2.1 collection with collection-level bearer auth, richer request descriptions, realistic bodies, variable-saving tests, and Common Workflows.
 - `endpoint-matrix.md`: Compact endpoint table for frontend, QA, and onboarding.
@@ -11,6 +14,8 @@ Files in this package:
 ## Swagger UI
 
 Import `docs/dashboard-api/openapi.dashboard.json` into Swagger UI, Swagger Editor, Stoplight, or Postman.
+
+Primary dashboard API references are `docs/dashboard-api/openapi.dashboard.json` and `docs/dashboard-api/DASHBOARD_API_GUIDE.md`.
 
 Servers are preconfigured:
 

@@ -1,3 +1,5 @@
+> Status: Historical / audit reference. Do not use this as the current frontend or API implementation source of truth. For current frontend handoff docs, see `docs/frontend-handoff/`.
+
 # Phase 2.3A: Optional Pagination Implementation Plan
 
 ## Scope

@@ -1,3 +1,5 @@
+> Status: Historical / audit reference. Do not use this as the current frontend or API implementation source of truth. For current frontend handoff docs, see `docs/frontend-handoff/`.
+
 # Order Date Query / Index Strategy
 
 ## Executive Summary

@@ -1,3 +1,5 @@
+> Status: Merge candidate. This document overlaps with newer documentation. Review `docs/DOCS_CLEANUP_RECOMMENDATIONS.md` before using it as source of truth.
+
 # Production Deployment Readiness Checklist
 
 This document outlines the mandatory steps and verification requirements before promoting current changes to the production environment (`basicdiet145.onrender.com`).

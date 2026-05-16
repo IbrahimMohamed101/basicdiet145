@@ -1,3 +1,5 @@
+> Status: Merge candidate. This document overlaps with newer documentation. Review `docs/DOCS_CLEANUP_RECOMMENDATIONS.md` before using it as source of truth.
+
 أكيد. ده تقرير كامل ومنظم يلخص **إحنا عملنا إيه في خطة تحسين المشروع وتجهيزه لـ 10,000 مستخدم**، وإيه اتثبت، وإيه لسه ناقص قبل production الحقيقي.
 
 ---

@@ -1,3 +1,5 @@
+> Status: Historical / audit reference. Do not use this as the current frontend or API implementation source of truth. For current frontend handoff docs, see `docs/frontend-handoff/`.
+
 # BasicDiet Backend Architecture Blueprint
 
 هذا التقرير يوثق البنية الحالية كما تظهر من الكود والاختبارات والوثائق في المستودع. لم يتم تشغيل seeds أو migrations، ولم يتم تغيير أي كود. قرأت أولاً `graphify-out/GRAPH_REPORT.md` حسب تعليمات المشروع؛ أهم العقد المركزية كانت حول `validateObjectId()`, `getRequestLang()`, `performSubscriptionCheckout()`, `performSubscriptionRenewal()`, و `buildSubscriptionTimeline()`، وهذا يؤكد أن النظام متشعب حول التحقق، اللغة، الاشتراكات، والـ timeline.
@@ -54,7 +56,7 @@ Route -> Middleware -> Controller -> Service -> Mongoose Model -> Response/Seria
 
 `tests/`: اختبارات unit/integration/contract. أمثلة: `oneTimeMenuCatalog.test.js`, `oneTimeOrderFullFlow.test.js`, `mobileApiContracts.test.js`, `mealPlanner.integration.test.js`, `webhookSecurity.test.js`.
 
-`docs/`: وثائق تصميم وتشغيل. أمثلة: `MEAL_PLANNER_CANONICAL_CONTRACT.md`, `one-time-orders/one-time-menu-catalog.md`, `BACKEND_VALIDATION_STRATEGY_AR.md`.
+`docs/`: وثائق تصميم وتشغيل. أمثلة: `meal-planner/MEAL_PLANNER_CANONICAL_CONTRACT.md`, `one-time-orders/one-time-menu-catalog.md`, `backend/BACKEND_VALIDATION_STRATEGY_AR.md`.
 
 `graphify-out/`: knowledge graph. يحتوي `GRAPH_REPORT.md`, `graph.json`, `graph.html`. يستخدم قبل أسئلة architecture.
 
@@ -153,7 +155,7 @@ Dashboard auth:
 - Services: معظم `src/services/subscription/`، خاصة `subscriptionQuoteService`, `subscriptionCheckoutService`, `subscriptionActivationService`, `mealSlotPlannerService`, `subscriptionTimelineService`, `subscriptionSelectionClientService`, `subscriptionDay*`, `unifiedDayPaymentService`.
 - Admin catalog service: `src/services/admin/mealPlannerMenu.service.js`.
 - Models: `Subscription`, `SubscriptionDay`, `Plan`, `BuilderProtein`, `BuilderCarb`, `BuilderCategory`, `SaladIngredient`, `Addon`, `Sandwich`, `CheckoutDraft`.
-- Docs: `docs/MEAL_PLANNER_CANONICAL_CONTRACT.md`, `docs/unified-selection-payment-flow.md`, `docs/dashboard-api/SUBSCRIPTION_TIMELINE_AND_DAY_CONSUMPTION_LOGIC_AR.md`.
+- Docs: `docs/meal-planner/MEAL_PLANNER_CANONICAL_CONTRACT.md`, `docs/product-flows/unified-selection-payment-flow.md`, `docs/dashboard-api/SUBSCRIPTION_TIMELINE_AND_DAY_CONSUMPTION_LOGIC_AR.md`.
 - Tests: `checkout.integration.test.js`, `mealPlanner.integration.test.js`, `meal_planner_types.test.js`, `mealPlannerPaymentContract.test.js`, `subscriptionBalancePolicy.test.js`, `subscriptionDayModificationPolicy.test.js`, `fulfillmentStatusEndpoint.test.js`.
 
 التدفق:
@@ -459,8 +461,8 @@ node scripts/migrate-salad-ingredient-groups.js
 4. `src/routes/subscriptions.js`, `src/controllers/subscriptionController.js`, `src/services/subscription/*`.
 5. `src/models/Order.js`, `Payment.js`, `Subscription.js`, `SubscriptionDay.js`.
 6. `docs/one-time-orders/one-time-menu-catalog.md`.
-7. `docs/MEAL_PLANNER_CANONICAL_CONTRACT.md`.
-8. `docs/unified-selection-payment-flow.md`.
+7. `docs/meal-planner/MEAL_PLANNER_CANONICAL_CONTRACT.md`.
+8. `docs/product-flows/unified-selection-payment-flow.md`.
 
 Glossary:
 

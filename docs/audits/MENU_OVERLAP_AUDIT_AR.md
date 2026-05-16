@@ -1,3 +1,5 @@
+> Status: Historical / audit reference. Do not use this as the current frontend or API implementation source of truth. For current frontend handoff docs, see `docs/frontend-handoff/`.
+
 # Menu Overlap Audit: One-Time vs Subscription
 
 هذا التدقيق يوثق التداخل الحالي بين كتالوج طلبات one-time وكتالوج الاشتراكات/meal planner كما يظهر من الكود والوثائق والاختبارات. لم يتم تشغيل seeds أو migrations، ولم يتم تغيير أي كود.
@@ -91,8 +93,8 @@
 
 ### Docs / Tests
 
-- `docs/MEAL_PLANNER_CANONICAL_CONTRACT.md`: يحدد canonical `mealSlots`, selection types, salad groups, builderCatalog contract.
-- `docs/unified-selection-payment-flow.md`: يشرح unified day payment وmetadata snapshot.
+- `docs/meal-planner/MEAL_PLANNER_CANONICAL_CONTRACT.md`: يحدد canonical `mealSlots`, selection types, salad groups, builderCatalog contract.
+- `docs/product-flows/unified-selection-payment-flow.md`: يشرح unified day payment وmetadata snapshot.
 - اختبارات مهمة: `tests/meal_planner_types.test.js`, `tests/mealPlanner.integration.test.js`, `tests/checkout.integration.test.js`, `tests/mealPlannerPaymentContract.test.js`, `tests/subscriptionBalancePolicy.test.js`, `tests/unified_day_payment_verify.test.js`.
 
 ### Ownership Summary

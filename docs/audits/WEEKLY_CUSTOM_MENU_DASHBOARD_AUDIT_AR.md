@@ -1,3 +1,5 @@
+> Status: Historical / audit reference. Do not use this as the current frontend or API implementation source of truth. For current frontend handoff docs, see `docs/frontend-handoff/`.
+
 # Weekly Custom Menu Dashboard Support Audit
 
 This document audits the current support for weekly menu changes in the dashboard/backend, focusing on the four custom menu items and fixed products.

@@ -1,10 +1,20 @@
 # Frontend Handoff
 
-These are the final frontend handoff documents for the dashboard operations and accounting report work.
+This is the final frontend handoff folder. Use these documents as the current implementation source of truth for dashboard operations and accounting report work.
 
-Use these files as the source of truth:
+## Source Of Truth
 
 - `frontend-dashboard-ops-readme.md`
 - `frontend-accounting-report-readme.md`
 
-Older audit, planning, or exploratory documents may contain useful context, but they should not be used as the implementation contract.
+Do not use old top-level duplicate docs. Older audit, planning, or exploratory documents may contain useful context, but they should not be used as the implementation contract.
+
+## Coverage
+
+- Kitchen Queue
+- Pickup / Receiving
+- One-Time Orders
+- Subscription Pickup
+- Subscription Delivery
+- Manual Subscription Meal Deduction
+- Daily Accountant Report

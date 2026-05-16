@@ -1,3 +1,5 @@
+> Status: Merge candidate. This document overlaps with newer documentation. Review `docs/DOCS_CLEANUP_RECOMMENDATIONS.md` before using it as source of truth.
+
 # BasicDiet145 One-Time Orders - Final Implementation Blueprint
 
 This is the project-specific execution plan for adding One-Time Orders beside the subscription system in `/home/hema/Projects/basicdiet145`.

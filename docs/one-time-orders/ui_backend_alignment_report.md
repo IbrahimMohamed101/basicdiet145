@@ -1,3 +1,5 @@
+> Status: Merge candidate. This document overlaps with newer documentation. Review `docs/DOCS_CLEANUP_RECOMMENDATIONS.md` before using it as source of truth.
+
 # تقرير توافق تصميم واجهة الطلبات مع الباك إند
 
 ## 1. الهدف من التقرير

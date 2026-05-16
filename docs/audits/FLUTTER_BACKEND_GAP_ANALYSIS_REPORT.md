@@ -1,3 +1,5 @@
+> Status: Deprecated candidate. This document may be superseded by newer docs. Do not use it as source of truth until reviewed.
+
 # Gap Analysis — Flutter ↔ Backend Contract
 
 > تقرير الفجوات بين Flutter والـ Backend، مرتّب حسب الأولوية والتأثير

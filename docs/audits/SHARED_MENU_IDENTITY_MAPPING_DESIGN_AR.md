@@ -1,3 +1,5 @@
+> Status: Historical / audit reference. Do not use this as the current frontend or API implementation source of truth. For current frontend handoff docs, see `docs/frontend-handoff/`.
+
 # تصميم طبقة مطابقة الهوية المشتركة للمنيو (Shared Menu Identity Mapping Design)
 
 هذا المستند يحدد تصميم طبقة منطقية لربط هويات الطعام بين نظام الطلبات المباشرة (One-time) ونظام الاشتراكات (Subscription/Meal Planner). بناءً على التقارير السابقة `MENU_OVERLAP_AUDIT_AR.md` و `BACKEND_ARCHITECTURE_BLUEPRINT_AR.md` تم اختيار نهج المطابقة التدريجية بدلاً من الدمج الكامل لتجنب مخاطر كسر منطق العمل أو التسعير.

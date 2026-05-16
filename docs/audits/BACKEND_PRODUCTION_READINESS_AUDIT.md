@@ -1,3 +1,5 @@
+> Status: Merge candidate. This document overlaps with newer documentation. Review `docs/DOCS_CLEANUP_RECOMMENDATIONS.md` before using it as source of truth.
+
 # Backend Production Readiness Audit
 
 ## Executive Summary

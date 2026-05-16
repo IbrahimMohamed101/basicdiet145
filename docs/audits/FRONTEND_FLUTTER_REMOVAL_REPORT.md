@@ -1,3 +1,5 @@
+> Status: Needs human review. This document claims to be a Flutter source of truth while it lives under historical audits. Review `docs/DOCS_CLEANUP_RECOMMENDATIONS.md` before using it as source of truth.
+
 # Flutter Integration Manual For Subscription Meal Planner Backend
 
 This document is the final Flutter integration reference for the current backend code on branch `main`.

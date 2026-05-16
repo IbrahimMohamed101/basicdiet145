@@ -1,3 +1,5 @@
+> Status: Merge candidate. This document overlaps with newer documentation. Review `docs/DOCS_CLEANUP_RECOMMENDATIONS.md` before using it as source of truth.
+
 
 اعتمدت فيه على النسخة اللي عندك، وعلى قواعد المنيو الأسبوعي: الأربع منتجات custom هي `سلطة بيسك`، `وجبة بيسك`، `سلطة فواكه`، و`زبادي يوناني`، والباقي منتجات fixed price زي الساندويتشات والعصائر والمشروبات والحلويات والآيس كريم. 
 وكمان حافظت على قواعد README الحالية: الأسعار بالهللة، `isAvailable` للتوفر المؤقت، `isActive` للحذف المنطقي، وثبات عقود الموبايل. 
