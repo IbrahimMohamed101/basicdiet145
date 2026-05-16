@@ -106,7 +106,7 @@ function buildVerifyPath(serviceSid, resource) {
   return `${VERIFY_API_PREFIX}/${encodeURIComponent(serviceSid)}/${resource}`;
 }
 
-async function requestWhatsappVerification({ toPhoneE164 }) {
+async function sendOtpVerification({ toPhoneE164 }) {
   const { serviceSid } = getTwilioVerifyConfig();
   let response;
   try {
@@ -114,8 +114,7 @@ async function requestWhatsappVerification({ toPhoneE164 }) {
       path: buildVerifyPath(serviceSid, "Verifications"),
       payload: {
         To: toPhoneE164,
-        Channel: "whatsapp",
-        Locale: "en",
+        Channel: "sms",
       },
     });
   } catch (err) {
@@ -127,7 +126,7 @@ async function requestWhatsappVerification({ toPhoneE164 }) {
     throw new ApiError({
       status: 502,
       code: "TWILIO_VERIFY_SEND_FAILED",
-      message: "Failed to send WhatsApp OTP",
+      message: "Failed to send OTP",
     });
   }
 
@@ -140,15 +139,15 @@ async function requestWhatsappVerification({ toPhoneE164 }) {
     throw new ApiError({
       status: 502,
       code: "TWILIO_VERIFY_SEND_FAILED",
-      message: "Failed to send WhatsApp OTP",
+      message: "Failed to send OTP",
     });
   }
 
   const parsed = response.parsed || {};
-  logger.info("Twilio Verify WhatsApp OTP requested", {
+  logger.info("Twilio Verify OTP requested", {
     action: "verifications.create",
     toPhoneE164,
-    channel: parsed.channel || "whatsapp",
+    channel: parsed.channel || "sms",
     serviceSid,
     verificationSid: parsed.sid,
     twilioStatus: parsed.status,
@@ -157,7 +156,7 @@ async function requestWhatsappVerification({ toPhoneE164 }) {
   return {
     sid: parsed.sid,
     status: parsed.status,
-    channel: parsed.channel || "whatsapp",
+    channel: parsed.channel || "sms",
   };
 }
 
@@ -216,5 +215,5 @@ async function createVerificationCheck({ toPhoneE164, code }) {
 
 module.exports = {
   createVerificationCheck,
-  requestWhatsappVerification,
+  sendOtpVerification,
 };

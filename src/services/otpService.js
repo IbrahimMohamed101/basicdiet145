@@ -2,7 +2,7 @@ const crypto = require("crypto");
 const Otp = require("../models/Otp");
 const {
   createVerificationCheck,
-  requestWhatsappVerification,
+  sendOtpVerification,
 } = require("./twilioWhatsappService");
 const { ApiError } = require("../utils/apiError");
 const { isTestAuthEnabled, getTestOtpCode, getTestOtpPhone } = require("../utils/security");
@@ -191,7 +191,7 @@ async function requestOtpForPhone(phoneE164, options = {}) {
   }
 
   if (!useTestMode) {
-    await requestWhatsappVerification({ toPhoneE164: phone });
+    await sendOtpVerification({ toPhoneE164: phone });
   }
 
   const setPayload = {
