@@ -12,12 +12,15 @@ const { logger } = require("./utils/logger");
 const { validateAndFixResponse } = require("./utils/encoding");
 const swaggerSpec = require("./docs/swagger");
 
-function normalizeTopLevelStatusField(payload, responseStatusCode) {
+function normalizeTopLevelStatusField(payload, responseStatusCode, reqPath = "") {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     return payload;
   }
 
   const isHttpSuccess = Number(responseStatusCode) < 400;
+  if (isHttpSuccess && reqPath.startsWith("/api/auth") && payload.ok === true) {
+    return payload;
+  }
   const isErrorPayload = payload.ok === false || Object.prototype.hasOwnProperty.call(payload, "error");
   if (!isHttpSuccess || isErrorPayload) {
     return payload;
@@ -95,7 +98,7 @@ function createApp() {
   app.use((req, res, next) => {
     const originalJson = res.json.bind(res);
     res.json = (payload) => {
-      const normalized = normalizeTopLevelStatusField(payload, res.statusCode);
+      const normalized = normalizeTopLevelStatusField(payload, res.statusCode, req.originalUrl || req.path);
       const sanitized = validateAndFixResponse(normalized);
       try {
         JSON.stringify(sanitized);

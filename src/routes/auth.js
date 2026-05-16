@@ -1,5 +1,19 @@
 const { Router } = require("express");
-const { requestOtp, verifyOtp, updateDeviceToken, deleteDeviceToken } = require("../controllers/authController");
+const {
+  requestOtp,
+  requestRegisterOtp,
+  verifyOtp,
+  verifyRegister,
+  login,
+  refresh,
+  me,
+  logout,
+  logoutAll,
+  forgotPassword,
+  resetPassword,
+  updateDeviceToken,
+  deleteDeviceToken,
+} = require("../controllers/authController");
 const { authMiddleware } = require("../middleware/auth");
 const { otpLimiter, otpVerifyLimiter } = require("../middleware/rateLimit");
 const asyncHandler = require("../middleware/asyncHandler");
@@ -49,6 +63,15 @@ router.post("/otp/request", otpLimiter, asyncHandler(requestOtp));
  *         description: Returns JWT token
  */
 router.post("/otp/verify", otpVerifyLimiter, asyncHandler(verifyOtp));
+router.post("/register/request-otp", otpLimiter, asyncHandler(requestRegisterOtp));
+router.post("/register/verify", otpVerifyLimiter, asyncHandler(verifyRegister));
+router.post("/login", asyncHandler(login));
+router.post("/refresh", asyncHandler(refresh));
+router.get("/me", authMiddleware, asyncHandler(me));
+router.post("/logout", authMiddleware, asyncHandler(logout));
+router.post("/logout-all", authMiddleware, asyncHandler(logoutAll));
+router.post("/password/forgot", otpLimiter, asyncHandler(forgotPassword));
+router.post("/password/reset", otpVerifyLimiter, asyncHandler(resetPassword));
 router.post("/device-token", authMiddleware, asyncHandler(updateDeviceToken));
 router.delete("/device-token", authMiddleware, asyncHandler(deleteDeviceToken));
 

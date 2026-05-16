@@ -18,6 +18,7 @@
     "test:one-time-menu": "NODE_ENV=test node tests/oneTimeMenuCatalog.test.js",
     "test:one-time-full-flow": "NODE_ENV=test node tests/oneTimeOrderFullFlow.test.js",
     "test:mobile-contracts": "NODE_ENV=test node tests/mobileApiContracts.test.js",
+    "test:flutter-auth": "NODE_ENV=test node tests/mobileAuthPasswordRefresh.test.js",
     "test:weekly-menu-dashboard": "NODE_ENV=test node tests/weeklyMenuDashboard.test.js",
     "test:all": "npm run test && npm run test:integration && npm run test:balance-policy",
     "seed": "node scripts/seed-demo-data.js",

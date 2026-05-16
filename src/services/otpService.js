@@ -9,7 +9,7 @@ const { isTestAuthEnabled, getTestOtpCode, getTestOtpPhone } = require("../utils
 const { logger } = require("../utils/logger");
 
 const E164_REGEX = /^\+[1-9]\d{7,14}$/;
-const OTP_CONTEXTS = new Set(["generic", "app_login", "app_register"]);
+const OTP_CONTEXTS = new Set(["generic", "app_login", "app_register", "password_reset"]);
 
 /* ── OTP configuration ────────────────────────────────────────────────── */
 
@@ -196,6 +196,7 @@ async function requestOtpForPhone(phoneE164, options = {}) {
 
   const setPayload = {
     phone,
+    provider: useTestMode ? "local" : "twilio_verify",
     codeHash: useTestMode ? hashOtp(phone, otp) : undefined,
     expiresAt,
     attemptsLeft: maxAttempts,
@@ -214,7 +215,7 @@ async function requestOtpForPhone(phoneE164, options = {}) {
       update,
       { upsert: true, setDefaultsOnInsert: true }
     );
-    return { phone, status: "otp_sent" };
+    return { phone, status: "otp_sent", cooldownSeconds };
   }
 
   if (!useTestMode) {
@@ -228,7 +229,7 @@ async function requestOtpForPhone(phoneE164, options = {}) {
       : update,
     { upsert: true, setDefaultsOnInsert: true }
   );
-  return { phone, status: "otp_sent" };
+  return { phone, status: "otp_sent", cooldownSeconds };
 }
 
 async function verifyOtpCode({ phoneE164, otp }) {

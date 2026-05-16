@@ -1,8 +1,11 @@
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const { localizeErrorMessage } = require("../utils/errorLocalization");
+const errorResponse = require("../utils/errorResponse");
+const { JWT_ACCESS_SECRET } = require("../services/appTokenService");
 
-const JWT_SECRET = process.env.JWT_SECRET || "supersecret";
+const JWT_SECRET = JWT_ACCESS_SECRET;
+const LEGACY_JWT_SECRET = process.env.JWT_SECRET;
 const DEV_AUTH_BYPASS = process.env.NODE_ENV !== "production" && process.env.DEV_AUTH_BYPASS === "true";
 const DEV_STATIC_TOKEN = process.env.DEV_STATIC_TOKEN;
 const DEV_STATIC_USER_ID = process.env.DEV_STATIC_USER_ID || "507f1f77bcf86cd799439011";
@@ -15,7 +18,7 @@ function sendResponse(req, res, status, message, httpCode = 200) {
 function authMiddleware(req, res, next) {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return sendResponse(req, res, false, "errors.auth.missingToken", 401);
+    return errorResponse(res, 401, "AUTH_REQUIRED", "Authentication required");
   }
 
   const token = authHeader.split(" ")[1];
@@ -29,14 +32,28 @@ function authMiddleware(req, res, next) {
   try {
     decoded = jwt.verify(token, JWT_SECRET);
   } catch (err) {
-    return sendResponse(req, res, false, "errors.auth.invalidToken", 401);
+    if (LEGACY_JWT_SECRET && LEGACY_JWT_SECRET !== JWT_SECRET) {
+      try {
+        decoded = jwt.verify(token, LEGACY_JWT_SECRET);
+      } catch (legacyErr) {
+        if ((err && err.name === "TokenExpiredError") || (legacyErr && legacyErr.name === "TokenExpiredError")) {
+          return errorResponse(res, 401, "TOKEN_EXPIRED", "Access token expired");
+        }
+        return errorResponse(res, 401, "TOKEN_INVALID", "Invalid access token");
+      }
+    } else {
+      if (err && err.name === "TokenExpiredError") {
+        return errorResponse(res, 401, "TOKEN_EXPIRED", "Access token expired");
+      }
+      return errorResponse(res, 401, "TOKEN_INVALID", "Invalid access token");
+    }
   }
 
   if (decoded.tokenType !== "app_access" || decoded.role !== "client") {
-    return sendResponse(req, res, false, "errors.auth.invalidTokenType", 401);
+    return errorResponse(res, 401, "TOKEN_INVALID", "Invalid access token");
   }
   if (!decoded.userId || !decoded.role) {
-    return sendResponse(req, res, false, "errors.auth.invalidTokenPayload", 401);
+    return errorResponse(res, 401, "TOKEN_INVALID", "Invalid access token");
   }
 
   return User.findById(decoded.userId)
@@ -44,17 +61,17 @@ function authMiddleware(req, res, next) {
     .lean()
     .then((user) => {
       if (!user || user.role !== "client") {
-        return sendResponse(req, res, false, "errors.auth.invalidTokenPayload", 401);
+        return errorResponse(res, 401, "TOKEN_INVALID", "Invalid access token");
       }
       if (user.isActive === false) {
-        return sendResponse(req, res, false, "errors.auth.inactiveUser", 403);
+        return errorResponse(res, 403, "SESSION_REVOKED", "Session has been revoked");
       }
 
       req.userId = String(user._id);
       req.userRole = user.role;
       return next();
     })
-    .catch(() => sendResponse(req, res, false, "errors.common.unexpectedError", 500));
+    .catch(() => errorResponse(res, 500, "INTERNAL", "Unexpected error"));
 }
 
 function roleMiddleware(allowedRoles) {
