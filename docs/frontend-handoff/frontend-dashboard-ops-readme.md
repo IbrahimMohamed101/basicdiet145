@@ -105,7 +105,8 @@ Action model clarification:
 
 ## 4. One-Time Order Lifecycle
 
-The codebase uses `preparing` for One-Time Orders. Do not use subscription status `in_preparation` for orders.
+The codebase currently persists One-Time Order preparation as `in_preparation`.
+Some legacy/direct endpoint names still use `preparing`, such as `/api/kitchen/orders/:id/preparing`, but the dashboard should render and transition from the returned backend status.
 
 ```text
 initiated / pending payment
@@ -116,7 +117,7 @@ confirmed
    |
    | prepare
    v
-preparing
+in_preparation
    |
    | ready_for_pickup
    v
@@ -277,7 +278,7 @@ Notes:
 
 - `payload.reason` and `payload.notes` are accepted by the generic action shape but are not required for prepare.
 - Backend validates `allowedActions`, role, state transition, and `paymentStatus: "paid"`.
-- Order status becomes `preparing`.
+- Order status becomes `in_preparation`.
 
 Legacy/direct endpoint also exists:
 
@@ -626,7 +627,7 @@ Verify pickup request body:
 
 ```json
 {
-  "pickupCode": "123456"
+  "code": "123456"
 }
 ```
 
@@ -635,6 +636,7 @@ Important:
 - This verification endpoint is for subscription pickup days.
 - Do not use it for One-Time Orders.
 - For subscription pickup days with an issued code, direct fulfillment can require prior verification.
+- The unified dashboard ops action flow for `subscription_pickup_request` also accepts `payload.pickupCode`, but the direct `/api/kitchen/pickups/:dayId/verify` endpoint reads `code`.
 
 ### Subscription Pickup Without Phone/App
 
@@ -843,7 +845,7 @@ One-Time Order / ops error codes currently used by the dashboard ops controller 
 | `UNKNOWN_ACTION` | Action id is not registered | Treat as implementation bug |
 | `INSUFFICIENT_PERMISSIONS` | Staff role cannot perform action | Hide/disable action and show permission message |
 | `INVALID_MODE_FOR_ACTION` | Action does not apply to pickup/delivery mode | Refresh row/detail |
-| `INVALID_STATE_TRANSITION` | Action not allowed from current state | Refresh row/detail |
+| `INVALID_TRANSITION` / `INVALID_STATE_TRANSITION` | Action not allowed from current state | Refresh row/detail |
 | `ORDER_PAYMENT_REQUIRED` | Order is not paid | Keep non-operational |
 | `PICKUP_PREPARE_REQUIRED` | Subscription pickup day needs explicit pickup prepare request | Show preparation requirement |
 | `INVALID_PICKUP_CODE` | Subscription pickup code mismatch in unified action flow | Ask staff to re-check code |
