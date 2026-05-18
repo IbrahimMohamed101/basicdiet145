@@ -18,9 +18,12 @@
 const SENSITIVE_LOG_KEYS = new Set([
   'password', 'token', 'authorization', 'otp', 'secret',
   'accesstoken', 'refreshtoken', 'jwt', 'apikey', 'api_key',
-  'x-api-key', 'cookie', 'session', 'paymenturl', 'payment_url', 
-  'invoiceurl', 'idempotencykey', 'idempotency_key', 'successurl', 
-  'backurl', 'jwtsecret', 'authtoken', 'privatekey'
+  'x-api-key', 'cookie', 'session', 'paymenturl', 'payment_url',
+  'invoiceurl', 'idempotencykey', 'idempotency_key', 'successurl',
+  'backurl', 'jwtsecret', 'authtoken', 'privatekey',
+  // PII fields
+  'phone', 'phonee164', 'phone_e164', 'email', 'otpcode', 'otp_code',
+  'verificationcode', 'verification_code', 'pincode', 'pin_code',
 ]);
 
 const REDACTED = '[REDACTED]';
@@ -64,6 +67,14 @@ const WEAK_DEFAULT_PASSWORDS = new Set([
   "Password123",
   "admin123",
   "123456",
+  "12345678",
+  "123456789",
+  "qwerty",
+  "Qwerty123!",
+  "cashier123",
+  "superadmin123",
+  "kitchen123",
+  "courier123"
 ]);
 
 const LEGACY_BYPASS_FLAGS = [
@@ -100,16 +111,37 @@ function isAllowedMobileRedirectScheme(protocol) {
   return parseAllowedMobileRedirectSchemes().has(scheme);
 }
 
+function parseAllowedRedirectOrigins() {
+  const raw = String(process.env.PAYMENT_REDIRECT_ALLOWED_ORIGINS || "").trim();
+  if (!raw) return null; // null = not configured (no allowlist enforcement)
+  return new Set(
+    raw
+      .split(",")
+      .map((o) => o.trim().toLowerCase())
+      .filter(Boolean)
+  );
+}
+
 function isValidClientRedirectUrl(parsedUrl) {
   if (!parsedUrl || typeof parsedUrl !== "object") return false;
   const protocol = String(parsedUrl.protocol || "").toLowerCase();
+  if (protocol === "javascript:" || protocol === "data:") return false;
+
+  const allowedOrigins = parseAllowedRedirectOrigins();
+  const isProduction = process.env.NODE_ENV === "production";
+
   if (protocol === "https:") {
+    // If an allowlist is configured, enforce it.
+    if (allowedOrigins !== null) {
+      return allowedOrigins.has(parsedUrl.origin.toLowerCase());
+    }
+    // No allowlist in production: allow any HTTPS (warn — document as needing allowlist).
     return true;
   }
   if (isAllowedMobileRedirectScheme(protocol)) {
     return true;
   }
-  if (process.env.NODE_ENV !== "production" && protocol === "http:" && isLocalHostname(parsedUrl.hostname)) {
+  if (!isProduction && protocol === "http:" && isLocalHostname(parsedUrl.hostname)) {
     return true;
   }
   return false;
@@ -225,6 +257,7 @@ function assertNoTestFlagsInProduction() {
     "DASHBOARD_DEFAULT_ADMIN_PASSWORD",
     "DASHBOARD_DEFAULT_KITCHEN_PASSWORD",
     "DASHBOARD_DEFAULT_COURIER_PASSWORD",
+    "DASHBOARD_DEFAULT_CASHIER_PASSWORD",
   ];
   for (const key of dashboardPasswordKeys) {
     const value = process.env[key];
@@ -303,4 +336,5 @@ module.exports = {
   validateRedirectUrl,
   resolveProviderRedirectUrl,
   sanitizeLogData,
+  parseAllowedRedirectOrigins,
 };

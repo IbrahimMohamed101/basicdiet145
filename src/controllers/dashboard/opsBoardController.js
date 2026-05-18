@@ -216,7 +216,9 @@ async function queryBoardDays(req, { screen }) {
     return mode === method;
   });
   if (screen === "pickup") {
-    filteredByMethod = filteredByMethod.filter((day) => getDeliveryMode(day.subscriptionId || {}) !== "pickup");
+    // BUGFIX: Keep only pickup-mode subscription days on the pickup board.
+    // Previously this was !== "pickup" which removed pickup days — incorrect.
+    filteredByMethod = filteredByMethod.filter((day) => getDeliveryMode(day.subscriptionId || {}) === "pickup");
   }
 
   const [latestActionMap, zoneMap] = await Promise.all([

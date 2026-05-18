@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const crypto = require("crypto");
 const { addDays } = require("date-fns");
 const Subscription = require("../models/Subscription");
 const SubscriptionDay = require("../models/SubscriptionDay");
@@ -85,11 +86,35 @@ async function handleMoyasarWebhook(req, res, runtimeOverrides = null) {
   const allowedWebhookIPs = process.env.MOYASAR_WEBHOOK_ALLOWED_IPS ? 
     process.env.MOYASAR_WEBHOOK_ALLOWED_IPS.split(',').map(ip => ip.trim()) : [];
   
+  // SUPPORTED: Header-based secret OR existing payload secret token
+  const receivedHeaderSecret = String(req.headers["x-webhook-secret"] || "");
+  const receivedBodySecret = String(payload.secret_token || "");
+  
+  let validSecret = false;
+  if (secret) {
+    const secretBuffer = Buffer.from(secret);
+    
+    // Check Header if present
+    if (receivedHeaderSecret && Buffer.from(receivedHeaderSecret).length === secretBuffer.length) {
+      if (crypto.timingSafeEqual(Buffer.from(receivedHeaderSecret), secretBuffer)) {
+        validSecret = true;
+      }
+    }
+    
+    // Check Body if header missed or wasn't there
+    if (!validSecret && receivedBodySecret && Buffer.from(receivedBodySecret).length === secretBuffer.length) {
+      if (crypto.timingSafeEqual(Buffer.from(receivedBodySecret), secretBuffer)) {
+        validSecret = true;
+      }
+    }
+  }
+
   // SECURITY FIX: Fail closed when webhook secret is missing or mismatched.
-  if (!secret || payload.secret_token !== secret) {
+  if (!secret || !validSecret) {
     logger.warn("Moyasar webhook rejected: invalid token", {
       ...logContext,
       hasConfiguredSecret: Boolean(secret),
+      hasHeaderSecret: Boolean(receivedHeaderSecret),
     });
     return errorResponse(res, 401, "UNAUTHORIZED", "Invalid webhook token" );
   }

@@ -3,8 +3,10 @@ require("dotenv").config();
 const { createServer } = require("http");
 const { createApp } = require("./app");
 const { connectDb } = require("./db");
+const mongoose = require("mongoose");
 const { startJobs } = require("./jobs");
 const { validateEnv } = require("./utils/validateEnv");
+const { logger } = require("./utils/logger");
 
 process.on("unhandledRejection", (reason, promise) => {
   console.error("[railway-startup] Unhandled Rejection at Promise", {
@@ -59,3 +61,26 @@ connectDb()
     console.error("[railway-startup] Failed to connect DB", { error: err.message, stack: err.stack });
     process.exit(1);
   });
+
+function gracefulShutdown(signal) {
+  logger.info(`Received ${signal}. Graceful shutdown start...`);
+  server.close(() => {
+    logger.info("HTTP server closed.");
+    mongoose.connection.close(false).then(() => {
+      logger.info("MongoDB connection closed.");
+      process.exit(0);
+    }).catch((err) => {
+      logger.error("Error during MongoDB connection closure", { error: err.message });
+      process.exit(1);
+    });
+  });
+
+  // Force close after 10 seconds
+  setTimeout(() => {
+    logger.error("Could not close connections in time, forcefully shutting down");
+    process.exit(1);
+  }, 10000);
+}
+
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));

@@ -95,9 +95,19 @@ function createApp() {
     ? configuredCorsOrigins
     : Array.from(new Set([...configuredCorsOrigins, ...localDashboardOrigins]));
 
+  // In production: if no origins configured, reject all origins (fail closed).
+  // In dev/test: if no origins configured, allow all (permissive for local dev).
+  const isProductionCors = process.env.NODE_ENV === "production";
   const corsOptions = {
     origin: (origin, callback) => {
-      if (!origin || allowedOrigins.length === 0) return callback(null, true);
+      // Allow same-origin requests (no Origin header) in all envs.
+      if (!origin) return callback(null, true);
+      // In production with no allowlist — reject all cross-origin requests.
+      if (isProductionCors && allowedOrigins.length === 0) {
+        return callback(new Error("CORS: no allowed origins configured in production"));
+      }
+      // In non-production with no allowlist — allow all (local dev).
+      if (allowedOrigins.length === 0) return callback(null, true);
       if (allowedOrigins.includes(origin)) return callback(null, true);
       return callback(new Error("Not allowed by CORS"));
     },
@@ -170,6 +180,15 @@ function createApp() {
 
   app.use("/", paymentRoutes.publicRouter);
   app.use("/api", requestLanguageMiddleware, routes);
+
+  // JSON 404 handler for unknown /api/* routes.
+  // Must be after all route registrations and before the global error handler.
+  app.use("/api/*", (_req, res) => {
+    return res.status(404).json({
+      ok: false,
+      error: { code: "NOT_FOUND", message: "Route not found" },
+    });
+  });
 
   // Basic error handler to capture unhandled errors
   app.use((err, _req, res, _next) => {

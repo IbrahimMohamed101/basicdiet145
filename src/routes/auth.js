@@ -15,7 +15,7 @@ const {
   deleteDeviceToken,
 } = require("../controllers/authController");
 const { authMiddleware } = require("../middleware/auth");
-const { otpLimiter, otpVerifyLimiter } = require("../middleware/rateLimit");
+const { otpLimiter, otpVerifyLimiter, mobileLoginLimiter } = require("../middleware/rateLimit");
 const asyncHandler = require("../middleware/asyncHandler");
 
 const router = Router();
@@ -65,7 +65,7 @@ router.post("/otp/request", otpLimiter, asyncHandler(requestOtp));
 router.post("/otp/verify", otpVerifyLimiter, asyncHandler(verifyOtp));
 router.post("/register/request-otp", otpLimiter, asyncHandler(requestRegisterOtp));
 router.post("/register/verify", otpVerifyLimiter, asyncHandler(verifyRegister));
-router.post("/login", asyncHandler(login));
+router.post("/login", mobileLoginLimiter, asyncHandler(login));
 router.post("/refresh", asyncHandler(refresh));
 router.get("/me", authMiddleware, asyncHandler(me));
 router.post("/logout", authMiddleware, asyncHandler(logout));

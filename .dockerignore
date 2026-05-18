@@ -10,3 +10,15 @@ tests/
 coverage/
 .DS_Store
 *.log
+graphify-out/
+graph.png
+graph.svg
+graph.dot
+.codex/
+output/
+.agents/
+.claude/
+.vscode/
+tmp/
+docs/
+*postman_collection*

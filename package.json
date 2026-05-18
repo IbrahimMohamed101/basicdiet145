@@ -2,6 +2,9 @@
   "name": "basicdiet145-backend",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": "^20.0.0"
+  },
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",

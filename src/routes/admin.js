@@ -46,7 +46,7 @@ router.get("/orders/:id", dashboardAdminOrCashierRead, asyncHandler(controller.g
 router.get("/payments", dashboardAdminOrCashierRead, asyncHandler(controller.listPaymentsAdmin));
 router.get("/payments/:id/breakdown", dashboardAdminOrCashierRead, asyncHandler(controller.getPaymentAdmin));
 router.get("/payments/:id", dashboardAdminOrCashierRead, asyncHandler(controller.getPaymentAdmin));
-router.post("/payments/:id/verify", dashboardAdminOrCashierRead, asyncHandler(controller.verifyPaymentAdmin));
+router.post("/payments/:id/verify", dashboardRoleMiddleware(["admin"]), asyncHandler(controller.verifyPaymentAdmin));
 
 router.use(dashboardRoleMiddleware(["admin"]));
 

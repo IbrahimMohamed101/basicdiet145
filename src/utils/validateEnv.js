@@ -46,6 +46,13 @@ function validateEnv() {
   addMissingBypassAware(missing, "TWILIO_AUTH_TOKEN", shouldRequireOtpProvider);
   addMissingBypassAware(missing, "TWILIO_VERIFY_SERVICE_SID", shouldRequireOtpProvider);
   addMissingBypassAware(missing, "OTP_HASH_SECRET", shouldRequireOtpProvider);
+  // Production: webhook secret is required so the webhook fails closed.
+  addMissingBypassAware(missing, "MOYASAR_WEBHOOK_SECRET", isProduction);
+  // Production: CORS_ORIGINS must be set so we don't accidentally allow any origin.
+  if (isProduction) {
+    const corsOrigins = (process.env.CORS_ORIGINS || "").split(",").map((o) => o.trim()).filter(Boolean);
+    if (corsOrigins.length === 0) missing.push("CORS_ORIGINS");
+  }
   if (providedCloudinaryKeys.length > 0 && providedCloudinaryKeys.length < cloudinaryKeys.length) {
     cloudinaryKeys
       .filter((key) => !process.env[key])

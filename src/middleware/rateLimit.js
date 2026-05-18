@@ -55,4 +55,10 @@ const dashboardLoginLimiter = buildLimiter({
   message: "errors.rateLimit.dashboardLogin",
 });
 
-module.exports = { otpLimiter, otpVerifyLimiter, checkoutLimiter, dashboardLoginLimiter, buildRateLimitPayload };
+const mobileLoginLimiter = buildLimiter({
+  windowMs: Number(process.env.RATE_LIMIT_MOBILE_LOGIN_WINDOW_MS) || 15 * 60 * 1000,
+  max: Number(process.env.RATE_LIMIT_MOBILE_LOGIN_MAX) || 20,
+  message: "errors.rateLimit.login",
+});
+
+module.exports = { otpLimiter, otpVerifyLimiter, checkoutLimiter, dashboardLoginLimiter, mobileLoginLimiter, buildRateLimitPayload };
