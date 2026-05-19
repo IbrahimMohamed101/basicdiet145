@@ -1,23 +1,40 @@
 const BuilderProtein = require("../../models/BuilderProtein");
+const {
+  PREMIUM_LARGE_SALAD_FIXED_PRICE_HALALA,
+} = require("../../config/mealPlannerContract");
 
-const CANONICAL_PREMIUM_KEYS = ["shrimp", "beef_steak", "salmon", "custom_premium_salad"];
+const PREMIUM_LARGE_SALAD_KEY = "premium_large_salad";
+const LEGACY_CUSTOM_PREMIUM_SALAD_KEY = "custom_premium_salad";
+
+const PREMIUM_ITEM_KEY_ALIASES = Object.freeze({
+  [LEGACY_CUSTOM_PREMIUM_SALAD_KEY]: PREMIUM_LARGE_SALAD_KEY,
+  [PREMIUM_LARGE_SALAD_KEY]: PREMIUM_LARGE_SALAD_KEY,
+});
+
+const CANONICAL_PREMIUM_KEYS = ["shrimp", "beef_steak", "salmon", PREMIUM_LARGE_SALAD_KEY];
 
 const STATIC_PREMIUM_ITEMS = {
-  custom_premium_salad: {
-    premiumKey: "custom_premium_salad",
-    name: { en: "Custom Premium Salad", ar: "سلطة مميزة مخصصة" },
-    type: "custom_premium_salad",
-    extraFeeHalala: 3000,
+  [PREMIUM_LARGE_SALAD_KEY]: {
+    premiumKey: PREMIUM_LARGE_SALAD_KEY,
+    name: { en: "Premium Large Salad", ar: "سلطة كبيرة مميزة" },
+    type: PREMIUM_LARGE_SALAD_KEY,
+    extraFeeHalala: PREMIUM_LARGE_SALAD_FIXED_PRICE_HALALA,
     currency: "SAR",
   },
 };
 
+function normalizePremiumItemKey(key) {
+  if (!key || typeof key !== "string") return key;
+  const trimmed = key.trim();
+  return PREMIUM_ITEM_KEY_ALIASES[trimmed] || trimmed;
+}
+
 function isStaticPremiumItem(premiumKey) {
-  return premiumKey === "custom_premium_salad";
+  return normalizePremiumItemKey(premiumKey) === PREMIUM_LARGE_SALAD_KEY;
 }
 
 function getStaticPremiumItem(premiumKey) {
-  return STATIC_PREMIUM_ITEMS[premiumKey] || null;
+  return STATIC_PREMIUM_ITEMS[normalizePremiumItemKey(premiumKey)] || null;
 }
 
 const PREMIUM_KEY_NAME_MAP = {
@@ -57,7 +74,7 @@ function resolvePremiumKeyFromName(name) {
 }
 
 function isCanonicalPremiumKey(key) {
-  return key && CANONICAL_PREMIUM_KEYS.includes(key);
+  return key && CANONICAL_PREMIUM_KEYS.includes(normalizePremiumItemKey(key));
 }
 
 async function resolveCanonicalPremiumIdentity(input) {
@@ -68,6 +85,7 @@ async function resolveCanonicalPremiumIdentity(input) {
     name,
     premiumKey: inputPremiumKey,
   } = input;
+  const normalizedInputPremiumKey = normalizePremiumItemKey(inputPremiumKey);
 
   const debugEnabled = process.env.DEBUG_PREMIUM_RESOLUTION === "true";
   const log = (source, details = {}) => {
@@ -76,7 +94,7 @@ async function resolveCanonicalPremiumIdentity(input) {
       premiumMealId,
       proteinId: proteinId ? String(proteinId) : null,
       name,
-      inputPremiumKey,
+      inputPremiumKey: normalizedInputPremiumKey,
       ...details,
     });
   };
@@ -88,15 +106,15 @@ async function resolveCanonicalPremiumIdentity(input) {
   let canonicalProteinId = null;
   let resolutionSource = null;
 
-  if (inputPremiumKey && isCanonicalPremiumKey(inputPremiumKey)) {
-    resolvedPremiumKey = inputPremiumKey;
+  if (normalizedInputPremiumKey && isCanonicalPremiumKey(normalizedInputPremiumKey)) {
+    resolvedPremiumKey = normalizedInputPremiumKey;
     resolutionSource = "inputPremiumKey";
     log(resolutionSource, { resolvedPremiumKey });
   }
 
   if (!resolvedPremiumKey && builderProteinDoc) {
     if (builderProteinDoc.premiumKey && isCanonicalPremiumKey(builderProteinDoc.premiumKey)) {
-      resolvedPremiumKey = builderProteinDoc.premiumKey;
+      resolvedPremiumKey = normalizePremiumItemKey(builderProteinDoc.premiumKey);
       resolutionSource = "builderProteinDoc.premiumKey";
       log(resolutionSource, { resolvedPremiumKey });
     } else if (!builderProteinDoc.premiumKey) {
@@ -125,7 +143,7 @@ async function resolveCanonicalPremiumIdentity(input) {
         const proteinDoc = await BuilderProtein.findById(effectiveProteinId).lean();
         if (proteinDoc) {
           if (proteinDoc.premiumKey && isCanonicalPremiumKey(proteinDoc.premiumKey)) {
-            resolvedPremiumKey = proteinDoc.premiumKey;
+            resolvedPremiumKey = normalizePremiumItemKey(proteinDoc.premiumKey);
             resolutionSource = "proteinId.premiumKey";
             log(resolutionSource, { resolvedPremiumKey });
           } else if (!proteinDoc.premiumKey) {
@@ -226,10 +244,12 @@ function getPremiumDisplayName({ premiumKey, name, lang = "en" }) {
     return String(name).trim();
   }
 
-  if (premiumKey === "custom_premium_salad") {
+  const normalizedPremiumKey = normalizePremiumItemKey(premiumKey);
+
+  if (normalizedPremiumKey === PREMIUM_LARGE_SALAD_KEY) {
     return lang === "ar"
-      ? "سلطة مميزة مخصصة"
-      : "Custom Premium Salad";
+      ? "سلطة كبيرة مميزة"
+      : "Premium Large Salad";
   }
 
   // Fallback for known canonical keys if name is missing or equal to key
@@ -239,8 +259,8 @@ function getPremiumDisplayName({ premiumKey, name, lang = "en" }) {
     salmon: { en: "Salmon", ar: "سالمون" },
   };
 
-  if (premiumKey && fallbacks[premiumKey]) {
-    return lang === "ar" ? fallbacks[premiumKey].ar : fallbacks[premiumKey].en;
+  if (normalizedPremiumKey && fallbacks[normalizedPremiumKey]) {
+    return lang === "ar" ? fallbacks[normalizedPremiumKey].ar : fallbacks[normalizedPremiumKey].en;
   }
 
   return name || premiumKey || "";
@@ -251,8 +271,12 @@ module.exports = {
   resolvePremiumKeyFromName,
   isCanonicalPremiumKey,
   CANONICAL_PREMIUM_KEYS,
+  LEGACY_CUSTOM_PREMIUM_SALAD_KEY,
   PREMIUM_KEY_NAME_MAP,
+  PREMIUM_LARGE_SALAD_KEY,
+  PREMIUM_ITEM_KEY_ALIASES,
   normalizeName,
+  normalizePremiumItemKey,
   isStaticPremiumItem,
   getStaticPremiumItem,
   STATIC_PREMIUM_ITEMS,

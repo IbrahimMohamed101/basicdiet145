@@ -196,7 +196,12 @@ function buildPhase1SubscriptionContract({ payload = {}, resolvedQuote, actorCon
       mode: deliveryMode,
       pricingMode: deliveryMode === "pickup" ? "pickup_legacy" : "zone_snapshot",
       seedOnlyFromPreviousPreference: Boolean(renewalSeed && renewalSeed.deliveryPreference),
-      slot: { type: slot.type === "pickup" ? "pickup" : deliveryMode, window: String(slot.window || ""), slotId: String(slot.slotId || "") },
+      slot: {
+        type: slot.type === "pickup" ? "pickup" : deliveryMode,
+        window: String(slot.window || ""),
+        slotId: String(slot.slotId || ""),
+        label: String(slot.label || ""),
+      },
       address: cloneAddress(delivery.address),
       zoneId: delivery.zoneId ? String(delivery.zoneId) : null,
       zoneName: delivery.zoneName ? String(delivery.zoneName) : "",

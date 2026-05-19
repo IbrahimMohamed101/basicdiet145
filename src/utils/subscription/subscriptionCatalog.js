@@ -645,10 +645,14 @@ function resolveQuoteSummary(quote, lang) {
   const premiumItems = (quote.premiumItems || []).map((item) => {
     const unit = toMoneyParts(item.unitExtraFeeHalala);
     const total = toMoneyParts(unit.halala * Number(item.qty || 0));
+    const protein = item.protein || {};
+    const name = pickLang(protein.name, lang) || item.name || item.premiumKey || "";
+    const proteinId = item.canonicalProteinId || item.proteinId || protein._id || "";
     return {
-      id: String(item.protein && item.protein._id ? item.protein._id : ""),
-      proteinId: String(item.protein && item.protein._id ? item.protein._id : ""),
-      name: pickLang(item.protein && item.protein.name, lang),
+      id: String(proteinId),
+      proteinId: String(proteinId),
+      premiumKey: item.premiumKey || null,
+      name,
       qty: Number(item.qty || 0),
       unitPriceHalala: unit.halala,
       unitPriceSar: unit.sar,
@@ -744,7 +748,7 @@ function resolveQuoteSummary(quote, lang) {
           type: quote.delivery.slot.type || deliveryType,
           slotId: quote.delivery.slot.slotId || "",
           window: quote.delivery.slot.window || "",
-          label: formatWindowLabel(quote.delivery.slot.window || "", lang),
+          label: quote.delivery.slot.label || formatWindowLabel(quote.delivery.slot.window || "", lang),
         }
         : null,
     },

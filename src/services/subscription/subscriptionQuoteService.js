@@ -12,10 +12,11 @@ const {
   resolvePickupLocationSelection,
   resolveAddonChargeTotalHalala,
   resolveSubscriptionAddonBillingMode,
+  formatWindowLabel,
 } = require("../../utils/subscription/subscriptionCatalog");
 const { applyPromoCodeToSubscriptionQuote } = require("../promoCodeService");
 const { getRestaurantBusinessDate } = require("../restaurantHoursService");
-const { resolveCanonicalPremiumIdentity } = require("../../utils/subscription/premiumIdentity");
+const { resolveCanonicalPremiumIdentity, normalizePremiumItemKey } = require("../../utils/subscription/premiumIdentity");
 
 async function getSettingValue(key, fallback) {
   const setting = await Setting.findOne({ key }).lean();
@@ -78,6 +79,80 @@ function normalizeSlotInput(slot = {}) {
   };
 }
 
+function createDeliverySlotError(code, message) {
+  const err = new Error(message);
+  err.code = code;
+  err.status = 422;
+  return err;
+}
+
+function normalizeWindowValue(value) {
+  return String(value || "").trim();
+}
+
+function normalizeDeliveryWindowOption(rawWindow, index, lang) {
+  const fallbackId = `delivery_slot_${index + 1}`;
+  if (typeof rawWindow === "string") {
+    const window = normalizeWindowValue(rawWindow);
+    return window
+      ? {
+        id: fallbackId,
+        slotId: fallbackId,
+        type: "delivery",
+        window,
+        label: formatWindowLabel(window, lang) || window,
+      }
+      : null;
+  }
+  if (!rawWindow || typeof rawWindow !== "object" || Array.isArray(rawWindow)) {
+    return null;
+  }
+  const window = normalizeWindowValue(rawWindow.window || rawWindow.value || rawWindow.deliveryWindow);
+  if (!window) return null;
+  const id = normalizeWindowValue(rawWindow.id || rawWindow.slotId || fallbackId);
+  return {
+    id,
+    slotId: id,
+    type: "delivery",
+    window,
+    label: normalizeWindowValue(pickLang(rawWindow.label, lang) || rawWindow.label) || formatWindowLabel(window, lang) || window,
+  };
+}
+
+function resolveDeliverySlotOrThrow(slot, windows, lang) {
+  const options = Array.isArray(windows)
+    ? windows.map((windowValue, index) => normalizeDeliveryWindowOption(windowValue, index, lang)).filter(Boolean)
+    : [];
+
+  if (!options.length) {
+    throw createDeliverySlotError("DELIVERY_WINDOW_MISSING", "No delivery windows are configured");
+  }
+
+  const slotId = normalizeWindowValue(slot && slot.slotId);
+  const requestedWindow = normalizeWindowValue(slot && slot.window);
+
+  if (!slotId) {
+    throw createDeliverySlotError("DELIVERY_WINDOW_MISSING", "delivery.slotId is required for delivery subscriptions");
+  }
+
+  const resolved = options.find((option) => option.id === slotId || option.slotId === slotId);
+
+  if (!resolved) {
+    throw createDeliverySlotError("INVALID_DELIVERY_SLOT", "Invalid delivery slot");
+  }
+
+  if (requestedWindow && requestedWindow !== resolved.window) {
+    throw createDeliverySlotError("INVALID_DELIVERY_SLOT", "delivery slotId does not match delivery window");
+  }
+
+  return {
+    type: "delivery",
+    slotId: resolved.slotId,
+    window: resolved.window,
+    label: resolved.label,
+  };
+}
+
 function normalizePremiumCheckoutPayloadItems(rawItems) {
   if (rawItems === undefined || rawItems === null) {
     return rawItems;
@@ -88,6 +163,9 @@ function normalizePremiumCheckoutPayloadItems(rawItems) {
     throw err;
   }
   return rawItems.map((item) => {
+    if (typeof item === "string") {
+      return { premiumKey: normalizePremiumItemKey(item), qty: 1 };
+    }
     if (!item || typeof item !== "object" || Array.isArray(item)) {
       return item;
     }
@@ -97,18 +175,13 @@ function normalizePremiumCheckoutPayloadItems(rawItems) {
     const resolved = explicitProtein != null ? explicitProtein : legacyMealKey;
     const resolvedStr = String(resolved || "");
 
-    const forbiddenKeys = ["custom_premium_salad", "premium_large_salad"];
-    if (
-      forbiddenKeys.includes(resolvedStr) ||
-      (typeof premiumKeyInput === "string" && forbiddenKeys.includes(premiumKeyInput.trim()))
-    ) {
-      const err = new Error(`Item ${resolvedStr || premiumKeyInput} is a planner selection type and cannot be purchased directly in premiumItems`);
-      err.code = "INVALID_PREMIUM_ITEM";
-      throw err;
+    if (premiumKeyInput && typeof premiumKeyInput === "string" && premiumKeyInput.trim()) {
+      return { ...item, premiumKey: normalizePremiumItemKey(premiumKeyInput) };
     }
 
-    if (premiumKeyInput && typeof premiumKeyInput === "string" && premiumKeyInput.trim()) {
-      return { ...item, premiumKey: premiumKeyInput.trim() };
+    const normalizedResolvedKey = normalizePremiumItemKey(resolvedStr);
+    if (normalizedResolvedKey === "premium_large_salad") {
+      return { ...item, proteinId: undefined, premiumMealId: undefined, premiumKey: normalizedResolvedKey };
     }
     
     if (explicitProtein != null && legacyMealKey != null && String(explicitProtein) !== String(legacyMealKey)) {
@@ -196,7 +269,7 @@ function normalizePremiumItemsByKey(rawItems) {
       throw err;
     }
 
-    const key = premiumKey.trim();
+    const key = normalizePremiumItemKey(premiumKey);
     byKey.set(key, (byKey.get(key) || 0) + qty);
   }
 
@@ -513,11 +586,6 @@ async function resolveCheckoutQuoteOrThrow(
   }
 
   const windows = await getSettingValue("delivery_windows", []);
-  if (delivery.slot.window && Array.isArray(windows) && windows.length && !windows.includes(delivery.slot.window)) {
-    const err = new Error("Invalid delivery window");
-    err.code = "VALIDATION_ERROR";
-    throw err;
-  }
   if (delivery.type === "pickup") {
     const pickupLocations = await getSettingValue("pickup_locations", []);
     const activePickupLocations = Array.isArray(pickupLocations)
@@ -562,10 +630,17 @@ async function resolveCheckoutQuoteOrThrow(
   let deliveryFeeHalala = 0;
   if (delivery.type === "delivery") {
     if (!delivery.zoneId) {
-      const err = new Error("Delivery zone is required for delivery subscriptions");
+      throw createDeliverySlotError("VALIDATION_ERROR", "Delivery zone is required for delivery subscriptions");
+    }
+    try {
+      validateObjectId(delivery.zoneId, "delivery.zoneId");
+    } catch (_err) {
+      const err = new Error("delivery.zoneId must be a valid ObjectId");
       err.code = "VALIDATION_ERROR";
       throw err;
     }
+
+    delivery.slot = resolveDeliverySlotOrThrow(delivery.slot, windows, lang);
 
     const zone = await Zone.findById(delivery.zoneId).lean();
     if (!zone) {

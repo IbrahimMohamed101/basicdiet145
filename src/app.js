@@ -71,6 +71,22 @@ function resolveTrustProxySetting() {
   return null;
 }
 
+function parseConfiguredCorsOrigins() {
+  const listOrigins = (process.env.CORS_ORIGINS || "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+  return Array.from(new Set([
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "https://basicdiet145.onrender.com",
+    process.env.FRONTEND_URL,
+    process.env.DASHBOARD_URL,
+    ...listOrigins,
+  ].filter(Boolean)));
+}
+
 function createApp() {
   const app = express();
 
@@ -81,37 +97,17 @@ function createApp() {
 
   app.use(helmet());
 
-  const configuredCorsOrigins = (process.env.CORS_ORIGINS || "")
-    .split(",")
-    .map((o) => o.trim())
-    .filter(Boolean);
-  const localDashboardOrigins = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-  ];
-  const allowedOrigins = process.env.NODE_ENV === "production"
-    ? configuredCorsOrigins
-    : Array.from(new Set([...configuredCorsOrigins, ...localDashboardOrigins]));
-
-  // In production: if no origins configured, reject all origins (fail closed).
-  // In dev/test: if no origins configured, allow all (permissive for local dev).
-  const isProductionCors = process.env.NODE_ENV === "production";
+  const allowedOrigins = parseConfiguredCorsOrigins();
   const corsOptions = {
     origin: (origin, callback) => {
       // Allow same-origin requests (no Origin header) in all envs.
       if (!origin) return callback(null, true);
-      // In production with no allowlist — reject all cross-origin requests.
-      if (isProductionCors && allowedOrigins.length === 0) {
-        return callback(new Error("CORS: no allowed origins configured in production"));
-      }
-      // In non-production with no allowlist — allow all (local dev).
-      if (allowedOrigins.length === 0) return callback(null, true);
       if (allowedOrigins.includes(origin)) return callback(null, true);
-      return callback(new Error("Not allowed by CORS"));
+      return callback(new Error(`CORS blocked for origin: ${origin}`));
     },
     credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "Accept", "Origin", "X-Requested-With"],
   };
 
   app.use(cors(corsOptions));
@@ -192,8 +188,8 @@ function createApp() {
 
   // Basic error handler to capture unhandled errors
   app.use((err, _req, res, _next) => {
-    if (err && err.message === "Not allowed by CORS") {
-      return errorResponse(res, 403, "CORS", "Not allowed by CORS");
+    if (err && /^CORS blocked for origin: /.test(err.message)) {
+      return errorResponse(res, 403, "CORS", err.message);
     }
     if (
       err instanceof SyntaxError

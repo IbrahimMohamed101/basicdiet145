@@ -385,7 +385,7 @@ MONGO_URI=mongodb://127.0.0.1:27017/basicdiet_test NODE_ENV=test node tests/chec
 
 RESULTS: 19 passed, 0 failed, 0 skipped
 
-Checkout rejects custom_premium_salad in premiumItems: passed 422
+Subscription premium salad checkout contract: `custom_premium_salad` is now a legacy alias for `premium_large_salad`.
 
 Environment note:
 
@@ -452,9 +452,9 @@ The contract uses `orderId`, `paymentStatus`, `timeline_endpoint`, `order_id`, `
 
 5. Required one-time integration test did not run to completion in the initial audit, but now passes after starting MongoDB.
 
-6. Checkout integration failure fixed. `custom_premium_salad` in `premiumItems` now correctly returns 422.
+6. Subscription checkout premium salad contract updated. `premium_large_salad` is purchasable, and `custom_premium_salad` in `premiumItems` is normalized to `premium_large_salad`.
 
-1. Verified the checkout integration contract for `custom_premium_salad` in `premiumItems`.
+1. Verified the checkout integration contract for `premium_large_salad` and the legacy `custom_premium_salad` alias in `premiumItems`.
 2. Keep kitchen cancellation allowed and documented as restaurant cancellation.
 3. Force customer cancellation serialization to canonical `customer_requested`, regardless of arbitrary request body reason. Completed in fixing pass.
 4. Normalize payment initialization failure to system/payment-provider cancellation metadata. Completed in fixing pass.
@@ -479,9 +479,27 @@ One-time order open questions:
 
 1. Should timeline endpoint naming be normalized to camelCase for frontend consistency, or kept as `timeline_endpoint` / `order_id`?
 
+## Subscription Premium Items Contract
+
+For subscription quote/checkout, allowed `premiumItems` are:
+
+- Backend premium protein IDs.
+- Backend premium protein keys.
+- `premium_large_salad`.
+
+Legacy alias:
+
+- `custom_premium_salad` maps to `premium_large_salad`.
+
+Frontend guidance:
+
+- Send `premium_large_salad` for large salad.
+- Unknown premium keys return HTTP 422 with `INVALID_PREMIUM_ITEM`.
+- The backend normalizes premium salad into quote summary, checkout draft `premiumItems`, `contractSnapshot.premiumSelections`, and `contractSnapshot.entitlementContract.premiumItems`.
+
 Final status: `READY_WITH_NOTES`.
 
 Reason:
 - All integration tests (one-time ops, subscription balance, checkout integration) now pass.
 - Customer/kitchen/payment-failure metadata fixes are implemented and tested.
-- `custom_premium_salad` and `premium_large_salad` are now correctly rejected in subscription checkout `premiumItems`.
+- `premium_large_salad` is accepted in subscription checkout `premiumItems`; `custom_premium_salad` is accepted as a legacy alias and normalized to `premium_large_salad`.

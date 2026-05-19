@@ -13,6 +13,7 @@
     "indexes:production": "node scripts/create-production-indexes.js",
     "test": "node tests/meal_planner_types.test.js",
     "test:payment-init-logging": "NODE_ENV=test node tests/paymentInitLogging.test.js",
+    "test:cors": "node tests/corsPreflight.test.js",
     "test:balance-policy": "NODE_ENV=test node tests/subscriptionBalancePolicy.test.js",
     "test:integration": "NODE_ENV=test node tests/mealPlanner.integration.test.js",
     "test:checkout": "NODE_ENV=test node tests/checkout.integration.test.js",

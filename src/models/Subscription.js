@@ -154,6 +154,7 @@ const SubscriptionSchema = new mongoose.Schema(
       },
       window: { type: String, default: "" },
       slotId: { type: String, default: "" },
+      label: { type: String, default: "" },
     },
 
     skippedCount: { type: Number, default: 0 },

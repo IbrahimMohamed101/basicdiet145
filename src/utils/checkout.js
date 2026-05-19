@@ -54,6 +54,10 @@ function buildCheckoutRequestHash({ userId, quote }) {
         quote.delivery && quote.delivery.slot && quote.delivery.slot.slotId
           ? String(quote.delivery.slot.slotId)
           : "",
+      slotLabel:
+        quote.delivery && quote.delivery.slot && quote.delivery.slot.label
+          ? String(quote.delivery.slot.label)
+          : "",
       pickupLocationId:
         quote.delivery && quote.delivery.pickupLocationId
           ? String(quote.delivery.pickupLocationId)
@@ -99,6 +103,7 @@ function normalizeCheckoutDeliveryForPersistence(delivery = {}) {
       type: normalizedType,
       window: slot && slot.window ? String(slot.window) : "",
       slotId: slot && slot.slotId ? String(slot.slotId) : "",
+      label: slot && slot.label ? String(slot.label) : "",
     },
   };
 }

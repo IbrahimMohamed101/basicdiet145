@@ -28,6 +28,14 @@ Important current product decisions:
 - `cancelled` is one status; frontend messaging depends on cancellation metadata.
 - Because the system currently has one branch, the frontend contract does not expose `branch` as a cancellation actor. Use `restaurant`.
 
+Subscription quote/checkout premium item contract:
+
+- `premiumItems` may include backend premium protein IDs, backend premium protein keys, and `premium_large_salad`.
+- `premium_large_salad` is the canonical purchasable premium key for large salad during subscription quote/checkout.
+- `custom_premium_salad` is accepted only as a legacy alias and is normalized by the backend to `premium_large_salad`.
+- New frontend builds should send `premium_large_salad`.
+- Truly unknown premium keys return HTTP 422 with `INVALID_PREMIUM_ITEM`; premium item validation must not surface as HTTP 500.
+
 ## 1. Overview
 
 The active one-time order product flow is pickup only:

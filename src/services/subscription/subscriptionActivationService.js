@@ -307,8 +307,10 @@ function buildCanonicalActivationPayload({ userId, planId, contractVersion, cont
   const snapshot = (contractSnapshot && typeof contractSnapshot === "object") ? contractSnapshot : {};
   const plan = snapshot.plan || {};
   const pricing = snapshot.pricing || {};
+  const legacyDelivery = legacyRuntimeData.delivery && typeof legacyRuntimeData.delivery === "object" ? legacyRuntimeData.delivery : {};
   const delivery = snapshot.delivery || {};
-  const slot = delivery.slot || {};
+  const legacySlot = legacyDelivery.slot && typeof legacyDelivery.slot === "object" ? legacyDelivery.slot : {};
+  const slot = delivery.slot || legacySlot || {};
   
   // Robust start date selection.
   let start = snapshot.start && snapshot.start.resolvedStartDate ? new Date(snapshot.start.resolvedStartDate) : null;
@@ -367,12 +369,17 @@ function buildCanonicalActivationPayload({ userId, planId, contractVersion, cont
         : null,
     premiumBalance: premiumBalanceRows,
     addonSubscriptions,
-    deliveryMode: delivery.mode === "pickup" ? "pickup" : "delivery",
-    deliveryAddress: Object.prototype.hasOwnProperty.call(delivery, "address") ? delivery.address || undefined : undefined,
+    deliveryMode: (delivery.mode || legacyDelivery.type) === "pickup" ? "pickup" : "delivery",
+    deliveryAddress: Object.prototype.hasOwnProperty.call(delivery, "address") ? delivery.address || undefined : (legacyDelivery.address || undefined),
     deliveryWindow: slot.window ? String(slot.window) : undefined,
-    deliverySlot: { type: slot.type === "pickup" ? "pickup" : (delivery.mode === "pickup" ? "pickup" : "delivery"), window: String(slot.window || ""), slotId: String(slot.slotId || "") },
-    deliveryZoneId: delivery.zoneId || null,
-    deliveryZoneName: delivery.zoneName || "",
+    deliverySlot: {
+      type: slot.type === "pickup" ? "pickup" : ((delivery.mode || legacyDelivery.type) === "pickup" ? "pickup" : "delivery"),
+      window: String(slot.window || ""),
+      slotId: String(slot.slotId || ""),
+      label: String(slot.label || ""),
+    },
+    deliveryZoneId: delivery.zoneId || legacyDelivery.zoneId || null,
+    deliveryZoneName: delivery.zoneName || legacyDelivery.zoneName || "",
     pickupLocationId: String(delivery.pickupLocationId || legacyRuntimeData.delivery?.pickupLocationId || legacyRuntimeData.resolvedPickupLocationId || ""),
     deliveryFeeHalala: Number(pricing.deliveryFeeHalala || 0),
     contractVersion,

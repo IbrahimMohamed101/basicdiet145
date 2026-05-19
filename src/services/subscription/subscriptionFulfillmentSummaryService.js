@@ -64,6 +64,7 @@ function buildDeliveryWindowSummary(windowValue, lang = "ar") {
   return {
     from,
     to,
+    window: raw,
     label: formatWindowLabel(raw, lang) || raw,
   };
 }
@@ -77,7 +78,7 @@ function buildDeliverySlotSummary(slot, subscription, lang = "ar") {
     type: cleanString(source.type || (subscription && subscription.deliveryMode)),
     slotId: cleanString(source.slotId),
     window,
-    label: window ? formatWindowLabel(window, lang) || window : "",
+    label: cleanString(source.label) || (window ? formatWindowLabel(window, lang) || window : ""),
   };
 }
 

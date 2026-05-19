@@ -90,6 +90,7 @@ const CheckoutDraftSchema = new mongoose.Schema(
         },
         window: { type: String, default: "" },
         slotId: { type: String, default: "" },
+        label: { type: String, default: "" },
       },
     },
 

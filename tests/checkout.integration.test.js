@@ -60,6 +60,8 @@ let addonItemJuice = null;
 
 const TEST_USER_PHONE = '+966501234999';
 const TEST_USER_PASSWORD = 'testpassword123';
+const TEST_DELIVERY_WINDOW = '09:00 - 12:00';
+const TEST_DELIVERY_SLOT_ID = 'delivery_slot_1';
 
 function assertEqual(actual, expected, msg) {
   if (actual !== expected) throw new Error(`${msg || 'Assertion failed'}: expected ${expected}, got ${actual}`);
@@ -216,6 +218,12 @@ async function seedBuilderCatalog() {
     });
     await pickupLocationsSetting.save();
   }
+
+  await Setting.findOneAndUpdate(
+    { key: 'delivery_windows' },
+    { $set: { key: 'delivery_windows', value: [TEST_DELIVERY_WINDOW, '12:00 - 15:00'] } },
+    { upsert: true, new: true }
+  );
   
   const premiumProteins = await BuilderProtein.find({ isPremium: true }).lean();
 const proteinsWithoutKey = premiumProteins.filter(p => !p.premiumKey);
@@ -383,6 +391,18 @@ async function runTests() {
   console.log(`  Delivery Zone ID: ${testZone._id}`);
   
   const startDate = buildDateOffset(1);
+  const buildBaseSubscriptionPayload = () => ({
+    planId: String(testPlan._id),
+    grams: 300,
+    mealsPerDay: 2,
+    startDate,
+    delivery: {
+      type: 'delivery',
+      address: { street: 'Test Street', city: 'Riyadh' },
+      zoneId: String(testZone._id),
+      slot: { slotId: TEST_DELIVERY_SLOT_ID },
+    },
+  });
 
   console.log('\n--- A0) Add-on Catalog Separation ---\n');
 
@@ -417,6 +437,7 @@ async function runTests() {
         type: 'delivery',
         address: { street: 'Test Street', city: 'Riyadh' },
         zoneId: String(testZone._id),
+        slot: { slotId: TEST_DELIVERY_SLOT_ID },
       },
       addons: [String(addonPlanJuice._id)],
     };
@@ -426,6 +447,156 @@ async function runTests() {
     assertEqual(res.body.status, true, 'status');
     const expectedAddonsTotal = Number(addonPlanJuice.priceHalala || 0) * Number(testPlan.daysCount || 0);
     assertEqual(Number(res.body.data?.breakdown?.addonsTotalHalala || 0), expectedAddonsTotal, 'plan add-on total uses per-day pricing');
+  });
+
+  await test('POST /api/subscriptions/quote with valid delivery slot returns summary delivery slot label/window', async () => {
+    const res = await makeRequest('POST', '/api/subscriptions/quote', buildBaseSubscriptionPayload());
+    assertEqual(res.status, 200, 'delivery slot quote status');
+    assertEqual(res.body.status, true, 'delivery slot quote status field');
+    const slot = res.body.data?.summary?.delivery?.slot;
+    assertNotNull(slot, 'summary delivery slot exists');
+    assertEqual(slot.slotId, TEST_DELIVERY_SLOT_ID, 'summary delivery slotId preserved');
+    assertEqual(slot.window, TEST_DELIVERY_WINDOW, 'summary delivery window resolved from slotId');
+    assertTrue(Boolean(slot.label), 'summary delivery slot label returned');
+  });
+
+  await test('POST /api/subscriptions/checkout with valid delivery slot stores slot/window in draft', async () => {
+    const idempotencyKey = `checkout_test_delivery_slot_${Date.now()}`;
+    const res = await makeRequest('POST', '/api/subscriptions/checkout', {
+      ...buildBaseSubscriptionPayload(),
+      idempotencyKey,
+    });
+
+    assertEqual(res.status, 201, 'delivery slot checkout status');
+    assertEqual(res.body.status, true, 'delivery slot checkout status field');
+    const draft = await CheckoutDraft.findById(res.body.data?.draftId).lean();
+    assertTrue(!!draft, 'delivery slot draft exists');
+    assertEqual(draft.delivery?.slot?.slotId, TEST_DELIVERY_SLOT_ID, 'draft delivery slotId stored');
+    assertEqual(draft.delivery?.slot?.window, TEST_DELIVERY_WINDOW, 'draft delivery window stored');
+    assertTrue(Boolean(draft.delivery?.slot?.label), 'draft delivery slot label stored');
+    assertEqual(draft.contractSnapshot?.delivery?.slot?.slotId, TEST_DELIVERY_SLOT_ID, 'contract delivery slotId stored');
+    assertEqual(draft.contractSnapshot?.delivery?.slot?.window, TEST_DELIVERY_WINDOW, 'contract delivery window stored');
+  });
+
+  await test('activated subscription retains delivery slot/window and fulfillment status returns deliveryWindow', async () => {
+    const idempotencyKey = `checkout_test_delivery_status_${Date.now()}`;
+    const checkoutRes = await makeRequest('POST', '/api/subscriptions/checkout', {
+      ...buildBaseSubscriptionPayload(),
+      delivery: {
+        ...buildBaseSubscriptionPayload().delivery,
+        address: {
+          street: 'Fulfillment Street',
+          building: '12',
+          apartment: '5',
+          district: 'Test District',
+          city: 'Riyadh',
+        },
+      },
+      idempotencyKey,
+    });
+    assertEqual(checkoutRes.status, 201, 'delivery status checkout status');
+    const draft = await CheckoutDraft.findById(checkoutRes.body.data?.draftId).lean();
+    assertTrue(!!draft, 'delivery status draft exists');
+
+    const Payment = require('../src/models/Payment');
+    const payment = new Payment({
+      userId: testUser._id,
+      draftId: draft._id,
+      type: 'subscription_activation',
+      amount: draft.breakdown.totalHalala,
+      currency: 'SAR',
+      status: 'paid',
+      provider: 'moyasar',
+      providerInvoiceId: `test_delivery_slot_invoice_${Date.now()}`,
+      invoiceResponse: { id: `test_delivery_slot_invoice_${Date.now()}`, url: 'https://example.com/pay' },
+    });
+    await payment.save();
+
+    const { finalizeSubscriptionDraftPaymentFlow } = require('../src/services/subscription/subscriptionActivationService');
+    const result = await finalizeSubscriptionDraftPaymentFlow({ draft, payment }, null);
+    assertTrue(result.applied, 'delivery status activation applied');
+
+    const subscription = await Subscription.findById(result.subscriptionId).lean();
+    assertEqual(subscription.deliverySlot?.slotId, TEST_DELIVERY_SLOT_ID, 'subscription delivery slotId retained');
+    assertEqual(subscription.deliverySlot?.window, TEST_DELIVERY_WINDOW, 'subscription delivery window retained');
+    assertEqual(subscription.deliveryWindow, TEST_DELIVERY_WINDOW, 'subscription deliveryWindow retained');
+
+    const statusRes = await makeRequest('GET', `/api/subscriptions/${result.subscriptionId}/days/${startDate}/fulfillment/status`);
+    assertEqual(statusRes.status, 200, 'fulfillment status response');
+    assertEqual(statusRes.body.data?.deliveryMode, 'delivery', 'fulfillment delivery mode');
+    assertNotNull(statusRes.body.data?.deliveryAddress, 'fulfillment delivery address returned');
+    assertNotNull(statusRes.body.data?.deliveryWindow, 'fulfillment delivery window returned');
+    assertEqual(statusRes.body.data?.deliveryWindow?.window, TEST_DELIVERY_WINDOW, 'fulfillment delivery window value');
+    assertEqual(statusRes.body.data?.deliverySlot?.slotId, TEST_DELIVERY_SLOT_ID, 'fulfillment delivery slotId');
+    assertEqual(statusRes.body.data?.lockedReason, null, 'fulfillment is not locked for missing window');
+  });
+
+  await test('POST /api/subscriptions/quote rejects invalid delivery slot with 422', async () => {
+    const payload = buildBaseSubscriptionPayload();
+    payload.delivery.slot = { slotId: 'delivery_slot_999' };
+    const res = await makeRequest('POST', '/api/subscriptions/quote', payload);
+    assertEqual(res.status, 422, 'invalid delivery slot quote status');
+    assertEqual(res.body.error?.code, 'INVALID_DELIVERY_SLOT', 'invalid delivery slot code');
+  });
+
+  await test('POST /api/subscriptions/checkout rejects missing delivery slot with 422', async () => {
+    const payload = {
+      ...buildBaseSubscriptionPayload(),
+      delivery: {
+        type: 'delivery',
+        address: { street: 'Test Street', city: 'Riyadh' },
+        zoneId: String(testZone._id),
+      },
+      idempotencyKey: `checkout_test_missing_delivery_slot_${Date.now()}`,
+    };
+    const res = await makeRequest('POST', '/api/subscriptions/checkout', payload);
+    assertEqual(res.status, 422, 'missing delivery slot checkout status');
+    assertEqual(res.body.error?.code, 'DELIVERY_WINDOW_MISSING', 'missing delivery slot code');
+  });
+
+  await test('POST /api/subscriptions/quote rejects missing delivery slot with 422', async () => {
+    const payload = {
+      ...buildBaseSubscriptionPayload(),
+      delivery: {
+        type: 'delivery',
+        address: { street: 'Test Street', city: 'Riyadh' },
+        zoneId: String(testZone._id),
+      },
+    };
+    const res = await makeRequest('POST', '/api/subscriptions/quote', payload);
+    assertEqual(res.status, 422, 'missing delivery slot quote status');
+    assertEqual(res.body.error?.code, 'DELIVERY_WINDOW_MISSING', 'missing delivery slot quote code');
+  });
+
+  await test('legacy subscription missing delivery window returns lockedReason and deliveryAddress', async () => {
+    const legacySub = await Subscription.create({
+      userId: testUser._id,
+      planId: testPlan._id,
+      status: 'active',
+      startDate: new Date(`${startDate}T00:00:00.000Z`),
+      endDate: new Date(`${startDate}T00:00:00.000Z`),
+      validityEndDate: new Date(`${startDate}T00:00:00.000Z`),
+      totalMeals: 2,
+      remainingMeals: 2,
+      selectedGrams: 300,
+      selectedMealsPerDay: 2,
+      deliveryMode: 'delivery',
+      deliveryAddress: {
+        street: 'Legacy Street',
+        district: 'Legacy District',
+        city: 'Riyadh',
+      },
+      deliveryZoneId: testZone._id,
+      deliveryZoneName: 'Test Zone',
+      deliverySlot: { type: 'delivery', slotId: TEST_DELIVERY_SLOT_ID, window: '' },
+    });
+    await SubscriptionDay.create({ subscriptionId: legacySub._id, date: startDate, status: 'open' });
+
+    const res = await makeRequest('GET', `/api/subscriptions/${legacySub._id}/days/${startDate}/fulfillment/status`);
+    assertEqual(res.status, 200, 'legacy missing window status response');
+    assertNotNull(res.body.data?.deliveryAddress, 'legacy delivery address returned');
+    assertEqual(res.body.data?.deliveryWindow, null, 'legacy delivery window remains null');
+    assertEqual(res.body.data?.lockedReason, 'DELIVERY_WINDOW_MISSING', 'legacy missing delivery window locked reason');
   });
 
   await test('POST /api/subscriptions/quote auto-selects sole pickup location when omitted', async () => {
@@ -455,6 +626,7 @@ async function runTests() {
         type: 'delivery',
         address: { street: 'Test Street', city: 'Riyadh' },
         zoneId: String(testZone._id),
+        slot: { slotId: TEST_DELIVERY_SLOT_ID },
       },
       addons: [String(addonItemJuice._id)],
     };
@@ -462,6 +634,39 @@ async function runTests() {
     const res = await makeRequest('POST', '/api/subscriptions/quote', quotePayload);
     assertEqual(res.status, 400, 'quote rejected');
     assertEqual(res.body.error?.code, 'INVALID', 'item add-on purchase rejected');
+  });
+
+  await test('POST /api/subscriptions/quote accepts premium_large_salad premium item', async () => {
+    const quotePayload = {
+      ...buildBaseSubscriptionPayload(),
+      premiumItems: [
+        { premiumKey: 'premium_large_salad', qty: 1 },
+      ],
+    };
+
+    const res = await makeRequest('POST', '/api/subscriptions/quote', quotePayload);
+    assertEqual(res.status, 200, 'large salad quote status');
+    assertEqual(res.body.status, true, 'large salad quote status field');
+    assertTrue(Number(res.body.data?.breakdown?.premiumTotalHalala || 0) > 0, 'large salad premium total is priced');
+    const item = (res.body.data?.summary?.premiumItems || []).find(p => p.premiumKey === 'premium_large_salad');
+    assertNotNull(item, 'large salad appears in quote premium summary');
+    assertEqual(item.qty, 1, 'large salad quote qty preserved');
+  });
+
+  await test('POST /api/subscriptions/quote normalizes custom_premium_salad premium item alias', async () => {
+    const quotePayload = {
+      ...buildBaseSubscriptionPayload(),
+      premiumItems: [
+        { premiumKey: 'custom_premium_salad', qty: 1 },
+      ],
+    };
+
+    const res = await makeRequest('POST', '/api/subscriptions/quote', quotePayload);
+    assertEqual(res.status, 200, 'legacy salad alias quote status');
+    assertEqual(res.body.status, true, 'legacy salad alias quote status field');
+    const item = (res.body.data?.summary?.premiumItems || []).find(p => p.premiumKey === 'premium_large_salad');
+    assertNotNull(item, 'legacy salad alias normalized in quote summary');
+    assertEqual(item.qty, 1, 'legacy salad alias quote qty preserved');
   });
 
   await test('POST /api/subscriptions/checkout purchases plan add-ons into draft entitlements', async () => {
@@ -475,6 +680,7 @@ async function runTests() {
         type: 'delivery',
         address: { street: 'Test Street', city: 'Riyadh' },
         zoneId: String(testZone._id),
+        slot: { slotId: TEST_DELIVERY_SLOT_ID },
       },
       addons: [String(addonPlanJuice._id)],
       idempotencyKey,
@@ -504,6 +710,7 @@ async function runTests() {
         type: 'delivery',
         address: { street: 'Test Street', city: 'Riyadh' },
         zoneId: String(testZone._id),
+        slot: { slotId: TEST_DELIVERY_SLOT_ID },
       },
       premiumItems: [
         { proteinId: String(legacyShrimp._id), qty: 2 },
@@ -663,32 +870,87 @@ async function runTests() {
     assertEqual(keys.length, uniqueKeys.size, 'no duplicates');
   });
 
-  console.log('\n--- D) Reject custom_premium_salad in Checkout ---\n');
+  console.log('\n--- D) Premium Large Salad Checkout Contract ---\n');
 
-  await test('Checkout rejects custom_premium_salad in premiumItems', async () => {
-    const idempotencyKey = `checkout_test_custom_salad_${Date.now()}`;
+  await test('Checkout accepts premium_large_salad in premiumItems', async () => {
+    const idempotencyKey = `checkout_test_large_salad_${Date.now()}`;
     const checkoutPayload = {
-      planId: String(testPlan._id),
-      grams: 300,
-      mealsPerDay: 2,
-      startDate,
-      delivery: {
-        type: 'delivery',
-        address: { street: 'Test Street', city: 'Riyadh' },
-        zoneId: String(testZone._id),
-      },
+      ...buildBaseSubscriptionPayload(),
       premiumItems: [
-        { proteinId: 'custom_premium_salad', qty: 1 },
+        { premiumKey: 'premium_large_salad', qty: 1 },
       ],
       idempotencyKey,
     };
     
     const res = await makeRequest('POST', '/api/subscriptions/checkout', checkoutPayload);
-    assertEqual(res.status, 422, 'rejects custom_premium_salad with 422');
-    assertEqual(res.body.error?.code, 'INVALID_PREMIUM_ITEM', 'returns INVALID_PREMIUM_ITEM');
+    assertEqual(res.status, 200, 'large salad checkout status');
+    assertEqual(res.body.status, true, 'large salad checkout status field');
+    const draft = await CheckoutDraft.findById(res.body.data?.draftId).lean();
+    assertTrue(!!draft, 'large salad draft exists');
+    assertEqual(draft.premiumItems.length, 1, 'one large salad premium item row');
+    assertEqual(draft.premiumItems[0].premiumKey, 'premium_large_salad', 'large salad premiumKey canonical');
+    assertEqual(draft.premiumItems[0].qty, 1, 'large salad draft qty preserved');
+    assertEqual(draft.contractSnapshot?.entitlementContract?.premiumItems?.[0]?.premiumKey, 'premium_large_salad', 'large salad contract premiumKey canonical');
+  });
+
+  await test('Checkout accepts custom_premium_salad alias and stores premium_large_salad', async () => {
+    const idempotencyKey = `checkout_test_custom_salad_${Date.now()}`;
+    const checkoutPayload = {
+      ...buildBaseSubscriptionPayload(),
+      premiumItems: [
+        { premiumKey: 'custom_premium_salad', qty: 1 },
+      ],
+      idempotencyKey,
+    };
+
+    const res = await makeRequest('POST', '/api/subscriptions/checkout', checkoutPayload);
+    assertEqual(res.status, 200, 'legacy salad alias checkout status');
+    assertEqual(res.body.status, true, 'legacy salad alias checkout status field');
+    const draft = await CheckoutDraft.findById(res.body.data?.draftId).lean();
+    assertTrue(!!draft, 'legacy salad alias draft exists');
+    assertEqual(draft.premiumItems.length, 1, 'one normalized salad premium item row');
+    assertEqual(draft.premiumItems[0].premiumKey, 'premium_large_salad', 'legacy salad alias stored canonical');
+    assertEqual(draft.premiumItems[0].qty, 1, 'legacy salad alias draft qty preserved');
+    assertEqual(draft.contractSnapshot?.entitlementContract?.premiumItems?.[0]?.premiumKey, 'premium_large_salad', 'legacy salad alias contract premiumKey canonical');
+
+    const Payment = require('../src/models/Payment');
+    const payment = new Payment({
+      userId: testUser._id,
+      draftId: draft._id,
+      type: 'subscription_activation',
+      amount: draft.breakdown.totalHalala,
+      currency: 'SAR',
+      status: 'paid',
+      provider: 'moyasar',
+      providerInvoiceId: `test_salad_invoice_${Date.now()}`,
+      invoiceResponse: { id: `test_salad_invoice_${Date.now()}`, url: 'https://example.com/pay' },
+    });
+    await payment.save();
+
+    const { finalizeSubscriptionDraftPaymentFlow } = require('../src/services/subscription/subscriptionActivationService');
+    const result = await finalizeSubscriptionDraftPaymentFlow({ draft, payment }, null);
+    assertTrue(result.applied, 'legacy salad alias activation applied');
+    const subscription = await Subscription.findById(result.subscriptionId).lean();
+    const saladRows = (subscription.premiumBalance || []).filter(p => p.premiumKey === 'premium_large_salad');
+    assertEqual(saladRows.length, 1, 'no duplicate premium_large_salad balance rows');
+    assertEqual(saladRows[0].purchasedQty, 1, 'salad balance purchased qty preserved');
+    assertEqual(saladRows[0].remainingQty, 1, 'salad balance remaining qty preserved');
   });
 
   console.log('\n--- E) Reject Invalid Premium Item ---\n');
+
+  await test('Quote rejects unknown premiumKey with 422', async () => {
+    const quotePayload = {
+      ...buildBaseSubscriptionPayload(),
+      premiumItems: [
+        { premiumKey: 'not_real_item', qty: 1 },
+      ],
+    };
+
+    const res = await makeRequest('POST', '/api/subscriptions/quote', quotePayload);
+    assertEqual(res.status, 422, 'rejects unknown premiumKey in quote with 422');
+    assertEqual(res.body.error?.code, 'INVALID_PREMIUM_ITEM', 'quote returns INVALID_PREMIUM_ITEM');
+  });
 
   await test('Checkout rejects invalid premiumMealId', async () => {
     const idempotencyKey = `checkout_test_invalid_${Date.now()}`;
@@ -701,6 +963,7 @@ async function runTests() {
         type: 'delivery',
         address: { street: 'Test Street', city: 'Riyadh' },
         zoneId: String(testZone._id),
+        slot: { slotId: TEST_DELIVERY_SLOT_ID },
       },
       premiumItems: [
         { proteinId: '000000000000000000000999', qty: 1 },
@@ -711,6 +974,21 @@ async function runTests() {
     const res = await makeRequest('POST', '/api/subscriptions/checkout', checkoutPayload);
     assertEqual(res.status, 422, 'rejects invalid premium with 422');
     assertEqual(res.body.error?.code, 'INVALID_PREMIUM_ITEM', 'returns INVALID_PREMIUM_ITEM');
+  });
+
+  await test('Checkout rejects unknown premiumKey with 422', async () => {
+    const idempotencyKey = `checkout_test_unknown_key_${Date.now()}`;
+    const checkoutPayload = {
+      ...buildBaseSubscriptionPayload(),
+      premiumItems: [
+        { premiumKey: 'not_real_item', qty: 1 },
+      ],
+      idempotencyKey,
+    };
+
+    const res = await makeRequest('POST', '/api/subscriptions/checkout', checkoutPayload);
+    assertEqual(res.status, 422, 'rejects unknown premiumKey in checkout with 422');
+    assertEqual(res.body.error?.code, 'INVALID_PREMIUM_ITEM', 'checkout returns INVALID_PREMIUM_ITEM');
   });
   
   console.log('\n==========================================');

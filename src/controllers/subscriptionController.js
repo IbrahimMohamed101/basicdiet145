@@ -1038,6 +1038,9 @@ async function quoteSubscription(req, res, runtimeOverrides = null) {
     if (err.code === "VALIDATION_ERROR") {
       return sendValidationError(res, err.message);
     }
+    if (err.code === "INVALID_DELIVERY_SLOT" || err.code === "DELIVERY_WINDOW_MISSING") {
+      return errorResponse(res, 422, err.code, err.message);
+    }
     if (err.code === "RECURRING_ADDON_CATEGORY_CONFLICT") {
       return errorResponse(res, 400, "INVALID", err.message);
     }
@@ -1046,6 +1049,9 @@ async function quoteSubscription(req, res, runtimeOverrides = null) {
     }
     if (err.code === "INVALID_SELECTION") {
       return errorResponse(res, 400, "INVALID", err.message);
+    }
+    if (err.code === "INVALID_PREMIUM_ITEM" || err.code === "UNKNOWN_PREMIUM_KEY") {
+      return errorResponse(res, 422, "INVALID_PREMIUM_ITEM", err.message);
     }
     throw err;
   }
@@ -1077,6 +1083,9 @@ async function checkoutSubscription(req, res, runtimeOverrides = null) {
     }
     if (err.code === "VALIDATION_ERROR") {
       return sendValidationError(res, err.message);
+    }
+    if (err.code === "INVALID_DELIVERY_SLOT" || err.code === "DELIVERY_WINDOW_MISSING") {
+      return errorResponse(res, 422, err.code, err.message);
     }
     if (err.code === "NOT_FOUND") {
       return errorResponse(res, 404, "NOT_FOUND", err.message);

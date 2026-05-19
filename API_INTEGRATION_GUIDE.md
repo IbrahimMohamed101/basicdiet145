@@ -173,6 +173,47 @@ For subscription quote/checkout with `delivery.type = "pickup"`:
 
 `pickupLocationId` is optional for the current one-branch production setup and future-proofed for multi-branch.
 
+### Subscription home-delivery slot contract
+
+Flutter must fetch delivery options from `GET /api/subscriptions/delivery-options` or `GET /api/subscriptions/menu` and use the backend-provided `delivery.methods[].slots[].id` as `delivery.slot.slotId`.
+
+Do not hardcode `delivery_slot_1` unless that exact id came from the backend options response for the current environment.
+
+Quote/checkout payload for home delivery:
+
+```json
+{
+  "delivery": {
+    "type": "delivery",
+    "zoneId": "backend_zone_id",
+    "address": {
+      "street": "...",
+      "building": "...",
+      "apartment": "...",
+      "district": "...",
+      "city": "..."
+    },
+    "slot": {
+      "slotId": "delivery_slot_1"
+    }
+  }
+}
+```
+
+The backend resolves `slotId` to a configured delivery window during quote and checkout. Invalid or missing delivery slots return `422` with `INVALID_DELIVERY_SLOT` or `DELIVERY_WINDOW_MISSING`; Flutter should not continue to payment in that state.
+
+For day status, Flutter should display `deliveryAddress` and `deliveryWindow` from:
+
+```http
+GET /api/subscriptions/:subscriptionId/days/:date/fulfillment/status
+```
+
+If `deliveryWindow` is `null` and `lockedReason` is `DELIVERY_WINDOW_MISSING`, show:
+
+```text
+موعد التوصيل غير محدد بعد
+```
+
 ### Profile and app config
 
 `GET /api/client/profile` returns the official Flutter profile read model.

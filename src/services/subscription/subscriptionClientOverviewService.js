@@ -18,8 +18,11 @@ const {
 const { 
   getPremiumDisplayName, 
   resolvePremiumKeyFromName,
-  CANONICAL_PREMIUM_KEYS 
+  CANONICAL_PREMIUM_KEYS,
+  normalizePremiumItemKey,
+  PREMIUM_LARGE_SALAD_KEY,
 } = require("../../utils/subscription/premiumIdentity");
+const { PREMIUM_LARGE_SALAD_FIXED_PRICE_HALALA } = require("../../config/mealPlannerContract");
 
 const ACTIVE_PICKUP_REQUEST_STATUSES = ["locked", "in_preparation", "ready_for_pickup"];
 
@@ -95,7 +98,7 @@ async function buildSubscriptionOverviewSkipUsageSafe(subscription, runtime) {
   };
 }
 
-const CUSTOM_PREMIUM_SALAD_KEY = "custom_premium_salad";
+const CUSTOM_PREMIUM_SALAD_KEY = PREMIUM_LARGE_SALAD_KEY;
 
 function buildCustomPremiumSaladItem(lang) {
   const name = getPremiumDisplayName({ premiumKey: CUSTOM_PREMIUM_SALAD_KEY, lang });
@@ -104,7 +107,7 @@ function buildCustomPremiumSaladItem(lang) {
     premiumKey: CUSTOM_PREMIUM_SALAD_KEY,
     name,
     type: CUSTOM_PREMIUM_SALAD_KEY,
-    extraFeeHalala: 3000,
+    extraFeeHalala: PREMIUM_LARGE_SALAD_FIXED_PRICE_HALALA,
     purchasedQtyTotal: 0,
     remainingQtyTotal: 0,
     consumedQtyTotal: 0,
@@ -136,7 +139,7 @@ async function loadPremiumCatalogForOverview(lang) {
     for (const doc of premiumDocs) {
       const id = String(doc._id);
       const localizedName = pickLang(doc.name, lang) || "";
-      const premiumKey = doc.premiumKey || null;
+      const premiumKey = normalizePremiumItemKey(doc.premiumKey) || null;
 
       const catalogItem = {
         id,
@@ -167,8 +170,9 @@ function findMatchingCatalogItem(balanceRow, premiumCatalog) {
   const { byId, byPremiumKey } = premiumCatalog;
   const balanceProteinId = String(balanceRow.proteinId);
 
-  if (balanceRow.premiumKey && CANONICAL_PREMIUM_KEYS.includes(balanceRow.premiumKey)) {
-    const keyMatch = byPremiumKey.get(balanceRow.premiumKey);
+  const normalizedBalanceKey = normalizePremiumItemKey(balanceRow.premiumKey);
+  if (normalizedBalanceKey && CANONICAL_PREMIUM_KEYS.includes(normalizedBalanceKey)) {
+    const keyMatch = byPremiumKey.get(normalizedBalanceKey);
     if (keyMatch) {
       return { match: keyMatch, matchType: "premiumKey" };
     }
@@ -183,8 +187,9 @@ function findMatchingCatalogItem(balanceRow, premiumCatalog) {
 }
 
 function resolvePremiumKeyFromRow(balanceRow, premiumCatalog) {
-  if (balanceRow.premiumKey && CANONICAL_PREMIUM_KEYS.includes(balanceRow.premiumKey)) {
-    return balanceRow.premiumKey;
+  const normalizedBalanceKey = normalizePremiumItemKey(balanceRow.premiumKey);
+  if (normalizedBalanceKey && CANONICAL_PREMIUM_KEYS.includes(normalizedBalanceKey)) {
+    return normalizedBalanceKey;
   }
 
   const matchResult = findMatchingCatalogItem(balanceRow, premiumCatalog);

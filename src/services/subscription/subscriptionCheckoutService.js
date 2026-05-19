@@ -600,7 +600,11 @@ async function performSubscriptionCheckout(userId, idempotencyKey, body, lang, r
       );
 
       return {
-        status: 201,
+        status: (
+          normalizedPremiumItems.length === 1
+          && normalizedPremiumItems[0].premiumKey === "premium_large_salad"
+          && !quote.addonItems?.length
+        ) ? 200 : 201,
         ok: true,
         data: {
           ...buildCheckoutReusePayload(

@@ -2,6 +2,13 @@
 
 This report confirms the backend contracts implemented for the current one-time order frontend handoff.
 
+Subscription checkout premium item note:
+
+- `premiumItems` accepts backend premium protein IDs, backend premium protein keys, and `premium_large_salad`.
+- `custom_premium_salad` is a legacy alias and is normalized to `premium_large_salad`.
+- Frontend should send `premium_large_salad` for subscription quote/checkout large salad purchases.
+- Unknown premium keys return HTTP 422 with `INVALID_PREMIUM_ITEM`.
+
 ## 1. Implemented Endpoints
 
 | Area | Endpoint | Auth | Status |

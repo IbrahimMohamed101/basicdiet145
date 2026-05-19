@@ -126,6 +126,8 @@ async function getDayFulfillmentStatusForClient({
     deliveryWindow: readFields.deliveryWindow || null,
     deliverySlot: readFields.deliverySlot || null,
     pickupLocation: readFields.pickupLocation || null,
+    lockedReason: readFields.lockedReason || null,
+    lockedMessage: readFields.lockedMessage || null,
 
     // Pickup-specific fields (null for delivery)
     pickupCode: deliveryMode === "pickup" && status === "ready_for_pickup"
