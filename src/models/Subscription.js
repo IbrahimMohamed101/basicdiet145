@@ -86,6 +86,12 @@ const SubscriptionSchema = new mongoose.Schema(
   {
     userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
     planId: { type: mongoose.Schema.Types.ObjectId, ref: "Plan", required: true },
+    // Parent subscription lifecycle.
+    // Active subscriptions may have individual SubscriptionDay rows with status
+    // "frozen"; the parent "frozen" status is retained only for legacy reads.
+    // "expired" is normally resolved as an effective read status after
+    // validityEndDate; historical rows may persist it. "completed" is also a
+    // legacy terminal value and is not written by the canonical checkout flow.
     status: { type: String, enum: ["pending_payment", "active", "frozen", "expired", "canceled", "completed"], default: "pending_payment" },
     startDate: { type: Date },
     endDate: { type: Date },

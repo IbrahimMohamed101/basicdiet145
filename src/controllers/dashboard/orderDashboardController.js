@@ -53,6 +53,17 @@ async function getOrder(req, res) {
   }
 }
 
+async function getOrderTimeline(req, res) {
+  try {
+    const data = await orderDashboardService.getOrderTimelineForDashboard({
+      orderId: req.params.orderId,
+    });
+    return res.status(200).json({ status: true, data });
+  } catch (err) {
+    return sendServiceError(res, err);
+  }
+}
+
 async function handleOrderAction(req, res) {
   try {
     const data = await orderDashboardService.executeDashboardOrderAction({
@@ -70,5 +81,6 @@ async function handleOrderAction(req, res) {
 module.exports = {
   listOrders,
   getOrder,
+  getOrderTimeline,
   handleOrderAction,
 };

@@ -58,6 +58,7 @@ router.post("/:id/items/custom-salad", asyncHandler(customSaladController.addCus
 router.post("/:id/items/custom-meal", asyncHandler(customMealController.addCustomMealToOrder));
 router.get("/", asyncHandler(controller.listOrders));
 router.delete("/:id", asyncHandler(controller.cancelOrder));
+router.get("/:id/timeline", asyncHandler(controller.getOrderTimeline));
 router.get("/:id", asyncHandler(controller.getOrder));
 
 module.exports = router;

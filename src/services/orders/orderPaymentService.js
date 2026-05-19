@@ -238,10 +238,15 @@ async function markOrderPaymentNonPaid({ order, payment, providerStatus, reason,
   if (order.status === ORDER_STATUSES.PENDING_PAYMENT) {
     order.status = normalizedStatus === "expired" ? ORDER_STATUSES.EXPIRED : ORDER_STATUSES.CANCELLED;
     order.paymentStatus = normalizedStatus;
-    if (order.status === ORDER_STATUSES.CANCELLED) {
-      order.cancelledAt = order.cancelledAt || new Date();
+    if (order.status === ORDER_STATUSES.CANCELLED || order.status === ORDER_STATUSES.EXPIRED) {
+      const now = new Date();
+      order.cancelledAt = order.cancelledAt || now;
       order.canceledAt = order.canceledAt || order.cancelledAt;
-      order.cancellationReason = order.cancellationReason || reason || `payment_${normalizedStatus}`;
+      order.cancellationReason = order.cancellationReason || (normalizedStatus === "expired" ? "payment_expired" : "payment_failed");
+      order.cancellationSource = order.cancellationSource || (source === "webhook" ? "payment_provider" : "system");
+      order.cancellationActorType = order.cancellationActorType || "system";
+      order.cancelledBy = order.cancelledBy || "system";
+      order.canceledBy = order.canceledBy || "system";
     }
     await order.save({ session });
   }

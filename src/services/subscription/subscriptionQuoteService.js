@@ -83,7 +83,9 @@ function normalizePremiumCheckoutPayloadItems(rawItems) {
     return rawItems;
   }
   if (!Array.isArray(rawItems)) {
-    return rawItems;
+    const err = new Error("premiumItems must be an array");
+    err.code = "VALIDATION_ERROR";
+    throw err;
   }
   return rawItems.map((item) => {
     if (!item || typeof item !== "object" || Array.isArray(item)) {
@@ -95,12 +97,18 @@ function normalizePremiumCheckoutPayloadItems(rawItems) {
     const resolved = explicitProtein != null ? explicitProtein : legacyMealKey;
     const resolvedStr = String(resolved || "");
 
+    const forbiddenKeys = ["custom_premium_salad", "premium_large_salad"];
+    if (
+      forbiddenKeys.includes(resolvedStr) ||
+      (typeof premiumKeyInput === "string" && forbiddenKeys.includes(premiumKeyInput.trim()))
+    ) {
+      const err = new Error(`Item ${resolvedStr || premiumKeyInput} is a planner selection type and cannot be purchased directly in premiumItems`);
+      err.code = "INVALID_PREMIUM_ITEM";
+      throw err;
+    }
+
     if (premiumKeyInput && typeof premiumKeyInput === "string" && premiumKeyInput.trim()) {
       return { ...item, premiumKey: premiumKeyInput.trim() };
-    }
-    
-    if (resolvedStr === "custom_premium_salad" || resolvedStr.includes("custom_premium_salad")) {
-      return { ...item, premiumKey: "custom_premium_salad" };
     }
     
     if (explicitProtein != null && legacyMealKey != null && String(explicitProtein) !== String(legacyMealKey)) {

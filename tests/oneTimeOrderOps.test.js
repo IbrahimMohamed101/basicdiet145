@@ -13,6 +13,7 @@ const Order = require("../src/models/Order");
 const Payment = require("../src/models/Payment");
 const SubscriptionDay = require("../src/models/SubscriptionDay");
 const User = require("../src/models/User");
+const DashboardUser = require("../src/models/DashboardUser");
 const { DASHBOARD_JWT_SECRET } = require("../src/services/dashboardTokenService");
 const { ORDER_STATUSES } = require("../src/utils/orderState");
 
@@ -20,6 +21,7 @@ const TEST_TAG = `one-time-order-ops-${Date.now()}`;
 const results = { passed: 0, failed: 0 };
 const ORIGINAL_ONE_TIME_ORDER_DELIVERY_ENABLED = process.env.ONE_TIME_ORDER_DELIVERY_ENABLED;
 delete process.env.ONE_TIME_ORDER_DELIVERY_ENABLED;
+const dashboardUsers = new Map();
 
 async function test(name, fn) {
   try {
@@ -34,8 +36,10 @@ async function test(name, fn) {
 }
 
 function dashboardToken(role = "admin") {
+  const dashboardUser = dashboardUsers.get(role);
+  assert(dashboardUser, `missing dashboard user for role ${role}`);
   return jwt.sign(
-    { userId: new mongoose.Types.ObjectId().toString(), role, tokenType: "dashboard_access" },
+    { userId: String(dashboardUser._id), role, tokenType: "dashboard_access" },
     DASHBOARD_JWT_SECRET,
     { expiresIn: "1h" }
   );
@@ -43,6 +47,15 @@ function dashboardToken(role = "admin") {
 
 function auth(role = "admin") {
   return { Authorization: `Bearer ${dashboardToken(role)}`, "Accept-Language": "en" };
+}
+
+function customerAuth(user) {
+  const token = jwt.sign(
+    { userId: String(user._id), role: "client", tokenType: "app_access" },
+    process.env.JWT_SECRET || "supersecret",
+    { expiresIn: "1h" }
+  );
+  return { Authorization: `Bearer ${token}`, "Accept-Language": "en" };
 }
 
 async function withOneTimeDeliveryEnabled(fn) {
@@ -77,6 +90,7 @@ async function cleanup() {
     Delivery.deleteMany({ orderId: { $in: orderIds } }),
     Payment.deleteMany({ $or: [{ userId: { $in: userIds } }, { orderId: { $in: orderIds } }] }),
     Order.deleteMany({ _id: { $in: orderIds } }),
+    DashboardUser.deleteMany({ email: { $regex: TEST_TAG } }),
     User.deleteMany({ _id: { $in: userIds } }),
   ]);
 }
@@ -88,6 +102,19 @@ async function seedUser() {
     role: "client",
     isActive: true,
   });
+}
+
+async function seedDashboardUsers() {
+  dashboardUsers.clear();
+  for (const role of ["admin", "kitchen", "courier", "superadmin"]) {
+    const user = await DashboardUser.create({
+      email: `${TEST_TAG}-${role}@example.com`,
+      passwordHash: "test-password-hash",
+      role,
+      isActive: true,
+    });
+    dashboardUsers.set(role, user);
+  }
 }
 
 async function createOrder(user, overrides = {}) {
@@ -152,6 +179,7 @@ async function createOrder(user, overrides = {}) {
 (async function run() {
   await connectDatabase();
   await cleanup();
+  await seedDashboardUsers();
 
   const app = createApp();
   const api = request(app);
@@ -175,9 +203,26 @@ async function createOrder(user, overrides = {}) {
       expectStatus(res, 200, "dashboard detail");
       assert.strictEqual(res.body.data.source, "one_time_order");
       assert.strictEqual(res.body.data.entityType, "order");
+      assert.strictEqual(res.body.data.timeline_endpoint, `/api/orders/${order._id}/timeline`);
+      assert.strictEqual(res.body.data.cancelled_by, null);
+      assert.strictEqual(res.body.data.cancellation_reason, null);
+      assert.strictEqual(res.body.data.cancellation_source, null);
+      assert.strictEqual(res.body.data.cancelled_at, null);
       assert(Array.isArray(res.body.data.items));
       assert(!Object.prototype.hasOwnProperty.call(res.body.data, "requestHash"));
       assert(!Object.prototype.hasOwnProperty.call(res.body.data.payment, "metadata"));
+    });
+
+    await test("Customer order detail includes timeline endpoint and normalized cancellation fields", async () => {
+      const order = await createOrder(user);
+      const res = await api.get(`/api/orders/${order._id}`).set(customerAuth(user));
+      expectStatus(res, 200, "customer order detail contract");
+      assert.strictEqual(res.body.data.timeline_endpoint, `/api/orders/${order._id}/timeline`);
+      assert(Array.isArray(res.body.data.allowedActions));
+      assert.strictEqual(res.body.data.cancelled_by, null);
+      assert.strictEqual(res.body.data.cancellation_reason, null);
+      assert.strictEqual(res.body.data.cancellation_source, null);
+      assert.strictEqual(res.body.data.cancelled_at, null);
     });
 
     await test("Confirmed paid order allowedActions includes prepare", async () => {
@@ -185,6 +230,24 @@ async function createOrder(user, overrides = {}) {
       const res = await api.get(`/api/dashboard/orders/${order._id}`).set(auth());
       expectStatus(res, 200, "confirmed allowed actions");
       assert(res.body.data.allowedActions.includes("prepare"));
+    });
+
+    await test("Kitchen cancel remains allowed and is treated as restaurant cancellation", async () => {
+      const order = await createOrder(user, { status: ORDER_STATUSES.CONFIRMED, paymentStatus: "paid" });
+      const detail = await api.get(`/api/dashboard/orders/${order._id}`).set(auth("kitchen"));
+      expectStatus(detail, 200, "kitchen allowed actions");
+      assert(detail.body.data.allowedActions.includes("prepare"));
+      assert(detail.body.data.allowedActions.includes("cancel"));
+
+      const res = await api.post(`/api/dashboard/orders/${order._id}/actions/cancel`).set(auth("kitchen")).send({
+        reason: "admin_cancelled",
+      });
+      expectStatus(res, 200, "kitchen cancel canonical restaurant metadata");
+      assert.strictEqual(res.body.data.status, ORDER_STATUSES.CANCELLED);
+      assert.strictEqual(res.body.data.cancelled_by, "restaurant");
+      assert.strictEqual(res.body.data.cancellation_reason, "restaurant_cancelled");
+      assert.strictEqual(res.body.data.cancellation_source, "dashboard");
+      assert(!JSON.stringify(res.body.data).includes('"cancelled_by":"branch"'));
     });
 
     await test("Pending payment order does not allow prepare", async () => {
@@ -202,6 +265,8 @@ async function createOrder(user, overrides = {}) {
       const res = await api.post(`/api/dashboard/orders/${order._id}/actions/prepare`).set(auth()).send({});
       expectStatus(res, 200, "prepare action");
       assert.strictEqual(res.body.data.status, ORDER_STATUSES.IN_PREPARATION);
+      assert.strictEqual(res.body.data.timeline_endpoint, `/api/orders/${order._id}/timeline`);
+      assert.deepStrictEqual(res.body.data.allowedActions.sort(), ["cancel", "ready_for_pickup"].sort());
     });
 
     await test("ready_for_pickup works only for pickup in_preparation", async () => {
@@ -256,7 +321,7 @@ async function createOrder(user, overrides = {}) {
       });
       let res = await api.post(`/api/dashboard/orders/${dispatchOrder._id}/actions/dispatch`).set(auth()).send({});
       expectStatus(res, 409, "dispatch delivery disabled");
-      assert.strictEqual(res.body.error.code, "ONE_TIME_ORDER_DELIVERY_DISABLED");
+      assert.strictEqual(res.body.error.code, "DELIVERY_NOT_SUPPORTED");
 
       const notifyOrder = await createOrder(user, {
         fulfillmentMethod: "delivery",
@@ -264,11 +329,11 @@ async function createOrder(user, overrides = {}) {
       });
       res = await api.post(`/api/dashboard/orders/${notifyOrder._id}/actions/notify_arrival`).set(auth()).send({});
       expectStatus(res, 409, "notify delivery disabled");
-      assert.strictEqual(res.body.error.code, "ONE_TIME_ORDER_DELIVERY_DISABLED");
+      assert.strictEqual(res.body.error.code, "DELIVERY_NOT_SUPPORTED");
 
       res = await api.post(`/api/dashboard/orders/${notifyOrder._id}/actions/fulfill`).set(auth()).send({});
       expectStatus(res, 409, "fulfill delivery disabled");
-      assert.strictEqual(res.body.error.code, "ONE_TIME_ORDER_DELIVERY_DISABLED");
+      assert.strictEqual(res.body.error.code, "DELIVERY_NOT_SUPPORTED");
     });
 
     await test("delivery order DTO hides actions by default", async () => {
@@ -288,7 +353,7 @@ async function createOrder(user, overrides = {}) {
       });
       let res = await api.post(`/api/kitchen/orders/${kitchenOrder._id}/out-for-delivery`).set(auth("kitchen")).send({});
       expectStatus(res, 409, "legacy kitchen dispatch delivery disabled");
-      assert.strictEqual(res.body.error.code, "ONE_TIME_ORDER_DELIVERY_DISABLED");
+      assert.strictEqual(res.body.error.code, "DELIVERY_NOT_SUPPORTED");
 
       const courierOrder = await createOrder(user, {
         fulfillmentMethod: "delivery",
@@ -296,17 +361,17 @@ async function createOrder(user, overrides = {}) {
       });
       res = await api.put(`/api/courier/orders/${courierOrder._id}/arriving-soon`).set(auth("courier")).send({});
       expectStatus(res, 409, "legacy courier arriving soon delivery disabled");
-      assert.strictEqual(res.body.error.code, "ONE_TIME_ORDER_DELIVERY_DISABLED");
+      assert.strictEqual(res.body.error.code, "DELIVERY_NOT_SUPPORTED");
 
       res = await api.put(`/api/courier/orders/${courierOrder._id}/delivered`).set(auth("courier")).send({});
       expectStatus(res, 409, "legacy courier delivered delivery disabled");
-      assert.strictEqual(res.body.error.code, "ONE_TIME_ORDER_DELIVERY_DISABLED");
+      assert.strictEqual(res.body.error.code, "DELIVERY_NOT_SUPPORTED");
 
       res = await api.put(`/api/courier/orders/${courierOrder._id}/cancel`).set(auth("courier")).send({
         reason: "customer_unavailable",
       });
       expectStatus(res, 409, "legacy courier cancel delivery disabled");
-      assert.strictEqual(res.body.error.code, "ONE_TIME_ORDER_DELIVERY_DISABLED");
+      assert.strictEqual(res.body.error.code, "DELIVERY_NOT_SUPPORTED");
     });
 
     await test("fulfill pickup ready_for_pickup -> fulfilled", async () => {
@@ -335,13 +400,126 @@ async function createOrder(user, overrides = {}) {
       const confirmed = await createOrder(user, { status: ORDER_STATUSES.CONFIRMED });
       const preparing = await createOrder(user, { status: ORDER_STATUSES.IN_PREPARATION });
 
-      let res = await api.post(`/api/dashboard/orders/${confirmed._id}/actions/cancel`).set(auth()).send({ reason: "customer_request" });
+      let res = await api.post(`/api/dashboard/orders/${confirmed._id}/actions/cancel`).set(auth()).send({ reason: "restaurant_rejected" });
       expectStatus(res, 200, "cancel confirmed");
       assert.strictEqual(res.body.data.status, ORDER_STATUSES.CANCELLED);
+      assert.deepStrictEqual(res.body.data.allowedActions, []);
+      assert.strictEqual(res.body.data.cancelled_by, "restaurant");
+      assert.strictEqual(res.body.data.cancellation_reason, "restaurant_rejected");
+      assert.strictEqual(res.body.data.cancellation_source, "dashboard");
+      assert(res.body.data.cancelled_at);
 
-      res = await api.post(`/api/dashboard/orders/${preparing._id}/actions/cancel`).set(auth()).send({ reason: "stock_out" });
+      res = await api.post(`/api/dashboard/orders/${preparing._id}/actions/cancel`).set(auth()).send({ reason: "admin_cancelled" });
       expectStatus(res, 200, "cancel preparing");
       assert.strictEqual(res.body.data.status, ORDER_STATUSES.CANCELLED);
+      assert.strictEqual(res.body.data.cancelled_by, "admin");
+      assert.strictEqual(res.body.data.cancellation_reason, "admin_cancelled");
+    });
+
+    await test("Kitchen cancellation uses restaurant metadata, not branch", async () => {
+      const order = await createOrder(user, { status: ORDER_STATUSES.IN_PREPARATION });
+      const res = await api.post(`/api/dashboard/orders/${order._id}/actions/cancel`).set(auth("kitchen")).send({});
+      expectStatus(res, 200, "kitchen restaurant cancellation");
+      assert.strictEqual(res.body.data.status, ORDER_STATUSES.CANCELLED);
+      assert.strictEqual(res.body.data.cancelled_by, "restaurant");
+      assert.strictEqual(res.body.data.cancellation_reason, "restaurant_cancelled");
+      assert.strictEqual(res.body.data.cancellation_source, "dashboard");
+      assert.notStrictEqual(res.body.data.cancelled_by, "branch");
+    });
+
+    await test("Customer pending-payment cancel returns normalized cancellation metadata", async () => {
+      const order = await createOrder(user, {
+        status: ORDER_STATUSES.PENDING_PAYMENT,
+        paymentStatus: "initiated",
+      });
+      const res = await api.delete(`/api/orders/${order._id}`).set(customerAuth(user)).send({
+        reason: "please_cancel_this_specific_reason",
+      });
+      expectStatus(res, 200, "customer cancel metadata");
+      assert.strictEqual(res.body.data.status, ORDER_STATUSES.CANCELLED);
+      assert.strictEqual(res.body.data.cancelled_by, "customer");
+      assert.strictEqual(res.body.data.cancellation_reason, "customer_requested");
+      assert.strictEqual(res.body.data.cancellation_source, "mobile_app");
+      assert(res.body.data.cancelled_at);
+      assert.deepStrictEqual(res.body.data.allowedActions, []);
+    });
+
+    await test("Payment initialization failure serializes as system payment_failed metadata", async () => {
+      const order = await createOrder(user, {
+        status: ORDER_STATUSES.CANCELLED,
+        paymentStatus: "failed",
+        cancellationReason: "payment_initialization_failed",
+        cancellationSource: "payment_provider",
+        cancellationActorType: "system",
+        cancelledBy: "system",
+        canceledBy: "system",
+        cancelledAt: new Date("2026-05-19T12:30:00.000Z"),
+        canceledAt: new Date("2026-05-19T12:30:00.000Z"),
+      });
+      const res = await api.get(`/api/orders/${order._id}`).set(customerAuth(user));
+      expectStatus(res, 200, "payment init failure metadata");
+      assert.strictEqual(res.body.data.status, ORDER_STATUSES.CANCELLED);
+      assert.strictEqual(res.body.data.paymentStatus, "failed");
+      assert.strictEqual(res.body.data.cancelled_by, "system");
+      assert.strictEqual(res.body.data.cancellation_reason, "payment_failed");
+      assert.strictEqual(res.body.data.cancellation_source, "payment_provider");
+      assert(!JSON.stringify(res.body.data).includes('"cancelled_by":"branch"'));
+    });
+
+    await test("Dashboard and customer timeline endpoints return pickup-only timeline states", async () => {
+      const order = await createOrder(user, {
+        fulfillmentMethod: "pickup",
+        status: ORDER_STATUSES.IN_PREPARATION,
+        confirmedAt: new Date("2026-05-19T10:05:00.000Z"),
+        preparationStartedAt: new Date("2026-05-19T10:10:00.000Z"),
+      });
+
+      let res = await api.get(`/api/dashboard/orders/${order._id}/timeline`).set(auth());
+      expectStatus(res, 200, "dashboard order timeline");
+      assert.strictEqual(res.body.data.order_id, String(order._id));
+      assert.strictEqual(res.body.data.current_status, ORDER_STATUSES.IN_PREPARATION);
+      assert.deepStrictEqual(res.body.data.timeline.map((item) => item.key), [
+        "order_created",
+        "payment_confirmed",
+        "preparing",
+        "ready_for_pickup",
+        "fulfilled",
+      ]);
+      assert.strictEqual(res.body.data.timeline.find((item) => item.key === "preparing").state, "active");
+      assert(!res.body.data.timeline.some((item) => item.key === "out_for_delivery"));
+
+      res = await api.get(`/api/orders/${order._id}/timeline`).set(customerAuth(user));
+      expectStatus(res, 200, "customer order timeline");
+      assert.strictEqual(res.body.data.current_status, ORDER_STATUSES.IN_PREPARATION);
+    });
+
+    await test("Cancelled and expired timelines return terminal cancellation items", async () => {
+      const cancelled = await createOrder(user, {
+        status: ORDER_STATUSES.CANCELLED,
+        cancelledAt: new Date("2026-05-19T11:00:00.000Z"),
+        canceledAt: new Date("2026-05-19T11:00:00.000Z"),
+        cancellationActorType: "restaurant",
+        cancellationReason: "restaurant_rejected",
+        cancellationSource: "dashboard",
+      });
+      let res = await api.get(`/api/dashboard/orders/${cancelled._id}/timeline`).set(auth());
+      expectStatus(res, 200, "cancelled timeline");
+      const lastCancelled = res.body.data.timeline[res.body.data.timeline.length - 1];
+      assert.strictEqual(lastCancelled.key, "cancelled");
+      assert.strictEqual(lastCancelled.state, "cancelled");
+      assert.strictEqual(lastCancelled.cancelled_by, "restaurant");
+      assert.strictEqual(lastCancelled.cancellation_reason, "restaurant_rejected");
+
+      const expired = await createOrder(user, {
+        status: ORDER_STATUSES.EXPIRED,
+        paymentStatus: "expired",
+        expiresAt: new Date("2026-05-19T12:00:00.000Z"),
+      });
+      res = await api.get(`/api/dashboard/orders/${expired._id}/timeline`).set(auth());
+      expectStatus(res, 200, "expired timeline");
+      const lastExpired = res.body.data.timeline[res.body.data.timeline.length - 1];
+      assert.strictEqual(lastExpired.key, "expired");
+      assert.strictEqual(lastExpired.state, "cancelled");
     });
 
     await test("legacy kitchen preparing route writes canonical in_preparation", async () => {

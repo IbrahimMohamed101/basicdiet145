@@ -68,7 +68,7 @@ function actionRoles(action, fulfillmentMethod) {
         ? ["superadmin", "admin", "kitchen"]
         : ["superadmin", "admin", "courier"];
     case ACTIONS.CANCEL:
-      return ["superadmin", "admin"];
+      return ["superadmin", "admin", "kitchen"];
     default:
       return [];
   }
@@ -77,6 +77,23 @@ function actionRoles(action, fulfillmentMethod) {
 function roleCan(action, order, actor) {
   const role = normalizeRole(actor && actor.role);
   return actionRoles(action, getOrderMode(order)).includes(role);
+}
+
+function normalizeDashboardCancellation(payload = {}, actor = {}) {
+  const inputReason = String(payload.reason || payload.cancellationReason || "").trim();
+  const role = normalizeRole(actor && actor.role);
+  const reason = inputReason || "admin_cancelled";
+
+  if (reason === "restaurant_rejected") {
+    return { reason, actorType: "restaurant", source: "dashboard" };
+  }
+  if (reason === "restaurant_cancelled") {
+    return { reason: "restaurant_cancelled", actorType: "restaurant", source: "dashboard" };
+  }
+  if (role === "kitchen") {
+    return { reason: reason === "admin_cancelled" ? "restaurant_cancelled" : reason, actorType: "restaurant", source: "dashboard" };
+  }
+  return { reason: reason === "stock_out" ? "restaurant_rejected" : reason, actorType: "admin", source: "dashboard" };
 }
 
 function getAllowedOrderActions(order, actor = {}) {
@@ -215,10 +232,13 @@ async function executeOrderAction({ orderId, action, actor = {}, payload = {} })
         : order.pickupVerifiedByDashboardUserId;
     }
   } else if (normalizedAction === ACTIONS.CANCEL) {
+    const cancellation = normalizeDashboardCancellation(payload, actor);
     toStatus = ORDER_STATUSES.CANCELLED;
     order.cancelledAt = order.cancelledAt || now;
     order.canceledAt = order.cancelledAt;
-    order.cancellationReason = payload.reason ? String(payload.reason) : order.cancellationReason || "";
+    order.cancellationReason = cancellation.reason;
+    order.cancellationSource = cancellation.source;
+    order.cancellationActorType = cancellation.actorType;
     order.cancellationNote = payload.notes || payload.note || order.cancellationNote || "";
     order.cancelledBy = actor && actor.userId ? String(actor.userId) : order.cancelledBy || "";
     order.canceledBy = order.cancelledBy;

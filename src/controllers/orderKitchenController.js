@@ -38,7 +38,7 @@ async function transitionOrder(req, res, toStatus) {
     return errorResponse(res, 404, "NOT_FOUND", "Order not found");
   }
   if (shouldBlockOneTimeOrderDelivery(order)) {
-    return errorResponse(res, 409, "ONE_TIME_ORDER_DELIVERY_DISABLED", "One-time order delivery is disabled");
+    return errorResponse(res, 409, "DELIVERY_NOT_SUPPORTED", "One-time order delivery is disabled");
   }
 
   const mode = getOrderFulfillmentMethod(order);

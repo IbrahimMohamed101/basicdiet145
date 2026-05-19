@@ -9,6 +9,7 @@ const router = Router();
 router.use(dashboardAuthMiddleware, dashboardRoleMiddleware(["admin", "kitchen", "courier"]));
 
 router.get("/", asyncHandler(controller.listOrders));
+router.get("/:orderId/timeline", asyncHandler(controller.getOrderTimeline));
 router.get("/:orderId", asyncHandler(controller.getOrder));
 router.post("/:orderId/actions/:action", asyncHandler(controller.handleOrderAction));
 

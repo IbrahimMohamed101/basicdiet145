@@ -19,7 +19,7 @@ function shouldBlockOneTimeOrderDelivery(order = {}) {
 function createOneTimeOrderDeliveryDisabledError() {
   const err = new Error("One-time order delivery is disabled");
   err.status = 409;
-  err.code = "ONE_TIME_ORDER_DELIVERY_DISABLED";
+  err.code = "DELIVERY_NOT_SUPPORTED";
   return err;
 }
 

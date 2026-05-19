@@ -71,7 +71,7 @@ async function markArrivingSoon(req, res) {
       return errorResponse(res, 404, "NOT_FOUND", "Order not found");
     }
     if (shouldBlockOneTimeOrderDelivery(order)) {
-      return errorResponse(res, 409, "ONE_TIME_ORDER_DELIVERY_DISABLED", "One-time order delivery is disabled");
+      return errorResponse(res, 409, "DELIVERY_NOT_SUPPORTED", "One-time order delivery is disabled");
     }
     if (getOrderFulfillmentMethod(order) !== "delivery") {
       return errorResponse(res, 400, "INVALID", "Order is not delivery");
@@ -169,6 +169,13 @@ async function markDelivered(req, res) {
   } catch (err) {
     return errorResponse(res, err.status, err.code, err.message);
   }
+  const gateOrder = await Order.findById(req.params.id).lean();
+  if (!gateOrder) {
+    return errorResponse(res, 404, "NOT_FOUND", "Order not found");
+  }
+  if (shouldBlockOneTimeOrderDelivery(gateOrder)) {
+    return errorResponse(res, 409, "DELIVERY_NOT_SUPPORTED", "One-time order delivery is disabled");
+  }
   const session = await mongoose.startSession();
   session.startTransaction();
   try {
@@ -181,7 +188,7 @@ async function markDelivered(req, res) {
     if (shouldBlockOneTimeOrderDelivery(order)) {
       await session.abortTransaction();
       session.endSession();
-      return errorResponse(res, 409, "ONE_TIME_ORDER_DELIVERY_DISABLED", "One-time order delivery is disabled");
+      return errorResponse(res, 409, "DELIVERY_NOT_SUPPORTED", "One-time order delivery is disabled");
     }
     if (getOrderFulfillmentMethod(order) !== "delivery") {
       await session.abortTransaction();
@@ -268,6 +275,13 @@ async function markCancelled(req, res) {
   } catch (err) {
     return errorResponse(res, err.status, err.code, err.message);
   }
+  const gateOrder = await Order.findById(req.params.id).lean();
+  if (!gateOrder) {
+    return errorResponse(res, 404, "NOT_FOUND", "Order not found");
+  }
+  if (shouldBlockOneTimeOrderDelivery(gateOrder)) {
+    return errorResponse(res, 409, "DELIVERY_NOT_SUPPORTED", "One-time order delivery is disabled");
+  }
   const session = await mongoose.startSession();
   session.startTransaction();
   try {
@@ -280,7 +294,7 @@ async function markCancelled(req, res) {
     if (shouldBlockOneTimeOrderDelivery(order)) {
       await session.abortTransaction();
       session.endSession();
-      return errorResponse(res, 409, "ONE_TIME_ORDER_DELIVERY_DISABLED", "One-time order delivery is disabled");
+      return errorResponse(res, 409, "DELIVERY_NOT_SUPPORTED", "One-time order delivery is disabled");
     }
     if (getOrderFulfillmentMethod(order) !== "delivery") {
       await session.abortTransaction();

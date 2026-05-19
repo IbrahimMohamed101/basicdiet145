@@ -71,19 +71,93 @@ function shouldExposePaymentUrl(order) {
     && String(order.paymentStatus || "") === "initiated";
 }
 
+function buildOrderTimelineEndpoint(orderId) {
+  return `/api/orders/${String(orderId)}/timeline`;
+}
+
+function normalizeCancellationReason(rawReason, status, paymentStatus) {
+  const reason = String(rawReason || "").trim();
+  if (reason === "client_cancelled_pending_payment") return "customer_requested";
+  if (reason === "customer_requested" || reason === "customer_request" || reason === "customer_requested_cancellation") return "customer_requested";
+  if (reason === "stock_out" || reason === "restaurant_rejected") return "restaurant_rejected";
+  if (reason === "restaurant_cancelled") return "restaurant_cancelled";
+  if (reason === "admin_cancelled") return "admin_cancelled";
+  if (reason === "payment_failed" || reason === "payment_canceled" || reason === "payment_cancelled" || reason === "payment_initialization_failed") return "payment_failed";
+  if (reason === "payment_expired") return "payment_expired";
+  if (reason.startsWith("webhook_failed") || reason.startsWith("webhook_canceled")) return "payment_failed";
+  if (reason.startsWith("webhook_expired")) return "payment_expired";
+  if (status === "expired" || paymentStatus === "expired") return "payment_expired";
+  if (status === "cancelled" && paymentStatus === "failed") return "payment_failed";
+  if (status === "cancelled" && paymentStatus === "canceled") return "payment_failed";
+  return reason || null;
+}
+
+function normalizeCancellationActor(order, reason) {
+  const explicit = String(order.cancellationActorType || "").trim();
+  if (explicit) return explicit;
+  const cancelledBy = String(order.cancelledBy || order.canceledBy || "").trim();
+  if (["customer", "client"].includes(cancelledBy)) return "customer";
+  if (["restaurant", "admin", "system"].includes(cancelledBy)) return cancelledBy;
+  if (reason === "customer_requested") return "customer";
+  if (reason === "restaurant_rejected") return "restaurant";
+  if (reason === "restaurant_cancelled") return "restaurant";
+  if (reason === "payment_failed" || reason === "payment_expired") return "system";
+  if (cancelledBy) return "admin";
+  return null;
+}
+
+function normalizeCancellationSource(order, actor, reason) {
+  const explicit = String(order.cancellationSource || "").trim();
+  if (explicit) return explicit;
+  if (actor === "customer") return "mobile_app";
+  if (actor === "admin" || actor === "restaurant") return "dashboard";
+  if (reason === "payment_failed") return "payment_provider";
+  if (reason === "payment_expired") return "system";
+  return null;
+}
+
+function serializeCancellationMetadata(order) {
+  const status = normalizeLegacyOrderStatus(order && order.status, { paymentStatus: order && order.paymentStatus });
+  const isCancelled = status === "cancelled" || status === "expired";
+  const reason = isCancelled
+    ? normalizeCancellationReason(order.cancellationReason, status, order.paymentStatus)
+    : null;
+  const actor = isCancelled ? normalizeCancellationActor(order, reason) : null;
+  const cancelledAt = order.cancelledAt || order.canceledAt || (status === "expired" ? (order.expiresAt || order.updatedAt) : null);
+
+  return {
+    cancelled_by: actor,
+    cancellation_reason: reason,
+    cancellation_source: isCancelled ? normalizeCancellationSource(order, actor, reason) : null,
+    cancelled_at: cancelledAt || null,
+  };
+}
+
+function getClientAllowedActions(order) {
+  const status = normalizeLegacyOrderStatus(order && order.status, { paymentStatus: order && order.paymentStatus });
+  if (status === "pending_payment" && String(order && order.paymentStatus || "") === "initiated") {
+    return ["cancel"];
+  }
+  return [];
+}
+
 function serializeOrderForClient(order) {
   const plain = toPlain(order);
   if (!plain) return null;
   const pricing = normalizePricing(plain.pricing || {});
   const fulfillmentMethod = plain.fulfillmentMethod || plain.deliveryMode || "";
+  const id = String(plain._id);
 
   return {
-    id: String(plain._id),
-    orderId: String(plain._id),
+    id,
+    orderId: id,
     orderNumber: plain.orderNumber || "",
     source: "one_time_order",
     status: normalizeLegacyOrderStatus(plain.status, { paymentStatus: plain.paymentStatus }),
     paymentStatus: plain.paymentStatus,
+    allowedActions: getClientAllowedActions(plain),
+    timeline_endpoint: buildOrderTimelineEndpoint(id),
+    ...serializeCancellationMetadata(plain),
     ...(shouldExposePaymentUrl(plain) ? { paymentUrl: plain.paymentUrl || "" } : {}),
     expiresAt: plain.expiresAt || null,
     fulfillmentMethod,
@@ -103,12 +177,17 @@ function serializeOrderSummaryForClient(order) {
   if (!plain) return null;
   const pricing = normalizePricing(plain.pricing || {});
   const items = normalizeItems(plain.items);
+  const id = String(plain._id);
   return {
-    orderId: String(plain._id),
+    id,
+    orderId: id,
     orderNumber: plain.orderNumber || "",
     source: "one_time_order",
     status: normalizeLegacyOrderStatus(plain.status, { paymentStatus: plain.paymentStatus }),
     paymentStatus: plain.paymentStatus,
+    allowedActions: getClientAllowedActions(plain),
+    timeline_endpoint: buildOrderTimelineEndpoint(id),
+    ...serializeCancellationMetadata(plain),
     fulfillmentMethod: plain.fulfillmentMethod || plain.deliveryMode || "",
     fulfillmentDate: plain.fulfillmentDate || plain.deliveryDate || "",
     itemCount: items.reduce((sum, item) => sum + Number(item.qty || 0), 0),
@@ -163,14 +242,15 @@ function serializeOrderForDashboard(order, { allowedActions = [], payment = null
   const fulfillmentMethod = plain.fulfillmentMethod || plain.deliveryMode || "";
   const pickup = plain.pickup || {};
   const pickupCode = plain.pickupCode || pickup.pickupCode || null;
+  const id = String(plain._id);
 
   const base = {
-    id: String(plain._id),
+    id,
     type: "order",
     source: "one_time_order",
     entityType: "order",
-    entityId: String(plain._id),
-    orderId: String(plain._id),
+    entityId: id,
+    orderId: id,
     reference: `ORD-${String(plain._id).slice(-6).toUpperCase()}`,
     orderNumber: plain.orderNumber || "",
     status: normalizeLegacyOrderStatus(plain.status, { paymentStatus: plain.paymentStatus }),
@@ -190,6 +270,8 @@ function serializeOrderForDashboard(order, { allowedActions = [], payment = null
     },
     createdAt: plain.createdAt || null,
     allowedActions,
+    timeline_endpoint: buildOrderTimelineEndpoint(id),
+    ...serializeCancellationMetadata(plain),
   };
 
   if (!detail) {
@@ -208,8 +290,10 @@ function serializeOrderForDashboard(order, { allowedActions = [], payment = null
 }
 
 module.exports = {
+  buildOrderTimelineEndpoint,
   normalizeItems,
   normalizePricing,
+  serializeCancellationMetadata,
   serializeOrderForDashboard,
   serializeOrderForClient,
   serializeOrderSummaryForClient,

@@ -37,6 +37,7 @@ const { getOneTimeOrderMenu } = require("../services/orders/orderMenuService");
 const { buildRequestHash, priceOrderCart } = require("../services/orders/orderPricingService");
 const { expireOrderIfNeeded } = require("../services/orders/orderExpiryService");
 const orderPaymentService = require("../services/orders/orderPaymentService");
+const { getOrderTimelineForCustomer } = require("../services/orders/orderTimelineService");
 const {
   serializeOrderForClient: serializeFinalOrderForClient,
   serializeOrderSummaryForClient,
@@ -414,7 +415,12 @@ async function createOrder(req, res) {
               status: ORDER_STATUSES.CANCELLED,
               paymentStatus: "failed",
               cancelledAt: new Date(),
+              canceledAt: new Date(),
               cancellationReason: "payment_initialization_failed",
+              cancellationSource: "payment_provider",
+              cancellationActorType: "system",
+              cancelledBy: "system",
+              canceledBy: "system",
             },
           }
         );
@@ -1455,6 +1461,22 @@ async function getOrder(req, res) {
   });
 }
 
+async function getOrderTimeline(req, res) {
+  try {
+    const data = await getOrderTimelineForCustomer({
+      orderId: req.params && req.params.id,
+      userId: req.userId,
+    });
+    return res.status(200).json({ status: true, data });
+  } catch (err) {
+    if (err && err.status && err.code) {
+      return errorResponse(res, err.status, err.code, err.message);
+    }
+    logger.error("orderController.getOrderTimeline failed", { error: err.message, stack: err.stack });
+    return errorResponse(res, 500, "INTERNAL_ERROR", "Order timeline request failed");
+  }
+}
+
 async function cancelOrder(req, res) {
   const lookup = buildOrderOwnerLookup(req.params && req.params.id, req.userId);
   if (!lookup) {
@@ -1486,9 +1508,11 @@ async function cancelOrder(req, res) {
     }
     order.cancelledAt = now;
     order.canceledAt = now;
-    order.cancellationReason = String((req.body && req.body.reason) || "client_cancelled_pending_payment").trim();
-    order.cancelledBy = "client";
-    order.canceledBy = "client";
+    order.cancellationReason = "customer_requested";
+    order.cancellationSource = "mobile_app";
+    order.cancellationActorType = "customer";
+    order.cancelledBy = "customer";
+    order.canceledBy = "customer";
     await order.save();
 
     if (payment && payment.status === "initiated") {
@@ -1511,11 +1535,7 @@ async function cancelOrder(req, res) {
 
     return res.status(200).json({
       status: true,
-      data: {
-        orderId: String(order._id),
-        status: order.status,
-        paymentStatus: order.paymentStatus,
-      },
+      data: serializeFinalOrderForClient(order.toObject ? order.toObject() : order),
     });
   } catch (err) {
     if (err && err.code && err.status) {
@@ -1660,5 +1680,6 @@ module.exports = {
   cancelOrder,
   rejectAdjustedDeliveryDate,
   getOrderPaymentStatus,
+  getOrderTimeline,
   verifyOrderPayment,
 };

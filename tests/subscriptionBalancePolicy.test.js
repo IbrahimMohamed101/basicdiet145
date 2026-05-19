@@ -17,7 +17,8 @@ const ActivityLog = require("../src/models/ActivityLog");
 const Delivery = require("../src/models/Delivery");
 const { buildSubscriptionTimeline } = require("../src/services/subscription/subscriptionTimelineService");
 const { applyOperationalSkipForDate } = require("../src/services/subscription/subscriptionSkipService");
-const { freezeSubscriptionForClient } = require("../src/services/subscription/subscriptionFreezeClientService");
+const { freezeSubscriptionForClient, unfreezeSubscriptionForClient } = require("../src/services/subscription/subscriptionFreezeClientService");
+const { cancelSubscriptionDomain } = require("../src/services/subscription/subscriptionCancellationService");
 const { recordCashierConsumption } = require("../src/services/dashboard/cashierConsumptionService");
 const { listOperations, getEnrichedDTO } = require("../src/services/dashboard/opsReadService");
 const { executeAction } = require("../src/services/dashboard/opsTransitionService");
@@ -302,6 +303,77 @@ async function runTests() {
     const frozenDay = await SubscriptionDay.findOne({ subscriptionId: freezeSub._id, date: "2026-05-08" }).lean();
     assert.strictEqual(frozenDay.status, "frozen", "Day was frozen");
     assert.strictEqual(frozenDay.creditsDeducted, false, "Freeze did not mark credits deducted");
+    const parentAfterFreeze = await Subscription.findById(freezeSub._id).lean();
+    assert.strictEqual(parentAfterFreeze.status, "active", "Freeze is day-level; parent subscription remains active");
+
+    const unfreezeResult = await unfreezeSubscriptionForClient({
+      subscriptionId: freezeSub._id,
+      startDate: "2026-05-08",
+      days: 1,
+      userId: freezeSub.userId,
+      ensureActiveFn: () => {},
+      validateFutureDateOrThrowFn: () => {},
+      writeLogSafelyFn: async () => {},
+    });
+    assert.strictEqual(unfreezeResult.ok, true, "Unfreeze should succeed");
+    await assertRemainingMeals(freezeSub._id, 7, "unfreeze must not deduct remainingMeals");
+    const unfrozenDay = await SubscriptionDay.findOne({ subscriptionId: freezeSub._id, date: "2026-05-08" }).lean();
+    assert.strictEqual(unfrozenDay.status, "open", "Day was unfrozen back to open");
+
+    const { subscription: cancelActiveSub } = await seedSubscription({
+      deliveryMode: "pickup",
+      remainingMeals: 7,
+      totalMeals: 7,
+      selectedMealsPerDay: 1,
+      phoneSuffix: "007",
+    });
+    await SubscriptionDay.create([
+      { subscriptionId: cancelActiveSub._id, date: "2026-05-09", status: "open" },
+      { subscriptionId: cancelActiveSub._id, date: "2026-05-10", status: "frozen" },
+      { subscriptionId: cancelActiveSub._id, date: "2026-05-11", status: "ready_for_pickup" },
+    ]);
+    const cancelActiveResult = await cancelSubscriptionDomain({
+      subscriptionId: cancelActiveSub._id,
+      actor: { kind: "client", userId: cancelActiveSub.userId },
+      runtime: { getTodayKSADate: async () => "2026-05-09" },
+    });
+    assert.strictEqual(cancelActiveResult.outcome, "canceled", "Active subscription cancellation should succeed");
+    const canceledActive = await Subscription.findById(cancelActiveSub._id).lean();
+    assert.strictEqual(canceledActive.status, "canceled", "Active subscription transitions to canceled");
+    assert.strictEqual(canceledActive.remainingMeals, 1, "Active cancellation preserves committed undeducted credits only");
+
+    const { subscription: cancelPendingSub } = await seedSubscription({
+      deliveryMode: "pickup",
+      remainingMeals: 7,
+      totalMeals: 7,
+      selectedMealsPerDay: 1,
+      phoneSuffix: "008",
+    });
+    await Subscription.updateOne({ _id: cancelPendingSub._id }, { $set: { status: "pending_payment" } });
+    const cancelPendingResult = await cancelSubscriptionDomain({
+      subscriptionId: cancelPendingSub._id,
+      actor: { kind: "client", userId: cancelPendingSub.userId },
+    });
+    assert.strictEqual(cancelPendingResult.outcome, "canceled", "Pending subscription cancellation should succeed");
+    const canceledPending = await Subscription.findById(cancelPendingSub._id).lean();
+    assert.strictEqual(canceledPending.status, "canceled", "Pending subscription transitions to canceled");
+    assert.strictEqual(canceledPending.remainingMeals, 0, "Pending cancellation clears remaining meals");
+
+    for (const finalStatus of ["expired", "completed"]) {
+      const { subscription: finalSub } = await seedSubscription({
+        deliveryMode: "pickup",
+        remainingMeals: 7,
+        totalMeals: 7,
+        selectedMealsPerDay: 1,
+        phoneSuffix: `final-${finalStatus}`,
+      });
+      await Subscription.updateOne({ _id: finalSub._id }, { $set: { status: finalStatus } });
+      const finalCancelResult = await cancelSubscriptionDomain({
+        subscriptionId: finalSub._id,
+        actor: { kind: "client", userId: finalSub.userId },
+      });
+      assert.strictEqual(finalCancelResult.outcome, "invalid_transition", `Final ${finalStatus} subscription cannot be canceled`);
+    }
 
     // Test 4a.1: dashboard GET/read endpoints do not mutate remainingMeals
     await listOperations({ date: "2026-04-01", role: "admin", lang: "en" });

@@ -10,6 +10,7 @@ const {
   executeOrderAction,
   getAllowedOrderActions,
 } = require("./orderOpsTransitionService");
+const { getOrderTimelineForDashboard } = require("./orderTimelineService");
 const { isOneTimeOrderDeliveryEnabled } = require("../../utils/oneTimeOrderDeliveryGate");
 
 const MAX_LIMIT = 100;
@@ -198,5 +199,6 @@ async function executeDashboardOrderAction({ orderId, action, actor = {}, payloa
 module.exports = {
   listDashboardOrders,
   getDashboardOrder,
+  getOrderTimelineForDashboard,
   executeDashboardOrderAction,
 };

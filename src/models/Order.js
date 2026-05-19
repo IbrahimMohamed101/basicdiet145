@@ -257,6 +257,8 @@ const OrderSchema = new mongoose.Schema(
     canceledAt: { type: Date },
     cancellationReason: { type: String },
     cancellationNote: { type: String },
+    cancellationSource: { type: String },
+    cancellationActorType: { type: String },
     cancelledBy: { type: String },
     canceledBy: { type: String },
   },
