@@ -1,4 +1,5 @@
 const express = require("express");
+const fs = require("fs");
 const path = require("path");
 const helmet = require("helmet");
 const cors = require("cors");
@@ -59,6 +60,88 @@ function mountSwaggerUi(app, { uiPath, rawPath, spec }) {
     swaggerUi.serve,
     swaggerUi.setup(spec)
   );
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function renderMarkdownAsSimpleHtml(markdown) {
+  const lines = String(markdown || "").split(/\r?\n/);
+  const html = [];
+  let inList = false;
+
+  function closeList() {
+    if (inList) {
+      html.push("</ul>");
+      inList = false;
+    }
+  }
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      closeList();
+      continue;
+    }
+
+    const heading = trimmed.match(/^(#{1,3})\s+(.+)$/);
+    if (heading) {
+      closeList();
+      const level = heading[1].length;
+      html.push(`<h${level}>${escapeHtml(heading[2])}</h${level}>`);
+      continue;
+    }
+
+    if (trimmed.startsWith("- ")) {
+      if (!inList) {
+        html.push("<ul>");
+        inList = true;
+      }
+      html.push(`<li>${escapeHtml(trimmed.slice(2))}</li>`);
+      continue;
+    }
+
+    closeList();
+    html.push(`<p>${escapeHtml(trimmed)}</p>`);
+  }
+
+  closeList();
+  return html.join("\n");
+}
+
+function renderPrivacyPolicyPage() {
+  const markdownPath = path.join(__dirname, "../PRIVACY_POLICY.md");
+  const markdown = fs.readFileSync(markdownPath, "utf8");
+  const content = renderMarkdownAsSimpleHtml(markdown);
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>basicdite Privacy Policy</title>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; margin: 0; color: #18212f; background: #f7f8fa; }
+    main { max-width: 820px; margin: 0 auto; padding: 40px 20px 64px; background: #fff; min-height: 100vh; }
+    h1, h2, h3 { line-height: 1.25; color: #111827; }
+    h1 { margin-top: 0; }
+    h2 { margin-top: 32px; border-top: 1px solid #e5e7eb; padding-top: 24px; }
+    ul { padding-left: 22px; }
+    li { margin: 8px 0; }
+    p { margin: 12px 0; }
+  </style>
+</head>
+<body>
+  <main>
+${content}
+  </main>
+</body>
+</html>`;
 }
 
 function resolveTrustProxySetting() {
@@ -173,6 +256,9 @@ function createApp() {
     res.status(200).json({ status: true, message: "basicdiet145 backend is running" });
   });
   app.get("/account-deletion", getAccountDeletionPage);
+  app.get("/privacy-policy", (_req, res) => {
+    res.type("html").send(renderPrivacyPolicyPage());
+  });
   app.get("/PRIVACY_POLICY.md", (_req, res) => {
     res.sendFile(path.join(__dirname, "../PRIVACY_POLICY.md"));
   });

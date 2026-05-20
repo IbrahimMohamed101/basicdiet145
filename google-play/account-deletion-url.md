@@ -4,11 +4,9 @@ Host the backend account deletion page publicly:
 
 `GET /account-deletion`
 
-Example production URL:
+Final production URL:
 
-`https://YOUR_API_DOMAIN/account-deletion`
-
-TODO: Replace `YOUR_API_DOMAIN` with the exact production domain after deployment.
+`https://basicdiet145.onrender.com/account-deletion`
 
 In Google Play Console:
 

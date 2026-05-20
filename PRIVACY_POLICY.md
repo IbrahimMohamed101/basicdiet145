@@ -79,7 +79,7 @@ Retention periods:
 
 Users may request deletion from inside the app or through the public account deletion page at:
 
-TODO: Add the exact production account deletion URL after deployment.
+https://basicdiet145.onrender.com/account-deletion
 
 The public page collects email address, optional reason, and confirmation. Public requests require manual verification before account data is changed. Authenticated in-app requests are processed by soft deletion immediately.
 

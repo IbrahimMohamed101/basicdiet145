@@ -44,7 +44,7 @@ Sale of data and advertising:
 
 Encryption in transit:
 
-- TODO: Mark "Yes" only after production HTTPS is enabled for all app/backend traffic.
+- Yes. The production backend URLs use HTTPS on `https://basicdiet145.onrender.com`.
 
 Can users request deletion:
 
@@ -60,7 +60,6 @@ Required or optional:
 
 TODOs before submitting:
 
-- Confirm production HTTPS is enabled for all app/backend traffic.
 - Confirm production hosting region.
 - Confirm production database encryption-at-rest.
 - Confirm production backup provider and backup settings.

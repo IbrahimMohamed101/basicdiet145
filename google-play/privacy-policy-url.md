@@ -1,14 +1,16 @@
 # Privacy Policy URL
 
-Host `PRIVACY_POLICY.md` as a public web page before release.
+Host `PRIVACY_POLICY.md` through the backend-rendered public privacy route.
 
-TODO: Replace this documentation note with the exact production Privacy Policy URL after deployment.
+Final Privacy Policy URL:
+
+`https://basicdiet145.onrender.com/privacy-policy`
 
 In Google Play Console:
 
 - Open App content.
 - Open Privacy Policy.
-- Add the public HTTPS URL for the hosted policy.
+- Add `https://basicdiet145.onrender.com/privacy-policy`.
 
 The URL must be accessible without login. Final app details used in the Privacy Policy:
 
@@ -16,7 +18,7 @@ The URL must be accessible without login. Final app details used in the Privacy 
 - Developer name: basicdite
 - Contact email: basicdite@gmail.com
 - Effective date: May 20, 2026
-- Account deletion URL: TODO, exact production domain is not deployed yet.
+- Account deletion URL: https://basicdiet145.onrender.com/account-deletion
 
 Confirmed product details reflected in the policy:
 

@@ -4,6 +4,18 @@
 
 Returns a backend-served static HTML form for external account deletion requests. This URL must be publicly reachable outside the app for Google Play.
 
+Production URL:
+
+`https://basicdiet145.onrender.com/account-deletion`
+
+## GET /privacy-policy
+
+Returns a browser-readable HTML rendering of `PRIVACY_POLICY.md`. The markdown file remains the source of truth.
+
+Production URL:
+
+`https://basicdiet145.onrender.com/privacy-policy`
+
 ## POST /api/account-deletion/request
 
 Public endpoint that also accepts an optional app bearer token.

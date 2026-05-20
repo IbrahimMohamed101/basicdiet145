@@ -1,12 +1,9 @@
 # Backend Release Checklist
 
-- Privacy Policy URL is live and public.
-- Account Deletion URL is live and public.
+- Privacy Policy URL is live and public: `https://basicdiet145.onrender.com/privacy-policy`.
+- Account Deletion URL is live and public: `https://basicdiet145.onrender.com/account-deletion`.
 - Google Play Data Safety section is completed from verified production behavior.
-- HTTPS is enabled for all backend and app traffic.
-- Confirm production HTTPS is live.
-- Confirm Privacy Policy URL is public.
-- Confirm Account Deletion URL is public.
+- HTTPS is enabled for the Render backend domain.
 - Confirm Twilio production configuration.
 - Confirm Moyasar production configuration.
 - Confirm Google Play Data Safety answers match the final mobile app permissions and SDKs.

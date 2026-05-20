@@ -9,6 +9,7 @@ Review date: 2026-05-20
 - Added public deletion request flow with validation and duplicate-pending-request throttling.
 - Added authenticated in-app deletion flow that soft-deletes the user, clears password hash and push tokens, revokes refresh sessions, and blocks protected routes through the existing inactive-user guard.
 - Added backend-served `GET /account-deletion` page and `POST /api/account-deletion/request` API.
+- Added backend-served `GET /privacy-policy` page that renders `PRIVACY_POLICY.md`.
 - Added `POST /api/app/account-deletion/request` authenticated app alias.
 - Added tests for valid/invalid deletion requests, confirmation validation, rate limiting, authenticated deletion, session revocation, and protected route denial for deleted users.
 - Updated `.env.example` with placeholder-only rate-limit and refresh-token settings.
@@ -30,7 +31,8 @@ Review date: 2026-05-20
 ## Manual decisions still needed
 
 - Replace all placeholder values in production environment variables with strong secrets.
-- Confirm the public production URLs for Privacy Policy and Account Deletion.
+- Public production Privacy Policy URL: `https://basicdiet145.onrender.com/privacy-policy`.
+- Public production Account Deletion URL: `https://basicdiet145.onrender.com/account-deletion`.
 - Confirm production backup provider/settings and ensure backup overwrite behavior matches the documented 30-day retention statement.
 - Decide whether public account deletion requests should trigger an email verification workflow. No email sending provider was found in the backend.
 - Confirm final mobile build has no analytics, crash reporting, ads, advertising ID, location, contacts, media, camera, or microphone permissions.
