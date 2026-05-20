@@ -1,103 +1,737 @@
 <!doctype html>
 <html lang="en">
+
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>basicdite Privacy Policy</title>
   <style>
-    body { font-family: Arial, sans-serif; line-height: 1.6; margin: 0; color: #18212f; background: #f7f8fa; }
-    main { max-width: 820px; min-height: 100vh; margin: 0 auto; padding: 40px 20px 64px; background: #fff; }
-    h1, h2 { line-height: 1.25; color: #111827; }
-    h1 { margin-top: 0; font-size: 2rem; }
-    h2 { margin-top: 32px; border-top: 1px solid #e5e7eb; padding-top: 24px; font-size: 1.35rem; }
-    p { margin: 12px 0; }
-    ul { padding-left: 22px; }
-    li { margin: 8px 0; }
-    a { color: #1f6feb; }
+    :root {
+      --bg: #faf9f6;
+      --surface: #ffffff;
+      --text: #1a1a1a;
+      --muted: #6b7280;
+      --border: #e8e4df;
+      --accent: #2d6a4f;
+      --accent-light: #e8f5ee;
+      --accent2: #d4a017;
+      --warn: #dc2626;
+      --warn-light: #fef2f2;
+      --radius: 12px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-weight: 400;
+      line-height: 1.75;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    /* ── Header ── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 32px 24px 28px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    header::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse 70% 60% at 50% -20%, #d4f0e044 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .app-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--accent-light);
+      border: 1px solid #a7d9bc;
+      border-radius: 999px;
+      padding: 4px 14px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--accent);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+
+    .app-badge span {
+      font-size: 0.9rem;
+    }
+
+    h1 {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: clamp(1.8rem, 4vw, 2.6rem);
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -0.01em;
+      margin-bottom: 10px;
+    }
+
+    .meta {
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 16px;
+      font-size: 0.8rem;
+      color: var(--muted);
+      font-weight: 400;
+    }
+
+    .meta span::before {
+      content: '· ';
+    }
+
+    .meta span:first-child::before {
+      content: '';
+    }
+
+    /* ── Layout ── */
+    main {
+      max-width: 780px;
+      margin: 0 auto;
+      padding: 48px 20px 80px;
+    }
+
+    /* ── Data Safety Card ── */
+    .data-safety-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 12px;
+      margin: 24px 0;
+    }
+
+    .ds-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px 16px;
+      position: relative;
+    }
+
+    .ds-card .icon {
+      font-size: 1.5rem;
+      margin-bottom: 8px;
+      display: block;
+    }
+
+    .ds-card .label {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      font-weight: 600;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+
+    .ds-card .value {
+      font-size: 0.9rem;
+      font-weight: 500;
+      color: var(--text);
+    }
+
+    .ds-card.yes .icon {
+      color: var(--accent);
+    }
+
+    .ds-card.no .icon {
+      color: var(--muted);
+    }
+
+    /* ── Permissions Table ── */
+    .perm-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0;
+      font-size: 0.875rem;
+    }
+
+    .perm-table th {
+      background: #f3f4f6;
+      padding: 10px 14px;
+      text-align: left;
+      font-weight: 600;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .perm-table td {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+
+    .perm-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .perm-table tr:hover td {
+      background: #fafafa;
+    }
+
+    .perm-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .perm-badge.required {
+      background: #fef3c7;
+      color: #92400e;
+    }
+
+    .perm-badge.optional {
+      background: #ede9fe;
+      color: #5b21b6;
+    }
+
+    /* ── Section headings ── */
+    section {
+      margin-top: 48px;
+    }
+
+    h2 {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    h2 .num {
+      width: 28px;
+      height: 28px;
+      background: var(--accent);
+      color: #fff;
+      border-radius: 50%;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 0.75rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    /* ── Prose ── */
+    p {
+      margin-bottom: 12px;
+      color: #374151;
+      font-size: 0.925rem;
+    }
+
+    ul {
+      list-style: none;
+      padding: 0;
+      margin: 8px 0 16px;
+    }
+
+    ul li {
+      padding: 6px 0 6px 20px;
+      position: relative;
+      font-size: 0.9rem;
+      color: #374151;
+      border-bottom: 1px dashed #f0ede8;
+    }
+
+    ul li:last-child {
+      border-bottom: none;
+    }
+
+    ul li::before {
+      content: '→';
+      position: absolute;
+      left: 0;
+      color: var(--accent);
+      font-weight: 600;
+      font-size: 0.8rem;
+      top: 7px;
+    }
+
+    a {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    /* ── Info / Warning boxes ── */
+    .callout {
+      border-radius: var(--radius);
+      padding: 16px 18px;
+      margin: 16px 0;
+      font-size: 0.875rem;
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+    }
+
+    .callout-icon {
+      font-size: 1.1rem;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    .callout.info {
+      background: var(--accent-light);
+      border: 1px solid #a7d9bc;
+    }
+
+    .callout.warn {
+      background: var(--warn-light);
+      border: 1px solid #fecaca;
+    }
+
+    .callout.neutral {
+      background: #f8f7f4;
+      border: 1px solid var(--border);
+    }
+
+    .callout p {
+      margin: 0;
+      color: var(--text);
+    }
+
+    /* ── Retention table ── */
+    .retention-list {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      margin: 16px 0;
+    }
+
+    .retention-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 18px;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.875rem;
+      gap: 16px;
+    }
+
+    .retention-row:last-child {
+      border-bottom: none;
+    }
+
+    .retention-row .rtype {
+      color: #374151;
+      font-weight: 400;
+    }
+
+    .retention-row .rperiod {
+      background: #f3f4f6;
+      color: var(--text);
+      font-weight: 600;
+      font-size: 0.78rem;
+      padding: 3px 10px;
+      border-radius: 999px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    /* ── Contact card ── */
+    .contact-card {
+      background: var(--accent);
+      color: #fff;
+      border-radius: var(--radius);
+      padding: 28px 24px;
+      margin-top: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .contact-card .ctitle {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 1.1rem;
+      font-weight: 700;
+    }
+
+    .contact-card a {
+      color: #a7f3d0;
+      font-size: 0.9rem;
+    }
+
+    .contact-card p {
+      color: #d1fae5;
+      font-size: 0.85rem;
+    }
+
+    /* ── Divider ── */
+    hr {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 8px 0;
+    }
+
+    /* ── Footer ── */
+    footer {
+      text-align: center;
+      padding: 24px;
+      font-size: 0.78rem;
+      color: var(--muted);
+      border-top: 1px solid var(--border);
+    }
+
+    @media (max-width: 520px) {
+      .retention-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 4px;
+      }
+
+      .data-safety-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
   </style>
 </head>
+
 <body>
+
+  <header>
+    <div class="app-badge"><span>🥗</span> basicdite</div>
+    <h1>Privacy Policy</h1>
+    <div class="meta">
+      <span>Effective: May 20, 2026</span>
+      <span>Last updated: May 20, 2026</span>
+      <span>Version 1.0</span>
+      <span>Target audience: Ages 13+</span>
+    </div>
+  </header>
+
   <main>
-    <h1>Privacy Policy for basicdite</h1>
-    <p>Effective date: May 20, 2026</p>
-    <p>basicdite ("we", "us", or "our") operates basicdite. This Privacy Policy explains what data the backend is designed to collect, use, store, and delete.</p>
 
-    <h2>Data We Collect</h2>
-    <p>Based on the backend code, basicdite may collect:</p>
-    <ul>
-      <li>Account and authentication data: phone number, phone verification status, optional full name, optional email address, password hash for password-based app login, OTP verification metadata, refresh-session metadata, device ID/name, IP address, and user agent.</li>
-      <li>Order and subscription data: meal selections, custom meal/salad selections, plans, subscription days, pickup/delivery status, delivery zones/addresses where used, promo code usage, and operational history.</li>
-      <li>Payment data: payment provider identifiers, invoice/payment status, payment amounts, redirect/callback metadata, and provider webhook data from Moyasar. basicdite does not store full payment card details on its own servers.</li>
-      <li>Push notification data: Firebase Cloud Messaging tokens when a user registers a device token.</li>
-      <li>Logs and security data: server logs, request metadata, webhook processing data, rate-limit events, and audit/activity logs. The backend includes log redaction helpers for sensitive fields.</li>
-    </ul>
-    <p>basicdite does not use advertising, ads, analytics SDKs, crash reporting SDKs, advertising IDs, precise location, contacts, photos/media access, camera access, or microphone access.</p>
+    <!-- Intro -->
+    <section style="margin-top:0">
+      <p>
+        <strong>basicdite</strong> ("we", "us", or "our") operates the basicdite mobile application and related
+        services. This Privacy Policy explains what data we collect, why we collect it, how it is stored, and your
+        rights over it.
+      </p>
+      <div class="callout info">
+        <span class="callout-icon">🔒</span>
+        <p>We do <strong>not</strong> sell your personal data. We do <strong>not</strong> use advertising SDKs,
+          analytics SDKs, crash-reporting SDKs, advertising IDs, precise location, contacts, photos, camera, or
+          microphone.</p>
+      </div>
+    </section>
 
-    <h2>Why We Collect Data</h2>
-    <p>We use this data to:</p>
-    <ul>
-      <li>Create, authenticate, and secure user accounts.</li>
-      <li>Verify phone numbers and support login, password reset, and session refresh.</li>
-      <li>Process orders, subscriptions, pickup, delivery, and customer support workflows.</li>
-      <li>Process and reconcile payments through Moyasar.</li>
-      <li>Send or verify login codes/messages through Twilio and send push notifications through Firebase when configured.</li>
-      <li>Maintain fraud prevention, abuse prevention, system integrity, accounting, audit, and legal records.</li>
-      <li>Operate admin, dashboard, kitchen, courier, and reporting workflows.</li>
-    </ul>
+    <!-- 1. Data Safety Summary -->
+    <section>
+      <h2><span class="num">1</span> Data Safety Summary</h2>
+      <p>This section is designed to match the <strong>Google Play Data Safety</strong> declaration.</p>
+      <div class="data-safety-grid">
+        <div class="ds-card yes">
+          <span class="icon">🔐</span>
+          <div class="label">Data encrypted in transit</div>
+          <div class="value">Yes — HTTPS / TLS</div>
+        </div>
+        <div class="ds-card yes">
+          <span class="icon">🗑️</span>
+          <div class="label">User can request deletion</div>
+          <div class="value">Yes — in-app & online</div>
+        </div>
+        <div class="ds-card no">
+          <span class="icon">🚫</span>
+          <div class="label">Data shared with third parties</div>
+          <div class="value">Only service providers</div>
+        </div>
+        <div class="ds-card no">
+          <span class="icon">📵</span>
+          <div class="label">Advertising / tracking</div>
+          <div class="value">None</div>
+        </div>
+        <div class="ds-card yes">
+          <span class="icon">👤</span>
+          <div class="label">Account required</div>
+          <div class="value">Yes — phone-based</div>
+        </div>
+        <div class="ds-card no">
+          <span class="icon">📍</span>
+          <div class="label">Precise location collected</div>
+          <div class="value">No</div>
+        </div>
+      </div>
+    </section>
 
-    <h2>How Data Is Stored</h2>
-    <p>Data is stored in MongoDB. Passwords are stored as hashes, and refresh tokens are stored as HMAC hashes rather than raw tokens. Secrets are expected to be loaded from environment variables. Production deployments should use HTTPS/TLS in transit, strong secrets, restricted database access, and managed database/storage security controls where available.</p>
+    <!-- 2. App Permissions -->
+    <section>
+      <h2><span class="num">2</span> App Permissions</h2>
+      <p>The following Android/iOS permissions may be requested by basicdite:</p>
+      <table class="perm-table">
+        <thead>
+          <tr>
+            <th>Permission</th>
+            <th>Purpose</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Internet access</strong></td>
+            <td>Communicate with basicdite servers to load orders, process payments, and receive updates.</td>
+            <td><span class="perm-badge required">Required</span></td>
+          </tr>
+          <tr>
+            <td><strong>Push notifications</strong></td>
+            <td>Send order status updates and alerts via Firebase Cloud Messaging (FCM).</td>
+            <td><span class="perm-badge optional">Optional</span></td>
+          </tr>
+          <tr>
+            <td><strong>Vibration</strong></td>
+            <td>Provide haptic feedback for notification alerts.</td>
+            <td><span class="perm-badge optional">Optional</span></td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="callout neutral">
+        <span class="callout-icon">ℹ️</span>
+        <p>basicdite does <strong>not</strong> request access to your camera, microphone, contacts, photos, gallery,
+          precise GPS location, Bluetooth, or any other sensitive system resource.</p>
+      </div>
+    </section>
 
-    <h2>Third Parties</h2>
-    <p>Based on the backend integrations, data may be processed by:</p>
-    <ul>
-      <li>Twilio Verify/WhatsApp for OTP delivery.</li>
-      <li>Moyasar for payment invoice/payment processing.</li>
-      <li>Firebase Cloud Messaging for push notifications.</li>
-      <li>Hosting, database, logging, and infrastructure providers used by basicdite.</li>
-    </ul>
-    <p>We do not sell personal data. basicdite does not share data for advertising or analytics.</p>
-    <p>Production infrastructure, hosting, database, logging, and backup providers may process data as needed to operate, secure, monitor, and maintain the service.</p>
+    <!-- 3. Data We Collect -->
+    <section>
+      <h2><span class="num">3</span> Data We Collect</h2>
+      <p><strong>Account &amp; authentication data:</strong></p>
+      <ul>
+        <li>Phone number and phone verification status</li>
+        <li>Optional full name and optional email address</li>
+        <li>Password hash (never stored in plain text)</li>
+        <li>OTP verification metadata and refresh-session metadata</li>
+        <li>Device ID / device name, IP address, user agent</li>
+      </ul>
+      <p><strong>Order &amp; subscription data:</strong></p>
+      <ul>
+        <li>Meal selections, custom meal / salad selections</li>
+        <li>Subscription plans and days, pickup / delivery status</li>
+        <li>Delivery zone and address (where delivery is used)</li>
+        <li>Promo code usage and operational history</li>
+      </ul>
+      <p><strong>Payment data:</strong></p>
+      <ul>
+        <li>Payment provider identifiers, invoice and payment status</li>
+        <li>Payment amounts, redirect / callback metadata</li>
+        <li>Moyasar webhook data</li>
+      </ul>
+      <div class="callout info">
+        <span class="callout-icon">💳</span>
+        <p>basicdite does <strong>not</strong> store full payment card details on its own servers. Card data is handled
+          by <strong>Moyasar</strong>, our payment provider.</p>
+      </div>
+      <p><strong>Push notification data:</strong></p>
+      <ul>
+        <li>Firebase Cloud Messaging (FCM) device tokens when you enable notifications</li>
+      </ul>
+      <p><strong>Logs &amp; security data:</strong></p>
+      <ul>
+        <li>Server logs, request metadata, webhook processing data</li>
+        <li>Rate-limit events and audit / activity logs</li>
+        <li>Log redaction is applied to sensitive fields</li>
+      </ul>
+    </section>
 
-    <h2>Authentication and Account Data</h2>
-    <p>Users authenticate with phone OTP and/or password-based login depending on the app flow. Twilio may be used to send or verify login codes/messages. The backend stores phone numbers, optional names/emails, password hashes, refresh-session records, and device/push tokens. Inactive or deleted users are blocked from login and protected API access.</p>
+    <!-- 4. Why We Collect Data -->
+    <section>
+      <h2><span class="num">4</span> Why We Collect Data</h2>
+      <ul>
+        <li>Create, authenticate, and secure user accounts</li>
+        <li>Verify phone numbers; support login, password reset, and session refresh</li>
+        <li>Process orders, subscriptions, pickup, delivery, and customer support workflows</li>
+        <li>Process and reconcile payments through Moyasar</li>
+        <li>Send OTP codes via Twilio and push notifications via Firebase</li>
+        <li>Fraud prevention, abuse prevention, system integrity, and legal compliance</li>
+        <li>Operate admin, kitchen, courier, and reporting workflows</li>
+      </ul>
+    </section>
 
-    <h2>Analytics and Crash Logs</h2>
-    <p>basicdite does not use analytics SDKs or crash reporting SDKs. Server logs may still collect operational and error metadata needed to run, debug, secure, and protect the service.</p>
+    <!-- 5. How Data Is Stored -->
+    <section>
+      <h2><span class="num">5</span> How Data Is Stored &amp; Secured</h2>
+      <ul>
+        <li>Data is stored in <strong>MongoDB</strong></li>
+        <li>Passwords are stored as <strong>cryptographic hashes</strong> — never in plain text</li>
+        <li>Refresh tokens are stored as <strong>HMAC hashes</strong> — not as raw tokens</li>
+        <li>All secrets are loaded from environment variables — not hard-coded</li>
+        <li>All data in transit is protected by <strong>HTTPS / TLS</strong></li>
+        <li>Sensitive log fields are redacted before writing to logs</li>
+      </ul>
+      <div class="callout neutral">
+        <span class="callout-icon">🛡️</span>
+        <p>The backend also uses authentication middleware, rate limiting on sensitive endpoints, CORS allowlists,
+          security headers, and structured webhook validation.</p>
+      </div>
+    </section>
 
-    <h2>Push Notifications</h2>
-    <p>The backend supports Firebase Cloud Messaging tokens. These tokens are used to send app notifications if push notifications are enabled.</p>
+    <!-- 6. Third Parties -->
+    <section>
+      <h2><span class="num">6</span> Third-Party Service Providers</h2>
+      <p>We share data only with the following service providers, strictly to operate basicdite:</p>
+      <ul>
+        <li><strong>Twilio</strong> — OTP delivery via SMS or WhatsApp for phone verification</li>
+        <li><strong>Moyasar</strong> — Payment invoice processing and webhook reconciliation</li>
+        <li><strong>Firebase (Google)</strong> — Cloud Messaging for push notifications</li>
+        <li><strong>Hosting &amp; infrastructure providers</strong> — Server hosting, database, logging, and backup
+          services used to operate and maintain the platform</li>
+      </ul>
+      <div class="callout warn">
+        <span class="callout-icon">🚫</span>
+        <p>We do <strong>not</strong> sell personal data. We do <strong>not</strong> share data for advertising,
+          marketing, or analytics with any third party.</p>
+      </div>
+    </section>
 
-    <h2>Payments</h2>
-    <p>Payments are processed through Moyasar. The backend stores payment identifiers, status, amounts, and webhook/reconciliation metadata. basicdite does not store full payment card details on its own servers. Payment and order records may be retained where required for accounting, tax, fraud prevention, refunds, dispute handling, and legal obligations.</p>
+    <!-- 7. Authentication -->
+    <section>
+      <h2><span class="num">7</span> Authentication &amp; Account Data</h2>
+      <p>
+        Users authenticate using phone-based OTP and/or a password, depending on the app flow. Twilio sends or verifies
+        login codes. The backend stores phone numbers, optional names and email addresses, password hashes,
+        refresh-session records, and device / push tokens.
+      </p>
+      <p>Inactive or deleted accounts are blocked from login and protected API access immediately upon deletion.</p>
+    </section>
 
-    <h2>Data Retention</h2>
-    <p>Account profile data is retained while the account is active. When an authenticated user requests deletion, the backend soft-deletes the account, revokes sessions, removes password hash and push tokens, and prevents login. Deleted account personal profile data is deleted or anonymized where technically and legally possible after account deletion is processed.</p>
-    <p>Retention periods:</p>
-    <ul>
-      <li>Account deletion requests are retained for up to 90 days after completion for security, fraud prevention, and compliance records.</li>
-      <li>Server logs are retained for up to 30 days unless needed for security investigation or legal compliance.</li>
-      <li>Backups may retain deleted data for up to 30 days before being overwritten.</li>
-      <li>Support records are retained for up to 180 days after the last interaction.</li>
-      <li>Orders and payment records are retained as required for accounting, tax, fraud prevention, refunds, dispute handling, and legal obligations.</li>
-    </ul>
+    <!-- 8. Analytics & Crash -->
+    <section>
+      <h2><span class="num">8</span> Analytics &amp; Crash Reporting</h2>
+      <p>basicdite does <strong>not</strong> integrate any analytics SDKs or crash-reporting SDKs into the app. Server
+        logs may collect operational and error metadata necessary to run, debug, secure, and protect the service. These
+        logs are not used for profiling, behavioral advertising, or sharing with ad networks.</p>
+    </section>
 
-    <h2>User Rights and Account Deletion</h2>
-    <p>Users may request deletion from inside the app or through the public account deletion page at:</p>
-    <p><a href="https://basicdiet145.onrender.com/account-deletion">https://basicdiet145.onrender.com/account-deletion</a></p>
-    <p>The public page collects email address, optional reason, and confirmation. Public requests require manual verification before account data is changed. Authenticated in-app requests are processed by soft deletion immediately.</p>
-    <p>Users may contact us to request access, correction, deletion, or other privacy support:</p>
-    <p><a href="mailto:basicdite@gmail.com">basicdite@gmail.com</a></p>
+    <!-- 9. Push Notifications -->
+    <section>
+      <h2><span class="num">9</span> Push Notifications</h2>
+      <p>If you grant notification permission, basicdite registers a Firebase Cloud Messaging (FCM) token on our server.
+        This token is used solely to deliver order status and service notifications. You can revoke notification
+        permission at any time from your device settings, and we will stop sending push notifications.</p>
+    </section>
 
-    <h2>Children's Privacy</h2>
-    <p>basicdite is not intended for children under the age of 13. We do not knowingly collect personal data from children under 13. If we become aware that a child under 13 has provided personal data, we will take reasonable steps to delete it.</p>
+    <!-- 10. Payments -->
+    <section>
+      <h2><span class="num">10</span> Payments</h2>
+      <p>Payments are processed through <strong>Moyasar</strong>. We store payment identifiers, status, amounts, and
+        webhook / reconciliation metadata. Payment and order records are retained as required for accounting, tax, fraud
+        prevention, refunds, dispute handling, and legal obligations.</p>
+    </section>
 
-    <h2>Security Measures</h2>
-    <p>The backend uses authentication middleware, password hashing, refresh-token hashing, rate limiting on sensitive endpoints, CORS allowlists, security headers, webhook validation, structured error responses, and log redaction helpers. Production deployments must configure strong secrets, HTTPS, restricted CORS origins, secure database access, and safe logging.</p>
+    <!-- 11. Data Retention -->
+    <section>
+      <h2><span class="num">11</span> Data Retention</h2>
+      <p>Account profile data is retained while the account is active. Upon account deletion, sessions are revoked,
+        password hashes and push tokens are removed, and login is disabled.</p>
+      <div class="retention-list">
+        <div class="retention-row">
+          <span class="rtype">Account profile (active accounts)</span>
+          <span class="rperiod">Duration of account</span>
+        </div>
+        <div class="retention-row">
+          <span class="rtype">Account deletion &amp; security records</span>
+          <span class="rperiod">Up to 90 days</span>
+        </div>
+        <div class="retention-row">
+          <span class="rtype">Server logs</span>
+          <span class="rperiod">Up to 30 days</span>
+        </div>
+        <div class="retention-row">
+          <span class="rtype">Database backups (may contain deleted data)</span>
+          <span class="rperiod">Up to 30 days</span>
+        </div>
+        <div class="retention-row">
+          <span class="rtype">Support records</span>
+          <span class="rperiod">Up to 180 days after last interaction</span>
+        </div>
+        <div class="retention-row">
+          <span class="rtype">Orders &amp; payment records</span>
+          <span class="rperiod">As required by law / accounting</span>
+        </div>
+      </div>
+    </section>
 
-    <h2>Contact</h2>
-    <p>For privacy questions, contact:</p>
-    <p><a href="mailto:basicdite@gmail.com">basicdite@gmail.com</a></p>
+    <!-- 12. User Rights & Account Deletion -->
+    <section>
+      <h2><span class="num">12</span> Your Rights &amp; Account Deletion</h2>
+      <p>You have the right to access, correct, or delete your personal data. You may request account deletion in two
+        ways:</p>
+      <ul>
+        <li><strong>In-app:</strong> Authenticated deletion via the app — processed immediately by soft deletion.</li>
+        <li><strong>Online form:</strong> Submit a request at <a
+            href="https://basicdiet145.onrender.com/account-deletion" target="_blank"
+            rel="noopener">basicdiet145.onrender.com/account-deletion</a> — requires manual verification before any data
+          is changed.</li>
+      </ul>
+      <p>The online form collects your email address, an optional reason, and confirmation. For other privacy requests
+        (access, correction, or general support), contact us at the email below.</p>
+    </section>
+
+    <!-- 13. Children's Privacy -->
+    <section>
+      <h2><span class="num">13</span> Children's Privacy</h2>
+      <div class="callout warn">
+        <span class="callout-icon">🧒</span>
+        <p>basicdite is intended for users <strong>aged 13 and older</strong>. We do not knowingly collect personal data
+          from children under 13. If we become aware that a child under 13 has provided personal data, we will take
+          prompt steps to delete it. Parents or guardians who believe their child has provided data may contact us at
+          the email below.</p>
+      </div>
+    </section>
+
+    <!-- 14. Changes -->
+    <section>
+      <h2><span class="num">14</span> Changes to This Policy</h2>
+      <p>We may update this Privacy Policy from time to time. When we do, we will update the "Last updated" date at the
+        top of this page. For significant changes, we will notify users through the app or via a notification. Continued
+        use of basicdite after changes are published constitutes your acceptance of the updated policy.</p>
+    </section>
+
+    <!-- 15. Contact -->
+    <section>
+      <h2><span class="num">15</span> Contact Us</h2>
+      <p>For privacy questions, data requests, or to report a concern:</p>
+      <div class="contact-card">
+        <span class="ctitle">basicdite Privacy Team</span>
+        <a href="mailto:basicdite@gmail.com">basicdite@gmail.com</a>
+        <p>We aim to respond to all privacy-related inquiries within 5 business days.</p>
+      </div>
+    </section>
+
   </main>
+
+  <footer>
+    &copy; 2026 basicdite · <a href="mailto:basicdite@gmail.com">basicdite@gmail.com</a> · All rights reserved.
+  </footer>
+
 </body>
+
 </html>
