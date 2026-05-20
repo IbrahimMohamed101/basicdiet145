@@ -30,9 +30,7 @@ We use this data to:
 
 ## How Data Is Stored
 
-Data is stored in MongoDB. Passwords are stored as hashes, and refresh tokens are stored as HMAC hashes rather than raw tokens. Secrets are expected to be loaded from environment variables. Production deployments should use HTTPS/TLS in transit and encrypted managed database/storage services.
-
-TODO: Confirm production database encryption-at-rest, backup retention, and hosting region before publishing.
+Data is stored in MongoDB. Passwords are stored as hashes, and refresh tokens are stored as HMAC hashes rather than raw tokens. Secrets are expected to be loaded from environment variables. Production deployments should use HTTPS/TLS in transit, strong secrets, restricted database access, and managed database/storage security controls where available.
 
 ## Third Parties
 
@@ -45,7 +43,7 @@ Based on the backend integrations, data may be processed by:
 
 We do not sell personal data. basicdite does not share data for advertising or analytics.
 
-TODO: Confirm exact production hosting, database, logging, Twilio, Moyasar, and Firebase provider settings before publishing.
+Production infrastructure, hosting, database, logging, and backup providers may process data as needed to operate, secure, monitor, and maintain the service.
 
 ## Authentication and Account Data
 

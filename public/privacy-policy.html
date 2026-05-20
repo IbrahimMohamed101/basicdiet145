@@ -46,8 +46,7 @@
     </ul>
 
     <h2>How Data Is Stored</h2>
-    <p>Data is stored in MongoDB. Passwords are stored as hashes, and refresh tokens are stored as HMAC hashes rather than raw tokens. Secrets are expected to be loaded from environment variables. Production deployments should use HTTPS/TLS in transit and encrypted managed database/storage services.</p>
-    <p>TODO: Confirm production database encryption-at-rest, backup retention, and hosting region before publishing.</p>
+    <p>Data is stored in MongoDB. Passwords are stored as hashes, and refresh tokens are stored as HMAC hashes rather than raw tokens. Secrets are expected to be loaded from environment variables. Production deployments should use HTTPS/TLS in transit, strong secrets, restricted database access, and managed database/storage security controls where available.</p>
 
     <h2>Third Parties</h2>
     <p>Based on the backend integrations, data may be processed by:</p>
@@ -58,7 +57,7 @@
       <li>Hosting, database, logging, and infrastructure providers used by basicdite.</li>
     </ul>
     <p>We do not sell personal data. basicdite does not share data for advertising or analytics.</p>
-    <p>TODO: Confirm exact production hosting, database, logging, Twilio, Moyasar, and Firebase provider settings before publishing.</p>
+    <p>Production infrastructure, hosting, database, logging, and backup providers may process data as needed to operate, secure, monitor, and maintain the service.</p>
 
     <h2>Authentication and Account Data</h2>
     <p>Users authenticate with phone OTP and/or password-based login depending on the app flow. Twilio may be used to send or verify login codes/messages. The backend stores phone numbers, optional names/emails, password hashes, refresh-session records, and device/push tokens. Inactive or deleted users are blocked from login and protected API access.</p>
