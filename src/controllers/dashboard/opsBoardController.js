@@ -121,6 +121,7 @@ function mapDay(day, latestAction, zoneMap, lang, role) {
       pickupLocationId: subscription.pickupLocationId ? String(subscription.pickupLocationId) : null,
       pickupRequested: Boolean(day.pickupRequested),
       pickupPreparedAt: day.pickupPreparedAt || null,
+      pickupCode: day.pickupCode || null,
       pickupCodeIssuedAt: day.pickupCodeIssuedAt || null,
       pickupVerifiedAt: day.pickupVerifiedAt || null,
       pickupNoShowAt: day.pickupNoShowAt || null,
@@ -303,6 +304,15 @@ async function queryBoardDays(req, { screen }) {
       })
       .sort({ updatedAt: -1, createdAt: -1 })
       .lean();
+
+    const pickupRequestDayIds = new Set(
+      pickupRequests
+        .map((pickupRequest) => pickupRequest.subscriptionDayId ? String(pickupRequest.subscriptionDayId) : null)
+        .filter(Boolean)
+    );
+    if (pickupRequestDayIds.size > 0) {
+      items = items.filter((item) => item.entityType !== "subscription_day" || !pickupRequestDayIds.has(String(item.entityId)));
+    }
 
     pickupRequestItems = pickupRequests.map((pickupRequest) => {
       const subscription = pickupRequest.subscriptionId || {};

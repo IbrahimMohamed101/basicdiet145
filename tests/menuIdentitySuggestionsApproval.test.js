@@ -12,6 +12,7 @@ const mongoose = require("mongoose");
 const { MongoMemoryServer } = require("mongodb-memory-server");
 const request = require("supertest");
 const { createApp } = require("../src/app");
+const { dashboardAuth } = require("./helpers/dashboardAuthHelper");
 
 const SharedMenuIdentity = require("../src/models/SharedMenuIdentity");
 const MenuIdentityLink = require("../src/models/MenuIdentityLink");
@@ -34,14 +35,7 @@ async function test(name, fn) {
   }
 }
 
-function dashboardAuth(role, userId = "507f191e810c19729de860ea") {
-  const token = jwt.sign(
-    { userId, role, tokenType: "dashboard_access" },
-    process.env.DASHBOARD_JWT_SECRET,
-    { expiresIn: "1h" }
-  );
-  return { Authorization: `Bearer ${token}` };
-}
+// function dashboardAuth replaced by helper
 
 (async function run() {
   mongoServer = await MongoMemoryServer.create();
@@ -50,6 +44,9 @@ function dashboardAuth(role, userId = "507f191e810c19729de860ea") {
 
   const app = createApp();
   const api = request(app);
+
+  const { headers: adminHeaders } = await dashboardAuth("admin");
+  const { headers: courierHeaders } = await dashboardAuth("courier");
 
   try {
     // 1. Data Setup
@@ -82,12 +79,12 @@ function dashboardAuth(role, userId = "507f191e810c19729de860ea") {
 
     // 2. Auth Tests
     await test("Auth - Returns 403 for courier trying to list suggestions", async () => {
-      const res = await api.get("/api/dashboard/menu-identity-suggestions").set(dashboardAuth("courier"));
+      const res = await api.get("/api/dashboard/menu-identity-suggestions").set(courierHeaders);
       assert.strictEqual(res.status, 403);
     });
 
     await test("Auth - Returns 200 for admin listing suggestions", async () => {
-      const res = await api.get("/api/dashboard/menu-identity-suggestions").set(dashboardAuth("admin"));
+      const res = await api.get("/api/dashboard/menu-identity-suggestions").set(adminHeaders);
       assert.strictEqual(res.status, 200);
       assert.strictEqual(res.body.data.length, 1);
     });
@@ -100,7 +97,7 @@ function dashboardAuth(role, userId = "507f191e810c19729de860ea") {
         proposedLinks: [],
         status: "pending"
       });
-      const res = await api.post(`/api/dashboard/menu-identity-suggestions/${rejSug._id}/reject`).set(dashboardAuth("admin"));
+      const res = await api.post(`/api/dashboard/menu-identity-suggestions/${rejSug._id}/reject`).set(adminHeaders);
       assert.strictEqual(res.status, 200);
       
       const updated = await MenuIdentitySuggestion.findById(rejSug._id);
@@ -109,7 +106,7 @@ function dashboardAuth(role, userId = "507f191e810c19729de860ea") {
 
     // 4. Approval Test
     await test("Approve - Creates identity and links", async () => {
-      const res = await api.post(`/api/dashboard/menu-identity-suggestions/${suggestion._id}/approve`).set(dashboardAuth("admin"));
+      const res = await api.post(`/api/dashboard/menu-identity-suggestions/${suggestion._id}/approve`).set(adminHeaders);
       assert.strictEqual(res.status, 200);
       
       const identity = await SharedMenuIdentity.findOne({ key: "shrimp" });
@@ -134,7 +131,7 @@ function dashboardAuth(role, userId = "507f191e810c19729de860ea") {
         status: "pending"
       });
       
-      const res = await api.post(`/api/dashboard/menu-identity-suggestions/${conflictSug._id}/approve`).set(dashboardAuth("admin"));
+      const res = await api.post(`/api/dashboard/menu-identity-suggestions/${conflictSug._id}/approve`).set(adminHeaders);
       assert.strictEqual(res.status, 409); // Conflict
       assert.ok(res.body.message.includes("already linked"));
     });

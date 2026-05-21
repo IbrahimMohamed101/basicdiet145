@@ -3,6 +3,7 @@ process.env.JWT_SECRET = process.env.JWT_SECRET || "supersecret";
 const assert = require("assert");
 const jwt = require("jsonwebtoken");
 const mongoose = require("mongoose");
+const { connectDB, resetDB } = require("./helpers/dbHelper");
 const request = require("supertest");
 
 const { createApp } = require("../src/app");
@@ -119,9 +120,8 @@ function auth(token) {
 }
 
 async function connectDatabase() {
-  if (mongoose.connection.readyState === 0) {
-    await mongoose.connect(process.env.MONGO_URI || process.env.MONGODB_URI || "mongodb://localhost:27017/basicdiet_test");
-  }
+  await connectDB();
+  await resetDB();
 }
 
 async function snapshotSettings() {

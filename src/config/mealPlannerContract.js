@@ -9,9 +9,11 @@ const MEAL_SELECTION_TYPES = Object.freeze({
   SANDWICH: "sandwich",
 });
 
+const CUSTOM_PREMIUM_SALAD_KEY = "custom_premium_salad";
+
 const LEGACY_MEAL_SELECTION_TYPES = Object.freeze({
   STANDARD_COMBO: "standard_combo",
-  CUSTOM_PREMIUM_SALAD: "custom_premium_salad",
+  CUSTOM_PREMIUM_SALAD: CUSTOM_PREMIUM_SALAD_KEY,
   SANDWICH: "sandwich",
 });
 
@@ -20,7 +22,7 @@ const SANDWICH_CATEGORY_KEYS = Object.freeze(["sandwich", "sandwiches"]);
 const STANDARD_CARB_CATEGORY_KEY = "standard_carbs";
 const LARGE_SALAD_CATEGORY_KEY = "large_salad";
 
-const PREMIUM_LARGE_SALAD_PREMIUM_KEY = "custom_premium_salad";
+const PREMIUM_LARGE_SALAD_PREMIUM_KEY = CUSTOM_PREMIUM_SALAD_KEY;
 const PREMIUM_LARGE_SALAD_PRESET_KEY = LARGE_SALAD_CATEGORY_KEY;
 const PREMIUM_LARGE_SALAD_FIXED_PRICE_HALALA = 3000;
 

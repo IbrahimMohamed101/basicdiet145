@@ -642,7 +642,7 @@ async function verifyUnifiedDayPaymentFlow({
           payment: claimedPayment,
           session,
           source: "client_manual_verify",
-          allowAppliedReconciliation: false,
+          allowAppliedReconciliation: true,
         });
         if (sideEffectResult.applied) {
           synchronized = true;

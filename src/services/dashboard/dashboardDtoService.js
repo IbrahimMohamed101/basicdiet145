@@ -115,6 +115,7 @@ function mapOrderToDTO(order, delivery, user, role, lang) {
   const status = normalizeLegacyOrderStatus(order.status, { paymentStatus: order.paymentStatus });
   const mode = getOrderFulfillmentMethod(order);
   const ui = resolveUiMetadata(status, lang);
+  const pickupCode = order.pickupCode || (order.pickup && order.pickup.pickupCode) || null;
 
   const allowedActions = getAllowedOrderActions(order, { role })
     .map((actionId) => {
@@ -158,13 +159,18 @@ function mapOrderToDTO(order, delivery, user, role, lang) {
     items: order.items || [],
     pricing: order.pricing || {},
     delivery: mode === "delivery" ? (order.delivery || {}) : {},
-    pickup: mode === "pickup" ? (order.pickup || {}) : {},
+    pickup: mode === "pickup" ? {
+      ...(order.pickup || {}),
+      pickupCode,
+      pickupCodeIssuedAt: order.pickupCodeIssuedAt || null,
+      pickupVerifiedAt: order.pickupVerifiedAt || null,
+    } : {},
     context: {
       date: order.fulfillmentDate || order.deliveryDate,
       window: order.deliveryWindow || (order.delivery && order.delivery.deliveryWindow ? order.delivery.deliveryWindow : ""),
       address: order.deliveryAddress || (order.delivery && order.delivery.address ? order.delivery.address : null),
       branch: mode === "pickup" ? "Main Branch" : null,
-      pickupCode: order.pickupCode || (order.pickup && order.pickup.pickupCode) || null,
+      pickupCode,
       pickupCodeIssuedAt: order.pickupCodeIssuedAt || null,
       pickupVerifiedAt: order.pickupVerifiedAt || null,
     },

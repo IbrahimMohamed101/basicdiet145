@@ -321,25 +321,6 @@ async function handleFulfill({ entityId, entityType, payload, userId, role, sess
       err.status = 409;
       throw err;
     }
-    const submittedCode = String(payload.code || payload.pickupCode || "").trim();
-    if (!submittedCode) {
-      const err = new Error("Pickup code is required");
-      err.code = "INVALID_PICKUP_CODE";
-      err.status = 400;
-      throw err;
-    }
-    if (!/^\d{6}$/.test(submittedCode)) {
-      const err = new Error("Pickup code must be a 6-digit value");
-      err.code = "INVALID_PICKUP_CODE";
-      err.status = 400;
-      throw err;
-    }
-    if (doc.pickupCode !== submittedCode) {
-      const err = new Error("Pickup code does not match");
-      err.code = "PICKUP_CODE_MISMATCH";
-      err.status = 422;
-      throw err;
-    }
     const fromStatus = doc.status;
     validateTransition(entityType, fromStatus, "fulfilled");
     const result = await fulfillSubscriptionPickupRequest({ requestId: entityId, actorId: userId, session });
@@ -365,9 +346,14 @@ async function handleFulfill({ entityId, entityType, payload, userId, role, sess
       return { data: day, idempotent: true };
     }
 
-    // If pickup, verify code if provided or required
-    if (payload.pickupCode && !day.pickupVerifiedAt) {
-      await verifyPickupCode(entityId, payload.pickupCode, userId, session);
+    const sub = await Subscription.findById(day.subscriptionId).session(session).lean();
+    if (!sub) throw new Error("Subscription not found");
+    if (sub.deliveryMode === "pickup") {
+      if (!day.pickupVerifiedAt) {
+        day.pickupVerifiedAt = new Date();
+        day.pickupVerifiedByDashboardUserId = userId || null;
+        await day.save({ session });
+      }
     }
 
     const fromStatus = day.status;

@@ -71,7 +71,7 @@ let testPlan = null;
 
 const TEST_USER_PHONE = '+966501234567';
 const TEST_USER_PASSWORD = 'testpassword123';
-const CUSTOM_PREMIUM_SALAD_KEY = 'custom_premium_salad';
+const CUSTOM_PREMIUM_SALAD_KEY = 'premium_large_salad';
 const CUSTOM_PREMIUM_SALAD_FIXED_PRICE = 3000;
 
 function assertEqual(actual, expected, msg) {

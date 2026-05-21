@@ -173,9 +173,9 @@ async function seedSubscription({
     userId: user._id,
     planId: plan._id,
     status: "active",
-    startDate: new Date("2026-04-01T00:00:00+03:00"),
-    endDate: new Date("2026-04-15T00:00:00+03:00"),
-    validityEndDate: new Date("2026-05-30T00:00:00+03:00"),
+    startDate: new Date("2026-06-01T00:00:00+03:00"),
+    endDate: new Date("2026-06-15T00:00:00+03:00"),
+    validityEndDate: new Date("2026-07-30T00:00:00+03:00"),
     totalMeals,
     remainingMeals,
     selectedGrams: 200,
@@ -215,31 +215,31 @@ async function runTests() {
 
     // Populate old days
     await SubscriptionDay.create([
-      { subscriptionId: sub1._id, date: "2026-04-01", status: "open" },
-      { subscriptionId: sub1._id, date: "2026-04-02", status: "locked", lockedSnapshot: { mealsPerDay: 2 } },
-      { subscriptionId: sub1._id, date: "2026-04-03", status: "out_for_delivery", lockedSnapshot: { mealsPerDay: 2 } }
+      { subscriptionId: sub1._id, date: "2026-06-01", status: "open" },
+      { subscriptionId: sub1._id, date: "2026-06-02", status: "locked", lockedSnapshot: { mealsPerDay: 2 } },
+      { subscriptionId: sub1._id, date: "2026-06-03", status: "out_for_delivery", lockedSnapshot: { mealsPerDay: 2 } }
     ]);
     await SubscriptionDay.create([
-      { subscriptionId: sub2._id, date: "2026-04-01", status: "ready_for_pickup", pickupRequested: true, lockedSnapshot: { mealsPerDay: 2 } }
+      { subscriptionId: sub2._id, date: "2026-06-01", status: "ready_for_pickup", pickupRequested: true, lockedSnapshot: { mealsPerDay: 2 } }
     ]);
 
     // Test 1: Timeline/read endpoints do not mutate remainingMeals and past days do not auto-consume
     const timeline1 = await buildSubscriptionTimeline(sub1._id, {
       lang: "en",
-      // Act as if today is late May, well past those April dates
-      now: new Date("2026-05-20T08:00:00Z"),
-      businessDate: "2026-05-20",
+      // Act as if today is late June
+      now: new Date("2026-06-20T08:00:00Z"),
+      businessDate: "2026-06-20",
     });
     const sub1AfterRead = await Subscription.findById(sub1._id).lean();
     assert.strictEqual(sub1AfterRead.remainingMeals, 30, "Timeline endpoint must not mutate remainingMeals");
     
     // Test 2: Past open/locked/out_for_delivery days do not auto-consume
-    const day01 = await SubscriptionDay.findOne({ subscriptionId: sub1._id, date: "2026-04-01" }).lean();
+    const day01 = await SubscriptionDay.findOne({ subscriptionId: sub1._id, date: "2026-06-01" }).lean();
     assert.strictEqual(day01.status, "open", "Past open day remains open");
     
     // Test 8: Repeated GET reads do not change remainingMeals
     for (let i = 0; i < 3; i++) {
-      await buildSubscriptionTimeline(sub1._id, { lang: "en", now: new Date(), businessDate: "2026-05-20" });
+      await buildSubscriptionTimeline(sub1._id, { lang: "en", now: new Date(), businessDate: "2026-06-20" });
     }
     const sub1Repeated = await Subscription.findById(sub1._id).lean();
     assert.strictEqual(sub1Repeated.remainingMeals, 30, "Repeated reads must not mutate remainingMeals");
@@ -247,13 +247,13 @@ async function runTests() {
     // Test 3: Operational skip does not deduct remainingMeals
     const sessionSkip = await mongoose.startSession();
     sessionSkip.startTransaction();
-    await applyOperationalSkipForDate({ sub: sub1AfterRead, date: "2026-04-04", session: sessionSkip });
+    await applyOperationalSkipForDate({ sub: sub1AfterRead, date: "2026-06-04", session: sessionSkip });
     await sessionSkip.commitTransaction();
     sessionSkip.endSession();
     
     const sub1AfterSkip = await Subscription.findById(sub1._id).lean();
     assert.strictEqual(sub1AfterSkip.remainingMeals, 30, "applyOperationalSkipForDate must not deduct remainingMeals");
-    const skippedDay = await SubscriptionDay.findOne({ subscriptionId: sub1._id, date: "2026-04-04" }).lean();
+    const skippedDay = await SubscriptionDay.findOne({ subscriptionId: sub1._id, date: "2026-06-04" }).lean();
     assert.strictEqual(skippedDay.status, "skipped", "Day was skipped");
     assert.strictEqual(skippedDay.creditsDeducted, false, "Credits were NOT deducted");
 
@@ -262,13 +262,13 @@ async function runTests() {
       status: function (code) { this.statusCode = code; return this; },
       json: function (data) { this.body = data; return this; }
     };
-    const reqMock = { params: { dayId: (await SubscriptionDay.findOne({ subscriptionId: sub2._id, date: "2026-04-01" }).lean())._id } };
+    const reqMock = { params: { dayId: (await SubscriptionDay.findOne({ subscriptionId: sub2._id, date: "2026-06-01" }).lean())._id } };
     await markPickupNoShow(reqMock, resMock);
     
     assert.strictEqual(resMock.statusCode, 200, "markPickupNoShow should succeed");
     const sub2AfterNoShow = await Subscription.findById(sub2._id).lean();
     assert.strictEqual(sub2AfterNoShow.remainingMeals, 30, "markPickupNoShow must not deduct remainingMeals");
-    const noShowDay = await SubscriptionDay.findOne({ subscriptionId: sub2._id, date: "2026-04-01" }).lean();
+    const noShowDay = await SubscriptionDay.findOne({ subscriptionId: sub2._id, date: "2026-06-01" }).lean();
     assert.strictEqual(noShowDay.status, "no_show", "Pickup day transitioned to no_show");
 
     // Test 4a: freeze does not deduct remainingMeals
@@ -283,15 +283,15 @@ async function runTests() {
       { _id: freezeSub._id },
       {
         $set: {
-          startDate: new Date("2026-05-07T00:00:00+03:00"),
-          endDate: new Date("2026-05-14T00:00:00+03:00"),
-          validityEndDate: new Date("2026-05-14T00:00:00+03:00"),
+          startDate: new Date("2026-06-07T00:00:00+03:00"),
+          endDate: new Date("2026-06-14T00:00:00+03:00"),
+          validityEndDate: new Date("2026-06-14T00:00:00+03:00"),
         },
       }
     );
     const freezeResult = await freezeSubscriptionForClient({
       subscriptionId: freezeSub._id,
-      startDate: "2026-05-08",
+      startDate: "2026-06-08",
       days: 1,
       userId: freezeSub.userId,
       ensureActiveFn: () => {},
@@ -300,7 +300,7 @@ async function runTests() {
     });
     assert.strictEqual(freezeResult.ok, true, "Freeze should succeed");
     await assertRemainingMeals(freezeSub._id, 7, "freeze must not deduct remainingMeals");
-    const frozenDay = await SubscriptionDay.findOne({ subscriptionId: freezeSub._id, date: "2026-05-08" }).lean();
+    const frozenDay = await SubscriptionDay.findOne({ subscriptionId: freezeSub._id, date: "2026-06-08" }).lean();
     assert.strictEqual(frozenDay.status, "frozen", "Day was frozen");
     assert.strictEqual(frozenDay.creditsDeducted, false, "Freeze did not mark credits deducted");
     const parentAfterFreeze = await Subscription.findById(freezeSub._id).lean();
@@ -308,7 +308,7 @@ async function runTests() {
 
     const unfreezeResult = await unfreezeSubscriptionForClient({
       subscriptionId: freezeSub._id,
-      startDate: "2026-05-08",
+      startDate: "2026-06-08",
       days: 1,
       userId: freezeSub.userId,
       ensureActiveFn: () => {},
@@ -317,7 +317,7 @@ async function runTests() {
     });
     assert.strictEqual(unfreezeResult.ok, true, "Unfreeze should succeed");
     await assertRemainingMeals(freezeSub._id, 7, "unfreeze must not deduct remainingMeals");
-    const unfrozenDay = await SubscriptionDay.findOne({ subscriptionId: freezeSub._id, date: "2026-05-08" }).lean();
+    const unfrozenDay = await SubscriptionDay.findOne({ subscriptionId: freezeSub._id, date: "2026-06-08" }).lean();
     assert.strictEqual(unfrozenDay.status, "open", "Day was unfrozen back to open");
 
     const { subscription: cancelActiveSub } = await seedSubscription({
@@ -328,14 +328,14 @@ async function runTests() {
       phoneSuffix: "007",
     });
     await SubscriptionDay.create([
-      { subscriptionId: cancelActiveSub._id, date: "2026-05-09", status: "open" },
-      { subscriptionId: cancelActiveSub._id, date: "2026-05-10", status: "frozen" },
-      { subscriptionId: cancelActiveSub._id, date: "2026-05-11", status: "ready_for_pickup" },
+      { subscriptionId: cancelActiveSub._id, date: "2026-06-09", status: "open" },
+      { subscriptionId: cancelActiveSub._id, date: "2026-06-10", status: "frozen" },
+      { subscriptionId: cancelActiveSub._id, date: "2026-06-11", status: "ready_for_pickup" },
     ]);
     const cancelActiveResult = await cancelSubscriptionDomain({
       subscriptionId: cancelActiveSub._id,
       actor: { kind: "client", userId: cancelActiveSub.userId },
-      runtime: { getTodayKSADate: async () => "2026-05-09" },
+      runtime: { getTodayKSADate: async () => "2026-06-09" },
     });
     assert.strictEqual(cancelActiveResult.outcome, "canceled", "Active subscription cancellation should succeed");
     const canceledActive = await Subscription.findById(cancelActiveSub._id).lean();
@@ -376,14 +376,14 @@ async function runTests() {
     }
 
     // Test 4a.1: dashboard GET/read endpoints do not mutate remainingMeals
-    await listOperations({ date: "2026-04-01", role: "admin", lang: "en" });
+    await listOperations({ date: "2026-06-01", role: "admin", lang: "en" });
     await getEnrichedDTO({ entityId: noShowDay._id, entityType: "subscription", role: "admin", lang: "en" });
     await assertRemainingMeals(sub2._id, 30, "dashboard read endpoints must not deduct remainingMeals");
 
     // Test 4a.2: prepare, ready_for_pickup, no_show, cancel do not deduct for pickup subscriptions
     const pickupOpsDay = await SubscriptionDay.create({
       subscriptionId: sub2._id,
-      date: "2026-04-07",
+      date: "2026-06-07",
       status: "locked",
       pickupRequested: true,
       lockedSnapshot: { mealsPerDay: 2, requiredMealCount: 2 },
@@ -415,7 +415,7 @@ async function runTests() {
 
     const pickupFulfillDay = await SubscriptionDay.create({
       subscriptionId: sub2._id,
-      date: "2026-04-09",
+      date: "2026-06-09",
       status: "ready_for_pickup",
       pickupRequested: true,
       lockedSnapshot: { mealsPerDay: 2, requiredMealCount: 2 },
@@ -430,7 +430,7 @@ async function runTests() {
     // Test 4a.3: delivery dispatch, notify_arrival, and cancellation do not deduct
     const deliveryOpsDay = await SubscriptionDay.create({
       subscriptionId: sub1._id,
-      date: "2026-04-08",
+      date: "2026-06-08",
       status: "in_preparation",
       lockedSnapshot: {
         mealsPerDay: 2,
@@ -467,13 +467,13 @@ async function runTests() {
     // Test 4b: repeated fulfillment deducts exactly once
     await SubscriptionDay.create({
       subscriptionId: sub1._id,
-      date: "2026-04-05",
+      date: "2026-06-05",
       status: "out_for_delivery",
       lockedSnapshot: { mealsPerDay: 2 },
     });
-    let fulfillResult = await fulfillSubscriptionDay({ subscriptionId: sub1._id, date: "2026-04-05" });
+    let fulfillResult = await fulfillSubscriptionDay({ subscriptionId: sub1._id, date: "2026-06-05" });
     assert.strictEqual(fulfillResult.ok, true, "First fulfillment should succeed");
-    fulfillResult = await fulfillSubscriptionDay({ subscriptionId: sub1._id, date: "2026-04-05" });
+    fulfillResult = await fulfillSubscriptionDay({ subscriptionId: sub1._id, date: "2026-06-05" });
     assert.strictEqual(fulfillResult.ok, true, "Repeated fulfillment should be idempotent");
     const sub1AfterRepeatedFulfill = await Subscription.findById(sub1._id).lean();
     assert.strictEqual(sub1AfterRepeatedFulfill.remainingMeals, 28, "Repeated fulfill deducts only once");
@@ -481,21 +481,21 @@ async function runTests() {
     // Test 4c: concurrent fulfillment deducts exactly once
     await SubscriptionDay.create({
       subscriptionId: sub1._id,
-      date: "2026-04-06",
+      date: "2026-06-06",
       status: "out_for_delivery",
       lockedSnapshot: { mealsPerDay: 2 },
     });
     const concurrentFulfillResults = await Promise.all([
-      fulfillSubscriptionDay({ subscriptionId: sub1._id, date: "2026-04-06" }),
-      fulfillSubscriptionDay({ subscriptionId: sub1._id, date: "2026-04-06" }),
-      fulfillSubscriptionDay({ subscriptionId: sub1._id, date: "2026-04-06" }),
-      fulfillSubscriptionDay({ subscriptionId: sub1._id, date: "2026-04-06" }),
-      fulfillSubscriptionDay({ subscriptionId: sub1._id, date: "2026-04-06" }),
+      fulfillSubscriptionDay({ subscriptionId: sub1._id, date: "2026-06-06" }),
+      fulfillSubscriptionDay({ subscriptionId: sub1._id, date: "2026-06-06" }),
+      fulfillSubscriptionDay({ subscriptionId: sub1._id, date: "2026-06-06" }),
+      fulfillSubscriptionDay({ subscriptionId: sub1._id, date: "2026-06-06" }),
+      fulfillSubscriptionDay({ subscriptionId: sub1._id, date: "2026-06-06" }),
     ]);
     assert(concurrentFulfillResults.every((result) => result.ok), "Concurrent fulfillment calls should resolve successfully");
     const sub1AfterConcurrentFulfill = await Subscription.findById(sub1._id).lean();
     assert.strictEqual(sub1AfterConcurrentFulfill.remainingMeals, 26, "Concurrent fulfill deducts only once");
-    const concurrentFulfilledDay = await SubscriptionDay.findOne({ subscriptionId: sub1._id, date: "2026-04-06" }).lean();
+    const concurrentFulfilledDay = await SubscriptionDay.findOne({ subscriptionId: sub1._id, date: "2026-06-06" }).lean();
     assert.strictEqual(concurrentFulfilledDay.status, "fulfilled", "Concurrent fulfilled day is fulfilled");
     assert.strictEqual(concurrentFulfilledDay.creditsDeducted, true, "Concurrent fulfilled day marks credits deducted");
     assert.strictEqual(concurrentFulfilledDay.fulfilledSnapshot.deductedCredits, 2, "Concurrent fulfilled day snapshot stores deducted credits");
@@ -511,7 +511,7 @@ async function runTests() {
     });
     await SubscriptionDay.create({
       subscriptionId: exactSub._id,
-      date: "2026-05-23",
+      date: "2026-06-23",
       status: "out_for_delivery",
       plannerState: "confirmed",
       planningState: "confirmed",
@@ -520,11 +520,11 @@ async function runTests() {
       plannerMeta: { requiredSlotCount: 1, maxSlotCount: 7, completeSlotCount: 3, premiumSlotCount: 0, isDraftValid: true, isConfirmable: true },
       planningMeta: { requiredMealCount: 1, selectedTotalMealCount: 3, isExactCountSatisfied: true },
     });
-    const exactFulfillResult = await fulfillSubscriptionDay({ subscriptionId: exactSub._id, date: "2026-05-23" });
+    const exactFulfillResult = await fulfillSubscriptionDay({ subscriptionId: exactSub._id, date: "2026-06-23" });
     assert.strictEqual(exactFulfillResult.ok, true, "Fulfillment with 3 selected meals should succeed");
     const exactSubAfterFulfill = await Subscription.findById(exactSub._id).lean();
     assert.strictEqual(exactSubAfterFulfill.remainingMeals, 4, "Fulfillment deducts exact selected meal count, not dailyMealsDefault");
-    const exactFulfilledDay = await SubscriptionDay.findOne({ subscriptionId: exactSub._id, date: "2026-05-23" }).lean();
+    const exactFulfilledDay = await SubscriptionDay.findOne({ subscriptionId: exactSub._id, date: "2026-06-23" }).lean();
     assert.strictEqual(exactFulfilledDay.fulfilledSnapshot.deductedCredits, 3, "Fulfilled snapshot records exact deducted credits");
 
     // Test 5 & 9: Cashier can consume more than dailyMealsDefault, creates audit log
@@ -574,7 +574,7 @@ async function runTests() {
       const validation3 = await performDaySelectionValidation({
         userId: sub3.userId,
         subscriptionId: sub3._id,
-        date: "2026-05-20",
+        date: "2026-06-20",
         mealSlots: buildStandardSlots(3),
       });
       assert.strictEqual(validation3.valid, true, "Validation accepts 3 slots when requiredMealCount is 1 and remainingMeals is 7");
@@ -587,7 +587,7 @@ async function runTests() {
         await performDaySelectionValidation({
           userId: sub3.userId,
           subscriptionId: sub3._id,
-          date: "2026-05-20",
+          date: "2026-06-20",
           mealSlots: buildStandardSlots(8),
         });
         assert.fail("Should have thrown MEAL_SLOT_COUNT_EXCEEDED");
@@ -600,7 +600,7 @@ async function runTests() {
       const saveResult = await performDaySelectionUpdate({
         userId: sub3.userId,
         subscriptionId: sub3._id,
-        date: "2026-05-21",
+        date: "2026-06-21",
         mealSlots: buildStandardSlots(3),
       });
       assert.strictEqual(saveResult.day.mealSlots.length, 3, "Save accepts 3 slots");
@@ -612,7 +612,7 @@ async function runTests() {
         await performDaySelectionValidation({
           userId: legacySub.userId,
           subscriptionId: legacySub._id,
-          date: "2026-05-20",
+          date: "2026-06-20",
           mealSlots: buildStandardSlots(2),
         });
         assert.fail("Should have kept requiredMealCount cap for legacy subscriptions");
@@ -624,7 +624,7 @@ async function runTests() {
       const premiumValidation = await performDaySelectionValidation({
         userId: sub3.userId,
         subscriptionId: sub3._id,
-        date: "2026-05-22",
+        date: "2026-06-22",
         mealSlots: [
           ...buildStandardSlots(2),
           {

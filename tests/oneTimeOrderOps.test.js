@@ -378,6 +378,13 @@ async function createOrder(user, overrides = {}) {
       const order = await createOrder(user, {
         fulfillmentMethod: "pickup",
         status: ORDER_STATUSES.READY_FOR_PICKUP,
+        pickupCode: "123456",
+        pickupCodeIssuedAt: new Date(),
+        pickup: {
+          branchId: "main",
+          pickupWindow: "18:00-20:00",
+          pickupCode: "123456",
+        },
       });
       const res = await api.post(`/api/dashboard/orders/${order._id}/actions/fulfill`).set(auth()).send({});
       expectStatus(res, 200, "fulfill pickup");

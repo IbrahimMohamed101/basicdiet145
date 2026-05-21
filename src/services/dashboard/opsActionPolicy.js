@@ -115,7 +115,7 @@ const TRANSITION_RULES = {
     locked: ["prepare", "reopen", "cancel"],
     in_preparation: ["dispatch", "ready_for_pickup", "cancel"],
     out_for_delivery: ["notify_arrival", "fulfill", "cancel"],
-    ready_for_pickup: ["fulfill", "cancel"],
+    ready_for_pickup: ["fulfill", "cancel", "no_show"],
     fulfilled: [],
     delivery_canceled: ["reopen"],
     canceled_at_branch: ["reopen"],
@@ -149,6 +149,17 @@ function normalizeActionId(actionId) {
   return actionId;
 }
 
+function roleAllowedForActionMode(actionId, role, mode) {
+  if (actionId === "fulfill") {
+    if (role === "kitchen" && mode !== "pickup") return false;
+    if (role === "courier" && mode === "pickup") return false;
+  }
+  if (actionId === "cancel" && role === "courier" && mode !== "delivery") {
+    return false;
+  }
+  return true;
+}
+
 /**
  * Get all allowed actions for an entity.
  */
@@ -169,6 +180,7 @@ function getAllowedActions({ entityType, status, mode, role, lang = "ar" }) {
 
       // Role check
       if (config.roles && !config.roles.includes(role)) return null;
+      if (!roleAllowedForActionMode(actionId, role, mode)) return null;
 
       // Mode check (delivery/pickup)
       if (config.modes && !config.modes.includes(mode)) return null;
@@ -213,10 +225,7 @@ function validateAction({ entityType, status, mode, role, actionId }) {
   }
 
   // State check
-  if (normalizedActionId === "fulfill" && role === "kitchen" && mode !== "pickup") {
-    return { allowed: false, reason: "INVALID_ROLE_FOR_MODE" };
-  }
-  if (normalizedActionId === "cancel" && role === "courier" && mode !== "delivery") {
+  if (!roleAllowedForActionMode(normalizedActionId, role, mode)) {
     return { allowed: false, reason: "INVALID_ROLE_FOR_MODE" };
   }
 

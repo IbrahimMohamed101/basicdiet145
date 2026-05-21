@@ -61,7 +61,6 @@ async function transitionOrder(req, res, toStatus) {
   if (normalizedToStatus === ORDER_STATUSES.FULFILLED && mode !== "pickup") {
     return errorResponse(res, 400, "INVALID", "Only pickup orders can be fulfilled by kitchen");
   }
-
   const fromStatus = order.status;
   order.status = normalizedToStatus;
   if (normalizedToStatus === ORDER_STATUSES.CONFIRMED && !order.confirmedAt) order.confirmedAt = new Date();
@@ -74,6 +73,12 @@ async function transitionOrder(req, res, toStatus) {
     order.pickup.readyAt = order.pickup.readyAt || new Date();
   }
   if (normalizedToStatus === ORDER_STATUSES.FULFILLED && !order.fulfilledAt) order.fulfilledAt = new Date();
+  if (normalizedToStatus === ORDER_STATUSES.FULFILLED && mode === "pickup") {
+    order.pickup = order.pickup || {};
+    order.pickup.pickedUpAt = order.pickup.pickedUpAt || new Date();
+    order.pickupVerifiedAt = order.pickupVerifiedAt || new Date();
+    order.pickupVerifiedByDashboardUserId = req.dashboardUserId || req.userId || order.pickupVerifiedByDashboardUserId;
+  }
   if (normalizedToStatus === ORDER_STATUSES.CANCELLED && !order.cancelledAt) order.cancelledAt = new Date();
   let delivery = null;
 

@@ -2,6 +2,7 @@ const crypto = require("node:crypto");
 const mongoose = require("mongoose");
 
 const ActivityLog = require("../../models/ActivityLog");
+const Delivery = require("../../models/Delivery");
 const Order = require("../../models/Order");
 const { ORDER_STATUSES, canTransitionOrderStatus, isFinalOrderStatus, normalizeLegacyOrderStatus } = require("../../utils/orderState");
 const {
@@ -42,6 +43,75 @@ function createServiceError(status, code, message, details) {
 
 function normalizeRole(role) {
   return String(role || "").trim().toLowerCase();
+}
+
+function resolveOrderDeliveryAddress(order) {
+  return order && order.delivery && order.delivery.address
+    ? order.delivery.address
+    : order.deliveryAddress;
+}
+
+function resolveOrderDeliveryWindow(order) {
+  return order && order.deliveryWindow
+    ? order.deliveryWindow
+    : (order && order.delivery && order.delivery.deliveryWindow ? order.delivery.deliveryWindow : undefined);
+}
+
+async function syncOrderDeliveryRecord({ order, action, payload = {}, now = new Date() }) {
+  if (!order || getOrderMode(order) !== "delivery") return;
+
+  if (action === ACTIONS.DISPATCH) {
+    const etaAt = payload.etaAt ? new Date(payload.etaAt) : undefined;
+    if (etaAt && Number.isNaN(etaAt.getTime())) {
+      throw createServiceError(400, "INVALID_ETA", "Invalid etaAt");
+    }
+    await Delivery.updateOne(
+      { orderId: order._id },
+      {
+        $set: {
+          status: "out_for_delivery",
+          address: resolveOrderDeliveryAddress(order),
+          window: resolveOrderDeliveryWindow(order),
+          ...(etaAt ? { etaAt } : {}),
+        },
+        $setOnInsert: { orderId: order._id },
+      },
+      { upsert: true }
+    );
+  } else if (action === ACTIONS.FULFILL) {
+    await Delivery.updateOne(
+      { orderId: order._id },
+      {
+        $set: {
+          status: "delivered",
+          deliveredAt: now,
+          address: resolveOrderDeliveryAddress(order),
+          window: resolveOrderDeliveryWindow(order),
+        },
+        $setOnInsert: { orderId: order._id },
+      },
+      { upsert: true }
+    );
+  } else if (action === ACTIONS.CANCEL) {
+    await Delivery.updateOne(
+      { orderId: order._id },
+      {
+        $set: {
+          status: "canceled",
+          canceledAt: now,
+          cancellationReason: order.cancellationReason || (payload && payload.reason) || null,
+          cancellationNote: order.cancellationNote || (payload && (payload.notes || payload.note)) || null,
+          canceledByUserId: order.cancelledBy && mongoose.Types.ObjectId.isValid(order.cancelledBy)
+            ? order.cancelledBy
+            : undefined,
+          address: resolveOrderDeliveryAddress(order),
+          window: resolveOrderDeliveryWindow(order),
+        },
+        $setOnInsert: { orderId: order._id },
+      },
+      { upsert: true }
+    );
+  }
 }
 
 function getOrderMode(order) {
@@ -214,6 +284,12 @@ async function executeOrderAction({ orderId, action, actor = {}, payload = {} })
     order.pickupCodeIssuedAt = order.pickupCodeIssuedAt || now;
   } else if (normalizedAction === ACTIONS.DISPATCH) {
     if (mode !== "delivery") throw createServiceError(409, "INVALID_FULFILLMENT_METHOD", "Action requires delivery order");
+    if (payload.etaAt) {
+      const etaAt = new Date(payload.etaAt);
+      if (Number.isNaN(etaAt.getTime())) {
+        throw createServiceError(400, "INVALID_ETA", "Invalid etaAt");
+      }
+    }
     toStatus = ORDER_STATUSES.OUT_FOR_DELIVERY;
     order.dispatchedAt = order.dispatchedAt || now;
   } else if (normalizedAction === ACTIONS.NOTIFY_ARRIVAL) {
@@ -250,6 +326,13 @@ async function executeOrderAction({ orderId, action, actor = {}, payload = {} })
 
   order.status = toStatus;
   await order.save();
+
+  await syncOrderDeliveryRecord({
+    order,
+    action: normalizedAction,
+    payload,
+    now,
+  });
 
   await writeOrderActivity({
     order,

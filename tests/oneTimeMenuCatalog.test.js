@@ -21,7 +21,7 @@ const ProductOptionGroup = require("../src/models/ProductOptionGroup");
 const Setting = require("../src/models/Setting");
 const User = require("../src/models/User");
 const moyasarService = require("../src/services/moyasarService");
-const { DASHBOARD_JWT_SECRET } = require("../src/services/dashboardTokenService");
+const { dashboardAuth } = require("./helpers/dashboardAuthHelper");
 const { JWT_SECRET } = require("../src/middleware/auth");
 const {
   productRows: seededProductRows,
@@ -35,6 +35,8 @@ const results = { passed: 0, failed: 0 };
 let invoiceCounter = 0;
 const moyasarInvoicePayloads = [];
 let mongoServer;
+let adminHeaders;
+let kitchenHeaders;
 
 async function test(name, fn) {
   try {
@@ -52,14 +54,7 @@ function expectStatus(res, status, label) {
   assert.strictEqual(res.status, status, `${label}: expected ${status}, got ${res.status} ${JSON.stringify(res.body)}`);
 }
 
-function dashboardAuth(role = "admin") {
-  const token = jwt.sign(
-    { userId: new mongoose.Types.ObjectId().toString(), role, tokenType: "dashboard_access" },
-    DASHBOARD_JWT_SECRET,
-    { expiresIn: "1h" }
-  );
-  return { Authorization: `Bearer ${token}`, "Accept-Language": "en" };
-}
+// function dashboardAuth replaced by helper
 
 function appAuth(userId) {
   const token = jwt.sign(
@@ -194,7 +189,9 @@ async function seedViaDashboard(api) {
     { $set: { value: 15, description: `${TEST_TAG} VAT` } },
     { upsert: true }
   );
-  let res = await api.post("/api/dashboard/menu/categories").set(dashboardAuth()).send({
+  ({ headers: adminHeaders } = await dashboardAuth("admin", TEST_TAG));
+  ({ headers: kitchenHeaders } = await dashboardAuth("kitchen", TEST_TAG));
+  let res = await api.post("/api/dashboard/menu/categories").set(adminHeaders).send({
     key: `${TEST_TAG}_salads`.replace(/-/g, "_"),
     name: { en: `${TEST_TAG} Salads`, ar: "سلطات" },
     sortOrder: 1,
@@ -202,7 +199,7 @@ async function seedViaDashboard(api) {
   expectStatus(res, 201, "create category");
   const category = res.body.data;
 
-  res = await api.post("/api/dashboard/menu/products").set(dashboardAuth()).send({
+  res = await api.post("/api/dashboard/menu/products").set(adminHeaders).send({
     categoryId: category.id,
     key: `${TEST_TAG}_direct`.replace(/-/g, "_"),
     name: { en: `${TEST_TAG} Direct Product`, ar: "منتج مباشر" },
@@ -214,7 +211,7 @@ async function seedViaDashboard(api) {
   expectStatus(res, 201, "create direct product");
   const directProduct = res.body.data;
 
-  res = await api.post("/api/dashboard/menu/products").set(dashboardAuth()).send({
+  res = await api.post("/api/dashboard/menu/products").set(adminHeaders).send({
     categoryId: category.id,
     key: `${TEST_TAG}_fixed`.replace(/-/g, "_"),
     name: { en: `${TEST_TAG} Fixed Product`, ar: "منتج ثابت" },
@@ -226,7 +223,7 @@ async function seedViaDashboard(api) {
   expectStatus(res, 201, "create fixed product");
   const fixedProduct = res.body.data;
 
-  res = await api.post("/api/dashboard/menu/products").set(dashboardAuth()).send({
+  res = await api.post("/api/dashboard/menu/products").set(adminHeaders).send({
     categoryId: category.id,
     key: `${TEST_TAG}_per100`.replace(/-/g, "_"),
     name: { en: `${TEST_TAG} Per 100g`, ar: "بالوزن" },
@@ -241,7 +238,7 @@ async function seedViaDashboard(api) {
   expectStatus(res, 201, "create per100 product");
   const per100Product = res.body.data;
 
-  res = await api.post("/api/dashboard/menu/products").set(dashboardAuth()).send({
+  res = await api.post("/api/dashboard/menu/products").set(adminHeaders).send({
     categoryId: category.id,
     key: `${TEST_TAG}_inactive`.replace(/-/g, "_"),
     name: { en: `${TEST_TAG} Inactive Product`, ar: "مخفي" },
@@ -254,7 +251,7 @@ async function seedViaDashboard(api) {
   expectStatus(res, 201, "create inactive product");
   const inactiveProduct = res.body.data;
 
-  res = await api.post("/api/dashboard/menu/products").set(dashboardAuth()).send({
+  res = await api.post("/api/dashboard/menu/products").set(adminHeaders).send({
     categoryId: category.id,
     key: `${TEST_TAG}_required`.replace(/-/g, "_"),
     name: { en: `${TEST_TAG} Required Product`, ar: "مطلوب" },
@@ -266,7 +263,7 @@ async function seedViaDashboard(api) {
   expectStatus(res, 201, "create required product");
   const requiredProduct = res.body.data;
 
-  res = await api.post("/api/dashboard/menu/products").set(dashboardAuth()).send({
+  res = await api.post("/api/dashboard/menu/products").set(adminHeaders).send({
     categoryId: category.id,
     key: `${TEST_TAG}_fruit_salad`.replace(/-/g, "_"),
     name: { en: `${TEST_TAG} Fruit Salad`, ar: "سلطة فواكه" },
@@ -278,7 +275,7 @@ async function seedViaDashboard(api) {
   expectStatus(res, 201, "create fixed configurable fruit salad");
   const fruitSaladProduct = res.body.data;
 
-  res = await api.post("/api/dashboard/menu/products").set(dashboardAuth()).send({
+  res = await api.post("/api/dashboard/menu/products").set(adminHeaders).send({
     categoryId: category.id,
     key: `${TEST_TAG}_greek_yogurt`.replace(/-/g, "_"),
     name: { en: `${TEST_TAG} Greek Yogurt`, ar: "زبادي يوناني" },
@@ -290,7 +287,7 @@ async function seedViaDashboard(api) {
   expectStatus(res, 201, "create fixed configurable greek yogurt");
   const greekYogurtProduct = res.body.data;
 
-  res = await api.post("/api/dashboard/menu/option-groups").set(dashboardAuth()).send({
+  res = await api.post("/api/dashboard/menu/option-groups").set(adminHeaders).send({
     key: `${TEST_TAG}_sauces`.replace(/-/g, "_"),
     name: { en: `${TEST_TAG} Sauces`, ar: "صوصات" },
   });
@@ -305,7 +302,7 @@ async function seedViaDashboard(api) {
   ];
   const options = [];
   for (const payload of optionPayloads) {
-    res = await api.post("/api/dashboard/menu/options").set(dashboardAuth()).send({
+    res = await api.post("/api/dashboard/menu/options").set(adminHeaders).send({
       groupId: group.id,
       key: payload.key.replace(/-/g, "_"),
       name: { en: `${TEST_TAG} ${payload.name}`, ar: payload.name },
@@ -318,12 +315,12 @@ async function seedViaDashboard(api) {
     options.push(res.body.data);
   }
 
-  res = await api.put(`/api/dashboard/menu/products/${fixedProduct.id}/groups`).set(dashboardAuth()).send({
+  res = await api.put(`/api/dashboard/menu/products/${fixedProduct.id}/groups`).set(adminHeaders).send({
     groups: [{ groupId: group.id, minSelections: 0, maxSelections: 1, sortOrder: 1 }],
   });
   expectStatus(res, 200, "set product groups");
 
-  res = await api.put(`/api/dashboard/menu/products/${fixedProduct.id}/groups/${group.id}/options`).set(dashboardAuth()).send({
+  res = await api.put(`/api/dashboard/menu/products/${fixedProduct.id}/groups/${group.id}/options`).set(adminHeaders).send({
     options: [
       { optionId: options[0].id, extraPriceHalala: 300, extraWeightPriceHalala: 500, sortOrder: 1 },
       { optionId: options[1].id, extraPriceHalala: 200, sortOrder: 2 },
@@ -332,32 +329,32 @@ async function seedViaDashboard(api) {
   });
   expectStatus(res, 200, "set group options");
 
-  res = await api.put(`/api/dashboard/menu/products/${requiredProduct.id}/groups`).set(dashboardAuth()).send({
+  res = await api.put(`/api/dashboard/menu/products/${requiredProduct.id}/groups`).set(adminHeaders).send({
     groups: [{ groupId: group.id, minSelections: 1, maxSelections: 1, sortOrder: 1 }],
   });
   expectStatus(res, 200, "set required product groups");
 
-  res = await api.put(`/api/dashboard/menu/products/${requiredProduct.id}/groups/${group.id}/options`).set(dashboardAuth()).send({
+  res = await api.put(`/api/dashboard/menu/products/${requiredProduct.id}/groups/${group.id}/options`).set(adminHeaders).send({
     options: [{ optionId: options[1].id, extraPriceHalala: 0, sortOrder: 1 }],
   });
   expectStatus(res, 200, "set required product options");
 
-  res = await api.put(`/api/dashboard/menu/products/${fruitSaladProduct.id}/groups`).set(dashboardAuth()).send({
+  res = await api.put(`/api/dashboard/menu/products/${fruitSaladProduct.id}/groups`).set(adminHeaders).send({
     groups: [{ groupId: group.id, minSelections: 1, maxSelections: 1, sortOrder: 1 }],
   });
   expectStatus(res, 200, "set fruit salad groups");
 
-  res = await api.put(`/api/dashboard/menu/products/${fruitSaladProduct.id}/groups/${group.id}/options`).set(dashboardAuth()).send({
+  res = await api.put(`/api/dashboard/menu/products/${fruitSaladProduct.id}/groups/${group.id}/options`).set(adminHeaders).send({
     options: [{ optionId: options[1].id, extraPriceHalala: 0, sortOrder: 1 }],
   });
   expectStatus(res, 200, "set fruit salad options");
 
-  res = await api.put(`/api/dashboard/menu/products/${greekYogurtProduct.id}/groups`).set(dashboardAuth()).send({
+  res = await api.put(`/api/dashboard/menu/products/${greekYogurtProduct.id}/groups`).set(adminHeaders).send({
     groups: [{ groupId: group.id, minSelections: 0, maxSelections: 3, sortOrder: 1 }],
   });
   expectStatus(res, 200, "set greek yogurt groups");
 
-  res = await api.put(`/api/dashboard/menu/products/${greekYogurtProduct.id}/groups/${group.id}/options`).set(dashboardAuth()).send({
+  res = await api.put(`/api/dashboard/menu/products/${greekYogurtProduct.id}/groups/${group.id}/options`).set(adminHeaders).send({
     options: [
       { optionId: options[0].id, extraPriceHalala: 0, sortOrder: 1 },
       { optionId: options[1].id, extraPriceHalala: 0, sortOrder: 2 },
@@ -365,7 +362,7 @@ async function seedViaDashboard(api) {
   });
   expectStatus(res, 200, "set greek yogurt options");
 
-  res = await api.post("/api/dashboard/menu/publish").set(dashboardAuth()).send({ notes: TEST_TAG });
+  res = await api.post("/api/dashboard/menu/publish").set(adminHeaders).send({ notes: TEST_TAG });
   expectStatus(res, 200, "publish menu");
 
   return {
@@ -764,7 +761,7 @@ async function seedViaDashboard(api) {
 
     await test("Dashboard can edit relation selection rules and customer menu reflects them", async () => {
       let res = await api.patch(`/api/dashboard/menu/products/${ctx.greekYogurtProduct.id}/option-groups/${ctx.group.id}/selection-rules`)
-        .set(dashboardAuth())
+        .set(adminHeaders)
         .send({ minSelections: 1, maxSelections: 2, isRequired: true });
       expectStatus(res, 200, "update selection rules");
       assert.strictEqual(res.body.data.minSelections, 1);
@@ -789,7 +786,7 @@ async function seedViaDashboard(api) {
 
     await test("Dashboard hide/unhide option filters menu and quote rejects stale hidden option", async () => {
       let res = await api.patch(`/api/dashboard/menu/options/${ctx.options[1].id}/visibility`)
-        .set(dashboardAuth())
+        .set(adminHeaders)
         .send({ isVisible: false });
       expectStatus(res, 200, "hide option");
       assert.strictEqual(res.body.data.isVisible, false);
@@ -812,7 +809,7 @@ async function seedViaDashboard(api) {
       assert.strictEqual(res.body.error.code, "OPTION_NOT_AVAILABLE");
 
       res = await api.patch(`/api/dashboard/menu/options/${ctx.options[1].id}/visibility`)
-        .set(dashboardAuth())
+        .set(adminHeaders)
         .send({ isVisible: true });
       expectStatus(res, 200, "unhide option");
       assert.strictEqual(res.body.data.isVisible, true);
@@ -820,7 +817,7 @@ async function seedViaDashboard(api) {
 
     await test("Dashboard relation availability is product-specific and stale quotes are rejected", async () => {
       let res = await api.patch(`/api/dashboard/menu/products/${ctx.fixedProduct.id}/option-groups/${ctx.group.id}/options/${ctx.options[0].id}/availability`)
-        .set(dashboardAuth())
+        .set(adminHeaders)
         .send({ isAvailable: false });
       expectStatus(res, 200, "mark relation option unavailable");
       assert.strictEqual(res.body.data.isAvailable, false);
@@ -846,7 +843,7 @@ async function seedViaDashboard(api) {
 
     await test("Dashboard product availability filters menu and quote/create reject stale product", async () => {
       let res = await api.patch(`/api/dashboard/menu/products/${ctx.directProduct.id}/availability`)
-        .set(dashboardAuth())
+        .set(adminHeaders)
         .send({ isAvailable: false });
       expectStatus(res, 200, "mark product unavailable");
       assert.strictEqual(res.body.data.isAvailable, false);
@@ -872,7 +869,7 @@ async function seedViaDashboard(api) {
 
     await test("Hidden relation group updates canAddDirectly/requiresBuilder and rejects stale builder selections", async () => {
       let res = await api.patch(`/api/dashboard/menu/products/${ctx.fixedProduct.id}/option-groups/${ctx.group.id}/visibility`)
-        .set(dashboardAuth())
+        .set(adminHeaders)
         .send({ isVisible: false });
       expectStatus(res, 200, "hide product group relation");
       assert.strictEqual(res.body.data.isVisible, false);
@@ -898,7 +895,7 @@ async function seedViaDashboard(api) {
     });
 
     await test("Dashboard menu requires admin role", async () => {
-      const res = await api.post("/api/dashboard/menu/categories").set(dashboardAuth("kitchen")).send({
+      const res = await api.post("/api/dashboard/menu/categories").set(kitchenHeaders).send({
         key: `${TEST_TAG}_forbidden`.replace(/-/g, "_"),
         name: { en: "Forbidden" },
       });

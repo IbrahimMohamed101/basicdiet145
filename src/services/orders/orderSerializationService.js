@@ -147,6 +147,15 @@ function serializeOrderForClient(order) {
   const pricing = normalizePricing(plain.pricing || {});
   const fulfillmentMethod = plain.fulfillmentMethod || plain.deliveryMode || "";
   const id = String(plain._id);
+  const pickupCode = plain.pickupCode || (plain.pickup && plain.pickup.pickupCode) || null;
+  const pickupPayload = fulfillmentMethod === "pickup"
+    ? {
+      ...(plain.pickup || {}),
+      pickupCode,
+      pickupCodeIssuedAt: plain.pickupCodeIssuedAt || null,
+      pickupVerifiedAt: plain.pickupVerifiedAt || null,
+    }
+    : undefined;
 
   return {
     id,
@@ -165,7 +174,7 @@ function serializeOrderForClient(order) {
     requestedFulfillmentDate: plain.requestedFulfillmentDate || plain.requestedDeliveryDate || "",
     items: normalizeItems(plain.items),
     pricing,
-    pickup: fulfillmentMethod === "pickup" ? (plain.pickup || {}) : undefined,
+    pickup: pickupPayload,
     delivery: fulfillmentMethod === "delivery" ? (plain.delivery || {}) : undefined,
     createdAt: plain.createdAt || null,
     updatedAt: plain.updatedAt || null,
@@ -178,6 +187,8 @@ function serializeOrderSummaryForClient(order) {
   const pricing = normalizePricing(plain.pricing || {});
   const items = normalizeItems(plain.items);
   const id = String(plain._id);
+  const fulfillmentMethod = plain.fulfillmentMethod || plain.deliveryMode || "";
+  const pickupCode = plain.pickupCode || (plain.pickup && plain.pickup.pickupCode) || null;
   return {
     id,
     orderId: id,
@@ -188,8 +199,14 @@ function serializeOrderSummaryForClient(order) {
     allowedActions: getClientAllowedActions(plain),
     timeline_endpoint: buildOrderTimelineEndpoint(id),
     ...serializeCancellationMetadata(plain),
-    fulfillmentMethod: plain.fulfillmentMethod || plain.deliveryMode || "",
+    fulfillmentMethod,
     fulfillmentDate: plain.fulfillmentDate || plain.deliveryDate || "",
+    pickup: fulfillmentMethod === "pickup" ? {
+      ...(plain.pickup || {}),
+      pickupCode,
+      pickupCodeIssuedAt: plain.pickupCodeIssuedAt || null,
+      pickupVerifiedAt: plain.pickupVerifiedAt || null,
+    } : undefined,
     itemCount: items.reduce((sum, item) => sum + Number(item.qty || 0), 0),
     totalHalala: pricing.totalHalala,
     currency: pricing.currency,
@@ -283,7 +300,12 @@ function serializeOrderForDashboard(order, { allowedActions = [], payment = null
     items: normalizeItems(plain.items),
     payment: sanitizePayment(payment, plain),
     delivery: fulfillmentMethod === "delivery" ? (plain.delivery || plain.deliveryAddress || {}) : {},
-    pickup: fulfillmentMethod === "pickup" ? (plain.pickup || {}) : {},
+    pickup: fulfillmentMethod === "pickup" ? {
+      ...(plain.pickup || {}),
+      pickupCode,
+      pickupCodeIssuedAt: plain.pickupCodeIssuedAt || null,
+      pickupVerifiedAt: plain.pickupVerifiedAt || null,
+    } : {},
     activity: (Array.isArray(activity) ? activity : []).map(serializeActivityLog).filter(Boolean),
     updatedAt: plain.updatedAt || null,
   };

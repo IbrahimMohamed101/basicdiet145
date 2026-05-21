@@ -6,6 +6,7 @@
 
 require('dotenv').config();
 const mongoose = require('mongoose');
+const { connectDB, resetDB } = require('./helpers/dbHelper');
 const jwt = require('jsonwebtoken');
 const http = require('http');
 
@@ -88,8 +89,8 @@ async function run() {
     process.exit(1);
   }
 
-  await mongoose.connect(process.env.MONGODB_URI);
-  await ensureSafeForDestructiveOp(mongoose.connection.db);
+  await connectDB();
+  await resetDB();
 
   // Clear existing
   await Promise.all([
@@ -140,18 +141,19 @@ async function run() {
       userId: user._id,
       status: 'active',
       planId: new mongoose.Types.ObjectId(), // dummy
-      startDate: '2026-05-01',
-      endDate: '2026-05-30',
+      startDate: '2026-10-01',
+      endDate: '2026-10-30',
       totalMeals: 90,
       remainingMeals: 90,
       selectedMealsPerDay: 3,
       deliveryMode: 'delivery',
       premiumBalance: [
-        { proteinId: premiumProtein._id, premiumKey: 'shrimp', purchasedQty: 10, remainingQty: 10, name: 'Shrimp' }
+        { proteinId: premiumProtein._id, premiumKey: 'shrimp', purchasedQty: 10, remainingQty: 10, name: 'Shrimp' },
+        { premiumKey: 'premium_large_salad', purchasedQty: 5, remainingQty: 5, name: 'Premium Salad' }
       ]
     });
 
-    const date = '2026-05-05';
+    const date = '2026-10-10';
     await SubscriptionDay.create({
       subscriptionId: sub._id,
       date,
@@ -190,6 +192,9 @@ async function run() {
     };
 
     const saveRes = await request('PUT', `/api/subscriptions/${sub._id}/days/${date}/selection`, selectionBody, token);
+    if (saveRes.status !== 200) {
+      console.log('Selection Save Failure:', JSON.stringify(saveRes.body, null, 2));
+    }
     assertEqual(saveRes.status, 200, 'Save status');
     
     const savedDay = saveRes.body.data;

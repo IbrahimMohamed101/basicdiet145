@@ -15,20 +15,12 @@ const User = require("../src/models/User");
 const Subscription = require("../src/models/Subscription");
 const SubscriptionDay = require("../src/models/SubscriptionDay");
 const SubscriptionPickupRequest = require("../src/models/SubscriptionPickupRequest");
-const { DASHBOARD_JWT_SECRET } = require("../src/services/dashboardTokenService");
+const { dashboardAuth } = require("./helpers/dashboardAuthHelper");
 
 const TEST_TAG = `pickup-request-ops-${Date.now()}`;
 const TEST_PLAN_ID = new mongoose.Types.ObjectId();
 const TODAY = "2026-05-18";
 const results = { passed: 0, failed: 0 };
-
-function dashboardToken(role = "admin") {
-  return jwt.sign(
-    { userId: new mongoose.Types.ObjectId().toString(), role, tokenType: "dashboard_access" },
-    DASHBOARD_JWT_SECRET,
-    { expiresIn: "1h" }
-  );
-}
 
 function appToken(userId) {
   return jwt.sign(
@@ -36,10 +28,6 @@ function appToken(userId) {
     process.env.JWT_SECRET || "supersecret",
     { expiresIn: "31d" }
   );
-}
-
-function dashboardAuth(role = "admin") {
-  return { Authorization: `Bearer ${dashboardToken(role)}`, "Accept-Language": "en" };
 }
 
 function clientAuth(userId) {
@@ -138,13 +126,16 @@ async function getRemainingMeals(subscriptionId) {
 (async function run() {
   await connect();
   await cleanup();
-  const api = request(createApp());
+  const app = createApp();
+  const api = request(app);
+  const { headers: adminHeaders } = await dashboardAuth("admin", TEST_TAG);
+  const { headers: kitchenHeaders } = await dashboardAuth("kitchen", TEST_TAG);
 
   try {
     await test("ops can move SubscriptionPickupRequest locked -> in_preparation", async () => {
       const { pickupRequest } = await seedReservedPickupRequest({ status: "locked" });
 
-      const res = await api.post("/api/dashboard/ops/actions/prepare").set(dashboardAuth()).send({
+      const res = await api.post("/api/dashboard/ops/actions/start_preparation").set(adminHeaders).send({
         entityType: "subscription_pickup_request",
         entityId: String(pickupRequest._id),
       });
@@ -157,7 +148,7 @@ async function getRemainingMeals(subscriptionId) {
     await test("ops can move in_preparation -> ready_for_pickup and generate pickupCode on request only", async () => {
       const { pickupRequest, day } = await seedReservedPickupRequest({ status: "in_preparation" });
 
-      const res = await api.post("/api/dashboard/ops/actions/ready_for_pickup").set(dashboardAuth()).send({
+      const res = await api.post("/api/dashboard/ops/actions/ready_for_pickup").set(adminHeaders).send({
         entityType: "subscription_pickup_request",
         entityId: String(pickupRequest._id),
       });
@@ -174,7 +165,7 @@ async function getRemainingMeals(subscriptionId) {
 
     await test("client status endpoint sees pickupCode after ready_for_pickup", async () => {
       const { user, subscription, pickupRequest } = await seedReservedPickupRequest({ status: "in_preparation" });
-      await api.post("/api/dashboard/ops/actions/ready_for_pickup").set(dashboardAuth()).send({
+      await api.post("/api/dashboard/ops/actions/ready_for_pickup").set(adminHeaders).send({
         entityType: "subscription_pickup_request",
         entityId: String(pickupRequest._id),
       });
@@ -195,10 +186,9 @@ async function getRemainingMeals(subscriptionId) {
         { $set: { pickupCode: "654321", pickupCodeIssuedAt: new Date() } }
       );
 
-      const res = await api.post("/api/dashboard/ops/actions/fulfill").set(dashboardAuth("kitchen")).send({
+      const res = await api.post("/api/dashboard/ops/actions/fulfill").set(kitchenHeaders).send({
         entityType: "subscription_pickup_request",
         entityId: String(pickupRequest._id),
-        payload: { pickupCode: "654321" },
       });
 
       assert.strictEqual(res.status, 200, JSON.stringify(res.body));
@@ -209,56 +199,44 @@ async function getRemainingMeals(subscriptionId) {
       assert.strictEqual(await getRemainingMeals(subscription._id), 8);
     });
 
-    await test("fulfill rejects missing, malformed, and mismatched pickup codes", async () => {
+    await test("fulfill uses dashboard visual verification and ignores pickupCode payload", async () => {
       const { pickupRequest } = await seedReservedPickupRequest({ status: "ready_for_pickup" });
       await SubscriptionPickupRequest.updateOne(
         { _id: pickupRequest._id },
         { $set: { pickupCode: "123456", pickupCodeIssuedAt: new Date() } }
       );
 
-      const missing = await api.post("/api/dashboard/ops/actions/fulfill").set(dashboardAuth("kitchen")).send({
-        entityType: "subscription_pickup_request",
-        entityId: String(pickupRequest._id),
-      });
-      const malformed = await api.post("/api/dashboard/ops/actions/fulfill").set(dashboardAuth("kitchen")).send({
-        entityType: "subscription_pickup_request",
-        entityId: String(pickupRequest._id),
-        code: "123",
-      });
-      const mismatch = await api.post("/api/dashboard/ops/actions/fulfill").set(dashboardAuth("kitchen")).send({
+      const res = await api.post("/api/dashboard/ops/actions/fulfill").set(kitchenHeaders).send({
         entityType: "subscription_pickup_request",
         entityId: String(pickupRequest._id),
         code: "654321",
       });
 
-      assert.strictEqual(missing.status, 400, JSON.stringify(missing.body));
-      assert.strictEqual(missing.body.error.code, "INVALID_PICKUP_CODE");
-      assert.strictEqual(malformed.status, 400, JSON.stringify(malformed.body));
-      assert.strictEqual(malformed.body.error.code, "INVALID_PICKUP_CODE");
-      assert.strictEqual(mismatch.status, 422, JSON.stringify(mismatch.body));
-      assert.strictEqual(mismatch.body.error.code, "PICKUP_CODE_MISMATCH");
+      assert.strictEqual(res.status, 200, JSON.stringify(res.body));
+      const updatedRequest = await SubscriptionPickupRequest.findById(pickupRequest._id).lean();
+      assert.strictEqual(updatedRequest.status, "fulfilled");
     });
 
-    await test("pickup action endpoint returns validation errors for request fulfill", async () => {
+    await test("pickup action endpoint fulfills request without pickupCode payload", async () => {
       const { pickupRequest } = await seedReservedPickupRequest({ status: "ready_for_pickup" });
       await SubscriptionPickupRequest.updateOne(
         { _id: pickupRequest._id },
         { $set: { pickupCode: "222333", pickupCodeIssuedAt: new Date() } }
       );
 
-      const res = await api.post("/api/dashboard/pickup/actions/fulfill").set(dashboardAuth("kitchen")).send({
+      const res = await api.post("/api/dashboard/pickup/actions/fulfill").set(kitchenHeaders).send({
         entityType: "subscription_pickup_request",
         entityId: String(pickupRequest._id),
       });
 
-      assert.strictEqual(res.status, 400, JSON.stringify(res.body));
-      assert.strictEqual(res.body.error.code, "INVALID_PICKUP_CODE");
+      assert.strictEqual(res.status, 200, JSON.stringify(res.body));
+      assert.strictEqual(res.body.data.status, "fulfilled");
     });
 
     await test("fulfill requires ready_for_pickup status", async () => {
       const { pickupRequest } = await seedReservedPickupRequest({ status: "locked" });
 
-      const res = await api.post("/api/dashboard/ops/actions/fulfill").set(dashboardAuth("kitchen")).send({
+      const res = await api.post("/api/dashboard/ops/actions/fulfill").set(kitchenHeaders).send({
         entityType: "subscription_pickup_request",
         entityId: String(pickupRequest._id),
         code: "123456",
@@ -271,7 +249,7 @@ async function getRemainingMeals(subscriptionId) {
     await test("no_show consumes reserved credits without releasing balance", async () => {
       const { subscription, pickupRequest } = await seedReservedPickupRequest({ status: "ready_for_pickup", remainingMeals: 8 });
 
-      const res = await api.post("/api/dashboard/ops/actions/no_show").set(dashboardAuth("kitchen")).send({
+      const res = await api.post("/api/dashboard/ops/actions/no_show").set(kitchenHeaders).send({
         entityType: "subscription_pickup_request",
         entityId: String(pickupRequest._id),
         payload: { reason: "customer_no_show" },
@@ -287,12 +265,12 @@ async function getRemainingMeals(subscriptionId) {
     await test("cancel releases reserved credits once", async () => {
       const { subscription, pickupRequest } = await seedReservedPickupRequest({ status: "locked", remainingMeals: 8 });
 
-      const first = await api.post("/api/dashboard/ops/actions/cancel").set(dashboardAuth()).send({
+      const first = await api.post("/api/dashboard/ops/actions/cancel").set(adminHeaders).send({
         entityType: "subscription_pickup_request",
         entityId: String(pickupRequest._id),
         payload: { reason: "customer_request" },
       });
-      const second = await api.post("/api/dashboard/ops/actions/cancel").set(dashboardAuth()).send({
+      const second = await api.post("/api/dashboard/ops/actions/cancel").set(adminHeaders).send({
         entityType: "subscription_pickup_request",
         entityId: String(pickupRequest._id),
         payload: { reason: "customer_request" },
@@ -318,11 +296,11 @@ async function getRemainingMeals(subscriptionId) {
         { $set: { creditsConsumedAt: new Date(), pickupNoShowAt: new Date() } }
       );
 
-      const fulfilledCancel = await api.post("/api/dashboard/ops/actions/cancel").set(dashboardAuth()).send({
+      const fulfilledCancel = await api.post("/api/dashboard/ops/actions/cancel").set(adminHeaders).send({
         entityType: "subscription_pickup_request",
         entityId: String(fulfilled.pickupRequest._id),
       });
-      const noShowCancel = await api.post("/api/dashboard/ops/actions/cancel").set(dashboardAuth()).send({
+      const noShowCancel = await api.post("/api/dashboard/ops/actions/cancel").set(adminHeaders).send({
         entityType: "subscription_pickup_request",
         entityId: String(noShow.pickupRequest._id),
       });
@@ -334,7 +312,7 @@ async function getRemainingMeals(subscriptionId) {
     await test("pickup queue includes SubscriptionPickupRequest", async () => {
       const { pickupRequest } = await seedReservedPickupRequest({ status: "locked" });
 
-      const res = await api.get(`/api/dashboard/pickup/queue?date=${TODAY}`).set(dashboardAuth("kitchen"));
+      const res = await api.get(`/api/dashboard/pickup/queue?date=${TODAY}`).set(kitchenHeaders);
 
       assert.strictEqual(res.status, 200, JSON.stringify(res.body));
       const row = res.body.data.items.find((item) => item.requestId === String(pickupRequest._id));
@@ -358,7 +336,7 @@ async function getRemainingMeals(subscriptionId) {
         }
       );
 
-      const res = await api.get(`/api/dashboard/pickup/queue?date=${TODAY}`).set(dashboardAuth("kitchen"));
+      const res = await api.get(`/api/dashboard/pickup/queue?date=${TODAY}`).set(kitchenHeaders);
 
       assert.strictEqual(res.status, 200, JSON.stringify(res.body));
       const requestRow = res.body.data.items.find((item) => item.requestId === String(pickupRequest._id));
@@ -368,7 +346,7 @@ async function getRemainingMeals(subscriptionId) {
     });
 
     await test("invalid request entityId returns 400 instead of 500", async () => {
-      const res = await api.post("/api/dashboard/ops/actions/fulfill").set(dashboardAuth("kitchen")).send({
+      const res = await api.post("/api/dashboard/ops/actions/fulfill").set(kitchenHeaders).send({
         entityType: "subscription_pickup_request",
         entityId: "REQUEST_ID_HERE",
         code: "123456",
@@ -381,7 +359,7 @@ async function getRemainingMeals(subscriptionId) {
     await test("ops list includes active SubscriptionPickupRequest", async () => {
       const { pickupRequest } = await seedReservedPickupRequest({ status: "in_preparation" });
 
-      const res = await api.get(`/api/dashboard/ops/list?date=${TODAY}`).set(dashboardAuth("kitchen"));
+      const res = await api.get(`/api/dashboard/ops/list?date=${TODAY}`).set(kitchenHeaders);
 
       assert.strictEqual(res.status, 200, JSON.stringify(res.body));
       const row = res.body.data.find((item) => item.requestId === String(pickupRequest._id));

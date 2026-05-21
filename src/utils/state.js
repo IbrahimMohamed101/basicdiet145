@@ -1,8 +1,8 @@
 const transitions = {
-  open: ["locked", "in_preparation", "skipped", "frozen"],
+  open: ["locked", "in_preparation", "skipped", "frozen", "delivery_canceled", "canceled_at_branch"],
   frozen: [],
-  locked: ["in_preparation", "out_for_delivery", "canceled_at_branch"],
-  in_preparation: ["out_for_delivery", "ready_for_pickup", "canceled_at_branch"],
+  locked: ["open", "in_preparation", "out_for_delivery", "delivery_canceled", "canceled_at_branch"],
+  in_preparation: ["out_for_delivery", "ready_for_pickup", "delivery_canceled", "canceled_at_branch"],
   out_for_delivery: ["fulfilled", "delivery_canceled"],
   ready_for_pickup: ["fulfilled", "canceled_at_branch", "no_show"],
   fulfilled: [],

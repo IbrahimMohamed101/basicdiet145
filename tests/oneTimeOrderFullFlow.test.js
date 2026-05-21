@@ -22,7 +22,7 @@ const ProductOptionGroup = require("../src/models/ProductOptionGroup");
 const Setting = require("../src/models/Setting");
 const User = require("../src/models/User");
 const moyasarService = require("../src/services/moyasarService");
-const { DASHBOARD_JWT_SECRET } = require("../src/services/dashboardTokenService");
+const { dashboardAuth } = require("./helpers/dashboardAuthHelper");
 const { JWT_SECRET } = require("../src/middleware/auth");
 const { seedOneTimeMenu } = require("../scripts/seed-one-time-menu");
 
@@ -60,14 +60,7 @@ function appAuth(userId) {
   return { Authorization: `Bearer ${token}`, "Accept-Language": "en" };
 }
 
-function dashboardAuth(role = "superadmin") {
-  const token = jwt.sign(
-    { userId: new mongoose.Types.ObjectId().toString(), role, tokenType: "dashboard_access" },
-    DASHBOARD_JWT_SECRET,
-    { expiresIn: "1h" }
-  );
-  return { Authorization: `Bearer ${token}`, "Accept-Language": "en" };
-}
+// function dashboardAuth replaced by helper
 
 function flattenProducts(menu) {
   return (menu.categories || []).flatMap((category) => (
@@ -201,7 +194,7 @@ async function cleanupCatalog() {
       isActive: true,
     });
     const clientHeaders = appAuth(user._id);
-    const adminHeaders = dashboardAuth();
+    const { headers: adminHeaders } = await dashboardAuth("superadmin", TEST_TAG);
 
     await test("complete one-time pickup order lifecycle from menu to fulfillment", async () => {
       const menuRes = await api.get("/api/orders/menu?lang=en");

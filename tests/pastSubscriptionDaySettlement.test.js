@@ -110,8 +110,11 @@ async function runTests() {
 
   await createDay(deliverySub, "2026-05-01", "open", {
     plannerState: "confirmed",
-    mealSlots: [{ slotIndex: 1, slotKey: "slot_1", status: "complete" }],
-    plannerMeta: { requiredSlotCount: 1, completeSlotCount: 1, partialSlotCount: 0, isDraftValid: true },
+    mealSlots: [
+      { slotIndex: 1, slotKey: "slot_1", status: "complete" },
+      { slotIndex: 2, slotKey: "slot_2", status: "complete" }
+    ],
+    plannerMeta: { requiredSlotCount: 2, completeSlotCount: 2, partialSlotCount: 0, isDraftValid: true },
   });
   await createDay(deliverySub, "2026-05-02", "locked", { lockedSnapshot: { mealsPerDay: 2 } });
   await createDay(deliverySub, "2026-05-03", "open");

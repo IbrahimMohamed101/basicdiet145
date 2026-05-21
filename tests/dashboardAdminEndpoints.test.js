@@ -9,6 +9,7 @@ const mongoose = require("mongoose");
 const request = require("supertest");
 
 const { createApp } = require("../src/app");
+const { dashboardAuth } = require("./helpers/dashboardAuthHelper");
 const Addon = require("../src/models/Addon");
 const BuilderCarb = require("../src/models/BuilderCarb");
 const BuilderCategory = require("../src/models/BuilderCategory");
@@ -30,34 +31,17 @@ const DashboardUser = require("../src/models/DashboardUser");
 const Setting = require("../src/models/Setting");
 const { DASHBOARD_JWT_SECRET } = require("../src/services/dashboardTokenService");
 
-const TEST_TAG = `dashboard-admin-${Date.now()}`;
+const TEST_TAG = `dashboard-admin-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const ORIGINAL_ONE_TIME_ORDER_DELIVERY_ENABLED = process.env.ONE_TIME_ORDER_DELIVERY_ENABLED;
+const TEST_DELIVERY_SLOT_ID = "delivery_slot_1";
 let originalPremiumPriceSetting;
 const dashboardAuthUserIds = {};
 
-function dashboardToken(role = "admin") {
-  return jwt.sign(
-    { userId: String(dashboardAuthUserIds[role] || new mongoose.Types.ObjectId()), role, tokenType: "dashboard_access" },
-    DASHBOARD_JWT_SECRET,
-    { expiresIn: "1h" }
-  );
-}
-
-function dashboardTokenForUser(userId, role = "admin") {
-  return jwt.sign(
-    { userId: String(userId), role, tokenType: "dashboard_access" },
-    DASHBOARD_JWT_SECRET,
-    { expiresIn: "1h" }
-  );
-}
-
-function auth(role = "admin") {
-  return { Authorization: `Bearer ${dashboardToken(role)}`, "Accept-Language": "en" };
-}
-
-function authForUser(userId, role = "admin") {
-  return { Authorization: `Bearer ${dashboardTokenForUser(userId, role)}`, "Accept-Language": "en" };
-}
+let adminHeaders;
+let kitchenHeaders;
+let courierHeaders;
+let cashierHeaders;
+let superadminHeaders;
 
 async function connect() {
   if (mongoose.connection.readyState === 0) {
@@ -67,6 +51,15 @@ async function connect() {
 
 function expectStatus(res, status, label) {
   assert.strictEqual(res.status, status, `${label}: expected ${status}, got ${res.status} ${JSON.stringify(res.body)}`);
+}
+
+function authForUser(userId, role = "admin") {
+  const token = jwt.sign(
+    { userId: String(userId), role, tokenType: "dashboard_access" },
+    DASHBOARD_JWT_SECRET,
+    { expiresIn: "1h" }
+  );
+  return { Authorization: `Bearer ${token}`, "Accept-Language": "en" };
 }
 
 async function cleanup() {
@@ -110,6 +103,12 @@ async function cleanup() {
 }
 
 async function seedBaseData() {
+  await Setting.findOneAndUpdate(
+    { key: "delivery_windows" },
+    { $set: { key: "delivery_windows", value: ["16:00-18:00", "18:00-20:00"] } },
+    { upsert: true, new: true }
+  );
+
   const user = await User.create({
     phone: `+${Date.now()}${TEST_TAG.replace(/\D/g, "").slice(0, 4)}`,
     name: `${TEST_TAG} User`,
@@ -173,16 +172,21 @@ async function seedBaseData() {
 }
 
 async function seedDashboardAuthUsers() {
-  const roles = ["superadmin", "admin", "kitchen", "courier", "cashier"];
-  const users = await DashboardUser.insertMany(roles.map((role) => ({
-    email: `${TEST_TAG}-${role}@example.com`,
-    passwordHash: "not-used-in-this-test",
-    role,
-    isActive: true,
-  })));
-  for (const user of users) {
-    dashboardAuthUserIds[user.role] = user._id;
-  }
+  const admin = await dashboardAuth("admin", TEST_TAG);
+  adminHeaders = admin.headers;
+  dashboardAuthUserIds.admin = admin.user._id;
+  const kitchen = await dashboardAuth("kitchen", TEST_TAG);
+  kitchenHeaders = kitchen.headers;
+  dashboardAuthUserIds.kitchen = kitchen.user._id;
+  const courier = await dashboardAuth("courier", TEST_TAG);
+  courierHeaders = courier.headers;
+  dashboardAuthUserIds.courier = courier.user._id;
+  const cashier = await dashboardAuth("cashier", TEST_TAG);
+  cashierHeaders = cashier.headers;
+  dashboardAuthUserIds.cashier = cashier.user._id;
+  const superadmin = await dashboardAuth("superadmin", TEST_TAG);
+  superadminHeaders = superadmin.headers;
+  dashboardAuthUserIds.superadmin = superadmin.user._id;
 }
 
 async function main() {
@@ -195,7 +199,7 @@ async function main() {
   await seedDashboardAuthUsers();
 
   try {
-    let res = await api.post("/api/dashboard/addons").set(auth()).send({
+    let res = await api.post("/api/dashboard/addons").set(adminHeaders).send({
       name: { en: `${TEST_TAG} Plan Create` },
       category: "juice",
       kind: "plan",
@@ -205,7 +209,7 @@ async function main() {
     expectStatus(res, 201, "create addon plan");
     const createdPlanAddonId = res.body.data.id;
 
-    res = await api.post("/api/dashboard/addons").set(auth()).send({
+    res = await api.post("/api/dashboard/addons").set(adminHeaders).send({
       name: { en: `${TEST_TAG} Item Create` },
       category: "snack",
       kind: "item",
@@ -215,7 +219,7 @@ async function main() {
     expectStatus(res, 201, "create addon item");
     const createdItemAddonId = res.body.data.id;
 
-    res = await api.post("/api/dashboard/addons").set(auth()).send({
+    res = await api.post("/api/dashboard/addons").set(adminHeaders).send({
       name: { en: `${TEST_TAG} Invalid Kind` },
       category: "juice",
       kind: "bad",
@@ -223,7 +227,7 @@ async function main() {
     });
     expectStatus(res, 400, "reject invalid kind");
 
-    res = await api.post("/api/dashboard/addons").set(auth()).send({
+    res = await api.post("/api/dashboard/addons").set(adminHeaders).send({
       name: { en: `${TEST_TAG} Invalid Category` },
       category: "bad",
       kind: "item",
@@ -231,7 +235,7 @@ async function main() {
     });
     expectStatus(res, 400, "reject invalid category");
 
-    res = await api.post("/api/dashboard/addons").set(auth()).send({
+    res = await api.post("/api/dashboard/addons").set(adminHeaders).send({
       name: { en: `${TEST_TAG} Invalid Billing` },
       category: "juice",
       kind: "item",
@@ -240,27 +244,27 @@ async function main() {
     });
     expectStatus(res, 400, "reject invalid billing combination");
 
-    res = await api.get("/api/dashboard/addons?kind=plan").set(auth());
+    res = await api.get("/api/dashboard/addons?kind=plan").set(adminHeaders);
     expectStatus(res, 200, "list addons by kind");
     assert(res.body.data.every((addon) => addon.kind === "plan"));
 
-    res = await api.get("/api/dashboard/addons?category=snack").set(auth());
+    res = await api.get("/api/dashboard/addons?category=snack").set(adminHeaders);
     expectStatus(res, 200, "list addons by category");
     assert(res.body.data.every((addon) => addon.category === "snack"));
 
-    res = await api.patch(`/api/dashboard/addons/${createdItemAddonId}/toggle`).set(auth()).send({});
+    res = await api.patch(`/api/dashboard/addons/${createdItemAddonId}/toggle`).set(adminHeaders).send({});
     expectStatus(res, 200, "toggle addon");
     assert.strictEqual(res.body.data.isActive, false);
 
-    res = await api.delete(`/api/dashboard/addons/${createdPlanAddonId}`).set(auth()).send({});
+    res = await api.delete(`/api/dashboard/addons/${createdPlanAddonId}`).set(adminHeaders).send({});
     expectStatus(res, 200, "soft delete addon");
     assert.strictEqual(res.body.data.isActive, false);
 
-    res = await api.get("/api/dashboard/addon-plans").set(auth());
+    res = await api.get("/api/dashboard/addon-plans").set(adminHeaders);
     expectStatus(res, 200, "list addon plans alias");
     assert(res.body.data.every((addon) => addon.kind === "plan"));
 
-    res = await api.post("/api/dashboard/addon-plans").set(auth()).send({
+    res = await api.post("/api/dashboard/addon-plans").set(adminHeaders).send({
       name: { en: `${TEST_TAG} Alias Reject Item` },
       category: "juice",
       kind: "item",
@@ -269,7 +273,7 @@ async function main() {
     });
     expectStatus(res, 400, "addon plans reject kind item");
 
-    res = await api.post("/api/dashboard/addon-plans").set(auth()).send({
+    res = await api.post("/api/dashboard/addon-plans").set(adminHeaders).send({
       name: { en: `${TEST_TAG} Alias Plan Create` },
       category: "juice",
       kind: "plan",
@@ -279,11 +283,11 @@ async function main() {
     expectStatus(res, 201, "create addon plan alias");
     const aliasAddonPlanId = res.body.data.id;
 
-    res = await api.delete(`/api/dashboard/addon-plans/${aliasAddonPlanId}`).set(auth()).send({});
+    res = await api.delete(`/api/dashboard/addon-plans/${aliasAddonPlanId}`).set(adminHeaders).send({});
     expectStatus(res, 200, "soft delete addon plan alias");
     assert.strictEqual(res.body.data.isActive, false);
 
-    res = await api.post("/api/dashboard/addon-items").set(auth()).send({
+    res = await api.post("/api/dashboard/addon-items").set(adminHeaders).send({
       name: { en: `${TEST_TAG} Alias Item Create` },
       category: "snack",
       kind: "item",
@@ -293,11 +297,11 @@ async function main() {
     expectStatus(res, 201, "create addon item alias");
     const aliasAddonItemId = res.body.data.id;
 
-    res = await api.get(`/api/dashboard/addon-items/${aliasAddonItemId}`).set(auth());
+    res = await api.get(`/api/dashboard/addon-items/${aliasAddonItemId}`).set(adminHeaders);
     expectStatus(res, 200, "get addon item alias");
     assert.strictEqual(res.body.data.kind, "item");
 
-    res = await api.put(`/api/dashboard/addon-items/${aliasAddonItemId}`).set(auth()).send({
+    res = await api.put(`/api/dashboard/addon-items/${aliasAddonItemId}`).set(adminHeaders).send({
       name: { en: `${TEST_TAG} Alias Item Updated` },
       category: "snack",
       kind: "item",
@@ -306,16 +310,16 @@ async function main() {
     });
     expectStatus(res, 200, "update addon item alias");
 
-    res = await api.patch(`/api/dashboard/addon-items/${aliasAddonItemId}/toggle`).set(auth()).send({});
+    res = await api.patch(`/api/dashboard/addon-items/${aliasAddonItemId}/toggle`).set(adminHeaders).send({});
     expectStatus(res, 200, "toggle addon item alias");
     assert.strictEqual(res.body.data.isActive, false);
 
-    res = await api.delete(`/api/dashboard/addon-items/${aliasAddonItemId}`).set(auth()).send({});
+    res = await api.delete(`/api/dashboard/addon-items/${aliasAddonItemId}`).set(adminHeaders).send({});
     expectStatus(res, 200, "soft delete addon item alias");
     assert.strictEqual(res.body.data.isActive, false);
 
     const categoryKey = `test_category_${Date.now()}`;
-    res = await api.post("/api/dashboard/meal-planner/categories").set(auth()).send({
+    res = await api.post("/api/dashboard/meal-planner/categories").set(adminHeaders).send({
       key: categoryKey,
       dimension: "protein",
       name: { en: `${TEST_TAG} Category` },
@@ -327,19 +331,19 @@ async function main() {
     expectStatus(res, 201, "create meal planner category");
     const categoryId = res.body.data.id;
 
-    res = await api.get(`/api/dashboard/meal-planner/categories/${categoryId}`).set(auth());
+    res = await api.get(`/api/dashboard/meal-planner/categories/${categoryId}`).set(adminHeaders);
     expectStatus(res, 200, "get meal planner category");
     assert.strictEqual(res.body.data.key, categoryKey);
 
-    res = await api.patch(`/api/dashboard/meal-planner/categories/${categoryId}/toggle`).set(auth()).send({});
+    res = await api.patch(`/api/dashboard/meal-planner/categories/${categoryId}/toggle`).set(adminHeaders).send({});
     expectStatus(res, 200, "toggle meal planner category");
     assert.strictEqual(res.body.data.isActive, false);
 
-    res = await api.delete(`/api/dashboard/meal-planner/categories/${categoryId}`).set(auth()).send({});
+    res = await api.delete(`/api/dashboard/meal-planner/categories/${categoryId}`).set(adminHeaders).send({});
     expectStatus(res, 200, "soft delete meal planner category");
     assert.strictEqual(res.body.data.isActive, false);
 
-    res = await api.post("/api/dashboard/meal-planner/proteins").set(auth()).send({
+    res = await api.post("/api/dashboard/meal-planner/proteins").set(adminHeaders).send({
       key: `test_protein_${Date.now()}`,
       name: { en: `${TEST_TAG} Protein` },
       proteinFamilyKey: "chicken",
@@ -351,15 +355,15 @@ async function main() {
     expectStatus(res, 201, "create dashboard meal planner protein");
     const proteinId = res.body.data.id;
 
-    res = await api.get(`/api/dashboard/meal-planner/proteins/${proteinId}`).set(auth());
+    res = await api.get(`/api/dashboard/meal-planner/proteins/${proteinId}`).set(adminHeaders);
     expectStatus(res, 200, "get dashboard meal planner protein");
     assert.strictEqual(res.body.data.isPremium, false);
 
-    res = await api.patch(`/api/dashboard/meal-planner/proteins/${proteinId}/toggle`).set(auth()).send({});
+    res = await api.patch(`/api/dashboard/meal-planner/proteins/${proteinId}/toggle`).set(adminHeaders).send({});
     expectStatus(res, 200, "toggle dashboard meal planner protein");
     assert.strictEqual(res.body.data.isActive, false);
 
-    res = await api.post("/api/dashboard/meal-planner/premium-proteins").set(auth()).send({
+    res = await api.post("/api/dashboard/meal-planner/premium-proteins").set(adminHeaders).send({
       key: `test_premium_protein_${Date.now()}`,
       premiumKey: `test_premium_${Date.now()}`,
       name: { en: `${TEST_TAG} Premium Protein` },
@@ -371,15 +375,15 @@ async function main() {
     expectStatus(res, 201, "create dashboard premium protein");
     const premiumProteinId = res.body.data.id;
 
-    res = await api.get(`/api/dashboard/meal-planner/premium-proteins/${premiumProteinId}`).set(auth());
+    res = await api.get(`/api/dashboard/meal-planner/premium-proteins/${premiumProteinId}`).set(adminHeaders);
     expectStatus(res, 200, "get dashboard premium protein");
     assert.strictEqual(res.body.data.isPremium, true);
 
-    res = await api.patch(`/api/dashboard/meal-planner/premium-proteins/${premiumProteinId}/toggle`).set(auth()).send({});
+    res = await api.patch(`/api/dashboard/meal-planner/premium-proteins/${premiumProteinId}/toggle`).set(adminHeaders).send({});
     expectStatus(res, 200, "toggle dashboard premium protein");
     assert.strictEqual(res.body.data.isActive, false);
 
-    res = await api.post("/api/dashboard/meal-planner/carbs").set(auth()).send({
+    res = await api.post("/api/dashboard/meal-planner/carbs").set(adminHeaders).send({
       key: `test_carb_${Date.now()}`,
       name: { en: `${TEST_TAG} Carb` },
       isActive: true,
@@ -388,15 +392,15 @@ async function main() {
     expectStatus(res, 201, "create dashboard carb");
     const carbId = res.body.data.id;
 
-    res = await api.get(`/api/dashboard/meal-planner/carbs/${carbId}`).set(auth());
+    res = await api.get(`/api/dashboard/meal-planner/carbs/${carbId}`).set(adminHeaders);
     expectStatus(res, 200, "get dashboard carb");
     assert.strictEqual(res.body.data.displayCategoryKey, "standard_carbs");
 
-    res = await api.patch(`/api/dashboard/meal-planner/carbs/${carbId}/toggle`).set(auth()).send({});
+    res = await api.patch(`/api/dashboard/meal-planner/carbs/${carbId}/toggle`).set(adminHeaders).send({});
     expectStatus(res, 200, "toggle dashboard carb");
     assert.strictEqual(res.body.data.isActive, false);
 
-    res = await api.post("/api/dashboard/meal-planner/sandwiches").set(auth()).send({
+    res = await api.post("/api/dashboard/meal-planner/sandwiches").set(adminHeaders).send({
       name: { en: `${TEST_TAG} Sandwich` },
       proteinFamilyKey: "chicken",
       calories: 420,
@@ -406,15 +410,15 @@ async function main() {
     expectStatus(res, 201, "create dashboard sandwich");
     const sandwichId = res.body.data.id;
 
-    res = await api.get(`/api/dashboard/meal-planner/sandwiches/${sandwichId}`).set(auth());
+    res = await api.get(`/api/dashboard/meal-planner/sandwiches/${sandwichId}`).set(adminHeaders);
     expectStatus(res, 200, "get dashboard sandwich");
     assert.strictEqual(res.body.data.selectionType, "sandwich");
 
-    res = await api.patch(`/api/dashboard/meal-planner/sandwiches/${sandwichId}/toggle`).set(auth()).send({});
+    res = await api.patch(`/api/dashboard/meal-planner/sandwiches/${sandwichId}/toggle`).set(adminHeaders).send({});
     expectStatus(res, 200, "toggle dashboard sandwich");
     assert.strictEqual(res.body.data.isActive, false);
 
-    res = await api.post("/api/dashboard/meal-planner/salad-ingredients").set(auth()).send({
+    res = await api.post("/api/dashboard/meal-planner/salad-ingredients").set(adminHeaders).send({
       name: { en: `${TEST_TAG} Salad Ingredient` },
       groupKey: "vegetables",
       calories: 25,
@@ -426,15 +430,15 @@ async function main() {
     expectStatus(res, 201, "create dashboard salad ingredient");
     const saladIngredientId = res.body.data.id;
 
-    res = await api.get(`/api/dashboard/meal-planner/salad-ingredients/${saladIngredientId}`).set(auth());
+    res = await api.get(`/api/dashboard/meal-planner/salad-ingredients/${saladIngredientId}`).set(adminHeaders);
     expectStatus(res, 200, "get dashboard salad ingredient");
     assert.strictEqual(res.body.data.groupKey, "vegetables");
 
-    res = await api.patch(`/api/dashboard/meal-planner/salad-ingredients/${saladIngredientId}/toggle`).set(auth()).send({});
+    res = await api.patch(`/api/dashboard/meal-planner/salad-ingredients/${saladIngredientId}/toggle`).set(adminHeaders).send({});
     expectStatus(res, 200, "toggle dashboard salad ingredient");
     assert.strictEqual(res.body.data.isActive, false);
 
-    res = await api.get("/api/admin/meal-planner-menu/proteins?includeInactive=true&q=Protein").set(auth());
+    res = await api.get("/api/admin/meal-planner-menu/proteins?includeInactive=true&q=Protein").set(adminHeaders);
     expectStatus(res, 200, "old meal planner route remains available");
     assert.strictEqual(typeof res.body.totalCount, "number");
 
@@ -447,10 +451,10 @@ async function main() {
     });
     assert(catalogLogs >= 3, "meal planner catalog writes should create activity logs");
 
-    res = await api.get("/api/dashboard/subscriptions/summary").set(auth());
+    res = await api.get("/api/dashboard/subscriptions/summary").set(adminHeaders);
     expectStatus(res, 200, "static subscriptions summary route is not captured by :id");
 
-    res = await api.post("/api/dashboard/subscriptions/quote").set(auth()).send({
+    res = await api.post("/api/dashboard/subscriptions/quote").set(adminHeaders).send({
       userId: String(ctx.user._id),
       planId: String(ctx.plan._id),
       grams: 200,
@@ -458,13 +462,14 @@ async function main() {
       deliveryMethod: "delivery",
       zoneId: String(ctx.zone._id),
       deliveryAddress: { line1: "Quote address" },
+      delivery: { slot: { slotId: TEST_DELIVERY_SLOT_ID } },
       addonPlans: [String(ctx.addonPlan._id)],
     });
     expectStatus(res, 200, "valid dashboard quote");
     assert.strictEqual(res.body.data.breakdown.addonsTotalHalala, 7000);
 
     const promoCode = `DASH${TEST_TAG.replace(/[^A-Z0-9]/gi, "").slice(0, 14).toUpperCase()}`;
-    res = await api.post("/api/dashboard/promo-codes").set(auth()).send({
+    res = await api.post("/api/dashboard/promo-codes").set(adminHeaders).send({
       code: promoCode,
       name: { en: `${TEST_TAG} Promo` },
       description: { en: "Dashboard promo test" },
@@ -481,7 +486,7 @@ async function main() {
     expectStatus(res, 201, "create promo code");
     const promoId = res.body.data.id;
 
-    res = await api.put(`/api/dashboard/promo-codes/${promoId}`).set(auth()).send({
+    res = await api.put(`/api/dashboard/promo-codes/${promoId}`).set(adminHeaders).send({
       code: promoCode,
       name: { en: `${TEST_TAG} Promo Updated` },
       discountType: "fixed_amount",
@@ -492,7 +497,7 @@ async function main() {
     expectStatus(res, 200, "update promo code");
     assert.strictEqual(res.body.data.discountType, "fixed");
 
-    res = await api.post("/api/dashboard/promo-codes/validate").set(auth()).send({
+    res = await api.post("/api/dashboard/promo-codes/validate").set(adminHeaders).send({
       code: promoCode,
       userId: String(ctx.user._id),
       planId: String(ctx.plan._id),
@@ -501,7 +506,7 @@ async function main() {
     expectStatus(res, 200, "validate promo code");
     assert.strictEqual(res.body.data.valid, true);
 
-    res = await api.post("/api/dashboard/subscriptions/quote").set(auth()).send({
+    res = await api.post("/api/dashboard/subscriptions/quote").set(adminHeaders).send({
       userId: String(ctx.user._id),
       planId: String(ctx.plan._id),
       grams: 200,
@@ -509,17 +514,18 @@ async function main() {
       deliveryMethod: "delivery",
       zoneId: String(ctx.zone._id),
       deliveryAddress: { line1: "Quote promo address" },
+      delivery: { slot: { slotId: TEST_DELIVERY_SLOT_ID } },
       promoCode,
     });
     expectStatus(res, 200, "dashboard quote with promo");
     assert(res.body.data.breakdown.discountHalala > 0, "promo quote should include discountHalala");
     assert(res.body.data.breakdown.vatHalala >= 0, "promo quote should expose VAT");
 
-    res = await api.patch(`/api/dashboard/promo-codes/${promoId}/toggle`).set(auth()).send({});
+    res = await api.patch(`/api/dashboard/promo-codes/${promoId}/toggle`).set(adminHeaders).send({});
     expectStatus(res, 200, "toggle promo inactive");
     assert.strictEqual(res.body.data.isActive, false);
 
-    res = await api.post("/api/dashboard/subscriptions/quote").set(auth()).send({
+    res = await api.post("/api/dashboard/subscriptions/quote").set(adminHeaders).send({
       userId: String(ctx.user._id),
       planId: String(ctx.plan._id),
       grams: 200,
@@ -527,15 +533,16 @@ async function main() {
       deliveryMethod: "delivery",
       zoneId: String(ctx.zone._id),
       deliveryAddress: { line1: "Quote inactive promo address" },
+      delivery: { slot: { slotId: TEST_DELIVERY_SLOT_ID } },
       promoCode,
     });
     expectStatus(res, 400, "inactive promo rejected in quote");
 
-    res = await api.delete(`/api/dashboard/promo-codes/${promoId}`).set(auth()).send({});
+    res = await api.delete(`/api/dashboard/promo-codes/${promoId}`).set(adminHeaders).send({});
     expectStatus(res, 200, "soft delete promo");
     assert.strictEqual(res.body.data.isActive, false);
 
-    res = await api.post("/api/dashboard/subscriptions/quote").set(auth()).send({
+    res = await api.post("/api/dashboard/subscriptions/quote").set(adminHeaders).send({
       userId: String(ctx.user._id),
       planId: String(new mongoose.Types.ObjectId()),
       grams: 200,
@@ -543,7 +550,7 @@ async function main() {
     });
     expectStatus(res, 404, "quote invalid plan");
 
-    res = await api.post("/api/dashboard/subscriptions/quote").set(auth()).send({
+    res = await api.post("/api/dashboard/subscriptions/quote").set(adminHeaders).send({
       userId: String(ctx.user._id),
       planId: String(ctx.plan._id),
       grams: 999,
@@ -551,38 +558,41 @@ async function main() {
     });
     expectStatus(res, 400, "quote invalid grams");
 
-    res = await api.put(`/api/dashboard/subscriptions/${ctx.subscription._id}/delivery`).set(auth()).send({
+    res = await api.put(`/api/dashboard/subscriptions/${ctx.subscription._id}/delivery`).set(adminHeaders).send({
       deliveryMode: "delivery",
       deliveryZoneId: String(ctx.zone._id),
       deliveryAddress: { line1: "New address", notes: "admin note" },
+      delivery: {
+        slot: { slotId: "morning_slot" }
+      },
       reason: "customer requested address change",
     });
     expectStatus(res, 200, "update subscription delivery");
     assert.strictEqual(res.body.data.deliveryAddress.line1, "New address");
 
-    res = await api.patch(`/api/dashboard/subscriptions/${ctx.subscription._id}/addon-entitlements`).set(auth()).send({
+    res = await api.patch(`/api/dashboard/subscriptions/${ctx.subscription._id}/addon-entitlements`).set(adminHeaders).send({
       addonSubscriptions: [{ addonId: String(ctx.addonPlan._id), maxPerDay: 1 }],
     });
     expectStatus(res, 400, "addon entitlements require reason");
 
-    res = await api.patch(`/api/dashboard/subscriptions/${ctx.subscription._id}/addon-entitlements`).set(auth()).send({
+    res = await api.patch(`/api/dashboard/subscriptions/${ctx.subscription._id}/addon-entitlements`).set(adminHeaders).send({
       reason: "manual entitlement correction",
       addonSubscriptions: [{ addonId: String(ctx.addonPlan._id), maxPerDay: 1 }],
     });
     expectStatus(res, 200, "update addon entitlements");
     assert.strictEqual(res.body.data.addonSubscriptions[0].category, "juice");
 
-    res = await api.get(`/api/dashboard/subscriptions/${ctx.subscription._id}/addon-entitlements`).set(auth());
+    res = await api.get(`/api/dashboard/subscriptions/${ctx.subscription._id}/addon-entitlements`).set(adminHeaders);
     expectStatus(res, 200, "get addon entitlements");
     assert.strictEqual(res.body.data.subscriptionId, String(ctx.subscription._id));
     assert.strictEqual(res.body.data.addonEntitlements[0].category, "juice");
 
-    res = await api.patch(`/api/dashboard/subscriptions/${ctx.subscription._id}/balances`).set(auth("superadmin")).send({
+    res = await api.patch(`/api/dashboard/subscriptions/${ctx.subscription._id}/balances`).set(superadminHeaders).send({
       premiumBalance: [],
     });
     expectStatus(res, 400, "balances require reason");
 
-    res = await api.patch(`/api/dashboard/subscriptions/${ctx.subscription._id}/balances`).set(auth("superadmin")).send({
+    res = await api.patch(`/api/dashboard/subscriptions/${ctx.subscription._id}/balances`).set(superadminHeaders).send({
       reason: "manual balance correction",
       premiumBalance: [{ premiumKey: "shrimp", purchasedQty: 2, remainingQty: 1, unitExtraFeeHalala: 2200 }],
       addonBalance: [{ addonId: String(ctx.addonItem._id), purchasedQty: 3, remainingQty: 2, unitPriceHalala: 500 }],
@@ -590,19 +600,19 @@ async function main() {
     expectStatus(res, 200, "update balances");
     assert.strictEqual(res.body.data.premiumBalance[0].premiumKey, "shrimp");
 
-    res = await api.get(`/api/dashboard/subscriptions/${ctx.subscription._id}/balances`).set(auth("cashier"));
+    res = await api.get(`/api/dashboard/subscriptions/${ctx.subscription._id}/balances`).set(cashierHeaders);
     expectStatus(res, 200, "cashier reads balances");
     assert.strictEqual(res.body.data.subscriptionId, String(ctx.subscription._id));
     assert.strictEqual(res.body.data.premiumBalance[0].premiumKey, "shrimp");
     assert.strictEqual(res.body.data.addonBalance[0].remainingQty, 2);
 
-    res = await api.patch(`/api/dashboard/subscriptions/${ctx.subscription._id}/balances`).set(auth("cashier")).send({
+    res = await api.patch(`/api/dashboard/subscriptions/${ctx.subscription._id}/balances`).set(cashierHeaders).send({
       reason: "cashier should not edit balances",
       premiumBalance: [],
     });
     expectStatus(res, 403, "cashier cannot update balances");
 
-    res = await api.get(`/api/dashboard/subscriptions/${ctx.subscription._id}/audit-log`).set(auth());
+    res = await api.get(`/api/dashboard/subscriptions/${ctx.subscription._id}/audit-log`).set(adminHeaders);
     expectStatus(res, 200, "get audit log");
     assert(res.body.data.auditLogs.length >= 2);
 
@@ -618,7 +628,7 @@ async function main() {
       mealSlots: [{ slotIndex: 1, slotKey: "slot_1", status: "complete" }],
     });
 
-    res = await api.get("/api/dashboard/kitchen/queue?date=2026-05-10&method=delivery").set(auth("kitchen"));
+    res = await api.get("/api/dashboard/kitchen/queue?date=2026-05-10&method=delivery").set(kitchenHeaders);
     expectStatus(res, 200, "kitchen queue");
     const openDeliveryQueueItem = res.body.data.items.find((item) => item.subscriptionDayId === String(deliveryDay._id));
     assert(openDeliveryQueueItem);
@@ -628,7 +638,7 @@ async function main() {
     );
     assert(openDeliveryQueueItem.allowedActions.every((action) => action.endpoint && action.method === "POST"));
 
-    res = await api.post("/api/dashboard/kitchen/actions/lock").set(auth("kitchen")).send({
+    res = await api.post("/api/dashboard/kitchen/actions/lock").set(kitchenHeaders).send({
       entityId: String(deliveryDay._id),
       entityType: "subscription_day",
       payload: { reason: "lock before kitchen prep" },
@@ -636,7 +646,7 @@ async function main() {
     expectStatus(res, 200, "kitchen lock delivery day");
     assert.strictEqual(res.body.data.status, "locked");
 
-    res = await api.post("/api/dashboard/kitchen/actions/prepare").set(auth("kitchen")).send({
+    res = await api.post("/api/dashboard/kitchen/actions/prepare").set(kitchenHeaders).send({
       entityId: String(deliveryDay._id),
       entityType: "subscription_day",
       payload: { reason: "start kitchen prep" },
@@ -649,7 +659,7 @@ async function main() {
     );
     assert(!res.body.data.allowedActions.some((action) => action.id === "set_ready"));
 
-    res = await api.post("/api/dashboard/courier/actions/dispatch").set(auth("courier")).send({
+    res = await api.post("/api/dashboard/courier/actions/dispatch").set(courierHeaders).send({
       entityId: String(deliveryDay._id),
       entityType: "subscription_day",
       payload: { reason: "dispatch to courier", notes: "Left branch" },
@@ -657,18 +667,18 @@ async function main() {
     expectStatus(res, 200, "courier dispatch delivery day");
     assert.strictEqual(res.body.data.status, "out_for_delivery");
 
-    res = await api.get("/api/dashboard/courier/queue?date=2026-05-10&method=delivery").set(auth("courier"));
+    res = await api.get("/api/dashboard/courier/queue?date=2026-05-10&method=delivery").set(courierHeaders);
     expectStatus(res, 200, "courier queue includes subscription delivery day");
     assert(res.body.data.items.some((item) => item.subscriptionDayId === String(deliveryDay._id)));
 
-    res = await api.post("/api/dashboard/courier/actions/notify_arrival").set(auth("courier")).send({
+    res = await api.post("/api/dashboard/courier/actions/notify_arrival").set(courierHeaders).send({
       entityId: String(deliveryDay._id),
       entityType: "subscription_day",
       payload: { reason: "arrived nearby" },
     });
     expectStatus(res, 200, "courier notify arrival");
 
-    res = await api.post("/api/dashboard/courier/actions/fulfill").set(auth("courier")).send({
+    res = await api.post("/api/dashboard/courier/actions/fulfill").set(courierHeaders).send({
       entityId: String(deliveryDay._id),
       entityType: "subscription_day",
       payload: { reason: "delivered to customer" },
@@ -687,14 +697,14 @@ async function main() {
       }],
       mealSlots: [{ slotIndex: 1, slotKey: "slot_1", status: "complete" }],
     });
-    res = await api.post("/api/dashboard/courier/actions/dispatch").set(auth("courier")).send({
+    res = await api.post("/api/dashboard/courier/actions/dispatch").set(courierHeaders).send({
       entityId: String(deliveryCancelDay._id),
       entityType: "subscription_day",
       payload: { reason: "dispatch cancellation regression" },
     });
     expectStatus(res, 200, "courier dispatch cancel regression day");
 
-    res = await api.post("/api/dashboard/courier/actions/cancel").set(auth("courier")).send({
+    res = await api.post("/api/dashboard/courier/actions/cancel").set(courierHeaders).send({
       entityId: String(deliveryCancelDay._id),
       entityType: "subscription_day",
       payload: { reason: "customer unavailable" },
@@ -730,7 +740,7 @@ async function main() {
       mealSlots: [{ slotIndex: 1, slotKey: "slot_1", status: "complete" }],
     });
 
-    res = await api.post("/api/dashboard/kitchen/actions/prepare").set(auth("kitchen")).send({
+    res = await api.post("/api/dashboard/kitchen/actions/prepare").set(kitchenHeaders).send({
       entityId: String(pickupDay._id),
       entityType: "subscription_day",
       payload: { reason: "prepare pickup" },
@@ -738,18 +748,20 @@ async function main() {
     expectStatus(res, 200, "kitchen prepare pickup day");
     assert.strictEqual(res.body.data.status, "in_preparation");
 
-    res = await api.post("/api/dashboard/kitchen/actions/ready_for_pickup").set(auth("kitchen")).send({
+    res = await api.post("/api/dashboard/kitchen/actions/ready_for_pickup").set(kitchenHeaders).send({
       entityId: String(pickupDay._id),
       entityType: "subscription_day",
       payload: { reason: "ready at branch" },
     });
     expectStatus(res, 200, "ready for pickup");
     assert.strictEqual(res.body.data.status, "ready_for_pickup");
+    const pickupCode = res.body.data.pickup && res.body.data.pickup.pickupCode;
+    assert.match(pickupCode, /^\d{6}$/);
 
-    res = await api.post("/api/dashboard/pickup/actions/fulfill").set(auth("kitchen")).send({
+    res = await api.post("/api/dashboard/pickup/actions/fulfill").set(kitchenHeaders).send({
       entityId: String(pickupDay._id),
       entityType: "subscription_day",
-      payload: { reason: "Customer picked up from branch", notes: "Verified at branch" },
+      payload: { reason: "Customer picked up from branch", notes: "Verified at branch", pickupCode },
     });
     expectStatus(res, 200, "pickup fulfill collected");
     assert.strictEqual(res.body.data.status, "fulfilled");
@@ -761,7 +773,7 @@ async function main() {
       pickupRequested: true,
       pickupPreparedAt: new Date(),
     });
-    res = await api.post("/api/dashboard/pickup/actions/cancel").set(auth("kitchen")).send({
+    res = await api.post("/api/dashboard/pickup/actions/cancel").set(kitchenHeaders).send({
       entityId: String(canceledPickupDay._id),
       entityType: "subscription_day",
       payload: { reason: "customer did not collect" },
@@ -769,7 +781,7 @@ async function main() {
     expectStatus(res, 200, "pickup cancel");
     assert.strictEqual(res.body.data.status, "canceled_at_branch");
 
-    res = await api.post("/api/dashboard/pickup/actions/reopen").set(auth()).send({
+    res = await api.post("/api/dashboard/pickup/actions/reopen").set(adminHeaders).send({
       entityId: String(canceledPickupDay._id),
       entityType: "subscription_day",
       payload: { reason: "branch reopened by admin" },
@@ -777,7 +789,7 @@ async function main() {
     expectStatus(res, 200, "pickup reopen");
     assert.strictEqual(res.body.data.status, "open");
 
-    res = await api.get("/api/dashboard/delivery-schedule?date=2026-05-10").set(auth("courier"));
+    res = await api.get("/api/dashboard/delivery-schedule?date=2026-05-10").set(courierHeaders);
     expectStatus(res, 200, "delivery schedule");
     assert.strictEqual(res.body.data.date, "2026-05-10");
     assert(res.body.data.summary.total >= 1);
@@ -803,12 +815,12 @@ async function main() {
       },
       paidAt: new Date(),
     });
-    res = await api.get(`/api/dashboard/payments/${payment._id}/breakdown`).set(auth());
+    res = await api.get(`/api/dashboard/payments/${payment._id}/breakdown`).set(adminHeaders);
     expectStatus(res, 200, "payment breakdown");
     assert.strictEqual(res.body.data.breakdown.vatInclusive, true);
     assert.strictEqual(res.body.data.totalHalala, 70000);
 
-    res = await api.put("/api/dashboard/restaurant-hours").set(auth()).send({
+    res = await api.put("/api/dashboard/restaurant-hours").set(adminHeaders).send({
       restaurant_open_time: "10:00",
       restaurant_close_time: "23:00",
       isOpen: true,
@@ -816,10 +828,10 @@ async function main() {
       cutoffTime: "12:00",
     });
     expectStatus(res, 200, "update restaurant hours");
-    res = await api.patch("/api/dashboard/restaurant-hours/toggle-open").set(auth()).send({ isOpen: false });
+    res = await api.patch("/api/dashboard/restaurant-hours/toggle-open").set(adminHeaders).send({ isOpen: false });
     expectStatus(res, 200, "toggle restaurant open");
     assert.strictEqual(res.body.data.isOpen, false);
-    res = await api.get("/api/dashboard/restaurant-hours").set(auth());
+    res = await api.get("/api/dashboard/restaurant-hours").set(adminHeaders);
     expectStatus(res, 200, "get restaurant hours");
     assert.strictEqual(res.body.data.restaurant_is_open, false);
 
@@ -829,11 +841,11 @@ async function main() {
       { $set: { key: "premium_price", value: 33 } },
       { upsert: true, new: true }
     );
-    res = await api.get("/api/dashboard/settings").set(auth());
+    res = await api.get("/api/dashboard/settings").set(adminHeaders);
     expectStatus(res, 200, "get dashboard settings");
     assert.strictEqual(res.body.status, true);
     assert.strictEqual(res.body.data.premium_price, 33);
-    res = await api.get("/api/dashboard/settings").set(auth("cashier"));
+    res = await api.get("/api/dashboard/settings").set(cashierHeaders);
     expectStatus(res, 403, "cashier cannot read settings");
 
     const cashierUser = await DashboardUser.create({
@@ -853,7 +865,7 @@ async function main() {
     assert.strictEqual(res.body.user, null);
     assert.strictEqual(res.body.data.user, null);
 
-    res = await api.post("/api/dashboard/zones").set(auth()).send({
+    res = await api.post("/api/dashboard/zones").set(adminHeaders).send({
       name: { en: `${TEST_TAG} API Zone` },
       deliveryFeeHalala: 1500,
       isActive: true,
@@ -862,7 +874,7 @@ async function main() {
     expectStatus(res, 201, "create zone");
     const createdZoneId = res.body.data._id;
 
-    res = await api.put(`/api/dashboard/zones/${createdZoneId}`).set(auth()).send({
+    res = await api.put(`/api/dashboard/zones/${createdZoneId}`).set(adminHeaders).send({
       name: { en: `${TEST_TAG} API Zone Updated` },
       deliveryFeeHalala: 1700,
       isActive: true,
@@ -871,15 +883,15 @@ async function main() {
     expectStatus(res, 200, "update zone");
     assert.strictEqual(res.body.data.deliveryFeeHalala, 1700);
 
-    res = await api.patch(`/api/dashboard/zones/${createdZoneId}/toggle`).set(auth()).send({});
+    res = await api.patch(`/api/dashboard/zones/${createdZoneId}/toggle`).set(adminHeaders).send({});
     expectStatus(res, 200, "toggle zone");
     assert.strictEqual(res.body.data.isActive, false);
 
-    res = await api.get("/api/dashboard/zones?isActive=false").set(auth());
+    res = await api.get("/api/dashboard/zones?isActive=false").set(adminHeaders);
     expectStatus(res, 200, "list zones");
     assert(res.body.data.some((zone) => String(zone._id) === String(createdZoneId)));
 
-    res = await api.delete(`/api/dashboard/zones/${createdZoneId}`).set(auth()).send({});
+    res = await api.delete(`/api/dashboard/zones/${createdZoneId}`).set(adminHeaders).send({});
     expectStatus(res, 200, "soft delete zone");
     assert.strictEqual(res.body.data.isActive, false);
 
@@ -894,7 +906,7 @@ async function main() {
       "/api/dashboard/health/meal-planner",
       "/api/dashboard/health/indexes",
     ]) {
-      res = await api.get(path).set(auth());
+      res = await api.get(path).set(adminHeaders);
       expectStatus(res, 200, `health ${path}`);
       assert.strictEqual(res.body.status, true);
       assert(res.body.data && typeof res.body.data === "object");

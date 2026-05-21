@@ -1,12 +1,11 @@
+require("dotenv").config();
 process.env.DASHBOARD_JWT_SECRET = process.env.DASHBOARD_JWT_SECRET || "dashboardsecret";
 process.env.JWT_SECRET = process.env.JWT_SECRET || "supersecret";
 
 const assert = require("assert");
 const jwt = require("jsonwebtoken");
 const mongoose = require("mongoose");
-const { MongoMemoryServer } = require("mongodb-memory-server");
 const request = require("supertest");
-
 const { createApp } = require("../src/app");
 const MenuCategory = require("../src/models/MenuCategory");
 const MenuOption = require("../src/models/MenuOption");
@@ -17,8 +16,8 @@ const ProductOptionGroup = require("../src/models/ProductOptionGroup");
 const Setting = require("../src/models/Setting");
 const User = require("../src/models/User");
 const Order = require("../src/models/Order");
-const { DASHBOARD_JWT_SECRET } = require("../src/services/dashboardTokenService");
-const { JWT_SECRET } = require("../src/middleware/auth");
+const { connectDB, disconnectDB, resetDB } = require("./helpers/dbHelper");
+const { dashboardAuth: createDashboardAuth, cleanupDashboardUsers } = require("./helpers/dashboardAuthHelper");
 const moyasarService = require("../src/services/moyasarService");
 
 const TEST_TAG = `weekly-menu-${Date.now()}`;
@@ -41,22 +40,10 @@ function expectStatus(res, status, label) {
   assert.strictEqual(res.status, status, `${label}: expected ${status}, got ${res.status} ${JSON.stringify(res.body)}`);
 }
 
-function dashboardAuth(role = "admin") {
-  const token = jwt.sign(
-    { userId: new mongoose.Types.ObjectId().toString(), role, tokenType: "dashboard_access" },
-    DASHBOARD_JWT_SECRET,
-    { expiresIn: "1h" }
-  );
-  return { Authorization: `Bearer ${token}`, "Accept-Language": "en" };
-}
+let adminToken, adminHeader;
 
-function appAuth(userId) {
-  const token = jwt.sign(
-    { userId: String(userId), role: "client", tokenType: "app_access" },
-    JWT_SECRET,
-    { expiresIn: "1h" }
-  );
-  return { Authorization: `Bearer ${token}`, "Accept-Language": "en" };
+function dashboardAuth() {
+  return adminHeader;
 }
 
 function installMoyasarMock() {
@@ -74,21 +61,26 @@ function installMoyasarMock() {
   };
 }
 
-async function connect() {
-  mongoServer = await MongoMemoryServer.create();
-  const uri = mongoServer.getUri();
-  await mongoose.connect(uri);
+async function setup() {
+  await connectDB();
+  await resetDB();
+  const auth = await createDashboardAuth("admin");
+  adminHeader = auth.headers;
 }
 
-async function disconnect() {
-  await mongoose.disconnect();
-  if (mongoServer) await mongoServer.stop();
+function appAuth(userId) {
+  const token = jwt.sign(
+    { userId: String(userId), role: "client", tokenType: "app_access" },
+    process.env.JWT_SECRET || "supersecret",
+    { expiresIn: "1h" }
+  );
+  return { Authorization: `Bearer ${token}`, "Accept-Language": "en" };
 }
 
 (async function run() {
   const restoreMoyasar = installMoyasarMock();
   try {
-    await connect();
+    await setup();
     const app = createApp();
     const api = request(app);
 
@@ -386,7 +378,8 @@ async function disconnect() {
 
   } finally {
     restoreMoyasar();
-    await disconnect();
+    await cleanupDashboardUsers();
+    await disconnectDB();
   }
 
   console.log(`\nResults: ${results.passed} passed, ${results.failed} failed`);
