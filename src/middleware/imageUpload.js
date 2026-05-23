@@ -33,7 +33,16 @@ function createAdminImageUploadMiddleware({ fieldName = "image", maxFileSize = g
   }).single(fieldName);
 
   return (req, res, next) => {
+    // Log content-type to ensure it's multipart/form-data
+    if (req.headers["content-type"] && !req.headers["content-type"].includes("multipart/form-data")) {
+      console.log("Upload Middleware Warning: Content-Type is not multipart/form-data:", req.headers["content-type"]);
+    }
+
     upload(req, res, (err) => {
+      if (err) {
+        console.error("Multer Error:", err);
+      }
+
       if (!err) {
         return next();
       }

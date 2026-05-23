@@ -2,8 +2,25 @@ const errorResponse = require("../utils/errorResponse");
 const adminImageService = require("../services/adminImageService");
 
 async function uploadAdminImage(req, res, deps = {}) {
+  // Enhanced logging for debugging upload issues
+  console.log("Upload Request Headers:", {
+    "content-type": req.headers["content-type"],
+    "content-length": req.headers["content-length"]
+  });
+  console.log("Upload Request Body:", req.body);
+  console.log("Upload Request File:", req.file ? {
+    fieldname: req.file.fieldname,
+    originalname: req.file.originalname,
+    mimetype: req.file.mimetype,
+    size: req.file.size
+  } : "undefined");
+
   if (!req.file) {
-    return errorResponse(res, 400, "INVALID", "Image file is required under the image field");
+    return res.status(400).json({
+      success: false,
+      message: "Image file is required under the image field",
+      expectedField: "image"
+    });
   }
 
   try {
