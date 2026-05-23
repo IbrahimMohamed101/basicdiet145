@@ -33,9 +33,13 @@ function createAdminImageUploadMiddleware({ fieldName = "image", maxFileSize = g
   }).single(fieldName);
 
   return (req, res, next) => {
-    // Log content-type to ensure it's multipart/form-data
+    // Log request state to identify if the stream was pre-consumed
+    console.log(`[Upload Trace] Path: ${req.path}, Content-Type: ${req.headers["content-type"]}, Body Early:`, req.body ? "Populated" : "Empty");
+    console.log(`[Upload Trace] Readable: ${req.readable}, Complete: ${req.complete}`);
+
+    // Log content-type warning to ensure it's multipart/form-data
     if (req.headers["content-type"] && !req.headers["content-type"].includes("multipart/form-data")) {
-      console.log("Upload Middleware Warning: Content-Type is not multipart/form-data:", req.headers["content-type"]);
+      console.warn("Upload Middleware Warning: Content-Type is not multipart/form-data:", req.headers["content-type"]);
     }
 
     upload(req, res, (err) => {
