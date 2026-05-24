@@ -1,4 +1,5 @@
 const Addon = require("../models/Addon");
+const MenuProduct = require("../models/MenuProduct");
 const { getRequestLang } = require("../utils/i18n");
 const { resolveAddonCatalogEntry } = require("../utils/subscription/subscriptionCatalog");
 const validateObjectId = require("../utils/validateObjectId");
@@ -179,6 +180,10 @@ function validateAddonPayloadOrThrow(payload, { forceKind = null } = {}) {
   const billingMode = resolveAddonBillingMode({ kind, rawBillingMode });
   const derivedBillingFields = buildAddonDerivedBillingFields(billingMode);
 
+  const menuProductId = payload.menuProductId && String(payload.menuProductId).trim() !== ""
+    ? validateObjectId(payload.menuProductId, "menuProductId")
+    : null;
+
   return {
     name,
     description,
@@ -192,6 +197,7 @@ function validateAddonPayloadOrThrow(payload, { forceKind = null } = {}) {
     category,
     isActive,
     sortOrder,
+    menuProductId,
     ...derivedBillingFields,
     billingMode,
   };
@@ -226,8 +232,23 @@ function resolveAdminAddonFilters(query = {}, { forceKind = null } = {}) {
 
 async function listAddons(req, res) {
   const lang = getRequestLang(req);
-  const rows = await Addon.find({ isActive: true }).sort({ sortOrder: 1, createdAt: -1 }).lean();
-  const mapped = rows.map((row) => resolveAddonCatalogEntry(row, lang));
+  const rows = await Addon.find({ isActive: true })
+    .populate("menuProductId")
+    .sort({ sortOrder: 1, createdAt: -1 })
+    .lean();
+    
+  const mapped = rows.map((row) => {
+    const data = { ...row };
+    if (row.menuProductId && typeof row.menuProductId === "object") {
+      data.priceHalala = row.menuProductId.priceHalala || row.priceHalala;
+      data.price = data.priceHalala / 100;
+      data.priceSar = data.price;
+      data.priceLabel = `${data.priceSar} SAR`;
+      data.menuProductId = String(row.menuProductId._id);
+    }
+    return resolveAddonCatalogEntry(data, lang);
+  });
+  
   return res.status(200).json({ status: true, data: mapped });
 }
 
@@ -328,6 +349,43 @@ async function updateAddon(req, res, options = {}) {
     if (err && err.status) {
       return errorResponse(res, err.status, err.code, err.message);
     }
+    throw err;
+  }
+}
+
+async function patchAddon(req, res, options = {}) {
+  const { id } = req.params;
+  try {
+    validateObjectId(id, "id");
+    const query = { _id: id };
+    if (options.forceKind) query.kind = options.forceKind;
+    const existing = await Addon.findOne(query);
+    if (!existing) return errorResponse(res, 404, "NOT_FOUND", "Addon not found");
+
+    const payload = {};
+    if (req.body.menuProductId !== undefined) {
+      payload.menuProductId = req.body.menuProductId && String(req.body.menuProductId).trim() !== ""
+        ? validateObjectId(req.body.menuProductId, "menuProductId")
+        : null;
+    }
+    
+    // Support basic fields in patch
+    if (req.body.isActive !== undefined) payload.isActive = parseBooleanField(req.body.isActive);
+    if (req.body.sortOrder !== undefined) payload.sortOrder = normalizeSortOrder(req.body.sortOrder);
+    if (req.body.priceHalala !== undefined) {
+      payload.priceHalala = Number(req.body.priceHalala);
+      payload.price = payload.priceHalala / 100;
+      payload.priceSar = payload.price;
+      payload.priceLabel = `${payload.priceSar} SAR`;
+    }
+
+    existing.set(payload);
+    await existing.save();
+
+    await writeAddonActivityLogSafely(req, existing, "addon_patched_by_admin", { patchedFields: Object.keys(payload) });
+    return res.status(200).json({ status: true, data: { id: existing.id } });
+  } catch (err) {
+    if (err && err.status) return errorResponse(res, err.status, err.code, err.message);
     throw err;
   }
 }
@@ -509,5 +567,6 @@ module.exports = {
   updateAddonItem,
   toggleAddonItemActive,
   deleteAddonItem,
+  patchAddon,
   validateAddonPayloadOrThrow,
 };

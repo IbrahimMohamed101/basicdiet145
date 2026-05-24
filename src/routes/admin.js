@@ -201,6 +201,7 @@ router.patch("/addons/:id/sort", asyncHandler(addonController.updateAddonSortOrd
 router.post("/addons/:id/clone", asyncHandler(addonController.cloneAddon));
 router.get("/addons/:id", asyncHandler(addonController.getAddonAdmin));
 router.put("/addons/:id", adminImageUploadMiddleware, asyncHandler(addonController.updateAddon));
+router.patch("/addons/:id", asyncHandler(addonController.patchAddon));
 router.delete("/addons/:id", asyncHandler(addonController.deleteAddon));
 
 router.get("/addon-plans", asyncHandler(addonController.listAddonPlansAdmin));

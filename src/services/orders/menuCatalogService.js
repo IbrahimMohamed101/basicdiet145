@@ -205,6 +205,7 @@ function serializePublicCategory(category, lang, products) {
     name: localizeName(category.name, lang),
     nameI18n: localizedPair(category.name),
     description: localizeName(category.description, lang),
+    descriptionI18n: localizedPair(category.description),
     imageUrl: category.imageUrl || "",
     sortOrder: Number(category.sortOrder || 0),
     products,
@@ -221,6 +222,7 @@ function serializePublicProduct(product, lang, optionGroups) {
     name: localizeName(product.name, lang),
     nameI18n: localizedPair(product.name),
     description: localizeName(product.description, lang),
+    descriptionI18n: localizedPair(product.description),
     imageUrl: product.imageUrl || "",
     itemType: product.itemType,
     pricingModel: product.pricingModel,
@@ -503,13 +505,23 @@ function normalizeGroupPayload(body = {}, existing = null) {
 
 function normalizeOptionPayload(body = {}, existing = null) {
   if (!isPlainObject(body)) throw new MenuValidationError("Request body must be an object");
+
+  let extraPriceHalala = normalizeNonNegativeInteger(body.extraPriceHalala, "extraPriceHalala", existing ? existing.extraPriceHalala : 0);
+  let extraFeeHalala = normalizeNonNegativeInteger(body.extraFeeHalala, "extraFeeHalala", existing ? (existing.extraFeeHalala || 0) : 0);
+
+  if (body.extraPriceHalala !== undefined && body.extraFeeHalala === undefined) {
+    extraFeeHalala = extraPriceHalala;
+  } else if (body.extraFeeHalala !== undefined && body.extraPriceHalala === undefined) {
+    extraPriceHalala = extraFeeHalala;
+  }
+
   return {
     groupId: body.groupId === undefined && existing ? existing.groupId : assertObjectId(body.groupId, "groupId"),
     key: body.key === undefined && existing ? existing.key : normalizeKey(body.key),
     name: body.name === undefined && existing ? existing.name : localizedString(body.name, "name", { required: true }),
     description: optionalLocalizedString(body.description, "description") || (existing ? existing.description : { ar: "", en: "" }),
     imageUrl: body.imageUrl === undefined && existing ? existing.imageUrl : String(body.imageUrl || "").trim(),
-    extraPriceHalala: normalizeNonNegativeInteger(body.extraPriceHalala, "extraPriceHalala", existing ? existing.extraPriceHalala : 0),
+    extraPriceHalala,
     extraWeightUnitGrams: normalizeNonNegativeInteger(body.extraWeightUnitGrams, "extraWeightUnitGrams", existing ? existing.extraWeightUnitGrams : 0),
     extraWeightPriceHalala: normalizeNonNegativeInteger(body.extraWeightPriceHalala, "extraWeightPriceHalala", existing ? existing.extraWeightPriceHalala : 0),
     currency: SYSTEM_CURRENCY,
@@ -518,7 +530,7 @@ function normalizeOptionPayload(body = {}, existing = null) {
     proteinFamilyKey: normalizeOptionalString(body.proteinFamilyKey, "proteinFamilyKey", existing ? existing.proteinFamilyKey : ""),
     displayCategoryKey: normalizeOptionalString(body.displayCategoryKey, "displayCategoryKey", existing ? existing.displayCategoryKey : ""),
     premiumKey: normalizeOptionalString(body.premiumKey, "premiumKey", existing ? existing.premiumKey : ""),
-    extraFeeHalala: normalizeNonNegativeInteger(body.extraFeeHalala, "extraFeeHalala", existing ? (existing.extraFeeHalala || 0) : 0),
+    extraFeeHalala,
     ruleTags: body.ruleTags === undefined && existing ? (existing.ruleTags || []) : normalizeStringArray(body.ruleTags, "ruleTags"),
     selectionType: normalizeOptionalString(body.selectionType, "selectionType", existing ? existing.selectionType : ""),
     isActive: normalizeBoolean(body.isActive, "isActive", existing ? existing.isActive : true),
@@ -604,10 +616,37 @@ async function softDeleteEntity(Model, id, { entityType, actor }) {
   assertObjectId(id);
   const row = await Model.findById(id);
   if (!row) throw new MenuNotFoundError();
+
+  if (Model === MenuCategory) {
+    const productCount = await MenuProduct.countDocuments({ categoryId: id, isActive: true });
+    if (productCount > 0) {
+      throw new MenuValidationError(`Cannot delete category with ${productCount} active products`, "CATEGORY_IN_USE", 400, { productCount });
+    }
+  }
+
+  if (Model === MenuOptionGroup) {
+    const relationCount = await ProductOptionGroup.countDocuments({ groupId: id, isActive: true });
+    if (relationCount > 0) {
+      throw new MenuValidationError(`Cannot delete option group currently linked to ${relationCount} products`, "GROUP_IN_USE", 400, { relationCount });
+    }
+  }
+
   const before = row.toObject();
   row.isActive = false;
   await row.save();
   await writeMenuAudit({ entityType, entityId: row._id, action: "soft_delete", before, after: row.toObject(), actor });
+
+  if (Model === MenuProduct) {
+    await Promise.all([
+      ProductOptionGroup.updateMany({ productId: id }, { $set: { isActive: false } }),
+      ProductGroupOption.updateMany({ productId: id }, { $set: { isActive: false } }),
+    ]);
+  }
+
+  if (Model === MenuOption) {
+    await ProductGroupOption.updateMany({ optionId: id }, { $set: { isActive: false } });
+  }
+
   return serializeDoc(row);
 }
 
@@ -655,6 +694,67 @@ async function setProductGroups(productId, groups = [], actor = {}) {
   return normalized;
 }
 
+async function duplicateProduct(productId, actor = {}) {
+  assertObjectId(productId);
+  const product = await MenuProduct.findById(productId).lean();
+  if (!product) throw new MenuNotFoundError("Product not found");
+
+  const [groupRelations, optionRelations] = await Promise.all([
+    ProductOptionGroup.find({ productId }).lean(),
+    ProductGroupOption.find({ productId }).lean(),
+  ]);
+
+  // Robust key generation to prevent collisions
+  const newKey = `${product.key}_copy_${Date.now()}_$${Math.random().toString(36).slice(2, 6)}`;
+
+  try {
+    const newProductDoc = await MenuProduct.create({
+      ...product,
+      _id: new mongoose.Types.ObjectId(),
+      key: newKey,
+      isActive: false,
+      publishedAt: null,
+      createdAt: undefined,
+      updatedAt: undefined,
+    });
+
+    const newProductId = newProductDoc._id;
+
+    const newGroupRelations = groupRelations.map((r) => ({
+      ...r,
+      _id: new mongoose.Types.ObjectId(),
+      productId: newProductId,
+    }));
+
+    const newOptionRelations = optionRelations.map((r) => ({
+      ...r,
+      _id: new mongoose.Types.ObjectId(),
+      productId: newProductId,
+    }));
+
+    await Promise.all([
+      ProductOptionGroup.insertMany(newGroupRelations),
+      ProductGroupOption.insertMany(newOptionRelations),
+    ]);
+
+    await writeMenuAudit({ 
+      entityType: "menu_product", 
+      entityId: newProductId, 
+      action: "duplicate", 
+      actor, 
+      meta: { originalProductId: productId } 
+    });
+
+    return serializeDoc(newProductDoc);
+  } catch (err) {
+    if (err.code === 11000) {
+      // Return 409 Conflict as requested
+      throw new MenuValidationError("Conflict: A product with this key already exists", "DUPLICATE_KEY", 409);
+    }
+    throw err;
+  }
+}
+
 async function setProductGroupOptions(productId, groupId, options = [], actor = {}) {
   assertObjectId(productId, "productId");
   assertObjectId(groupId, "groupId");
@@ -699,7 +799,34 @@ async function createProductGroup(productId, body, actor = {}) {
   ]);
   if (!product) throw new MenuNotFoundError("Product not found");
   if (!group) throw new MenuNotFoundError("Option group not found");
-  return createEntity(ProductOptionGroup, payload, { entityType: "menu_product_group", actor });
+  const relation = await createEntity(ProductOptionGroup, payload, { entityType: "menu_product_group", actor });
+  
+  const options = await MenuOption.find({ groupId: payload.groupId, isActive: true }).lean();
+  if (options.length > 0) {
+    const optionRelations = options.map((opt) => ({
+      productId,
+      groupId: payload.groupId,
+      optionId: opt._id,
+      isActive: true,
+      isVisible: true,
+      isAvailable: true,
+      sortOrder: opt.sortOrder || 0,
+    }));
+    await ProductGroupOption.insertMany(optionRelations);
+  }
+
+  return relation;
+}
+
+async function deleteProductGroup(productId, groupId, actor = {}) {
+  assertObjectId(productId);
+  assertObjectId(groupId);
+  const result = await ProductOptionGroup.deleteOne({ productId, groupId });
+  if (result.deletedCount > 0) {
+    await ProductGroupOption.deleteMany({ productId, groupId });
+    await writeMenuAudit({ entityType: "menu_product_group", entityId: productId, action: "delete", actor, meta: { groupId } });
+  }
+  return { deleted: result.deletedCount };
 }
 
 async function updateProductGroup(productId, groupId, body, actor = {}, action = null) {
@@ -750,21 +877,46 @@ async function createProductGroupOption(productId, groupId, body, actor = {}) {
   return createEntity(ProductGroupOption, payload, { entityType: "menu_product_group_option", actor });
 }
 
+async function deleteProductGroupOption(productId, groupId, optionId, actor = {}) {
+  assertObjectId(productId);
+  assertObjectId(groupId);
+  assertObjectId(optionId);
+  const result = await ProductGroupOption.deleteOne({ productId, groupId, optionId });
+  if (result.deletedCount > 0) {
+    await writeMenuAudit({ entityType: "menu_product_group_option", entityId: productId, action: "delete", actor, meta: { groupId, optionId } });
+  }
+  return { deleted: result.deletedCount };
+}
+
 async function updateProductGroupOption(productId, groupId, optionId, body, actor = {}, action = null) {
   assertObjectId(productId, "productId");
-  assertObjectId(groupId, "groupId");
   assertObjectId(optionId, "optionId");
-  const existing = await ProductGroupOption.findOne({ productId, groupId, optionId }).lean();
+  
+  const existing = await ProductGroupOption.findOne({ productId, optionId }).lean();
   if (!existing) throw new MenuNotFoundError("Product group option relation not found");
+
   const payload = normalizeProductGroupOptionRelationPayload({ ...body, productId, groupId, optionId }, existing);
-  const option = await MenuOption.findOne({ _id: payload.optionId, groupId }).lean();
-  if (!option) throw new MenuValidationError("Option does not belong to this group", "OPTION_NOT_ALLOWED", 400);
-  return updateEntity(ProductGroupOption, existing._id, payload, {
+  
+  // Use findOneAndUpdate as requested for atomic update and explicit query
+  const updated = await ProductGroupOption.findOneAndUpdate(
+    { productId, optionId },
+    { $set: payload },
+    { new: true }
+  ).lean();
+
+  if (!updated) throw new MenuNotFoundError("Product group option relation not found during update");
+
+  await writeMenuAudit({
     entityType: "menu_product_group_option",
-    actor,
+    entityId: updated._id,
     action: action || changeAction(payload, "relation_updated"),
-    meta: { productId, groupId, optionId },
+    before: existing,
+    after: updated,
+    actor,
+    meta: { productId, optionId },
   });
+
+  return serializeDoc(updated);
 }
 
 async function updateEntityField(Model, id, fieldName, value, { entityType, actor, action }) {
@@ -799,6 +951,126 @@ async function publishMenu({ actor = {}, notes = "" } = {}) {
   await MenuProduct.updateMany({ isActive: true }, { $set: { versionId: version._id } });
   await writeMenuAudit({ entityType: "menu_version", entityId: version._id, action: "publish", after: version.toObject(), actor });
   return serializeDoc(version);
+}
+
+async function listMenuVersions(options = {}) {
+  const rows = await MenuVersion.find({})
+    .sort({ createdAt: -1 })
+    .limit(Math.min(100, Math.max(1, Number(options.limit || 20))))
+    .lean();
+  return rows.map(serializeDoc);
+}
+
+async function rollbackMenuVersion(versionId, { confirm = false, actor = {} } = {}) {
+  if (!confirm) throw new MenuValidationError("أرسل confirm: true في الـ body", "ROLLBACK_NOT_CONFIRMED");
+  assertObjectId(versionId);
+  const version = await MenuVersion.findById(versionId).lean();
+  if (!version) throw new MenuNotFoundError("Version not found");
+
+  const snapshot = version.snapshot || {};
+  if (!snapshot.categories) {
+    throw new MenuValidationError("Version snapshot is incomplete or invalid", "INVALID_SNAPSHOT");
+  }
+
+  // Deep restore logic:
+  // For each category/product/option in snapshot, we update its state in the DB.
+  // Entities NOT in snapshot are marked as unpublished (publishedAt: null).
+  
+  await Promise.all([
+    MenuCategory.updateMany({}, { $set: { publishedAt: null } }),
+    MenuProduct.updateMany({}, { $set: { publishedAt: null } }),
+    MenuOptionGroup.updateMany({}, { $set: { publishedAt: null } }),
+    MenuOption.updateMany({}, { $set: { publishedAt: null } }),
+  ]);
+
+  const publishedAt = new Date();
+
+  for (const cat of snapshot.categories || []) {
+    await MenuCategory.updateOne({ _id: cat.id }, { 
+      $set: { 
+        publishedAt,
+        isActive: true,
+        sortOrder: cat.sortOrder,
+        name: cat.nameI18n,
+        description: cat.descriptionI18n || (typeof cat.description === "string" ? { en: cat.description, ar: "" } : cat.description)
+      } 
+    });
+
+    for (const prod of cat.products || []) {
+      await MenuProduct.updateOne({ _id: prod.id }, {
+        $set: {
+          publishedAt,
+          isActive: true,
+          categoryId: cat.id,
+          priceHalala: prod.priceHalala,
+          sortOrder: prod.sortOrder
+        }
+      });
+
+      for (const group of prod.optionGroups || []) {
+        await ProductOptionGroup.updateOne(
+          { productId: prod.id, groupId: group.id },
+          { 
+            $set: { 
+              isActive: true, 
+              minSelections: group.minSelections, 
+              maxSelections: group.maxSelections,
+              isRequired: group.isRequired,
+              sortOrder: group.sortOrder
+            } 
+          },
+          { upsert: true }
+        );
+
+        for (const opt of group.options || []) {
+          await MenuOption.updateOne({ _id: opt.id }, {
+            $set: {
+              publishedAt,
+              isActive: true,
+              groupId: group.id
+            }
+          });
+
+          await ProductGroupOption.updateOne(
+            { productId: prod.id, groupId: group.id, optionId: opt.id },
+            {
+              $set: {
+                isActive: true,
+                extraPriceHalala: opt.extraPriceHalala,
+                extraWeightUnitGrams: opt.extraWeightUnitGrams,
+                extraWeightPriceHalala: opt.extraWeightPriceHalala,
+                sortOrder: opt.sortOrder
+              }
+            },
+            { upsert: true }
+          );
+        }
+      }
+    }
+  }
+
+  return { status: "success", versionId };
+}
+
+async function getMenuDiff() {
+  const lastVersion = await MenuVersion.findOne({ status: "published" }).sort({ createdAt: -1 }).lean();
+  const currentSnapshot = await getPublishedMenu({ lang: "en" }).catch(() => ({}));
+  
+  const lastSnapshot = lastVersion ? lastVersion.snapshot : { categories: [] };
+  
+  // Basic diff logic: compare product counts and keys
+  const lastProducts = new Set((lastSnapshot.categories || []).flatMap(c => c.products || []).map(p => p.key));
+  const currentProducts = new Set((currentSnapshot.categories || []).flatMap(c => c.products || []).map(p => p.key));
+  
+  const added = [...currentProducts].filter(x => !lastProducts.has(x));
+  const removed = [...lastProducts].filter(x => !currentProducts.has(x));
+  
+  return {
+    lastVersionId: lastVersion ? lastVersion._id : null,
+    addedProducts: added,
+    removedProducts: removed,
+    changedCount: added.length + removed.length
+  };
 }
 
 async function validateMenuCatalogInternal() {
@@ -1042,21 +1314,32 @@ module.exports = {
   reorderProducts: (items, actor) => reorder(MenuProduct, items, { entityType: "menu_product", actor }),
   reorderOptionGroups: (items, actor) => reorder(MenuOptionGroup, items, { entityType: "menu_option_group", actor }),
   reorderOptions: (items, actor) => reorder(MenuOption, items, { entityType: "menu_option", actor }),
+  duplicateProduct,
   listProductGroups,
   createProductGroup,
   updateProductGroup,
+  deleteProductGroup,
   updateProductGroupSelectionRules,
   updateProductGroupVisibility: (productId, groupId, body, actor) => updateProductGroup(productId, groupId, { isVisible: body.isVisible }, actor, "visibility_changed"),
   updateProductGroupAvailability: (productId, groupId, body, actor) => updateProductGroup(productId, groupId, { isAvailable: body.isAvailable }, actor, "availability_changed"),
   listProductGroupOptions,
   createProductGroupOption,
   updateProductGroupOption,
+  deleteProductGroupOption,
   updateProductGroupOptionVisibility: (productId, groupId, optionId, body, actor) => updateProductGroupOption(productId, groupId, optionId, { isVisible: body.isVisible }, actor, "visibility_changed"),
   updateProductGroupOptionAvailability: (productId, groupId, optionId, body, actor) => updateProductGroupOption(productId, groupId, optionId, { isAvailable: body.isAvailable }, actor, "availability_changed"),
+  toggleOption: async (id, actor) => {
+    const existing = await MenuOption.findById(assertObjectId(id)).lean();
+    if (!existing) throw new MenuNotFoundError();
+    return updateEntity(MenuOption, id, { isActive: !existing.isActive }, { entityType: "menu_option", actor, action: "toggle_active" });
+  },
   setProductGroups,
   setProductGroupOptions,
   publishMenu,
   validateMenu: validateMenuCatalogInternal,
+  listVersions: listMenuVersions,
+  rollbackMenu: rollbackMenuVersion,
+  diffMenu: getMenuDiff,
   listAuditLogs: async (options = {}) => {
     const rows = await MenuAuditLog.find({})
       .sort({ createdAt: -1 })

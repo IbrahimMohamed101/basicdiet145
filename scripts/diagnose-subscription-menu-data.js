@@ -224,6 +224,65 @@ async function run() {
         "If deployed /api/subscriptions/menu still returns plans: [], then the deployed code likely differs from this workspace or the deployment is pointed at a different database/environment."
       );
     }
+    printSection("Menu Catalog Consistency Diagnostics");
+    const MenuProduct = require("../src/models/MenuProduct");
+    const MenuOption = require("../src/models/MenuOption");
+    const MenuOptionGroup = require("../src/models/MenuOptionGroup");
+    const ProductGroupOption = require("../src/models/ProductGroupOption");
+
+    const premiumSalad = await MenuProduct.findOne({ key: "premium_large_salad" }).lean();
+    const basicSalad = await MenuProduct.findOne({ key: "basic_salad" }).lean();
+
+    if (!premiumSalad) {
+      console.warn("❌ WARNING: premium_large_salad product not found in database.");
+    } else {
+      console.log(`✅ premium_large_salad exists (id: ${premiumSalad._id})`);
+      if (!premiumSalad.publishedAt) {
+        console.warn("❌ WARNING: premium_large_salad is NOT published.");
+      } else {
+        console.log("✅ premium_large_salad is published.");
+      }
+
+      // Check proteins
+      const proteinGroup = await MenuOptionGroup.findOne({ key: "proteins" }).lean();
+      if (proteinGroup) {
+        const premiumSaladProteins = await ProductGroupOption.find({
+          productId: premiumSalad._id,
+          groupId: proteinGroup._id,
+          isActive: true
+        }).lean();
+
+        const premiumSaladOptionIds = premiumSaladProteins.map(p => String(p.optionId));
+        const premiumOptions = await MenuOption.find({
+          _id: { $in: premiumSaladOptionIds },
+          isActive: true
+        }).lean();
+
+        const hasPremiumProtein = premiumOptions.some(o => o.displayCategoryKey === "premium" || o.extraFeeHalala > 0 || o.extraPriceHalala > 0);
+        if (!hasPremiumProtein) {
+          console.warn("❌ WARNING: premium_large_salad contains NO premium proteins.");
+        } else {
+          console.log("✅ premium_large_salad contains at least one premium protein.");
+        }
+
+        if (basicSalad) {
+          const basicSaladProteins = await ProductGroupOption.find({
+            productId: basicSalad._id,
+            groupId: proteinGroup._id,
+            isActive: true
+          }).lean();
+          const basicSaladOptionIds = new Set(basicSaladProteins.map(p => String(p.optionId)));
+          
+          const sharedProteins = premiumSaladOptionIds.filter(id => basicSaladOptionIds.has(id));
+          if (sharedProteins.length === premiumSaladOptionIds.length && premiumSaladOptionIds.length > 0) {
+            console.warn("❌ WARNING: basic_salad and premium_large_salad have the EXACT SAME protein sets.");
+          } else {
+            console.log("✅ basic_salad and premium_large_salad have different protein sets.");
+          }
+        }
+      }
+    }
+
   } catch (error) {
     console.error("\nSubscription menu diagnosis failed.");
     console.error(error && error.stack ? error.stack : error);

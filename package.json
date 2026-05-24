@@ -9,6 +9,7 @@
   "scripts": {
     "start": "node src/index.js",
     "diagnose:subscription-menu": "node scripts/diagnose-subscription-menu-data.js",
+    "sync:option-prices": "node scripts/sync-option-prices.js",
     "fix:payment-indexes": "node scripts/fix-payment-indexes.js",
     "indexes:production": "node scripts/create-production-indexes.js",
     "test": "node tests/meal_planner_types.test.js",
@@ -37,7 +38,6 @@
     "clean:premium-catalog": "ALLOW_PREMIUM_CATALOG_CLEANUP=true node scripts/clean-premium-catalog.js",
     "create:dashboard-user": "node scripts/create-dashboard-user.js",
     "seed:dashboard-users": "node scripts/seed-dashboard-users.js",
-    "seed:premium-catalog": "node scripts/seedPremiumCatalog.js",
     "seed:legal-content": "node scripts/seed-legal-content.js",
     "catalog:check": "node scripts/checkCatalogHealth.js",
     "smoke:integrity": "NODE_ENV=test node tests/smoke/integrity.test.js",

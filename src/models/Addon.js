@@ -63,6 +63,13 @@ const AddonSchema = new mongoose.Schema(
       trim: true,
     },
 
+    menuProductId: { 
+      type: mongoose.Schema.Types.ObjectId, 
+      ref: "MenuProduct", 
+      default: null,
+      index: true 
+    },
+
     // Backward-compat fields.
     price: { type: Number, default: 0 },
   },

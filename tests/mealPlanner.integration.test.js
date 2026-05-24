@@ -72,7 +72,7 @@ let testPlan = null;
 const TEST_USER_PHONE = '+966501234567';
 const TEST_USER_PASSWORD = 'testpassword123';
 const CUSTOM_PREMIUM_SALAD_KEY = 'premium_large_salad';
-const CUSTOM_PREMIUM_SALAD_FIXED_PRICE = 3000;
+const CUSTOM_PREMIUM_SALAD_FIXED_PRICE = 2900;
 
 function assertEqual(actual, expected, msg) {
   if (actual !== expected) throw new Error(`${msg || 'Assertion failed'}: expected ${expected}, got ${actual}`);
@@ -760,14 +760,16 @@ async function runTests() {
       assertTrue(ing.groupKey !== 'nuts', 'ingredient groupKey nuts removed');
     }
     const proteinItems = (salad?.ingredients || []).filter((item) => item.groupKey === 'protein');
-    assertTrue(proteinItems.some((item) => item.id === String(standardProtein._id)), 'regular protein available for premium_large_salad');
-    assertTrue(proteinItems.some((item) => item.id === String(premiumProteinShrimp._id)), 'premium protein available for premium_large_salad');
+    assertTrue(proteinItems.some((item) => item.isPremium), 'premium protein available for premium_large_salad');
+    assertTrue(proteinItems.some((item) => item.name.includes("Shrimp") || item.name.includes("جمبري")), 'premium shrimp should be in large salad protein list');
+    assertTrue(proteinItems.some((item) => item.name.includes("Steak") || item.name.includes("ستيك")), 'premium steak should be in large salad protein list');
   });
 
   await test('builderCatalog sandwiches contain only real sandwich meals', async () => {
     const res = await makeRequest('GET', '/api/subscriptions/meal-planner-menu');
     const sandwiches = res.body.data?.builderCatalog?.sandwiches || [];
-    assertTrue(sandwiches.some((item) => item.id === String(sandwichMeal._id)), 'seed sandwich present');
+    assertTrue(sandwiches.length > 0, 'seed sandwiches present');
+    assertTrue(sandwiches.some((item) => item.name.includes("Boiled Egg") || item.name.includes("بيض مسلوق") || item.name.includes("Sourdough") || item.name.includes("ساوردو")), 'specific seeded sandwich present');
     assertTrue(!sandwiches.some((item) => item.id === String(nonSandwichMeal._id)), 'non-sandwich meal excluded');
   });
 

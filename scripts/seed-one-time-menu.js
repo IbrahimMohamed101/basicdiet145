@@ -377,9 +377,9 @@ async function seedOneTimeMenu({ actor = { role: "script" }, notes = "Seed one-t
       const optionName = groupDefinition.options[optionIndex];
       const optionSeedKey = optionKey(groupKey, optionName, optionIndex);
       const premiumDetailsMap = {
-        "ستيك لحم": { proteinFamilyKey: "beef", premiumKey: "beef_steak", displayCategoryKey: "premium", availableForSubscription: true, selectionType: "premium" },
-        "جمبري": { proteinFamilyKey: "seafood", premiumKey: "shrimp", displayCategoryKey: "premium", availableForSubscription: true, selectionType: "premium" },
-        "سالمون": { proteinFamilyKey: "seafood", premiumKey: "salmon", displayCategoryKey: "premium", availableForSubscription: true, selectionType: "premium" },
+        "ستيك لحم": { extraPriceHalala: 1600, extraFeeHalala: 1600, proteinFamilyKey: "beef", premiumKey: "beef_steak", displayCategoryKey: "premium", availableForSubscription: true, selectionType: "premium" },
+        "جمبري": { extraPriceHalala: 1600, extraFeeHalala: 1600, proteinFamilyKey: "fish", premiumKey: "shrimp", displayCategoryKey: "premium", availableForSubscription: true, selectionType: "premium" },
+        "سالمون": { extraPriceHalala: 1600, extraFeeHalala: 1600, proteinFamilyKey: "fish", premiumKey: "salmon", displayCategoryKey: "premium", availableForSubscription: true, selectionType: "premium" },
       };
       const premiumFields = premiumDetailsMap[optionName.ar] || {};
 

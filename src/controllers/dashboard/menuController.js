@@ -106,9 +106,66 @@ const setProductGroups = wrap(async (req, res) => send(res, await service.setPro
 const setProductGroupOptions = wrap(async (req, res) => send(res, await service.setProductGroupOptions(req.params.productId, req.params.groupId, req.body.options || req.body, actorFromRequest(req))));
 const listProductGroupOptions = wrap(async (req, res) => send(res, await service.listProductGroupOptions(req.params.productId, req.params.groupId, listOptions(req))));
 const createProductGroupOption = wrap(async (req, res) => send(res, await service.createProductGroupOption(req.params.productId, req.params.groupId, req.body, actorFromRequest(req)), 201));
-const updateProductGroupOption = wrap(async (req, res) => send(res, await service.updateProductGroupOption(req.params.productId, req.params.groupId, req.params.optionId, req.body, actorFromRequest(req))));
+const updateProductGroupOption = wrap(async (req, res) => {
+  const { productId, groupId, optionId } = req.params;
+  const allowlist = ["extraPriceHalala", "extraWeightPriceHalala", "extraWeightUnitGrams", "sortOrder", "isActive", "isVisible", "isAvailable"];
+  const passed = Object.keys(req.body);
+  const invalid = passed.filter(k => !allowlist.includes(k));
+  
+  if (invalid.length > 0) {
+    return res.status(400).json({ 
+      status: false, 
+      code: "INVALID_FIELD", 
+      message: `الحقول [${invalid.join(", ")}] غير مسموح بتعديلها هنا. استخدمPATCH /menu/options/:optionId للقيم العامة.` 
+    });
+  }
+  
+  send(res, await service.updateProductGroupOption(productId, groupId, optionId, req.body, actorFromRequest(req)));
+});
 const updateProductGroupOptionVisibility = wrap(async (req, res) => send(res, await service.updateProductGroupOptionVisibility(req.params.productId, req.params.groupId, req.params.optionId, req.body, actorFromRequest(req))));
 const updateProductGroupOptionAvailability = wrap(async (req, res) => send(res, await service.updateProductGroupOptionAvailability(req.params.productId, req.params.groupId, req.params.optionId, req.body, actorFromRequest(req))));
+const duplicateProduct = wrap(async (req, res) => send(res, await service.duplicateProduct(req.params.id || req.params.productId, actorFromRequest(req)), 201));
+const deleteProductGroup = wrap(async (req, res) => send(res, await service.deleteProductGroup(req.params.id || req.params.productId, req.params.groupId, actorFromRequest(req))));
+const deleteProductGroupOption = wrap(async (req, res) => send(res, await service.deleteProductGroupOption(req.params.productId, req.params.groupId, req.params.optionId, actorFromRequest(req))));
+const toggleOption = wrap(async (req, res) => send(res, await service.toggleOption(req.params.id, actorFromRequest(req))));
+
+const listVersions = wrap(async (req, res) => send(res, await service.listVersions(req.query)));
+const rollbackMenu = wrap(async (req, res) => {
+  const { versionId } = req.params;
+  const actor = actorFromRequest(req);
+  
+  if (!req.body.confirm) {
+    return res.status(400).json({ message: "أرسل confirm: true في الـ body" });
+  }
+
+  try {
+    // 1. Auto-snapshot backup
+    const backupVersion = await service.publishMenu({ 
+      actor, 
+      notes: `Auto-snapshot before rollback to ${versionId}` 
+    });
+
+    // 2. Restore logic (in service)
+    await service.rollbackMenu(versionId, { confirm: true, actor });
+
+    // 3. Re-publish the restored state
+    const restoredVersion = await service.publishMenu({ 
+      actor, 
+      notes: `Rollback to version ${versionId}` 
+    });
+
+    res.status(200).json({ 
+      success: true, 
+      restoredVersion: restoredVersion.id, 
+      backupVersion: backupVersion.id 
+    });
+  } catch (err) {
+    console.error("Rollback failed:", err);
+    return res.status(500).json({ status: false, code: "ROLLBACK_FAILED", message: err.message || "Internal error during rollback" });
+  }
+});
+const getDiff = wrap(async (req, res) => send(res, await service.diffMenu()));
+
 const publishMenu = wrap(async (req, res) => send(res, await service.publishMenu({ actor: actorFromRequest(req), notes: req.body.notes })));
 const listAuditLogs = wrap(async (req, res) => send(res, await service.listAuditLogs(listOptions(req))));
 
@@ -160,8 +217,14 @@ module.exports = {
   listProductGroupOptions,
   createProductGroupOption,
   updateProductGroupOption,
-  updateProductGroupOptionVisibility,
   updateProductGroupOptionAvailability,
+  duplicateProduct,
+  deleteProductGroup,
+  deleteProductGroupOption,
+  toggleOption,
+  listVersions,
+  rollbackMenu,
+  getDiff,
   publishMenu,
   validateMenu,
   listAuditLogs,

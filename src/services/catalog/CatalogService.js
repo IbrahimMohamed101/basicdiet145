@@ -41,6 +41,7 @@ function activeCatalogQuery(extra = {}) {
     isActive: true,
     isVisible: { $ne: false },
     isAvailable: { $ne: false },
+    publishedAt: { $ne: null },
     ...extra,
   };
 }
@@ -141,7 +142,7 @@ function buildSandwichPayload(product, lang) {
     calories: Number(product.calories || 0),
     selectionType: MEAL_SELECTION_TYPES.SANDWICH,
     categoryKey: "sandwich",
-    pricingModel: "included",
+    pricingModel: product.pricingModel || "included",
     priceHalala: 0,
     proteinFamilyKey: product.proteinFamilyKey || "other",
     sortOrder: Number(product.sortOrder || 0),
@@ -230,7 +231,7 @@ async function getPremiumLargeSaladIngredients({ product, normalizedProteins, la
 }
 
 async function getSubscriptionBuilderCatalog({ lang = "en" } = {}) {
-  const [proteinOptions, carbOptions, sandwiches, premiumLargeSaladProduct] = await Promise.all([
+  const [proteinOptions, carbOptions, sandwiches, premiumLargeSaladProductPrimary] = await Promise.all([
     getGroupOptions(MENU_PROTEIN_GROUP_KEY),
     getGroupOptions(MENU_CARB_GROUP_KEY),
     MenuProduct.find(activeCatalogQuery({
@@ -240,15 +241,27 @@ async function getSubscriptionBuilderCatalog({ lang = "en" } = {}) {
       .sort({ sortOrder: 1, createdAt: -1 })
       .lean(),
     MenuProduct.findOne(activeCatalogQuery({
-      key: PREMIUM_LARGE_SALAD_PRODUCT_KEY,
+      key: "premium_large_salad",
       ...availableForChannelQuery("subscription"),
     })).lean(),
   ]);
 
+  let premiumLargeSaladProduct = premiumLargeSaladProductPrimary;
+  if (!premiumLargeSaladProduct) {
+    console.warn("[CatalogService] premium_large_salad not found, falling back to basic_salad");
+    premiumLargeSaladProduct = await MenuProduct.findOne(activeCatalogQuery({
+      key: "basic_salad",
+      ...availableForChannelQuery("subscription"),
+    })).lean();
+  }
+
   const normalizedProteins = proteinOptions
-    .map((option) => buildProteinPayload(option, lang, { 
-      isPremium: Number(option.extraFeeHalala || option.extraPriceHalala || 0) > 0 
-    }))
+    .map((option) => {
+      const resolvedPrice = Number(option.extraFeeHalala ?? option.extraPriceHalala ?? 0);
+      return buildProteinPayload(option, lang, { 
+        isPremium: resolvedPrice > 0 
+      });
+    })
     .sort(sortByCatalogOrder);
   const proteins = normalizedProteins.filter((protein) => !protein.isPremium);
   const premiumProteins = normalizedProteins.filter((protein) => protein.isPremium);

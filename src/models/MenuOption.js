@@ -34,7 +34,15 @@ const MenuOptionSchema = new mongoose.Schema(
     proteinFamilyKey: { type: String, default: "", trim: true },
     displayCategoryKey: { type: String, default: "", trim: true },
     premiumKey: { type: String, default: "", trim: true },
-    extraFeeHalala: { type: Number, min: 0, default: 0, validate: integerMinZero },
+    extraFeeHalala: { 
+      type: Number, 
+      min: 0, 
+      default: 0, 
+      validate: integerMinZero,
+      get: function(v) {
+        return (v !== undefined && v !== null && v !== 0) ? v : (this.extraPriceHalala || 0);
+      }
+    },
     ruleTags: { type: [String], default: [] },
     selectionType: { type: String, default: "", trim: true },
     isActive: { type: Boolean, default: true, index: true },
@@ -43,7 +51,11 @@ const MenuOptionSchema = new mongoose.Schema(
     sortOrder: { type: Number, default: 0 },
     publishedAt: { type: Date, default: null, index: true },
   },
-  { timestamps: true }
+  { 
+    timestamps: true,
+    toJSON: { getters: true, virtuals: true },
+    toObject: { getters: true, virtuals: true }
+  }
 );
 
 MenuOptionSchema.index({ groupId: 1, key: 1 }, { unique: true });
