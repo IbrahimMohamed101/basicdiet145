@@ -646,17 +646,13 @@ async function resolveCheckoutQuoteOrThrow(
       : [];
 
     if (!delivery.pickupLocationId) {
-      if (activePickupLocations.length === 1) {
-        const onlyLocation = activePickupLocations[0];
+      if (activePickupLocations.length >= 1) {
+        const defaultLocation = activePickupLocations[0];
         delivery.pickupLocationId = String(
-          onlyLocation.id
-          || onlyLocation.locationId
+          defaultLocation.id
+          || defaultLocation.locationId
           || "pickup_location_1"
         );
-      } else if (activePickupLocations.length > 1) {
-        const err = new Error("pickupLocationId is required when multiple pickup locations are active");
-        err.code = "VALIDATION_ERROR";
-        throw err;
       } else {
         const err = new Error("No active pickup location is configured");
         err.code = "VALIDATION_ERROR";
