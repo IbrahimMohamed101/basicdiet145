@@ -1,5 +1,7 @@
 const Plan = require("../../models/Plan");
 const BuilderProtein = require("../../models/BuilderProtein");
+const MenuOption = require("../../models/MenuOption");
+const MenuOptionGroup = require("../../models/MenuOptionGroup");
 const Addon = require("../../models/Addon");
 const Zone = require("../../models/Zone");
 const Setting = require("../../models/Setting");
@@ -17,6 +19,43 @@ const {
 const { applyPromoCodeToSubscriptionQuote } = require("../promoCodeService");
 const { getRestaurantBusinessDate } = require("../restaurantHoursService");
 const { resolveCanonicalPremiumIdentity, normalizePremiumItemKey } = require("../../utils/subscription/premiumIdentity");
+
+async function findMenuPremiumOptionsByIds(ids) {
+  if (!ids.length) return [];
+  const group = await MenuOptionGroup.findOne({ key: "proteins", isActive: true }).lean();
+  if (!group) return [];
+  return MenuOption.find({
+    _id: { $in: ids },
+    groupId: group._id,
+    isActive: true,
+    isVisible: { $ne: false },
+    isAvailable: { $ne: false },
+    availableForSubscription: { $ne: false },
+    $or: [
+      { availableFor: { $exists: false } },
+      { availableFor: [] },
+      { availableFor: "subscription" },
+    ],
+    extraPriceHalala: { $gt: 0 },
+  }).lean();
+}
+
+function mapMenuPremiumOptionForQuote(option) {
+  return {
+    _id: option._id,
+    name: option.name,
+    description: option.description,
+    imageUrl: option.imageUrl || "",
+    currency: option.currency || SYSTEM_CURRENCY,
+    extraFeeHalala: Number(option.extraPriceHalala || 0),
+    nutrition: option.nutrition || {},
+    isPremium: true,
+    premiumKey: option.premiumKey || option.key,
+    isActive: option.isActive,
+    sortOrder: option.sortOrder || 0,
+    _sourceModel: "MenuOption",
+  };
+}
 
 async function getSettingValue(key, fallback) {
   const setting = await Setting.findOne({ key }).lean();
@@ -463,13 +502,15 @@ async function resolveCheckoutQuoteOrThrow(
   const premiumIds = premiumItems.map((item) => item.id || item.premiumKey);
   const addonIds = addonItems.map((item) => item.id);
 
-  const [premiumDocs, addonDocs] = await Promise.all([
+  const [builderPremiumDocs, menuPremiumDocs, addonDocs] = await Promise.all([
     hasPremiumKey 
       ? Promise.resolve([])
       : (premiumIds.length ? BuilderProtein.find({ _id: { $in: premiumIds }, isActive: true, isPremium: true }).lean() : Promise.resolve([])),
+    hasPremiumKey ? Promise.resolve([]) : findMenuPremiumOptionsByIds(premiumIds),
     addonIds.length ? Addon.find({ _id: { $in: addonIds }, isActive: true }).lean() : Promise.resolve([]),
   ]);
 
+  const premiumDocs = builderPremiumDocs.concat(menuPremiumDocs.map(mapMenuPremiumOptionForQuote));
   const premiumById = new Map(premiumDocs.map((doc) => [String(doc._id), doc]));
   const addonById = new Map(addonDocs.map((doc) => [String(doc._id), doc]));
 
@@ -518,18 +559,27 @@ async function resolveCheckoutQuoteOrThrow(
       }
       assertSystemCurrencyOrThrow(doc.currency || SYSTEM_CURRENCY, `Premium protein ${item.id} currency`);
 
-      try {
-        resolved = await resolveCanonicalPremiumIdentity({
-          proteinId: item.id,
-          builderProteinDoc: doc,
-        });
-      } catch (resolveErr) {
-        if (resolveErr.code === "UNKNOWN_PREMIUM_KEY" || resolveErr.code === "INVALID_PREMIUM_ITEM") {
-          const err = new Error(`Cannot resolve premium identity: ${resolveErr.message}`);
-          err.code = "INVALID_PREMIUM_ITEM";
-          throw err;
+      if (doc._sourceModel === "MenuOption") {
+        resolved = {
+          premiumKey: doc.premiumKey,
+          unitExtraFeeHalala: unit,
+          canonicalProteinId: doc._id,
+          name: pickLang(doc.name, "en"),
+        };
+      } else {
+        try {
+          resolved = await resolveCanonicalPremiumIdentity({
+            proteinId: item.id,
+            builderProteinDoc: doc,
+          });
+        } catch (resolveErr) {
+          if (resolveErr.code === "UNKNOWN_PREMIUM_KEY" || resolveErr.code === "INVALID_PREMIUM_ITEM") {
+            const err = new Error(`Cannot resolve premium identity: ${resolveErr.message}`);
+            err.code = "INVALID_PREMIUM_ITEM";
+            throw err;
+          }
+          throw resolveErr;
         }
-        throw resolveErr;
       }
 
       premiumTotalHalala += resolved.unitExtraFeeHalala * item.qty;

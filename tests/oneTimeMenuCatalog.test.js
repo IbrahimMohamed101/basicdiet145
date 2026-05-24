@@ -21,6 +21,7 @@ const ProductOptionGroup = require("../src/models/ProductOptionGroup");
 const Setting = require("../src/models/Setting");
 const User = require("../src/models/User");
 const moyasarService = require("../src/services/moyasarService");
+const CatalogService = require("../src/services/catalog/CatalogService");
 const { dashboardAuth } = require("./helpers/dashboardAuthHelper");
 const { JWT_SECRET } = require("../src/middleware/auth");
 const {
@@ -538,6 +539,50 @@ async function seedViaDashboard(api) {
       });
     });
 
+    await test("subscription builderCatalog is derived from shared menu options and products", async () => {
+      const proteinsGroup = await MenuOptionGroup.findOne({ key: "proteins" }).lean();
+      assert(proteinsGroup, "proteins option group exists");
+      const shrimp = await MenuOption.findOne({ groupId: proteinsGroup._id, "name.en": "Shrimp" });
+      assert(shrimp, "shrimp menu option exists");
+      shrimp.extraPriceHalala = 1600;
+      shrimp.displayCategoryKey = "premium";
+      shrimp.proteinFamilyKey = "fish";
+      shrimp.premiumKey = "shrimp";
+      shrimp.ruleTags = ["premium"];
+      shrimp.selectionType = "premium_meal";
+      await shrimp.save();
+
+      const chicken = await MenuOption.findOne({ groupId: proteinsGroup._id, "name.en": "Grilled Chicken" });
+      assert(chicken, "standard chicken menu option exists");
+      chicken.extraPriceHalala = 0;
+      chicken.displayCategoryKey = "chicken";
+      chicken.proteinFamilyKey = "chicken";
+      chicken.premiumKey = "grilled_chicken";
+      chicken.selectionType = "standard_meal";
+      await chicken.save();
+
+      const catalog = await CatalogService.getSubscriptionBuilderCatalog({ lang: "en" });
+      const premiumShrimp = catalog.premiumProteins.find((protein) => protein.premiumKey === "shrimp");
+      const standardChicken = catalog.proteins.find((protein) => protein.id === String(chicken._id));
+      const sandwich = catalog.sandwiches.find((item) => item.name === "Grilled Chicken");
+
+      assert(premiumShrimp, "premium shrimp appears in premiumProteins");
+      assert.strictEqual(premiumShrimp.extraFeeHalala, 1600);
+      assert.strictEqual(premiumShrimp.selectionType, "premium_meal");
+      assert(standardChicken, "standard chicken appears in proteins");
+      assert.strictEqual(standardChicken.selectionType, "standard_meal");
+      assert(sandwich, "menu sandwich product appears in builderCatalog.sandwiches");
+      assert(catalog.premiumLargeSalad, "premiumLargeSalad is present");
+      assert(catalog.premiumLargeSalad.carbId, "premiumLargeSalad keeps carbId field");
+      assert((catalog.premiumLargeSalad.ingredients || []).some((item) => item.groupKey === "protein" && item.id === String(shrimp._id)), "premiumLargeSalad includes protein menu options");
+
+      const res = await api.get("/api/subscriptions/meal-planner-menu?lang=en");
+      expectStatus(res, 200, "subscription meal planner menu");
+      const endpointCatalog = res.body.data && res.body.data.builderCatalog;
+      assert(endpointCatalog, "endpoint returns builderCatalog");
+      assert(endpointCatalog.premiumProteins.some((protein) => protein.premiumKey === "shrimp"), "endpoint builderCatalog uses shared premium option");
+    });
+
     await resetDatabase();
 
     const user = await User.create({
@@ -582,6 +627,67 @@ async function seedViaDashboard(api) {
       assert.strictEqual(greekYogurt.optionGroups[0].maxSelections, 3);
       assert(!res.body.data.categories.flatMap((category) => category.products).some((item) => item.id === ctx.inactiveProduct.id), "inactive product is hidden");
       assert(!product.optionGroups[0].options.some((item) => item.id === ctx.options[3].id), "inactive option is hidden");
+    });
+
+    await test("Dashboard availableFor filters one-time products and options without changing public shape", async () => {
+      try {
+        let res = await api.patch(`/api/dashboard/menu/products/${ctx.fixedProduct.id}`).set(adminHeaders).send({
+          availableFor: ["subscription"],
+        });
+        expectStatus(res, 200, "set product subscription-only");
+        assert.deepStrictEqual(res.body.data.availableFor, ["subscription"], "product detail includes availableFor");
+
+        res = await api.post("/api/dashboard/menu/publish").set(adminHeaders).send({ notes: `${TEST_TAG} product channel` });
+        expectStatus(res, 200, "publish product channel");
+
+        res = await api.get("/api/orders/menu?lang=en");
+        expectStatus(res, 200, "menu after product channel");
+        assert(!res.body.data.categories.flatMap((category) => category.products).some((item) => item.id === ctx.fixedProduct.id), "subscription-only product hidden from one-time menu");
+
+        res = await api.post("/api/orders/quote").set(appAuth(user._id)).send({
+          fulfillmentMethod: "pickup",
+          items: [{ productId: ctx.fixedProduct.id, qty: 1, selectedOptions: [] }],
+        });
+        expectStatus(res, 409, "subscription-only product rejected by one-time quote");
+
+        res = await api.patch(`/api/dashboard/menu/products/${ctx.fixedProduct.id}`).set(adminHeaders).send({
+          availableFor: ["one_time", "subscription"],
+        });
+        expectStatus(res, 200, "restore product channels");
+
+        res = await api.patch(`/api/dashboard/menu/options/${ctx.options[1].id}`).set(adminHeaders).send({
+          availableFor: ["subscription"],
+        });
+        expectStatus(res, 200, "set option subscription-only");
+        assert.deepStrictEqual(res.body.data.availableFor, ["subscription"], "option detail includes availableFor");
+
+        res = await api.post("/api/dashboard/menu/publish").set(adminHeaders).send({ notes: `${TEST_TAG} option channel` });
+        expectStatus(res, 200, "publish option channel");
+
+        res = await api.get("/api/orders/menu?lang=en");
+        expectStatus(res, 200, "menu after option channel");
+        const fixedProduct = res.body.data.categories.flatMap((category) => category.products).find((item) => item.id === ctx.fixedProduct.id);
+        assert(fixedProduct, "restored product appears");
+        assert(!fixedProduct.optionGroups[0].options.some((item) => item.id === ctx.options[1].id), "subscription-only option hidden from one-time menu");
+
+        res = await api.post("/api/orders/quote").set(appAuth(user._id)).send({
+          fulfillmentMethod: "pickup",
+          items: [{
+            productId: ctx.fixedProduct.id,
+            qty: 1,
+            selectedOptions: [{ groupId: ctx.group.id, optionId: ctx.options[1].id }],
+          }],
+        });
+        expectStatus(res, 409, "subscription-only option rejected by one-time quote");
+      } finally {
+        await api.patch(`/api/dashboard/menu/products/${ctx.fixedProduct.id}`).set(adminHeaders).send({
+          availableFor: ["one_time", "subscription"],
+        });
+        await api.patch(`/api/dashboard/menu/options/${ctx.options[1].id}`).set(adminHeaders).send({
+          availableFor: ["one_time", "subscription"],
+        });
+        await api.post("/api/dashboard/menu/publish").set(adminHeaders).send({ notes: `${TEST_TAG} restore channels` });
+      }
     });
 
     await test("POST /api/orders/quote prices fixed item, option extra, and extra weight", async () => {

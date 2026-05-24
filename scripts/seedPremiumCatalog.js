@@ -3,6 +3,8 @@ const mongoose = require("mongoose");
 
 const BuilderCategory = require("../src/models/BuilderCategory");
 const BuilderProtein = require("../src/models/BuilderProtein");
+const MenuOption = require("../src/models/MenuOption");
+const MenuOptionGroup = require("../src/models/MenuOptionGroup");
 const SaladIngredient = require("../src/models/SaladIngredient");
 const {
   MEAL_PLANNER_CATEGORY_DEFINITIONS,
@@ -128,6 +130,11 @@ async function seedPremiumCatalog() {
   let created = 0;
   let updated = 0;
 
+  const proteinsGroup = await MenuOptionGroup.findOne({ key: "proteins" });
+  if (!proteinsGroup) {
+    console.warn("⚠️ MenuOptionGroup 'proteins' not found. Skipping MenuOption updates.");
+  }
+
   for (const meal of PREMIUM_MEALS) {
     const premiumCategoryId = categoryMap.get(meal.displayCategoryKey);
     if (!premiumCategoryId) {
@@ -162,14 +169,44 @@ async function seedPremiumCatalog() {
     );
     if (result.upserted) {
       created += 1;
-      console.log(`Created premium protein: ${meal.premiumKey}`);
+      console.log(`Created premium protein: ${meal.premiumKey} (BuilderProtein)`);
     } else {
       updated += 1;
-      console.log(`Updated premium protein: ${meal.premiumKey}`);
+      console.log(`Updated premium protein: ${meal.premiumKey} (BuilderProtein)`);
+    }
+
+    // 2. Update MenuOption (Primary shared catalog)
+    if (proteinsGroup) {
+      const menuOptionResult = await MenuOption.findOneAndUpdate(
+        { 
+          groupId: proteinsGroup._id,
+          $or: [
+            { premiumKey: meal.premiumKey },
+            { "name.en": meal.name.en }
+          ]
+        },
+        {
+          $set: {
+            premiumKey: meal.premiumKey,
+            extraFeeHalala: meal.extraFeeHalala,
+            proteinFamilyKey: meal.proteinFamilyKey,
+            displayCategoryKey: meal.displayCategoryKey,
+            availableForSubscription: true,
+            selectionType: "premium",
+            availableFor: ["one_time", "subscription"]
+          }
+        },
+        { new: true }
+      );
+      if (menuOptionResult) {
+        console.log(`  -> Linked and updated MenuOption: ${meal.premiumKey}`);
+      } else {
+        console.warn(`  -> ⚠️ Could not find matching MenuOption for ${meal.premiumKey} to link premium data.`);
+      }
     }
   }
 
-  console.log(`\nPremium meals seeded to BuilderProtein: ${created} created, ${updated} updated`);
+  console.log(`\nPremium meals seeded to BuilderProtein (backup) and MenuOption (shared): ${created} created, ${updated} updated`);
   console.log(`Static premium meal preserved outside BuilderProtein: ${PREMIUM_LARGE_SALAD_PREMIUM_KEY}`);
 
   const validIngredientGroups = new Set(

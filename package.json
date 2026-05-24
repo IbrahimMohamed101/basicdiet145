@@ -30,6 +30,7 @@
     "seed": "node scripts/seed-demo-data.js",
     "seed:subscription-addons": "node scripts/seed-subscription-addons.js",
     "seed:one-time-menu": "node scripts/seed-one-time-menu.js",
+    "migrate:builder-to-menu": "node scripts/migrate-builder-to-menu.js",
     "seed:clear": "node scripts/seed-demo-data.js --clear",
     "seed:full": "node scripts/seed-demo-data.js --clear --users=50 --subscriptions=80 --orders=50",
     "backfill:meal-categories": "node scripts/backfill-meal-categories.js",
@@ -48,7 +49,8 @@
     "validate:menu-identity": "node scripts/validate-menu-identity-links.js",
     "suggest:menu-identity": "node scripts/suggest-menu-identity-mappings.js",
     "validate:staging": "node scripts/validate-staging.js",
-    "validate:data": "node scripts/validate-data-integrity.js"
+    "validate:data": "node scripts/validate-data-integrity.js",
+    "clear:menu": "node scripts/clear-menu-catalog.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

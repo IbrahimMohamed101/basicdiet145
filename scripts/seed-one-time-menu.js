@@ -234,6 +234,17 @@ const productRows = [
     ["chocolate_ice_cream", "ايس كريم شوكولا", "Chocolate Ice Cream", 1300],
     ["ice_cream_add_on", "إضافة ايس كريم", "Ice Cream Add-on", 700],
   ].map(([productKey, ar, en, priceHalala]) => ({ key: productKey, category: "ice_cream", itemType: "ice_cream", name: name(ar, en), pricingModel: "fixed", priceHalala })),
+  { 
+    key: "premium_large_salad", 
+    category: "custom_order", 
+    itemType: "premium_large_salad", 
+    name: name("سلطة كبيرة مميزة", "Premium Large Salad"), 
+    pricingModel: "per_100g", 
+    priceHalala: 2900, 
+    availableFor: ["subscription"],
+    groups: [["leafy_greens", 1, 2], ["vegetables_legumes", 0, 19], ["fruits", 0, 4], ["proteins", 1, 1], ["sauces", 1, 1]], 
+    optionNames: { proteins: ["ستيك لحم", "جمبري", "سالمون"] } 
+  },
 ];
 
 const groups = Object.fromEntries(
@@ -365,9 +376,30 @@ async function seedOneTimeMenu({ actor = { role: "script" }, notes = "Seed one-t
     for (let optionIndex = 0; optionIndex < groupDefinition.options.length; optionIndex += 1) {
       const optionName = groupDefinition.options[optionIndex];
       const optionSeedKey = optionKey(groupKey, optionName, optionIndex);
+      const premiumDetailsMap = {
+        "ستيك لحم": { proteinFamilyKey: "beef", premiumKey: "beef_steak", displayCategoryKey: "premium", availableForSubscription: true, selectionType: "premium" },
+        "جمبري": { proteinFamilyKey: "seafood", premiumKey: "shrimp", displayCategoryKey: "premium", availableForSubscription: true, selectionType: "premium" },
+        "سالمون": { proteinFamilyKey: "seafood", premiumKey: "salmon", displayCategoryKey: "premium", availableForSubscription: true, selectionType: "premium" },
+      };
+      const premiumFields = premiumDetailsMap[optionName.ar] || {};
+
       const option = await MenuOption.findOneAndUpdate(
         { groupId: group._id, key: optionSeedKey },
-        { $set: { groupId: group._id, key: optionSeedKey, name: optionName, extraWeightUnitGrams: groupKey === "proteins" ? 50 : 0, isActive: true, isVisible: true, isAvailable: true, sortOrder: optionSort, publishedAt: now } },
+        { 
+          $set: { 
+            groupId: group._id, 
+            key: optionSeedKey, 
+            name: optionName, 
+            extraWeightUnitGrams: groupKey === "proteins" ? 50 : 0, 
+            isActive: true, 
+            isVisible: true, 
+            isAvailable: true, 
+            sortOrder: optionSort, 
+            publishedAt: now,
+            availableFor: ["one_time", "subscription"],
+            ...premiumFields
+          } 
+        },
         { upsert: true, new: true }
       );
       optionMap.set(`${groupKey}:${optionName.ar}`, option);
@@ -398,6 +430,7 @@ async function seedOneTimeMenu({ actor = { role: "script" }, notes = "Seed one-t
           isAvailable: true,
           sortOrder: productSort,
           publishedAt: now,
+          availableFor: productData.availableFor || (["fruit_salad", "greek_yogurt"].includes(productData.key) || productData.category === "ice_cream" ? ["one_time"] : ["one_time", "subscription"])
         },
       },
       { upsert: true, new: true }

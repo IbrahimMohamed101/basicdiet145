@@ -76,7 +76,7 @@ const ITEM_ADDONS = [
     sortOrder: 10,
   },
   {
-    name: { ar: "بيري بروت", en: "Berry Brute" },
+    name: { ar: "بيري بروت", en: "Berry Prot" },
     description: { ar: "عصير ضمن فئة العصير.", en: "Juice item in the juice category." },
     imageUrl: "",
     priceHalala: 1300,
@@ -206,7 +206,7 @@ const ITEM_ADDONS = [
     sortOrder: 30,
   },
   {
-    name: { ar: "بلو بيري تشيزكيك", en: "Blueberry Cheesecake" },
+    name: { ar: "تشيز كيك بالتوت", en: "Berry Cheesecake" },
     description: { ar: "سناك ضمن فئة السناك.", en: "Snack item in the snack category." },
     imageUrl: "",
     priceHalala: 1900,
@@ -274,8 +274,8 @@ const ITEM_ADDONS = [
     name: { ar: "كيكة بروتين بالشوكولاتة", en: "Protein Chocolate Cake" },
     description: { ar: "سناك ضمن فئة السناك.", en: "Snack item in the snack category." },
     imageUrl: "",
-    priceHalala: 400,
-    price: 4,
+    priceHalala: 1900,
+    price: 19,
     currency: SYSTEM_CURRENCY,
     kind: "item",
     category: "snack",

@@ -1,6 +1,8 @@
 const mongoose = require("mongoose");
 const BuilderProtein = require("../../models/BuilderProtein");
 const BuilderCarb = require("../../models/BuilderCarb");
+const MenuOption = require("../../models/MenuOption");
+const MenuOptionGroup = require("../../models/MenuOptionGroup");
 const Meal = require("../../models/Meal");
 const MealCategory = require("../../models/MealCategory");
 const SaladIngredient = require("../../models/SaladIngredient");
@@ -31,6 +33,8 @@ const {
 } = require("../../utils/subscription/mealTypeMapper");
 
 const DEFAULT_SLOT_KEY_PREFIX = "slot_";
+const MENU_PROTEIN_GROUP_KEY = "proteins";
+const MENU_CARB_GROUP_KEY = "carbs";
 
 const CUSTOM_PREMIUM_SALAD_TYPE = LEGACY_MEAL_SELECTION_TYPES.CUSTOM_PREMIUM_SALAD;
 const SANDWICH_TYPE = LEGACY_MEAL_SELECTION_TYPES.SANDWICH;
@@ -92,6 +96,31 @@ function normalizeMealSlotsInput({ mealSlots }) {
     normalizedSlot.carbs = normalizeCarbs(normalizedSlot, normalizedSlot.selectionType);
     return normalizedSlot;
   });
+}
+
+async function getMenuGroupId(groupKey, session) {
+  const group = await MenuOptionGroup.findOne({ key: groupKey, isActive: true }).session(session).lean();
+  return group ? group._id : null;
+}
+
+function mapMenuProteinOption(option) {
+  const isPremium = Number(option.extraPriceHalala || 0) > 0;
+  return {
+    ...option,
+    isPremium,
+    premiumKey: option.premiumKey || option.key || null,
+    extraFeeHalala: Number(option.extraPriceHalala || 0),
+    proteinFamilyKey: option.proteinFamilyKey || option.displayCategoryKey || "other",
+    displayCategoryKey: option.displayCategoryKey || (isPremium ? "premium" : option.proteinFamilyKey || "other"),
+    ruleTags: Array.isArray(option.ruleTags) ? option.ruleTags : [],
+  };
+}
+
+function mapMenuCarbOption(option) {
+  return {
+    ...option,
+    displayCategoryKey: option.displayCategoryKey || "standard_carbs",
+  };
 }
 
 /** 
@@ -669,8 +698,42 @@ async function buildMealSlotDraft({ mealSlots, mealsPerDayLimit, maxSlotCount = 
   const validCarbIds = carbIds.filter(id => isValidObjectId(id));
   const validSandwichIds = sandwichIds.filter(id => isValidObjectId(id));
   const shouldLoadSandwiches = validSandwichIds.length > 0;
+  const [menuProteinGroupId, menuCarbGroupId] = await Promise.all([
+    getMenuGroupId(MENU_PROTEIN_GROUP_KEY, session),
+    getMenuGroupId(MENU_CARB_GROUP_KEY, session),
+  ]);
 
-  const [proteins, carbs, sandwichCategory, saladIngredients, catalogSandwiches] = await Promise.all([
+  const [menuProteins, menuCarbs, legacyProteins, legacyCarbs, sandwichCategory, saladIngredients, catalogSandwiches] = await Promise.all([
+    menuProteinGroupId
+      ? MenuOption.find({
+        _id: { $in: validProteinIds },
+        groupId: menuProteinGroupId,
+        isActive: true,
+        isVisible: { $ne: false },
+        isAvailable: { $ne: false },
+        availableForSubscription: { $ne: false },
+        $or: [
+          { availableFor: { $exists: false } },
+          { availableFor: [] },
+          { availableFor: "subscription" },
+        ],
+      }).session(session).lean()
+      : Promise.resolve([]),
+    menuCarbGroupId
+      ? MenuOption.find({
+        _id: { $in: validCarbIds },
+        groupId: menuCarbGroupId,
+        isActive: true,
+        isVisible: { $ne: false },
+        isAvailable: { $ne: false },
+        availableForSubscription: { $ne: false },
+        $or: [
+          { availableFor: { $exists: false } },
+          { availableFor: [] },
+          { availableFor: "subscription" },
+        ],
+      }).session(session).lean()
+      : Promise.resolve([]),
     BuilderProtein.find({
       _id: { $in: validProteinIds },
       isActive: true,
@@ -700,8 +763,16 @@ async function buildMealSlotDraft({ mealSlots, mealsPerDayLimit, maxSlotCount = 
     }).session(session).lean();
   }
 
-  const proteinMap = new Map(proteins.map((p) => [String(p._id), p]));
-  const carbMap = new Map(carbs.map((c) => [String(c._id), c]));
+  const proteinMap = new Map(
+    legacyProteins
+      .map((p) => [String(p._id), p])
+      .concat(menuProteins.map((p) => [String(p._id), mapMenuProteinOption(p)]))
+  );
+  const carbMap = new Map(
+    legacyCarbs
+      .map((c) => [String(c._id), c])
+      .concat(menuCarbs.map((c) => [String(c._id), mapMenuCarbOption(c)]))
+  );
   const sandwichMap = new Map(
     catalogSandwiches.concat(sandwichMeals).map((m) => [String(m._id), m])
   );

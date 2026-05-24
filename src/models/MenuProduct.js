@@ -48,6 +48,11 @@ const MenuProductSchema = new mongoose.Schema(
     maxWeightGrams: { type: Number, min: 0, default: 0, validate: integerMinZero },
     weightStepGrams: { type: Number, min: 1, default: 50, validate: integerMinZero },
     currency: { type: String, default: SYSTEM_CURRENCY },
+    availableFor: {
+      type: [String],
+      enum: ["one_time", "subscription"],
+      default: ["one_time", "subscription"],
+    },
     isActive: { type: Boolean, default: true, index: true },
     isVisible: { type: Boolean, default: true, index: true },
     isAvailable: { type: Boolean, default: true, index: true },

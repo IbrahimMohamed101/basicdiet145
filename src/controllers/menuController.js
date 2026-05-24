@@ -3,8 +3,6 @@ const Plan = require("../models/Plan");
 const Addon = require("../models/Addon");
 const MealCategory = require("../models/MealCategory");
 const Setting = require("../models/Setting");
-// New builder-catalog models (slot-based meal planner)
-const BuilderProtein = require("../models/BuilderProtein");
 const Zone = require("../models/Zone");
 const { getRequestLang, pickLang } = require("../utils/i18n");
 const { withDefaultMealNutrition } = require("../utils/mealNutrition");
@@ -102,6 +100,24 @@ function buildAddonCatalogFromLegacyPlannerAddons(legacyPlannerAddons = {}) {
     byCategory: grouped.byCategory,
     totalCount: Number(legacyPlannerAddons?.totalCount ?? items.length),
   };
+}
+
+function mapBuilderPremiumProteinsToLegacyRows(builderCatalog = {}) {
+  return (builderCatalog.premiumProteins || []).map((protein) => ({
+    _id: protein.id,
+    name: { ar: protein.name || "", en: protein.name || "" },
+    description: { ar: protein.description || "", en: protein.description || "" },
+    imageUrl: "",
+    currency: protein.currency || SYSTEM_CURRENCY,
+    extraFeeHalala: Number(protein.extraFeeHalala || 0),
+    proteinGrams: 0,
+    carbGrams: 0,
+    fatGrams: 0,
+    isPremium: true,
+    premiumKey: protein.premiumKey,
+    isActive: true,
+    sortOrder: protein.sortOrder || 0,
+  }));
 }
 
 function buildSubscriptionMealCatalog({
@@ -261,7 +277,7 @@ async function getSubscriptionMenu(req, res) {
     plans,
     regularMeals,
     mealCategories,
-    premiumMeals,
+    builderCatalog,
     addons,
     mealPlannerAddons,
     deliveryWindows,
@@ -276,27 +292,7 @@ async function getSubscriptionMenu(req, res) {
       .sort({ sortOrder: 1, createdAt: -1 })
       .lean(),
     MealCategory.find({}).sort({ sortOrder: 1, createdAt: -1 }).lean(),
-    BuilderProtein
-      .find({ isActive: true, isPremium: true })
-      .sort({ sortOrder: 1, createdAt: -1 })
-      .lean()
-      .then((docs) =>
-        docs.map((p) => ({
-          _id: p._id,
-          name: p.name,
-          description: p.description,
-          imageUrl: "",
-          currency: p.currency || "SAR",
-          extraFeeHalala: Number(p.extraFeeHalala || 0),
-          proteinGrams: Number((p.nutrition && p.nutrition.proteinGrams) || 0),
-          carbGrams: Number((p.nutrition && p.nutrition.carbGrams) || 0),
-          fatGrams: Number((p.nutrition && p.nutrition.fatGrams) || 0),
-          isPremium: p.isPremium,
-          premiumKey: p.premiumKey,
-          isActive: p.isActive,
-          sortOrder: p.sortOrder || 0,
-        }))
-      ),
+    getMealPlannerCatalog({ lang }),
     Addon.find({ isActive: true, kind: "plan", billingMode: "per_day" }).sort({ sortOrder: 1, createdAt: -1 }).lean(),
     Addon.find({ isActive: true, kind: "item", billingMode: "flat_once" }).sort({ sortOrder: 1, createdAt: -1 }).lean(),
     getSettingValue("delivery_windows", []),
@@ -308,6 +304,7 @@ async function getSubscriptionMenu(req, res) {
   ]);
 
   const mappedPlans = plans.map((plan) => resolvePlanCatalogEntry(plan, lang));
+  const premiumMeals = mapBuilderPremiumProteinsToLegacyRows(builderCatalog);
   const deliveryCatalog = resolveDeliveryCatalog({
     lang,
     windows: deliveryWindows,
@@ -348,39 +345,15 @@ async function getSubscriptionMenu(req, res) {
 async function getSubscriptionMealPlannerMenu(req, res) {
   const lang = getRequestLang(req);
   const includeLegacy = String(req.query?.includeLegacy || "").toLowerCase() === "true";
-  const [regularMeals, mealCategories, premiumMeals, addons, builderCatalog] = await Promise.all([
+  const [regularMeals, mealCategories, addons, builderCatalog] = await Promise.all([
     Meal.find({ type: "regular", isActive: true, availableForSubscription: { $ne: false }, categoryId: { $ne: null } })
       .sort({ sortOrder: 1, createdAt: -1 })
       .lean(),
     MealCategory.find({}).sort({ sortOrder: 1, createdAt: -1 }).lean(),
-    // SOURCE CHANGE: premium items now come from BuilderProtein (isPremium: true)
-    // as the source of truth for the slot-based planner. Each doc is shaped to be compatible
-    // with resolvePremiumMealCatalogEntry (same fields it reads).
-    BuilderProtein
-      .find({ isActive: true, isPremium: true })
-      .sort({ sortOrder: 1, createdAt: -1 })
-      .lean()
-      .then((docs) =>
-        docs.map((p) => ({
-          _id: p._id,
-          name: p.name,                                        // { ar, en } — same shape
-          description: p.description,                          // { ar, en } — same shape
-          imageUrl: "",                                        // BuilderProtein has no imageUrl
-          currency: p.currency || "SAR",
-          extraFeeHalala: Number(p.extraFeeHalala || 0),
-          // BuilderProtein stores macros under nutrition sub-doc
-          proteinGrams: Number((p.nutrition && p.nutrition.proteinGrams) || 0),
-          carbGrams:    Number((p.nutrition && p.nutrition.carbGrams)    || 0),
-          fatGrams:     Number((p.nutrition && p.nutrition.fatGrams)     || 0),
-          isPremium: p.isPremium,
-          premiumKey: p.premiumKey,
-          isActive: p.isActive,
-          sortOrder: p.sortOrder || 0,
-        }))
-      ),
     Addon.find({ isActive: true, kind: "item", billingMode: "flat_once" }).sort({ sortOrder: 1, createdAt: -1 }).lean(),
     getMealPlannerCatalog({ lang }),
   ]);
+  const premiumMeals = mapBuilderPremiumProteinsToLegacyRows(builderCatalog);
   const mealCatalog = buildSubscriptionMealCatalog({
     lang,
     regularMeals,

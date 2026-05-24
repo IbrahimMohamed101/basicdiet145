@@ -117,6 +117,24 @@ function normalizeStringArray(value, fieldName) {
   return value.map((item) => String(item || "").trim()).filter(Boolean);
 }
 
+function normalizeAvailableFor(value, fieldName = "availableFor", fallback = ["one_time", "subscription"]) {
+  if (value === undefined) return fallback;
+  if (value === null || value === "") return [];
+  const values = Array.isArray(value) ? value : [value];
+  const normalized = values.map((item) => String(item || "").trim()).filter(Boolean);
+  const allowed = new Set(["one_time", "subscription"]);
+  const invalid = normalized.find((item) => !allowed.has(item));
+  if (invalid) throw new MenuValidationError(`${fieldName} contains an unsupported channel`);
+  return [...new Set(normalized)];
+}
+
+function normalizeOptionalString(value, fieldName, fallback = "") {
+  if (value === undefined) return fallback;
+  if (value === null) return "";
+  if (typeof value !== "string") throw new MenuValidationError(`${fieldName} must be a string`);
+  return value.trim();
+}
+
 function localizeName(value, lang) {
   return pickLang(value, lang) || pickLang(value, "en") || pickLang(value, "ar") || "";
 }
@@ -145,6 +163,16 @@ function customerCatalogQuery(extra = {}) {
     isAvailable: { $ne: false },
     publishedAt: { $ne: null },
     ...extra,
+  };
+}
+
+function availableForChannelQuery(channel) {
+  return {
+    $or: [
+      { availableFor: { $exists: false } },
+      { availableFor: [] },
+      { availableFor: channel },
+    ],
   };
 }
 
@@ -258,15 +286,20 @@ async function getSettingValue(key, fallback) {
 }
 
 async function hasPublishedMenuCatalog() {
-  const count = await MenuProduct.countDocuments(customerCatalogQuery());
+  const count = await MenuProduct.countDocuments(customerCatalogQuery(availableForChannelQuery("one_time")));
   return count > 0;
 }
 
 async function getPublishedMenu({ lang = "en", branchId = "" } = {}) {
-  const productQuery = customerCatalogQuery();
+  const productQuery = customerCatalogQuery(availableForChannelQuery("one_time"));
   const categoryQuery = customerCatalogQuery();
   if (branchId) {
-    productQuery.$or = [{ branchAvailability: { $size: 0 } }, { branchAvailability: branchId }];
+    const channelOr = productQuery.$or;
+    delete productQuery.$or;
+    productQuery.$and = [
+      { $or: channelOr },
+      { $or: [{ branchAvailability: { $size: 0 } }, { branchAvailability: branchId }] },
+    ];
     categoryQuery.$or = [{ "availability.branchIds": { $size: 0 } }, { "availability.branchIds": branchId }];
   }
 
@@ -276,7 +309,7 @@ async function getPublishedMenu({ lang = "en", branchId = "" } = {}) {
     ProductOptionGroup.find(customerRelationQuery()).sort({ sortOrder: 1, createdAt: -1 }).lean(),
     ProductGroupOption.find(customerRelationQuery()).sort({ sortOrder: 1, createdAt: -1 }).lean(),
     MenuOptionGroup.find(customerCatalogQuery()).lean(),
-    MenuOption.find(customerCatalogQuery()).lean(),
+    MenuOption.find(customerCatalogQuery(availableForChannelQuery("one_time"))).lean(),
     getSettingValue("vat_percentage", 0),
   ]);
 
@@ -444,6 +477,7 @@ function normalizeProductPayload(body = {}, existing = null) {
     maxWeightGrams: normalizeNonNegativeInteger(body.maxWeightGrams, "maxWeightGrams", existing ? existing.maxWeightGrams : 0),
     weightStepGrams: normalizeNonNegativeInteger(body.weightStepGrams, "weightStepGrams", existing ? existing.weightStepGrams : 50) || 50,
     currency: SYSTEM_CURRENCY,
+    availableFor: normalizeAvailableFor(body.availableFor, "availableFor", existing ? (existing.availableFor || []) : ["one_time", "subscription"]),
     isActive: normalizeBoolean(body.isActive, "isActive", existing ? existing.isActive : true),
     isVisible: normalizeBoolean(body.isVisible, "isVisible", existing ? truthyByDefault(existing.isVisible) : true),
     isAvailable: normalizeBoolean(body.isAvailable, "isAvailable", existing ? truthyByDefault(existing.isAvailable) : true),
@@ -479,6 +513,14 @@ function normalizeOptionPayload(body = {}, existing = null) {
     extraWeightUnitGrams: normalizeNonNegativeInteger(body.extraWeightUnitGrams, "extraWeightUnitGrams", existing ? existing.extraWeightUnitGrams : 0),
     extraWeightPriceHalala: normalizeNonNegativeInteger(body.extraWeightPriceHalala, "extraWeightPriceHalala", existing ? existing.extraWeightPriceHalala : 0),
     currency: SYSTEM_CURRENCY,
+    availableFor: normalizeAvailableFor(body.availableFor, "availableFor", existing ? (existing.availableFor || []) : ["one_time", "subscription"]),
+    availableForSubscription: normalizeBoolean(body.availableForSubscription, "availableForSubscription", existing ? truthyByDefault(existing.availableForSubscription) : true),
+    proteinFamilyKey: normalizeOptionalString(body.proteinFamilyKey, "proteinFamilyKey", existing ? existing.proteinFamilyKey : ""),
+    displayCategoryKey: normalizeOptionalString(body.displayCategoryKey, "displayCategoryKey", existing ? existing.displayCategoryKey : ""),
+    premiumKey: normalizeOptionalString(body.premiumKey, "premiumKey", existing ? existing.premiumKey : ""),
+    extraFeeHalala: normalizeNonNegativeInteger(body.extraFeeHalala, "extraFeeHalala", existing ? (existing.extraFeeHalala || 0) : 0),
+    ruleTags: body.ruleTags === undefined && existing ? (existing.ruleTags || []) : normalizeStringArray(body.ruleTags, "ruleTags"),
+    selectionType: normalizeOptionalString(body.selectionType, "selectionType", existing ? existing.selectionType : ""),
     isActive: normalizeBoolean(body.isActive, "isActive", existing ? existing.isActive : true),
     isVisible: normalizeBoolean(body.isVisible, "isVisible", existing ? truthyByDefault(existing.isVisible) : true),
     isAvailable: normalizeBoolean(body.isAvailable, "isAvailable", existing ? truthyByDefault(existing.isAvailable) : true),
