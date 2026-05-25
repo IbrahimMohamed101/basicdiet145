@@ -152,7 +152,8 @@ function buildRequestHash(payload) {
 }
 
 function normalizeSingleBranchPickup(pickup = {}, restaurantHours = {}) {
-  const branchId = String(restaurantHours.defaultPickupLocationId || "main").trim() || "main";
+  const defaultId = String(restaurantHours.defaultPickupLocationId || "main").trim() || "main";
+  const branchId = (pickup && pickup.branchId) || defaultId;
   return {
     ...(pickup && typeof pickup === "object" ? pickup : {}),
     branchId,
@@ -389,9 +390,11 @@ async function priceOrderCart({
     throw createOrderPricingError("EMPTY_ORDER", "Order must include at least one item");
   }
   const method = String(fulfillmentMethod || "pickup").trim();
+  const requestedBranchId = pickup && pickup.branchId ? String(pickup.branchId).trim() : null;
 
   const restaurantHours = await assertRestaurantOpenForOrdering({
     deliveryMode: method,
+    branchId: requestedBranchId,
   });
   const normalizedPickup = normalizeSingleBranchPickup(pickup, restaurantHours);
 

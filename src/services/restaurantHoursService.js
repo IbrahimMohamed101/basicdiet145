@@ -177,6 +177,12 @@ async function getRestaurantHours(options = {}) {
 
 async function assertRestaurantOpenForOrdering(options = {}) {
   const hours = await resolveRestaurantOpenState(options);
+  if (options.branchId && !hours.pickupLocationFound) {
+    const err = new Error("Invalid branch ID");
+    err.code = "INVALID_BRANCH";
+    err.status = 400;
+    throw err;
+  }
   if (!hours.isOpenNow) {
     throw createRestaurantClosedError(hours);
   }
