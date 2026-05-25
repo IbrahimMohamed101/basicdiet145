@@ -68,7 +68,7 @@ async function runTests() {
     // 3. Try rollback without confirm
     res = await request(app).post(`/api/dashboard/menu/rollback/${v1Id}`).set(adminHeaders).send({});
     assert.strictEqual(res.status, 400, "Rollback should fail without confirm");
-    assert.strictEqual(res.body.message, "أرسل confirm: true في الـ body");
+    assert.strictEqual(res.body.error.code, "ROLLBACK_CONFIRMATION_REQUIRED");
 
     // 4. Rollback with confirm
     const rollbackRes = await request(app).post(`/api/dashboard/menu/rollback/${v1Id}`).set(adminHeaders).send({ confirm: true });
@@ -77,6 +77,7 @@ async function runTests() {
     assert.strictEqual(rollbackRes.body.success, true);
     assert(rollbackRes.body.restoredVersion, "Should return restoredVersion");
     assert(rollbackRes.body.backupVersion, "Should return backupVersion");
+    assert.strictEqual(rollbackRes.body.data.rollback.restoredFrom, "dashboard_catalog_snapshot");
 
     // 5. Verify price is restored
     res = await request(app).get(`/api/dashboard/menu/products/${prodId}`).set(adminHeaders);
@@ -159,7 +160,8 @@ async function runTests() {
       premiumKey: "some_key"
     });
     assert.strictEqual(res.status, 400, "Updating premiumKey via product endpoint should fail");
-    assert(res.body.message.includes("غير مسموح بتعديلها هنا"), "Arabic error message check");
+    assert.strictEqual(res.body.error.code, "MENU_VALIDATION_ERROR");
+    assert(res.body.error.message.includes("غير مسموح بتعديلها هنا"), "Arabic error message check");
 
     console.log("✅ Test B passed");
 

@@ -774,7 +774,9 @@ async function seedViaDashboard(api) {
     });
 
     await test("POST /api/orders stores immutable product and option snapshot", async () => {
-      const createRes = await api.post("/api/orders").set(appAuth(user._id)).send({
+      const createRes = await api.post("/api/orders")
+        .set({ ...appAuth(user._id), "Idempotency-Key": `${TEST_TAG}-snapshot-order` })
+        .send({
         fulfillmentMethod: "pickup",
         items: [{
           productId: ctx.fixedProduct.id,
@@ -794,7 +796,9 @@ async function seedViaDashboard(api) {
     });
 
     await test("POST /api/orders creates dynamic catalog item orders without itemType enum regression", async () => {
-      const createRes = await api.post("/api/orders").set(appAuth(user._id)).send({
+      const createRes = await api.post("/api/orders")
+        .set({ ...appAuth(user._id), "Idempotency-Key": `${TEST_TAG}-dynamic-order` })
+        .send({
         fulfillmentMethod: "pickup",
         items: [{
           productId: ctx.per100Product.id,
@@ -827,7 +831,9 @@ async function seedViaDashboard(api) {
       const beforePayloads = moyasarInvoicePayloads.length;
       let createRes;
       try {
-        createRes = await api.post("/api/orders").set(appAuth(user._id)).send({
+        createRes = await api.post("/api/orders")
+          .set({ ...appAuth(user._id), "Idempotency-Key": `${TEST_TAG}-deeplink-order` })
+          .send({
           fulfillmentMethod: "pickup",
           pickup: {
             branchId: "main",
@@ -947,6 +953,62 @@ async function seedViaDashboard(api) {
       assert.strictEqual(res.body.error.code, "OPTION_NOT_AVAILABLE");
     });
 
+    await test("Product-specific option price updates are isolated by product, group, and option", async () => {
+      let res = await api.post("/api/dashboard/menu/option-groups").set(adminHeaders).send({
+        key: `${TEST_KEY_TAG}_duplicate_option_group`,
+        name: { en: `${TEST_TAG} Duplicate Option Group`, ar: "مجموعة مكررة" },
+      });
+      expectStatus(res, 201, "create duplicate option group");
+      const duplicateGroup = res.body.data;
+
+      await ProductOptionGroup.create({
+        productId: ctx.fixedProduct.id,
+        groupId: duplicateGroup.id,
+        minSelections: 0,
+        maxSelections: 1,
+        isActive: true,
+        isVisible: true,
+        isAvailable: true,
+        sortOrder: 99,
+      });
+      await ProductGroupOption.create({
+        productId: ctx.fixedProduct.id,
+        groupId: duplicateGroup.id,
+        optionId: ctx.options[0].id,
+        extraPriceHalala: 111,
+        isActive: true,
+        isVisible: true,
+        isAvailable: true,
+        sortOrder: 99,
+      });
+
+      res = await api.patch(`/api/dashboard/menu/products/${ctx.fixedProduct.id}/option-groups/${duplicateGroup.id}/options/${ctx.options[0].id}`)
+        .set(adminHeaders)
+        .send({ extraPriceHalala: 222 });
+      expectStatus(res, 200, "update duplicate group relation");
+      assert.strictEqual(res.body.data.groupId, duplicateGroup.id);
+      assert.strictEqual(res.body.data.extraPriceHalala, 222);
+
+      const originalRelation = await ProductGroupOption.findOne({
+        productId: ctx.fixedProduct.id,
+        groupId: ctx.group.id,
+        optionId: ctx.options[0].id,
+      }).lean();
+      const duplicateRelation = await ProductGroupOption.findOne({
+        productId: ctx.fixedProduct.id,
+        groupId: duplicateGroup.id,
+        optionId: ctx.options[0].id,
+      }).lean();
+      assert.strictEqual(originalRelation.extraPriceHalala, 300, "original group relation price is unchanged");
+      assert.strictEqual(duplicateRelation.extraPriceHalala, 222, "selected group relation price is updated");
+
+      res = await api.patch(`/api/dashboard/menu/products/${ctx.fixedProduct.id}/option-groups/${duplicateGroup.id}/options/${ctx.options[1].id}`)
+        .set(adminHeaders)
+        .send({ extraPriceHalala: 333 });
+      expectStatus(res, 404, "missing exact relation returns not found");
+      assert.strictEqual(res.body.error.code, "MENU_ENTITY_NOT_FOUND");
+    });
+
     await test("Dashboard product availability filters menu and quote/create reject stale product", async () => {
       let res = await api.patch(`/api/dashboard/menu/products/${ctx.directProduct.id}/availability`)
         .set(adminHeaders)
@@ -965,7 +1027,9 @@ async function seedViaDashboard(api) {
       expectStatus(res, 409, "unavailable product quote rejected");
       assert.strictEqual(res.body.error.code, "PRODUCT_NOT_AVAILABLE");
 
-      res = await api.post("/api/orders").set(appAuth(user._id)).send({
+      res = await api.post("/api/orders")
+        .set({ ...appAuth(user._id), "Idempotency-Key": `${TEST_TAG}-unavailable-order` })
+        .send({
         fulfillmentMethod: "pickup",
         items: [{ productId: ctx.directProduct.id, qty: 1, selectedOptions: [] }],
       });

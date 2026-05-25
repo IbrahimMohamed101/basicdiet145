@@ -5,15 +5,49 @@ dotenv.config();
 const MenuProduct = require("../src/models/MenuProduct");
 const MenuCategory = require("../src/models/MenuCategory");
 const MenuOption = require("../src/models/MenuOption");
+const MenuOptionGroup = require("../src/models/MenuOptionGroup");
 const ProductGroupOption = require("../src/models/ProductGroupOption");
 const MenuVersion = require("../src/models/MenuVersion");
 const service = require("../src/services/orders/menuCatalogService");
+
+const TEST_VERSION_NOTES = "test-menu-catalog initial version";
+
+async function cleanupTestData() {
+  const [categories, products, groups, options] = await Promise.all([
+    MenuCategory.find({ key: "test_cat" }).select("_id").lean(),
+    MenuProduct.find({ key: { $regex: /^test_prod/ } }).select("_id").lean(),
+    MenuOptionGroup.find({ key: "test_group" }).select("_id").lean(),
+    MenuOption.find({ key: "test_opt" }).select("_id").lean(),
+  ]);
+
+  const categoryIds = categories.map((row) => row._id);
+  const productIds = products.map((row) => row._id);
+  const groupIds = groups.map((row) => row._id);
+  const optionIds = options.map((row) => row._id);
+
+  await Promise.all([
+    ProductGroupOption.deleteMany({
+      $or: [
+        { productId: { $in: productIds } },
+        { groupId: { $in: groupIds } },
+        { optionId: { $in: optionIds } },
+      ],
+    }),
+    MenuProduct.deleteMany({ _id: { $in: productIds } }),
+    MenuOption.deleteMany({ _id: { $in: optionIds } }),
+    MenuOptionGroup.deleteMany({ _id: { $in: groupIds } }),
+    MenuCategory.deleteMany({ _id: { $in: categoryIds } }),
+    MenuVersion.deleteMany({ notes: TEST_VERSION_NOTES }),
+  ]);
+}
 
 async function runTests() {
   await mongoose.connect(process.env.MONGODB_URI);
   console.log("Connected to DB");
 
   try {
+    await cleanupTestData();
+
     // 1. Create dummy data
     const cat = await MenuCategory.create({ key: "test_cat", name: { en: "Test Cat" }, isActive: true, publishedAt: new Date() });
     const prod = await MenuProduct.create({ 
@@ -25,7 +59,14 @@ async function runTests() {
       publishedAt: new Date(),
       pricingModel: "fixed"
     });
+    const group = await MenuOptionGroup.create({
+      key: "test_group",
+      name: { en: "Test Group" },
+      isActive: true,
+      publishedAt: new Date()
+    });
     const option = await MenuOption.create({ 
+      groupId: group._id,
       key: "test_opt", 
       name: { en: "Test Opt" }, 
       isActive: true, 
@@ -35,7 +76,7 @@ async function runTests() {
     
     // 2. Publish initial version
     console.log("Publishing initial version...");
-    const v1 = await service.publishMenu({ actor: { id: "000000000000000000000001", role: "admin" }, notes: "Initial version" });
+    const v1 = await service.publishMenu({ actor: { id: "000000000000000000000001", role: "admin" }, notes: TEST_VERSION_NOTES });
     console.log("Published v1:", v1._id);
 
     // 3. Modify data
@@ -46,17 +87,17 @@ async function runTests() {
     // We'll call the service rollback which we updated to restore properties
     console.log("Rolling back to v1...");
     try {
-      await service.rollbackMenuVersion(v1._id, { confirm: false, actor: { id: "000000000000000000000001", role: "admin" } });
+      await service.rollbackMenu(v1._id, { confirm: false, actor: { id: "000000000000000000000001", role: "admin" } });
       console.log("Test A Failed: Rollback succeeded without confirm: true.");
     } catch (err) {
-      if(err.code === "ROLLBACK_NOT_CONFIRMED") {
+      if(err.code === "ROLLBACK_CONFIRMATION_REQUIRED") {
          console.log("Test A Passed: successfully rejected without confirm: true.");
       } else {
          console.log("Test A Failed:", err);
       }
     }
     
-    await service.rollbackMenuVersion(v1._id, { confirm: true, actor: { id: "000000000000000000000001", role: "admin" } });
+    await service.rollbackMenu(v1._id, { confirm: true, actor: { id: "000000000000000000000001", role: "admin" } });
 
     const restoredProd = await MenuProduct.findById(prod._id);
     console.log("Restored price:", restoredProd.priceHalala);
@@ -103,17 +144,10 @@ async function runTests() {
         console.log("Test C Logic: Collision handling verified if one failed with conflict.");
     }
 
-    // Cleanup
-    await MenuCategory.deleteOne({ _id: cat._id });
-    await MenuProduct.deleteMany({ key: { $regex: /^test_prod/ } });
-    await MenuOption.deleteOne({ _id: option._id });
-    await ProductGroupOption.deleteMany({ optionId: option._id });
-    await MenuVersion.deleteMany({ notes: { $regex: /rollback/i } });
-    await MenuVersion.deleteOne({ _id: v1._id });
-
   } catch (err) {
     console.error("Test execution failed:", err);
   } finally {
+    await cleanupTestData();
     await mongoose.disconnect();
   }
 }

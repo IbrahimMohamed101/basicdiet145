@@ -42,6 +42,7 @@ const SETTING_KEYS = [
   "restaurant_open_time",
   "restaurant_close_time",
   "restaurant_is_open",
+  "pickup_locations",
 ];
 const settingSnapshots = new Map();
 let invoiceCounter = 0;
@@ -207,6 +208,7 @@ async function seedOneTimeOrderCatalog() {
     upsertSetting("vat_percentage", 15),
     upsertSetting("delivery_windows", ["18:00-20:00", "20:00-22:00"]),
     upsertSetting("pickup_windows", ["18:00-20:00"]),
+    upsertSetting("pickup_locations", [{ id: "main", name: { en: "Main", ar: "الرئيسي" }, isOpen: true }]),
     upsertSetting("restaurant_open_time", "00:00"),
     upsertSetting("restaurant_close_time", "23:59"),
     upsertSetting("restaurant_is_open", true),
@@ -538,6 +540,15 @@ function setMoyasarInvoice(invoiceId, updates = {}) {
       assert.strictEqual(res.body.data.pricing.subtotalHalala, 2500);
       assert.strictEqual(res.body.data.pricing.deliveryFeeHalala, 0);
       assert.strictEqual(res.body.data.pricing.totalHalala, 2500);
+    });
+
+    await test("POST /api/orders/quote ignores client branchId and uses the single restaurant branch", async () => {
+      const res = await api.post("/api/orders/quote").set(auth(ctx.token)).send(sandwichQuotePayload(ctx, {
+        pickup: { branchId: "openTime", pickupWindow: "18:00-20:00" },
+      }));
+      expectStatus(res, 200, "single branch pickup quote");
+      assert.strictEqual(res.body.data.pricing.subtotalHalala, 2500);
+      assert.strictEqual(res.body.data.pricing.deliveryFeeHalala, 0);
     });
 
     await test("POST /api/orders/quote prices delivery using zone fee if active zone exists", async () => {
