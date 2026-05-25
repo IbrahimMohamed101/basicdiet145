@@ -17,6 +17,7 @@ function listOptions(req) {
     q: req.query.q,
     published: req.query.published,
     groupId: req.query.groupId,
+    page: req.query.page,
     limit: req.query.limit,
   };
 }
@@ -30,12 +31,12 @@ function handleMenuError(err, res) {
     return errorResponse(res, err.status, err.code, err.message, err.details);
   }
   if (err && err.name === "ValidationError") {
-    return errorResponse(res, 400, "VALIDATION_ERROR", "Validation failed", Object.values(err.errors || {}).map((item) => item.message));
+    return errorResponse(res, 400, "MENU_VALIDATION_ERROR", "Validation failed", Object.values(err.errors || {}).map((item) => item.message));
   }
   if (err && err.code === 11000) {
-    return errorResponse(res, 409, "DUPLICATE_MENU_KEY", "Duplicate menu key");
+    return errorResponse(res, 409, "MENU_CONFLICT", "Duplicate menu key", err.keyValue || undefined);
   }
-  throw err;
+  return errorResponse(res, 500, "MENU_INTERNAL_ERROR", "Unexpected menu error");
 }
 
 function wrap(handler) {
@@ -113,11 +114,13 @@ const updateProductGroupOption = wrap(async (req, res) => {
   const invalid = passed.filter(k => !allowlist.includes(k));
   
   if (invalid.length > 0) {
-    return res.status(400).json({ 
-      status: false, 
-      code: "INVALID_FIELD", 
-      message: `الحقول [${invalid.join(", ")}] غير مسموح بتعديلها هنا. استخدمPATCH /menu/options/:optionId للقيم العامة.` 
-    });
+    return errorResponse(
+      res,
+      400,
+      "MENU_VALIDATION_ERROR",
+      `الحقول [${invalid.join(", ")}] غير مسموح بتعديلها هنا. استخدمPATCH /menu/options/:optionId للقيم العامة.`,
+      { invalidFields: invalid }
+    );
   }
   
   send(res, await service.updateProductGroupOption(productId, groupId, optionId, req.body, actorFromRequest(req)));
@@ -134,35 +137,36 @@ const rollbackMenu = wrap(async (req, res) => {
   const { versionId } = req.params;
   const actor = actorFromRequest(req);
   
-  if (!req.body.confirm) {
-    return res.status(400).json({ message: "أرسل confirm: true في الـ body" });
+  if (req.body.confirm !== true) {
+    return errorResponse(res, 400, "ROLLBACK_CONFIRMATION_REQUIRED", "أرسل confirm: true في الـ body");
   }
 
-  try {
-    // 1. Auto-snapshot backup
-    const backupVersion = await service.publishMenu({ 
-      actor, 
-      notes: `Auto-snapshot before rollback to ${versionId}` 
-    });
+  const backupVersion = await service.publishMenu({
+    actor,
+    notes: `Auto-snapshot before rollback to ${versionId}`,
+  });
 
-    // 2. Restore logic (in service)
-    await service.rollbackMenu(versionId, { confirm: true, actor });
+  const rollback = await service.rollbackMenu(versionId, { confirm: true, actor });
 
-    // 3. Re-publish the restored state
-    const restoredVersion = await service.publishMenu({ 
-      actor, 
-      notes: `Rollback to version ${versionId}` 
-    });
+  const restoredVersion = await service.publishMenu({
+    actor,
+    notes: `Rollback to version ${versionId}`,
+  });
 
-    res.status(200).json({ 
-      success: true, 
-      restoredVersion: restoredVersion.id, 
-      backupVersion: backupVersion.id 
-    });
-  } catch (err) {
-    console.error("Rollback failed:", err);
-    return res.status(500).json({ status: false, code: "ROLLBACK_FAILED", message: err.message || "Internal error during rollback" });
-  }
+  const data = {
+    success: true,
+    restoredVersion: restoredVersion.id,
+    backupVersion: backupVersion.id,
+    rollback,
+  };
+
+  return res.status(200).json({
+    status: true,
+    success: true,
+    restoredVersion: restoredVersion.id,
+    backupVersion: backupVersion.id,
+    data,
+  });
 });
 const getDiff = wrap(async (req, res) => send(res, await service.diffMenu()));
 

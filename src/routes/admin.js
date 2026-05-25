@@ -52,9 +52,37 @@ router.use(dashboardRoleMiddleware(["admin"]));
 
 /**
  * @openapi
+ * /dashboard/uploads/image:
+ *   post:
+ *     summary: Upload an image to Cloudinary
+ *     description: Canonical dashboard upload path. `/admin/uploads/image` remains supported for legacy clients.
+ *     tags: [Admin (Dashboard)]
+ *     security:
+ *       - dashboardBearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - image
+ *             properties:
+ *               image:
+ *                 type: string
+ *                 format: binary
+ *               folder:
+ *                 type: string
+ *                 description: Optional folder suffix under `basicdiet/`, for example `plans`, `meals`, or `addons`.
+ *     responses:
+ *       201:
+ *         description: Uploaded
+ *       400:
+ *         description: Missing file, invalid mime type, or file too large.
  * /admin/uploads/image:
  *   post:
  *     summary: Upload an image to Cloudinary
+ *     description: Legacy alias for `/dashboard/uploads/image`.
  *     tags: [Admin (Dashboard)]
  *     security:
  *       - dashboardBearerAuth: []

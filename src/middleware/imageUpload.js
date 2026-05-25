@@ -33,17 +33,24 @@ function createAdminImageUploadMiddleware({ fieldName = "image", maxFileSize = g
   }).single(fieldName);
 
   return (req, res, next) => {
-    // Log request state to identify if the stream was pre-consumed
-    console.log(`[Upload Trace] Path: ${req.path}, Content-Type: ${req.headers["content-type"]}, Body Early:`, req.body ? "Populated" : "Empty");
-    console.log(`[Upload Trace] Readable: ${req.readable}, Complete: ${req.complete}`);
+    const debugUploads = process.env.NODE_ENV === "test" || String(process.env.DEBUG_UPLOADS || "").toLowerCase() === "true";
 
-    // Log content-type warning to ensure it's multipart/form-data
-    if (req.headers["content-type"] && !req.headers["content-type"].includes("multipart/form-data")) {
+    if (debugUploads) {
+      console.log("[Upload Trace]", {
+        path: req.path,
+        contentType: req.headers["content-type"],
+        bodyEarly: req.body ? "Populated" : "Empty",
+        readable: req.readable,
+        complete: req.complete,
+      });
+    }
+
+    if (debugUploads && req.headers["content-type"] && !req.headers["content-type"].includes("multipart/form-data")) {
       console.warn("Upload Middleware Warning: Content-Type is not multipart/form-data:", req.headers["content-type"]);
     }
 
     upload(req, res, (err) => {
-      if (err) {
+      if (debugUploads && err) {
         console.error("Multer Error:", err);
       }
 

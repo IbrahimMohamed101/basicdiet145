@@ -151,6 +151,15 @@ function buildRequestHash(payload) {
     .digest("hex");
 }
 
+function normalizeSingleBranchPickup(pickup = {}, restaurantHours = {}) {
+  const branchId = String(restaurantHours.defaultPickupLocationId || "main").trim() || "main";
+  return {
+    ...(pickup && typeof pickup === "object" ? pickup : {}),
+    branchId,
+    pickupLocationId: branchId,
+  };
+}
+
 async function validateWindows({ fulfillmentMethod, delivery, pickup }) {
   if (fulfillmentMethod === "delivery") {
     const deliveryWindow = delivery && delivery.deliveryWindow ? String(delivery.deliveryWindow).trim() : "";
@@ -381,11 +390,10 @@ async function priceOrderCart({
   }
   const method = String(fulfillmentMethod || "pickup").trim();
 
-  await assertRestaurantOpenForOrdering({
-    pickupLocationId: pickup && pickup.pickupLocationId,
-    branchId: pickup && pickup.branchId,
+  const restaurantHours = await assertRestaurantOpenForOrdering({
     deliveryMode: method,
   });
+  const normalizedPickup = normalizeSingleBranchPickup(pickup, restaurantHours);
 
   const usesMenuCatalog = normalizedItems.some((item) => item && (item.productId || item.menuProductId));
   if (usesMenuCatalog) {
@@ -393,7 +401,7 @@ async function priceOrderCart({
       userId,
       items: normalizedItems,
       fulfillmentMethod: method,
-      pickup,
+      pickup: normalizedPickup,
       lang,
       requestBody,
     });
@@ -409,7 +417,7 @@ async function priceOrderCart({
     );
   }
 
-  await validateWindows({ fulfillmentMethod: method, delivery, pickup });
+  await validateWindows({ fulfillmentMethod: method, delivery, pickup: normalizedPickup });
 
   const pricedItems = [];
   for (const item of normalizedItems) {
@@ -445,8 +453,8 @@ async function priceOrderCart({
       : null,
     pickup: method === "pickup"
       ? {
-        branchId: pickup && pickup.branchId ? String(pickup.branchId).trim() : "main",
-        pickupWindow: pickup && pickup.pickupWindow ? String(pickup.pickupWindow).trim() : "",
+        branchId: normalizedPickup.branchId,
+        pickupWindow: normalizedPickup.pickupWindow ? String(normalizedPickup.pickupWindow).trim() : "",
       }
       : null,
   };

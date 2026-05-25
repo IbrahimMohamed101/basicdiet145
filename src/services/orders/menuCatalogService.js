@@ -39,10 +39,10 @@ class MenuValidationError extends Error {
 }
 
 class MenuNotFoundError extends Error {
-  constructor(message = "Menu entity not found") {
+  constructor(message = "Menu entity not found", code = "MENU_ENTITY_NOT_FOUND") {
     super(message);
     this.name = "MenuNotFoundError";
-    this.code = "MENU_ENTITY_NOT_FOUND";
+    this.code = code;
     this.status = 404;
   }
 }
@@ -150,6 +150,16 @@ function serializeDoc(doc) {
   if (!doc) return null;
   const obj = typeof doc.toObject === "function" ? doc.toObject() : { ...doc };
   return { id: String(obj._id), ...obj };
+}
+
+function parsePaginationOptions(options = {}) {
+  const pageRequested = options.page !== undefined && options.page !== null && String(options.page).trim() !== "";
+  const limitRequested = options.limit !== undefined && options.limit !== null && String(options.limit).trim() !== "";
+  if (!pageRequested && !limitRequested) return null;
+
+  const page = Math.max(1, Number.parseInt(options.page || "1", 10) || 1);
+  const limit = Math.min(100, Math.max(1, Number.parseInt(options.limit || "25", 10) || 25));
+  return { page, limit, skip: (page - 1) * limit };
 }
 
 function truthyByDefault(value) {
@@ -419,10 +429,31 @@ function buildListQuery({ includeInactive = false, isActive, isVisible, isAvaila
 }
 
 async function listModel(Model, options = {}, extraQuery = {}) {
-  const rows = await Model.find({ ...buildListQuery(options), ...extraQuery })
+  const query = { ...buildListQuery(options), ...extraQuery };
+  const pagination = parsePaginationOptions(options);
+  const find = Model.find(query)
     .sort({ sortOrder: 1, createdAt: -1 })
     .lean();
-  return rows.map(serializeDoc);
+
+  if (!pagination) {
+    const rows = await find;
+    return rows.map(serializeDoc);
+  }
+
+  const [rows, total] = await Promise.all([
+    find.skip(pagination.skip).limit(pagination.limit),
+    Model.countDocuments(query),
+  ]);
+
+  return {
+    items: rows.map(serializeDoc),
+    pagination: {
+      page: pagination.page,
+      limit: pagination.limit,
+      total,
+      pages: Math.ceil(total / pagination.limit),
+    },
+  };
 }
 
 async function getModel(Model, id, extraQuery = {}) {
@@ -784,10 +815,31 @@ async function setProductGroupOptions(productId, groupId, options = [], actor = 
 
 async function listProductGroups(productId, options = {}) {
   assertObjectId(productId, "productId");
-  const rows = await ProductOptionGroup.find({ productId, ...buildListQuery(options) })
+  const query = { productId, ...buildListQuery(options) };
+  const pagination = parsePaginationOptions(options);
+  const find = ProductOptionGroup.find(query)
     .sort({ sortOrder: 1, createdAt: -1 })
     .lean();
-  return rows.map(serializeDoc);
+
+  if (!pagination) {
+    const rows = await find;
+    return rows.map(serializeDoc);
+  }
+
+  const [rows, total] = await Promise.all([
+    find.skip(pagination.skip).limit(pagination.limit),
+    ProductOptionGroup.countDocuments(query),
+  ]);
+
+  return {
+    items: rows.map(serializeDoc),
+    pagination: {
+      page: pagination.page,
+      limit: pagination.limit,
+      total,
+      pages: Math.ceil(total / pagination.limit),
+    },
+  };
 }
 
 async function createProductGroup(productId, body, actor = {}) {
@@ -860,10 +912,31 @@ async function updateProductGroupSelectionRules(productId, groupId, body, actor 
 async function listProductGroupOptions(productId, groupId, options = {}) {
   assertObjectId(productId, "productId");
   assertObjectId(groupId, "groupId");
-  const rows = await ProductGroupOption.find({ productId, groupId, ...buildListQuery(options) })
+  const query = { productId, groupId, ...buildListQuery(options) };
+  const pagination = parsePaginationOptions(options);
+  const find = ProductGroupOption.find(query)
     .sort({ sortOrder: 1, createdAt: -1 })
     .lean();
-  return rows.map(serializeDoc);
+
+  if (!pagination) {
+    const rows = await find;
+    return rows.map(serializeDoc);
+  }
+
+  const [rows, total] = await Promise.all([
+    find.skip(pagination.skip).limit(pagination.limit),
+    ProductGroupOption.countDocuments(query),
+  ]);
+
+  return {
+    items: rows.map(serializeDoc),
+    pagination: {
+      page: pagination.page,
+      limit: pagination.limit,
+      total,
+      pages: Math.ceil(total / pagination.limit),
+    },
+  };
 }
 
 async function createProductGroupOption(productId, groupId, body, actor = {}) {
@@ -890,16 +963,17 @@ async function deleteProductGroupOption(productId, groupId, optionId, actor = {}
 
 async function updateProductGroupOption(productId, groupId, optionId, body, actor = {}, action = null) {
   assertObjectId(productId, "productId");
+  assertObjectId(groupId, "groupId");
   assertObjectId(optionId, "optionId");
   
-  const existing = await ProductGroupOption.findOne({ productId, optionId }).lean();
+  const existing = await ProductGroupOption.findOne({ productId, groupId, optionId }).lean();
   if (!existing) throw new MenuNotFoundError("Product group option relation not found");
 
   const payload = normalizeProductGroupOptionRelationPayload({ ...body, productId, groupId, optionId }, existing);
   
   // Use findOneAndUpdate as requested for atomic update and explicit query
   const updated = await ProductGroupOption.findOneAndUpdate(
-    { productId, optionId },
+    { productId, groupId, optionId },
     { $set: payload },
     { new: true }
   ).lean();
@@ -913,7 +987,7 @@ async function updateProductGroupOption(productId, groupId, optionId, body, acto
     before: existing,
     after: updated,
     actor,
-    meta: { productId, optionId },
+    meta: { productId, groupId, optionId },
   });
 
   return serializeDoc(updated);
@@ -939,7 +1013,14 @@ async function publishMenu({ actor = {}, notes = "" } = {}) {
     MenuOptionGroup.updateMany({ isActive: true }, { $set: { publishedAt } }),
     MenuOption.updateMany({ isActive: true }, { $set: { publishedAt } }),
   ]);
-  const snapshot = await getPublishedMenu({ lang: "en" }).catch(() => ({}));
+  const [publicSnapshot, dashboardCatalog] = await Promise.all([
+    getPublishedMenu({ lang: "en" }).catch(() => ({})),
+    buildDashboardCatalogSnapshot(),
+  ]);
+  const snapshot = {
+    ...publicSnapshot,
+    dashboardCatalog,
+  };
   await MenuVersion.updateMany({ status: "published" }, { $set: { status: "archived" } });
   const version = await MenuVersion.create({
     status: "published",
@@ -953,23 +1034,68 @@ async function publishMenu({ actor = {}, notes = "" } = {}) {
   return serializeDoc(version);
 }
 
+async function buildDashboardCatalogSnapshot() {
+  const [categories, products, optionGroups, options, productGroups, productGroupOptions] = await Promise.all([
+    MenuCategory.find({}).sort({ sortOrder: 1, createdAt: -1 }).lean(),
+    MenuProduct.find({}).sort({ sortOrder: 1, createdAt: -1 }).lean(),
+    MenuOptionGroup.find({}).sort({ sortOrder: 1, createdAt: -1 }).lean(),
+    MenuOption.find({}).sort({ sortOrder: 1, createdAt: -1 }).lean(),
+    ProductOptionGroup.find({}).sort({ sortOrder: 1, createdAt: -1 }).lean(),
+    ProductGroupOption.find({}).sort({ sortOrder: 1, createdAt: -1 }).lean(),
+  ]);
+
+  return {
+    version: 1,
+    capturedAt: new Date(),
+    categories: categories.map(serializeDoc),
+    products: products.map(serializeDoc),
+    optionGroups: optionGroups.map(serializeDoc),
+    options: options.map(serializeDoc),
+    productGroups: productGroups.map(serializeDoc),
+    productGroupOptions: productGroupOptions.map(serializeDoc),
+  };
+}
+
 async function listMenuVersions(options = {}) {
-  const rows = await MenuVersion.find({})
+  const pagination = parsePaginationOptions(options);
+  const find = MenuVersion.find({})
     .sort({ createdAt: -1 })
-    .limit(Math.min(100, Math.max(1, Number(options.limit || 20))))
     .lean();
-  return rows.map(serializeDoc);
+
+  if (!pagination) {
+    const rows = await find.limit(Math.min(100, Math.max(1, Number(options.limit || 20))));
+    return rows.map(serializeDoc);
+  }
+
+  const [rows, total] = await Promise.all([
+    find.skip(pagination.skip).limit(pagination.limit),
+    MenuVersion.countDocuments({}),
+  ]);
+
+  return {
+    items: rows.map(serializeDoc),
+    pagination: {
+      page: pagination.page,
+      limit: pagination.limit,
+      total,
+      pages: Math.ceil(total / pagination.limit),
+    },
+  };
 }
 
 async function rollbackMenuVersion(versionId, { confirm = false, actor = {} } = {}) {
-  if (!confirm) throw new MenuValidationError("أرسل confirm: true في الـ body", "ROLLBACK_NOT_CONFIRMED");
+  if (!confirm) throw new MenuValidationError("أرسل confirm: true في الـ body", "ROLLBACK_CONFIRMATION_REQUIRED");
   assertObjectId(versionId);
   const version = await MenuVersion.findById(versionId).lean();
   if (!version) throw new MenuNotFoundError("Version not found");
 
   const snapshot = version.snapshot || {};
+  if (snapshot.dashboardCatalog) {
+    return restoreDashboardCatalogSnapshot(snapshot.dashboardCatalog, { versionId, actor });
+  }
+
   if (!snapshot.categories) {
-    throw new MenuValidationError("Version snapshot is incomplete or invalid", "INVALID_SNAPSHOT");
+    throw new MenuValidationError("Version snapshot is incomplete or invalid", "ROLLBACK_INVALID_SNAPSHOT");
   }
 
   // Deep restore logic:
@@ -1049,7 +1175,100 @@ async function rollbackMenuVersion(versionId, { confirm = false, actor = {} } = 
     }
   }
 
-  return { status: "success", versionId };
+  return {
+    ok: true,
+    versionId: String(versionId),
+    restoredFrom: "public_snapshot",
+    restored: {
+      categories: (snapshot.categories || []).length,
+      products: (snapshot.categories || []).flatMap((category) => category.products || []).length,
+    },
+  };
+}
+
+function snapshotId(row) {
+  return String(row && (row.id || row._id) || "");
+}
+
+function stripSnapshotMetadata(row) {
+  const next = { ...(row || {}) };
+  delete next.id;
+  delete next._id;
+  delete next.__v;
+  delete next.createdAt;
+  delete next.updatedAt;
+  return next;
+}
+
+async function restoreModelSnapshot(Model, rows, publishedAt, { publishable = true } = {}) {
+  const ids = rows.map(snapshotId).filter(Boolean);
+  if (publishable) {
+    await Model.updateMany(
+      { _id: { $nin: ids } },
+      { $set: { isActive: false, isVisible: false, isAvailable: false, publishedAt: null } }
+    );
+  }
+
+  for (const row of rows) {
+    const id = snapshotId(row);
+    if (!id) continue;
+    const payload = stripSnapshotMetadata(row);
+    if (publishable && payload.publishedAt) payload.publishedAt = publishedAt;
+    await Model.updateOne(
+      { _id: id },
+      { $set: payload, $setOnInsert: { _id: new mongoose.Types.ObjectId(id) } },
+      { upsert: true }
+    );
+  }
+}
+
+async function restoreRelationSnapshot(Model, rows) {
+  await Model.deleteMany({});
+  if (!rows.length) return;
+  await Model.insertMany(rows.map((row) => ({
+    _id: new mongoose.Types.ObjectId(snapshotId(row)),
+    ...stripSnapshotMetadata(row),
+  })));
+}
+
+async function restoreDashboardCatalogSnapshot(snapshot, { versionId, actor = {} } = {}) {
+  const requiredArrays = ["categories", "products", "optionGroups", "options", "productGroups", "productGroupOptions"];
+  const invalid = requiredArrays.filter((key) => !Array.isArray(snapshot[key]));
+  if (invalid.length) {
+    throw new MenuValidationError("Version dashboard snapshot is incomplete or invalid", "ROLLBACK_INVALID_SNAPSHOT", 400, { invalid });
+  }
+
+  const publishedAt = new Date();
+  await restoreModelSnapshot(MenuCategory, snapshot.categories, publishedAt);
+  await restoreModelSnapshot(MenuProduct, snapshot.products, publishedAt);
+  await restoreModelSnapshot(MenuOptionGroup, snapshot.optionGroups, publishedAt);
+  await restoreModelSnapshot(MenuOption, snapshot.options, publishedAt);
+  await restoreRelationSnapshot(ProductOptionGroup, snapshot.productGroups);
+  await restoreRelationSnapshot(ProductGroupOption, snapshot.productGroupOptions);
+
+  const restored = {
+    categories: snapshot.categories.length,
+    products: snapshot.products.length,
+    optionGroups: snapshot.optionGroups.length,
+    options: snapshot.options.length,
+    productGroups: snapshot.productGroups.length,
+    productGroupOptions: snapshot.productGroupOptions.length,
+  };
+
+  await writeMenuAudit({
+    entityType: "menu_version",
+    entityId: versionId,
+    action: "rollback_restore",
+    actor,
+    meta: { restored, snapshotVersion: snapshot.version || 0 },
+  });
+
+  return {
+    ok: true,
+    versionId: String(versionId),
+    restoredFrom: "dashboard_catalog_snapshot",
+    restored,
+  };
 }
 
 async function getMenuDiff() {
@@ -1341,10 +1560,29 @@ module.exports = {
   rollbackMenu: rollbackMenuVersion,
   diffMenu: getMenuDiff,
   listAuditLogs: async (options = {}) => {
-    const rows = await MenuAuditLog.find({})
+    const pagination = parsePaginationOptions(options);
+    const find = MenuAuditLog.find({})
       .sort({ createdAt: -1 })
-      .limit(Math.min(200, Math.max(1, Number(options.limit || 50))))
       .lean();
-    return rows.map(serializeDoc);
+
+    if (!pagination) {
+      const rows = await find.limit(Math.min(200, Math.max(1, Number(options.limit || 50))));
+      return rows.map(serializeDoc);
+    }
+
+    const [rows, total] = await Promise.all([
+      find.skip(pagination.skip).limit(pagination.limit),
+      MenuAuditLog.countDocuments({}),
+    ]);
+
+    return {
+      items: rows.map(serializeDoc),
+      pagination: {
+        page: pagination.page,
+        limit: pagination.limit,
+        total,
+        pages: Math.ceil(total / pagination.limit),
+      },
+    };
   },
 };

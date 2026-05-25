@@ -57,7 +57,10 @@ const SubscriptionOperationsReadService = require("../services/subscription/subs
 // Settlement on read is DISABLED — see pastSubscriptionDaySettlementService.js
 const { resolveSubscriptionDeliveryDefaultsUpdate } = require("../services/subscription/subscriptionDeliveryUpdateService");
 const { writeAuditLog } = require("../services/subscription/subscriptionAuditLogService");
-const { getRestaurantBusinessDate } = require("../services/restaurantHoursService");
+const {
+  getRestaurantBusinessDate,
+  getRestaurantHours: getRestaurantHoursSettings,
+} = require("../services/restaurantHoursService");
 const { normalizeStoredVatBreakdown, buildMoneySummary } = require("../utils/pricing");
 const { resolveSubscriptionAddonBillingMode } = require("../utils/subscription/subscriptionCatalog");
 const { resolveOptionalPagination, buildPaginationMeta } = require("../utils/optionalPagination");
@@ -3100,17 +3103,16 @@ async function updateCutoff(req, res) {
 
 async function getRestaurantHours(req, res) {
   try {
-    const [openSetting, closeSetting, isOpenSetting, deliveryWindowsSetting, cutoffSetting, temporaryClosureSetting, weeklyScheduleSetting] = await Promise.all([
-      Setting.findOne({ key: "restaurant_open_time" }).lean(),
-      Setting.findOne({ key: "restaurant_close_time" }).lean(),
+    const [restaurantHours, isOpenSetting, deliveryWindowsSetting, cutoffSetting, temporaryClosureSetting, weeklyScheduleSetting] = await Promise.all([
+      getRestaurantHoursSettings(),
       Setting.findOne({ key: "restaurant_is_open" }).lean(),
       Setting.findOne({ key: "delivery_windows" }).lean(),
       Setting.findOne({ key: "cutoff_time" }).lean(),
       Setting.findOne({ key: "temporary_closure" }).lean(),
       Setting.findOne({ key: "restaurant_hours" }).lean(),
     ]);
-    const openTime = openSetting && openSetting.value ? String(openSetting.value) : "00:00";
-    const closeTime = closeSetting && closeSetting.value ? String(closeSetting.value) : "23:59";
+    const openTime = restaurantHours.openTime || "00:00";
+    const closeTime = restaurantHours.closeTime || "23:59";
 
     return res.status(200).json({
       status: true,
@@ -3123,7 +3125,7 @@ async function getRestaurantHours(req, res) {
         delivery_windows: deliveryWindowsSetting && Array.isArray(deliveryWindowsSetting.value) ? deliveryWindowsSetting.value : [],
         cutoff_time: cutoffSetting && cutoffSetting.value ? String(cutoffSetting.value) : null,
         temporary_closure: temporaryClosureSetting && temporaryClosureSetting.value ? temporaryClosureSetting.value : null,
-        isOpenNow: dateUtils.isCurrentTimeWithinWindow(openTime, closeTime),
+        isOpenNow: Boolean(restaurantHours.isOpenNow),
       },
     });
   } catch (err) {

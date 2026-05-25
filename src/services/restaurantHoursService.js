@@ -43,25 +43,23 @@ function findPickupLocation(pickupLocations, id) {
   }) || null;
 }
 
-function resolveLocationHours(location) {
-  if (!location || typeof location !== "object" || Array.isArray(location)) return {};
-  const nestedWorkingHours = location.workingHours && typeof location.workingHours === "object" && !Array.isArray(location.workingHours)
-    ? location.workingHours
-    : {};
-  const nestedHours = location.hours && typeof location.hours === "object" && !Array.isArray(location.hours)
-    ? location.hours
-    : {};
-  return {
-    openTime: extractTimeValue(location, ["openTime", "restaurant_open_time", "opensAt", "from"])
-      || extractTimeValue(nestedWorkingHours, ["openTime", "restaurant_open_time", "opensAt", "from"])
-      || extractTimeValue(nestedHours, ["openTime", "restaurant_open_time", "opensAt", "from"]),
-    closeTime: extractTimeValue(location, ["closeTime", "restaurant_close_time", "closesAt", "to"])
-      || extractTimeValue(nestedWorkingHours, ["closeTime", "restaurant_close_time", "closesAt", "to"])
-      || extractTimeValue(nestedHours, ["closeTime", "restaurant_close_time", "closesAt", "to"]),
-    isOpen: readBoolean(location.isOpen ?? location.restaurant_is_open, true)
-      && location.isActive !== false
-      && location.enabled !== false,
-  };
+function getPickupLocationId(location) {
+  if (!location || typeof location !== "object") return "";
+  return cleanString(
+    location.id
+    || location._id
+    || location.key
+    || location.branchId
+    || location.pickupLocationId
+  );
+}
+
+function isActivePickupLocation(location) {
+  return Boolean(location)
+    && typeof location === "object"
+    && !Array.isArray(location)
+    && location.isActive !== false
+    && location.enabled !== false;
 }
 
 function resolveWeeklyScheduleHours(weeklySchedule, now) {
@@ -130,21 +128,25 @@ async function resolveRestaurantOpenState({
   const pickupLocations = Array.isArray(pickupLocationsSetting && pickupLocationsSetting.value)
     ? pickupLocationsSetting.value
     : [];
-  const selectedLocation = findPickupLocation(pickupLocations, pickupLocationId || branchId);
-  const locationHours = resolveLocationHours(selectedLocation);
+  const activePickupLocations = pickupLocations.filter(isActivePickupLocation);
+  const defaultPickupLocationId = activePickupLocations.map(getPickupLocationId).find(Boolean) || "main";
+  const requestedPickupLocationId = cleanString(pickupLocationId || branchId);
+  const selectedLocation = findPickupLocation(pickupLocations, requestedPickupLocationId);
+  const pickupLocationFound = !requestedPickupLocationId
+    || !pickupLocations.length
+    || Boolean(selectedLocation);
   const weeklyHours = resolveWeeklyScheduleHours(weeklyScheduleSetting && weeklyScheduleSetting.value, now);
-  const openTime = locationHours.openTime || weeklyHours.openTime || (openSetting && openSetting.value ? String(openSetting.value) : "00:00");
-  const closeTime = locationHours.closeTime || weeklyHours.closeTime || (closeSetting && closeSetting.value ? String(closeSetting.value) : "23:59");
+  const openTime = weeklyHours.openTime || (openSetting && openSetting.value ? String(openSetting.value) : "00:00");
+  const closeTime = weeklyHours.closeTime || (closeSetting && closeSetting.value ? String(closeSetting.value) : "23:59");
   const globalOpen = readBoolean(isOpenSetting && isOpenSetting.value, true);
   const temporaryClosure = temporaryClosureSetting && temporaryClosureSetting.value;
   const temporarilyClosed = temporaryClosure === true
     || (temporaryClosure && typeof temporaryClosure === "object" && temporaryClosure.isActive === true);
-  const switchOpen = globalOpen && locationHours.isOpen !== false && weeklyHours.isOpen !== false && !temporarilyClosed;
+  const switchOpen = globalOpen && weeklyHours.isOpen !== false && !temporarilyClosed;
   const withinWindow = dateUtils.isCurrentTimeWithinWindow(openTime, closeTime, now);
   const isOpenNow = Boolean(switchOpen && withinWindow);
   let reason = null;
   if (!globalOpen) reason = "RESTAURANT_CLOSED";
-  else if (locationHours.isOpen === false) reason = "BRANCH_CLOSED";
   else if (weeklyHours.isOpen === false) reason = "RESTAURANT_CLOSED";
   else if (temporarilyClosed) reason = "TEMPORARY_CLOSURE";
   else if (!withinWindow) reason = "OUTSIDE_WORKING_HOURS";
@@ -157,6 +159,10 @@ async function resolveRestaurantOpenState({
     message: isOpenNow ? null : CLOSED_MESSAGE,
     messageAr: isOpenNow ? null : CLOSED_MESSAGE_AR,
     messageEn: isOpenNow ? null : CLOSED_MESSAGE_EN,
+    pickupLocationId: requestedPickupLocationId || null,
+    pickupLocationFound,
+    defaultPickupLocationId,
+    availablePickupLocationIds: activePickupLocations.map(getPickupLocationId).filter(Boolean),
     businessDate: dateUtils.getCurrentBusinessDate(openTime, closeTime, now),
     businessTomorrow: dateUtils.addDaysToKSADateString(
       dateUtils.getCurrentBusinessDate(openTime, closeTime, now),
