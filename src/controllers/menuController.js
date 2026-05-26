@@ -277,7 +277,7 @@ async function getSubscriptionMenu(req, res) {
     plans,
     regularMeals,
     mealCategories,
-    builderCatalog,
+    mealPlannerCatalog,
     addons,
     mealPlannerAddons,
     deliveryWindows,
@@ -303,6 +303,7 @@ async function getSubscriptionMenu(req, res) {
     getSettingValue("custom_meal_base_price", 0),
   ]);
 
+  const builderCatalog = mealPlannerCatalog?.builderCatalog || mealPlannerCatalog || {};
   const mappedPlans = plans.map((plan) => resolvePlanCatalogEntry(plan, lang));
   const premiumMeals = mapBuilderPremiumProteinsToLegacyRows(builderCatalog);
   const deliveryCatalog = resolveDeliveryCatalog({
@@ -345,7 +346,7 @@ async function getSubscriptionMenu(req, res) {
 async function getSubscriptionMealPlannerMenu(req, res) {
   const lang = getRequestLang(req);
   const includeLegacy = String(req.query?.includeLegacy || "").toLowerCase() === "true";
-  const [regularMeals, mealCategories, addons, builderCatalog] = await Promise.all([
+  const [regularMeals, mealCategories, addons, mealPlannerCatalog] = await Promise.all([
     Meal.find({ type: "regular", isActive: true, availableForSubscription: { $ne: false }, categoryId: { $ne: null } })
       .sort({ sortOrder: 1, createdAt: -1 })
       .lean(),
@@ -353,6 +354,8 @@ async function getSubscriptionMealPlannerMenu(req, res) {
     Addon.find({ isActive: true, kind: "item", billingMode: "flat_once" }).sort({ sortOrder: 1, createdAt: -1 }).lean(),
     getMealPlannerCatalog({ lang }),
   ]);
+  const builderCatalog = mealPlannerCatalog?.builderCatalog || mealPlannerCatalog || {};
+  const builderCatalogV2 = mealPlannerCatalog?.builderCatalogV2 || null;
   const premiumMeals = mapBuilderPremiumProteinsToLegacyRows(builderCatalog);
   const mealCatalog = buildSubscriptionMealCatalog({
     lang,
@@ -367,6 +370,9 @@ async function getSubscriptionMealPlannerMenu(req, res) {
     builderCatalog,
     addonCatalog: buildAddonCatalogFromLegacyPlannerAddons(legacyPlannerAddons),
   };
+  if (builderCatalogV2) {
+    data.builderCatalogV2 = builderCatalogV2;
+  }
 
   if (includeLegacy) {
     data.currency = mealCatalog.currency;

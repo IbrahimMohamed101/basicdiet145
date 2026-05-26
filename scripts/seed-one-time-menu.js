@@ -242,7 +242,7 @@ const productRows = [
     pricingModel: "per_100g", 
     priceHalala: 2900, 
     availableFor: ["subscription"],
-    groups: [["leafy_greens", 1, 2], ["vegetables_legumes", 0, 19], ["fruits", 0, 4], ["proteins", 1, 1], ["sauces", 1, 1]], 
+    groups: [["leafy_greens", 1, 2], ["vegetables_legumes", 0, 19], ["proteins", 1, 1], ["cheese_nuts", 0, 2], ["fruits", 0, 4], ["sauces", 1, 1]],
     optionNames: { proteins: ["ستيك لحم", "جمبري", "سالمون"] } 
   },
 ];

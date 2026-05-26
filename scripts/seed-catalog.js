@@ -7,12 +7,16 @@ const MenuCategory = require("../src/models/MenuCategory");
 const MenuOption = require("../src/models/MenuOption");
 const MenuOptionGroup = require("../src/models/MenuOptionGroup");
 const MenuProduct = require("../src/models/MenuProduct");
+const MenuVersion = require("../src/models/MenuVersion");
 const ProductGroupOption = require("../src/models/ProductGroupOption");
 const ProductOptionGroup = require("../src/models/ProductOptionGroup");
 const Addon = require("../src/models/Addon");
 const Setting = require("../src/models/Setting");
-const BuilderProtein = require("../src/models/BuilderProtein");
+const BuilderCarb = require("../src/models/BuilderCarb");
 const BuilderCategory = require("../src/models/BuilderCategory");
+const BuilderProtein = require("../src/models/BuilderProtein");
+const SaladIngredient = require("../src/models/SaladIngredient");
+const Sandwich = require("../src/models/Sandwich");
 const { publishMenu } = require("../src/services/orders/menuCatalogService");
 const { pickupLocations, settings } = require("./fixtures/subscription-demo-data");
 
@@ -24,328 +28,548 @@ function name(ar, en = ar) {
   return { ar, en };
 }
 
-function key(value) {
-  return String(value)
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "");
+function isTruthy(value) {
+  return ["1", "true", "yes", "y"].includes(String(value || "").trim().toLowerCase());
 }
 
-// Data Definitions
+function parseArgs(argv = process.argv.slice(2)) {
+  return {
+    reset: argv.includes("--reset") || isTruthy(process.env.ALLOW_CATALOG_RESET),
+  };
+}
+
+function activePublishedFields(sortOrder = 0) {
+  return {
+    isActive: true,
+    isVisible: true,
+    isAvailable: true,
+    sortOrder,
+    publishedAt: now,
+  };
+}
+
 const categoryRows = [
-  ["custom_order", "اطلب على مزاجك", "Custom Order"],
-  ["light_options", "اختيارات خفيفة", "Light Options"],
-  ["cold_sandwiches", "الساندويتش البارد", "Cold Sandwiches"],
-  ["sourdough", "الساندويشات", "Sourdough Sandwiches"],
-  ["desserts", "الحلويات", "Desserts"],
-  ["juices", "العصائر", "Juices"],
-  ["drinks", "المشروبات", "Drinks"],
-  ["ice_cream", "الايس كريم", "Ice Cream"],
+  { key: "custom_order", name: name("اطلب على مزاجك", "Custom Order"), ui: { cardVariant: "standard" } },
+  { key: "light_options", name: name("اختيارات خفيفة", "Light Options"), ui: { cardVariant: "standard" } },
+  { key: "cold_sandwiches", name: name("الساندويتش البارد", "Cold Sandwiches"), ui: { cardVariant: "standard" } },
+  { key: "sourdough", name: name("الساندويشات", "Sourdough Sandwiches"), ui: { cardVariant: "standard" } },
+  { key: "desserts", name: name("الحلويات", "Desserts"), ui: { cardVariant: "addon" } },
+  { key: "juices", name: name("العصائر", "Juices"), ui: { cardVariant: "addon" } },
+  { key: "drinks", name: name("المشروبات", "Drinks"), ui: { cardVariant: "addon" } },
+  { key: "ice_cream", name: name("الايس كريم", "Ice Cream"), ui: { cardVariant: "addon" } },
 ];
 
-const groupDefinitions = {
-  leafy_greens: { 
-    name: name("ورقيات", "Leafy Greens"), 
-    options: [["خس", "Lettuce"], ["جرجير", "Arugula"], ["ملفوف", "Cabbage"]] 
-  },
-  vegetables_legumes: { 
-    name: name("خضراوات وبقوليات", "Vegetables & Legumes"), 
+const groupDefinitions = [
+  {
+    key: "proteins",
+    name: name("بروتينات", "Proteins"),
+    ui: { displayStyle: "radio_cards" },
     options: [
-      ["طماطم", "Tomato"], ["جزر", "Carrots"], ["خيار", "Cucumber"], ["ذرة", "Corn"], ["حمص", "Chickpeas"], 
-      ["هالبينو", "Jalapeno"], ["فاصوليا حمراء", "Red Beans"], ["بنجر", "Beets"], ["فلفل حار", "Hot Pepper"], 
-      ["كزبرة", "Coriander"], ["فطر", "Mushrooms"], ["بروكلي", "Broccoli"], ["خضار مشكل مشوي", "Grilled Mixed Veg"], 
-      ["بصل احمر", "Red Onion"], ["بصل اخضر", "Green Onion"], ["زيتون اخضر", "Green Olives"], ["زيتون اسود", "Black Olives"], 
-      ["نعناع", "Mint"], ["بصل مخلل", "Pickled Onion"]
-    ] 
+      {
+        key: "chicken",
+        name: name("دجاج", "Chicken"),
+        displayCategoryKey: "chicken",
+        proteinFamilyKey: "chicken",
+        selectionType: "standard_meal",
+        extraFeeHalala: 0,
+      },
+      {
+        key: "beef",
+        name: name("لحم", "Beef"),
+        displayCategoryKey: "beef",
+        proteinFamilyKey: "beef",
+        selectionType: "standard_meal",
+        extraFeeHalala: 0,
+      },
+      {
+        key: "fish",
+        name: name("سمك", "Fish"),
+        displayCategoryKey: "fish",
+        proteinFamilyKey: "fish",
+        selectionType: "standard_meal",
+        extraFeeHalala: 0,
+      },
+      {
+        key: "eggs",
+        name: name("بيض", "Eggs"),
+        displayCategoryKey: "eggs",
+        proteinFamilyKey: "eggs",
+        selectionType: "standard_meal",
+        extraFeeHalala: 0,
+      },
+      {
+        key: "beef_steak",
+        name: name("ستيك لحم", "Beef Steak"),
+        premiumKey: "beef_steak",
+        displayCategoryKey: "premium",
+        proteinFamilyKey: "beef",
+        selectionType: "premium_meal",
+        extraFeeHalala: 2000,
+      },
+      {
+        key: "shrimp",
+        name: name("جمبري", "Shrimp"),
+        premiumKey: "shrimp",
+        displayCategoryKey: "premium",
+        proteinFamilyKey: "fish",
+        selectionType: "premium_meal",
+        extraFeeHalala: 2000,
+      },
+      {
+        key: "salmon",
+        name: name("سالمون", "Salmon"),
+        premiumKey: "salmon",
+        displayCategoryKey: "premium",
+        proteinFamilyKey: "fish",
+        selectionType: "premium_meal",
+        extraFeeHalala: 2000,
+      },
+    ],
   },
-  fruits: { 
-    name: name("فواكه", "Fruits"), 
+  {
+    key: "carbs",
+    name: name("كارب", "Carbs"),
+    ui: { displayStyle: "chips" },
     options: [
-      ["مانجا", "Mango"], ["تفاح اخضر", "Green Apple"], ["رمان", "Pomegranate"], ["فراولة", "Strawberry"], 
-      ["توت ازرق", "Blueberries"], ["بطيخ", "Watermelon"], ["شمام", "Melon"], ["تمر", "Dates"], ["عسل", "Honey"]
-    ] 
+      { key: "white_rice", name: name("ارز ابيض", "White Rice"), displayCategoryKey: "standard_carbs" },
+      { key: "brown_rice", name: name("ارز اسمر", "Brown Rice"), displayCategoryKey: "standard_carbs" },
+      { key: "potato", name: name("بطاطس", "Potato"), displayCategoryKey: "standard_carbs" },
+      { key: "sweet_potato", name: name("بطاطا حلوة", "Sweet Potato"), displayCategoryKey: "standard_carbs" },
+      { key: "pasta", name: name("مكرونة", "Pasta"), displayCategoryKey: "standard_carbs" },
+    ],
   },
-  proteins: { 
-    name: name("بروتينات", "Proteins"), 
+  {
+    key: "leafy_greens",
+    name: name("ورقيات", "Leafy Greens"),
+    ui: { displayStyle: "checkbox_grid" },
     options: [
-      ["بيض مسلوق", "Boiled Egg"], ["تونا", "Tuna"], ["فاهيتا", "Fajita Chicken"], ["دجاج سبايسي", "Spicy Chicken"], 
-      ["دجاج توابل إيطالية", "Italian Seasoned Chicken"], ["دجاج تكا", "Chicken Tikka"], ["دجاج آسيوي", "Asian Chicken"], 
-      ["دجاج كاري وجوز الهند", "Curry Coconut Chicken"], ["كفتة غنم", "Lamb Kofta"], ["ستروجانوف دجاج", "Chicken Stroganoff"], 
-      ["ستيك لحم", "Beef Steak"], ["جمبري", "Shrimp"], ["سالمون", "Salmon"]
-    ] 
+      { key: "lettuce", name: name("خس", "Lettuce") },
+      { key: "arugula", name: name("جرجير", "Arugula") },
+      { key: "spinach", name: name("سبانخ", "Spinach") },
+    ],
   },
-  carbs: { 
-    name: name("كارب", "Carbs"), 
+  {
+    key: "vegetables_legumes",
+    name: name("خضراوات وبقوليات", "Vegetables & Legumes"),
+    ui: { displayStyle: "checkbox_grid" },
     options: [
-      ["ارز ابيض", "White Rice"], ["ارز اسمر", "Brown Rice"], ["بطاطس مهروسة (ماش بوتيتو)", "Mashed Potatoes"], 
-      ["ارز بالخضار", "Vegetable Rice"], ["ارز مبهر", "Spiced Rice"], ["خضار مشكل مشوي", "Grilled Mixed Veg"]
-    ] 
+      { key: "cucumber", name: name("خيار", "Cucumber") },
+      { key: "tomato", name: name("طماطم", "Tomato") },
+      { key: "corn", name: name("ذرة", "Corn") },
+      { key: "carrot", name: name("جزر", "Carrot") },
+      { key: "red_beans", name: name("فاصوليا حمراء", "Red Beans") },
+    ],
   },
-  sauces: { 
-    name: name("الصوصات", "Sauces"), 
+  {
+    key: "cheese_nuts",
+    name: name("الأجبان والمكسرات", "Cheese & Nuts"),
+    ui: { displayStyle: "checkbox_grid" },
     options: [
-      ["ألف جزيرة", "Thousand Island"], ["خردل بالعسل", "Honey Mustard"], ["زبادي بالنعناع", "Mint Yogurt"], 
-      ["سيزر", "Caesar"], ["ايطالي", "Italian"], ["حار", "Spicy"], ["طحينة", "Tahini"], ["عسل بالثوم", "Honey Garlic"]
-    ] 
+      { key: "feta_cheese", name: name("جبنة فيتا", "Feta Cheese") },
+      { key: "almond", name: name("لوز", "Almond") },
+      { key: "walnut", name: name("جوز", "Walnut") },
+    ],
   },
-  cheese_nuts: { 
-    name: name("الأجبان والمكسرات", "Cheese & Nuts"), 
-    options: [["فيتا", "Feta"], ["مازرولا", "Mozzarella"], ["قريش", "Cottage Cheese"], ["شيدر", "Cheddar"], ["بارميزان", "Parmesan"], ["كاجو", "Cashews"], ["لوز", "Almonds"], ["جوز", "Walnuts"]] 
+  {
+    key: "fruits",
+    name: name("فواكه", "Fruits"),
+    ui: { displayStyle: "checkbox_grid" },
+    options: [
+      { key: "apple", name: name("تفاح", "Apple") },
+      { key: "pomegranate", name: name("رمان", "Pomegranate") },
+      { key: "mango", name: name("مانجا", "Mango") },
+    ],
   },
-  nuts: { 
-    name: name("المكسرات", "Nuts"), 
-    options: [["كاجو", "Cashews"], ["لوز", "Almonds"], ["جوز", "Walnuts"], ["سمسم", "Sesame"]] 
-  }
+  {
+    key: "sauces",
+    name: name("الصوصات", "Sauces"),
+    ui: { displayStyle: "radio_cards" },
+    options: [
+      { key: "ranch", name: name("رانش", "Ranch") },
+      { key: "lemon_mustard", name: name("ليمون وخردل", "Lemon Mustard") },
+      { key: "balsamic", name: name("بلسميك", "Balsamic") },
+    ],
+  },
+];
+
+const saladIngredientGroupAliases = {
+  vegetables_legumes: "vegetables",
+  sauces: "sauce",
 };
 
-function proteinPricing(optionName, productKey) {
-  const isMeal = productKey === "basic_meal";
-  const chickenOptions = new Set([
-    "فاهيتا",
-    "دجاج زبدة",
-    "دجاج كريمة",
-    "دجاج كاري وجوز الهند",
-    "دجاج سبايسي",
-    "دجاج توابل إيطالية",
-    "دجاج تكا",
-    "دجاج آسيوي",
-    "استربس",
-    "دجاج مشوي",
-    "دجاج مكسيكي",
-  ]);
+const standardProteinOptionKeys = ["chicken", "beef", "fish", "eggs"];
 
-  // Default structure
-  const result = {
-    extraPriceHalala: 0,
-    extraWeightUnitGrams: 0,
-    extraWeightPriceHalala: 0,
-  };
-
-  if (["كرات لحم", "لحم استرغانوف"].includes(optionName)) {
-    return { extraPriceHalala: 300, extraWeightUnitGrams: 50, extraWeightPriceHalala: 600 };
-  }
-  if (["ستيك لحم", "جمبري", "سالمون"].includes(optionName)) {
-    return { 
-      extraPriceHalala: isMeal ? 2000 : 1600, 
-      extraWeightUnitGrams: 50, 
-      extraWeightPriceHalala: 1000 
-    };
-  }
-  if (chickenOptions.has(optionName)) {
-    return { ...result, extraWeightUnitGrams: 50, extraWeightPriceHalala: 500 };
-  }
-  if (optionName.includes("لحم")) {
-    return { ...result, extraWeightUnitGrams: 50, extraWeightPriceHalala: 600 };
-  }
-  return result;
-}
+const productGroupAllowedOptionKeys = {
+  basic_salad: {
+    proteins: standardProteinOptionKeys,
+  },
+  basic_meal: {
+    proteins: standardProteinOptionKeys,
+  },
+};
 
 const productRows = [
-  // Shared / Subscription Special
-  { key: "basic_salad", category: "custom_order", itemType: "basic_salad", name: name("سلطة بيسك", "Basic Salad"), pricingModel: "per_100g", priceHalala: 2900, availableFor: ["one_time", "subscription"], groups: [["leafy_greens", 2, 2], ["vegetables_legumes", 0, 19], ["fruits", 0, 4], ["proteins", 1, 1], ["cheese_nuts", 0, 2], ["sauces", 1, 1]] },
-  { key: "basic_meal", category: "custom_order", itemType: "basic_meal", name: name("وجبة بيسك", "Basic Meal"), pricingModel: "per_100g", priceHalala: 1900, availableFor: ["one_time", "subscription"], groups: [["carbs", 3, 3], ["proteins", 1, 1]] },
-
-  // Custom One-Time / Shared Addons
-  { key: "small_salad", category: "custom_order", itemType: "small_salad", name: name("سلطة خضراء صغيرة", "Small Green Salad"), pricingModel: "fixed", priceHalala: 900, availableFor: ["one_time", "subscription"] },
-  { key: "green_salad", category: "custom_order", itemType: "green_salad", name: name("سلطة خضرا", "Green Salad"), pricingModel: "per_100g", priceHalala: 1500, availableFor: ["one_time", "subscription"], groups: [["leafy_greens", 2, 2], ["vegetables_legumes", 0, 19], ["sauces", 1, 1]] },
-  { key: "fruit_salad", category: "custom_order", itemType: "fruit_salad", name: name("سلطة فواكه", "Fruit Salad"), pricingModel: "fixed", priceHalala: 1700, defaultWeightGrams: 150, availableFor: ["one_time"], groups: [["fruits", 9, 9]] },
-  { key: "greek_yogurt", category: "custom_order", itemType: "greek_yogurt", name: name("زبادي يوناني", "Greek Yogurt"), pricingModel: "fixed", priceHalala: 1700, defaultWeightGrams: 200, availableFor: ["one_time"], groups: [["fruits", 5, 5], ["nuts", 0, 3]] },
-
-  // Cold Sandwiches
-  ...[
-    ["boiled_egg_cold_sandwich", "بيض مسلوق", "Boiled Egg", 900],
-    ["turkey_cold_sandwich", "تركي", "Turkey", 1300],
-    ["classic_halloumi_cold_sandwich", "حلوم كلاسيكي", "Classic Halloumi", 1300],
-    ["tuna_cold_sandwich", "تونا", "Tuna", 1300],
-    ["scrambled_egg_cold_sandwich", "بيض اسكرامبل", "Scrambled Egg", 1300],
-    ["chicken_fajita_cold_sandwich", "دجاج فاهيتا", "Chicken Fajita", 1300],
-    ["mexican_chicken_cold_sandwich", "دجاج مكسيكي", "Mexican Chicken", 1300],
-    ["grilled_chicken_cold_sandwich", "دجاج مشوي", "Grilled Chicken", 1300],
-  ].map(([productKey, ar, en, priceHalala]) => ({ key: productKey, category: "cold_sandwiches", itemType: "cold_sandwich", name: name(ar, en), pricingModel: "fixed", priceHalala, availableFor: ["one_time", "subscription"] })),
-
-  // Sourdough
-  ...[
-    ["halloumi_sourdough", "ساوردو حلومي", "Halloumi Sourdough", 2300],
-    ["turkey_sourdough", "ساوردو تركي", "Turkey Sourdough", 2300],
-    ["tuna_sourdough", "ساوردو تونا", "Tuna Sourdough", 2300],
-    ["grilled_chicken_sourdough", "ساوردو دجاج مشوي", "Grilled Chicken Sourdough", 2300],
-  ].map(([productKey, ar, en, priceHalala]) => ({ key: productKey, category: "sourdough", itemType: "sourdough", name: name(ar, en), pricingModel: "fixed", priceHalala, availableFor: ["one_time", "subscription"] })),
-
-  // Desserts
-  ...[
-    ["apple_cinnamon_muffin_2pcs", "مافن التفاح بالقرفة (قطعتين)", "Apple Cinnamon Muffin (2 pcs)", 1200],
-    ["berry_cheesecake", "تشيز كيك بالتوت", "Berry Cheesecake", 1900],
-    ["strawberry_cheesecake", "تشيز كيك بالفراولة", "Strawberry Cheesecake", 1900],
-    ["dark_brownies", "براونيز داكن", "Dark Brownies", 1300],
-    ["protein_bar", "بروتين بار", "Protein Bar", 1500],
-    ["basic_classic", "بيسك كلاسيك", "Basic Classic", 1400],
-    ["protein_chocolate_cake", "كيك شوكولاتة بروتين", "Protein Chocolate Cake", 1900],
-  ].map(([productKey, ar, en, priceHalala]) => ({ key: productKey, category: "desserts", itemType: "dessert", name: name(ar, en), pricingModel: "fixed", priceHalala, availableFor: ["one_time", "subscription"] })),
-
-  // Juices
-  ...[
-    ["berry_blast", "بيري بلاست", "Berry Blast", 1100],
-    ["berry_prot", "بيري بروت", "Berry Prot", 1300],
-    ["classic_green", "كلاسيك جرين", "Classic Green", 1100],
-    ["beet_punch", "بيت بنش", "Beet Punch", 1100],
-    ["orange_carrot", "برتقال وجزر", "Orange & Carrot", 1100],
-    ["watermelon_mint", "بطيخ بالنعناع", "Watermelon Mint", 1100],
-  ].map(([productKey, ar, en, priceHalala]) => ({ key: productKey, category: "juices", itemType: "juice", name: name(ar, en), pricingModel: "fixed", priceHalala, availableFor: ["one_time", "subscription"] })),
-
-  // Drinks
-  ...[
-    ["protein_drink", "مشروب بروتين", "Protein Drink", 1900],
-    ["diet_iced_tea", "ايس تى دايت", "Diet Iced Tea", 400],
-    ["diet_soda", "صودا دايت", "Diet Soda", 300],
-    ["water", "مياه عادية", "Water", 200],
-  ].map(([productKey, ar, en, priceHalala]) => ({ key: productKey, category: "drinks", itemType: "drink", name: name(ar, en), pricingModel: "fixed", priceHalala, availableFor: ["one_time", "subscription"] })),
-
-  // Ice Cream
-  ...[
-    ["vanilla_ice_cream", "ايس كريم فانيليا", "Vanilla Ice Cream", 1300],
-    ["chocolate_ice_cream", "ايس كريم شوكولا", "Chocolate Ice Cream", 1300],
-    ["ice_cream_add_on", "إضافة ايس كريم", "Ice Cream Add-on", 700],
-  ].map(([productKey, ar, en, priceHalala]) => ({ key: productKey, category: "ice_cream", itemType: "ice_cream", name: name(ar, en), pricingModel: "fixed", priceHalala, availableFor: ["one_time", "subscription"] })),
-
-  { 
-    key: "premium_large_salad", 
-    category: "custom_order", 
-    itemType: "premium_large_salad", 
-    name: name("سلطة كبيرة مميزة", "Premium Large Salad"), 
-    pricingModel: "per_100g", 
-    priceHalala: 2900, 
-    availableFor: ["subscription"],
-    groups: [["leafy_greens", 1, 2], ["vegetables_legumes", 0, 19], ["fruits", 0, 4], ["proteins", 1, 1], ["sauces", 1, 1]], 
-    optionNames: { proteins: ["ستيك لحم", "جمبري", "سالمون"] } 
+  {
+    key: "basic_salad",
+    category: "custom_order",
+    itemType: "basic_salad",
+    name: name("سلطة بيسك", "Basic Salad"),
+    pricingModel: "per_100g",
+    priceHalala: 2900,
+    availableFor: ["one_time", "subscription"],
+    ui: { cardVariant: "standard" },
+    groups: [
+      ["leafy_greens", 2, 2],
+      ["vegetables_legumes", 0, 99],
+      ["fruits", 0, 99],
+      ["proteins", 1, 1],
+      ["cheese_nuts", 0, 99],
+      ["sauces", 1, 1],
+    ],
   },
+  {
+    key: "basic_meal",
+    category: "custom_order",
+    itemType: "basic_meal",
+    name: name("وجبة بيسك", "Basic Meal"),
+    pricingModel: "per_100g",
+    priceHalala: 1900,
+    availableFor: ["one_time", "subscription"],
+    ui: { cardVariant: "standard" },
+    groups: [
+      ["carbs", 1, 2],
+      ["proteins", 1, 1],
+    ],
+  },
+  {
+    key: "premium_large_salad",
+    category: "custom_order",
+    itemType: "basic_salad",
+    name: name("سلطة كبيرة مميزة", "Premium Large Salad"),
+    pricingModel: "fixed",
+    priceHalala: 2900,
+    defaultWeightGrams: 0,
+    availableFor: ["subscription"],
+    ui: { cardVariant: "large_salad" },
+    groups: [
+      ["leafy_greens", 0, 99, false],
+      ["vegetables_legumes", 0, 99, false],
+      ["proteins", 1, 1, true],
+      ["cheese_nuts", 0, 99, false],
+      ["fruits", 0, 99, false],
+      ["sauces", 1, 1, true],
+    ],
+  },
+  {
+    key: "small_salad",
+    category: "custom_order",
+    itemType: "green_salad",
+    name: name("سلطة خضراء صغيرة", "Small Green Salad"),
+    pricingModel: "fixed",
+    priceHalala: 900,
+    availableFor: ["one_time", "subscription"],
+    ui: { cardVariant: "addon" },
+  },
+  {
+    key: "green_salad",
+    category: "custom_order",
+    itemType: "green_salad",
+    name: name("سلطة خضرا", "Green Salad"),
+    pricingModel: "per_100g",
+    priceHalala: 1500,
+    availableFor: ["one_time", "subscription"],
+    ui: { cardVariant: "standard" },
+    groups: [
+      ["leafy_greens", 2, 2],
+      ["vegetables_legumes", 0, 99],
+      ["sauces", 1, 1],
+    ],
+  },
+  {
+    key: "fruit_salad",
+    category: "custom_order",
+    itemType: "fruit_salad",
+    name: name("سلطة فواكه", "Fruit Salad"),
+    pricingModel: "fixed",
+    priceHalala: 1700,
+    defaultWeightGrams: 150,
+    availableFor: ["one_time"],
+    ui: { cardVariant: "standard" },
+    groups: [["fruits", 0, 99]],
+  },
+  {
+    key: "greek_yogurt",
+    category: "custom_order",
+    itemType: "greek_yogurt",
+    name: name("زبادي يوناني", "Greek Yogurt"),
+    pricingModel: "fixed",
+    priceHalala: 1700,
+    defaultWeightGrams: 200,
+    availableFor: ["one_time"],
+    ui: { cardVariant: "standard" },
+    groups: [
+      ["fruits", 0, 99],
+      ["cheese_nuts", 0, 99],
+    ],
+  },
+  { key: "chicken_sandwich", category: "cold_sandwiches", itemType: "cold_sandwich", name: name("ساندويتش دجاج", "Chicken Sandwich"), pricingModel: "fixed", priceHalala: 1300, availableFor: ["subscription"], ui: { cardVariant: "standard" }, proteinFamilyKey: "chicken" },
+  { key: "tuna_sandwich", category: "cold_sandwiches", itemType: "cold_sandwich", name: name("ساندويتش تونا", "Tuna Sandwich"), pricingModel: "fixed", priceHalala: 1300, availableFor: ["subscription"], ui: { cardVariant: "standard" }, proteinFamilyKey: "fish" },
+  { key: "sourdough_turkey", category: "sourdough", itemType: "sourdough", name: name("ساوردو تركي", "Sourdough Turkey"), pricingModel: "fixed", priceHalala: 2300, availableFor: ["subscription"], ui: { cardVariant: "standard" }, proteinFamilyKey: "other" },
+  { key: "berry_cheesecake", category: "desserts", itemType: "dessert", name: name("تشيز كيك بالتوت", "Berry Cheesecake"), pricingModel: "fixed", priceHalala: 1900, availableFor: ["one_time", "subscription"], ui: { cardVariant: "addon" } },
+  { key: "dark_brownies", category: "desserts", itemType: "dessert", name: name("براونيز داكن", "Dark Brownies"), pricingModel: "fixed", priceHalala: 1300, availableFor: ["one_time", "subscription"], ui: { cardVariant: "addon" } },
+  { key: "berry_blast", category: "juices", itemType: "juice", name: name("بيري بلاست", "Berry Blast"), pricingModel: "fixed", priceHalala: 1100, availableFor: ["one_time", "subscription"], ui: { cardVariant: "addon" } },
+  { key: "classic_green", category: "juices", itemType: "juice", name: name("كلاسيك جرين", "Classic Green"), pricingModel: "fixed", priceHalala: 1100, availableFor: ["one_time", "subscription"], ui: { cardVariant: "addon" } },
+  { key: "protein_drink", category: "drinks", itemType: "drink", name: name("مشروب بروتين", "Protein Drink"), pricingModel: "fixed", priceHalala: 1900, availableFor: ["one_time", "subscription"], ui: { cardVariant: "addon" } },
+  { key: "water", category: "drinks", itemType: "drink", name: name("مياه عادية", "Water"), pricingModel: "fixed", priceHalala: 200, availableFor: ["one_time", "subscription"], ui: { cardVariant: "addon" } },
+  { key: "vanilla_ice_cream", category: "ice_cream", itemType: "ice_cream", name: name("ايس كريم فانيليا", "Vanilla Ice Cream"), pricingModel: "fixed", priceHalala: 1300, availableFor: ["one_time", "subscription"], ui: { cardVariant: "addon" } },
 ];
 
-async function seed() {
-  if (!uri) throw new Error("MONGO_URI is required");
-  await mongoose.connect(uri);
-  console.log("Connected to MongoDB for Complete Seeding...");
+const builderCategoryRows = [
+  { key: "chicken", dimension: "protein", name: name("دجاج", "Chicken"), sortOrder: 10 },
+  { key: "beef", dimension: "protein", name: name("لحم", "Beef"), sortOrder: 20, rules: { dailyLimit: 1, ruleKey: "beef_daily_limit", unit: "slots" } },
+  { key: "fish", dimension: "protein", name: name("أسماك", "Fish"), sortOrder: 30 },
+  { key: "eggs", dimension: "protein", name: name("بيض", "Eggs"), sortOrder: 40 },
+  { key: "premium", dimension: "protein", name: name("بريميوم", "Premium"), sortOrder: 50, ui: { cardVariant: "premium" } },
+  { key: "standard_carbs", dimension: "carb", name: name("كربوهيدرات", "Standard Carbs"), sortOrder: 10, rules: { maxTypes: 2, maxTotalGrams: 300, unit: "grams", ruleKey: "carb_split" } },
+  { key: "large_salad", dimension: "carb", name: name("سلطة كبيرة مميزة", "Premium Large Salad"), sortOrder: 20, ui: { cardVariant: "large_salad" }, rules: { ruleKey: "premium_large_salad" } },
+];
 
-  // 1. Categories
+// Menu* collections are the canonical catalog source of truth in this seed.
+// The Builder*, Sandwich, and SaladIngredient rows below are temporary mirrors
+// for legacy planner validation/read paths that still resolve those model IDs.
+async function resetCatalogData() {
+  await Promise.all([
+    ProductGroupOption.deleteMany({}),
+    ProductOptionGroup.deleteMany({}),
+    MenuOption.deleteMany({}),
+    MenuOptionGroup.deleteMany({}),
+    MenuProduct.deleteMany({}),
+    MenuCategory.deleteMany({}),
+    MenuVersion.deleteMany({}),
+    BuilderProtein.deleteMany({}),
+    BuilderCarb.deleteMany({}),
+    BuilderCategory.deleteMany({}),
+    Sandwich.deleteMany({}),
+    SaladIngredient.deleteMany({}),
+  ]);
+}
+
+async function seedCategories() {
   const categoryMap = new Map();
-  for (let i = 0; i < categoryRows.length; i++) {
-    const row = categoryRows[i];
+  for (let index = 0; index < categoryRows.length; index += 1) {
+    const row = categoryRows[index];
     const doc = await MenuCategory.findOneAndUpdate(
-      { key: row[0] },
-      { $set: { key: row[0], name: name(row[1], row[2]), isActive: true, sortOrder: (i + 1) * 10, publishedAt: now } },
-      { upsert: true, new: true }
+      { key: row.key },
+      {
+        $set: {
+          key: row.key,
+          name: row.name,
+          ui: row.ui,
+          ...activePublishedFields((index + 1) * 10),
+        },
+      },
+      { upsert: true, new: true, runValidators: true }
     );
     categoryMap.set(doc.key, doc);
   }
+  return categoryMap;
+}
 
-  // 2. Option Groups & Options
+async function seedOptionGroupsAndOptions() {
   const groupMap = new Map();
   const optionMap = new Map();
-  for (const [gKey, def] of Object.entries(groupDefinitions)) {
+
+  for (let groupIndex = 0; groupIndex < groupDefinitions.length; groupIndex += 1) {
+    const groupDef = groupDefinitions[groupIndex];
     const group = await MenuOptionGroup.findOneAndUpdate(
-      { key: gKey },
-      { $set: { key: gKey, name: def.name, isActive: true, sortOrder: 10, publishedAt: now } },
-      { upsert: true, new: true }
+      { key: groupDef.key },
+      {
+        $set: {
+          key: groupDef.key,
+          name: groupDef.name,
+          ui: groupDef.ui,
+          ...activePublishedFields((groupIndex + 1) * 10),
+        },
+      },
+      { upsert: true, new: true, runValidators: true }
     );
-    groupMap.set(gKey, group);
+    groupMap.set(group.key, group);
 
-    // Clean old options to avoid stale data/key collisions
-    await MenuOption.deleteMany({ groupId: group._id });
-
-    for (let i = 0; i < def.options.length; i++) {
-      const [oNameAr, oNameEn] = def.options[i];
-      const oKey = key(`${gKey}_${oNameEn}`);
-      
-      const proteinMetadataMap = {
-        "ستيك لحم": { proteinFamilyKey: "beef", premiumKey: "beef_steak", displayCategoryKey: "premium", extraFeeHalala: 2000 },
-        "جمبري": { proteinFamilyKey: "fish", premiumKey: "shrimp", displayCategoryKey: "premium", extraFeeHalala: 2000 },
-        "سالمون": { proteinFamilyKey: "fish", premiumKey: "salmon", displayCategoryKey: "premium", extraFeeHalala: 2000 },
-        "بيض مسلوق": { proteinFamilyKey: "eggs", displayCategoryKey: "eggs" },
-        "تونا": { proteinFamilyKey: "fish", displayCategoryKey: "fish" },
-        "كفتة غنم": { proteinFamilyKey: "beef", displayCategoryKey: "beef" },
-        "فاهيتا": { proteinFamilyKey: "chicken", displayCategoryKey: "chicken" },
-        "دجاج سبايسي": { proteinFamilyKey: "chicken", displayCategoryKey: "chicken" },
-        "دجاج توابل إيطالية": { proteinFamilyKey: "chicken", displayCategoryKey: "chicken" },
-        "دجاج تكا": { proteinFamilyKey: "chicken", displayCategoryKey: "chicken" },
-        "دجاج آسيوي": { proteinFamilyKey: "chicken", displayCategoryKey: "chicken" },
-        "دجاج كاري وجوز الهند": { proteinFamilyKey: "chicken", displayCategoryKey: "chicken" },
-        "ستروجانوف دجاج": { proteinFamilyKey: "chicken", displayCategoryKey: "chicken" },
-      };
-      
-      const metadata = proteinMetadataMap[oNameAr] || {};
-
+    for (let optionIndex = 0; optionIndex < groupDef.options.length; optionIndex += 1) {
+      const optionDef = groupDef.options[optionIndex];
       const option = await MenuOption.findOneAndUpdate(
-        { groupId: group._id, key: oKey },
+        { groupId: group._id, key: optionDef.key },
         {
           $set: {
             groupId: group._id,
-            key: oKey,
-            name: name(oNameAr, oNameEn),
-            isActive: true,
-            sortOrder: (i + 1) * 10,
-            publishedAt: now,
+            key: optionDef.key,
+            name: optionDef.name,
             availableFor: ["one_time", "subscription"],
             availableForSubscription: true,
-            
-            extraFeeHalala: metadata.extraFeeHalala || 0,
-            extraPriceHalala: 0, 
+            extraPriceHalala: 0,
             extraWeightPriceHalala: 0,
             extraWeightUnitGrams: 0,
-            premiumKey: metadata.premiumKey || null,
-            isPremium: !!metadata.premiumKey,
-            proteinFamilyKey: metadata.proteinFamilyKey || "",
-            displayCategoryKey: metadata.displayCategoryKey || "",
-            selectionType: metadata.premiumKey ? "premium" : "standard"
-          }
+            extraFeeHalala: Number(optionDef.extraFeeHalala || 0),
+            premiumKey: optionDef.premiumKey || "",
+            proteinFamilyKey: optionDef.proteinFamilyKey || "",
+            displayCategoryKey: optionDef.displayCategoryKey || "",
+            selectionType: optionDef.selectionType || "",
+            ruleTags: optionDef.ruleTags || [],
+            ...activePublishedFields((optionIndex + 1) * 10),
+          },
         },
-        { upsert: true, new: true }
+        { upsert: true, new: true, runValidators: true }
       );
-      optionMap.set(`${gKey}:${oNameAr}`, option);
+      optionMap.set(`${group.key}:${option.key}`, option);
+    }
+  }
 
-      // Backup to BuilderProtein
-      if (metadata.premiumKey) {
-        await BuilderProtein.updateOne(
-          { premiumKey: metadata.premiumKey },
-          { $set: { ...metadata, name: name(oNameAr, oNameEn), isActive: true, isPremium: true } },
-          { upsert: true }
+  return { groupMap, optionMap };
+}
+
+async function seedBuilderCompatibilityCategories() {
+  const categoryMap = new Map();
+  for (const row of builderCategoryRows) {
+    const doc = await BuilderCategory.findOneAndUpdate(
+      { dimension: row.dimension, key: row.key },
+      {
+        $set: {
+          key: row.key,
+          dimension: row.dimension,
+          name: row.name,
+          ui: row.ui || { cardVariant: row.key === "premium" ? "premium" : "standard" },
+          rules: row.rules || {},
+          isActive: true,
+          sortOrder: row.sortOrder,
+        },
+      },
+      { upsert: true, new: true, runValidators: true }
+    );
+    categoryMap.set(`${row.dimension}:${row.key}`, doc);
+  }
+  return categoryMap;
+}
+
+async function seedBuilderCompatibilityMirrors({ optionMap, builderCategoryMap }) {
+  for (const groupDef of groupDefinitions) {
+    for (let optionIndex = 0; optionIndex < groupDef.options.length; optionIndex += 1) {
+      const optionDef = groupDef.options[optionIndex];
+      const option = optionMap.get(`${groupDef.key}:${optionDef.key}`);
+      if (!option) continue;
+
+      if (groupDef.key === "proteins") {
+        const displayCategoryKey = optionDef.displayCategoryKey || "other";
+        const displayCategory = builderCategoryMap.get(`protein:${displayCategoryKey}`);
+        if (!displayCategory) continue;
+
+        const query = optionDef.premiumKey ? { premiumKey: optionDef.premiumKey } : { key: optionDef.key };
+        const update = {
+          $setOnInsert: {
+            _id: option._id,
+          },
+          $set: {
+            key: optionDef.key,
+            name: optionDef.name,
+            displayCategoryId: displayCategory._id,
+            displayCategoryKey,
+            proteinFamilyKey: optionDef.proteinFamilyKey || "other",
+            selectionType: optionDef.selectionType || "standard_meal",
+            isPremium: Number(optionDef.extraFeeHalala || 0) > 0,
+            extraFeeHalala: Number(optionDef.extraFeeHalala || 0),
+            currency: SYSTEM_CURRENCY,
+            availableForSubscription: true,
+            isActive: true,
+            sortOrder: (optionIndex + 1) * 10,
+          },
+        };
+        if (optionDef.premiumKey) update.$set.premiumKey = optionDef.premiumKey;
+        else update.$unset = { premiumKey: "" };
+
+        await BuilderProtein.updateOne(query, update, { upsert: true, runValidators: true });
+      }
+
+      if (groupDef.key === "carbs") {
+        const displayCategory = builderCategoryMap.get("carb:standard_carbs");
+        await BuilderCarb.updateOne(
+          { key: optionDef.key },
+          {
+            $setOnInsert: {
+              _id: option._id,
+            },
+            $set: {
+              key: optionDef.key,
+              name: optionDef.name,
+              displayCategoryId: displayCategory._id,
+              displayCategoryKey: "standard_carbs",
+              availableForSubscription: true,
+              isActive: true,
+              sortOrder: (optionIndex + 1) * 10,
+            },
+          },
+          { upsert: true, runValidators: true }
+        );
+      }
+
+      if (["leafy_greens", "vegetables_legumes", "cheese_nuts", "fruits", "sauces"].includes(groupDef.key)) {
+        const groupKey = saladIngredientGroupAliases[groupDef.key] || groupDef.key;
+        await SaladIngredient.updateOne(
+          { _id: option._id },
+          {
+            $set: {
+              name: optionDef.name,
+              groupKey,
+              price: 0,
+              calories: 0,
+              maxQuantity: 99,
+              isActive: true,
+              sortOrder: (optionIndex + 1) * 10,
+            },
+          },
+          { upsert: true, runValidators: true }
         );
       }
     }
   }
+}
 
-  // 3. Products
-  for (const p of productRows) {
+async function seedProducts({ categoryMap, groupMap, optionMap }) {
+  const productMap = new Map();
+
+  for (let productIndex = 0; productIndex < productRows.length; productIndex += 1) {
+    const row = productRows[productIndex];
+    const category = categoryMap.get(row.category);
+    if (!category) throw new Error(`Missing category ${row.category} for ${row.key}`);
+
     const product = await MenuProduct.findOneAndUpdate(
-      { key: p.key },
+      { key: row.key },
       {
         $set: {
-          categoryId: categoryMap.get(p.category)._id,
-          key: p.key,
-          name: p.name,
-          itemType: p.itemType,
-          pricingModel: p.pricingModel,
-          priceHalala: p.priceHalala,
+          categoryId: category._id,
+          key: row.key,
+          name: row.name,
+          itemType: row.itemType,
+          pricingModel: row.pricingModel,
+          priceHalala: row.priceHalala,
           baseUnitGrams: 100,
-          defaultWeightGrams: p.defaultWeightGrams || (p.pricingModel === "per_100g" ? 100 : 0),
-          minWeightGrams: p.pricingModel === "per_100g" ? 100 : 0,
-          maxWeightGrams: p.maxWeightGrams || 0,
+          defaultWeightGrams: row.defaultWeightGrams ?? (row.pricingModel === "per_100g" ? 100 : 0),
+          minWeightGrams: row.pricingModel === "per_100g" ? 100 : 0,
+          maxWeightGrams: row.maxWeightGrams || 0,
           weightStepGrams: 50,
-          isActive: true,
-          publishedAt: now,
-          availableFor: p.availableFor
-        }
+          currency: SYSTEM_CURRENCY,
+          availableFor: row.availableFor,
+          ui: row.ui || { cardVariant: "standard" },
+          ...activePublishedFields((productIndex + 1) * 10),
+        },
       },
-      { upsert: true, new: true }
+      { upsert: true, new: true, runValidators: true }
     );
+    productMap.set(product.key, product);
 
-    // Linking
-    if (p.groups) {
-      await ProductOptionGroup.deleteMany({ productId: product._id });
-      await ProductGroupOption.deleteMany({ productId: product._id });
-
-      for (const [gKey, min, max] of p.groups) {
-        const group = groupMap.get(gKey);
-        if (!group) continue;
+    if (Array.isArray(row.groups)) {
+      for (let relationIndex = 0; relationIndex < row.groups.length; relationIndex += 1) {
+        const [groupKey, minSelections, maxSelections, explicitRequired] = row.groups[relationIndex];
+        const group = groupMap.get(groupKey);
+        if (!group) throw new Error(`Missing option group ${groupKey} for ${row.key}`);
 
         await ProductOptionGroup.findOneAndUpdate(
           { productId: product._id, groupId: group._id },
@@ -353,65 +577,125 @@ async function seed() {
             $set: {
               productId: product._id,
               groupId: group._id,
-              minSelections: min,
-              maxSelections: max,
-              isRequired: min > 0,
-              isActive: true
-            }
+              minSelections,
+              maxSelections,
+              isRequired: explicitRequired ?? minSelections > 0,
+              isActive: true,
+              isVisible: true,
+              isAvailable: true,
+              sortOrder: (relationIndex + 1) * 10,
+            },
           },
-          { upsert: true }
+          { upsert: true, runValidators: true }
         );
 
-        let oNames = p.optionNames?.[gKey] || groupDefinitions[gKey].options;
-        oNames = [...new Set(oNames)]; // Ensure unique names
-
-        for (const oName of oNames) {
-          const option = optionMap.get(`${gKey}:${oName}`);
-          if (option) {
-            await ProductGroupOption.findOneAndUpdate(
-              { productId: product._id, groupId: group._id, optionId: option._id },
-              {
-                $set: {
-                  productId: product._id,
-                  groupId: group._id,
-                  optionId: option._id,
-                  ...(gKey === "proteins" ? proteinPricing(oName, p.key) : {}),
-                  isActive: true
-                }
+        const groupDef = groupDefinitions.find((definition) => definition.key === groupKey);
+        const explicitAllowedKeys = productGroupAllowedOptionKeys[row.key]?.[groupKey];
+        const allowedOptions = groupDef
+          ? groupDef.options.filter((optionDef) => (
+            !Array.isArray(explicitAllowedKeys) || explicitAllowedKeys.includes(optionDef.key)
+          ))
+          : [];
+        const allowedOptionIds = [];
+        for (let optionIndex = 0; optionIndex < allowedOptions.length; optionIndex += 1) {
+          const optionDef = allowedOptions[optionIndex];
+          const option = optionMap.get(`${groupKey}:${optionDef.key}`);
+          if (!option) continue;
+          allowedOptionIds.push(option._id);
+          await ProductGroupOption.findOneAndUpdate(
+            { productId: product._id, groupId: group._id, optionId: option._id },
+            {
+              $set: {
+                productId: product._id,
+                groupId: group._id,
+                optionId: option._id,
+                extraPriceHalala: 0,
+                extraWeightUnitGrams: 0,
+                extraWeightPriceHalala: 0,
+                isActive: true,
+                isVisible: true,
+                isAvailable: true,
+                sortOrder: (optionIndex + 1) * 10,
               },
-              { upsert: true }
-            );
-          }
+            },
+            { upsert: true, runValidators: true }
+          );
         }
-      }
-    }
 
-    // Sync to Addon collection if needed (for subscription items)
-    const isSubscriptionAddon = p.availableFor.includes("subscription") &&
-      (p.itemType === "juice" || p.itemType === "dessert" || p.itemType === "snack" || p.key === "small_salad" || p.category === "desserts" || p.category === "juices");
-
-    if (isSubscriptionAddon) {
-      await Addon.findOneAndUpdate(
-        { name: p.name },
-        {
-          $set: {
-            name: p.name,
-            priceHalala: p.priceHalala,
-            price: p.priceHalala / 100,
-            kind: "item",
-            category: p.category === "juices" ? "juice" : "snack",
-            billingMode: "flat_once",
-            isActive: true
+        await ProductGroupOption.updateMany(
+          {
+            productId: product._id,
+            groupId: group._id,
+            optionId: { $nin: allowedOptionIds },
+          },
+          {
+            $set: {
+              isActive: false,
+              isVisible: false,
+              isAvailable: false,
+            },
           }
-        },
-        { upsert: true }
-      );
+        );
+      }
     }
   }
 
-  await publishMenu({ notes: "Unified Catalog Seeded Successfully" });
+  return productMap;
+}
 
-  // 4. Seeding Addon Plans (Subscription level categories)
+async function seedSandwichCompatibility(productMap) {
+  const sandwichProducts = productRows.filter((row) => ["cold_sandwich", "sourdough"].includes(row.itemType));
+  for (let index = 0; index < sandwichProducts.length; index += 1) {
+    const row = sandwichProducts[index];
+    const product = productMap.get(row.key);
+    if (!product) continue;
+
+    await Sandwich.updateOne(
+      { _id: product._id },
+      {
+        $set: {
+          name: row.name,
+          description: row.description || name("", ""),
+          imageUrl: row.imageUrl || "",
+          calories: 0,
+          selectionType: "sandwich",
+          categoryKey: "sandwich",
+          pricingModel: "included",
+          priceHalala: 0,
+          proteinFamilyKey: row.proteinFamilyKey || "other",
+          isActive: true,
+          sortOrder: (index + 1) * 10,
+        },
+      },
+      { upsert: true, runValidators: true }
+    );
+  }
+}
+
+async function seedSubscriptionAddons() {
+  const addonProducts = productRows.filter((row) => (
+    row.availableFor.includes("subscription")
+    && ["juice", "dessert"].includes(row.itemType)
+  ));
+
+  for (const row of addonProducts) {
+    await Addon.findOneAndUpdate(
+      { name: row.name },
+      {
+        $set: {
+          name: row.name,
+          priceHalala: row.priceHalala,
+          price: row.priceHalala / 100,
+          kind: "item",
+          category: row.itemType === "juice" ? "juice" : "snack",
+          billingMode: "flat_once",
+          isActive: true,
+        },
+      },
+      { upsert: true, runValidators: true }
+    );
+  }
+
   const planAddons = [
     { name: name("اشتراك العصير", "Juice Subscription"), priceHalala: 1100, category: "juice", sortOrder: 1 },
     { name: name("اشتراك السناك", "Snack Subscription"), priceHalala: 1200, category: "snack", sortOrder: 2 },
@@ -427,14 +711,15 @@ async function seed() {
           price: plan.priceHalala / 100,
           kind: "plan",
           billingMode: "per_day",
-          isActive: true
-        }
+          isActive: true,
+        },
       },
-      { upsert: true }
+      { upsert: true, runValidators: true }
     );
   }
+}
 
-  // 5. Sync Pickup Locations (Branches)
+async function seedSettings() {
   if (Array.isArray(pickupLocations) && pickupLocations.length > 0) {
     await Setting.findOneAndUpdate(
       { key: "pickup_locations" },
@@ -442,32 +727,60 @@ async function seed() {
         $set: {
           key: "pickup_locations",
           value: pickupLocations,
-          description: "System Pickup Locations (Branches)"
-        }
+          description: "System Pickup Locations (Branches)",
+        },
       },
       { upsert: true }
     );
     console.log(`Synced ${pickupLocations.length} pickup locations.`);
   }
 
-  // 6. Sync Base Settings (VAT, Pricing, Windows)
   if (settings && typeof settings === "object") {
     const settingEntries = Object.entries(settings);
-    for (const [key, value] of settingEntries) {
+    for (const [settingKey, value] of settingEntries) {
       await Setting.findOneAndUpdate(
-        { key },
-        { $set: { key, value, description: "System Base Setting" } },
+        { key: settingKey },
+        { $set: { key: settingKey, value, description: "System Base Setting" } },
         { upsert: true }
       );
     }
     console.log(`Synced ${settingEntries.length} base settings (VAT, Pricing, etc.).`);
   }
+}
 
-  console.log("Done!");
+async function seed() {
+  if (!uri) throw new Error("MONGO_URI or MONGODB_URI is required");
+  const args = parseArgs();
+
+  await mongoose.connect(uri);
+  console.log("Connected to MongoDB for canonical catalog seeding.");
+
+  if (args.reset) {
+    console.warn("Resetting catalog-owned collections because --reset or ALLOW_CATALOG_RESET=true was provided.");
+    await resetCatalogData();
+  } else {
+    console.log("Reset skipped. Existing catalog rows will be upserted by key.");
+  }
+
+  const builderCategoryMap = await seedBuilderCompatibilityCategories();
+  const categoryMap = await seedCategories();
+  const { groupMap, optionMap } = await seedOptionGroupsAndOptions();
+  await seedBuilderCompatibilityMirrors({ optionMap, builderCategoryMap });
+  const productMap = await seedProducts({ categoryMap, groupMap, optionMap });
+  await seedSandwichCompatibility(productMap);
+  await seedSubscriptionAddons();
+  await seedSettings();
+
+  await publishMenu({ notes: "Canonical Catalog Seed Cleanup" });
+
+  console.log("Canonical catalog seed complete.");
   await mongoose.disconnect();
 }
 
-seed().catch(err => {
+seed().catch(async (err) => {
   console.error(err);
+  if (mongoose.connection.readyState !== 0) {
+    await mongoose.disconnect();
+  }
   process.exit(1);
 });

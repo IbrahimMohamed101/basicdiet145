@@ -1,7 +1,7 @@
 const CatalogService = require("../catalog/CatalogService");
 
 async function getMealPlannerCatalog({ lang }) {
-  return CatalogService.getSubscriptionBuilderCatalog({ lang });
+  return CatalogService.getSubscriptionBuilderCatalogWithV2({ lang });
 }
 
 async function invalidateMealPlannerCatalogCache() {

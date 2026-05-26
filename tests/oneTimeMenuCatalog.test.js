@@ -579,8 +579,97 @@ async function seedViaDashboard(api) {
       const res = await api.get("/api/subscriptions/meal-planner-menu?lang=en");
       expectStatus(res, 200, "subscription meal planner menu");
       const endpointCatalog = res.body.data && res.body.data.builderCatalog;
+      const endpointCatalogV2 = res.body.data && res.body.data.builderCatalogV2;
       assert(endpointCatalog, "endpoint returns builderCatalog");
       assert(endpointCatalog.premiumProteins.some((protein) => protein.premiumKey === "shrimp"), "endpoint builderCatalog uses shared premium option");
+      assert(endpointCatalogV2, "endpoint returns builderCatalogV2");
+      assert.strictEqual(endpointCatalogV2.catalogVersion, "meal_planner_menu.v2");
+      assert.strictEqual(endpointCatalogV2.currency, "SAR");
+      assert(Array.isArray(endpointCatalogV2.sections), "builderCatalogV2.sections is an array");
+      assert(endpointCatalogV2.rules && endpointCatalogV2.rules.beef, "builderCatalogV2 includes beef rules");
+      assert(endpointCatalogV2.rules && endpointCatalogV2.rules.standardCarbs, "builderCatalogV2 includes standard carb rules");
+      assert(endpointCatalogV2.rules && endpointCatalogV2.rules.premiumCarbs, "builderCatalogV2 includes premium carb rules");
+      assert(endpointCatalogV2.rules && endpointCatalogV2.rules.premiumLargeSalad, "builderCatalogV2 includes premium large salad rules");
+
+      const sectionsByKey = new Map(endpointCatalogV2.sections.map((section) => [section.key, section]));
+      const standardSection = sectionsByKey.get("standard_meal");
+      const premiumSection = sectionsByKey.get("premium_meal");
+      const sandwichSection = sectionsByKey.get("sandwich");
+      const saladSection = sectionsByKey.get("premium_large_salad");
+      assert(standardSection, "builderCatalogV2 includes standard_meal section");
+      assert(premiumSection, "builderCatalogV2 includes premium_meal section");
+      assert(sandwichSection, "builderCatalogV2 includes sandwich section");
+      assert(saladSection, "builderCatalogV2 includes premium_large_salad section");
+
+      const standardProduct = standardSection.products && standardSection.products[0];
+      assert.strictEqual(standardProduct.id, "virtual:standard_meal");
+      assert.strictEqual(standardProduct.type, "virtual_builder_product");
+      assert.strictEqual(standardProduct.isVirtual, true);
+      assert.strictEqual(standardProduct.selectionType, "standard_meal");
+      assert.strictEqual(standardProduct.ui.cardVariant, "standard");
+      const standardGroupsByKey = new Map((standardProduct.optionGroups || []).map((group) => [group.key, group]));
+      const standardProteinGroup = standardGroupsByKey.get("protein");
+      const standardCarbGroup = standardGroupsByKey.get("carb");
+      assert(standardProteinGroup, "standard meal includes protein group");
+      assert(standardCarbGroup, "standard meal includes carb group");
+      assert.strictEqual(standardProteinGroup.sourceKey, "proteins");
+      assert.strictEqual(standardProteinGroup.minSelections, 1);
+      assert.strictEqual(standardProteinGroup.maxSelections, 1);
+      assert.strictEqual(standardProteinGroup.isRequired, true);
+      assert(standardProteinGroup.ui && typeof standardProteinGroup.ui.displayStyle === "string", "standard protein group has sanitized ui");
+      assert((standardProteinGroup.options || []).some((option) => option.id === String(chicken._id)), "standard protein options include chicken");
+      assert(!(standardProteinGroup.options || []).some((option) => option.premiumKey === "shrimp"), "standard protein options exclude premium shrimp");
+      assert((standardProteinGroup.options || []).every((option) => typeof option.key === "string" && option.key.trim()), "standard protein options include stable keys");
+      assert.strictEqual(standardCarbGroup.sourceKey, "carbs");
+      assert.strictEqual(standardCarbGroup.rules.maxTypes, endpointCatalogV2.rules.standardCarbs.maxTypes);
+      assert(!(standardCarbGroup.options || []).some((option) => option.displayCategoryKey === "large_salad"), "standard carbs exclude large_salad");
+      assert((standardCarbGroup.options || []).every((option) => typeof option.key === "string" && option.key.trim()), "standard carb options include stable keys");
+
+      const premiumProduct = premiumSection.products && premiumSection.products[0];
+      assert.strictEqual(premiumProduct.id, "virtual:premium_meal");
+      assert.strictEqual(premiumProduct.type, "virtual_builder_product");
+      assert.strictEqual(premiumProduct.isVirtual, true);
+      assert.strictEqual(premiumProduct.selectionType, "premium_meal");
+      const premiumGroupsByKey = new Map((premiumProduct.optionGroups || []).map((group) => [group.key, group]));
+      const premiumProteinGroup = premiumGroupsByKey.get("protein");
+      const premiumCarbGroup = premiumGroupsByKey.get("carb");
+      assert(premiumProteinGroup, "premium meal includes protein group");
+      assert(premiumCarbGroup, "premium meal includes carb group");
+      const premiumShrimpOption = (premiumProteinGroup.options || []).find((option) => option.premiumKey === "shrimp");
+      assert(premiumShrimpOption, "premium meal includes premium shrimp option");
+      assert.strictEqual(premiumShrimpOption.extraFeeHalala, 1600);
+      assert.strictEqual(premiumShrimpOption.selectionType, "premium_meal");
+      assert.strictEqual(premiumCarbGroup.rules.maxTypes, endpointCatalogV2.rules.premiumCarbs.maxTypes);
+
+      const v2Sandwich = (sandwichSection.products || []).find((product) => product.name === "Grilled Chicken");
+      assert(v2Sandwich, "builderCatalogV2 includes published subscription sandwich product");
+      assert.strictEqual(v2Sandwich.id, sandwich.id, "sandwich V2 product id remains write-compatible sandwichId");
+      assert.strictEqual(v2Sandwich.selectionType, "sandwich");
+      assert(v2Sandwich.key, "sandwich V2 product includes key");
+      assert(v2Sandwich.ui && typeof v2Sandwich.ui.cardVariant === "string", "sandwich V2 product has sanitized ui");
+
+      const saladProduct = saladSection.products && saladSection.products[0];
+      assert(saladProduct, "premium large salad V2 exposes product");
+      assert.strictEqual(saladProduct.selectionType, "premium_large_salad");
+      assert.strictEqual(saladProduct.premiumKey, "premium_large_salad");
+      assert.strictEqual(saladProduct.priceHalala, endpointCatalog.premiumLargeSalad.priceHalala);
+      assert.strictEqual(saladProduct.priceSource, endpointCatalog.premiumLargeSalad.priceSource);
+      assert(Array.isArray(saladProduct.optionGroups), "premium large salad V2 exposes option groups");
+      const saladGroupsByKey = new Map(saladProduct.optionGroups.map((group) => [group.key, group]));
+      const expectedSaladGroupKeys = ["leafy_greens", "vegetables", "protein", "cheese_nuts", "fruits", "sauce"];
+      assert.deepStrictEqual(
+        Array.from(saladGroupsByKey.keys()).sort(),
+        expectedSaladGroupKeys.slice().sort(),
+        "premium large salad V2 exposes all canonical groups"
+      );
+      assert(saladGroupsByKey.has("protein"), "premium large salad V2 includes protein group");
+      assert((saladGroupsByKey.get("protein").options || []).some((option) => option.premiumKey === "shrimp"), "premium large salad protein group includes shrimp");
+      for (const group of saladProduct.optionGroups) {
+        assert(!["vegetables_legumes", "sauces", "proteins"].includes(group.key), `salad group ${group.key} is canonical`);
+        assert(group.ui && typeof group.ui.displayStyle === "string", "salad group has sanitized ui");
+        assert(Array.isArray(group.options) && group.options.length > 0, `salad group ${group.key} has options`);
+        assert(group.options.every((option) => typeof option.key === "string" && option.key.trim()), `salad group ${group.key} options include stable keys`);
+      }
     });
 
     await resetDatabase();
