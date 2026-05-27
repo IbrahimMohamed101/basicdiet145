@@ -1,7 +1,9 @@
 const DASHBOARD_PASSWORD = "StrongPass123";
+const { buildDefaultPickupLocation } = require("../../src/constants/defaultPickupLocation");
 
 const settings = {
   delivery_windows: ["09:00-12:00", "13:00-16:00", "18:00-21:00"],
+  pickup_windows: ["18:00-20:00"],
   subscription_delivery_fee_halala: 0,
   premium_price: 24,
   vat_percentage: 16,
@@ -51,21 +53,7 @@ const deliveryZones = [
 ];
 
 const pickupLocations = [
-  {
-    id: "jeddah-salama",
-    name: { ar: "فرع السلامة - جدة", en: "Al Salama Branch - Jeddah" },
-    addressAr: "H4GX+JF7، حي السلامة، جدة 23436، المملكة العربية السعودية",
-    addressEn: "H4GX+JF7, Al Salama District, Jeddah 23436, Saudi Arabia",
-    city: "Jeddah",
-    district: { ar: "السلامة", en: "Al Salama" },
-    street: { ar: "حي السلامة", en: "Al Salama District" },
-    building: "H4GX+JF7",
-    notes: {
-      ar: "الاستلام متاح خلال ساعات العمل الرسمية.",
-      en: "Pickup is available during official working hours.",
-    },
-    isActive: true,
-  },
+  buildDefaultPickupLocation(),
 ];
 
 const plans = [

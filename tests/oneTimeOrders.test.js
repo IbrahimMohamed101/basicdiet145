@@ -208,7 +208,15 @@ async function seedOneTimeOrderCatalog() {
     upsertSetting("vat_percentage", 15),
     upsertSetting("delivery_windows", ["18:00-20:00", "20:00-22:00"]),
     upsertSetting("pickup_windows", ["18:00-20:00"]),
-    upsertSetting("pickup_locations", [{ id: "main", name: { en: "Main", ar: "الرئيسي" }, isOpen: true }]),
+    upsertSetting("pickup_locations", [{
+      id: "main",
+      key: "main",
+      code: "main",
+      slug: "main",
+      name: { en: "Main Branch", ar: "الفرع الرئيسي" },
+      isActive: true,
+      pickupEnabled: true,
+    }]),
     upsertSetting("restaurant_open_time", "00:00"),
     upsertSetting("restaurant_close_time", "23:59"),
     upsertSetting("restaurant_is_open", true),
@@ -542,13 +550,151 @@ function setMoyasarInvoice(invoiceId, updates = {}) {
       assert.strictEqual(res.body.data.pricing.totalHalala, 2500);
     });
 
-    await test("POST /api/orders/quote ignores client branchId and uses the single restaurant branch", async () => {
+    await test("POST /api/orders/quote accepts pickup branch by ObjectId", async () => {
+      const branchId = objectId();
+      await upsertSetting("pickup_locations", [{
+        _id: branchId,
+        key: "object-id-branch",
+        name: { en: "ObjectId Branch", ar: "فرع" },
+        isActive: true,
+        pickupEnabled: true,
+      }]);
+
       const res = await api.post("/api/orders/quote").set(auth(ctx.token)).send(sandwichQuotePayload(ctx, {
-        pickup: { branchId: "openTime", pickupWindow: "18:00-20:00" },
+        pickup: { branchId: String(branchId), pickupWindow: "18:00-20:00" },
       }));
-      expectStatus(res, 200, "single branch pickup quote");
-      assert.strictEqual(res.body.data.pricing.subtotalHalala, 2500);
-      assert.strictEqual(res.body.data.pricing.deliveryFeeHalala, 0);
+      expectStatus(res, 200, "ObjectId branch pickup quote");
+      assert.notStrictEqual(res.body.error && res.body.error.code, "INVALID_BRANCH");
+    });
+
+    await test("POST /api/orders/quote accepts pickup branch by stable key/code/slug", async () => {
+      await upsertSetting("pickup_locations", [{
+        id: "branch-main-id",
+        key: "main",
+        code: "main",
+        slug: "main",
+        name: { en: "Main Branch", ar: "الفرع الرئيسي" },
+        isActive: true,
+        pickupEnabled: true,
+      }]);
+
+      const res = await api.post("/api/orders/quote").set(auth(ctx.token)).send(sandwichQuotePayload(ctx, {
+        pickup: { branchId: "main", pickupWindow: "18:00-20:00" },
+      }));
+      expectStatus(res, 200, "stable key branch pickup quote");
+      assert.notStrictEqual(res.body.error && res.body.error.code, "INVALID_BRANCH");
+    });
+
+    await test("POST /api/orders/quote defaults missing pickup branchId to main", async () => {
+      await upsertSetting("pickup_locations", [{
+        id: "main",
+        key: "main",
+        code: "main",
+        slug: "main",
+        name: { en: "Main Branch", ar: "الفرع الرئيسي" },
+        isActive: true,
+        pickupEnabled: true,
+      }]);
+
+      const res = await api.post("/api/orders/quote").set(auth(ctx.token)).send(sandwichQuotePayload(ctx, {
+        pickup: { pickupWindow: "18:00-20:00" },
+      }));
+      expectStatus(res, 200, "missing branchId defaults to main");
+      assert.notStrictEqual(res.body.error && res.body.error.code, "INVALID_BRANCH");
+    });
+
+    await test("POST /api/orders/quote uses canonical main branch when pickup_locations is missing", async () => {
+      await Setting.deleteOne({ key: "pickup_locations" });
+
+      const res = await api.post("/api/orders/quote").set(auth(ctx.token)).send(sandwichQuotePayload(ctx, {
+        pickup: { branchId: "main", pickupWindow: "18:00-20:00" },
+      }));
+      expectStatus(res, 200, "default main branch without setting");
+      assert.notStrictEqual(res.body.error && res.body.error.code, "INVALID_BRANCH");
+    });
+
+    await test("POST /api/orders/quote rejects unknown pickup branch", async () => {
+      await upsertSetting("pickup_locations", [{
+        id: "main",
+        key: "main",
+        name: { en: "Main Branch", ar: "الفرع الرئيسي" },
+        isActive: true,
+        pickupEnabled: true,
+      }]);
+
+      const res = await api.post("/api/orders/quote").set(auth(ctx.token)).send(sandwichQuotePayload(ctx, {
+        pickup: { branchId: "unknown_branch", pickupWindow: "18:00-20:00" },
+      }));
+      expectStatus(res, 400, "unknown branch pickup quote");
+      assert.strictEqual(res.body.error.code, "INVALID_BRANCH");
+    });
+
+    await test("POST /api/orders/quote rejects inactive or pickup-unavailable branch", async () => {
+      await upsertSetting("pickup_locations", [{
+        id: "inactive",
+        key: "inactive",
+        name: { en: "Inactive Branch", ar: "فرع غير نشط" },
+        isActive: false,
+        pickupEnabled: true,
+      }]);
+
+      let res = await api.post("/api/orders/quote").set(auth(ctx.token)).send(sandwichQuotePayload(ctx, {
+        pickup: { branchId: "inactive", pickupWindow: "18:00-20:00" },
+      }));
+      expectStatus(res, 400, "inactive branch pickup quote");
+      assert.strictEqual(res.body.error.code, "INVALID_BRANCH");
+
+      await upsertSetting("pickup_locations", [{
+        id: "pickup-off",
+        key: "pickup-off",
+        name: { en: "Pickup Off Branch", ar: "فرع" },
+        isActive: true,
+        pickupEnabled: false,
+      }]);
+
+      res = await api.post("/api/orders/quote").set(auth(ctx.token)).send(sandwichQuotePayload(ctx, {
+        pickup: { branchId: "pickup-off", pickupWindow: "18:00-20:00" },
+      }));
+      expectStatus(res, 400, "pickup unavailable branch quote");
+      assert.strictEqual(res.body.error.code, "INVALID_BRANCH");
+    });
+
+    await test("POST /api/orders/quote rejects missing branchId when configured main is inactive", async () => {
+      await upsertSetting("pickup_locations", [{
+        id: "main",
+        key: "main",
+        name: { en: "Main Branch", ar: "الفرع الرئيسي" },
+        isActive: false,
+        pickupEnabled: true,
+      }]);
+
+      const res = await api.post("/api/orders/quote").set(auth(ctx.token)).send(sandwichQuotePayload(ctx, {
+        pickup: { pickupWindow: "18:00-20:00" },
+      }));
+      expectStatus(res, 400, "inactive configured main branch");
+      assert.strictEqual(res.body.error.code, "INVALID_BRANCH");
+    });
+
+    await test("POST /api/orders/quote validates pickupWindow after branch resolution", async () => {
+      await upsertSetting("pickup_locations", [{
+        id: "main",
+        key: "main",
+        name: { en: "Main Branch", ar: "الفرع الرئيسي" },
+        isActive: true,
+        pickupEnabled: true,
+      }]);
+
+      let res = await api.post("/api/orders/quote").set(auth(ctx.token)).send(sandwichQuotePayload(ctx, {
+        pickup: { branchId: "main", pickupWindow: "18:00-20:00" },
+      }));
+      expectStatus(res, 200, "valid pickup window quote");
+      assert.notStrictEqual(res.body.error && res.body.error.code, "INVALID_BRANCH");
+
+      res = await api.post("/api/orders/quote").set(auth(ctx.token)).send(sandwichQuotePayload(ctx, {
+        pickup: { branchId: "main", pickupWindow: "19:00-21:00" },
+      }));
+      expectStatus(res, 400, "invalid pickup window quote");
+      assert.strictEqual(res.body.error.code, "INVALID_DELIVERY_WINDOW");
     });
 
     await test("POST /api/orders/quote prices delivery using zone fee if active zone exists", async () => {

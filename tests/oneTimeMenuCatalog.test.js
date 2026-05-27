@@ -1000,6 +1000,164 @@ async function seedViaDashboard(api) {
       assert.strictEqual(res.body.data.pricing.totalHalala, 3000);
     });
 
+    await test("POST /api/orders/quote validates pickup branch by ObjectId, stable key, and availability", async () => {
+      const objectIdBranch = new mongoose.Types.ObjectId();
+      await Setting.updateOne(
+        { key: "pickup_windows" },
+        { $set: { key: "pickup_windows", value: ["18:00-20:00"] } },
+        { upsert: true }
+      );
+
+      await Setting.deleteOne({ key: "pickup_locations" });
+      let res = await api.post("/api/orders/quote").set(appAuth(user._id)).send({
+        fulfillmentMethod: "pickup",
+        pickup: { branchId: "main", pickupWindow: "18:00-20:00" },
+        items: [{ productId: ctx.directProduct.id, qty: 1, selectedOptions: [] }],
+      });
+      expectStatus(res, 200, "default main pickup branch without setting");
+      assert.notStrictEqual(res.body.error && res.body.error.code, "INVALID_BRANCH");
+
+      await Setting.updateOne(
+        { key: "pickup_locations" },
+        {
+          $set: {
+            key: "pickup_locations",
+            value: [
+              {
+                _id: objectIdBranch,
+                key: "object-id-branch",
+                name: { en: "ObjectId Branch", ar: "فرع" },
+                isActive: true,
+                pickupEnabled: true,
+              },
+              {
+                id: "main-id",
+                key: "main",
+                code: "main",
+                slug: "main",
+                name: { en: "Main Branch", ar: "الفرع الرئيسي" },
+                isActive: true,
+                pickupEnabled: true,
+              },
+              {
+                id: "inactive",
+                key: "inactive",
+                name: { en: "Inactive Branch", ar: "فرع غير نشط" },
+                isActive: false,
+                pickupEnabled: true,
+              },
+              {
+                id: "pickup-off",
+                key: "pickup-off",
+                name: { en: "Pickup Off Branch", ar: "فرع" },
+                isActive: true,
+                pickupEnabled: false,
+              },
+            ],
+          },
+        },
+        { upsert: true }
+      );
+
+      res = await api.post("/api/orders/quote").set(appAuth(user._id)).send({
+        fulfillmentMethod: "pickup",
+        pickup: { branchId: String(objectIdBranch), pickupWindow: "18:00-20:00" },
+        items: [{ productId: ctx.directProduct.id, qty: 1, selectedOptions: [] }],
+      });
+      expectStatus(res, 200, "ObjectId pickup branch");
+      assert.notStrictEqual(res.body.error && res.body.error.code, "INVALID_BRANCH");
+
+      res = await api.post("/api/orders/quote").set(appAuth(user._id)).send({
+        fulfillmentMethod: "pickup",
+        pickup: { branchId: "main", pickupWindow: "18:00-20:00" },
+        items: [{ productId: ctx.directProduct.id, qty: 1, selectedOptions: [] }],
+      });
+      expectStatus(res, 200, "stable key pickup branch");
+      assert.notStrictEqual(res.body.error && res.body.error.code, "INVALID_BRANCH");
+
+      res = await api.post("/api/orders/quote").set(appAuth(user._id)).send({
+        fulfillmentMethod: "pickup",
+        pickup: { pickupWindow: "18:00-20:00" },
+        items: [{ productId: ctx.directProduct.id, qty: 1, selectedOptions: [] }],
+      });
+      expectStatus(res, 200, "missing pickup branch defaults to main");
+      assert.notStrictEqual(res.body.error && res.body.error.code, "INVALID_BRANCH");
+
+      res = await api.post("/api/orders/quote").set(appAuth(user._id)).send({
+        fulfillmentMethod: "pickup",
+        pickup: { branchId: "unknown_branch", pickupWindow: "18:00-20:00" },
+        items: [{ productId: ctx.directProduct.id, qty: 1, selectedOptions: [] }],
+      });
+      expectStatus(res, 400, "unknown pickup branch");
+      assert.strictEqual(res.body.error.code, "INVALID_BRANCH");
+
+      res = await api.post("/api/orders/quote").set(appAuth(user._id)).send({
+        fulfillmentMethod: "pickup",
+        pickup: { branchId: "inactive", pickupWindow: "18:00-20:00" },
+        items: [{ productId: ctx.directProduct.id, qty: 1, selectedOptions: [] }],
+      });
+      expectStatus(res, 400, "inactive pickup branch");
+      assert.strictEqual(res.body.error.code, "INVALID_BRANCH");
+
+      res = await api.post("/api/orders/quote").set(appAuth(user._id)).send({
+        fulfillmentMethod: "pickup",
+        pickup: { branchId: "pickup-off", pickupWindow: "18:00-20:00" },
+        items: [{ productId: ctx.directProduct.id, qty: 1, selectedOptions: [] }],
+      });
+      expectStatus(res, 400, "pickup-unavailable branch");
+      assert.strictEqual(res.body.error.code, "INVALID_BRANCH");
+
+      await Setting.updateOne(
+        { key: "pickup_locations" },
+        {
+          $set: {
+            key: "pickup_locations",
+            value: [{
+              id: "main",
+              key: "main",
+              name: { en: "Main Branch", ar: "الفرع الرئيسي" },
+              isActive: false,
+              pickupEnabled: true,
+            }],
+          },
+        },
+        { upsert: true }
+      );
+      res = await api.post("/api/orders/quote").set(appAuth(user._id)).send({
+        fulfillmentMethod: "pickup",
+        pickup: { pickupWindow: "18:00-20:00" },
+        items: [{ productId: ctx.directProduct.id, qty: 1, selectedOptions: [] }],
+      });
+      expectStatus(res, 400, "missing branch rejects inactive configured main");
+      assert.strictEqual(res.body.error.code, "INVALID_BRANCH");
+
+      await Setting.updateOne(
+        { key: "pickup_locations" },
+        {
+          $set: {
+            key: "pickup_locations",
+            value: [{
+              id: "main",
+              key: "main",
+              code: "main",
+              slug: "main",
+              name: { en: "Main Branch", ar: "الفرع الرئيسي" },
+              isActive: true,
+              pickupEnabled: true,
+            }],
+          },
+        },
+        { upsert: true }
+      );
+      res = await api.post("/api/orders/quote").set(appAuth(user._id)).send({
+        fulfillmentMethod: "pickup",
+        pickup: { branchId: "main", pickupWindow: "19:00-21:00" },
+        items: [{ productId: ctx.directProduct.id, qty: 1, selectedOptions: [] }],
+      });
+      expectStatus(res, 400, "invalid pickup window after branch resolution");
+      assert.strictEqual(res.body.error.code, "INVALID_DELIVERY_WINDOW");
+    });
+
     await test("POST /api/orders/quote validates maxSelections and option-product relation", async () => {
       let res = await api.post("/api/orders/quote").set(appAuth(user._id)).send({
         fulfillmentMethod: "pickup",

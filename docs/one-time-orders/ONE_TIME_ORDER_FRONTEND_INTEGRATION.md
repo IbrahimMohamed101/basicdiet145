@@ -34,10 +34,19 @@ This document defines the backend contract and correct behavior for Flutter/Mobi
 ```
 
 ### Important rules for `pickup`:
-- **`branchId`**: This is **REQUIRED** for pickup.
-  - Value must be a valid branch key (e.g., `"main"`) or a Mongo ObjectId from the `pickup_locations` list.
+- **`branchId`**: Optional for pickup in this app.
+  - The permanent default pickup branch is `branchId: "main"`.
+  - If Flutter omits `pickup.branchId`, the backend defaults to `"main"`.
+  - Value may be a Mongo ObjectId from the `pickup_locations` list.
+  - Value may also be a stable branch key/code/slug such as `"main"` when the backend branch setting exposes that stable identifier.
   - **DO NOT** send `"openTime"` or other field names as `branchId`.
 - **`pickupWindow`**: Format `HH:mm-HH:mm`. Values should come from `restaurantHours.pickupWindows`.
+
+Default pickup branch:
+- `branchId`: `"main"`
+- Address: `H4GX+JF7، السلامة، جدة 23436، المملكة العربية السعودية`
+
+Flutter may send `pickup.branchId = "main"` or omit `branchId` for pickup orders. Long-term, Flutter can still fetch branch/config data if needed, but it is not required while there is only one branch.
 
 ## 2. Restaurant Hours & Closed Behavior
 
@@ -99,6 +108,7 @@ If the restaurant is closed (manually, via weekly schedule, or outside working h
 - [ ] Quote one item while restaurant is open (Success)
 - [ ] Quote one item while restaurant is closed (409 RESTAURANT_CLOSED)
 - [ ] Pass valid `branchId: "main"` (Success)
+- [ ] Omit `pickup.branchId` for pickup and verify backend defaults to `main` (Success)
 - [ ] Pass invalid `branchId: "something-else"` (400 INVALID_BRANCH)
 - [ ] Display Arabic error message for restaurant closed
 - [ ] Verify `pickupWindow` format matches `HH:mm-HH:mm`

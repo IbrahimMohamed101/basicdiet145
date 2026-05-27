@@ -31,6 +31,7 @@
     "seed": "node scripts/seed-demo-data.js",
     "seed:subscription-addons": "node scripts/seed-subscription-addons.js",
     "seed:one-time-menu": "node scripts/seed-one-time-menu.js",
+    "ensure:pickup-main": "node scripts/ensure-default-pickup-location.js",
     "migrate:builder-to-menu": "node scripts/migrate-builder-to-menu.js",
     "seed:clear": "node scripts/seed-demo-data.js --clear",
     "seed:full": "node scripts/seed-demo-data.js --clear --users=50 --subscriptions=80 --orders=50",

@@ -1,9 +1,20 @@
+const mongoose = require("mongoose");
 const Setting = require("../models/Setting");
+const { buildDefaultPickupLocation } = require("../constants/defaultPickupLocation");
 const dateUtils = require("../utils/date");
 
 const CLOSED_MESSAGE = "Restaurant is currently closed";
 const CLOSED_MESSAGE_AR = "المطعم مغلق حاليًا. يمكنك الطلب خلال ساعات العمل.";
 const CLOSED_MESSAGE_EN = "Restaurant is currently closed. Please order during working hours.";
+const PICKUP_LOCATION_ID_FIELDS = [
+  "_id",
+  "id",
+  "key",
+  "code",
+  "slug",
+  "branchId",
+  "pickupLocationId",
+];
 
 function cleanString(value) {
   return String(value || "").trim();
@@ -28,30 +39,34 @@ function extractTimeValue(source, keys) {
   return "";
 }
 
-function findPickupLocation(pickupLocations, id) {
+function matchesPickupLocationField(location, wanted, fields) {
+  if (!location || typeof location !== "object") return false;
+  return fields.some((field) => cleanString(location[field]) === wanted);
+}
+
+function resolvePickupBranch(pickupLocations, id) {
   const wanted = cleanString(id);
   if (!wanted || !Array.isArray(pickupLocations)) return null;
-  return pickupLocations.find((location) => {
-    if (!location || typeof location !== "object") return false;
-    return [
-      location.id,
-      location._id,
-      location.key,
-      location.branchId,
-      location.pickupLocationId,
-    ].some((candidate) => cleanString(candidate) === wanted);
-  }) || null;
+
+  if (mongoose.Types.ObjectId.isValid(wanted)) {
+    const byObjectId = pickupLocations.find((location) => (
+      matchesPickupLocationField(location, wanted, ["_id"])
+    ));
+    if (byObjectId) return byObjectId;
+  }
+
+  return pickupLocations.find((location) => (
+    matchesPickupLocationField(location, wanted, PICKUP_LOCATION_ID_FIELDS)
+  )) || null;
 }
 
 function getPickupLocationId(location) {
   if (!location || typeof location !== "object") return "";
-  return cleanString(
-    location.id
-    || location._id
-    || location.key
-    || location.branchId
-    || location.pickupLocationId
-  );
+  for (const field of PICKUP_LOCATION_ID_FIELDS) {
+    const value = cleanString(location[field]);
+    if (value) return value;
+  }
+  return "";
 }
 
 function isActivePickupLocation(location) {
@@ -59,7 +74,16 @@ function isActivePickupLocation(location) {
     && typeof location === "object"
     && !Array.isArray(location)
     && location.isActive !== false
-    && location.enabled !== false;
+    && location.active !== false
+    && location.enabled !== false
+    && location.isEnabled !== false
+    && location.isAvailable !== false
+    && location.available !== false
+    && location.pickupEnabled !== false
+    && location.supportsPickup !== false
+    && location.pickupAvailable !== false
+    && location.availableForPickup !== false
+    && location.acceptsPickup !== false;
 }
 
 function resolveWeeklyScheduleHours(weeklySchedule, now) {
@@ -125,16 +149,19 @@ async function resolveRestaurantOpenState({
     Setting.findOne({ key: "temporary_closure" }).lean(),
   ]);
 
-  const pickupLocations = Array.isArray(pickupLocationsSetting && pickupLocationsSetting.value)
+  const configuredPickupLocations = Array.isArray(pickupLocationsSetting && pickupLocationsSetting.value)
     ? pickupLocationsSetting.value
     : [];
+  const pickupLocations = configuredPickupLocations.length
+    ? configuredPickupLocations
+    : [buildDefaultPickupLocation()];
   const activePickupLocations = pickupLocations.filter(isActivePickupLocation);
   const defaultPickupLocationId = activePickupLocations.map(getPickupLocationId).find(Boolean) || "main";
   const requestedPickupLocationId = cleanString(pickupLocationId || branchId);
-  const selectedLocation = findPickupLocation(pickupLocations, requestedPickupLocationId);
+  const selectedLocation = resolvePickupBranch(pickupLocations, requestedPickupLocationId);
   const pickupLocationFound = !requestedPickupLocationId
     || !pickupLocations.length
-    || Boolean(selectedLocation);
+    || Boolean(selectedLocation && isActivePickupLocation(selectedLocation));
   const weeklyHours = resolveWeeklyScheduleHours(weeklyScheduleSetting && weeklyScheduleSetting.value, now);
   const openTime = weeklyHours.openTime || (openSetting && openSetting.value ? String(openSetting.value) : "00:00");
   const closeTime = weeklyHours.closeTime || (closeSetting && closeSetting.value ? String(closeSetting.value) : "23:59");
@@ -159,7 +186,7 @@ async function resolveRestaurantOpenState({
     message: isOpenNow ? null : CLOSED_MESSAGE,
     messageAr: isOpenNow ? null : CLOSED_MESSAGE_AR,
     messageEn: isOpenNow ? null : CLOSED_MESSAGE_EN,
-    pickupLocationId: requestedPickupLocationId || null,
+    pickupLocationId: requestedPickupLocationId || defaultPickupLocationId || null,
     pickupLocationFound,
     defaultPickupLocationId,
     availablePickupLocationIds: activePickupLocations.map(getPickupLocationId).filter(Boolean),
@@ -176,8 +203,17 @@ async function getRestaurantHours(options = {}) {
 }
 
 async function assertRestaurantOpenForOrdering(options = {}) {
-  const hours = await resolveRestaurantOpenState(options);
-  if (options.branchId && !hours.pickupLocationFound) {
+  const effectiveOptions = { ...options };
+  if (
+    effectiveOptions.deliveryMode === "pickup"
+    && !effectiveOptions.branchId
+    && !effectiveOptions.pickupLocationId
+  ) {
+    effectiveOptions.branchId = "main";
+  }
+
+  const hours = await resolveRestaurantOpenState(effectiveOptions);
+  if ((effectiveOptions.branchId || effectiveOptions.pickupLocationId) && !hours.pickupLocationFound) {
     const err = new Error("Invalid branch ID");
     err.code = "INVALID_BRANCH";
     err.status = 400;
@@ -207,4 +243,5 @@ module.exports = {
   getRestaurantBusinessDate,
   getRestaurantBusinessTomorrow,
   resolveRestaurantOpenState,
+  resolvePickupBranch,
 };

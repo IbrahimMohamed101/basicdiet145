@@ -9,6 +9,7 @@ const Sandwich = require("../../models/Sandwich");
 const Setting = require("../../models/Setting");
 const Zone = require("../../models/Zone");
 const { SYSTEM_CURRENCY } = require("../../config/mealPlannerContract");
+const { DEFAULT_PICKUP_WINDOW } = require("../../constants/defaultPickupLocation");
 const { pickLang } = require("../../utils/i18n");
 const { computeInclusiveVatBreakdown } = require("../../utils/pricing");
 const { assertRestaurantOpenForOrdering } = require("../restaurantHoursService");
@@ -174,7 +175,10 @@ async function validateWindows({ fulfillmentMethod, delivery, pickup }) {
 
   const pickupWindow = pickup && pickup.pickupWindow ? String(pickup.pickupWindow).trim() : "";
   if (!pickupWindow) return;
-  const pickupWindows = normalizeWindows(await getSettingValue("pickup_windows", []));
+  const configuredPickupWindows = normalizeWindows(await getSettingValue("pickup_windows", []));
+  const pickupWindows = configuredPickupWindows.length
+    ? configuredPickupWindows
+    : normalizeWindows([DEFAULT_PICKUP_WINDOW]);
   if (pickupWindows.length && !pickupWindows.some((window) => window.value === pickupWindow)) {
     throw createOrderPricingError("INVALID_DELIVERY_WINDOW", "Invalid pickup window");
   }
@@ -391,12 +395,14 @@ async function priceOrderCart({
   }
   const method = String(fulfillmentMethod || "pickup").trim();
   const requestedBranchId = pickup && pickup.branchId ? String(pickup.branchId).trim() : null;
+  const effectiveBranchId = method === "pickup" ? (requestedBranchId || "main") : requestedBranchId;
 
   const restaurantHours = await assertRestaurantOpenForOrdering({
     deliveryMode: method,
-    branchId: requestedBranchId,
+    branchId: effectiveBranchId,
   });
   const normalizedPickup = normalizeSingleBranchPickup(pickup, restaurantHours);
+  await validateWindows({ fulfillmentMethod: method, delivery, pickup: normalizedPickup });
 
   const usesMenuCatalog = normalizedItems.some((item) => item && (item.productId || item.menuProductId));
   if (usesMenuCatalog) {
@@ -419,8 +425,6 @@ async function priceOrderCart({
       "Promo codes are not supported for one-time order quotes yet"
     );
   }
-
-  await validateWindows({ fulfillmentMethod: method, delivery, pickup: normalizedPickup });
 
   const pricedItems = [];
   for (const item of normalizedItems) {
