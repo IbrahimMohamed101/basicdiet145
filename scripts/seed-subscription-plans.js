@@ -7,31 +7,36 @@ const Plan = require("../src/models/Plan");
 
 const uri = process.env.MONGO_URI || process.env.MONGODB_URI;
 const SYSTEM_CURRENCY = "SAR";
-const EXPECTED_PLAN_COUNT = 27;
+const EXPECTED_PLAN_COUNT = 3;
+const EXPECTED_NESTED_PRICE_POINTS = 27;
 
 function name(ar, en = ar) {
   return { ar, en };
 }
 
-function createPlanKey(mealsPerDay, durationDays, grams) {
+function createPlanKey(durationDays) {
+  return `subscription_${durationDays}_days`;
+}
+
+function createFlatPlanKey(mealsPerDay, durationDays, grams) {
   return `subscription_${mealsPerDay}_meal_${durationDays}_days_${grams}g`;
 }
 
 const priceMatrixHalala = {
-  1: {
-    7: { 100: 11500, 150: 14500, 200: 17500 },
-    26: { 100: 43000, 150: 54900, 200: 62500 },
-    30: { 100: 48900, 150: 60000, 200: 69000 },
+  7: {
+    100: { 1: 11500, 2: 23000, 3: 34500 },
+    150: { 1: 14500, 2: 29000, 3: 43500 },
+    200: { 1: 17500, 2: 35000, 3: 52500 },
   },
-  2: {
-    7: { 100: 23000, 150: 29000, 200: 35000 },
-    26: { 100: 77900, 150: 98800, 200: 118400 },
-    30: { 100: 89900, 150: 110900, 200: 134900 },
+  26: {
+    100: { 1: 43000, 2: 77900, 3: 112900 },
+    150: { 1: 54900, 2: 98800, 3: 144300 },
+    200: { 1: 62500, 2: 118400, 3: 167700 },
   },
-  3: {
-    7: { 100: 34500, 150: 43500, 200: 52500 },
-    26: { 100: 112900, 150: 144300, 200: 167700 },
-    30: { 100: 125900, 150: 161900, 200: 189900 },
+  30: {
+    100: { 1: 48900, 2: 89900, 3: 125900 },
+    150: { 1: 60000, 2: 110900, 3: 161900 },
+    200: { 1: 69000, 2: 134900, 3: 189900 },
   },
 };
 
@@ -48,61 +53,62 @@ function buildFreezePolicy(durationDays) {
 }
 
 function buildSubscriptionPlanRows() {
-  const rows = [];
-  const mealCounts = Object.keys(priceMatrixHalala).map(Number).sort((a, b) => a - b);
-
-  for (const mealsPerDay of mealCounts) {
-    const durations = Object.keys(priceMatrixHalala[mealsPerDay]).map(Number).sort((a, b) => a - b);
-    for (const durationDays of durations) {
-      const gramSizes = Object.keys(priceMatrixHalala[mealsPerDay][durationDays]).map(Number).sort((a, b) => a - b);
-      for (const grams of gramSizes) {
-        const priceHalala = priceMatrixHalala[mealsPerDay][durationDays][grams];
-        const key = createPlanKey(mealsPerDay, durationDays, grams);
-        rows.push({
-          key,
+  return Object.keys(priceMatrixHalala).map(Number).sort((a, b) => a - b).map((durationDays, durationIndex) => {
+    const gramsOptions = Object.keys(priceMatrixHalala[durationDays]).map(Number).sort((a, b) => a - b).map((grams, gramsIndex) => ({
+      grams,
+      sortOrder: gramsIndex + 1,
+      isActive: true,
+      mealsOptions: Object.keys(priceMatrixHalala[durationDays][grams]).map(Number).sort((a, b) => a - b).map((mealsPerDay, mealIndex) => {
+        const priceHalala = priceMatrixHalala[durationDays][grams][mealsPerDay];
+        return {
           mealsPerDay,
-          durationDays,
-          mealSizeGrams: grams,
-          daysCount: durationDays,
-          sortOrder: (mealsPerDay * 1000) + (durationDays * 10) + grams,
-          name: name(
-            `اشتراك ${durationDays} يوم - ${mealsPerDay} وجبة - ${grams} جرام`,
-            `${durationDays} Days Subscription - ${mealsPerDay} Meal${mealsPerDay === 1 ? "" : "s"} - ${grams}g`
-          ),
-          description: name(
-            `اشتراك لمدة ${durationDays} يوم، ${mealsPerDay} وجبة يومياً، حجم ${grams} جرام.`,
-            `${durationDays}-day subscription, ${mealsPerDay} meal${mealsPerDay === 1 ? "" : "s"} per day, ${grams}g portion.`
-          ),
-          currency: SYSTEM_CURRENCY,
-          skipPolicy: buildSkipPolicy(durationDays),
-          freezePolicy: buildFreezePolicy(durationDays),
-          gramsOptions: [
-            {
-              grams,
-              sortOrder: 1,
-              isActive: true,
-              mealsOptions: [
-                {
-                  mealsPerDay,
-                  priceHalala,
-                  compareAtHalala: priceHalala,
-                  isActive: true,
-                  sortOrder: 1,
-                },
-              ],
-            },
-          ],
+          priceHalala,
+          compareAtHalala: priceHalala,
           isActive: true,
-        });
-      }
-    }
-  }
+          sortOrder: mealIndex + 1,
+        };
+      }),
+    }));
 
-  return rows;
+    return {
+      key: createPlanKey(durationDays),
+      daysCount: durationDays,
+      durationDays,
+      sortOrder: durationIndex + 1,
+      name: name(`اشتراك ${durationDays} ${durationDays === 7 ? "أيام" : "يوم"}`, `${durationDays}-Day Subscription`),
+      description: name(
+        `اشتراك لمدة ${durationDays} ${durationDays === 7 ? "أيام" : "يوم"} بخيارات 100 و150 و200 جرام.`,
+        `${durationDays}-day subscription with 100g, 150g, and 200g portion options.`
+      ),
+      currency: SYSTEM_CURRENCY,
+      skipPolicy: buildSkipPolicy(durationDays),
+      freezePolicy: buildFreezePolicy(durationDays),
+      gramsOptions,
+      active: true,
+      available: true,
+      isAvailable: true,
+      isActive: true,
+    };
+  });
 }
 
 const subscriptionPlanRows = buildSubscriptionPlanRows();
 const subscriptionPlanKeys = subscriptionPlanRows.map((row) => row.key);
+const wrongFlatPlanKeys = Object.keys(priceMatrixHalala).map(Number).flatMap((durationDays) => (
+  Object.keys(priceMatrixHalala[durationDays]).map(Number).flatMap((grams) => (
+    Object.keys(priceMatrixHalala[durationDays][grams]).map(Number).map((mealsPerDay) => (
+      createFlatPlanKey(mealsPerDay, durationDays, grams)
+    ))
+  ))
+));
+
+function countNestedPricePoints(rows = subscriptionPlanRows) {
+  return rows.reduce((total, row) => (
+    total + (row.gramsOptions || []).reduce((gramsTotal, gramsOption) => (
+      gramsTotal + (gramsOption.mealsOptions || []).length
+    ), 0)
+  ), 0);
+}
 
 function assertSubscriptionPlanRows() {
   if (subscriptionPlanRows.length !== EXPECTED_PLAN_COUNT) {
@@ -114,17 +120,53 @@ function assertSubscriptionPlanRows() {
     throw new Error(`Expected ${EXPECTED_PLAN_COUNT} unique subscription plan keys, got ${uniqueKeys.size}`);
   }
 
+  const nestedPricePoints = countNestedPricePoints();
+  if (nestedPricePoints !== EXPECTED_NESTED_PRICE_POINTS) {
+    throw new Error(`Expected ${EXPECTED_NESTED_PRICE_POINTS} nested price points, got ${nestedPricePoints}`);
+  }
+
   for (const row of subscriptionPlanRows) {
-    const gramsOption = row.gramsOptions[0];
-    const mealOption = gramsOption && gramsOption.mealsOptions && gramsOption.mealsOptions[0];
-    const expectedPrice = priceMatrixHalala[row.mealsPerDay]?.[row.durationDays]?.[row.mealSizeGrams];
-    if (!mealOption || mealOption.priceHalala !== expectedPrice) {
-      throw new Error(`Invalid price for ${row.key}: expected ${expectedPrice}, got ${mealOption && mealOption.priceHalala}`);
+    if ((row.gramsOptions || []).length !== 3) {
+      throw new Error(`Expected 3 grams options for ${row.key}`);
+    }
+
+    for (const gramsOption of row.gramsOptions) {
+      if ((gramsOption.mealsOptions || []).length !== 3) {
+        throw new Error(`Expected 3 meals options for ${row.key}/${gramsOption.grams}g`);
+      }
+
+      for (const mealOption of gramsOption.mealsOptions) {
+        const expectedPrice = priceMatrixHalala[row.durationDays]?.[gramsOption.grams]?.[mealOption.mealsPerDay];
+        if (mealOption.priceHalala !== expectedPrice) {
+          throw new Error(`Invalid price for ${row.key}/${gramsOption.grams}g/${mealOption.mealsPerDay} meals: expected ${expectedPrice}, got ${mealOption.priceHalala}`);
+        }
+      }
     }
   }
 }
 
-async function seedSubscriptionPlans({ log = console } = {}) {
+async function deactivateWrongFlatPlans({ log = console } = {}) {
+  const result = await Plan.updateMany(
+    { key: { $in: wrongFlatPlanKeys } },
+    {
+      $set: {
+        active: false,
+        isActive: false,
+        available: false,
+        isAvailable: false,
+      },
+    },
+    { runValidators: true }
+  );
+
+  const matched = Number(result.matchedCount || result.n || 0);
+  const modified = Number(result.modifiedCount || result.nModified || 0);
+  log.log(`Wrong flat subscription plans matched for deactivation: ${matched}`);
+  log.log(`Wrong flat subscription plans deactivated: ${modified}`);
+  return { matched, modified };
+}
+
+async function seedSubscriptionPlans({ cleanupFlatPlans = true, log = console } = {}) {
   assertSubscriptionPlanRows();
 
   let created = 0;
@@ -134,7 +176,13 @@ async function seedSubscriptionPlans({ log = console } = {}) {
     const existing = await Plan.findOne({ key: row.key }).select("_id").lean();
     await Plan.updateOne(
       { key: row.key },
-      { $set: row },
+      {
+        $set: row,
+        $unset: {
+          mealSizeGrams: "",
+          mealsPerDay: "",
+        },
+      },
       { upsert: true, runValidators: true }
     );
 
@@ -145,13 +193,21 @@ async function seedSubscriptionPlans({ log = console } = {}) {
     }
   }
 
-  const foundCount = await Plan.countDocuments({ key: { $in: subscriptionPlanKeys } });
+  let cleanup = { matched: 0, modified: 0 };
+  if (cleanupFlatPlans) {
+    cleanup = await deactivateWrongFlatPlans({ log });
+  } else {
+    log.log("Wrong flat subscription plans cleanup skipped.");
+  }
+
+  const foundCount = await Plan.countDocuments({ key: { $in: subscriptionPlanKeys }, isActive: true });
   const samplePlan = await Plan.findOne({ key: subscriptionPlanKeys[0] }).lean();
 
-  log.log(`Subscription plans created: ${created}`);
-  log.log(`Subscription plans updated: ${updated}`);
-  log.log(`Expected seeded subscription plan count: ${EXPECTED_PLAN_COUNT}`);
-  log.log(`Found seeded subscription plan count: ${foundCount}`);
+  log.log(`Subscription top-level plans created: ${created}`);
+  log.log(`Subscription top-level plans updated: ${updated}`);
+  log.log(`Expected active seeded subscription plan count: ${EXPECTED_PLAN_COUNT}`);
+  log.log(`Found active seeded subscription plan count: ${foundCount}`);
+  log.log(`Expected nested subscription price points: ${EXPECTED_NESTED_PRICE_POINTS}`);
 
   if (foundCount !== EXPECTED_PLAN_COUNT) {
     throw new Error(`Seeded subscription plan count mismatch: expected ${EXPECTED_PLAN_COUNT}, found ${foundCount}`);
@@ -159,28 +215,40 @@ async function seedSubscriptionPlans({ log = console } = {}) {
 
   return {
     expectedCount: EXPECTED_PLAN_COUNT,
+    expectedNestedPricePoints: EXPECTED_NESTED_PRICE_POINTS,
     foundCount,
+    nestedPricePoints: countNestedPricePoints(subscriptionPlanRows),
     created,
     updated,
+    cleanup,
     keys: subscriptionPlanKeys,
     samplePlan,
   };
 }
 
+function parseArgs(argv = process.argv.slice(2)) {
+  return {
+    cleanupFlatPlans: !argv.includes("--skip-flat-plan-cleanup"),
+  };
+}
+
 async function main() {
   if (!uri) throw new Error("MONGO_URI or MONGODB_URI is required");
+  const args = parseArgs();
 
   await mongoose.connect(uri);
   console.log("Connected to MongoDB for subscription plans seeding.");
 
   try {
-    const result = await seedSubscriptionPlans();
-    const sampleMealOption = result.samplePlan.gramsOptions[0].mealsOptions[0];
+    const result = await seedSubscriptionPlans({ cleanupFlatPlans: args.cleanupFlatPlans });
+    const sampleGramsOption = result.samplePlan.gramsOptions[0];
+    const sampleMealOption = sampleGramsOption.mealsOptions[0];
     console.log("Sample seeded plan:", {
       key: result.samplePlan.key,
       daysCount: result.samplePlan.daysCount,
-      mealsPerDay: result.samplePlan.mealsPerDay,
-      mealSizeGrams: result.samplePlan.mealSizeGrams,
+      durationDays: result.samplePlan.durationDays,
+      grams: sampleGramsOption.grams,
+      mealsPerDay: sampleMealOption.mealsPerDay,
       priceHalala: sampleMealOption.priceHalala,
     });
     console.log("Subscription plans seed complete.");
@@ -200,10 +268,15 @@ if (require.main === module) {
 }
 
 module.exports = {
+  EXPECTED_NESTED_PRICE_POINTS,
   EXPECTED_PLAN_COUNT,
+  countNestedPricePoints,
+  createFlatPlanKey,
   createPlanKey,
+  deactivateWrongFlatPlans,
   priceMatrixHalala,
   seedSubscriptionPlans,
   subscriptionPlanKeys,
   subscriptionPlanRows,
+  wrongFlatPlanKeys,
 };

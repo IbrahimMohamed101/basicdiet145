@@ -34,8 +34,6 @@ const PlanSchema = new mongoose.Schema(
     },
     daysCount: { type: Number, required: true },
     durationDays: { type: Number, min: 1 },
-    mealSizeGrams: { type: Number, min: 1 },
-    mealsPerDay: { type: Number, min: 1 },
     currency: { type: String, default: "SAR" },
     gramsOptions: { type: [GramsOptionSchema], default: [] },
     skipPolicy: {
@@ -47,6 +45,9 @@ const PlanSchema = new mongoose.Schema(
       maxDays: { type: Number, default: 31 },
       maxTimes: { type: Number, default: 1 },
     },
+    active: { type: Boolean, default: true },
+    available: { type: Boolean, default: true },
+    isAvailable: { type: Boolean, default: true },
     isActive: { type: Boolean, default: true },
     sortOrder: { type: Number, default: 0 },
   },

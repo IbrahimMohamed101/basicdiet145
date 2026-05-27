@@ -234,6 +234,7 @@ function resolvePlanGramsOption(gramsOption, lang, isDefault = false) {
     subtitle: localizeText(lang, "حجم الحصة", "Portion size"),
     isDefault,
     mealsOptions,
+    mealOptions: mealsOptions,
   };
 }
 
@@ -264,8 +265,6 @@ function resolvePlanCatalogEntry(plan, lang) {
     name: pickLang(plan.name, lang),
     daysCount: Number(plan.daysCount || 0),
     durationDays: Number(plan.durationDays || plan.daysCount || 0),
-    mealSizeGrams: Number(plan.mealSizeGrams || 0) || null,
-    mealsPerDay: Number(plan.mealsPerDay || 0) || null,
     daysLabel: formatDaysLabel(plan.daysCount, lang),
     currency: plan.currency || SYSTEM_CURRENCY,
     isActive: Boolean(plan.isActive),
@@ -287,6 +286,7 @@ function resolvePlanCatalogEntry(plan, lang) {
           : 1,
     },
     gramsOptions,
+    weightOptions: gramsOptions,
     defaultSelection: {
       grams: defaultGramsOption ? defaultGramsOption.grams : null,
       mealsPerDay: defaultMealsOption ? defaultMealsOption.mealsPerDay : null,
