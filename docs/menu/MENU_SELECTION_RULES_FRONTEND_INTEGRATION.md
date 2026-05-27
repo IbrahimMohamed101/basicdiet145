@@ -44,7 +44,7 @@ Flutter should render by:
 - `product.ui.cardVariant`
 - `optionGroup.ui.displayStyle`
 
-> **Note:** Do not hardcode rendering based on category key like `chicken`/`beef`/`premium`/`large_salad`.
+> **Note:** Do not hardcode category rendering based on category keys such as `custom_order`, `light_options`, `cold_sandwiches`, `sourdough`, `desserts`, `juices`, `drinks`, `ice_cream`. Flutter must render category cards using `category.ui.cardVariant`.
 
 ## C. Allowed UI values
 
@@ -218,9 +218,39 @@ Write payload remains the existing `salad.groups` shape. Do not change checkout/
 }
 ```
 
-### 2. builderCatalogV2 standard_meal
+### 2. Category ui examples
 ```json
 {
+  "key": "custom_order",
+  "ui": { "cardVariant": "meal_builder" }
+}
+```
+
+```json
+{
+  "key": "light_options",
+  "ui": { "cardVariant": "light_collection" }
+}
+```
+
+```json
+{
+  "key": "cold_sandwiches",
+  "ui": { "cardVariant": "sandwich_collection" }
+}
+```
+
+```json
+{
+  "key": "desserts",
+  "ui": { "cardVariant": "addon_collection" }
+}
+```
+
+### 3. builderCatalogV2 standard_meal
+```json
+{
+  "key": "standard_meal",
   "type": "meal_builder",
   "selectionType": "standard_meal",
   "products": [
@@ -236,9 +266,10 @@ Write payload remains the existing `salad.groups` shape. Do not change checkout/
 }
 ```
 
-### 3. builderCatalogV2 premium_large_salad
+### 4. builderCatalogV2 premium_large_salad
 ```json
 {
+  "key": "premium_large_salad",
   "type": "configurable_product",
   "selectionType": "premium_large_salad",
   "products": [
@@ -248,18 +279,22 @@ Write payload remains the existing `salad.groups` shape. Do not change checkout/
       "isVirtual": false,
       "ui": { "cardVariant": "large_salad" },
       "optionGroups": [
+        { "key": "leafy_greens", "maxSelections": 99, "options": [...] },
+        { "key": "vegetables", "maxSelections": 99, "options": [...] },
         { "key": "protein", "minSelections": 1, "maxSelections": 1, "options": [...] },
-        { "key": "sauce", "minSelections": 1, "maxSelections": 1, "options": [...] },
-        { "key": "vegetables", "maxSelections": 99, "options": [...] }
+        { "key": "cheese_nuts", "maxSelections": 99, "options": [...] },
+        { "key": "fruits", "maxSelections": 99, "options": [...] },
+        { "key": "sauce", "minSelections": 1, "maxSelections": 1, "options": [...] }
       ]
     }
   ]
 }
 ```
 
-### 4. sandwich product
+### 5. sandwich product
 ```json
 {
+  "key": "sandwich",
   "type": "product_list",
   "products": [
     {
@@ -270,3 +305,34 @@ Write payload remains the existing `salad.groups` shape. Do not change checkout/
   ]
 }
 ```
+
+## L. Subscription plan pricing
+
+Subscription plan pricing is not part of `builderCatalogV2`.
+
+The subscription plans API should expose 3 top-level plans only:
+- `subscription_7_days`
+- `subscription_26_days`
+- `subscription_30_days`
+
+Each plan contains:
+- `gramsOptions[]`
+  - `grams`: 100 / 150 / 200
+  - `mealsOptions[]`
+    - `mealsPerDay`: 1 / 2 / 3
+    - `priceHalala`
+
+Important:
+Flutter must not treat each grams/meals combination as a separate plan card.
+The UI should render:
+Plan duration -> grams -> meals per day -> price.
+
+Prices are stored in halala.
+Display SAR by dividing `priceHalala` by 100.
+
+## M. Checkout and pickup behavior
+
+One-time quote/create order pickup behavior is documented in:
+`docs/one-time-orders/ONE_TIME_ORDER_FRONTEND_INTEGRATION.md`
+
+Do not duplicate the full order contract here.
