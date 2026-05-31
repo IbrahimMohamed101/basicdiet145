@@ -85,17 +85,21 @@ function normalizeSelectedOptions(item) {
 
 function resolveWeightGrams(item, product) {
   if (product.pricingModel !== "per_100g") return 0;
-  const weight = Number(item.weightGrams || item.grams || product.defaultWeightGrams || 0);
+  const hasWeightGrams = Object.prototype.hasOwnProperty.call(item, "weightGrams");
+  if (!hasWeightGrams || item.weightGrams === null || item.weightGrams === "") {
+    throw createMenuPricingError("INVALID_WEIGHT_GRAMS", "weightGrams is required for per_100g products");
+  }
+  const weight = Number(item.weightGrams);
   if (!Number.isInteger(weight) || weight <= 0) {
-    throw createMenuPricingError("INVALID_WEIGHT", "weightGrams is required for per_100g products");
+    throw createMenuPricingError("INVALID_WEIGHT_GRAMS", "weightGrams must be a positive integer for per_100g products");
   }
   const min = Number(product.minWeightGrams || 0);
   const max = Number(product.maxWeightGrams || 0);
   const step = Number(product.weightStepGrams || 1);
-  if (min && weight < min) throw createMenuPricingError("INVALID_WEIGHT", "weightGrams is below minimum");
-  if (max && weight > max) throw createMenuPricingError("INVALID_WEIGHT", "weightGrams exceeds maximum");
+  if (min && weight < min) throw createMenuPricingError("INVALID_WEIGHT_GRAMS", "weightGrams is below minimum");
+  if (max && weight > max) throw createMenuPricingError("INVALID_WEIGHT_GRAMS", "weightGrams exceeds maximum");
   if (step && weight % step !== 0) {
-    throw createMenuPricingError("INVALID_WEIGHT", "weightGrams must match product weight step");
+    throw createMenuPricingError("INVALID_WEIGHT_GRAMS", "weightGrams must match product weight step");
   }
   return weight;
 }

@@ -34,9 +34,10 @@ This document defines the backend contract and correct behavior for Flutter/Mobi
 ```
 
 ### Important rules for `pickup`:
+- This app currently has exactly one permanent pickup branch: `"main"`.
 - **`branchId`**: Optional for pickup in this app.
   - The permanent default pickup branch is `branchId: "main"`.
-  - If Flutter omits `pickup.branchId`, the backend defaults to `"main"`.
+  - If Flutter sends an empty or `null` value, or omits `pickup.branchId`, the backend defaults to `"main"`.
   - Value may be a Mongo ObjectId from the `pickup_locations` list.
   - Value may also be a stable branch key/code/slug such as `"main"` when the backend branch setting exposes that stable identifier.
   - **DO NOT** send `"openTime"` or other field names as `branchId`.
@@ -48,7 +49,7 @@ Default pickup branch:
 - `branchId`: `"main"`
 - Address: `H4GX+JF7، السلامة، جدة 23436، المملكة العربية السعودية`
 
-Flutter may send `pickup.branchId = "main"` or omit `branchId` for pickup orders. Flutter may also omit `pickup.pickupWindow` for ASAP pickup. Long-term, Flutter can still fetch branch/config data if needed, but it is not required while there is only one branch.
+Flutter may send `pickup.branchId = "main"` or omit `branchId` for pickup orders. Flutter may also omit `pickup.pickupWindow` for ASAP pickup. The backend still exposes branch/config data for compatibility, but clients do not need a branch picker while the app has one permanent branch.
 
 ASAP pickup examples:
 

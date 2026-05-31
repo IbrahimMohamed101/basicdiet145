@@ -1000,6 +1000,31 @@ async function seedViaDashboard(api) {
       assert.strictEqual(res.body.data.pricing.totalHalala, 3000);
     });
 
+    await test("POST /api/orders/quote requires positive integer weightGrams for per_100g items", async () => {
+      for (const weightGrams of [undefined, null, "", 0, -100, 100.5, "invalid"]) {
+        const item = { productId: ctx.per100Product.id, qty: 1, selectedOptions: [] };
+        if (weightGrams !== undefined) item.weightGrams = weightGrams;
+        const res = await api.post("/api/orders/quote").set(appAuth(user._id)).send({
+          fulfillmentMethod: "pickup",
+          items: [item],
+        });
+        expectStatus(res, 400, `per100 invalid weight ${String(weightGrams)}`);
+        assert.strictEqual(res.body.error.code, "INVALID_WEIGHT_GRAMS");
+      }
+    });
+
+    await test("POST /api/orders/quote ignores weightGrams for fixed-price items", async () => {
+      for (const weightGrams of [undefined, null, 0]) {
+        const item = { productId: ctx.directProduct.id, qty: 1, selectedOptions: [] };
+        if (weightGrams !== undefined) item.weightGrams = weightGrams;
+        const res = await api.post("/api/orders/quote").set(appAuth(user._id)).send({
+          fulfillmentMethod: "pickup",
+          items: [item],
+        });
+        expectStatus(res, 200, `fixed quote weight ${String(weightGrams)}`);
+      }
+    });
+
     await test("POST /api/orders/quote validates pickup branch by ObjectId, stable key, and availability", async () => {
       const objectIdBranch = new mongoose.Types.ObjectId();
       await Setting.updateOne(

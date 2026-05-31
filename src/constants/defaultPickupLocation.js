@@ -16,9 +16,11 @@ const DEFAULT_PICKUP_LOCATION = Object.freeze({
     en: "Main Branch",
   },
   address: {
+    ar: "H4GX+JF7، السلامة، جدة 23436، المملكة العربية السعودية",
+    en: "H4GX+JF7, As Salamah, Jeddah 23436, Saudi Arabia",
     line1: {
       ar: "H4GX+JF7، السلامة، جدة 23436، المملكة العربية السعودية",
-      en: "H4GX+JF7, Al Salamah, Jeddah 23436, Saudi Arabia",
+      en: "H4GX+JF7, As Salamah, Jeddah 23436, Saudi Arabia",
     },
   },
   isActive: true,
@@ -27,6 +29,7 @@ const DEFAULT_PICKUP_LOCATION = Object.freeze({
   isAvailable: true,
   available: true,
   pickupEnabled: true,
+  isPickupEnabled: true,
   supportsPickup: true,
   pickupWindows: [DEFAULT_PICKUP_WINDOW],
   windows: [DEFAULT_PICKUP_WINDOW],

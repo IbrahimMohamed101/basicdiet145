@@ -154,7 +154,8 @@ function buildRequestHash(payload) {
 
 function normalizeSingleBranchPickup(pickup = {}, restaurantHours = {}) {
   const defaultId = String(restaurantHours.defaultPickupLocationId || "main").trim() || "main";
-  const branchId = (pickup && pickup.branchId) || defaultId;
+  const requestedBranchId = String(pickup && pickup.branchId || "").trim();
+  const branchId = requestedBranchId || defaultId;
   return {
     ...(pickup && typeof pickup === "object" ? pickup : {}),
     branchId,

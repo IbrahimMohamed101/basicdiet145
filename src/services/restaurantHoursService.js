@@ -45,17 +45,19 @@ function matchesPickupLocationField(location, wanted, fields) {
 }
 
 function resolvePickupBranch(pickupLocations, id) {
-  const wanted = cleanString(id);
-  if (!wanted || !Array.isArray(pickupLocations)) return null;
+  const wanted = cleanString(id) || "main";
+  const locations = Array.isArray(pickupLocations) && pickupLocations.length
+    ? pickupLocations
+    : [buildDefaultPickupLocation()];
 
   if (mongoose.Types.ObjectId.isValid(wanted)) {
-    const byObjectId = pickupLocations.find((location) => (
+    const byObjectId = locations.find((location) => (
       matchesPickupLocationField(location, wanted, ["_id"])
     ));
     if (byObjectId) return byObjectId;
   }
 
-  return pickupLocations.find((location) => (
+  return locations.find((location) => (
     matchesPickupLocationField(location, wanted, PICKUP_LOCATION_ID_FIELDS)
   )) || null;
 }
@@ -80,6 +82,7 @@ function isActivePickupLocation(location) {
     && location.isAvailable !== false
     && location.available !== false
     && location.pickupEnabled !== false
+    && location.isPickupEnabled !== false
     && location.supportsPickup !== false
     && location.pickupAvailable !== false
     && location.availableForPickup !== false
@@ -156,7 +159,7 @@ async function resolveRestaurantOpenState({
     ? configuredPickupLocations
     : [buildDefaultPickupLocation()];
   const activePickupLocations = pickupLocations.filter(isActivePickupLocation);
-  const defaultPickupLocationId = activePickupLocations.map(getPickupLocationId).find(Boolean) || "main";
+  const defaultPickupLocationId = "main";
   const requestedPickupLocationId = cleanString(pickupLocationId || branchId);
   const selectedLocation = resolvePickupBranch(pickupLocations, requestedPickupLocationId);
   const pickupLocationFound = !requestedPickupLocationId

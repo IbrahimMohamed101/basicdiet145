@@ -22,6 +22,27 @@ function isMainLocation(location) {
   return PICKUP_LOCATION_ID_FIELDS.some((field) => cleanString(location[field]) === "main");
 }
 
+function disableNonMainLocation(location) {
+  if (!location || typeof location !== "object" || Array.isArray(location)) return location;
+  return {
+    ...location,
+    isActive: false,
+    active: false,
+    enabled: false,
+    isAvailable: false,
+    available: false,
+    pickupEnabled: false,
+    isPickupEnabled: false,
+    supportsPickup: false,
+  };
+}
+
+function pickupWindowValue(window) {
+  if (typeof window === "string") return cleanString(window);
+  if (!window || typeof window !== "object" || Array.isArray(window)) return "";
+  return cleanString(window.value || window.key || window.window || window.label);
+}
+
 async function ensureDefaultPickupLocation() {
   const defaultLocation = buildDefaultPickupLocation();
   const pickupLocationsSetting = await Setting.findOne({ key: "pickup_locations" }).lean();
@@ -29,7 +50,9 @@ async function ensureDefaultPickupLocation() {
     ? pickupLocationsSetting.value
     : [];
   const mainIndex = existingLocations.findIndex(isMainLocation);
-  const nextLocations = [...existingLocations];
+  const nextLocations = existingLocations.map((location, index) => (
+    index === mainIndex ? location : disableNonMainLocation(location)
+  ));
 
   if (mainIndex >= 0) {
     nextLocations[mainIndex] = {
@@ -44,10 +67,10 @@ async function ensureDefaultPickupLocation() {
   const existingWindows = Array.isArray(pickupWindowsSetting && pickupWindowsSetting.value)
     ? pickupWindowsSetting.value
     : [];
-  const normalizedWindows = existingWindows.map((window) => cleanString(window)).filter(Boolean);
-  const nextWindows = normalizedWindows.includes(DEFAULT_PICKUP_WINDOW)
-    ? normalizedWindows
-    : [...normalizedWindows, DEFAULT_PICKUP_WINDOW];
+  const nextWindows = existingWindows.filter((window) => pickupWindowValue(window));
+  if (!nextWindows.some((window) => pickupWindowValue(window) === DEFAULT_PICKUP_WINDOW)) {
+    nextWindows.push(DEFAULT_PICKUP_WINDOW);
+  }
 
   await Promise.all([
     Setting.updateOne(
@@ -77,6 +100,10 @@ async function ensureDefaultPickupLocation() {
   return {
     pickupLocationsCount: nextLocations.length,
     mainLocationUpdated: mainIndex >= 0,
+    mainLocationCreated: mainIndex < 0,
+    otherObjectLocationsMarkedInactive: existingLocations.filter((location, index) => (
+      index !== mainIndex && location && typeof location === "object" && !Array.isArray(location)
+    )).length,
     pickupWindows: nextWindows,
   };
 }
