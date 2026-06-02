@@ -32,6 +32,7 @@ function handleCatalogError(err, res) {
   if (err instanceof service.ValidationError) {
     return res.status(400).json({
       status: false,
+      code: err.code,
       error: "Validation failed",
       details: err.details,
     });

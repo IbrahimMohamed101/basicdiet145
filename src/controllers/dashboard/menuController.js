@@ -221,6 +221,7 @@ module.exports = {
   listProductGroupOptions,
   createProductGroupOption,
   updateProductGroupOption,
+  updateProductGroupOptionVisibility,
   updateProductGroupOptionAvailability,
   duplicateProduct,
   deleteProductGroup,

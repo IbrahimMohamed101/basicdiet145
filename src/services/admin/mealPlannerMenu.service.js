@@ -28,10 +28,11 @@ const PROTEIN_DISPLAY_CATEGORY_KEYS = Object.freeze(["chicken", "beef", "fish", 
 const SNAKE_CASE_PATTERN = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/;
 
 class ValidationError extends Error {
-  constructor(details) {
+  constructor(details, code = "VALIDATION_ERROR") {
     super("Validation failed");
     this.name = "ValidationError";
     this.status = 400;
+    this.code = code;
     this.details = Array.isArray(details) ? details : [String(details)];
   }
 }
@@ -131,7 +132,7 @@ function assertImmutableKey(body, existing, fieldName = "key") {
   const nextKey = normalizeSnakeKey(body[fieldName], fieldName) || "";
   const currentKey = String(existing[fieldName] || "").trim().toLowerCase();
   if (nextKey !== currentKey) {
-    throw new ValidationError(`${fieldName} is immutable`);
+    throw new ValidationError(`${fieldName} is immutable`, "IMMUTABLE_KEY");
   }
 }
 
