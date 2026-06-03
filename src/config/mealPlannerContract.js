@@ -113,6 +113,24 @@ const SALAD_SELECTION_GROUPS = Object.freeze([
   { key: "extra_protein_50g", name: { ar: "إضافة بروتين", en: "Extra Protein" }, minSelect: 0, maxSelect: 1, sortOrder: 70, source: "option" },
 ]);
 
+const SUBSCRIPTION_PREMIUM_LARGE_SALAD_PROTEIN_KEYS = Object.freeze([
+  "boiled_eggs",
+  "tuna",
+  "chicken_fajita",
+  "spicy_chicken",
+  "italian_spiced_chicken",
+  "chicken_tikka",
+  "asian_chicken",
+  "chicken_strips",
+  "grilled_chicken",
+  "mexican_chicken",
+  "fish_fillet",
+]);
+
+const SUBSCRIPTION_PREMIUM_LARGE_SALAD_EXCLUDED_GROUP_KEYS = Object.freeze([
+  "extra_protein_50g",
+]);
+
 const SALAD_INGREDIENT_GROUP_KEYS = new Set(
   SALAD_SELECTION_GROUPS
     .filter((group) => group.source === "ingredient")
@@ -219,11 +237,15 @@ function getMealPlannerRules() {
       premiumKey: PREMIUM_LARGE_SALAD_PREMIUM_KEY,
       presetKey: PREMIUM_LARGE_SALAD_PRESET_KEY,
       extraFeeHalala: PREMIUM_LARGE_SALAD_FIXED_PRICE_HALALA,
-      groups: SALAD_SELECTION_GROUPS.map((group) => ({
-        key: group.key,
-        minSelect: group.minSelect,
-        maxSelect: group.maxSelect,
-      })),
+      groups: SALAD_SELECTION_GROUPS
+        .filter((group) => !SUBSCRIPTION_PREMIUM_LARGE_SALAD_EXCLUDED_GROUP_KEYS.includes(group.key))
+        .map((group) => ({
+          key: group.key,
+          minSelect: group.minSelect,
+          maxSelect: group.maxSelect,
+        })),
+      allowedProteinKeys: [...SUBSCRIPTION_PREMIUM_LARGE_SALAD_PROTEIN_KEYS],
+      excludedGroupKeys: [...SUBSCRIPTION_PREMIUM_LARGE_SALAD_EXCLUDED_GROUP_KEYS],
     },
   };
 }
@@ -308,6 +330,8 @@ module.exports = {
   STANDARD_CARB_CATEGORY_KEY,
   STANDARD_CARB_RULES,
   SUBSCRIPTION_COLD_SANDWICH_KEYS,
+  SUBSCRIPTION_PREMIUM_LARGE_SALAD_EXCLUDED_GROUP_KEYS,
+  SUBSCRIPTION_PREMIUM_LARGE_SALAD_PROTEIN_KEYS,
   SYSTEM_CURRENCY,
   buildProteinOptionSections,
   getProteinFamilyNameI18n,

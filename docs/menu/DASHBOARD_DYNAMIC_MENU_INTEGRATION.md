@@ -363,6 +363,14 @@ Treat rollback as an explicit operator action. It restores stored snapshots and 
 3. Keep only intended options.
 4. Add product-specific overrides where required.
 
+## Subscription Premium Large Salad Restrictions
+
+Subscription `premium_large_salad` and one-time `basic_salad` are similar but not identical. Dashboard code must not assume every `basic_salad` option is available for subscription `premium_large_salad`.
+
+One-time `basic_salad` may include premium proteins and `extra_protein_50g`. Subscription `premium_large_salad` should exclude premium proteins and `extra_protein_50g`.
+
+Relation-specific one-time prices still belong to `ProductGroupOption.extraPriceHalala`, especially for `basic_salad` premium protein and extra protein choices.
+
 ## 11. Dashboard Guardrails
 
 - Do not expose Cloudinary secrets.

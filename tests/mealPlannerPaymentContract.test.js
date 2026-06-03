@@ -236,6 +236,16 @@ async function seedBase() {
     extraFeeHalala: 3000,
     isActive: true,
   });
+  const beefSteakProtein = await BuilderProtein.create({
+    name: { ar: "ستيك لحم", en: "Beef Steak" },
+    isPremium: true,
+    displayCategoryKey: "premium",
+    displayCategoryId: proteinCategory._id,
+    proteinFamilyKey: "beef",
+    premiumKey: "beef_steak",
+    extraFeeHalala: 2000,
+    isActive: true,
+  });
   const carb = await BuilderCarb.create({
     name: { ar: "أرز", en: "Rice" },
     displayCategoryKey: "standard_carbs",
@@ -245,6 +255,15 @@ async function seedBase() {
   const addon = await Addon.create({
     name: { ar: "عصير برتقال", en: "Orange Juice" },
     priceHalala: 1000,
+    currency: "SAR",
+    kind: "item",
+    category: "juice",
+    billingMode: "flat_once",
+    isActive: true,
+  });
+  const addon1100 = await Addon.create({
+    name: { ar: "عصير أخضر", en: "Classic Green" },
+    priceHalala: 1100,
     currency: "SAR",
     kind: "item",
     category: "juice",
@@ -296,7 +315,7 @@ async function seedBase() {
     },
   });
 
-  return { user, token, subscription, standardProtein, premiumProtein, carb, addon, addon1300, addon1900, sauce };
+  return { user, token, subscription, standardProtein, premiumProtein, beefSteakProtein, carb, addon, addon1100, addon1300, addon1900, sauce };
 }
 
 function fullSelection({ standardProtein, premiumProtein, carb }) {
@@ -332,6 +351,31 @@ function standardSelection({ standardProtein, carb }) {
       proteinId: String(standardProtein._id),
       carbs: [{ carbId: String(carb._id), grams: 150 }],
     })),
+  };
+}
+
+function beefSteakSelection({ standardProtein, beefSteakProtein, carb }) {
+  return {
+    mealSlots: [
+      {
+        slotIndex: 1,
+        selectionType: "premium_meal",
+        proteinId: String(beefSteakProtein._id),
+        carbs: [{ carbId: String(carb._id), grams: 150 }],
+      },
+      {
+        slotIndex: 2,
+        selectionType: "standard_meal",
+        proteinId: String(standardProtein._id),
+        carbs: [{ carbId: String(carb._id), grams: 150 }],
+      },
+      {
+        slotIndex: 3,
+        selectionType: "standard_meal",
+        proteinId: String(standardProtein._id),
+        carbs: [{ carbId: String(carb._id), grams: 150 }],
+      },
+    ],
   };
 }
 
@@ -598,6 +642,56 @@ async function runUnifiedDayPaymentFlow(ctx) {
   assertEqual(addonVerifyRes.body.data.paymentRequirement.requiresPayment, false, "Unified add-on-only clears payment", addonVerifyRes.body.data.paymentRequirement);
   assertTrue(addonVerifyRes.body.data.addonSelections.every((selection) => selection.source === "paid"), "Unified add-on-only settles add-ons", addonVerifyRes.body.data.addonSelections);
   assertTrue(addonVerifyRes.body.data.addonSelections.every((selection) => String(selection.paymentId) === String(addonCreateRes.body.data.paymentId)), "Unified add-on-only stamps paymentId", addonVerifyRes.body.data.addonSelections);
+
+  const reportedCombinedDate = dateOffset(24);
+  await SubscriptionDay.create({ subscriptionId: ctx.subscription._id, date: reportedCombinedDate, status: "open" });
+  assertEqual(Number(ctx.beefSteakProtein.extraFeeHalala || 0), 2000, "Reported case beef_steak fixture surcharge", ctx.beefSteakProtein);
+  assertEqual(Number(ctx.addon1100.priceHalala || 0), 1100, "Reported case add-on fixture price", ctx.addon1100);
+  const reportedPayload = {
+    ...beefSteakSelection(ctx),
+    addonsOneTime: [String(ctx.addon1100._id)],
+  };
+
+  const reportedValidateRes = await request("POST", `/api/subscriptions/${ctx.subscription._id}/days/${reportedCombinedDate}/selection/validate`, reportedPayload, ctx.token);
+  assertEqual(reportedValidateRes.status, 200, "Reported combined validation status", reportedValidateRes.body);
+  assertEqual(reportedValidateRes.body.data.paymentRequirement.requiresPayment, true, "Reported combined validation requires payment", reportedValidateRes.body.data.paymentRequirement);
+  assertEqual(reportedValidateRes.body.data.paymentRequirement.premiumPendingPaymentCount, 1, "Reported combined validation premium count", reportedValidateRes.body.data.paymentRequirement);
+  assertEqual(reportedValidateRes.body.data.paymentRequirement.addonPendingPaymentCount, 1, "Reported combined validation add-on count", reportedValidateRes.body.data.paymentRequirement);
+  assertEqual(reportedValidateRes.body.data.paymentRequirement.pendingAmountHalala, 3100, "Reported combined validation pending amount", reportedValidateRes.body.data.paymentRequirement);
+  assertEqual(reportedValidateRes.body.data.paymentRequirement.amountHalala, 3100, "Reported combined validation amount", reportedValidateRes.body.data.paymentRequirement);
+  assertEqual(reportedValidateRes.body.data.premiumSummary.totalExtraHalala, 2000, "Reported combined validation premium summary", reportedValidateRes.body.data.premiumSummary);
+  assertEqual(reportedValidateRes.body.data.addonSummary.totalExtraHalala, 1100, "Reported combined validation add-on summary", reportedValidateRes.body.data.addonSummary);
+
+  const reportedSaveRes = await request("PUT", `/api/subscriptions/${ctx.subscription._id}/days/${reportedCombinedDate}/selection`, reportedPayload, ctx.token);
+  assertEqual(reportedSaveRes.status, 200, "Reported combined save status", reportedSaveRes.body);
+  assertEqual(reportedSaveRes.body.data.paymentRequirement.requiresPayment, true, "Reported combined save requires payment", reportedSaveRes.body.data.paymentRequirement);
+  assertEqual(reportedSaveRes.body.data.paymentRequirement.premiumPendingPaymentCount, 1, "Reported combined save premium count", reportedSaveRes.body.data.paymentRequirement);
+  assertEqual(reportedSaveRes.body.data.paymentRequirement.addonPendingPaymentCount, 1, "Reported combined save add-on count", reportedSaveRes.body.data.paymentRequirement);
+  assertEqual(reportedSaveRes.body.data.paymentRequirement.pendingAmountHalala, 3100, "Reported combined save pending amount", reportedSaveRes.body.data.paymentRequirement);
+  assertEqual(reportedSaveRes.body.data.paymentRequirement.amountHalala, 3100, "Reported combined save amount", reportedSaveRes.body.data.paymentRequirement);
+
+  const reportedCreateRes = await request("POST", `/api/subscriptions/${ctx.subscription._id}/days/${reportedCombinedDate}/payments`, {
+    plannerRevisionHash: reportedSaveRes.body.data.plannerRevisionHash,
+  }, ctx.token);
+  assertEqual(reportedCreateRes.status, 201, "Reported combined payment creation status", reportedCreateRes.body);
+  const reportedCreate = reportedCreateRes.body.data;
+  assertEqual(reportedCreate.premiumAmountHalala, 2000, "Reported combined premium amount", reportedCreate);
+  assertEqual(reportedCreate.addonsAmountHalala, 1100, "Reported combined add-on amount", reportedCreate);
+  assertEqual(reportedCreate.totalHalala, 3100, "Reported combined total amount", reportedCreate);
+  assertEqual(reportedCreate.currency, "SAR", "Reported combined currency", reportedCreate);
+
+  const reportedPayment = await Payment.findById(reportedCreate.paymentId).lean();
+  assertEqual(reportedPayment.type, "day_planning_payment", "Reported combined payment type", reportedPayment);
+  assertEqual(reportedPayment.amount, 3100, "Reported combined payment record amount", reportedPayment);
+  assertEqual(reportedPayment.currency, "SAR", "Reported combined payment record currency", reportedPayment);
+  assertEqual(reportedPayment.metadata.premiumAmountHalala, 2000, "Reported combined metadata premium amount", reportedPayment.metadata);
+  assertEqual(reportedPayment.metadata.addonsAmountHalala, 1100, "Reported combined metadata add-on amount", reportedPayment.metadata);
+  assertEqual(reportedPayment.metadata.totalHalala, 3100, "Reported combined metadata total amount", reportedPayment.metadata);
+  assertEqual(reportedPayment.metadata.premiumSelections.length, 1, "Reported combined metadata snapshots premium", reportedPayment.metadata);
+  assertEqual(reportedPayment.metadata.premiumSelections[0].premiumKey, "beef_steak", "Reported combined metadata premium key", reportedPayment.metadata.premiumSelections);
+  assertEqual(reportedPayment.metadata.premiumSelections[0].unitExtraFeeHalala, 2000, "Reported combined metadata premium unit fee", reportedPayment.metadata.premiumSelections);
+  const reportedAddonSnapshots = assertOneTimeAddonPaymentMetadataShape(reportedPayment, 1, "Reported combined metadata snapshots add-ons");
+  assertEqual(reportedAddonSnapshots[0].priceHalala, 1100, "Reported combined metadata add-on price", reportedAddonSnapshots);
 
   const addonPaidPremiumSaveRes = await request("PUT", `/api/subscriptions/${ctx.subscription._id}/days/${addonOnlyDate}/selection`, {
     ...fullSelection(ctx),

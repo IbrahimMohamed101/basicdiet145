@@ -204,6 +204,20 @@ const saladExtraProteinPriceOverrides = {
   extra_salmon_50g: 1000,
 };
 
+const subscriptionPremiumLargeSaladProteinKeys = [
+  "boiled_eggs",
+  "tuna",
+  "chicken_fajita",
+  "spicy_chicken",
+  "italian_spiced_chicken",
+  "chicken_tikka",
+  "asian_chicken",
+  "chicken_strips",
+  "grilled_chicken",
+  "mexican_chicken",
+  "fish_fillet",
+];
+
 const customSaladAllowedOptions = {
   leafy_greens: saladOptionRows.leafy_greens.filter((row) => !row.ruleTags?.includes("missing_external")).map((row) => row.key),
   vegetables_legumes: saladOptionRows.vegetables_legumes.map((row) => row.key),
@@ -416,6 +430,8 @@ const productGroupAllowedOptionKeys = {
   },
   premium_large_salad: {
     ...customSaladAllowedOptions,
+    proteins: subscriptionPremiumLargeSaladProteinKeys,
+    extra_protein_50g: [],
   },
   ...lightOptionAllowedOptions,
   ...Object.fromEntries(
@@ -427,7 +443,7 @@ const productGroupAllowedOptionKeys = {
 };
 
 const saladProductGroupOptionPriceOverrides = Object.fromEntries(
-  ["basic_salad", "premium_large_salad"].map((productKey) => [
+  ["basic_salad"].map((productKey) => [
     productKey,
     {
       proteins: saladProteinPriceOverrides,
@@ -632,7 +648,6 @@ const productRows = [
       ["proteins", 1, 1, true],
       ["cheese_nuts", 0, 2, false],
       ["sauces", 1, 1, true],
-      ["extra_protein_50g", 0, 1, false],
     ],
   },
   {

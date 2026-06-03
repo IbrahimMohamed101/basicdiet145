@@ -1,0 +1,900 @@
+# Subscriptions Manual QA Checklist
+
+This runbook verifies the subscription system manually before Flutter and Dashboard handoff.
+
+Production API:
+
+```text
+https://basicdiet145.onrender.com
+```
+
+This file is intentionally written for safe, step-by-step QA. Start read-only. Run optional write tests only after explicit approval from the project owner.
+
+## Verified Against Code
+
+Date: 2026-06-03
+
+Files inspected:
+
+- `src/routes/index.js`
+- `src/routes/subscriptions.js`
+- `src/routes/plans.js`
+- `src/routes/addons.js`
+- `src/routes/admin.js`
+- `src/routes/dashboardMenu.js`
+- `src/routes/dashboardSubscriptions.js`
+- `src/controllers/planController.js`
+- `src/controllers/subscriptionController.js`
+- `src/controllers/adminController.js`
+- `src/controllers/addonController.js`
+- `src/models/Plan.js`
+- `src/models/Addon.js`
+- `src/utils/subscription/subscriptionCatalog.js`
+- `src/utils/pricing.js`
+- `src/services/promoCodeService.js`
+- `src/services/subscription/subscriptionQuoteService.js`
+- `src/services/catalog/CatalogService.js`
+- `src/config/mealPlannerContract.js`
+- `src/services/subscription/mealSlotPlannerService.js`
+- `src/services/subscription/unifiedDayPaymentService.js`
+- `scripts/seed-subscription-plans.js` read only for static plan/add-on comments.
+- `tests/mealPlannerPaymentContract.test.js` read only for unified payment response contract examples.
+
+Routes verified:
+
+- Public: `/api/subscriptions/menu`, `/api/subscriptions/meal-planner-menu`, `/api/subscriptions/delivery-options`, `/api/addons`.
+- User auth: `/api/plans`, `/api/subscriptions/quote`, `/api/subscriptions/checkout`, `/api/subscriptions/:id/timeline`, `/api/subscriptions/:id/days/:date`, `/api/subscriptions/:id/days/:date/selection/validate`, `/api/subscriptions/:id/days/:date/payments`.
+- Dashboard: `/api/dashboard/plans`, `/api/dashboard/subscriptions`, `/api/dashboard/menu/*`, `/api/dashboard/promo-codes`.
+
+Services verified:
+
+- Public plan serialization uses `Plan.gramsOptions[].mealsOptions[]`; response also exposes `weightOptions`/`mealOptions` aliases.
+- Subscription quote uses `planId`, `grams`, `mealsPerDay`, optional `premiumItems`, optional `addons`, optional `promoCode`, and delivery fields normalized through `delivery`.
+- Subscription quote pricing is VAT-inclusive via `computeInclusiveVatBreakdown`.
+- Promo discount is applied to the gross quote total first, then VAT is extracted again from the discounted inclusive total.
+- Meal planner V2 is built from `data.builderCatalogV2.sections`.
+- Unified day payment returns `premiumAmountHalala`, `addonsAmountHalala`, `totalHalala`, and `currency`.
+
+Remaining assumptions:
+
+- This audit verifies code paths, not live production database contents.
+- `branchId` is not a direct field in `resolveCheckoutQuoteOrThrow`; pickup uses `pickupLocationId`/`locationId`. If Flutter/Dashboard still uses `branchId`, verify the client adapter or response before treating it as a backend contract.
+- Add-on category code is `small_salad`; UI may label it as salad.
+- Curl examples use placeholder IDs only and must be validated against actual safe QA data before optional writes.
+- Dashboard menu product list route is verified; `availableFor` was not confirmed as a supported query filter in `dashboard/menuController.js`, so inspect returned product fields instead of relying on that query parameter.
+
+## 0. Safety Rules
+
+- Read-only first. Begin with GET endpoints and Dashboard inspection only.
+- Do not run seed scripts.
+- Do not run bootstrap scripts.
+- Do not reset any database or catalog data.
+- Do not use `ALLOW_CATALOG_RESET=true`.
+- Do not delete production data.
+- Do not create production writes unless the step is under "Optional write tests" and explicit approval was given.
+- Any approved QA write must be QA-tagged, easy to identify, and inactive/hidden whenever possible.
+- Never expose JWT tokens, dashboard tokens, secrets, or `.env` values in logs, screenshots, tickets, docs, or chat.
+- Redact user phone numbers and payment/provider IDs in shared QA evidence.
+
+## 1. QA Environment
+
+| Item | Value |
+| --- | --- |
+| Production API | `https://basicdiet145.onrender.com` |
+| Backend repo | `/home/hema/Projects/basicdiet145` |
+| Dashboard repo | `/home/hema/Projects/full app/client_dashbourd-main` |
+
+Required tools:
+
+- Browser DevTools.
+- Postman, Insomnia, or `curl`.
+- Dashboard login with the correct role.
+- Flutter app/debug build pointed at production API or the approved QA API.
+
+Data needed:
+
+- Test user.
+- Active subscription for planner/timeline checks.
+- Dashboard admin token or dashboard session.
+- Optional active promo code for read/quote validation.
+- Optional QA subscription, created only after explicit approval.
+
+## 2. Auth Matrix
+
+| Area | Endpoint examples | Token required | Notes |
+| --- | --- | --- | --- |
+| Public subscription menu | `GET /api/subscriptions/menu`, `GET /api/subscriptions/meal-planner-menu?includeLegacy=true&lang=ar`, `GET /api/subscriptions/delivery-options` | No | Safe read-only public checks. |
+| Public add-ons | `GET /api/addons` | No | Used to confirm visible add-ons. |
+| User plans | `GET /api/plans`, `GET /api/plans/:id` | App user token | Verified mounted at `/api/plans`; requires app auth and lists active viable plans only. |
+| User subscription quote | `POST /api/subscriptions/quote` | App user token | Write-like validation call. Use only after approval if testing production. |
+| User checkout/payment | `POST /api/subscriptions/checkout`, `GET /api/subscriptions/checkout-drafts/:draftId`, `POST /api/subscriptions/checkout-drafts/:draftId/verify-payment` | App user token | Creates or verifies payment drafts. Requires approval. |
+| User planner/timeline | `GET /api/subscriptions/:id`, `GET /api/subscriptions/:id/timeline`, `GET /api/subscriptions/:id/days/:date`, `POST /api/subscriptions/:id/days/:date/selection/validate` | App user token | GET is read-only. Validation is write-like but should not save. |
+| User unified day payment | `POST /api/subscriptions/:id/days/:date/payments`, `POST /api/subscriptions/:id/days/:date/payments/:paymentId/verify` | App user token | Required for premium + add-on pending payment QA. Requires approval. |
+| Dashboard plans | `GET /api/dashboard/plans`, `POST /api/dashboard/plans`, `PUT /api/dashboard/plans/:id` | Dashboard token, admin role | GET first. Writes require approval. |
+| Dashboard subscriptions | `GET /api/dashboard/subscriptions`, `POST /api/dashboard/subscriptions/quote`, `POST /api/dashboard/subscriptions` | Dashboard token, admin/cashier as configured | Verified through `adminRoutes` mounted at `/api/dashboard`. Also `/api/dashboard/subscriptions/search`, `/:id/addon-entitlements`, and `/:id/balances` exist in `dashboardSubscriptions.js`. Writes require approval. |
+| Dashboard menu | `GET /api/dashboard/menu/*`, relation edit endpoints under `/api/dashboard/menu/products/:productId/...` | Dashboard token, admin/superadmin | Confirm metadata and relation rules. Writes require approval. |
+| Dashboard promo codes | `GET /api/dashboard/promo-codes`, `POST /api/dashboard/promo-codes/validate`, CRUD/toggle/delete under `/api/dashboard/promo-codes` | Dashboard token, admin role | Validation can be write-like depending on implementation. CRUD requires approval. |
+| Payment redirects/API | `GET /payments/success`, `GET /payments/cancel`, `GET /api/payments/verify` | Redirect/API-specific | Do not paste provider tokens or IDs into shared notes. |
+
+## 3. Subscription Plans QA
+
+Goal: only these customer-facing plans are sellable:
+
+- `subscription_7_days`
+- `subscription_26_days`
+- `subscription_30_days`
+
+Checklist:
+
+- `GET /api/plans` returns exactly 3 active viable plans for customers.
+- Each plan has `gramsOptions` for `100`, `150`, and `200`. The public serializer also returns `weightOptions` as an alias.
+- Each grams row has `mealsOptions` for meals/day `1`, `2`, `3`, `4`, and `5`. The public serializer also returns `mealOptions` as an alias.
+- Prices match the tables below. The persisted and response price field is `priceHalala`, so `138 SAR` is `13800`.
+- Legacy flat plans are not visible in Flutter/customer plan lists.
+- Dashboard does not present legacy flat plans as sellable.
+- Dashboard edit screens show technical `key` as read-only and do not allow changing immutable keys.
+
+Expected prices in SAR:
+
+### 7 days
+
+| Grams | 1 meal | 2 meals | 3 meals | 4 meals | 5 meals |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 100g | 138 | 276 | 414 | 552 | 690 |
+| 150g | 174 | 348 | 522 | 696 | 870 |
+| 200g | 210 | 420 | 630 | 840 | 1050 |
+
+### 26 days
+
+| Grams | 1 meal | 2 meals | 3 meals | 4 meals | 5 meals |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 100g | 516 | 935 | 1355 | 1806 | 2257 |
+| 150g | 659 | 1186 | 1732 | 2309 | 2886 |
+| 200g | 750 | 1421 | 2012 | 2683 | 3354 |
+
+### 30 days
+
+| Grams | 1 meal | 2 meals | 3 meals | 4 meals | 5 meals |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 100g | 587 | 1079 | 1511 | 2014 | 2518 |
+| 150g | 720 | 1331 | 1943 | 2590 | 3238 |
+| 200g | 828 | 1619 | 2279 | 3038 | 3798 |
+
+PASS:
+
+- Only the 3 canonical keys are customer-sellable.
+- All 45 nested price points match the expected table.
+- No legacy flat plan appears as available to Flutter or Dashboard sales flow.
+
+FAIL:
+
+- Any missing grams/meals option.
+- Any price mismatch.
+- Any active legacy flat plan visible as sellable.
+
+## 4. Subscription Creation Flow
+
+Test this from Flutter, Dashboard, and API where each client supports it.
+
+Request fields to verify:
+
+| Field | Expected |
+| --- | --- |
+| `planId` | Active canonical plan ObjectId. |
+| `grams` | Required by `resolveCheckoutQuoteOrThrow`; `100`, `150`, or `200`. |
+| `weightGrams` / `gramsOption` | Not used by backend subscription quote service. VERIFY FROM RESPONSE/client adapter before using. |
+| `mealsPerDay` | Required by `resolveCheckoutQuoteOrThrow`; integer `1` through `5`. |
+| `mealsCount` | Not used by backend subscription quote service. VERIFY FROM RESPONSE/client adapter before using. |
+| `startDate` | Valid future/allowed date in project format. |
+| `deliveryMode` or `delivery.type` | `pickup` or `delivery`, based on UI choice. |
+| `pickupLocationId` / `locationId` | Backend quote pickup fields. If a client sends `branchId`, VERIFY FROM RESPONSE/client adapter. |
+| `delivery.zoneId` / `zoneId` / `deliveryZoneId` | Required for delivery pricing. |
+| `deliveryAddress` / `delivery.address` | Required for delivery unless the endpoint intentionally allows missing address. |
+| `deliveryWindow` / `delivery.window` / `delivery.slot` | Required for delivery slot validation when delivery is selected. |
+| `promoCode` | Optional. Submit only known QA-safe code. |
+| `premiumItems` | Optional premium quantities using `proteinId` or canonical `premiumKey` plus `qty`. |
+| `addons` | Optional subscription add-on plan ObjectIds. |
+| `addonPlans` | Dashboard alias normalized to `addons`. |
+| `idempotencyKey` | Required for checkout. Send as `Idempotency-Key`, `X-Idempotency-Key`, or body `idempotencyKey`. |
+
+Response fields to verify:
+
+- `status: true`.
+- `data.breakdown`.
+- `data.breakdown.basePlanPriceHalala`.
+- `data.breakdown.premiumTotalHalala`.
+- `data.breakdown.addonsTotalHalala`.
+- `data.breakdown.deliveryFeeHalala`.
+- `data.breakdown.grossTotalHalala`.
+- `data.breakdown.subtotalHalala`.
+- `data.breakdown.subtotalBeforeVatHalala`.
+- `data.breakdown.vatPercentage`.
+- `data.breakdown.vatHalala`.
+- `data.breakdown.totalHalala`.
+- `data.breakdown.currency`.
+- `data.pricingSummary`.
+- `data.promoCode` when a promo is applied.
+- `data.totalSar`, `data.summary`, and `data.premiumItemCount` can appear in user quote responses.
+- Dashboard quote wraps selected dimensions under `data.selectedOptions`.
+- Checkout draft/payment fields when using checkout.
+
+Checklist:
+
+- Select plan.
+- Select grams.
+- Select meals/day.
+- Select pickup location or delivery information.
+- Apply promo code if approved.
+- Confirm discount value.
+- Confirm VAT extraction.
+- Confirm final total.
+- Create checkout/payment only after approval.
+- Before payment, subscription should not be active unless Dashboard create intentionally activates it.
+- After paid/verified payment, subscription or draft status should reflect paid/active according to the API response.
+- Pending payment must remain visibly pending and must not be shown as a completed subscription.
+
+PASS:
+
+- Quote and checkout totals match the selected plan, add-ons, premium items, delivery fee, promo discount, VAT, and currency.
+- Payment pending state is clear and recoverable.
+- Flutter/Dashboard show the same totals the API returned.
+
+FAIL:
+
+- Client computes a different final total locally.
+- Checkout can proceed without required fields or idempotency key.
+- Pending payment is displayed as active/paid.
+- Dashboard creates a production subscription unintentionally.
+
+## 5. VAT / Discount / Promo QA
+
+Project rule verified in code: customer-facing subscription prices are VAT-inclusive. The customer total is gross, and VAT is extracted from that gross amount with `computeInclusiveVatBreakdown`.
+
+Promo behavior verified in code: `applyPromoDiscountToBreakdown()` computes `rawSubtotal = basePlanPriceHalala + premiumTotalHalala + addonsTotalHalala + deliveryFeeHalala`, caps the discount to that raw subtotal, subtracts the discount, then extracts VAT from the discounted inclusive total.
+
+Verify actual API breakdown; do not assume formula output when promo configuration or response shape differs from the examples.
+
+Manual formulas:
+
+```text
+grossTotal = basePlanPrice + premiumTotal + addonsTotal + deliveryFee
+discount = fixedAmount OR percentageAmount capped by maxDiscount if configured
+taxableAmountGross = max(grossTotal - discount, 0)
+subtotalBeforeVat = round(taxableAmountGross / (1 + vatPercentage / 100))
+vatAmount = taxableAmountGross - subtotalBeforeVat
+total = taxableAmountGross
+```
+
+Verify:
+
+- Price before discount.
+- Fixed amount promo.
+- Percentage promo.
+- Maximum discount cap if configured.
+- VAT is extracted after discount by `applyPromoDiscountToBreakdown()`.
+- `totalHalala` is final payable amount.
+- Rounding is stable to the halala.
+- `subtotalBeforeVatHalala + vatHalala == totalHalala`.
+
+Examples:
+
+| Scenario | Manual expectation |
+| --- | --- |
+| 150.00 SAR VAT-inclusive, 15% VAT, no discount | Net `13043` halala, VAT `1957` halala, total `15000` halala. |
+| 150.00 SAR gross, 10.00 SAR fixed discount, 15% VAT | Taxable gross `14000`, net `12174`, VAT `1826`, total `14000`. |
+| 200.00 SAR gross, 10% promo, max 15.00 SAR, 15% VAT | Discount capped at `1500`, taxable gross `18500`, net `16087`, VAT `2413`, total `18500`. |
+
+PASS:
+
+- API `breakdown` and `pricingSummary` agree.
+- Flutter and Dashboard display the API total, not a local recalculation.
+- Currency is `SAR`.
+
+FAIL:
+
+- VAT is added on top of a VAT-inclusive plan price.
+- Discount is displayed but not reflected in payable total.
+- Rounding causes `subtotalBeforeVatHalala + vatHalala != totalHalala`.
+
+## 6. Subscription Add-ons QA
+
+Subscription add-ons by business label:
+
+- `snack`
+- `juice`
+- `salad`
+
+Backend category codes:
+
+- `snack`
+- `juice`
+- `small_salad`
+
+Delivery is not a subscription add-on.
+
+Checklist:
+
+- Dashboard lists only subscription add-on plan categories `snack`, `juice`, and `small_salad` as subscription add-ons. UI may label `small_salad` as salad.
+- Dashboard can show active/inactive state for each add-on.
+- If duration-specific pricing is supported, verify price by subscription duration.
+- Flutter does not render delivery as an add-on.
+- Backend quote/checkout does not include delivery inside `addonsTotalHalala`.
+- Delivery fees, when present, appear in `deliveryFeeHalala`.
+
+PASS:
+
+- Add-on totals include subscription add-ons only.
+- Delivery is handled as fulfillment/delivery fee, not addon inventory.
+
+FAIL:
+
+- `delivery` appears as a subscription add-on.
+- Add-on amount changes when only delivery method changes.
+
+## 7. Meal Planner Menu QA
+
+Endpoint:
+
+```http
+GET /api/subscriptions/meal-planner-menu?includeLegacy=true&lang=ar
+GET /api/subscriptions/meal-planner-menu?includeLegacy=true&lang=en
+```
+
+Checklist:
+
+- Flutter consumes `data.builderCatalogV2.sections`.
+- `data.builderCatalog` may exist for compatibility but is not the primary new UI source.
+- Sections include:
+  - `standard_meal`
+  - `premium_meal`
+  - `sandwich`
+  - `premium_large_salad`
+- Arabic and English responses preserve the same technical keys and IDs.
+- Localized labels change by `lang`; business rules do not.
+
+PASS:
+
+- All required sections are present in both languages.
+- Flutter uses IDs and keys from the response, not translated names.
+
+FAIL:
+
+- Flutter reads only legacy arrays.
+- Missing section or language-dependent technical behavior.
+
+## 8. Standard Meal QA
+
+Allowed proteins only:
+
+- `chicken`
+- `beef`
+- `fish`
+- `eggs`
+
+Allowed carbs, canonical 7 only:
+
+- `white_rice`
+- `turmeric_rice`
+- `alfredo_pasta`
+- `red_sauce_pasta`
+- `roasted_potato`
+- `sweet_potato`
+- `grilled_mixed_vegetables`
+
+Must not appear:
+
+- `brown_rice`
+- `potato`
+- `pasta`
+- premium proteins
+- `extra_protein_50g`
+
+PASS:
+
+- Public planner menu exposes only allowed standard proteins and canonical carbs for `standard_meal`.
+- Quote/selection validation rejects disallowed options.
+
+FAIL:
+
+- Any forbidden legacy carb or premium option is available in standard meal.
+
+## 9. Premium Meal QA
+
+`premium_meal` contains only:
+
+- `beef_steak`
+- `shrimp`
+- `salmon`
+
+Each premium option:
+
+- `extraFeeHalala = 2000`.
+- Flutter displays this as `20 SAR`.
+- Quote includes premium charges in `premiumTotalHalala`.
+
+PASS:
+
+- Only the 3 premium keys appear.
+- Each fee is exactly `2000` halala.
+
+FAIL:
+
+- Missing fee, wrong fee, or extra premium protein appears.
+
+## 10. Subscription Sandwich QA
+
+Subscription sandwich section contains only:
+
+- `beef_burger_sandwich`
+- `turkey_cold_sandwich`
+- `boiled_egg_sandwich`
+- `tuna_sandwich`
+- `mexican_chicken_sandwich`
+- `grilled_chicken_sandwich`
+
+Must not appear:
+
+- `chicken_sandwich`
+- `sourdough_turkey`
+
+PASS:
+
+- Only approved subscription sandwich keys are visible.
+
+FAIL:
+
+- Any forbidden or legacy sandwich key appears.
+
+## 11. Premium Large Salad Subscription Restriction QA
+
+Inside subscriptions only, `premium_large_salad` is enforced by an allowed protein list plus an excluded group list.
+
+Allowed subscription premium large salad proteins from code:
+
+- `boiled_eggs`
+- `tuna`
+- `chicken_fajita`
+- `spicy_chicken`
+- `italian_spiced_chicken`
+- `chicken_tikka`
+- `asian_chicken`
+- `chicken_strips`
+- `grilled_chicken`
+- `mexican_chicken`
+- `fish_fillet`
+
+Therefore these must not show or must be rejected:
+
+- `extra_protein_50g`
+- `beef_steak`
+- `shrimp`
+- `salmon`
+- `meatballs`
+- `beef_stroganoff`
+
+Checklist:
+
+- Only regular proteins are visible.
+- `extra_protein_50g` group is excluded for subscription `premium_large_salad`.
+- Validation rejects payloads that submit premium or non-allowed proteins.
+- One-time `basic_salad` is a separate one-time menu flow; verify from `/api/orders/menu` if checking it, and do not infer it from subscription planner restrictions.
+
+PASS:
+
+- Subscription large salad rejects disallowed proteins and still allows the code-defined allowed proteins.
+- One-time salad behavior remains unchanged. VERIFY FROM RESPONSE if doing one-time salad QA.
+
+FAIL:
+
+- Premium/disallowed protein is selectable or accepted in subscription large salad.
+- One-time salad is accidentally restricted by this rule.
+
+## 12. Protein Visual Grouping QA
+
+Protein options should include display metadata where available:
+
+- `proteinFamilyKey`
+- `proteinFamilyNameI18n`
+- `displayCategoryKey`
+- `optionSections`
+
+Flutter visual tabs:
+
+- `دجاج`
+- `لحم`
+- `سمك`
+- `بيض`
+
+For option-group style builder selections, payload must still use original IDs:
+
+```json
+{
+  "groupId": "original_group_id",
+  "optionId": "selected_option_id",
+  "qty": 1
+}
+```
+
+Checklist:
+
+- Visual grouping does not create virtual business groups.
+- Flutter never sends virtual family IDs as `groupId` or `optionId`.
+- Selection rules are inherited from the original protein group.
+- Dashboard treats `proteinFamilyKey` as display metadata, not pricing logic.
+- Canonical subscription day `mealSlots` use the meal planner contract fields such as `slotIndex`, `selectionType`, `proteinId`, `carbs`, `sandwichId`, and `salad`; do not send visual family IDs there either.
+
+PASS:
+
+- UI grouping works while quote/selection payloads retain original backend IDs.
+
+FAIL:
+
+- Quote payload contains virtual family IDs.
+- Grouping changes selection limits or pricing.
+
+## 13. Quote Validation QA
+
+Use `POST /api/subscriptions/:id/days/:date/selection/validate` before saving day selections.
+
+Validate:
+
+- Standard meal valid.
+- Premium meal valid.
+- Sandwich valid.
+- `premium_large_salad` valid.
+- Invalid `weightGrams` if testing an older client-side builder adapter. TODO/VERIFY: direct subscription `mealSlots` validation primarily uses `carbs[].grams`, not a top-level `weightGrams`.
+- Invalid `optionId`.
+- Invalid `groupId`.
+- Disallowed premium protein in `premium_large_salad`.
+- `extra_protein_50g` in `premium_large_salad` should fail.
+- Canonical carbs only.
+
+Expected error codes may include:
+
+- `SALAD_OPTION_NOT_ALLOWED`
+- `SALAD_PROTEIN_NOT_ALLOWED`
+- `SALAD_PROTEIN_INVALID`
+- `INVALID_SALAD_OPTION`
+- `CARBS_NOT_ALLOWED`
+- `SANDWICH_NOT_ALLOWED`
+- `INVALID_SLOT_STRUCTURE`
+- Or the actual project error code returned by the API.
+
+TODO/VERIFY: `INVALID_WEIGHT_GRAMS`, `INVALID_OPTION`, and `INVALID_SELECTION` may appear in adjacent flows, but they were not confirmed as direct meal-slot validation codes in the inspected `mealSlotPlannerService.js`.
+
+PASS:
+
+- Valid payloads pass.
+- Invalid payloads fail before saving.
+- Error responses are clear enough for Flutter to show a useful message.
+
+FAIL:
+
+- Invalid payload saves.
+- Error code is missing or misleading.
+
+## 14. Premium + Add-on Payment QA
+
+Important scenario:
+
+- Add-on amount = `1100` halala.
+- `beef_steak` premium = `2000` halala.
+
+Expected:
+
+- `premiumAmountHalala = 2000`
+- `addonsAmountHalala = 1100`
+- `totalHalala = 3100`
+- `currency = SAR`
+
+Flutter must use:
+
+```http
+POST /api/subscriptions/:id/days/:date/payments
+```
+
+Flutter must not use the add-on-only endpoint when the day contains a premium meal.
+
+Checklist:
+
+- Create or identify a day selection with both premium meal and one-time add-on after approval.
+- Validate pending payment total.
+- Confirm response separates premium amount and add-on amount.
+- Confirm timeline reflects pending payment until paid.
+- Verify using `POST /api/subscriptions/:id/days/:date/payments/:paymentId/verify` only if approved.
+
+PASS:
+
+- Unified payment total is `3100` halala.
+- Timeline and day detail remain pending until payment is complete.
+
+FAIL:
+
+- Flutter creates only add-on payment.
+- Premium amount is omitted.
+- Day is shown as planned before payment.
+
+## 15. Timeline QA
+
+Test states:
+
+- `empty`
+- `draft`
+- `pending_payment`
+- `planned`
+- `failed`
+
+If premium/add-on payment is pending:
+
+- `timelineStatus = pending_payment`
+- `canShowAsPlanned = false`
+- `isPlanned = false`
+
+Flutter planned-day rule:
+
+```dart
+final showPlanned =
+  day.timelineStatus == 'planned' || day.canShowAsPlanned == true;
+```
+
+Checklist:
+
+- `GET /api/subscriptions/:id/timeline` returns all expected day fields.
+- Empty days are not shown as planned.
+- Draft selected days without confirmation/payment are not shown as planned.
+- Pending payment days are not shown as planned.
+- Paid and confirmed days become planned only when API says so.
+- Failed payment day shows recoverable failed/pending UI.
+
+PASS:
+
+- Flutter uses `timelineStatus` and `canShowAsPlanned`.
+- No pending payment is visually promoted to planned.
+
+FAIL:
+
+- Flutter uses legacy `status` alone and shows drafts/pending days as planned.
+
+## 16. Dashboard QA
+
+Checklist:
+
+- Create/edit subscription plan without editing immutable `key`.
+- Show `key` read-only on edit.
+- Do not show legacy flat plans as sellable.
+- Manage add-ons `snack`, `juice`, and `small_salad` only. UI may label `small_salad` as salad.
+- Do not show delivery as an add-on.
+- Manage prices in halala correctly.
+- Do not convert `maxSelections=0` to `1`.
+- Use `?? 1` style fallback semantics, not `|| 1`, where zero is valid.
+- Relation prices come from `ProductGroupOption.extraPriceHalala`.
+- UI metadata controls presentation only and must not drive business logic.
+- Product/group/option relation screens preserve original `groupId` and `optionId`.
+- Dashboard quote uses `/api/dashboard/subscriptions/quote` before create.
+
+PASS:
+
+- Dashboard can inspect and manage catalog/plans without mutating immutable technical identity.
+- Read-only fields remain read-only.
+- Zero and null selection limits are preserved correctly.
+
+FAIL:
+
+- Dashboard changes keys.
+- UI metadata changes backend eligibility/pricing.
+- `maxSelections=0` becomes `1`.
+
+## 17. Flutter QA
+
+Checklist:
+
+- Uses `data.builderCatalogV2.sections`.
+- Does not depend on Arabic or English names for business decisions.
+- Does not depend on hardcoded keys for card layout.
+- Uses UI metadata for display only.
+- Uses quote API for final price.
+- Does not calculate final payable total locally.
+- Sends original `groupId` and `optionId`.
+- Does not send virtual family IDs.
+- Displays premium fees.
+- Displays pending payment total correctly.
+- Uses unified day payment endpoint:
+  - `POST /api/subscriptions/:id/days/:date/payments`
+- Uses planned-day rule:
+  - `timelineStatus == 'planned' || canShowAsPlanned == true`
+
+PASS:
+
+- Flutter renders, validates, quotes, saves, and pays using backend contracts.
+
+FAIL:
+
+- Flutter relies on translated names, legacy arrays, local final pricing, or deprecated payment endpoints.
+
+## 18. Final Acceptance Criteria
+
+The subscription system is ready when:
+
+- All public subscription menu checks PASS.
+- All plan price checks PASS.
+- `premium_large_salad` restriction PASS.
+- Premium + add-on unified payment total PASS.
+- Timeline planned/pending behavior PASS.
+- Dashboard does not break relation rules.
+- Dashboard does not expose legacy flat plans as sellable.
+- Flutter displays, saves, quotes, and pays using the correct API contract.
+- No QA run exposed tokens/secrets or performed unapproved production writes.
+
+## 19. QA Result Template
+
+| Area | Test | Expected | Actual | Status | Notes |
+| ---- | ---- | -------- | ------ | ------ | ----- |
+| Plans | 3 canonical plans only | `subscription_7_days`, `subscription_26_days`, `subscription_30_days` |  |  |  |
+| Pricing | 45 price points | Match table |  |  |  |
+| Menu | Planner sections | 4 required sections |  |  |  |
+| Validation | Invalid premium salad protein | Rejected |  |  |  |
+| Payment | Premium + add-on total | `3100` halala |  |  |  |
+| Timeline | Pending payment day | Not planned |  |  |  |
+| Dashboard | Key immutable | Read-only/not changed |  |  |  |
+| Flutter | Uses canonical IDs | Original IDs only |  |  |  |
+
+Status values:
+
+- `PASS`
+- `FAIL`
+- `WARN`
+- `SKIP`
+
+## 20. Commands Section
+
+Read-only commands only.
+
+Set a shell variable without exposing secrets:
+
+```bash
+BASE_URL="https://basicdiet145.onrender.com"
+```
+
+Public menu checks:
+
+```bash
+curl -sS "$BASE_URL/api/subscriptions/meal-planner-menu?includeLegacy=true&lang=ar"
+curl -sS "$BASE_URL/api/subscriptions/meal-planner-menu?includeLegacy=true&lang=en"
+curl -sS "$BASE_URL/api/subscriptions/menu?lang=ar"
+curl -sS "$BASE_URL/api/subscriptions/delivery-options"
+curl -sS "$BASE_URL/api/addons"
+```
+
+Authenticated read-only checks. Do not print the token:
+
+```bash
+APP_AUTH_HEADER="Authorization: Bearer <REDACTED_APP_USER_TOKEN>"
+DASHBOARD_AUTH_HEADER="Authorization: Bearer <REDACTED_DASHBOARD_TOKEN>"
+```
+
+```bash
+curl -sS -H "$APP_AUTH_HEADER" "$BASE_URL/api/plans"
+curl -sS -H "$APP_AUTH_HEADER" "$BASE_URL/api/subscriptions"
+curl -sS -H "$APP_AUTH_HEADER" "$BASE_URL/api/subscriptions/current/overview"
+curl -sS -H "$APP_AUTH_HEADER" "$BASE_URL/api/subscriptions/<subscriptionId>/timeline"
+curl -sS -H "$APP_AUTH_HEADER" "$BASE_URL/api/subscriptions/<subscriptionId>/days/<YYYY-MM-DD>"
+```
+
+Dashboard read-only checks:
+
+```bash
+curl -sS -H "$DASHBOARD_AUTH_HEADER" "$BASE_URL/api/dashboard/plans"
+curl -sS -H "$DASHBOARD_AUTH_HEADER" "$BASE_URL/api/dashboard/subscriptions"
+curl -sS -H "$DASHBOARD_AUTH_HEADER" "$BASE_URL/api/dashboard/menu/products"
+curl -sS -H "$DASHBOARD_AUTH_HEADER" "$BASE_URL/api/dashboard/menu/option-groups"
+curl -sS -H "$DASHBOARD_AUTH_HEADER" "$BASE_URL/api/dashboard/promo-codes"
+```
+
+Optional write tests - require explicit approval:
+
+These commands are examples only. Use QA-tagged data, approved users/subscriptions, and redact all identifiers in shared output.
+
+Quote a subscription:
+
+```bash
+curl -sS -X POST "$BASE_URL/api/subscriptions/quote" \
+  -H "$APP_AUTH_HEADER" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "planId": "<canonicalPlanId>",
+    "grams": 100,
+    "mealsPerDay": 1,
+    "startDate": "<YYYY-MM-DD>",
+    "deliveryMode": "pickup",
+    "pickupLocationId": "<pickupLocationId>",
+    "promoCode": "<OPTIONAL_QA_PROMO>"
+  }'
+```
+
+Validate a planner day without saving:
+
+```bash
+curl -sS -X POST "$BASE_URL/api/subscriptions/<subscriptionId>/days/<YYYY-MM-DD>/selection/validate" \
+  -H "$APP_AUTH_HEADER" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "mealSlots": [
+      {
+        "slotIndex": 1,
+        "selectionType": "standard_meal",
+        "proteinId": "<proteinOptionOrBuilderProteinId>",
+        "carbs": [
+          { "carbId": "<carbOptionOrBuilderCarbId>", "grams": 150 }
+        ]
+      }
+    ]
+  }'
+```
+
+Create a checkout draft/payment only after approval:
+
+```bash
+curl -sS -X POST "$BASE_URL/api/subscriptions/checkout" \
+  -H "$APP_AUTH_HEADER" \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: qa-subscription-checkout-<unique-suffix>" \
+  -d '{
+    "planId": "<canonicalPlanId>",
+    "grams": 100,
+    "mealsPerDay": 1,
+    "startDate": "<YYYY-MM-DD>",
+    "deliveryMode": "pickup",
+    "pickupLocationId": "<pickupLocationId>",
+    "idempotencyKey": "qa-subscription-checkout-<unique-suffix>"
+  }'
+```
+
+Create unified day payment only after approval:
+
+```bash
+curl -sS -X POST "$BASE_URL/api/subscriptions/<subscriptionId>/days/<YYYY-MM-DD>/payments" \
+  -H "$APP_AUTH_HEADER" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "source": "manual_qa",
+    "note": "QA-tagged unified premium plus addon payment check"
+  }'
+```
+
+Dashboard quote only after approval:
+
+```bash
+curl -sS -X POST "$BASE_URL/api/dashboard/subscriptions/quote" \
+  -H "$DASHBOARD_AUTH_HEADER" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "userId": "<qaUserId>",
+    "planId": "<canonicalPlanId>",
+    "grams": 100,
+    "mealsPerDay": 1,
+    "startDate": "<YYYY-MM-DD>",
+    "deliveryMode": "pickup",
+    "pickupLocationId": "<pickupLocationId>"
+  }'
+```
+
+Forbidden commands for this QA:
+
+```text
+Do not run seed scripts.
+Do not run bootstrap scripts.
+Do not run reset scripts.
+Do not set ALLOW_CATALOG_RESET=true.
+Do not run destructive delete/update commands.
+```
+
+## Recommended Execution Order
+
+1. Read-only public subscription menu.
+2. Read-only plans/prices.
+3. Read-only dashboard inspection.
+4. Flutter rendering check.
+5. Quote tests after explicit approval.
+6. Validation tests after explicit approval.
+7. Payment pending tests after explicit approval.
+8. Final `PASS`/`WARN`/`FAIL` report.

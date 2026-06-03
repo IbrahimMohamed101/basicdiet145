@@ -16,6 +16,8 @@ const {
   SALAD_SELECTION_GROUPS,
   SANDWICH_CATEGORY_KEYS,
   STANDARD_CARB_RULES,
+  SUBSCRIPTION_PREMIUM_LARGE_SALAD_EXCLUDED_GROUP_KEYS,
+  SUBSCRIPTION_PREMIUM_LARGE_SALAD_PROTEIN_KEYS,
   SYSTEM_CURRENCY,
   getMealPlannerRules,
   normalizeProteinDisplayCategoryKey,
@@ -39,6 +41,8 @@ const DEFAULT_SLOT_KEY_PREFIX = "slot_";
 const MENU_PROTEIN_GROUP_KEY = "proteins";
 const MENU_CARB_GROUP_KEY = "carbs";
 const MENU_SALAD_EXTRA_PROTEIN_GROUP_KEY = "extra_protein_50g";
+const SUBSCRIPTION_PREMIUM_LARGE_SALAD_PROTEIN_KEY_SET = new Set(SUBSCRIPTION_PREMIUM_LARGE_SALAD_PROTEIN_KEYS);
+const SUBSCRIPTION_PREMIUM_LARGE_SALAD_EXCLUDED_GROUP_KEY_SET = new Set(SUBSCRIPTION_PREMIUM_LARGE_SALAD_EXCLUDED_GROUP_KEYS);
 
 const CUSTOM_PREMIUM_SALAD_TYPE = LEGACY_MEAL_SELECTION_TYPES.CUSTOM_PREMIUM_SALAD;
 const SANDWICH_TYPE = LEGACY_MEAL_SELECTION_TYPES.SANDWICH;
@@ -175,6 +179,10 @@ function buildProteinTypeErrorDetails(slot) {
     receivedPremiumKey: slot && slot.premiumKey ? String(slot.premiumKey) : null,
     selectionType: slot && slot.selectionType ? String(slot.selectionType) : null,
   };
+}
+
+function getProteinCatalogKey(protein) {
+  return String(protein?.key || protein?.premiumKey || "").trim().toLowerCase();
 }
 
 function resolvePremiumMealProtein(slot, proteins, proteinIdentityMap) {
@@ -324,6 +332,14 @@ function validatePremiumLargeSalad(slot, proteinMap, saladIngredientMap, saladOp
     if (!SALAD_GROUP_KEYS.has(groupKey)) {
       return { valid: false, code: "INVALID_SALAD_GROUP", message: `Invalid salad group: ${groupKey}` };
     }
+    const groupItems = Array.isArray(salad.groups[groupKey]) ? salad.groups[groupKey] : [];
+    if (SUBSCRIPTION_PREMIUM_LARGE_SALAD_EXCLUDED_GROUP_KEY_SET.has(groupKey) && groupItems.length > 0) {
+      return {
+        valid: false,
+        code: "SALAD_OPTION_NOT_ALLOWED",
+        message: `${groupKey} is not available for subscription premium large salad`,
+      };
+    }
   }
 
   let selectedProteinId = null;
@@ -367,6 +383,13 @@ function validatePremiumLargeSalad(slot, proteinMap, saladIngredientMap, saladOp
       const protein = proteinMap ? proteinMap.get(selectedProteinId) : null;
       if (!protein) {
         return { valid: false, code: "SALAD_PROTEIN_INVALID", message: "Invalid salad protein" };
+      }
+      if (protein.isPremium || !SUBSCRIPTION_PREMIUM_LARGE_SALAD_PROTEIN_KEY_SET.has(getProteinCatalogKey(protein))) {
+        return {
+          valid: false,
+          code: "SALAD_PROTEIN_NOT_ALLOWED",
+          message: "Selected protein is not available for subscription premium large salad",
+        };
       }
       continue;
     }

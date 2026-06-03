@@ -422,6 +422,14 @@ Do not submit virtual IDs as canonical one-time `MenuProduct` IDs. Keep the exis
 
 Render planner rules from `builderCatalogV2.rules`, including carb constraints and the daily beef limit. Do not infer planner rules from text labels.
 
+## Subscription Premium Large Salad Restrictions
+
+For subscription `premium_large_salad`, render only the option groups and options returned by the backend. Flutter must not manually add premium proteins or extra protein rows locally.
+
+`extra_protein_50g` is not available in subscription premium large salad. Premium proteins are also not available in subscription premium large salad at this stage.
+
+One-time `basic_salad` may still expose premium proteins and extra protein options. Handle those one-time selections through the quote API so relation-specific prices are charged by the backend.
+
 ## 12. Subscription Timeline
 
 When rendering planned subscription days, use backend timeline fields:

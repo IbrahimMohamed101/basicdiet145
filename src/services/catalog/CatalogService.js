@@ -16,6 +16,8 @@ const {
   SALAD_SELECTION_GROUPS,
   SYSTEM_CURRENCY,
   SUBSCRIPTION_COLD_SANDWICH_KEYS,
+  SUBSCRIPTION_PREMIUM_LARGE_SALAD_EXCLUDED_GROUP_KEYS,
+  SUBSCRIPTION_PREMIUM_LARGE_SALAD_PROTEIN_KEYS,
   buildProteinOptionSections,
   getProteinFamilyNameI18n,
   getMealPlannerCategoryDefinition,
@@ -40,6 +42,8 @@ const MENU_PROTEIN_GROUP_KEY = "proteins";
 const MENU_CARB_GROUP_KEY = "carbs";
 const MENU_SALAD_EXTRA_PROTEIN_GROUP_KEY = "extra_protein_50g";
 const CUSTOMER_VISIBLE_CARB_KEY_SET = new Set(CUSTOMER_VISIBLE_CARB_KEYS);
+const SUBSCRIPTION_PREMIUM_LARGE_SALAD_PROTEIN_KEY_SET = new Set(SUBSCRIPTION_PREMIUM_LARGE_SALAD_PROTEIN_KEYS);
+const SUBSCRIPTION_PREMIUM_LARGE_SALAD_EXCLUDED_GROUP_KEY_SET = new Set(SUBSCRIPTION_PREMIUM_LARGE_SALAD_EXCLUDED_GROUP_KEYS);
 
 const MENU_SALAD_GROUP_ALIASES = Object.freeze({
   vegetables_legumes: "vegetables",
@@ -102,6 +106,11 @@ function hasRuleTag(option, tag) {
 
 function isCustomerVisibleCarb(option) {
   return CUSTOMER_VISIBLE_CARB_KEY_SET.has(option?.key) && !hasRuleTag(option, "missing_external");
+}
+
+function isSubscriptionPremiumLargeSaladProtein(option) {
+  const key = String(option?.key || option?.premiumKey || "").trim().toLowerCase();
+  return SUBSCRIPTION_PREMIUM_LARGE_SALAD_PROTEIN_KEY_SET.has(key) && !option?.isPremium;
 }
 
 function normalizeMenuSaladGroupKey(groupKey) {
@@ -504,12 +513,13 @@ async function getPremiumLargeSaladOptionGroups({ product, normalizedProteins, l
 
   const proteinDisplaySortOrder = new Map(PROTEIN_DISPLAY_GROUPS.map((group) => [group.key, group.sortOrder]));
   const fallbackProteinOptions = (normalizedProteins || [])
+    .filter(isSubscriptionPremiumLargeSaladProtein)
     .map((protein) => normalizeV2Option(protein, lang, {
       id: protein.id,
       optionId: protein.id,
       key: protein.key || protein.premiumKey || protein.id,
-      selectionType: protein.isPremium ? MEAL_SELECTION_TYPES.PREMIUM_MEAL : MEAL_SELECTION_TYPES.STANDARD_MEAL,
-      isPremium: Boolean(protein.isPremium),
+      selectionType: MEAL_SELECTION_TYPES.STANDARD_MEAL,
+      isPremium: false,
     }))
     .sort((left, right) => (
       (proteinDisplaySortOrder.get(left.displayCategoryKey) || 0) - (proteinDisplaySortOrder.get(right.displayCategoryKey) || 0)
@@ -521,11 +531,12 @@ async function getPremiumLargeSaladOptionGroups({ product, normalizedProteins, l
     const option = optionsById.get(String(relation.optionId));
     if (!group || !option || group.key !== MENU_PROTEIN_GROUP_KEY) continue;
     const extraFeeHalala = Number(relation.extraPriceHalala ?? option.extraPriceHalala ?? 0);
+    if (extraFeeHalala > 0 || !isSubscriptionPremiumLargeSaladProtein(option)) continue;
     proteinOptionsByRelation.push(normalizeV2Option(option, lang, {
-      extraPriceHalala: extraFeeHalala,
-      extraFeeHalala,
-      isPremium: extraFeeHalala > 0,
-      selectionType: extraFeeHalala > 0 ? MEAL_SELECTION_TYPES.PREMIUM_MEAL : MEAL_SELECTION_TYPES.STANDARD_MEAL,
+      extraPriceHalala: 0,
+      extraFeeHalala: 0,
+      isPremium: false,
+      selectionType: MEAL_SELECTION_TYPES.STANDARD_MEAL,
     }));
   }
   const proteinOptions = (proteinOptionsByRelation.length ? proteinOptionsByRelation : fallbackProteinOptions)
@@ -540,6 +551,7 @@ async function getPremiumLargeSaladOptionGroups({ product, normalizedProteins, l
       const aliasKey = MENU_SALAD_GROUP_ALIASES[sourceKey] || sourceKey;
       const canonicalKey = normalizeMenuSaladGroupKey(aliasKey);
       if (!canonicalKey) return null;
+      if (SUBSCRIPTION_PREMIUM_LARGE_SALAD_EXCLUDED_GROUP_KEY_SET.has(canonicalKey)) return null;
 
       const rule = SALAD_SELECTION_GROUPS.find((item) => item.key === canonicalKey);
       const relationForGroup = {
@@ -759,7 +771,9 @@ async function buildSubscriptionBuilderCatalogBundle({ lang = "en", includeV2 = 
     .filter((carb) => String(carb.displayCategoryKey || "").trim().toLowerCase() !== "large_salad")
     .sort(sortByCatalogOrder);
 
-  const saladGroups = SALAD_SELECTION_GROUPS.map((group) => buildSaladGroupPayload(group, lang));
+  const saladGroups = SALAD_SELECTION_GROUPS
+    .filter((group) => !SUBSCRIPTION_PREMIUM_LARGE_SALAD_EXCLUDED_GROUP_KEY_SET.has(group.key))
+    .map((group) => buildSaladGroupPayload(group, lang));
   const saladName = localized(
     (premiumLargeSaladProduct && premiumLargeSaladProduct.name) || { ar: "سلطة كبيرة مميزة", en: "Premium Large Salad" },
     lang
