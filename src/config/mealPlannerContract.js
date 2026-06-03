@@ -68,13 +68,40 @@ const LEGACY_PROTEIN_FAMILY_ALIASES = Object.freeze({
 const PROTEIN_DISPLAY_GROUPS = Object.freeze([
   { key: "chicken", name: { ar: "دجاج", en: "Chicken" }, familyKey: "chicken", sortOrder: 10 },
   { key: "beef", name: { ar: "لحم", en: "Beef" }, familyKey: "beef", sortOrder: 20, rules: { dailyLimit: BEEF_DAILY_LIMIT, ruleKey: "beef_daily_limit", unit: "slots" } },
-  { key: "fish", name: { ar: "أسماك", en: "Fish" }, familyKey: "fish", sortOrder: 30 },
+  { key: "fish", name: { ar: "سمك", en: "Fish" }, familyKey: "fish", sortOrder: 30 },
   { key: "eggs", name: { ar: "بيض", en: "Eggs" }, familyKey: "eggs", sortOrder: 40 },
   { key: "premium", name: { ar: "بريميوم", en: "Premium" }, familyKey: null, sortOrder: 50 },
   { key: "other", name: { ar: "أخرى", en: "Other" }, familyKey: "other", sortOrder: 60 },
 ]);
 
 const PROTEIN_DISPLAY_GROUP_KEYS = new Set(PROTEIN_DISPLAY_GROUPS.map((group) => group.key));
+
+const PROTEIN_VISUAL_FAMILIES = Object.freeze(
+  PROTEIN_DISPLAY_GROUPS.filter((group) => ["chicken", "beef", "fish", "eggs"].includes(group.key))
+);
+
+const PROTEIN_VISUAL_FAMILY_OPTION_KEYS = Object.freeze({
+  chicken: "chicken",
+  chicken_fajita: "chicken",
+  spicy_chicken: "chicken",
+  italian_spiced_chicken: "chicken",
+  chicken_tikka: "chicken",
+  asian_chicken: "chicken",
+  chicken_strips: "chicken",
+  grilled_chicken: "chicken",
+  mexican_chicken: "chicken",
+  beef: "beef",
+  beef_steak: "beef",
+  meatballs: "beef",
+  beef_stroganoff: "beef",
+  fish: "fish",
+  fish_fillet: "fish",
+  tuna: "fish",
+  shrimp: "fish",
+  salmon: "fish",
+  eggs: "eggs",
+  boiled_eggs: "eggs",
+});
 
 const SALAD_SELECTION_GROUPS = Object.freeze([
   { key: "leafy_greens", name: { ar: "ورقيات", en: "Leafy Greens" }, minSelect: 0, maxSelect: 2, sortOrder: 10, source: "ingredient" },
@@ -205,6 +232,59 @@ function getMealPlannerCategoryDefinition({ key, dimension }) {
   return MEAL_PLANNER_CATEGORY_MAP.get(`${dimension}:${key}`) || null;
 }
 
+function getProteinVisualFamilyDefinition(value) {
+  const key = normalizeProteinFamilyKey(value, "");
+  return PROTEIN_VISUAL_FAMILIES.find((family) => family.key === key) || null;
+}
+
+function resolveProteinVisualFamilyKey(option = {}) {
+  const explicit = getProteinVisualFamilyDefinition(option.proteinFamilyKey);
+  if (explicit) return explicit.key;
+
+  const optionKey = String(option.key || option.premiumKey || "").trim().toLowerCase();
+  const mapped = getProteinVisualFamilyDefinition(PROTEIN_VISUAL_FAMILY_OPTION_KEYS[optionKey]);
+  if (mapped) return mapped.key;
+
+  const display = getProteinVisualFamilyDefinition(option.displayCategoryKey);
+  return display ? display.key : "";
+}
+
+function getProteinFamilyNameI18n(optionOrFamilyKey = {}) {
+  const familyKey = typeof optionOrFamilyKey === "string"
+    ? optionOrFamilyKey
+    : resolveProteinVisualFamilyKey(optionOrFamilyKey);
+  const family = getProteinVisualFamilyDefinition(familyKey);
+  return family ? clone(family.name) : null;
+}
+
+function buildProteinOptionSections(options = [], lang = "en") {
+  const optionsByFamily = new Map(PROTEIN_VISUAL_FAMILIES.map((family) => [family.key, []]));
+
+  for (const option of options || []) {
+    const familyKey = resolveProteinVisualFamilyKey(option);
+    if (!optionsByFamily.has(familyKey)) continue;
+    optionsByFamily.get(familyKey).push(option);
+  }
+
+  return PROTEIN_VISUAL_FAMILIES
+    .map((family) => {
+      const familyOptions = optionsByFamily.get(family.key) || [];
+      if (!familyOptions.length) return null;
+
+      return {
+        key: family.key,
+        name: family.name[lang] || family.name.en,
+        nameI18n: clone(family.name),
+        optionKeys: familyOptions.map((option) => option.key).filter(Boolean),
+        optionIds: familyOptions
+          .map((option) => option.optionId || option.id || option._id)
+          .filter(Boolean)
+          .map((id) => String(id)),
+      };
+    })
+    .filter(Boolean);
+}
+
 module.exports = {
   BEEF_DAILY_LIMIT,
   CUSTOMER_VISIBLE_CARB_KEYS,
@@ -220,6 +300,8 @@ module.exports = {
   PREMIUM_LARGE_SALAD_PRESET_KEY,
   PROTEIN_DISPLAY_GROUPS,
   PROTEIN_FAMILY_KEYS,
+  PROTEIN_VISUAL_FAMILIES,
+  PROTEIN_VISUAL_FAMILY_OPTION_KEYS,
   SALAD_INGREDIENT_GROUP_KEYS,
   SALAD_SELECTION_GROUPS,
   SANDWICH_CATEGORY_KEYS,
@@ -227,8 +309,11 @@ module.exports = {
   STANDARD_CARB_RULES,
   SUBSCRIPTION_COLD_SANDWICH_KEYS,
   SYSTEM_CURRENCY,
+  buildProteinOptionSections,
+  getProteinFamilyNameI18n,
   getMealPlannerCategoryDefinition,
   getMealPlannerRules,
+  resolveProteinVisualFamilyKey,
   normalizeProteinDisplayCategoryKey,
   normalizeProteinFamilyKey,
   normalizeSaladIngredientGroupKey,

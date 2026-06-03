@@ -12,7 +12,12 @@ const ProductOptionGroup = require("../../models/ProductOptionGroup");
 const Sandwich = require("../../models/Sandwich");
 const Setting = require("../../models/Setting");
 const { pickLang } = require("../../utils/i18n");
-const { CUSTOMER_VISIBLE_CARB_KEYS } = require("../../config/mealPlannerContract");
+const {
+  CUSTOMER_VISIBLE_CARB_KEYS,
+  buildProteinOptionSections,
+  getProteinFamilyNameI18n,
+  resolveProteinVisualFamilyKey,
+} = require("../../config/mealPlannerContract");
 const {
   generateUniqueKey,
   isAllowedCategoryCardVariant,
@@ -290,7 +295,7 @@ function serializePublicProduct(product, lang, optionGroups, categoryId = produc
 }
 
 function serializePublicGroup(relation, group, options, lang) {
-  return {
+  const payload = {
     id: String(group._id),
     groupId: String(group._id),
     key: group.key,
@@ -305,6 +310,13 @@ function serializePublicGroup(relation, group, options, lang) {
     ui: normalizeGroupUiMetadata(group.ui),
     options,
   };
+
+  if (group.key === "proteins") {
+    const optionSections = buildProteinOptionSections(options, lang);
+    if (optionSections.length) payload.optionSections = optionSections;
+  }
+
+  return payload;
 }
 
 function serializePublicOption(relation, option, lang) {
@@ -317,7 +329,7 @@ function serializePublicOption(relation, option, lang) {
   const extraWeightPriceHalala = relation.extraWeightPriceHalala === null || relation.extraWeightPriceHalala === undefined
     ? Number(option.extraWeightPriceHalala || 0)
     : Number(relation.extraWeightPriceHalala || 0);
-  return {
+  const payload = {
     id: String(option._id),
     optionId: String(option._id),
     groupId: String(option.groupId),
@@ -330,6 +342,15 @@ function serializePublicOption(relation, option, lang) {
     extraWeightPriceHalala,
     sortOrder: Number(relation.sortOrder || option.sortOrder || 0),
   };
+
+  const proteinFamilyKey = resolveProteinVisualFamilyKey(option);
+  if (proteinFamilyKey) {
+    payload.proteinFamilyKey = proteinFamilyKey;
+    payload.proteinFamilyNameI18n = getProteinFamilyNameI18n(proteinFamilyKey);
+    payload.displayCategoryKey = proteinFamilyKey;
+  }
+
+  return payload;
 }
 
 function isCustomerVisibleProduct(product, category) {

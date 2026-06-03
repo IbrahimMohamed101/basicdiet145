@@ -16,8 +16,11 @@ const {
   SALAD_SELECTION_GROUPS,
   SYSTEM_CURRENCY,
   SUBSCRIPTION_COLD_SANDWICH_KEYS,
+  buildProteinOptionSections,
+  getProteinFamilyNameI18n,
   getMealPlannerCategoryDefinition,
   getMealPlannerRules,
+  resolveProteinVisualFamilyKey,
   normalizeProteinDisplayCategoryKey,
   normalizeProteinFamilyKey,
   normalizeSaladIngredientGroupKey,
@@ -152,6 +155,7 @@ function buildProteinPayload(option, lang, { isPremium }) {
     name: localized(option.name, lang),
     description: localized(option.description, lang),
     proteinFamilyKey,
+    proteinFamilyNameI18n: getProteinFamilyNameI18n(proteinFamilyKey),
     ruleTags: Array.isArray(option.ruleTags) ? option.ruleTags : [],
     sortOrder: Number(option.sortOrder || 0),
     isPremium,
@@ -284,6 +288,7 @@ async function getPremiumLargeSaladIngredients({ product, normalizedProteins, la
       calories: protein.calories,
       displayCategoryKey: protein.displayCategoryKey,
       proteinFamilyKey: protein.proteinFamilyKey,
+      proteinFamilyNameI18n: protein.proteinFamilyNameI18n,
       isPremium: protein.isPremium,
       premiumKey: protein.premiumKey,
       extraFeeHalala: protein.extraFeeHalala,
@@ -304,6 +309,7 @@ function normalizeV2Option(row = {}, lang = "en", overrides = {}) {
   const extraFeeHalala = row.extraFeeHalala === undefined || row.extraFeeHalala === null
     ? row.extraPriceHalala
     : row.extraFeeHalala;
+  const proteinFamilyKey = resolveProteinVisualFamilyKey(row) || row.proteinFamilyKey || "";
 
   return sanitizeObject({
     id: id ? String(id) : "",
@@ -315,8 +321,9 @@ function normalizeV2Option(row = {}, lang = "en", overrides = {}) {
     descriptionI18n: row.descriptionI18n || localizedPair(row.description),
     imageUrl: row.imageUrl || "",
     sortOrder: Number(row.sortOrder || 0),
-    displayCategoryKey: row.displayCategoryKey || "",
-    proteinFamilyKey: row.proteinFamilyKey || "",
+    displayCategoryKey: row.displayCategoryKey || proteinFamilyKey || "",
+    proteinFamilyKey,
+    proteinFamilyNameI18n: proteinFamilyKey ? getProteinFamilyNameI18n(proteinFamilyKey) : undefined,
     premiumKey: row.premiumKey || null,
     extraFeeHalala: extraFeeHalala === undefined || extraFeeHalala === null ? undefined : Number(extraFeeHalala || 0),
     extraPriceHalala: row.extraPriceHalala === undefined || row.extraPriceHalala === null ? undefined : Number(row.extraPriceHalala || 0),
@@ -338,10 +345,11 @@ function buildV2Group({
   ui = {},
   rules = {},
   options = [],
+  lang = "en",
 }) {
   const minSelections = relation.minSelections ?? relation.minSelect ?? 0;
   const maxSelections = relation.maxSelections ?? relation.maxSelect ?? null;
-  return sanitizeObject({
+  const payload = {
     id: id ? String(id) : `virtual:${key}`,
     groupId: id ? String(id) : undefined,
     key,
@@ -355,7 +363,14 @@ function buildV2Group({
     ui,
     rules,
     options,
-  });
+  };
+
+  if (sourceKey === MENU_PROTEIN_GROUP_KEY || key === MENU_PROTEIN_GROUP_KEY || key === "protein") {
+    const optionSections = buildProteinOptionSections(options, lang);
+    if (optionSections.length) payload.optionSections = optionSections;
+  }
+
+  return sanitizeObject(payload);
 }
 
 function buildVirtualBuilderProduct({ selectionType, cardVariant, optionGroups }) {
@@ -406,6 +421,7 @@ function buildProteinGroupV2({ group, sourceOptions, key, selectionType, rules =
     ui: normalizeGroupUiMetadata(group?.ui),
     rules,
     options,
+    lang,
   });
 }
 
@@ -557,6 +573,7 @@ async function getPremiumLargeSaladOptionGroups({ product, normalizedProteins, l
         ui: normalizeGroupUiMetadata(group.ui),
         rules: rule ? { minSelect: rule.minSelect, maxSelect: rule.maxSelect, source: rule.source } : {},
         options: groupOptions,
+        lang,
       });
     })
     .filter(Boolean)
@@ -580,6 +597,7 @@ async function getPremiumLargeSaladOptionGroups({ product, normalizedProteins, l
       ui: normalizeGroupUiMetadata({ displayStyle: "radio_cards" }),
       rules: proteinRule ? { minSelect: proteinRule.minSelect, maxSelect: proteinRule.maxSelect, source: proteinRule.source } : {},
       options: proteinOptions,
+      lang,
     }));
   }
 
@@ -786,6 +804,7 @@ async function buildSubscriptionBuilderCatalogBundle({ lang = "en", includeV2 = 
       name: protein.name,
       description: protein.description,
       proteinFamilyKey: protein.proteinFamilyKey,
+      proteinFamilyNameI18n: protein.proteinFamilyNameI18n,
       ruleTags: protein.ruleTags,
       selectionType: MEAL_SELECTION_TYPES.STANDARD_MEAL,
       isPremium: false,
@@ -798,6 +817,7 @@ async function buildSubscriptionBuilderCatalogBundle({ lang = "en", includeV2 = 
       name: protein.name,
       description: protein.description,
       proteinFamilyKey: protein.proteinFamilyKey,
+      proteinFamilyNameI18n: protein.proteinFamilyNameI18n,
       ruleTags: protein.ruleTags,
       selectionType: MEAL_SELECTION_TYPES.PREMIUM_MEAL,
       isPremium: true,

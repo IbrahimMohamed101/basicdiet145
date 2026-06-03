@@ -182,7 +182,12 @@ const saladProteinRows = [
   { key: "shrimp", name: name("جمبري", "Shrimp"), calories: 380, proteinFamilyKey: "fish" },
   { key: "fish_fillet", name: name("سمك فيليه", "Fish Fillet"), calories: 130, proteinFamilyKey: "fish" },
   { key: "salmon", name: name("سالمون", "Salmon"), calories: 210, proteinFamilyKey: "fish" },
-].map((row) => ({ ...row, ruleTags: ["salad_only"], availableFor: ["one_time", "subscription"] }));
+].map((row) => ({
+  ...row,
+  displayCategoryKey: row.displayCategoryKey || row.proteinFamilyKey,
+  ruleTags: ["salad_only"],
+  availableFor: ["one_time", "subscription"],
+}));
 
 const saladProteinPriceOverrides = {
   meatballs: 300,
@@ -305,7 +310,7 @@ const groupDefinitions = [
         name: name("ستيك لحم", "Beef Steak"),
         calories: 270,
         premiumKey: "beef_steak",
-        displayCategoryKey: "premium",
+        displayCategoryKey: "beef",
         proteinFamilyKey: "beef",
         selectionType: "premium_meal",
         extraFeeHalala: 2000,
@@ -315,7 +320,7 @@ const groupDefinitions = [
         name: name("جمبري", "Shrimp"),
         calories: 380,
         premiumKey: "shrimp",
-        displayCategoryKey: "premium",
+        displayCategoryKey: "fish",
         proteinFamilyKey: "fish",
         selectionType: "premium_meal",
         extraFeeHalala: 2000,
@@ -325,7 +330,7 @@ const groupDefinitions = [
         name: name("سالمون", "Salmon"),
         calories: 210,
         premiumKey: "salmon",
-        displayCategoryKey: "premium",
+        displayCategoryKey: "fish",
         proteinFamilyKey: "fish",
         selectionType: "premium_meal",
         extraFeeHalala: 2000,

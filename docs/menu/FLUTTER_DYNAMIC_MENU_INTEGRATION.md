@@ -197,6 +197,23 @@ Fallback for an unknown value should use the selection rules:
 
 Use metadata only for presentation. `displayStyle` does not change validation. Pricing, eligibility, and selection validation stay backend-owned.
 
+### Protein Visual Grouping
+
+The `proteins` group remains one logical option group. Flutter may display its flat `options[]` list in visual sections using `option.proteinFamilyKey`, `option.proteinFamilyNameI18n`, or `optionGroup.optionSections` when present.
+
+Expected family keys:
+
+```text
+chicken
+beef
+fish
+eggs
+```
+
+Selection validation still uses the parent protein group fields: `minSelections`, `maxSelections`, and `isRequired`. Users may select according to those parent rules, not separate section rules.
+
+The quote payload is unchanged. Submit the original `groupId` and original `optionId`; do not split selected proteins into fake groups. If no family metadata is present, render the normal flat option list.
+
 ## 5. Product Interaction
 
 Use the product fields directly:

@@ -110,6 +110,14 @@ The upload route currently passes through the `admin` role gate in `src/routes/a
 | `availableFor`, `availableForSubscription` | Channel gates. |
 | `proteinFamilyKey`, `displayCategoryKey`, `premiumKey`, `ruleTags`, `selectionType` | Advanced planner metadata. |
 
+### Protein Visual Grouping Metadata
+
+Dashboard can continue managing proteins as normal options in the single `proteins` option group. Backend seed definitions and serializers assign `proteinFamilyKey` metadata so Flutter can visually section the group into `chicken`, `beef`, `fish`, and `eggs`.
+
+Admins should not create separate real groups such as `chicken_proteins`, `beef_proteins`, `fish_proteins`, or `eggs_proteins`. This grouping is display metadata only; selection limits, required status, product/group relations, allowed-option relations, quote pricing, and product-specific surcharges still belong to the original `proteins` group and `ProductGroupOption.extraPriceHalala`.
+
+If dashboard later exposes advanced option metadata, treat `proteinFamilyKey` as read-only or carefully editable because it affects presentation, not pricing logic.
+
 ## 5. Key Rules
 
 - Hide `key` on create forms.
