@@ -296,6 +296,53 @@ FAIL:
 - Discount is displayed but not reflected in payable total.
 - Rounding causes `subtotalBeforeVatHalala + vatHalala != totalHalala`.
 
+### Subscription Quote + Promo + VAT QA
+
+Use `qa-subscription-quote-promo-vat.js` only after explicit approval for limited QA writes in the target environment.
+
+Safety requirements:
+
+- Requires `QA_ALLOW_WRITES=true`; the script refuses to run without it.
+- Requires `APP_TOKEN` for `/api/subscriptions/quote`.
+- Requires `DASHBOARD_TOKEN` for `/api/dashboard/promo-codes`.
+- Creates QA-tagged temporary promo codes only.
+- Does not call checkout, payment, subscription creation, seed, bootstrap, reset, or destructive endpoints.
+- Disables the QA promo codes after the quote checks when the dashboard toggle endpoint is available.
+- Never print tokens or secrets in logs.
+
+The script verifies:
+
+- Canonical `subscription_7_days`, `100g`, `1` meal/day price is `13800` halala.
+- Quote without promo.
+- Fixed discount promo: `10 SAR` / `1000` halala.
+- Percentage discount promo: `10%`, capped at `15 SAR` / `1500` halala.
+- VAT is extracted from the discounted VAT-inclusive gross total.
+- `subtotalBeforeVatHalala + vatHalala == totalHalala`.
+- Subscription add-ons quote with promo when `juice` and `snack` subscription add-on plan IDs are available.
+- Promo cleanup/disable.
+
+Command:
+
+```bash
+QA_ALLOW_WRITES=true \
+BASE_URL="https://basicdiet145.onrender.com" \
+APP_TOKEN="<app user token>" \
+DASHBOARD_TOKEN="<dashboard admin token>" \
+node qa-subscription-quote-promo-vat.js
+```
+
+Expected report shape:
+
+```text
+PASS/FAIL Subscription quote without promo
+PASS/FAIL Fixed promo discount
+PASS/FAIL Percentage promo discount
+PASS/FAIL VAT inclusive calculation
+PASS/FAIL subtotalBeforeVat + vat == total
+PASS/FAIL Add-ons quote with promo
+PASS/FAIL Promo cleanup/disable
+```
+
 ## 6. Subscription Add-ons QA
 
 Subscription add-ons by business label:
