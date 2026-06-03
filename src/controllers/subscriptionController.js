@@ -19,6 +19,9 @@ const {
 const {
   buildSubscriptionTimeline,
 } = require("../services/subscription/subscriptionService");
+const {
+  buildAddonChoicesCatalog,
+} = require("../services/subscription/subscriptionAddonChoicesService");
 // Settlement on read is DISABLED — see pastSubscriptionDaySettlementService.js
 const {
   buildPhase1SubscriptionContract,
@@ -2314,6 +2317,22 @@ async function validateDaySelection(req, res) {
   return res.status(result.status).json({ status: true, data: result.data });
 }
 
+async function getSubscriptionAddonChoices(req, res) {
+  const lang = getRequestLang(req);
+  try {
+    const data = await buildAddonChoicesCatalog({
+      lang,
+      category: req.query && req.query.category,
+    });
+    return res.status(200).json({ status: true, data });
+  } catch (err) {
+    if (err && err.status) {
+      return errorResponse(res, err.status, err.code || "INVALID", err.message || "Invalid add-on choice filters");
+    }
+    throw err;
+  }
+}
+
 async function updateBulkDaySelections(req, res, runtimeOverrides = null) {
   const runtime = runtimeOverrides ? { ...sliceP2S1DefaultRuntime, ...runtimeOverrides } : sliceP2S1DefaultRuntime;
   const { id } = req.params;
@@ -2815,6 +2834,7 @@ module.exports = {
   getSubscriptionOperationsMeta,
   getSubscriptionFreezePreview,
   getSubscriptionPaymentMethods,
+  getSubscriptionAddonChoices,
   getSubscriptionTimeline,
   getSubscriptionRenewalSeed,
   renewSubscription,

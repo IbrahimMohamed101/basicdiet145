@@ -36,6 +36,19 @@ const CUSTOMER_VISIBLE_CARB_KEYS = Object.freeze([
   "grilled_mixed_vegetables",
 ]);
 
+const STANDARD_MEAL_PROTEIN_KEYS = Object.freeze([
+  "chicken",
+  "beef",
+  "fish",
+  "eggs",
+]);
+
+const PREMIUM_MEAL_PROTEIN_KEYS = Object.freeze([
+  "beef_steak",
+  "shrimp",
+  "salmon",
+]);
+
 const SUBSCRIPTION_COLD_SANDWICH_KEYS = Object.freeze([
   "beef_burger_sandwich",
   "turkey_cold_sandwich",
@@ -329,6 +342,8 @@ module.exports = {
   SANDWICH_CATEGORY_KEYS,
   STANDARD_CARB_CATEGORY_KEY,
   STANDARD_CARB_RULES,
+  STANDARD_MEAL_PROTEIN_KEYS,
+  PREMIUM_MEAL_PROTEIN_KEYS,
   SUBSCRIPTION_COLD_SANDWICH_KEYS,
   SUBSCRIPTION_PREMIUM_LARGE_SALAD_EXCLUDED_GROUP_KEYS,
   SUBSCRIPTION_PREMIUM_LARGE_SALAD_PROTEIN_KEYS,

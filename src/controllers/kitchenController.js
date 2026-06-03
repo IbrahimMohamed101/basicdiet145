@@ -50,6 +50,31 @@ function isPickupOperationalDay(day = {}) {
   );
 }
 
+function buildAddonEntitlements(addonSubscriptions = [], addonSelections = []) {
+  const subscriptions = Array.isArray(addonSubscriptions) ? addonSubscriptions : [];
+  const selections = Array.isArray(addonSelections) ? addonSelections : [];
+  return ["juice", "snack", "small_salad"].reduce((accumulator, category) => {
+    const entitlement = subscriptions.find((item) => item && item.category === category);
+    const selection = selections.find((item) => item && item.category === category);
+    const selectedItem = selection
+      ? {
+        id: selection.addonId ? String(selection.addonId) : null,
+        name: selection.name || "",
+        source: selection.source || "",
+        priceHalala: Number(selection.priceHalala || 0),
+        currency: selection.currency || "SAR",
+      }
+      : null;
+
+    accumulator[category] = {
+      subscribed: Boolean(entitlement),
+      selectedItem,
+      status: entitlement ? (selectedItem ? "selected" : "pending_selection") : "not_subscribed",
+    };
+    return accumulator;
+  }, {});
+}
+
 function getTrackedPremiumCredits(subscription) {
   const rows = Array.isArray(subscription && subscription["premium" + "Balance"])
     ? subscription["premium" + "Balance"]
@@ -250,11 +275,13 @@ async function listDailyOrders(req, res) {
     const addonSelections = operationalSnapshot && Array.isArray(operationalSnapshot.addonSelections)
       ? operationalSnapshot.addonSelections
       : (d.addonSelections || []);
+    const addonEntitlements = buildAddonEntitlements(subscriptionAddons, addonSelections);
 
     return {
       ...d,
       ...fulfillmentState,
       subscriptionAddons,
+      addonEntitlements,
       effectiveAddress,
       deliveryNotes: effectiveAddress && typeof effectiveAddress === "object" ? (effectiveAddress.notes || null) : null,
       effectiveWindow,

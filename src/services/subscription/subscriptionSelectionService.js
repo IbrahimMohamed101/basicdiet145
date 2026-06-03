@@ -1,13 +1,15 @@
 const mongoose = require("mongoose");
 const Subscription = require("../../models/Subscription");
 const SubscriptionDay = require("../../models/SubscriptionDay");
-const Addon = require("../../models/Addon");
 const dateUtils = require("../../utils/date");
 const { getRestaurantBusinessDate } = require("../restaurantHoursService");
 const { resolveMealsPerDay, applyDayWalletSelections } = require("../../utils/subscription/subscriptionDaySelectionSync");
 const { getMealPlannerRules, mapPaymentRequirement, buildMealSlotDraft } = require("./mealSlotPlannerService");
 const { applyCanonicalDraftPlanningToDay } = require("./subscriptionDayPlanningService");
 const { assertSubscriptionDayModifiable } = require("./subscriptionDayModificationPolicyService");
+const {
+  resolveAddonChoiceProductById,
+} = require("./subscriptionAddonChoicesService");
 const {
   buildDayCommercialState,
   finalizeDayCommercialStateForPersistence,
@@ -52,32 +54,31 @@ async function reconcileAddonInclusions(subscription, day, requestedAddonIds = [
     return;
   }
 
-  // 1. Fetch requested addon items
-  const addonDocs = await Addon.find({
-    _id: { $in: requestedAddonIds },
-    isActive: true,
-    kind: "item",
-    billingMode: "flat_once",
-  }).lean();
-  const addonMap = new Map(addonDocs.map((d) => [String(d._id), d]));
+  const choiceMap = new Map();
+  for (const addonId of requestedAddonIds) {
+    if (choiceMap.has(String(addonId))) continue;
+    const choice = await resolveAddonChoiceProductById(addonId);
+    if (choice) choiceMap.set(String(addonId), choice);
+  }
 
-  // 2. Track category usage for subscription entitlements
+  // Track category usage for subscription entitlements.
   const entitlements = Array.isArray(subscription.addonSubscriptions) ? subscription.addonSubscriptions : [];
   const entitlementUsage = new Map(); // category -> count
 
   const newSelections = [];
 
   for (const addonId of requestedAddonIds) {
-    const doc = addonMap.get(String(addonId));
-    if (!doc) {
+    const choice = choiceMap.get(String(addonId));
+    if (!choice) {
       throw {
         status: 400,
         code: "INVALID_ONE_TIME_ADDON_SELECTION",
-        message: `Addon ${String(addonId)} is not an active meal-planner add-on item`,
+        message: `Add-on choice ${String(addonId)} is not an active one-time MenuProduct in an allowed subscription add-on category`,
       };
     }
 
-    const category = doc.category;
+    const doc = choice.product;
+    const category = choice.addonCategory;
     const entitlement = entitlements.find((e) => e.category === category);
     
     let source = "pending_payment";
@@ -102,7 +103,7 @@ async function reconcileAddonInclusions(subscription, day, requestedAddonIds = [
       newSelections.push({
         addonId: doc._id,
         name: resolveAddonSelectionName(doc),
-        category: doc.category,
+        category,
         source,
         priceHalala,
         currency: doc.currency || "SAR",

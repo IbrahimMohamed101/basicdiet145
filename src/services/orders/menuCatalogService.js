@@ -14,6 +14,7 @@ const Setting = require("../../models/Setting");
 const { pickLang } = require("../../utils/i18n");
 const {
   CUSTOMER_VISIBLE_CARB_KEYS,
+  STANDARD_MEAL_PROTEIN_KEYS,
   buildProteinOptionSections,
   getProteinFamilyNameI18n,
   resolveProteinVisualFamilyKey,
@@ -47,7 +48,7 @@ const PRODUCT_ITEM_TYPES = [
 ];
 const CUSTOMER_VISIBLE_CARB_KEY_SET = new Set(CUSTOMER_VISIBLE_CARB_KEYS);
 const BASIC_MEAL_PUBLIC_GROUP_KEY_SET = new Set(["carbs", "proteins"]);
-const BASIC_MEAL_STANDARD_PROTEIN_KEY_SET = new Set(["chicken", "beef", "fish", "eggs"]);
+const BASIC_MEAL_STANDARD_PROTEIN_KEY_SET = new Set(STANDARD_MEAL_PROTEIN_KEYS);
 const HIDDEN_PUBLIC_PRODUCT_KEYS = new Set(["small_salad"]);
 const PUBLIC_PRODUCT_CATEGORY_KEY_OVERRIDES = new Map([
   ["basic_meal", "meals"],

@@ -592,7 +592,7 @@ Flutter currently:
 - sends `customSalad`
 - sends `carbId` identity carb
 - models groups as `vegetables`, `addons`, `fruits`, `nuts`, `sauce`
-- only allows premium proteins in the salad builder
+- should allow only backend-returned subscription premium-large-salad proteins; premium proteins are not allowed
 
 Backend expects:
 
@@ -604,7 +604,8 @@ Backend expects:
 - `salad.groups.cheese_nuts`
 - `salad.groups.fruits`
 - `salad.groups.sauce`
-- salad protein may be regular or premium
+- salad protein must be one of the backend `SUBSCRIPTION_PREMIUM_LARGE_SALAD_PROTEIN_KEYS` options
+- premium proteins and `extra_protein_50g` are not allowed in subscription `premium_large_salad`
 - no carbs in request
 
 Files:
@@ -820,7 +821,8 @@ Backend expectation:
 - menu field: `builderCatalog.premiumLargeSalad`
 - write field: `selectionType = premium_large_salad`
 - write body: `salad.groups`
-- salad protein can be regular or premium
+- salad protein must come from the backend premium-large-salad allowlist
+- premium proteins and extra-protein rows are not allowed
 - sauce required
 - no carbs
 - fixed price comes from backend salad config
@@ -831,7 +833,7 @@ Flutter current behavior:
 - write field: `custom_premium_salad`
 - write body: `customSalad` flat legacy groups
 - identity `carbId` is included
-- only premium proteins are offered in builder flow
+- only backend-returned allowlisted salad proteins should be offered in builder flow
 
 Files:
 

@@ -230,9 +230,68 @@ function resolveAdminAddonFilters(query = {}, { forceKind = null } = {}) {
   return filters;
 }
 
+function resolvePublicAddonFilters(query = {}) {
+  const filters = { isActive: true };
+
+  if (query.type !== undefined && query.type !== null && String(query.type).trim() !== "") {
+    const type = String(query.type).trim();
+    if (!["subscription", "one_time"].includes(type)) {
+      throw { status: 400, code: "INVALID", message: "type must be one of: subscription, one_time" };
+    }
+    filters.$or = type === "subscription"
+      ? [
+        { type: "subscription" },
+        { kind: "plan" },
+        { billingMode: { $in: ["per_day", "per_meal"] } },
+        { pricingModel: { $in: ["subscription", "daily_recurring", "meal_recurring"] } },
+      ]
+      : [
+        { type: "one_time" },
+        { kind: "item" },
+        { billingMode: "flat_once" },
+        { pricingModel: "one_time" },
+      ];
+  }
+
+  if (query.kind !== undefined && query.kind !== null && String(query.kind).trim() !== "") {
+    const kind = normalizeAddonKind(query.kind);
+    const queryType = query.type !== undefined && query.type !== null ? String(query.type).trim() : "";
+    const expectedKind = queryType === "subscription" ? "plan" : queryType === "one_time" ? "item" : "";
+    if (expectedKind && expectedKind !== kind) {
+      throw { status: 400, code: "INVALID", message: "type and kind filters are incompatible" };
+    }
+    filters.$or = kind === "plan"
+      ? [
+        { kind: "plan" },
+        { type: "subscription" },
+        { billingMode: { $in: ["per_day", "per_meal"] } },
+        { pricingModel: { $in: ["subscription", "daily_recurring", "meal_recurring"] } },
+      ]
+      : [
+        { kind: "item" },
+        { type: "one_time" },
+        { billingMode: "flat_once" },
+        { pricingModel: "one_time" },
+      ];
+  }
+
+  if (query.category !== undefined && query.category !== null && String(query.category).trim() !== "") {
+    filters.category = normalizeAddonCategory(query.category);
+  }
+
+  return filters;
+}
+
 async function listAddons(req, res) {
   const lang = getRequestLang(req);
-  const rows = await Addon.find({ isActive: true })
+  let filters;
+  try {
+    filters = resolvePublicAddonFilters(req.query || {});
+  } catch (err) {
+    return errorResponse(res, err.status || 400, err.code || "INVALID", err.message || "Invalid addon filters");
+  }
+
+  const rows = await Addon.find(filters)
     .populate("menuProductId")
     .sort({ sortOrder: 1, createdAt: -1 })
     .lean();
@@ -571,4 +630,5 @@ module.exports = {
   deleteAddonItem,
   patchAddon,
   validateAddonPayloadOrThrow,
+  resolvePublicAddonFilters,
 };

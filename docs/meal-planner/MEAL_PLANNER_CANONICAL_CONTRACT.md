@@ -85,7 +85,9 @@ Legacy write aliases still normalized on input:
 - Treated as premium for entitlement / payment
 - Rejects `carbs` and `sandwichId`
 - Requires exactly one protein through `salad.groups.protein`
-- Salad protein may be regular or premium
+- Salad protein must be one of `SUBSCRIPTION_PREMIUM_LARGE_SALAD_PROTEIN_KEYS`
+- Premium proteins are not allowed in subscription `premium_large_salad`
+- `extra_protein_50g` is not allowed in subscription `premium_large_salad`
 - Optional top-level `proteinId` is compatibility-only and must match `salad.groups.protein[0]`
 - Rejects unknown salad group keys
 - Enforces canonical group min/max dynamically

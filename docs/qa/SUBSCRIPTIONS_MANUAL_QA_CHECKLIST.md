@@ -314,8 +314,21 @@ Delivery is not a subscription add-on.
 
 Checklist:
 
+- Public checkout contract uses `GET /api/addons?type=subscription` and returns exactly three active subscription plan rows: `juice`, `snack`, and `small_salad`.
+- Public daily-selection contract uses `GET /api/subscriptions/addon-choices` and returns `juice`, `snack`, and `small_salad` groups.
+- `GET /api/subscriptions/addon-choices?category=juice` returns juice choices from one-time menu categories `juices` and `drinks`.
+- `GET /api/subscriptions/addon-choices?category=snack` returns snack choices from one-time menu category `desserts`.
+- `GET /api/subscriptions/addon-choices?category=small_salad` returns mapped salad choices from `light_options`; empty `choices` is acceptable if no mapped published one-time salad products exist.
+- Daily add-on choices are `MenuProduct` rows from the one-time menu, not duplicate daily-choice rows in the `Addon` collection.
+- `GET /api/addons?kind=plan` is equivalent to `type=subscription`; `GET /api/addons?kind=item` is legacy/backward-compatible and must not be used as the subscription daily-choice source.
+- Flutter checkout must not render daily item rows such as Classic Green, Berry Blast, Dark Brownies, or Berry Cheesecake as subscription add-on plans.
+- Flutter checkout must not use daily `MenuProduct` choices as subscription plans.
+- Flutter day selection shows daily item choices only when the subscription has the matching entitlement category.
 - Dashboard lists only subscription add-on plan categories `snack`, `juice`, and `small_salad` as subscription add-ons. UI may label `small_salad` as salad.
 - Dashboard can show active/inactive state for each add-on.
+- Dashboard/Kitchen must show add-on entitlement categories even when the customer has not selected a daily item yet; unselected daily items should display a `not_selected` or `pending_selection` state.
+- Kitchen shows entitlement even if `selectedItem` is `null`.
+- There are no duplicate daily-choice products seeded into the `Addon` collection.
 - If duration-specific pricing is supported, verify price by subscription duration.
 - Flutter does not render delivery as an add-on.
 - Backend quote/checkout does not include delivery inside `addonsTotalHalala`.
@@ -763,6 +776,9 @@ curl -sS "$BASE_URL/api/subscriptions/meal-planner-menu?includeLegacy=true&lang=
 curl -sS "$BASE_URL/api/subscriptions/menu?lang=ar"
 curl -sS "$BASE_URL/api/subscriptions/delivery-options"
 curl -sS "$BASE_URL/api/addons"
+curl -sS "$BASE_URL/api/addons?type=subscription"
+curl -sS "$BASE_URL/api/subscriptions/addon-choices"
+curl -sS "$BASE_URL/api/subscriptions/addon-choices?category=juice"
 ```
 
 Authenticated read-only checks. Do not print the token:

@@ -166,6 +166,7 @@ Products currently include examples: `chicken_sandwich`, `tuna_sandwich`, `sourd
 - `protein`: minSelections 1 / maxSelections 1
 - `sauce`: minSelections 1 / maxSelections 1
 - other groups: maxSelections 99
+- Subscription `premium_large_salad` allows only backend-returned allowlisted salad proteins. Do not add premium proteins or `extra_protein_50g` locally.
 
 **Frontend should render it from `product.optionGroups`.**
 Write payload remains the existing `salad.groups` shape. Do not change checkout/write payloads yet.

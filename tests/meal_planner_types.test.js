@@ -17,6 +17,7 @@ const BuilderProtein = require('../src/models/BuilderProtein');
 const BuilderCarb = require('../src/models/BuilderCarb');
 const MenuOption = require('../src/models/MenuOption');
 const MenuOptionGroup = require('../src/models/MenuOptionGroup');
+const MenuCategory = require('../src/models/MenuCategory');
 const MenuProduct = require('../src/models/MenuProduct');
 const ProductGroupOption = require('../src/models/ProductGroupOption');
 const ProductOptionGroup = require('../src/models/ProductOptionGroup');
@@ -30,8 +31,18 @@ const {
   resolvePremiumLargeSaladPricing,
   LEGACY_FALLBACK_PRICE_SOURCE,
 } = require('../src/services/catalog/premiumLargeSaladPricingService');
+const {
+  SUBSCRIPTION_PREMIUM_LARGE_SALAD_PROTEIN_KEYS,
+} = require('../src/config/mealPlannerContract');
 
 const assert = require('assert');
+
+const ALLOWED_SALAD_PROTEIN_IDS = Object.fromEntries(
+  SUBSCRIPTION_PREMIUM_LARGE_SALAD_PROTEIN_KEYS.map((key, index) => [
+    key,
+    `507f191e810c19729de86${(0x100 + index).toString(16)}`,
+  ])
+);
 
 function mockQuery(result) {
   return {
@@ -55,6 +66,10 @@ const IDS = {
   premiumProtein: "507f191e810c19729de860a2",
   secondPremiumProtein: "507f191e810c19729de860a3",
   v2ShrimpProtein: "507f191e810c19729de860a4",
+  allowedSaladProtein: ALLOWED_SALAD_PROTEIN_IDS.grilled_chicken,
+  forbiddenBeefSteakProtein: "507f191e810c19729de860a8",
+  forbiddenMeatballsProtein: "507f191e810c19729de860a9",
+  forbiddenBeefStroganoffProtein: "507f191e810c19729de860aa",
   carbOne: "507f191e810c19729de860b1",
   carbTwo: "507f191e810c19729de860b2",
   sandwichMeal: "507f191e810c19729de860c1",
@@ -65,6 +80,7 @@ const IDS = {
   fruitOne: "507f191e810c19729de860d5",
   sauceOne: "507f191e810c19729de860d6",
   sauceTwo: "507f191e810c19729de860d7",
+  extraProteinOption: "507f191e810c19729de860d8",
 };
 
 function buildMockPlannerCatalog() {
@@ -82,6 +98,7 @@ function buildMockPlannerCatalog() {
       },
       {
         _id: IDS.premiumProtein,
+        key: "shrimp",
         isPremium: true,
         premiumKey: "shrimp",
         displayCategoryKey: "premium",
@@ -91,12 +108,58 @@ function buildMockPlannerCatalog() {
       },
       {
         _id: IDS.secondPremiumProtein,
+        key: "salmon",
         isPremium: true,
         premiumKey: "salmon",
         displayCategoryKey: "premium",
         proteinFamilyKey: "fish",
         ruleTags: ["premium"],
         extraFeeHalala: 1800,
+      },
+      ...SUBSCRIPTION_PREMIUM_LARGE_SALAD_PROTEIN_KEYS.map((key) => {
+        const proteinFamilyKey = key.includes("tuna") || key.includes("fish") ? "fish"
+          : key.includes("egg") ? "eggs"
+            : "chicken";
+        return {
+          _id: ALLOWED_SALAD_PROTEIN_IDS[key],
+          key,
+          isPremium: false,
+          premiumKey: null,
+          displayCategoryKey: proteinFamilyKey,
+          proteinFamilyKey,
+          ruleTags: ["salad_only"],
+          extraFeeHalala: 0,
+        };
+      }),
+      {
+        _id: IDS.forbiddenBeefSteakProtein,
+        key: "beef_steak",
+        isPremium: true,
+        premiumKey: "beef_steak",
+        displayCategoryKey: "premium",
+        proteinFamilyKey: "beef",
+        ruleTags: ["premium"],
+        extraFeeHalala: 2000,
+      },
+      {
+        _id: IDS.forbiddenMeatballsProtein,
+        key: "meatballs",
+        isPremium: false,
+        premiumKey: null,
+        displayCategoryKey: "beef",
+        proteinFamilyKey: "beef",
+        ruleTags: ["salad_only"],
+        extraFeeHalala: 0,
+      },
+      {
+        _id: IDS.forbiddenBeefStroganoffProtein,
+        key: "beef_stroganoff",
+        isPremium: false,
+        premiumKey: null,
+        displayCategoryKey: "beef",
+        proteinFamilyKey: "beef",
+        ruleTags: ["salad_only"],
+        extraFeeHalala: 0,
       },
     ],
     carbs: [
@@ -156,6 +219,7 @@ async function withMockedPlannerCatalog(overrides, fn) {
   const originalMenuOptionFind = MenuOption.find;
   const originalMenuOptionGroupFind = MenuOptionGroup.find;
   const originalMenuOptionGroupFindOne = MenuOptionGroup.findOne;
+  const originalMenuCategoryFindOne = MenuCategory.findOne;
   const originalMenuProductFind = MenuProduct.find;
   const originalMenuProductFindOne = MenuProduct.findOne;
   const originalProductGroupOptionFind = ProductGroupOption.find;
@@ -175,6 +239,7 @@ async function withMockedPlannerCatalog(overrides, fn) {
   MenuOption.find = () => mockQuery(catalog.menuOptions || []);
   MenuOptionGroup.find = () => mockQuery(Object.values(catalog.menuGroups || {}).filter(Boolean));
   MenuOptionGroup.findOne = (query = {}) => mockQuery((catalog.menuGroups || {})[query.key] || null);
+  MenuCategory.findOne = (query = {}) => mockQuery((catalog.menuCategories || {})[query.key] || null);
   MenuProduct.find = () => ({
     sort() {
       return this;
@@ -202,6 +267,7 @@ async function withMockedPlannerCatalog(overrides, fn) {
     MenuOption.find = originalMenuOptionFind;
     MenuOptionGroup.find = originalMenuOptionGroupFind;
     MenuOptionGroup.findOne = originalMenuOptionGroupFindOne;
+    MenuCategory.findOne = originalMenuCategoryFindOne;
     MenuProduct.find = originalMenuProductFind;
     MenuProduct.findOne = originalMenuProductFindOne;
     ProductGroupOption.find = originalProductGroupOptionFind;
@@ -244,6 +310,21 @@ async function runTests() {
     if (actual !== false) {
       throw new Error(`${msg || 'Assertion failed'}: expected false, got ${actual}`);
     }
+  }
+
+  async function buildPremiumLargeSaladDraft(groups, extraSlotFields = {}) {
+    return buildMealSlotDraft({
+      mealSlots: [
+        {
+          slotIndex: 1,
+          selectionType: 'premium_large_salad',
+          ...extraSlotFields,
+          salad: { groups },
+        },
+      ],
+      mealsPerDayLimit: 1,
+      subscription: { premiumBalance: [] },
+    });
   }
 
   console.log('\n=== Meal Planner Selection Type Tests ===\n');
@@ -948,33 +1029,76 @@ async function runTests() {
     });
   });
 
-  await test('premium large salad accepts regular protein', async () => {
+  await test('premium large salad accepts only allowlisted subscription proteins', async () => {
     await withMockedPlannerCatalog({}, async () => {
-      const result = await buildMealSlotDraft({
-        mealSlots: [
-          {
-            slotIndex: 1,
-            selectionType: 'premium_large_salad',
-            salad: {
-              groups: {
-                leafy_greens: [IDS.leafyOne],
-                protein: [IDS.regularProtein],
-                sauce: [IDS.sauceOne],
-              },
-            },
-          },
-        ],
-        mealsPerDayLimit: 1,
-        subscription: { premiumBalance: [] },
-      });
-      expectTrue(result.valid, 'draft valid');
-      expectEqual(result.processedSlots[0].proteinId, IDS.regularProtein, 'selected protein persisted');
-      expectEqual(result.processedSlots[0].premiumKey, 'premium_large_salad', 'salad premium key');
-      expectEqual(result.processedSlots[0].premiumExtraFeeHalala, 3100, 'salad pending payment uses dashboard product price');
+      const allowedCases = SUBSCRIPTION_PREMIUM_LARGE_SALAD_PROTEIN_KEYS.map((key) => ({
+        key,
+        id: ALLOWED_SALAD_PROTEIN_IDS[key],
+      }));
+
+      for (const allowed of allowedCases) {
+        expectTrue(
+          SUBSCRIPTION_PREMIUM_LARGE_SALAD_PROTEIN_KEYS.includes(allowed.key),
+          `${allowed.key} is in premium large salad allowlist`
+        );
+        const result = await buildPremiumLargeSaladDraft({
+          leafy_greens: [IDS.leafyOne],
+          protein: [allowed.id],
+          sauce: [IDS.sauceOne],
+        });
+        expectTrue(result.valid, `${allowed.key} draft valid`);
+        expectEqual(result.processedSlots[0].proteinId, allowed.id, `${allowed.key} selected protein persisted`);
+        expectEqual(result.processedSlots[0].premiumKey, 'premium_large_salad', `${allowed.key} salad premium key`);
+        expectEqual(result.processedSlots[0].premiumExtraFeeHalala, 3100, `${allowed.key} salad pending payment uses dashboard product price`);
+      }
     });
   });
 
-  await test('premium large salad accepts premium protein', async () => {
+  await test('premium large salad rejects generic standard protein outside allowlist', async () => {
+    await withMockedPlannerCatalog({}, async () => {
+      const result = await buildPremiumLargeSaladDraft({
+        protein: [IDS.regularProtein],
+        sauce: [IDS.sauceOne],
+      });
+      expectFalse(result.valid, 'generic standard protein rejected');
+      expectEqual(result.errorCode, 'SALAD_PROTEIN_NOT_ALLOWED', 'error code');
+    });
+  });
+
+  await test('premium large salad rejects premium and non-allowlisted proteins', async () => {
+    await withMockedPlannerCatalog({}, async () => {
+      const forbiddenCases = [
+        { key: 'beef_steak', id: IDS.forbiddenBeefSteakProtein },
+        { key: 'shrimp', id: IDS.premiumProtein },
+        { key: 'salmon', id: IDS.secondPremiumProtein },
+        { key: 'meatballs', id: IDS.forbiddenMeatballsProtein },
+        { key: 'beef_stroganoff', id: IDS.forbiddenBeefStroganoffProtein },
+      ];
+
+      for (const forbidden of forbiddenCases) {
+        const result = await buildPremiumLargeSaladDraft({
+          protein: [forbidden.id],
+          sauce: [IDS.sauceOne],
+        });
+        expectFalse(result.valid, `${forbidden.key} rejected`);
+        expectEqual(result.errorCode, 'SALAD_PROTEIN_NOT_ALLOWED', `${forbidden.key} error code`);
+      }
+    });
+  });
+
+  await test('premium large salad rejects extra_protein_50g selections', async () => {
+    await withMockedPlannerCatalog({}, async () => {
+      const result = await buildPremiumLargeSaladDraft({
+        protein: [IDS.allowedSaladProtein],
+        sauce: [IDS.sauceOne],
+        extra_protein_50g: [IDS.extraProteinOption],
+      });
+      expectFalse(result.valid, 'extra protein rejected');
+      expectEqual(result.errorCode, 'SALAD_OPTION_NOT_ALLOWED', 'error code');
+    });
+  });
+
+  await test('premium large salad rejects top-level premium protein mismatch', async () => {
     await withMockedPlannerCatalog({}, async () => {
       const result = await buildMealSlotDraft({
         mealSlots: [
@@ -984,7 +1108,7 @@ async function runTests() {
             proteinId: IDS.premiumProtein,
             salad: {
               groups: {
-                protein: [IDS.premiumProtein],
+                protein: [IDS.allowedSaladProtein],
                 sauce: [IDS.sauceOne],
               },
             },
@@ -993,7 +1117,8 @@ async function runTests() {
         mealsPerDayLimit: 1,
         subscription: { premiumBalance: [] },
       });
-      expectTrue(result.valid, 'draft valid');
+      expectFalse(result.valid, 'mismatched top-level protein rejected');
+      expectEqual(result.errorCode, 'SALAD_PROTEIN_MISMATCH', 'error code');
     });
   });
 
@@ -1036,7 +1161,7 @@ async function runTests() {
           {
             slotIndex: 1,
             selectionType: 'premium_large_salad',
-            salad: { groups: { protein: [IDS.regularProtein] } },
+            salad: { groups: { protein: [IDS.allowedSaladProtein] } },
           },
         ],
         mealsPerDayLimit: 1,
@@ -1050,7 +1175,7 @@ async function runTests() {
           {
             slotIndex: 1,
             selectionType: 'premium_large_salad',
-            salad: { groups: { protein: [IDS.regularProtein], sauce: [IDS.sauceOne, IDS.sauceTwo] } },
+            salad: { groups: { protein: [IDS.allowedSaladProtein], sauce: [IDS.sauceOne, IDS.sauceTwo] } },
           },
         ],
         mealsPerDayLimit: 1,
@@ -1075,7 +1200,7 @@ async function runTests() {
             salad: {
               groups: {
                 leafy_greens: tooManyLeafyGreens,
-                protein: [IDS.regularProtein],
+                protein: [IDS.allowedSaladProtein],
                 sauce: [IDS.sauceOne],
               },
             },
@@ -1098,7 +1223,7 @@ async function runTests() {
             selectionType: 'premium_large_salad',
             salad: {
               groups: {
-                protein: [IDS.regularProtein],
+                protein: [IDS.allowedSaladProtein],
                 sauce: [IDS.sauceOne],
                 unknown_group: [IDS.leafyOne],
               },
@@ -1123,7 +1248,7 @@ async function runTests() {
             salad: {
               groups: {
                 vegetables: [IDS.sauceOne],
-                protein: [IDS.regularProtein],
+                protein: [IDS.allowedSaladProtein],
                 sauce: [IDS.sauceTwo],
               },
             },
@@ -1147,7 +1272,7 @@ async function runTests() {
             salad: {
               groups: {
                 leafy_greens: [IDS.leafyOne, IDS.leafyOne],
-                protein: [IDS.regularProtein],
+                protein: [IDS.allowedSaladProtein],
                 sauce: [IDS.sauceOne],
               },
             },
@@ -1169,7 +1294,7 @@ async function runTests() {
             slotIndex: 1,
             selectionType: 'premium_large_salad',
             carbs: [{ carbId: IDS.carbOne, grams: 150 }],
-            salad: { groups: { protein: [IDS.regularProtein], sauce: [IDS.sauceOne] } },
+            salad: { groups: { protein: [IDS.allowedSaladProtein], sauce: [IDS.sauceOne] } },
           },
         ],
         mealsPerDayLimit: 1,
@@ -1184,7 +1309,7 @@ async function runTests() {
             slotIndex: 1,
             selectionType: 'premium_large_salad',
             sandwichId: IDS.sandwichMeal,
-            salad: { groups: { protein: [IDS.regularProtein], sauce: [IDS.sauceOne] } },
+            salad: { groups: { protein: [IDS.allowedSaladProtein], sauce: [IDS.sauceOne] } },
           },
         ],
         mealsPerDayLimit: 1,

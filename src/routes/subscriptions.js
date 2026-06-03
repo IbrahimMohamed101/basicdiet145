@@ -81,6 +81,7 @@ router.get("/menu", asyncHandler(menuController.getSubscriptionMenu));
  */
 router.get("/meal-planner-menu", asyncHandler(menuController.getSubscriptionMealPlannerMenu));
 router.get("/delivery-options", asyncHandler(menuController.getDeliveryOptions));
+router.get("/addon-choices", asyncHandler(controller.getSubscriptionAddonChoices));
 
 router.use(authMiddleware);
 

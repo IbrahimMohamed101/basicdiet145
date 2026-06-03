@@ -604,7 +604,7 @@ shrimp
 salmon
 ```
 
-Planner carbs use the canonical 7 shared carbs. Legacy carbs are filtered out. Sandwiches use the 6 canonical cold sandwich keys. Premium large salad uses custom salad option relations and includes `extra_protein_50g` where configured.
+Planner carbs use the canonical 7 shared carbs. Legacy carbs are filtered out. Sandwiches use the 6 canonical cold sandwich keys. Subscription `premium_large_salad` uses custom salad option relations but excludes premium proteins and `extra_protein_50g`; allowed proteins come only from `SUBSCRIPTION_PREMIUM_LARGE_SALAD_PROTEIN_KEYS`.
 
 Flutter migration guidance:
 
