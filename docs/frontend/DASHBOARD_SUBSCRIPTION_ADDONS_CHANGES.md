@@ -142,14 +142,26 @@ Clear selected daily add-ons with `addonsOneTime: []` while preserving the entit
 
 Error codes:
 
-- Missing matching entitlement: `ADDON_ENTITLEMENT_REQUIRED`
 - Addon plan ID submitted as a daily product: `INVALID`
 - Unknown, inactive, unpublished, unavailable, hidden, or disallowed product: `INVALID`
+
+> **A subscription entitlement is not required to select a daily add-on product.**
+> The backend supports two pricing paths:
+>
+> | Condition | Result |
+> |---|---|
+> | Subscription has matching entitlement (e.g. juice) | `source: "subscription"`, `priceHalala: 0` — no charge |
+> | Subscription does **not** have matching entitlement (e.g. snack) | `source: "pending_payment"`, `priceHalala: MenuProduct price` — payment required |
+>
+> The non-entitled product is accepted. Its price is included in `paymentRequirement.pendingAmountHalala`.
 
 ## Pricing Display
 
 Dashboard must not recalculate payable totals locally. Use backend quote/payment/read fields.
 
-Entitled daily choices are saved with `source: "subscription"` and `priceHalala: 0`, so they are not charged twice. Pending additional charges are represented by backend commercial/payment fields.
+**Entitled daily choices** are saved with `source: "subscription"` and `priceHalala: 0`, so they are not charged twice.
+
+**Non-entitled daily choices** are saved with `source: "pending_payment"` and `priceHalala` equal to the current MenuProduct price. Their cost is summed into the unified day payment together with any premium meal fees.
 
 Use technical IDs, keys, and categories. Do not depend on Arabic or English names. `calories` and `prepTimeMinutes` may be `null`; hide those labels when missing.
+

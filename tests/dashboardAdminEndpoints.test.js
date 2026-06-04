@@ -530,6 +530,28 @@ async function main() {
     expectStatus(res, 200, "valid dashboard quote");
     assert.strictEqual(res.body.data.breakdown.addonsTotalHalala, 7000);
 
+    res = await api.post("/api/dashboard/subscriptions").set(adminHeaders).send({
+      userId: String(ctx.user._id),
+      planId: String(ctx.plan._id),
+      grams: 200,
+      mealsPerDay: 2,
+      deliveryMethod: "delivery",
+      zoneId: String(ctx.zone._id),
+      deliveryAddress: { line1: "Create with entitlement address" },
+      delivery: { slot: { slotId: TEST_DELIVERY_SLOT_ID } },
+      addons: [String(ctx.addonPlan._id)],
+    });
+    expectStatus(res, 201, "dashboard create persists addon entitlement from addons field");
+    assert(Array.isArray(res.body.data.addonSubscriptions), "created subscription should expose addonSubscriptions");
+    assert.strictEqual(res.body.data.addonSubscriptions.length, 1);
+    assert.strictEqual(res.body.data.addonSubscriptions[0].category, "juice");
+    assert.strictEqual(String(res.body.data.addonSubscriptions[0].addonId), String(ctx.addonPlan._id));
+    const createdSubscription = await Subscription.findById(res.body.data.id).lean();
+    assert(createdSubscription, "created subscription should exist");
+    assert.strictEqual(createdSubscription.addonSubscriptions.length, 1);
+    assert.strictEqual(createdSubscription.addonSubscriptions[0].category, "juice");
+    assert.strictEqual(String(createdSubscription.addonSubscriptions[0].addonId), String(ctx.addonPlan._id));
+
     const promoCode = `DASH${TEST_TAG.replace(/[^A-Z0-9]/gi, "").slice(0, 14).toUpperCase()}`;
     res = await api.post("/api/dashboard/promo-codes").set(adminHeaders).send({
       code: promoCode,

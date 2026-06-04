@@ -130,14 +130,23 @@ Preserve the current `mealSlots` when clearing only the add-on item.
 
 ## Validation Rules
 
-- A daily selected add-on value must be a valid allowed `MenuProduct` ID.
+- A daily selected add-on value must be a valid allowed `MenuProduct` ID from `GET /api/subscriptions/addon-choices`.
 - Do not submit `Addon` plan or item IDs for daily choices.
-- The selected product category must match a subscription entitlement.
-- A subscription without the matching entitlement is rejected with API error code `ADDON_ENTITLEMENT_REQUIRED`.
 - Unknown, inactive, unpublished, unavailable, hidden, or disallowed products are rejected by the API with error code `INVALID`.
 - An `Addon` plan ID submitted in `addonsOneTime` is rejected by the API with error code `INVALID`.
 - Invalid category filters on the choice catalog return `400 INVALID`.
 - Locked, confirmed, out-of-range, or inactive subscription days return the existing day-planner error codes.
+
+> **A subscription entitlement is not required to select a daily add-on product.**
+> The backend supports two pricing paths:
+>
+> | Condition | Result |
+> |---|---|
+> | Subscription has matching entitlement (e.g. juice) | `source: "subscription"`, `priceHalala: 0` — no charge |
+> | Subscription does **not** have matching entitlement (e.g. snack) | `source: "pending_payment"`, `priceHalala: MenuProduct price` — immediate payment required |
+>
+> The non-entitled product is accepted and added to the unified day payment total.
+> Flutter must use backend `paymentRequirement.pendingAmountHalala` as the source of truth for the payable amount; never calculate it locally.
 
 ## Day Detail Response
 
@@ -215,4 +224,25 @@ Status meanings:
 
 Flutter must not calculate the final payable total locally. Backend quote/payment endpoints are the source of truth.
 
-If a daily choice is covered by entitlement, the saved selection has `source: "subscription"` and `priceHalala: 0`, so it is not charged twice. Pending overage/additional payments are represented by backend payment fields such as `paymentRequirement` and `addonSummary`.
+**Entitled daily add-on:** saved with `source: "subscription"` and `priceHalala: 0`. Not charged.
+
+**Non-entitled daily add-on:** saved with `source: "pending_payment"` and `priceHalala` equal to the current MenuProduct price. Added to the unified day payment together with any premium meal fees.
+
+Example — juice entitlement exists, snack entitlement does not:
+
+```json
+{
+  "addonSelections": [
+    { "category": "juice", "source": "subscription", "priceHalala": 0 },
+    { "category": "snack", "source": "pending_payment", "priceHalala": 1300 }
+  ],
+  "paymentRequirement": {
+    "addonSelectedCount": 2,
+    "addonPendingPaymentCount": 1,
+    "pendingAmountHalala": 3300,
+    "amountHalala": 3300
+  }
+}
+```
+
+The `pendingAmountHalala` value already includes both the premium meal fee and the non-entitled add-on price. Read it from the backend; do not combine locally.

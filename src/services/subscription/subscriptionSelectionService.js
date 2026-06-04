@@ -85,15 +85,7 @@ async function reconcileAddonInclusions(
     const doc = choice.product;
     const category = choice.addonCategory;
     const entitlement = entitlements.find((e) => e.category === category);
-    if (!entitlement) {
-      throw {
-        status: 403,
-        code: "ADDON_ENTITLEMENT_REQUIRED",
-        message: `Subscription does not include ${category} add-on entitlement`,
-        details: { category },
-      };
-    }
-    
+
     let source = "pending_payment";
     let priceHalala = doc.priceHalala || Math.round((doc.price || 0) * 100);
 

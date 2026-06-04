@@ -406,7 +406,9 @@ Checklist:
 - `GET /api/addons?kind=plan` is equivalent to `type=subscription`; `GET /api/addons?kind=item` is legacy/backward-compatible and must not be used as the subscription daily-choice source.
 - Flutter checkout must not render daily item rows such as Classic Green, Berry Blast, Dark Brownies, or Berry Cheesecake as subscription add-on plans.
 - Flutter checkout must not use daily `MenuProduct` choices as subscription plans.
-- Flutter day selection shows daily item choices only when the subscription has the matching entitlement category.
+- Flutter day selection shows daily item choices for all eligible daily add-on categories from `GET /api/subscriptions/addon-choices`, regardless of whether the subscription has a matching entitlement.
+- If the subscription has a matching entitlement, the selection is free (`source: "subscription"`, `priceHalala: 0`).
+- If the subscription does not have a matching entitlement, the selection is accepted and charged (`source: "pending_payment"`, `priceHalala: current MenuProduct price`).
 - Dashboard lists only subscription add-on plan categories `snack`, `juice`, and `small_salad` as subscription add-ons. UI may label `small_salad` as salad.
 - Dashboard can show active/inactive state for each add-on.
 - Dashboard/Kitchen must show add-on entitlement categories even when the customer has not selected a daily item yet; unselected daily items should display a `not_selected` or `pending_selection` state.
@@ -673,14 +675,15 @@ FAIL:
 
 Important scenario:
 
-- Add-on amount = `1100` halala.
+- Entitled daily juice MenuProduct amount = `0` halala.
 - `beef_steak` premium = `2000` halala.
+- The `1100` halala juice subscription add-on plan price belongs to subscription checkout, not the daily entitled selection.
 
 Expected:
 
 - `premiumAmountHalala = 2000`
-- `addonsAmountHalala = 1100`
-- `totalHalala = 3100`
+- `addonsAmountHalala = 0`
+- `totalHalala = 2000`
 - `currency = SAR`
 
 Flutter must use:
@@ -693,7 +696,7 @@ Flutter must not use the add-on-only endpoint when the day contains a premium me
 
 Checklist:
 
-- Create or identify a day selection with both premium meal and one-time add-on after approval.
+- Create or identify a day selection with both premium meal and entitled daily juice MenuProduct after approval.
 - Validate pending payment total.
 - Confirm response separates premium amount and add-on amount.
 - Confirm timeline reflects pending payment until paid.
@@ -701,7 +704,7 @@ Checklist:
 
 PASS:
 
-- Unified payment total is `3100` halala.
+- Unified payment total is `2000` halala for premium `beef_steak` plus entitled daily juice.
 - Timeline and day detail remain pending until payment is complete.
 
 FAIL:
@@ -829,7 +832,7 @@ The subscription system is ready when:
 | Pricing | 45 price points | Match table |  |  |  |
 | Menu | Planner sections | 4 required sections |  |  |  |
 | Validation | Invalid premium salad protein | Rejected |  |  |  |
-| Payment | Premium + add-on total | `3100` halala |  |  |  |
+| Payment | Premium + entitled juice total | `2000` halala |  |  |  |
 | Timeline | Pending payment day | Not planned |  |  |  |
 | Dashboard | Key immutable | Read-only/not changed |  |  |  |
 | Flutter | Uses canonical IDs | Original IDs only |  |  |  |
@@ -1000,19 +1003,63 @@ Do not run destructive delete/update commands.
 
 ## [QA_PROD_READY] Premium + Add-on Pending Payment QA
 
-**Goal**: Verify that unified day payments correctly handle the combination of premium meal surcharges and one-time add-ons.
+**Goal**: Verify that unified day payments correctly handle the combination of premium meal surcharges and entitled daily add-on selections.
 
 ### Test Payload
 - **Meal**: `beef_steak` (Premium) -> Expected +20.00 SAR (2000 halala)
-- **Add-on**: `Juice` (Subscription Add-on) -> Expected +11.00 SAR (1100 halala)
-- **Total Pending**: 31.00 SAR (3100 halala)
+- **Add-on**: daily `juice` MenuProduct covered by subscription entitlement -> Expected +0.00 SAR (0 halala)
+- **Total Pending**: 20.00 SAR (2000 halala)
 
 ### Verification Steps
 1. [ ] Create Manual QA Subscription (Dashboard).
 2. [ ] Identify a non-locked future date.
-3. [ ] Set selection with `beef_steak` and `Juice`.
+3. [ ] Set selection with `beef_steak` and a daily juice MenuProduct from `/api/subscriptions/addon-choices?category=juice`.
 4. [ ] Trigger `POST /api/subscriptions/:id/days/:date/payments`.
 5. [ ] Verify `GET /api/subscriptions/:id/timeline` shows the date as `pending_payment` with correct balance.
+
+### Safety Status
+- **Write Access**: Required (`QA_ALLOW_PAYMENT_PENDING_WRITE=true`).
+- **Payment Processing**: Mock/Initiated only (No real checkout).
+- **Cleanup**: Forced cancellation after test.
+
+## [QA_PROD_READY] Non-Entitled Daily Add-on Paid Selection QA
+
+**Goal**: Verify that a subscription without a snack entitlement can still select a snack daily add-on and is charged at the current MenuProduct price.
+
+### Scenario B — Non-Entitled Paid Daily Add-on
+
+- **Subscription**: Has `juice` entitlement only. Does not have `snack` entitlement.
+- **Selection**: Valid snack `MenuProduct` from `GET /api/subscriptions/addon-choices?category=snack`.
+- **Expected**: Selection is accepted (not rejected with `ADDON_ENTITLEMENT_REQUIRED`).
+- **Expected source**: `pending_payment`
+- **Expected priceHalala**: Current snack MenuProduct price (e.g. `1300` for a 13 SAR snack).
+- **Expected addonPendingPaymentCount**: `1`
+
+### Verification Steps
+1. [ ] Create Manual QA Subscription with juice entitlement only (no snack).
+2. [ ] Confirm `GET /api/subscriptions/addon-choices?category=snack` returns snack products.
+3. [ ] Submit `PUT .../days/:date/selection` with a valid snack MenuProduct ID in `addonsOneTime`.
+4. [ ] Read back day detail and assert `addonSelections[].source === "pending_payment"` and `addonSelections[].priceHalala === snack MenuProduct price`.
+5. [ ] Confirm `paymentRequirement.addonPendingPaymentCount === 1`.
+6. [ ] Confirm `paymentRequirement.pendingAmountHalala === snack MenuProduct price`.
+
+### Combined Scenario — Premium + Entitled Juice + Non-Entitled Snack
+
+- **Meal**: `beef_steak` (Premium) -> +20.00 SAR (2000 halala)
+- **Add-on**: daily `juice` MenuProduct covered by entitlement -> +0.00 SAR (free)
+- **Add-on**: daily `snack` MenuProduct without entitlement -> +snack MenuProduct price (e.g. 1300 halala)
+- **Expected total**: `premiumAmountHalala + snackPrice` = 2000 + 1300 = 3300 halala
+
+### Verification Steps (Combined)
+1. [ ] Submit `PUT .../days/:date/selection` with `beef_steak` slot, juice MenuProduct, and snack MenuProduct.
+2. [ ] Read back day detail and assert:
+   - `juice` addonSelection: `source === "subscription"`, `priceHalala === 0`
+   - `snack` addonSelection: `source === "pending_payment"`, `priceHalala === snack price`
+3. [ ] Assert `paymentRequirement.premiumPendingPaymentCount === 1`.
+4. [ ] Assert `paymentRequirement.addonSelectedCount === 2`.
+5. [ ] Assert `paymentRequirement.addonPendingPaymentCount === 1`.
+6. [ ] Assert `paymentRequirement.pendingAmountHalala === 3300` (or premium_fee + actual_snack_price).
+7. [ ] Cleanup: Cancel QA subscription.
 
 ### Safety Status
 - **Write Access**: Required (`QA_ALLOW_PAYMENT_PENDING_WRITE=true`).

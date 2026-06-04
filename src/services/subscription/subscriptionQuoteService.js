@@ -726,6 +726,14 @@ async function resolveCheckoutQuoteOrThrow(
 
   const divisor = 1 + (vatPercentage / 100);
   const basePlanNetHalala = divisor > 0 ? Math.round(basePlanPriceHalala / divisor) : basePlanPriceHalala;
+  const addonSubscriptions = resolvedAddonItems.map((item) => ({
+    addonId: item.addon._id,
+    name: pickLang(item.addon.name, lang),
+    category: item.category || item.addon.category,
+    maxPerDay: 1,
+    priceHalala: Number(item.unitPriceHalala || 0),
+    currency: item.currency || SYSTEM_CURRENCY,
+  }));
 
   let quote = {
     plan,
@@ -737,6 +745,7 @@ async function resolveCheckoutQuoteOrThrow(
     premiumUnitPriceHalala,
     premiumItems: resolvedPremiumItems,
     addonItems: resolvedAddonItems,
+    addonSubscriptions,
     breakdown: {
       basePlanPriceHalala,
       basePlanGrossHalala: basePlanPriceHalala,
