@@ -1,20 +1,29 @@
-# Flutter Subscription Add-ons Changes
+# Flutter Subscription Add-ons Contract
 
-## Required Catalog Calls
+Status: FINAL. The `mealSlots + addonsOneTime` save/read-back flow has been verified with a DB-backed integration test, including day detail, kitchen output, clear-selection behavior, and entitlement pricing.
 
-Subscription creation uses subscription plans from `Addon`:
+## Subscription Checkout Plans
+
+Fetch subscription add-on entitlement plans from:
 
 ```text
 GET /api/addons?type=subscription
 ```
 
-This returns only plan rows for:
+Use only the returned `Addon` plan `id` values during subscription quote/checkout:
 
-- `juice`
-- `snack`
-- `small_salad`
+```json
+{
+  "planId": "plan_id",
+  "addons": ["addon_plan_id"]
+}
+```
 
-Daily add-on item selection uses one-time menu products from `MenuProduct`:
+The subscription plan catalog is filtered to active plan rows for `juice`, `snack`, and `small_salad`. Delivery is not an add-on.
+
+## Daily Choice Catalog
+
+Fetch daily selectable products from:
 
 ```text
 GET /api/subscriptions/addon-choices
@@ -23,20 +32,17 @@ GET /api/subscriptions/addon-choices?category=snack
 GET /api/subscriptions/addon-choices?category=small_salad
 ```
 
-Daily choices are not `Addon` documents. They are active, visible, available, published `MenuProduct` rows from the one-time menu.
+Daily choices are active, visible, available, published one-time `MenuProduct` rows. They are not `Addon` documents.
 
-Subscription creation add-ons use `Addon` plan ids from `GET /api/addons?type=subscription`.
-Daily add-on selections use `MenuProduct` ids from `GET /api/subscriptions/addon-choices`.
+Mapping:
 
-## Daily Choice Mapping
+- `juice`: one-time categories `juices` and `drinks`
+- `snack`: one-time category `desserts`
+- `small_salad`: one-time category `light_options`, limited to product keys `green_salad` and `fruit_salad`
 
-- `juice` entitlement choices come from one-time categories `juices` and `drinks`.
-- `snack` entitlement choices come from one-time category `desserts`.
-- `small_salad` entitlement choices come from `light_options`, currently limited to product keys `green_salad` and `fruit_salad` when present.
+Use technical `id`, `key`, and category fields. Do not depend on Arabic or English names.
 
-Flutter must use technical ids and keys from the response. Do not depend on Arabic or English names.
-
-## Response Shape
+## Daily Choice Response
 
 ```json
 {
@@ -51,12 +57,14 @@ Flutter must use technical ids and keys from the response. Do not depend on Arab
           "key": "berry_blast",
           "name": "Berry Blast",
           "nameAr": "بيري بلاست",
+          "nameI18n": { "ar": "بيري بلاست", "en": "Berry Blast" },
           "priceHalala": 1100,
           "priceSar": 11,
           "currency": "SAR",
           "calories": 150,
           "prepTimeMinutes": null,
           "categoryKey": "juices",
+          "itemType": "juice",
           "type": "menu_product",
           "available": true,
           "active": true,
@@ -68,44 +76,143 @@ Flutter must use technical ids and keys from the response. Do not depend on Arab
 }
 ```
 
-## Submission Rules
+`calories` and `prepTimeMinutes` may be `null`; hide those labels when missing.
 
-- Checkout add-ons: submit subscription plan ids from `GET /api/addons?type=subscription`.
-- Daily add-on choices: submit the selected `MenuProduct` id from `GET /api/subscriptions/addon-choices`.
-- Do not submit `Addon` item ids for daily selections. Daily selected item ids must be `MenuProduct` ids from `GET /api/subscriptions/addon-choices`.
-- If the customer already has the matching subscription entitlement, daily choice `priceHalala` must not be added to the payable total. Backend quote/payment remains the source of truth.
-- `priceHalala` on a daily choice is display/reference pricing or overage pricing only when backend payment rules require it.
-- Flutter must not calculate the final payable total locally.
-- `calories` and `prepTimeMinutes` may be `null`. Flutter must handle null values gracefully and hide these labels when missing.
-- Delivery is not an add-on.
+## Validate And Save Daily Selection
 
-## Migration Steps
+Daily add-on selection is part of the canonical day planner payload.
 
-1. Use `GET /api/addons?type=subscription` only for subscription creation.
-2. Stop using `GET /api/addons?type=one_time` for subscription daily add-on choices.
-3. Use `GET /api/subscriptions/addon-choices` in day-selection screens.
-4. Filter visible groups by subscribed entitlement category.
-5. Submit `MenuProduct` id/key for the selected daily item according to the day-planning contract.
+Validate without saving:
 
-## Protein Picker Tabs (V2)
+```text
+POST /api/subscriptions/{subscriptionId}/days/{yyyy-mm-dd}/selection/validate
+```
 
-The `data.builderCatalogV2.sections` inside `standard_meal.products[0]` in the meal planner catalog endpoint returns a dynamically structured list of protein families (tabs).
+Save:
 
-### Tab Structure
-The `optionSections` array provides the following 5 UI tabs for Flutter to render:
-- `chicken` (دجاج)
-- `beef` (لحم)
-- `fish` (سمك)
-- `eggs` (بيض)
-- `premium` (مميز)
+```text
+PUT /api/subscriptions/{subscriptionId}/days/{yyyy-mm-dd}/selection
+```
 
-**Data Layout:**
-- Variant proteins (e.g., `chicken_fajita`, `spicy_chicken`, `meatballs`) are natively grouped under their respective biological family tabs (`chicken`, `beef`).
-- Premium proteins (e.g., `beef_steak`, `salmon`, `shrimp`) are explicitly grouped under the `premium` tab.
-- Each section provides localized names (`name` and `nameI18n`), along with `optionKeys` and `optionIds` arrays to build the UI list beneath each tab.
+Submit `MenuProduct` IDs from `GET /api/subscriptions/addon-choices` in `addonsOneTime`. Each `addonsOneTime` element is a string `MenuProduct` ID; no category field is required in the request body. The legacy alias `oneTimeAddonSelections` is also accepted.
 
-### Flutter Implementation Guidelines
-1. Render the protein horizontal tabs based precisely on the `optionSections` array.
-2. Do not construct or hard-map tabs locally on the frontend. The backend dictates which tab a protein falls under.
-3. Map every `optionId` in `optionSections.optionIds` to the actual product details using the `data.builderCatalogV2.proteins` array (to retrieve image, calories, localized title, etc.).
-4. The `premium_large_salad` selection type remains completely isolated and unchanged; it has its own selection groups.
+```json
+{
+  "mealSlots": [
+    {
+      "slotIndex": 1,
+      "selectionType": "standard_meal",
+      "proteinId": "protein_id",
+      "carbs": [{ "carbId": "carb_id", "grams": 150 }]
+    }
+  ],
+  "addonsOneTime": ["menu_product_id"]
+}
+```
+
+Clear daily selections by saving the same day planner payload with:
+
+```json
+{
+  "mealSlots": [
+    {
+      "slotIndex": 1,
+      "selectionType": "standard_meal",
+      "proteinId": "protein_id",
+      "carbs": [{ "carbId": "carb_id", "grams": 150 }]
+    }
+  ],
+  "addonsOneTime": []
+}
+```
+
+Preserve the current `mealSlots` when clearing only the add-on item.
+
+## Validation Rules
+
+- A daily selected add-on value must be a valid allowed `MenuProduct` ID.
+- Do not submit `Addon` plan or item IDs for daily choices.
+- The selected product category must match a subscription entitlement.
+- A subscription without the matching entitlement is rejected with API error code `ADDON_ENTITLEMENT_REQUIRED`.
+- Unknown, inactive, unpublished, unavailable, hidden, or disallowed products are rejected by the API with error code `INVALID`.
+- An `Addon` plan ID submitted in `addonsOneTime` is rejected by the API with error code `INVALID`.
+- Invalid category filters on the choice catalog return `400 INVALID`.
+- Locked, confirmed, out-of-range, or inactive subscription days return the existing day-planner error codes.
+
+## Day Detail Response
+
+Read day detail from:
+
+```text
+GET /api/subscriptions/{subscriptionId}/days/{yyyy-mm-dd}
+```
+
+Dashboard/Kitchen reads the same entitlement state from:
+
+```text
+GET /api/kitchen/days/{yyyy-mm-dd}
+```
+
+Relevant fields:
+
+```json
+{
+  "status": true,
+  "data": {
+    "addonSelections": [
+      {
+        "addonId": "menu_product_id",
+        "name": "Berry Blast",
+        "category": "juice",
+        "source": "subscription",
+        "priceHalala": 0,
+        "currency": "SAR"
+      }
+    ],
+    "addonEntitlements": {
+      "juice": {
+        "category": "juice",
+        "subscribed": true,
+        "addonPlanId": "addon_plan_id",
+        "name": "Daily Juice",
+        "maxPerDay": 1,
+        "selectedItem": {
+          "id": "menu_product_id",
+          "menuProductId": "menu_product_id",
+          "name": "Berry Blast",
+          "category": "juice",
+          "source": "subscription",
+          "priceHalala": 0,
+          "currency": "SAR"
+        },
+        "status": "selected"
+      },
+      "snack": {
+        "category": "snack",
+        "subscribed": false,
+        "addonPlanId": null,
+        "selectedItem": null,
+        "status": "not_subscribed"
+      },
+      "small_salad": {
+        "category": "small_salad",
+        "subscribed": true,
+        "selectedItem": null,
+        "status": "pending_selection"
+      }
+    }
+  }
+}
+```
+
+Status meanings:
+
+- `selected`: subscribed and a daily product is selected.
+- `pending_selection`: subscribed but no daily product is selected.
+- `not_subscribed`: no entitlement for the category.
+
+## Payment Rules
+
+Flutter must not calculate the final payable total locally. Backend quote/payment endpoints are the source of truth.
+
+If a daily choice is covered by entitlement, the saved selection has `source: "subscription"` and `priceHalala: 0`, so it is not charged twice. Pending overage/additional payments are represented by backend payment fields such as `paymentRequirement` and `addonSummary`.
