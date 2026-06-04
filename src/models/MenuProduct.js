@@ -14,16 +14,43 @@ const LocalizedStringSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const LocaleStringMapSchema = new mongoose.Schema(
+  {
+    ar: { type: String, default: undefined },
+    en: { type: String, default: undefined },
+  },
+  { _id: false }
+);
+
 const ProductUiSchema = new mongoose.Schema(
   {
     cardVariant: {
       type: String,
-      enum: ["standard", "premium", "large_salad", "addon"],
+      enum: [
+        "standard",
+        "premium",
+        "large_salad",
+        "addon",
+        "hero_builder",
+        "compact_builder",
+        "ready_meal",
+        "ready_meal_customizable",
+        "compact_product",
+        "sandwich_card",
+        "addon_card",
+      ],
       default: "standard",
     },
     badge: { type: String, default: "" },
     ctaLabel: { type: String, default: "" },
     imageRatio: { type: String, default: "square" },
+    layout: { type: String, default: undefined },
+    ctaLabelI18n: { type: LocaleStringMapSchema, default: undefined },
+    mediaPositionByLocale: { type: LocaleStringMapSchema, default: undefined },
+    showDescription: { type: Boolean, default: undefined },
+    showPrice: { type: Boolean, default: undefined },
+    priceLabelMode: { type: String, enum: ["fixed", "per_unit", "per_unit_or_from", "final_depends_on_options", "from_price"], default: undefined },
+    behaviorHint: { type: String, enum: ["open_builder", "direct_add", "customize_optional_addons"], default: undefined },
   },
   { _id: false }
 );

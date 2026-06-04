@@ -55,8 +55,28 @@ const CUSTOMER_VISIBLE_CARB_KEY_SET = new Set(CUSTOMER_VISIBLE_CARB_KEYS);
 const BASIC_MEAL_PUBLIC_GROUP_KEY_SET = new Set(["carbs", "proteins"]);
 const HIDDEN_PUBLIC_PRODUCT_KEYS = new Set(["small_salad"]);
 const PUBLIC_PRODUCT_CATEGORY_KEY_OVERRIDES = new Map([
-  ["basic_meal", "meals"],
+  ["basic_meal", "custom_order"],
+  ["green_salad", "light_options"],
+  ["fruit_salad", "light_options"],
+  ["greek_yogurt", "light_options"],
 ]);
+const RTL_LTR_MEDIA_POSITION = Object.freeze({ ar: "left", en: "right" });
+const CTA_LABELS = Object.freeze({
+  start_customizing: { ar: "ابدأ التخصيص", en: "Start Customizing" },
+  customize: { ar: "اختر الإضافة", en: "Customize" },
+  add_to_cart: { ar: "أضف للسلة", en: "Add to Cart" },
+});
+const CATEGORY_PRESENTATION_BY_KEY = Object.freeze({
+  custom_order: { cardVariant: "hero_builder_collection", layout: "vertical_hero_list" },
+  light_options: { cardVariant: "compact_builder_collection", layout: "vertical_compact_builder_list" },
+  meals: { cardVariant: "meal_collection", layout: "vertical_meal_list" },
+  carbs: { cardVariant: "compact_product_collection", layout: "horizontal_or_grid_compact_cards" },
+  cold_sandwiches: { cardVariant: "sandwich_collection", layout: "vertical_compact_cards" },
+  desserts: { cardVariant: "addon_collection", layout: "horizontal_or_grid_addon_cards" },
+  juices: { cardVariant: "addon_collection", layout: "horizontal_or_grid_addon_cards" },
+  drinks: { cardVariant: "addon_collection", layout: "horizontal_or_grid_addon_cards" },
+  ice_cream: { cardVariant: "addon_collection", layout: "horizontal_or_grid_addon_cards" },
+});
 
 class MenuValidationError extends Error {
   constructor(message, code = "VALIDATION_ERROR", status = 400, details) {
@@ -274,6 +294,90 @@ function assertRelationAvailable(doc, code, message, status = 409) {
   }
 }
 
+function buildPublicCategoryUi(category) {
+  return {
+    ...normalizeCategoryUiMetadata(category.ui),
+    ...(CATEGORY_PRESENTATION_BY_KEY[category.key] || {}),
+  };
+}
+
+function productUiWithAction(ui, ctaLabel, behaviorHint, priceLabelMode) {
+  return {
+    ...ui,
+    ctaLabel,
+    ctaLabelI18n: CTA_LABELS[ctaLabel],
+    behaviorHint,
+    priceLabelMode,
+  };
+}
+
+function buildPublicProductUi(product, categoryKey, { hasOptionGroups, requiresBuilder, canAddDirectly }) {
+  const baseUi = normalizeProductUiMetadata(product.ui);
+  if (categoryKey === "custom_order") {
+    return productUiWithAction({
+      ...baseUi,
+      cardVariant: "hero_builder",
+      imageRatio: "wide",
+      showDescription: true,
+      showPrice: true,
+      mediaPositionByLocale: RTL_LTR_MEDIA_POSITION,
+    }, "start_customizing", "open_builder", "per_unit_or_from");
+  }
+  if (categoryKey === "light_options") {
+    return productUiWithAction({
+      ...baseUi,
+      cardVariant: "compact_builder",
+      imageRatio: "square",
+      showDescription: true,
+      showPrice: true,
+      mediaPositionByLocale: RTL_LTR_MEDIA_POSITION,
+    }, "start_customizing", "open_builder", "final_depends_on_options");
+  }
+  if (categoryKey === "meals") {
+    const customizable = requiresBuilder && hasOptionGroups;
+    return productUiWithAction({
+      ...baseUi,
+      cardVariant: customizable ? "ready_meal_customizable" : "ready_meal",
+      imageRatio: "square",
+      showDescription: true,
+      showPrice: true,
+      mediaPositionByLocale: RTL_LTR_MEDIA_POSITION,
+    }, customizable ? "customize" : "add_to_cart", customizable ? "customize_optional_addons" : "direct_add", customizable ? "from_price" : "fixed");
+  }
+  if (categoryKey === "carbs") {
+    return productUiWithAction({
+      ...baseUi,
+      cardVariant: "compact_product",
+      imageRatio: "square",
+      showPrice: true,
+    }, "add_to_cart", "direct_add", "fixed");
+  }
+  if (categoryKey === "cold_sandwiches") {
+    return productUiWithAction({
+      ...baseUi,
+      cardVariant: "sandwich_card",
+      imageRatio: "square",
+      showDescription: true,
+      showPrice: true,
+    }, "add_to_cart", "direct_add", "fixed");
+  }
+  if (["desserts", "juices", "drinks", "ice_cream"].includes(categoryKey)) {
+    return productUiWithAction({
+      ...baseUi,
+      cardVariant: "addon_card",
+      imageRatio: "square",
+      showPrice: true,
+    }, "add_to_cart", "direct_add", "fixed");
+  }
+  if (requiresBuilder) {
+    return productUiWithAction(baseUi, baseUi.ctaLabel || "customize", "open_builder", product.pricingModel === "per_100g" ? "per_unit" : "final_depends_on_options");
+  }
+  if (canAddDirectly) {
+    return productUiWithAction(baseUi, baseUi.ctaLabel || "add_to_cart", "direct_add", "fixed");
+  }
+  return baseUi;
+}
+
 function serializePublicCategory(category, lang, products) {
   return {
     id: String(category._id),
@@ -284,7 +388,7 @@ function serializePublicCategory(category, lang, products) {
     descriptionI18n: localizedPair(category.description),
     imageUrl: category.imageUrl || "",
     sortOrder: Number(category.sortOrder || 0),
-    ui: normalizeCategoryUiMetadata(category.ui),
+    ui: buildPublicCategoryUi(category),
     products,
   };
 }
@@ -292,6 +396,8 @@ function serializePublicCategory(category, lang, products) {
 function serializePublicProduct(product, lang, optionGroups, categoryId = product.categoryId) {
   const hasOptionGroups = Array.isArray(optionGroups) && optionGroups.length > 0;
   const requiresBuilder = hasOptionGroups || product.pricingModel === "per_100g";
+  const canAddDirectly = product.pricingModel === "fixed" && !hasOptionGroups;
+  const categoryKey = product._publicCategoryKey || "";
   return {
     id: String(product._id),
     key: product.key,
@@ -311,9 +417,9 @@ function serializePublicProduct(product, lang, optionGroups, categoryId = produc
     maxWeightGrams: Number(product.maxWeightGrams || 0),
     weightStepGrams: Number(product.weightStepGrams || 50),
     sortOrder: Number(product.sortOrder || 0),
-    ui: normalizeProductUiMetadata(product.ui),
+    ui: buildPublicProductUi(product, categoryKey, { hasOptionGroups, requiresBuilder, canAddDirectly }),
     requiresBuilder,
-    canAddDirectly: product.pricingModel === "fixed" && !hasOptionGroups,
+    canAddDirectly,
     optionGroups,
   };
 }
@@ -486,6 +592,7 @@ async function getPublishedMenu({ lang = "en", branchId = "" } = {}) {
   productsById.forEach((product) => {
     const publicCategory = resolvePublicProductCategory(product, categoriesById, categoriesByKey);
     if (!publicCategory) return;
+    product._publicCategoryKey = publicCategory.key;
     const categoryId = String(publicCategory._id);
     if (!productsByCategory.has(categoryId)) productsByCategory.set(categoryId, []);
     const groupsForProduct = Array.isArray(product._publicGroups)
@@ -598,7 +705,7 @@ function normalizeCategoryPayload(body = {}, existing = null) {
       || (body.ui.cardVariant !== undefined && !isAllowedCategoryCardVariant(body.ui.cardVariant))
     )
   ) {
-    throw new MenuValidationError("ui.cardVariant must be one of: meal_builder, light_collection, sandwich_collection, addon_collection", "INVALID_CARD_VARIANT");
+    throw new MenuValidationError("ui.cardVariant must be one of the supported public category card variants", "INVALID_CARD_VARIANT");
   }
   return {
     key: body.key === undefined && existing ? existing.key : normalizeOptionalKey(body.key),
@@ -633,7 +740,7 @@ function normalizeProductPayload(body = {}, existing = null) {
       || (body.ui.cardVariant !== undefined && !isAllowedCardVariant(body.ui.cardVariant))
     )
   ) {
-    throw new MenuValidationError("ui.cardVariant must be one of: standard, premium, large_salad, addon", "INVALID_CARD_VARIANT");
+    throw new MenuValidationError("ui.cardVariant must be one of the supported public product card variants", "INVALID_CARD_VARIANT");
   }
   const pricingModel = String(body.pricingModel || (existing && existing.pricingModel) || "fixed").trim();
   if (!["fixed", "per_100g"].includes(pricingModel)) {

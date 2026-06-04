@@ -242,6 +242,117 @@ async function run() {
       assert(publicCategory.products.some((product) => product.key === "light_collection_product"));
     });
 
+    await test("Public one-time menu exposes backend-driven card presentation metadata", async () => {
+      const categoryKeys = ["custom_order", "light_options", "meals", "carbs", "cold_sandwiches", "desserts", "juices", "drinks", "ice_cream"];
+      const categories = new Map();
+      for (let index = 0; index < categoryKeys.length; index += 1) {
+        const key = categoryKeys[index];
+        categories.set(key, await createPublishedCategory(key));
+        await MenuCategory.updateOne({ key }, { $set: { sortOrder: index + 1 } });
+      }
+
+      const basicSalad = await createPublishedProduct(categories.get("custom_order"), "basic_salad", null, {
+        itemType: "basic_salad",
+        pricingModel: "per_100g",
+        priceHalala: 2900,
+      });
+      const basicMeal = await createPublishedProduct(categories.get("meals"), "basic_meal", null, {
+        itemType: "basic_meal",
+        pricingModel: "per_100g",
+        priceHalala: 1900,
+      });
+      await createBuilderOption(basicSalad, null, "lettuce", "leafy_greens");
+      await createBuilderOption(basicMeal, null, "chicken", "proteins");
+
+      for (const key of ["green_salad", "fruit_salad", "greek_yogurt"]) {
+        const product = await createPublishedProduct(categories.get("light_options"), key, null, {
+          itemType: key,
+          priceHalala: 1700,
+        });
+        await createBuilderOption(product, null, `${key}_fruit`, "fruits");
+      }
+
+      const customizableMeal = await createPublishedProduct(categories.get("meals"), "grilled_chicken_meal_100g", null, {
+        priceHalala: 1900,
+      });
+      await createBuilderOption(customizableMeal, null, "extra_grilled_chicken_50g", "extra_protein_50g");
+      await createPublishedProduct(categories.get("meals"), "chicken_okra_meal", null, {
+        priceHalala: 1900,
+      });
+      await createPublishedProduct(categories.get("carbs"), "white_rice", null, {
+        priceHalala: 500,
+      });
+      await createPublishedProduct(categories.get("cold_sandwiches"), "turkey_cold_sandwich", null, {
+        itemType: "cold_sandwich",
+        priceHalala: 1300,
+      });
+      for (const [categoryKey, productKey, itemType] of [
+        ["desserts", "orange_cake", "dessert"],
+        ["juices", "berry_blast", "juice"],
+        ["drinks", "water", "drink"],
+        ["ice_cream", "vanilla_ice_cream", "ice_cream"],
+      ]) {
+        await createPublishedProduct(categories.get(categoryKey), productKey, null, {
+          itemType,
+          priceHalala: 900,
+        });
+      }
+
+      const menu = await menuCatalogService.getPublishedMenu({ lang: "en" });
+      const categoriesByKey = new Map(menu.categories.map((category) => [category.key, category]));
+      assert.deepStrictEqual(categoriesByKey.get("custom_order").ui, { cardVariant: "hero_builder_collection", layout: "vertical_hero_list" });
+      assert.deepStrictEqual(categoriesByKey.get("light_options").ui, { cardVariant: "compact_builder_collection", layout: "vertical_compact_builder_list" });
+      assert.deepStrictEqual(categoriesByKey.get("meals").ui, { cardVariant: "meal_collection", layout: "vertical_meal_list" });
+      assert.deepStrictEqual(categoriesByKey.get("carbs").ui, { cardVariant: "compact_product_collection", layout: "horizontal_or_grid_compact_cards" });
+      assert.deepStrictEqual(categoriesByKey.get("cold_sandwiches").ui, { cardVariant: "sandwich_collection", layout: "vertical_compact_cards" });
+      for (const key of ["desserts", "juices", "drinks", "ice_cream"]) {
+        assert.deepStrictEqual(categoriesByKey.get(key).ui, { cardVariant: "addon_collection", layout: "horizontal_or_grid_addon_cards" });
+      }
+
+      const productsByKey = new Map(flattenProducts(menu).map((product) => [product.key, product]));
+      for (const key of ["basic_salad", "basic_meal"]) {
+        const product = productsByKey.get(key);
+        assert.strictEqual(product.categoryId, String(categories.get("custom_order")._id));
+        assert.strictEqual(product.ui.cardVariant, "hero_builder");
+        assert.strictEqual(product.ui.ctaLabel, "start_customizing");
+        assert.strictEqual(product.ui.behaviorHint, "open_builder");
+        assert.strictEqual(product.ui.priceLabelMode, "per_unit_or_from");
+        assert.deepStrictEqual(product.ui.mediaPositionByLocale, { ar: "left", en: "right" });
+        assert.strictEqual(product.requiresBuilder, true);
+        assert.strictEqual(product.canAddDirectly, false);
+      }
+      for (const key of ["green_salad", "fruit_salad", "greek_yogurt"]) {
+        const product = productsByKey.get(key);
+        assert.strictEqual(product.ui.cardVariant, "compact_builder");
+        assert.strictEqual(product.ui.ctaLabel, "start_customizing");
+        assert.strictEqual(product.ui.priceLabelMode, "final_depends_on_options");
+        assert.strictEqual(product.requiresBuilder, true);
+        assert.strictEqual(product.canAddDirectly, false);
+      }
+
+      const readyCustomizable = productsByKey.get("grilled_chicken_meal_100g");
+      assert.strictEqual(readyCustomizable.ui.cardVariant, "ready_meal_customizable");
+      assert.strictEqual(readyCustomizable.ui.ctaLabel, "customize");
+      assert.strictEqual(readyCustomizable.ui.behaviorHint, "customize_optional_addons");
+      assert.strictEqual(readyCustomizable.ui.priceLabelMode, "from_price");
+      assert(readyCustomizable.optionGroups.some((group) => group.key === "extra_protein_50g"));
+      const readyDirect = productsByKey.get("chicken_okra_meal");
+      assert.strictEqual(readyDirect.ui.cardVariant, "ready_meal");
+      assert.strictEqual(readyDirect.ui.ctaLabel, "add_to_cart");
+      assert.strictEqual(readyDirect.ui.behaviorHint, "direct_add");
+      assert.strictEqual(readyDirect.ui.priceLabelMode, "fixed");
+      assert.strictEqual(readyDirect.optionGroups.length, 0);
+
+      assert.strictEqual(productsByKey.get("white_rice").ui.cardVariant, "compact_product");
+      assert.strictEqual(productsByKey.get("turkey_cold_sandwich").ui.cardVariant, "sandwich_card");
+      for (const key of ["orange_cake", "berry_blast", "water", "vanilla_ice_cream"]) {
+        assert.strictEqual(productsByKey.get(key).ui.cardVariant, "addon_card");
+        assert.strictEqual(productsByKey.get(key).ui.ctaLabel, "add_to_cart");
+        assert.strictEqual(productsByKey.get(key).requiresBuilder, false);
+        assert.strictEqual(productsByKey.get(key).canAddDirectly, true);
+      }
+    });
+
     await test("Global option disable hides linked builder options and quote rejects them", async () => {
       const category = await createPublishedCategory("global_option_disable");
       const product = await createPublishedProduct(category, "builder_product", null);

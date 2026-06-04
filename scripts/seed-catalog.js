@@ -347,7 +347,12 @@ const premiumLargeSaladProteinRelations = subscriptionPremiumLargeSaladProteinKe
 }));
 
 // Canonical basic_meal protein allowlist — must match STANDARD_MEAL_PROTEIN_KEYS in mealPlannerContract.js
-const standardProteinOptionKeys = [...STANDARD_MEAL_PROTEIN_KEYS];
+const standardProteinOptionKeys = [
+  "chicken",
+  "beef",
+  "fish",
+  "eggs",
+];
 
 const oneTimeMealProteinRelations = standardProteinOptionKeys.map((key, index) => ({
   key,
@@ -438,16 +443,16 @@ function activePublishedFields(sortOrder = 0) {
 }
 
 const categoryRows = [
-  { key: "custom_order", name: name("اطلب على مزاجك", "Custom Order"), ui: { cardVariant: "meal_builder" } },
-  { key: "meals", name: name("الوجبات", "Meals"), ui: { cardVariant: "light_collection" } },
-  { key: "carbs", name: name("الكارب", "Carbs"), ui: { cardVariant: "light_collection" } },
-  { key: "light_options", name: name("اختيارات خفيفة", "Light Options"), ui: { cardVariant: "light_collection" } },
-  { key: "cold_sandwiches", name: name("الساندويتش البارد", "Cold Sandwiches"), ui: { cardVariant: "sandwich_collection" } },
+  { key: "custom_order", name: name("اطلب على مزاجك", "Custom Order"), ui: { cardVariant: "hero_builder_collection", layout: "vertical_hero_list" } },
+  { key: "meals", name: name("الوجبات", "Meals"), ui: { cardVariant: "meal_collection", layout: "vertical_meal_list" } },
+  { key: "carbs", name: name("الكارب", "Carbs"), ui: { cardVariant: "compact_product_collection", layout: "horizontal_or_grid_compact_cards" } },
+  { key: "light_options", name: name("اختيارات خفيفة", "Light Options"), ui: { cardVariant: "compact_builder_collection", layout: "vertical_compact_builder_list" } },
+  { key: "cold_sandwiches", name: name("الساندويتش البارد", "Cold Sandwiches"), ui: { cardVariant: "sandwich_collection", layout: "vertical_compact_cards" } },
   { key: "sourdough", name: name("الساندويشات", "Sourdough Sandwiches"), ui: { cardVariant: "sandwich_collection" } },
-  { key: "desserts", name: name("الحلويات", "Desserts"), ui: { cardVariant: "addon_collection" } },
-  { key: "juices", name: name("العصائر", "Juices"), ui: { cardVariant: "addon_collection" } },
-  { key: "drinks", name: name("المشروبات", "Drinks"), ui: { cardVariant: "addon_collection" } },
-  { key: "ice_cream", name: name("الايس كريم", "Ice Cream"), ui: { cardVariant: "addon_collection" } },
+  { key: "desserts", name: name("الحلويات", "Desserts"), ui: { cardVariant: "addon_collection", layout: "horizontal_or_grid_addon_cards" } },
+  { key: "juices", name: name("العصائر", "Juices"), ui: { cardVariant: "addon_collection", layout: "horizontal_or_grid_addon_cards" } },
+  { key: "drinks", name: name("المشروبات", "Drinks"), ui: { cardVariant: "addon_collection", layout: "horizontal_or_grid_addon_cards" } },
+  { key: "ice_cream", name: name("الايس كريم", "Ice Cream"), ui: { cardVariant: "addon_collection", layout: "horizontal_or_grid_addon_cards" } },
 ];
 
 const groupDefinitions = [
@@ -577,7 +582,7 @@ const mealProductDefaults = {
   pricingModel: "fixed",
   availableFor: ["one_time"],
   imageUrl: "",
-  ui: { cardVariant: "standard", imageRatio: "square" },
+  ui: { cardVariant: "ready_meal", imageRatio: "square" },
 };
 
 const mealProductRows = [
@@ -673,7 +678,7 @@ const carbProductRows = carbRows.map((row) => ({
   defaultWeightGrams: row.defaultWeightGrams,
   availableFor: ["one_time"],
   imageUrl: row.imageUrl,
-  ui: { cardVariant: "standard", imageRatio: "square" },
+  ui: { cardVariant: "compact_product", imageRatio: "square" },
 }));
 
 // TODO: MenuProduct has no calories or prep-time fields. Keep the external metadata documented here
@@ -744,7 +749,7 @@ const externalProductRows = [
 ].map((row) => ({
   pricingModel: "fixed",
   availableFor: row.itemType === "cold_sandwich" ? ["one_time", "subscription"] : ["one_time"],
-  ui: { cardVariant: row.itemType === "cold_sandwich" ? "standard" : "addon" },
+  ui: { cardVariant: row.itemType === "cold_sandwich" ? "sandwich_card" : "addon_card", imageRatio: "square" },
   ...row,
 }));
 
@@ -757,7 +762,7 @@ const productRows = [
     pricingModel: "per_100g",
     priceHalala: 2900,
     availableFor: ["one_time", "subscription"],
-    ui: { cardVariant: "standard" },
+    ui: { cardVariant: "hero_builder", imageRatio: "wide" },
     groups: [
       ["leafy_greens", 0, 2, false],
       ["vegetables_legumes", 0, 19, false],
@@ -770,13 +775,13 @@ const productRows = [
   },
   {
     key: "basic_meal",
-    category: "meals",
+    category: "custom_order",
     itemType: "basic_meal",
     name: name("وجبة بيسك", "Basic Meal"),
     pricingModel: "per_100g",
     priceHalala: 1900,
     availableFor: ["one_time", "subscription"],
-    ui: { cardVariant: "standard" },
+    ui: { cardVariant: "hero_builder", imageRatio: "wide" },
     groups: [
       ["carbs", 1, 2],
       ["proteins", 1, 1],
@@ -821,7 +826,7 @@ const productRows = [
     defaultWeightGrams: 100,
     availableFor: ["one_time"],
     imageUrl: "",
-    ui: { cardVariant: "standard" },
+    ui: { cardVariant: "compact_builder", imageRatio: "square" },
     groups: [
       ["leafy_greens", 0, 2, false],
       ["vegetables_legumes", 0, 19, false],
@@ -838,7 +843,7 @@ const productRows = [
     defaultWeightGrams: 150,
     availableFor: ["one_time"],
     imageUrl: "",
-    ui: { cardVariant: "standard" },
+    ui: { cardVariant: "compact_builder", imageRatio: "square" },
     groups: [
       ["fruits", 0, 9, false],
       ["sauces", 0, 1, false],
@@ -854,7 +859,7 @@ const productRows = [
     defaultWeightGrams: 200,
     availableFor: ["one_time"],
     imageUrl: "",
-    ui: { cardVariant: "standard" },
+    ui: { cardVariant: "compact_builder", imageRatio: "square" },
     groups: [
       ["fruits", 0, 5, false],
       ["sauces", 0, 1, false],

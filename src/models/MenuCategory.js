@@ -12,9 +12,21 @@ const CategoryUiSchema = new mongoose.Schema(
   {
     cardVariant: {
       type: String,
-      enum: ["meal_builder", "light_collection", "sandwich_collection", "addon_collection"],
+      enum: [
+        "meal_builder",
+        "light_collection",
+        "hero_builder_collection",
+        "compact_builder_collection",
+        "meal_collection",
+        "compact_product_collection",
+        "sandwich_collection",
+        "addon_collection",
+      ],
       default: "addon_collection",
     },
+    layout: { type: String, default: undefined },
+    behaviorHint: { type: String, enum: ["open_builder", "direct_add", "customize_optional_addons"], default: undefined },
+    priceLabelMode: { type: String, enum: ["fixed", "per_unit", "per_unit_or_from", "final_depends_on_options", "from_price"], default: undefined },
   },
   { _id: false }
 );
