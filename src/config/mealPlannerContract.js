@@ -84,12 +84,14 @@ const PREMIUM_MEAL_PROTEIN_KEYS = Object.freeze([
 ]);
 
 const SUBSCRIPTION_COLD_SANDWICH_KEYS = Object.freeze([
-  "beef_burger_sandwich",
+  "boiled_egg_cold_sandwich",
   "turkey_cold_sandwich",
-  "boiled_egg_sandwich",
-  "tuna_sandwich",
-  "mexican_chicken_sandwich",
-  "grilled_chicken_sandwich",
+  "classic_halloumi_cold_sandwich",
+  "tuna_cold_sandwich",
+  "scrambled_egg_cold_sandwich",
+  "chicken_fajita_cold_sandwich",
+  "mexican_chicken_cold_sandwich",
+  "grilled_chicken_cold_sandwich",
 ]);
 
 const STANDARD_CARB_RULES = Object.freeze({

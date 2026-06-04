@@ -9,6 +9,8 @@ require("dotenv").config();
 
 process.env.MONGODB_URI = process.env.MONGODB_URI || process.env.MONGO_URI || "mongodb://localhost:27017/basicdiet_test";
 
+const { MongoMemoryReplSet } = require("mongodb-memory-server");
+
 const { EventEmitter } = require("events");
 const https = require("https");
 const mongoose = require("mongoose");
@@ -28,6 +30,9 @@ const SaladIngredient = require("../src/models/SaladIngredient");
 const Subscription = require("../src/models/Subscription");
 const SubscriptionDay = require("../src/models/SubscriptionDay");
 const User = require("../src/models/User");
+const CatalogItem = require("../src/models/CatalogItem");
+const MenuCategory = require("../src/models/MenuCategory");
+const MenuProduct = require("../src/models/MenuProduct");
 
 const JWT_SECRET = process.env.JWT_SECRET || "supersecret";
 const app = createApp();
@@ -183,12 +188,42 @@ function installMoyasarStub() {
 }
 
 async function request(method, url, body, token) {
-  let req = supertest(app)[method.toLowerCase()](url);
-  if (token) req = req.set("Authorization", `Bearer ${token}`);
-  if (body !== undefined && body !== null) req = req.send(body);
-  const res = await req;
-  assertCanonicalResponse(res, `${method} ${url}`);
-  return res;
+  let attempts = 0;
+  const maxAttempts = 10;
+  
+  while (attempts < maxAttempts) {
+    let res;
+    try {
+      let req = supertest(app)[method.toLowerCase()](url);
+      if (token) req = req.set("Authorization", `Bearer ${token}`);
+      if (body !== undefined && body !== null) req = req.send(body);
+      res = await req;
+    } catch (err) {
+      attempts += 1;
+      if (attempts < maxAttempts) {
+        await new Promise(r => setTimeout(r, 200 + attempts * 200));
+        continue;
+      }
+      throw err;
+    }
+
+    const bodyStr = JSON.stringify(res.body || {});
+    const isTransient = res.status >= 500 && (
+      bodyStr.includes("Unable to acquire IX lock") || 
+      bodyStr.includes("catalog changes") ||
+      bodyStr.includes("WriteConflict") ||
+      bodyStr.includes("retry the operation")
+    );
+
+    if (isTransient && attempts < maxAttempts) {
+      attempts += 1;
+      await new Promise(r => setTimeout(r, 200 + attempts * 200));
+      continue;
+    }
+
+    assertCanonicalResponse(res, `${method} ${url}`);
+    return res;
+  }
 }
 
 async function seedBase() {
@@ -203,7 +238,14 @@ async function seedBase() {
     Subscription.deleteMany({}),
     SubscriptionDay.deleteMany({}),
     User.deleteMany({}),
+    CatalogItem.deleteMany({}),
+    MenuCategory.deleteMany({}),
+    MenuProduct.deleteMany({}),
   ]);
+
+  // Pre-warm collections to prevent 'catalog changes' errors during transactions in fresh environments
+  await SubscriptionDay.create({ subscriptionId: new mongoose.Types.ObjectId(), date: "2000-01-01", status: "open" });
+  await SubscriptionDay.deleteMany({});
 
   const user = await User.create({ name: "Payment Contract User", phone: "+966500000901", email: "payment-contract@example.com" });
   const token = issueAppAccessToken(user._id);
@@ -219,6 +261,7 @@ async function seedBase() {
   const proteinCategory = await BuilderCategory.create({ key: "protein", dimension: "protein", name: { ar: "بروتين", en: "Protein" }, isActive: true });
   const carbCategory = await BuilderCategory.create({ key: "standard_carbs", dimension: "carb", name: { ar: "كربوهيدرات", en: "Standard Carbs" }, isActive: true });
   const standardProtein = await BuilderProtein.create({
+    key: "chicken",
     name: { ar: "دجاج", en: "Chicken" },
     isPremium: false,
     displayCategoryKey: "chicken",
@@ -227,6 +270,7 @@ async function seedBase() {
     isActive: true,
   });
   const premiumProtein = await BuilderProtein.create({
+    key: "shrimp",
     name: { ar: "روبيان", en: "Shrimp" },
     isPremium: true,
     displayCategoryKey: "premium",
@@ -237,6 +281,7 @@ async function seedBase() {
     isActive: true,
   });
   const beefSteakProtein = await BuilderProtein.create({
+    key: "beef_steak",
     name: { ar: "ستيك لحم", en: "Beef Steak" },
     isPremium: true,
     displayCategoryKey: "premium",
@@ -246,47 +291,110 @@ async function seedBase() {
     extraFeeHalala: 2000,
     isActive: true,
   });
+  const boiledEggsProtein = await BuilderProtein.create({
+    key: "boiled_eggs",
+    name: { ar: "بيض مسلوق", en: "Boiled Eggs" },
+    isPremium: false,
+    displayCategoryKey: "eggs",
+    displayCategoryId: proteinCategory._id,
+    proteinFamilyKey: "eggs",
+    isActive: true,
+  });
   const carb = await BuilderCarb.create({
     name: { ar: "أرز", en: "Rice" },
     displayCategoryKey: "standard_carbs",
     displayCategoryId: carbCategory._id,
     isActive: true,
   });
-  const addon = await Addon.create({
+  const juicesCategory = await MenuCategory.create({ key: "juices", name: { ar: "عصائر", en: "Juices" }, isActive: true, publishedAt: new Date() });
+  const dessertsCategory = await MenuCategory.create({ key: "desserts", name: { ar: "حلويات", en: "Desserts" }, isActive: true, publishedAt: new Date() });
+  const lightOptionsCategory = await MenuCategory.create({ key: "light_options", name: { ar: "خيارات خفيفة", en: "Light Options" }, isActive: true, publishedAt: new Date() });
+
+  const saladProduct = await MenuProduct.create({
+    key: "premium_large_salad",
+    name: { ar: "سلطة بريميوم", en: "Premium Large Salad" },
+    priceHalala: 3000,
+    currency: "SAR",
+    categoryId: lightOptionsCategory._id,
+    category: "light_options",
+    itemType: "basic_salad",
+    pricingModel: "fixed",
+    availableFor: ["subscription"],
+    isActive: true,
+    isAvailable: true,
+    publishedAt: new Date(),
+  });
+
+  const addon = await MenuProduct.create({
+    key: "orange_juice",
     name: { ar: "عصير برتقال", en: "Orange Juice" },
     priceHalala: 1000,
     currency: "SAR",
-    kind: "item",
-    category: "juice",
-    billingMode: "flat_once",
+    categoryId: juicesCategory._id,
+    category: "juices",
+    itemType: "juice",
+    pricingModel: "fixed",
+    availableFor: ["one_time", "subscription"],
     isActive: true,
+    isAvailable: true,
+    publishedAt: new Date(),
   });
-  const addon1100 = await Addon.create({
+  const addon1100 = await MenuProduct.create({
+    key: "classic_green",
     name: { ar: "عصير أخضر", en: "Classic Green" },
     priceHalala: 1100,
     currency: "SAR",
-    kind: "item",
-    category: "juice",
-    billingMode: "flat_once",
+    categoryId: juicesCategory._id,
+    category: "juices",
+    itemType: "juice",
+    pricingModel: "fixed",
+    availableFor: ["one_time", "subscription"],
     isActive: true,
+    isAvailable: true,
+    publishedAt: new Date(),
   });
-  const addon1300 = await Addon.create({
+  const addon1300 = await MenuProduct.create({
+    key: "laban",
     name: { ar: "لبن", en: "Laban" },
     priceHalala: 1300,
     currency: "SAR",
-    kind: "item",
-    category: "snack",
-    billingMode: "flat_once",
+    categoryId: dessertsCategory._id,
+    category: "desserts",
+    itemType: "dessert",
+    pricingModel: "fixed",
+    availableFor: ["one_time", "subscription"],
     isActive: true,
+    isAvailable: true,
+    publishedAt: new Date(),
   });
-  const addon1900 = await Addon.create({
-    name: { ar: "سلطة جانبية", en: "Side Salad" },
+  const addon1900 = await MenuProduct.create({
+    key: "green_salad",
+    name: { ar: "سلطة خضراء", en: "Green Salad" },
     priceHalala: 1900,
     currency: "SAR",
-    kind: "item",
-    category: "small_salad",
-    billingMode: "flat_once",
+    categoryId: lightOptionsCategory._id,
+    category: "light_options",
+    itemType: "green_salad",
+    pricingModel: "fixed",
+    availableFor: ["one_time", "subscription"],
     isActive: true,
+    isAvailable: true,
+    publishedAt: new Date(),
+  });
+  // Also create legacy Addon for any v1 specific logic if still needed, but mostly we need MenuProduct now.
+  const addon1900p = await MenuProduct.create({
+    key: "fruit_salad",
+    name: { ar: "سلطة فواكه", en: "Fruit Salad" },
+    priceHalala: 1900,
+    currency: "SAR",
+    categoryId: lightOptionsCategory._id,
+    category: "light_options",
+    itemType: "fruit_salad",
+    pricingModel: "fixed",
+    availableFor: ["one_time", "subscription"],
+    isActive: true,
+    isAvailable: true,
+    publishedAt: new Date(),
   });
   const sauce = await SaladIngredient.create({
     name: { ar: "سيزر", en: "Caesar" },
@@ -315,7 +423,11 @@ async function seedBase() {
     },
   });
 
-  return { user, token, subscription, standardProtein, premiumProtein, beefSteakProtein, carb, addon, addon1100, addon1300, addon1900, sauce };
+  return { user, token, subscription,    standardProtein,
+    premiumProtein,
+    beefSteakProtein,
+    boiledEggsProtein,
+    carb, addon, addon1100, addon1300, addon1900, sauce };
 }
 
 function fullSelection({ standardProtein, premiumProtein, carb }) {
@@ -379,7 +491,7 @@ function beefSteakSelection({ standardProtein, beefSteakProtein, carb }) {
   };
 }
 
-function premiumLargeSaladSelection({ standardProtein, sauce, carb }) {
+function premiumLargeSaladSelection({ standardProtein, sauce, carb, boiledEggsProtein }) {
   return {
     mealSlots: [
       {
@@ -387,7 +499,7 @@ function premiumLargeSaladSelection({ standardProtein, sauce, carb }) {
         selectionType: "premium_large_salad",
         salad: {
           groups: {
-            protein: [String(standardProtein._id)],
+            protein: [String(boiledEggsProtein._id)],
             sauce: [String(sauce._id)],
           },
         },
@@ -872,15 +984,17 @@ async function run() {
     console.error("NODE_ENV must be test");
     process.exit(1);
   }
-  if (!process.env.MONGODB_URI || !process.env.MONGODB_URI.includes("_test")) {
-    console.error("MONGODB_URI must point at a _test database");
-    process.exit(1);
-  }
 
   const restoreMoyasar = installMoyasarStub();
+  let mongoServer;
   try {
-    await mongoose.connect(process.env.MONGODB_URI);
-    await ensureSafeForDestructiveOp(mongoose.connection.db);
+    mongoServer = await MongoMemoryReplSet.create({ replSet: { storageEngine: "wiredTiger" } });
+    const uri = mongoServer.getUri("basicdiet_payment_test");
+    process.env.MONGODB_URI = uri;
+
+    await mongoose.connect(uri);
+    await new Promise(r => setTimeout(r, 1000)); // Give replica set time to stabilize
+    await ensureSafeForDestructiveOp("seed base data");
 
     const ctx = await seedBase();
     const premium = await runPremiumFlow(ctx);
@@ -901,6 +1015,7 @@ async function run() {
   } finally {
     restoreMoyasar();
     await mongoose.disconnect();
+    if (mongoServer) await mongoServer.stop();
   }
 }
 

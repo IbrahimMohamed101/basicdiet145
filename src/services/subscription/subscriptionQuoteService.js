@@ -19,12 +19,16 @@ const {
 const { applyPromoCodeToSubscriptionQuote } = require("../promoCodeService");
 const { getRestaurantBusinessDate } = require("../restaurantHoursService");
 const { resolveCanonicalPremiumIdentity, normalizePremiumItemKey } = require("../../utils/subscription/premiumIdentity");
+const {
+  filterGloballyAvailable,
+  loadCatalogItemsByIdForDocs,
+} = require("../catalog/catalogAvailabilityService");
 
 async function findMenuPremiumOptionsByIds(ids) {
   if (!ids.length) return [];
   const group = await MenuOptionGroup.findOne({ key: "proteins", isActive: true }).lean();
   if (!group) return [];
-  return MenuOption.find({
+  const rows = await MenuOption.find({
     _id: { $in: ids },
     groupId: group._id,
     isActive: true,
@@ -38,6 +42,8 @@ async function findMenuPremiumOptionsByIds(ids) {
     ],
     extraPriceHalala: { $gt: 0 },
   }).lean();
+  const catalogItemsById = await loadCatalogItemsByIdForDocs(rows);
+  return filterGloballyAvailable(rows, catalogItemsById);
 }
 
 function mapMenuPremiumOptionForQuote(option) {

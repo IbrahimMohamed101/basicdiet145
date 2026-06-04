@@ -92,10 +92,7 @@ function run() {
   assertSameSet(seedStandardProteinKeys, STANDARD_MEAL_PROTEIN_KEYS, "seed standard proteins match contract");
   assert(publicMenuSource.includes("STANDARD_MEAL_PROTEIN_KEYS"), "public menu serializer uses standard protein contract");
 
-  const seedPremiumMealProteins = extractKeysFromObjectRows(
-    extractSeedProteinsGroupBlock(seedSource),
-    (row) => row.includes('selectionType: "premium_meal"')
-  );
+  const seedPremiumMealProteins = extractConstStringArray(seedSource, "premiumMealProteinKeys");
   assertSameSet(seedPremiumMealProteins, PREMIUM_MEAL_PROTEIN_KEYS, "seed premium meal proteins match contract");
 
   const seedCarbRows = extractConstArrayBody(seedSource, "carbRows");
@@ -104,11 +101,7 @@ function run() {
   assert(publicMenuSource.includes("CUSTOMER_VISIBLE_CARB_KEYS"), "public menu serializer uses customer-visible carb contract");
   assert(catalogServiceSource.includes("CUSTOMER_VISIBLE_CARB_KEYS"), "planner catalog uses customer-visible carb contract");
 
-  const externalProductRows = extractConstArrayBody(seedSource, "externalProductRows", "\\]\\.map");
-  const seedSubscriptionSandwiches = extractKeysFromObjectRows(
-    externalProductRows,
-    (row) => row.includes('itemType: "cold_sandwich"')
-  );
+  const seedSubscriptionSandwiches = extractConstStringArray(seedSource, "subscriptionSandwichKeys");
   assertSameSet(seedSubscriptionSandwiches, SUBSCRIPTION_COLD_SANDWICH_KEYS, "seed subscription sandwiches match contract");
   assert(catalogServiceSource.includes("SUBSCRIPTION_COLD_SANDWICH_KEYS"), "planner catalog uses subscription sandwich contract");
 

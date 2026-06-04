@@ -3,6 +3,11 @@ const MenuCategory = require("../../models/MenuCategory");
 const MenuProduct = require("../../models/MenuProduct");
 const { pickLang } = require("../../utils/i18n");
 const { normalizeProductUiMetadata } = require("../catalog/catalogKeyUiHelpers");
+const {
+  filterGloballyAvailable,
+  isLinkedDocGloballyAvailable,
+  loadCatalogItemsByIdForDocs,
+} = require("../catalog/catalogAvailabilityService");
 
 const SYSTEM_CURRENCY = "SAR";
 
@@ -114,9 +119,11 @@ async function findMappedProducts(categoryRows, mapping, { MenuProductModel = Me
     productQuery.key = { $in: mapping.productKeys };
   }
 
-  return MenuProductModel.find(productQuery)
+  const rows = await MenuProductModel.find(productQuery)
     .sort({ sortOrder: 1, createdAt: -1 })
     .lean();
+  const catalogItemsById = await loadCatalogItemsByIdForDocs(rows);
+  return filterGloballyAvailable(rows, catalogItemsById);
 }
 
 async function buildAddonChoicesCatalog({
@@ -167,6 +174,8 @@ async function resolveAddonChoiceProductById(productId, { models = {} } = {}) {
     ...availableForOneTimeQuery(),
   })).lean();
   if (!product) return null;
+  const catalogItemsById = await loadCatalogItemsByIdForDocs([product]);
+  if (!isLinkedDocGloballyAvailable(product, catalogItemsById)) return null;
 
   const category = await MenuCategoryModel.findOne(activePublishedQuery({
     _id: product.categoryId,

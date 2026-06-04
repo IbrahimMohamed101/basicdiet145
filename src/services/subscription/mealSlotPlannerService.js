@@ -3,6 +3,10 @@ const BuilderProtein = require("../../models/BuilderProtein");
 const BuilderCarb = require("../../models/BuilderCarb");
 const MenuOption = require("../../models/MenuOption");
 const MenuOptionGroup = require("../../models/MenuOptionGroup");
+const {
+  filterGloballyAvailable,
+  loadCatalogItemsByIdForDocs,
+} = require("../catalog/catalogAvailabilityService");
 const Meal = require("../../models/Meal");
 const MealCategory = require("../../models/MealCategory");
 const SaladIngredient = require("../../models/SaladIngredient");
@@ -830,7 +834,7 @@ async function buildMealSlotDraft({ mealSlots, mealsPerDayLimit, maxSlotCount = 
       : Promise.resolve({ extraFeeHalala: 0 }),
   ]);
 
-  const [menuProteins, menuCarbs, menuSaladOptions, legacyProteins, legacyCarbs, sandwichCategory, saladIngredients, catalogSandwiches] = await Promise.all([
+  const [menuProteinRows, menuCarbRows, menuSaladOptionRows, legacyProteins, legacyCarbs, sandwichCategory, saladIngredients, catalogSandwiches] = await Promise.all([
     menuProteinGroupId
       ? MenuOption.find({
         _id: { $in: validProteinIds },
@@ -896,6 +900,10 @@ async function buildMealSlotDraft({ mealSlots, mealsPerDayLimit, maxSlotCount = 
       ? Sandwich.find({ _id: { $in: validSandwichIds }, isActive: true }).session(session).lean()
       : Promise.resolve([]),
   ]);
+  const menuCatalogItemsById = await loadCatalogItemsByIdForDocs(menuProteinRows, menuCarbRows, menuSaladOptionRows);
+  const menuProteins = filterGloballyAvailable(menuProteinRows, menuCatalogItemsById);
+  const menuCarbs = filterGloballyAvailable(menuCarbRows, menuCatalogItemsById);
+  const menuSaladOptions = filterGloballyAvailable(menuSaladOptionRows, menuCatalogItemsById);
 
   let sandwichMeals = [];
   if (sandwichCategory) {

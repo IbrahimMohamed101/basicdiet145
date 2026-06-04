@@ -31,6 +31,7 @@ const ProductUiSchema = new mongoose.Schema(
 const MenuProductSchema = new mongoose.Schema(
   {
     categoryId: { type: mongoose.Schema.Types.ObjectId, ref: "MenuCategory", required: true, index: true },
+    catalogItemId: { type: mongoose.Schema.Types.ObjectId, ref: "CatalogItem", required: false, default: null, index: true },
     key: { type: String, required: true, trim: true, lowercase: true },
     name: { type: LocalizedStringSchema, default: () => ({}) },
     description: { type: LocalizedStringSchema, default: () => ({}) },

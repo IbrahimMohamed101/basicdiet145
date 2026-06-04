@@ -38,6 +38,11 @@ const {
   normalizeProductUiMetadata,
   normalizeUiMetadata,
 } = require("./catalogKeyUiHelpers");
+const {
+  filterGloballyAvailable,
+  isLinkedDocGloballyAvailable,
+  loadCatalogItemsByIdForDocs,
+} = require("./catalogAvailabilityService");
 
 const BUILDER_CATALOG_V2_VERSION = "meal_planner_menu.v2";
 const MENU_PROTEIN_GROUP_KEY = "proteins";
@@ -156,7 +161,9 @@ function inferProteinFamilyKey(option) {
 }
 
 function isPremiumMealProtein(option) {
-  const key = String(option?.key || option?.premiumKey || "").trim().toLowerCase();
+  const premiumKey = String(option?.premiumKey || "").trim().toLowerCase();
+  if (premiumKey && PREMIUM_MEAL_PROTEIN_KEY_SET.has(premiumKey)) return true;
+  const key = String(option?.key || "").trim().toLowerCase();
   return PREMIUM_MEAL_PROTEIN_KEY_SET.has(key);
 }
 
@@ -236,13 +243,15 @@ async function getGroupOptionsWithGroup(groupKey) {
   const group = await MenuOptionGroup.findOne(activeCatalogQuery({ key: groupKey })).lean();
   if (!group) return { group: null, options: [] };
 
-  const options = await MenuOption.find(activeCatalogQuery({
+  const rows = await MenuOption.find(activeCatalogQuery({
     groupId: group._id,
     availableForSubscription: { $ne: false },
     ...availableForChannelQuery("subscription"),
   }))
     .sort({ sortOrder: 1, createdAt: -1 })
     .lean();
+  const catalogItemsById = await loadCatalogItemsByIdForDocs(rows);
+  const options = filterGloballyAvailable(rows, catalogItemsById);
 
   return { group, options };
 }
@@ -270,11 +279,13 @@ async function getPremiumLargeSaladIngredients({ product, normalizedProteins, la
     .sort({ sortOrder: 1, createdAt: -1 })
     .lean();
   const optionIds = optionRelations.map((relation) => relation.optionId);
-  const options = await MenuOption.find(activeCatalogQuery({
+  const optionRows = await MenuOption.find(activeCatalogQuery({
     _id: { $in: optionIds },
     availableForSubscription: { $ne: false },
     ...availableForChannelQuery("subscription"),
   })).lean();
+  const catalogItemsById = await loadCatalogItemsByIdForDocs(optionRows);
+  const options = filterGloballyAvailable(optionRows, catalogItemsById);
   const optionsById = new Map(options.map((option) => [String(option._id), option]));
 
   const ingredients = [];
@@ -518,11 +529,13 @@ async function getPremiumLargeSaladOptionGroups({ product, normalizedProteins, l
     .sort({ sortOrder: 1, createdAt: -1 })
     .lean();
   const optionIds = optionRelations.map((relation) => relation.optionId);
-  const options = await MenuOption.find(activeCatalogQuery({
+  const optionRows = await MenuOption.find(activeCatalogQuery({
     _id: { $in: optionIds },
     availableForSubscription: { $ne: false },
     ...availableForChannelQuery("subscription"),
   })).lean();
+  const catalogItemsById = await loadCatalogItemsByIdForDocs(optionRows);
+  const options = filterGloballyAvailable(optionRows, catalogItemsById);
   const optionsById = new Map(options.map((option) => [String(option._id), option]));
   const optionRelationsByGroup = new Map();
   optionRelations.forEach((relation) => {
@@ -551,11 +564,10 @@ async function getPremiumLargeSaladOptionGroups({ product, normalizedProteins, l
     const option = optionsById.get(String(relation.optionId));
     if (!group || !option || group.key !== MENU_PROTEIN_GROUP_KEY) continue;
     const extraFeeHalala = Number(relation.extraPriceHalala ?? option.extraPriceHalala ?? 0);
-    if (extraFeeHalala > 0 || !isSubscriptionPremiumLargeSaladProtein(option)) continue;
     proteinOptionsByRelation.push(normalizeV2Option(option, lang, {
-      extraPriceHalala: 0,
-      extraFeeHalala: 0,
-      isPremium: false,
+      extraPriceHalala: extraFeeHalala,
+      extraFeeHalala,
+      isPremium: extraFeeHalala > 0,
       selectionType: MEAL_SELECTION_TYPES.STANDARD_MEAL,
     }));
   }
@@ -685,7 +697,9 @@ async function buildSubscriptionBuilderCatalogV2({ builderCatalog, context = {},
     lang,
   });
   const premiumLargeSaladV1 = builderCatalog?.premiumLargeSalad || {};
-  const premiumLargeSaladProductPayload = premiumLargeSaladProduct
+  const premiumLargeSaladProductPayload = premiumLargeSaladPricing.isCatalogUnavailable
+    ? null
+    : premiumLargeSaladProduct
     ? buildV2ProductFromMenuProduct(premiumLargeSaladProduct, lang, {
       selectionType: MEAL_SELECTION_TYPES.PREMIUM_LARGE_SALAD,
       premiumKey: premiumLargeSaladV1.premiumKey || PREMIUM_LARGE_SALAD_PREMIUM_KEY,
@@ -742,7 +756,7 @@ async function buildSubscriptionBuilderCatalogV2({ builderCatalog, context = {},
         type: "configurable_product",
         name: premiumLargeSaladV1.name || (lang === "ar" ? "سلطة كبيرة مميزة" : "Premium Large Salad"),
         ui: normalizeUiMetadata({ cardVariant: "large_salad" }),
-        products: [premiumLargeSaladProductPayload],
+        products: premiumLargeSaladProductPayload ? [premiumLargeSaladProductPayload] : [],
       },
     ],
     rules,
@@ -751,7 +765,7 @@ async function buildSubscriptionBuilderCatalogV2({ builderCatalog, context = {},
 
 async function buildSubscriptionBuilderCatalogBundle({ lang = "en", includeV2 = true } = {}) {
   const coldSandwichCategory = await MenuCategory.findOne(activeCatalogQuery({ key: "cold_sandwiches" })).lean();
-  const [proteinGroupData, carbGroupData, sandwiches, premiumLargeSaladPricing] = await Promise.all([
+  const [proteinGroupData, carbGroupData, sandwichRows, premiumLargeSaladPricing] = await Promise.all([
     getGroupOptionsWithGroup(MENU_PROTEIN_GROUP_KEY),
     getGroupOptionsWithGroup(MENU_CARB_GROUP_KEY),
     coldSandwichCategory
@@ -765,10 +779,18 @@ async function buildSubscriptionBuilderCatalogBundle({ lang = "en", includeV2 = 
       : [],
     resolvePremiumLargeSaladPricing(),
   ]);
+  const sandwichCatalogItemsById = await loadCatalogItemsByIdForDocs(sandwichRows);
+  const sandwiches = filterGloballyAvailable(sandwichRows, sandwichCatalogItemsById);
 
   const proteinOptions = proteinGroupData.options;
   const carbOptions = carbGroupData.options;
-  const premiumLargeSaladProduct = premiumLargeSaladPricing.product;
+  const premiumLargeSaladProduct = premiumLargeSaladPricing.product
+    && isLinkedDocGloballyAvailable(
+      premiumLargeSaladPricing.product,
+      await loadCatalogItemsByIdForDocs([premiumLargeSaladPricing.product])
+    )
+    ? premiumLargeSaladPricing.product
+    : null;
   if (premiumLargeSaladPricing.source === "menu_product_basic_salad_fallback") {
     console.warn("[CatalogService] premium_large_salad not found, falling back to basic_salad");
   }
@@ -817,7 +839,7 @@ async function buildSubscriptionBuilderCatalogBundle({ lang = "en", includeV2 = 
 
   const premiumLargeSalad = {
     id: MEAL_SELECTION_TYPES.PREMIUM_LARGE_SALAD,
-    enabled: Boolean(premiumLargeSaladProduct),
+    enabled: Boolean(premiumLargeSaladProduct) && !premiumLargeSaladPricing.isCatalogUnavailable,
     carbId: premiumLargeSaladProduct ? String(premiumLargeSaladProduct._id) : null,
     premiumKey: PREMIUM_LARGE_SALAD_PREMIUM_KEY,
     selectionType: MEAL_SELECTION_TYPES.PREMIUM_LARGE_SALAD,

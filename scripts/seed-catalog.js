@@ -245,11 +245,13 @@ const standardMealProteinRelations = [
   sortOrder: (index + 1) * 10,
 }));
 
-const premiumMealProteinRelations = [
+const premiumMealProteinKeys = [
   "beef_steak",
   "shrimp",
   "salmon",
-].map((key, index) => ({
+];
+
+const premiumMealProteinRelations = premiumMealProteinKeys.map((key, index) => ({
   key,
   selectionType: "premium_meal",
   displayCategoryKey: "premium",
@@ -268,7 +270,15 @@ const premiumLargeSaladProteinRelations = subscriptionPremiumLargeSaladProteinKe
   sortOrder: (index + 1) * 10,
 }));
 
-const oneTimeMealProteinRelations = ["chicken", "beef", "fish", "eggs"].map((key, index) => ({
+// Canonical basic_meal protein allowlist — must match STANDARD_MEAL_PROTEIN_KEYS in mealPlannerContract.js
+const standardProteinOptionKeys = [
+  "chicken",
+  "beef",
+  "fish",
+  "eggs",
+];
+
+const oneTimeMealProteinRelations = standardProteinOptionKeys.map((key, index) => ({
   key,
   selectionType: "basic_meal",
   displayCategoryKey: proteinRowsByKey.get(key)?.proteinFamilyKey || "other",
@@ -428,7 +438,7 @@ const saladIngredientGroupAliases = {
   sauces: "sauce",
 };
 
-const standardProteinOptionKeys = oneTimeMealProteinRelations.map((row) => row.key);
+// standardProteinOptionKeys is defined above as a literal array before oneTimeMealProteinRelations.
 
 const extraProteinByMeal = {
   beef_steak_meal_150g: "extra_beef_steak_50g",
@@ -619,11 +629,15 @@ const externalProductRows = [
     calories: 375,
     proteinFamilyKey: "beef",
   },
+  // Subscription cold-sandwich allowlist — keys must match SUBSCRIPTION_COLD_SANDWICH_KEYS in mealPlannerContract.js
   { key: "turkey_cold_sandwich", category: "cold_sandwiches", itemType: "cold_sandwich", name: name("تركي", "Turkey"), priceHalala: 1300, calories: 220, proteinFamilyKey: "other" },
-  { key: "boiled_egg_sandwich", category: "cold_sandwiches", itemType: "cold_sandwich", name: name("بيض مسلوق", "Boiled Egg"), priceHalala: 900, calories: 160, proteinFamilyKey: "eggs" },
-  { key: "tuna_sandwich", category: "cold_sandwiches", itemType: "cold_sandwich", name: name("تونا", "Tuna"), priceHalala: 1300, calories: 200, proteinFamilyKey: "fish" },
-  { key: "mexican_chicken_sandwich", category: "cold_sandwiches", itemType: "cold_sandwich", name: name("دجاج مكسيكي", "Mexican Chicken"), priceHalala: 1300, calories: 260, proteinFamilyKey: "chicken" },
-  { key: "grilled_chicken_sandwich", category: "cold_sandwiches", itemType: "cold_sandwich", name: name("دجاج مشوي", "Grilled Chicken"), priceHalala: 1300, calories: 220, proteinFamilyKey: "chicken" },
+  { key: "boiled_egg_cold_sandwich", category: "cold_sandwiches", itemType: "cold_sandwich", name: name("بيض مسلوق", "Boiled Egg"), priceHalala: 900, calories: 160, proteinFamilyKey: "eggs" },
+  { key: "tuna_cold_sandwich", category: "cold_sandwiches", itemType: "cold_sandwich", name: name("تونا", "Tuna"), priceHalala: 1300, calories: 200, proteinFamilyKey: "fish" },
+  { key: "scrambled_egg_cold_sandwich", category: "cold_sandwiches", itemType: "cold_sandwich", name: name("بيض مخفوق", "Scrambled Egg"), priceHalala: 900, calories: 150, proteinFamilyKey: "eggs" },
+  { key: "classic_halloumi_cold_sandwich", category: "cold_sandwiches", itemType: "cold_sandwich", name: name("حلوم كلاسيك", "Classic Halloumi"), priceHalala: 1100, calories: 200, proteinFamilyKey: "other" },
+  { key: "chicken_fajita_cold_sandwich", category: "cold_sandwiches", itemType: "cold_sandwich", name: name("دجاج فاهيتا", "Chicken Fajita"), priceHalala: 1300, calories: 230, proteinFamilyKey: "chicken" },
+  { key: "mexican_chicken_cold_sandwich", category: "cold_sandwiches", itemType: "cold_sandwich", name: name("دجاج مكسيكي", "Mexican Chicken"), priceHalala: 1300, calories: 260, proteinFamilyKey: "chicken" },
+  { key: "grilled_chicken_cold_sandwich", category: "cold_sandwiches", itemType: "cold_sandwich", name: name("دجاج مشوي", "Grilled Chicken"), priceHalala: 1300, calories: 220, proteinFamilyKey: "chicken" },
   {
     key: "orange_cake",
     category: "desserts",
@@ -1116,6 +1130,16 @@ async function seedProducts({ categoryMap, groupMap, optionMap, sync = false }) 
 }
 
 async function seedSandwichCompatibility(productMap, { sync = false } = {}) {
+  const subscriptionSandwichKeys = [
+    "turkey_cold_sandwich",
+    "boiled_egg_cold_sandwich",
+    "tuna_cold_sandwich",
+    "scrambled_egg_cold_sandwich",
+    "classic_halloumi_cold_sandwich",
+    "chicken_fajita_cold_sandwich",
+    "mexican_chicken_cold_sandwich",
+    "grilled_chicken_cold_sandwich",
+  ];
   const sandwichProducts = productRows.filter((row) => ["cold_sandwich", "sourdough"].includes(row.itemType));
   for (let index = 0; index < sandwichProducts.length; index += 1) {
     const row = sandwichProducts[index];

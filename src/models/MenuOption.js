@@ -27,6 +27,7 @@ const NutritionSchema = new mongoose.Schema(
 const MenuOptionSchema = new mongoose.Schema(
   {
     groupId: { type: mongoose.Schema.Types.ObjectId, ref: "MenuOptionGroup", required: true, index: true },
+    catalogItemId: { type: mongoose.Schema.Types.ObjectId, ref: "CatalogItem", required: false, default: null, index: true },
     key: { type: String, required: true, trim: true, lowercase: true },
     name: { type: LocalizedStringSchema, default: () => ({}) },
     description: { type: LocalizedStringSchema, default: () => ({}) },

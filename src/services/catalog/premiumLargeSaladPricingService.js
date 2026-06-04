@@ -1,5 +1,9 @@
 const MenuProduct = require("../../models/MenuProduct");
 const {
+  isLinkedDocGloballyAvailable,
+  loadCatalogItemsByIdForDocs,
+} = require("./catalogAvailabilityService");
+const {
   PREMIUM_LARGE_SALAD_FIXED_PRICE_HALALA,
   PREMIUM_LARGE_SALAD_PREMIUM_KEY,
 } = require("../../config/mealPlannerContract");
@@ -33,14 +37,24 @@ async function findPublishedPremiumLargeSaladProduct({ session = null } = {}) {
     key: PREMIUM_LARGE_SALAD_PRODUCT_KEY,
   }));
   const primary = await (session ? primaryQuery.session(session) : primaryQuery).lean();
-  if (primary) return { product: primary, productKey: PREMIUM_LARGE_SALAD_PRODUCT_KEY, isFallbackProduct: false };
+  if (primary) {
+    const catalogItemsById = await loadCatalogItemsByIdForDocs([primary]);
+    if (isLinkedDocGloballyAvailable(primary, catalogItemsById)) {
+      return { product: primary, productKey: PREMIUM_LARGE_SALAD_PRODUCT_KEY, isFallbackProduct: false };
+    }
+    return { product: null, productKey: PREMIUM_LARGE_SALAD_PRODUCT_KEY, isFallbackProduct: false, isCatalogUnavailable: true };
+  }
 
   const fallbackQuery = MenuProduct.findOne(activeSubscriptionProductQuery({
     key: PREMIUM_LARGE_SALAD_FALLBACK_PRODUCT_KEY,
   }));
   const fallback = await (session ? fallbackQuery.session(session) : fallbackQuery).lean();
   if (fallback) {
-    return { product: fallback, productKey: PREMIUM_LARGE_SALAD_FALLBACK_PRODUCT_KEY, isFallbackProduct: true };
+    const catalogItemsById = await loadCatalogItemsByIdForDocs([fallback]);
+    if (isLinkedDocGloballyAvailable(fallback, catalogItemsById)) {
+      return { product: fallback, productKey: PREMIUM_LARGE_SALAD_FALLBACK_PRODUCT_KEY, isFallbackProduct: true };
+    }
+    return { product: null, productKey: PREMIUM_LARGE_SALAD_FALLBACK_PRODUCT_KEY, isFallbackProduct: true, isCatalogUnavailable: true };
   }
 
   return { product: null, productKey: null, isFallbackProduct: false };
@@ -48,6 +62,20 @@ async function findPublishedPremiumLargeSaladProduct({ session = null } = {}) {
 
 async function resolvePremiumLargeSaladPricing({ session = null } = {}) {
   const { product, productKey, isFallbackProduct } = await findPublishedPremiumLargeSaladProduct({ session });
+  if (!product && isFallbackProduct !== undefined && productKey) {
+    return {
+      premiumKey: PREMIUM_LARGE_SALAD_PREMIUM_KEY,
+      product: null,
+      productId: null,
+      productKey,
+      priceHalala: 0,
+      extraFeeHalala: 0,
+      currency: "SAR",
+      source: "catalog_item_unavailable",
+      isLegacyFallback: false,
+      isCatalogUnavailable: true,
+    };
+  }
   const productPriceHalala = resolveProductPriceHalala(product);
 
   if (product && productPriceHalala !== null) {

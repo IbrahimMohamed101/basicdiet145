@@ -720,7 +720,17 @@ async function performDaySelectionUpdate({ userId, subscriptionId, date, selecti
 
     await session.commitTransaction();
     session.endSession();
-    return { subscription: subInSession, day, idempotent: false };
+    return {
+      subscription: subInSession,
+      day,
+      idempotent: false,
+      plannerRevisionHash: day.plannerRevisionHash,
+      premiumSummary: day.premiumSummary,
+      addonSummary: buildDayCommercialState(day).addonSummary,
+      premiumExtraPayment: day.premiumExtraPayment,
+      paymentRequirement: day.paymentRequirement,
+      commercialState: day.commercialState,
+    };
   } catch (err) {
     if (session.inTransaction()) await session.abortTransaction();
     session.endSession();
@@ -795,6 +805,7 @@ async function performDaySelectionValidation({
     addonSelections,
     plannerRevisionHash: derivedDraftState.plannerRevisionHash,
     premiumSummary: derivedDraftState.premiumSummary,
+    addonSummary: derivedDraftState.addonSummary,
     premiumExtraPayment: derivedDraftState.premiumExtraPayment,
     paymentRequirement: derivedDraftState.paymentRequirement,
     commercialState: derivedDraftState.commercialState,

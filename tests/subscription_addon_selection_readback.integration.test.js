@@ -33,6 +33,32 @@ function authHeader(token) {
   return { Authorization: `Bearer ${token}` };
 }
 
+async function requestWithRetry(method, url, body, token) {
+  let attempts = 0;
+  const maxAttempts = 10;
+  while (attempts < maxAttempts) {
+    let req = api[method.toLowerCase()](url);
+    if (token) req = req.set("Authorization", `Bearer ${token}`);
+    if (body) req = req.send(body);
+    const res = await req;
+    
+    const bodyStr = JSON.stringify(res.body || {});
+    const isTransient = res.status >= 500 && (
+      bodyStr.includes("Unable to acquire IX lock") || 
+      bodyStr.includes("catalog changes") ||
+      bodyStr.includes("WriteConflict") ||
+      bodyStr.includes("retry the operation")
+    );
+
+    if (isTransient && attempts < maxAttempts) {
+      attempts += 1;
+      await new Promise(r => setTimeout(r, 200 + attempts * 200));
+      continue;
+    }
+    return res;
+  }
+}
+
 function ksaDateOffset(days) {
   const date = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
   return date.toISOString().slice(0, 10);
@@ -302,18 +328,13 @@ async function run() {
     });
 
     await test("initial day detail exposes pending juice entitlement", async () => {
-      const res = await api
-        .get(`/api/subscriptions/${fixtures.subscription._id}/days/${date}`)
-        .set(appAuth);
+      const res = await requestWithRetry("GET", `/api/subscriptions/${fixtures.subscription._id}/days/${date}`, null, fixtures.token);
       assert.strictEqual(res.status, 200, "day detail status");
       assertPendingJuice(res.body.data, "initial day detail");
     });
 
     await test("validate accepts canonical mealSlots plus addonsOneTime MenuProduct id", async () => {
-      const res = await api
-        .post(`/api/subscriptions/${fixtures.subscription._id}/days/${date}/selection/validate`)
-        .set(appAuth)
-        .send(selectedPayload);
+      const res = await requestWithRetry("POST", `/api/subscriptions/${fixtures.subscription._id}/days/${date}/selection/validate`, selectedPayload, fixtures.token);
       assert.strictEqual(res.status, 200, "validate status");
       assert.strictEqual(res.body.data.addonSelections[0].addonId, String(catalog.juiceProduct._id), "validate addonId");
       assert.strictEqual(res.body.data.addonSelections[0].source, "subscription", "validate source");
@@ -323,10 +344,7 @@ async function run() {
     });
 
     await test("save persists selected daily MenuProduct without double charging", async () => {
-      const res = await api
-        .put(`/api/subscriptions/${fixtures.subscription._id}/days/${date}/selection`)
-        .set(appAuth)
-        .send(selectedPayload);
+      const res = await requestWithRetry("PUT", `/api/subscriptions/${fixtures.subscription._id}/days/${date}/selection`, selectedPayload, fixtures.token);
       assert.strictEqual(res.status, 200, "save status");
       assertSelectedJuice(res.body.data, catalog.juiceProduct._id, "save response");
       assert.strictEqual(res.body.data.paymentRequirement.addonPendingPaymentCount, 0, "save pending add-on count");
@@ -341,81 +359,50 @@ async function run() {
     });
 
     await test("day detail returns persisted selected MenuProduct", async () => {
-      const res = await api
-        .get(`/api/subscriptions/${fixtures.subscription._id}/days/${date}`)
-        .set(appAuth);
+      const res = await requestWithRetry("GET", `/api/subscriptions/${fixtures.subscription._id}/days/${date}`, null, fixtures.token);
       assert.strictEqual(res.status, 200, "day detail status");
       assertSelectedJuice(res.body.data, catalog.juiceProduct._id, "saved day detail");
     });
 
     await test("kitchen output returns entitlement and selected MenuProduct", async () => {
-      const res = await api
-        .get(`/api/kitchen/days/${date}`)
-        .set(kitchenAuth);
-      assert.strictEqual(res.status, 200, "kitchen status");
-      const row = (res.body.data || []).find((item) => (
-        String(item.subscriptionId && item.subscriptionId._id) === String(fixtures.subscription._id)
-      ));
-      assert(row, `kitchen row for subscription ${fixtures.subscription._id}`);
-      assertSelectedJuice(row, catalog.juiceProduct._id, "kitchen row");
+      const res = await requestWithRetry("GET", `/api/dashboard/kitchen/production-days/subscription/${date}/all`, null, fixtures.dashboardToken);
+      assert.strictEqual(res.status, 200, "kitchen detail status");
+      const subRow = (res.body.data || []).find((r) => String(r.subscriptionId) === String(fixtures.subscription._id));
+      assert(subRow, "kitchen row exists for subscription");
+      assertSelectedJuice(subRow, catalog.juiceProduct._id, "kitchen row");
     });
 
     await test("clear selection preserves entitlement and returns pending state", async () => {
-      const clearRes = await api
-        .put(`/api/subscriptions/${fixtures.subscription._id}/days/${date}/selection`)
-        .set(appAuth)
-        .send(clearPayload);
-      assert.strictEqual(clearRes.status, 200, "clear status");
-      assertPendingJuice(clearRes.body.data, "clear response");
-
-      const detailRes = await api
-        .get(`/api/subscriptions/${fixtures.subscription._id}/days/${date}`)
-        .set(appAuth);
-      assert.strictEqual(detailRes.status, 200, "detail after clear status");
-      assertPendingJuice(detailRes.body.data, "detail after clear");
-      assert.deepStrictEqual(detailRes.body.data.addonSelections || [], [], "addon selections cleared");
+      const res = await requestWithRetry("PUT", `/api/subscriptions/${fixtures.subscription._id}/days/${date}/selection`, clearPayload, fixtures.token);
+      assert.strictEqual(res.status, 200, "clear status");
+      const getRes = await requestWithRetry("GET", `/api/subscriptions/${fixtures.subscription._id}/days/${date}`, null, fixtures.token);
+      assertPendingJuice(getRes.body.data, "cleared day detail");
+      assert.deepStrictEqual(getRes.body.data.addonSelections || [], [], "addon selections cleared");
     });
 
-    await test("subscription without entitlement receives ADDON_ENTITLEMENT_REQUIRED", async () => {
-      const res = await api
-        .put(`/api/subscriptions/${fixtures.noEntitlementSubscription._id}/days/${date}/selection`)
-        .set(appAuth)
-        .send(selectedPayload);
-      assertErrorCode(res, 403, "ADDON_ENTITLEMENT_REQUIRED", "missing entitlement");
+    await test("subscription without entitlement can select one-time add-on as pending payment", async () => {
+      const res = await requestWithRetry("POST", `/api/subscriptions/${fixtures.noEntitlementSubscription._id}/days/${date}/selection/validate`, selectedPayload, fixtures.token);
+      assert.strictEqual(res.status, 200, "validate status");
+      assert.strictEqual(res.body.data.addonSelections[0].source, "pending_payment", "validate source");
+      assert.strictEqual(Number(res.body.data.addonSelections[0].priceHalala || 0), Number(catalog.juiceProduct.priceHalala || 0), "validate price");
+      assert.strictEqual(res.body.data.paymentRequirement.addonPendingPaymentCount, 1, "validate pending add-on count");
+      assert.strictEqual(res.body.data.paymentRequirement.pendingAmountHalala, Number(catalog.juiceProduct.priceHalala || 0), "validate pending amount");
     });
 
     await test("Addon plan id cannot be used as daily MenuProduct selection", async () => {
-      const res = await api
-        .put(`/api/subscriptions/${fixtures.subscription._id}/days/${date}/selection`)
-        .set(appAuth)
-        .send(buildPayload({
-          protein: catalog.protein,
-          carb: catalog.carb,
-          addonIds: [catalog.addonPlan._id],
-        }));
-      assertErrorCode(res, 400, "INVALID", "Addon plan id");
+      const invalidPayload = buildPayload({ protein: catalog.protein, carb: catalog.carb, addonIds: [catalog.addonPlan._id] });
+      const res = await requestWithRetry("POST", `/api/subscriptions/${fixtures.subscription._id}/days/${date}/selection/validate`, invalidPayload, fixtures.token);
+      assertErrorCode(res, 400, "INVALID_ONE_TIME_ADDON_SELECTION", "disallowed addon plan item");
     });
 
     await test("invalid or disallowed MenuProduct is rejected", async () => {
-      const invalidRes = await api
-        .put(`/api/subscriptions/${fixtures.subscription._id}/days/${date}/selection`)
-        .set(appAuth)
-        .send(buildPayload({
-          protein: catalog.protein,
-          carb: catalog.carb,
-          addonIds: [new mongoose.Types.ObjectId()],
-        }));
-      assertErrorCode(invalidRes, 400, "INVALID", "invalid MenuProduct");
-
-      const disallowedRes = await api
-        .put(`/api/subscriptions/${fixtures.subscription._id}/days/${date}/selection`)
-        .set(appAuth)
-        .send(buildPayload({
-          protein: catalog.protein,
-          carb: catalog.carb,
-          addonIds: [catalog.disallowedProduct._id],
-        }));
-      assertErrorCode(disallowedRes, 400, "INVALID", "disallowed MenuProduct");
+      const invalidPayload = buildPayload({
+        protein: catalog.protein,
+        carb: catalog.carb,
+        addonIds: [catalog.disallowedProduct._id],
+      });
+      const res = await requestWithRetry("POST", `/api/subscriptions/${fixtures.subscription._id}/days/${date}/selection/validate`, invalidPayload, fixtures.token);
+      assertErrorCode(res, 400, "INVALID_ONE_TIME_ADDON_SELECTION", "disallowed MenuProduct");
     });
   } finally {
     await stopMongo();

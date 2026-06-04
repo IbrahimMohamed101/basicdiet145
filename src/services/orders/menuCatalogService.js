@@ -13,6 +13,11 @@ const Sandwich = require("../../models/Sandwich");
 const Setting = require("../../models/Setting");
 const { pickLang } = require("../../utils/i18n");
 const {
+  assertCatalogItemLinkable,
+  filterGloballyAvailable,
+  loadCatalogItemsByIdForDocs,
+} = require("../catalog/catalogAvailabilityService");
+const {
   CUSTOMER_VISIBLE_CARB_KEYS,
   STANDARD_MEAL_PROTEIN_KEYS,
   buildProteinOptionSections,
@@ -48,7 +53,6 @@ const PRODUCT_ITEM_TYPES = [
 ];
 const CUSTOMER_VISIBLE_CARB_KEY_SET = new Set(CUSTOMER_VISIBLE_CARB_KEYS);
 const BASIC_MEAL_PUBLIC_GROUP_KEY_SET = new Set(["carbs", "proteins"]);
-const BASIC_MEAL_STANDARD_PROTEIN_KEY_SET = new Set(STANDARD_MEAL_PROTEIN_KEYS);
 const HIDDEN_PUBLIC_PRODUCT_KEYS = new Set(["small_salad"]);
 const PUBLIC_PRODUCT_CATEGORY_KEY_OVERRIDES = new Map([
   ["basic_meal", "meals"],
@@ -80,6 +84,12 @@ function assertObjectId(value, fieldName = "id") {
   return String(value);
 }
 
+function normalizeOptionalObjectId(value, fieldName = "id", fallback = null) {
+  if (value === undefined) return fallback;
+  if (value === null || value === "") return null;
+  return assertObjectId(value, fieldName);
+}
+
 async function mirrorCompatibilityImage(Model, id, imageUrl) {
   await Model.updateOne({ _id: id }, { $set: { imageUrl: String(imageUrl || "").trim() } });
 }
@@ -107,6 +117,19 @@ function assertImmutableKey(body, existing, fieldName = "key") {
   const nextKey = normalizeKey(body[fieldName], fieldName);
   if (nextKey !== existing[fieldName]) {
     throw new MenuValidationError(`${fieldName} is immutable`, "IMMUTABLE_KEY", 400, { fieldName });
+  }
+}
+
+function assertImmutableCatalogItemLink(body, existing) {
+  if (!existing || !Object.prototype.hasOwnProperty.call(body || {}, "catalogItemId")) return;
+  const current = existing.catalogItemId ? String(existing.catalogItemId) : "";
+  const next = body.catalogItemId === null || body.catalogItemId === "" || body.catalogItemId === undefined
+    ? ""
+    : assertObjectId(body.catalogItemId, "catalogItemId");
+  if (current && next !== current) {
+    throw new MenuValidationError("catalogItemId link is immutable after first assignment", "IMMUTABLE_CATALOG_ITEM_LINK", 400, {
+      fieldName: "catalogItemId",
+    });
   }
 }
 
@@ -367,9 +390,6 @@ function isCustomerVisibleGroup(product, group) {
 
 function isCustomerVisibleOption(option, group, product) {
   if (group?.key === "carbs") return CUSTOMER_VISIBLE_CARB_KEY_SET.has(option.key);
-  if (product?.key === "basic_meal" && group?.key === "proteins") {
-    return BASIC_MEAL_STANDARD_PROTEIN_KEY_SET.has(option.key);
-  }
   return !Array.isArray(option.ruleTags) || !option.ruleTags.includes("missing_external");
 }
 
@@ -409,7 +429,7 @@ async function getPublishedMenu({ lang = "en", branchId = "" } = {}) {
     categoryQuery.$or = [{ "availability.branchIds": { $size: 0 } }, { "availability.branchIds": branchId }];
   }
 
-  const [categories, products, groupRelations, optionRelations, groups, options, vatPercentageRaw] = await Promise.all([
+  const [categories, productRows, groupRelations, optionRelations, groups, optionRows, vatPercentageRaw] = await Promise.all([
     MenuCategory.find(categoryQuery).sort({ sortOrder: 1, createdAt: -1 }).lean(),
     MenuProduct.find(productQuery).sort({ sortOrder: 1, createdAt: -1 }).lean(),
     ProductOptionGroup.find(customerRelationQuery()).sort({ sortOrder: 1, createdAt: -1 }).lean(),
@@ -418,6 +438,9 @@ async function getPublishedMenu({ lang = "en", branchId = "" } = {}) {
     MenuOption.find(customerCatalogQuery(availableForChannelQuery("one_time"))).lean(),
     getSettingValue("vat_percentage", 0),
   ]);
+  const catalogItemsById = await loadCatalogItemsByIdForDocs(productRows, optionRows);
+  const products = filterGloballyAvailable(productRows, catalogItemsById);
+  const options = filterGloballyAvailable(optionRows, catalogItemsById);
 
   const categoryIds = new Set(categories.map((category) => String(category._id)));
   const categoriesById = new Map(categories.map((category) => [String(category._id), category]));
@@ -601,6 +624,7 @@ function normalizeCategoryPayload(body = {}, existing = null) {
 function normalizeProductPayload(body = {}, existing = null) {
   if (!isPlainObject(body)) throw new MenuValidationError("Request body must be an object");
   assertImmutableKey(body, existing, "key");
+  assertImmutableCatalogItemLink(body, existing);
   const hasUi = body.ui !== undefined;
   if (
     hasUi
@@ -621,6 +645,7 @@ function normalizeProductPayload(body = {}, existing = null) {
   }
   return {
     categoryId: body.categoryId === undefined && existing ? existing.categoryId : assertObjectId(body.categoryId, "categoryId"),
+    catalogItemId: normalizeOptionalObjectId(body.catalogItemId, "catalogItemId", existing ? (existing.catalogItemId || null) : null),
     key: body.key === undefined && existing ? existing.key : normalizeOptionalKey(body.key),
     name: body.name === undefined && existing ? existing.name : localizedString(body.name, "name", { required: true }),
     description: optionalLocalizedString(body.description, "description") || (existing ? existing.description : { ar: "", en: "" }),
@@ -674,6 +699,7 @@ function normalizeGroupPayload(body = {}, existing = null) {
 function normalizeOptionPayload(body = {}, existing = null) {
   if (!isPlainObject(body)) throw new MenuValidationError("Request body must be an object");
   assertImmutableKey(body, existing, "key");
+  assertImmutableCatalogItemLink(body, existing);
 
   let extraPriceHalala = normalizeNonNegativeInteger(body.extraPriceHalala, "extraPriceHalala", existing ? existing.extraPriceHalala : 0);
   let extraFeeHalala = normalizeNonNegativeInteger(body.extraFeeHalala, "extraFeeHalala", existing ? (existing.extraFeeHalala || 0) : 0);
@@ -686,6 +712,7 @@ function normalizeOptionPayload(body = {}, existing = null) {
 
   return {
     groupId: body.groupId === undefined && existing ? existing.groupId : assertObjectId(body.groupId, "groupId"),
+    catalogItemId: normalizeOptionalObjectId(body.catalogItemId, "catalogItemId", existing ? (existing.catalogItemId || null) : null),
     key: body.key === undefined && existing ? existing.key : normalizeOptionalKey(body.key),
     name: body.name === undefined && existing ? existing.name : localizedString(body.name, "name", { required: true }),
     description: optionalLocalizedString(body.description, "description") || (existing ? existing.description : { ar: "", en: "" }),
@@ -994,7 +1021,9 @@ async function createProductGroup(productId, body, actor = {}) {
   if (!group) throw new MenuNotFoundError("Option group not found");
   const relation = await createEntity(ProductOptionGroup, payload, { entityType: "menu_product_group", actor });
   
-  const options = await MenuOption.find({ groupId: payload.groupId, isActive: true }).lean();
+  const optionRows = await MenuOption.find({ groupId: payload.groupId, isActive: true }).lean();
+  const catalogItemsById = await loadCatalogItemsByIdForDocs(optionRows);
+  const options = filterGloballyAvailable(optionRows, catalogItemsById);
   if (options.length > 0) {
     const optionRelations = options.map((opt) => ({
       productId,
@@ -1645,6 +1674,7 @@ module.exports = {
     }
     const category = await MenuCategory.findOne({ _id: payload.categoryId, isActive: true }).lean();
     if (!category) throw new MenuValidationError("categoryId does not reference an active category", "CATEGORY_NOT_FOUND", 404);
+    if (payload.catalogItemId) await assertCatalogItemLinkable(payload.catalogItemId);
     return createEntity(MenuProduct, payload, { entityType: "menu_product", actor });
   },
   createOptionGroup: async (body, actor) => {
@@ -1667,6 +1697,7 @@ module.exports = {
         exists: (key) => MenuOption.exists({ groupId: payload.groupId, key }),
       });
     }
+    if (payload.catalogItemId) await assertCatalogItemLinkable(payload.catalogItemId);
     return createEntity(MenuOption, payload, { entityType: "menu_option", actor });
   },
   updateCategory: async (id, body, actor) => {
@@ -1681,6 +1712,9 @@ module.exports = {
     const payload = normalizeProductPayload(body, existing);
     const category = await MenuCategory.findOne({ _id: payload.categoryId, isActive: true }).lean();
     if (!category) throw new MenuValidationError("categoryId does not reference an active category", "CATEGORY_NOT_FOUND", 404);
+    if (payload.catalogItemId && String(payload.catalogItemId) !== String(existing.catalogItemId || "")) {
+      await assertCatalogItemLinkable(payload.catalogItemId);
+    }
     const product = await updateEntity(MenuProduct, id, payload, { entityType: "menu_product", actor, action: changeAction(payload) });
     await mirrorCompatibilityImage(Sandwich, id, payload.imageUrl);
     return product;
@@ -1695,6 +1729,9 @@ module.exports = {
     const existing = await MenuOption.findById(assertObjectId(id)).lean();
     if (!existing) throw new MenuNotFoundError();
     const payload = normalizeOptionPayload(body, existing);
+    if (payload.catalogItemId && String(payload.catalogItemId) !== String(existing.catalogItemId || "")) {
+      await assertCatalogItemLinkable(payload.catalogItemId);
+    }
     const option = await updateEntity(MenuOption, id, payload, { entityType: "menu_option", actor, action: changeAction(payload) });
     await mirrorCompatibilityImage(BuilderProtein, id, payload.imageUrl);
     return option;
