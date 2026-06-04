@@ -76,6 +76,42 @@ Remaining assumptions:
 - Never expose JWT tokens, dashboard tokens, secrets, or `.env` values in logs, screenshots, tickets, docs, or chat.
 - Redact user phone numbers and payment/provider IDs in shared QA evidence.
 
+### Create QA Subscription + Day Validation QA
+
+Use this only after explicit project-owner approval for controlled QA writes.
+
+Script:
+
+```bash
+QA_ALLOW_SUBSCRIPTION_WRITE=true \
+APP_TOKEN="..." \
+DASHBOARD_TOKEN="..." \
+node qa-create-subscription-and-validate.js
+```
+
+What it does:
+
+- Resolves the app user from `APP_TOKEN` without printing the token.
+- Resolves the canonical `subscription_7_days` plan at `100g` and `1` meal/day.
+- Runs dashboard quote/create for a clearly QA-tagged subscription.
+- Does not run checkout, payment, or provider flows.
+- Runs validation-only `POST /api/subscriptions/:id/days/:date/selection/validate` through `qa-subscription-day-validation.js`.
+- Attempts safe dashboard cancellation after the validation run.
+
+Optional:
+
+- Set `QA_KEEP_SUBSCRIPTION=true` to leave the QA subscription active for manual inspection.
+- Set `QA_DAYS_OFFSET=3` to choose a different start-date offset.
+- Set `QA_DEBUG_CATALOG=true` to print compact catalog extraction diagnostics from the validation script.
+
+Safety constraints:
+
+- Requires `QA_ALLOW_SUBSCRIPTION_WRITE=true`.
+- Requires both `APP_TOKEN` and `DASHBOARD_TOKEN`.
+- Creates a QA subscription only for the owner represented by `APP_TOKEN`.
+- Does not seed, bootstrap, reset, use `ALLOW_CATALOG_RESET`, create real checkout/payment/provider records, create orders, or hard-delete data.
+- If cleanup cannot safely cancel the QA subscription, the script prints the subscription id and a warning for manual cancellation.
+
 ## 1. QA Environment
 
 | Item | Value |
@@ -961,3 +997,24 @@ Do not run destructive delete/update commands.
 6. Validation tests after explicit approval.
 7. Payment pending tests after explicit approval.
 8. Final `PASS`/`WARN`/`FAIL` report.
+
+## [QA_PROD_READY] Premium + Add-on Pending Payment QA
+
+**Goal**: Verify that unified day payments correctly handle the combination of premium meal surcharges and one-time add-ons.
+
+### Test Payload
+- **Meal**: `beef_steak` (Premium) -> Expected +20.00 SAR (2000 halala)
+- **Add-on**: `Juice` (Subscription Add-on) -> Expected +11.00 SAR (1100 halala)
+- **Total Pending**: 31.00 SAR (3100 halala)
+
+### Verification Steps
+1. [ ] Create Manual QA Subscription (Dashboard).
+2. [ ] Identify a non-locked future date.
+3. [ ] Set selection with `beef_steak` and `Juice`.
+4. [ ] Trigger `POST /api/subscriptions/:id/days/:date/payments`.
+5. [ ] Verify `GET /api/subscriptions/:id/timeline` shows the date as `pending_payment` with correct balance.
+
+### Safety Status
+- **Write Access**: Required (`QA_ALLOW_PAYMENT_PENDING_WRITE=true`).
+- **Payment Processing**: Mock/Initiated only (No real checkout).
+- **Cleanup**: Forced cancellation after test.

@@ -977,6 +977,25 @@ async function runTests() {
     });
   });
 
+  await test('standard plate accepts extended variant proteins (e.g. chicken_fajita)', async () => {
+    await withMockedPlannerCatalog({}, async () => {
+      const result = await buildMealSlotDraft({
+        mealSlots: [
+          {
+            slotIndex: 1,
+            selectionType: 'standard_meal',
+            proteinId: IDS.allowedSaladProtein, // chicken_fajita is isPremium: false
+            carbs: [{ carbId: IDS.carbOne, grams: 150 }],
+          },
+        ],
+        mealsPerDayLimit: 1,
+        subscription: { premiumBalance: [] },
+      });
+      expectTrue(result.valid, 'draft valid');
+      expectEqual(result.processedSlots[0].proteinId, IDS.allowedSaladProtein, 'persisted extended protein id');
+    });
+  });
+
   await test('premium plate rejects sandwichId or salad extras', async () => {
     await withMockedPlannerCatalog({}, async () => {
       const result = await buildMealSlotDraft({

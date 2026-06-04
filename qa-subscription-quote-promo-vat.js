@@ -279,26 +279,6 @@ async function main() {
 
   const createdPromos = [];
   try {
-    const fixedCode = `QA_SUB_FIXED_10_${Date.now()}`;
-    const percentCode = `QA_SUB_PERCENT_10_${Date.now()}`;
-
-    const fixedPromo = await createPromo(buildPromoPayload({
-      code: fixedCode,
-      discountType: "fixed",
-      discountValue: 1000,
-    }));
-    createdPromos.push(fixedPromo);
-    pass("Created fixed QA promo code");
-
-    const percentPromo = await createPromo(buildPromoPayload({
-      code: percentCode,
-      discountType: "percentage",
-      discountValue: 10,
-      maxDiscountAmountHalala: 1500,
-    }));
-    createdPromos.push(percentPromo);
-    pass("Created percentage QA promo code");
-
     const plansJson = await requestJson("GET", "/api/plans", { token: appToken });
     const plans = dataArray(plansJson);
     const plan = plans.find((item) => getPlanKey(item) === EXPECTED_PLAN_KEY);
@@ -323,6 +303,26 @@ async function main() {
       fail(`Expected basePlanPriceHalala=${EXPECTED_BASE_PRICE_HALALA}, got ${basePlanPriceHalala}`);
       throw new Error("Cannot continue with unexpected base plan price");
     }
+
+    const fixedCode = `QA_SUB_FIXED_10_${Date.now()}`;
+    const percentCode = `QA_SUB_PERCENT_10_${Date.now()}`;
+
+    const fixedPromo = await createPromo(buildPromoPayload({
+      code: fixedCode,
+      discountType: "fixed",
+      discountValue: 1000,
+    }));
+    createdPromos.push(fixedPromo);
+    pass("Created fixed QA promo code");
+
+    const percentPromo = await createPromo(buildPromoPayload({
+      code: percentCode,
+      discountType: "percentage",
+      discountValue: 10,
+      maxDiscountAmountHalala: 1500,
+    }));
+    createdPromos.push(percentPromo);
+    pass("Created percentage QA promo code");
 
     const quoteWithoutPromo = await quote(planId);
     const withoutPromoBreakdown = quoteWithoutPromo.breakdown;

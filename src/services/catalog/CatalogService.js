@@ -18,6 +18,7 @@ const {
   SUBSCRIPTION_COLD_SANDWICH_KEYS,
   SUBSCRIPTION_PREMIUM_LARGE_SALAD_EXCLUDED_GROUP_KEYS,
   SUBSCRIPTION_PREMIUM_LARGE_SALAD_PROTEIN_KEYS,
+  STANDARD_MEAL_EXTENDED_PROTEIN_KEY_SET,
   buildProteinOptionSections,
   getProteinFamilyNameI18n,
   getMealPlannerCategoryDefinition,
@@ -761,7 +762,19 @@ async function buildSubscriptionBuilderCatalogBundle({ lang = "en", includeV2 = 
       });
     })
     .sort(sortByCatalogOrder);
-  const mealProteins = normalizedProteins.filter((protein) => !hasRuleTag(protein, "salad_only"));
+
+  // mealProteins: proteins that are not salad-only AND are in the extended display set.
+  // The extended display set includes standard variants (chicken_fajita, meatballs, etc.)
+  // and premium proteins (beef_steak, shrimp, salmon) for display in the picker Tabs.
+  // Proteins that are salad_only AND not in the extended set are excluded from the meal picker
+  // (they remain available only for premium_large_salad selection).
+  const mealProteins = normalizedProteins.filter((protein) => {
+    const isSaladOnly = hasRuleTag(protein, "salad_only");
+    if (!isSaladOnly) return true; // always include non-salad-only proteins
+    // Include salad_only proteins if they appear in the extended display set
+    const key = String(protein.key || "").trim().toLowerCase();
+    return STANDARD_MEAL_EXTENDED_PROTEIN_KEY_SET.has(key);
+  });
   const proteins = mealProteins.filter((protein) => !protein.isPremium);
   const premiumProteins = mealProteins.filter((protein) => protein.isPremium);
 

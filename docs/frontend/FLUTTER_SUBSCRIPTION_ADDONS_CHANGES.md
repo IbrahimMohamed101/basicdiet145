@@ -86,3 +86,26 @@ Flutter must use technical ids and keys from the response. Do not depend on Arab
 3. Use `GET /api/subscriptions/addon-choices` in day-selection screens.
 4. Filter visible groups by subscribed entitlement category.
 5. Submit `MenuProduct` id/key for the selected daily item according to the day-planning contract.
+
+## Protein Picker Tabs (V2)
+
+The `data.builderCatalogV2.sections` inside `standard_meal.products[0]` in the meal planner catalog endpoint returns a dynamically structured list of protein families (tabs).
+
+### Tab Structure
+The `optionSections` array provides the following 5 UI tabs for Flutter to render:
+- `chicken` (دجاج)
+- `beef` (لحم)
+- `fish` (سمك)
+- `eggs` (بيض)
+- `premium` (مميز)
+
+**Data Layout:**
+- Variant proteins (e.g., `chicken_fajita`, `spicy_chicken`, `meatballs`) are natively grouped under their respective biological family tabs (`chicken`, `beef`).
+- Premium proteins (e.g., `beef_steak`, `salmon`, `shrimp`) are explicitly grouped under the `premium` tab.
+- Each section provides localized names (`name` and `nameI18n`), along with `optionKeys` and `optionIds` arrays to build the UI list beneath each tab.
+
+### Flutter Implementation Guidelines
+1. Render the protein horizontal tabs based precisely on the `optionSections` array.
+2. Do not construct or hard-map tabs locally on the frontend. The backend dictates which tab a protein falls under.
+3. Map every `optionId` in `optionSections.optionIds` to the actual product details using the `data.builderCatalogV2.proteins` array (to retrieve image, calories, localized title, etc.).
+4. The `premium_large_salad` selection type remains completely isolated and unchanged; it has its own selection groups.
