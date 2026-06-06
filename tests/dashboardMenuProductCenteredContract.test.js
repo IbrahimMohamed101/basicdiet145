@@ -56,6 +56,13 @@ async function main() {
     expectStatus(res, 201, "create target category");
     const targetCategory = res.body.data;
 
+    res = await api.post("/api/dashboard/menu/categories").set(adminHeaders).send({
+      key: `${TEST_KEY_TAG}_sandwiches`,
+      name: { en: `${TEST_TAG} Sandwiches`, ar: "Sandwiches" },
+    });
+    expectStatus(res, 201, "create sandwiches category");
+    const sandwichesCategory = res.body.data;
+
     res = await api.post("/api/dashboard/menu/products").set(adminHeaders).send({
       categoryId: category.id,
       key: `${TEST_KEY_TAG}_direct`,
@@ -79,6 +86,48 @@ async function main() {
     expectStatus(res, 201, "create customizable product");
     const customizableProduct = res.body.data;
     assert.strictEqual(customizableProduct.isCustomizable, true);
+
+    res = await api.post("/api/dashboard/menu/products").set(adminHeaders).send({
+      categoryId: targetCategory.id,
+      key: `${TEST_KEY_TAG}_target_product`,
+      name: { en: `${TEST_TAG} Target Product`, ar: "Target Product" },
+      itemType: "product",
+      pricingModel: "fixed",
+      priceHalala: 900,
+    });
+    expectStatus(res, 201, "create target product");
+    const targetProduct = res.body.data;
+
+    res = await api.post("/api/dashboard/menu/products").set(adminHeaders).send({
+      categoryId: sandwichesCategory.id,
+      key: `${TEST_KEY_TAG}_sandwich_product`,
+      name: { en: `${TEST_TAG} Sandwich Product`, ar: "Sandwich Product" },
+      itemType: "cold_sandwich",
+      pricingModel: "fixed",
+      priceHalala: 1200,
+    });
+    expectStatus(res, 201, "create sandwich product");
+    const sandwichProduct = res.body.data;
+
+    res = await api.get(`/api/dashboard/menu/products?page=1&limit=10&categoryId=${category.id}`).set(adminHeaders);
+    expectStatus(res, 200, "list products by categoryId");
+    assert.strictEqual(res.body.status, true);
+    assert(Array.isArray(res.body.data.items), "filtered product list returns items");
+    assert.strictEqual(res.body.data.pagination.total, 2, "filtered total counts only category products");
+    assert(res.body.data.items.length > 0, "filtered category returns products");
+    assert(res.body.data.items.every((product) => String(product.categoryId) === String(category.id)), "all filtered products belong to requested category");
+    assert(res.body.data.items.some((product) => product.id === directProduct.id), "filtered list includes direct product");
+    assert(res.body.data.items.some((product) => product.id === customizableProduct.id), "filtered list includes weighted product");
+    assert(!res.body.data.items.some((product) => product.id === targetProduct.id), "filtered list excludes target category product");
+    assert(!res.body.data.items.some((product) => product.id === sandwichProduct.id), "filtered list excludes sandwich category product");
+
+    res = await api.get("/api/dashboard/menu/products?page=1&limit=10&categoryId=invalid").set(adminHeaders);
+    expectStatus(res, 400, "invalid categoryId rejected");
+    assert.strictEqual(res.body.error.code, "INVALID_CATEGORY_ID");
+
+    res = await api.get("/api/dashboard/menu/products?page=1&limit=10").set(adminHeaders);
+    expectStatus(res, 200, "list products without categoryId");
+    assert(res.body.data.pagination.total >= 4, "unfiltered product list counts all categories");
 
     res = await api.post("/api/dashboard/menu/option-groups").set(adminHeaders).send({
       key: `${TEST_KEY_TAG}_sauces`,
@@ -127,6 +176,9 @@ async function main() {
     assert.strictEqual(res.body.data.category.id, category.id);
     assert(Array.isArray(res.body.data.products));
     assert(res.body.data.products.some((product) => product.id === directProduct.id));
+    assert(res.body.data.products.every((product) => String(product.categoryId) === String(category.id)), "category detail only includes products for category");
+    assert(!res.body.data.products.some((product) => product.id === targetProduct.id), "category detail excludes target product");
+    assert(!res.body.data.products.some((product) => product.id === sandwichProduct.id), "category detail excludes sandwich product");
     assert.strictEqual(res.body.data.assignment.relationOwner, "product.categoryId");
     assert.strictEqual(res.body.data.actions.canBulkAssignProducts, true);
 

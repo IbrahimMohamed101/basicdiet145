@@ -544,9 +544,8 @@ function isCustomerVisibleOption(option, group, product) {
 }
 
 function resolvePublicProductCategory(product, categoriesById, categoriesByKey) {
-  const overrideKey = PUBLIC_PRODUCT_CATEGORY_KEY_OVERRIDES.get(product.key);
-  return (overrideKey && categoriesByKey.get(overrideKey))
-    || categoriesById.get(String(product.categoryId))
+  return categoriesById.get(String(product.categoryId))
+    || categoriesByKey.get(PUBLIC_PRODUCT_CATEGORY_KEY_OVERRIDES.get(product.key))
     || null;
 }
 
@@ -637,6 +636,7 @@ async function getPublishedMenu({ lang = "en", branchId = "" } = {}) {
   productsById.forEach((product) => {
     const publicCategory = resolvePublicProductCategory(product, categoriesById, categoriesByKey);
     if (!publicCategory) return;
+    if (String(product.categoryId) !== String(publicCategory._id)) return;
     product._publicCategoryKey = publicCategory.key;
     const categoryId = String(publicCategory._id);
     if (!productsByCategory.has(categoryId)) productsByCategory.set(categoryId, []);
@@ -704,6 +704,44 @@ function buildListQuery({ includeInactive = false, isActive, isVisible, isAvaila
   return query;
 }
 
+function buildProductFilter(options = {}) {
+  const {
+    categoryId,
+    availableFor,
+    itemType,
+    search,
+  } = options;
+  const query = buildListQuery({
+    ...options,
+    q: options.q || search,
+  });
+
+  if (categoryId !== undefined && categoryId !== null && String(categoryId).trim() !== "") {
+    if (!mongoose.Types.ObjectId.isValid(String(categoryId))) {
+      throw new MenuValidationError("Invalid categoryId", "INVALID_CATEGORY_ID", 400);
+    }
+    query.categoryId = new mongoose.Types.ObjectId(String(categoryId));
+  }
+
+  if (availableFor !== undefined && availableFor !== null && String(availableFor).trim() !== "") {
+    const channel = String(availableFor).trim();
+    if (!["one_time", "subscription"].includes(channel)) {
+      throw new MenuValidationError("availableFor contains an unsupported channel");
+    }
+    query.availableFor = channel;
+  }
+
+  if (itemType !== undefined && itemType !== null && String(itemType).trim() !== "") {
+    const normalizedItemType = String(itemType).trim();
+    if (!PRODUCT_ITEM_TYPES.includes(normalizedItemType)) {
+      throw new MenuValidationError(`itemType must be one of: ${PRODUCT_ITEM_TYPES.join(", ")}`);
+    }
+    query.itemType = normalizedItemType;
+  }
+
+  return query;
+}
+
 async function listModel(Model, options = {}, extraQuery = {}) {
   const query = { ...buildListQuery(options), ...extraQuery };
   const pagination = parsePaginationOptions(options);
@@ -732,6 +770,34 @@ async function listModel(Model, options = {}, extraQuery = {}) {
   };
 }
 
+async function listProducts(options = {}) {
+  const query = buildProductFilter(options);
+  const pagination = parsePaginationOptions(options);
+  const find = MenuProduct.find(query)
+    .sort({ sortOrder: 1, createdAt: -1 })
+    .lean();
+
+  if (!pagination) {
+    const rows = await find;
+    return rows.map(serializeDoc);
+  }
+
+  const [rows, total] = await Promise.all([
+    find.skip(pagination.skip).limit(pagination.limit),
+    MenuProduct.countDocuments(query),
+  ]);
+
+  return {
+    items: rows.map(serializeDoc),
+    pagination: {
+      page: pagination.page,
+      limit: pagination.limit,
+      total,
+      pages: Math.ceil(total / pagination.limit),
+    },
+  };
+}
+
 async function getModel(Model, id, extraQuery = {}) {
   assertObjectId(id);
   const row = await Model.findOne({ _id: id, ...extraQuery }).lean();
@@ -747,10 +813,13 @@ function serializeAdminProductSummary(product) {
 
 function serializeCategoryDetailV3(category, products) {
   const categoryPayload = serializeDoc(category);
+  const categoryProducts = (products || []).filter((product) => (
+    String(product.categoryId) === String(category._id)
+  ));
   return {
     contractVersion: "dashboard_category_detail.v3",
     category: categoryPayload,
-    products: products.map(serializeAdminProductSummary),
+    products: categoryProducts.map(serializeAdminProductSummary),
     assignment: {
       relationOwner: "product.categoryId",
       bulkAssignmentEndpoint: `/api/dashboard/menu/categories/${categoryPayload.id}/products`,
@@ -2688,7 +2757,7 @@ module.exports = {
   getPublishedMenu,
   hasPublishedMenuCatalog,
   listCategories: (options) => listModel(MenuCategory, options),
-  listProducts: (options) => listModel(MenuProduct, options),
+  listProducts,
   listOptionGroups: (options) => listModel(MenuOptionGroup, options),
   listOptions: (options) => listModel(MenuOption, options, options && options.groupId ? { groupId: assertObjectId(options.groupId, "groupId") } : {}),
   getCategory: getCategoryDetail,

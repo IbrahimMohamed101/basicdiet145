@@ -72,6 +72,18 @@ function flattenMenuProducts(menu) {
   ).map((product) => ({ ...product, categoryKey: category.key })));
 }
 
+function assertMenuProductsStayInTheirCategories(menu) {
+  for (const category of menu.categories || []) {
+    for (const product of category.products || []) {
+      assert.strictEqual(
+        String(product.categoryId),
+        String(category.id),
+        `${product.key} appears under ${category.key} but has categoryId ${product.categoryId}`
+      );
+    }
+  }
+}
+
 function findProduct(menu, key) {
   return flattenMenuProducts(menu).find((product) => product.key === key);
 }
@@ -457,6 +469,7 @@ async function seedViaDashboard(api) {
       const res = await api.get("/api/orders/menu?lang=en");
       expectStatus(res, 200, "seeded menu");
       const menu = res.body.data;
+      assertMenuProductsStayInTheirCategories(menu);
       const categoriesByKey = new Map((menu.categories || []).map((category) => [category.key, category]));
       ["custom_order", "light_options", "cold_sandwiches", "sourdough", "desserts", "juices", "drinks", "ice_cream"].forEach((categoryKey) => {
         assert(categoriesByKey.has(categoryKey), `menu includes ${categoryKey}`);
