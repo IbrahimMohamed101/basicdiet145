@@ -14,7 +14,9 @@ function addMissingBypassAware(missing, key, shouldRequire) {
 }
 
 function validateEnv() {
+  const isTest = process.env.NODE_ENV === "test";
   const hasMongoUri = Boolean(process.env.MONGO_URI || process.env.MONGODB_URI);
+  const hasTestMongoUri = Boolean(process.env.MONGO_URI_TEST);
   const isProduction = process.env.NODE_ENV === "production";
 
   /* ── PRODUCTION HARD FAIL: reject any test/bypass flags ───────────── */
@@ -38,7 +40,11 @@ function validateEnv() {
   const providedCloudinaryKeys = cloudinaryKeys.filter((key) => Boolean(process.env[key]));
 
   const missing = [];
-  if (!hasMongoUri) missing.push("MONGO_URI or MONGODB_URI");
+  if (isTest) {
+    if (!hasTestMongoUri) missing.push("MONGO_URI_TEST");
+  } else {
+    if (!hasMongoUri) missing.push("MONGO_URI or MONGODB_URI");
+  }
   addMissingIfEmpty(missing, "JWT_SECRET");
   addMissingIfEmpty(missing, "DASHBOARD_JWT_SECRET");
   addMissingIfEmpty(missing, "MOYASAR_SECRET_KEY");
@@ -68,11 +74,12 @@ function validateEnv() {
     return { ok: false, missing };
   }
 
-  const mongoUri = process.env.MONGO_URI || process.env.MONGODB_URI;
+  const mongoUri = isTest ? process.env.MONGO_URI_TEST : (process.env.MONGO_URI || process.env.MONGODB_URI);
   const isValidMongoUri = typeof mongoUri === "string" && /^mongodb(\+srv)?:\/\//.test(mongoUri);
   if (!isValidMongoUri) {
     logger.error("Invalid MongoDB URI: must start with mongodb:// or mongodb+srv://");
-    return { ok: false, invalid: ["MONGO_URI or MONGODB_URI"] };
+    const fieldName = isTest ? "MONGO_URI_TEST" : "MONGO_URI or MONGODB_URI";
+    return { ok: false, invalid: [fieldName] };
   }
 
   const invalid = [];

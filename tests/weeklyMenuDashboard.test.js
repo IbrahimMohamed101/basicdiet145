@@ -159,6 +159,7 @@ function appAuth(userId) {
         groupId: group.id,
         minSelections: 1,
         maxSelections: 1,
+        initialOptionIds: [option.id],
       });
 
       await api.post("/api/dashboard/menu/publish").set(dashboardAuth()).send({ notes: "Initial publish" });
@@ -197,6 +198,75 @@ function appAuth(userId) {
       assert.strictEqual(data.validation.ok, true);
       assert(Array.isArray(data.validation.errors), "composer validation errors array");
       assert(Array.isArray(data.validation.warnings), "composer validation warnings array");
+    });
+
+    await test("Dashboard product customization v4 uses explicit product option links only", async () => {
+      let res = await api.post("/api/dashboard/menu/options").set(dashboardAuth()).send({
+        groupId: group.id,
+        key: "salmon",
+        name: { en: "Salmon", ar: "سلمون" },
+        extraPriceHalala: 1200,
+      });
+      expectStatus(res, 201, "Create salmon option");
+      const salmon = res.body.data;
+
+      res = await api.post("/api/dashboard/menu/products").set(dashboardAuth()).send({
+        categoryId: category.id,
+        key: "custom_v4_product",
+        name: { en: "Custom V4 Product", ar: "منتج تخصيص" },
+        pricingModel: "fixed",
+        priceHalala: 2500,
+        isCustomizable: false,
+      });
+      expectStatus(res, 201, "Create v4 product");
+      const v4Product = res.body.data;
+
+      res = await api.patch(`/api/dashboard/menu/products/${v4Product.id}/customization`)
+        .set(dashboardAuth())
+        .send({ isCustomizable: true });
+      expectStatus(res, 200, "Enable customization");
+      assert.strictEqual(res.body.data.contractVersion, "dashboard_product_composer.v4");
+      assert.strictEqual(res.body.data.customization.enabled, true);
+      assert.strictEqual(res.body.data.customization.summary.linkedGroupCount, 0);
+
+      res = await api.post(`/api/dashboard/menu/products/${v4Product.id}/option-groups`)
+        .set(dashboardAuth())
+        .send({ groupId: group.id, minSelections: 1, maxSelections: 2 });
+      expectStatus(res, 201, "Attach group without initial options");
+
+      let linkedRows = await ProductGroupOption.find({ productId: v4Product.id, groupId: group.id }).lean();
+      assert.strictEqual(linkedRows.length, 0, "Attaching a group does not auto-link options");
+
+      res = await api.get(`/api/dashboard/menu/products/${v4Product.id}/composer?contractVersion=v4`).set(dashboardAuth());
+      expectStatus(res, 200, "v4 composer");
+      const v4Group = res.body.data.customization.groups.find((item) => item.groupId === group.id);
+      assert(v4Group, "v4 composer includes attached group");
+      assert.strictEqual(v4Group.options.length, 0, "v4 composer shows only explicitly linked options");
+      assert.strictEqual(res.body.data.validation.errors[0].action, "open_option_pool");
+
+      res = await api.get(`/api/dashboard/menu/products/${v4Product.id}/option-groups/${group.id}/option-pool`)
+        .set(dashboardAuth());
+      expectStatus(res, 200, "option pool");
+      assert.strictEqual(res.body.data.contractVersion, "dashboard_product_group_option_pool.v4");
+      const poolChicken = res.body.data.options.find((item) => item.optionId === option.id);
+      const poolSalmon = res.body.data.options.find((item) => item.optionId === salmon.id);
+      assert(poolChicken && poolSalmon, "option pool includes global options");
+      assert.strictEqual(poolChicken.isLinked, false);
+      assert.strictEqual(poolSalmon.isLinked, false);
+
+      res = await api.put(`/api/dashboard/menu/products/${v4Product.id}/option-groups/${group.id}/options`)
+        .set(dashboardAuth())
+        .send({ optionIds: [option.id, salmon.id], preserveOverrides: true });
+      expectStatus(res, 200, "replace product group options");
+      assert.strictEqual(res.body.data.customization.summary.linkedOptionCount, 2);
+
+      linkedRows = await ProductGroupOption.find({ productId: v4Product.id, groupId: group.id }).lean();
+      assert.strictEqual(linkedRows.length, 2, "Replace endpoint links only selected options");
+
+      res = await api.get("/api/dashboard/menu/customization-library").set(dashboardAuth());
+      expectStatus(res, 200, "customization library");
+      assert(res.body.data.groups.some((item) => item.id === group.id), "library includes global group");
+      assert(res.body.data.options.some((item) => item.id === salmon.id && item.suggestedGroupId === group.id), "library includes suggested group metadata");
     });
 
     await test("A) extraWeightUnitGrams override", async () => {

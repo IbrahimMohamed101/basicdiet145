@@ -1,21 +1,18 @@
 const mongoose = require("mongoose");
 const { logger } = require("../../src/utils/logger");
 
-async function connectDB() {
-  const uri = process.env.MONGO_URI || process.env.MONGODB_URI;
-  if (!uri) {
-    console.error("FATAL: MONGO_URI is not defined in environment variables.");
-    process.exit(1);
-  }
+const { resolveMongoUri } = require("../../src/utils/mongoUriResolver");
 
+async function connectDB() {
   if (mongoose.connection.readyState === 0) {
     try {
+      const uri = resolveMongoUri();
       await mongoose.connect(uri, {
         serverSelectionTimeoutMS: 10000,
       });
       // logger.info("Connected to test database");
     } catch (err) {
-      console.error("Failed to connect to MongoDB", err);
+      console.error("Failed to connect to MongoDB in test helper", err.message);
       process.exit(1);
     }
   }
@@ -27,8 +24,11 @@ async function disconnectDB() {
   }
 }
 
+const { ensureSafeForDestructiveOp } = require("../../src/utils/dbSafety");
+
 async function resetDB() {
   if (mongoose.connection.readyState === 1 && mongoose.connection.db) {
+    ensureSafeForDestructiveOp("resetDB");
     await mongoose.connection.db.dropDatabase();
   }
 }

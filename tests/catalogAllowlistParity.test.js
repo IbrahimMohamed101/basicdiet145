@@ -75,7 +75,7 @@ function extractSeedProteinsGroupBlock(source) {
 }
 
 function run() {
-  const seedSource = read("scripts/seed-catalog.js");
+  const seedSource = read("scripts/bootstrap/seed-catalog.js");
   const publicMenuSource = read("src/services/orders/menuCatalogService.js");
   const catalogServiceSource = read("src/services/catalog/CatalogService.js");
   const mealSlotPlannerSource = read("src/services/subscription/mealSlotPlannerService.js");

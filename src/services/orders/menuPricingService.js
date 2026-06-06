@@ -208,6 +208,9 @@ function validateAndPriceOptions({ selections, context, lang }) {
     optionsById,
     catalogItemsById,
   } = context;
+  if (product.isCustomizable === false && selections.length > 0) {
+    throw createMenuPricingError("OPTION_NOT_ALLOWED", "Product customization is disabled for this product");
+  }
   const groupRelationsById = new Map(groupRelations.map((relation) => [String(relation.groupId), relation]));
   const allGroupRelationsById = new Map(allGroupRelations.map((relation) => [String(relation.groupId), relation]));
   const optionRelationsByGroupOption = new Map(
@@ -264,9 +267,7 @@ function validateAndPriceOptions({ selections, context, lang }) {
     if (!isRelationAvailable(optionRelation) || !isCatalogAvailable(option) || !isAvailableForChannel(option, "one_time")) {
       throw createMenuPricingError("OPTION_NOT_AVAILABLE", "Option is unavailable", 409);
     }
-    if (!option || String(option.groupId) !== selection.groupId) {
-      throw createMenuPricingError("OPTION_NOT_ALLOWED", "Option does not belong to the selected group");
-    }
+    if (!option) throw createMenuPricingError("OPTION_NOT_ALLOWED", "Option is not allowed for this product");
     const extraPriceHalala = optionRelation.extraPriceHalala === null || optionRelation.extraPriceHalala === undefined
       ? Number(option.extraPriceHalala || 0)
       : Number(optionRelation.extraPriceHalala || 0);

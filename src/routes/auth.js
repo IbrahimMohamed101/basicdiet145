@@ -5,6 +5,7 @@ const {
   verifyOtp,
   verifyRegister,
   login,
+  guest,
   refresh,
   me,
   logout,
@@ -66,6 +67,7 @@ router.post("/otp/verify", otpVerifyLimiter, asyncHandler(verifyOtp));
 router.post("/register/request-otp", otpLimiter, asyncHandler(requestRegisterOtp));
 router.post("/register/verify", otpVerifyLimiter, asyncHandler(verifyRegister));
 router.post("/login", mobileLoginLimiter, asyncHandler(login));
+router.post("/guest", mobileLoginLimiter, asyncHandler(guest));
 router.post("/refresh", asyncHandler(refresh));
 router.get("/me", authMiddleware, asyncHandler(me));
 router.post("/logout", authMiddleware, asyncHandler(logout));

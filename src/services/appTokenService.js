@@ -2,6 +2,7 @@ const jwt = require("jsonwebtoken");
 
 const JWT_ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET || "supersecret";
 const ACCESS_TOKEN_EXPIRES_IN = process.env.ACCESS_TOKEN_EXPIRES_IN || process.env.JWT_ACCESS_EXPIRES_IN || "15m";
+const GUEST_TOKEN_EXPIRES_IN = process.env.GUEST_TOKEN_EXPIRES_IN || "30m";
 
 function parseExpiresInSeconds(value) {
   const raw = String(value || "").trim();
@@ -18,6 +19,7 @@ function parseExpiresInSeconds(value) {
 }
 
 const ACCESS_TOKEN_EXPIRES_SECONDS = parseExpiresInSeconds(ACCESS_TOKEN_EXPIRES_IN);
+const GUEST_TOKEN_EXPIRES_SECONDS = parseExpiresInSeconds(GUEST_TOKEN_EXPIRES_IN);
 
 function issueAppAccessToken(user) {
   return jwt.sign(
@@ -31,4 +33,24 @@ function issueAppAccessToken(user) {
   );
 }
 
-module.exports = { issueAppAccessToken, JWT_ACCESS_SECRET, ACCESS_TOKEN_EXPIRES_SECONDS, ACCESS_TOKEN_EXPIRES_IN };
+function issueGuestAccessToken() {
+  return jwt.sign(
+    {
+      role: "guest",
+      isGuest: true,
+      tokenType: "app_guest",
+    },
+    JWT_ACCESS_SECRET,
+    { expiresIn: GUEST_TOKEN_EXPIRES_IN }
+  );
+}
+
+module.exports = {
+  issueAppAccessToken,
+  issueGuestAccessToken,
+  JWT_ACCESS_SECRET,
+  ACCESS_TOKEN_EXPIRES_SECONDS,
+  ACCESS_TOKEN_EXPIRES_IN,
+  GUEST_TOKEN_EXPIRES_SECONDS,
+  GUEST_TOKEN_EXPIRES_IN,
+};

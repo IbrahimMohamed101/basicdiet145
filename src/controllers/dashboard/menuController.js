@@ -17,6 +17,10 @@ function listOptions(req) {
     q: req.query.q,
     published: req.query.published,
     groupId: req.query.groupId,
+    search: req.query.search,
+    suggestedGroupId: req.query.suggestedGroupId,
+    onlySuggested: req.query.onlySuggested,
+    includeDisabled: req.query.includeDisabled,
     page: req.query.page,
     limit: req.query.limit,
     contractVersion: req.query.contractVersion,
@@ -72,6 +76,8 @@ const listProducts = wrap(async (req, res) => send(res, await service.listProduc
 const createProduct = wrap(async (req, res) => send(res, await service.createProduct(req.body, actorFromRequest(req)), 201));
 const getProduct = wrap(async (req, res) => send(res, await service.getProduct(req.params.id)));
 const getProductComposer = wrap(async (req, res) => send(res, await service.getProductComposer(req.params.productId || req.params.id, listOptions(req))));
+const getCustomizationLibrary = wrap(async (req, res) => send(res, await service.getCustomizationLibrary(listOptions(req))));
+const updateProductCustomization = wrap(async (req, res) => send(res, await service.updateProductCustomization(req.params.productId || req.params.id, req.body, actorFromRequest(req))));
 const updateProduct = wrap(async (req, res) => send(res, await service.updateProduct(req.params.id, req.body, actorFromRequest(req))));
 const bulkUpdateProducts = wrap(async (req, res) => send(res, await service.bulkUpdateProducts(req.body, actorFromRequest(req))));
 const updateProductVisibility = wrap(async (req, res) => send(res, await service.updateProductVisibility(req.params.id || req.params.productId, req.body, actorFromRequest(req))));
@@ -112,6 +118,8 @@ const deleteOption = wrap(async (req, res) => send(res, await service.deleteOpti
 const reorderOptions = wrap(async (req, res) => send(res, await service.reorderOptions(req.body.items || req.body, actorFromRequest(req))));
 
 const listProductGroupOptions = wrap(async (req, res) => send(res, await service.listProductGroupOptions(req.params.productId, req.params.groupId, listOptions(req))));
+const getProductGroupOptionPool = wrap(async (req, res) => send(res, await service.getProductGroupOptionPool(req.params.productId, req.params.groupId, listOptions(req))));
+const replaceProductGroupOptions = wrap(async (req, res) => send(res, await service.replaceProductGroupOptions(req.params.productId, req.params.groupId, req.body, actorFromRequest(req))));
 const createProductGroupOption = wrap(async (req, res) => send(res, await service.createProductGroupOption(req.params.productId, req.params.groupId, req.body, actorFromRequest(req)), 201));
 const updateProductGroupOption = wrap(async (req, res) => {
   const { productId, groupId, optionId } = req.params;
@@ -195,6 +203,8 @@ module.exports = {
   createProduct,
   getProduct,
   getProductComposer,
+  getCustomizationLibrary,
+  updateProductCustomization,
   updateProduct,
   bulkUpdateProducts,
   updateProductVisibility,
@@ -226,6 +236,8 @@ module.exports = {
   deleteOption,
   reorderOptions,
   listProductGroupOptions,
+  getProductGroupOptionPool,
+  replaceProductGroupOptions,
   createProductGroupOption,
   updateProductGroupOption,
   updateProductGroupOptionVisibility,

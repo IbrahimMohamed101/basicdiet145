@@ -2,7 +2,12 @@ const AppUser = require("../models/AppUser");
 const User = require("../models/User");
 const { isApiError } = require("../utils/apiError");
 const { assertValidPhoneE164, requestOtpForPhone, verifyOtpCode } = require("../services/otpService");
-const { issueAppAccessToken, ACCESS_TOKEN_EXPIRES_SECONDS } = require("../services/appTokenService");
+const {
+  issueAppAccessToken,
+  issueGuestAccessToken,
+  ACCESS_TOKEN_EXPIRES_SECONDS,
+  GUEST_TOKEN_EXPIRES_SECONDS,
+} = require("../services/appTokenService");
 const { validateAppPassword, hashAppPassword, compareAppPassword } = require("../services/appPasswordService");
 const {
   createRefreshSession,
@@ -400,6 +405,24 @@ async function login(req, res) {
   }
 }
 
+async function guest(req, res) {
+  try {
+    return res.status(200).json({
+      ok: true,
+      status: "guest",
+      accessToken: issueGuestAccessToken(),
+      expiresIn: GUEST_TOKEN_EXPIRES_SECONDS,
+      user: {
+        id: "guest",
+        role: "guest",
+        isGuest: true,
+      },
+    });
+  } catch (err) {
+    return handleError(res, err);
+  }
+}
+
 async function refresh(req, res) {
   try {
     const { refreshToken } = req.body || {};
@@ -544,6 +567,7 @@ module.exports = {
   verifyOtp,
   verifyRegister,
   login,
+  guest,
   refresh,
   me,
   logout,

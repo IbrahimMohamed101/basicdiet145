@@ -25,6 +25,7 @@ router.patch("/products/reorder", asyncHandler(controller.reorderProducts));
 router.post("/products/:id/duplicate", asyncHandler(controller.duplicateProduct));
 router.patch("/products/:id/category", asyncHandler(controller.updateProduct)); // Already handles categoryId in normalizeProductPayload
 router.get("/products/:productId/composer", asyncHandler(controller.getProductComposer));
+router.patch("/products/:productId/customization", asyncHandler(controller.updateProductCustomization));
 router.get("/products/:productId/option-groups", asyncHandler(controller.listProductGroups));
 router.post("/products/:productId/option-groups", asyncHandler(controller.createProductGroup));
 router.patch("/products/:productId/option-groups/:groupId", asyncHandler(controller.updateProductGroup));
@@ -32,8 +33,10 @@ router.patch("/products/:productId/option-groups/:groupId/selection-rules", asyn
 router.patch("/products/:productId/option-groups/:groupId/visibility", asyncHandler(controller.updateProductGroupVisibility));
 router.patch("/products/:productId/option-groups/:groupId/availability", asyncHandler(controller.updateProductGroupAvailability));
 router.delete("/products/:productId/option-groups/:groupId", asyncHandler(controller.deleteProductGroup));
+router.get("/products/:productId/option-groups/:groupId/option-pool", asyncHandler(controller.getProductGroupOptionPool));
 router.get("/products/:productId/option-groups/:groupId/options", asyncHandler(controller.listProductGroupOptions));
 router.post("/products/:productId/option-groups/:groupId/options", asyncHandler(controller.createProductGroupOption));
+router.put("/products/:productId/option-groups/:groupId/options", asyncHandler(controller.replaceProductGroupOptions));
 router.patch("/products/:productId/option-groups/:groupId/options/:optionId", asyncHandler(controller.updateProductGroupOption));
 router.patch("/products/:productId/option-groups/:groupId/options/:optionId/visibility", asyncHandler(controller.updateProductGroupOptionVisibility));
 router.patch("/products/:productId/option-groups/:groupId/options/:optionId/availability", asyncHandler(controller.updateProductGroupOptionAvailability));
@@ -43,6 +46,8 @@ router.patch("/products/:id", asyncHandler(controller.updateProduct));
 router.patch("/products/:id/visibility", asyncHandler(controller.updateProductVisibility));
 router.delete("/products/:id", dashboardRoleMiddleware(["admin", "superadmin"]), asyncHandler(controller.deleteProduct));
 router.patch("/products/:productId/availability", asyncHandler(controller.updateProductAvailability));
+
+router.get("/customization-library", asyncHandler(controller.getCustomizationLibrary));
 
 router.get("/option-groups", asyncHandler(controller.listOptionGroups));
 router.post("/option-groups", asyncHandler(controller.createOptionGroup));

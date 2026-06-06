@@ -340,18 +340,11 @@ async function stopServer() {
   }
 }
 
+const { resolveMongoUri, getDbNameFromUri } = require("../src/utils/mongoUriResolver");
+
 async function connectDatabase() {
-  const mongoUri = process.env.MONGO_URI || process.env.MONGODB_URI || 'mongodb://localhost:27017/basicdiet_test';
-  
-  // Extract database name from URI for safe logging
-  let dbName = 'unknown';
-  try {
-    const cleanUri = mongoUri.replace('mongodb+srv://', 'mongodb://');
-    const url = new URL(cleanUri);
-    dbName = url.pathname.split('/').pop().split('?')[0] || 'default';
-  } catch (e) {
-    dbName = mongoUri.split('/').pop().split('?')[0] || 'unknown';
-  }
+  const mongoUri = resolveMongoUri();
+  const dbName = getDbNameFromUri(mongoUri);
 
   console.log(`Connecting to database: ${dbName}...`);
 
@@ -362,7 +355,8 @@ async function connectDatabase() {
     await mongoose.connect(mongoUri);
   } catch (err) {
     console.error(`\n❌ MongoDB connection failed for ${dbName}!`);
-    console.error(`URI tried: ${mongoUri.replace(/:([^@]+)@/, ':****@')}`); // Hide password
+    const maskedUri = mongoUri.replace(/:([^@]+)@/, ':****@');
+    console.error(`URI tried: ${maskedUri}`);
     console.error(`Error: ${err.message}\n`);
     throw new Error('SKIP');
   }

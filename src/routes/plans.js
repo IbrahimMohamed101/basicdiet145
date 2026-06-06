@@ -1,13 +1,11 @@
 const { Router } = require("express");
 const { listPlans, getPlan } = require("../controllers/planController");
-const { authMiddleware } = require("../middleware/auth");
+const optionalAuthMiddleware = require("../middleware/optionalAuth");
 const asyncHandler = require("../middleware/asyncHandler");
 
 const router = Router();
 
-router.use(authMiddleware);
-
-router.get("/", asyncHandler(listPlans));
-router.get("/:id", asyncHandler(getPlan));
+router.get("/", optionalAuthMiddleware, asyncHandler(listPlans));
+router.get("/:id", optionalAuthMiddleware, asyncHandler(getPlan));
 
 module.exports = router;

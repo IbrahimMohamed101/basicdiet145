@@ -1,7 +1,7 @@
 const { Router } = require("express");
 const { otpLimiter, otpVerifyLimiter } = require("../middleware/rateLimit");
 const { authMiddleware } = require("../middleware/auth");
-const { login, register, getProfile, updateProfile, getTodayPickup } = require("../controllers/appAuthController");
+const { login, register, guest, getProfile, updateProfile, getTodayPickup } = require("../controllers/appAuthController");
 const { verifyOtp } = require("../controllers/authController");
 const { listCurrentUserSubscriptions } = require("../controllers/subscriptionController");
 const { getAppConfig } = require("../controllers/settingsController");
@@ -13,6 +13,7 @@ const router = Router();
 
 router.post("/login", otpLimiter, asyncHandler(login));
 router.post("/register", otpLimiter, asyncHandler(register));
+router.post("/guest", otpLimiter, asyncHandler(guest));
 router.post("/verify", otpVerifyLimiter, asyncHandler(verifyOtp));
 router.get("/config", asyncHandler(getAppConfig));
 router.get("/profile", authMiddleware, asyncHandler(getProfile));

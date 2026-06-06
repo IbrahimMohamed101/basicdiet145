@@ -30,6 +30,17 @@ async function optionalAuthMiddleware(req, res, next) {
     }
   }
 
+  if (decoded.tokenType === "app_guest" || decoded.role === "guest" || decoded.isGuest === true) {
+    req.auth = {
+      tokenType: "app_guest",
+      role: "guest",
+      isGuest: true,
+    };
+    req.isGuest = true;
+    req.userRole = "guest";
+    return next();
+  }
+
   if (decoded.tokenType !== "app_access" || decoded.role !== "client" || !decoded.userId) {
     return errorResponse(res, 401, "TOKEN_INVALID", "Invalid access token");
   }
@@ -45,6 +56,12 @@ async function optionalAuthMiddleware(req, res, next) {
   req.userId = String(user._id);
   req.userRole = user.role;
   req.authenticatedUser = user;
+  req.auth = {
+    tokenType: "app_access",
+    role: user.role,
+    userId: String(user._id),
+    isGuest: false,
+  };
   return next();
 }
 

@@ -6,6 +6,10 @@ const { isApiError, ApiError } = require("../utils/apiError");
 const { assertValidPhoneE164, requestOtpForPhone } = require("../services/otpService");
 const errorResponse = require("../utils/errorResponse");
 const { getRestaurantBusinessDate } = require("../services/restaurantHoursService");
+const {
+  issueGuestAccessToken,
+  GUEST_TOKEN_EXPIRES_SECONDS,
+} = require("../services/appTokenService");
 
 function serializeCoreUser(user) {
   return {
@@ -149,6 +153,25 @@ async function register(req, res) {
   }
 }
 
+async function guest(req, res) {
+  try {
+    return res.status(200).json({
+      status: true,
+      data: {
+        accessToken: issueGuestAccessToken(),
+        expiresIn: GUEST_TOKEN_EXPIRES_SECONDS,
+        user: {
+          id: "guest",
+          role: "guest",
+          isGuest: true,
+        },
+      },
+    });
+  } catch (err) {
+    return handleError(res, err);
+  }
+}
+
 async function getProfile(req, res) {
   try {
     const coreUser = await getAuthenticatedCoreUserOrThrow(req.userId);
@@ -274,4 +297,4 @@ async function getTodayPickup(req, res) {
   }
 }
 
-module.exports = { login, register, getProfile, updateProfile, getTodayPickup };
+module.exports = { login, register, guest, getProfile, updateProfile, getTodayPickup };

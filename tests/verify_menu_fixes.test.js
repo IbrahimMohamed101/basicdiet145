@@ -123,11 +123,11 @@ async function runTests() {
     const prod2Id = res.body.data.id;
 
     await request(app).post(`/api/dashboard/menu/products/${prodId}/option-groups`).set(adminHeaders).send({
-      groupId, minSelections: 0, maxSelections: 1
+      groupId, minSelections: 0, maxSelections: 1, initialOptionIds: [optionId]
     });
 
     await request(app).post(`/api/dashboard/menu/products/${prod2Id}/option-groups`).set(adminHeaders).send({
-      groupId, minSelections: 0, maxSelections: 1
+      groupId, minSelections: 0, maxSelections: 1, initialOptionIds: [optionId]
     });
 
     // 3. Update option for prod_1 only

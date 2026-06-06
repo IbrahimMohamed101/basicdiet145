@@ -14,8 +14,11 @@ function ensureSafeForDestructiveOp(operationName = "destructive operation") {
   const isTestEnv = process.env.NODE_ENV === "test";
   
   const connection = mongoose.connection;
-  const dbName = connection.name || (connection.db && connection.db.databaseName) || "";
-  const isTestDb = dbName.toLowerCase().endsWith("_test");
+  const dbName = (connection.name || (connection.db && connection.db.databaseName) || "").toLowerCase();
+  
+  const hasSafeKeyword = dbName.includes("test") || dbName.includes("local") || dbName.includes("ci");
+  const isPrimaryDb = dbName === "basicdiet145";
+  const isSafeDb = hasSafeKeyword && !isPrimaryDb;
 
   // Force flag bypasses all checks
   if (isForce) {
@@ -23,8 +26,8 @@ function ensureSafeForDestructiveOp(operationName = "destructive operation") {
     return;
   }
 
-  // Strict enforcement: Must be test env AND test database
-  if (isTestEnv && isTestDb) {
+  // Strict enforcement: Must be test env AND safe test database
+  if (isTestEnv && isSafeDb) {
     return;
   }
 

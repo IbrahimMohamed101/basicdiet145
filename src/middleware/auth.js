@@ -49,6 +49,10 @@ function authMiddleware(req, res, next) {
     }
   }
 
+  if (decoded.tokenType === "app_guest" || decoded.role === "guest" || decoded.isGuest === true) {
+    return errorResponse(res, 403, "GUEST_ACCESS_NOT_ALLOWED", "Please sign in to continue.");
+  }
+
   if (decoded.tokenType !== "app_access" || decoded.role !== "client") {
     return errorResponse(res, 401, "TOKEN_INVALID", "Invalid access token");
   }

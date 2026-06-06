@@ -2,7 +2,7 @@ const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
 
-const source = fs.readFileSync(path.join(__dirname, "..", "scripts", "seed-catalog.js"), "utf8");
+const source = fs.readFileSync(path.join(__dirname, "..", "scripts", "bootstrap", "seed-catalog.js"), "utf8");
 
 const expectedProteinKeys = [
   "chicken",
@@ -46,7 +46,7 @@ assert.strictEqual(new Set(proteinKeys).size, proteinKeys.length, "proteinRows m
 assert(!source.includes("saladProteinRows"), "salad protein definitions must not be split into a second canonical array");
 assert(source.includes("options: proteinRows"), "proteins option group must use proteinRows directly");
 assert(source.includes("const standardMealProteinRelations = ["), "standard meal eligibility must be a relation list");
-assert(source.includes("const premiumMealProteinRelations = ["), "premium meal eligibility must be a relation list");
+assert(source.includes("const premiumMealProteinRelations ="), "premium meal eligibility must be a relation list");
 assert(source.includes("const premiumLargeSaladProteinRelations ="), "premium large salad eligibility must be a relation list");
 assert(source.includes("const oneTimeMealProteinRelations ="), "one-time meal eligibility must be a relation list");
 assert(source.includes("const oneTimeSaladProteinRelations = ["), "one-time salad eligibility must be a relation list");

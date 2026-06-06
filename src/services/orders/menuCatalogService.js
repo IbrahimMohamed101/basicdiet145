@@ -437,7 +437,7 @@ function serializePublicCategory(category, lang, products) {
 
 function serializePublicProduct(product, lang, optionGroups, categoryId = product.categoryId) {
   const hasOptionGroups = Array.isArray(optionGroups) && optionGroups.length > 0;
-  const isCustomizable = product.pricingModel === "per_100g" || hasOptionGroups;
+  const isCustomizable = Boolean(product.isCustomizable) && (product.pricingModel === "per_100g" || hasOptionGroups);
   const requiresBuilder = isCustomizable;
   const canAddDirectly = product.pricingModel === "fixed" && !requiresBuilder && !hasOptionGroups;
   const categoryKey = product._publicCategoryKey || "";
@@ -617,11 +617,12 @@ async function getPublishedMenu({ lang = "en", branchId = "" } = {}) {
   groupRelations.forEach((relation) => {
     const product = productsById.get(String(relation.productId));
     const group = groupsById.get(String(relation.groupId));
+    if (product && product.isCustomizable === false) return;
     if (!product || !group || !isCustomerVisibleGroup(product, group)) return;
     const optionRows = (optionRelationsByProductGroup.get(`${relation.productId}:${relation.groupId}`) || [])
       .map((optionRelation) => {
         const option = optionsById.get(String(optionRelation.optionId));
-        if (!option || String(option.groupId) !== String(group._id) || !isCustomerVisibleOption(option, group, product)) return null;
+        if (!option || !isCustomerVisibleOption(option, group, product)) return null;
         return serializePublicOption(optionRelation, option, lang);
       })
       .filter(Boolean)
@@ -763,12 +764,12 @@ function serializeCategoryDetailV3(category, products) {
 
 function assertDashboardContractVersion(options = {}) {
   const requested = String(options.contractVersion || "").trim().toLowerCase();
-  if (!requested || requested === "v3") return;
+  if (!requested || requested === "v3" || requested === "v4") return;
   throw new MenuValidationError(
-    "Dashboard menu contract versions v1 and v2 are no longer supported. Use dashboard v3.",
+    "Dashboard menu contract versions v1 and v2 are no longer supported. Use dashboard v3 or v4.",
     "DASHBOARD_CONTRACT_VERSION_UNSUPPORTED",
     410,
-    { supportedContractVersion: "v3" }
+    { supportedContractVersions: ["v3", "v4"] }
   );
 }
 
@@ -1350,10 +1351,11 @@ function buildDashboardProductComposerValidation({ product, category, linkedOpti
   if (product.isVisible === false) pushIssue(warnings, "hidden_product", "Product is hidden");
   if (product.isAvailable === false) pushIssue(warnings, "unavailable_product", "Product is unavailable");
   if (!product.publishedAt) pushIssue(warnings, "unpublished_product", "Product has unpublished changes or has not been published");
-  if (inferProductCustomizable(product, linkedOptionGroups) && linkedOptionGroups.length === 0) {
+  const explicitlyCustomizable = Boolean(product.isCustomizable);
+  if (explicitlyCustomizable && linkedOptionGroups.length === 0) {
     pushIssue(warnings, "customizable_without_groups", "Product is marked customizable but has no linked option groups");
   }
-  if (!inferProductCustomizable(product) && linkedOptionGroups.length > 0) {
+  if (!explicitlyCustomizable && linkedOptionGroups.length > 0) {
     pushIssue(warnings, "non_customizable_with_groups", "Product is not customizable but still has linked option groups");
   }
 
@@ -1368,9 +1370,29 @@ function buildDashboardProductComposerValidation({ product, category, linkedOpti
     if (linkedGroup.group.isActive === false) pushIssue(warnings, "inactive_linked_group", `Linked option group is inactive: ${groupKey}`, { groupId: linkedGroup.groupId });
     if (linkedGroup.group.isVisible === false) pushIssue(warnings, "hidden_linked_group", `Linked option group is hidden: ${groupKey}`, { groupId: linkedGroup.groupId });
     if (linkedGroup.group.isAvailable === false) pushIssue(warnings, "unavailable_linked_group", `Linked option group is unavailable: ${groupKey}`, { groupId: linkedGroup.groupId });
-    if (linkedGroup.isRequired && linkedGroup.options.filter((row) => row.isActive !== false).length < linkedGroup.minSelections) {
-      pushIssue(errors, "required_group_insufficient_options", `Required option group ${groupKey} has fewer active linked options than minSelections`, {
+    if (linkedGroup.group.isActive === false || linkedGroup.group.isVisible === false || linkedGroup.group.isAvailable === false) {
+      pushIssue(warnings, "global_group_disabled", "Global option group is disabled and cannot be shown for this product", {
+        severity: "warning",
+        action: "detach_or_reactivate_global_group",
         groupId: linkedGroup.groupId,
+      });
+    }
+    const activeLinkedOptionsCount = linkedGroup.options.filter((row) => (
+      row.isActive !== false
+      && row.isVisible !== false
+      && row.isAvailable !== false
+      && row.option
+      && row.option.isActive !== false
+      && row.option.isVisible !== false
+      && row.option.isAvailable !== false
+    )).length;
+    if (linkedGroup.isRequired && activeLinkedOptionsCount < linkedGroup.minSelections) {
+      pushIssue(errors, "required_group_insufficient_options", `Required option group ${groupKey} has fewer active linked options than minSelections`, {
+        severity: "error",
+        action: "open_option_pool",
+        groupId: linkedGroup.groupId,
+        requiredMinSelections: linkedGroup.minSelections,
+        activeLinkedOptionsCount,
       });
     }
 
@@ -1383,15 +1405,17 @@ function buildDashboardProductComposerValidation({ product, category, linkedOpti
         });
         continue;
       }
-      if (String(linkedOption.option.groupId || "") !== String(linkedGroup.groupId || "")) {
-        pushIssue(errors, "linked_option_group_mismatch", `Linked option ${optionKey} does not belong to group ${groupKey}`, {
+      if (linkedOption.option.isActive === false) pushIssue(warnings, "inactive_linked_option", `Linked option is inactive: ${optionKey}`, { groupId: linkedGroup.groupId, optionId: linkedOption.optionId });
+      if (linkedOption.option.isVisible === false) pushIssue(warnings, "hidden_linked_option", `Linked option is hidden: ${optionKey}`, { groupId: linkedGroup.groupId, optionId: linkedOption.optionId });
+      if (linkedOption.option.isAvailable === false) pushIssue(warnings, "unavailable_linked_option", `Linked option is unavailable: ${optionKey}`, { groupId: linkedGroup.groupId, optionId: linkedOption.optionId });
+      if (linkedOption.option.isActive === false || linkedOption.option.isVisible === false || linkedOption.option.isAvailable === false) {
+        pushIssue(warnings, "global_option_disabled", "Global option is disabled and cannot be shown for this product", {
+          severity: "warning",
+          action: "remove_or_replace_option",
           groupId: linkedGroup.groupId,
           optionId: linkedOption.optionId,
         });
       }
-      if (linkedOption.option.isActive === false) pushIssue(warnings, "inactive_linked_option", `Linked option is inactive: ${optionKey}`, { groupId: linkedGroup.groupId, optionId: linkedOption.optionId });
-      if (linkedOption.option.isVisible === false) pushIssue(warnings, "hidden_linked_option", `Linked option is hidden: ${optionKey}`, { groupId: linkedGroup.groupId, optionId: linkedOption.optionId });
-      if (linkedOption.option.isAvailable === false) pushIssue(warnings, "unavailable_linked_option", `Linked option is unavailable: ${optionKey}`, { groupId: linkedGroup.groupId, optionId: linkedOption.optionId });
     }
   }
 
@@ -1547,6 +1571,176 @@ function serializeProductComposerV3({ productPayload, category, linkedOptionGrou
   };
 }
 
+function statusTriple(globalDoc = {}, relationDoc = {}) {
+  const global = {
+    isActive: truthyByDefault(globalDoc && globalDoc.isActive),
+    isVisible: truthyByDefault(globalDoc && globalDoc.isVisible),
+    isAvailable: truthyByDefault(globalDoc && globalDoc.isAvailable),
+  };
+  const product = {
+    isActive: truthyByDefault(relationDoc && relationDoc.isActive),
+    isVisible: truthyByDefault(relationDoc && relationDoc.isVisible),
+    isAvailable: truthyByDefault(relationDoc && relationDoc.isAvailable),
+  };
+  return {
+    global,
+    product,
+    effective: {
+      isActive: global.isActive && product.isActive,
+      isVisible: global.isVisible && product.isVisible,
+      isAvailable: global.isAvailable && product.isAvailable,
+    },
+  };
+}
+
+function serializeDefaultPricing(source = {}) {
+  return {
+    extraPriceHalala: Number(source.extraPriceHalala || 0),
+    extraWeightUnitGrams: Number(source.extraWeightUnitGrams || 0),
+    extraWeightPriceHalala: Number(source.extraWeightPriceHalala || 0),
+    currency: source.currency || SYSTEM_CURRENCY,
+  };
+}
+
+function serializeOverridePricing(source = {}, currency = SYSTEM_CURRENCY) {
+  return {
+    extraPriceHalala: source.extraPriceHalala === undefined ? null : source.extraPriceHalala,
+    extraWeightUnitGrams: source.extraWeightUnitGrams === undefined ? null : source.extraWeightUnitGrams,
+    extraWeightPriceHalala: source.extraWeightPriceHalala === undefined ? null : source.extraWeightPriceHalala,
+    currency,
+  };
+}
+
+function serializeEffectivePricing(relation = {}, option = {}) {
+  return {
+    extraPriceHalala: relation.extraPriceHalala === null || relation.extraPriceHalala === undefined
+      ? Number(option.extraPriceHalala || 0)
+      : Number(relation.extraPriceHalala || 0),
+    extraWeightUnitGrams: relation.extraWeightUnitGrams === null || relation.extraWeightUnitGrams === undefined
+      ? Number(option.extraWeightUnitGrams || 0)
+      : Number(relation.extraWeightUnitGrams || 0),
+    extraWeightPriceHalala: relation.extraWeightPriceHalala === null || relation.extraWeightPriceHalala === undefined
+      ? Number(option.extraWeightPriceHalala || 0)
+      : Number(relation.extraWeightPriceHalala || 0),
+    currency: option.currency || SYSTEM_CURRENCY,
+  };
+}
+
+function serializeLibraryGroup(group = {}) {
+  return {
+    id: String(group._id),
+    key: group.key || "",
+    name: group.name || { ar: "", en: "" },
+    description: group.description || { ar: "", en: "" },
+    displayStyle: normalizeGroupUiMetadata(group.ui).displayStyle,
+    enabled: truthyByDefault(group.isActive) && truthyByDefault(group.isVisible) && truthyByDefault(group.isAvailable),
+    sortOrder: Number(group.sortOrder || 0),
+  };
+}
+
+function serializeLibraryOption(option = {}, group = null) {
+  return {
+    id: String(option._id),
+    key: option.key || "",
+    name: option.name || { ar: "", en: "" },
+    description: option.description || { ar: "", en: "" },
+    imageUrl: option.imageUrl || "",
+    suggestedGroupId: option.groupId ? String(option.groupId) : null,
+    suggestedGroupKey: group ? group.key : null,
+    defaultPricing: serializeDefaultPricing(option),
+    nutrition: option.nutrition || {},
+    enabled: truthyByDefault(option.isActive) && truthyByDefault(option.isVisible) && truthyByDefault(option.isAvailable),
+    sortOrder: Number(option.sortOrder || 0),
+  };
+}
+
+function serializeProductComposerLinkedOptionV4(linkedOption) {
+  const option = linkedOption.option || {};
+  return {
+    productOptionId: linkedOption.id,
+    optionId: linkedOption.optionId,
+    key: option.key || "",
+    name: option.name || { ar: "", en: "" },
+    imageUrl: option.imageUrl || "",
+    defaultPricing: serializeDefaultPricing(option),
+    overridePricing: serializeOverridePricing({
+      extraPriceHalala: linkedOption.extraPriceHalala,
+      extraWeightUnitGrams: linkedOption.extraWeightUnitGrams,
+      extraWeightPriceHalala: linkedOption.extraWeightPriceHalala,
+    }, option.currency),
+    effectivePricing: serializeEffectivePricing(linkedOption, option),
+    nutrition: option.nutrition || {},
+    status: statusTriple(option, linkedOption),
+    sortOrder: linkedOption.sortOrder,
+  };
+}
+
+function serializeProductComposerLinkedGroupV4(linkedGroup, optionPoolAvailableCount = 0) {
+  const group = linkedGroup.group || {};
+  const options = linkedGroup.options.map(serializeProductComposerLinkedOptionV4);
+  return {
+    productGroupId: linkedGroup.id,
+    groupId: linkedGroup.groupId,
+    key: group.key || "",
+    name: group.name || { ar: "", en: "" },
+    displayStyle: normalizeGroupUiMetadata(group.ui).displayStyle,
+    rules: {
+      minSelections: linkedGroup.minSelections,
+      maxSelections: linkedGroup.maxSelections,
+      isRequired: linkedGroup.isRequired,
+    },
+    status: statusTriple(group, linkedGroup),
+    sortOrder: linkedGroup.sortOrder,
+    options,
+    optionPool: {
+      linkedCount: options.length,
+      availableCount: optionPoolAvailableCount,
+      endpoint: `/api/dashboard/menu/products/${linkedGroup.productId}/option-groups/${linkedGroup.groupId}/option-pool`,
+    },
+  };
+}
+
+function serializeProductComposerV4({ productPayload, category, linkedOptionGroups, validation, optionPoolAvailableCount = 0 }) {
+  const groups = linkedOptionGroups.map((group) => serializeProductComposerLinkedGroupV4(group, optionPoolAvailableCount));
+  const linkedOptionCount = groups.reduce((sum, group) => sum + group.options.length, 0);
+  return {
+    contractVersion: "dashboard_product_composer.v4",
+    product: {
+      id: productPayload.id,
+      key: productPayload.key,
+      name: productPayload.name || { ar: "", en: "" },
+      categoryId: productPayload.categoryId ? String(productPayload.categoryId) : null,
+      isCustomizable: Boolean(productPayload.isCustomizable),
+      isActive: truthyByDefault(productPayload.isActive),
+      isVisible: truthyByDefault(productPayload.isVisible),
+      isAvailable: truthyByDefault(productPayload.isAvailable),
+    },
+    category: category ? {
+      id: String(category._id),
+      key: category.key || "",
+      name: category.name || { ar: "", en: "" },
+    } : null,
+    customization: {
+      enabled: Boolean(productPayload.isCustomizable),
+      summary: {
+        linkedGroupCount: groups.length,
+        linkedOptionCount,
+        requiredGroupCount: groups.filter((group) => group.rules.isRequired).length,
+      },
+      groups,
+    },
+    availableActions: {
+      canEnableCustomization: true,
+      canDisableCustomization: true,
+      canAttachGroup: true,
+      canDetachGroup: true,
+      canReplaceGroupOptions: true,
+      canPatchOptionOverride: true,
+    },
+    validation,
+  };
+}
+
 async function getProductComposer(productId, composerOptions = {}) {
   assertDashboardContractVersion(composerOptions);
   assertObjectId(productId, "productId");
@@ -1591,8 +1785,11 @@ async function getProductComposer(productId, composerOptions = {}) {
     );
   }).sort((left, right) => left.sortOrder - right.sortOrder);
 
+  const requestedContractVersion = String(composerOptions.contractVersion || "").trim().toLowerCase();
   const productPayload = serializeDoc(product);
-  productPayload.isCustomizable = inferProductCustomizable(product, linkedOptionGroups);
+  productPayload.isCustomizable = requestedContractVersion === "v4"
+    ? Boolean(product.isCustomizable)
+    : inferProductCustomizable(product, linkedOptionGroups);
 
   const validation = buildDashboardProductComposerValidation({
     product,
@@ -1600,12 +1797,67 @@ async function getProductComposer(productId, composerOptions = {}) {
     linkedOptionGroups,
   });
 
+  if (requestedContractVersion === "v4") {
+    const optionPoolAvailableCount = await MenuOption.countDocuments({
+      isActive: true,
+      isVisible: { $ne: false },
+      isAvailable: { $ne: false },
+    });
+    return serializeProductComposerV4({
+      productPayload,
+      category,
+      linkedOptionGroups,
+      validation,
+      optionPoolAvailableCount,
+    });
+  }
+
   return serializeProductComposerV3({
     productPayload,
     category,
     linkedOptionGroups,
     validation,
   });
+}
+
+async function getCustomizationLibrary(options = {}) {
+  const [groups, optionRows] = await Promise.all([
+    MenuOptionGroup.find({ ...buildListQuery({ ...options, includeInactive: true }) }).sort({ sortOrder: 1, createdAt: -1 }).lean(),
+    MenuOption.find({ ...buildListQuery({ ...options, includeInactive: true }) }).sort({ sortOrder: 1, createdAt: -1 }).lean(),
+  ]);
+  const groupsById = new Map(groups.map((group) => [String(group._id), group]));
+  return {
+    contractVersion: "dashboard_customization_library.v1",
+    groups: groups.map(serializeLibraryGroup),
+    options: optionRows.map((option) => serializeLibraryOption(option, groupsById.get(String(option.groupId)) || null)),
+  };
+}
+
+async function updateProductCustomization(productId, body = {}, actor = {}) {
+  assertObjectId(productId, "productId");
+  if (!isPlainObject(body)) throw new MenuValidationError("Request body must be an object");
+  const product = await MenuProduct.findById(productId);
+  if (!product) throw new MenuNotFoundError("Product not found");
+  const before = product.toObject();
+  const isCustomizable = normalizeBoolean(body.isCustomizable, "isCustomizable", product.isCustomizable);
+  product.isCustomizable = isCustomizable;
+  await product.save();
+  if (!isCustomizable && normalizeBoolean(body.clearRelations, "clearRelations", false)) {
+    await Promise.all([
+      ProductOptionGroup.deleteMany({ productId }),
+      ProductGroupOption.deleteMany({ productId }),
+    ]);
+  }
+  await writeMenuAudit({
+    entityType: "menu_product",
+    entityId: product._id,
+    action: isCustomizable ? "product_customization_enabled" : "product_customization_disabled",
+    before,
+    after: product.toObject(),
+    actor,
+    meta: { productId, clearRelations: Boolean(body.clearRelations) },
+  });
+  return getProductComposer(productId, { contractVersion: "v4" });
 }
 
 async function createProductGroup(productId, body, actor = {}) {
@@ -1617,11 +1869,27 @@ async function createProductGroup(productId, body, actor = {}) {
   ]);
   if (!product) throw new MenuNotFoundError("Product not found");
   if (!group) throw new MenuNotFoundError("Option group not found");
-  const relation = await createEntity(ProductOptionGroup, payload, { entityType: "menu_product_group", actor });
-  await refreshProductCustomizableFromRelations(productId);
-  
-  const optionRows = await MenuOption.find({ groupId: payload.groupId, isActive: true }).lean();
-  const catalogItemsById = await loadCatalogItemsByIdForDocs(optionRows);
+
+  const existing = await ProductOptionGroup.findOne({ productId, groupId: payload.groupId }).lean();
+  const relation = existing
+    ? await updateEntity(ProductOptionGroup, existing._id, { ...payload, isActive: true }, {
+      entityType: "menu_product_group",
+      actor,
+      action: "product_group_attached",
+      meta: { productId, groupId: payload.groupId },
+    })
+    : await createEntity(ProductOptionGroup, payload, { entityType: "menu_product_group", actor });
+
+  await MenuProduct.updateOne({ _id: productId }, { $set: { isCustomizable: true } });
+
+  const initialOptionIds = Array.isArray(body.initialOptionIds)
+    ? [...new Set(body.initialOptionIds.map((item) => assertObjectId(item, "initialOptionIds[]")))]
+    : [];
+  const linkAllOptions = normalizeBoolean(body.linkAllOptions, "linkAllOptions", false);
+  const optionRows = linkAllOptions
+    ? await MenuOption.find({ groupId: payload.groupId, isActive: true }).lean()
+    : (initialOptionIds.length ? await MenuOption.find({ _id: { $in: initialOptionIds }, isActive: true }).lean() : []);
+  const catalogItemsById = optionRows.length ? await loadCatalogItemsByIdForDocs(optionRows) : new Map();
   const options = filterGloballyAvailable(optionRows, catalogItemsById);
   if (options.length > 0) {
     const optionRelations = options.map((opt) => ({
@@ -1633,8 +1901,21 @@ async function createProductGroup(productId, body, actor = {}) {
       isAvailable: true,
       sortOrder: opt.sortOrder || 0,
     }));
-    await ProductGroupOption.insertMany(optionRelations);
+    for (const optionRelation of optionRelations) {
+      await ProductGroupOption.updateOne(
+        { productId, groupId: payload.groupId, optionId: optionRelation.optionId },
+        { $set: optionRelation },
+        { upsert: true }
+      );
+    }
   }
+  await writeMenuAudit({
+    entityType: "menu_product_group",
+    entityId: productId,
+    action: "product_group_attached",
+    actor,
+    meta: { productId, groupId: payload.groupId, optionIds: options.map((item) => String(item._id)), linkAllOptions },
+  });
 
   return relation;
 }
@@ -1645,8 +1926,7 @@ async function deleteProductGroup(productId, groupId, actor = {}) {
   const result = await ProductOptionGroup.deleteOne({ productId, groupId });
   if (result.deletedCount > 0) {
     await ProductGroupOption.deleteMany({ productId, groupId });
-    await refreshProductCustomizableFromRelations(productId);
-    await writeMenuAudit({ entityType: "menu_product_group", entityId: productId, action: "delete", actor, meta: { groupId } });
+    await writeMenuAudit({ entityType: "menu_product_group", entityId: productId, action: "product_group_detached", actor, meta: { productId, groupId } });
   }
   return { deleted: result.deletedCount };
 }
@@ -1660,10 +1940,9 @@ async function updateProductGroup(productId, groupId, body, actor = {}, action =
   const updated = await updateEntity(ProductOptionGroup, existing._id, payload, {
     entityType: "menu_product_group",
     actor,
-    action: action || changeAction(payload, "relation_updated"),
+    action: action || changeAction(payload, "product_group_rules_changed"),
     meta: { productId, groupId },
   });
-  await refreshProductCustomizableFromRelations(productId);
   return updated;
 }
 
@@ -1676,7 +1955,7 @@ async function updateProductGroupSelectionRules(productId, groupId, body, actor 
   return updateEntity(ProductOptionGroup, existing._id, payload, {
     entityType: "menu_product_group",
     actor,
-    action: "selection_rules_changed",
+    action: "product_group_rules_changed",
     meta: { productId, groupId },
   });
 }
@@ -1711,15 +1990,177 @@ async function listProductGroupOptions(productId, groupId, options = {}) {
   };
 }
 
+function normalizeOptionIds(value = [], fieldName = "optionIds") {
+  if (!Array.isArray(value)) throw new MenuValidationError(`${fieldName} must be an array`);
+  return [...new Set(value.map((item) => assertObjectId(item, `${fieldName}[]`)))];
+}
+
+async function replaceProductGroupOptions(productId, groupId, body = {}, actor = {}) {
+  assertObjectId(productId, "productId");
+  assertObjectId(groupId, "groupId");
+  if (!isPlainObject(body)) throw new MenuValidationError("Request body must be an object");
+  const optionIds = normalizeOptionIds(body.optionIds || []);
+  const preserveOverrides = normalizeBoolean(body.preserveOverrides, "preserveOverrides", true);
+  const [product, groupRelation, options] = await Promise.all([
+    MenuProduct.findById(productId).lean(),
+    ProductOptionGroup.findOne({ productId, groupId }).lean(),
+    optionIds.length ? MenuOption.find({ _id: { $in: optionIds }, isActive: true }).lean() : [],
+  ]);
+  if (!product) throw new MenuNotFoundError("Product not found");
+  if (!groupRelation) throw new MenuValidationError("Product group relation does not exist", "RELATION_NOT_FOUND", 404);
+  if (options.length !== optionIds.length) {
+    throw new MenuValidationError("One or more options do not exist or are globally disabled", "OPTION_NOT_ALLOWED", 400);
+  }
+  const catalogItemsById = await loadCatalogItemsByIdForDocs(options);
+  const globallyAvailableOptions = filterGloballyAvailable(options, catalogItemsById);
+  if (globallyAvailableOptions.length !== options.length) {
+    throw new MenuValidationError("One or more options are linked to unavailable catalog items", "OPTION_NOT_AVAILABLE", 409);
+  }
+  const existingRelations = await ProductGroupOption.find({ productId, groupId }).lean();
+  const existingByOptionId = new Map(existingRelations.map((row) => [String(row.optionId), row]));
+  const optionIdSet = new Set(optionIds);
+
+  await ProductGroupOption.deleteMany({ productId, groupId, optionId: { $nin: optionIds } });
+  for (const option of options) {
+    const optionId = String(option._id);
+    const existing = existingByOptionId.get(optionId);
+    const overrideFields = preserveOverrides && existing
+      ? {
+        extraPriceHalala: existing.extraPriceHalala,
+        extraWeightUnitGrams: existing.extraWeightUnitGrams,
+        extraWeightPriceHalala: existing.extraWeightPriceHalala,
+      }
+      : {
+        extraPriceHalala: null,
+        extraWeightUnitGrams: null,
+        extraWeightPriceHalala: null,
+      };
+    await ProductGroupOption.updateOne(
+      { productId, groupId, optionId },
+      {
+        $set: {
+          productId,
+          groupId,
+          optionId,
+          ...overrideFields,
+          isActive: existing ? truthyByDefault(existing.isActive) : true,
+          isVisible: existing ? truthyByDefault(existing.isVisible) : true,
+          isAvailable: existing ? truthyByDefault(existing.isAvailable) : true,
+          sortOrder: existing ? Number(existing.sortOrder || 0) : Number(option.sortOrder || 0),
+        },
+      },
+      { upsert: true }
+    );
+  }
+
+  await writeMenuAudit({
+    entityType: "menu_product_group_option",
+    entityId: productId,
+    action: "product_group_options_replaced",
+    actor,
+    meta: {
+      productId,
+      groupId,
+      optionIds,
+      preserveOverrides,
+      removedOptionIds: existingRelations.map((row) => String(row.optionId)).filter((id) => !optionIdSet.has(id)),
+    },
+  });
+
+  return getProductComposer(productId, { contractVersion: "v4" });
+}
+
+async function getProductGroupOptionPool(productId, groupId, queryOptions = {}) {
+  assertObjectId(productId, "productId");
+  assertObjectId(groupId, "groupId");
+  const includeDisabled = normalizeBoolean(queryOptions.includeDisabled, "includeDisabled", false);
+  const onlySuggested = normalizeBoolean(queryOptions.onlySuggested, "onlySuggested", false);
+  const suggestedGroupId = queryOptions.suggestedGroupId
+    ? assertObjectId(queryOptions.suggestedGroupId, "suggestedGroupId")
+    : groupId;
+  const optionQuery = includeDisabled ? {} : { isActive: true };
+  const search = queryOptions.search || queryOptions.q;
+  if (search !== undefined && search !== null && String(search).trim()) {
+    const escaped = String(search).trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const regex = new RegExp(escaped, "i");
+    optionQuery.$or = [{ key: regex }, { "name.ar": regex }, { "name.en": regex }];
+  }
+  if (onlySuggested) optionQuery.groupId = suggestedGroupId;
+
+  const [product, group, relation, optionRows, linkedRelations] = await Promise.all([
+    MenuProduct.findById(productId).lean(),
+    MenuOptionGroup.findById(groupId).lean(),
+    ProductOptionGroup.findOne({ productId, groupId }).lean(),
+    MenuOption.find(optionQuery).sort({ sortOrder: 1, createdAt: -1 }).lean(),
+    ProductGroupOption.find({ productId, groupId }).lean(),
+  ]);
+  if (!product) throw new MenuNotFoundError("Product not found");
+  if (!group) throw new MenuNotFoundError("Option group not found");
+  if (!relation) throw new MenuValidationError("Product group relation does not exist", "RELATION_NOT_FOUND", 404);
+
+  const groupsById = new Map([[String(group._id), group]]);
+  if (!groupsById.has(String(suggestedGroupId))) {
+    const suggestedGroup = await MenuOptionGroup.findById(suggestedGroupId).lean();
+    if (suggestedGroup) groupsById.set(String(suggestedGroup._id), suggestedGroup);
+  }
+  const linkedByOptionId = new Map(linkedRelations.map((row) => [String(row.optionId), row]));
+  return {
+    contractVersion: "dashboard_product_group_option_pool.v4",
+    productId,
+    groupId,
+    group: {
+      id: String(group._id),
+      key: group.key || "",
+      name: group.name || { ar: "", en: "" },
+    },
+    options: optionRows.map((option) => {
+      const optionId = String(option._id);
+      const linked = linkedByOptionId.get(optionId) || null;
+      const suggestedGroup = groupsById.get(String(option.groupId)) || null;
+      return {
+        optionId,
+        key: option.key || "",
+        name: option.name || { ar: "", en: "" },
+        isLinked: Boolean(linked),
+        productOptionId: linked ? String(linked._id) : null,
+        suggestedGroupId: option.groupId ? String(option.groupId) : null,
+        suggestedGroupKey: suggestedGroup ? suggestedGroup.key : null,
+        defaultPricing: serializeDefaultPricing(option),
+        overridePricing: linked ? serializeOverridePricing(linked, option.currency) : serializeOverridePricing({}, option.currency),
+        effectivePricing: linked ? serializeEffectivePricing(linked, option) : serializeDefaultPricing(option),
+        nutrition: option.nutrition || {},
+        status: statusTriple(option, linked || {}),
+      };
+    }),
+  };
+}
+
 async function createProductGroupOption(productId, groupId, body, actor = {}) {
   assertObjectId(productId, "productId");
   assertObjectId(groupId, "groupId");
   const relation = await ProductOptionGroup.findOne({ productId, groupId }).lean();
   if (!relation) throw new MenuValidationError("Product group relation does not exist", "RELATION_NOT_FOUND", 404);
   const payload = normalizeProductGroupOptionRelationPayload({ ...body, productId, groupId });
-  const option = await MenuOption.findOne({ _id: payload.optionId, groupId }).lean();
-  if (!option) throw new MenuValidationError("Option does not belong to this group", "OPTION_NOT_ALLOWED", 400);
-  return createEntity(ProductGroupOption, payload, { entityType: "menu_product_group_option", actor });
+  const option = await MenuOption.findOne({ _id: payload.optionId, isActive: true }).lean();
+  if (!option) throw new MenuValidationError("Option does not exist or is globally disabled", "OPTION_NOT_ALLOWED", 400);
+  const existing = await ProductGroupOption.findOne({ productId, groupId, optionId: payload.optionId }).lean();
+  if (existing) {
+    return updateEntity(ProductGroupOption, existing._id, { ...payload, isActive: true }, {
+      entityType: "menu_product_group_option",
+      actor,
+      action: "product_group_option_attached",
+      meta: { productId, groupId, optionId: payload.optionId },
+    });
+  }
+  const row = await createEntity(ProductGroupOption, payload, { entityType: "menu_product_group_option", actor });
+  await writeMenuAudit({
+    entityType: "menu_product_group_option",
+    entityId: row.id,
+    action: "product_group_option_attached",
+    actor,
+    meta: { productId, groupId, optionId: payload.optionId },
+  });
+  return row;
 }
 
 async function deleteProductGroupOption(productId, groupId, optionId, actor = {}) {
@@ -1728,7 +2169,7 @@ async function deleteProductGroupOption(productId, groupId, optionId, actor = {}
   assertObjectId(optionId);
   const result = await ProductGroupOption.deleteOne({ productId, groupId, optionId });
   if (result.deletedCount > 0) {
-    await writeMenuAudit({ entityType: "menu_product_group_option", entityId: productId, action: "delete", actor, meta: { groupId, optionId } });
+    await writeMenuAudit({ entityType: "menu_product_group_option", entityId: productId, action: "product_group_option_detached", actor, meta: { productId, groupId, optionId } });
   }
   return { deleted: result.deletedCount };
 }
@@ -1755,7 +2196,7 @@ async function updateProductGroupOption(productId, groupId, optionId, body, acto
   await writeMenuAudit({
     entityType: "menu_product_group_option",
     entityId: updated._id,
-    action: action || changeAction(payload, "relation_updated"),
+    action: action || changeAction(payload, "product_group_option_override_changed"),
     before: existing,
     after: updated,
     actor,
@@ -2253,6 +2694,8 @@ module.exports = {
   getCategory: getCategoryDetail,
   getProduct: getProductDetail,
   getProductComposer,
+  getCustomizationLibrary,
+  updateProductCustomization,
   getOptionGroup: getOptionGroupDetail,
   getOption: getOptionDetail,
   createCategory: async (body, actor) => {
@@ -2380,6 +2823,8 @@ module.exports = {
   updateProductGroupVisibility: (productId, groupId, body, actor) => updateProductGroup(productId, groupId, { isVisible: body.isVisible }, actor, "visibility_changed"),
   updateProductGroupAvailability: (productId, groupId, body, actor) => updateProductGroup(productId, groupId, { isAvailable: body.isAvailable }, actor, "availability_changed"),
   listProductGroupOptions,
+  replaceProductGroupOptions,
+  getProductGroupOptionPool,
   createProductGroupOption,
   updateProductGroupOption,
   deleteProductGroupOption,

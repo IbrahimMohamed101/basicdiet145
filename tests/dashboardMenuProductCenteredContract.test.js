@@ -98,6 +98,7 @@ async function main() {
       groupId: group.id,
       minSelections: 0,
       maxSelections: 1,
+      initialOptionIds: [option.id],
     });
     expectStatus(res, 201, "link option group");
 
