@@ -253,6 +253,10 @@ function serializeDashboardOption(option) {
   delete payload.premiumKey;
   delete payload.selectionType;
   delete payload.ruleTags;
+  delete payload.isVisible;
+  delete payload.isAvailable;
+  delete payload.availableFor;
+  delete payload.availableForSubscription;
   return payload;
 }
 
@@ -1080,6 +1084,7 @@ function normalizeOptionPayload(body = {}, existing = null) {
   } else if (body.extraFeeHalala !== undefined && body.extraPriceHalala === undefined) {
     extraPriceHalala = extraFeeHalala;
   }
+  const isActive = normalizeBoolean(body.isActive, "isActive", existing ? existing.isActive : true);
 
   return {
     groupId: body.groupId === undefined && existing ? existing.groupId : assertObjectId(body.groupId, "groupId"),
@@ -1092,12 +1097,10 @@ function normalizeOptionPayload(body = {}, existing = null) {
     extraWeightUnitGrams: normalizeNonNegativeInteger(body.extraWeightUnitGrams, "extraWeightUnitGrams", existing ? existing.extraWeightUnitGrams : 0),
     extraWeightPriceHalala: normalizeNonNegativeInteger(body.extraWeightPriceHalala, "extraWeightPriceHalala", existing ? existing.extraWeightPriceHalala : 0),
     currency: SYSTEM_CURRENCY,
-    availableFor: normalizeAvailableFor(body.availableFor, "availableFor", existing ? (existing.availableFor || []) : ["one_time", "subscription"]),
-    availableForSubscription: normalizeBoolean(body.availableForSubscription, "availableForSubscription", existing ? truthyByDefault(existing.availableForSubscription) : true),
     extraFeeHalala,
-    isActive: normalizeBoolean(body.isActive, "isActive", existing ? existing.isActive : true),
-    isVisible: normalizeBoolean(body.isVisible, "isVisible", existing ? truthyByDefault(existing.isVisible) : true),
-    isAvailable: normalizeBoolean(body.isAvailable, "isAvailable", existing ? truthyByDefault(existing.isAvailable) : true),
+    isActive,
+    isVisible: isActive,
+    isAvailable: isActive,
     sortOrder: normalizeNonNegativeInteger(body.sortOrder, "sortOrder", existing ? existing.sortOrder : 0),
   };
 }

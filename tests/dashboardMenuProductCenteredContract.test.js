@@ -41,6 +41,10 @@ const DEPRECATED_OPTION_FIELDS = [
   "premiumKey",
   "selectionType",
   "ruleTags",
+  "isVisible",
+  "isAvailable",
+  "availableFor",
+  "availableForSubscription",
 ];
 
 function assertNoDeprecatedOptionFields(payload, label) {
@@ -158,6 +162,10 @@ async function main() {
       premiumKey: "legacy_premium",
       selectionType: "legacy_selection",
       ruleTags: ["legacy_rule"],
+      isVisible: false,
+      isAvailable: false,
+      availableFor: ["subscription"],
+      availableForSubscription: false,
     });
     expectStatus(res, 201, "create option");
     const option = res.body.data;
@@ -168,6 +176,28 @@ async function main() {
     assert.strictEqual(optionDoc.premiumKey, "", "deprecated premiumKey input is ignored");
     assert.strictEqual(optionDoc.selectionType, "", "deprecated selectionType input is ignored");
     assert.deepStrictEqual(optionDoc.ruleTags, [], "deprecated ruleTags input is ignored");
+    assert.strictEqual(optionDoc.isActive, true, "isActive defaults to true");
+    assert.strictEqual(optionDoc.isVisible, true, "isVisible is derived from isActive on create");
+    assert.strictEqual(optionDoc.isAvailable, true, "isAvailable is derived from isActive on create");
+    assert.deepStrictEqual(optionDoc.availableFor, ["one_time", "subscription"], "deprecated availableFor input is ignored");
+    assert.strictEqual(optionDoc.availableForSubscription, true, "deprecated availableForSubscription input is ignored");
+
+    res = await api.post(`/api/dashboard/menu/option-groups/${group.id}/options`).set(adminHeaders).send({
+      key: `${TEST_KEY_TAG}_inactive_status`,
+      name: { en: `${TEST_TAG} Inactive Status`, ar: "Inactive Status" },
+      isActive: false,
+      isVisible: true,
+      isAvailable: true,
+      availableFor: ["subscription"],
+      availableForSubscription: false,
+    });
+    expectStatus(res, 201, "create inactive option with simplified status");
+    assertNoDeprecatedOptionFields(res.body.data, "inactive dashboard option");
+    const inactiveOptionDoc = await mongoose.model("MenuOption").findById(res.body.data.id).lean();
+    assert.strictEqual(inactiveOptionDoc.isActive, false, "isActive controls dashboard option status");
+    assert.strictEqual(inactiveOptionDoc.isVisible, false, "isVisible is derived from inactive status");
+    assert.strictEqual(inactiveOptionDoc.isAvailable, false, "isAvailable is derived from inactive status");
+    assert.deepStrictEqual(inactiveOptionDoc.availableFor, ["one_time", "subscription"], "availableFor is not controlled by dashboard option form");
 
     res = await api.post(`/api/dashboard/menu/products/${directProduct.id}/option-groups`).set(adminHeaders).send({
       groupId: group.id,
@@ -233,6 +263,10 @@ async function main() {
       premiumKey: "updated_premium",
       selectionType: "updated_selection",
       ruleTags: ["updated_rule"],
+      isVisible: false,
+      isAvailable: false,
+      availableFor: ["subscription"],
+      availableForSubscription: false,
       extraPriceHalala: 100,
     });
     expectStatus(res, 200, "update option ignores deprecated dashboard fields");
@@ -243,7 +277,27 @@ async function main() {
     assert.strictEqual(optionDoc.premiumKey, "", "deprecated premiumKey update is ignored");
     assert.strictEqual(optionDoc.selectionType, "", "deprecated selectionType update is ignored");
     assert.deepStrictEqual(optionDoc.ruleTags, [], "deprecated ruleTags update is ignored");
+    assert.strictEqual(optionDoc.isActive, true, "omitting isActive preserves current active status");
+    assert.strictEqual(optionDoc.isVisible, true, "isVisible update is ignored and derived from isActive");
+    assert.strictEqual(optionDoc.isAvailable, true, "isAvailable update is ignored and derived from isActive");
+    assert.deepStrictEqual(optionDoc.availableFor, ["one_time", "subscription"], "availableFor update is ignored");
+    assert.strictEqual(optionDoc.availableForSubscription, true, "availableForSubscription update is ignored");
     assert.strictEqual(optionDoc.extraPriceHalala, 100, "normal option update still applies");
+
+    res = await api.patch(`/api/dashboard/menu/options/${option.id}`).set(adminHeaders).send({ isActive: false });
+    expectStatus(res, 200, "update option inactive with simplified status");
+    assertNoDeprecatedOptionFields(res.body.data, "inactive updated dashboard option");
+    optionDoc = await mongoose.model("MenuOption").findById(option.id).lean();
+    assert.strictEqual(optionDoc.isActive, false, "isActive update applies");
+    assert.strictEqual(optionDoc.isVisible, false, "isVisible follows isActive update");
+    assert.strictEqual(optionDoc.isAvailable, false, "isAvailable follows isActive update");
+
+    res = await api.patch(`/api/dashboard/menu/options/${option.id}`).set(adminHeaders).send({ isActive: true });
+    expectStatus(res, 200, "reactivate option with simplified status");
+    optionDoc = await mongoose.model("MenuOption").findById(option.id).lean();
+    assert.strictEqual(optionDoc.isActive, true, "isActive reactivation applies");
+    assert.strictEqual(optionDoc.isVisible, true, "isVisible follows active status");
+    assert.strictEqual(optionDoc.isAvailable, true, "isAvailable follows active status");
 
     res = await api.get("/api/dashboard/menu/options").set(adminHeaders);
     expectStatus(res, 200, "option list");
