@@ -316,52 +316,72 @@ async function seedViaDashboard(api) {
     options.push(res.body.data);
   }
 
-  res = await api.put(`/api/dashboard/menu/products/${fixedProduct.id}/groups`).set(adminHeaders).send({
-    groups: [{ groupId: group.id, minSelections: 0, maxSelections: 1, sortOrder: 1 }],
-  });
-  expectStatus(res, 200, "set product groups");
+  async function linkProductGroup(product, rules, optionOverrides, label) {
+    res = await api.post(`/api/dashboard/menu/products/${product.id}/option-groups`).set(adminHeaders).send({
+      groupId: group.id,
+      ...rules,
+    });
+    expectStatus(res, 201, `${label} link group`);
 
-  res = await api.put(`/api/dashboard/menu/products/${fixedProduct.id}/groups/${group.id}/options`).set(adminHeaders).send({
-    options: [
+    const desiredOptionIds = new Set(optionOverrides.map((item) => String(item.optionId)));
+    const existingRelations = await ProductGroupOption.find({ productId: product.id, groupId: group.id }).lean();
+    for (const relation of existingRelations) {
+      const optionId = String(relation.optionId);
+      if (!desiredOptionIds.has(optionId)) {
+        res = await api.delete(`/api/dashboard/menu/products/${product.id}/option-groups/${group.id}/options/${optionId}`).set(adminHeaders);
+        expectStatus(res, 200, `${label} remove auto-linked option`);
+      }
+    }
+
+    for (const override of optionOverrides) {
+      const optionId = String(override.optionId);
+      const body = { ...override };
+      delete body.optionId;
+      const exists = existingRelations.some((relation) => String(relation.optionId) === optionId);
+      if (exists) {
+        res = await api.patch(`/api/dashboard/menu/products/${product.id}/option-groups/${group.id}/options/${optionId}`).set(adminHeaders).send(body);
+        expectStatus(res, 200, `${label} update linked option`);
+      } else {
+        res = await api.post(`/api/dashboard/menu/products/${product.id}/option-groups/${group.id}/options`).set(adminHeaders).send(override);
+        expectStatus(res, 201, `${label} add linked option`);
+      }
+    }
+  }
+
+  await linkProductGroup(
+    fixedProduct,
+    { minSelections: 0, maxSelections: 1, sortOrder: 1 },
+    [
       { optionId: options[0].id, extraPriceHalala: 300, extraWeightPriceHalala: 500, sortOrder: 1 },
       { optionId: options[1].id, extraPriceHalala: 200, sortOrder: 2 },
       { optionId: options[3].id, extraPriceHalala: 700, sortOrder: 3 },
     ],
-  });
-  expectStatus(res, 200, "set group options");
+    "fixed product"
+  );
 
-  res = await api.put(`/api/dashboard/menu/products/${requiredProduct.id}/groups`).set(adminHeaders).send({
-    groups: [{ groupId: group.id, minSelections: 1, maxSelections: 1, sortOrder: 1 }],
-  });
-  expectStatus(res, 200, "set required product groups");
+  await linkProductGroup(
+    requiredProduct,
+    { minSelections: 1, maxSelections: 1, sortOrder: 1 },
+    [{ optionId: options[1].id, extraPriceHalala: 0, sortOrder: 1 }],
+    "required product"
+  );
 
-  res = await api.put(`/api/dashboard/menu/products/${requiredProduct.id}/groups/${group.id}/options`).set(adminHeaders).send({
-    options: [{ optionId: options[1].id, extraPriceHalala: 0, sortOrder: 1 }],
-  });
-  expectStatus(res, 200, "set required product options");
+  await linkProductGroup(
+    fruitSaladProduct,
+    { minSelections: 1, maxSelections: 1, sortOrder: 1 },
+    [{ optionId: options[1].id, extraPriceHalala: 0, sortOrder: 1 }],
+    "fruit salad"
+  );
 
-  res = await api.put(`/api/dashboard/menu/products/${fruitSaladProduct.id}/groups`).set(adminHeaders).send({
-    groups: [{ groupId: group.id, minSelections: 1, maxSelections: 1, sortOrder: 1 }],
-  });
-  expectStatus(res, 200, "set fruit salad groups");
-
-  res = await api.put(`/api/dashboard/menu/products/${fruitSaladProduct.id}/groups/${group.id}/options`).set(adminHeaders).send({
-    options: [{ optionId: options[1].id, extraPriceHalala: 0, sortOrder: 1 }],
-  });
-  expectStatus(res, 200, "set fruit salad options");
-
-  res = await api.put(`/api/dashboard/menu/products/${greekYogurtProduct.id}/groups`).set(adminHeaders).send({
-    groups: [{ groupId: group.id, minSelections: 0, maxSelections: 3, sortOrder: 1 }],
-  });
-  expectStatus(res, 200, "set greek yogurt groups");
-
-  res = await api.put(`/api/dashboard/menu/products/${greekYogurtProduct.id}/groups/${group.id}/options`).set(adminHeaders).send({
-    options: [
+  await linkProductGroup(
+    greekYogurtProduct,
+    { minSelections: 0, maxSelections: 3, sortOrder: 1 },
+    [
       { optionId: options[0].id, extraPriceHalala: 0, sortOrder: 1 },
       { optionId: options[1].id, extraPriceHalala: 0, sortOrder: 2 },
     ],
-  });
-  expectStatus(res, 200, "set greek yogurt options");
+    "greek yogurt"
+  );
 
   res = await api.post("/api/dashboard/menu/publish").set(adminHeaders).send({ notes: TEST_TAG });
   expectStatus(res, 200, "publish menu");

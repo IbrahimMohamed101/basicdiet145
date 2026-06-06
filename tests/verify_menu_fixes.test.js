@@ -84,7 +84,7 @@ async function runTests() {
     // Note: rollback logic in service restores publishedAt and isActive. 
     // Wait, let's check if my service rollback actually updates the price.
     // Looking at menuCatalogService.js:989: priceHalala: prod.priceHalala (from snapshot)
-    assert.strictEqual(res.body.data.priceHalala, 1000, "Price should be restored to V1 value");
+    assert.strictEqual(res.body.data.product.priceHalala, 1000, "Price should be restored to V1 value");
 
     // 6. Verify versions
     const body = rollbackRes.body.data || rollbackRes.body;
@@ -122,18 +122,12 @@ async function runTests() {
     });
     const prod2Id = res.body.data.id;
 
-    await request(app).put(`/api/dashboard/menu/products/${prodId}/groups`).set(adminHeaders).send({
-      groups: [{ groupId, minSelections: 0, maxSelections: 1 }]
-    });
-    await request(app).put(`/api/dashboard/menu/products/${prodId}/groups/${groupId}/options`).set(adminHeaders).send({
-      options: [{ optionId, extraPriceHalala: null }] // Inherit
+    await request(app).post(`/api/dashboard/menu/products/${prodId}/option-groups`).set(adminHeaders).send({
+      groupId, minSelections: 0, maxSelections: 1
     });
 
-    await request(app).put(`/api/dashboard/menu/products/${prod2Id}/groups`).set(adminHeaders).send({
-      groups: [{ groupId, minSelections: 0, maxSelections: 1 }]
-    });
-    await request(app).put(`/api/dashboard/menu/products/${prod2Id}/groups/${groupId}/options`).set(adminHeaders).send({
-      options: [{ optionId, extraPriceHalala: null }] // Inherit
+    await request(app).post(`/api/dashboard/menu/products/${prod2Id}/option-groups`).set(adminHeaders).send({
+      groupId, minSelections: 0, maxSelections: 1
     });
 
     // 3. Update option for prod_1 only

@@ -744,7 +744,36 @@ function serializeAdminProductSummary(product) {
   return payload;
 }
 
+function serializeCategoryDetailV3(category, products) {
+  const categoryPayload = serializeDoc(category);
+  return {
+    contractVersion: "dashboard_category_detail.v3",
+    category: categoryPayload,
+    products: products.map(serializeAdminProductSummary),
+    assignment: {
+      relationOwner: "product.categoryId",
+      bulkAssignmentEndpoint: `/api/dashboard/menu/categories/${categoryPayload.id}/products`,
+    },
+    actions: {
+      canBulkAssignProducts: true,
+      canReorderProducts: true,
+    },
+  };
+}
+
+function assertDashboardContractVersion(options = {}) {
+  const requested = String(options.contractVersion || "").trim().toLowerCase();
+  if (!requested || requested === "v3") return;
+  throw new MenuValidationError(
+    "Dashboard menu contract versions v1 and v2 are no longer supported. Use dashboard v3.",
+    "DASHBOARD_CONTRACT_VERSION_UNSUPPORTED",
+    410,
+    { supportedContractVersion: "v3" }
+  );
+}
+
 async function getCategoryDetail(id, options = {}) {
+  assertDashboardContractVersion(options);
   assertObjectId(id);
   const category = await MenuCategory.findById(id).lean();
   if (!category) throw new MenuNotFoundError();
@@ -757,16 +786,7 @@ async function getCategoryDetail(id, options = {}) {
     .sort({ sortOrder: 1, createdAt: -1 })
     .lean();
 
-  return {
-    contractVersion: "dashboard_category_detail.v2",
-    ...serializeDoc(category),
-    category: serializeDoc(category),
-    products: products.map(serializeAdminProductSummary),
-    assignment: {
-      relationOwner: "product.categoryId",
-      bulkAssignmentEndpoint: `/api/dashboard/menu/categories/${id}/products`,
-    },
-  };
+  return serializeCategoryDetailV3(category, products);
 }
 
 async function getProductDetail(id) {
@@ -783,8 +803,7 @@ async function getProductDetail(id) {
   payload.isCustomizable = inferProductCustomizable(product, activeGroupCount > 0 ? [{}] : []);
 
   return {
-    contractVersion: "dashboard_product_detail.v2",
-    ...payload,
+    contractVersion: "dashboard_product_detail.v3",
     product: payload,
     category: category ? serializeDoc(category) : null,
     groupSummary: {
@@ -796,32 +815,49 @@ async function getProductDetail(id) {
 }
 
 async function getOptionGroupDetail(id, options = {}) {
+  assertDashboardContractVersion(options);
   assertObjectId(id);
   const group = await MenuOptionGroup.findById(id).lean();
   if (!group) throw new MenuNotFoundError();
-  const optionsRows = await MenuOption.find({
-    groupId: id,
-    ...buildListQuery(options),
-  }).sort({ sortOrder: 1, createdAt: -1 }).lean();
+  const [optionsRows, linkedProductIds] = await Promise.all([
+    MenuOption.find({
+      groupId: id,
+      ...buildListQuery(options),
+    }).sort({ sortOrder: 1, createdAt: -1 }).lean(),
+    ProductOptionGroup.distinct("productId", { groupId: id, isActive: true }),
+  ]);
 
   return {
-    contractVersion: "dashboard_option_group_detail.v2",
-    ...serializeDoc(group),
+    contractVersion: "dashboard_option_group_detail.v3",
     optionGroup: serializeDoc(group),
     options: optionsRows.map(serializeDoc),
+    usage: {
+      linkedProductsCount: linkedProductIds.length,
+    },
+    actions: {
+      canAddOptions: true,
+      canReorderOptions: true,
+    },
   };
 }
 
-async function getOptionDetail(id) {
+async function getOptionDetail(id, options = {}) {
+  assertDashboardContractVersion(options);
   assertObjectId(id);
   const option = await MenuOption.findById(id).lean();
   if (!option) throw new MenuNotFoundError();
-  const group = option.groupId ? await MenuOptionGroup.findById(option.groupId).lean() : null;
+  const [group, linkedProductIds] = await Promise.all([
+    option.groupId ? MenuOptionGroup.findById(option.groupId).lean() : null,
+    ProductGroupOption.distinct("productId", { optionId: id, isActive: true }),
+  ]);
+
   return {
-    contractVersion: "dashboard_option_detail.v2",
-    ...serializeDoc(option),
+    contractVersion: "dashboard_option_detail.v3",
     option: serializeDoc(option),
     optionGroup: group ? serializeDoc(group) : null,
+    usage: {
+      linkedProductsCount: linkedProductIds.length,
+    },
   };
 }
 
@@ -1109,33 +1145,6 @@ async function reorder(Model, items = [], { entityType, actor }) {
   return { updated: ids.length };
 }
 
-async function setProductGroups(productId, groups = [], actor = {}) {
-  assertObjectId(productId, "productId");
-  const product = await MenuProduct.findById(productId).lean();
-  if (!product) throw new MenuNotFoundError("Product not found");
-  if (!Array.isArray(groups)) throw new MenuValidationError("groups must be an array");
-  const normalized = groups.map((item) => ({
-    productId,
-    groupId: assertObjectId(item.groupId || item.id, "groups[].groupId"),
-    minSelections: normalizeNonNegativeInteger(item.minSelections, "groups[].minSelections", 0),
-    maxSelections: normalizeNullableNonNegativeInteger(item.maxSelections, "groups[].maxSelections", null),
-    isRequired: normalizeBoolean(item.isRequired, "groups[].isRequired", Number(item.minSelections || 0) > 0),
-    isActive: normalizeBoolean(item.isActive, "groups[].isActive", true),
-    isVisible: normalizeBoolean(item.isVisible, "groups[].isVisible", true),
-    isAvailable: normalizeBoolean(item.isAvailable, "groups[].isAvailable", true),
-    sortOrder: normalizeNonNegativeInteger(item.sortOrder, "groups[].sortOrder", 0),
-  }));
-  normalized.forEach((item) => normalizeSelectionRulePayload(item, item, "groups[]."));
-  const groupIds = normalized.map((item) => item.groupId);
-  const found = await MenuOptionGroup.countDocuments({ _id: { $in: groupIds } });
-  if (found !== groupIds.length) throw new MenuValidationError("One or more groups do not exist");
-  await ProductOptionGroup.deleteMany({ productId });
-  await ProductOptionGroup.insertMany(normalized);
-  await refreshProductCustomizableFromRelations(productId);
-  await writeMenuAudit({ entityType: "menu_product_group", entityId: productId, action: "replace", after: normalized, actor });
-  return normalized;
-}
-
 async function duplicateProduct(productId, actor = {}) {
   assertObjectId(productId);
   const product = await MenuProduct.findById(productId).lean();
@@ -1200,67 +1209,95 @@ async function duplicateProduct(productId, actor = {}) {
   }
 }
 
-async function setProductGroupOptions(productId, groupId, options = [], actor = {}) {
-  assertObjectId(productId, "productId");
-  assertObjectId(groupId, "groupId");
-  if (!Array.isArray(options)) throw new MenuValidationError("options must be an array");
-  const relation = await ProductOptionGroup.findOne({ productId, groupId }).lean();
-  if (!relation) throw new MenuValidationError("Product group relation does not exist", "RELATION_NOT_FOUND", 404);
-  const normalized = options.map((item) => ({
-    productId,
-    groupId,
-    optionId: assertObjectId(item.optionId || item.id, "options[].optionId"),
-    extraPriceHalala: normalizeNullableNonNegativeInteger(item.extraPriceHalala, "options[].extraPriceHalala", null),
-    extraWeightUnitGrams: normalizeNullableNonNegativeInteger(item.extraWeightUnitGrams, "options[].extraWeightUnitGrams", null),
-    extraWeightPriceHalala: normalizeNullableNonNegativeInteger(item.extraWeightPriceHalala, "options[].extraWeightPriceHalala", null),
-    isActive: normalizeBoolean(item.isActive, "options[].isActive", true),
-    isVisible: normalizeBoolean(item.isVisible, "options[].isVisible", true),
-    isAvailable: normalizeBoolean(item.isAvailable, "options[].isAvailable", true),
-    sortOrder: normalizeNonNegativeInteger(item.sortOrder, "options[].sortOrder", 0),
-  }));
-  const optionIds = normalized.map((item) => item.optionId);
-  const found = await MenuOption.countDocuments({ _id: { $in: optionIds }, groupId });
-  if (found !== optionIds.length) throw new MenuValidationError("One or more options do not belong to this group");
-  await ProductGroupOption.deleteMany({ productId, groupId });
-  await ProductGroupOption.insertMany(normalized);
-  await writeMenuAudit({ entityType: "menu_product_group_option", entityId: productId, action: "replace", after: normalized, actor, meta: { groupId } });
-  return normalized;
+function normalizeBulkProductIds(productIds, fieldName = "productIds") {
+  if (!Array.isArray(productIds)) throw new MenuValidationError(`${fieldName} must be an array`);
+  const ids = [...new Set(productIds.map((item) => assertObjectId(item, `${fieldName}[]`)))];
+  if (ids.length === 0) throw new MenuValidationError(`${fieldName} must include at least one product`);
+  return ids;
 }
 
-async function assignProductsToCategory(categoryId, products = [], actor = {}) {
+async function bulkAssignProductsToCategory(categoryId, body = {}, actor = {}) {
   assertObjectId(categoryId, "categoryId");
-  if (!Array.isArray(products)) throw new MenuValidationError("products must be an array");
+  if (!isPlainObject(body)) throw new MenuValidationError("Request body must be an object");
+  if (String(body.mode || "assign") !== "assign") {
+    throw new MenuValidationError("mode must be assign", "UNSUPPORTED_BULK_ASSIGNMENT_MODE");
+  }
+
+  const productIds = normalizeBulkProductIds(body.productIds);
   const category = await MenuCategory.findOne({ _id: categoryId, isActive: true }).lean();
   if (!category) throw new MenuValidationError("categoryId does not reference an active category", "CATEGORY_NOT_FOUND", 404);
 
-  const normalized = products.map((item, index) => ({
-    productId: assertObjectId(item.productId || item.id, "products[].productId"),
-    sortOrder: item.sortOrder === undefined
-      ? null
-      : normalizeNonNegativeInteger(item.sortOrder, "products[].sortOrder", index * 10),
-  }));
-  const ids = normalized.map((item) => item.productId);
-  const found = await MenuProduct.countDocuments({ _id: { $in: ids }, isActive: true });
-  if (found !== ids.length) throw new MenuValidationError("One or more products do not exist or are inactive", "PRODUCT_NOT_FOUND", 404);
+  const foundProducts = await MenuProduct.find({ _id: { $in: productIds }, isActive: true }).lean();
+  if (foundProducts.length !== productIds.length) {
+    throw new MenuValidationError("One or more products do not exist or are inactive", "PRODUCT_NOT_FOUND", 404);
+  }
 
-  await Promise.all(normalized.map((item) => {
-    const $set = { categoryId };
-    if (item.sortOrder !== null) $set.sortOrder = item.sortOrder;
-    return MenuProduct.updateOne({ _id: item.productId }, { $set });
-  }));
+  await MenuProduct.updateMany(
+    { _id: { $in: productIds } },
+    { $set: { categoryId } }
+  );
 
   await writeMenuAudit({
     entityType: "menu_category",
     entityId: categoryId,
-    action: "products_assigned",
+    action: "products_bulk_assigned",
     actor,
-    meta: { productIds: ids },
+    meta: { productIds },
   });
 
+  const assignedProducts = await MenuProduct.find({ _id: { $in: productIds } })
+    .sort({ sortOrder: 1, createdAt: -1 })
+    .lean();
+
   return {
-    categoryId,
-    assigned: ids.length,
-    products: normalized,
+    contractVersion: "dashboard_category_product_assignment.v3",
+    category: serializeDoc(category),
+    assignedCount: assignedProducts.length,
+    products: assignedProducts.map(serializeAdminProductSummary),
+    relationOwner: "product.categoryId",
+  };
+}
+
+async function bulkUpdateProducts(body = {}, actor = {}) {
+  if (!isPlainObject(body)) throw new MenuValidationError("Request body must be an object");
+  const productIds = normalizeBulkProductIds(body.productIds);
+  const action = String(body.action || "").trim();
+  if (action !== "move_to_category") {
+    throw new MenuValidationError("action must be move_to_category", "UNSUPPORTED_PRODUCT_BULK_ACTION");
+  }
+
+  const categoryId = assertObjectId(body.categoryId, "categoryId");
+  const [category, foundProducts] = await Promise.all([
+    MenuCategory.findOne({ _id: categoryId, isActive: true }).lean(),
+    MenuProduct.find({ _id: { $in: productIds }, isActive: true }).lean(),
+  ]);
+  if (!category) throw new MenuValidationError("categoryId does not reference an active category", "CATEGORY_NOT_FOUND", 404);
+  if (foundProducts.length !== productIds.length) {
+    throw new MenuValidationError("One or more products do not exist or are inactive", "PRODUCT_NOT_FOUND", 404);
+  }
+
+  await MenuProduct.updateMany(
+    { _id: { $in: productIds } },
+    { $set: { categoryId } }
+  );
+
+  await writeMenuAudit({
+    entityType: "menu_product",
+    entityId: categoryId,
+    action: "bulk_move_to_category",
+    actor,
+    meta: { productIds, categoryId },
+  });
+
+  const products = await MenuProduct.find({ _id: { $in: productIds } })
+    .sort({ sortOrder: 1, createdAt: -1 })
+    .lean();
+
+  return {
+    action,
+    category: serializeDoc(category),
+    count: products.length,
+    products: products.map(serializeAdminProductSummary),
     relationOwner: "product.categoryId",
   };
 }
@@ -1423,7 +1460,95 @@ function serializeDashboardLinkedGroup(relation, group, options) {
   return payload;
 }
 
-async function getProductComposer(productId) {
+function serializePricingFields(source = {}) {
+  return {
+    extraPriceHalala: source.extraPriceHalala === undefined ? null : source.extraPriceHalala,
+    extraWeightUnitGrams: source.extraWeightUnitGrams === undefined ? null : source.extraWeightUnitGrams,
+    extraWeightPriceHalala: source.extraWeightPriceHalala === undefined ? null : source.extraWeightPriceHalala,
+    currency: source.currency || SYSTEM_CURRENCY,
+  };
+}
+
+function serializeProductComposerLinkedOptionV3(linkedOption) {
+  const option = linkedOption.option || {};
+  return {
+    relationId: linkedOption.id,
+    optionId: linkedOption.optionId,
+    key: option.key || "",
+    name: option.name || { ar: "", en: "" },
+    defaultPricing: serializePricingFields(option),
+    overridePricing: serializePricingFields({
+      extraPriceHalala: linkedOption.extraPriceHalala,
+      extraWeightUnitGrams: linkedOption.extraWeightUnitGrams,
+      extraWeightPriceHalala: linkedOption.extraWeightPriceHalala,
+      currency: option.currency,
+    }),
+    effectivePricing: serializePricingFields({
+      extraPriceHalala: linkedOption.override.effectiveExtraPriceHalala,
+      extraWeightUnitGrams: linkedOption.override.effectiveExtraWeightUnitGrams,
+      extraWeightPriceHalala: linkedOption.override.effectiveExtraWeightPriceHalala,
+      currency: option.currency,
+    }),
+    nutrition: option.nutrition || {},
+    status: {
+      isActive: linkedOption.isActive && option.isActive !== false,
+      isVisible: linkedOption.isVisible && option.isVisible !== false,
+      isAvailable: linkedOption.isAvailable && option.isAvailable !== false,
+    },
+    sortOrder: linkedOption.sortOrder,
+  };
+}
+
+function serializeProductComposerLinkedGroupV3(linkedGroup) {
+  const group = linkedGroup.group || {};
+  const options = linkedGroup.options.map(serializeProductComposerLinkedOptionV3);
+  return {
+    relationId: linkedGroup.id,
+    groupId: linkedGroup.groupId,
+    key: group.key || "",
+    name: group.name || { ar: "", en: "" },
+    rules: {
+      minSelections: linkedGroup.minSelections,
+      maxSelections: linkedGroup.maxSelections,
+      isRequired: linkedGroup.isRequired,
+    },
+    status: {
+      isActive: linkedGroup.isActive && group.isActive !== false,
+      isVisible: linkedGroup.isVisible && group.isVisible !== false,
+      isAvailable: linkedGroup.isAvailable && group.isAvailable !== false,
+    },
+    sortOrder: linkedGroup.sortOrder,
+    ui: normalizeGroupUiMetadata(group.ui),
+    optionsCount: options.length,
+    options,
+  };
+}
+
+function serializeProductComposerV3({ productPayload, category, linkedOptionGroups, validation }) {
+  const product = { ...productPayload };
+  delete product.groups;
+  delete product.optionGroups;
+
+  return {
+    contractVersion: "dashboard_product_composer.v3",
+    product,
+    category: category ? serializeDoc(category) : null,
+    customization: {
+      isCustomizable: product.isCustomizable,
+      linkedGroups: linkedOptionGroups.map(serializeProductComposerLinkedGroupV3),
+    },
+    availableActions: {
+      canAttachGroups: true,
+      canDetachGroups: true,
+      canEditRules: true,
+      canEditOptionOverrides: true,
+    },
+    validation,
+  };
+}
+
+async function getProductComposer(productId, composerOptions = {}) {
+  assertDashboardContractVersion(composerOptions);
   assertObjectId(productId, "productId");
   const product = await MenuProduct.findById(productId).lean();
   if (!product) throw new MenuNotFoundError("Product not found");
@@ -1468,8 +1593,6 @@ async function getProductComposer(productId) {
 
   const productPayload = serializeDoc(product);
   productPayload.isCustomizable = inferProductCustomizable(product, linkedOptionGroups);
-  productPayload.groups = linkedOptionGroups;
-  productPayload.optionGroups = linkedOptionGroups;
 
   const validation = buildDashboardProductComposerValidation({
     product,
@@ -1477,44 +1600,12 @@ async function getProductComposer(productId) {
     linkedOptionGroups,
   });
 
-  return {
-    contractVersion: "dashboard_product_composer.v1",
-    product: productPayload,
-    category: category ? serializeDoc(category) : null,
-    publishState: {
-      isPublished: Boolean(product.publishedAt),
-      publishedAt: product.publishedAt || null,
-      versionId: product.versionId ? String(product.versionId) : null,
-    },
-    availability: {
-      isCustomizable: productPayload.isCustomizable,
-      isActive: truthyByDefault(product.isActive),
-      isVisible: truthyByDefault(product.isVisible),
-      isAvailable: truthyByDefault(product.isAvailable),
-      availableFor: Array.isArray(product.availableFor) ? product.availableFor : [],
-      branchAvailability: Array.isArray(product.branchAvailability) ? product.branchAvailability : [],
-    },
-    editModel: {
-      primaryEntity: "product",
-      categoryOwnership: "product.categoryId",
-      groupRelationOwnership: "ProductOptionGroup",
-      optionMembershipOwnership: "MenuOption.groupId",
-      optionRelationOwnership: "ProductGroupOption",
-    },
-    pricing: {
-      pricingModel: product.pricingModel || "fixed",
-      priceHalala: Number(product.priceHalala || 0),
-      baseUnitGrams: Number(product.baseUnitGrams || 0),
-      defaultWeightGrams: Number(product.defaultWeightGrams || 0),
-      minWeightGrams: Number(product.minWeightGrams || 0),
-      maxWeightGrams: Number(product.maxWeightGrams || 0),
-      weightStepGrams: Number(product.weightStepGrams || 0),
-      currency: product.currency || SYSTEM_CURRENCY,
-    },
-    ui: normalizeProductUiMetadata(product.ui),
+  return serializeProductComposerV3({
+    productPayload,
+    category,
     linkedOptionGroups,
     validation,
-  };
+  });
 }
 
 async function createProductGroup(productId, body, actor = {}) {
@@ -2299,9 +2390,8 @@ module.exports = {
     if (!existing) throw new MenuNotFoundError();
     return updateEntity(MenuOption, id, { isActive: !existing.isActive }, { entityType: "menu_option", actor, action: "toggle_active" });
   },
-  setProductGroups,
-  setProductGroupOptions,
-  assignProductsToCategory,
+  bulkAssignProductsToCategory,
+  bulkUpdateProducts,
   publishMenu,
   validateMenu: validateMenuCatalogInternal,
   listVersions: listMenuVersions,
