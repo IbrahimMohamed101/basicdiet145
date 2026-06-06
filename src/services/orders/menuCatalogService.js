@@ -245,6 +245,17 @@ function serializeDoc(doc) {
   return { id: String(obj._id), ...obj };
 }
 
+function serializeDashboardOption(option) {
+  const payload = serializeDoc(option);
+  if (!payload) return null;
+  delete payload.displayCategoryKey;
+  delete payload.proteinFamilyKey;
+  delete payload.premiumKey;
+  delete payload.selectionType;
+  delete payload.ruleTags;
+  return payload;
+}
+
 function parsePaginationOptions(options = {}) {
   const pageRequested = options.page !== undefined && options.page !== null && String(options.page).trim() !== "";
   const limitRequested = options.limit !== undefined && options.limit !== null && String(options.limit).trim() !== "";
@@ -742,7 +753,7 @@ function buildProductFilter(options = {}) {
   return query;
 }
 
-async function listModel(Model, options = {}, extraQuery = {}) {
+async function listModel(Model, options = {}, extraQuery = {}, serializer = serializeDoc) {
   const query = { ...buildListQuery(options), ...extraQuery };
   const pagination = parsePaginationOptions(options);
   const find = Model.find(query)
@@ -751,7 +762,7 @@ async function listModel(Model, options = {}, extraQuery = {}) {
 
   if (!pagination) {
     const rows = await find;
-    return rows.map(serializeDoc);
+    return rows.map(serializer);
   }
 
   const [rows, total] = await Promise.all([
@@ -760,7 +771,7 @@ async function listModel(Model, options = {}, extraQuery = {}) {
   ]);
 
   return {
-    items: rows.map(serializeDoc),
+    items: rows.map(serializer),
     pagination: {
       page: pagination.page,
       limit: pagination.limit,
@@ -796,6 +807,15 @@ async function listProducts(options = {}) {
       pages: Math.ceil(total / pagination.limit),
     },
   };
+}
+
+async function listOptions(options = {}) {
+  return listModel(
+    MenuOption,
+    options,
+    options && options.groupId ? { groupId: assertObjectId(options.groupId, "groupId") } : {},
+    serializeDashboardOption
+  );
 }
 
 async function getModel(Model, id, extraQuery = {}) {
@@ -900,7 +920,7 @@ async function getOptionGroupDetail(id, options = {}) {
   return {
     contractVersion: "dashboard_option_group_detail.v3",
     optionGroup: serializeDoc(group),
-    options: optionsRows.map(serializeDoc),
+    options: optionsRows.map(serializeDashboardOption),
     usage: {
       linkedProductsCount: linkedProductIds.length,
     },
@@ -923,7 +943,7 @@ async function getOptionDetail(id, options = {}) {
 
   return {
     contractVersion: "dashboard_option_detail.v3",
-    option: serializeDoc(option),
+    option: serializeDashboardOption(option),
     optionGroup: group ? serializeDoc(group) : null,
     usage: {
       linkedProductsCount: linkedProductIds.length,
@@ -1074,12 +1094,7 @@ function normalizeOptionPayload(body = {}, existing = null) {
     currency: SYSTEM_CURRENCY,
     availableFor: normalizeAvailableFor(body.availableFor, "availableFor", existing ? (existing.availableFor || []) : ["one_time", "subscription"]),
     availableForSubscription: normalizeBoolean(body.availableForSubscription, "availableForSubscription", existing ? truthyByDefault(existing.availableForSubscription) : true),
-    proteinFamilyKey: normalizeOptionalString(body.proteinFamilyKey, "proteinFamilyKey", existing ? existing.proteinFamilyKey : ""),
-    displayCategoryKey: normalizeOptionalString(body.displayCategoryKey, "displayCategoryKey", existing ? existing.displayCategoryKey : ""),
-    premiumKey: normalizeOptionalString(body.premiumKey, "premiumKey", existing ? existing.premiumKey : ""),
     extraFeeHalala,
-    ruleTags: body.ruleTags === undefined && existing ? (existing.ruleTags || []) : normalizeStringArray(body.ruleTags, "ruleTags"),
-    selectionType: normalizeOptionalString(body.selectionType, "selectionType", existing ? existing.selectionType : ""),
     isActive: normalizeBoolean(body.isActive, "isActive", existing ? existing.isActive : true),
     isVisible: normalizeBoolean(body.isVisible, "isVisible", existing ? truthyByDefault(existing.isVisible) : true),
     isAvailable: normalizeBoolean(body.isAvailable, "isAvailable", existing ? truthyByDefault(existing.isAvailable) : true),
@@ -2759,7 +2774,7 @@ module.exports = {
   listCategories: (options) => listModel(MenuCategory, options),
   listProducts,
   listOptionGroups: (options) => listModel(MenuOptionGroup, options),
-  listOptions: (options) => listModel(MenuOption, options, options && options.groupId ? { groupId: assertObjectId(options.groupId, "groupId") } : {}),
+  listOptions,
   getCategory: getCategoryDetail,
   getProduct: getProductDetail,
   getProductComposer,
@@ -2813,7 +2828,8 @@ module.exports = {
       });
     }
     if (payload.catalogItemId) await assertCatalogItemLinkable(payload.catalogItemId);
-    return createEntity(MenuOption, payload, { entityType: "menu_option", actor });
+    const option = await createEntity(MenuOption, payload, { entityType: "menu_option", actor });
+    return serializeDashboardOption(option);
   },
   updateCategory: async (id, body, actor) => {
     const existing = await MenuCategory.findById(assertObjectId(id)).lean();
@@ -2865,7 +2881,7 @@ module.exports = {
     }
     const option = await updateEntity(MenuOption, id, payload, { entityType: "menu_option", actor, action: changeAction(payload) });
     await mirrorCompatibilityImage(BuilderProtein, id, payload.imageUrl);
-    return option;
+    return serializeDashboardOption(option);
   },
   updateCategoryVisibility: (id, body, actor) => updateEntityField(MenuCategory, id, "isVisible", body.isVisible, { entityType: "menu_category", actor, action: "visibility_changed" }),
   updateCategoryAvailability: (id, body, actor) => updateEntityField(MenuCategory, id, "isAvailable", body.isAvailable, { entityType: "menu_category", actor, action: "availability_changed" }),

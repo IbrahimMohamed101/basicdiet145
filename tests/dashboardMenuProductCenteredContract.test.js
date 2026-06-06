@@ -35,6 +35,20 @@ function expectStatus(res, status, label) {
   assert.strictEqual(res.status, status, `${label}: expected ${status}, got ${res.status} ${JSON.stringify(res.body)}`);
 }
 
+const DEPRECATED_OPTION_FIELDS = [
+  "displayCategoryKey",
+  "proteinFamilyKey",
+  "premiumKey",
+  "selectionType",
+  "ruleTags",
+];
+
+function assertNoDeprecatedOptionFields(payload, label) {
+  for (const field of DEPRECATED_OPTION_FIELDS) {
+    assert(!Object.prototype.hasOwnProperty.call(payload, field), `${label} omits ${field}`);
+  }
+}
+
 async function main() {
   await connect();
   const app = createApp();
@@ -139,9 +153,21 @@ async function main() {
     res = await api.post(`/api/dashboard/menu/option-groups/${group.id}/options`).set(adminHeaders).send({
       key: `${TEST_KEY_TAG}_ranch`,
       name: { en: `${TEST_TAG} Ranch`, ar: "Ranch" },
+      displayCategoryKey: "legacy_display",
+      proteinFamilyKey: "legacy_family",
+      premiumKey: "legacy_premium",
+      selectionType: "legacy_selection",
+      ruleTags: ["legacy_rule"],
     });
     expectStatus(res, 201, "create option");
     const option = res.body.data;
+    assertNoDeprecatedOptionFields(option, "created dashboard option");
+    let optionDoc = await mongoose.model("MenuOption").findById(option.id).lean();
+    assert.strictEqual(optionDoc.displayCategoryKey, "", "deprecated displayCategoryKey input is ignored");
+    assert.strictEqual(optionDoc.proteinFamilyKey, "", "deprecated proteinFamilyKey input is ignored");
+    assert.strictEqual(optionDoc.premiumKey, "", "deprecated premiumKey input is ignored");
+    assert.strictEqual(optionDoc.selectionType, "", "deprecated selectionType input is ignored");
+    assert.deepStrictEqual(optionDoc.ruleTags, [], "deprecated ruleTags input is ignored");
 
     res = await api.post(`/api/dashboard/menu/products/${directProduct.id}/option-groups`).set(adminHeaders).send({
       groupId: group.id,
@@ -188,6 +214,7 @@ async function main() {
     assert(!Object.prototype.hasOwnProperty.call(res.body.data, "id"), "v3 removes option group root field duplication");
     assert.strictEqual(res.body.data.optionGroup.id, group.id);
     assert(res.body.data.options.some((row) => row.id === option.id));
+    assertNoDeprecatedOptionFields(res.body.data.options.find((row) => row.id === option.id), "option group detail option");
     assert.strictEqual(res.body.data.usage.linkedProductsCount, 1);
     assert.strictEqual(res.body.data.actions.canAddOptions, true);
 
@@ -196,8 +223,31 @@ async function main() {
     assert.strictEqual(res.body.data.contractVersion, "dashboard_option_detail.v3");
     assert(!Object.prototype.hasOwnProperty.call(res.body.data, "id"), "v3 removes option root field duplication");
     assert.strictEqual(res.body.data.option.id, option.id);
+    assertNoDeprecatedOptionFields(res.body.data.option, "option detail");
     assert.strictEqual(res.body.data.optionGroup.id, group.id);
     assert.strictEqual(res.body.data.usage.linkedProductsCount, 1);
+
+    res = await api.patch(`/api/dashboard/menu/options/${option.id}`).set(adminHeaders).send({
+      displayCategoryKey: "updated_display",
+      proteinFamilyKey: "updated_family",
+      premiumKey: "updated_premium",
+      selectionType: "updated_selection",
+      ruleTags: ["updated_rule"],
+      extraPriceHalala: 100,
+    });
+    expectStatus(res, 200, "update option ignores deprecated dashboard fields");
+    assertNoDeprecatedOptionFields(res.body.data, "updated dashboard option");
+    optionDoc = await mongoose.model("MenuOption").findById(option.id).lean();
+    assert.strictEqual(optionDoc.displayCategoryKey, "", "deprecated displayCategoryKey update is ignored");
+    assert.strictEqual(optionDoc.proteinFamilyKey, "", "deprecated proteinFamilyKey update is ignored");
+    assert.strictEqual(optionDoc.premiumKey, "", "deprecated premiumKey update is ignored");
+    assert.strictEqual(optionDoc.selectionType, "", "deprecated selectionType update is ignored");
+    assert.deepStrictEqual(optionDoc.ruleTags, [], "deprecated ruleTags update is ignored");
+    assert.strictEqual(optionDoc.extraPriceHalala, 100, "normal option update still applies");
+
+    res = await api.get("/api/dashboard/menu/options").set(adminHeaders);
+    expectStatus(res, 200, "option list");
+    assertNoDeprecatedOptionFields(res.body.data.find((row) => row.id === option.id), "option list item");
 
     res = await api.get(`/api/dashboard/menu/categories/${category.id}?contractVersion=v2`).set(adminHeaders);
     expectStatus(res, 410, "category detail v2 is deprecated");
