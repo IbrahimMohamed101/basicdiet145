@@ -528,6 +528,10 @@ function activePublishedFields(sortOrder = 0) {
   };
 }
 
+function productIsCustomizable(row) {
+  return row.pricingModel === "per_100g" || (Array.isArray(row.groups) && row.groups.length > 0);
+}
+
 const categoryRows = [
   { key: "custom_order", name: name("اطلب على مزاجك", "Custom Order"), ui: { cardVariant: "hero_builder_collection", layout: "vertical_hero_list" } },
   { key: "meals", name: name("الوجبات", "Meals"), ui: { cardVariant: "meal_collection", layout: "vertical_meal_list" } },
@@ -1206,6 +1210,7 @@ async function seedProducts({ catalogItemMap = new Map(), categoryMap, groupMap,
         weightStepGrams: 50,
         currency: SYSTEM_CURRENCY,
         availableFor: row.availableFor,
+        isCustomizable: productIsCustomizable(row),
         ui: row.ui || { cardVariant: "standard" },
         ...activePublishedFields((productIndex + 1) * 10),
       },

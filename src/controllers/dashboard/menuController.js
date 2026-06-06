@@ -55,12 +55,17 @@ function wrap(handler) {
 
 const listCategories = wrap(async (req, res) => send(res, await service.listCategories(listOptions(req))));
 const createCategory = wrap(async (req, res) => send(res, await service.createCategory(req.body, actorFromRequest(req)), 201));
-const getCategory = wrap(async (req, res) => send(res, await service.getCategory(req.params.id)));
+const getCategory = wrap(async (req, res) => send(res, await service.getCategory(req.params.id, listOptions(req))));
 const updateCategory = wrap(async (req, res) => send(res, await service.updateCategory(req.params.id, req.body, actorFromRequest(req))));
 const updateCategoryVisibility = wrap(async (req, res) => send(res, await service.updateCategoryVisibility(req.params.id, req.body, actorFromRequest(req))));
 const updateCategoryAvailability = wrap(async (req, res) => send(res, await service.updateCategoryAvailability(req.params.id, req.body, actorFromRequest(req))));
 const deleteCategory = wrap(async (req, res) => send(res, await service.deleteCategory(req.params.id, actorFromRequest(req))));
 const reorderCategories = wrap(async (req, res) => send(res, await service.reorderCategories(req.body.items || req.body, actorFromRequest(req))));
+const assignProductsToCategory = wrap(async (req, res) => send(res, await service.assignProductsToCategory(
+  req.params.id,
+  req.body.products || req.body.items || req.body,
+  actorFromRequest(req)
+)));
 
 const listProducts = wrap(async (req, res) => send(res, await service.listProducts(listOptions(req))));
 const createProduct = wrap(async (req, res) => send(res, await service.createProduct(req.body, actorFromRequest(req)), 201));
@@ -185,6 +190,7 @@ module.exports = {
   updateCategoryAvailability,
   deleteCategory,
   reorderCategories,
+  assignProductsToCategory,
   listProducts,
   createProduct,
   getProduct,

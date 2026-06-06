@@ -95,6 +95,7 @@ const MenuProductSchema = new mongoose.Schema(
       enum: ["one_time", "subscription"],
       default: ["one_time", "subscription"],
     },
+    isCustomizable: { type: Boolean, default: false, index: true },
     isActive: { type: Boolean, default: true, index: true },
     isVisible: { type: Boolean, default: true, index: true },
     isAvailable: { type: Boolean, default: true, index: true },

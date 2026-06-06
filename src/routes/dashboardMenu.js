@@ -10,12 +10,13 @@ router.use(dashboardAuthMiddleware, dashboardRoleMiddleware(["admin", "superadmi
 
 router.get("/categories", asyncHandler(controller.listCategories));
 router.post("/categories", asyncHandler(controller.createCategory));
+router.patch("/categories/reorder", asyncHandler(controller.reorderCategories));
 router.get("/categories/:id", asyncHandler(controller.getCategory));
 router.patch("/categories/:id", asyncHandler(controller.updateCategory));
+router.put("/categories/:id/products", asyncHandler(controller.assignProductsToCategory));
 router.patch("/categories/:id/visibility", asyncHandler(controller.updateCategoryVisibility));
 router.patch("/categories/:id/availability", asyncHandler(controller.updateCategoryAvailability));
 router.delete("/categories/:id", dashboardRoleMiddleware(["admin", "superadmin"]), asyncHandler(controller.deleteCategory));
-router.patch("/categories/reorder", asyncHandler(controller.reorderCategories));
 
 router.get("/products", asyncHandler(controller.listProducts));
 router.post("/products", asyncHandler(controller.createProduct));

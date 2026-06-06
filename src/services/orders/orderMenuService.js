@@ -67,12 +67,14 @@ function publicMenuActionForProduct(product = {}) {
       type: "direct_add",
       canAddDirectly: true,
       requiresBuilder: false,
+      isCustomizable: false,
     };
   }
   return {
     type: behaviorHint || "open_builder",
     canAddDirectly: product.canAddDirectly === true,
     requiresBuilder: product.requiresBuilder !== false,
+    isCustomizable: product.isCustomizable === true,
   };
 }
 
@@ -115,6 +117,7 @@ function buildPublicMenuV2(menu = {}) {
       sortOrder: Number(product.sortOrder || 0),
       pricing: publicMenuPricingForProduct(product),
       action: publicMenuActionForProduct(product),
+      isCustomizable: product.isCustomizable === true,
       ui: product.ui || {},
       optionGroups: product.optionGroups || [],
     })),

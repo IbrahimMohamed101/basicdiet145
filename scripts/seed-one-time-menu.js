@@ -38,6 +38,10 @@ function isExplicitlyAllowed(value) {
   return String(value || "").trim().toLowerCase() === "true";
 }
 
+function productIsCustomizable(row) {
+  return row.pricingModel === "per_100g" || (Array.isArray(row.groups) && row.groups.length > 0);
+}
+
 function assertSafeSeedTarget() {
   const isProduction = process.env.NODE_ENV === "production";
   if (!isProduction) return;
@@ -430,6 +434,7 @@ async function seedOneTimeMenu({ actor = { role: "script" }, notes = "Seed one-t
           isAvailable: true,
           sortOrder: productSort,
           publishedAt: now,
+          isCustomizable: productIsCustomizable(productData),
           availableFor: productData.availableFor || (["fruit_salad", "greek_yogurt"].includes(productData.key) || productData.category === "ice_cream" ? ["one_time"] : ["one_time", "subscription"])
         },
       },
