@@ -49,7 +49,7 @@ function printDryRunPlan(args, log = console) {
   }
 }
 
-const { resolveMongoUri } = require("../utils/mongoUriResolver");
+const { resolveMongoUri } = require("../../src/utils/mongoUriResolver");
 
 async function runBootstrap(options = {}) {
   const args = { ...parseArgs(options.argv), ...options };

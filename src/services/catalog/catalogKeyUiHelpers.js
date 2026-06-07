@@ -14,6 +14,8 @@ const CARD_VARIANTS = Object.freeze([
   "addon_card",
 ]);
 const DEFAULT_CARD_VARIANT = "standard";
+const PRODUCT_CARD_SIZES = Object.freeze(["large", "medium", "small"]);
+const DEFAULT_PRODUCT_CARD_SIZE = "medium";
 const CATEGORY_CARD_VARIANTS = Object.freeze([
   "meal_builder",
   "light_collection",
@@ -38,6 +40,15 @@ function isAllowedCardVariant(value) {
 function sanitizeCardVariant(value) {
   const normalized = String(value || "").trim();
   return isAllowedCardVariant(normalized) ? normalized : DEFAULT_CARD_VARIANT;
+}
+
+function isAllowedProductCardSize(value) {
+  return PRODUCT_CARD_SIZES.includes(String(value || "").trim());
+}
+
+function sanitizeProductCardSize(value) {
+  const normalized = String(value || "").trim();
+  return isAllowedProductCardSize(normalized) ? normalized : DEFAULT_PRODUCT_CARD_SIZE;
 }
 
 function isAllowedCategoryCardVariant(value) {
@@ -125,6 +136,7 @@ function normalizeProductUiMetadata(value = {}) {
   const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
   return withOptionalUiFields({
     cardVariant: sanitizeCardVariant(source.cardVariant),
+    cardSize: sanitizeProductCardSize(source.cardSize),
     badge: sanitizeString(source.badge),
     ctaLabel: sanitizeString(source.ctaLabel),
     imageRatio: sanitizeString(source.imageRatio) || "square",
@@ -210,6 +222,8 @@ module.exports = {
   CARD_VARIANTS,
   BEHAVIOR_HINTS,
   DEFAULT_CARD_VARIANT,
+  DEFAULT_PRODUCT_CARD_SIZE,
+  PRODUCT_CARD_SIZES,
   CATEGORY_CARD_VARIANTS,
   DEFAULT_CATEGORY_CARD_VARIANT,
   DEFAULT_GROUP_DISPLAY_STYLE,
@@ -220,6 +234,7 @@ module.exports = {
   inferCardVariantFromKey,
   inferCategoryCardVariantFromKey,
   isAllowedCardVariant,
+  isAllowedProductCardSize,
   isAllowedCategoryCardVariant,
   isAllowedGroupDisplayStyle,
   normalizeCategoryUiMetadata,
@@ -227,6 +242,7 @@ module.exports = {
   normalizeProductUiMetadata,
   normalizeUiMetadata,
   sanitizeCardVariant,
+  sanitizeProductCardSize,
   sanitizeCategoryCardVariant,
   sanitizeGroupDisplayStyle,
   slugifyKeySource,

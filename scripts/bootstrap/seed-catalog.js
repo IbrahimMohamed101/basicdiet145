@@ -680,7 +680,7 @@ const mealProductDefaults = {
   pricingModel: "fixed",
   availableFor: ["one_time"],
   imageUrl: "",
-  ui: { cardVariant: "ready_meal", imageRatio: "square" },
+  ui: { cardVariant: "ready_meal", cardSize: "medium", imageRatio: "square" },
 };
 
 const mealProductRows = [
@@ -776,7 +776,7 @@ const carbProductRows = carbRows.map((row) => ({
   defaultWeightGrams: row.defaultWeightGrams,
   availableFor: ["one_time"],
   imageUrl: row.imageUrl,
-  ui: { cardVariant: "compact_product", imageRatio: "square" },
+  ui: { cardVariant: "compact_product", cardSize: "small", imageRatio: "square" },
 }));
 
 // TODO: MenuProduct has no calories or prep-time fields. Keep the external metadata documented here
@@ -847,7 +847,7 @@ const externalProductRows = [
 ].map((row) => ({
   pricingModel: "fixed",
   availableFor: row.itemType === "cold_sandwich" ? ["one_time", "subscription"] : ["one_time"],
-  ui: { cardVariant: row.itemType === "cold_sandwich" ? "sandwich_card" : "addon_card", imageRatio: "square" },
+  ui: { cardVariant: row.itemType === "cold_sandwich" ? "sandwich_card" : "addon_card", cardSize: "small", imageRatio: "square" },
   ...row,
 }));
 
@@ -860,7 +860,7 @@ const productRows = [
     pricingModel: "per_100g",
     priceHalala: 2900,
     availableFor: ["one_time", "subscription"],
-    ui: { cardVariant: "hero_builder", imageRatio: "wide" },
+    ui: { cardVariant: "hero_builder", cardSize: "large", imageRatio: "wide" },
     groups: [
       ["leafy_greens", 0, 2, false],
       ["vegetables_legumes", 0, 19, false],
@@ -879,7 +879,7 @@ const productRows = [
     pricingModel: "per_100g",
     priceHalala: 1900,
     availableFor: ["one_time", "subscription"],
-    ui: { cardVariant: "hero_builder", imageRatio: "wide" },
+    ui: { cardVariant: "hero_builder", cardSize: "large", imageRatio: "wide" },
     groups: [
       ["carbs", 1, 2],
       ["proteins", 1, 1],
@@ -894,7 +894,7 @@ const productRows = [
     priceHalala: 2900,
     defaultWeightGrams: 0,
     availableFor: ["subscription"],
-    ui: { cardVariant: "large_salad" },
+    ui: { cardVariant: "large_salad", cardSize: "large" },
     groups: [
       ["leafy_greens", 0, 2, false],
       ["vegetables_legumes", 0, 19, false],
@@ -912,7 +912,7 @@ const productRows = [
     pricingModel: "fixed",
     priceHalala: 900,
     availableFor: ["subscription"],
-    ui: { cardVariant: "addon" },
+    ui: { cardVariant: "addon", cardSize: "small" },
   },
   {
     key: "green_salad",
@@ -924,7 +924,7 @@ const productRows = [
     defaultWeightGrams: 100,
     availableFor: ["one_time"],
     imageUrl: "",
-    ui: { cardVariant: "compact_builder", imageRatio: "square" },
+    ui: { cardVariant: "compact_builder", cardSize: "medium", imageRatio: "square" },
     groups: [
       ["leafy_greens", 0, 2, false],
       ["vegetables_legumes", 0, 19, false],
@@ -941,7 +941,7 @@ const productRows = [
     defaultWeightGrams: 150,
     availableFor: ["one_time"],
     imageUrl: "",
-    ui: { cardVariant: "compact_builder", imageRatio: "square" },
+    ui: { cardVariant: "compact_builder", cardSize: "medium", imageRatio: "square" },
     groups: [
       ["fruits", 0, 9, false],
       ["sauces", 0, 1, false],
@@ -957,7 +957,7 @@ const productRows = [
     defaultWeightGrams: 200,
     availableFor: ["one_time"],
     imageUrl: "",
-    ui: { cardVariant: "compact_builder", imageRatio: "square" },
+    ui: { cardVariant: "compact_builder", cardSize: "medium", imageRatio: "square" },
     groups: [
       ["fruits", 0, 5, false],
       ["sauces", 0, 1, false],
@@ -965,8 +965,8 @@ const productRows = [
     ],
   },
   // Legacy subscription sandwich retained separately from the external grilled chicken row.
-  { key: "chicken_sandwich", category: "cold_sandwiches", itemType: "cold_sandwich", name: name("ساندويتش دجاج", "Chicken Sandwich"), pricingModel: "fixed", priceHalala: 1300, availableFor: ["subscription"], ui: { cardVariant: "standard" }, proteinFamilyKey: "chicken" },
-  { key: "sourdough_turkey", category: "sourdough", itemType: "sourdough", name: name("ساوردو تركي", "Sourdough Turkey"), pricingModel: "fixed", priceHalala: 2300, availableFor: ["subscription"], ui: { cardVariant: "standard" }, proteinFamilyKey: "other" },
+  { key: "chicken_sandwich", category: "cold_sandwiches", itemType: "cold_sandwich", name: name("ساندويتش دجاج", "Chicken Sandwich"), pricingModel: "fixed", priceHalala: 1300, availableFor: ["subscription"], ui: { cardVariant: "standard", cardSize: "small" }, proteinFamilyKey: "chicken" },
+  { key: "sourdough_turkey", category: "sourdough", itemType: "sourdough", name: name("ساوردو تركي", "Sourdough Turkey"), pricingModel: "fixed", priceHalala: 2300, availableFor: ["subscription"], ui: { cardVariant: "standard", cardSize: "small" }, proteinFamilyKey: "other" },
   ...externalProductRows,
   ...mealProductRows,
   ...carbProductRows,

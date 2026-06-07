@@ -28,6 +28,7 @@ const {
   generateUniqueKey,
   isAllowedCategoryCardVariant,
   isAllowedCardVariant,
+  isAllowedProductCardSize,
   isAllowedGroupDisplayStyle,
   normalizeCategoryUiMetadata,
   normalizeGroupUiMetadata,
@@ -242,6 +243,9 @@ function localizedPair(value) {
 function serializeDoc(doc) {
   if (!doc) return null;
   const obj = typeof doc.toObject === "function" ? doc.toObject() : { ...doc };
+  if (obj.categoryId !== undefined && obj.priceHalala !== undefined) {
+    obj.ui = normalizeProductUiMetadata(obj.ui);
+  }
   return { id: String(obj._id), ...obj };
 }
 
@@ -1178,15 +1182,18 @@ function normalizeProductPayload(body = {}, existing = null) {
   assertImmutableKey(body, existing, "key");
   assertImmutableCatalogItemLink(body, existing);
   const hasUi = body.ui !== undefined && body.ui !== null;
-  if (
-    hasUi
-    && (
-      !isPlainObject(body.ui)
-      || (body.ui.cardVariant !== undefined && !isAllowedCardVariant(body.ui.cardVariant))
-    )
-  ) {
+  if (hasUi && !isPlainObject(body.ui)) {
+    throw new MenuValidationError("ui must be an object", "INVALID_PRODUCT_UI");
+  }
+  if (hasUi && body.ui.cardVariant !== undefined && !isAllowedCardVariant(body.ui.cardVariant)) {
     throw new MenuValidationError("ui.cardVariant must be one of the supported public product card variants", "INVALID_CARD_VARIANT");
   }
+  if (hasUi && body.ui.cardSize !== undefined && !isAllowedProductCardSize(body.ui.cardSize)) {
+    throw new MenuValidationError("ui.cardSize must be one of: large, medium, small", "INVALID_CARD_SIZE");
+  }
+  const uiSource = hasUi && existing
+    ? { ...((existing && existing.ui) || {}), ...body.ui }
+    : (hasUi ? body.ui : existing && existing.ui);
   const pricingModel = String(body.pricingModel || (existing && existing.pricingModel) || "fixed").trim();
   if (!["fixed", "per_100g"].includes(pricingModel)) {
     throw new MenuValidationError("pricingModel must be fixed or per_100g");
@@ -1223,7 +1230,7 @@ function normalizeProductPayload(body = {}, existing = null) {
     isVisible: normalizeBoolean(body.isVisible, "isVisible", existing ? truthyByDefault(existing.isVisible) : true),
     isAvailable: normalizeBoolean(body.isAvailable, "isAvailable", existing ? truthyByDefault(existing.isAvailable) : true),
     sortOrder: normalizeNonNegativeInteger(body.sortOrder, "sortOrder", existing ? existing.sortOrder : 0),
-    ui: hasUi ? normalizeProductUiMetadata(body.ui) : normalizeProductUiMetadata(existing && existing.ui),
+    ui: normalizeProductUiMetadata(uiSource),
     branchAvailability: (body.branchAvailability === undefined && body.branchIds === undefined && existing)
       ? (existing.branchAvailability || [])
       : normalizeStringArray(body.branchAvailability !== undefined ? body.branchAvailability : body.branchIds, "branchAvailability"),

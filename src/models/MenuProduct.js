@@ -41,6 +41,7 @@ const ProductUiSchema = new mongoose.Schema(
       ],
       default: "standard",
     },
+    cardSize: { type: String, enum: ["large", "medium", "small"], default: "medium" },
     badge: { type: String, default: "" },
     ctaLabel: { type: String, default: "" },
     imageRatio: { type: String, default: "square" },

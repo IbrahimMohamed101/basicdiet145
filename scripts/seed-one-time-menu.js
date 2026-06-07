@@ -311,6 +311,12 @@ function proteinPricing(optionName, productKey) {
   return {};
 }
 
+function productCardSize(productData) {
+  if (["basic_meal", "basic_salad", "premium_large_salad"].includes(productData.key)) return "large";
+  if (["green_salad", "fruit_salad", "greek_yogurt"].includes(productData.key)) return "medium";
+  return "small";
+}
+
 async function upsertCategory(row, sortOrder) {
   return MenuCategory.findOneAndUpdate(
     { key: row[0] },
@@ -434,6 +440,7 @@ async function seedOneTimeMenu({ actor = { role: "script" }, notes = "Seed one-t
           isAvailable: true,
           sortOrder: productSort,
           publishedAt: now,
+          ui: { cardSize: productCardSize(productData) },
           isCustomizable: productIsCustomizable(productData),
           availableFor: productData.availableFor || (["fruit_salad", "greek_yogurt"].includes(productData.key) || productData.category === "ice_cream" ? ["one_time"] : ["one_time", "subscription"])
         },
