@@ -24,6 +24,7 @@ const {
   getProteinFamilyNameI18n,
   resolveProteinVisualFamilyKey,
 } = require("../../config/mealPlannerContract");
+const { VAT_PERCENTAGE } = require("../../config/vat");
 const {
   generateUniqueKey,
   isAllowedCategoryCardVariant,
