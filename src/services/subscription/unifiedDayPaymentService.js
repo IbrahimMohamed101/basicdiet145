@@ -128,11 +128,43 @@ function buildPendingAddonSnapshot(day) {
   };
 }
 
+function buildUnifiedPaymentContractFields({ day, payment = null, providerInvoice = null }) {
+  const derivedDay = applyCommercialStateToDay(day || {});
+  const metadata = getPaymentMetadata(payment);
+  const paymentId = payment && payment._id ? String(payment._id) : null;
+  const premiumAmountHalala = normalizeNumber(
+    metadata.premiumAmountHalala !== undefined
+      ? metadata.premiumAmountHalala
+      : derivedDay.premiumExtraPayment?.amountHalala
+  );
+  const addonsAmountHalala = normalizeNumber(metadata.addonsAmountHalala);
+  const totalHalala = normalizeNumber(
+    metadata.totalHalala !== undefined
+      ? metadata.totalHalala
+      : payment && payment.amount
+  );
+  const paymentUrl = metadata.paymentUrl || providerInvoice?.url || "";
+
+  return {
+    paymentId,
+    payment_id: paymentId,
+    status: payment && payment.status ? String(payment.status) : null,
+    requiresPayment: Boolean(derivedDay.paymentRequirement?.requiresPayment),
+    premiumAmountHalala,
+    addonsAmountHalala,
+    totalHalala,
+    plannerRevisionHash: derivedDay.plannerRevisionHash || metadata.revisionHash || "",
+    paymentUrl,
+    payment_url: paymentUrl,
+  };
+}
+
 function buildUnifiedPaymentPayload({ subscription, day, payment, providerInvoice = null }) {
   const derivedDay = applyCommercialStateToDay(day || {});
   const metadata = getPaymentMetadata(payment);
   const paymentStatus = payment && payment.status ? payment.status : null;
   return {
+    ...buildUnifiedPaymentContractFields({ day: derivedDay, payment, providerInvoice }),
     subscriptionId: String(subscription._id),
     dayId: day && day._id ? String(day._id) : null,
     date: day && day.date ? day.date : null,
@@ -308,8 +340,9 @@ async function createUnifiedDayPaymentFlow({
           day,
           payment: reusedPayment,
         }),
-        payment_id: publicPaymentId,
         paymentId: publicPaymentId,
+        payment_id: publicPaymentId,
+        paymentUrl: metadata.paymentUrl || "",
         payment_url: metadata.paymentUrl || "",
         invoice_id: reusedPayment.providerInvoiceId,
         providerInvoiceId: reusedPayment.providerInvoiceId,
@@ -435,8 +468,12 @@ async function createUnifiedDayPaymentFlow({
     const responseDerivedDay = applyCommercialStateToDay(responseDay || derivedDay);
     const publicPaymentId = paymentId ? String(paymentId) : null;
     return buildSuccessResult(201, {
+      ...buildUnifiedPaymentContractFields({ day: responseDerivedDay, payment, providerInvoice: invoice }),
       payment_id: publicPaymentId,
       paymentId: publicPaymentId,
+      status: payment.status,
+      requiresPayment: Boolean(responseDerivedDay.paymentRequirement?.requiresPayment),
+      paymentUrl: invoice.url,
       payment_url: invoice.url,
       invoice_id: invoice.id,
       providerInvoiceId: invoice.id,

@@ -11,6 +11,7 @@ const {
   PREMIUM_MEAL_PROTEIN_KEYS,
   STANDARD_CARB_RULES,
   SUBSCRIPTION_PREMIUM_LARGE_SALAD_EXCLUDED_GROUP_KEYS,
+  SUBSCRIPTION_PREMIUM_LARGE_SALAD_PROTEIN_KEYS,
   SYSTEM_CURRENCY,
   normalizeProteinDisplayCategoryKey,
   normalizeProteinFamilyKey,
@@ -35,6 +36,7 @@ const MENU_PROTEIN_GROUP_KEY = "proteins";
 const MENU_CARB_GROUP_KEY = "carbs";
 const MENU_SALAD_EXTRA_PROTEIN_GROUP_KEY = "extra_protein_50g";
 const PREMIUM_MEAL_PROTEIN_KEY_SET = new Set(PREMIUM_MEAL_PROTEIN_KEYS);
+const SUBSCRIPTION_PREMIUM_LARGE_SALAD_PROTEIN_KEY_SET = new Set(SUBSCRIPTION_PREMIUM_LARGE_SALAD_PROTEIN_KEYS);
 const PREMIUM_LARGE_SALAD_EXCLUDED_GROUP_KEY_SET = new Set(SUBSCRIPTION_PREMIUM_LARGE_SALAD_EXCLUDED_GROUP_KEYS);
 
 const SELECTION_TYPE_PRODUCT_RULES = Object.freeze({
@@ -126,11 +128,12 @@ function isSubscriptionEnabled(doc) {
 }
 
 function validateCatalogDocState({ doc, slotIndex, field, entity, id }) {
+  const codeEntity = entity === "GROUP" ? "OPTION_GROUP" : entity;
   if (!doc) {
     return buildSlotError({
       slotIndex,
       field,
-      code: `PLANNER_${entity}_NOT_FOUND`,
+      code: `PLANNER_${codeEntity}_NOT_FOUND`,
       message: `${entity.toLowerCase()} not found`,
       productId: entity === "PRODUCT" ? id : null,
       groupId: entity === "GROUP" ? id : null,
@@ -142,7 +145,7 @@ function validateCatalogDocState({ doc, slotIndex, field, entity, id }) {
     return buildSlotError({
       slotIndex,
       field,
-      code: `PLANNER_${entity}_INACTIVE`,
+      code: `PLANNER_${codeEntity}_INACTIVE`,
       message: `${entity.toLowerCase()} is inactive`,
       productId: entity === "PRODUCT" ? id : null,
       groupId: entity === "GROUP" ? id : null,
@@ -154,7 +157,7 @@ function validateCatalogDocState({ doc, slotIndex, field, entity, id }) {
     return buildSlotError({
       slotIndex,
       field,
-      code: `PLANNER_${entity}_UNPUBLISHED`,
+      code: `PLANNER_${codeEntity}_UNPUBLISHED`,
       message: `${entity.toLowerCase()} is unpublished`,
       productId: entity === "PRODUCT" ? id : null,
       groupId: entity === "GROUP" ? id : null,
@@ -167,7 +170,7 @@ function validateCatalogDocState({ doc, slotIndex, field, entity, id }) {
       ? "PLANNER_PRODUCT_UNAVAILABLE"
       : entity === "OPTION"
         ? "PLANNER_OPTION_UNAVAILABLE"
-        : `PLANNER_${entity}_INACTIVE`;
+        : "PLANNER_OPTION_GROUP_UNAVAILABLE";
     return buildSlotError({
       slotIndex,
       field,
@@ -211,11 +214,14 @@ function validateProductSelectionType({ product, selectionType, slotIndex }) {
 }
 
 function validateRelationState({ relation, slotIndex, field, productId, groupId, optionId = null, entity }) {
+  const relationCodePrefix = entity === "GROUP"
+    ? "PLANNER_OPTION_GROUP_RELATION"
+    : "PLANNER_PRODUCT_OPTION_RELATION";
   if (!relation) {
     return buildSlotError({
       slotIndex,
       field,
-      code: `PLANNER_${entity}_RELATION_NOT_FOUND`,
+      code: `${relationCodePrefix}_NOT_FOUND`,
       message: `${entity.toLowerCase()} relation is not attached to the selected product`,
       productId,
       groupId,
@@ -227,7 +233,7 @@ function validateRelationState({ relation, slotIndex, field, productId, groupId,
     return buildSlotError({
       slotIndex,
       field,
-      code: `PLANNER_${entity}_RELATION_INACTIVE`,
+      code: `${relationCodePrefix}_UNAVAILABLE`,
       message: `${entity.toLowerCase()} relation is inactive or unavailable`,
       productId,
       groupId,
@@ -250,6 +256,14 @@ function isPremiumMealProtein(option) {
   const premiumKey = String(option?.premiumKey || "").trim().toLowerCase();
   const key = String(option?.key || "").trim().toLowerCase();
   return PREMIUM_MEAL_PROTEIN_KEY_SET.has(premiumKey) || PREMIUM_MEAL_PROTEIN_KEY_SET.has(key);
+}
+
+function getProteinCatalogKey(option) {
+  return String(option?.key || option?.premiumKey || "").trim().toLowerCase();
+}
+
+function isSubscriptionPremiumLargeSaladProtein(option) {
+  return SUBSCRIPTION_PREMIUM_LARGE_SALAD_PROTEIN_KEY_SET.has(getProteinCatalogKey(option));
 }
 
 function buildDisplaySnapshot({ product, optionRowsById, groupRowsById, selectedOptions }) {
@@ -432,7 +446,15 @@ async function validateCanonicalMealSlots({
     const groupRelationRows = await (session
       ? ProductOptionGroup.find({ productId }).session(session)
       : ProductOptionGroup.find({ productId })).lean();
-    const groupIds = groupRelationRows.map((relation) => relation.groupId);
+    const selectedGroupIds = selectedOptionsInput
+      .map((selection) => normalizeId(selection?.groupId))
+      .filter(isValidObjectId);
+    const groupIds = [
+      ...new Set([
+        ...groupRelationRows.map((relation) => String(relation.groupId)),
+        ...selectedGroupIds,
+      ]),
+    ];
     const groupRows = await (session
       ? MenuOptionGroup.find({ _id: { $in: groupIds } }).session(session)
       : MenuOptionGroup.find({ _id: { $in: groupIds } })).lean();
@@ -585,12 +607,29 @@ async function validateCanonicalMealSlots({
         slotErrors.push(buildSlotError({
           slotIndex,
           field: selectedOptionField(slotArrayIndex, optionIndex, "groupId"),
-          code: "PLANNER_GROUP_RELATION_INACTIVE",
+          code: "PLANNER_OPTION_GROUP_UNAVAILABLE",
           message: "Extra protein is not available for subscription premium large salad",
           productId,
           groupId,
           optionId,
           stale: true,
+        }));
+        continue;
+      }
+
+      if (
+        selectionType === MEAL_SELECTION_TYPES.PREMIUM_LARGE_SALAD
+        && canonicalGroupKey === "protein"
+        && !isSubscriptionPremiumLargeSaladProtein(option)
+      ) {
+        slotErrors.push(buildSlotError({
+          slotIndex,
+          field: selectedOptionField(slotArrayIndex, optionIndex, "optionId"),
+          code: "SALAD_PROTEIN_NOT_ALLOWED",
+          message: "Selected protein is not available for subscription premium large salad",
+          productId,
+          groupId,
+          optionId,
         }));
         continue;
       }
