@@ -418,7 +418,7 @@ async function seedBase() {
     contractMode: "canonical",
     contractSnapshot: {
       plan: { planId: plan._id, daysCount: 40, mealsPerDay: 3 },
-      pricing: { basePlanPriceHalala: 100000, totalHalala: 100000, vatPercentage: 15 },
+      pricing: { basePlanPriceHalala: 100000, totalHalala: 100000, vatPercentage: 16 },
       delivery: { mode: "delivery" },
     },
   });

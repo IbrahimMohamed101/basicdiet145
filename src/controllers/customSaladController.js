@@ -21,7 +21,8 @@ const { getRequestLang } = require("../utils/i18n");
 const { buildPaymentDescription } = require("../utils/subscription/subscriptionWriteLocalization");
 const errorResponse = require("../utils/errorResponse");
 const { validateRedirectUrl } = require("../utils/security");
-const { computeVatBreakdown, buildMoneySummary } = require("../utils/pricing");
+const { computeInclusiveVatBreakdown, buildMoneySummary } = require("../utils/pricing");
+const { VAT_PERCENTAGE } = require("../config/vat");
 const { getRestaurantBusinessDate, getRestaurantBusinessTomorrow } = require("../services/restaurantHoursService");
 
 async function getSettingValue(key, fallback) {
@@ -104,11 +105,8 @@ async function addCustomSaladToOrder(req, res) {
       };
     }
     order.pricing.subtotal += snapshot.totalPrice;
-    const vatPercentage = Number(await getSettingValue("vat_percentage", order.pricing.vatPercentage || 0));
-    const vatBreakdown = computeVatBreakdown({
-      basePriceHalala: order.pricing.subtotal,
-      vatPercentage,
-    });
+    // VAT is system-owned (16%, inclusive). Never read from DB.
+    const vatBreakdown = computeInclusiveVatBreakdown(order.pricing.subtotal, VAT_PERCENTAGE);
     order.pricing.basePrice = vatBreakdown.basePriceHalala;
     order.pricing.vatPercentage = vatBreakdown.vatPercentage;
     order.pricing.vatAmount = vatBreakdown.vatHalala;
@@ -205,11 +203,14 @@ async function addCustomSaladToSubscriptionDay(req, res) {
     }
 
     const snapshot = await buildCustomSaladSnapshot(ingredients);
-    const vatPercentage = Number(await getSettingValue("vat_percentage", 0));
-    const pricing = computeVatBreakdown({
-      basePriceHalala: snapshot.totalPrice,
-      vatPercentage,
-    });
+    // VAT is system-owned (16%, inclusive). Never read from DB.
+    const pricing = computeInclusiveVatBreakdown(snapshot.totalPrice, VAT_PERCENTAGE);
+    // Map inclusive breakdown fields to the shape this response expects
+    const pricingForResponse = {
+      ...pricing,
+      totalPriceHalala: pricing.totalHalala,
+      basePriceHalala: pricing.subtotalHalala,
+    };
     const appUrl = process.env.APP_URL || "https://example.com";
     const lang = getRequestLang(req);
 
@@ -222,7 +223,7 @@ async function addCustomSaladToSubscriptionDay(req, res) {
     };
 
     const invoice = await createInvoice({
-      amount: pricing.totalPriceHalala,
+      amount: pricingForResponse.totalPriceHalala,
       description: buildPaymentDescription("customSalad", lang, { date }),
       callbackUrl: `${appUrl}/api/webhooks/moyasar`,
       successUrl: validateRedirectUrl(successUrl, `${appUrl}/payments/success`),
@@ -236,7 +237,7 @@ async function addCustomSaladToSubscriptionDay(req, res) {
       type: "custom_salad_day",
       status: "initiated",
       applied: false,
-      amount: pricing.totalPriceHalala,
+      amount: pricingForResponse.totalPriceHalala,
       currency: invoice.currency || snapshot.currency || "SAR",
       userId: req.userId,
       subscriptionId: id,
@@ -253,7 +254,7 @@ async function addCustomSaladToSubscriptionDay(req, res) {
       action: "custom_salad_payment_initiated",
       byUserId: req.userId,
       byRole: "client",
-      meta: { date, totalPrice: pricing.totalPriceHalala, subscriptionId: String(id) },
+      meta: { date, totalPrice: pricingForResponse.totalPriceHalala, subscriptionId: String(id) },
     });
 
     return res.status(200).json({
@@ -262,12 +263,12 @@ async function addCustomSaladToSubscriptionDay(req, res) {
         payment_url: invoice.url,
         invoice_id: invoice.id,
         payment_id: payment.id,
-        total: pricing.totalPriceHalala,
+        total: pricingForResponse.totalPriceHalala,
         pricingSummary: buildMoneySummary({
-          basePriceHalala: pricing.basePriceHalala,
-          vatPercentage: pricing.vatPercentage,
-          vatHalala: pricing.vatHalala,
-          totalPriceHalala: pricing.totalPriceHalala,
+          basePriceHalala: pricingForResponse.basePriceHalala,
+          vatPercentage: pricingForResponse.vatPercentage,
+          vatHalala: pricingForResponse.vatHalala,
+          totalPriceHalala: pricingForResponse.totalPriceHalala,
           currency: payment.currency,
         }),
         currency: payment.currency,

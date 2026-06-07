@@ -10,6 +10,7 @@ const validateObjectId = require("../../utils/validateObjectId");
 const { pickLang } = require("../../utils/i18n");
 const { SYSTEM_CURRENCY, assertSystemCurrencyOrThrow } = require("../../utils/currency");
 const { computeInclusiveVatBreakdown } = require("../../utils/pricing");
+const { VAT_PERCENTAGE } = require("../../config/vat");
 const {
   resolvePickupLocationSelection,
   resolveAddonChargeTotalHalala,
@@ -726,8 +727,8 @@ async function resolveCheckoutQuoteOrThrow(
   }
 
   const grossTotalHalala = basePlanPriceHalala + premiumTotalHalala + addonsTotalHalala + deliveryFeeHalala;
-  const vatPercentageRaw = await getSettingValue("vat_percentage", null);
-  const vatPercentage = Number(vatPercentageRaw);
+  // VAT is system-owned (16%)
+  const vatPercentage = VAT_PERCENTAGE;
   const vatBreakdown = computeInclusiveVatBreakdown(grossTotalHalala, vatPercentage);
 
   const divisor = 1 + (vatPercentage / 100);

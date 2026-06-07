@@ -103,9 +103,12 @@ function assertMenuProductContract(product, label) {
   assertLocalizedName(product.nameI18n || product.name, `${label}.name`);
   assert(typeof product.pricingModel === "string" && product.pricingModel, `${label}.pricingModel exists`);
   assertHalalaInteger(product.priceHalala, `${label}.priceHalala`);
+  assert(product.ui && ["large", "medium", "small"].includes(product.ui.cardSize), `${label}.ui.cardSize is public card size`);
+  assert.deepStrictEqual(Object.keys(product.ui), ["cardSize"], `${label}.ui only exposes cardSize`);
   if (product.requiresBuilder || product.key === "basic_salad") {
     assert(Array.isArray(product.optionGroups), `${label}.optionGroups array exists for custom product`);
     assert(product.optionGroups.length > 0, `${label}.optionGroups has groups`);
+    assert(product.optionGroups.every((group) => group.ui && typeof group.ui.displayStyle === "string"), `${label}.optionGroups keep builder ui`);
   }
 }
 
@@ -251,6 +254,7 @@ async function cleanupCatalog() {
 
       const category = res.body.data.categories[0];
       assert(Array.isArray(category.products), "category.products is array");
+      assert(!category.ui || Object.keys(category.ui).length === 0, "category visual ui is omitted from mobile contract");
       const water = findProduct(res.body.data, "water");
       const basicSalad = findProduct(res.body.data, "basic_salad");
       assert(water, "water product exists");

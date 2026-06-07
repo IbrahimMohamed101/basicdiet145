@@ -52,6 +52,14 @@ function flattenProducts(menu) {
   return (menu.categories || []).flatMap((category) => category.products || []);
 }
 
+function assertCleanPublicCategoryUi(category) {
+  assert(!category.ui || Object.keys(category.ui).length === 0, `${category.key} category ui is omitted or empty`);
+}
+
+function assertCleanPublicProductUi(product, expectedCardSize = "medium") {
+  assert.deepStrictEqual(product.ui, { cardSize: expectedCardSize }, `${product.key} exposes only public cardSize`);
+}
+
 async function createPublishedCategory(key = "meals") {
   return MenuCategory.create({
     key,
@@ -238,11 +246,11 @@ async function run() {
       const menu = await menuCatalogService.getPublishedMenu({ lang: "en" });
       const publicCategory = (menu.categories || []).find((row) => row.key === "light_collection_category");
       assert(publicCategory);
-      assert.strictEqual(publicCategory.ui.cardVariant, "light_collection");
+      assertCleanPublicCategoryUi(publicCategory);
       assert(publicCategory.products.some((product) => product.key === "light_collection_product"));
     });
 
-    await test("Public one-time menu exposes backend-driven card presentation metadata", async () => {
+    await test("Public one-time menu exposes clean card size UI and behavior fields", async () => {
       const categoryKeys = ["custom_order", "light_options", "meals", "carbs", "cold_sandwiches", "desserts", "juices", "drinks", "ice_cream"];
       const categories = new Map();
       for (let index = 0; index < categoryKeys.length; index += 1) {
@@ -255,11 +263,13 @@ async function run() {
         itemType: "basic_salad",
         pricingModel: "per_100g",
         priceHalala: 2900,
+        isCustomizable: true,
       });
-      const basicMeal = await createPublishedProduct(categories.get("meals"), "basic_meal", null, {
+      const basicMeal = await createPublishedProduct(categories.get("custom_order"), "basic_meal", null, {
         itemType: "basic_meal",
         pricingModel: "per_100g",
         priceHalala: 1900,
+        isCustomizable: true,
       });
       await createBuilderOption(basicSalad, null, "lettuce", "leafy_greens");
       await createBuilderOption(basicMeal, null, "chicken", "proteins");
@@ -268,12 +278,14 @@ async function run() {
         const product = await createPublishedProduct(categories.get("light_options"), key, null, {
           itemType: key,
           priceHalala: 1700,
+          isCustomizable: true,
         });
         await createBuilderOption(product, null, `${key}_fruit`, "fruits");
       }
 
       const customizableMeal = await createPublishedProduct(categories.get("meals"), "grilled_chicken_meal_100g", null, {
         priceHalala: 1900,
+        isCustomizable: true,
       });
       await createBuilderOption(customizableMeal, null, "extra_grilled_chicken_50g", "extra_protein_50g");
       await createPublishedProduct(categories.get("meals"), "chicken_okra_meal", null, {
@@ -300,54 +312,34 @@ async function run() {
 
       const menu = await menuCatalogService.getPublishedMenu({ lang: "en" });
       const categoriesByKey = new Map(menu.categories.map((category) => [category.key, category]));
-      assert.deepStrictEqual(categoriesByKey.get("custom_order").ui, { cardVariant: "hero_builder_collection", layout: "vertical_hero_list" });
-      assert.deepStrictEqual(categoriesByKey.get("light_options").ui, { cardVariant: "compact_builder_collection", layout: "vertical_compact_builder_list" });
-      assert.deepStrictEqual(categoriesByKey.get("meals").ui, { cardVariant: "meal_collection", layout: "vertical_meal_list" });
-      assert.deepStrictEqual(categoriesByKey.get("carbs").ui, { cardVariant: "compact_product_collection", layout: "horizontal_or_grid_compact_cards" });
-      assert.deepStrictEqual(categoriesByKey.get("cold_sandwiches").ui, { cardVariant: "sandwich_collection", layout: "vertical_compact_cards" });
-      for (const key of ["desserts", "juices", "drinks", "ice_cream"]) {
-        assert.deepStrictEqual(categoriesByKey.get(key).ui, { cardVariant: "addon_collection", layout: "horizontal_or_grid_addon_cards" });
-      }
+      for (const category of categoriesByKey.values()) assertCleanPublicCategoryUi(category);
 
       const productsByKey = new Map(flattenProducts(menu).map((product) => [product.key, product]));
       for (const key of ["basic_salad", "basic_meal"]) {
         const product = productsByKey.get(key);
         assert.strictEqual(product.categoryId, String(categories.get("custom_order")._id));
-        assert.strictEqual(product.ui.cardVariant, "hero_builder");
-        assert.strictEqual(product.ui.ctaLabel, "start_customizing");
-        assert.strictEqual(product.ui.behaviorHint, "open_builder");
-        assert.strictEqual(product.ui.priceLabelMode, "per_unit_or_from");
-        assert.deepStrictEqual(product.ui.mediaPositionByLocale, { ar: "left", en: "right" });
+        assertCleanPublicProductUi(product);
         assert.strictEqual(product.requiresBuilder, true);
         assert.strictEqual(product.canAddDirectly, false);
       }
       for (const key of ["green_salad", "fruit_salad", "greek_yogurt"]) {
         const product = productsByKey.get(key);
-        assert.strictEqual(product.ui.cardVariant, "compact_builder");
-        assert.strictEqual(product.ui.ctaLabel, "start_customizing");
-        assert.strictEqual(product.ui.priceLabelMode, "final_depends_on_options");
+        assertCleanPublicProductUi(product);
         assert.strictEqual(product.requiresBuilder, true);
         assert.strictEqual(product.canAddDirectly, false);
       }
 
       const readyCustomizable = productsByKey.get("grilled_chicken_meal_100g");
-      assert.strictEqual(readyCustomizable.ui.cardVariant, "ready_meal_customizable");
-      assert.strictEqual(readyCustomizable.ui.ctaLabel, "customize");
-      assert.strictEqual(readyCustomizable.ui.behaviorHint, "customize_optional_addons");
-      assert.strictEqual(readyCustomizable.ui.priceLabelMode, "from_price");
+      assertCleanPublicProductUi(readyCustomizable);
       assert(readyCustomizable.optionGroups.some((group) => group.key === "extra_protein_50g"));
       const readyDirect = productsByKey.get("chicken_okra_meal");
-      assert.strictEqual(readyDirect.ui.cardVariant, "ready_meal");
-      assert.strictEqual(readyDirect.ui.ctaLabel, "add_to_cart");
-      assert.strictEqual(readyDirect.ui.behaviorHint, "direct_add");
-      assert.strictEqual(readyDirect.ui.priceLabelMode, "fixed");
+      assertCleanPublicProductUi(readyDirect);
       assert.strictEqual(readyDirect.optionGroups.length, 0);
 
-      assert.strictEqual(productsByKey.get("white_rice").ui.cardVariant, "compact_product");
-      assert.strictEqual(productsByKey.get("turkey_cold_sandwich").ui.cardVariant, "sandwich_card");
+      assertCleanPublicProductUi(productsByKey.get("white_rice"));
+      assertCleanPublicProductUi(productsByKey.get("turkey_cold_sandwich"));
       for (const key of ["orange_cake", "berry_blast", "water", "vanilla_ice_cream"]) {
-        assert.strictEqual(productsByKey.get(key).ui.cardVariant, "addon_card");
-        assert.strictEqual(productsByKey.get(key).ui.ctaLabel, "add_to_cart");
+        assertCleanPublicProductUi(productsByKey.get(key));
         assert.strictEqual(productsByKey.get(key).requiresBuilder, false);
         assert.strictEqual(productsByKey.get(key).canAddDirectly, true);
       }
@@ -355,7 +347,7 @@ async function run() {
 
     await test("Global option disable hides linked builder options and quote rejects them", async () => {
       const category = await createPublishedCategory("global_option_disable");
-      const product = await createPublishedProduct(category, "builder_product", null);
+      const product = await createPublishedProduct(category, "builder_product", null, { isCustomizable: true });
       const disabledItem = await CatalogItem.create({ nameI18n: { en: "Disabled Option", ar: "" }, itemKind: "carb", isAvailable: false });
       const { group, option } = await createBuilderOption(product, disabledItem._id, "disabled_option");
       const menu = await menuCatalogService.getPublishedMenu({ lang: "en" });
@@ -391,6 +383,7 @@ async function run() {
       });
       const product = await createPublishedProduct(category, "metadata_priced_product", productItem._id, {
         priceHalala: 1200,
+        isCustomizable: true,
       });
       const { group, option } = await createBuilderOption(product, optionItem._id, "metadata_priced_option");
 
@@ -438,7 +431,7 @@ async function run() {
       const category = await createPublishedCategory("local_disable");
       const sharedItem = await CatalogItem.create({ nameI18n: { en: "Shared Item", ar: "" }, itemKind: "product" });
       await createPublishedProduct(category, "local_disabled_product", sharedItem._id, { isAvailable: false });
-      const builder = await createPublishedProduct(category, "builder_with_shared_option", null);
+      const builder = await createPublishedProduct(category, "builder_with_shared_option", null, { isCustomizable: true });
       await createBuilderOption(builder, sharedItem._id, "shared_option", "proteins");
       const menu = await menuCatalogService.getPublishedMenu({ lang: "en" });
       const keys = flattenProducts(menu).map((product) => product.key);

@@ -12,6 +12,7 @@ const { SYSTEM_CURRENCY } = require("../../config/mealPlannerContract");
 const { DEFAULT_PICKUP_WINDOW } = require("../../constants/defaultPickupLocation");
 const { pickLang } = require("../../utils/i18n");
 const { computeInclusiveVatBreakdown } = require("../../utils/pricing");
+const { VAT_PERCENTAGE } = require("../../config/vat");
 const { assertRestaurantOpenForOrdering } = require("../restaurantHoursService");
 const { normalizeWindows } = require("./orderMenuService");
 const {
@@ -437,7 +438,8 @@ async function priceOrderCart({
     fulfillmentMethod: method,
     zoneId: delivery && delivery.zoneId,
   });
-  const vatPercentage = Number(await getSettingValue("vat_percentage", 0));
+  // VAT is system-owned (16%)
+  const vatPercentage = VAT_PERCENTAGE;
   const pricing = buildOrderPricingSnapshot({
     subtotalHalala,
     deliveryFeeHalala,

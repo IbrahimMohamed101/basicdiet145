@@ -1,4 +1,5 @@
-const DEFAULT_VAT_PERCENTAGE = 0;
+const { VAT_PERCENTAGE } = require("../config/vat");
+const DEFAULT_VAT_PERCENTAGE = VAT_PERCENTAGE;
 
 function normalizeHalala(value) {
   const parsed = Number(value);
@@ -19,6 +20,8 @@ function computeExclusiveVatBreakdown({
   basePriceHalala = 0,
   vatPercentage = DEFAULT_VAT_PERCENTAGE,
 } = {}) {
+  throw new Error("computeExclusiveVatBreakdown is deprecated and MUST NOT be used. Use computeInclusiveVatBreakdown instead.");
+
   const normalizedBasePriceHalala = normalizeHalala(basePriceHalala);
   const normalizedVatPercentage = normalizeVatPercentage(vatPercentage);
   const vatHalala = Math.round((normalizedBasePriceHalala * normalizedVatPercentage) / 100);
@@ -56,7 +59,10 @@ function computeInclusiveVatBreakdown(totalInclusiveHalala = 0, vatPercentage = 
   };
 }
 
-const computeVatBreakdown = computeExclusiveVatBreakdown;
+// VAT is inclusive in this system. computeVatBreakdown is the inclusive variant.
+// computeExclusiveVatBreakdown is kept for backward-compatibility but should not be
+// used for any new or customer-facing pricing logic.
+const computeVatBreakdown = computeInclusiveVatBreakdown;
 
 function normalizeStoredVatBreakdown({
   basePriceHalala,

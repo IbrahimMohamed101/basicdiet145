@@ -29,10 +29,11 @@ const errorResponse = require("../utils/errorResponse");
 const { validateRedirectUrl } = require("../utils/security");
 const { normalizePaymentRedirectUrls } = require("../utils/paymentRedirectUrls");
 const {
-  computeVatBreakdown,
+  computeInclusiveVatBreakdown,
   normalizeStoredVatBreakdown,
   buildMoneySummary,
 } = require("../utils/pricing");
+const { VAT_PERCENTAGE } = require("../config/vat");
 const { getOneTimeOrderMenu } = require("../services/orders/orderMenuService");
 const { buildRequestHash, priceOrderCart } = require("../services/orders/orderPricingService");
 const { expireOrderIfNeeded } = require("../services/orders/orderExpiryService");
@@ -1110,7 +1111,7 @@ async function checkoutOrder(req, res) {
     const regularPriceSar = Number(await getSettingValue("one_time_meal_price", 25));
     const premiumPriceSar = Number(await getSettingValue("one_time_premium_price", regularPriceSar));
     const deliveryFeeSar = Number(await getSettingValue("one_time_delivery_fee", 0));
-    const vatPercentage = Number(await getSettingValue("vat_percentage", 0));
+    // VAT_PERCENTAGE is system-owned (16%). Do not read from DB.
 
     const regularUnit = Math.round(regularPriceSar * 100);
     const premiumUnit = Math.round(premiumPriceSar * 100);
@@ -1152,10 +1153,8 @@ async function checkoutOrder(req, res) {
     }
 
     const basePrice = subtotal + deliveryFee;
-    const vatBreakdown = computeVatBreakdown({
-      basePriceHalala: basePrice,
-      vatPercentage,
-    });
+    // VAT is system-owned (16%, inclusive). Price already contains VAT — extract it, do not add on top.
+    const vatBreakdown = computeInclusiveVatBreakdown(basePrice, VAT_PERCENTAGE);
     const total = vatBreakdown.totalHalala;
     const paymentMetadata = {
       type: "one_time_order",

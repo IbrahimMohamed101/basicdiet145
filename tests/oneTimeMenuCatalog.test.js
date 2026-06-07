@@ -88,6 +88,30 @@ function findProduct(menu, key) {
   return flattenMenuProducts(menu).find((product) => product.key === key);
 }
 
+const LEGACY_PUBLIC_PRODUCT_UI_FIELDS = [
+  "cardVariant",
+  "badge",
+  "ctaLabel",
+  "imageRatio",
+  "showDescription",
+  "showPrice",
+  "mediaPositionByLocale",
+  "ctaLabelI18n",
+  "behaviorHint",
+  "priceLabelMode",
+];
+
+function assertCleanPublicCategoryUi(category) {
+  assert(!category.ui || Object.keys(category.ui).length === 0, `${category.key} category ui is omitted or empty`);
+}
+
+function assertCleanPublicProductUi(product, expectedCardSize) {
+  assert.deepStrictEqual(product.ui, { cardSize: expectedCardSize }, `${product.key} exposes only public cardSize`);
+  for (const field of LEGACY_PUBLIC_PRODUCT_UI_FIELDS) {
+    assert.strictEqual(product.ui[field], undefined, `${product.key} omits legacy ui.${field}`);
+  }
+}
+
 function findGroup(product, key) {
   return (product.optionGroups || []).find((group) => group.key === key);
 }
@@ -477,14 +501,8 @@ async function seedViaDashboard(api) {
       assert(!categoriesByKey.has("salads"), "legacy salads category is not published in customer menu");
       assert(!categoriesByKey.has("meals"), "legacy meals category is not published in customer menu");
       assert.strictEqual(categoriesByKey.get("custom_order").nameI18n.ar, "اطلب على مزاجك");
-      assert.deepStrictEqual(categoriesByKey.get("custom_order").ui, {
-        cardVariant: "hero_builder_collection",
-        layout: "vertical_hero_list",
-      });
-      assert.deepStrictEqual(categoriesByKey.get("light_options").ui, {
-        cardVariant: "compact_builder_collection",
-        layout: "vertical_compact_builder_list",
-      });
+      assertCleanPublicCategoryUi(categoriesByKey.get("custom_order"));
+      assertCleanPublicCategoryUi(categoriesByKey.get("light_options"));
       assert.strictEqual(categoriesByKey.get("sourdough").nameI18n.ar, "الساندويشات");
       assert.strictEqual(categoriesByKey.get("ice_cream").nameI18n.ar, "الايس كريم");
 
@@ -500,15 +518,7 @@ async function seedViaDashboard(api) {
 
       const basicSalad = findProduct(menu, "basic_salad");
       assert.strictEqual(basicSalad.categoryKey, "custom_order");
-      assert.strictEqual(basicSalad.ui.cardVariant, "hero_builder");
-      assert.strictEqual(basicSalad.ui.imageRatio, "wide");
-      assert.strictEqual(basicSalad.ui.ctaLabel, "start_customizing");
-      assert.deepStrictEqual(basicSalad.ui.ctaLabelI18n, { ar: "ابدأ التخصيص", en: "Start Customizing" });
-      assert.deepStrictEqual(basicSalad.ui.mediaPositionByLocale, { ar: "left", en: "right" });
-      assert.strictEqual(basicSalad.ui.behaviorHint, "open_builder");
-      assert.strictEqual(basicSalad.ui.priceLabelMode, "per_unit_or_from");
-      assert.strictEqual(basicSalad.ui.showDescription, true);
-      assert.strictEqual(basicSalad.ui.showPrice, true);
+      assertCleanPublicProductUi(basicSalad, "large");
       assert.strictEqual(basicSalad.nameI18n.en, "Basic Salad");
       assert.strictEqual(basicSalad.pricingModel, "per_100g");
       assert.strictEqual(basicSalad.priceHalala, 2900);
@@ -528,10 +538,7 @@ async function seedViaDashboard(api) {
 
       const basicMeal = findProduct(menu, "basic_meal");
       assert.strictEqual(basicMeal.categoryKey, "custom_order");
-      assert.strictEqual(basicMeal.ui.cardVariant, "hero_builder");
-      assert.strictEqual(basicMeal.ui.ctaLabel, "start_customizing");
-      assert.strictEqual(basicMeal.ui.behaviorHint, "open_builder");
-      assert.strictEqual(basicMeal.ui.priceLabelMode, "per_unit_or_from");
+      assertCleanPublicProductUi(basicMeal, "large");
       assert.strictEqual(basicMeal.pricingModel, "per_100g");
       assert.strictEqual(basicMeal.priceHalala, 1900);
       assert.strictEqual(basicMeal.requiresBuilder, true);
@@ -541,11 +548,7 @@ async function seedViaDashboard(api) {
 
       const fruitSalad = findProduct(menu, "fruit_salad");
       assert.strictEqual(fruitSalad.categoryKey, "light_options");
-      assert.strictEqual(fruitSalad.ui.cardVariant, "compact_builder");
-      assert.strictEqual(fruitSalad.ui.ctaLabel, "start_customizing");
-      assert.strictEqual(fruitSalad.ui.behaviorHint, "open_builder");
-      assert.strictEqual(fruitSalad.ui.priceLabelMode, "final_depends_on_options");
-      assert.deepStrictEqual(fruitSalad.ui.mediaPositionByLocale, { ar: "left", en: "right" });
+      assertCleanPublicProductUi(fruitSalad, "medium");
       assert.strictEqual(fruitSalad.pricingModel, "fixed");
       assert.strictEqual(fruitSalad.priceHalala, 1700);
       assert.strictEqual(fruitSalad.requiresBuilder, true);
@@ -555,8 +558,7 @@ async function seedViaDashboard(api) {
 
       const greekYogurt = findProduct(menu, "greek_yogurt");
       assert.strictEqual(greekYogurt.categoryKey, "light_options");
-      assert.strictEqual(greekYogurt.ui.cardVariant, "compact_builder");
-      assert.strictEqual(greekYogurt.ui.ctaLabel, "start_customizing");
+      assertCleanPublicProductUi(greekYogurt, "medium");
       assert.strictEqual(greekYogurt.pricingModel, "fixed");
       assert.strictEqual(greekYogurt.priceHalala, 1700);
       assert.strictEqual(greekYogurt.requiresBuilder, true);
@@ -566,8 +568,7 @@ async function seedViaDashboard(api) {
 
       const greenSalad = findProduct(menu, "green_salad");
       assert.strictEqual(greenSalad.categoryKey, "light_options");
-      assert.strictEqual(greenSalad.ui.cardVariant, "compact_builder");
-      assert.strictEqual(greenSalad.ui.ctaLabel, "start_customizing");
+      assertCleanPublicProductUi(greenSalad, "medium");
       assert.strictEqual(greenSalad.pricingModel, "per_100g");
       assert.strictEqual(greenSalad.priceHalala, 1500);
       assertGroupRule(greenSalad, "leafy_greens", 2, 2);
@@ -936,17 +937,10 @@ async function seedViaDashboard(api) {
       expectStatus(res, 200, "public menu after generated keys");
       const publicCategory = (res.body.data.categories || []).find((category) => category.id === generatedCategory.id);
       assert(publicCategory, "generated category appears in public menu");
-      assert.strictEqual(publicCategory.ui.cardVariant, "addon_collection");
+      assertCleanPublicCategoryUi(publicCategory);
       const publicProduct = publicCategory.products.find((product) => product.key === "spicy_chicken");
       assert(publicProduct, "generated product appears in public menu");
-      assert.deepStrictEqual(publicProduct.ui, {
-        cardVariant: "premium",
-        badge: "New",
-        ctaLabel: "Customize",
-        imageRatio: "wide",
-        behaviorHint: "open_builder",
-        priceLabelMode: "final_depends_on_options",
-      });
+      assertCleanPublicProductUi(publicProduct, "medium");
       const publicGroup = publicProduct.optionGroups.find((group) => group.key === "sauce_flight");
       assert(publicGroup, "generated option group appears in public menu");
       assert.deepStrictEqual(publicGroup.ui, { displayStyle: "radio_cards" });
@@ -961,18 +955,10 @@ async function seedViaDashboard(api) {
       expectStatus(res, 200, "public menu after missing ui");
       const fallbackCategory = (res.body.data.categories || []).find((category) => category.id === ctx.category.id);
       assert(fallbackCategory, "seed category appears");
-      assert.deepStrictEqual(fallbackCategory.ui, { cardVariant: "addon_collection" });
+      assertCleanPublicCategoryUi(fallbackCategory);
       const fallbackProduct = fallbackCategory.products.find((product) => product.id === ctx.fixedProduct.id);
       assert(fallbackProduct, "seed product appears");
-      assert.deepStrictEqual(fallbackProduct.ui, {
-        cardVariant: "standard",
-        badge: "",
-        ctaLabel: "customize",
-        ctaLabelI18n: { ar: "اختر الإضافة", en: "Customize" },
-        imageRatio: "square",
-        behaviorHint: "open_builder",
-        priceLabelMode: "final_depends_on_options",
-      });
+      assertCleanPublicProductUi(fallbackProduct, "medium");
       const fallbackGroup = fallbackProduct.optionGroups.find((group) => group.id === ctx.group.id);
       assert(fallbackGroup, "seed option group appears");
       assert.deepStrictEqual(fallbackGroup.ui, { displayStyle: "chips" });
@@ -1038,7 +1024,7 @@ async function seedViaDashboard(api) {
       const section = contract.sections.find((item) => item.key === ctx.category.key);
       assert(section, "fixture category section exists");
       assert.strictEqual(section.type, "product_collection");
-      assert.deepStrictEqual(section.ui, menu.categories.find((item) => item.key === ctx.category.key).ui);
+      assert.deepStrictEqual(section.ui, {});
 
       const product = section.products.find((item) => item.id === ctx.fixedProduct.id);
       assert(product, "V2 product exists in its section");

@@ -38,20 +38,6 @@ const {
 
 const SYSTEM_CURRENCY = "SAR";
 const SNAKE_CASE_PATTERN = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/;
-const PRODUCT_ITEM_TYPES = [
-  "basic_salad",
-  "basic_meal",
-  "fruit_salad",
-  "greek_yogurt",
-  "green_salad",
-  "cold_sandwich",
-  "sourdough",
-  "dessert",
-  "juice",
-  "drink",
-  "ice_cream",
-  "product",
-];
 const CUSTOMER_VISIBLE_CARB_KEY_SET = new Set(CUSTOMER_VISIBLE_CARB_KEYS);
 const BASIC_MEAL_PUBLIC_GROUP_KEY_SET = new Set(["carbs", "proteins"]);
 const HIDDEN_PUBLIC_PRODUCT_KEYS = new Set(["small_salad"]);
@@ -78,14 +64,6 @@ const CATEGORY_PRESENTATION_BY_KEY = Object.freeze({
   drinks: { cardVariant: "addon_collection", layout: "horizontal_or_grid_addon_cards" },
   ice_cream: { cardVariant: "addon_collection", layout: "horizontal_or_grid_addon_cards" },
 });
-const PRODUCT_ITEM_TYPES_CUSTOMIZABLE_BY_DEFAULT = new Set([
-  "basic_salad",
-  "basic_meal",
-  "fruit_salad",
-  "greek_yogurt",
-  "green_salad",
-]);
-
 class MenuValidationError extends Error {
   constructor(message, code = "VALIDATION_ERROR", status = 400, details) {
     super(message);
@@ -294,11 +272,11 @@ function inferProductCustomizable(product = {}, optionGroups = undefined) {
     return Boolean(product.isCustomizable);
   }
   if (product.pricingModel === "per_100g") return true;
-  return PRODUCT_ITEM_TYPES_CUSTOMIZABLE_BY_DEFAULT.has(String(product.itemType || ""));
+  return false;
 }
 
 async function refreshProductCustomizableFromRelations(productId) {
-  const product = await MenuProduct.findById(productId).select("pricingModel itemType").lean();
+  const product = await MenuProduct.findById(productId).select("pricingModel").lean();
   if (!product) return false;
   const relationCount = await ProductOptionGroup.countDocuments({
     productId,
@@ -307,8 +285,7 @@ async function refreshProductCustomizableFromRelations(productId) {
     isAvailable: { $ne: false },
   });
   const isCustomizable = relationCount > 0
-    || product.pricingModel === "per_100g"
-    || PRODUCT_ITEM_TYPES_CUSTOMIZABLE_BY_DEFAULT.has(String(product.itemType || ""));
+    || product.pricingModel === "per_100g";
   await MenuProduct.updateOne({ _id: productId }, { $set: { isCustomizable } });
   return isCustomizable;
 }
@@ -359,6 +336,12 @@ function buildPublicCategoryUi(category) {
   return {
     ...normalizeCategoryUiMetadata(category.ui),
     ...(CATEGORY_PRESENTATION_BY_KEY[category.key] || {}),
+  };
+}
+
+function buildMobilePublicProductUi(product) {
+  return {
+    cardSize: normalizeProductUiMetadata(product.ui).cardSize,
   };
 }
 
@@ -439,8 +422,8 @@ function buildPublicProductUi(product, categoryKey, { hasOptionGroups, requiresB
   return baseUi;
 }
 
-function serializePublicCategory(category, lang, products) {
-  return {
+function serializePublicCategory(category, lang, products, { includeUi = false } = {}) {
+  const payload = {
     id: String(category._id),
     key: category.key,
     name: localizeName(category.name, lang),
@@ -449,12 +432,13 @@ function serializePublicCategory(category, lang, products) {
     descriptionI18n: localizedPair(category.description),
     imageUrl: category.imageUrl || "",
     sortOrder: Number(category.sortOrder || 0),
-    ui: buildPublicCategoryUi(category),
     products,
   };
+  if (includeUi) payload.ui = buildPublicCategoryUi(category);
+  return payload;
 }
 
-function serializePublicProduct(product, lang, optionGroups, categoryId = product.categoryId) {
+function serializePublicProduct(product, lang, optionGroups, categoryId = product.categoryId, { includePresentationUi = false } = {}) {
   const hasOptionGroups = Array.isArray(optionGroups) && optionGroups.length > 0;
   const isCustomizable = Boolean(product.isCustomizable) && (product.pricingModel === "per_100g" || hasOptionGroups);
   const requiresBuilder = isCustomizable;
@@ -479,7 +463,9 @@ function serializePublicProduct(product, lang, optionGroups, categoryId = produc
     maxWeightGrams: Number(product.maxWeightGrams || 0),
     weightStepGrams: Number(product.weightStepGrams || 50),
     sortOrder: Number(product.sortOrder || 0),
-    ui: buildPublicProductUi(product, categoryKey, { hasOptionGroups, requiresBuilder, canAddDirectly }),
+    ui: includePresentationUi
+      ? buildPublicProductUi(product, categoryKey, { hasOptionGroups, requiresBuilder, canAddDirectly })
+      : buildMobilePublicProductUi(product),
     isCustomizable,
     requiresBuilder,
     canAddDirectly,
@@ -570,7 +556,7 @@ function serializeEffectiveStatus(globalDoc = {}, relationDoc = {}) {
 
 function serializeDashboardPreviewCategory(category, lang, products) {
   return {
-    ...serializePublicCategory(category, lang, products),
+    ...serializePublicCategory(category, lang, products, { includeUi: true }),
     categoryId: String(category._id),
     status: serializeStatus(category),
     isActive: truthyByDefault(category.isActive),
@@ -581,7 +567,7 @@ function serializeDashboardPreviewCategory(category, lang, products) {
 
 function serializeDashboardPreviewProduct(product, lang, optionGroups, categoryId = product.categoryId) {
   return {
-    ...serializePublicProduct(product, lang, optionGroups, categoryId),
+    ...serializePublicProduct(product, lang, optionGroups, categoryId, { includePresentationUi: true }),
     productId: String(product._id),
     categoryId: String(categoryId),
     status: serializeStatus(product),
@@ -669,14 +655,13 @@ async function getPublishedMenu({ lang = "en", branchId = "" } = {}) {
     categoryQuery.$or = [{ "availability.branchIds": { $size: 0 } }, { "availability.branchIds": branchId }];
   }
 
-  const [categories, productRows, groupRelations, optionRelations, groups, optionRows, vatPercentageRaw] = await Promise.all([
+  const [categories, productRows, groupRelations, optionRelations, groups, optionRows] = await Promise.all([
     MenuCategory.find(categoryQuery).sort({ sortOrder: 1, createdAt: -1 }).lean(),
     MenuProduct.find(productQuery).sort({ sortOrder: 1, createdAt: -1 }).lean(),
     ProductOptionGroup.find(customerRelationQuery()).sort({ sortOrder: 1, createdAt: -1 }).lean(),
     ProductGroupOption.find(customerRelationQuery()).sort({ sortOrder: 1, createdAt: -1 }).lean(),
     MenuOptionGroup.find(customerCatalogQuery()).lean(),
     MenuOption.find(customerCatalogQuery(availableForChannelQuery("one_time"))).lean(),
-    getSettingValue("vat_percentage", 0),
   ]);
   const catalogItemsById = await loadCatalogItemsByIdForDocs(productRows, optionRows);
   const products = filterGloballyAvailable(productRows, catalogItemsById);
@@ -750,8 +735,7 @@ async function getPublishedMenu({ lang = "en", branchId = "" } = {}) {
     fulfillmentMethod: "pickup",
     currency: SYSTEM_CURRENCY,
     vatIncluded: true,
-    vatPercentage: Number(vatPercentageRaw || 0),
-    itemTypes: PRODUCT_ITEM_TYPES,
+    vatPercentage: VAT_PERCENTAGE,
     categories: serializedCategories,
   };
 }
@@ -783,14 +767,13 @@ async function getDashboardMenuPreview({ lang = "en", includeInactive = false, b
     categoryQuery.$or = [{ "availability.branchIds": { $size: 0 } }, { "availability.branchIds": branchId }];
   }
 
-  const [categories, products, groupRelations, optionRelations, groups, options, vatPercentageRaw, validation] = await Promise.all([
+  const [categories, products, groupRelations, optionRelations, groups, options, validation] = await Promise.all([
     MenuCategory.find(categoryQuery).sort({ sortOrder: 1, createdAt: -1 }).lean(),
     MenuProduct.find(productQuery).sort({ sortOrder: 1, createdAt: -1 }).lean(),
     ProductOptionGroup.find(relationQuery).sort({ sortOrder: 1, createdAt: -1 }).lean(),
     ProductGroupOption.find(relationQuery).sort({ sortOrder: 1, createdAt: -1 }).lean(),
     MenuOptionGroup.find(statusQuery).lean(),
     MenuOption.find(optionQuery).lean(),
-    getSettingValue("vat_percentage", 0),
     validateMenuCatalogInternal().catch((err) => ({
       ok: false,
       warnings: [`Preview validation failed: ${err.message || "unknown error"}`],
@@ -860,8 +843,7 @@ async function getDashboardMenuPreview({ lang = "en", includeInactive = false, b
     fulfillmentMethod: "pickup",
     currency: SYSTEM_CURRENCY,
     vatIncluded: true,
-    vatPercentage: Number(vatPercentageRaw || 0),
-    itemTypes: PRODUCT_ITEM_TYPES,
+    vatPercentage: VAT_PERCENTAGE,
     includeInactive: showInactive,
     warnings: [...(validation.warnings || []), ...(validation.errors || [])],
     categories: serializedCategories,
@@ -935,11 +917,7 @@ function buildProductFilter(options = {}) {
   }
 
   if (itemType !== undefined && itemType !== null && String(itemType).trim() !== "") {
-    const normalizedItemType = String(itemType).trim();
-    if (!PRODUCT_ITEM_TYPES.includes(normalizedItemType)) {
-      throw new MenuValidationError(`itemType must be one of: ${PRODUCT_ITEM_TYPES.join(", ")}`);
-    }
-    query.itemType = normalizedItemType;
+    query.itemType = String(itemType).trim();
   }
 
   return query;
@@ -1199,9 +1177,6 @@ function normalizeProductPayload(body = {}, existing = null) {
     throw new MenuValidationError("pricingModel must be fixed or per_100g");
   }
   const itemType = String(body.itemType || (existing && existing.itemType) || "product").trim();
-  if (!PRODUCT_ITEM_TYPES.includes(itemType)) {
-    throw new MenuValidationError(`itemType must be one of: ${PRODUCT_ITEM_TYPES.join(", ")}`);
-  }
   return {
     categoryId: body.categoryId === undefined && existing ? existing.categoryId : assertObjectId(body.categoryId, "categoryId"),
     catalogItemId: normalizeOptionalObjectId(body.catalogItemId, "catalogItemId", existing ? (existing.catalogItemId || null) : null),
@@ -1224,7 +1199,7 @@ function normalizeProductPayload(body = {}, existing = null) {
       "isCustomizable",
       existing
         ? inferProductCustomizable(existing)
-        : (pricingModel === "per_100g" || PRODUCT_ITEM_TYPES_CUSTOMIZABLE_BY_DEFAULT.has(itemType))
+        : (pricingModel === "per_100g")
     ),
     isActive: normalizeBoolean(body.isActive, "isActive", existing ? existing.isActive : true),
     isVisible: normalizeBoolean(body.isVisible, "isVisible", existing ? truthyByDefault(existing.isVisible) : true),
@@ -2960,7 +2935,6 @@ async function validateMenuCatalogInternal() {
 }
 
 module.exports = {
-  PRODUCT_ITEM_TYPES,
   MenuNotFoundError,
   MenuValidationError,
   getPublishedMenu,

@@ -141,7 +141,7 @@ async function createOrder(user, overrides = {}) {
       discountHalala: 0,
       totalHalala: fulfillmentMethod === "delivery" ? 3500 : 2500,
       vatPercentage: 15,
-      vatHalala: fulfillmentMethod === "delivery" ? 457 : 326,
+      vatHalala: fulfillmentMethod === "delivery" ? 552 : 345,
       vatIncluded: true,
       currency: "SAR",
     },

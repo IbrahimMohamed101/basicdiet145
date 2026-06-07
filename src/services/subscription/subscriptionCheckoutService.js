@@ -14,6 +14,7 @@ const { buildCheckoutRequestHash } = require("../../utils/checkout");
 const { normalizeCheckoutDeliveryForPersistence } = require("../../utils/checkout");
 const { isPhase1CanonicalCheckoutDraftWriteEnabled } = require("../../utils/featureFlags");
 const { buildMoneySummary, computeInclusiveVatBreakdown } = require("../../utils/pricing");
+const { VAT_PERCENTAGE } = require("../../config/vat");
 const { resolveQuoteSummary } = require("../../utils/subscription/subscriptionCatalog");
 const {
   reservePromoCodeUsageForCheckout,
@@ -156,36 +157,18 @@ function buildCanonicalSubscriptionCheckoutBreakdown(quote, normalizedPremiumIte
 /**
  * Recompute included VAT from the canonical customer-facing total.
  *
- * WHY: once we recompute premiumTotalHalala from normalizedPremiumItems, the
- * customer-facing inclusive total may change, so the included VAT portion must
- * follow. Otherwise the three values
- *   contractSnapshot.pricing.totalHalala
- *   breakdown.totalHalala
- *   actual invoice amount
- * would all drift apart silently.
+ * VAT INVARIANT: The system VAT is always 16% inclusive — code-owned, never
+ * derived from stored quote data. The quoteBreakdown argument is accepted for
+ * backward-compatible call sites but its vatPercentage field is ignored.
  *
- * The VAT rate comes from quote.breakdown.vatPercentage when available and
- * falls back to the derived rate for older quote shapes.
+ *   vatHalala = round(total * 16 / 116)
+ *   netHalala = total - vatHalala
+ *   customerPays = total   (VAT extracted, never added on top)
  */
-function recomputeVatBreakdown(canonicalTotalInclusive, quoteBreakdown) {
-  const explicitVatPercentage = Number(quoteBreakdown && quoteBreakdown.vatPercentage);
-  const rawSubtotal =
-    Number(quoteBreakdown.basePlanPriceHalala || 0) +
-    Number(quoteBreakdown.premiumTotalHalala  || 0) +
-    Number(quoteBreakdown.addonsTotalHalala   || 0) +
-    Number(quoteBreakdown.deliveryFeeHalala   || 0);
-  const quoteVatHalala = Number(quoteBreakdown.vatHalala || 0);
-  const quoteTotalHalala = Number(quoteBreakdown.totalHalala || 0);
-  const derivedVatBase = quoteTotalHalala > 0
-    ? Math.max(0, quoteTotalHalala - quoteVatHalala)
-    : rawSubtotal;
-  const derivedVatPercentage = derivedVatBase === 0
-    ? 0
-    : (quoteVatHalala / derivedVatBase) * 100;
-  const vatPercentage = Number.isFinite(explicitVatPercentage) && explicitVatPercentage >= 0
-    ? explicitVatPercentage
-    : derivedVatPercentage;
-  return computeInclusiveVatBreakdown(canonicalTotalInclusive, vatPercentage);
+// eslint-disable-next-line no-unused-vars
+function recomputeVatBreakdown(canonicalTotalInclusive, _quoteBreakdown) {
+  // Always use the system-owned 16% inclusive rate. Never derive from stored data.
+  return computeInclusiveVatBreakdown(canonicalTotalInclusive, VAT_PERCENTAGE);
 }
 
 // ---------------------------------------------------------------------------

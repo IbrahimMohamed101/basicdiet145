@@ -88,8 +88,8 @@ function buildBaseOrder(overrides = {}) {
       deliveryFeeHalala: 0,
       discountHalala: 0,
       totalHalala: 2500,
-      vatPercentage: 15,
-      vatHalala: 326,
+      vatPercentage: 16,
+      vatHalala: 345,
       vatIncluded: true,
       currency: "SAR",
     },
@@ -205,7 +205,7 @@ async function seedOneTimeOrderCatalog() {
   await Promise.all([
     upsertSetting("one_time_standard_meal_price_halala", 4200),
     upsertSetting("one_time_salad_base_price_halala", 800),
-    upsertSetting("vat_percentage", 15),
+    upsertSetting("vat_percentage", 16),
     upsertSetting("delivery_windows", ["18:00-20:00", "20:00-22:00"]),
     upsertSetting("pickup_windows", ["18:00-20:00"]),
     upsertSetting("pickup_locations", [{
@@ -496,8 +496,8 @@ function setMoyasarInvoice(invoiceId, updates = {}) {
         deliveryFeeHalala: 1500,
         discountHalala: 0,
         totalHalala: 4000,
-        vatPercentage: 15,
-        vatHalala: 522,
+        vatPercentage: 16,
+        vatHalala: 552,
         vatIncluded: true,
         currency: "SAR",
       },
@@ -811,8 +811,8 @@ function setMoyasarInvoice(invoiceId, updates = {}) {
       const res = await api.post("/api/orders/quote").set(auth(ctx.token)).send(sandwichQuotePayload(ctx));
       expectStatus(res, 200, "vat quote");
       assert.strictEqual(res.body.data.pricing.vatIncluded, true);
-      assert.strictEqual(res.body.data.pricing.vatPercentage, 15);
-      assert.strictEqual(res.body.data.pricing.vatHalala, 326);
+      assert.strictEqual(res.body.data.pricing.vatPercentage, 16);
+      assert.strictEqual(res.body.data.pricing.vatHalala, 345);
       assert.strictEqual(res.body.data.pricing.totalHalala, 2500);
     });
 

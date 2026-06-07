@@ -11,6 +11,7 @@ const Subscription = require("../../models/Subscription");
 const User = require("../../models/User");
 const dateUtils = require("../../utils/date");
 const { normalizeHalala, normalizeStoredVatBreakdown } = require("../../utils/pricing");
+const { VAT_PERCENTAGE } = require("../../config/vat");
 const { buildSectionedCsv } = require("../../utils/csvExport");
 
 const MANUAL_DEDUCTION_ACTION = "manual_subscription_meal_deduction";
@@ -241,7 +242,7 @@ async function buildDailyReport({
   const selectedFulfillment = normalizeFulfillmentFilter(fulfillmentMethod);
   const details = parseIncludeDetails(includeDetails);
   const period = await resolveBusinessPeriod(date);
-  const fallbackVatPercentage = Number(await getSettingValue("vat_percentage", 0)) || 0;
+  const fallbackVatPercentage = VAT_PERCENTAGE;
 
   const orderMatch = {
     createdAt: { $gte: period.start, $lte: period.end },

@@ -9,6 +9,7 @@ const ProductOptionGroup = require("../../models/ProductOptionGroup");
 const Setting = require("../../models/Setting");
 const { pickLang } = require("../../utils/i18n");
 const { computeInclusiveVatBreakdown } = require("../../utils/pricing");
+const { VAT_PERCENTAGE } = require("../../config/vat");
 const {
   assertLinkedDocGloballyAvailable,
   loadCatalogItemsByIdForDocs,
@@ -383,7 +384,8 @@ async function priceMenuCart({
     pricedItems.push(await priceMenuItem({ item, lang, branchId }));
   }
   const subtotalHalala = pricedItems.reduce((sum, item) => sum + Number(item.lineTotalHalala || 0), 0);
-  const vatPercentage = Number(await getSettingValue("vat_percentage", 0));
+  // VAT is system-owned (16%)
+  const vatPercentage = VAT_PERCENTAGE;
   const pricing = buildPricingSnapshot({ subtotalHalala, vatPercentage });
   return {
     currency: SYSTEM_CURRENCY,

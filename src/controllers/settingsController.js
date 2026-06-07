@@ -1,4 +1,5 @@
 const Setting = require("../models/Setting");
+const { VAT_PERCENTAGE } = require("../config/vat");
 
 async function getSettings(_req, res) {
     const settings = await Setting.find().lean();
@@ -71,7 +72,8 @@ async function getAppConfig(_req, res) {
             },
             payment: {
                 provider: pickSetting(data, "payment_provider", "moyasar"),
-                vatPercentage: Number(pickSetting(data, "vat_percentage", 0)) || 0,
+                // VAT is system-owned (16%, inclusive). Never read from DB — always hardcoded.
+                vatPercentage: VAT_PERCENTAGE,
                 callbackMode: "backend_redirect_or_client_url",
             },
             fulfillment: {

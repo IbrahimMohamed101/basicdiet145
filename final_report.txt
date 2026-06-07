@@ -1,0 +1,326 @@
+--- RUNNING JEST COMMANDS REQUIRED BY USER ---
+{"level":"info","message":"Activation: built canonical subscription payload","planId":"6a2503156aadb170203cc6b2","premiumBalanceCount":0,"premiumBalancePreview":"[]","timestamp":"2026-06-07T05:35:17.084Z","userId":"6a2503156aadb170203cc6b3"}
+  console.log
+    vatInclusivePricing.test.js: all checks passed
+
+      at log (tests/vatInclusivePricing.test.js:160:11)
+
+FAIL tests/vatInclusivePricing.test.js
+  ● Test suite failed to run
+
+    Your test suite must contain at least one test.
+
+      at onResult (../../.npm/_npx/b8d86e6551a4f492/node_modules/@jest/core/build/index.js:1048:18)
+      at ../../.npm/_npx/b8d86e6551a4f492/node_modules/@jest/core/build/index.js:1118:165
+      at ../../.npm/_npx/b8d86e6551a4f492/node_modules/emittery/index.js:363:13
+          at Array.map (<anonymous>)
+      at Emittery.emit (../../.npm/_npx/b8d86e6551a4f492/node_modules/emittery/index.js:361:23)
+
+Test Suites: 1 failed, 1 total
+Tests:       0 total
+Snapshots:   0 total
+Time:        1.415 s
+Ran all test suites matching tests/vatInclusivePricing.test.js.
+vatInclusivePricing exit=1
+  console.log
+    Running VAT unit tests...
+
+      at log (tests/vatSystem.test.js:31:11)
+
+  console.log
+    VAT unit tests passed.
+
+      at log (tests/vatSystem.test.js:55:11)
+
+FAIL tests/vatSystem.test.js
+  ● Test suite failed to run
+
+    Your test suite must contain at least one test.
+
+      at onResult (../../.npm/_npx/b8d86e6551a4f492/node_modules/@jest/core/build/index.js:1048:18)
+      at ../../.npm/_npx/b8d86e6551a4f492/node_modules/@jest/core/build/index.js:1118:165
+      at ../../.npm/_npx/b8d86e6551a4f492/node_modules/emittery/index.js:363:13
+          at Array.map (<anonymous>)
+      at Emittery.emit (../../.npm/_npx/b8d86e6551a4f492/node_modules/emittery/index.js:361:23)
+
+Test Suites: 1 failed, 1 total
+Tests:       0 total
+Snapshots:   0 total
+Time:        1.499 s
+Ran all test suites matching tests/vatSystem.test.js.
+
+  ●  Cannot log after tests are done. Did you forget to wait for something async in your test?
+    Attempted to log "Memory DB connected for VAT system tests".
+
+      19 |   const uri = replSet.getUri();
+      20 |   await mongoose.connect(uri);
+    > 21 |   console.log("Memory DB connected for VAT system tests");
+         |           ^
+      22 | }
+      23 |
+      24 | async function teardown() {
+
+      at console.log (../../.npm/_npx/b8d86e6551a4f492/node_modules/@jest/console/build/index.js:311:10)
+      at log (tests/vatSystem.test.js:21:11)
+      at run (tests/vatSystem.test.js:85:5)
+
+
+  ●  Cannot log after tests are done. Did you forget to wait for something async in your test?
+    Attempted to log "Running VAT integration tests...".
+
+      57 |
+      58 | async function verifyIntegrationTests() {
+    > 59 |   console.log("Running VAT integration tests...");
+         |           ^
+      60 |   // Clear any existing settings (though DB is fresh)
+      61 |   await Setting.deleteMany({});
+      62 |   
+
+      at console.log (../../.npm/_npx/b8d86e6551a4f492/node_modules/@jest/console/build/index.js:311:10)
+      at log (tests/vatSystem.test.js:59:11)
+      at verifyIntegrationTests (tests/vatSystem.test.js:86:11)
+
+  console.error
+    Test failed: [Error: Order must include at least one item] {
+      code: 'EMPTY_ORDER',
+      status: 400
+    }
+
+      87 |     console.log("All VAT system tests passed successfully!");
+      88 |   } catch (err) {
+    > 89 |     console.error("Test failed:", err);
+         |             ^
+      90 |     process.exit(1);
+      91 |   } finally {
+      92 |     if (replSet) await teardown();
+
+      at error (tests/vatSystem.test.js:89:13)
+
+  ●  process.exit called with "1"
+
+      88 |   } catch (err) {
+      89 |     console.error("Test failed:", err);
+    > 90 |     process.exit(1);
+         |             ^
+      91 |   } finally {
+      92 |     if (replSet) await teardown();
+      93 |   }
+
+      at exit (tests/vatSystem.test.js:90:13)
+vatSystem exit=1
+  console.log
+    ✅ Order status enum contains only final one-time order statuses
+
+      at log (tests/oneTimeOrders.test.js:56:13)
+
+
+  ●  Cannot log after tests are done. Did you forget to wait for something async in your test?
+    Attempted to log "✅ Order rejects unknown statuses".
+
+      54 |     await fn();
+      55 |     results.passed += 1;
+    > 56 |     console.log(`✅ ${name}`);
+         |             ^
+      57 |   } catch (err) {
+      58 |     results.failed += 1;
+      59 |     console.error(`❌ ${name}`);
+
+      at console.log (../../.npm/_npx/b8d86e6551a4f492/node_modules/@jest/console/build/index.js:311:10)
+      at log (tests/oneTimeOrders.test.js:56:13)
+      at run (tests/oneTimeOrders.test.js:402:3)
+
+
+  ●  Cannot log after tests are done. Did you forget to wait for something async in your test?
+    Attempted to log "✅ Order validation normalizes legacy status values before enum validation".
+
+      54 |     await fn();
+      55 |     results.passed += 1;
+    > 56 |     console.log(`✅ ${name}`);
+         |             ^
+      57 |   } catch (err) {
+      58 |     results.failed += 1;
+      59 |     console.error(`❌ ${name}`);
+
+      at console.log (../../.npm/_npx/b8d86e6551a4f492/node_modules/@jest/console/build/index.js:311:10)
+      at log (tests/oneTimeOrders.test.js:56:13)
+      at run (tests/oneTimeOrders.test.js:407:3)
+
+
+  ●  Cannot log after tests are done. Did you forget to wait for something async in your test?
+    Attempted to log "✅ Transition helper follows final order lifecycle".
+
+      54 |     await fn();
+      55 |     results.passed += 1;
+    > 56 |     console.log(`✅ ${name}`);
+         |             ^
+      57 |   } catch (err) {
+      58 |     results.failed += 1;
+      59 |     console.error(`❌ ${name}`);
+
+      at console.log (../../.npm/_npx/b8d86e6551a4f492/node_modules/@jest/console/build/index.js:311:10)
+      at log (tests/oneTimeOrders.test.js:56:13)
+      at run (tests/oneTimeOrders.test.js:423:3)
+
+
+  ●  Cannot log after tests are done. Did you forget to wait for something async in your test?
+    Attempted to log "✅ Transition helper accepts legacy transition names through normalization".
+
+      54 |     await fn();
+      55 |     results.passed += 1;
+    > 56 |     console.log(`✅ ${name}`);
+         |             ^
+      57 |   } catch (err) {
+      58 |     results.failed += 1;
+      59 |     console.error(`❌ ${name}`);
+
+      at console.log (../../.npm/_npx/b8d86e6551a4f492/node_modules/@jest/console/build/index.js:311:10)
+      at log (tests/oneTimeOrders.test.js:56:13)
+      at run (tests/oneTimeOrders.test.js:434:3)
+
+
+  ●  Cannot log after tests are done. Did you forget to wait for something async in your test?
+    Attempted to log "✅ Final status helper identifies terminal statuses".
+
+      54 |     await fn();
+      55 |     results.passed += 1;
+    > 56 |     console.log(`✅ ${name}`);
+         |             ^
+      57 |   } catch (err) {
+      58 |     results.failed += 1;
+      59 |     console.error(`❌ ${name}`);
+
+      at console.log (../../.npm/_npx/b8d86e6551a4f492/node_modules/@jest/console/build/index.js:311:10)
+      at log (tests/oneTimeOrders.test.js:56:13)
+      at run (tests/oneTimeOrders.test.js:441:3)
+
+
+  ●  Cannot log after tests are done. Did you forget to wait for something async in your test?
+    Attempted to log "✅ Legacy status normalization maps old values to final values".
+
+      54 |     await fn();
+      55 |     results.passed += 1;
+    > 56 |     console.log(`✅ ${name}`);
+         |             ^
+      57 |   } catch (err) {
+      58 |     results.failed += 1;
+      59 |     console.error(`❌ ${name}`);
+
+      at console.log (../../.npm/_npx/b8d86e6551a4f492/node_modules/@jest/console/build/index.js:311:10)
+      at log (tests/oneTimeOrders.test.js:56:13)
+      at run (tests/oneTimeOrders.test.js:449:3)
+
+
+  ●  Cannot log after tests are done. Did you forget to wait for something async in your test?
+    Attempted to log "✅ Order schema has no TTL index".
+
+      54 |     await fn();
+      55 |     results.passed += 1;
+    > 56 |     console.log(`✅ ${name}`);
+         |             ^
+      57 |   } catch (err) {
+      58 |     results.failed += 1;
+      59 |     console.error(`❌ ${name}`);
+
+      at console.log (../../.npm/_npx/b8d86e6551a4f492/node_modules/@jest/console/build/index.js:311:10)
+      at log (tests/oneTimeOrders.test.js:56:13)
+      at run (tests/oneTimeOrders.test.js:457:3)
+
+
+  ●  Cannot log after tests are done. Did you forget to wait for something async in your test?
+    Attempted to log "✅ Can validate a pickup Order document".
+
+      54 |     await fn();
+      55 |     results.passed += 1;
+    > 56 |     console.log(`✅ ${name}`);
+         |             ^
+      57 |   } catch (err) {
+      58 |     results.failed += 1;
+      59 |     console.error(`❌ ${name}`);
+
+      at console.log (../../.npm/_npx/b8d86e6551a4f492/node_modules/@jest/console/build/index.js:311:10)
+      at log (tests/oneTimeOrders.test.js:56:13)
+      at run (tests/oneTimeOrders.test.js:461:3)
+
+
+  ●  Cannot log after tests are done. Did you forget to wait for something async in your test?
+    Attempted to log "✅ Can validate a delivery Order document".
+
+      54 |     await fn();
+      55 |     results.passed += 1;
+    > 56 |     console.log(`✅ ${name}`);
+         |             ^
+      57 |   } catch (err) {
+      58 |     results.failed += 1;
+      59 |     console.error(`❌ ${name}`);
+
+      at console.log (../../.npm/_npx/b8d86e6551a4f492/node_modules/@jest/console/build/index.js:311:10)
+      at log (tests/oneTimeOrders.test.js:56:13)
+      at run (tests/oneTimeOrders.test.js:477:3)
+
+FAIL tests/oneTimeOrders.test.js
+  ● Test suite failed to run
+
+    Your test suite must contain at least one test.
+
+      at onResult (../../.npm/_npx/b8d86e6551a4f492/node_modules/@jest/core/build/index.js:1048:18)
+      at ../../.npm/_npx/b8d86e6551a4f492/node_modules/@jest/core/build/index.js:1118:165
+      at ../../.npm/_npx/b8d86e6551a4f492/node_modules/emittery/index.js:363:13
+          at Array.map (<anonymous>)
+      at Emittery.emit (../../.npm/_npx/b8d86e6551a4f492/node_modules/emittery/index.js:361:23)
+
+Test Suites: 1 failed, 1 total
+Tests:       0 total
+Snapshots:   0 total
+Time:        2.355 s
+Ran all test suites matching tests/oneTimeOrders.test.js.
+Jest did not exit one second after the test run has completed.
+
+'This usually means that there are asynchronous operations that weren't stopped in your tests. Consider running Jest with `--detectOpenHandles` to troubleshoot this issue.
+  console.error
+    Failed to connect to MongoDB in test helper connect ECONNREFUSED 127.0.0.1:27017
+
+      15 |       console.error("Failed to connect to MongoDB in test helper", err.message);
+      16 |       process.exit(1);
+    > 17 |     }
+         |      ^
+      18 |   }
+      19 | }
+      20 |
+
+      at connectDB (tests/helpers/dbHelper.js:17:15)
+      at connectDatabase (tests/oneTimeOrders.test.js:124:3)
+      at run (tests/oneTimeOrders.test.js:511:3)
+
+  ●  process.exit called with "1"
+
+      16 |       process.exit(1);
+      17 |     }
+    > 18 |   }
+         |    ^
+      19 | }
+      20 |
+      21 | async function disconnectDB() {
+
+      at connectDB (tests/helpers/dbHelper.js:18:15)
+      at connectDatabase (tests/oneTimeOrders.test.js:124:3)
+      at run (tests/oneTimeOrders.test.js:511:3)
+oneTimeOrders exit=1
+FAIL tests/oneTimeOrderOps.test.js
+  ● Test suite failed to run
+
+    Your test suite must contain at least one test.
+
+      at onResult (../../.npm/_npx/b8d86e6551a4f492/node_modules/@jest/core/build/index.js:1048:18)
+      at ../../.npm/_npx/b8d86e6551a4f492/node_modules/@jest/core/build/index.js:1118:165
+      at ../../.npm/_npx/b8d86e6551a4f492/node_modules/emittery/index.js:363:13
+          at Array.map (<anonymous>)
+      at Emittery.emit (../../.npm/_npx/b8d86e6551a4f492/node_modules/emittery/index.js:361:23)
+
+Test Suites: 1 failed, 1 total
+Tests:       0 total
+Snapshots:   0 total
+Time:        2.117 s
+Ran all test suites matching tests/oneTimeOrderOps.test.js.
+Jest did not exit one second after the test run has completed.
+
+'This usually means that there are asynchronous operations that weren't stopped in your tests. Consider running Jest with `--detectOpenHandles` to troubleshoot this issue.

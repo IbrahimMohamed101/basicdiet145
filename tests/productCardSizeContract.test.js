@@ -206,6 +206,8 @@ async function run() {
     expectStatus(res, 200, "product composer");
     assert.strictEqual(res.body.data.product.ui.cardSize, "small", "composer returns cardSize");
 
+    await MenuProduct.updateOne({ _id: richUiProduct.id }, { $set: { "ui.cardSize": "xl" } });
+
     res = await request(app).post("/api/dashboard/menu/publish").set(adminHeaders).send({ notes: "card size contract" });
     expectStatus(res, 200, "publish local card size catalog");
 
@@ -213,11 +215,34 @@ async function run() {
     expectStatus(res, 200, "public order menu");
     const publicProducts = res.body.data.categories.flatMap((item) => item.products || []);
     assert(publicProducts.every((product) => product.ui && product.ui.cardSize), "every public product has cardSize");
+    assert(
+      res.body.data.categories.every((category) => !category.ui || Object.keys(category.ui).length === 0),
+      "public categories omit visual ui metadata"
+    );
+    const legacyUiFields = [
+      "cardVariant",
+      "badge",
+      "ctaLabel",
+      "imageRatio",
+      "showDescription",
+      "showPrice",
+      "mediaPositionByLocale",
+      "ctaLabelI18n",
+      "behaviorHint",
+      "priceLabelMode",
+    ];
+    for (const product of publicProducts) {
+      assert.deepStrictEqual(Object.keys(product.ui), ["cardSize"], `${product.key} public ui only contains cardSize`);
+      for (const field of legacyUiFields) {
+        assert.strictEqual(product.ui[field], undefined, `${product.key} omits legacy ui.${field}`);
+      }
+    }
 
     const publicByKey = new Map(publicProducts.map((product) => [product.key, product]));
     assert.strictEqual(publicByKey.get(largeProduct.key).ui.cardSize, "large", "public returns explicit large");
     assert.strictEqual(publicByKey.get(smallProduct.key).ui.cardSize, "small", "public returns explicit small");
     assert.strictEqual(publicByKey.get(defaultProduct.key).ui.cardSize, "medium", "public defaults legacy missing cardSize");
+    assert.strictEqual(publicByKey.get(richUiProduct.key).ui.cardSize, "medium", "public defaults invalid stored cardSize");
     assert.strictEqual(publicByKey.get(largeProduct.key).priceHalala, 1200, "cardSize does not change pricing");
     assert.strictEqual(publicByKey.get(smallProduct.key).isAvailable, undefined, "public product availability shape unchanged");
     assert.deepStrictEqual(publicByKey.get(richUiProduct.key).optionGroups, [], "cardSize does not change option groups");

@@ -201,7 +201,7 @@ function inspectOneTimeMenu(menu) {
     for (const product of asArray(category.products)) {
       products.push(product);
       const productKey = keyOf(product);
-      if (!idOf(product) || !productKey || !hasLocalizedName(product.name) || !product.pricingModel || !product.itemType || !PRODUCT_VARIANTS.has(product.ui && product.ui.cardVariant)) {
+      if (!idOf(product) || !productKey || !hasLocalizedName(product.name) || !product.pricingModel || !PRODUCT_VARIANTS.has(product.ui && product.ui.cardVariant)) {
         addFinding("UX/API Contract", "high", "One-time menu contract", `Product ${productKey || idOf(product) || "(unknown)"} is missing contract metadata or has invalid ui.cardVariant.`);
       }
       if (product.pricingModel === "fixed" && !Number.isFinite(Number(product.priceHalala))) {
@@ -637,7 +637,6 @@ async function dashboardWriteCycle() {
   const product = category && await create("product", "/products", {
     categoryId: idOf(category),
     name: { ar: `${RUN_ID} منتج`, en: `${RUN_ID} product` },
-    itemType: "product",
     pricingModel: "fixed",
     priceHalala: 100,
     availableFor: ["one_time"],

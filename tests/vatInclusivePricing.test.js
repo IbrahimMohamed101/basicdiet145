@@ -30,10 +30,10 @@ function buildContractSnapshot(pricing) {
     deliveryFeeHalala: 0,
     discountHalala: 0,
     grossTotalHalala: 6200,
-    subtotalHalala: 5391,
-    subtotalBeforeVatHalala: 5391,
-    vatPercentage: 15,
-    vatHalala: 809,
+    subtotalHalala: 5345,
+    subtotalBeforeVatHalala: 5345,
+    vatPercentage: 16,
+    vatHalala: 855,
     totalHalala: 6200,
     currency: "SAR",
     ...pricing,
@@ -73,12 +73,12 @@ function buildContractSnapshot(pricing) {
 }
 
 async function run() {
-  const inclusive = computeInclusiveVatBreakdown(6200, 15);
-  assertEqual(inclusive.subtotalHalala, 5391, "inclusive subtotal");
-  assertEqual(inclusive.vatHalala, 809, "inclusive vat");
+  const inclusive = computeInclusiveVatBreakdown(6200, 16);
+  assertEqual(inclusive.subtotalHalala, 5345, "inclusive subtotal");
+  assertEqual(inclusive.vatHalala, 855, "inclusive vat");
   assertEqual(inclusive.totalHalala, 6200, "inclusive total");
 
-  const rounded = computeInclusiveVatBreakdown(9999, 15);
+  const rounded = computeInclusiveVatBreakdown(9999, 16);
   assertEqual(
     rounded.subtotalHalala + rounded.vatHalala,
     rounded.totalHalala,
@@ -111,10 +111,10 @@ async function run() {
       addonsTotalHalala: 200,
       deliveryFeeHalala: 0,
       grossTotalHalala: 6200,
-      subtotalHalala: 5391,
-      subtotalBeforeVatHalala: 5391,
-      vatPercentage: 15,
-      vatHalala: 809,
+      subtotalHalala: 5345,
+      subtotalBeforeVatHalala: 5345,
+      vatPercentage: 16,
+      vatHalala: 855,
       totalHalala: 6200,
       currency: "SAR",
     },
@@ -123,8 +123,8 @@ async function run() {
   const { breakdown } = buildCanonicalSubscriptionCheckoutBreakdown(quote);
   const providerPayload = { amount: breakdown.totalHalala };
   assertEqual(providerPayload.amount, 6200, "provider amount remains inclusive total");
-  assertEqual(breakdown.subtotalHalala, 5391, "checkout subtotal before VAT");
-  assertEqual(breakdown.vatHalala, 809, "checkout VAT portion");
+  assertEqual(breakdown.subtotalHalala, 5345, "checkout subtotal before VAT");
+  assertEqual(breakdown.vatHalala, 855, "checkout VAT portion");
   assertEqual(breakdown.totalHalala, 6200, "checkout inclusive total");
 
   const activated = await activateSubscriptionFromCanonicalContract({
@@ -152,10 +152,10 @@ async function run() {
     },
   });
 
-  assertEqual(activated.vatPercentage, 15, "stored subscription VAT percentage");
-  assertEqual(activated.vatHalala, 809, "stored subscription VAT");
+  assertEqual(activated.vatPercentage, 16, "stored subscription VAT percentage");
+  assertEqual(activated.vatHalala, 855, "stored subscription VAT");
   assertEqual(activated.totalPriceHalala, 6200, "stored subscription total");
-  assertEqual(activated.subtotalHalala, 5391, "stored subscription subtotal before VAT");
+  assertEqual(activated.subtotalHalala, 5345, "stored subscription subtotal before VAT");
 
   console.log("vatInclusivePricing.test.js: all checks passed");
 }

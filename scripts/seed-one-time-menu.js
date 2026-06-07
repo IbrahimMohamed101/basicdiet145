@@ -189,11 +189,11 @@ const BASIC_SALAD_PROTEINS = ["بيض مسلوق", "تونا", "فاهيتا", "
 const BASIC_MEAL_PROTEINS = ["بيض مسلوق", "تونا", "فاهيتا", "دجاج زبدة", "دجاج كريمة", "دجاج كاري وجوز الهند", "دجاج سبايسي", "دجاج توابل إيطالية", "دجاج تكا", "دجاج آسيوي", "استربس", "دجاج مشوي", "دجاج مكسيكي", "كرات لحم", "لحم استرغانوف", "ستيك لحم", "جمبري", "سمك فيليه", "سالمون"];
 
 const productRows = [
-  { key: "basic_salad", category: "custom_order", itemType: "basic_salad", name: name("سلطة بيسك", "Basic Salad"), pricingModel: "per_100g", priceHalala: 2900, groups: [["leafy_greens", 2, 2], ["vegetables_legumes", 0, 19], ["fruits", 0, 4], ["proteins", 1, 1], ["cheese_nuts", 0, 2], ["sauces", 1, 1]], optionNames: { fruits: BASIC_SALAD_FRUITS, proteins: BASIC_SALAD_PROTEINS } },
-  { key: "basic_meal", category: "custom_order", itemType: "basic_meal", name: name("وجبة بيسك", "Basic Meal"), pricingModel: "per_100g", priceHalala: 1900, groups: [["carbs", 3, 3], ["proteins", 1, 1]], optionNames: { proteins: BASIC_MEAL_PROTEINS } },
-  { key: "fruit_salad", category: "light_options", itemType: "fruit_salad", name: name("سلطة فواكه", "Fruit Salad"), pricingModel: "fixed", priceHalala: 1700, defaultWeightGrams: 150, groups: [["fruits", 9, 9]] },
-  { key: "greek_yogurt", category: "light_options", itemType: "greek_yogurt", name: name("زبادي يوناني", "Greek Yogurt"), pricingModel: "fixed", priceHalala: 1700, defaultWeightGrams: 200, groups: [["fruits", 5, 5], ["nuts", 0, 3]] },
-  { key: "green_salad", category: "light_options", itemType: "green_salad", name: name("سلطة خضرا", "Green Salad"), pricingModel: "per_100g", priceHalala: 1500, groups: [["leafy_greens", 2, 2], ["vegetables_legumes", 0, 19], ["sauces", 1, 1]] },
+  { key: "basic_salad", category: "custom_order", name: name("سلطة بيسك", "Basic Salad"), pricingModel: "per_100g", priceHalala: 2900, groups: [["leafy_greens", 2, 2], ["vegetables_legumes", 0, 19], ["fruits", 0, 4], ["proteins", 1, 1], ["cheese_nuts", 0, 2], ["sauces", 1, 1]], optionNames: { fruits: BASIC_SALAD_FRUITS, proteins: BASIC_SALAD_PROTEINS } },
+  { key: "basic_meal", category: "custom_order", name: name("وجبة بيسك", "Basic Meal"), pricingModel: "per_100g", priceHalala: 1900, groups: [["carbs", 3, 3], ["proteins", 1, 1]], optionNames: { proteins: BASIC_MEAL_PROTEINS } },
+  { key: "fruit_salad", category: "light_options", name: name("سلطة فواكه", "Fruit Salad"), pricingModel: "fixed", priceHalala: 1700, defaultWeightGrams: 150, groups: [["fruits", 9, 9]] },
+  { key: "greek_yogurt", category: "light_options", name: name("زبادي يوناني", "Greek Yogurt"), pricingModel: "fixed", priceHalala: 1700, defaultWeightGrams: 200, groups: [["fruits", 5, 5], ["nuts", 0, 3]] },
+  { key: "green_salad", category: "light_options", name: name("سلطة خضرا", "Green Salad"), pricingModel: "per_100g", priceHalala: 1500, groups: [["leafy_greens", 2, 2], ["vegetables_legumes", 0, 19], ["sauces", 1, 1]] },
   ...[
     ["boiled_egg_cold_sandwich", "بيض مسلوق", "Boiled Egg", 900],
     ["turkey_cold_sandwich", "تركي", "Turkey", 1300],
@@ -203,13 +203,13 @@ const productRows = [
     ["chicken_fajita_cold_sandwich", "دجاج فاهيتا", "Chicken Fajita", 1300],
     ["mexican_chicken_cold_sandwich", "دجاج مكسيكي", "Mexican Chicken", 1300],
     ["grilled_chicken_cold_sandwich", "دجاج مشوي", "Grilled Chicken", 1300],
-  ].map(([productKey, ar, en, priceHalala]) => ({ key: productKey, category: "cold_sandwiches", itemType: "cold_sandwich", name: name(ar, en), pricingModel: "fixed", priceHalala })),
+  ].map(([productKey, ar, en, priceHalala]) => ({ key: productKey, category: "cold_sandwiches", name: name(ar, en), pricingModel: "fixed", priceHalala })),
   ...[
     ["halloumi_sourdough", "ساوردو حلومي", "Halloumi Sourdough", 2300],
     ["turkey_sourdough", "ساوردو تركي", "Turkey Sourdough", 2300],
     ["tuna_sourdough", "ساوردو تونا", "Tuna Sourdough", 2300],
     ["grilled_chicken_sourdough", "ساوردو دجاج مشوي", "Grilled Chicken Sourdough", 2300],
-  ].map(([productKey, ar, en, priceHalala]) => ({ key: productKey, category: "sourdough", itemType: "sourdough", name: name(ar, en), pricingModel: "fixed", priceHalala })),
+  ].map(([productKey, ar, en, priceHalala]) => ({ key: productKey, category: "sourdough", name: name(ar, en), pricingModel: "fixed", priceHalala })),
   ...[
     ["apple_cinnamon_muffin_2pcs", "مافن التفاح بالقرفة (قطعتين)", "Apple Cinnamon Muffin (2 pcs)", 1200],
     ["berry_cheesecake", "تشيز كيك بالتوت", "Berry Cheesecake", 1900],
@@ -218,7 +218,7 @@ const productRows = [
     ["protein_bar", "بروتين بار", "Protein Bar", 1500],
     ["basic_classic", "بيسك كلاسيك", "Basic Classic", 1400],
     ["protein_chocolate_cake", "كيك شوكولاتة بروتين", "Protein Chocolate Cake", 1900],
-  ].map(([productKey, ar, en, priceHalala]) => ({ key: productKey, category: "desserts", itemType: "dessert", name: name(ar, en), pricingModel: "fixed", priceHalala })),
+  ].map(([productKey, ar, en, priceHalala]) => ({ key: productKey, category: "desserts", name: name(ar, en), pricingModel: "fixed", priceHalala })),
   ...[
     ["berry_blast", "بيري بلاست", "Berry Blast", 1100],
     ["berry_prot", "بيري بروت", "Berry Prot", 1300],
@@ -226,22 +226,21 @@ const productRows = [
     ["beet_punch", "بيت بنش", "Beet Punch", 1100],
     ["orange_carrot", "برتقال وجزر", "Orange & Carrot", 1100],
     ["watermelon_mint", "بطيخ بالنعناع", "Watermelon Mint", 1100],
-  ].map(([productKey, ar, en, priceHalala]) => ({ key: productKey, category: "juices", itemType: "juice", name: name(ar, en), pricingModel: "fixed", priceHalala })),
+  ].map(([productKey, ar, en, priceHalala]) => ({ key: productKey, category: "juices", name: name(ar, en), pricingModel: "fixed", priceHalala })),
   ...[
     ["protein_drink", "مشروب بروتين", "Protein Drink", 1900],
     ["diet_iced_tea", "ايس تى دايت", "Diet Iced Tea", 400],
     ["diet_soda", "صودا دايت", "Diet Soda", 300],
     ["water", "مياه عادية", "Water", 200],
-  ].map(([productKey, ar, en, priceHalala]) => ({ key: productKey, category: "drinks", itemType: "drink", name: name(ar, en), pricingModel: "fixed", priceHalala })),
+  ].map(([productKey, ar, en, priceHalala]) => ({ key: productKey, category: "drinks", name: name(ar, en), pricingModel: "fixed", priceHalala })),
   ...[
     ["vanilla_ice_cream", "ايس كريم فانيليا", "Vanilla Ice Cream", 1300],
     ["chocolate_ice_cream", "ايس كريم شوكولا", "Chocolate Ice Cream", 1300],
     ["ice_cream_add_on", "إضافة ايس كريم", "Ice Cream Add-on", 700],
-  ].map(([productKey, ar, en, priceHalala]) => ({ key: productKey, category: "ice_cream", itemType: "ice_cream", name: name(ar, en), pricingModel: "fixed", priceHalala })),
-  { 
+  ].map(([productKey, ar, en, priceHalala]) => ({ key: productKey, category: "ice_cream", name: name(ar, en), pricingModel: "fixed", priceHalala })),
+  {
     key: "premium_large_salad", 
     category: "custom_order", 
-    itemType: "premium_large_salad", 
     name: name("سلطة كبيرة مميزة", "Premium Large Salad"), 
     pricingModel: "per_100g", 
     priceHalala: 2900, 
@@ -427,7 +426,6 @@ async function seedOneTimeMenu({ actor = { role: "script" }, notes = "Seed one-t
           categoryId: categoryMap.get(productData.category)._id,
           key: productData.key,
           name: productData.name,
-          itemType: productData.itemType,
           pricingModel: productData.pricingModel,
           priceHalala: productData.priceHalala,
           baseUnitGrams: 100,

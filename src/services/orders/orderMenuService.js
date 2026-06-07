@@ -61,8 +61,9 @@ async function getSettingValue(key, fallback) {
 }
 
 function publicMenuActionForProduct(product = {}) {
-  const behaviorHint = product.ui && product.ui.behaviorHint;
-  if (behaviorHint === "direct_add" || product.canAddDirectly === true) {
+  const hasOptionGroups = Array.isArray(product.optionGroups) && product.optionGroups.length > 0;
+  const requiresBuilder = product.requiresBuilder === true || hasOptionGroups || product.pricingModel === "per_100g";
+  if (product.canAddDirectly === true && !requiresBuilder) {
     return {
       type: "direct_add",
       canAddDirectly: true,
@@ -71,9 +72,9 @@ function publicMenuActionForProduct(product = {}) {
     };
   }
   return {
-    type: behaviorHint || "open_builder",
+    type: "open_builder",
     canAddDirectly: product.canAddDirectly === true,
-    requiresBuilder: product.requiresBuilder !== false,
+    requiresBuilder,
     isCustomizable: product.isCustomizable === true,
   };
 }
@@ -205,7 +206,6 @@ async function getOneTimeOrderMenu({ lang = "en", fulfillmentMethod, includePubl
     source: "one_time_order",
     fulfillmentMethod: "pickup",
     vatIncluded: true,
-    itemTypes: ["standard_meal", "sandwich", "salad", "addon_item"],
     standardMeals: {
       proteins: proteins.map((protein) => toCatalogItem(protein, lang, {
         displayCategoryKey: protein.displayCategoryKey,
