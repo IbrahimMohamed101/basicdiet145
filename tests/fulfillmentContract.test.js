@@ -142,7 +142,7 @@ function run() {
     pickupLocations: [defaultLocation],
   });
   assert.strictEqual(defaultCatalog.pickupLocations[0].name, "Main Branch");
-  assert.strictEqual(defaultCatalog.pickupLocations[0].address.line1, "H4GX+JF7, Al Salamah, Jeddah 23436, Saudi Arabia");
+  assert.strictEqual(defaultCatalog.pickupLocations[0].address.line1, "H4GX+JF7, As Salamah, Jeddah 23436, Saudi Arabia");
 
   const legacyDefaultLocation = {
     ...defaultLocation,

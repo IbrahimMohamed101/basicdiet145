@@ -1,5 +1,6 @@
 const { logger } = require("./logger");
 const { assertNoTestFlagsInProduction, isTestAuthEnabled } = require("./security");
+const { assertSafeTestMongoUri } = require("./mongoUriResolver");
 
 function addMissingIfEmpty(missing, key) {
   if (!process.env[key]) {
@@ -80,6 +81,14 @@ function validateEnv() {
     logger.error("Invalid MongoDB URI: must start with mongodb:// or mongodb+srv://");
     const fieldName = isTest ? "MONGO_URI_TEST" : "MONGO_URI or MONGODB_URI";
     return { ok: false, invalid: [fieldName] };
+  }
+  if (isTest) {
+    try {
+      assertSafeTestMongoUri(mongoUri);
+    } catch (err) {
+      logger.error(err.message);
+      return { ok: false, invalid: ["MONGO_URI_TEST"], message: err.message };
+    }
   }
 
   const invalid = [];

@@ -28,6 +28,21 @@ function getDbNameFromUri(uri) {
   }
 }
 
+function assertSafeTestMongoUri(uri) {
+  const dbName = getDbNameFromUri(uri);
+  const lowDb = dbName.toLowerCase();
+
+  const hasSafeKeyword = lowDb.includes("test") || lowDb.includes("local") || lowDb.includes("ci");
+  const isPrimaryDb = lowDb === "basicdiet145";
+
+  if (!hasSafeKeyword || isPrimaryDb) {
+    throw new Error(
+      `Safety block: Database name "${dbName}" is not allowed in test mode. ` +
+      `It must include "test", "local", or "ci", and cannot be "basicdiet145".`
+    );
+  }
+}
+
 /**
  * Resolves the appropriate MongoDB URI based on NODE_ENV and performs safety checks.
  * 
@@ -43,21 +58,7 @@ function resolveMongoUri() {
       throw new Error("MONGO_URI_TEST is required when NODE_ENV=test");
     }
 
-    const dbName = getDbNameFromUri(uri);
-    const lowDb = dbName.toLowerCase();
-    
-    // Safety rules:
-    // 1. Must contain "test", "local", or "ci"
-    // 2. Must NOT be "basicdiet145" (production/dev default)
-    const hasSafeKeyword = lowDb.includes("test") || lowDb.includes("local") || lowDb.includes("ci");
-    const isPrimaryDb = lowDb === "basicdiet145";
-
-    if (!hasSafeKeyword || isPrimaryDb) {
-      throw new Error(
-        `Safety block: Database name "${dbName}" is not allowed in test mode. ` +
-        `It must include "test", "local", or "ci", and cannot be "basicdiet145".`
-      );
-    }
+    assertSafeTestMongoUri(uri);
 
     return uri;
   }
@@ -72,6 +73,7 @@ function resolveMongoUri() {
 }
 
 module.exports = {
+  assertSafeTestMongoUri,
   getDbNameFromUri,
   resolveMongoUri,
 };

@@ -33,6 +33,7 @@ const {
   issueAppAccessToken,
   JWT_ACCESS_SECRET,
 } = require("../../src/services/appTokenService");
+const { resolveMongoUri } = require("../../src/utils/mongoUriResolver");
 
 const DASHBOARD_ACCOUNTS = Object.freeze([
   {
@@ -125,10 +126,7 @@ function assertProductionAllowed() {
 }
 
 async function connectSafely() {
-  const uri = process.env.MONGO_URI || process.env.MONGODB_URI;
-  if (!uri) {
-    throw new Error("Missing MongoDB connection string (set MONGO_URI or MONGODB_URI)");
-  }
+  const uri = resolveMongoUri();
 
   console.log(`[accounts-bootstrap] MongoDB: ${maskMongoUri(uri)}`);
 

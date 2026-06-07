@@ -31,6 +31,7 @@ const {
   SUBSCRIPTION_PREMIUM_LARGE_SALAD_EXCLUDED_GROUP_KEYS,
   SUBSCRIPTION_PREMIUM_LARGE_SALAD_PROTEIN_KEYS,
 } = require("../../src/config/mealPlannerContract");
+const { resolveMongoUri } = require("../../src/utils/mongoUriResolver");
 
 const canonicalCatalogItems = [
   // Carbs
@@ -106,7 +107,6 @@ const menuProductCatalogItemKeyByProductKey = {
   grilled_mixed_vegetables: "grilled_mixed_vegetables",
 };
 
-const uri = process.env.MONGO_URI || process.env.MONGODB_URI;
 const now = new Date();
 const SYSTEM_CURRENCY = "SAR";
 
@@ -1571,10 +1571,7 @@ module.exports = {
 };
 
 async function main() {
-  if (!uri) {
-    console.error("MONGO_URI or MONGODB_URI is required");
-    process.exit(1);
-  }
+  const uri = resolveMongoUri();
 
   const args = parseArgs();
   const runSync = args.sync && isTruthy(process.env.BOOTSTRAP_SYNC);
@@ -1586,7 +1583,7 @@ async function main() {
   }
   const runReset = args.reset && isTruthy(process.env.ALLOW_CATALOG_RESET);
 
-  await mongoose.connect(uri);
+  await mongoose.connect(uri, { serverSelectionTimeoutMS: 10000 });
   console.log("Connected to MongoDB for canonical catalog seeding.");
   try {
     await seedCatalog({

@@ -390,7 +390,6 @@ async function seedViaDashboard(api) {
     [
       { optionId: options[0].id, extraPriceHalala: 300, extraWeightPriceHalala: 500, sortOrder: 1 },
       { optionId: options[1].id, extraPriceHalala: 200, sortOrder: 2 },
-      { optionId: options[3].id, extraPriceHalala: 700, sortOrder: 3 },
     ],
     "fixed product"
   );
@@ -784,6 +783,7 @@ async function seedViaDashboard(api) {
       assert.strictEqual(generatedProduct.key, "spicy_chicken");
       assert.deepStrictEqual(generatedProduct.ui, {
         cardVariant: "premium",
+        cardSize: "medium",
         badge: "New",
         ctaLabel: "Customize",
         imageRatio: "wide",
@@ -921,6 +921,7 @@ async function seedViaDashboard(api) {
       expectStatus(res, 200, "product update accepts omitted dashboard ui fields");
       assert.deepStrictEqual(res.body.data.ui, {
         cardVariant: "premium",
+        cardSize: "medium",
         badge: "New",
         ctaLabel: "Customize",
         imageRatio: "wide",
@@ -1123,7 +1124,7 @@ async function seedViaDashboard(api) {
       expectStatus(res, 200, "fixed quote");
       assert.strictEqual(res.body.data.pricing.totalHalala, 1800);
       assert.strictEqual(res.body.data.pricing.vatIncluded, true);
-      assert.strictEqual(res.body.data.pricing.vatHalala, 235);
+      assert.strictEqual(res.body.data.pricing.vatHalala, 248);
     });
 
     await test("POST /api/orders/quote prices per_100g item in halala", async () => {

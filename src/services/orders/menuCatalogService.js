@@ -238,7 +238,6 @@ function serializeDashboardOption(option) {
   delete payload.ruleTags;
   delete payload.isVisible;
   delete payload.isAvailable;
-  delete payload.availableFor;
   delete payload.availableForSubscription;
   return payload;
 }
@@ -1264,6 +1263,7 @@ function normalizeOptionPayload(body = {}, existing = null) {
     extraWeightUnitGrams: normalizeNonNegativeInteger(body.extraWeightUnitGrams, "extraWeightUnitGrams", existing ? existing.extraWeightUnitGrams : 0),
     extraWeightPriceHalala: normalizeNonNegativeInteger(body.extraWeightPriceHalala, "extraWeightPriceHalala", existing ? existing.extraWeightPriceHalala : 0),
     currency: SYSTEM_CURRENCY,
+    availableFor: normalizeAvailableFor(body.availableFor, "availableFor", existing ? (existing.availableFor || []) : ["one_time", "subscription"]),
     extraFeeHalala,
     isActive,
     isVisible: isActive,

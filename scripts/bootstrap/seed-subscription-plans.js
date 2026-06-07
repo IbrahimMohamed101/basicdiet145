@@ -4,8 +4,8 @@ require("dotenv").config();
 const mongoose = require("mongoose");
 
 const Plan = require("../../src/models/Plan");
+const { resolveMongoUri } = require("../../src/utils/mongoUriResolver");
 
-const uri = process.env.MONGO_URI || process.env.MONGODB_URI;
 const SYSTEM_CURRENCY = "SAR";
 const EXPECTED_PLAN_COUNT = 3;
 const EXPECTED_NESTED_PRICE_POINTS = 45;
@@ -254,10 +254,10 @@ function parseArgs(argv = process.argv.slice(2)) {
 }
 
 async function main() {
-  if (!uri) throw new Error("MONGO_URI or MONGODB_URI is required");
+  const uri = resolveMongoUri();
   const args = parseArgs();
 
-  await mongoose.connect(uri);
+  await mongoose.connect(uri, { serverSelectionTimeoutMS: 10000 });
   console.log("Connected to MongoDB for subscription plans seeding.");
 
   try {

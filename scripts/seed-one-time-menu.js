@@ -203,7 +203,14 @@ const productRows = [
     ["chicken_fajita_cold_sandwich", "دجاج فاهيتا", "Chicken Fajita", 1300],
     ["mexican_chicken_cold_sandwich", "دجاج مكسيكي", "Mexican Chicken", 1300],
     ["grilled_chicken_cold_sandwich", "دجاج مشوي", "Grilled Chicken", 1300],
-  ].map(([productKey, ar, en, priceHalala]) => ({ key: productKey, category: "cold_sandwiches", name: name(ar, en), pricingModel: "fixed", priceHalala })),
+  ].map(([productKey, ar, en, priceHalala]) => ({
+    key: productKey,
+    category: "cold_sandwiches",
+    itemType: "cold_sandwich",
+    name: name(ar, en),
+    pricingModel: "fixed",
+    priceHalala,
+  })),
   ...[
     ["halloumi_sourdough", "ساوردو حلومي", "Halloumi Sourdough", 2300],
     ["turkey_sourdough", "ساوردو تركي", "Turkey Sourdough", 2300],
@@ -426,6 +433,7 @@ async function seedOneTimeMenu({ actor = { role: "script" }, notes = "Seed one-t
           categoryId: categoryMap.get(productData.category)._id,
           key: productData.key,
           name: productData.name,
+          itemType: productData.itemType || "product",
           pricingModel: productData.pricingModel,
           priceHalala: productData.priceHalala,
           baseUnitGrams: 100,

@@ -45,7 +45,6 @@ const DEPRECATED_OPTION_FIELDS = [
   "ruleTags",
   "isVisible",
   "isAvailable",
-  "availableFor",
   "availableForSubscription",
 ];
 
@@ -245,7 +244,8 @@ async function main() {
     assert.strictEqual(optionDoc.isActive, true, "isActive defaults to true");
     assert.strictEqual(optionDoc.isVisible, true, "isVisible is derived from isActive on create");
     assert.strictEqual(optionDoc.isAvailable, true, "isAvailable is derived from isActive on create");
-    assert.deepStrictEqual(optionDoc.availableFor, ["one_time", "subscription"], "deprecated availableFor input is ignored");
+    assert.deepStrictEqual(option.availableFor, ["subscription"], "created dashboard option includes availableFor");
+    assert.deepStrictEqual(optionDoc.availableFor, ["subscription"], "availableFor input is stored");
     assert.strictEqual(optionDoc.availableForSubscription, true, "deprecated availableForSubscription input is ignored");
 
     res = await api.post(`/api/dashboard/menu/option-groups/${group.id}/options`).set(adminHeaders).send({
@@ -263,7 +263,7 @@ async function main() {
     assert.strictEqual(inactiveOptionDoc.isActive, false, "isActive controls dashboard option status");
     assert.strictEqual(inactiveOptionDoc.isVisible, false, "isVisible is derived from inactive status");
     assert.strictEqual(inactiveOptionDoc.isAvailable, false, "isAvailable is derived from inactive status");
-    assert.deepStrictEqual(inactiveOptionDoc.availableFor, ["one_time", "subscription"], "availableFor is not controlled by dashboard option form");
+    assert.deepStrictEqual(inactiveOptionDoc.availableFor, ["subscription"], "availableFor is controlled by dashboard option form");
 
     res = await api.post(`/api/dashboard/menu/products/${directProduct.id}/option-groups`).set(adminHeaders).send({
       groupId: group.id,
@@ -346,7 +346,8 @@ async function main() {
     assert.strictEqual(optionDoc.isActive, true, "omitting isActive preserves current active status");
     assert.strictEqual(optionDoc.isVisible, true, "isVisible update is ignored and derived from isActive");
     assert.strictEqual(optionDoc.isAvailable, true, "isAvailable update is ignored and derived from isActive");
-    assert.deepStrictEqual(optionDoc.availableFor, ["one_time", "subscription"], "availableFor update is ignored");
+    assert.deepStrictEqual(res.body.data.availableFor, ["subscription"], "updated dashboard option includes availableFor");
+    assert.deepStrictEqual(optionDoc.availableFor, ["subscription"], "availableFor update is stored");
     assert.strictEqual(optionDoc.availableForSubscription, true, "availableForSubscription update is ignored");
     assert.strictEqual(optionDoc.extraPriceHalala, 100, "normal option update still applies");
 
@@ -364,6 +365,11 @@ async function main() {
     assert.strictEqual(optionDoc.isActive, true, "isActive reactivation applies");
     assert.strictEqual(optionDoc.isVisible, true, "isVisible follows active status");
     assert.strictEqual(optionDoc.isAvailable, true, "isAvailable follows active status");
+
+    res = await api.patch(`/api/dashboard/menu/options/${option.id}`).set(adminHeaders).send({
+      availableFor: ["one_time", "subscription"],
+    });
+    expectStatus(res, 200, "restore option channels for preview");
 
     res = await api.get("/api/dashboard/menu/options").set(adminHeaders);
     expectStatus(res, 200, "option list");

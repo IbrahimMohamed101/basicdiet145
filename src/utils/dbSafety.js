@@ -36,7 +36,7 @@ function ensureSafeForDestructiveOp(operationName = "destructive operation") {
 
 Requirements:
 - NODE_ENV must be "test" (Current: ${process.env.NODE_ENV || "not set"})
-- Database name must end with "_test" (Current: ${dbName})
+- Database name must include "test", "local", or "ci", and must not be "basicdiet145" (Current: ${dbName})
 
 To bypass this safety guard (USE WITH EXTREME CAUTION), run the command with:
   <command> --force-test-db

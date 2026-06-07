@@ -61,7 +61,7 @@ async function runBootstrap(options = {}) {
   }
 
   const uri = resolveMongoUri();
-  await mongoose.connect(uri);
+  await mongoose.connect(uri, { serverSelectionTimeoutMS: 10000 });
   console.log("Connected to MongoDB for data bootstrap.");
   try {
     await seedCatalog({
@@ -78,7 +78,13 @@ async function runBootstrap(options = {}) {
   }
 
   if (args.includeAccounts) {
-    await bootstrapDefaultAccounts({ sync: args.accountSync });
+    try {
+      await bootstrapDefaultAccounts({ sync: args.accountSync });
+    } finally {
+      if (mongoose.connection.readyState !== 0) {
+        await mongoose.disconnect();
+      }
+    }
   } else {
     console.log("Default account bootstrap skipped. Set ALLOW_ACCOUNT_BOOTSTRAP=true to enable it.");
   }
