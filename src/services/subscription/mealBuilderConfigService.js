@@ -712,6 +712,7 @@ function serializeHydratedOption({
   requirePositivePremiumPrice = false,
   requireCustomerVisibleCarb = false,
   allowUnlinkedCandidate = false,
+  allowUnpublishedCandidate = false,
 } = {}) {
   if (!option) {
     const errors = [statusIssue("error", "MISSING_OPTION", "Selected option no longer exists")];
@@ -773,15 +774,18 @@ function serializeHydratedOption({
   const available = docStatus.active
     && docStatus.visible
     && docStatus.available
-    && docStatus.published
+    && (docStatus.published || (allowUnpublishedCandidate && !selected))
     && docStatus.subscriptionEnabled
     && docStatus.catalogItemAvailable;
+  const errorsForEligibility = allowUnpublishedCandidate && !selected
+    ? errors.filter((error) => error.code !== "OPTION_UNPUBLISHED")
+    : errors;
   const addableUnlinkedCandidate = allowUnlinkedCandidate
     && !selected
     && available
     && !relStatus.relationReady
-    && errors.length === 0;
-  const eligible = available && errors.length === 0 && (relStatus.relationReady || addableUnlinkedCandidate);
+    && errorsForEligibility.length === 0;
+  const eligible = available && errorsForEligibility.length === 0 && (relStatus.relationReady || addableUnlinkedCandidate);
   if (selected) reasonCodes.unshift("SELECTED");
   if (eligible) reasonCodes.push("ELIGIBLE");
 
@@ -1112,6 +1116,7 @@ async function getSectionPicker({
   sectionKey,
   lang = "en",
   q = "",
+  include,
   includeUnavailable,
   includeNotLinked,
   page,
@@ -1127,9 +1132,10 @@ async function getSectionPicker({
   const section = sections.find((item) => item.key === key) || null;
   const context = await resolvePickerContext(key, section);
   const pagination = normalizePagination({ page, limit });
+  const includeMode = String(include || "").trim().toLowerCase();
   const pickerOptions = {
-    includeUnavailable: normalizeQueryBoolean(includeUnavailable, false),
-    includeNotLinked: normalizeQueryBoolean(includeNotLinked, true),
+    includeUnavailable: includeMode === "all" || normalizeQueryBoolean(includeUnavailable, false),
+    includeNotLinked: includeMode === "all" || normalizeQueryBoolean(includeNotLinked, true),
   };
 
   let result;
@@ -1264,6 +1270,7 @@ async function buildOptionPicker({ sectionKey, section, context, lang, q, pagina
       excludePremium: VISUAL_PROTEIN_FAMILY_KEYS.has(sectionKey),
       requireCustomerVisibleCarb: sectionKey === "carbs",
       allowUnlinkedCandidate: VISUAL_PROTEIN_FAMILY_KEYS.has(sectionKey) || sectionKey === "carbs",
+      allowUnpublishedCandidate: VISUAL_PROTEIN_FAMILY_KEYS.has(sectionKey) || sectionKey === "carbs",
     }))
     .filter((candidate) => shouldIncludeCandidate(candidate, pickerOptions))
     .sort((a, b) => Number(a.relation?.sortOrder ?? 0) - Number(b.relation?.sortOrder ?? 0) || String(a.key).localeCompare(String(b.key)));

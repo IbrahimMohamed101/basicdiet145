@@ -86,7 +86,7 @@ async function seedCatalog() {
     { key: "italian_spiced_chicken", family: "chicken" },
     { key: "chicken_tikka", family: "chicken" },
     { key: "asian_chicken", family: "chicken" },
-    { key: "chicken_strips", family: "chicken" },
+    { key: "chicken_strips", family: "chicken", unpublished: true },
     { key: "grilled_chicken", family: "chicken" },
     { key: "mexican_chicken", family: "chicken" },
     { key: "hidden_chicken", family: "chicken", isActive: false },
@@ -118,7 +118,7 @@ async function seedCatalog() {
     availableFor: ["subscription"],
     availableForSubscription: true,
     isActive: row.isActive === false ? false : true,
-    publishedAt: now,
+    publishedAt: row.unpublished ? null : now,
     sortOrder: index + 1,
   })));
   const options = await Promise.all([
@@ -240,6 +240,11 @@ async function main() {
     keys = res.body.data.candidates.map((item) => item.key);
     assert(keys.includes("hidden_chicken"), "inactive option included when requested");
     assert(res.body.data.candidates.find((item) => item.key === "hidden_chicken").reasonCodes.includes("OPTION_INACTIVE"));
+
+    res = await api.get("/api/dashboard/meal-builder/pickers/chicken?include=all").set(headers);
+    expectStatus(res, 200, "chicken picker include all alias");
+    keys = res.body.data.candidates.map((item) => item.key);
+    assert(keys.includes("hidden_chicken"), "include=all includes unavailable options");
 
     res = await api.get("/api/dashboard/meal-builder/pickers/beef").set(headers);
     expectStatus(res, 200, "beef picker");

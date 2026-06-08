@@ -86,6 +86,7 @@ const getPicker = wrap(async (req, res) => send(res, await mealBuilderService.ge
   sectionKey: req.params.sectionKey,
   lang: getRequestLang(req),
   q: req.query.q || req.query.search,
+  include: req.query.include,
   includeUnavailable: req.query.includeUnavailable,
   includeNotLinked: req.query.includeNotLinked,
   page: req.query.page,
