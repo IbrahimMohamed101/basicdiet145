@@ -60,6 +60,20 @@ The intended template below uses visual sections:
 - `eggs`
 - `carbs`
 
+Public section metadata for this default template is canonical:
+
+| Key | Type | Source | Sort order |
+| --- | --- | --- | --- |
+| `premium` | `mixed` | `premium_mixed` | 10 |
+| `sandwich` | `product_list` | `product_category`, `categoryKey=sandwich` | 20 |
+| `chicken` | `option_family` | `groupKey=proteins`, `displayCategoryKey=chicken` | 30 |
+| `beef` | `option_family` | `groupKey=proteins`, `displayCategoryKey=beef` | 40 |
+| `fish` | `option_family` | `groupKey=proteins`, `displayCategoryKey=fish` | 50 |
+| `eggs` | `option_family` | `groupKey=proteins`, `displayCategoryKey=eggs` | 60 |
+| `carbs` | `option_group` | `groupKey=carbs` | 70 |
+
+Internal storage still keeps `sectionType`, `sourceKind`, `productContextId`, `sourceGroupId`, and `sourceCategoryId` for compatibility with existing validators and tests.
+
 The distinction matters: Dashboard Create Draft emits the visual family template, while bootstrap remains source-oriented unless it is changed separately.
 
 ## Current Backend Catalog Layers
@@ -75,6 +89,8 @@ plannerCatalog.sections[].products[].optionGroups[].options[]
 ```
 
 `plannerCatalog` is the target shape for Flutter rendering and for save/validate flows that use `productId`, `selectionType`, and `selectedOptions`.
+
+Global Dashboard menu endpoints are not Meal Builder pickers. Meal Builder item selection must use `GET /api/dashboard/meal-builder/pickers/:sectionKey`.
 
 ## Why Planner Catalog Is Canonical
 

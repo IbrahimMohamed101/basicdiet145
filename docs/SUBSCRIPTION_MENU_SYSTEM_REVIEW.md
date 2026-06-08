@@ -61,9 +61,11 @@ Evidence:
 
 Contract decision:
 
-- Flutter uses `GET /api/subscriptions/meal-builder` for the published Dashboard-authored layout.
-- `/api/subscriptions/meal-planner-menu` remains unchanged for existing clients.
+- Flutter uses `GET /api/subscriptions/meal-planner-menu?lang=ar` and reads `plannerCatalog v3`.
+- A published Dashboard-authored Meal Builder config is compiled into `plannerCatalog.sections[].products[].optionGroups[].options[]`.
+- `GET /api/subscriptions/meal-builder` remains a published-layout read model, not a separate Flutter contract.
 - No published builder config means `/meal-builder` returns `MEAL_BUILDER_NOT_PUBLISHED`; current v3 planner validation keeps legacy fallback behavior until a config is published.
+- `builderCatalog` and `builderCatalogV2` remain read-only compatibility fields.
 
 Premium review:
 

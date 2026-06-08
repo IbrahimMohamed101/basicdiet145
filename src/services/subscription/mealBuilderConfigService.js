@@ -45,6 +45,32 @@ const CARBS_SECTION_TITLE = Object.freeze({ ar: "نشويات", en: "Carbs" });
 const HYDRATED_DRAFT_VERSION = "dashboard_meal_builder_hydrated_draft.v1";
 const PICKER_VERSION = "dashboard_meal_builder_picker.v1";
 const SUPPORTED_PICKER_SECTION_KEYS = new Set(["premium", "sandwich", "chicken", "beef", "fish", "eggs", "carbs"]);
+const NON_PROTEIN_PICKER_OPTION_KEYS = new Set([
+  "ranch",
+  "mango",
+  "cashew",
+  "tomato",
+  "extra_chicken_50g",
+  "extra_protein_50g",
+]);
+const CANONICAL_SECTION_SORT_ORDER = Object.freeze({
+  premium: 10,
+  sandwich: 20,
+  chicken: 30,
+  beef: 40,
+  fish: 50,
+  eggs: 60,
+  carbs: 70,
+});
+const CANONICAL_SECTION_TYPE = Object.freeze({
+  premium: "mixed",
+  sandwich: "product_list",
+  chicken: "option_family",
+  beef: "option_family",
+  fish: "option_family",
+  eggs: "option_family",
+  carbs: "option_group",
+});
 
 class MealBuilderError extends Error {
   constructor(message, code = "MEAL_BUILDER_ERROR", status = 400, details) {
@@ -117,40 +143,41 @@ function normalizeAvailableFor(value) {
 }
 
 function normalizeSection(section = {}, index = 0) {
-  const sectionType = String(section.sectionType || "").trim();
+  const sectionWithCanonicalAliases = normalizeCanonicalSectionAliases(section);
+  const sectionType = String(sectionWithCanonicalAliases.sectionType || "").trim();
   if (!SECTION_TYPES.has(sectionType)) {
     throw new MealBuilderError("Unsupported meal builder section type", "MEAL_BUILDER_INVALID_SECTION_TYPE", 400, { sectionType, index });
   }
-  const sourceKind = String(section.sourceKind || "").trim();
+  const sourceKind = String(sectionWithCanonicalAliases.sourceKind || "").trim();
   if (!SOURCE_KINDS.has(sourceKind)) {
     throw new MealBuilderError("Unsupported meal builder sourceKind", "MEAL_BUILDER_INVALID_SOURCE_KIND", 400, { sourceKind, index });
   }
-  const includeMode = String(section.includeMode || "selected").trim();
+  const includeMode = String(sectionWithCanonicalAliases.includeMode || "selected").trim();
   if (!INCLUDE_MODES.has(includeMode)) {
     throw new MealBuilderError("Unsupported meal builder includeMode", "MEAL_BUILDER_INVALID_INCLUDE_MODE", 400, { includeMode, index });
   }
 
   const normalized = {
-    key: String(section.key || section.sectionKey || "").trim(),
+    key: String(sectionWithCanonicalAliases.key || sectionWithCanonicalAliases.sectionKey || "").trim(),
     sectionType,
     sourceKind,
-    titleOverride: localized(section.titleOverride || section.title),
-    productContextId: objectIdOrNull(section.productContextId),
-    sourceGroupId: objectIdOrNull(section.sourceGroupId),
-    sourceCategoryId: objectIdOrNull(section.sourceCategoryId),
-    selectedOptionIds: objectIdArray(section.selectedOptionIds || section.optionIds),
-    selectedProductIds: objectIdArray(section.selectedProductIds || section.productIds),
+    titleOverride: localized(sectionWithCanonicalAliases.titleOverride || sectionWithCanonicalAliases.title),
+    productContextId: objectIdOrNull(sectionWithCanonicalAliases.productContextId),
+    sourceGroupId: objectIdOrNull(sectionWithCanonicalAliases.sourceGroupId),
+    sourceCategoryId: objectIdOrNull(sectionWithCanonicalAliases.sourceCategoryId),
+    selectedOptionIds: objectIdArray(sectionWithCanonicalAliases.selectedOptionIds || sectionWithCanonicalAliases.optionIds),
+    selectedProductIds: objectIdArray(sectionWithCanonicalAliases.selectedProductIds || sectionWithCanonicalAliases.productIds),
     includeMode,
-    selectionType: String(section.selectionType || "").trim(),
-    sortOrder: normalizeInteger(section.sortOrder, index + 1),
-    required: normalizeBoolean(section.required ?? section.isRequired, false),
-    minSelections: normalizeInteger(section.minSelections, 0),
-    maxSelections: normalizeNullableInteger(section.maxSelections, null),
-    multiSelect: normalizeBoolean(section.multiSelect, false),
-    visible: normalizeBoolean(section.visible, true),
-    availableFor: normalizeAvailableFor(section.availableFor),
-    metadata: plainObject(section.metadata),
-    rules: plainObject(section.rules),
+    selectionType: String(sectionWithCanonicalAliases.selectionType || "").trim(),
+    sortOrder: normalizeInteger(sectionWithCanonicalAliases.sortOrder, CANONICAL_SECTION_SORT_ORDER[String(sectionWithCanonicalAliases.key || "").trim()] || index + 1),
+    required: normalizeBoolean(sectionWithCanonicalAliases.required ?? sectionWithCanonicalAliases.isRequired, false),
+    minSelections: normalizeInteger(sectionWithCanonicalAliases.minSelections, 0),
+    maxSelections: normalizeNullableInteger(sectionWithCanonicalAliases.maxSelections, null),
+    multiSelect: normalizeBoolean(sectionWithCanonicalAliases.multiSelect, false),
+    visible: normalizeBoolean(sectionWithCanonicalAliases.visible, true),
+    availableFor: normalizeAvailableFor(sectionWithCanonicalAliases.availableFor),
+    metadata: plainObject(sectionWithCanonicalAliases.metadata),
+    rules: plainObject(sectionWithCanonicalAliases.rules),
   };
 
   if (normalized.maxSelections !== null && normalized.maxSelections < normalized.minSelections) {
@@ -174,6 +201,90 @@ function normalizeSections(sections = []) {
     throw new MealBuilderError("sections must be an array", "MEAL_BUILDER_INVALID_SECTIONS");
   }
   return sections.map(normalizeSection).sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
+}
+
+async function normalizeSectionsForWrite(sections = []) {
+  if (!Array.isArray(sections)) {
+    throw new MealBuilderError("sections must be an array", "MEAL_BUILDER_INVALID_SECTIONS");
+  }
+  const needsResolution = sections.some((section) => {
+    const normalized = normalizeCanonicalSectionAliases(section);
+    return normalized
+      && typeof normalized === "object"
+      && (normalized.source || normalized.type)
+      && (!normalized.productContextId || (!normalized.sourceGroupId && normalized.sectionType === "option_group") || (!normalized.sourceCategoryId && normalized.sectionType === "product_category"));
+  });
+  if (!needsResolution) return normalizeSections(sections);
+
+  const [basicMeal, proteinsGroup, carbsGroup, sandwichCategory] = await Promise.all([
+    MenuProduct.findOne({ key: "basic_meal" }).lean(),
+    MenuOptionGroup.findOne({ key: "proteins" }).lean(),
+    MenuOptionGroup.findOne({ key: "carbs" }).lean(),
+    MenuCategory.findOne({ key: "cold_sandwiches" }).lean(),
+  ]);
+
+  return normalizeSections(sections.map((section) => {
+    const normalized = normalizeCanonicalSectionAliases(section);
+    if (!normalized || typeof normalized !== "object" || Array.isArray(normalized)) return normalized;
+    const key = String(normalized.key || "").trim();
+    const source = normalized.source && typeof normalized.source === "object" && !Array.isArray(normalized.source)
+      ? normalized.source
+      : {};
+    const next = { ...normalized };
+    if (["premium", "chicken", "beef", "fish", "eggs", "carbs"].includes(key) && !next.productContextId && basicMeal) {
+      next.productContextId = basicMeal._id;
+    }
+    if (["premium", "chicken", "beef", "fish", "eggs"].includes(key) && !next.sourceGroupId && proteinsGroup) {
+      next.sourceGroupId = proteinsGroup._id;
+    }
+    if ((key === "carbs" || source.groupKey === "carbs") && !next.sourceGroupId && carbsGroup) {
+      next.sourceGroupId = carbsGroup._id;
+    }
+    if (key === "sandwich" && !next.sourceCategoryId && sandwichCategory) {
+      next.sourceCategoryId = sandwichCategory._id;
+    }
+    return next;
+  }));
+}
+
+function normalizeCanonicalSectionAliases(section = {}) {
+  if (!section || typeof section !== "object" || Array.isArray(section)) return section;
+  const key = String(section.key || section.sectionKey || "").trim();
+  const type = String(section.type || "").trim();
+  const source = section.source && typeof section.source === "object" && !Array.isArray(section.source)
+    ? section.source
+    : {};
+  const sourceKind = String(source.kind || "").trim();
+  const normalized = { ...section, key };
+
+  if (!normalized.sectionType && type) {
+    if (type === "mixed" && key === "premium") normalized.sectionType = "option_group";
+    else if (type === "option_family" || type === "option_group") normalized.sectionType = "option_group";
+    else if (type === "product_list") normalized.sectionType = key === "sandwich" ? "product_category" : "product_list";
+  }
+
+  if (!normalized.sourceKind && sourceKind) {
+    if (sourceKind === "premium_mixed") normalized.sourceKind = "premium_visual";
+    else if (sourceKind === "option_family") normalized.sourceKind = "visual_family";
+    else if (sourceKind === "option_group") normalized.sourceKind = "visual_family";
+    else if (sourceKind === "product_category" || sourceKind === "product_list") normalized.sourceKind = "product_list";
+  }
+
+  if (normalized.sortOrder === undefined && CANONICAL_SECTION_SORT_ORDER[key]) {
+    normalized.sortOrder = CANONICAL_SECTION_SORT_ORDER[key];
+  }
+  if (source.displayCategoryKey && !normalized.metadata?.proteinFamilyKey && VISUAL_PROTEIN_FAMILY_KEYS.has(key)) {
+    normalized.metadata = { ...(normalized.metadata || {}), proteinFamilyKey: source.displayCategoryKey };
+  }
+  if (key === "carbs") {
+    normalized.rules = {
+      ...STANDARD_CARB_RULES,
+      onlyForSelectionTypes: [MEAL_SELECTION_TYPES.STANDARD_MEAL, MEAL_SELECTION_TYPES.PREMIUM_MEAL],
+      ...(normalized.rules || {}),
+    };
+  }
+
+  return normalized;
 }
 
 function truthy(doc) {
@@ -237,6 +348,78 @@ function computeRevisionHash(config) {
   return stableHash(baseConfigPayload(config));
 }
 
+function canonicalSectionType(section = {}) {
+  const key = String(section.key || "").trim();
+  return CANONICAL_SECTION_TYPE[key] || (
+    section.sectionType === "product_category" || section.sectionType === "product_list"
+      ? "product_list"
+      : "option_group"
+  );
+}
+
+function canonicalSectionSource(section = {}) {
+  const key = String(section.key || "").trim();
+  if (key === "premium") return { kind: "premium_mixed" };
+  if (key === "sandwich") {
+    return {
+      kind: "product_category",
+      categoryKey: "sandwich",
+      legacyCategoryKey: "cold_sandwiches",
+    };
+  }
+  if (VISUAL_PROTEIN_FAMILY_KEYS.has(key)) {
+    return {
+      kind: "option_family",
+      groupKey: "proteins",
+      displayCategoryKey: key,
+    };
+  }
+  if (key === "carbs") return { kind: "option_group", groupKey: "carbs" };
+  if (section.sectionType === "product_category") return { kind: "product_category" };
+  if (section.sectionType === "product_list") return { kind: "product_list" };
+  return { kind: "option_group" };
+}
+
+function canonicalSectionRules(section = {}) {
+  if (section.key === "carbs") {
+    return {
+      ...STANDARD_CARB_RULES,
+      onlyForSelectionTypes: [MEAL_SELECTION_TYPES.STANDARD_MEAL, MEAL_SELECTION_TYPES.PREMIUM_MEAL],
+      ...plainObject(section.rules),
+    };
+  }
+  return sectionRules(section);
+}
+
+function serializeSection(section = {}) {
+  return {
+    id: section._id ? String(section._id) : undefined,
+    key: section.key || "",
+    type: canonicalSectionType(section),
+    source: canonicalSectionSource(section),
+    sortOrder: Number(section.sortOrder || 0),
+    titleOverride: section.titleOverride || {},
+    selectionType: section.selectionType || "",
+    required: Boolean(section.required),
+    minSelections: Number(section.minSelections || 0),
+    maxSelections: section.maxSelections === null || section.maxSelections === undefined ? null : Number(section.maxSelections),
+    multiSelect: Boolean(section.multiSelect),
+    visible: section.visible !== false,
+    availableFor: section.availableFor || ["subscription"],
+    metadata: plainObject(section.metadata),
+    rules: canonicalSectionRules(section),
+    selectedOptionIds: (section.selectedOptionIds || []).map(String),
+    selectedProductIds: (section.selectedProductIds || []).map(String),
+    // Deprecated internal fields kept read-only for existing Dashboard/tests.
+    sectionType: section.sectionType,
+    sourceKind: section.sourceKind || "",
+    productContextId: section.productContextId ? String(section.productContextId) : null,
+    sourceGroupId: section.sourceGroupId ? String(section.sourceGroupId) : null,
+    sourceCategoryId: section.sourceCategoryId ? String(section.sourceCategoryId) : null,
+    includeMode: section.includeMode || "selected",
+  };
+}
+
 async function getCurrentPublishedConfig({ lean = true, session = null } = {}) {
   const query = MealBuilderConfig.findOne({ status: "published", isCurrent: true }).sort({ publishedAt: -1, updatedAt: -1 });
   if (session) query.session(session);
@@ -282,19 +465,7 @@ function serializeConfig(config) {
     publishedAt: config.publishedAt || null,
     publishedBy: config.publishedBy ? String(config.publishedBy) : null,
     notes: config.notes || "",
-    sections: normalizeSections(config.sections || []).map((section) => ({
-      id: section._id ? String(section._id) : undefined,
-      ...section,
-      key: section.key || "",
-      sourceKind: section.sourceKind || "",
-      productContextId: section.productContextId ? String(section.productContextId) : null,
-      sourceGroupId: section.sourceGroupId ? String(section.sourceGroupId) : null,
-      sourceCategoryId: section.sourceCategoryId ? String(section.sourceCategoryId) : null,
-      selectedOptionIds: (section.selectedOptionIds || []).map(String),
-      selectedProductIds: (section.selectedProductIds || []).map(String),
-      metadata: plainObject(section.metadata),
-      rules: plainObject(section.rules),
-    })),
+    sections: normalizeSections(config.sections || []).map(serializeSection),
     createdAt: config.createdAt,
     updatedAt: config.updatedAt,
   };
@@ -726,6 +897,13 @@ function shouldIncludeCandidate(candidate, { includeUnavailable = false, include
   return true;
 }
 
+function isCanonicalStandardProteinForPicker(option = {}, sectionKey = "") {
+  const key = optionKey(option);
+  if (!key || NON_PROTEIN_PICKER_OPTION_KEYS.has(key) || key.startsWith("extra_")) return false;
+  if (isPremiumProtein(option)) return false;
+  return optionFamilyKey(option) === sectionKey;
+}
+
 function paginateRows(rows, pagination) {
   const total = rows.length;
   return {
@@ -966,7 +1144,7 @@ async function buildOptionPicker({ sectionKey, section, context, lang, q, pagina
       if (!option) return false;
       if (selectedSet.has(String(option._id))) return true;
       if (sectionKey === "carbs") return CUSTOMER_VISIBLE_CARB_KEYS.includes(optionKey(option));
-      return optionFamilyKey(option) === sectionKey && !isPremiumProtein(option);
+      return isCanonicalStandardProteinForPicker(option, sectionKey);
     })
     .filter((option) => matchesSearch(option, q))
     .map((option) => serializeHydratedOption({
@@ -1208,7 +1386,7 @@ async function buildPremiumPicker({ sectionKey, section, context, lang, q, pagin
 async function createDraft({ sections, actor = {}, notes = "" } = {}) {
   let normalizedSections;
   if (sections) {
-    normalizedSections = normalizeSections(sections);
+    normalizedSections = await normalizeSectionsForWrite(sections);
   } else {
     normalizedSections = await buildDefaultVisualTemplateSections();
   }
@@ -1230,7 +1408,7 @@ async function createDraft({ sections, actor = {}, notes = "" } = {}) {
 }
 
 async function updateDraft({ sections, actor = {}, notes } = {}) {
-  const normalizedSections = normalizeSections(sections || []);
+  const normalizedSections = await normalizeSectionsForWrite(sections || []);
   let draft = await MealBuilderConfig.findOne({ status: "draft", isCurrent: true }).sort({ updatedAt: -1 });
   if (!draft) {
     draft = new MealBuilderConfig({
@@ -1395,7 +1573,7 @@ async function buildDefaultVisualTemplateSections({ returnDetails = false } = {}
         premiumLargeSaladSelectionType: MEAL_SELECTION_TYPES.PREMIUM_LARGE_SALAD,
         excludedGroupKeys: [...SUBSCRIPTION_PREMIUM_LARGE_SALAD_EXCLUDED_GROUP_KEYS],
       },
-      sortOrder: 1,
+      sortOrder: CANONICAL_SECTION_SORT_ORDER.premium,
     });
   } else {
     errors.push({ level: "error", code: "MEAL_BUILDER_DEFAULT_PREMIUM_SOURCE_MISSING", message: "Premium visual section requires basic_meal and proteins group" });
@@ -1424,7 +1602,7 @@ async function buildDefaultVisualTemplateSections({ returnDetails = false } = {}
       rules: {
         carbsRequired: false,
       },
-      sortOrder: 2,
+      sortOrder: CANONICAL_SECTION_SORT_ORDER.sandwich,
     });
   } else {
     errors.push({ level: "error", code: "MEAL_BUILDER_DEFAULT_SANDWICH_SOURCE_MISSING", message: "Sandwich visual section requires cold_sandwiches category" });
@@ -1433,7 +1611,7 @@ async function buildDefaultVisualTemplateSections({ returnDetails = false } = {}
   for (const familyKey of ["chicken", "beef", "fish", "eggs"]) {
     const family = VISUAL_PROTEIN_FAMILY_DEFINITIONS.get(familyKey);
     const familyOptions = proteinOptions
-      .filter((option) => !isPremiumProtein(option) && resolveProteinVisualFamilyKey(option) === familyKey);
+      .filter((option) => isCanonicalStandardProteinForPicker(option, familyKey));
     if (!familyOptions.length) {
       warnings.push({
         level: "warning",
@@ -1467,7 +1645,7 @@ async function buildDefaultVisualTemplateSections({ returnDetails = false } = {}
           maxSlotsPerDay: 1,
           unit: "slots",
         } : {},
-        sortOrder: VISUAL_TEMPLATE_ORDER.indexOf(familyKey) + 1,
+        sortOrder: CANONICAL_SECTION_SORT_ORDER[familyKey],
       });
     }
   }
@@ -1498,8 +1676,9 @@ async function buildDefaultVisualTemplateSections({ returnDetails = false } = {}
         maxTypes: STANDARD_CARB_RULES.maxTypes,
         maxTotalGrams: STANDARD_CARB_RULES.maxTotalGrams,
         unit: STANDARD_CARB_RULES.unit,
+        onlyForSelectionTypes: [MEAL_SELECTION_TYPES.STANDARD_MEAL, MEAL_SELECTION_TYPES.PREMIUM_MEAL],
       },
-      sortOrder: 7,
+      sortOrder: CANONICAL_SECTION_SORT_ORDER.carbs,
     });
   } else {
     errors.push({ level: "error", code: "MEAL_BUILDER_DEFAULT_CARBS_SOURCE_MISSING", message: "Carbs visual section requires basic_meal and carbs group" });
@@ -1949,14 +2128,15 @@ function validateVisualTemplateSections(sections, warnings, errors) {
   const byKey = new Map(visualSections.map((section) => [section.key, section]));
   for (const [index, key] of VISUAL_TEMPLATE_ORDER.entries()) {
     const section = byKey.get(key);
+    const expectedSortOrder = CANONICAL_SECTION_SORT_ORDER[key] || ((index + 1) * 10);
     if (!section) {
       addCheck(errors, "error", "MEAL_BUILDER_VISUAL_SECTION_MISSING", "Default visual template section is missing", { sectionKey: key });
       continue;
     }
-    if (Number(section.sortOrder || 0) !== index + 1) {
+    if (Number(section.sortOrder || 0) !== expectedSortOrder) {
       addCheck(warnings, "warning", "MEAL_BUILDER_VISUAL_SECTION_ORDER_CHANGED", "Default visual template section order differs from canonical order", {
         sectionKey: key,
-        expectedSortOrder: index + 1,
+        expectedSortOrder,
         actualSortOrder: Number(section.sortOrder || 0),
       });
     }
@@ -2168,6 +2348,8 @@ function buildSectionBase(section, titleSource, lang) {
   return {
     id: section._id ? String(section._id) : `section:${section.sectionType}:${section.sortOrder}`,
     key: section.key || "",
+    type: canonicalSectionType(section),
+    source: canonicalSectionSource(section),
     sectionType: section.sectionType,
     sourceKind: section.sourceKind || "",
     title: pickLang(titleI18n, lang),
@@ -2179,7 +2361,7 @@ function buildSectionBase(section, titleSource, lang) {
     multiSelect: Boolean(section.multiSelect),
     selectionType: section.selectionType || "",
     metadata: plainObject(section.metadata),
-    rules: plainObject(section.rules),
+    rules: canonicalSectionRules(section),
   };
 }
 
@@ -2470,11 +2652,13 @@ function plannerSectionFromBuilderSection(section = {}) {
     id: `section:${section.key || section.selectionType || section.sortOrder}`,
     key: section.key || section.selectionType || "",
     type: section.sectionType === "product_category" || section.sectionType === "product_list" ? "product_list" : "configurable_product",
+    builderSectionType: section.type || canonicalSectionType(section),
+    source: section.source || canonicalSectionSource(section),
     name: section.title || "",
     nameI18n: section.titleI18n || {},
     sortOrder: Number(section.sortOrder || 0),
     ui: section.metadata || {},
-    rules: section.rules || {},
+    rules: canonicalSectionRules(section),
     products,
   };
 }
@@ -2569,7 +2753,7 @@ async function getReadinessReport() {
 }
 
 async function validatePayload(payload = {}) {
-  return validateConfigObject({ sections: normalizeSections(payload.sections || []) });
+  return validateConfigObject({ sections: await normalizeSectionsForWrite(payload.sections || []) });
 }
 
 module.exports = {

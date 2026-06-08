@@ -115,6 +115,17 @@ async function seedCatalog() {
     }),
     MenuOption.create({
       groupId: proteinsGroup._id,
+      key: "extra_chicken_50g",
+      name: { en: "Extra Chicken", ar: "Extra Chicken" },
+      proteinFamilyKey: "chicken",
+      displayCategoryKey: "chicken",
+      availableFor: ["subscription"],
+      availableForSubscription: true,
+      publishedAt: now,
+      sortOrder: 4,
+    }),
+    MenuOption.create({
+      groupId: proteinsGroup._id,
       key: "beef",
       name: { en: "Beef", ar: "Beef" },
       proteinFamilyKey: "beef",
@@ -122,7 +133,7 @@ async function seedCatalog() {
       availableFor: ["subscription"],
       availableForSubscription: true,
       publishedAt: now,
-      sortOrder: 4,
+      sortOrder: 5,
     }),
     MenuOption.create({
       groupId: proteinsGroup._id,
@@ -135,7 +146,7 @@ async function seedCatalog() {
       availableFor: ["subscription"],
       availableForSubscription: true,
       publishedAt: now,
-      sortOrder: 5,
+      sortOrder: 6,
     }),
     MenuOption.create({
       groupId: proteinsGroup._id,
@@ -148,7 +159,7 @@ async function seedCatalog() {
       availableFor: ["subscription"],
       availableForSubscription: true,
       publishedAt: now,
-      sortOrder: 6,
+      sortOrder: 7,
     }),
     MenuOption.create({
       groupId: carbsGroup._id,
@@ -173,7 +184,7 @@ async function seedCatalog() {
 
   await ProductOptionGroup.create({ productId: basicMeal._id, groupId: proteinsGroup._id, minSelections: 1, maxSelections: 1, isRequired: true, sortOrder: 1 });
   await ProductOptionGroup.create({ productId: basicMeal._id, groupId: carbsGroup._id, minSelections: 1, maxSelections: 2, isRequired: true, sortOrder: 2 });
-  for (const key of ["grilled_chicken", "hidden_chicken", "beef", "beef_steak", "shrimp"]) {
+  for (const key of ["grilled_chicken", "hidden_chicken", "extra_chicken_50g", "beef", "beef_steak", "shrimp"]) {
     await ProductGroupOption.create({
       productId: basicMeal._id,
       groupId: proteinsGroup._id,
@@ -210,6 +221,7 @@ async function main() {
     assert(keys.includes("grilled_chicken"), "linked chicken returned");
     assert(keys.includes("chicken_curry"), "not-linked chicken returned by default");
     assert(!keys.includes("hidden_chicken"), "inactive chicken hidden by default");
+    assert(!keys.includes("extra_chicken_50g"), "extra chicken add-on excluded from chicken picker");
     assert(!keys.includes("beef"), "beef excluded from chicken picker");
     const linked = res.body.data.candidates.find((item) => item.key === "grilled_chicken");
     assert.strictEqual(linked.state, "eligible");

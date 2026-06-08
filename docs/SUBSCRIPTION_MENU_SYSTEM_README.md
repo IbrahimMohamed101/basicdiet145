@@ -130,24 +130,26 @@ The backend now has a focused dashboard-to-Flutter integration test covering Das
 
 Needs backend contract hardening: none currently blocking Dashboard/Flutter contract review. Production checks remain separate.
 
-## Dashboard Meal Builder With Premium Upgrade Support
+## Dashboard Meal Builder Canonical Flow
 
-The backend now exposes an additive Dashboard-managed Subscription Meal Builder without replacing the existing planner catalog.
+The backend canonical source for subscription meal planning is now Dashboard Meal Builder draft/published config compiled into `plannerCatalog v3`.
 
 New Dashboard endpoints:
 
 - `GET /api/dashboard/meal-builder`
+- `GET /api/dashboard/meal-builder/draft/hydrated`
+- `GET /api/dashboard/meal-builder/pickers/:sectionKey`
 - `POST /api/dashboard/meal-builder/draft`
 - `PUT /api/dashboard/meal-builder/draft`
 - `POST /api/dashboard/meal-builder/validate`
 - `POST /api/dashboard/meal-builder/publish`
 - `GET /api/dashboard/meal-builder/readiness`
 
-New Flutter endpoint:
+Flutter endpoint:
 
-- `GET /api/subscriptions/meal-builder`
+- `GET /api/subscriptions/meal-planner-menu?lang=ar`
 
-The Flutter endpoint returns the current published `subscription_meal_builder.v1` layout with `revisionHash`, `publishedAt`, ordered sections, and option/product items. If no builder config is published it returns `MEAL_BUILDER_NOT_PUBLISHED`. `/api/subscriptions/meal-planner-menu` remains the compatibility/planner catalog endpoint and compiles a published builder into canonical `plannerCatalog.sections[].products[].optionGroups[].options[]` when one exists.
+Flutter consumes `plannerCatalog.contractVersion=meal_planner_menu.v3`. When a published builder exists, `/api/subscriptions/meal-planner-menu` compiles it into `plannerCatalog.sections[].products[].optionGroups[].options[]`. `builderCatalog` and `builderCatalogV2` are read-only compatibility fields and are not the source for new Dashboard or Flutter work.
 
 When Dashboard creates a draft without explicit sections, the backend initializes the default visual family template in this order:
 
@@ -164,6 +166,15 @@ Meal Builder sections reference existing catalog rows only:
 - `option_group` references a `MenuProduct` context, `MenuOptionGroup`, and optional selected `MenuOption` ids.
 - `product_category` references a `MenuCategory` and can include all or selected products.
 - `product_list` references selected `MenuProduct` ids.
+
+The public Dashboard section shape also exposes canonical authoring metadata:
+
+- `premium`: `type=mixed`, `source.kind=premium_mixed`, `sortOrder=10`
+- `sandwich`: `type=product_list`, `source.kind=product_category`, `source.categoryKey=sandwich`, `sortOrder=20`
+- `chicken`, `beef`, `fish`, `eggs`: `type=option_family`, `source.kind=option_family`, `source.groupKey=proteins`
+- `carbs`: `type=option_group`, `source.kind=option_group`, `source.groupKey=carbs`, max 2 types and 300 grams
+
+Dashboard Meal Builder item selection must use `GET /api/dashboard/meal-builder/pickers/:sectionKey`. Global Dashboard menu endpoints such as `/api/dashboard/menu/options` and `/api/dashboard/menu/products` are catalog-management APIs, not Meal Builder pickers.
 
 Premium upgrade behavior remains backend-owned. Premium proteins and premium large salad expose display metadata in the builder response, but day planning still uses canonical v3 validation, `premiumBalance`, `premiumSource`, `premiumExtraFeeHalala`, `paymentRequirement`, `plannerRevisionHash`, and unified day payment create/verify. The builder cannot make premium proteins or premium large salad free.
 

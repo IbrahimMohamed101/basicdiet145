@@ -162,6 +162,9 @@ async function main() {
     expectStatus(res, 200, "hydrate default draft");
     assert.strictEqual(res.body.data.sections.length, 7);
     const chicken = res.body.data.sections.find((section) => section.key === "chicken");
+    assert.strictEqual(chicken.type, "option_family");
+    assert.strictEqual(chicken.source.kind, "option_family");
+    assert.strictEqual(chicken.source.displayCategoryKey, "chicken");
     const chickenItem = chicken.selectedOptions.find((item) => item.key === "chicken");
     assert(chickenItem.selected, "chicken option selected");
     assert(chickenItem.eligible, JSON.stringify(chickenItem));
@@ -169,6 +172,8 @@ async function main() {
     assert(chickenItem.available, "chicken option available");
 
     const sandwich = res.body.data.sections.find((section) => section.key === "sandwich");
+    assert.strictEqual(sandwich.type, "product_list");
+    assert.strictEqual(sandwich.source.kind, "product_category");
     assert.strictEqual(sandwich.selectedProducts[0].productId, String(fixture.sandwich._id));
     assert.strictEqual(sandwich.selectedProducts[0].type, "product");
 
@@ -179,6 +184,8 @@ async function main() {
     assert(premium.items.some((item) => item.key === "premium_large_salad"), "premium hydrates salad");
 
     const carbs = res.body.data.sections.find((section) => section.key === "carbs");
+    assert.strictEqual(carbs.type, "option_group");
+    assert.strictEqual(carbs.source.groupKey, "carbs");
     assert.strictEqual(carbs.rules.maxTypes, 2);
     assert.strictEqual(carbs.rules.maxTotalGrams, 300);
 
