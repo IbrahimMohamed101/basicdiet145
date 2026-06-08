@@ -282,6 +282,12 @@ async function main() {
     keys = res.body.data.candidates.map((item) => item.key);
     assert(keys.includes("hidden_chicken"), "include=all includes unavailable options");
 
+    res = await api.get("/api/dashboard/meal-builder/pickers/chicken?include=all&diagnostics=true").set(headers);
+    expectStatus(res, 200, "chicken picker diagnostics");
+    assert.strictEqual(res.body.data.diagnostics.runtime.marker, "meal_builder_picker_v3_option_family_catalog_discovery");
+    assert.strictEqual(res.body.data.diagnostics.codePath, "option_family_catalog_discovery");
+    assert(res.body.data.diagnostics.extendedFamilyKeys.includes("chicken_fajita"), JSON.stringify(res.body.data.diagnostics));
+
     res = await api.get("/api/dashboard/meal-builder/pickers/beef").set(headers);
     expectStatus(res, 200, "beef picker");
     keys = res.body.data.candidates.map((item) => item.key);

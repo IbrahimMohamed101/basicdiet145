@@ -72,6 +72,8 @@ const CANONICAL_SECTION_TYPE = Object.freeze({
   eggs: "option_family",
   carbs: "option_group",
 });
+const MEAL_BUILDER_PICKER_DIAGNOSTIC_MARKER = "meal_builder_picker_v3_option_family_catalog_discovery";
+const MEAL_BUILDER_PICKER_BASE_COMMIT = "12bdcc8a";
 
 class MealBuilderError extends Error {
   constructor(message, code = "MEAL_BUILDER_ERROR", status = 400, details) {
@@ -984,6 +986,16 @@ function debugPicker(stage, payload = {}) {
   console.debug("[meal-builder-picker]", stage, JSON.stringify(payload));
 }
 
+function runtimeCommitInfo() {
+  return {
+    marker: MEAL_BUILDER_PICKER_DIAGNOSTIC_MARKER,
+    expectedBaseCommit: MEAL_BUILDER_PICKER_BASE_COMMIT,
+    renderGitCommit: process.env.RENDER_GIT_COMMIT || "",
+    renderServiceId: process.env.RENDER_SERVICE_ID || "",
+    sourceVersion: process.env.SOURCE_VERSION || process.env.COMMIT_SHA || process.env.GIT_COMMIT || "",
+  };
+}
+
 function isCanonicalStandardProteinForPicker(option = {}, sectionKey = "") {
   const key = optionKey(option);
   if (!key || NON_PROTEIN_PICKER_OPTION_KEYS.has(key) || key.startsWith("extra_")) return false;
@@ -1148,6 +1160,7 @@ async function getSectionPicker({
   lang = "en",
   q = "",
   include,
+  diagnostics,
   includeUnavailable,
   includeNotLinked,
   page,
@@ -1178,11 +1191,19 @@ async function getSectionPicker({
     result = await buildOptionPicker({ sectionKey: key, section, context, lang, q, pagination, pickerOptions });
   }
 
-  return {
+  const payload = {
     contractVersion: PICKER_VERSION,
     sectionKey: key,
     ...result,
   };
+  if (normalizeQueryBoolean(diagnostics, false)) {
+    payload.diagnostics = {
+      runtime: runtimeCommitInfo(),
+      pickerOptions,
+      ...(result.diagnostics || {}),
+    };
+  }
+  return payload;
 }
 
 async function resolvePickerContext(sectionKey, section = null) {
@@ -1262,15 +1283,25 @@ async function buildOptionPicker({ sectionKey, section, context, lang, q, pagina
       )
     : (isOptionFamily ? optionFamilyCandidateQuery({ group, ...familySource }) : {});
   const candidateOptions = await MenuOption.find(query).sort({ sortOrder: 1, createdAt: -1 }).lean();
-  debugPicker("option_discovery", {
-    sectionKey,
+  const discoveryDiagnostics = {
+    codePath: isOptionFamily ? "option_family_catalog_discovery" : "option_group_discovery",
     source: familySource.sectionSource,
-    candidateDiscoverySource: isOptionFamily ? "menu_option_family_catalog" : "menu_option_group",
     proteinFamilyKey: familySource.proteinFamilyKey,
     displayCategoryKey: familySource.displayCategoryKey,
     extendedFamilyKeys: familySource.extendedFamilyKeys,
     selectedOptionIds,
     countBeforeRelationFilter: candidateOptions.length,
+    candidateKeysBeforeRelationFilter: candidateOptions.map((option) => option.key),
+  };
+  debugPicker("option_discovery", {
+    sectionKey,
+    source: discoveryDiagnostics.source,
+    candidateDiscoverySource: isOptionFamily ? "menu_option_family_catalog" : "menu_option_group",
+    proteinFamilyKey: discoveryDiagnostics.proteinFamilyKey,
+    displayCategoryKey: discoveryDiagnostics.displayCategoryKey,
+    extendedFamilyKeys: discoveryDiagnostics.extendedFamilyKeys,
+    selectedOptionIds,
+    countBeforeRelationFilter: discoveryDiagnostics.countBeforeRelationFilter,
   });
   const docs = await buildPickerDocs({
     product,
@@ -1337,6 +1368,12 @@ async function buildOptionPicker({ sectionKey, section, context, lang, q, pagina
     rules: sectionKey === "carbs" ? { ...STANDARD_CARB_RULES } : {},
     candidates,
     meta,
+    diagnostics: {
+      ...discoveryDiagnostics,
+      countAfterFamilyFilter: hydratedRows.length,
+      candidateKeysAfterFamilyFilter: hydratedRows.map((candidate) => candidate.key),
+      finalCandidateKeys: rows.map((candidate) => candidate.key),
+    },
   };
 }
 
