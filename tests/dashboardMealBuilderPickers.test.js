@@ -155,6 +155,15 @@ async function seedCatalog() {
       sortOrder: byKey.get(key).sortOrder,
     });
   }
+  await ProductGroupOption.create({
+    productId: basicMeal._id,
+    groupId: proteinsGroup._id,
+    optionId: byKey.get("chicken_fajita")._id,
+    isActive: false,
+    isVisible: false,
+    isAvailable: false,
+    sortOrder: 100,
+  });
   await ProductGroupOption.create({ productId: basicMeal._id, groupId: carbsGroup._id, optionId: byKey.get("white_rice")._id, sortOrder: 1 });
   await ProductOptionGroup.create({ productId: premiumLargeSalad._id, groupId: proteinsGroup._id, minSelections: 1, maxSelections: 1, isRequired: true, sortOrder: 1 });
   await ProductGroupOption.create({ productId: premiumLargeSalad._id, groupId: proteinsGroup._id, optionId: byKey.get("grilled_chicken")._id, sortOrder: 1 });
@@ -269,6 +278,7 @@ async function main() {
     const addable = res.body.data.candidates.find((item) => item.key === "chicken_fajita");
     assert.strictEqual(addable.state, "addable");
     assert.strictEqual(addable.linked, false);
+    assert.strictEqual(addable.relationExists, false);
     assert(addable.reasonCodes.includes("NOT_LINKED_TO_PRODUCT_GROUP"), JSON.stringify(addable));
 
     res = await api.get("/api/dashboard/meal-builder/pickers/chicken?includeUnavailable=true").set(headers);

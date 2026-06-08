@@ -1326,15 +1326,21 @@ async function buildOptionPicker({ sectionKey, section, context, lang, q, pagina
     })
     .filter((option) => matchesSearch(option, q))
     .map((option) => {
+      const optionRelation = product && group
+        ? relationIndexes.optionRelationByProductGroupOption.get(relationMapKey(product._id, group._id, option._id))
+        : null;
+      const selected = selectedSet.has(String(option._id));
+      const relationCanBeAdded = (isOptionFamily || sectionKey === "carbs") && !selected;
+      const pickerOptionRelation = relationCanBeAdded && optionRelation && !relationReady(optionRelation)
+        ? null
+        : optionRelation;
       const candidate = serializeHydratedOption({
         option,
         section: { ...(section || {}), key: sectionKey, lang },
         docs,
         groupRelation,
-        optionRelation: product && group
-          ? relationIndexes.optionRelationByProductGroupOption.get(relationMapKey(product._id, group._id, option._id))
-          : null,
-        selected: selectedSet.has(String(option._id)),
+        optionRelation: pickerOptionRelation,
+        selected,
         expectedFamilyKey: VISUAL_PROTEIN_FAMILY_KEYS.has(sectionKey) ? sectionKey : "",
         excludePremium: VISUAL_PROTEIN_FAMILY_KEYS.has(sectionKey),
         requireCustomerVisibleCarb: sectionKey === "carbs",
