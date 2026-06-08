@@ -164,17 +164,52 @@ async function seedCatalog() {
     isCurrent: true,
     contractVersion: "subscription_meal_builder.v1",
     source: "dashboard",
-    sections: [{
-      key: "chicken",
-      sectionType: "option_group",
-      sourceKind: "visual_family",
-      productContextId: basicMeal._id,
-      sourceGroupId: proteinsGroup._id,
-      selectedOptionIds: [byKey.get("chicken")._id],
-      selectionType: "standard_meal",
-      titleOverride: { en: "Chicken", ar: "Chicken" },
-      sortOrder: 30,
-    }],
+    sections: [
+      {
+        key: "chicken",
+        sectionType: "option_group",
+        sourceKind: "visual_family",
+        productContextId: basicMeal._id,
+        sourceGroupId: proteinsGroup._id,
+        selectedOptionIds: [byKey.get("chicken")._id],
+        selectionType: "standard_meal",
+        titleOverride: { en: "Chicken", ar: "Chicken" },
+        sortOrder: 30,
+      },
+      {
+        key: "beef",
+        sectionType: "option_group",
+        sourceKind: "visual_family",
+        productContextId: basicMeal._id,
+        sourceGroupId: proteinsGroup._id,
+        selectedOptionIds: [byKey.get("beef")._id],
+        selectionType: "standard_meal",
+        titleOverride: { en: "Beef", ar: "Beef" },
+        sortOrder: 40,
+      },
+      {
+        key: "fish",
+        sectionType: "option_group",
+        sourceKind: "visual_family",
+        productContextId: basicMeal._id,
+        sourceGroupId: proteinsGroup._id,
+        selectedOptionIds: [byKey.get("fish")._id],
+        selectionType: "standard_meal",
+        titleOverride: { en: "Fish", ar: "Fish" },
+        sortOrder: 50,
+      },
+      {
+        key: "eggs",
+        sectionType: "option_group",
+        sourceKind: "visual_family",
+        productContextId: basicMeal._id,
+        sourceGroupId: proteinsGroup._id,
+        selectedOptionIds: [byKey.get("eggs")._id],
+        selectionType: "standard_meal",
+        titleOverride: { en: "Eggs", ar: "Eggs" },
+        sortOrder: 60,
+      },
+    ],
   });
 
   return { sandwich };
@@ -218,6 +253,7 @@ async function main() {
       const candidate = res.body.data.candidates.find((item) => item.key === key);
       assert.strictEqual(candidate.selected, false, `${key} selected=false`);
       assert.strictEqual(candidate.eligible, true, `${key} eligible=true: ${JSON.stringify(candidate)}`);
+      assert.strictEqual(candidate.state, "addable", `${key} state=addable: ${JSON.stringify(candidate)}`);
     }
     assert(!keys.includes("hidden_chicken"), "inactive chicken hidden by default");
     assert(!keys.includes("ranch"), "ranch excluded from chicken picker");
@@ -228,7 +264,7 @@ async function main() {
     assert(!keys.includes("extra_protein_50g"), "extra protein add-on excluded from chicken picker");
     assert(!keys.includes("beef"), "beef excluded from chicken picker");
     const linked = res.body.data.candidates.find((item) => item.key === "grilled_chicken");
-    assert.strictEqual(linked.state, "eligible");
+    assert.strictEqual(linked.state, "addable");
     assert.strictEqual(linked.linked, true);
     const addable = res.body.data.candidates.find((item) => item.key === "chicken_fajita");
     assert.strictEqual(addable.state, "addable");
@@ -247,6 +283,13 @@ async function main() {
     assert(keys.includes("beef"), "beef returned");
     assert(keys.includes("meatballs"), "meatballs returned");
     assert(keys.includes("beef_stroganoff"), "beef stroganoff returned");
+    assert.strictEqual(res.body.data.candidates.find((item) => item.key === "beef").selected, true);
+    for (const key of ["meatballs", "beef_stroganoff"]) {
+      const candidate = res.body.data.candidates.find((item) => item.key === key);
+      assert.strictEqual(candidate.selected, false, `${key} selected=false`);
+      assert.strictEqual(candidate.eligible, true, `${key} eligible=true: ${JSON.stringify(candidate)}`);
+      assert.strictEqual(candidate.state, "addable", `${key} state=addable: ${JSON.stringify(candidate)}`);
+    }
     assert(!keys.includes("grilled_chicken"), "chicken excluded from beef picker");
     assert(!keys.includes("beef_steak"), "premium beef excluded from standard beef picker");
 
@@ -256,6 +299,13 @@ async function main() {
     assert(keys.includes("fish"), "fish returned");
     assert(keys.includes("tuna"), "tuna returned");
     assert(keys.includes("fish_fillet"), "fish fillet returned");
+    assert.strictEqual(res.body.data.candidates.find((item) => item.key === "fish").selected, true);
+    for (const key of ["tuna", "fish_fillet"]) {
+      const candidate = res.body.data.candidates.find((item) => item.key === key);
+      assert.strictEqual(candidate.selected, false, `${key} selected=false`);
+      assert.strictEqual(candidate.eligible, true, `${key} eligible=true: ${JSON.stringify(candidate)}`);
+      assert.strictEqual(candidate.state, "addable", `${key} state=addable: ${JSON.stringify(candidate)}`);
+    }
     assert(!keys.includes("shrimp"), "premium shrimp excluded from standard fish picker");
 
     res = await api.get("/api/dashboard/meal-builder/pickers/eggs").set(headers);
@@ -263,6 +313,11 @@ async function main() {
     keys = res.body.data.candidates.map((item) => item.key);
     assert(keys.includes("eggs"), "eggs returned");
     assert(keys.includes("boiled_eggs"), "boiled eggs returned");
+    assert.strictEqual(res.body.data.candidates.find((item) => item.key === "eggs").selected, true);
+    const boiledEggs = res.body.data.candidates.find((item) => item.key === "boiled_eggs");
+    assert.strictEqual(boiledEggs.selected, false, `boiled_eggs selected=false`);
+    assert.strictEqual(boiledEggs.eligible, true, `boiled_eggs eligible=true: ${JSON.stringify(boiledEggs)}`);
+    assert.strictEqual(boiledEggs.state, "addable", `boiled_eggs state=addable: ${JSON.stringify(boiledEggs)}`);
 
     res = await api.get("/api/dashboard/meal-builder/pickers/carbs").set(headers);
     expectStatus(res, 200, "carbs picker");

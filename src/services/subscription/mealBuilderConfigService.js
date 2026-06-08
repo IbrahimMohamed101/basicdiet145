@@ -971,6 +971,15 @@ function shouldIncludeCandidate(candidate, { includeUnavailable = false, include
   return true;
 }
 
+function shouldDebugPicker() {
+  return ["test", "development"].includes(String(process.env.NODE_ENV || "").trim().toLowerCase());
+}
+
+function debugPicker(stage, payload = {}) {
+  if (!shouldDebugPicker()) return;
+  console.debug("[meal-builder-picker]", stage, JSON.stringify(payload));
+}
+
 function isCanonicalStandardProteinForPicker(option = {}, sectionKey = "") {
   const key = optionKey(option);
   if (!key || NON_PROTEIN_PICKER_OPTION_KEYS.has(key) || key.startsWith("extra_")) return false;
@@ -982,6 +991,28 @@ function standardProteinKeysForFamily(sectionKey = "") {
   return STANDARD_MEAL_EXTENDED_PROTEIN_KEYS
     .filter((key) => !PREMIUM_PROTEIN_KEYS.has(key))
     .filter((key) => resolveProteinVisualFamilyKey({ key }) === sectionKey);
+}
+
+function buildOptionFamilyPickerSource(sectionKey, section = {}) {
+  const sectionSource = canonicalSectionSource({ ...(section || {}), key: sectionKey });
+  const displayCategoryKey = String(sectionSource.displayCategoryKey || sectionKey || "").trim().toLowerCase();
+  const proteinFamilyKey = String(section?.metadata?.proteinFamilyKey || displayCategoryKey || sectionKey || "").trim().toLowerCase();
+  const extendedFamilyKeys = standardProteinKeysForFamily(displayCategoryKey);
+  return {
+    sectionSource,
+    proteinFamilyKey,
+    displayCategoryKey,
+    extendedFamilyKeys,
+  };
+}
+
+function optionFamilyCandidateQuery({ group, proteinFamilyKey, displayCategoryKey, extendedFamilyKeys }) {
+  const clauses = [];
+  if (group?._id) clauses.push({ groupId: group._id });
+  if (extendedFamilyKeys.length) clauses.push({ key: { $in: extendedFamilyKeys } });
+  if (proteinFamilyKey) clauses.push({ proteinFamilyKey });
+  if (displayCategoryKey) clauses.push({ displayCategoryKey });
+  return clauses.length ? { $or: clauses } : {};
 }
 
 function paginateRows(rows, pagination) {
@@ -1213,22 +1244,28 @@ async function buildOptionPicker({ sectionKey, section, context, lang, q, pagina
   const selectedSet = new Set(selectedOptionIds);
   const group = context.group;
   const product = context.product;
-  const familyKeys = VISUAL_PROTEIN_FAMILY_KEYS.has(sectionKey) ? standardProteinKeysForFamily(sectionKey) : [];
+  const isOptionFamily = VISUAL_PROTEIN_FAMILY_KEYS.has(sectionKey);
+  const familySource = isOptionFamily
+    ? buildOptionFamilyPickerSource(sectionKey, section)
+    : { sectionSource: canonicalSectionSource({ ...(section || {}), key: sectionKey }), proteinFamilyKey: "", displayCategoryKey: "", extendedFamilyKeys: [] };
   const query = group
     ? (
-        familyKeys.length
-          ? {
-              $or: [
-                { groupId: group._id },
-                { key: { $in: familyKeys } },
-                { proteinFamilyKey: sectionKey },
-                { displayCategoryKey: sectionKey },
-              ],
-            }
+        isOptionFamily
+          ? optionFamilyCandidateQuery({ group, ...familySource })
           : { groupId: group._id }
       )
-    : (familyKeys.length ? { key: { $in: familyKeys } } : {});
+    : (isOptionFamily ? optionFamilyCandidateQuery({ group, ...familySource }) : {});
   const candidateOptions = await MenuOption.find(query).sort({ sortOrder: 1, createdAt: -1 }).lean();
+  debugPicker("option_discovery", {
+    sectionKey,
+    source: familySource.sectionSource,
+    candidateDiscoverySource: isOptionFamily ? "menu_option_family_catalog" : "menu_option_group",
+    proteinFamilyKey: familySource.proteinFamilyKey,
+    displayCategoryKey: familySource.displayCategoryKey,
+    extendedFamilyKeys: familySource.extendedFamilyKeys,
+    selectedOptionIds,
+    countBeforeRelationFilter: candidateOptions.length,
+  });
   const docs = await buildPickerDocs({
     product,
     group,
@@ -1243,7 +1280,7 @@ async function buildOptionPicker({ sectionKey, section, context, lang, q, pagina
     .filter((id) => !candidateOptions.some((option) => String(option._id) === id))
     .map((id) => docs.optionsById.get(id))
     .filter(Boolean);
-  const rows = [...candidateOptions, ...selectedOptionRows]
+  const hydratedRows = [...candidateOptions, ...selectedOptionRows]
     .filter((option) => {
       if (!option) return false;
       if (selectedSet.has(String(option._id))) return true;
@@ -1251,24 +1288,41 @@ async function buildOptionPicker({ sectionKey, section, context, lang, q, pagina
       return isCanonicalStandardProteinForPicker(option, sectionKey);
     })
     .filter((option) => matchesSearch(option, q))
-    .map((option) => serializeHydratedOption({
-      option,
-      section: { ...(section || {}), key: sectionKey, lang },
-      docs,
-      groupRelation,
-      optionRelation: product && group
-        ? relationIndexes.optionRelationByProductGroupOption.get(relationMapKey(product._id, group._id, option._id))
-        : null,
-      selected: selectedSet.has(String(option._id)),
-      expectedFamilyKey: VISUAL_PROTEIN_FAMILY_KEYS.has(sectionKey) ? sectionKey : "",
-      excludePremium: VISUAL_PROTEIN_FAMILY_KEYS.has(sectionKey),
-      requireCustomerVisibleCarb: sectionKey === "carbs",
-      allowUnlinkedCandidate: VISUAL_PROTEIN_FAMILY_KEYS.has(sectionKey) || sectionKey === "carbs",
-    }))
+    .map((option) => {
+      const candidate = serializeHydratedOption({
+        option,
+        section: { ...(section || {}), key: sectionKey, lang },
+        docs,
+        groupRelation,
+        optionRelation: product && group
+          ? relationIndexes.optionRelationByProductGroupOption.get(relationMapKey(product._id, group._id, option._id))
+          : null,
+        selected: selectedSet.has(String(option._id)),
+        expectedFamilyKey: VISUAL_PROTEIN_FAMILY_KEYS.has(sectionKey) ? sectionKey : "",
+        excludePremium: VISUAL_PROTEIN_FAMILY_KEYS.has(sectionKey),
+        requireCustomerVisibleCarb: sectionKey === "carbs",
+        allowUnlinkedCandidate: VISUAL_PROTEIN_FAMILY_KEYS.has(sectionKey) || sectionKey === "carbs",
+      });
+      if (isOptionFamily && !candidate.selected && candidate.eligible) {
+        return { ...candidate, state: "addable" };
+      }
+      return candidate;
+    });
+  debugPicker("option_relation_overlay", {
+    sectionKey,
+    countAfterRelationFilter: hydratedRows.length,
+    candidateKeysBeforeIncludeFilter: hydratedRows.map((candidate) => candidate.key),
+  });
+  const rows = hydratedRows
     .filter((candidate) => shouldIncludeCandidate(candidate, pickerOptions))
     .sort((a, b) => Number(a.relation?.sortOrder ?? 0) - Number(b.relation?.sortOrder ?? 0) || String(a.key).localeCompare(String(b.key)));
 
   const { rows: candidates, meta } = paginateRows(rows, pagination);
+  debugPicker("option_final", {
+    sectionKey,
+    finalCandidateKeys: rows.map((candidate) => candidate.key),
+    total: meta.total,
+  });
   return {
     candidateType: "option",
     product: product ? { id: String(product._id), key: product.key || "", name: product.name || {} } : null,
