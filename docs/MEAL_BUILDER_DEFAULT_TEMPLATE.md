@@ -17,8 +17,10 @@ Verified in the current backend code:
 - `MealBuilderConfig` exists at `src/models/MealBuilderConfig.js`.
 - Dashboard Meal Builder routes exist through `src/routes/index.js` and `src/routes/dashboardMealBuilder.js`:
   - `GET /api/dashboard/meal-builder`
+  - `GET /api/dashboard/meal-builder/draft/hydrated`
   - `POST /api/dashboard/meal-builder/draft`
   - `PUT /api/dashboard/meal-builder/draft`
+  - `GET /api/dashboard/meal-builder/pickers/:sectionKey`
   - `POST /api/dashboard/meal-builder/validate`
   - `POST /api/dashboard/meal-builder/publish`
   - `GET /api/dashboard/meal-builder/readiness`
@@ -30,6 +32,8 @@ Verified in the current backend code:
 - `plannerCatalog.contractVersion` is `meal_planner_menu.v3`.
 - Current `MealBuilderConfig` publishing builds a separate `subscription_meal_builder.v1` response for `/api/subscriptions/meal-builder`.
 - No-body `POST /api/dashboard/meal-builder/draft` initializes the Dashboard draft from the visual family template in this document.
+- `GET /api/dashboard/meal-builder/draft/hydrated` resolves selected option/product IDs into item status for Dashboard card editing.
+- `GET /api/dashboard/meal-builder/pickers/:sectionKey` returns relation-aware candidates for `premium`, `sandwich`, `chicken`, `beef`, `fish`, `eggs`, and `carbs`.
 - When a current published `MealBuilderConfig` exists, `/api/subscriptions/meal-planner-menu` compiles that published builder into `plannerCatalog.sections[].products[].optionGroups[].options[]`.
 
 Important distinction: `/api/subscriptions/meal-builder` exists today, but this README's main design decision is that the new Dashboard default template should compile into the existing `plannerCatalog` shape rather than requiring Flutter to move to a new builder-only mobile contract.

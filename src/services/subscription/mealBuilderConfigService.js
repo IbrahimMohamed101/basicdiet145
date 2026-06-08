@@ -42,6 +42,9 @@ const VISUAL_PROTEIN_FAMILY_DEFINITIONS = new Map(PROTEIN_DISPLAY_GROUPS.map((gr
 const PREMIUM_SECTION_TITLE = Object.freeze({ ar: "مميز", en: "Premium" });
 const SANDWICH_SECTION_TITLE = Object.freeze({ ar: "ساندوتشات", en: "Sandwiches" });
 const CARBS_SECTION_TITLE = Object.freeze({ ar: "نشويات", en: "Carbs" });
+const HYDRATED_DRAFT_VERSION = "dashboard_meal_builder_hydrated_draft.v1";
+const PICKER_VERSION = "dashboard_meal_builder_picker.v1";
+const SUPPORTED_PICKER_SECTION_KEYS = new Set(["premium", "sandwich", "chicken", "beef", "fish", "eggs", "carbs"]);
 
 class MealBuilderError extends Error {
   constructor(message, code = "MEAL_BUILDER_ERROR", status = 400, details) {
@@ -294,6 +297,911 @@ function serializeConfig(config) {
     })),
     createdAt: config.createdAt,
     updatedAt: config.updatedAt,
+  };
+}
+
+function normalizeQueryBoolean(value, fallback = false) {
+  if (value === undefined || value === null || value === "") return fallback;
+  if (typeof value === "boolean") return value;
+  const normalized = String(value).trim().toLowerCase();
+  if (["true", "1", "yes", "y"].includes(normalized)) return true;
+  if (["false", "0", "no", "n"].includes(normalized)) return false;
+  return fallback;
+}
+
+function normalizePagination({ page, limit } = {}) {
+  const normalizedPage = Math.max(1, Number.parseInt(page || "1", 10) || 1);
+  const normalizedLimit = Math.min(100, Math.max(1, Number.parseInt(limit || "50", 10) || 50));
+  return {
+    page: normalizedPage,
+    limit: normalizedLimit,
+    skip: (normalizedPage - 1) * normalizedLimit,
+  };
+}
+
+function matchesSearch(row = {}, query = "") {
+  const q = String(query || "").trim().toLowerCase();
+  if (!q) return true;
+  const haystack = [
+    row.key,
+    row.name?.en,
+    row.name?.ar,
+    row.description?.en,
+    row.description?.ar,
+  ].map((value) => String(value || "").toLowerCase());
+  return haystack.some((value) => value.includes(q));
+}
+
+function statusIssue(level, code, message, details = {}) {
+  return { level, code, message, ...details };
+}
+
+function catalogItemAvailable(doc, catalogItemsById) {
+  return isLinkedDocGloballyAvailable(doc, catalogItemsById);
+}
+
+function baseDocStatus(doc, catalogItemsById, prefix, label) {
+  const active = doc ? doc.isActive !== false : false;
+  const visible = doc ? doc.isVisible !== false : false;
+  const available = doc ? doc.isAvailable !== false : false;
+  const published = doc ? Boolean(doc.publishedAt) : false;
+  const subEnabled = subscriptionEnabled(doc);
+  const catalogAvailable = doc ? catalogItemAvailable(doc, catalogItemsById) : false;
+  const reasonCodes = [];
+  const errors = [];
+
+  if (!doc) {
+    reasonCodes.push(`${prefix}_MISSING`);
+    errors.push(statusIssue("error", `${prefix}_MISSING`, `${label} is missing`));
+  } else {
+    if (!active) {
+      reasonCodes.push(`${prefix}_INACTIVE`);
+      errors.push(statusIssue("error", `${prefix}_INACTIVE`, `${label} is inactive`));
+    }
+    if (!visible) {
+      reasonCodes.push(`${prefix}_HIDDEN`);
+      errors.push(statusIssue("error", `${prefix}_HIDDEN`, `${label} is hidden`));
+    }
+    if (!available) {
+      reasonCodes.push(`${prefix}_UNAVAILABLE`);
+      errors.push(statusIssue("error", `${prefix}_UNAVAILABLE`, `${label} is unavailable`));
+    }
+    if (!published) {
+      reasonCodes.push(`${prefix}_UNPUBLISHED`);
+      errors.push(statusIssue("error", `${prefix}_UNPUBLISHED`, `${label} is unpublished`));
+    }
+    if (!subEnabled) {
+      reasonCodes.push(`${prefix}_NOT_SUBSCRIPTION_ENABLED`);
+      errors.push(statusIssue("error", `${prefix}_NOT_SUBSCRIPTION_ENABLED`, `${label} is not subscription-enabled`));
+    }
+    if (!catalogAvailable) {
+      reasonCodes.push("CATALOG_ITEM_UNAVAILABLE");
+      errors.push(statusIssue("error", "CATALOG_ITEM_UNAVAILABLE", `${label} CatalogItem is unavailable`));
+    }
+  }
+
+  return {
+    active,
+    visible,
+    available,
+    published,
+    subscriptionEnabled: subEnabled,
+    catalogItemAvailable: catalogAvailable,
+    reasonCodes,
+    errors,
+  };
+}
+
+function relationMapKey(productId, groupId, optionId = null) {
+  return optionId
+    ? `${String(productId)}:${String(groupId)}:${String(optionId)}`
+    : `${String(productId)}:${String(groupId)}`;
+}
+
+function buildRelationIndexes(docs) {
+  return {
+    groupRelationByProductGroup: new Map(
+      (docs.groupRelations || []).map((row) => [relationMapKey(row.productId, row.groupId), row])
+    ),
+    optionRelationByProductGroupOption: new Map(
+      (docs.optionRelations || []).map((row) => [relationMapKey(row.productId, row.groupId, row.optionId), row])
+    ),
+  };
+}
+
+function relationStatus({
+  groupRelation = null,
+  optionRelation = null,
+  selected = false,
+  includeOptionRelation = true,
+} = {}) {
+  const warnings = [];
+  const errors = [];
+  const reasonCodes = [];
+  const groupRelationExists = Boolean(groupRelation);
+  const relationExists = includeOptionRelation ? Boolean(optionRelation) : groupRelationExists;
+  const groupRelationReady = relationReady(groupRelation);
+  const optionRelationReady = includeOptionRelation ? relationReady(optionRelation) : true;
+  const linked = groupRelationExists && relationExists;
+
+  if (!groupRelationExists) {
+    const issue = statusIssue(selected ? "error" : "warning", "PRODUCT_GROUP_RELATION_MISSING", "Product option-group relation is missing");
+    reasonCodes.push("PRODUCT_GROUP_RELATION_MISSING");
+    (selected ? errors : warnings).push(issue);
+  } else if (!groupRelationReady) {
+    reasonCodes.push("PRODUCT_GROUP_RELATION_UNAVAILABLE");
+    errors.push(statusIssue("error", "PRODUCT_GROUP_RELATION_UNAVAILABLE", "Product option-group relation is unavailable"));
+  }
+
+  if (includeOptionRelation) {
+    if (!optionRelation) {
+      const issue = statusIssue(selected ? "error" : "warning", "NOT_LINKED_TO_PRODUCT_GROUP", "Option exists but is not linked to the product option group");
+      reasonCodes.push("NOT_LINKED_TO_PRODUCT_GROUP");
+      (selected ? errors : warnings).push(issue);
+    } else if (!optionRelationReady) {
+      reasonCodes.push("PRODUCT_OPTION_RELATION_UNAVAILABLE");
+      errors.push(statusIssue("error", "PRODUCT_OPTION_RELATION_UNAVAILABLE", "Product option relation is unavailable"));
+    }
+  }
+
+  return {
+    linked,
+    relationExists,
+    groupRelationExists,
+    groupRelationReady,
+    relationReady: groupRelationReady && optionRelationReady,
+    reasonCodes,
+    warnings,
+    errors,
+  };
+}
+
+function optionFamilyKey(option = {}) {
+  return resolveProteinVisualFamilyKey(option) || String(option.proteinFamilyKey || option.displayCategoryKey || "").trim().toLowerCase();
+}
+
+function serializeHydratedOption({
+  option,
+  section,
+  docs,
+  groupRelation,
+  optionRelation,
+  selected = false,
+  required = false,
+  expectedFamilyKey = "",
+  requirePremium = false,
+  excludePremium = false,
+  requirePositivePremiumPrice = false,
+  requireCustomerVisibleCarb = false,
+} = {}) {
+  if (!option) {
+    const errors = [statusIssue("error", "MISSING_OPTION", "Selected option no longer exists")];
+    return {
+      id: null,
+      optionId: null,
+      type: "missing_option",
+      selected,
+      required,
+      eligible: false,
+      linked: false,
+      available: false,
+      active: false,
+      visible: false,
+      published: false,
+      subscriptionEnabled: false,
+      relationExists: false,
+      catalogItemAvailable: false,
+      reasonCodes: ["MISSING_OPTION"],
+      warnings: [],
+      errors,
+      state: selected ? "selected" : "invalid",
+    };
+  }
+
+  const docStatus = baseDocStatus(option, docs.catalogItemsById, "OPTION", "Option");
+  const relStatus = relationStatus({ groupRelation, optionRelation, selected, includeOptionRelation: true });
+  const reasonCodes = [...docStatus.reasonCodes, ...relStatus.reasonCodes];
+  const warnings = [...relStatus.warnings];
+  const errors = [...docStatus.errors, ...relStatus.errors];
+  const familyKey = optionFamilyKey(option);
+  const optionIsPremium = isPremiumProtein(option);
+
+  if (expectedFamilyKey && familyKey !== expectedFamilyKey) {
+    reasonCodes.push("WRONG_VISUAL_FAMILY");
+    errors.push(statusIssue("error", "WRONG_VISUAL_FAMILY", "Option does not belong to this visual family"));
+  }
+  if (requirePremium && !optionIsPremium) {
+    reasonCodes.push("PREMIUM_KEY_MISSING");
+    errors.push(statusIssue("error", "PREMIUM_KEY_MISSING", "Premium section requires a premium option"));
+  }
+  if (excludePremium && optionIsPremium) {
+    reasonCodes.push("PREMIUM_KEY_MISSING");
+    errors.push(statusIssue("error", "PREMIUM_KEY_MISSING", "Standard protein section cannot expose premium options"));
+  }
+  if (requirePositivePremiumPrice && !positivePremiumPrice(option, optionRelation)) {
+    reasonCodes.push("PREMIUM_PRICE_MISSING");
+    errors.push(statusIssue("error", "PREMIUM_PRICE_MISSING", "Premium option requires positive premium pricing"));
+  }
+  if (required) {
+    reasonCodes.push("PREMIUM_REQUIRED_KEY");
+    warnings.push(statusIssue("warning", "PREMIUM_REQUIRED_KEY", "Premium option is required"));
+  }
+  if (requireCustomerVisibleCarb && !CUSTOMER_VISIBLE_CARB_KEYS.includes(optionKey(option))) {
+    reasonCodes.push("CARB_NOT_CUSTOMER_VISIBLE");
+    errors.push(statusIssue("error", "CARB_NOT_CUSTOMER_VISIBLE", "Carb option is not customer-visible"));
+  }
+
+  const available = docStatus.active
+    && docStatus.visible
+    && docStatus.available
+    && docStatus.published
+    && docStatus.subscriptionEnabled
+    && docStatus.catalogItemAvailable;
+  const eligible = available && relStatus.relationReady && errors.length === 0;
+  if (selected) reasonCodes.unshift("SELECTED");
+  if (eligible) reasonCodes.push("ELIGIBLE");
+
+  let state = "invalid";
+  if (selected) state = "selected";
+  else if (!available) state = "unavailable";
+  else if (!relStatus.linked) state = "not_linked";
+  else if (eligible) state = "eligible";
+
+  return {
+    id: String(option._id),
+    optionId: String(option._id),
+    type: "option",
+    key: option.key || "",
+    name: option.name || { ar: "", en: "" },
+    label: pickLang(option.name || {}, section?.lang || "en"),
+    familyKey,
+    premiumKey: option.premiumKey || "",
+    displayCategoryKey: option.displayCategoryKey || "",
+    selectionType: option.selectionType || section?.selectionType || "",
+    pricing: {
+      extraPriceHalala: Number(optionRelation?.extraPriceHalala ?? option.extraPriceHalala ?? 0),
+      extraWeightUnitGrams: Number(optionRelation?.extraWeightUnitGrams ?? option.extraWeightUnitGrams ?? 0),
+      extraWeightPriceHalala: Number(optionRelation?.extraWeightPriceHalala ?? option.extraWeightPriceHalala ?? 0),
+      currency: option.currency || SYSTEM_CURRENCY,
+    },
+    relation: optionRelation ? {
+      id: String(optionRelation._id),
+      productId: String(optionRelation.productId),
+      groupId: String(optionRelation.groupId),
+      optionId: String(optionRelation.optionId),
+      sortOrder: Number(optionRelation.sortOrder || 0),
+      isActive: optionRelation.isActive !== false,
+      isVisible: optionRelation.isVisible !== false,
+      isAvailable: optionRelation.isAvailable !== false,
+    } : null,
+    selected,
+    required,
+    eligible,
+    linked: relStatus.linked,
+    available,
+    active: docStatus.active,
+    visible: docStatus.visible,
+    published: docStatus.published,
+    subscriptionEnabled: docStatus.subscriptionEnabled,
+    relationExists: relStatus.relationExists,
+    catalogItemAvailable: docStatus.catalogItemAvailable,
+    reasonCodes: [...new Set(reasonCodes)],
+    warnings,
+    errors,
+    state,
+  };
+}
+
+function serializeHydratedProduct({
+  product,
+  section,
+  docs,
+  selected = false,
+  required = false,
+  category = null,
+  selectionType = "",
+  requireSandwich = false,
+  requirePremiumLargeSalad = false,
+  validateRelations = false,
+} = {}) {
+  if (!product) {
+    const errors = [statusIssue("error", "MISSING_PRODUCT", "Selected product no longer exists")];
+    return {
+      id: null,
+      productId: null,
+      type: "missing_product",
+      selected,
+      required,
+      eligible: false,
+      linked: false,
+      available: false,
+      active: false,
+      visible: false,
+      published: false,
+      subscriptionEnabled: false,
+      relationExists: false,
+      catalogItemAvailable: false,
+      reasonCodes: ["MISSING_PRODUCT"],
+      warnings: [],
+      errors,
+      state: selected ? "selected" : "invalid",
+    };
+  }
+
+  const docStatus = baseDocStatus(product, docs.catalogItemsById, "PRODUCT", "Product");
+  const reasonCodes = [...docStatus.reasonCodes];
+  const warnings = [];
+  const errors = [...docStatus.errors];
+  const categoryKey = String(category?.key || "").trim().toLowerCase();
+
+  if (requireSandwich) {
+    if (categoryKey && categoryKey !== "cold_sandwiches") {
+      reasonCodes.push("SANDWICH_CATEGORY_MISMATCH");
+      errors.push(statusIssue("error", "SANDWICH_CATEGORY_MISMATCH", "Sandwich product must belong to the cold_sandwiches category"));
+    }
+    if (String(product.itemType || "") !== "cold_sandwich") {
+      reasonCodes.push("SANDWICH_ITEM_TYPE_MISMATCH");
+      errors.push(statusIssue("error", "SANDWICH_ITEM_TYPE_MISMATCH", "Sandwich product must use itemType=cold_sandwich"));
+    }
+  }
+  if (requirePremiumLargeSalad && product.key !== "premium_large_salad") {
+    reasonCodes.push("PREMIUM_LARGE_SALAD_MISSING");
+    errors.push(statusIssue("error", "PREMIUM_LARGE_SALAD_MISSING", "Premium product must be premium_large_salad"));
+  }
+  if (validateRelations) {
+    const relationErrors = [];
+    const optionRelationByProductGroupOption = new Map(
+      (docs.optionRelations || []).map((row) => [relationMapKey(row.productId, row.groupId, row.optionId), row])
+    );
+    validatePremiumLargeSaladProductRelations(product, docs, optionRelationByProductGroupOption, relationErrors);
+    if (relationErrors.length) {
+      reasonCodes.push("PREMIUM_LARGE_SALAD_INVALID_RELATIONS");
+      errors.push(...relationErrors.map((error) => ({
+        ...error,
+        code: error.code || "PREMIUM_LARGE_SALAD_INVALID_RELATIONS",
+      })));
+    }
+  }
+
+  const available = docStatus.active
+    && docStatus.visible
+    && docStatus.available
+    && docStatus.published
+    && docStatus.subscriptionEnabled
+    && docStatus.catalogItemAvailable;
+  const eligible = available && errors.length === 0;
+  if (selected) reasonCodes.unshift("SELECTED");
+  if (eligible) reasonCodes.push("ELIGIBLE");
+
+  let state = "invalid";
+  if (selected) state = "selected";
+  else if (!available) state = "unavailable";
+  else if (eligible) state = "eligible";
+
+  return {
+    id: String(product._id),
+    productId: String(product._id),
+    type: "product",
+    key: product.key || "",
+    name: product.name || { ar: "", en: "" },
+    label: pickLang(product.name || {}, section?.lang || "en"),
+    itemType: product.itemType || "",
+    categoryId: product.categoryId ? String(product.categoryId) : null,
+    categoryKey,
+    selectionType: selectionType || productSelectionType(section || {}, product),
+    configurable: product.isCustomizable === true || product.key === "premium_large_salad",
+    pricing: {
+      pricingModel: product.pricingModel || "fixed",
+      priceHalala: Number(product.priceHalala || 0),
+      currency: product.currency || SYSTEM_CURRENCY,
+    },
+    selected,
+    required,
+    eligible,
+    linked: true,
+    available,
+    active: docStatus.active,
+    visible: docStatus.visible,
+    published: docStatus.published,
+    subscriptionEnabled: docStatus.subscriptionEnabled,
+    relationExists: true,
+    catalogItemAvailable: docStatus.catalogItemAvailable,
+    reasonCodes: [...new Set(reasonCodes)],
+    warnings,
+    errors,
+    state,
+  };
+}
+
+function sectionRules(section) {
+  if (section?.key === "carbs") return { ...STANDARD_CARB_RULES };
+  return plainObject(section?.rules);
+}
+
+function shouldIncludeCandidate(candidate, { includeUnavailable = false, includeNotLinked = true } = {}) {
+  if (candidate.selected) return true;
+  if (!includeUnavailable && candidate.state === "unavailable") return false;
+  if (!includeNotLinked && candidate.state === "not_linked") return false;
+  if (candidate.state === "invalid") return false;
+  return true;
+}
+
+function paginateRows(rows, pagination) {
+  const total = rows.length;
+  return {
+    rows: rows.slice(pagination.skip, pagination.skip + pagination.limit),
+    meta: {
+      page: pagination.page,
+      limit: pagination.limit,
+      total,
+      pages: total === 0 ? 0 : Math.ceil(total / pagination.limit),
+    },
+  };
+}
+
+async function getHydratedDraft({ lang = "en" } = {}) {
+  const draft = await getCurrentDraftConfig();
+  if (!draft) {
+    return {
+      contractVersion: HYDRATED_DRAFT_VERSION,
+      draft: null,
+      ready: false,
+      errors: [statusIssue("error", "MEAL_BUILDER_DRAFT_MISSING", "No current Meal Builder draft exists.")],
+      warnings: [],
+      sections: [],
+    };
+  }
+
+  const serialized = serializeConfig(draft);
+  const sections = normalizeSections(draft.sections || []);
+  const [validation, docs] = await Promise.all([
+    validateConfigObject(draft),
+    resolveDocsForSections(sections),
+  ]);
+  const relationIndexes = buildRelationIndexes(docs);
+  const hydratedSections = sections.map((section) => hydrateSection(section, docs, relationIndexes, lang));
+
+  return {
+    contractVersion: HYDRATED_DRAFT_VERSION,
+    draft: {
+      ...serialized,
+      sections: hydratedSections,
+    },
+    ready: validation.ready,
+    errors: validation.errors || [],
+    warnings: validation.warnings || [],
+    sections: hydratedSections,
+    validation,
+  };
+}
+
+function hydrateSection(section, docs, relationIndexes, lang) {
+  const sectionForLabel = { ...section, lang };
+  const selectedOptionSet = new Set((section.selectedOptionIds || []).map(String));
+  const selectedProductSet = new Set((section.selectedProductIds || []).map(String));
+  const groupRelation = section.productContextId && section.sourceGroupId
+    ? relationIndexes.groupRelationByProductGroup.get(relationMapKey(section.productContextId, section.sourceGroupId))
+    : null;
+  const hydratedOptions = (section.selectedOptionIds || []).map((optionId) => {
+    const option = docs.optionsById.get(String(optionId));
+    const optionRelation = section.productContextId && section.sourceGroupId
+      ? relationIndexes.optionRelationByProductGroupOption.get(relationMapKey(section.productContextId, section.sourceGroupId, optionId))
+      : null;
+    return serializeHydratedOption({
+      option,
+      section: sectionForLabel,
+      docs,
+      groupRelation,
+      optionRelation,
+      selected: true,
+      required: section.key === "premium" && option ? PREMIUM_MEAL_PROTEIN_KEYS.includes(optionKey(option)) : false,
+      expectedFamilyKey: VISUAL_PROTEIN_FAMILY_KEYS.has(section.key) ? section.key : "",
+      requirePremium: section.key === "premium",
+      excludePremium: VISUAL_PROTEIN_FAMILY_KEYS.has(section.key),
+      requirePositivePremiumPrice: section.key === "premium",
+      requireCustomerVisibleCarb: section.key === "carbs",
+    });
+  });
+
+  let productIds = section.selectedProductIds || [];
+  if (!productIds.length && section.sectionType !== "option_group") {
+    productIds = resolveSectionProducts(section, docs).map((product) => String(product._id));
+  }
+  const category = section.sourceCategoryId ? docs.categoriesById.get(String(section.sourceCategoryId)) : null;
+  const hydratedProducts = productIds.map((productId) => {
+    const product = docs.productsById.get(String(productId));
+    return serializeHydratedProduct({
+      product,
+      section: sectionForLabel,
+      docs,
+      selected: selectedProductSet.has(String(productId)) || section.includeMode === "all",
+      required: section.key === "premium" && product?.key === "premium_large_salad",
+      category,
+      selectionType: productSelectionType(section, product),
+      requireSandwich: section.key === "sandwich" || section.selectionType === MEAL_SELECTION_TYPES.SANDWICH,
+      requirePremiumLargeSalad: section.key === "premium" && Boolean(product),
+      validateRelations: section.key === "premium" && product?.key === "premium_large_salad",
+    });
+  });
+
+  const items = [...hydratedOptions, ...hydratedProducts];
+  return {
+    ...serializeConfig({ _id: "000000000000000000000000", status: "draft", isCurrent: true, sections: [section] }).sections[0],
+    rules: sectionRules(section),
+    selectedOptions: hydratedOptions,
+    selectedProducts: hydratedProducts,
+    items,
+    hydration: {
+      selectedOptionCount: hydratedOptions.length,
+      selectedProductCount: hydratedProducts.length,
+      errorCount: items.reduce((sum, item) => sum + (item.errors || []).length, 0),
+      warningCount: items.reduce((sum, item) => sum + (item.warnings || []).length, 0),
+    },
+  };
+}
+
+async function getSectionPicker({
+  sectionKey,
+  lang = "en",
+  q = "",
+  includeUnavailable,
+  includeNotLinked,
+  page,
+  limit,
+} = {}) {
+  const key = String(sectionKey || "").trim().toLowerCase();
+  if (!SUPPORTED_PICKER_SECTION_KEYS.has(key)) {
+    throw new MealBuilderError("Unsupported Meal Builder picker section", "MEAL_BUILDER_PICKER_SECTION_INVALID", 400, { sectionKey });
+  }
+
+  const draft = await getCurrentDraftConfig();
+  const sections = draft ? normalizeSections(draft.sections || []) : [];
+  const section = sections.find((item) => item.key === key) || null;
+  const context = await resolvePickerContext(key, section);
+  const pagination = normalizePagination({ page, limit });
+  const pickerOptions = {
+    includeUnavailable: normalizeQueryBoolean(includeUnavailable, false),
+    includeNotLinked: normalizeQueryBoolean(includeNotLinked, true),
+  };
+
+  let result;
+  if (key === "sandwich") {
+    result = await buildSandwichPicker({ sectionKey: key, section, context, lang, q, pagination, pickerOptions });
+  } else if (key === "premium") {
+    result = await buildPremiumPicker({ sectionKey: key, section, context, lang, q, pagination, pickerOptions });
+  } else {
+    result = await buildOptionPicker({ sectionKey: key, section, context, lang, q, pagination, pickerOptions });
+  }
+
+  return {
+    contractVersion: PICKER_VERSION,
+    sectionKey: key,
+    ...result,
+  };
+}
+
+async function resolvePickerContext(sectionKey, section = null) {
+  const isSandwich = sectionKey === "sandwich";
+  const needsCarbs = sectionKey === "carbs";
+  const [basicMeal, proteinsGroup, carbsGroup, sandwichCategory] = await Promise.all([
+    section?.productContextId ? MenuProduct.findById(section.productContextId).lean() : MenuProduct.findOne({ key: "basic_meal" }).lean(),
+    section?.sourceGroupId && !needsCarbs && !isSandwich ? MenuOptionGroup.findById(section.sourceGroupId).lean() : MenuOptionGroup.findOne({ key: "proteins" }).lean(),
+    section?.sourceGroupId && needsCarbs ? MenuOptionGroup.findById(section.sourceGroupId).lean() : MenuOptionGroup.findOne({ key: "carbs" }).lean(),
+    section?.sourceCategoryId && isSandwich ? MenuCategory.findById(section.sourceCategoryId).lean() : MenuCategory.findOne({ key: "cold_sandwiches" }).lean(),
+  ]);
+
+  return {
+    product: basicMeal,
+    group: needsCarbs ? carbsGroup : proteinsGroup,
+    category: sandwichCategory,
+  };
+}
+
+async function buildPickerDocs({
+  product = null,
+  group = null,
+  category = null,
+  candidateOptions = [],
+  candidateProducts = [],
+  selectedOptionIds = [],
+  selectedProductIds = [],
+} = {}) {
+  const selectedOptions = selectedOptionIds.length
+    ? await MenuOption.find({ _id: { $in: selectedOptionIds } }).lean()
+    : [];
+  const selectedProducts = selectedProductIds.length
+    ? await MenuProduct.find({ _id: { $in: selectedProductIds } }).lean()
+    : [];
+  const products = [product, ...candidateProducts, ...selectedProducts].filter(Boolean);
+  const options = [...candidateOptions, ...selectedOptions].filter(Boolean);
+  const productIds = products.map((row) => row._id);
+  const [groupRelations, optionRelations] = await Promise.all([
+    productIds.length ? ProductOptionGroup.find({ productId: { $in: productIds } }).lean() : [],
+    productIds.length ? ProductGroupOption.find({ productId: { $in: productIds } }).lean() : [],
+  ]);
+  const relationOptionIds = optionRelations.map((row) => row.optionId);
+  const relationGroupIds = optionRelations.map((row) => row.groupId);
+  const [relationOptions, relationGroups] = await Promise.all([
+    relationOptionIds.length ? MenuOption.find({ _id: { $in: relationOptionIds } }).lean() : [],
+    relationGroupIds.length ? MenuOptionGroup.find({ _id: { $in: relationGroupIds } }).lean() : [],
+  ]);
+  const allProducts = [...products];
+  const allOptions = [...options, ...relationOptions];
+  const catalogItemsById = await loadCatalogItemsByIdForDocs(allProducts, allOptions);
+
+  return {
+    productsById: new Map(allProducts.map((row) => [String(row._id), row])),
+    optionsById: new Map(allOptions.map((row) => [String(row._id), row])),
+    groupsById: new Map([group, ...relationGroups].filter(Boolean).map((row) => [String(row._id), row])),
+    categoriesById: new Map([category].filter(Boolean).map((row) => [String(row._id), row])),
+    groupRelations,
+    optionRelations,
+    catalogItemsById,
+  };
+}
+
+async function buildOptionPicker({ sectionKey, section, context, lang, q, pagination, pickerOptions }) {
+  const selectedOptionIds = (section?.selectedOptionIds || []).map(String);
+  const selectedSet = new Set(selectedOptionIds);
+  const group = context.group;
+  const product = context.product;
+  const query = group ? { groupId: group._id } : {};
+  const candidateOptions = group ? await MenuOption.find(query).sort({ sortOrder: 1, createdAt: -1 }).lean() : [];
+  const docs = await buildPickerDocs({
+    product,
+    group,
+    candidateOptions,
+    selectedOptionIds,
+  });
+  const relationIndexes = buildRelationIndexes(docs);
+  const groupRelation = product && group
+    ? relationIndexes.groupRelationByProductGroup.get(relationMapKey(product._id, group._id))
+    : null;
+  const selectedOptionRows = selectedOptionIds
+    .filter((id) => !candidateOptions.some((option) => String(option._id) === id))
+    .map((id) => docs.optionsById.get(id))
+    .filter(Boolean);
+  const rows = [...candidateOptions, ...selectedOptionRows]
+    .filter((option) => {
+      if (!option) return false;
+      if (selectedSet.has(String(option._id))) return true;
+      if (sectionKey === "carbs") return CUSTOMER_VISIBLE_CARB_KEYS.includes(optionKey(option));
+      return optionFamilyKey(option) === sectionKey && !isPremiumProtein(option);
+    })
+    .filter((option) => matchesSearch(option, q))
+    .map((option) => serializeHydratedOption({
+      option,
+      section: { ...(section || {}), key: sectionKey, lang },
+      docs,
+      groupRelation,
+      optionRelation: product && group
+        ? relationIndexes.optionRelationByProductGroupOption.get(relationMapKey(product._id, group._id, option._id))
+        : null,
+      selected: selectedSet.has(String(option._id)),
+      expectedFamilyKey: VISUAL_PROTEIN_FAMILY_KEYS.has(sectionKey) ? sectionKey : "",
+      excludePremium: VISUAL_PROTEIN_FAMILY_KEYS.has(sectionKey),
+      requireCustomerVisibleCarb: sectionKey === "carbs",
+    }))
+    .filter((candidate) => shouldIncludeCandidate(candidate, pickerOptions))
+    .sort((a, b) => Number(a.relation?.sortOrder ?? 0) - Number(b.relation?.sortOrder ?? 0) || String(a.key).localeCompare(String(b.key)));
+
+  const { rows: candidates, meta } = paginateRows(rows, pagination);
+  return {
+    candidateType: "option",
+    product: product ? { id: String(product._id), key: product.key || "", name: product.name || {} } : null,
+    group: group ? { id: String(group._id), key: group.key || "", name: group.name || {} } : null,
+    rules: sectionKey === "carbs" ? { ...STANDARD_CARB_RULES } : {},
+    candidates,
+    meta,
+  };
+}
+
+async function buildSandwichPicker({ sectionKey, section, context, lang, q, pagination, pickerOptions }) {
+  const selectedProductIds = (section?.selectedProductIds || []).map(String);
+  const selectedSet = new Set(selectedProductIds);
+  const category = context.category;
+  const candidateProducts = category
+    ? await MenuProduct.find({ categoryId: category._id, itemType: "cold_sandwich" }).sort({ sortOrder: 1, createdAt: -1 }).lean()
+    : [];
+  const docs = await buildPickerDocs({
+    category,
+    candidateProducts,
+    selectedProductIds,
+  });
+  const selectedProductRows = selectedProductIds
+    .filter((id) => !candidateProducts.some((product) => String(product._id) === id))
+    .map((id) => docs.productsById.get(id))
+    .filter(Boolean);
+  const rows = [...candidateProducts, ...selectedProductRows]
+    .filter((product) => matchesSearch(product, q))
+    .map((product) => serializeHydratedProduct({
+      product,
+      section: { ...(section || {}), key: sectionKey, lang },
+      docs,
+      selected: selectedSet.has(String(product._id)),
+      category,
+      selectionType: MEAL_SELECTION_TYPES.SANDWICH,
+      requireSandwich: true,
+    }))
+    .filter((candidate) => shouldIncludeCandidate(candidate, pickerOptions))
+    .sort((a, b) => String(a.key).localeCompare(String(b.key)));
+
+  const { rows: candidates, meta } = paginateRows(rows, pagination);
+  return {
+    candidateType: "product",
+    category: category ? { id: String(category._id), key: category.key || "", name: category.name || {} } : null,
+    rules: { selectionType: MEAL_SELECTION_TYPES.SANDWICH },
+    candidates,
+    meta,
+  };
+}
+
+async function buildPremiumPicker({ sectionKey, section, context, lang, q, pagination, pickerOptions }) {
+  const selectedOptionIds = (section?.selectedOptionIds || []).map(String);
+  const selectedProductIds = (section?.selectedProductIds || []).map(String);
+  const selectedOptionSet = new Set(selectedOptionIds);
+  const selectedProductSet = new Set(selectedProductIds);
+  const product = context.product;
+  const group = context.group;
+  const premiumQuery = group
+    ? {
+        groupId: group._id,
+        $or: [
+          { key: { $in: PREMIUM_MEAL_PROTEIN_KEYS } },
+          { premiumKey: { $in: PREMIUM_MEAL_PROTEIN_KEYS } },
+        ],
+      }
+    : { key: { $in: PREMIUM_MEAL_PROTEIN_KEYS } };
+  const [premiumOptions, saladProduct] = await Promise.all([
+    MenuOption.find(premiumQuery).sort({ sortOrder: 1, createdAt: -1 }).lean(),
+    MenuProduct.findOne({ key: PREMIUM_LARGE_SALAD_PREMIUM_KEY }).lean(),
+  ]);
+  const docs = await buildPickerDocs({
+    product,
+    group,
+    candidateOptions: premiumOptions,
+    candidateProducts: saladProduct ? [saladProduct] : [],
+    selectedOptionIds,
+    selectedProductIds,
+  });
+  const relationIndexes = buildRelationIndexes(docs);
+  const groupRelation = product && group
+    ? relationIndexes.groupRelationByProductGroup.get(relationMapKey(product._id, group._id))
+    : null;
+  const optionRowsByKey = new Map(premiumOptions.map((option) => [optionKey(option), option]));
+  const optionCandidates = [];
+
+  for (const premiumKey of PREMIUM_MEAL_PROTEIN_KEYS) {
+    const option = optionRowsByKey.get(premiumKey);
+    if (!option) {
+      optionCandidates.push({
+        id: null,
+        optionId: null,
+        type: "missing_option",
+        key: premiumKey,
+        selected: false,
+        required: true,
+        eligible: false,
+        linked: false,
+        available: false,
+        active: false,
+        visible: false,
+        published: false,
+        subscriptionEnabled: false,
+        relationExists: false,
+        catalogItemAvailable: false,
+        reasonCodes: ["MISSING_OPTION", "PREMIUM_REQUIRED_KEY"],
+        warnings: [],
+        errors: [
+          statusIssue("error", "MISSING_OPTION", "Required premium option does not exist", { optionKey: premiumKey }),
+          statusIssue("error", "PREMIUM_REQUIRED_KEY", "Premium option is required", { optionKey: premiumKey }),
+        ],
+        state: "invalid",
+      });
+      continue;
+    }
+    optionCandidates.push(serializeHydratedOption({
+      option,
+      section: { ...(section || {}), key: sectionKey, lang, selectionType: MEAL_SELECTION_TYPES.PREMIUM_MEAL },
+      docs,
+      groupRelation,
+      optionRelation: product && group
+        ? relationIndexes.optionRelationByProductGroupOption.get(relationMapKey(product._id, group._id, option._id))
+        : null,
+      selected: selectedOptionSet.has(String(option._id)),
+      required: true,
+      requirePremium: true,
+      requirePositivePremiumPrice: true,
+    }));
+  }
+
+  for (const selectedOptionId of selectedOptionIds) {
+    if (optionCandidates.some((candidate) => candidate.optionId === selectedOptionId)) continue;
+    const option = docs.optionsById.get(selectedOptionId);
+    optionCandidates.push(serializeHydratedOption({
+      option,
+      section: { ...(section || {}), key: sectionKey, lang, selectionType: MEAL_SELECTION_TYPES.PREMIUM_MEAL },
+      docs,
+      groupRelation,
+      optionRelation: product && group && option
+        ? relationIndexes.optionRelationByProductGroupOption.get(relationMapKey(product._id, group._id, option._id))
+        : null,
+      selected: true,
+      requirePremium: true,
+      requirePositivePremiumPrice: true,
+    }));
+  }
+
+  const productCandidates = [];
+  if (saladProduct) {
+    productCandidates.push(serializeHydratedProduct({
+      product: saladProduct,
+      section: { ...(section || {}), key: sectionKey, lang },
+      docs,
+      selected: selectedProductSet.has(String(saladProduct._id)),
+      required: true,
+      selectionType: MEAL_SELECTION_TYPES.PREMIUM_LARGE_SALAD,
+      requirePremiumLargeSalad: true,
+      validateRelations: true,
+    }));
+  } else {
+    productCandidates.push({
+      id: null,
+      productId: null,
+      type: "missing_product",
+      key: PREMIUM_LARGE_SALAD_PREMIUM_KEY,
+      selected: false,
+      required: true,
+      eligible: false,
+      linked: false,
+      available: false,
+      active: false,
+      visible: false,
+      published: false,
+      subscriptionEnabled: false,
+      relationExists: false,
+      catalogItemAvailable: false,
+      reasonCodes: ["MISSING_PRODUCT", "PREMIUM_LARGE_SALAD_MISSING"],
+      warnings: [],
+      errors: [
+        statusIssue("error", "MISSING_PRODUCT", "Premium large salad product does not exist"),
+        statusIssue("error", "PREMIUM_LARGE_SALAD_MISSING", "Premium section requires premium_large_salad"),
+      ],
+      state: "invalid",
+    });
+  }
+
+  for (const selectedProductId of selectedProductIds) {
+    if (productCandidates.some((candidate) => candidate.productId === selectedProductId)) continue;
+    const selectedProduct = docs.productsById.get(selectedProductId);
+    productCandidates.push(serializeHydratedProduct({
+      product: selectedProduct,
+      section: { ...(section || {}), key: sectionKey, lang },
+      docs,
+      selected: true,
+      selectionType: MEAL_SELECTION_TYPES.PREMIUM_LARGE_SALAD,
+      requirePremiumLargeSalad: true,
+      validateRelations: selectedProduct?.key === "premium_large_salad",
+    }));
+  }
+
+  const rows = [...optionCandidates, ...productCandidates]
+    .filter((candidate) => matchesSearch(candidate, q))
+    .filter((candidate) => candidate.required || shouldIncludeCandidate(candidate, pickerOptions))
+    .sort((a, b) => {
+      const aIndex = PREMIUM_MEAL_PROTEIN_KEYS.indexOf(a.key);
+      const bIndex = PREMIUM_MEAL_PROTEIN_KEYS.indexOf(b.key);
+      return (aIndex === -1 ? 99 : aIndex) - (bIndex === -1 ? 99 : bIndex) || String(a.key).localeCompare(String(b.key));
+    });
+
+  const { rows: candidates, meta } = paginateRows(rows, pagination);
+  return {
+    candidateType: "mixed",
+    product: product ? { id: String(product._id), key: product.key || "", name: product.name || {} } : null,
+    group: group ? { id: String(group._id), key: group.key || "", name: group.name || {} } : null,
+    rules: { selectionType: MEAL_SELECTION_TYPES.PREMIUM_MEAL, requiredPremiumKeys: PREMIUM_MEAL_PROTEIN_KEYS },
+    candidates,
+    meta,
   };
 }
 
@@ -1676,7 +2584,9 @@ module.exports = {
   createDraft,
   getCurrentPublishedConfig,
   getDashboardState,
+  getHydratedDraft,
   getReadinessReport,
+  getSectionPicker,
   isGroupIncluded,
   isOptionIncluded,
   isProductIncluded,

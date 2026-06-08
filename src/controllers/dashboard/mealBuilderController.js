@@ -45,6 +45,11 @@ const getMealBuilder = wrap(async (req, res) => {
   return send(res, await mealBuilderService.getDashboardState({ lang }));
 });
 
+const getHydratedDraft = wrap(async (req, res) => {
+  const lang = getRequestLang(req);
+  return send(res, await mealBuilderService.getHydratedDraft({ lang }));
+});
+
 const createDraft = wrap(async (req, res) => send(res, await mealBuilderService.createDraft({
   sections: req.body && req.body.sections,
   notes: req.body && req.body.notes,
@@ -77,11 +82,23 @@ const publishDraft = wrap(async (req, res) => send(res, await mealBuilderService
   actor: actorFromRequest(req),
 })));
 
+const getPicker = wrap(async (req, res) => send(res, await mealBuilderService.getSectionPicker({
+  sectionKey: req.params.sectionKey,
+  lang: getRequestLang(req),
+  q: req.query.q || req.query.search,
+  includeUnavailable: req.query.includeUnavailable,
+  includeNotLinked: req.query.includeNotLinked,
+  page: req.query.page,
+  limit: req.query.limit,
+})));
+
 const getReadiness = wrap(async (_req, res) => send(res, await mealBuilderService.getReadinessReport()));
 
 module.exports = {
   createDraft,
+  getHydratedDraft,
   getMealBuilder,
+  getPicker,
   getReadiness,
   publishDraft,
   updateDraft,
