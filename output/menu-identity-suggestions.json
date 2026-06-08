@@ -9,13 +9,13 @@
     "oneTimeSources": [
       {
         "model": "MenuProduct",
-        "id": "6a0ea70d5b89f3df80c13a42",
+        "id": "6a272b38352b0efadf8d5a8b",
         "key": "ot_shrimp",
         "name": "جمبري"
       },
       {
         "model": "MenuProduct",
-        "id": "6a0ea70d5b89f3df80c13a7b",
+        "id": "6a272b38352b0efadf8d5ac5",
         "key": "ot_shrimp_clone",
         "name": "جمبري"
       }
@@ -23,7 +23,7 @@
     "subscriptionSources": [
       {
         "model": "BuilderProtein",
-        "id": "6a0ea70d5b89f3df80c13a48",
+        "id": "6a272b38352b0efadf8d5a9f",
         "key": "sub_shrimp",
         "name": "روبيان"
       }
