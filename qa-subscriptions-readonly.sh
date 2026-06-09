@@ -40,8 +40,8 @@ fetch_public "addon_choices_all" "$BASE_URL/api/subscriptions/addon-choices"
 fetch_public "addon_choices_juice" "$BASE_URL/api/subscriptions/addon-choices?category=juice"
 fetch_public "addon_choices_snack" "$BASE_URL/api/subscriptions/addon-choices?category=snack"
 fetch_public "addon_choices_small_salad" "$BASE_URL/api/subscriptions/addon-choices?category=small_salad"
-fetch_public "meal_planner_ar" "$BASE_URL/api/subscriptions/meal-planner-menu?includeLegacy=true&lang=ar"
-fetch_public "meal_planner_en" "$BASE_URL/api/subscriptions/meal-planner-menu?includeLegacy=true&lang=en"
+fetch_public "meal_planner_ar" "$BASE_URL/api/subscriptions/meal-planner-menu?lang=ar"
+fetch_public "meal_planner_en" "$BASE_URL/api/subscriptions/meal-planner-menu?lang=en"
 
 echo
 echo "== Fetching authenticated read-only endpoints =="
@@ -302,42 +302,57 @@ function getMealRows(gramsRow) {
 for (const lang of ["ar", "en"]) {
   const json = readJson(`meal_planner_${lang}`);
   const data = getData(json) || {};
-  const sections = data.builderCatalogV2?.sections;
+  const sections = data.plannerCatalog?.sections;
 
   if (!sections) {
-    fail(`meal planner ${lang} missing data.builderCatalogV2.sections`);
+    fail(`meal planner ${lang} missing data.plannerCatalog.sections`);
     continue;
   }
 
-  const requiredSections = ["standard_meal", "premium_meal", "sandwich", "premium_large_salad"];
+  if (data.plannerCatalog.contractVersion === "meal_planner_menu.v3") {
+    pass(`meal planner ${lang} uses plannerCatalog v3`);
+  } else {
+    fail(`meal planner ${lang} plannerCatalog contractVersion is ${data.plannerCatalog.contractVersion}`);
+  }
+
+  const requiredSections = ["premium", "sandwich", "chicken", "beef", "fish", "eggs", "carbs"];
   for (const key of requiredSections) {
     if (sectionByKey(sections, key)) pass(`meal planner ${lang} includes section ${key}`);
     else fail(`meal planner ${lang} missing section ${key}`);
   }
 
-  const standard = sectionByKey(sections, "standard_meal");
-  const premium = sectionByKey(sections, "premium_meal");
+  const standardSections = ["chicken", "beef", "fish", "eggs"].map((key) => sectionByKey(sections, key)).filter(Boolean);
+  const premium = sectionByKey(sections, "premium");
   const sandwich = sectionByKey(sections, "sandwich");
-  const salad = sectionByKey(sections, "premium_large_salad");
+  const salad = premium && (premium.products || []).find((product) => product.key === "premium_large_salad");
 
-  if (standard) {
-    const keys = collectKeys(standard);
+  if (standardSections.length) {
+    const keys = new Set(standardSections.flatMap((section) => Array.from(collectKeys(section))));
     for (const forbidden of ["brown_rice", "potato", "pasta", "beef_steak", "shrimp", "salmon", "extra_protein_50g"]) {
       if (keys.has(forbidden)) fail(`standard_meal ${lang} contains forbidden ${forbidden}`);
     }
-    pass(`standard_meal ${lang} does not expose obvious forbidden legacy/premium keys`);
+    for (const family of ["chicken", "beef", "fish", "eggs"]) {
+      if (sectionByKey(sections, family)) pass(`standard meal ${lang} exposes ${family} family section`);
+    }
+    pass(`standard meal ${lang} does not expose obvious forbidden legacy/premium keys`);
   }
 
   if (premium) {
     const keys = collectKeys(premium);
     for (const required of ["beef_steak", "shrimp", "salmon"]) {
-      if (keys.has(required) || JSON.stringify(premium).includes(required)) pass(`premium_meal ${lang} includes ${required}`);
-      else fail(`premium_meal ${lang} missing ${required}`);
+      if (keys.has(required) || JSON.stringify(premium).includes(required)) pass(`premium ${lang} includes ${required}`);
+      else fail(`premium ${lang} missing ${required}`);
 
       const objs = findNumbersNearKey(premium, required);
       const hasFee2000 = objs.some((o) => Number(o.extraFeeHalala ?? o.priceHalala ?? o.extraPriceHalala) === 2000);
-      if (hasFee2000) pass(`premium_meal ${lang} ${required} has 2000 halala fee`);
-      else warn(`premium_meal ${lang} ${required} fee 2000 not found in obvious fields`);
+      if (hasFee2000) pass(`premium ${lang} ${required} has 2000 halala fee`);
+      else warn(`premium ${lang} ${required} fee 2000 not found in obvious fields`);
+    }
+
+    if (keys.has("premium_large_salad") || JSON.stringify(premium).includes("premium_large_salad")) {
+      pass(`premium ${lang} includes premium_large_salad`);
+    } else {
+      fail(`premium ${lang} missing premium_large_salad`);
     }
   }
 
@@ -367,6 +382,11 @@ for (const lang of ["ar", "en"]) {
     const forbidden = ["extra_protein_50g", "beef_steak", "shrimp", "salmon", "meatballs", "beef_stroganoff"];
     for (const key of forbidden) {
       if (text.includes(key)) fail(`premium_large_salad ${lang} contains forbidden ${key}`);
+    }
+    if (salad.action?.requiresBuilder === true && Array.isArray(salad.optionGroups) && salad.optionGroups.length > 0) {
+      pass(`premium_large_salad ${lang} is configurable with option groups`);
+    } else {
+      fail(`premium_large_salad ${lang} is not configurable`);
     }
     pass(`premium_large_salad ${lang} does not expose premium/extra-protein forbidden keys`);
   }

@@ -411,7 +411,7 @@ function inspectPlans(plans, endpoint, source) {
 }
 
 async function mealPlannerContract() {
-  const endpoint = "/api/subscriptions/meal-planner-menu?includeLegacy=true&lang=ar";
+  const endpoint = "/api/subscriptions/meal-planner-menu?lang=ar";
   const response = await request("GET", endpoint);
   const passed = recordResponse("Meal planner catalog", endpoint, "Canonical planner menu responds", response, (res) => res.ok && dataOf(res));
   if (!passed) return null;

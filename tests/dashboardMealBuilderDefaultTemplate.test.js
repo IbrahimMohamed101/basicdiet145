@@ -156,6 +156,56 @@ function expectStatus(res, status, label) {
   assert.strictEqual(res.status, status, `${label}: expected ${status}, got ${res.status} ${JSON.stringify(res.body)}`);
 }
 
+function assertPlannerCatalogOnlyPayload(data) {
+  assert(data && data.plannerCatalog, "plannerCatalog-only payload has plannerCatalog");
+  assert.strictEqual(data.builderCatalog, undefined, "plannerCatalog-only payload does not expose builderCatalog");
+  assert.strictEqual(data.builderCatalogV2, undefined, "plannerCatalog-only payload does not expose builderCatalogV2");
+
+  const planner = data.plannerCatalog;
+  assert.strictEqual(planner.contractVersion, "meal_planner_menu.v3");
+  assert.deepStrictEqual(planner.sections.map((section) => section.key), ["premium", "sandwich", "chicken", "beef", "fish", "eggs", "carbs"]);
+
+  const premium = planner.sections.find((section) => section.key === "premium");
+  const premiumKeys = new Set((premium.products || []).map((product) => product.key));
+  for (const key of ["basic_meal", "premium_large_salad"]) {
+    assert(premiumKeys.has(key), `planner premium section contains ${key}`);
+  }
+  const premiumOptions = new Set((premium.products || []).flatMap((product) => (
+    product.optionGroups || []
+  ).flatMap((group) => (group.options || []).map((option) => option.key))));
+  for (const key of ["beef_steak", "shrimp", "salmon"]) {
+    assert(premiumOptions.has(key), `planner premium options contain ${key}`);
+  }
+
+  const salad = (premium.products || []).find((product) => product.key === "premium_large_salad");
+  assert(salad, "premium_large_salad is a product in premium");
+  assert.strictEqual(salad.selectionType, "premium_large_salad");
+  assert.strictEqual(salad.action.requiresBuilder, true);
+  assert((salad.optionGroups || []).length > 0, "premium_large_salad has its own option groups");
+
+  const sandwichProducts = planner.sections.find((section) => section.key === "sandwich").products || [];
+  assert(sandwichProducts.length > 0, "planner sandwiches render as products");
+  for (const sandwich of sandwichProducts) {
+    assert.strictEqual(sandwich.selectionType, "sandwich");
+    assert.strictEqual(sandwich.action.type, "direct_add");
+    assert.strictEqual(sandwich.action.requiresBuilder, false);
+    assert.strictEqual(sandwich.action.treatAsFullMeal, true);
+    assert.deepStrictEqual(sandwich.optionGroups, []);
+  }
+
+  const expectedFamilies = {
+    chicken: ["chicken", "chicken_fajita", "spicy_chicken", "italian_spiced_chicken", "chicken_tikka", "asian_chicken", "chicken_strips", "grilled_chicken", "mexican_chicken"],
+    beef: ["beef", "meatballs", "beef_stroganoff"],
+    fish: ["fish", "fish_fillet", "tuna"],
+    eggs: ["eggs", "boiled_eggs"],
+  };
+  for (const [sectionKey, expectedKeys] of Object.entries(expectedFamilies)) {
+    const section = planner.sections.find((item) => item.key === sectionKey);
+    const actualKeys = section.products[0].optionGroups[0].options.map((option) => option.key);
+    assert.deepStrictEqual(actualKeys, expectedKeys, `${sectionKey} planner variants`);
+  }
+}
+
 async function main() {
   await connect();
   try {
@@ -225,6 +275,7 @@ async function main() {
       const actualKeys = section.products[0].optionGroups[0].options.map((option) => option.key);
       assert.deepStrictEqual(actualKeys, expectedKeys, `${sectionKey} planner variants`);
     }
+    assertPlannerCatalogOnlyPayload({ plannerCatalog: planner });
 
     res = await api.get("/api/dashboard/meal-builder/readiness").set(headers);
     expectStatus(res, 200, "meal builder readiness");

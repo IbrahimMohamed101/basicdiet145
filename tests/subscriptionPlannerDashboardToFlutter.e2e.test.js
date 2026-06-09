@@ -264,9 +264,19 @@ async function run() {
     assert.strictEqual(readinessRes.status, 200, `readiness endpoint: ${JSON.stringify(readinessRes.body)}`);
     assert.strictEqual(readinessRes.body.data.ready, true, JSON.stringify(readinessRes.body.data, null, 2));
 
-    const menuRes = await api.get("/api/subscriptions/meal-planner-menu").set(appHeaders);
+    const menuRes = await api.get("/api/subscriptions/meal-planner-menu?lang=ar").set(appHeaders);
     assert.strictEqual(menuRes.status, 200, `meal planner menu: ${JSON.stringify(menuRes.body)}`);
-    assert(menuRes.body.data, "meal planner menu returns data");
+    assert(menuRes.body.data?.plannerCatalog, "meal planner menu returns plannerCatalog");
+    const plannerOnlyData = { plannerCatalog: menuRes.body.data.plannerCatalog };
+    assert.strictEqual(plannerOnlyData.builderCatalog, undefined, "flutter planner payload does not require builderCatalog");
+    assert.strictEqual(plannerOnlyData.builderCatalogV2, undefined, "flutter planner payload does not require builderCatalogV2");
+    const plannerSectionsByKey = new Map(plannerOnlyData.plannerCatalog.sections.map((section) => [section.key, section]));
+    const premiumSaladProduct = (plannerSectionsByKey.get("premium_large_salad")?.products || [])
+      .concat(plannerSectionsByKey.get("premium")?.products || [])
+      .find((product) => product.key === "premium_large_salad");
+    assert(premiumSaladProduct, "plannerCatalog-only payload exposes premium_large_salad product");
+    assert.strictEqual(premiumSaladProduct.action.requiresBuilder, true);
+    assert((premiumSaladProduct.optionGroups || []).length > 0, "premium_large_salad exposes option groups");
 
     const addonRes = await api.get("/api/subscriptions/addon-choices").set(appHeaders);
     assert.strictEqual(addonRes.status, 200, `addon choices: ${JSON.stringify(addonRes.body)}`);
