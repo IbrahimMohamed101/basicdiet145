@@ -76,10 +76,19 @@ async function seedCatalog() {
 
   const proteinRows = [
     { key: "chicken", family: "chicken" },
+    { key: "chicken_fajita", family: "chicken" },
+    { key: "spicy_chicken", family: "chicken" },
+    { key: "italian_spiced_chicken", family: "chicken" },
+    { key: "chicken_tikka", family: "chicken" },
+    { key: "asian_chicken", family: "chicken" },
+    { key: "chicken_strips", family: "chicken" },
     { key: "grilled_chicken", family: "chicken" },
+    { key: "mexican_chicken", family: "chicken" },
     { key: "beef", family: "beef" },
     { key: "meatballs", family: "beef" },
+    { key: "beef_stroganoff", family: "beef" },
     { key: "fish", family: "fish" },
+    { key: "fish_fillet", family: "fish" },
     { key: "tuna", family: "fish" },
     { key: "eggs", family: "eggs" },
     { key: "boiled_eggs", family: "eggs" },
@@ -205,6 +214,17 @@ async function main() {
     assert.strictEqual(plannerSandwich.optionGroups.length, 0);
     const plannerCarbs = planner.sections.find((section) => section.key === "carbs");
     assert.strictEqual(plannerCarbs.products[0].optionGroups[0].maxSelections, 2);
+    const expectedFamilies = {
+      chicken: ["chicken", "chicken_fajita", "spicy_chicken", "italian_spiced_chicken", "chicken_tikka", "asian_chicken", "chicken_strips", "grilled_chicken", "mexican_chicken"],
+      beef: ["beef", "meatballs", "beef_stroganoff"],
+      fish: ["fish", "fish_fillet", "tuna"],
+      eggs: ["eggs", "boiled_eggs"],
+    };
+    for (const [sectionKey, expectedKeys] of Object.entries(expectedFamilies)) {
+      const section = planner.sections.find((item) => item.key === sectionKey);
+      const actualKeys = section.products[0].optionGroups[0].options.map((option) => option.key);
+      assert.deepStrictEqual(actualKeys, expectedKeys, `${sectionKey} planner variants`);
+    }
 
     res = await api.get("/api/dashboard/meal-builder/readiness").set(headers);
     expectStatus(res, 200, "meal builder readiness");

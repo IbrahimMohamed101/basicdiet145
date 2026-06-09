@@ -82,10 +82,22 @@ async function seedCatalog() {
 
   const proteinRows = [
     { key: "chicken", family: "chicken" },
-    { key: "grilled_chicken", family: "chicken" },
+    { key: "asian_chicken", family: "chicken", disabledRelation: true },
+    { key: "chicken_fajita", family: "chicken", disabledRelation: true },
+    { key: "chicken_strips", family: "chicken", disabledRelation: true },
+    { key: "chicken_tikka", family: "chicken", disabledRelation: true },
+    { key: "grilled_chicken", family: "chicken", disabledRelation: true },
+    { key: "italian_spiced_chicken", family: "chicken", disabledRelation: true },
+    { key: "mexican_chicken", family: "chicken", disabledRelation: true },
+    { key: "spicy_chicken", family: "chicken", disabledRelation: true },
     { key: "beef", family: "beef" },
+    { key: "beef_stroganoff", family: "beef", disabledRelation: true },
+    { key: "meatballs", family: "beef", disabledRelation: true },
     { key: "fish", family: "fish" },
+    { key: "fish_fillet", family: "fish", disabledRelation: true },
+    { key: "tuna", family: "fish", disabledRelation: true },
     { key: "eggs", family: "eggs" },
+    { key: "boiled_eggs", family: "eggs", disabledRelation: true },
     { key: "beef_steak", family: "beef", premium: true, price: 3000 },
     { key: "shrimp", family: "fish", premium: true, price: 3000 },
     { key: "salmon", family: "fish", premium: true, price: 3000 },
@@ -121,6 +133,9 @@ async function seedCatalog() {
       groupId: proteinsGroup._id,
       optionId: option._id,
       extraPriceHalala: option.extraPriceHalala || 0,
+      isActive: proteinRows.find((row) => row.key === option.key)?.disabledRelation ? false : true,
+      isVisible: proteinRows.find((row) => row.key === option.key)?.disabledRelation ? false : true,
+      isAvailable: proteinRows.find((row) => row.key === option.key)?.disabledRelation ? false : true,
       sortOrder: option.sortOrder,
     });
   }
@@ -239,6 +254,25 @@ async function main() {
     assert(chickenItem.eligible, JSON.stringify(chickenItem));
     assert(chickenItem.linked, "chicken option linked");
     assert(chickenItem.available, "chicken option available");
+    const expectedFamilies = {
+      chicken: ["chicken", "asian_chicken", "chicken_fajita", "chicken_strips", "chicken_tikka", "grilled_chicken", "italian_spiced_chicken", "mexican_chicken", "spicy_chicken"],
+      beef: ["beef", "beef_stroganoff", "meatballs"],
+      fish: ["fish", "fish_fillet", "tuna"],
+      eggs: ["eggs", "boiled_eggs"],
+    };
+    for (const [sectionKey, expectedKeys] of Object.entries(expectedFamilies)) {
+      const section = res.body.data.sections.find((item) => item.key === sectionKey);
+      const actualKeys = section.items.map((item) => item.key);
+      assert.deepStrictEqual(actualKeys, expectedKeys, `${sectionKey} hydrated variants`);
+      for (const item of section.items) {
+        assert.strictEqual(item.selected, true, `${item.key} selected`);
+        assert.strictEqual(item.eligible, true, JSON.stringify(item));
+        assert.strictEqual(item.state, "selected", `${item.key} state`);
+      }
+    }
+    const fajitaItem = chicken.items.find((item) => item.key === "chicken_fajita");
+    assert.strictEqual(fajitaItem.relationExists, true, JSON.stringify(fajitaItem));
+    assert.strictEqual(fajitaItem.includedVia, "section_selection", JSON.stringify(fajitaItem));
 
     const sandwich = res.body.data.sections.find((section) => section.key === "sandwich");
     assert.strictEqual(sandwich.type, "product_list");

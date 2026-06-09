@@ -173,30 +173,24 @@ async function main() {
     const chickenPicker = res.body.data;
     assert(chickenPicker.meta.total >= 3, JSON.stringify(chickenPicker.meta));
     const fajita = chickenPicker.candidates.find((item) => item.key === "chicken_fajita");
-    assert(fajita, "disabled relation candidate discovered");
-    assert.strictEqual(fajita.selected, false);
+    assert(fajita, "disabled relation candidate discovered as configured");
+    assert.strictEqual(fajita.selected, true);
     assert.strictEqual(fajita.eligible, true, JSON.stringify(fajita));
-    assert.strictEqual(fajita.state, "addable");
-    assert.strictEqual(fajita.relationExists, false);
+    assert.strictEqual(fajita.state, "selected");
+    assert.strictEqual(fajita.relationExists, true);
+    assert.strictEqual(fajita.includedVia, "section_selection", JSON.stringify(fajita));
 
     const draft = (await api.get("/api/dashboard/meal-builder/draft/hydrated").set(headers)).body.data.draft;
-    const sectionsWithAddedChicken = draft.sections.map((section) => section.key === "chicken"
-      ? { ...section, selectedOptionIds: [...section.selectedOptionIds, fajita.optionId] }
-      : section);
-    res = await api.put("/api/dashboard/meal-builder/draft").set(headers).send({ sections: sectionsWithAddedChicken, notes: "add chicken fajita" });
-    expectStatus(res, 200, "save added addable chicken");
-    assert(res.body.data.sections.find((section) => section.key === "chicken").selectedOptionIds.includes(fajita.optionId), "added candidate persists on save");
-
-    res = await api.get("/api/dashboard/meal-builder/draft/hydrated").set(headers);
-    expectStatus(res, 200, "reload after add");
-    assert(res.body.data.sections.find((section) => section.key === "chicken").selectedOptions.some((item) => item.key === "chicken_fajita"), "added candidate hydrates after reload");
-
-    const sectionsWithoutFajita = res.body.data.draft.sections.map((section) => section.key === "chicken"
+    const sectionsWithoutFajita = draft.sections.map((section) => section.key === "chicken"
       ? { ...section, selectedOptionIds: section.selectedOptionIds.filter((id) => id !== fajita.optionId) }
       : section);
-    res = await api.put("/api/dashboard/meal-builder/draft").set(headers).send({ sections: sectionsWithoutFajita, notes: "remove chicken fajita" });
-    expectStatus(res, 200, "save removed candidate");
-    assert(!res.body.data.sections.find((section) => section.key === "chicken").selectedOptionIds.includes(fajita.optionId), "removed candidate stays removed");
+    res = await api.put("/api/dashboard/meal-builder/draft").set(headers).send({ sections: sectionsWithoutFajita, notes: "canonical save promotion" });
+    expectStatus(res, 200, "save canonical sections promotes family variants");
+    assert(res.body.data.sections.find((section) => section.key === "chicken").selectedOptionIds.includes(fajita.optionId), "canonical family candidate is promoted on save");
+
+    res = await api.get("/api/dashboard/meal-builder/draft/hydrated").set(headers);
+    expectStatus(res, 200, "reload after promotion");
+    assert(res.body.data.sections.find((section) => section.key === "chicken").selectedOptions.some((item) => item.key === "chicken_fajita"), "promoted candidate hydrates after reload");
 
     const reordered = res.body.data.sections.map((section) => {
       if (section.key === "beef") return { ...section, sortOrder: 30 };
@@ -232,14 +226,15 @@ async function main() {
 
     await MenuOption.updateOne({ _id: fixture.proteinByKey.get("chicken_fajita")._id }, { $set: { publishedAt: null } });
     res = await api.get("/api/dashboard/meal-builder/pickers/chicken?include=all").set(headers);
-    expectStatus(res, 200, "picker includes unpublished addable candidate");
+    expectStatus(res, 200, "picker includes unpublished selected candidate");
     const unpublished = res.body.data.candidates.find((item) => item.key === "chicken_fajita");
-    assert(unpublished, "unpublished candidate is visible to Dashboard picker");
-    assert.strictEqual(unpublished.eligible, true, JSON.stringify(unpublished));
+    assert(unpublished, "unpublished selected candidate is visible to Dashboard picker");
+    assert.strictEqual(unpublished.selected, true, JSON.stringify(unpublished));
+    assert.strictEqual(unpublished.eligible, false, JSON.stringify(unpublished));
     assert(unpublished.reasonCodes.includes("OPTION_UNPUBLISHED"), JSON.stringify(unpublished));
 
     const invalidSections = draft.sections.map((section) => section.key === "chicken"
-      ? { ...section, selectedOptionIds: [...section.selectedOptionIds, String(fixture.proteinByKey.get("chicken_fajita")._id)] }
+      ? { ...section, selectedOptionIds: [...new Set([...section.selectedOptionIds, String(fixture.proteinByKey.get("chicken_fajita")._id)])] }
       : section);
     res = await api.put("/api/dashboard/meal-builder/draft").set(headers).send({ sections: invalidSections, notes: "invalid unpublished selected" });
     expectStatus(res, 200, "save unpublished selected candidate");

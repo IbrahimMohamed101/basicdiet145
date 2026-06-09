@@ -217,7 +217,7 @@ async function normalizeSectionsForWrite(sections = []) {
       && (normalized.source || normalized.type)
       && (!normalized.productContextId || (!normalized.sourceGroupId && normalized.sectionType === "option_group") || (!normalized.sourceCategoryId && normalized.sectionType === "product_category"));
   });
-  if (!needsResolution) return normalizeSections(sections);
+  if (!needsResolution) return promoteCanonicalFamilySelections(normalizeSections(sections));
 
   const [basicMeal, proteinsGroup, carbsGroup, sandwichCategory] = await Promise.all([
     MenuProduct.findOne({ key: "basic_meal" }).lean(),
@@ -226,7 +226,7 @@ async function normalizeSectionsForWrite(sections = []) {
     MenuCategory.findOne({ key: "cold_sandwiches" }).lean(),
   ]);
 
-  return normalizeSections(sections.map((section) => {
+  return promoteCanonicalFamilySelections(normalizeSections(sections.map((section) => {
     const normalized = normalizeCanonicalSectionAliases(section);
     if (!normalized || typeof normalized !== "object" || Array.isArray(normalized)) return normalized;
     const key = String(normalized.key || "").trim();
@@ -247,7 +247,58 @@ async function normalizeSectionsForWrite(sections = []) {
       next.sourceCategoryId = sandwichCategory._id;
     }
     return next;
+  })));
+}
+
+async function promoteCanonicalFamilySelections(sections = []) {
+  const visualFamilySections = sections.filter(isVisualProteinFamilySection);
+  if (!visualFamilySections.length) return sections;
+
+  const [basicMeal, proteinsGroup] = await Promise.all([
+    MenuProduct.findOne({ key: "basic_meal" }).lean(),
+    MenuOptionGroup.findOne({ key: "proteins" }).lean(),
+  ]);
+  if (!proteinsGroup) return sections;
+
+  const productIds = [...new Set(visualFamilySections
+    .map((section) => String(section.productContextId || basicMeal?._id || ""))
+    .filter(Boolean))];
+  const relationRows = productIds.length
+    ? await ProductGroupOption.find({ productId: { $in: productIds }, groupId: proteinsGroup._id }).lean()
+    : [];
+  const relationByProductOptionId = new Map(relationRows.map((row) => [`${String(row.productId)}:${String(row.optionId)}`, row]));
+
+  const familyOptionsByKey = new Map();
+  await Promise.all([...new Set(visualFamilySections.map((section) => section.key))].map(async (familyKey) => {
+    const familySource = buildOptionFamilyPickerSource(familyKey, { key: familyKey });
+    const candidates = await MenuOption.find(optionFamilyCandidateQuery({ group: proteinsGroup, ...familySource })).sort({ sortOrder: 1, createdAt: -1 }).lean();
+    const catalogItemsById = await loadCatalogItemsByIdForDocs(candidates);
+    familyOptionsByKey.set(
+      familyKey,
+      candidates
+        .filter((option) => isCanonicalStandardProteinForPicker(option, familyKey))
+        .filter((option) => readyDocForSeed(option, catalogItemsById))
+    );
   }));
+
+  return sections.map((section) => {
+    if (!isVisualProteinFamilySection(section)) return section;
+    const productId = String(section.productContextId || basicMeal?._id || "");
+    const familyOptions = (familyOptionsByKey.get(section.key) || [])
+      .sort((a, b) => {
+        const relationByOptionId = new Map([
+          [String(a._id), relationByProductOptionId.get(`${productId}:${String(a._id)}`)],
+          [String(b._id), relationByProductOptionId.get(`${productId}:${String(b._id)}`)],
+        ]);
+        return optionSort(a, b, relationByOptionId);
+      });
+    const selectedIds = new Set((section.selectedOptionIds || []).map(String));
+    for (const option of familyOptions) selectedIds.add(String(option._id));
+    return {
+      ...section,
+      selectedOptionIds: [...selectedIds],
+    };
+  });
 }
 
 function normalizeCanonicalSectionAliases(section = {}) {
@@ -715,6 +766,7 @@ function serializeHydratedOption({
   requireCustomerVisibleCarb = false,
   allowUnlinkedCandidate = false,
   allowUnpublishedCandidate = false,
+  allowSelectedUnlinkedOptionRelation = false,
 } = {}) {
   if (!option) {
     const errors = [statusIssue("error", "MISSING_OPTION", "Selected option no longer exists")];
@@ -743,8 +795,13 @@ function serializeHydratedOption({
   const docStatus = baseDocStatus(option, docs.catalogItemsById, "OPTION", "Option");
   const relStatus = relationStatus({ groupRelation, optionRelation, selected, includeOptionRelation: true });
   const reasonCodes = [...docStatus.reasonCodes, ...relStatus.reasonCodes];
-  const warnings = [...relStatus.warnings];
-  const errors = [...docStatus.errors, ...relStatus.errors];
+  const selectedSectionInclusion = allowSelectedUnlinkedOptionRelation && selected && relStatus.groupRelationReady;
+  const warnings = selectedSectionInclusion
+    ? [...relStatus.warnings, ...relStatus.errors.map((error) => ({ ...error, level: "warning" }))]
+    : [...relStatus.warnings];
+  const errors = selectedSectionInclusion
+    ? [...docStatus.errors]
+    : [...docStatus.errors, ...relStatus.errors];
   const familyKey = optionFamilyKey(option);
   const optionIsPremium = isPremiumProtein(option);
 
@@ -787,7 +844,7 @@ function serializeHydratedOption({
     && available
     && !relStatus.relationReady
     && errorsForEligibility.length === 0;
-  const eligible = available && errorsForEligibility.length === 0 && (relStatus.relationReady || addableUnlinkedCandidate);
+  const eligible = available && errorsForEligibility.length === 0 && (relStatus.relationReady || addableUnlinkedCandidate || selectedSectionInclusion);
   if (selected) reasonCodes.unshift("SELECTED");
   if (eligible) reasonCodes.push("ELIGIBLE");
 
@@ -835,6 +892,8 @@ function serializeHydratedOption({
     published: docStatus.published,
     subscriptionEnabled: docStatus.subscriptionEnabled,
     relationExists: relStatus.relationExists,
+    included: selected,
+    includedVia: selectedSectionInclusion && !relStatus.relationReady ? "section_selection" : "product_option_relation",
     catalogItemAvailable: docStatus.catalogItemAvailable,
     reasonCodes: [...new Set(reasonCodes)],
     warnings,
@@ -1031,6 +1090,10 @@ function optionFamilyCandidateQuery({ group, proteinFamilyKey, displayCategoryKe
   return clauses.length ? { $or: clauses } : {};
 }
 
+function isVisualProteinFamilySection(section = {}) {
+  return VISUAL_PROTEIN_FAMILY_KEYS.has(String(section.key || "").trim());
+}
+
 function paginateRows(rows, pagination) {
   const total = rows.length;
   return {
@@ -1102,6 +1165,7 @@ function hydrateSection(section, docs, relationIndexes, lang) {
     const optionRelation = section.productContextId && section.sourceGroupId
       ? relationIndexes.optionRelationByProductGroupOption.get(relationMapKey(section.productContextId, section.sourceGroupId, optionId))
       : null;
+    const visualFamilySection = isVisualProteinFamilySection(section);
     return serializeHydratedOption({
       option,
       section: sectionForLabel,
@@ -1115,6 +1179,7 @@ function hydrateSection(section, docs, relationIndexes, lang) {
       excludePremium: VISUAL_PROTEIN_FAMILY_KEYS.has(section.key),
       requirePositivePremiumPrice: section.key === "premium",
       requireCustomerVisibleCarb: section.key === "carbs",
+      allowSelectedUnlinkedOptionRelation: visualFamilySection,
     });
   });
 
@@ -1346,6 +1411,7 @@ async function buildOptionPicker({ sectionKey, section, context, lang, q, pagina
         requireCustomerVisibleCarb: sectionKey === "carbs",
         allowUnlinkedCandidate: VISUAL_PROTEIN_FAMILY_KEYS.has(sectionKey) || sectionKey === "carbs",
         allowUnpublishedCandidate: VISUAL_PROTEIN_FAMILY_KEYS.has(sectionKey) || sectionKey === "carbs",
+        allowSelectedUnlinkedOptionRelation: isOptionFamily,
       });
       if (isOptionFamily && !candidate.selected && candidate.eligible) {
         return { ...candidate, state: "addable" };
@@ -1755,6 +1821,21 @@ async function buildDefaultVisualTemplateSections({ returnDetails = false } = {}
     const saladCatalogItemsById = await loadCatalogItemsByIdForDocs([saladProduct]);
     if (readyDocForSeed(saladProduct, saladCatalogItemsById)) premiumSelectedProductIds.push(saladProduct._id);
   }
+  const familyOptionsByKey = new Map();
+  if (proteinsGroup) {
+    await Promise.all([...VISUAL_PROTEIN_FAMILY_KEYS].map(async (familyKey) => {
+      const familySource = buildOptionFamilyPickerSource(familyKey, { key: familyKey });
+      const candidates = await MenuOption.find(optionFamilyCandidateQuery({ group: proteinsGroup, ...familySource })).sort({ sortOrder: 1, createdAt: -1 }).lean();
+      const catalogItemsById = await loadCatalogItemsByIdForDocs(candidates);
+      familyOptionsByKey.set(
+        familyKey,
+        candidates
+          .filter((option) => isCanonicalStandardProteinForPicker(option, familyKey))
+          .filter((option) => readyDocForSeed(option, catalogItemsById))
+          .sort((a, b) => optionSort(a, b, relationByOptionId))
+      );
+    }));
+  }
 
   if (basicMeal && proteinsGroup) {
     sections.push({
@@ -1819,8 +1900,7 @@ async function buildDefaultVisualTemplateSections({ returnDetails = false } = {}
 
   for (const familyKey of ["chicken", "beef", "fish", "eggs"]) {
     const family = VISUAL_PROTEIN_FAMILY_DEFINITIONS.get(familyKey);
-    const familyOptions = proteinOptions
-      .filter((option) => isCanonicalStandardProteinForPicker(option, familyKey));
+    const familyOptions = familyOptionsByKey.get(familyKey) || [];
     if (!familyOptions.length) {
       warnings.push({
         level: "warning",
@@ -2242,9 +2322,15 @@ async function validateConfigObject(configOrPayload = {}) {
       const relationOptions = docs.optionRelations
         .filter((row) => String(row.productId) === String(section.productContextId) && String(row.groupId) === String(section.sourceGroupId));
       const selectedSet = new Set((section.selectedOptionIds || []).map(String));
-      const optionRows = relationOptions
-        .filter((row) => !selectedSet.size || selectedSet.has(String(row.optionId)))
-        .map((row) => ({ relation: row, option: docs.optionsById.get(String(row.optionId)) }));
+      const visualFamilySection = isVisualProteinFamilySection(section);
+      const optionRows = visualFamilySection && selectedSet.size
+        ? [...selectedSet].map((optionId) => ({
+            relation: optionRelationByProductGroupOption.get(`${String(section.productContextId)}:${String(section.sourceGroupId)}:${String(optionId)}`) || null,
+            option: docs.optionsById.get(String(optionId)),
+          }))
+        : relationOptions
+            .filter((row) => !selectedSet.size || selectedSet.has(String(row.optionId)))
+            .map((row) => ({ relation: row, option: docs.optionsById.get(String(row.optionId)) }));
 
       if (!optionRows.length) {
         addCheck(errors, "error", "MEAL_BUILDER_OPTION_NOT_FOUND", "Option group section has no selectable options", {
@@ -2253,11 +2339,20 @@ async function validateConfigObject(configOrPayload = {}) {
         });
       }
       for (const row of optionRows) {
-        validateOptionRelationForBuilder(row, docs.catalogItemsById, errors, {
-          productId: section.productContextId,
-          groupId: section.sourceGroupId,
-          selectionType: section.selectionType,
-        });
+        if (visualFamilySection) {
+          validateVisualFamilyOptionForBuilder(row.option, docs.catalogItemsById, errors, {
+            productId: section.productContextId,
+            groupId: section.sourceGroupId,
+            sectionKey: section.key,
+            selectionType: section.selectionType,
+          });
+        } else {
+          validateOptionRelationForBuilder(row, docs.catalogItemsById, errors, {
+            productId: section.productContextId,
+            groupId: section.sourceGroupId,
+            selectionType: section.selectionType,
+          });
+        }
       }
       if (section.key === "premium") {
         const exposedPremiumKeys = new Set(
@@ -2417,6 +2512,19 @@ function validateOptionRelationForBuilder({ relation, option }, catalogItemsById
   }
   if (details.selectionType === MEAL_SELECTION_TYPES.PREMIUM_LARGE_SALAD && !isSaladAllowedProtein(option)) {
     return addCheck(errors, "error", "PREMIUM_LARGE_SALAD_PROTEIN_NOT_ALLOWED", "Premium large salad exposes disallowed protein", optionDetails);
+  }
+  return null;
+}
+
+function validateVisualFamilyOptionForBuilder(option, catalogItemsById, errors, details = {}) {
+  const optionDetails = { ...details, optionId: option ? String(option._id) : null };
+  if (!option) return addCheck(errors, "error", "MEAL_BUILDER_OPTION_NOT_FOUND", "Visual family selected option is missing", optionDetails);
+  const issue = activeIssue(option, "MEAL_BUILDER_OPTION");
+  if (issue) return addCheck(errors, "error", issue, "Meal Builder option is not ready", optionDetails);
+  if (!subscriptionEnabled(option)) return addCheck(errors, "error", "MEAL_BUILDER_OPTION_NOT_SUBSCRIPTION_ENABLED", "Meal Builder option is not subscription-enabled", optionDetails);
+  if (!isLinkedDocGloballyAvailable(option, catalogItemsById)) return addCheck(errors, "error", "MEAL_BUILDER_OPTION_CATALOG_ITEM_UNAVAILABLE", "Meal Builder option CatalogItem is unavailable", optionDetails);
+  if (!isCanonicalStandardProteinForPicker(option, details.sectionKey)) {
+    return addCheck(errors, "error", "MEAL_BUILDER_VISUAL_FAMILY_OPTION_INVALID", "Visual family section contains an invalid protein option", optionDetails);
   }
   return null;
 }
@@ -2581,14 +2689,18 @@ function buildOptionGroupSection(section, docs, lang, includeUnavailable, member
   if (!product || !group) return null;
 
   const selected = new Set((section.selectedOptionIds || []).map(String));
+  const visualFamilySection = isVisualProteinFamilySection(section);
   const relationByOption = new Map(docs.optionRelations
     .filter((relation) => String(relation.productId) === String(product._id) && String(relation.groupId) === String(group._id))
     .map((relation) => [String(relation.optionId), relation]));
-  const options = [...relationByOption.keys()]
-    .map((optionId) => docs.optionsById.get(optionId))
+  const sourceOptionIds = visualFamilySection && selected.size
+    ? [...selected]
+    : [...relationByOption.keys()];
+  const options = sourceOptionIds
+    .map((optionId) => docs.optionsById.get(String(optionId)))
     .filter(Boolean)
     .filter((option) => !selected.size || selected.has(String(option._id)))
-    .filter((option) => includeUnavailable || (customerReady(option, docs.catalogItemsById) && relationReady(relationByOption.get(String(option._id)))))
+    .filter((option) => includeUnavailable || (customerReady(option, docs.catalogItemsById) && (visualFamilySection || relationReady(relationByOption.get(String(option._id))))))
     .sort((a, b) => Number(relationByOption.get(String(a._id))?.sortOrder ?? a.sortOrder ?? 0) - Number(relationByOption.get(String(b._id))?.sortOrder ?? b.sortOrder ?? 0));
 
   const items = options.map((option) => {
@@ -2663,7 +2775,7 @@ function buildProductSection(section, docs, lang, includeUnavailable, membership
 
 function buildOptionItem({ option, relation, group, product, selectionType, lang }) {
   const isPremium = selectionType === MEAL_SELECTION_TYPES.PREMIUM_MEAL && isPremiumProtein(option);
-  const priceHalala = Number(relation.extraPriceHalala ?? option.extraPriceHalala ?? 0);
+  const priceHalala = Number(relation?.extraPriceHalala ?? option.extraPriceHalala ?? 0);
   return {
     id: String(option._id),
     key: option.key || "",
@@ -2683,7 +2795,7 @@ function buildOptionItem({ option, relation, group, product, selectionType, lang
     premiumPriceHalala: isPremium ? Number(priceHalala || option.extraFeeHalala || 0) : 0,
     requiresPremiumBalance: isPremium,
     available: true,
-    sortOrder: Number(relation.sortOrder ?? option.sortOrder ?? 0),
+    sortOrder: Number(relation?.sortOrder ?? option.sortOrder ?? 0),
   };
 }
 
