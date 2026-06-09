@@ -1,5 +1,6 @@
 const express = require("express");
 const path = require("path");
+const crypto = require("crypto");
 const helmet = require("helmet");
 const cors = require("cors");
 const mongoose = require("mongoose");
@@ -106,6 +107,13 @@ function createApp() {
 
   app.use(helmet());
 
+  app.use((req, res, next) => {
+    const inboundRequestId = req.get("X-Request-Id") || req.get("X-Correlation-Id");
+    req.requestId = String(inboundRequestId || crypto.randomUUID());
+    res.set("X-Request-Id", req.requestId);
+    next();
+  });
+
   const allowedOrigins = parseConfiguredCorsOrigins();
   const corsOptions = {
     origin: (origin, callback) => {
@@ -205,7 +213,7 @@ function createApp() {
   });
 
   // Basic error handler to capture unhandled errors
-  app.use((err, _req, res, _next) => {
+  app.use((err, req, res, _next) => {
     if (err && /^CORS blocked for origin: /.test(err.message)) {
       return errorResponse(res, 403, "CORS", err.message);
     }
@@ -216,7 +224,14 @@ function createApp() {
     ) {
       return errorResponse(res, 400, "VALIDATION_ERROR", "errors.validation.invalidJsonBody");
     }
-    logger.error("Unhandled error", { error: err.message, stack: err.stack });
+    logger.error("Unhandled error", {
+      requestId: req.requestId,
+      method: req.method,
+      route: req.originalUrl || req.path,
+      userId: req.userId || (req.user && (req.user._id || req.user.id)) || null,
+      error: err.message,
+      stack: err.stack,
+    });
     return errorResponse(res, 500, "INTERNAL", "errors.common.unexpectedError");
   });
 

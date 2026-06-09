@@ -121,9 +121,10 @@ async function catalogItem(key, itemKind) {
 
 async function seedCatalog() {
   const now = new Date();
-  const [customCategory, juiceCategory, snackCategory, saladCategory] = await Promise.all([
+  const [customCategory, juiceCategory, drinkCategory, snackCategory, saladCategory] = await Promise.all([
     MenuCategory.create({ key: "custom_order", name: { en: "Custom Order", ar: "Custom Order" }, isActive: true, isAvailable: true, publishedAt: now }),
     MenuCategory.create({ key: "juices", name: { en: "Juices", ar: "Juices" }, isActive: true, isAvailable: true, publishedAt: now }),
+    MenuCategory.create({ key: "drinks", name: { en: "Drinks", ar: "Drinks" }, isActive: true, isAvailable: true, publishedAt: now }),
     MenuCategory.create({ key: "desserts", name: { en: "Desserts", ar: "Desserts" }, isActive: true, isAvailable: true, publishedAt: now }),
     MenuCategory.create({ key: "light_options", name: { en: "Light Options", ar: "Light Options" }, isActive: true, isAvailable: true, publishedAt: now }),
   ]);
@@ -199,11 +200,12 @@ async function seedCatalog() {
 
   const addonProducts = await Promise.all([
     MenuProduct.create({ categoryId: juiceCategory._id, key: "orange_juice", itemType: "juice", name: { en: "Orange Juice", ar: "Orange Juice" }, pricingModel: "fixed", priceHalala: 1000, currency: "SAR", availableFor: ["one_time", "subscription"], isActive: true, isAvailable: true, publishedAt: now }),
+    MenuProduct.create({ categoryId: drinkCategory._id, key: "water", itemType: "drink", name: { en: "Water", ar: "Water" }, pricingModel: "fixed", priceHalala: 200, currency: "SAR", availableFor: ["one_time", "subscription"], isActive: true, isAvailable: true, publishedAt: now }),
     MenuProduct.create({ categoryId: snackCategory._id, key: "laban", itemType: "dessert", name: { en: "Laban", ar: "Laban" }, pricingModel: "fixed", priceHalala: 1300, currency: "SAR", availableFor: ["one_time", "subscription"], isActive: true, isAvailable: true, publishedAt: now }),
     MenuProduct.create({ categoryId: saladCategory._id, key: "green_salad", itemType: "green_salad", name: { en: "Green Salad", ar: "Green Salad" }, pricingModel: "fixed", priceHalala: 1900, currency: "SAR", availableFor: ["one_time", "subscription"], isActive: true, isAvailable: true, publishedAt: now }),
   ]);
 
-  return { premiumLargeSalad, proteinsGroup, chicken, addon: addonProducts[0] };
+  return { premiumLargeSalad, proteinsGroup, chicken, addon: addonProducts[0], addonProducts };
 }
 
 function premiumSaladPayload(fixture) {
@@ -296,6 +298,10 @@ async function run() {
     const addonRes = await api.get("/api/subscriptions/addon-choices").set(appHeaders);
     assert.strictEqual(addonRes.status, 200, `addon choices: ${JSON.stringify(addonRes.body)}`);
     assert(addonRes.body.data.juice.choices.some((choice) => String(choice.id) === String(fixture.addon._id)), "addon choices include seeded juice");
+    assert(addonRes.body.data.juice.choices.some((choice) => choice.categoryKey === "drinks" && choice.type === "menu_product"), "addon choices include drink MenuProducts");
+    assert(addonRes.body.data.snack.choices.some((choice) => choice.categoryKey === "desserts" && choice.itemType === "dessert" && choice.type === "menu_product"), "addon choices include dessert/snack MenuProducts");
+    assert(addonRes.body.data.small_salad.choices.some((choice) => choice.categoryKey === "light_options" && choice.key === "green_salad" && choice.type === "menu_product"), "addon choices include salad MenuProducts");
+    assert(Object.values(addonRes.body.data).flatMap((entry) => entry.choices || []).every((choice) => choice.kind !== "plan" && choice.type !== "subscription"), "daily add-on choices exclude subscription plan rows");
 
     const initialDayRes = await api.get(`/api/subscriptions/${subscription._id}/days/${date}`).set(appHeaders);
     assert.strictEqual(initialDayRes.status, 200, `initial day read: ${JSON.stringify(initialDayRes.body)}`);

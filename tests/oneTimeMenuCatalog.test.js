@@ -22,6 +22,7 @@ const Setting = require("../src/models/Setting");
 const User = require("../src/models/User");
 const moyasarService = require("../src/services/moyasarService");
 const CatalogService = require("../src/services/catalog/CatalogService");
+const { VAT_PERCENTAGE } = require("../src/config/vat");
 const { dashboardAuth } = require("./helpers/dashboardAuthHelper");
 const { JWT_SECRET } = require("../src/middleware/auth");
 const {
@@ -132,6 +133,10 @@ function assertFixedDirectProduct(product, key, priceHalala) {
   assert.strictEqual(product.requiresBuilder, false, `${key} requiresBuilder`);
   assert.strictEqual(product.canAddDirectly, true, `${key} canAddDirectly`);
   assert.strictEqual(product.optionGroups.length, 0, `${key} option groups`);
+}
+
+function expectedInclusiveVatHalala(totalHalala) {
+  return Math.round((Number(totalHalala || 0) * VAT_PERCENTAGE) / (100 + VAT_PERCENTAGE));
 }
 
 async function startMemoryMongo() {
@@ -1039,7 +1044,9 @@ async function seedViaDashboard(api) {
       expectStatus(res, 200, "fixed quote");
       assert.strictEqual(res.body.data.pricing.totalHalala, 1800);
       assert.strictEqual(res.body.data.pricing.vatIncluded, true);
-      assert.strictEqual(res.body.data.pricing.vatHalala, 248);
+      assert.strictEqual(res.body.data.pricing.vatPercentage, VAT_PERCENTAGE);
+      assert.strictEqual(res.body.data.pricing.vatHalala, expectedInclusiveVatHalala(1800));
+      assert.notStrictEqual(res.body.data.pricing.totalHalala, 1800 + res.body.data.pricing.vatHalala, "VAT is not added on top");
     });
 
     await test("POST /api/orders/quote prices per_100g item in halala", async () => {
@@ -1365,6 +1372,10 @@ async function seedViaDashboard(api) {
       const order = await Order.findById(createRes.body.data.orderId).lean();
       assert(order, "order was persisted");
       assert.strictEqual(order.status, "pending_payment");
+      assert.strictEqual(order.pricing.vatIncluded, true);
+      assert.strictEqual(order.pricing.vatPercentage, VAT_PERCENTAGE);
+      assert.strictEqual(order.pricing.vatHalala, expectedInclusiveVatHalala(order.pricing.totalHalala));
+      assert.notStrictEqual(order.pricing.totalHalala, order.pricing.subtotalHalala + order.pricing.vatHalala, "VAT is not added on top of displayed subtotal");
       assert.strictEqual(order.items[0].itemType, "basic_salad");
       assert(order.items[0].productSnapshot, "productSnapshot is persisted");
       assert.strictEqual(order.items[0].productSnapshot.key, `${TEST_TAG}_per100`.replace(/-/g, "_"));
@@ -1376,6 +1387,7 @@ async function seedViaDashboard(api) {
       assert(payment, "one-time order payment was persisted");
       assert.strictEqual(payment.type, "one_time_order");
       assert.strictEqual(payment.status, "initiated");
+      assert.strictEqual(payment.amount, order.pricing.totalHalala, "customer pays displayed total exactly");
     });
 
     await test("POST /api/orders creates ASAP pickup order when pickupWindow is omitted", async () => {

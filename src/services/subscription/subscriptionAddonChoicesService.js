@@ -29,6 +29,13 @@ const SUBSCRIPTION_ADDON_CHOICE_MAPPINGS = Object.freeze({
 
 const SUBSCRIPTION_ADDON_CATEGORIES = Object.freeze(Object.keys(SUBSCRIPTION_ADDON_CHOICE_MAPPINGS));
 
+function isDailyAddonMenuProduct(product) {
+  return String(product && product.kind || "").toLowerCase() !== "plan"
+    && String(product && product.type || "").toLowerCase() !== "subscription"
+    && String(product && product.itemType || "").toLowerCase() !== "subscription"
+    && String(product && product.billingMode || "").toLowerCase() !== "per_day";
+}
+
 function localized(value, lang) {
   return pickLang(value, lang) || pickLang(value, "en") || pickLang(value, "ar") || "";
 }
@@ -123,7 +130,7 @@ async function findMappedProducts(categoryRows, mapping, { MenuProductModel = Me
     .sort({ sortOrder: 1, createdAt: -1 })
     .lean();
   const catalogItemsById = await loadCatalogItemsByIdForDocs(rows);
-  return filterGloballyAvailable(rows, catalogItemsById);
+  return filterGloballyAvailable(rows, catalogItemsById).filter(isDailyAddonMenuProduct);
 }
 
 async function buildAddonChoicesCatalog({
@@ -176,6 +183,7 @@ async function resolveAddonChoiceProductById(productId, { models = {} } = {}) {
   if (!product) return null;
   const catalogItemsById = await loadCatalogItemsByIdForDocs([product]);
   if (!isLinkedDocGloballyAvailable(product, catalogItemsById)) return null;
+  if (!isDailyAddonMenuProduct(product)) return null;
 
   const category = await MenuCategoryModel.findOne(activePublishedQuery({
     _id: product.categoryId,
@@ -201,6 +209,7 @@ module.exports = {
   SUBSCRIPTION_ADDON_CHOICE_MAPPINGS,
   SUBSCRIPTION_ADDON_CATEGORIES,
   buildAddonChoicesCatalog,
+  isDailyAddonMenuProduct,
   resolveAddonChoiceProductById,
   serializeChoice,
 };

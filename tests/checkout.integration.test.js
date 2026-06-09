@@ -29,6 +29,7 @@ const Zone = require('../src/models/Zone');
 const Setting = require('../src/models/Setting');
 const Addon = require('../src/models/Addon');
 const { ensureSafeForDestructiveOp } = require('../src/utils/dbSafety');
+const { VAT_PERCENTAGE } = require('../src/config/vat');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'supersecret';
 const BASE_URL = 'http://localhost:3000';
@@ -80,6 +81,19 @@ function assertNoTopLevelOk(body, msg) {
 
 function assertNotNull(actual, msg) {
   if (actual === null || actual === undefined) throw new Error(`${msg || 'Assertion failed'}: expected non-null value`);
+}
+
+function expectedInclusiveVatHalala(totalHalala) {
+  return Math.round((Number(totalHalala || 0) * VAT_PERCENTAGE) / (100 + VAT_PERCENTAGE));
+}
+
+function assertInclusiveVatBreakdown(breakdown, msg) {
+  const totalHalala = Number(breakdown?.totalHalala || 0);
+  const vatHalala = Number(breakdown?.vatHalala || 0);
+  const subtotalHalala = Number(breakdown?.subtotalHalala || breakdown?.subtotalBeforeVatHalala || 0);
+  assertEqual(Number(breakdown?.vatPercentage), VAT_PERCENTAGE, `${msg} VAT percentage`);
+  assertEqual(vatHalala, expectedInclusiveVatHalala(totalHalala), `${msg} inclusive VAT extraction`);
+  assertEqual(subtotalHalala + vatHalala, totalHalala, `${msg} customerPays equals displayed total`);
 }
 
 function wait(ms) {
@@ -458,6 +472,7 @@ async function runTests() {
     assertEqual(res.body.status, true, 'status');
     const expectedAddonsTotal = Number(addonPlanJuice.priceHalala || 0) * Number(testPlan.daysCount || 0);
     assertEqual(Number(res.body.data?.breakdown?.addonsTotalHalala || 0), expectedAddonsTotal, 'plan add-on total uses per-day pricing');
+    assertInclusiveVatBreakdown(res.body.data?.breakdown, 'subscription quote with add-on');
     const summaryAddon = res.body.data?.summary?.addons?.[0];
     assertNotNull(summaryAddon, 'summary addon exists');
     assertEqual(summaryAddon.qty, 1, 'summary addon qty reflects selected addon');
@@ -745,6 +760,8 @@ async function runTests() {
     assertEqual(res.body.status, true, 'status');
     const draft = await CheckoutDraft.findById(res.body.data?.draftId).lean();
     assertTrue(!!draft, 'draft exists');
+    assertInclusiveVatBreakdown(draft.breakdown, 'subscription checkout draft with add-on');
+    assertEqual(Number(res.body.data?.amountHalala || res.body.data?.totalHalala || draft.breakdown.totalHalala), Number(draft.breakdown.totalHalala), 'subscription checkout customer pays displayed total');
     assertTrue(Array.isArray(draft.addonSubscriptions), 'addonSubscriptions array exists');
     assertEqual(draft.addonSubscriptions.length, 1, 'one addon entitlement created');
     assertEqual(draft.addonSubscriptions[0].category, 'juice', 'entitlement category preserved');

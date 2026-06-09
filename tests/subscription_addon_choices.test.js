@@ -26,6 +26,7 @@ function buildModels() {
     drinksCategory: "507f191e810c19729de86002",
     dessertsCategory: "507f191e810c19729de86003",
     lightCategory: "507f191e810c19729de86004",
+    planAddon: "507f191e810c19729de86100",
     berry: "507f191e810c19729de86101",
     water: "507f191e810c19729de86102",
     brownie: "507f191e810c19729de86103",
@@ -39,6 +40,21 @@ function buildModels() {
     { _id: ids.lightCategory, key: "light_options", isActive: true, isVisible: true, isAvailable: true, publishedAt: new Date() },
   ];
   const products = [
+    {
+      _id: ids.planAddon,
+      key: "juice_subscription_plan_row",
+      categoryId: ids.juicesCategory,
+      name: { en: "Juice Subscription Plan Row", ar: "اشتراك عصير" },
+      description: { en: "", ar: "" },
+      priceHalala: 999999,
+      currency: "SAR",
+      itemType: "subscription",
+      kind: "plan",
+      billingMode: "per_day",
+      isActive: true,
+      isAvailable: true,
+      ui: { cardVariant: "addon" },
+    },
     {
       _id: ids.berry,
       key: "berry_blast",
@@ -138,22 +154,28 @@ function buildModels() {
 }
 
 async function run() {
+  const fixtureModels = buildModels();
   assert.deepStrictEqual(SUBSCRIPTION_ADDON_CHOICE_MAPPINGS.juice.sourceCategories, ["juices", "drinks"]);
   assert.deepStrictEqual(SUBSCRIPTION_ADDON_CHOICE_MAPPINGS.snack.sourceCategories, ["desserts"]);
+  assert.deepStrictEqual(SUBSCRIPTION_ADDON_CHOICE_MAPPINGS.small_salad.sourceCategories, ["light_options"]);
 
-  const data = await buildAddonChoicesCatalog({ lang: "en", models: buildModels() });
+  const data = await buildAddonChoicesCatalog({ lang: "en", models: fixtureModels });
   assert.deepStrictEqual(Object.keys(data), ["juice", "snack", "small_salad"]);
 
   const juiceCategoryKeys = data.juice.choices.map((choice) => choice.categoryKey).sort();
   assert.deepStrictEqual(juiceCategoryKeys, ["drinks", "juices"]);
   assert(data.juice.choices.every((choice) => choice.type === "menu_product"));
   assert(!data.juice.choices.some((choice) => choice.kind === "plan" || choice.type === "subscription"));
+  assert(!data.juice.choices.some((choice) => choice.id === fixtureModels.ids.planAddon));
 
   const snackCategoryKeys = data.snack.choices.map((choice) => choice.categoryKey);
   assert.deepStrictEqual(snackCategoryKeys, ["desserts"]);
+  assert(data.snack.choices.every((choice) => choice.type === "menu_product"));
+  assert(data.snack.choices.every((choice) => choice.itemType === "dessert"));
 
   assert.deepStrictEqual(data.small_salad.sourceCategories, ["light_options"]);
   assert.deepStrictEqual(data.small_salad.choices.map((choice) => choice.key), ["green_salad"]);
+  assert(data.small_salad.choices.every((choice) => choice.type === "menu_product"));
 
   const emptySmallSalad = await buildAddonChoicesCatalog({
     lang: "en",
