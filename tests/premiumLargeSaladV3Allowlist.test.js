@@ -16,6 +16,7 @@ const ProductGroupOption = require("../src/models/ProductGroupOption");
 const ProductOptionGroup = require("../src/models/ProductOptionGroup");
 const Subscription = require("../src/models/Subscription");
 const User = require("../src/models/User");
+const { buildCanonicalPlannerCatalogV3 } = require("../src/services/catalog/CatalogService");
 
 function tokenFor(userId) {
   return jwt.sign(
@@ -89,6 +90,26 @@ async function seedFixture() {
     extraFeeHalala: 2000,
     publishedAt: now,
   });
+  const disallowedShrimp = await MenuOption.create({
+    groupId: proteinsGroup._id,
+    key: "shrimp",
+    premiumKey: "shrimp",
+    name: { en: "Shrimp", ar: "Shrimp" },
+    availableFor: ["subscription"],
+    availableForSubscription: true,
+    extraFeeHalala: 2000,
+    publishedAt: now,
+  });
+  const disallowedSalmon = await MenuOption.create({
+    groupId: proteinsGroup._id,
+    key: "salmon",
+    premiumKey: "salmon",
+    name: { en: "Salmon", ar: "Salmon" },
+    availableFor: ["subscription"],
+    availableForSubscription: true,
+    extraFeeHalala: 2000,
+    publishedAt: now,
+  });
   const extraProtein = await MenuOption.create({
     groupId: extraProteinGroup._id,
     key: "extra_chicken_50g",
@@ -111,7 +132,7 @@ async function seedFixture() {
     minSelections: 0,
     maxSelections: 1,
   });
-  for (const option of [allowedProtein, disallowedRegular, disallowedPremium]) {
+  for (const option of [allowedProtein, disallowedRegular, disallowedPremium, disallowedShrimp, disallowedSalmon]) {
     await ProductGroupOption.create({
       productId: salad._id,
       groupId: proteinsGroup._id,
@@ -124,7 +145,17 @@ async function seedFixture() {
     optionId: extraProtein._id,
   });
 
-  return { salad, proteinsGroup, extraProteinGroup, allowedProtein, disallowedRegular, disallowedPremium, extraProtein };
+  return {
+    salad,
+    proteinsGroup,
+    extraProteinGroup,
+    allowedProtein,
+    disallowedRegular,
+    disallowedPremium,
+    disallowedShrimp,
+    disallowedSalmon,
+    extraProtein,
+  };
 }
 
 function slot(fixture, option, group = fixture.proteinsGroup) {
@@ -165,6 +196,35 @@ async function run() {
     const api = request(createApp());
     const auth = { Authorization: `Bearer ${tokenFor(user._id)}` };
     const url = `/api/subscriptions/${subscription._id}/days/2026-10-10/selection/validate`;
+
+    const plannerCatalog = await buildCanonicalPlannerCatalogV3({
+      context: {
+        premiumLargeSaladProduct: fixture.salad,
+        premiumLargeSaladPricing: {
+          priceHalala: 2900,
+          extraFeeHalala: 2900,
+          currency: "SAR",
+        },
+      },
+      lang: "en",
+    });
+    const premiumSaladSection = plannerCatalog.sections.find((section) => section.key === "premium_large_salad");
+    const premiumSaladProduct = premiumSaladSection?.products?.find((product) => product.key === "premium_large_salad");
+    assert(premiumSaladProduct, "v3 catalog exposes premium_large_salad product");
+    assert.strictEqual(premiumSaladProduct.selectionType, "premium_large_salad");
+    assert.strictEqual(premiumSaladProduct.action.type, "open_builder");
+    assert.strictEqual(premiumSaladProduct.action.requiresBuilder, true);
+    const proteinGroup = premiumSaladProduct.optionGroups.find((group) => group.key === "protein");
+    assert(proteinGroup, "v3 catalog exposes canonical protein group");
+    assert.strictEqual(proteinGroup.isRequired || proteinGroup.required, true);
+    assert.strictEqual(proteinGroup.minSelections, 1);
+    assert.strictEqual(proteinGroup.maxSelections, 1);
+    const catalogProteinKeys = proteinGroup.options.map((option) => option.key);
+    assert(catalogProteinKeys.includes("grilled_chicken"), "catalog keeps allowlisted salad protein");
+    for (const disallowedKey of ["beef", "beef_steak", "shrimp", "salmon", "extra_protein_50g"]) {
+      assert(!catalogProteinKeys.includes(disallowedKey), `catalog excludes disallowed salad protein ${disallowedKey}`);
+    }
+    assert(!premiumSaladProduct.optionGroups.some((group) => group.key === "extra_protein_50g"), "v3 catalog excludes extra protein group");
 
     let res = await api.post(url).set(auth).send(slot(fixture, fixture.allowedProtein));
     assert.strictEqual(res.status, 200, `allowed salad protein accepted: ${JSON.stringify(res.body)}`);

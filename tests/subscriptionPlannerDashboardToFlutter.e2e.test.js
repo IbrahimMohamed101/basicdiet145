@@ -128,17 +128,33 @@ async function seedCatalog() {
     MenuCategory.create({ key: "desserts", name: { en: "Desserts", ar: "Desserts" }, isActive: true, isAvailable: true, publishedAt: now }),
     MenuCategory.create({ key: "light_options", name: { en: "Light Options", ar: "Light Options" }, isActive: true, isAvailable: true, publishedAt: now }),
   ]);
-  const [proteinsGroup, carbsGroup] = await Promise.all([
+  const [proteinsGroup, carbsGroup, sauceGroup] = await Promise.all([
     MenuOptionGroup.create({ key: "proteins", name: { en: "Protein", ar: "Protein" }, isActive: true, isAvailable: true, publishedAt: now }),
     MenuOptionGroup.create({ key: "carbs", name: { en: "Carbs", ar: "Carbs" }, isActive: true, isAvailable: true, publishedAt: now }),
+    MenuOptionGroup.create({ key: "sauces", name: { en: "Sauce", ar: "Sauce" }, isActive: true, isAvailable: true, publishedAt: now }),
   ]);
-  const [basicItem, saladItem, chickenItem, riceItem] = await Promise.all([
+  const [
+    basicItem,
+    saladItem,
+    chickenItem,
+    riceItem,
+    sauceItem,
+    beefSteakItem,
+    shrimpItem,
+    salmonItem,
+    extraProteinItem,
+  ] = await Promise.all([
     catalogItem("basic_meal_item", "product"),
     catalogItem("premium_large_salad_item", "product"),
     catalogItem("grilled_chicken_item", "protein"),
     catalogItem("white_rice_item", "carb"),
+    catalogItem("lemon_sauce_item", "salad_ingredient"),
+    catalogItem("beef_steak_item", "protein"),
+    catalogItem("shrimp_item", "protein"),
+    catalogItem("salmon_item", "protein"),
+    catalogItem("extra_protein_50g_item", "protein"),
   ]);
-  const [basicMeal, premiumLargeSalad, chicken, rice] = await Promise.all([
+  const [basicMeal, premiumLargeSalad, chicken, rice, sauce, beefSteak, shrimp, salmon, extraProtein] = await Promise.all([
     MenuProduct.create({
       categoryId: customCategory._id,
       catalogItemId: basicItem._id,
@@ -189,12 +205,75 @@ async function seedCatalog() {
       isAvailable: true,
       publishedAt: now,
     }),
+    MenuOption.create({
+      groupId: sauceGroup._id,
+      catalogItemId: sauceItem._id,
+      key: "lemon_sauce",
+      name: { en: "Lemon Sauce", ar: "Lemon Sauce" },
+      availableFor: ["subscription"],
+      availableForSubscription: true,
+      isActive: true,
+      isAvailable: true,
+      publishedAt: now,
+    }),
+    MenuOption.create({
+      groupId: proteinsGroup._id,
+      catalogItemId: beefSteakItem._id,
+      key: "beef_steak",
+      premiumKey: "beef_steak",
+      name: { en: "Beef Steak", ar: "Beef Steak" },
+      extraFeeHalala: 2000,
+      availableFor: ["subscription"],
+      availableForSubscription: true,
+      isActive: true,
+      isAvailable: true,
+      publishedAt: now,
+    }),
+    MenuOption.create({
+      groupId: proteinsGroup._id,
+      catalogItemId: shrimpItem._id,
+      key: "shrimp",
+      premiumKey: "shrimp",
+      name: { en: "Shrimp", ar: "Shrimp" },
+      extraFeeHalala: 2000,
+      availableFor: ["subscription"],
+      availableForSubscription: true,
+      isActive: true,
+      isAvailable: true,
+      publishedAt: now,
+    }),
+    MenuOption.create({
+      groupId: proteinsGroup._id,
+      catalogItemId: salmonItem._id,
+      key: "salmon",
+      premiumKey: "salmon",
+      name: { en: "Salmon", ar: "Salmon" },
+      extraFeeHalala: 2000,
+      availableFor: ["subscription"],
+      availableForSubscription: true,
+      isActive: true,
+      isAvailable: true,
+      publishedAt: now,
+    }),
+    MenuOption.create({
+      groupId: proteinsGroup._id,
+      catalogItemId: extraProteinItem._id,
+      key: "extra_protein_50g",
+      name: { en: "Extra Protein 50g", ar: "Extra Protein 50g" },
+      availableFor: ["subscription"],
+      availableForSubscription: true,
+      isActive: true,
+      isAvailable: true,
+      publishedAt: now,
+    }),
   ]);
 
   for (const product of [basicMeal, premiumLargeSalad]) {
     await ProductOptionGroup.create({ productId: product._id, groupId: proteinsGroup._id, minSelections: 1, maxSelections: 1, isRequired: true });
     await ProductGroupOption.create({ productId: product._id, groupId: proteinsGroup._id, optionId: chicken._id });
   }
+  await ProductOptionGroup.create({ productId: premiumLargeSalad._id, groupId: sauceGroup._id, minSelections: 1, maxSelections: 1, isRequired: true });
+  await ProductGroupOption.create({ productId: premiumLargeSalad._id, groupId: sauceGroup._id, optionId: sauce._id });
   await ProductOptionGroup.create({ productId: basicMeal._id, groupId: carbsGroup._id, minSelections: 1, maxSelections: 2, isRequired: true });
   await ProductGroupOption.create({ productId: basicMeal._id, groupId: carbsGroup._id, optionId: rice._id });
 
@@ -205,7 +284,19 @@ async function seedCatalog() {
     MenuProduct.create({ categoryId: saladCategory._id, key: "green_salad", itemType: "green_salad", name: { en: "Green Salad", ar: "Green Salad" }, pricingModel: "fixed", priceHalala: 1900, currency: "SAR", availableFor: ["one_time", "subscription"], isActive: true, isAvailable: true, publishedAt: now }),
   ]);
 
-  return { premiumLargeSalad, proteinsGroup, chicken, addon: addonProducts[0], addonProducts };
+  return {
+    premiumLargeSalad,
+    proteinsGroup,
+    sauceGroup,
+    chicken,
+    sauce,
+    beefSteak,
+    shrimp,
+    salmon,
+    extraProtein,
+    addon: addonProducts[0],
+    addonProducts,
+  };
 }
 
 function premiumSaladPayload(fixture) {
@@ -220,6 +311,12 @@ function premiumSaladPayload(fixture) {
         groupKey: "proteins",
         optionId: String(fixture.chicken._id),
         optionKey: "grilled_chicken",
+        quantity: 1,
+      }, {
+        groupId: String(fixture.sauceGroup._id),
+        groupKey: "sauces",
+        optionId: String(fixture.sauce._id),
+        optionKey: "lemon_sauce",
         quantity: 1,
       }],
     }],
@@ -266,6 +363,14 @@ async function run() {
     assert.strictEqual(readinessRes.status, 200, `readiness endpoint: ${JSON.stringify(readinessRes.body)}`);
     assert.strictEqual(readinessRes.body.data.ready, true, JSON.stringify(readinessRes.body.data, null, 2));
 
+    for (const disallowedProtein of [fixture.beefSteak, fixture.shrimp, fixture.salmon, fixture.extraProtein]) {
+      await ProductGroupOption.create({
+        productId: fixture.premiumLargeSalad._id,
+        groupId: fixture.proteinsGroup._id,
+        optionId: disallowedProtein._id,
+      });
+    }
+
     const menuRes = await api.get("/api/subscriptions/meal-planner-menu?lang=ar").set(appHeaders);
     assert.strictEqual(menuRes.status, 200, `meal planner menu: ${JSON.stringify(menuRes.body)}`);
     assert(menuRes.body.data?.builderCatalog, "meal planner menu returns builderCatalog");
@@ -292,8 +397,29 @@ async function run() {
       .concat(plannerSectionsByKey.get("premium")?.products || [])
       .find((product) => product.key === "premium_large_salad");
     assert(premiumSaladProduct, "plannerCatalog-only payload exposes premium_large_salad product");
+    assert.strictEqual(premiumSaladProduct.selectionType, "premium_large_salad");
+    assert.strictEqual(premiumSaladProduct.action.type, "open_builder");
     assert.strictEqual(premiumSaladProduct.action.requiresBuilder, true);
     assert((premiumSaladProduct.optionGroups || []).length > 0, "premium_large_salad exposes option groups");
+    const premiumSaladGroupsByKey = new Map((premiumSaladProduct.optionGroups || []).map((group) => [group.key, group]));
+    const saladProteinGroup = premiumSaladGroupsByKey.get("protein");
+    const saladSauceGroup = premiumSaladGroupsByKey.get("sauce");
+    assert(saladProteinGroup, "premium_large_salad exposes canonical protein group");
+    assert(saladSauceGroup, "premium_large_salad exposes canonical sauce group");
+    assert.strictEqual(saladProteinGroup.isRequired || saladProteinGroup.required, true);
+    assert.strictEqual(saladProteinGroup.minSelections, 1);
+    assert.strictEqual(saladProteinGroup.maxSelections, 1);
+    assert.strictEqual(saladSauceGroup.isRequired || saladSauceGroup.required, true);
+    assert.strictEqual(saladSauceGroup.minSelections, 1);
+    assert.strictEqual(saladSauceGroup.maxSelections, 1);
+    const exposedSaladProteinKeys = (saladProteinGroup.options || []).map((option) => option.key);
+    assert(exposedSaladProteinKeys.includes("grilled_chicken"), "premium_large_salad exposes an allowlisted protein");
+    for (const disallowedKey of ["beef_steak", "shrimp", "salmon", "extra_protein_50g"]) {
+      assert(
+        !exposedSaladProteinKeys.includes(disallowedKey),
+        `premium_large_salad catalog excludes disallowed protein ${disallowedKey}`
+      );
+    }
 
     const addonRes = await api.get("/api/subscriptions/addon-choices").set(appHeaders);
     assert.strictEqual(addonRes.status, 200, `addon choices: ${JSON.stringify(addonRes.body)}`);
@@ -305,6 +431,94 @@ async function run() {
 
     const initialDayRes = await api.get(`/api/subscriptions/${subscription._id}/days/${date}`).set(appHeaders);
     assert.strictEqual(initialDayRes.status, 200, `initial day read: ${JSON.stringify(initialDayRes.body)}`);
+
+    const malformedSaladGroupsRes = await api
+      .put(`/api/subscriptions/${subscription._id}/days/${date}/selection`)
+      .set(appHeaders)
+      .send({
+        mealSlots: [{
+          slotIndex: 1,
+          selectionType: "premium_large_salad",
+          salad: { groups: "Instance of 'SaladGroupsRequest'" },
+        }],
+      });
+    assert.strictEqual(
+      malformedSaladGroupsRes.status,
+      400,
+      `malformed salad.groups returns 400: ${JSON.stringify(malformedSaladGroupsRes.body)}`
+    );
+    assert.strictEqual(malformedSaladGroupsRes.body.error?.code, "VALIDATION_ERROR");
+
+    const missingRequiredSaladGroupRes = await api
+      .put(`/api/subscriptions/${subscription._id}/days/${date}/selection`)
+      .set(appHeaders)
+      .send({
+        mealSlots: [{
+          slotIndex: 1,
+          selectionType: "premium_large_salad",
+          salad: { groups: { protein: [String(fixture.chicken._id)] } },
+        }],
+      });
+    assert.strictEqual(
+      missingRequiredSaladGroupRes.status,
+      400,
+      `missing required salad group returns 400: ${JSON.stringify(missingRequiredSaladGroupRes.body)}`
+    );
+    assert.strictEqual(missingRequiredSaladGroupRes.body.error?.code, "VALIDATION_ERROR");
+
+    const malformedAddonsRes = await api
+      .put(`/api/subscriptions/${subscription._id}/days/${date}/selection`)
+      .set(appHeaders)
+      .send({
+        mealSlots: [{
+          slotIndex: 1,
+          selectionType: "premium_large_salad",
+          salad: {
+            groups: {
+              protein: [String(fixture.chicken._id)],
+              sauce: [String(fixture.chicken._id)],
+            },
+          },
+        }],
+        addonsOneTime: String(fixture.addon._id),
+      });
+    assert.strictEqual(
+      malformedAddonsRes.status,
+      400,
+      `malformed addonsOneTime returns 400: ${JSON.stringify(malformedAddonsRes.body)}`
+    );
+    assert.strictEqual(malformedAddonsRes.body.error?.code, "VALIDATION_ERROR");
+
+    const disallowedProteinSaveRes = await api
+      .put(`/api/subscriptions/${subscription._id}/days/${date}/selection`)
+      .set(appHeaders)
+      .send({
+        contractVersion: "meal_planner_menu.v3",
+        mealSlots: [{
+          slotIndex: 1,
+          selectionType: "premium_large_salad",
+          productId: String(fixture.premiumLargeSalad._id),
+          selectedOptions: [{
+            groupId: String(fixture.proteinsGroup._id),
+            groupKey: "proteins",
+            optionId: String(fixture.beefSteak._id),
+            optionKey: "beef_steak",
+            quantity: 1,
+          }, {
+            groupId: String(fixture.sauceGroup._id),
+            groupKey: "sauces",
+            optionId: String(fixture.sauce._id),
+            optionKey: "lemon_sauce",
+            quantity: 1,
+          }],
+        }],
+      });
+    assert.strictEqual(
+      disallowedProteinSaveRes.status,
+      422,
+      `disallowed premium salad protein still fails validation: ${JSON.stringify(disallowedProteinSaveRes.body)}`
+    );
+    assert.strictEqual(disallowedProteinSaveRes.body.error?.code, "SALAD_PROTEIN_NOT_ALLOWED");
 
     const saveRes = await api.put(`/api/subscriptions/${subscription._id}/days/${date}/selection`).set(appHeaders).send(premiumSaladPayload(fixture));
     assert.strictEqual(saveRes.status, 200, `v3 save: ${JSON.stringify(saveRes.body)}`);

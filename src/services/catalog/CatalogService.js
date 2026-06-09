@@ -60,6 +60,7 @@ const PREMIUM_MEAL_EXTRA_FEE_HALALA_BY_KEY = Object.freeze({
 });
 const SUBSCRIPTION_PREMIUM_LARGE_SALAD_PROTEIN_KEY_SET = new Set(SUBSCRIPTION_PREMIUM_LARGE_SALAD_PROTEIN_KEYS);
 const SUBSCRIPTION_PREMIUM_LARGE_SALAD_EXCLUDED_GROUP_KEY_SET = new Set(SUBSCRIPTION_PREMIUM_LARGE_SALAD_EXCLUDED_GROUP_KEYS);
+const SALAD_SELECTION_GROUP_RULE_BY_KEY = new Map(SALAD_SELECTION_GROUPS.map((group) => [group.key, group]));
 
 const MENU_SALAD_GROUP_ALIASES = Object.freeze({
   vegetables_legumes: "vegetables",
@@ -324,6 +325,7 @@ async function getPremiumLargeSaladIngredients({ product, normalizedProteins, la
     const groupKey = normalizeMenuSaladGroupKey(rawGroupKey);
     if (!groupKey) continue;
     if (groupKey === "protein") {
+      if (!isSubscriptionPremiumLargeSaladProtein(option)) continue;
       const extraFeeHalala = Number(relation.extraPriceHalala ?? option.extraPriceHalala ?? 0);
       saladProteinOptions.push({
         ...buildProteinPayload(option, lang, { isPremium: extraFeeHalala > 0 }),
@@ -620,7 +622,13 @@ function buildV3OptionPayload({ option, relation, lang, overrides = {} }) {
   });
 }
 
-async function buildV3ProductOptionGroups({ product, lang, optionFilter = null, groupKeyResolver = null }) {
+async function buildV3ProductOptionGroups({
+  product,
+  lang,
+  optionFilter = null,
+  groupKeyResolver = null,
+  groupPayloadResolver = null,
+}) {
   if (!product) return [];
 
   const groupRelations = await ProductOptionGroup.find(activeRelationQuery({ productId: product._id }))
@@ -662,6 +670,9 @@ async function buildV3ProductOptionGroups({ product, lang, optionFilter = null, 
         ? groupKeyResolver(group)
         : { key: group.key };
       if (!resolvedGroupKeys) return null;
+      const groupPayload = typeof groupPayloadResolver === "function"
+        ? groupPayloadResolver({ group, relation, resolvedGroupKeys }) || {}
+        : {};
 
       const groupOptions = (optionRelationsByGroup.get(String(relation.groupId)) || [])
         .map((optionRelation) => {
@@ -681,15 +692,18 @@ async function buildV3ProductOptionGroups({ product, lang, optionFilter = null, 
         key: resolvedGroupKeys.key || group.key,
         canonicalGroupKey: resolvedGroupKeys.canonicalGroupKey,
         sourceKey: resolvedGroupKeys.sourceKey || group.key,
-        name: localized(group.name, lang),
-        nameI18n: localizedPair(group.name),
-        minSelections: Number(relation.minSelections || 0),
-        maxSelections: relation.maxSelections === null || relation.maxSelections === undefined
+        name: groupPayload.name || localized(group.name, lang),
+        nameI18n: groupPayload.nameI18n || localizedPair(group.name),
+        minSelections: Number(groupPayload.minSelections ?? relation.minSelections ?? 0),
+        maxSelections: (groupPayload.maxSelections ?? relation.maxSelections) === null
+          || (groupPayload.maxSelections ?? relation.maxSelections) === undefined
           ? null
-          : Number(relation.maxSelections),
-        isRequired: Boolean(relation.isRequired ?? Number(relation.minSelections || 0) > 0),
-        sortOrder: Number(relation.sortOrder || 0),
+          : Number(groupPayload.maxSelections ?? relation.maxSelections),
+        isRequired: Boolean(groupPayload.isRequired ?? relation.isRequired ?? Number(relation.minSelections || 0) > 0),
+        required: groupPayload.required,
+        sortOrder: Number(groupPayload.sortOrder ?? relation.sortOrder ?? 0),
         ui: normalizeGroupUiMetadata(group.ui),
+        rules: groupPayload.rules,
         optionSections: group.key === MENU_PROTEIN_GROUP_KEY ? buildProteinOptionSections(groupOptions, lang) : undefined,
         options: groupOptions,
       });
@@ -776,15 +790,39 @@ async function buildCanonicalPlannerCatalogV3({ builderCatalog, context = {}, la
   const premiumLargeSaladGroups = await buildV3ProductOptionGroups({
     product: premiumLargeSaladProduct,
     lang,
+    optionFilter({ option, group }) {
+      const aliasKey = MENU_SALAD_GROUP_ALIASES[group.key] || group.key;
+      const canonicalGroupKey = normalizeMenuSaladGroupKey(aliasKey);
+      if (canonicalGroupKey !== "protein") return true;
+      return isSubscriptionPremiumLargeSaladProtein(option);
+    },
     groupKeyResolver(group) {
       const aliasKey = MENU_SALAD_GROUP_ALIASES[group.key] || group.key;
       const canonicalGroupKey = normalizeMenuSaladGroupKey(aliasKey);
       if (!canonicalGroupKey) return null;
       if (SUBSCRIPTION_PREMIUM_LARGE_SALAD_EXCLUDED_GROUP_KEY_SET.has(canonicalGroupKey)) return null;
       return {
-        key: group.key,
+        key: canonicalGroupKey,
         sourceKey: group.key,
-        canonicalGroupKey: canonicalGroupKey === group.key ? undefined : canonicalGroupKey,
+        canonicalGroupKey: group.key === canonicalGroupKey ? undefined : canonicalGroupKey,
+      };
+    },
+    groupPayloadResolver({ resolvedGroupKeys, relation }) {
+      const rule = SALAD_SELECTION_GROUP_RULE_BY_KEY.get(resolvedGroupKeys.key);
+      if (!rule) return null;
+      return {
+        name: localized(rule.name, lang),
+        nameI18n: localizedPair(rule.name),
+        minSelections: rule.minSelect,
+        maxSelections: rule.maxSelect,
+        isRequired: Number(rule.minSelect || 0) > 0,
+        required: Number(rule.minSelect || 0) > 0,
+        sortOrder: rule.sortOrder ?? relation.sortOrder,
+        rules: {
+          minSelect: rule.minSelect,
+          maxSelect: rule.maxSelect,
+          source: rule.source,
+        },
       };
     },
   });
@@ -950,6 +988,7 @@ async function getPremiumLargeSaladOptionGroups({ product, normalizedProteins, l
     const group = groupsById.get(String(relation.groupId));
     const option = optionsById.get(String(relation.optionId));
     if (!group || !option || group.key !== MENU_PROTEIN_GROUP_KEY) continue;
+    if (!isSubscriptionPremiumLargeSaladProtein(option)) continue;
     const extraFeeHalala = Number(relation.extraPriceHalala ?? option.extraPriceHalala ?? 0);
     proteinOptionsByRelation.push(normalizeV2Option(option, lang, {
       extraPriceHalala: extraFeeHalala,
