@@ -259,14 +259,21 @@ async function handleDispatch({ entityId, entityType, userId, role, payload, ses
     const sub = await Subscription.findById(doc.subscriptionId).session(session).lean();
     if (sub && sub.deliveryMode === "pickup") throw new Error("INVALID_STATE_TRANSITION");
     await Delivery.updateOne(
-      { dayId: doc._id },
+      {
+        $or: [
+          { dayId: doc._id },
+          { subscriptionId: sub._id, date: doc.date },
+        ],
+      },
       {
         $set: {
           ...deliveryData,
+          subscriptionId: sub._id,
+          dayId: doc._id,
+          date: doc.date,
           address: doc.deliveryAddressOverride || sub.deliveryAddress,
           window: doc.deliveryWindowOverride || sub.deliveryWindow,
         },
-        $setOnInsert: { subscriptionId: sub._id, dayId: doc._id },
       },
       { upsert: true, session }
     );

@@ -420,6 +420,7 @@ async function performSubscriptionRenewal(userId, subscriptionId, body, lang, ru
         unitExtraFeeHalala: item.unitExtraFeeHalala,
         currency: SYSTEM_CURRENCY,
       })),
+      premiumUpgradeLimit: quote.premiumUpgradeLimit || null,
       premiumCount: Number(quote.premiumCount || 0),
       premiumUnitPriceHalala: Number(quote.premiumUnitPriceHalala || 0),
       addonItems: quote.addonItems.map((item) => ({
@@ -543,9 +544,13 @@ async function performSubscriptionRenewal(userId, subscriptionId, body, lang, ru
         payment_url: draft.paymentUrl,
         renewedFromSubscriptionId: subscriptionId,
         totals: quote.breakdown,
+        premiumUpgradeLimit: quote.premiumUpgradeLimit || null,
       },
     };
   } catch (err) {
+    if (!draft && err.code === "PREMIUM_UPGRADE_LIMIT_EXCEEDED") {
+      throw { status: err.status || 422, code: err.code, message: err.message, data: err.details };
+    }
     if (!draft && err.code === "VALIDATION_ERROR") {
       throw { status: 400, code: "VALIDATION_ERROR", message: err.message };
     }

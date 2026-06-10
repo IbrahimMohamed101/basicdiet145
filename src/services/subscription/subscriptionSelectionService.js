@@ -19,6 +19,18 @@ const {
   finalizeDayCommercialStateForPersistence,
 } = require("./subscriptionDayCommercialStateService");
 const { buildMealBalance } = require("./subscriptionClientSupportService");
+const {
+  assertPremiumUpgradeLimit,
+  countPersistedPremiumUpgradesForSubscription,
+  countPremiumUpgradeSelections,
+  resolveTotalSubscriptionMealsFromSubscription,
+} = require("./premiumUpgradeLimitService");
+const {
+  assertPlanningBalanceAfterSave,
+} = require("./subscriptionPlanningBalanceService");
+const {
+  supersedeInitiatedDayPlanningPaymentsForRevisionChange,
+} = require("./subscriptionDayPaymentLifecycleService");
 
 async function resolvePlanningSubscriptionForOperation(subscription, session = null) {
   let resolvedSubscription = subscription;
@@ -530,6 +542,19 @@ async function performDaySelectionUpdate({ userId, subscriptionId, date, selecti
       };
     }
 
+    {
+      const totalSubscriptionMeals = resolveTotalSubscriptionMealsFromSubscription(subForDraft);
+      const existingPremiumUpgradeCount = await countPersistedPremiumUpgradesForSubscription({
+        subscriptionId: canonicalSubscriptionId,
+        excludeDate: date,
+      });
+      const incomingPremiumUpgradeCount = countPremiumUpgradeSelections(draft.premiumUpgradeSelections);
+      assertPremiumUpgradeLimit({
+        premiumUpgradeCount: existingPremiumUpgradeCount + incomingPremiumUpgradeCount,
+        totalSubscriptionMeals,
+      });
+    }
+
   const addonContainer = {
     addonSelections: existingDay ? JSON.parse(JSON.stringify(existingDay.addonSelections || [])) : [],
   };
@@ -548,6 +573,12 @@ async function performDaySelectionUpdate({ userId, subscriptionId, date, selecti
   });
 
   // 4. Idempotency Short-circuit
+  await assertPlanningBalanceAfterSave({
+    subscription: subForDraft,
+    affectedDates: [date],
+    incomingDaySelections: [{ date, mealSlots: draft.processedSlots }],
+  });
+
   if (existingDay && existingDay.plannerRevisionHash === derivedDraftState.plannerRevisionHash) {
     await finalizeDayCommercialStateForPersistence(existingDay);
     return { subscription: subForDraft, day: existingDay, idempotent: true };
@@ -559,6 +590,13 @@ async function performDaySelectionUpdate({ userId, subscriptionId, date, selecti
   try {
     const subInSession = await Subscription.findById(canonicalSubscriptionId).session(session);
     if (!subInSession) throw { status: 404, code: "NOT_FOUND", message: "Subscription for session lost" };
+
+    await assertPlanningBalanceAfterSave({
+      subscription: subInSession,
+      affectedDates: [date],
+      incomingDaySelections: [{ date, mealSlots: draft.processedSlots }],
+      session,
+    });
 
     const update = {
       mealSlots: draft.processedSlots,
@@ -709,6 +747,15 @@ async function performDaySelectionUpdate({ userId, subscriptionId, date, selecti
     await subInSession.save({ session });
     await finalizeDayCommercialStateForPersistence(day, { session });
 
+    await supersedeInitiatedDayPlanningPaymentsForRevisionChange({
+      subscriptionId: canonicalSubscriptionId,
+      dayId: day._id,
+      date,
+      nextRevisionHash: day.plannerRevisionHash,
+      reason: "planner_selection_changed",
+      session,
+    });
+
     // Ensure Global Sync (redundant but for compatibility)
     if (Array.isArray(subInSession.addonSelections)) {
        subInSession.addonSelections = subInSession.addonSelections.filter(s => s.date !== date);
@@ -799,6 +846,25 @@ async function performDaySelectionValidation({
     throw { status: 422, code: draft.errorCode || "INVALID_MEAL_PLAN", message: draft.errorMessage || "Meal planner validation failed", slotErrors: draft.slotErrors, rules: getMealPlannerRules(), valid: false };
   }
 
+  {
+    const totalSubscriptionMeals = resolveTotalSubscriptionMealsFromSubscription(sub);
+    const existingPremiumUpgradeCount = await countPersistedPremiumUpgradesForSubscription({
+      subscriptionId: resolvedSubscriptionId,
+      excludeDate: date,
+    });
+    const incomingPremiumUpgradeCount = countPremiumUpgradeSelections(draft.premiumUpgradeSelections);
+    assertPremiumUpgradeLimit({
+      premiumUpgradeCount: existingPremiumUpgradeCount + incomingPremiumUpgradeCount,
+      totalSubscriptionMeals,
+    });
+  }
+
+  await assertPlanningBalanceAfterSave({
+    subscription: sub,
+    affectedDates: [date],
+    incomingDaySelections: [{ date, mealSlots: draft.processedSlots }],
+  });
+
   let addonSelections = Array.isArray(day && day.addonSelections)
     ? JSON.parse(JSON.stringify(day.addonSelections))
     : [];
@@ -834,6 +900,103 @@ async function performDaySelectionValidation({
     canBePrepared: derivedDraftState.canBePrepared,
     rules: getMealPlannerRules(),
   };
+}
+
+async function performBulkDaySelectionPlanningBalanceValidation({
+  userId,
+  subscriptionId,
+  requests = [],
+}) {
+  const requestedSub = await Subscription.findById(subscriptionId).lean();
+  if (!requestedSub) throw { status: 404, code: "NOT_FOUND", message: "Subscription not found" };
+  if (String(requestedSub.userId) !== String(userId)) throw { status: 403, code: "FORBIDDEN", message: "Forbidden" };
+
+  const resolvedPlanningSubscription = await resolvePlanningSubscriptionForOperation(requestedSub);
+  const sub = resolvedPlanningSubscription.subscription;
+  const resolvedSubscriptionId = resolvedPlanningSubscription.subscriptionId;
+  if (!sub) throw { status: 404, code: "NOT_FOUND", message: "Subscription not found" };
+
+  const normalizedRequests = (Array.isArray(requests) ? requests : []).map((entry) => ({
+    date: entry && typeof entry.date === "string" ? entry.date.trim() : "",
+    mealSlots: Array.isArray(entry && entry.mealSlots) ? entry.mealSlots : undefined,
+    contractVersion: entry && (entry.contractVersion || entry.plannerContractVersion || entry.version),
+  }));
+  const dates = normalizedRequests.map((entry) => entry.date).filter(Boolean);
+  const existingDays = await SubscriptionDay.find({
+    subscriptionId: resolvedSubscriptionId,
+    date: { $in: dates },
+  }).lean();
+  const existingDayByDate = new Map(existingDays.map((day) => [String(day.date), day]));
+  const planningLimits = await resolveMealSlotPlanningLimits(sub);
+  const incomingDaySelections = [];
+
+  for (const requestEntry of normalizedRequests) {
+    const { date, mealSlots, contractVersion } = requestEntry;
+    if (!date) {
+      throw { status: 400, code: "INVALID", message: "Each day entry must include date" };
+    }
+    if (!Array.isArray(mealSlots)) {
+      throw {
+        status: 422,
+        code: "LEGACY_DAY_SELECTION_UNSUPPORTED",
+        message: "Bulk day selection requires canonical mealSlots payload.",
+        details: { date },
+      };
+    }
+
+    ensureActive(sub, date);
+    await validateSelectionDateRangeOrThrow(date, sub);
+
+    const existingDay = existingDayByDate.get(date) || null;
+    await assertSubscriptionDayModifiable({
+      subscription: sub,
+      day: existingDay,
+      date,
+      getBusinessDateFn: getRestaurantBusinessDate,
+    });
+    if (existingDay && existingDay.status !== "open") {
+      throw { status: 409, code: "LOCKED", message: "Day is locked", details: { date } };
+    }
+    if (existingDay && existingDay.plannerState === "confirmed") {
+      throw { status: 409, code: "LOCKED", message: "Planner is already confirmed for this day", details: { date } };
+    }
+
+    const planningDraftSubscription = buildPlanningDraftSubscriptionView(sub, existingDay);
+    const useCanonicalPlanner = isCanonicalPlannerRequest({ contractVersion, mealSlots });
+    const draft = useCanonicalPlanner
+      ? await validateCanonicalMealSlots({
+        mealSlots,
+        mealsPerDayLimit: planningLimits.requiredSlotCount,
+        maxSlotCount: planningLimits.maxSlotCount,
+        subscription: planningDraftSubscription,
+      })
+      : await buildMealSlotDraft({
+        mealSlots,
+        mealsPerDayLimit: planningLimits.requiredSlotCount,
+        maxSlotCount: planningLimits.maxSlotCount,
+        subscription: planningDraftSubscription,
+      });
+
+    if (!draft.valid) {
+      throw {
+        status: 422,
+        code: draft.errorCode || "INVALID_MEAL_PLAN",
+        message: draft.errorMessage || "Meal planner validation failed",
+        valid: false,
+        slotErrors: draft.slotErrors,
+        rules: getMealPlannerRules(),
+        details: { date },
+      };
+    }
+
+    incomingDaySelections.push({ date, mealSlots: draft.processedSlots });
+  }
+
+  return assertPlanningBalanceAfterSave({
+    subscription: sub,
+    affectedDates: dates,
+    incomingDaySelections,
+  });
 }
 
 async function performDayPlanningConfirmation({ userId, subscriptionId, date, runtime }) {
@@ -896,6 +1059,20 @@ async function performDayPlanningConfirmation({ userId, subscriptionId, date, ru
         valid: false,
         slotErrors: validatedDraft.slotErrors,
       };
+    }
+
+    {
+      const totalSubscriptionMeals = resolveTotalSubscriptionMealsFromSubscription(subInSession);
+      const existingPremiumUpgradeCount = await countPersistedPremiumUpgradesForSubscription({
+        subscriptionId,
+        excludeDate: date,
+        session,
+      });
+      const incomingPremiumUpgradeCount = countPremiumUpgradeSelections(validatedDraft.premiumUpgradeSelections);
+      assertPremiumUpgradeLimit({
+        premiumUpgradeCount: existingPremiumUpgradeCount + incomingPremiumUpgradeCount,
+        totalSubscriptionMeals,
+      });
     }
 
     const plannerMeta = validatedDraft.plannerMeta;
@@ -1012,5 +1189,6 @@ module.exports = {
   reconcileAddonInclusions,
   performDaySelectionUpdate,
   performDaySelectionValidation,
+  performBulkDaySelectionPlanningBalanceValidation,
   performDayPlanningConfirmation,
 };

@@ -7,6 +7,7 @@ const DeliverySchema = new mongoose.Schema(
     // 2) One-time order delivery: uses orderId only (no subscription/day link)
     subscriptionId: { type: mongoose.Schema.Types.ObjectId, ref: "Subscription" },
     dayId: { type: mongoose.Schema.Types.ObjectId, ref: "SubscriptionDay" },
+    date: { type: String, trim: true },
     orderId: { type: mongoose.Schema.Types.ObjectId, ref: "Order" },
     status: { type: String, enum: ["scheduled", "out_for_delivery", "delivered", "canceled"], default: "scheduled" },
     address: {
@@ -31,6 +32,16 @@ const DeliverySchema = new mongoose.Schema(
 );
 
 DeliverySchema.index({ dayId: 1 }, { unique: true, partialFilterExpression: { dayId: { $type: "objectId" } } });
+DeliverySchema.index(
+  { subscriptionId: 1, date: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      subscriptionId: { $type: "objectId" },
+      date: { $type: "string" },
+    },
+  }
+);
 DeliverySchema.index({ orderId: 1 }, { unique: true, partialFilterExpression: { orderId: { $type: "objectId" } } });
 
 module.exports = mongoose.model("Delivery", DeliverySchema);

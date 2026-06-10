@@ -18,6 +18,10 @@ const { consumePromoCodeUsageReservation } = require("../promoCodeService");
 const { logger } = require("../../utils/logger");
 const { resolveCanonicalPremiumIdentity, resolvePremiumKeyFromName, getPremiumDisplayName } = require("../../utils/subscription/premiumIdentity");
 const { getPickupLocationsSetting } = require("./subscriptionFulfillmentSummaryService");
+const {
+  assertPremiumUpgradeLimit,
+  countPremiumItemsQty,
+} = require("./premiumUpgradeLimitService");
 
 const SYSTEM_CURRENCY = "SAR";
 
@@ -329,6 +333,10 @@ function buildCanonicalActivationPayload({ userId, planId, contractVersion, cont
 
   const premiumBalanceRows = Array.isArray(legacyRuntimeData.premiumBalance) ? legacyRuntimeData.premiumBalance : [];
   assertValidPremiumBalanceRows(premiumBalanceRows);
+  assertPremiumUpgradeLimit({
+    premiumUpgradeCount: countPremiumItemsQty(premiumBalanceRows.map((row) => ({ qty: row.purchasedQty }))),
+    totalSubscriptionMeals: totalMeals,
+  });
   const addonSubscriptions = legacyRuntimeData.addonSubscriptions || [];
   const end = addDays(start, daysCount - 1);
 

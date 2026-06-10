@@ -22,6 +22,10 @@ const {
   finalizeDayCommercialStateForPersistence,
 } = require("./subscriptionDayCommercialStateService");
 const {
+  buildSupersededPaymentErrorDetails,
+  isPaymentSuperseded,
+} = require("./subscriptionDayPaymentLifecycleService");
+const {
   assertSubscriptionDayModifiable,
   localizePolicyErrorMessage,
 } = require("./subscriptionDayModificationPolicyService");
@@ -242,6 +246,10 @@ function buildTerminalPaymentError(payment, providerStatus = null) {
     providerInvoiceStatus: providerStatus || null,
     isFinal: true,
   });
+}
+
+function buildSupersededPaymentError(payment) {
+  return buildErrorResult(409, "DAY_PAYMENT_REVISION_MISMATCH", "Planner changed since payment creation", buildSupersededPaymentErrorDetails(payment));
 }
 
 async function createUnifiedDayPaymentFlow({
@@ -517,6 +525,7 @@ async function verifyUnifiedDayPaymentFlow({
     type: UNIFIED_DAY_PAYMENT_TYPE,
   }).lean();
   if (!payment) return buildErrorResult(404, "PAYMENT_NOT_FOUND", "Day payment not found");
+  if (isPaymentSuperseded(payment)) return buildSupersededPaymentError(payment);
 
   const metadata = getPaymentMetadata(payment);
   if (String(metadata.date || "") !== String(date)) return buildErrorResult(409, "MISMATCH", "Payment day mismatch");
@@ -550,6 +559,11 @@ async function verifyUnifiedDayPaymentFlow({
         type: UNIFIED_DAY_PAYMENT_TYPE,
       }).session(session);
       if (paymentInSession && paymentInSession.status === "paid" && paymentInSession.applied === true) {
+        if (isPaymentSuperseded(paymentInSession)) {
+          await session.abortTransaction();
+          session.endSession();
+          return buildSupersededPaymentError(paymentInSession);
+        }
         reconcileResult = await applyPaymentSideEffectsFn({
           payment: paymentInSession,
           session,
@@ -654,6 +668,11 @@ async function verifyUnifiedDayPaymentFlow({
       session.endSession();
       return buildErrorResult(404, "PAYMENT_NOT_FOUND", "Day payment not found");
     }
+    if (isPaymentSuperseded(paymentInSession)) {
+      await session.abortTransaction();
+      session.endSession();
+      return buildSupersededPaymentError(paymentInSession);
+    }
 
     const providerInvoiceId = providerInvoice && providerInvoice.id ? String(providerInvoice.id) : "";
     if (providerInvoiceId && paymentInSession.providerInvoiceId && String(paymentInSession.providerInvoiceId) !== providerInvoiceId) {
@@ -717,6 +736,9 @@ async function verifyUnifiedDayPaymentFlow({
   }
 
   if (sideEffectResult && !sideEffectResult.applied && sideEffectResult.reason === "revision_mismatch") {
+    return buildErrorResult(409, "DAY_PAYMENT_REVISION_MISMATCH", "Planner changed since payment creation");
+  }
+  if (sideEffectResult && !sideEffectResult.applied && sideEffectResult.reason === "payment_superseded") {
     return buildErrorResult(409, "DAY_PAYMENT_REVISION_MISMATCH", "Planner changed since payment creation");
   }
   if (sideEffectResult && !sideEffectResult.applied && sideEffectResult.reason === "payment_snapshot_mismatch") {

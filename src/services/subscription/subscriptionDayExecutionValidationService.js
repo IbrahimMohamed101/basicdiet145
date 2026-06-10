@@ -109,9 +109,11 @@ function assertMealAssignmentsComplete({ subscription, day }) {
   };
 }
 
-function validateDayBeforeLockOrPrepare({ subscription, day, allowedStatuses = ["open"] } = {}) {
+function validateDayBeforeLockOrPrepare({ subscription, day, allowedStatuses = ["open"], allowQuantityOnlyPickup = false } = {}) {
   assertDayIsExecutable(day, allowedStatuses);
-  assertMealAssignmentsComplete({ subscription, day });
+  if (!allowQuantityOnlyPickup) {
+    assertMealAssignmentsComplete({ subscription, day });
+  }
   assertNoPendingPremiumOverage({
     subscription,
     day,

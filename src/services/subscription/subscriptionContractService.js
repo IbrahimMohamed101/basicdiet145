@@ -217,6 +217,7 @@ function buildPhase1SubscriptionContract({ payload = {}, resolvedQuote, actorCon
     },
     entitlementContract: {
       premiumItems,
+      premiumUpgradeLimit: resolvedQuote.premiumUpgradeLimit || null,
       addonSubscriptions,
     },
     compatibility: {

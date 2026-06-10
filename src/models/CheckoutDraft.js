@@ -96,6 +96,11 @@ const CheckoutDraftSchema = new mongoose.Schema(
     },
 
     premiumItems: { type: [DraftPremiumItemSchema], default: [] },
+    premiumUpgradeLimit: {
+      maxPremiumUpgrades: { type: Number, min: 0, default: 0 },
+      selectedPremiumUpgrades: { type: Number, min: 0, default: 0 },
+      remainingPremiumUpgrades: { type: Number, min: 0, default: 0 },
+    },
     addonSubscriptions: { type: [DraftAddonSubscriptionSchema], default: [] },
     promo: { type: DraftPromoSchema, default: null },
 

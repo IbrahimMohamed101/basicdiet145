@@ -50,8 +50,8 @@ const SELECTION_TYPE_PRODUCT_RULES = Object.freeze({
     keys: new Set(["basic_meal"]),
   },
   [MEAL_SELECTION_TYPES.PREMIUM_LARGE_SALAD]: {
-    itemTypes: new Set(["premium_large_salad", "basic_salad"]),
-    keys: new Set(["premium_large_salad", "basic_salad"]),
+    itemTypes: new Set(["premium_large_salad"]),
+    keys: new Set(["premium_large_salad"]),
   },
   [MEAL_SELECTION_TYPES.SANDWICH]: {
     itemTypes: new Set(["cold_sandwich"]),

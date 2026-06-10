@@ -9,6 +9,10 @@ const { validateDayBeforeLockOrPrepare } = require("./subscriptionDayExecutionVa
 const {
   reserveSubscriptionMealsForPickupRequest,
 } = require("./subscriptionPickupRequestBalanceService");
+const {
+  assertDateInsideSubscriptionRange,
+  assertFulfillmentMethodAllowed,
+} = require("./subscriptionFulfillmentPolicyService");
 const { assertRestaurantOpenForOrdering } = require("../restaurantHoursService");
 
 const PICKUP_REQUEST_ALLOWED_DAY_STATUSES = [
@@ -194,13 +198,22 @@ async function createSubscriptionPickupRequestForClient({
   if (subscription.status !== "active") {
     throw createServiceError("SUB_INACTIVE", "Subscription is not active", 422);
   }
-  if (subscription.deliveryMode !== "pickup") {
-    throw createServiceError("INVALID_DELIVERY_MODE", "Delivery mode is not pickup", 400);
+  try {
+    assertFulfillmentMethodAllowed({
+      subscription,
+      date,
+      requestedMethod: "pickup",
+    });
+  } catch (err) {
+    if (err && err.code === "FULFILLMENT_METHOD_NOT_ALLOWED") {
+      throw createServiceError("INVALID_DELIVERY_MODE", "Delivery mode is not pickup", 400);
+    }
+    throw err;
   }
 
   await assertRestaurantOpenForOrdering({
     pickupLocationId: subscription.pickupLocationId,
-    deliveryMode: subscription.deliveryMode,
+    deliveryMode: "pickup",
   });
 
   const today = dateUtils.getTodayKSADate();
@@ -236,8 +249,10 @@ async function createSubscriptionPickupRequestForClient({
     subscription,
     day,
     allowedStatuses: PICKUP_REQUEST_ALLOWED_DAY_STATUSES,
+    allowQuantityOnlyPickup: true,
   });
 
+  assertDateInsideSubscriptionRange({ subscription, date });
   if (Number(subscription.remainingMeals || 0) < normalizedMealCount) {
     throw createServiceError("INSUFFICIENT_CREDITS", "رصيد وجباتك غير كافٍ", 422);
   }

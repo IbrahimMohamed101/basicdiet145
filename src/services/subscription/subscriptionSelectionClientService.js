@@ -9,6 +9,7 @@ const {
   shapeMealPlannerReadFields,
 } = require("./subscriptionClientSupportService");
 const {
+  performBulkDaySelectionPlanningBalanceValidation,
   performDaySelectionUpdate,
 } = require("./subscriptionSelectionService");
 const { localizePolicyErrorMessage } = require("./subscriptionDayModificationPolicyService");
@@ -42,6 +43,22 @@ async function updateBulkDaySelectionsForClient({
 }) {
   const rawResults = [];
   const serializedDays = [];
+
+  try {
+    await performBulkDaySelectionPlanningBalanceValidation({
+      userId,
+      subscriptionId,
+      requests,
+    });
+  } catch (err) {
+    const details = buildControllerErrorDetails(err);
+    return buildErrorResult(
+      err && err.status ? err.status : 500,
+      err && err.code ? err.code : "INTERNAL",
+      err ? (localizePolicyErrorMessage(err, lang) || err.message || "Bulk selection failed") : "Bulk selection failed",
+      details
+    );
+  }
 
   for (const requestEntry of requests) {
     const {

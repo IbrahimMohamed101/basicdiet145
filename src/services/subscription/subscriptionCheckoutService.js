@@ -438,6 +438,7 @@ async function performSubscriptionCheckout(userId, idempotencyKey, body, lang, r
         startDate: quote.startDate || undefined,
         delivery: normalizedDelivery,
         premiumItems: normalizedPremiumItems,
+        premiumUpgradeLimit: quote.premiumUpgradeLimit || null,
         premiumCount: Number(quote.premiumCount || 0),
         premiumUnitPriceHalala: Number(quote.premiumUnitPriceHalala || 0),
         addonSubscriptions: (quote.addonItems || []).map((item) => ({
@@ -624,6 +625,7 @@ async function performSubscriptionCheckout(userId, idempotencyKey, body, lang, r
               }, lang).lineItems,
             }
             : null,
+          premiumUpgradeLimit: quote.premiumUpgradeLimit || null,
         },
       };
     }

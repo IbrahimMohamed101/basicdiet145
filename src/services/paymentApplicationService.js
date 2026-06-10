@@ -11,6 +11,7 @@ const { finalizeSubscriptionDraftPaymentFlow } = require("./subscription/subscri
 const { settlePaidPremiumExtraDayPayment } = require("./subscription/premiumExtraDayPaymentService");
 const { getPaymentMetadata } = require("./subscription/subscriptionCheckoutHelpers");
 const { applyCommercialStateToDay } = require("./subscription/subscriptionDayCommercialStateService");
+const { isPaymentSuperseded } = require("./subscription/subscriptionDayPaymentLifecycleService");
 
 const SUPPORTED_PHASE1_SHARED_PAYMENT_TYPES = new Set([
   "subscription_activation",
@@ -379,6 +380,9 @@ async function applyPremiumExtraDayPayment({ payment, session, source = "system"
 
 async function applyUnifiedDayPlanningPayment({ payment, session, source = "system", allowAppliedReconciliation = false }, runtimeOverrides = null) {
   const runtime = runtimeOverrides || defaultRuntime();
+  if (isPaymentSuperseded(payment)) {
+    return { applied: false, reason: "payment_superseded" };
+  }
   const metadata = metadataOf(payment);
   if (!isValidObjectId(metadata.subscriptionId) || !metadata.date) {
     return { applied: false, reason: "invalid_metadata" };

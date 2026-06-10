@@ -3,6 +3,10 @@ const Payment = require("../../models/Payment");
 const { logger } = require("../../utils/logger");
 const { buildMoneySummary } = require("../../utils/pricing");
 const { buildPromoResponseBlock } = require("../promoCodeService");
+const {
+  buildPremiumUpgradeLimit,
+  countPremiumItemsQty,
+} = require("./premiumUpgradeLimitService");
 
 function buildDraftLineItem(kind, label, amountHalala) {
   const normalized = Number.isFinite(Number(amountHalala)) ? Math.round(Number(amountHalala)) : 0;
@@ -387,6 +391,10 @@ function buildCheckoutReusePayload(draft, payment, { reused = false } = {}) {
       : null),
     summary: buildCheckoutDraftSummary(draft),
     premiumItemCount: Array.isArray(draft.premiumItems) ? draft.premiumItems.length : 0,
+    premiumUpgradeLimit: draft.premiumUpgradeLimit || buildPremiumUpgradeLimit({
+      totalSubscriptionMeals: Number(draft.daysCount || 0) * Number(draft.mealsPerDay || 0),
+      selectedPremiumUpgrades: countPremiumItemsQty(draft.premiumItems),
+    }),
     ...(reused ? { reused: true } : {}),
   };
 }

@@ -21,6 +21,11 @@ const { applyPromoCodeToSubscriptionQuote } = require("../promoCodeService");
 const { getRestaurantBusinessDate } = require("../restaurantHoursService");
 const { resolveCanonicalPremiumIdentity, normalizePremiumItemKey } = require("../../utils/subscription/premiumIdentity");
 const {
+  assertPremiumUpgradeLimit,
+  buildPremiumUpgradeLimit,
+  resolveTotalSubscriptionMealsFromQuote,
+} = require("./premiumUpgradeLimitService");
+const {
   filterGloballyAvailable,
   loadCatalogItemsByIdForDocs,
 } = require("../catalog/catalogAvailabilityService");
@@ -726,6 +731,15 @@ async function resolveCheckoutQuoteOrThrow(
     premiumUnitPriceHalala = uniqueUnitPrices.length === 1 ? uniqueUnitPrices[0] : 0;
   }
 
+  const totalSubscriptionMeals = resolveTotalSubscriptionMealsFromQuote({
+    plan,
+    mealsPerDay,
+  });
+  const premiumUpgradeLimit = assertPremiumUpgradeLimit({
+    premiumUpgradeCount: premiumCount,
+    totalSubscriptionMeals,
+  });
+
   const grossTotalHalala = basePlanPriceHalala + premiumTotalHalala + addonsTotalHalala + deliveryFeeHalala;
   // VAT is system-owned (16%)
   const vatPercentage = VAT_PERCENTAGE;
@@ -750,6 +764,11 @@ async function resolveCheckoutQuoteOrThrow(
     delivery,
     premiumCount,
     premiumUnitPriceHalala,
+    totalSubscriptionMeals,
+    premiumUpgradeLimit: buildPremiumUpgradeLimit({
+      totalSubscriptionMeals,
+      selectedPremiumUpgrades: premiumUpgradeLimit.selectedPremiumUpgrades,
+    }),
     premiumItems: resolvedPremiumItems,
     addonItems: resolvedAddonItems,
     addonSubscriptions,

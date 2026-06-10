@@ -1029,6 +1029,7 @@ async function quoteSubscription(req, res, runtimeOverrides = null) {
         promoCode: buildPromoResponseBlock(quote.promoCode || null),
         summary: resolveQuoteSummary(quote, lang),
         premiumItemCount: Array.isArray(quote.premiumItems) ? quote.premiumItems.length : 0,
+        premiumUpgradeLimit: quote.premiumUpgradeLimit || null,
       },
     });
   } catch (err) {
@@ -1040,6 +1041,9 @@ async function quoteSubscription(req, res, runtimeOverrides = null) {
     }
     if (err.code === "VALIDATION_ERROR") {
       return sendValidationError(res, err.message);
+    }
+    if (err.code === "PREMIUM_UPGRADE_LIMIT_EXCEEDED") {
+      return errorResponse(res, err.status || 422, err.code, err.message, err.details);
     }
     if (err.code === "INVALID_DELIVERY_SLOT" || err.code === "DELIVERY_WINDOW_MISSING") {
       return errorResponse(res, 422, err.code, err.message);
@@ -1086,6 +1090,9 @@ async function checkoutSubscription(req, res, runtimeOverrides = null) {
     }
     if (err.code === "VALIDATION_ERROR") {
       return sendValidationError(res, err.message);
+    }
+    if (err.code === "PREMIUM_UPGRADE_LIMIT_EXCEEDED") {
+      return errorResponse(res, err.status || 422, err.code, err.message, err.details);
     }
     if (err.code === "INVALID_DELIVERY_SLOT" || err.code === "DELIVERY_WINDOW_MISSING") {
       return errorResponse(res, 422, err.code, err.message);
