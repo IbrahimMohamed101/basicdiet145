@@ -12,6 +12,7 @@ const { settlePaidPremiumExtraDayPayment } = require("./subscription/premiumExtr
 const { getPaymentMetadata } = require("./subscription/subscriptionCheckoutHelpers");
 const { applyCommercialStateToDay } = require("./subscription/subscriptionDayCommercialStateService");
 const { isPaymentSuperseded } = require("./subscription/subscriptionDayPaymentLifecycleService");
+const { assertSubscriptionActive } = require("./subscription/subscriptionDateRangeHelperService");
 
 const SUPPORTED_PHASE1_SHARED_PAYMENT_TYPES = new Set([
   "subscription_activation",
@@ -327,6 +328,15 @@ async function applyOneTimeAddonDayPlanningPayment({ payment, session, source = 
 
   const subscription = await runtime.findSubscriptionById(metadata.subscriptionId, { session });
   if (!subscription) return { applied: false, reason: "subscription_not_found" };
+
+  // Phase 5B: ensure subscription is active and date is within range before applying payment side effects
+  try {
+    assertSubscriptionActive(subscription, metadata.date);
+  } catch (err) {
+    // Map throw-based guard errors into payment application result shape
+    const reasonCode = err.code || "SUBSCRIPTION_NOT_ACTIVE";
+    return { applied: false, reason: String(reasonCode).toLowerCase() };
+  }
 
   let day = isValidObjectId(metadata.dayId) ? await runtime.findDayById(metadata.dayId, { session }) : await runtime.findDay({ subscriptionId: metadata.subscriptionId, date: metadata.date, session });
   if (!day) return { applied: false, reason: "day_not_found" };

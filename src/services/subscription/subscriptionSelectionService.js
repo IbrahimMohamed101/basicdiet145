@@ -31,6 +31,15 @@ const {
 const {
   supersedeInitiatedDayPlanningPaymentsForRevisionChange,
 } = require("./subscriptionDayPaymentLifecycleService");
+const {
+  assertSubscriptionActiveAndOwned,
+  assertSubscriptionDateRange,
+} = require("./subscriptionDateRangeHelperService");
+const {
+  assertDayModifiableByClient,
+  hasPendingOrUnpaidPayment,
+  hasSupersededPayment,
+} = require("./subscriptionDayLockService");
 
 async function resolvePlanningSubscriptionForOperation(subscription, session = null) {
   let resolvedSubscription = subscription;
@@ -473,7 +482,9 @@ async function performDaySelectionUpdate({ userId, subscriptionId, date, selecti
   // 1. Fetch context (Lean)
   const requestedSub = await Subscription.findById(subscriptionId).lean();
   if (!requestedSub) throw { status: 404, code: "NOT_FOUND", message: "Subscription not found" };
-  if (String(requestedSub.userId) !== String(userId)) throw { status: 403, code: "FORBIDDEN", message: "Forbidden" };
+
+  // Centralized ownership and status check (preserves existing behavior)
+  assertSubscriptionActiveAndOwned({ subscription: requestedSub, userId, date });
 
   const resolvedPlanningSubscription = await resolvePlanningSubscriptionForOperation(requestedSub);
   const subForDraft = resolvedPlanningSubscription.subscription;
@@ -482,78 +493,85 @@ async function performDaySelectionUpdate({ userId, subscriptionId, date, selecti
   const planningLimits = await resolveMealSlotPlanningLimits(subForDraft);
   const mealsPerDayLimit = planningLimits.requiredSlotCount;
   if (totalSelected > mealsPerDayLimit) throw { status: 400, code: "DAILY_CAP", message: "Selections exceed meals per day" };
-  ensureActive(subForDraft, date);
-  await validateSelectionDateRangeOrThrow(date, subForDraft);
 
-    const existingDay = await SubscriptionDay.findOne({ subscriptionId: canonicalSubscriptionId, date }).lean();
-    await assertSubscriptionDayModifiable({
-      subscription: subForDraft,
-      day: existingDay,
-      date,
-      getBusinessDateFn: getRestaurantBusinessDate,
-    });
-    if (!Array.isArray(mealSlots)) {
-      throw {
-        status: 422,
-        code: "LEGACY_DAY_SELECTION_UNSUPPORTED",
-        message: "Legacy day selection payload is no longer supported. Submit mealSlots with canonical planner fields.",
-        details: {
-          expectedPayload: {
-            mealSlots: [
-              {
-                slotIndex: 1,
-                selectionType: "standard_meal",
-                proteinId: "protein_id",
-                carbs: [{ carbId: "carb_id", grams: 150 }],
-              },
-            ],
-          },
+  const existingDay = await SubscriptionDay.findOne({ subscriptionId: canonicalSubscriptionId, date }).lean();
+  await assertSubscriptionDayModifiable({
+    subscription: subForDraft,
+    day: existingDay,
+    date,
+    getBusinessDateFn: getRestaurantBusinessDate,
+  });
+  if (!Array.isArray(mealSlots)) {
+    throw {
+      status: 422,
+      code: "LEGACY_DAY_SELECTION_UNSUPPORTED",
+      message: "Legacy day selection payload is no longer supported. Submit mealSlots with canonical planner fields.",
+      details: {
+        expectedPayload: {
+          mealSlots: [
+            {
+              slotIndex: 1,
+              selectionType: "standard_meal",
+              proteinId: "protein_id",
+              carbs: [{ carbId: "carb_id", grams: 150 }],
+            },
+          ],
         },
-      };
-    }
-    if (existingDay && existingDay.status !== "open") throw { status: 409, code: "LOCKED", message: "Day is locked" };
-    if (existingDay && existingDay.plannerState === "confirmed") throw { status: 409, code: "LOCKED", message: "Planner is already confirmed for this day" };
-
-    // 2. Build Draft & Reconcile Addons (In-Memory)
-    const planningDraftSubscription = buildPlanningDraftSubscriptionView(subForDraft, existingDay);
-    const useCanonicalPlanner = isCanonicalPlannerRequest({ contractVersion, mealSlots });
-    const draft = useCanonicalPlanner
-      ? await validateCanonicalMealSlots({
-        mealSlots,
-        mealsPerDayLimit,
-        maxSlotCount: planningLimits.maxSlotCount,
-        subscription: planningDraftSubscription,
-      })
-      : await buildMealSlotDraft({
-        mealSlots,
-        mealsPerDayLimit,
-        maxSlotCount: planningLimits.maxSlotCount,
-        subscription: planningDraftSubscription,
-      });
+      },
+    };
+  }
+  // Phase 5: Explicit check for day status - pending/unpaid or superseded payments do NOT lock planner edits
+  if (existingDay) {
+    const hasPendingPayment = hasPendingOrUnpaidPayment(existingDay);
+    const hasSuperseded = hasSupersededPayment(existingDay);
     
-    if (!draft.valid) {
-      throw {
-        status: 422,
-        code: draft.errorCode || "INVALID_MEAL_PLAN",
-        message: draft.errorMessage || "Meal planner validation failed",
-        valid: false,
-        slotErrors: draft.slotErrors,
-        rules: getMealPlannerRules()
-      };
+    // Only lock if not pending/unpaid and not superseded
+    if (!hasPendingPayment && !hasSuperseded) {
+      if (existingDay.status !== "open") throw { status: 409, code: "LOCKED", message: "Day is locked" };
+      if (existingDay.plannerState === "confirmed") throw { status: 409, code: "LOCKED", message: "Planner is already confirmed for this day" };
     }
+  }
 
-    {
-      const totalSubscriptionMeals = resolveTotalSubscriptionMealsFromSubscription(subForDraft);
-      const existingPremiumUpgradeCount = await countPersistedPremiumUpgradesForSubscription({
-        subscriptionId: canonicalSubscriptionId,
-        excludeDate: date,
-      });
-      const incomingPremiumUpgradeCount = countPremiumUpgradeSelections(draft.premiumUpgradeSelections);
-      assertPremiumUpgradeLimit({
-        premiumUpgradeCount: existingPremiumUpgradeCount + incomingPremiumUpgradeCount,
-        totalSubscriptionMeals,
-      });
-    }
+  // 2. Build Draft & Reconcile Addons (In-Memory)
+  const planningDraftSubscription = buildPlanningDraftSubscriptionView(subForDraft, existingDay);
+  const useCanonicalPlanner = isCanonicalPlannerRequest({ contractVersion, mealSlots });
+  const draft = useCanonicalPlanner
+    ? await validateCanonicalMealSlots({
+      mealSlots,
+      mealsPerDayLimit,
+      maxSlotCount: planningLimits.maxSlotCount,
+      subscription: planningDraftSubscription,
+    })
+    : await buildMealSlotDraft({
+      mealSlots,
+      mealsPerDayLimit,
+      maxSlotCount: planningLimits.maxSlotCount,
+      subscription: planningDraftSubscription,
+    });
+  
+  if (!draft.valid) {
+    throw {
+      status: 422,
+      code: draft.errorCode || "INVALID_MEAL_PLAN",
+      message: draft.errorMessage || "Meal planner validation failed",
+      valid: false,
+      slotErrors: draft.slotErrors,
+      rules: getMealPlannerRules()
+    };
+  }
+
+  {
+    const totalSubscriptionMeals = resolveTotalSubscriptionMealsFromSubscription(subForDraft);
+    const existingPremiumUpgradeCount = await countPersistedPremiumUpgradesForSubscription({
+      subscriptionId: canonicalSubscriptionId,
+      excludeDate: date,
+    });
+    const incomingPremiumUpgradeCount = countPremiumUpgradeSelections(draft.premiumUpgradeSelections);
+    assertPremiumUpgradeLimit({
+      premiumUpgradeCount: existingPremiumUpgradeCount + incomingPremiumUpgradeCount,
+      totalSubscriptionMeals,
+    });
+  }
 
   const addonContainer = {
     addonSelections: existingDay ? JSON.parse(JSON.stringify(existingDay.addonSelections || [])) : [],

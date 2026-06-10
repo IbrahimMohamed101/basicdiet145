@@ -29,6 +29,16 @@ const {
   assertSubscriptionDayModifiable,
   localizePolicyErrorMessage,
 } = require("./subscriptionDayModificationPolicyService");
+const {
+  assertSubscriptionActiveAndOwned,
+} = require("./subscriptionDateRangeHelperService");
+const {
+  hasPendingOrUnpaidPayment,
+  hasSupersededPayment,
+} = require("./subscriptionDayLockService");
+const {
+  guardToErrorResult,
+} = require("./subscriptionGuardAdapter");
 
 const SYSTEM_CURRENCY = "SAR";
 const UNIFIED_DAY_PAYMENT_TYPE = "day_planning_payment";
@@ -265,9 +275,13 @@ async function createUnifiedDayPaymentFlow({
   try {
     const sub = await Subscription.findById(subscriptionId);
     if (!sub) return buildErrorResult(404, "NOT_FOUND", "Subscription not found");
-    if (String(sub.userId) !== String(userId)) return buildErrorResult(403, "FORBIDDEN", "Forbidden");
 
-    ensureActiveFn(sub, date);
+    // Phase 5B: Use adapter to convert throw-based guard to result-based error
+    const guardError = guardToErrorResult(
+      () => assertSubscriptionActiveAndOwned({ subscription: sub, userId, date }),
+      buildErrorResult
+    );
+    if (guardError) return guardError;
 
     const day = await SubscriptionDay.findOne({ subscriptionId, date });
     if (!day) return buildErrorResult(404, "NOT_FOUND", "Day not found");
@@ -277,7 +291,13 @@ async function createUnifiedDayPaymentFlow({
     } catch (err) {
       return buildErrorResult(err.status || 400, err.code || "INVALID_DATE", localizePolicyErrorMessage(err, lang), err.details);
     }
-    if (day.status !== "open") return buildErrorResult(409, "LOCKED", "Day is locked");
+
+    // Phase 5: Pending/unpaid or superseded payments do NOT lock payment creation
+    const hasPendingPayment = hasPendingOrUnpaidPayment(day);
+    const hasSuperseded = hasSupersededPayment(day);
+    if (!hasPendingPayment && !hasSuperseded) {
+      if (day.status !== "open") return buildErrorResult(409, "LOCKED", "Day is locked");
+    }
 
     const derivedDay = await finalizeDayCommercialStateForPersistence(day);
     const requirement = derivedDay.paymentRequirement || {};
@@ -516,7 +536,13 @@ async function verifyUnifiedDayPaymentFlow({
 }) {
   const sub = await Subscription.findById(subscriptionId).lean();
   if (!sub) return buildErrorResult(404, "NOT_FOUND", "Subscription not found");
-  if (String(sub.userId) !== String(userId)) return buildErrorResult(403, "FORBIDDEN", "Forbidden");
+
+  // Phase 5B: Use adapter to convert throw-based guard to result-based error
+  const guardError = guardToErrorResult(
+    () => assertSubscriptionActiveAndOwned({ subscription: sub, userId, date }),
+    buildErrorResult
+  );
+  if (guardError) return guardError;
 
   const payment = await Payment.findOne({
     _id: paymentId,

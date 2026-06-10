@@ -14,6 +14,9 @@ const {
   assertFulfillmentMethodAllowed,
 } = require("./subscriptionFulfillmentPolicyService");
 const { assertRestaurantOpenForOrdering } = require("../restaurantHoursService");
+const {
+  assertSubscriptionActiveAndOwned,
+} = require("./subscriptionDateRangeHelperService");
 
 const PICKUP_REQUEST_ALLOWED_DAY_STATUSES = [
   "open",
@@ -192,12 +195,9 @@ async function createSubscriptionPickupRequestForClient({
   if (!subscription) {
     throw createServiceError("NOT_FOUND", "Subscription not found", 404);
   }
-  if (String(subscription.userId) !== String(userId)) {
-    throw createServiceError("FORBIDDEN", "Forbidden", 403);
-  }
-  if (subscription.status !== "active") {
-    throw createServiceError("SUB_INACTIVE", "Subscription is not active", 422);
-  }
+
+  // Phase 5: Centralized ownership and status check (preserves existing behavior)
+  assertSubscriptionActiveAndOwned({ subscription, userId, date });
   try {
     assertFulfillmentMethodAllowed({
       subscription,

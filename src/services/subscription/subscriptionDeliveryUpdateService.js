@@ -12,6 +12,9 @@ const {
   assertTomorrowCutoffAllowed,
 } = require("./subscriptionCutoffPolicyService");
 const { getRestaurantBusinessTomorrow } = require("../restaurantHoursService");
+const {
+  assertSubscriptionActiveAndOwned,
+} = require("./subscriptionDateRangeHelperService");
 
 function createDeliveryUpdateError(status, code, message) {
   const err = new Error(message);
@@ -296,10 +299,9 @@ async function performDeliveryDetailsUpdate({ userId, subscriptionId, payload, l
   if (!sub) {
     throw createDeliveryUpdateError(404, "NOT_FOUND", "Subscription not found");
   }
-  if (String(sub.userId) !== String(userId)) {
-    throw createDeliveryUpdateError(403, "FORBIDDEN", "Forbidden");
-  }
-  ensureActive(sub);
+
+  // Phase 5: Centralized ownership and status check (preserves existing behavior)
+  assertSubscriptionActiveAndOwned({ subscription: sub, userId });
 
   let resolvedUpdate;
   resolvedUpdate = await resolveSubscriptionDeliveryDefaultsUpdate({

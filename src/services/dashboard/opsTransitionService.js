@@ -21,6 +21,9 @@ const {
   consumeReservedPickupMeals,
   releaseReservedPickupMeals,
 } = require("../subscription/subscriptionPickupRequestBalanceService");
+const {
+  assertAdminSubscriptionAccess,
+} = require("../subscription/subscriptionAccessGuardService");
 
 /**
  * Unified Operations Transition Service.
@@ -28,11 +31,22 @@ const {
  */
 
 async function executeAction(actionId, { entityId, entityType, userId, role, payload = {} }) {
+  // Phase 5: Admin role check for admin-specific operations only
+  // Courier role is allowed for dispatch operations
+  const adminOnlyActions = ["lock", "prepare", "cancel", "no_show", "reopen", "notify_arrival"];
   const normalizedActionId = actionId === "start_preparation"
     ? "prepare"
     : actionId === "ready-for-pickup"
       ? "ready_for_pickup"
       : actionId;
+
+  if (adminOnlyActions.includes(normalizedActionId) && !["admin", "superadmin"].includes(String(role || ""))) {
+    const err = new Error("Dashboard admin permission is required");
+    err.code = "FORBIDDEN";
+    err.status = 403;
+    throw err;
+  }
+
   const normalizedEntityType = entityType === "subscription_day" || entityType === "pickup_day"
     ? "subscription"
     : entityType;
