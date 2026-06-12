@@ -2,6 +2,7 @@
 
 const SubscriptionDay = require("../../models/SubscriptionDay");
 const Order = require("../../models/Order");
+const Delivery = require("../../models/Delivery");
 const Addon = require("../../models/Addon");
 const BuilderProtein = require("../../models/BuilderProtein");
 const BuilderCarb = require("../../models/BuilderCarb");
@@ -16,9 +17,38 @@ function attachSession(query, session) {
 async function fetchSubscriptionDaysByDate(date, { session } = {}) {
   let query = SubscriptionDay.find({ date: String(date), status: { $nin: ["skipped", "frozen"] } })
     .select(["_id","subscriptionId","date","status","materializedMeals","mealSlots","plannerMeta","planningMeta","selections","recurringAddons","oneTimeAddonSelections","addonsOneTime","assignedByKitchen","pickupRequested","pickupRequestedAt","pickupPreparationStartedAt","pickupPreparedAt","pickupCode","pickupVerifiedAt","pickupNoShowAt","creditsDeducted","dayEndConsumptionReason","deliveryWindowOverride","customSalads","customMeals","lockedSnapshot","fulfilledSnapshot","lockedAt","fulfilledAt","createdAt"].join(" "))
-    .populate({ path: "subscriptionId", select: "_id userId deliveryMode deliveryWindow pickupLocationId deliveryAddress", populate: { path: "userId", select: "_id name phone" } });
+    .populate({
+      path: "subscriptionId",
+      select: "_id userId planId selectedGrams selectedMealsPerDay totalMeals remainingMeals deliveryMode deliveryWindow pickupLocationId deliveryAddress deliveryZoneId",
+      populate: [
+        { path: "userId", select: "_id name phone" },
+        { path: "planId", select: "_id key name daysCount durationDays" },
+      ],
+    });
   query = attachSession(query, session);
-  return query.lean();
+  const days = await query.lean();
+  if (!days.length) return days;
+  let deliveryQuery = Delivery.find({
+    $or: [
+      { dayId: { $in: days.map((day) => day._id) } },
+      {
+        subscriptionId: { $in: days.map((day) => day.subscriptionId && day.subscriptionId._id).filter(Boolean) },
+        date: String(date),
+      },
+    ],
+  });
+  deliveryQuery = attachSession(deliveryQuery, session);
+  const deliveries = await deliveryQuery.lean();
+  const byDay = new Map(deliveries.filter((delivery) => delivery.dayId).map((delivery) => [String(delivery.dayId), delivery]));
+  const bySubscriptionDate = new Map(deliveries
+    .filter((delivery) => delivery.subscriptionId && delivery.date)
+    .map((delivery) => [`${String(delivery.subscriptionId)}:${delivery.date}`, delivery]));
+  return days.map((day) => ({
+    ...day,
+    deliveryRecord: byDay.get(String(day._id))
+      || bySubscriptionDate.get(`${String(day.subscriptionId && day.subscriptionId._id || day.subscriptionId)}:${day.date}`)
+      || null,
+  }));
 }
 
 async function fetchOrdersByDate(date, { session } = {}) {
@@ -31,7 +61,16 @@ async function fetchOrdersByDate(date, { session } = {}) {
     .populate({ path: "userId", select: "_id name phone" });
   query = attachSession(query, session);
   const orders = await query.lean();
-  return orders.filter((order) => !shouldBlockOneTimeOrderDelivery(order));
+  const filteredOrders = orders.filter((order) => !shouldBlockOneTimeOrderDelivery(order));
+  if (!filteredOrders.length) return filteredOrders;
+  let deliveryQuery = Delivery.find({ orderId: { $in: filteredOrders.map((order) => order._id) } });
+  deliveryQuery = attachSession(deliveryQuery, session);
+  const deliveries = await deliveryQuery.lean();
+  const byOrder = new Map(deliveries.map((delivery) => [String(delivery.orderId), delivery]));
+  return filteredOrders.map((order) => ({
+    ...order,
+    deliveryRecord: byOrder.get(String(order._id)) || null,
+  }));
 }
 
 async function fetchMealNameMap(mealKeys, { session } = {}) {

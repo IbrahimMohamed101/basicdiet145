@@ -5,6 +5,14 @@ const { getAllowedOrderActions } = require("../orders/orderOpsTransitionService"
 const { normalizeLegacyOrderStatus } = require("../../utils/orderState");
 const { getOrderFulfillmentMethod } = require("../../utils/oneTimeOrderDeliveryGate");
 const { mapSubscriptionPickupRequestStatus } = require("../subscription/subscriptionPickupRequestClientService");
+const {
+  buildDeliveryPayload,
+  buildKitchenDetailsPayload,
+  buildOrderKitchenDetailsPayload,
+  buildPaymentValidityPayload,
+  buildPickupPayload,
+  buildPlanPayload,
+} = require("./opsPayloadService");
 
 /**
  * Service to map internal models to the UnifiedOperationalDTO.
@@ -67,6 +75,17 @@ function mapSubscriptionDayToDTO(day, delivery, subscription, user, role, lang) 
     lang,
   });
   
+  const plan = buildPlanPayload(subscription, lang);
+  const kitchenDetails = buildKitchenDetailsPayload(day, subscription, lang);
+  const paymentValidity = buildPaymentValidityPayload(day);
+  const deliveryPayload = buildDeliveryPayload(delivery, {
+    date: day.date,
+    status: null,
+    address: day.deliveryAddressOverride || subscription.deliveryAddress || null,
+    window: day.deliveryWindowOverride || subscription.deliveryWindow || "",
+    zoneId: subscription.deliveryZoneId || null,
+  });
+
   return {
     source: "subscription",
     entityType: "subscription_day",
@@ -77,6 +96,10 @@ function mapSubscriptionDayToDTO(day, delivery, subscription, user, role, lang) 
     reference: `SUB-${String(day.subscriptionId).slice(-6).toUpperCase()}`,
     status,
     statusLabel: day.status, // To be localized
+    fulfillmentType: mode === "pickup" ? "branch_pickup" : "home_delivery",
+    plan,
+    kitchenDetails,
+    paymentValidity,
     ui: {
       ...ui,
       label: day.status, // To be localized in opsReadService
@@ -103,6 +126,11 @@ function mapSubscriptionDayToDTO(day, delivery, subscription, user, role, lang) 
       dayEndConsumptionReason: fulfillmentState.dayEndConsumptionReason,
       mealTypesSpecified: fulfillmentState.mealTypesSpecified,
     },
+    delivery: {
+      ...deliveryPayload,
+      method: mode,
+    },
+    pickup: mode === "pickup" ? buildPickupPayload({ subscription, day }) : null,
     allowedActions,
     timestamps: {
       createdAt: day.createdAt,
@@ -133,6 +161,14 @@ function mapOrderToDTO(order, delivery, user, role, lang) {
     })
     .filter(Boolean);
 
+  const deliveryPayload = buildDeliveryPayload(delivery, {
+    date: order.fulfillmentDate || order.deliveryDate,
+    status: null,
+    address: order.deliveryAddress || (order.delivery && order.delivery.address ? order.delivery.address : null),
+    window: order.deliveryWindow || (order.delivery && order.delivery.deliveryWindow ? order.delivery.deliveryWindow : ""),
+    zoneId: order.delivery && order.delivery.zoneId ? order.delivery.zoneId : null,
+  });
+
   return {
     source: "one_time_order",
     entityType: "order",
@@ -147,6 +183,19 @@ function mapOrderToDTO(order, delivery, user, role, lang) {
     statusLabel: status,
     paymentStatus: order.paymentStatus || "paid",
     fulfillmentMethod: mode,
+    fulfillmentType: mode === "pickup" ? "branch_pickup" : "delivery",
+    kitchenDetails: buildOrderKitchenDetailsPayload(order, lang),
+    paymentValidity: {
+      paymentRequired: true,
+      paymentStatus: order.paymentStatus || "initiated",
+      paymentApplied: String(order.paymentStatus || "") === "paid",
+      pendingUnpaid: String(order.paymentStatus || "") !== "paid",
+      superseded: false,
+      revisionMismatch: false,
+      canPrepare: String(order.paymentStatus || "") === "paid" && status === "confirmed",
+      canFulfill: String(order.paymentStatus || "") === "paid" && ["out_for_delivery", "ready_for_pickup"].includes(status),
+      reason: String(order.paymentStatus || "") === "paid" ? null : "ORDER_PAYMENT_REQUIRED",
+    },
     ui: {
       ...ui,
       label: status, // To be localized in opsReadService
@@ -158,8 +207,9 @@ function mapOrderToDTO(order, delivery, user, role, lang) {
     },
     items: order.items || [],
     pricing: order.pricing || {},
-    delivery: mode === "delivery" ? (order.delivery || {}) : {},
+    delivery: mode === "delivery" ? { ...(order.delivery || {}), ...deliveryPayload } : {},
     pickup: mode === "pickup" ? {
+      ...buildPickupPayload({ subscription: {}, day: order }),
       ...(order.pickup || {}),
       pickupCode,
       pickupCodeIssuedAt: order.pickupCodeIssuedAt || null,
@@ -211,6 +261,31 @@ function mapSubscriptionPickupRequestToDTO(pickupRequest, subscription, user, ro
     mealCount: Number(pickupRequest.mealCount || 0),
     status,
     statusLabel: statusPayload.statusLabel,
+    fulfillmentType: "pickup_request",
+    plan: buildPlanPayload(subscription || {}, lang),
+    kitchenDetails: pickupRequest.snapshot
+      ? {
+        mealSlots: Array.isArray(pickupRequest.snapshot.mealSlots)
+          ? pickupRequest.snapshot.mealSlots.map((slot) => ({
+            ...buildKitchenDetailsPayload({ mealSlots: [slot] }, subscription || {}, lang).mealSlots[0],
+          }))
+          : [],
+        addons: buildKitchenDetailsPayload({
+          addonSelections: Array.isArray(pickupRequest.snapshot.addons) ? pickupRequest.snapshot.addons : [],
+        }, subscription || {}, lang).addons,
+      }
+      : buildKitchenDetailsPayload({}, subscription || {}, lang),
+    paymentValidity: {
+      paymentRequired: false,
+      paymentStatus: "reserved",
+      paymentApplied: Boolean(pickupRequest.creditsReserved),
+      pendingUnpaid: false,
+      superseded: false,
+      revisionMismatch: false,
+      canPrepare: ["locked"].includes(status) && Boolean(pickupRequest.creditsReserved),
+      canFulfill: ["ready_for_pickup"].includes(status) && Boolean(pickupRequest.creditsReserved) && !pickupRequest.creditsReleasedAt,
+      reason: pickupRequest.creditsReleasedAt ? "CREDITS_RELEASED" : null,
+    },
     currentStep: statusPayload.currentStep,
     isReady: statusPayload.isReady,
     isCompleted: statusPayload.isCompleted,
@@ -232,6 +307,7 @@ function mapSubscriptionPickupRequestToDTO(pickupRequest, subscription, user, ro
       pickupCodeIssuedAt: statusPayload.pickupCodeIssuedAt,
       pickupPreparedAt: pickupRequest.pickupPreparedAt || null,
       pickupNoShowAt: pickupRequest.pickupNoShowAt || null,
+      ...buildPickupPayload({ pickupRequest, subscription: subscription || {} }),
     },
     context: {
       date: pickupRequest.date,

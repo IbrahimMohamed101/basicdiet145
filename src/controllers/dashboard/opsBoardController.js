@@ -17,6 +17,13 @@ const dateUtils = require("../../utils/date");
 const { getRequestLang } = require("../../utils/i18n");
 const { getRestaurantBusinessDate } = require("../../services/restaurantHoursService");
 const { shouldBlockOneTimeOrderDelivery } = require("../../utils/oneTimeOrderDeliveryGate");
+const {
+  buildDeliveryPayload,
+  buildKitchenDetailsPayload,
+  buildPaymentValidityPayload,
+  buildPickupPayload,
+  buildPlanPayload,
+} = require("../../services/dashboard/opsPayloadService");
 // Settlement on read is DISABLED — see pastSubscriptionDaySettlementService.js
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -81,7 +88,7 @@ async function buildZoneMap(subscriptions) {
   return new Map(zones.map((zone) => [String(zone._id), zone]));
 }
 
-function mapDay(day, latestAction, zoneMap, lang, role) {
+function mapDay(day, latestAction, zoneMap, lang, role, delivery = null) {
   const subscription = day.subscriptionId || {};
   const user = subscription.userId || {};
   const mode = getDeliveryMode(subscription);
@@ -92,6 +99,13 @@ function mapDay(day, latestAction, zoneMap, lang, role) {
     mode,
     role,
     lang,
+  });
+
+  const deliveryPayload = buildDeliveryPayload(delivery, {
+    date: day.date,
+    address: getAddress(day, subscription),
+    window: getWindow(day, subscription),
+    zoneId: subscription.deliveryZoneId || null,
   });
 
   return {
@@ -107,9 +121,14 @@ function mapDay(day, latestAction, zoneMap, lang, role) {
     },
     date: day.date,
     status: day.status,
+    fulfillmentType: mode === "pickup" ? "branch_pickup" : "home_delivery",
+    plan: buildPlanPayload(subscription, lang),
+    kitchenDetails: buildKitchenDetailsPayload(day, subscription, lang),
+    paymentValidity: buildPaymentValidityPayload(day),
     deliveryMethod: mode,
     deliveryMode: mode,
     delivery: {
+      ...deliveryPayload,
       method: mode,
       address: getAddress(day, subscription),
       zone: zone ? { id: String(zone._id), name: zone.name || null } : null,
@@ -118,6 +137,7 @@ function mapDay(day, latestAction, zoneMap, lang, role) {
       pickupLocationId: subscription.pickupLocationId ? String(subscription.pickupLocationId) : null,
     },
     pickup: {
+      ...buildPickupPayload({ subscription, day }),
       pickupLocationId: subscription.pickupLocationId ? String(subscription.pickupLocationId) : null,
       pickupRequested: Boolean(day.pickupRequested),
       pickupPreparedAt: day.pickupPreparedAt || null,
@@ -205,8 +225,11 @@ async function queryBoardDays(req, { screen }) {
   const days = await SubscriptionDay.find(dayQuery)
     .populate({
       path: "subscriptionId",
-      select: "_id userId deliveryMode deliveryWindow deliveryAddress deliveryZoneId pickupLocationId",
-      populate: { path: "userId", select: "_id name phone" },
+      select: "_id userId planId selectedGrams selectedMealsPerDay totalMeals remainingMeals deliveryMode deliveryWindow deliveryAddress deliveryZoneId pickupLocationId",
+      populate: [
+        { path: "userId", select: "_id name phone" },
+        { path: "planId", select: "_id key name daysCount durationDays" },
+      ],
     })
     .sort({ updatedAt: -1, createdAt: -1 })
     .lean();
@@ -222,17 +245,33 @@ async function queryBoardDays(req, { screen }) {
     filteredByMethod = filteredByMethod.filter((day) => getDeliveryMode(day.subscriptionId || {}) === "pickup");
   }
 
-  const [latestActionMap, zoneMap] = await Promise.all([
+  const [latestActionMap, zoneMap, deliveryDocs] = await Promise.all([
     buildLatestActionMap(filteredByMethod.map((day) => day._id)),
     buildZoneMap(filteredByMethod.map((day) => day.subscriptionId || {})),
+    Delivery.find({
+      $or: [
+        { dayId: { $in: filteredByMethod.map((day) => day._id) } },
+        {
+          subscriptionId: { $in: filteredByMethod.map((day) => day.subscriptionId && day.subscriptionId._id).filter(Boolean) },
+          date,
+        },
+      ],
+    }).lean(),
   ]);
+  const deliveryByDayMap = new Map(deliveryDocs.filter((delivery) => delivery.dayId).map((delivery) => [String(delivery.dayId), delivery]));
+  const deliveryBySubscriptionDateMap = new Map(deliveryDocs
+    .filter((delivery) => delivery.subscriptionId && delivery.date)
+    .map((delivery) => [`${String(delivery.subscriptionId)}:${delivery.date}`, delivery]));
 
   let items = filteredByMethod.map((day) => mapDay(
     day,
     latestActionMap.get(String(day._id)),
     zoneMap,
     lang,
-    role
+    role,
+    deliveryByDayMap.get(String(day._id))
+      || deliveryBySubscriptionDateMap.get(`${String(day.subscriptionId && day.subscriptionId._id || day.subscriptionId)}:${day.date}`)
+      || null
   ));
 
   let activeOrderStatuses = [];
@@ -273,6 +312,8 @@ async function queryBoardDays(req, { screen }) {
     .populate("userId", "_id name phone")
     .sort({ updatedAt: -1, createdAt: -1 })
     .lean();
+  const orderDeliveries = await Delivery.find({ orderId: { $in: orders.map((order) => order._id) } }).lean();
+  const deliveryByOrderMap = new Map(orderDeliveries.map((delivery) => [String(delivery.orderId), delivery]));
 
   const filteredOrderItems = orders.filter((order) => {
     const oMode = order.fulfillmentMethod || order.deliveryMode || "delivery";
@@ -282,7 +323,7 @@ async function queryBoardDays(req, { screen }) {
   });
 
   const orderItems = filteredOrderItems.map((order) => {
-    return dashboardDtoService.mapOrderToDTO(order, null, order.userId, role, lang);
+    return dashboardDtoService.mapOrderToDTO(order, deliveryByOrderMap.get(String(order._id)) || null, order.userId, role, lang);
   });
 
   let pickupRequestItems = [];
@@ -299,8 +340,11 @@ async function queryBoardDays(req, { screen }) {
     })
       .populate({
         path: "subscriptionId",
-        select: "_id userId deliveryMode pickupLocationId",
-        populate: { path: "userId", select: "_id name phone" },
+        select: "_id userId planId selectedGrams selectedMealsPerDay totalMeals remainingMeals deliveryMode pickupLocationId",
+        populate: [
+          { path: "userId", select: "_id name phone" },
+          { path: "planId", select: "_id key name daysCount durationDays" },
+        ],
       })
       .sort({ updatedAt: -1, createdAt: -1 })
       .lean();
@@ -365,16 +409,22 @@ async function queueDetail(req, res) {
   const day = await SubscriptionDay.findById(req.params.dayId)
     .populate({
       path: "subscriptionId",
-      select: "_id userId deliveryMode deliveryWindow deliveryAddress deliveryZoneId pickupLocationId",
-      populate: { path: "userId", select: "_id name phone" },
+      select: "_id userId planId selectedGrams selectedMealsPerDay totalMeals remainingMeals deliveryMode deliveryWindow deliveryAddress deliveryZoneId pickupLocationId",
+      populate: [
+        { path: "userId", select: "_id name phone" },
+        { path: "planId", select: "_id key name daysCount durationDays" },
+      ],
     })
     .lean();
   if (!day) {
     const pickupRequest = await SubscriptionPickupRequest.findById(req.params.dayId)
       .populate({
         path: "subscriptionId",
-        select: "_id userId deliveryMode pickupLocationId",
-        populate: { path: "userId", select: "_id name phone" },
+        select: "_id userId planId selectedGrams selectedMealsPerDay totalMeals remainingMeals deliveryMode pickupLocationId",
+        populate: [
+          { path: "userId", select: "_id name phone" },
+          { path: "planId", select: "_id key name daysCount durationDays" },
+        ],
       })
       .lean();
     if (!pickupRequest) return errorResponse(res, 404, "NOT_FOUND", "Subscription day not found");
@@ -384,13 +434,22 @@ async function queueDetail(req, res) {
       data: mapPickupRequest(pickupRequest, subscription, subscription.userId || null, getRequestLang(req), req.dashboardUserRole),
     });
   }
-  const [latestActionMap, zoneMap] = await Promise.all([
+  const [latestActionMap, zoneMap, delivery] = await Promise.all([
     buildLatestActionMap([day._id]),
     buildZoneMap([day.subscriptionId || {}]),
+    Delivery.findOne({
+      $or: [
+        { dayId: day._id },
+        {
+          subscriptionId: day.subscriptionId && day.subscriptionId._id ? day.subscriptionId._id : day.subscriptionId,
+          date: day.date,
+        },
+      ],
+    }).lean(),
   ]);
   return res.status(200).json({
     status: true,
-    data: mapDay(day, latestActionMap.get(String(day._id)), zoneMap, getRequestLang(req), req.dashboardUserRole),
+    data: mapDay(day, latestActionMap.get(String(day._id)), zoneMap, getRequestLang(req), req.dashboardUserRole, delivery),
   });
 }
 

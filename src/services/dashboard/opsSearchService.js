@@ -53,7 +53,10 @@ async function search({ q, role, lang = "ar" }) {
   }
 
   const [subscriptions, ordersByRef] = await Promise.all([
-    Subscription.find({ userId: { $in: userIds } }).limit(50).lean(),
+    Subscription.find({ userId: { $in: userIds } })
+      .populate("planId", "_id key name daysCount durationDays")
+      .limit(50)
+      .lean(),
     Order.find({ $or: orderSearchConditions }).limit(10).lean()
   ]);
   

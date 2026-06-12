@@ -47,7 +47,9 @@ async function listOperations({ date, role, lang = "ar" }) {
   
   // 4. Enrich data
   const [subscriptions, users, deliveries] = await Promise.all([
-    Subscription.find({ _id: { $in: subscriptionIds } }).lean(),
+    Subscription.find({ _id: { $in: subscriptionIds } })
+      .populate("planId", "_id key name daysCount durationDays")
+      .lean(),
     Subscription.find({ _id: { $in: subscriptionIds } }).lean().then((subs) => {
       const userIds = [
         ...new Set([
@@ -134,7 +136,7 @@ async function getEnrichedDTO({ entityId, entityType, role, lang = "ar" }) {
     const pickupRequest = await SubscriptionPickupRequest.findById(entityId).lean();
     if (!pickupRequest) return null;
     const [sub, user] = await Promise.all([
-      Subscription.findById(pickupRequest.subscriptionId).lean(),
+      Subscription.findById(pickupRequest.subscriptionId).populate("planId", "_id key name daysCount durationDays").lean(),
       User.findById(pickupRequest.userId).lean(),
     ]);
     const dto = dashboardDtoService.mapSubscriptionPickupRequestToDTO(pickupRequest, sub || {}, user, role, lang);
@@ -149,7 +151,7 @@ async function getEnrichedDTO({ entityId, entityType, role, lang = "ar" }) {
     if (!day) return null;
 
     const [sub, delivery] = await Promise.all([
-      Subscription.findById(day.subscriptionId).lean(),
+      Subscription.findById(day.subscriptionId).populate("planId", "_id key name daysCount durationDays").lean(),
       Delivery.findOne({ dayId: day._id }).lean()
     ]);
 
