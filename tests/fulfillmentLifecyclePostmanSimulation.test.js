@@ -341,6 +341,8 @@ async function createPickupRequest(api, headers, subscriptionId, mealCount, idem
       const noShow = await createPickupRequest(api, headers.clientA, pickupA._id, 2, `${TEST_TAG}-pickup-a-noshow`);
       assert.strictEqual(noShow.status, 200, JSON.stringify(noShow.body));
       assert.strictEqual(await remainingMeals(pickupA._id), 5);
+      await dashboardAction(api, headers.kitchen, "start_preparation", "subscription_pickup_request", noShow.body.data.requestId);
+      await dashboardAction(api, headers.kitchen, "ready_for_pickup", "subscription_pickup_request", noShow.body.data.requestId);
       const noShowRes = await dashboardAction(api, headers.admin, "no_show", "subscription_pickup_request", noShow.body.data.requestId, {
         reason: "customer_no_show",
       });

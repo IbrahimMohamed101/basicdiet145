@@ -359,6 +359,8 @@ async function sumPickupMealCounts(subscriptionId) {
       const noShowRequest = await createPickupRequest(api, user._id, subscription._id, 2, `${TEST_TAG}-no-show`);
       assert.strictEqual(noShowRequest.status, 200, JSON.stringify(noShowRequest.body));
       assert.strictEqual(await remainingMeals(subscription._id), 1);
+      await dashboardAction(api, kitchenHeaders, "start_preparation", noShowRequest.body.data.requestId);
+      await dashboardAction(api, kitchenHeaders, "ready_for_pickup", noShowRequest.body.data.requestId);
       const noShowRes = await dashboardAction(api, adminHeaders, "no_show", noShowRequest.body.data.requestId, {
         reason: "customer_no_show",
       });

@@ -190,7 +190,9 @@ async function handlePrepare({ entityId, entityType, userId, role, payload, sess
     const fromStatus = doc.status;
     validateTransition(entityType, fromStatus, "in_preparation");
     doc.status = "in_preparation";
-    doc.preparationStartedAt = doc.preparationStartedAt || new Date();
+    const preparedAt = doc.preparationStartedAt || doc.pickupPreparedAt || new Date();
+    doc.preparationStartedAt = doc.preparationStartedAt || preparedAt;
+    doc.pickupPreparedAt = doc.pickupPreparedAt || preparedAt;
     appendPickupRequestAudit(doc, "prepare", userId, role);
     await doc.save({ session });
     return {
@@ -459,7 +461,6 @@ async function handleReadyForPickup({ entityId, entityType, userId, role, payloa
     doc.status = toStatus;
     doc.pickupCode = doc.pickupCode || String(crypto.randomInt(0, 1000000)).padStart(6, "0");
     doc.pickupCodeIssuedAt = doc.pickupCodeIssuedAt || new Date();
-    doc.pickupPreparedAt = doc.pickupPreparedAt || new Date();
     appendPickupRequestAudit(doc, "ready_for_pickup", userId, role);
     await doc.save({ session });
     return {
@@ -710,8 +711,8 @@ function validateTransition(type, from, to) {
     allowed = canTransition(from, to);
   } else if (type === "subscription_pickup_request") {
     const transitions = {
-      locked: ["in_preparation", "ready_for_pickup", "canceled", "no_show"],
-      in_preparation: ["ready_for_pickup", "canceled", "no_show"],
+      locked: ["in_preparation", "canceled"],
+      in_preparation: ["ready_for_pickup", "canceled"],
       ready_for_pickup: ["fulfilled", "no_show"],
       fulfilled: [],
       no_show: [],

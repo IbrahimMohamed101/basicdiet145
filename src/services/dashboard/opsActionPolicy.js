@@ -135,8 +135,8 @@ const TRANSITION_RULES = {
     pending_payment: [],
   },
   subscription_pickup_request: {
-    locked: ["start_preparation", "ready_for_pickup", "cancel", "no_show"],
-    in_preparation: ["ready_for_pickup", "cancel", "no_show"],
+    locked: ["start_preparation", "cancel"],
+    in_preparation: ["ready_for_pickup", "cancel"],
     ready_for_pickup: ["fulfill", "no_show"],
     fulfilled: [],
     no_show: [],
@@ -231,7 +231,10 @@ function validateAction({ entityType, status, mode, role, actionId }) {
 
   const typeRules = TRANSITION_RULES[normalizedEntityType] || {};
   const allowedIds = typeRules[normalizedStatus] || [];
-  if (!allowedIds.includes(normalizedActionId)) {
+  const transitionActionId = normalizedEntityType === "subscription_pickup_request" && normalizedActionId === "prepare"
+    ? "start_preparation"
+    : normalizedActionId;
+  if (!allowedIds.includes(transitionActionId)) {
     return { allowed: false, reason: "INVALID_STATE_TRANSITION" };
   }
 

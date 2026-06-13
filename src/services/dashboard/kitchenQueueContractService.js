@@ -251,7 +251,7 @@ function buildActions(item, payment) {
       label: nameObject(action && action.label, action && action.id ? String(action.id) : ""),
     })),
     disabled: [],
-    canPrepare: Boolean(ids.has("prepare") && (!payment || payment.canPrepare !== false)),
+    canPrepare: Boolean((ids.has("start_preparation") || ids.has("prepare")) && (!payment || payment.canPrepare !== false)),
     canDispatch: ids.has("dispatch"),
     canReadyForPickup: ids.has("ready_for_pickup") || ids.has("set_ready"),
     canFulfill,
@@ -524,7 +524,7 @@ function normalizeKitchenQueueItem(item, { includeRaw = false, includeLegacyAlia
   if (lifecycleGroup === "archived" && mealCount === 0) withWarning(warnings, "CANCELED_EMPTY_ROW", "source.status");
   if (mealCount === 0 && sourceType !== "pickup_request") {
     payment.canPrepare = false;
-    actions.allowed = actions.allowed.filter((action) => action && action.id !== "prepare");
+    actions.allowed = actions.allowed.filter((action) => action && !["start_preparation", "prepare"].includes(action.id));
     actions.canPrepare = false;
   }
 
@@ -538,7 +538,7 @@ function normalizeKitchenQueueItem(item, { includeRaw = false, includeLegacyAlia
     actions.canReadyForPickup = false;
     actions.canFulfill = false;
     actions.allowed = actions.allowed.filter(
-      (action) => action && !["prepare", "ready_for_pickup", "fulfill", "no_show"].includes(action.id)
+      (action) => action && !["start_preparation", "prepare", "ready_for_pickup", "fulfill", "no_show"].includes(action.id)
     );
     actions.disabled.push({
       id: "prepare",

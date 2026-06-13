@@ -143,10 +143,32 @@ async function getRemainingMeals(subscriptionId) {
       assert.strictEqual(res.status, 200, JSON.stringify(res.body));
       assert.strictEqual(res.body.data.entityType, "subscription_pickup_request");
       assert.strictEqual(res.body.data.status, "in_preparation");
+      const updatedRequest = await SubscriptionPickupRequest.findById(pickupRequest._id).lean();
+      assert(updatedRequest.preparationStartedAt, "preparationStartedAt should be set by start_preparation");
+      assert(updatedRequest.pickupPreparedAt, "pickupPreparedAt should be set by start_preparation");
+    });
+
+    await test("legacy prepare endpoint remains an alias for pickup request preparation", async () => {
+      const { pickupRequest } = await seedReservedPickupRequest({ status: "locked" });
+
+      const res = await api.post("/api/dashboard/ops/actions/prepare").set(adminHeaders).send({
+        entityType: "subscription_pickup_request",
+        entityId: String(pickupRequest._id),
+      });
+
+      assert.strictEqual(res.status, 200, JSON.stringify(res.body));
+      const updatedRequest = await SubscriptionPickupRequest.findById(pickupRequest._id).lean();
+      assert.strictEqual(updatedRequest.status, "in_preparation");
+      assert(updatedRequest.pickupPreparedAt, "prepare alias should set pickupPreparedAt");
     });
 
     await test("ops can move in_preparation -> ready_for_pickup and generate pickupCode on request only", async () => {
       const { pickupRequest, day } = await seedReservedPickupRequest({ status: "in_preparation" });
+      const preparedAt = new Date("2026-05-18T10:00:00.000Z");
+      await SubscriptionPickupRequest.updateOne(
+        { _id: pickupRequest._id },
+        { $set: { preparationStartedAt: preparedAt, pickupPreparedAt: preparedAt } }
+      );
 
       const res = await api.post("/api/dashboard/ops/actions/ready_for_pickup").set(adminHeaders).send({
         entityType: "subscription_pickup_request",
@@ -159,8 +181,29 @@ async function getRemainingMeals(subscriptionId) {
       assert.strictEqual(updatedRequest.status, "ready_for_pickup");
       assert.match(updatedRequest.pickupCode, /^\d{6}$/);
       assert(updatedRequest.pickupCodeIssuedAt, "pickupCodeIssuedAt should be set");
+      assert.strictEqual(updatedRequest.pickupPreparedAt.toISOString(), preparedAt.toISOString());
       assert.strictEqual(updatedDay.pickupCode || null, null);
       assert.strictEqual(updatedDay.pickupCodeIssuedAt || null, null);
+    });
+
+    await test("ready_for_pickup is rejected before preparation and does not mutate request", async () => {
+      const { pickupRequest } = await seedReservedPickupRequest({ status: "locked" });
+
+      const res = await api.post("/api/dashboard/ops/actions/ready_for_pickup").set(adminHeaders).send({
+        entityType: "subscription_pickup_request",
+        entityId: String(pickupRequest._id),
+      });
+
+      assert.strictEqual(res.status, 409, JSON.stringify(res.body));
+      assert.strictEqual(res.body.error.code, "INVALID_TRANSITION");
+      const updatedRequest = await SubscriptionPickupRequest.findById(pickupRequest._id).lean();
+      assert.strictEqual(updatedRequest.status, "locked");
+      assert.strictEqual(updatedRequest.pickupCode || null, null);
+      assert.strictEqual(updatedRequest.pickupCodeIssuedAt || null, null);
+      assert.strictEqual(updatedRequest.preparationStartedAt || null, null);
+      assert.strictEqual(updatedRequest.pickupPreparedAt || null, null);
+      assert.strictEqual(updatedRequest.fulfilledAt || null, null);
+      assert.strictEqual(updatedRequest.creditsReserved, true);
     });
 
     await test("client status endpoint sees pickupCode after ready_for_pickup", async () => {
@@ -318,7 +361,11 @@ async function getRemainingMeals(subscriptionId) {
       const row = res.body.data.items.find((item) => item.ids.pickupRequestId === String(pickupRequest._id));
       assert(row, "pickup request should appear in pickup queue");
       assert.strictEqual(row.ids.entityType, "subscription_pickup_request");
-      assert.deepStrictEqual(row.actions.allowed.map((action) => action.id), ["start_preparation", "ready_for_pickup", "cancel", "no_show"]);
+      assert.deepStrictEqual(row.actions.allowed.map((action) => action.id), ["start_preparation", "cancel"]);
+      assert.strictEqual(row.actions.canPrepare, true);
+      assert.strictEqual(row.actions.canReadyForPickup, false);
+      assert.strictEqual(row.actions.canFulfill, false);
+      assert.strictEqual(row.actions.canNoShow, false);
       assert.strictEqual(row.fulfillment.pickup.pickupCodeState, "not_issued");
     });
 
