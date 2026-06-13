@@ -12,6 +12,7 @@ const User = require("../src/models/User");
 const Plan = require("../src/models/Plan");
 const Subscription = require("../src/models/Subscription");
 const SubscriptionDay = require("../src/models/SubscriptionDay");
+const SubscriptionPickupRequest = require("../src/models/SubscriptionPickupRequest");
 const SubscriptionAuditLog = require("../src/models/SubscriptionAuditLog");
 const ActivityLog = require("../src/models/ActivityLog");
 const Delivery = require("../src/models/Delivery");
@@ -388,6 +389,14 @@ async function runTests() {
       pickupRequested: true,
       lockedSnapshot: { mealsPerDay: 2, requiredMealCount: 2 },
     });
+    await SubscriptionPickupRequest.create({
+      subscriptionId: sub2._id,
+      userId: sub2.userId,
+      date: "2026-06-07",
+      mealCount: 2,
+      status: "locked",
+      creditsReserved: true,
+    });
     await executeAction("prepare", {
       entityId: pickupOpsDay._id,
       entityType: "subscription",
@@ -419,6 +428,14 @@ async function runTests() {
       status: "ready_for_pickup",
       pickupRequested: true,
       lockedSnapshot: { mealsPerDay: 2, requiredMealCount: 2 },
+    });
+    await SubscriptionPickupRequest.create({
+      subscriptionId: sub2._id,
+      userId: sub2.userId,
+      date: "2026-06-09",
+      mealCount: 2,
+      status: "ready_for_pickup",
+      creditsReserved: true,
     });
     const pickupFulfillResult = await fulfillSubscriptionDay({ dayId: pickupFulfillDay._id });
     assert.strictEqual(pickupFulfillResult.ok, true, "Pickup fulfill should succeed");

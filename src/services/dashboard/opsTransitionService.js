@@ -737,7 +737,15 @@ function ensurePaidOrder(order) {
 async function assertBranchPickupRequestExists(doc, session) {
   if (!doc || doc.constructor.modelName !== "SubscriptionDay") return;
   const sub = await Subscription.findById(doc.subscriptionId).session(session).lean();
-  if (sub && sub.deliveryMode === "pickup" && !doc.pickupRequested) {
+  if (!sub || sub.deliveryMode !== "pickup") return;
+
+  const request = await SubscriptionPickupRequest.findOne({
+    subscriptionId: sub._id,
+    date: doc.date,
+    status: { $ne: "canceled" },
+  }).session(session).lean();
+
+  if (!request) {
     const err = new Error("Pickup preparation requires an explicit client request");
     err.code = "PICKUP_REQUEST_REQUIRED";
     err.status = 422;

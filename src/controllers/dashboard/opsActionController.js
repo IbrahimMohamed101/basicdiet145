@@ -103,8 +103,15 @@ async function handleAction(req, res) {
       const sub = await Subscription.findById(doc.subscriptionId).select("deliveryMode").lean();
       const mode = sub && sub.deliveryMode === "pickup" ? "pickup" : "delivery";
 
-      if (mode === "pickup" && !doc.pickupRequested && ["prepare", "start_preparation", "ready_for_pickup", "ready-for-pickup", "fulfill", "no_show"].includes(action)) {
-        return errorResponse(res, 422, "PICKUP_REQUEST_REQUIRED", "Pickup preparation requires an explicit client request");
+      if (mode === "pickup" && ["prepare", "start_preparation", "ready_for_pickup", "ready-for-pickup", "fulfill", "no_show"].includes(action)) {
+        const pickupRequestExists = await SubscriptionPickupRequest.exists({
+          subscriptionId: doc.subscriptionId,
+          date: doc.date,
+          status: { $ne: "canceled" },
+        });
+        if (!pickupRequestExists) {
+          return errorResponse(res, 422, "PICKUP_REQUEST_REQUIRED", "Pickup preparation requires an explicit client request");
+        }
       }
       
       const validation = opsActionPolicy.validateAction({
