@@ -209,11 +209,7 @@ async function handlePrepare({ entityId, entityType, userId, role, payload, sess
   }
 
   if (entityType === "subscription") {
-    const sub = await Subscription.findById(doc.subscriptionId).session(session).lean();
-    if (!sub) throw new Error("Subscription not found");
-    if (sub.deliveryMode === "pickup" && !doc.pickupRequested) {
-      throw new Error("PICKUP_PREPARE_REQUIRED");
-    }
+    await assertBranchPickupRequestExists(doc, session);
   } else {
     ensurePaidOrder(doc);
   }
@@ -370,6 +366,7 @@ async function handleFulfill({ entityId, entityType, payload, userId, role, sess
     const sub = await Subscription.findById(day.subscriptionId).session(session).lean();
     if (!sub) throw new Error("Subscription not found");
     if (sub.deliveryMode === "pickup") {
+      await assertBranchPickupRequestExists(day, session);
       if (!day.pickupVerifiedAt) {
         day.pickupVerifiedAt = new Date();
         day.pickupVerifiedByDashboardUserId = userId || null;
@@ -483,11 +480,7 @@ async function handleReadyForPickup({ entityId, entityType, userId, role, payloa
 
   const toStatus = "ready_for_pickup";
   if (entityType === "subscription") {
-    const sub = await Subscription.findById(doc.subscriptionId).session(session).lean();
-    if (!sub) throw new Error("Subscription not found");
-    if (sub.deliveryMode === "pickup" && (!doc.pickupRequested || doc.status !== "in_preparation")) {
-      throw new Error("PICKUP_PREPARE_REQUIRED");
-    }
+    await assertBranchPickupRequestExists(doc, session);
   }
   const fromStatus = doc.status;
   if (entityType === "order") {
@@ -620,6 +613,10 @@ async function handleCancel({ entityId, entityType, payload, userId, role, sessi
 
 async function handleNoShow({ entityId, entityType, payload, userId, role, session }) {
   if (entityType !== "subscription_pickup_request") {
+    if (entityType === "subscription") {
+      const day = await SubscriptionDay.findById(entityId).session(session);
+      await assertBranchPickupRequestExists(day, session);
+    }
     return handleCancel({
       entityId,
       entityType,
@@ -733,6 +730,17 @@ function ensurePaidOrder(order) {
   if (!order || order.paymentStatus !== "paid") {
     const err = new Error("ORDER_PAYMENT_REQUIRED");
     err.code = "ORDER_PAYMENT_REQUIRED";
+    throw err;
+  }
+}
+
+async function assertBranchPickupRequestExists(doc, session) {
+  if (!doc || doc.constructor.modelName !== "SubscriptionDay") return;
+  const sub = await Subscription.findById(doc.subscriptionId).session(session).lean();
+  if (sub && sub.deliveryMode === "pickup" && !doc.pickupRequested) {
+    const err = new Error("Pickup preparation requires an explicit client request");
+    err.code = "PICKUP_REQUEST_REQUIRED";
+    err.status = 422;
     throw err;
   }
 }

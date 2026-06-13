@@ -102,6 +102,10 @@ async function handleAction(req, res) {
       // 2. Validate action using Policy Engine
       const sub = await Subscription.findById(doc.subscriptionId).select("deliveryMode").lean();
       const mode = sub && sub.deliveryMode === "pickup" ? "pickup" : "delivery";
+
+      if (mode === "pickup" && !doc.pickupRequested && ["prepare", "start_preparation", "ready_for_pickup", "ready-for-pickup", "fulfill", "no_show"].includes(action)) {
+        return errorResponse(res, 422, "PICKUP_REQUEST_REQUIRED", "Pickup preparation requires an explicit client request");
+      }
       
       const validation = opsActionPolicy.validateAction({
         entityType,
@@ -151,8 +155,8 @@ async function handleAction(req, res) {
     if (err.code === "PAYMENT_NOT_PAID" || err.code === "ORDER_PAYMENT_REQUIRED" || err.message === "ORDER_PAYMENT_REQUIRED") {
       return errorResponse(res, 409, "ORDER_PAYMENT_REQUIRED", "Paid orders are required for operational fulfillment");
     }
-    if (err.message === "PICKUP_PREPARE_REQUIRED") {
-      return errorResponse(res, 409, "PICKUP_PREPARE_REQUIRED", "Pickup preparation requires an explicit client request");
+    if (err.message === "PICKUP_REQUEST_REQUIRED" || err.code === "PICKUP_REQUEST_REQUIRED") {
+      return errorResponse(res, 422, "PICKUP_REQUEST_REQUIRED", "Pickup preparation requires an explicit client request");
     }
     if (err.status || err.code) {
       return errorResponse(res, err.status || 500, err.code || "INTERNAL", err.message, err.details);

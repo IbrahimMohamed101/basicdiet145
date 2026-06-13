@@ -73,6 +73,7 @@ const REASON_LABELS = {
   PAYMENT_SUPERSEDED: { ar: "الدفع قديم", en: "Payment superseded" },
   PAYMENT_REVISION_MISMATCH: { ar: "بيانات الدفع غير مطابقة", en: "Payment revision mismatch" },
   CREDITS_RELEASED: { ar: "تم تحرير الرصيد", en: "Credits released" },
+  PICKUP_REQUEST_REQUIRED: { ar: "طلب الاستلام مطلوب", en: "Pickup request required" },
 };
 
 const PROTEIN_FALLBACKS = {
@@ -521,6 +522,25 @@ function normalizeKitchenQueueItem(item, { includeRaw = false, includeLegacyAlia
     payment.canPrepare = false;
     actions.allowed = actions.allowed.filter((action) => action && action.id !== "prepare");
     actions.canPrepare = false;
+  }
+
+  // Final Branch Pickup rule: Branch Pickup is balance-based.
+  // A planned subscription_day is not enough to prepare/ready/fulfill pickup.
+  // Operational transitions for branch pickup MUST run on entityType = subscription_pickup_request
+  // or have a valid pickupRequestId link.
+  if (fulfillmentType === "branch_pickup" && sourceType === "subscription_day" && !ids.pickupRequestId) {
+    payment.canPrepare = false;
+    actions.canPrepare = false;
+    actions.canReadyForPickup = false;
+    actions.canFulfill = false;
+    actions.allowed = actions.allowed.filter(
+      (action) => action && !["prepare", "ready_for_pickup", "fulfill", "no_show"].includes(action.id)
+    );
+    actions.disabled.push({
+      id: "prepare",
+      reason: "PICKUP_REQUEST_REQUIRED",
+      label: REASON_LABELS.PICKUP_REQUEST_REQUIRED,
+    });
   }
 
   const planName = item.plan ? nameObject(item.plan.nameI18n || item.plan.name, item.plan.key || item.plan.id || "") : nameObject("", "");

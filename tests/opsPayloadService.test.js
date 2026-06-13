@@ -421,6 +421,7 @@ function run() {
         addons: [{ id: "addon1", key: "soup", nameI18n: { ar: "شوربة", en: "Soup" }, quantity: 1 }],
       },
       paymentValidity: paidValidity,
+      pickup: { pickupRequestId: "dummy" },
       allowedActions: [{ id: "prepare", label: { ar: "تحضير", en: "Prepare" } }],
     }],
   });
@@ -532,6 +533,7 @@ function run() {
         addons: [{ id: "addon1", key: "soup", nameI18n: { displayName: { ar: "شوربة", en: "Soup" } }, quantity: 1 }],
       },
       paymentValidity: paidValidity,
+      pickup: { pickupRequestId: "dummy" },
       allowedActions: [{ id: "prepare", label: { name: { ar: "تحضير", en: "Prepare" } } }],
     }],
   });
@@ -614,6 +616,7 @@ function run() {
         ],
       },
       paymentValidity: paidValidity,
+      pickup: { pickupRequestId: "dummy" },
       allowedActions: [{ id: "prepare", label: { ar: "تحضير", en: "Prepare" } }],
     }],
   });
@@ -666,6 +669,7 @@ function run() {
         addons: [],
       },
       paymentValidity: paidValidity,
+      pickup: { pickupRequestId: "dummy" },
       allowedActions: [{ id: "prepare", label: { ar: "تحضير", en: "Prepare" } }],
     }],
   });
@@ -704,6 +708,7 @@ function run() {
         addons: [],
       },
       paymentValidity: paidValidity,
+      pickup: { pickupRequestId: "dummy" },
       allowedActions: [{ id: "prepare", label: { ar: "تحضير", en: "Prepare" } }],
     }],
   });
@@ -745,6 +750,7 @@ function run() {
       plan,
       kitchenDetails: catalogAddonKitchenDetails,
       paymentValidity: paidValidity,
+      pickup: { pickupRequestId: "dummy" },
       allowedActions: [{ id: "prepare", label: { ar: "تحضير", en: "Prepare" } }],
     }],
   });
