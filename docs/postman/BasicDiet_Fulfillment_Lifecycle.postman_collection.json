@@ -1,0 +1,246 @@
+{
+  "info": {
+    "name": "BasicDiet Fulfillment Lifecycle",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000" },
+    { "key": "adminToken", "value": "" },
+    { "key": "clientAToken", "value": "" },
+    { "key": "clientBToken", "value": "" },
+    { "key": "kitchenToken", "value": "" },
+    { "key": "courierToken", "value": "" },
+    { "key": "pickupSubscriptionAId", "value": "" },
+    { "key": "pickupSubscriptionBId", "value": "" },
+    { "key": "deliverySubscriptionAId", "value": "" },
+    { "key": "deliverySubscriptionBId", "value": "" },
+    { "key": "pickupDayAId", "value": "" },
+    { "key": "deliveryDayAId", "value": "" },
+    { "key": "pickupRequestAId", "value": "" },
+    { "key": "pickupRequestBId", "value": "" },
+    { "key": "dateToday", "value": "2026-06-13" }
+  ],
+  "item": [
+    {
+      "name": "00 Auth",
+      "item": [
+        {
+          "name": "Health",
+          "request": { "method": "GET", "url": "{{baseUrl}}/health" }
+        }
+      ]
+    },
+    {
+      "name": "01 User A Branch Pickup",
+      "item": [
+        {
+          "name": "Create Pickup Request",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{clientAToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/api/subscriptions/{{pickupSubscriptionAId}}/pickup-requests",
+            "body": { "mode": "raw", "raw": "{\"date\":\"{{dateToday}}\",\"mealCount\":1,\"idempotencyKey\":\"postman-a-1\"}" }
+          }
+        },
+        {
+          "name": "List Pickup Requests",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{clientAToken}}" }],
+            "url": "{{baseUrl}}/api/subscriptions/{{pickupSubscriptionAId}}/pickup-requests?date={{dateToday}}&status=active"
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 User B Branch Pickup",
+      "item": [
+        {
+          "name": "Create Pickup Request",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{clientBToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/api/subscriptions/{{pickupSubscriptionBId}}/pickup-requests",
+            "body": { "mode": "raw", "raw": "{\"date\":\"{{dateToday}}\",\"mealCount\":1,\"idempotencyKey\":\"postman-b-1\"}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 Wrong User / Permission Tests",
+      "item": [
+        {
+          "name": "User B Cannot Create For User A",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{clientBToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/api/subscriptions/{{pickupSubscriptionAId}}/pickup-requests",
+            "body": { "mode": "raw", "raw": "{\"date\":\"{{dateToday}}\",\"mealCount\":1,\"idempotencyKey\":\"wrong-user\"}" }
+          }
+        },
+        {
+          "name": "Admin Token On Client Endpoint Is Forbidden",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/api/subscriptions/{{pickupSubscriptionAId}}/pickup-requests",
+            "body": { "mode": "raw", "raw": "{\"date\":\"{{dateToday}}\",\"mealCount\":1,\"idempotencyKey\":\"admin-client-route\"}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 Dashboard Ops Actions",
+      "item": [
+        {
+          "name": "Prepare Planned Pickup Day Fails",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/api/dashboard/ops/actions/prepare",
+            "body": { "mode": "raw", "raw": "{\"entityType\":\"subscription_day\",\"entityId\":\"{{pickupDayAId}}\"}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 Branch Pickup Request Lifecycle",
+      "item": [
+        {
+          "name": "Prepare Request",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{kitchenToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/api/dashboard/ops/actions/start_preparation",
+            "body": { "mode": "raw", "raw": "{\"entityType\":\"subscription_pickup_request\",\"entityId\":\"{{pickupRequestAId}}\"}" }
+          }
+        },
+        {
+          "name": "Ready For Pickup",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{kitchenToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/api/dashboard/ops/actions/ready_for_pickup",
+            "body": { "mode": "raw", "raw": "{\"entityType\":\"subscription_pickup_request\",\"entityId\":\"{{pickupRequestAId}}\"}" }
+          }
+        },
+        {
+          "name": "Fulfill Request",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{kitchenToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/api/dashboard/ops/actions/fulfill",
+            "body": { "mode": "raw", "raw": "{\"entityType\":\"subscription_pickup_request\",\"entityId\":\"{{pickupRequestAId}}\"}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 Home Delivery Lifecycle",
+      "item": [
+        {
+          "name": "Prepare Delivery Day",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/api/dashboard/ops/actions/prepare",
+            "body": { "mode": "raw", "raw": "{\"entityType\":\"subscription_day\",\"entityId\":\"{{deliveryDayAId}}\"}" }
+          }
+        },
+        {
+          "name": "Dispatch Delivery Day",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{courierToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/api/dashboard/ops/actions/dispatch",
+            "body": { "mode": "raw", "raw": "{\"entityType\":\"subscription_day\",\"entityId\":\"{{deliveryDayAId}}\"}" }
+          }
+        },
+        {
+          "name": "Fulfill Delivery Day",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{courierToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/api/dashboard/ops/actions/fulfill",
+            "body": { "mode": "raw", "raw": "{\"entityType\":\"subscription_day\",\"entityId\":\"{{deliveryDayAId}}\"}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "07 Multi-user Isolation",
+      "item": [
+        {
+          "name": "Client A Cannot Read User B Pickup Request",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{clientAToken}}" }],
+            "url": "{{baseUrl}}/api/subscriptions/{{pickupSubscriptionBId}}/pickup-requests/{{pickupRequestBId}}/status"
+          }
+        },
+        {
+          "name": "Courier Delivery Queue",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{courierToken}}" }],
+            "url": "{{baseUrl}}/api/dashboard/courier/queue?date={{dateToday}}&method=delivery"
+          }
+        }
+      ]
+    },
+    {
+      "name": "08 Negative Cases",
+      "item": [
+        {
+          "name": "Pickup Queue Forbidden For Courier",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{courierToken}}" }],
+            "url": "{{baseUrl}}/api/dashboard/pickup/queue?date={{dateToday}}"
+          }
+        },
+        {
+          "name": "Invalid Token",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer invalid-token" }],
+            "url": "{{baseUrl}}/api/subscriptions/{{pickupSubscriptionAId}}/pickup-requests"
+          }
+        }
+      ]
+    }
+  ]
+}

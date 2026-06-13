@@ -18,6 +18,7 @@ const Payment = require("../src/models/Payment");
 const Subscription = require("../src/models/Subscription");
 const SubscriptionAuditLog = require("../src/models/SubscriptionAuditLog");
 const SubscriptionDay = require("../src/models/SubscriptionDay");
+const SubscriptionPickupRequest = require("../src/models/SubscriptionPickupRequest");
 const User = require("../src/models/User");
 const { DASHBOARD_JWT_SECRET } = require("../src/services/dashboardTokenService");
 const { ORDER_STATUSES } = require("../src/utils/orderState");
@@ -141,6 +142,32 @@ async function createDay(subscription, overrides = {}) {
   });
 }
 
+async function createPickupRequest(subscription, user, overrides = {}) {
+  return SubscriptionPickupRequest.create({
+    subscriptionId: subscription._id,
+    userId: user._id,
+    date: overrides.date || "2026-05-21",
+    mealCount: overrides.mealCount || 1,
+    status: overrides.status || "locked",
+    creditsReserved: overrides.creditsReserved !== undefined ? overrides.creditsReserved : true,
+    creditsReservedAt: overrides.creditsReservedAt || new Date(),
+    snapshot: overrides.snapshot || {
+      mealSlots: [{
+        slotIndex: 1,
+        slotKey: "slot_1",
+        status: "complete",
+        selectionType: "standard_meal",
+        productKey: `${TEST_TAG}-meal`,
+        confirmationSnapshot: {
+          product: { key: `${TEST_TAG}-meal`, name: { en: `${TEST_TAG} meal`, ar: `${TEST_TAG} meal` } },
+        },
+      }],
+      addons: [],
+    },
+    ...overrides,
+  });
+}
+
 async function createOrder(user, overrides = {}) {
   const fulfillmentMethod = overrides.fulfillmentMethod || "pickup";
   const order = await Order.create({
@@ -212,6 +239,7 @@ async function cleanup() {
     Delivery.deleteMany({ $or: [{ subscriptionId: { $in: subscriptionIds } }, { dayId: { $in: await SubscriptionDay.find({ subscriptionId: { $in: subscriptionIds } }).distinct("_id") } }, { orderId: { $in: orderIds } }] }),
     Payment.deleteMany({ $or: [{ userId: { $in: userIds } }, { orderId: { $in: orderIds } }] }),
     SubscriptionAuditLog.deleteMany({ $or: [{ entityId: { $in: subscriptionIds } }, { "meta.subscriptionId": { $in: subscriptionIds.map(String) } }] }),
+    SubscriptionPickupRequest.deleteMany({ subscriptionId: { $in: subscriptionIds } }),
     SubscriptionDay.deleteMany({ subscriptionId: { $in: subscriptionIds } }),
     Subscription.deleteMany({ _id: { $in: subscriptionIds } }),
     Order.deleteMany({ _id: { $in: orderIds } }),
@@ -310,11 +338,19 @@ async function cleanup() {
         entityId: String(flowDay._id),
         entityType: "subscription_day",
       });
-      expectStatus(res, 200, "pickup prepare");
+      expectStatus(res, 422, "planned pickup day prepare blocked");
+      assert.strictEqual(res.body.error.code, "PICKUP_REQUEST_REQUIRED");
+
+      const pickupRequest = await createPickupRequest(subscription, user, { date: "2026-05-25" });
+      res = await api.post("/api/dashboard/ops/actions/start_preparation").set(auth("kitchen")).send({
+        entityId: String(pickupRequest._id),
+        entityType: "subscription_pickup_request",
+      });
+      expectStatus(res, 200, "pickup request prepare");
       assert.strictEqual(res.body.data.status, "in_preparation");
       res = await api.post("/api/dashboard/ops/actions/ready_for_pickup").set(auth("kitchen")).send({
-        entityId: String(flowDay._id),
-        entityType: "subscription_day",
+        entityId: String(pickupRequest._id),
+        entityType: "subscription_pickup_request",
       });
       expectStatus(res, 200, "pickup ready");
       assert.strictEqual(res.body.data.status, "ready_for_pickup");
@@ -323,38 +359,37 @@ async function cleanup() {
 
       res = await api.get("/api/dashboard/pickup/queue?date=2026-05-25&method=pickup&view=legacy").set(auth("kitchen"));
       expectStatus(res, 200, "pickup queue");
-      const row = res.body.data.items.find((item) => item.entityId === String(flowDay._id));
-      assert(row, "ready pickup day should be in queue");
+      const row = res.body.data.items.find((item) => item.entityId === String(pickupRequest._id));
+      assert(row, "ready pickup request should be in queue");
       assert.strictEqual(row.pickup.pickupCode, pickupCode);
       assert(row.allowedActions.some((action) => action.id === "no_show"), "no_show should be visible for pickup ready day");
 
-      res = await api.get(`/api/subscriptions/${subscription._id}/days/2026-05-25`).set(customerAuth(user));
-      expectStatus(res, 200, "owner subscription day");
+      res = await api.get(`/api/subscriptions/${subscription._id}/pickup-requests/${pickupRequest._id}/status`).set(customerAuth(user));
+      expectStatus(res, 200, "owner pickup request status");
       assert.strictEqual(res.body.data.pickupCode, pickupCode);
 
-      res = await api.get(`/api/subscriptions/${subscription._id}/days/2026-05-25`).set(customerAuth(otherUser));
+      res = await api.get(`/api/subscriptions/${subscription._id}/pickup-requests/${pickupRequest._id}/status`).set(customerAuth(otherUser));
       expectStatus(res, 403, "unrelated customer cannot read subscription pickup code");
 
       res = await api.post("/api/dashboard/ops/actions/fulfill").set(auth("kitchen")).send({
-        entityId: String(flowDay._id),
-        entityType: "subscription_day",
+        entityId: String(pickupRequest._id),
+        entityType: "subscription_pickup_request",
       });
       expectStatus(res, 200, "pickup fulfill without code payload");
       assert.strictEqual(res.body.data.status, "fulfilled");
-      const fulfilledDay = await SubscriptionDay.findById(flowDay._id).lean();
-      assert(fulfilledDay.pickupVerifiedAt, "pickup verification timestamp should be stored");
-      assert.strictEqual(String(fulfilledDay.pickupVerifiedByDashboardUserId), String(dashboardUsers.get("kitchen")._id));
+      const fulfilledRequest = await SubscriptionPickupRequest.findById(pickupRequest._id).lean();
+      assert(fulfilledRequest.fulfilledAt, "pickup fulfillment timestamp should be stored");
+      assert.strictEqual(String(fulfilledRequest.fulfilledByDashboardUserId), String(dashboardUsers.get("kitchen")._id));
 
-      const noShowDay = await createDay(subscription, {
+      const noShowRequest = await createPickupRequest(subscription, user, {
         date: "2026-05-26",
         status: "ready_for_pickup",
-        pickupRequested: true,
         pickupCode: "123456",
         pickupCodeIssuedAt: new Date(),
       });
       res = await api.post("/api/dashboard/ops/actions/no_show").set(auth("admin")).send({
-        entityId: String(noShowDay._id),
-        entityType: "subscription_day",
+        entityId: String(noShowRequest._id),
+        entityType: "subscription_pickup_request",
         payload: { reason: "customer_no_show" },
       });
       expectStatus(res, 200, "pickup no_show");
@@ -445,7 +480,8 @@ async function cleanup() {
         entityId: String(day._id),
         entityType: "subscription_day",
       });
-      expectStatus(res, 409, "courier pickup fulfill blocked by policy");
+      expectStatus(res, 422, "courier pickup fulfill blocked by pickup request guard");
+      assert.strictEqual(res.body.error.code, "PICKUP_REQUEST_REQUIRED");
     });
 
     await test("visible one-time order actions match executable role rules", async () => {

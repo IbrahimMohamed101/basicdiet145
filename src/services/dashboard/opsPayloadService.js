@@ -4,7 +4,10 @@ const { pickLang } = require("../../utils/i18n");
 const { buildDayCommercialState } = require("../subscription/subscriptionDayCommercialStateService");
 
 function stringifyId(value) {
-  return value ? String(value) : null;
+  if (!value) return null;
+  if (value._id) return String(value._id);
+  if (value.id && typeof value.id !== "object") return String(value.id);
+  return String(value);
 }
 
 function localizedName(value, lang = "en") {

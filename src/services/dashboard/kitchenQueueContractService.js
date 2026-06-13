@@ -187,7 +187,11 @@ function nameObject(value, fallback = "") {
 
 function displayName(name, fallback = "") {
   const label = nameObject(name, fallback);
-  return String(label.ar || label.en || fallback || "");
+  const fallbackExtracted = extractNameValue(fallback);
+  const fallbackText = fallbackExtracted && typeof fallbackExtracted === "object"
+    ? fallbackExtracted.ar || fallbackExtracted.en || ""
+    : scalarString(fallbackExtracted);
+  return String(label.ar || label.en || fallbackText || "");
 }
 
 function semanticLabelFor(key) {

@@ -33,7 +33,7 @@ const {
 async function executeAction(actionId, { entityId, entityType, userId, role, payload = {} }) {
   // Phase 5: Admin role check for admin-specific operations only
   // Courier role is allowed for dispatch operations
-  const adminOnlyActions = ["lock", "prepare", "cancel", "no_show", "reopen", "notify_arrival"];
+  const adminOnlyActions = ["lock", "cancel", "no_show", "reopen", "notify_arrival"];
   const normalizedActionId = actionId === "start_preparation"
     ? "prepare"
     : actionId === "ready-for-pickup"

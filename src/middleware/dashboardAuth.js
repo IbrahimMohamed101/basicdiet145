@@ -130,4 +130,4 @@ function dashboardRoleMiddleware(allowedRoles) {
   };
 }
 
-module.exports = { dashboardAuthMiddleware, dashboardOptionalAuthMiddleware, dashboardRoleMiddleware };
+module.exports = { decodeDashboardToken, dashboardAuthMiddleware, dashboardOptionalAuthMiddleware, dashboardRoleMiddleware };

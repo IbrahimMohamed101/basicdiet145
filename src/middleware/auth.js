@@ -3,6 +3,7 @@ const User = require("../models/User");
 const { localizeErrorMessage } = require("../utils/errorLocalization");
 const errorResponse = require("../utils/errorResponse");
 const { JWT_ACCESS_SECRET } = require("../services/appTokenService");
+const { decodeDashboardToken } = require("./dashboardAuth");
 
 const JWT_SECRET = JWT_ACCESS_SECRET;
 const LEGACY_JWT_SECRET = process.env.JWT_SECRET;
@@ -32,10 +33,18 @@ function authMiddleware(req, res, next) {
   try {
     decoded = jwt.verify(token, JWT_SECRET);
   } catch (err) {
+    const dashboardDecoded = decodeDashboardToken(token);
+    if (dashboardDecoded.ok) {
+      return errorResponse(res, 403, "FORBIDDEN", "This endpoint requires a client access token");
+    }
     if (LEGACY_JWT_SECRET && LEGACY_JWT_SECRET !== JWT_SECRET) {
       try {
         decoded = jwt.verify(token, LEGACY_JWT_SECRET);
       } catch (legacyErr) {
+        const legacyDashboardDecoded = decodeDashboardToken(token);
+        if (legacyDashboardDecoded.ok) {
+          return errorResponse(res, 403, "FORBIDDEN", "This endpoint requires a client access token");
+        }
         if ((err && err.name === "TokenExpiredError") || (legacyErr && legacyErr.name === "TokenExpiredError")) {
           return errorResponse(res, 401, "TOKEN_EXPIRED", "Access token expired");
         }
@@ -51,6 +60,10 @@ function authMiddleware(req, res, next) {
 
   if (decoded.tokenType === "app_guest" || decoded.role === "guest" || decoded.isGuest === true) {
     return errorResponse(res, 403, "GUEST_ACCESS_NOT_ALLOWED", "Please sign in to continue.");
+  }
+
+  if (decoded.tokenType === "dashboard_access") {
+    return errorResponse(res, 403, "FORBIDDEN", "This endpoint requires a client access token");
   }
 
   if (decoded.tokenType !== "app_access" || decoded.role !== "client") {

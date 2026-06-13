@@ -813,6 +813,9 @@ async function action(req, res) {
   const day = await SubscriptionDay.findById(entityId).populate("subscriptionId", "deliveryMode").lean();
   if (!day) return errorResponse(res, 404, "NOT_FOUND", "Subscription day not found");
   const mode = getDeliveryMode(day.subscriptionId || {});
+  if (mode === "pickup" && ["prepare", "start_preparation", "ready_for_pickup", "ready-for-pickup", "fulfill", "no_show"].includes(actionId)) {
+    return errorResponse(res, 422, "PICKUP_REQUEST_REQUIRED", "Pickup preparation requires an explicit client request");
+  }
   const validation = opsActionPolicy.validateAction({
     entityType: "subscription",
     status: day.status,

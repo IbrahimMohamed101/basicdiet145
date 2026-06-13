@@ -12,6 +12,7 @@ const {
   buildPaymentValidityPayload,
   buildPickupPayload,
   buildPlanPayload,
+  stringifyId,
 } = require("./opsPayloadService");
 
 /**
@@ -254,7 +255,7 @@ function mapSubscriptionPickupRequestToDTO(pickupRequest, subscription, user, ro
     type: "subscription_pickup_request",
     mode: "pickup",
     reference: `PICK-${String(pickupRequest._id).slice(-6).toUpperCase()}`,
-    subscriptionId: String(pickupRequest.subscriptionId || ""),
+    subscriptionId: stringifyId(pickupRequest.subscriptionId),
     subscriptionDayId: pickupRequest.subscriptionDayId ? String(pickupRequest.subscriptionDayId) : null,
     userId: String(pickupRequest.userId || ""),
     date: pickupRequest.date,
