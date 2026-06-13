@@ -11,6 +11,9 @@ const ActivityLog = require("../../models/ActivityLog");
 const BuilderProtein = require("../../models/BuilderProtein");
 const BuilderCarb = require("../../models/BuilderCarb");
 const MenuProduct = require("../../models/MenuProduct");
+const MenuOption = require("../../models/MenuOption");
+const SaladIngredient = require("../../models/SaladIngredient");
+const Addon = require("../../models/Addon");
 const Meal = require("../../models/Meal");
 const Sandwich = require("../../models/Sandwich");
 const opsTransitionService = require("../../services/dashboard/opsTransitionService");
@@ -181,39 +184,115 @@ function collectCatalogRefsFromDays(days) {
     productKeys: new Set(),
     sandwichIds: new Set(),
     sandwichKeys: new Set(),
+    optionIds: new Set(),
+    optionKeys: new Set(),
+    saladItemIds: new Set(),
+    saladItemKeys: new Set(),
+    addonIds: new Set(),
+    addonKeys: new Set(),
+  };
+  const addRef = (set, value) => {
+    if (value !== undefined && value !== null && value !== "") set.add(String(value));
+  };
+  const collectOption = (option) => {
+    if (!option || typeof option !== "object") return;
+    addRef(refs.optionIds, option.optionId || option.id || option._id);
+    addRef(refs.optionKeys, option.optionKey || option.key);
+  };
+  const collectSalad = (salad) => {
+    const groups = salad && typeof salad === "object" && salad.groups && typeof salad.groups === "object"
+      ? salad.groups
+      : {};
+    for (const values of Object.values(groups)) {
+      for (const item of Array.isArray(values) ? values : []) {
+        if (item && typeof item === "object") {
+          addRef(refs.saladItemIds, item.id || item._id || item.optionId || item.ingredientId);
+          addRef(refs.saladItemKeys, item.key || item.optionKey || item.ingredientKey);
+          addRef(refs.optionIds, item.id || item._id || item.optionId || item.ingredientId);
+          addRef(refs.optionKeys, item.key || item.optionKey || item.ingredientKey);
+          addRef(refs.proteinIds, item.id || item._id || item.optionId || item.ingredientId);
+          addRef(refs.proteinKeys, item.key || item.optionKey || item.ingredientKey);
+        } else {
+          addRef(refs.saladItemIds, item);
+          addRef(refs.optionIds, item);
+          addRef(refs.proteinIds, item);
+        }
+      }
+    }
+  };
+  const collectAddon = (addon) => {
+    if (!addon || typeof addon !== "object") return;
+    addRef(refs.addonIds, addon.addonId || addon.id || addon._id || addon.productId || addon.menuProductId);
+    addRef(refs.addonKeys, addon.addonKey || addon.key || addon.productKey);
+    addRef(refs.productIds, addon.productId || addon.menuProductId);
+    addRef(refs.productKeys, addon.productKey || addon.key || addon.addonKey);
   };
   for (const day of Array.isArray(days) ? days : []) {
-    for (const slot of Array.isArray(day && day.mealSlots) ? day.mealSlots : []) {
-      if (slot.proteinId) refs.proteinIds.add(String(slot.proteinId));
-      if (slot.proteinFamilyKey) refs.proteinKeys.add(String(slot.proteinFamilyKey));
-      if (slot.productId) refs.productIds.add(String(slot.productId));
-      if (slot.productKey) refs.productKeys.add(String(slot.productKey));
-      if (slot.sandwichId) refs.sandwichIds.add(String(slot.sandwichId));
+    const slots = []
+      .concat(Array.isArray(day && day.mealSlots) ? day.mealSlots : [])
+      .concat(day && day.snapshot && Array.isArray(day.snapshot.mealSlots) ? day.snapshot.mealSlots : []);
+    for (const slot of slots) {
+      addRef(refs.proteinIds, slot.proteinId);
+      addRef(refs.proteinKeys, slot.proteinFamilyKey);
+      addRef(refs.productIds, slot.productId);
+      addRef(refs.productKeys, slot.productKey);
+      addRef(refs.sandwichIds, slot.sandwichId);
+      collectSalad(slot.salad || slot.customSalad);
+      for (const option of Array.isArray(slot.selectedOptions) ? slot.selectedOptions : []) collectOption(option);
       const confirmation = slot.confirmationSnapshot || {};
       const display = slot.displaySnapshot || {};
       const fulfillment = slot.fulfillmentSnapshot || {};
-      if (confirmation.proteinKey) refs.proteinKeys.add(String(confirmation.proteinKey));
-      if (fulfillment.proteinKey) refs.proteinKeys.add(String(fulfillment.proteinKey));
+      addRef(refs.proteinIds, fulfillment.proteinId);
+      addRef(refs.proteinKeys, confirmation.proteinKey);
+      addRef(refs.proteinKeys, fulfillment.proteinKey);
       for (const product of [confirmation.product, display.product, fulfillment.product]) {
         if (!product) continue;
-        if (product.id || product._id) refs.productIds.add(String(product.id || product._id));
-        if (product.key) refs.productKeys.add(String(product.key));
+        addRef(refs.productIds, product.id || product._id);
+        addRef(refs.productKeys, product.key);
       }
       for (const carb of []
         .concat(Array.isArray(slot.carbSelections) ? slot.carbSelections : [])
         .concat(Array.isArray(slot.carbs) ? slot.carbs : [])
         .concat(slot.carbId ? [{ carbId: slot.carbId }] : [])) {
-        if (carb && carb.carbId) refs.carbIds.add(String(carb.carbId));
-        if (carb && carb.key) refs.carbKeys.add(String(carb.key));
+        if (carb && carb.carbId) addRef(refs.carbIds, carb.carbId);
+        if (carb && carb.key) addRef(refs.carbKeys, carb.key);
       }
     }
     for (const meal of Array.isArray(day && day.materializedMeals) ? day.materializedMeals : []) {
-      if (meal.proteinId) refs.proteinIds.add(String(meal.proteinId));
-      if (meal.proteinFamilyKey) refs.proteinKeys.add(String(meal.proteinFamilyKey));
-      if (meal.carbId) refs.carbIds.add(String(meal.carbId));
-      if (meal.productId) refs.productIds.add(String(meal.productId));
-      if (meal.productKey) refs.productKeys.add(String(meal.productKey));
-      if (meal.sandwichId) refs.sandwichIds.add(String(meal.sandwichId));
+      addRef(refs.proteinIds, meal.proteinId);
+      addRef(refs.proteinKeys, meal.proteinFamilyKey);
+      addRef(refs.carbIds, meal.carbId);
+      addRef(refs.productIds, meal.productId);
+      addRef(refs.productKeys, meal.productKey);
+      addRef(refs.sandwichIds, meal.sandwichId);
+    }
+    for (const addon of []
+      .concat(Array.isArray(day && day.addonSelections) ? day.addonSelections : [])
+      .concat(Array.isArray(day && day.oneTimeAddonSelections) ? day.oneTimeAddonSelections : [])
+      .concat(Array.isArray(day && day.recurringAddons) ? day.recurringAddons : [])
+      .concat(day && day.snapshot && Array.isArray(day.snapshot.addons) ? day.snapshot.addons : [])) collectAddon(addon);
+    for (const item of Array.isArray(day && day.items) ? day.items : []) {
+      const selections = item.selections || {};
+      const itemType = String(item.itemType || item.type || "");
+      if (itemType === "addon_item" || itemType === "drink" || itemType === "dessert") {
+        collectAddon({
+          id: (item.catalogRef && item.catalogRef.id) || item.productId || item.mealId,
+          key: item.productKey || (item.productSnapshot && item.productSnapshot.key),
+        });
+        continue;
+      }
+      addRef(refs.productIds, item.productId || item.mealId || (item.catalogRef && item.catalogRef.id));
+      addRef(refs.productKeys, item.productKey || (item.productSnapshot && item.productSnapshot.key));
+      addRef(refs.proteinIds, selections.proteinId);
+      addRef(refs.proteinKeys, selections.proteinKey);
+      collectSalad(selections.salad);
+      for (const option of []
+        .concat(Array.isArray(item.selectedOptions) ? item.selectedOptions : [])
+        .concat(Array.isArray(selections.selectedOptions) ? selections.selectedOptions : [])) collectOption(option);
+      for (const carb of Array.isArray(selections.carbs) ? selections.carbs : []) {
+        addRef(refs.carbIds, carb && carb.carbId);
+        addRef(refs.carbKeys, carb && carb.key);
+      }
     }
   }
   return refs;
@@ -227,7 +306,7 @@ function mapBy(rows, field) {
 
 async function buildKitchenCatalogMaps(days) {
   const refs = collectCatalogRefsFromDays(days);
-  const [proteins, carbs, products, meals, sandwiches] = await Promise.all([
+  const [proteins, carbs, products, meals, sandwiches, menuOptions, saladIngredients, addons, addonProducts] = await Promise.all([
     (refs.proteinIds.size || refs.proteinKeys.size)
       ? BuilderProtein.find({
         $or: [
@@ -259,8 +338,48 @@ async function buildKitchenCatalogMaps(days) {
     refs.sandwichIds.size
       ? Sandwich.find({ _id: { $in: [...refs.sandwichIds] } }).select("_id name").lean()
       : Promise.resolve([]),
+    (refs.optionIds.size || refs.optionKeys.size || refs.saladItemIds.size || refs.saladItemKeys.size)
+      ? MenuOption.find({
+        $or: [
+          (refs.optionIds.size || refs.saladItemIds.size) ? { _id: { $in: [...refs.optionIds, ...refs.saladItemIds] } } : null,
+          (refs.optionKeys.size || refs.saladItemKeys.size) ? { key: { $in: [...refs.optionKeys, ...refs.saladItemKeys] } } : null,
+        ].filter(Boolean),
+      }).select("_id key name proteinFamilyKey displayCategoryKey selectionType").lean()
+      : Promise.resolve([]),
+    refs.saladItemIds.size
+      ? SaladIngredient.find({ _id: { $in: [...refs.saladItemIds] } }).select("_id name groupKey").lean()
+      : Promise.resolve([]),
+    refs.addonIds.size
+      ? Addon.find({ _id: { $in: [...refs.addonIds] } }).select("_id name menuProductId category").lean()
+      : Promise.resolve([]),
+    (refs.addonIds.size || refs.addonKeys.size)
+      ? MenuProduct.find({
+        $or: [
+          refs.addonIds.size ? { _id: { $in: [...refs.addonIds] } } : null,
+          refs.addonKeys.size ? { key: { $in: [...refs.addonKeys] } } : null,
+        ].filter(Boolean),
+      }).select("_id key name").lean()
+      : Promise.resolve([]),
   ]);
   const sandwichRows = [...products, ...meals, ...sandwiches];
+  const optionById = mapBy(menuOptions, "_id");
+  const optionByKey = mapBy(menuOptions, "key");
+  const addonProductById = mapBy(addonProducts, "_id");
+  const saladRows = saladIngredients.map((ingredient) => ({
+    ...ingredient,
+    key: ingredient.key || (optionById.get(String(ingredient._id)) || {}).key || null,
+  }));
+  const addonRows = [
+    ...addons.map((addon) => {
+      const linkedProduct = addon.menuProductId ? addonProductById.get(String(addon.menuProductId)) : null;
+      return {
+        ...addon,
+        key: addon.key || (linkedProduct && linkedProduct.key) || null,
+        name: addon.name || (linkedProduct && linkedProduct.name),
+      };
+    }),
+    ...addonProducts,
+  ];
   return {
     proteinById: mapBy(proteins, "_id"),
     proteinByKey: new Map(proteins.flatMap((protein) => [
@@ -273,16 +392,23 @@ async function buildKitchenCatalogMaps(days) {
     productByKey: mapBy(products, "key"),
     sandwichById: mapBy(sandwichRows, "_id"),
     sandwichByKey: mapBy(products, "key"),
+    optionById,
+    optionByKey,
+    saladItemById: mapBy(saladRows, "_id"),
+    saladItemByKey: mapBy(saladRows, "key"),
+    addonById: mapBy(addonRows, "_id"),
+    addonByKey: mapBy(addonRows, "key"),
   };
 }
 
-function mapPickupRequest(pickupRequest, subscription, user, lang, role) {
+function mapPickupRequest(pickupRequest, subscription, user, lang, role, catalogMaps = {}) {
   return dashboardDtoService.mapSubscriptionPickupRequestToDTO(
     pickupRequest,
     subscription || {},
     user || null,
     role,
-    lang
+    lang,
+    catalogMaps
   );
 }
 
@@ -374,23 +500,11 @@ async function queryBoardDays(req, { screen }) {
       ],
     }).lean(),
   ]);
-  const catalogMaps = await buildKitchenCatalogMaps(filteredByMethod);
   const deliveryByDayMap = new Map(deliveryDocs.filter((delivery) => delivery.dayId).map((delivery) => [String(delivery.dayId), delivery]));
   const deliveryBySubscriptionDateMap = new Map(deliveryDocs
     .filter((delivery) => delivery.subscriptionId && delivery.date)
     .map((delivery) => [`${String(delivery.subscriptionId)}:${delivery.date}`, delivery]));
-
-  let items = filteredByMethod.map((day) => mapDay(
-    day,
-    latestActionMap.get(String(day._id)),
-    zoneMap,
-    lang,
-    role,
-    deliveryByDayMap.get(String(day._id))
-      || deliveryBySubscriptionDateMap.get(`${String(day.subscriptionId && day.subscriptionId._id || day.subscriptionId)}:${day.date}`)
-      || null,
-    catalogMaps
-  ));
+  let items = [];
 
   let activeOrderStatuses = [];
   if (req.query.status) {
@@ -440,11 +554,9 @@ async function queryBoardDays(req, { screen }) {
     return oMode === method;
   });
 
-  const orderItems = filteredOrderItems.map((order) => {
-    return dashboardDtoService.mapOrderToDTO(order, deliveryByOrderMap.get(String(order._id)) || null, order.userId, role, lang);
-  });
-
+  let orderItems = [];
   let pickupRequestItems = [];
+  let pickupRequests = [];
   if (method === "all" || method === "pickup") {
     const defaultPickupRequestStatuses = screen === "pickup" || screen === "kitchen"
       ? ["locked", "in_preparation", "ready_for_pickup", "fulfilled"]
@@ -452,7 +564,7 @@ async function queryBoardDays(req, { screen }) {
     const pickupRequestStatuses = req.query.status
       ? statuses.filter((status) => ["locked", "in_preparation", "ready_for_pickup", "fulfilled", "no_show", "canceled"].includes(status))
       : defaultPickupRequestStatuses;
-    const pickupRequests = await SubscriptionPickupRequest.find({
+    pickupRequests = await SubscriptionPickupRequest.find({
       date,
       status: { $in: pickupRequestStatuses.length ? pickupRequestStatuses : defaultPickupRequestStatuses },
     })
@@ -466,7 +578,25 @@ async function queryBoardDays(req, { screen }) {
       })
       .sort({ updatedAt: -1, createdAt: -1 })
       .lean();
+  }
 
+  const catalogMaps = await buildKitchenCatalogMaps([...filteredByMethod, ...filteredOrderItems, ...pickupRequests]);
+  items = filteredByMethod.map((day) => mapDay(
+    day,
+    latestActionMap.get(String(day._id)),
+    zoneMap,
+    lang,
+    role,
+    deliveryByDayMap.get(String(day._id))
+      || deliveryBySubscriptionDateMap.get(`${String(day.subscriptionId && day.subscriptionId._id || day.subscriptionId)}:${day.date}`)
+      || null,
+    catalogMaps
+  ));
+  orderItems = filteredOrderItems.map((order) => {
+    return dashboardDtoService.mapOrderToDTO(order, deliveryByOrderMap.get(String(order._id)) || null, order.userId, role, lang, catalogMaps);
+  });
+
+  if (method === "all" || method === "pickup") {
     const pickupRequestDayIds = new Set(
       pickupRequests
         .map((pickupRequest) => pickupRequest.subscriptionDayId ? String(pickupRequest.subscriptionDayId) : null)
@@ -483,7 +613,8 @@ async function queryBoardDays(req, { screen }) {
         subscription,
         subscription.userId || null,
         lang,
-        role
+        role,
+        catalogMaps
       );
     });
   }
@@ -565,7 +696,8 @@ async function queueDetail(req, res) {
       .lean();
     if (!pickupRequest) return errorResponse(res, 404, "NOT_FOUND", "Subscription day not found");
     const subscription = pickupRequest.subscriptionId || {};
-    const detail = mapPickupRequest(pickupRequest, subscription, subscription.userId || null, getRequestLang(req), req.dashboardUserRole);
+    const catalogMaps = await buildKitchenCatalogMaps([pickupRequest]);
+    const detail = mapPickupRequest(pickupRequest, subscription, subscription.userId || null, getRequestLang(req), req.dashboardUserRole, catalogMaps);
     return res.status(200).json({
       status: true,
       data: shouldUseCleanQueueContract(req.params.screen, req.query)

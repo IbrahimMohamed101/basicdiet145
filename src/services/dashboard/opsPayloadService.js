@@ -76,6 +76,19 @@ function localizedNameObject(value, fallback = "") {
   return { ar: "", en: "" };
 }
 
+function hasArabicName(value) {
+  const extracted = extractNameValue(value);
+  return Boolean(extracted && typeof extracted === "object" && scalarString(extracted.ar));
+}
+
+function hasAnyName(value) {
+  const extracted = extractNameValue(value);
+  return Boolean(
+    (typeof extracted === "string" && extracted)
+      || (extracted && typeof extracted === "object" && (scalarString(extracted.ar) || scalarString(extracted.en)))
+  );
+}
+
 function getFromMap(map, id) {
   if (!map || !id) return null;
   return map.get(String(id)) || null;
@@ -148,12 +161,65 @@ function resolveCatalogDoc(catalogMaps = {}, kind, id, key) {
   return getFromMap(catalogMaps[`${kind}ByKey`], key);
 }
 
+function resolveAnyCatalogDoc(catalogMaps = {}, kinds = [], id, key) {
+  for (const kind of kinds) {
+    const doc = resolveCatalogDoc(catalogMaps, kind, id, key);
+    if (doc) return doc;
+  }
+  return null;
+}
+
+function hydrateSelectedOption(option = {}, catalogMaps = {}, lang = "en") {
+  const optionId = stringifyId(option.optionId || option.id || option._id);
+  const optionKey = option.optionKey || option.key || null;
+  const doc = resolveAnyCatalogDoc(catalogMaps, ["option", "saladItem", "protein", "carb"], optionId, optionKey);
+  const nameSource = option.name || option.optionName || option.label || (doc && doc.name);
+  return {
+    ...option,
+    optionId,
+    optionKey: optionKey || (doc && doc.key) || null,
+    name: localizedName(nameSource, lang),
+    nameI18n: localizedNameObject(nameSource, optionKey || (doc && doc.key) || optionId || ""),
+  };
+}
+
+function hydrateSaladGroupItem(item, groupKey, catalogMaps = {}, lang = "en") {
+  const isObject = item && typeof item === "object";
+  const id = stringifyId(isObject ? item.id || item._id || item.optionId || item.ingredientId : item);
+  const key = isObject ? item.key || item.optionKey || item.ingredientKey || null : null;
+  const kinds = groupKey === "protein"
+    ? ["protein", "option", "saladItem"]
+    : ["saladItem", "option", "protein"];
+  const doc = resolveAnyCatalogDoc(catalogMaps, kinds, id, key);
+  if (!isObject && !doc) return item;
+  const nameSource = (isObject && (item.nameI18n || item.name || item.optionName || item.label)) || (doc && doc.name);
+  if (!doc && !nameSource) return item;
+  return {
+    ...(isObject ? item : {}),
+    id,
+    key: key || (doc && doc.key) || null,
+    name: localizedNameObject(nameSource, key || (doc && doc.key) || id || ""),
+  };
+}
+
+function hydrateSaladPayload(salad, catalogMaps = {}, lang = "en") {
+  if (!salad || typeof salad !== "object") return salad || null;
+  const groups = salad.groups && typeof salad.groups === "object" ? salad.groups : {};
+  const hydratedGroups = {};
+  for (const [groupKey, values] of Object.entries(groups)) {
+    hydratedGroups[groupKey] = Array.isArray(values)
+      ? values.map((item) => hydrateSaladGroupItem(item, groupKey, catalogMaps, lang))
+      : values;
+  }
+  return { ...salad, groups: hydratedGroups };
+}
+
 function buildMealSlotPayload(slot = {}, subscription = {}, lang = "en", catalogMaps = {}) {
   const confirmation = slot.confirmationSnapshot || {};
   const display = slot.displaySnapshot || {};
   const fulfillment = slot.fulfillmentSnapshot || {};
   const selectedOptions = (Array.isArray(slot.selectedOptions) ? slot.selectedOptions : [])
-    .map((option) => normalizeSelectedOption(option, lang));
+    .map((option) => normalizeSelectedOption(hydrateSelectedOption(option, catalogMaps, lang), lang));
   const carbSelections = Array.isArray(slot.carbSelections)
     ? slot.carbSelections
     : (Array.isArray(slot.carbs)
@@ -166,6 +232,8 @@ function buildMealSlotPayload(slot = {}, subscription = {}, lang = "en", catalog
   const sandwichId = stringifyId(slot.sandwichId || materializedProduct.sandwichId || (slot.selectionType === "sandwich" ? productId : null));
   const productDoc = resolveCatalogDoc(catalogMaps, "product", productId, productKey);
   const sandwichDoc = resolveCatalogDoc(catalogMaps, "sandwich", sandwichId || productId, productKey);
+  const productNameSource = product.name || product.title || (productDoc && productDoc.name) || (sandwichDoc && sandwichDoc.name);
+  const sandwichNameSource = (sandwichDoc && sandwichDoc.name) || product.name || product.title;
   const proteinDoc = resolveCatalogDoc(
     catalogMaps,
     "protein",
@@ -179,12 +247,12 @@ function buildMealSlotPayload(slot = {}, subscription = {}, lang = "en", catalog
     selectionType: slot.selectionType || null,
     productId,
     productKey,
-    productName: localizedName(product.name || product.title || (productDoc && productDoc.name) || (sandwichDoc && sandwichDoc.name), lang),
-    productNameI18n: localizedNameObject(product.name || product.title || (productDoc && productDoc.name) || (sandwichDoc && sandwichDoc.name), productKey || sandwichId || ""),
+    productName: localizedName(productNameSource, lang),
+    productNameI18n: productNameSource ? localizedNameObject(productNameSource, productKey || sandwichId || "") : undefined,
     sandwichId,
     sandwichKey: slot.sandwichKey || (sandwichDoc && sandwichDoc.key) || productKey || null,
-    sandwichName: localizedName((sandwichDoc && sandwichDoc.name) || product.name || product.title, lang),
-    sandwichNameI18n: localizedNameObject((sandwichDoc && sandwichDoc.name) || product.name || product.title, productKey || sandwichId || ""),
+    sandwichName: localizedName(sandwichNameSource, lang),
+    sandwichNameI18n: sandwichNameSource ? localizedNameObject(sandwichNameSource, productKey || sandwichId || "") : undefined,
     proteinId: stringifyId(slot.proteinId || fulfillment.proteinId || materializedProduct.proteinId),
     proteinKey: fulfillment.proteinKey || confirmation.proteinKey || null,
     proteinName: snapshotName(confirmation, ["protein", "name"], lang)
@@ -209,7 +277,7 @@ function buildMealSlotPayload(slot = {}, subscription = {}, lang = "en", catalog
       ),
       grams: carb && carb.grams !== undefined && carb.grams !== null ? Number(carb.grams || 0) : null,
     })),
-    salad: slot.salad || slot.customSalad || null,
+    salad: hydrateSaladPayload(slot.salad || slot.customSalad || null, catalogMaps, lang),
     sauce: classifyOptions(selectedOptions, (key) => key.includes("sauce")),
     selectedOptions,
     sides: classifyOptions(selectedOptions, (key) => key.includes("side")),
@@ -221,19 +289,27 @@ function buildMealSlotPayload(slot = {}, subscription = {}, lang = "en", catalog
   };
 }
 
-function buildAddonPayload(addon = {}, lang = "en") {
+function buildAddonPayload(addon = {}, lang = "en", catalogMaps = {}) {
   const id = addon.addonId || addon.id || addon._id || null;
+  const key = addon.key || addon.addonKey || null;
+  const doc = resolveAnyCatalogDoc(catalogMaps, ["addon", "product"], id, key);
+  const snapshotName = addon.name || addon.addonName;
+  const catalogName = doc && doc.name;
+  const nameSource = hasArabicName(snapshotName)
+    ? snapshotName
+    : (hasArabicName(catalogName) ? catalogName : (snapshotName || catalogName));
   return {
     id: stringifyId(id),
-    key: addon.key || addon.addonKey || null,
-    name: localizedName(addon.name || addon.addonName, lang),
-    nameI18n: localizedNameObject(addon.name || addon.addonName, addon.key || addon.addonKey || ""),
+    key: key || (doc && doc.key) || null,
+    name: localizedName(nameSource, lang),
+    nameI18n: localizedNameObject(nameSource, key || (doc && doc.key) || ""),
     quantity: Number(addon.qty || addon.quantity || 1),
     priceHalala: Number(addon.priceHalala || addon.unitPriceHalala || addon.totalPriceHalala || 0),
+    missingArabicName: hasAnyName(nameSource) && !hasArabicName(nameSource),
   };
 }
 
-function buildOrderKitchenDetailsPayload(order = {}, lang = "en") {
+function buildOrderKitchenDetailsPayload(order = {}, lang = "en", catalogMaps = {}) {
   const items = Array.isArray(order.items) ? order.items : [];
   const mealSlots = [];
   const addons = [];
@@ -241,40 +317,49 @@ function buildOrderKitchenDetailsPayload(order = {}, lang = "en") {
   items.forEach((item, index) => {
     const itemType = String(item && (item.itemType || item.type) || "standard_meal");
     if (itemType === "addon_item" || itemType === "drink" || itemType === "dessert") {
-      addons.push({
+      addons.push(buildAddonPayload({
         id: stringifyId((item.catalogRef && item.catalogRef.id) || item.productId || item.mealId || `order_addon_${index + 1}`),
         key: item.productKey || null,
-        name: localizedName(item.name || (item.productSnapshot && item.productSnapshot.name), lang),
+        name: item.name || (item.productSnapshot && item.productSnapshot.name),
         quantity: Number(item.qty || item.quantity || 1),
         priceHalala: Number(item.lineTotalHalala || item.unitPriceHalala || item.unitPrice || 0),
-      });
+      }, lang, catalogMaps));
       return;
     }
 
     const selections = item.selections || {};
     const selectedOptions = (Array.isArray(item.selectedOptions) ? item.selectedOptions : [])
       .concat(Array.isArray(selections.selectedOptions) ? selections.selectedOptions : [])
-      .map((option) => normalizeSelectedOption(option, lang));
+      .map((option) => normalizeSelectedOption(hydrateSelectedOption(option, catalogMaps, lang), lang));
+    const productId = stringifyId(item.productId || item.mealId || (item.catalogRef && item.catalogRef.id));
+    const productKey = item.productKey || (item.productSnapshot && item.productSnapshot.key) || null;
+    const productDoc = resolveCatalogDoc(catalogMaps, "product", productId, productKey);
+    const proteinDoc = resolveCatalogDoc(catalogMaps, "protein", selections.proteinId, selections.proteinKey);
+    const productNameSource = item.name || (item.productSnapshot && item.productSnapshot.name) || (productDoc && productDoc.name);
+    const proteinNameSource = selections.proteinName || (proteinDoc && proteinDoc.name);
 
     mealSlots.push({
       slotIndex: index + 1,
       slotKey: `order_item_${index + 1}`,
       selectionType: itemType,
-      productId: stringifyId(item.productId || item.mealId || (item.catalogRef && item.catalogRef.id)),
-      productKey: item.productKey || (item.productSnapshot && item.productSnapshot.key) || null,
-      productName: localizedName(item.name || (item.productSnapshot && item.productSnapshot.name), lang),
+      productId,
+      productKey,
+      productName: localizedName(productNameSource, lang),
+      productNameI18n: productNameSource ? localizedNameObject(productNameSource, productKey || productId || "") : undefined,
       proteinId: stringifyId(selections.proteinId),
-      proteinKey: null,
-      proteinName: localizedName(selections.proteinName, lang),
+      proteinKey: selections.proteinKey || (proteinDoc && (proteinDoc.key || proteinDoc.proteinFamilyKey)) || null,
+      proteinName: localizedName(proteinNameSource, lang),
+      proteinNameI18n: proteinNameSource ? localizedNameObject(proteinNameSource, selections.proteinKey || selections.proteinId || "") : undefined,
       proteinGrams: null,
       proteinFamilyKey: null,
       carbSelections: (Array.isArray(selections.carbs) ? selections.carbs : []).map((carb) => ({
         carbId: stringifyId(carb.carbId),
-        key: carb.key || null,
-        name: localizedName(carb.name, lang),
+        key: carb.key || ((resolveCatalogDoc(catalogMaps, "carb", carb.carbId, carb.key) || {}).key) || null,
+        name: localizedName(carb.name || ((resolveCatalogDoc(catalogMaps, "carb", carb.carbId, carb.key) || {}).name), lang),
+        nameI18n: localizedNameObject(carb.name || ((resolveCatalogDoc(catalogMaps, "carb", carb.carbId, carb.key) || {}).name), carb.key || carb.carbId || ""),
         grams: carb.grams === undefined || carb.grams === null ? null : Number(carb.grams || 0),
       })),
-      salad: selections.salad || null,
+      salad: hydrateSaladPayload(selections.salad || null, catalogMaps, lang),
       sauce: classifyOptions(selectedOptions, (key) => key.includes("sauce")),
       selectedOptions,
       sides: classifyOptions(selectedOptions, (key) => key.includes("side")),
@@ -309,7 +394,7 @@ function buildKitchenDetailsPayload(day = {}, subscription = {}, lang = "en", ca
 
   return {
     mealSlots,
-    addons: addonSources.map((addon) => buildAddonPayload(addon, lang)),
+    addons: addonSources.map((addon) => buildAddonPayload(addon, lang, catalogMaps)),
   };
 }
 

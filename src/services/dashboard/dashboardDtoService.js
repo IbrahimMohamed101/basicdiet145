@@ -57,7 +57,7 @@ function resolveUiMetadata(status, lang) {
   };
 }
 
-function mapSubscriptionDayToDTO(day, delivery, subscription, user, role, lang) {
+function mapSubscriptionDayToDTO(day, delivery, subscription, user, role, lang, catalogMaps = {}) {
   const status = day.status;
   const mode = subscription && subscription.deliveryMode === "pickup" ? "pickup" : "delivery";
   const ui = resolveUiMetadata(status, lang);
@@ -76,7 +76,7 @@ function mapSubscriptionDayToDTO(day, delivery, subscription, user, role, lang) 
   });
   
   const plan = buildPlanPayload(subscription, lang);
-  const kitchenDetails = buildKitchenDetailsPayload(day, subscription, lang);
+  const kitchenDetails = buildKitchenDetailsPayload(day, subscription, lang, catalogMaps);
   const paymentValidity = buildPaymentValidityPayload(day);
   const deliveryPayload = buildDeliveryPayload(delivery, {
     date: day.date,
@@ -139,7 +139,7 @@ function mapSubscriptionDayToDTO(day, delivery, subscription, user, role, lang) 
   };
 }
 
-function mapOrderToDTO(order, delivery, user, role, lang) {
+function mapOrderToDTO(order, delivery, user, role, lang, catalogMaps = {}) {
   const status = normalizeLegacyOrderStatus(order.status, { paymentStatus: order.paymentStatus });
   const mode = getOrderFulfillmentMethod(order);
   const ui = resolveUiMetadata(status, lang);
@@ -184,7 +184,7 @@ function mapOrderToDTO(order, delivery, user, role, lang) {
     paymentStatus: order.paymentStatus || "paid",
     fulfillmentMethod: mode,
     fulfillmentType: mode === "pickup" ? "branch_pickup" : "delivery",
-    kitchenDetails: buildOrderKitchenDetailsPayload(order, lang),
+    kitchenDetails: buildOrderKitchenDetailsPayload(order, lang, catalogMaps),
     paymentValidity: {
       paymentRequired: true,
       paymentStatus: order.paymentStatus || "initiated",
@@ -233,7 +233,7 @@ function mapOrderToDTO(order, delivery, user, role, lang) {
   };
 }
 
-function mapSubscriptionPickupRequestToDTO(pickupRequest, subscription, user, role, lang) {
+function mapSubscriptionPickupRequestToDTO(pickupRequest, subscription, user, role, lang, catalogMaps = {}) {
   const statusPayload = mapSubscriptionPickupRequestStatus(pickupRequest, { includeNextAction: false });
   const status = statusPayload.status;
   const ui = resolveUiMetadata(status, lang);
@@ -267,14 +267,14 @@ function mapSubscriptionPickupRequestToDTO(pickupRequest, subscription, user, ro
       ? {
         mealSlots: Array.isArray(pickupRequest.snapshot.mealSlots)
           ? pickupRequest.snapshot.mealSlots.map((slot) => ({
-            ...buildKitchenDetailsPayload({ mealSlots: [slot] }, subscription || {}, lang).mealSlots[0],
+            ...buildKitchenDetailsPayload({ mealSlots: [slot] }, subscription || {}, lang, catalogMaps).mealSlots[0],
           }))
           : [],
         addons: buildKitchenDetailsPayload({
           addonSelections: Array.isArray(pickupRequest.snapshot.addons) ? pickupRequest.snapshot.addons : [],
-        }, subscription || {}, lang).addons,
+        }, subscription || {}, lang, catalogMaps).addons,
       }
-      : buildKitchenDetailsPayload({}, subscription || {}, lang),
+      : buildKitchenDetailsPayload({}, subscription || {}, lang, catalogMaps),
     paymentValidity: {
       paymentRequired: false,
       paymentStatus: "reserved",

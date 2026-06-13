@@ -12,6 +12,18 @@ const MEAL_TYPE_LABELS = {
   sandwich: { ar: "ساندويتش", en: "Sandwich" },
 };
 
+// Meal types whose product identity is fully determined by the semantic mealType label.
+// No catalog product id/key or explicit productName is required for these types —
+// the label itself constitutes a complete, display-valid product description.
+// NOTE: "sandwich" is intentionally excluded — a sandwich slot still requires an actual
+// sandwich product selection (sandwichId/sandwichKey/sandwichNameI18n) and must still
+// emit MISSING_PRODUCT/MISSING_PRODUCT_NAME warnings when no sandwich data is provided.
+const SEMANTIC_PRODUCT_COMPLETE_TYPES = new Set([
+  "standard_meal",
+  "premium_meal",
+  "premium_large_salad",
+]);
+
 const SEMANTIC_LABELS = {
   ...MEAL_TYPE_LABELS,
   addon: { ar: "إضافة", en: "Add-on" },
@@ -83,6 +95,7 @@ const WARNING_MESSAGES = {
   CANCELED_EMPTY_ROW: ["هذا الطلب ملغي ولا يحتوي وجبات للتحضير", "Canceled row has no meals to prepare"],
   UNRESOLVED_OPTION_NAME: ["تعذر تحديد اسم العنصر من الكتالوج", "Could not resolve option name from catalog"],
   UNRESOLVED_ADDON_NAME: ["تعذر تحديد اسم الإضافة من الكتالوج", "Could not resolve add-on name from catalog"],
+  MISSING_ARABIC_ADDON_NAME: ["اسم الإضافة العربي غير موجود", "Arabic add-on name is missing"],
   UNRESOLVED_SALAD_GROUP_ITEM: ["تعذر تحديد اسم مكون السلطة من الكتالوج", "Could not resolve salad group item name from catalog"],
   FALLBACK_DISPLAY_NAME_USED: ["تم استخدام اسم بديل للعرض", "Fallback display name was used"],
 };
@@ -379,26 +392,32 @@ function normalizeMeal(slot = {}, slotIndex, fulfillmentType, warnings) {
     : null;
   const proteinFallback = slot.proteinKey || slot.proteinFamilyKey || slot.proteinId || "";
   const proteinName = slot.proteinNameI18n || slot.proteinName || PROTEIN_FALLBACKS[String(proteinFallback || "").toLowerCase()];
-  const protein = {
-    ...entityPayload({
-      id: slot.proteinId,
-      key: slot.proteinKey || slot.proteinFamilyKey,
-      name: proteinName,
-      fallback: proteinFallback,
-    }),
-    grams: slot.proteinGrams === undefined || slot.proteinGrams === null ? null : asNumber(slot.proteinGrams, null),
-  };
+  const hasProteinComponent = Boolean(slot.proteinId || slot.proteinKey || slot.proteinFamilyKey || extractNameValue(proteinName));
+  const protein = hasProteinComponent
+    ? {
+      ...entityPayload({
+        id: slot.proteinId,
+        key: slot.proteinKey || slot.proteinFamilyKey,
+        name: proteinName,
+        fallback: proteinFallback,
+      }),
+      grams: slot.proteinGrams === undefined || slot.proteinGrams === null ? null : asNumber(slot.proteinGrams, null),
+    }
+    : null;
   const carbs = (Array.isArray(slot.carbSelections) ? slot.carbSelections : []).map((carb, index) => normalizeCarb(carb, index, warnings, slotIndex));
   const sauce = (Array.isArray(slot.sauce) ? slot.sauce : []).map(normalizeOption);
   const sides = (Array.isArray(slot.sides) ? slot.sides : []).map(normalizeOption);
   const options = (Array.isArray(slot.selectedOptions) ? slot.selectedOptions : []).map(normalizeOption);
   const salad = normalizeSalad(slot.salad, mealType, warnings, slotIndex);
-  const badgesAr = [mealTypeLabel.ar, protein.grams ? `${protein.grams}g` : null, slot.isPremium ? "مميز" : null]
+  const proteinGrams = protein && protein.grams ? protein.grams : null;
+  const badgesAr = [mealTypeLabel.ar, proteinGrams ? `${proteinGrams}g` : null, slot.isPremium ? "مميز" : null]
     .filter(Boolean);
   const primaryName = mealType === "sandwich" && sandwich ? sandwich.displayName : product.displayName;
+  const semanticProductComplete = SEMANTIC_PRODUCT_COMPLETE_TYPES.has(String(slot.productKey || ""))
+    || SEMANTIC_PRODUCT_COMPLETE_TYPES.has(String(mealType || ""));
 
-  if (!product.id && !product.key) withWarning(warnings, "MISSING_PRODUCT", `kitchen.meals[${slotIndex}].product`);
-  if (!slot.productName && !(slot.productNameI18n && (slot.productNameI18n.ar || slot.productNameI18n.en))) {
+  if (!semanticProductComplete && !product.id && !product.key) withWarning(warnings, "MISSING_PRODUCT", `kitchen.meals[${slotIndex}].product`);
+  if (!semanticProductComplete && !slot.productName && !(slot.productNameI18n && (slot.productNameI18n.ar || slot.productNameI18n.en))) {
     withWarning(warnings, "MISSING_PRODUCT_NAME", `kitchen.meals[${slotIndex}].product.name`);
     withWarning(warnings, "FALLBACK_DISPLAY_NAME_USED", `kitchen.meals[${slotIndex}].product.name`);
   }
@@ -431,10 +450,10 @@ function normalizeMeal(slot = {}, slotIndex, fulfillmentType, warnings) {
     quantity: Math.max(1, asNumber(slot.quantity, 1)),
     notes: slot.notes || null,
     display: {
-      titleAr: protein.grams ? `${primaryName} - ${protein.grams}g` : primaryName,
+      titleAr: proteinGrams ? `${primaryName} - ${proteinGrams}g` : primaryName,
       subtitleAr: `${FULFILLMENT_LABELS[fulfillmentType].ar} - ${Math.max(1, asNumber(slot.quantity, 1))} وجبة`,
-      preparationTextAr: protein.grams
-        ? `حضّر ${primaryName} مع بروتين ${protein.grams}g`
+      preparationTextAr: proteinGrams
+        ? `حضّر ${primaryName} مع بروتين ${proteinGrams}g`
         : `حضّر ${primaryName}`,
       badgesAr,
     },
@@ -446,6 +465,14 @@ function normalizeAddon(addon = {}, index, warnings) {
   const fallback = addon.key || addon.addonKey || addon.id || addon.addonId || "addon";
   const unresolved = !extractNameValue(name) && isObjectIdLike(fallback);
   if (unresolved) withWarning(warnings, "UNRESOLVED_ADDON_NAME", `kitchen.addons[${index}]`);
+  const extractedName = extractNameValue(name);
+  const rawMissingArabic = name && typeof name === "object"
+    && !Array.isArray(name)
+    && !scalarString(name.ar)
+    && scalarString(name.en);
+  if (addon.missingArabicName || (!unresolved && rawMissingArabic) || (!unresolved && extractedName && typeof extractedName === "object" && !extractedName.ar && extractedName.en)) {
+    withWarning(warnings, "MISSING_ARABIC_ADDON_NAME", `kitchen.addons[${index}].name.ar`);
+  }
   const payload = entityPayload({
     id: addon.id || addon.addonId,
     key: addon.key || addon.addonKey,

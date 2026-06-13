@@ -47,7 +47,7 @@ function assertKitchenDisplayFields(item) {
   item.kitchen.meals.forEach((meal, mealIndex) => {
     assertDisplayText(meal.product.displayName, `kitchen.meals[${mealIndex}].product.displayName`);
     if (meal.sandwich) assertDisplayText(meal.sandwich.displayName, `kitchen.meals[${mealIndex}].sandwich.displayName`);
-    assertDisplayText(meal.protein.displayName, `kitchen.meals[${mealIndex}].protein.displayName`);
+    if (meal.protein) assertDisplayText(meal.protein.displayName, `kitchen.meals[${mealIndex}].protein.displayName`);
     meal.carbs.forEach((carb, carbIndex) => {
       assertDisplayText(carb.displayName, `kitchen.meals[${mealIndex}].carbs[${carbIndex}].displayName`);
     });
@@ -644,6 +644,136 @@ function run() {
   assert(hydrationPayload.dataQuality.warnings.some((warning) => warning.code === "UNRESOLVED_OPTION_NAME"));
   assert(hydrationPayload.dataQuality.warnings.some((warning) => warning.code === "UNRESOLVED_ADDON_NAME"));
   assert(hydrationPayload.dataQuality.warnings.some((warning) => warning.code === "UNRESOLVED_SALAD_GROUP_ITEM"));
+
+  const semanticCompleteResponse = normalizeKitchenQueueResponse({
+    date: "2026-06-14",
+    items: [{
+      entityId: "semanticDay",
+      entityType: "subscription_day",
+      subscriptionId: "sub1",
+      user: { id: "user1", name: "Sara", phone: "+966500000000" },
+      date: "2026-06-14",
+      status: "locked",
+      fulfillmentType: "branch_pickup",
+      plan,
+      kitchenDetails: {
+        mealSlots: [
+          { slotIndex: 1, slotKey: "standard", selectionType: "standard_meal", productKey: "standard_meal", quantity: 1 },
+          { slotIndex: 2, slotKey: "premium_salad", selectionType: "premium_large_salad", productKey: "premium_large_salad", salad: { presetKey: "premium_large_salad", groups: {} }, quantity: 1 },
+          // premium_meal: no productId, no productKey, no productNameI18n — must resolve via semantic label
+          { slotIndex: 3, slotKey: "premium_meal", selectionType: "premium_meal", quantity: 1 },
+        ],
+        addons: [],
+      },
+      paymentValidity: paidValidity,
+      allowedActions: [{ id: "prepare", label: { ar: "تحضير", en: "Prepare" } }],
+    }],
+  });
+  const semanticWarnings = semanticCompleteResponse.items[0].dataQuality.warnings.map((warning) => warning.code);
+  // All three semantic meal types must be display-complete — no product-missing warnings
+  assert.strictEqual(semanticCompleteResponse.items[0].dataQuality.isComplete, true,
+    `Expected isComplete=true but got warnings: ${JSON.stringify(semanticCompleteResponse.items[0].dataQuality.warnings)}`);
+  assert.deepStrictEqual(
+    semanticCompleteResponse.items[0].dataQuality.warnings,
+    [],
+    `Expected no warnings but got: ${JSON.stringify(semanticCompleteResponse.items[0].dataQuality.warnings)}`
+  );
+  assert(!semanticWarnings.includes("MISSING_PRODUCT"));
+  assert(!semanticWarnings.includes("MISSING_PRODUCT_NAME"));
+  assert(!semanticWarnings.includes("FALLBACK_DISPLAY_NAME_USED"));
+  // Verify each semantic meal resolves the correct Arabic label
+  assert.strictEqual(semanticCompleteResponse.items[0].kitchen.meals[0].product.displayName, "وجبة");
+  assert.strictEqual(semanticCompleteResponse.items[0].kitchen.meals[1].product.displayName, "سلطة كبيرة مميزة");
+  assert.strictEqual(semanticCompleteResponse.items[0].kitchen.meals[2].product.displayName, "وجبة مميزة");
+
+  // --- dedicated premium_meal semantic test: no catalog data, warns must be empty ---
+  const premiumMealOnlyResponse = normalizeKitchenQueueResponse({
+    date: "2026-06-14",
+    items: [{
+      entityId: "premiumMealOnly",
+      entityType: "subscription_day",
+      subscriptionId: "sub1",
+      user: { id: "user1", name: "Sara", phone: "+966500000000" },
+      date: "2026-06-14",
+      status: "locked",
+      fulfillmentType: "branch_pickup",
+      plan,
+      kitchenDetails: {
+        // premium_meal with no productId/productKey/productNameI18n — identity is the semantic label
+        mealSlots: [{ slotIndex: 1, slotKey: "pm", selectionType: "premium_meal", proteinGrams: 200, quantity: 1 }],
+        addons: [],
+      },
+      paymentValidity: paidValidity,
+      allowedActions: [{ id: "prepare", label: { ar: "تحضير", en: "Prepare" } }],
+    }],
+  });
+  const pmItem = premiumMealOnlyResponse.items[0];
+  assert.strictEqual(pmItem.kitchen.meals[0].mealType, "premium_meal");
+  assert.strictEqual(pmItem.kitchen.meals[0].product.displayName, "وجبة مميزة");
+  assert.strictEqual(pmItem.kitchen.meals[0].product.name.ar, "وجبة مميزة");
+  assert.strictEqual(pmItem.kitchen.meals[0].product.name.en, "Premium meal");
+  assert(!pmItem.dataQuality.warnings.some((w) => w.code === "MISSING_PRODUCT"),
+    "premium_meal semantic type must not produce MISSING_PRODUCT");
+  assert(!pmItem.dataQuality.warnings.some((w) => w.code === "MISSING_PRODUCT_NAME"),
+    "premium_meal semantic type must not produce MISSING_PRODUCT_NAME");
+  assert(!pmItem.dataQuality.warnings.some((w) => w.code === "FALLBACK_DISPLAY_NAME_USED"),
+    "premium_meal semantic type must not produce FALLBACK_DISPLAY_NAME_USED");
+  assert.strictEqual(pmItem.dataQuality.isComplete, true,
+    `premium_meal dataQuality.isComplete expected true, got warnings: ${JSON.stringify(pmItem.dataQuality.warnings)}`);
+  assert.deepStrictEqual(pmItem.dataQuality.warnings, [],
+    `premium_meal dataQuality.warnings expected [], got: ${JSON.stringify(pmItem.dataQuality.warnings)}`);
+
+
+  const catalogAddonKitchenDetails = buildKitchenDetailsPayload({
+    mealSlots: [{ slotIndex: 1, slotKey: "standard", selectionType: "standard_meal", productKey: "standard_meal" }],
+    addonSelections: [{ addonId: "6a2454894a2465a2f7a0763d", name: "Dark Brownies", qty: 1 }],
+  }, subscription, "ar", {
+    productById: new Map([
+      ["6a2454894a2465a2f7a0763d", { _id: "6a2454894a2465a2f7a0763d", key: "dark_brownies", name: { ar: "براونيز داكن", en: "Dark Brownies" } }],
+    ]),
+  });
+  const catalogAddonResponse = normalizeKitchenQueueResponse({
+    date: "2026-06-14",
+    items: [{
+      entityId: "addonArabicDay",
+      entityType: "subscription_day",
+      subscriptionId: "sub1",
+      user: { id: "user1", name: "Sara", phone: "+966500000000" },
+      date: "2026-06-14",
+      status: "locked",
+      fulfillmentType: "branch_pickup",
+      plan,
+      kitchenDetails: catalogAddonKitchenDetails,
+      paymentValidity: paidValidity,
+      allowedActions: [{ id: "prepare", label: { ar: "تحضير", en: "Prepare" } }],
+    }],
+  });
+  assert.strictEqual(catalogAddonResponse.items[0].kitchen.addons[0].displayName, "براونيز داكن");
+  assert(!catalogAddonResponse.items[0].dataQuality.warnings.some((warning) => warning.code === "MISSING_ARABIC_ADDON_NAME"));
+
+  const missingArabicAddonResponse = normalizeKitchenQueueResponse({
+    date: "2026-06-14",
+    items: [{
+      entityId: "addonMissingArabicDay",
+      entityType: "subscription_day",
+      subscriptionId: "sub1",
+      user: { id: "user1", name: "Sara", phone: "+966500000000" },
+      date: "2026-06-14",
+      status: "locked",
+      fulfillmentType: "branch_pickup",
+      plan,
+      kitchenDetails: {
+        mealSlots: [{ slotIndex: 1, slotKey: "standard", selectionType: "standard_meal", productKey: "standard_meal" }],
+        addons: [{ id: "addon_en", key: "english_only", nameI18n: { ar: "", en: "English Only" }, quantity: 1 }],
+      },
+      paymentValidity: paidValidity,
+      allowedActions: [{ id: "prepare", label: { ar: "تحضير", en: "Prepare" } }],
+    }],
+  });
+  assert(missingArabicAddonResponse.items[0].dataQuality.warnings.some((warning) => (
+    warning.code === "MISSING_ARABIC_ADDON_NAME"
+      && warning.field === "kitchen.addons[0].name.ar"
+  )));
 
   const oneTimeKitchenDetails = buildOrderKitchenDetailsPayload({
     items: [
