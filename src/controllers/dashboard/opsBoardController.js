@@ -8,6 +8,11 @@ const Order = require("../../models/Order");
 const Delivery = require("../../models/Delivery");
 const Zone = require("../../models/Zone");
 const ActivityLog = require("../../models/ActivityLog");
+const BuilderProtein = require("../../models/BuilderProtein");
+const BuilderCarb = require("../../models/BuilderCarb");
+const MenuProduct = require("../../models/MenuProduct");
+const Meal = require("../../models/Meal");
+const Sandwich = require("../../models/Sandwich");
 const opsTransitionService = require("../../services/dashboard/opsTransitionService");
 const opsActionPolicy = require("../../services/dashboard/opsActionPolicy");
 const dashboardDtoService = require("../../services/dashboard/dashboardDtoService");
@@ -94,7 +99,7 @@ async function buildZoneMap(subscriptions) {
   return new Map(zones.map((zone) => [String(zone._id), zone]));
 }
 
-function mapDay(day, latestAction, zoneMap, lang, role, delivery = null) {
+function mapDay(day, latestAction, zoneMap, lang, role, delivery = null, catalogMaps = {}) {
   const subscription = day.subscriptionId || {};
   const user = subscription.userId || {};
   const mode = getDeliveryMode(subscription);
@@ -129,7 +134,7 @@ function mapDay(day, latestAction, zoneMap, lang, role, delivery = null) {
     status: day.status,
     fulfillmentType: mode === "pickup" ? "branch_pickup" : "home_delivery",
     plan: buildPlanPayload(subscription, lang),
-    kitchenDetails: buildKitchenDetailsPayload(day, subscription, lang),
+    kitchenDetails: buildKitchenDetailsPayload(day, subscription, lang, catalogMaps),
     paymentValidity: buildPaymentValidityPayload(day),
     deliveryMethod: mode,
     deliveryMode: mode,
@@ -163,6 +168,111 @@ function mapDay(day, latestAction, zoneMap, lang, role, delivery = null) {
     allowedActions,
     createdAt: day.createdAt || null,
     updatedAt: day.updatedAt || null,
+  };
+}
+
+function collectCatalogRefsFromDays(days) {
+  const refs = {
+    proteinIds: new Set(),
+    proteinKeys: new Set(),
+    carbIds: new Set(),
+    carbKeys: new Set(),
+    productIds: new Set(),
+    productKeys: new Set(),
+    sandwichIds: new Set(),
+    sandwichKeys: new Set(),
+  };
+  for (const day of Array.isArray(days) ? days : []) {
+    for (const slot of Array.isArray(day && day.mealSlots) ? day.mealSlots : []) {
+      if (slot.proteinId) refs.proteinIds.add(String(slot.proteinId));
+      if (slot.proteinFamilyKey) refs.proteinKeys.add(String(slot.proteinFamilyKey));
+      if (slot.productId) refs.productIds.add(String(slot.productId));
+      if (slot.productKey) refs.productKeys.add(String(slot.productKey));
+      if (slot.sandwichId) refs.sandwichIds.add(String(slot.sandwichId));
+      const confirmation = slot.confirmationSnapshot || {};
+      const display = slot.displaySnapshot || {};
+      const fulfillment = slot.fulfillmentSnapshot || {};
+      if (confirmation.proteinKey) refs.proteinKeys.add(String(confirmation.proteinKey));
+      if (fulfillment.proteinKey) refs.proteinKeys.add(String(fulfillment.proteinKey));
+      for (const product of [confirmation.product, display.product, fulfillment.product]) {
+        if (!product) continue;
+        if (product.id || product._id) refs.productIds.add(String(product.id || product._id));
+        if (product.key) refs.productKeys.add(String(product.key));
+      }
+      for (const carb of []
+        .concat(Array.isArray(slot.carbSelections) ? slot.carbSelections : [])
+        .concat(Array.isArray(slot.carbs) ? slot.carbs : [])
+        .concat(slot.carbId ? [{ carbId: slot.carbId }] : [])) {
+        if (carb && carb.carbId) refs.carbIds.add(String(carb.carbId));
+        if (carb && carb.key) refs.carbKeys.add(String(carb.key));
+      }
+    }
+    for (const meal of Array.isArray(day && day.materializedMeals) ? day.materializedMeals : []) {
+      if (meal.proteinId) refs.proteinIds.add(String(meal.proteinId));
+      if (meal.proteinFamilyKey) refs.proteinKeys.add(String(meal.proteinFamilyKey));
+      if (meal.carbId) refs.carbIds.add(String(meal.carbId));
+      if (meal.productId) refs.productIds.add(String(meal.productId));
+      if (meal.productKey) refs.productKeys.add(String(meal.productKey));
+      if (meal.sandwichId) refs.sandwichIds.add(String(meal.sandwichId));
+    }
+  }
+  return refs;
+}
+
+function mapBy(rows, field) {
+  return new Map((Array.isArray(rows) ? rows : [])
+    .map((row) => row && row[field] ? [String(row[field]), row] : null)
+    .filter(Boolean));
+}
+
+async function buildKitchenCatalogMaps(days) {
+  const refs = collectCatalogRefsFromDays(days);
+  const [proteins, carbs, products, meals, sandwiches] = await Promise.all([
+    (refs.proteinIds.size || refs.proteinKeys.size)
+      ? BuilderProtein.find({
+        $or: [
+          refs.proteinIds.size ? { _id: { $in: [...refs.proteinIds] } } : null,
+          refs.proteinKeys.size ? { key: { $in: [...refs.proteinKeys] } } : null,
+          refs.proteinKeys.size ? { proteinFamilyKey: { $in: [...refs.proteinKeys] } } : null,
+        ].filter(Boolean),
+      }).select("_id key proteinFamilyKey name").lean()
+      : Promise.resolve([]),
+    (refs.carbIds.size || refs.carbKeys.size)
+      ? BuilderCarb.find({
+        $or: [
+          refs.carbIds.size ? { _id: { $in: [...refs.carbIds] } } : null,
+          refs.carbKeys.size ? { key: { $in: [...refs.carbKeys] } } : null,
+        ].filter(Boolean),
+      }).select("_id key name").lean()
+      : Promise.resolve([]),
+    (refs.productIds.size || refs.productKeys.size)
+      ? MenuProduct.find({
+        $or: [
+          refs.productIds.size ? { _id: { $in: [...refs.productIds] } } : null,
+          refs.productKeys.size ? { key: { $in: [...refs.productKeys] } } : null,
+        ].filter(Boolean),
+      }).select("_id key name").lean()
+      : Promise.resolve([]),
+    refs.sandwichIds.size
+      ? Meal.find({ _id: { $in: [...refs.sandwichIds] } }).select("_id name").lean()
+      : Promise.resolve([]),
+    refs.sandwichIds.size
+      ? Sandwich.find({ _id: { $in: [...refs.sandwichIds] } }).select("_id name").lean()
+      : Promise.resolve([]),
+  ]);
+  const sandwichRows = [...products, ...meals, ...sandwiches];
+  return {
+    proteinById: mapBy(proteins, "_id"),
+    proteinByKey: new Map(proteins.flatMap((protein) => [
+      protein.key ? [String(protein.key), protein] : null,
+      protein.proteinFamilyKey ? [String(protein.proteinFamilyKey), protein] : null,
+    ].filter(Boolean))),
+    carbById: mapBy(carbs, "_id"),
+    carbByKey: mapBy(carbs, "key"),
+    productById: mapBy(products, "_id"),
+    productByKey: mapBy(products, "key"),
+    sandwichById: mapBy(sandwichRows, "_id"),
+    sandwichByKey: mapBy(products, "key"),
   };
 }
 
@@ -264,6 +374,7 @@ async function queryBoardDays(req, { screen }) {
       ],
     }).lean(),
   ]);
+  const catalogMaps = await buildKitchenCatalogMaps(filteredByMethod);
   const deliveryByDayMap = new Map(deliveryDocs.filter((delivery) => delivery.dayId).map((delivery) => [String(delivery.dayId), delivery]));
   const deliveryBySubscriptionDateMap = new Map(deliveryDocs
     .filter((delivery) => delivery.subscriptionId && delivery.date)
@@ -277,7 +388,8 @@ async function queryBoardDays(req, { screen }) {
     role,
     deliveryByDayMap.get(String(day._id))
       || deliveryBySubscriptionDateMap.get(`${String(day.subscriptionId && day.subscriptionId._id || day.subscriptionId)}:${day.date}`)
-      || null
+      || null,
+    catalogMaps
   ));
 
   let activeOrderStatuses = [];
@@ -388,6 +500,14 @@ async function queryBoardDays(req, { screen }) {
     });
   }
   items = items.filter((item) => matchesSearch(item, q));
+  if (screen === "kitchen" && !isTruthyQuery(req.query.includeCanceled) && !req.query.status) {
+    items = items.filter((item) => {
+      const isCanceled = ["canceled_at_branch", "delivery_canceled", "cancelled", "canceled", "no_show"].includes(String(item.status || ""));
+      const mealCount = item.kitchenDetails && Array.isArray(item.kitchenDetails.mealSlots) ? item.kitchenDetails.mealSlots.length : 0;
+      const hasIdentity = Boolean((item.customer && item.customer.id) || (item.user && item.user.id) || item.subscriptionId || item.orderId || item.requestId);
+      return !(isCanceled && mealCount === 0 && !hasIdentity);
+    });
+  }
 
   return { date, businessDate, items, filters: { status: statuses, method, q: q || null, zoneId: req.query.zoneId || null, branchId: req.query.branchId || null } };
 }
@@ -409,7 +529,11 @@ async function queue(req, res) {
   if (shouldUseCleanQueueContract(screen, req.query)) {
     return res.status(200).json({
       status: true,
-      data: normalizeKitchenQueueResponse(data, { includeRaw: isTruthyQuery(req.query.includeRaw) }),
+      data: normalizeKitchenQueueResponse(data, {
+        includeRaw: isTruthyQuery(req.query.includeRaw),
+        includeLegacyAliases: isTruthyQuery(req.query.includeLegacyAliases),
+        includeCanceled: isTruthyQuery(req.query.includeCanceled) || Boolean(req.query.status),
+      }),
     });
   }
   return res.status(200).json({ status: true, data });
@@ -445,13 +569,17 @@ async function queueDetail(req, res) {
     return res.status(200).json({
       status: true,
       data: shouldUseCleanQueueContract(req.params.screen, req.query)
-        ? normalizeKitchenQueueItem(detail, { includeRaw: isTruthyQuery(req.query.includeRaw) })
+        ? normalizeKitchenQueueItem(detail, {
+          includeRaw: isTruthyQuery(req.query.includeRaw),
+          includeLegacyAliases: isTruthyQuery(req.query.includeLegacyAliases),
+        })
         : detail,
     });
   }
-  const [latestActionMap, zoneMap, delivery] = await Promise.all([
+  const [latestActionMap, zoneMap, catalogMaps, delivery] = await Promise.all([
     buildLatestActionMap([day._id]),
     buildZoneMap([day.subscriptionId || {}]),
+    buildKitchenCatalogMaps([day]),
     Delivery.findOne({
       $or: [
         { dayId: day._id },
@@ -462,11 +590,14 @@ async function queueDetail(req, res) {
       ],
     }).lean(),
   ]);
-  const detail = mapDay(day, latestActionMap.get(String(day._id)), zoneMap, getRequestLang(req), req.dashboardUserRole, delivery);
+  const detail = mapDay(day, latestActionMap.get(String(day._id)), zoneMap, getRequestLang(req), req.dashboardUserRole, delivery, catalogMaps);
   return res.status(200).json({
     status: true,
     data: shouldUseCleanQueueContract(req.params.screen, req.query)
-      ? normalizeKitchenQueueItem(detail, { includeRaw: isTruthyQuery(req.query.includeRaw) })
+      ? normalizeKitchenQueueItem(detail, {
+        includeRaw: isTruthyQuery(req.query.includeRaw),
+        includeLegacyAliases: isTruthyQuery(req.query.includeLegacyAliases),
+      })
       : detail,
   });
 }

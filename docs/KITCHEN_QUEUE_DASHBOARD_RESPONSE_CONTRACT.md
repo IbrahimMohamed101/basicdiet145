@@ -35,6 +35,15 @@ Contract version:
 
 By default, kitchen, pickup, and courier queues return the clean v2 contract. Heavy raw fields such as `mealSlots`, `materializedMeals`, raw snapshots, full payments, full users, full plans, and full catalog/product documents are not returned at the top level.
 
+Default v2 also hides deprecated root aliases such as `entityId`, `entityType`, `subscriptionId`, `subscriptionDayId`, `orderId`, `requestId`, `date`, `status`, and `allowedActions`. Use `ids`, `source`, and `actions` instead.
+
+Temporary compatibility/debug flags:
+
+- `includeLegacyAliases=true`: includes deprecated root aliases plus a `deprecation` notice.
+- `includeRaw=true`: includes deprecated root aliases and `raw`.
+- `view=legacy`: returns the legacy DTO instead of v2.
+- `includeCanceled=true`: includes archived/canceled empty rows in clean mode.
+
 ## List Shape
 
 ```js
@@ -64,8 +73,14 @@ By default, kitchen, pickup, and courier queues return the clean v2 contract. He
 - `payment`: payment validity and preparation/fulfillment gates.
 - `actions`: role/state-derived action list and convenience booleans.
 - `timestamps`: creation/update/preparation/fulfillment timestamps.
+- `dataQuality`: non-blocking warnings for missing display-critical fields.
 
-Lightweight compatibility aliases (`entityId`, `entityType`, `subscriptionDayId`, `status`, `allowedActions`) may appear, but dashboard rendering should prefer the structured sections.
+Dashboard rendering should prefer Arabic fields:
+
+- `displayName` for product, sandwich, protein, carbs, options, add-ons, and plan.
+- `orderSummary.display.titleAr` and `subtitleAr` for card titles.
+- `kitchen.meals[].display.titleAr` and `preparationTextAr` for kitchen preparation text.
+- `source.statusLabel.ar`, `fulfillment.typeLabel.ar`, and payment labels for badges.
 
 ## Subscription Item Example
 
@@ -188,6 +203,82 @@ Pickup requests use:
 - `fulfillment.pickup.released`
 - `fulfillment.pickup.pickupCodeState`
 
+## Sandwich Item Example
+
+```js
+{
+  mealType: "sandwich",
+  mealTypeLabel: { ar: "ساندويتش", en: "Sandwich" },
+  product: {
+    id: "sandwich1",
+    key: "chicken_sandwich",
+    name: { ar: "ساندويتش دجاج", en: "Chicken Sandwich" },
+    displayName: "ساندويتش دجاج"
+  },
+  sandwich: {
+    id: "sandwich1",
+    key: "chicken_sandwich",
+    name: { ar: "ساندويتش دجاج", en: "Chicken Sandwich" },
+    displayName: "ساندويتش دجاج"
+  },
+  protein: {
+    id: null,
+    key: "beef",
+    name: { ar: "لحم", en: "Beef" },
+    displayName: "لحم",
+    grams: 100
+  },
+  display: {
+    titleAr: "ساندويتش دجاج - 100g",
+    subtitleAr: "استلام من الفرع - 1 وجبة",
+    preparationTextAr: "حضّر ساندويتش دجاج مع بروتين 100g",
+    badgesAr: ["ساندويتش", "100g"]
+  }
+}
+```
+
+## Standard Meal Example
+
+```js
+{
+  mealType: "standard_meal",
+  mealTypeLabel: { ar: "وجبة", en: "Standard meal" },
+  product: {
+    id: "product1",
+    key: "basic_meal",
+    name: { ar: "وجبة أساسية", en: "Basic Meal" },
+    displayName: "وجبة أساسية"
+  },
+  protein: {
+    id: "protein1",
+    key: "beef",
+    name: { ar: "لحم", en: "Beef" },
+    displayName: "لحم",
+    grams: 200
+  },
+  carbs: [{
+    id: "carb1",
+    key: "rice",
+    name: { ar: "أرز", en: "Rice" },
+    displayName: "أرز",
+    grams: 150
+  }]
+}
+```
+
+## Add-On Example
+
+```js
+{
+  id: "addon1",
+  key: "soup",
+  name: { ar: "شوربة", en: "Soup" },
+  displayName: "شوربة",
+  quantity: 1,
+  display: { titleAr: "شوربة x1" }
+}
+```
+
 ## Courier Item
 
 Courier queue items use the same item shape. Delivery state lives under:
@@ -205,6 +296,7 @@ Courier queue items use the same item shape. Delivery state lives under:
 ## Reading Counts
 
 - `orderSummary.mealCount`: meals to prepare. Premium does not add to this count.
+- `orderSummary.addonCount`: add-on quantity only.
 - `kitchen.meals.length`: distinct meal rows/slots.
 - `kitchen.meals[].quantity`: quantity for one-time order rows.
 - `orderSummary.itemCount`: meal quantity plus add-on quantity.
@@ -247,6 +339,62 @@ These fields are debug-only and only available inside `raw` when `includeRaw=tru
 - full payment objects
 - full subscription/user/plan documents
 - repeated legacy context/pricing/items copies
+
+## Data Quality
+
+Missing display-critical fields are surfaced as warnings instead of silent empty strings:
+
+```js
+{
+  dataQuality: {
+    isComplete: false,
+    warnings: [{
+      code: "MISSING_PRODUCT_NAME",
+      field: "kitchen.meals[0].product.name",
+      messageAr: "اسم الوجبة غير موجود",
+      messageEn: "Meal product name is missing"
+    }]
+  }
+}
+```
+
+Known warning codes:
+
+- `MISSING_PRODUCT`
+- `MISSING_SANDWICH`
+- `MISSING_PRODUCT_NAME`
+- `MISSING_PROTEIN_NAME`
+- `MISSING_CARB_NAME`
+- `MISSING_PLAN`
+- `MISSING_CUSTOMER`
+- `EMPTY_KITCHEN_MEALS`
+- `CANCELED_EMPTY_ROW`
+
+`dataQuality.isComplete` is true only when all display-critical fields were resolved.
+
+## Archived / Canceled Rows
+
+Default kitchen v2 excludes archived canceled rows with no meals and no useful customer/subscription context.
+
+When included with `includeCanceled=true` or an explicit canceled `status` filter, they are marked:
+
+```js
+{
+  source: {
+    lifecycleGroup: "archived",
+    isActionable: false
+  },
+  orderSummary: {
+    display: {
+      titleAr: "طلب ملغي",
+      subtitleAr: "استلام من الفرع - 0 وجبات"
+    }
+  },
+  dataQuality: {
+    warnings: [{ code: "CANCELED_EMPTY_ROW" }]
+  }
+}
+```
 
 ## Manual Deductions
 

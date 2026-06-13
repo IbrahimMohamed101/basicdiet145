@@ -304,6 +304,59 @@ DB-backed tests could not run locally because MongoDB was unavailable:
 - One-time order protein grams may be `null` when the order item did not capture grams in its selections.
 - The v2 clean response intentionally hides raw snapshots by default. Internal debugging should use `includeRaw=true` or `view=legacy`.
 
+## Kitchen Queue Arabic Display Readiness Fix
+
+Fix date: 2026-06-13
+
+### What Was Broken
+
+- v2 had a clean structure but some kitchen-critical display fields were empty.
+- Sandwich rows could say `mealType: "sandwich"` without identifying which sandwich.
+- Protein and carb rows could contain ids/keys while Arabic/English display names were empty.
+- Default v2 still exposed deprecated root aliases duplicated from `ids`, `source`, and `actions`.
+- Empty canceled rows could appear like normal kitchen workload.
+- Missing names were silent instead of visible to dashboard QA.
+
+### Files Changed
+
+- `src/controllers/dashboard/opsBoardController.js`
+- `src/services/dashboard/opsPayloadService.js`
+- `src/services/dashboard/kitchenQueueContractService.js`
+- `tests/opsPayloadService.test.js`
+- `docs/KITCHEN_QUEUE_DASHBOARD_RESPONSE_CONTRACT.md`
+- `docs/KITCHEN_DELIVERY_MANUAL_DEDUCTION_BACKEND_AUDIT.md`
+
+### Response Changes
+
+- `kitchen.meals[].product`, `sandwich`, `protein`, `carbs`, options, add-ons, and `subscription.plan` now expose `{ ar, en }` names plus `displayName`.
+- `kitchen.meals[].mealTypeLabel`, `fulfillment.typeLabel`, `source.statusLabel`, and payment labels are included.
+- `kitchen.meals[].display` and `orderSummary.display` provide Arabic-ready render text.
+- `orderSummary` now includes `addonCount`, Arabic count text, and explicit item count semantics.
+- Default v2 hides deprecated root aliases. `includeLegacyAliases=true` or `includeRaw=true` restores them with a deprecation note.
+- Default kitchen v2 filters archived canceled empty rows; `includeCanceled=true` or explicit status filters can include them.
+- `dataQuality` warns about missing product/sandwich/protein/carb/customer/plan data instead of returning silent empty display strings.
+
+### Tests Added
+
+- Sandwich item resolves id/key/Arabic/English names and displayName.
+- Protein and carb Arabic names are preserved.
+- Protein grams still come from `Subscription.selectedGrams`.
+- Meal and card Arabic display summaries are present.
+- Add-ons are Arabic-ready and separate from meals.
+- Default v2 hides root aliases.
+- `includeRaw=true` exposes raw/debug data and temporary aliases.
+- Missing display-critical fields produce `dataQuality.warnings`.
+- Archived canceled empty rows are hidden by default and marked when included.
+
+### Tests Run
+
+- `NODE_ENV=test node tests/opsPayloadService.test.js`
+
+### Remaining Risks
+
+- If neither snapshots nor catalog lookups contain a real name, v2 returns a fallback displayName from key/id and emits `dataQuality.warnings`.
+- One-time order items depend on the persisted order snapshot/selections for Arabic-ready names unless expanded with more catalog hydration later.
+
 ## Critical Backend Rules
 
 | # | Rule | Status | Evidence / Gap |

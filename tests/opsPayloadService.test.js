@@ -213,7 +213,8 @@ function run() {
   assert.strictEqual(cleanItem.orderSummary.hasPremium, true);
   assert.strictEqual(cleanItem.orderSummary.hasAddons, true);
   assert.strictEqual(cleanItem.kitchen.addons.length, 1);
-  assert.strictEqual(cleanItem.kitchen.addons[0].name, "Protein Bar");
+  assert.strictEqual(cleanItem.kitchen.addons[0].name.en, "Protein Bar");
+  assert.strictEqual(cleanItem.kitchen.addons[0].displayName, "Protein Bar");
   assert.strictEqual(cleanItem.payment.canFulfill, true);
   assert.strictEqual(cleanItem.actions.canFulfill, true);
   assert.strictEqual(cleanItem.fulfillment.delivery.deliveryId, "delivery1");
@@ -223,12 +224,18 @@ function run() {
   assert.strictEqual(cleanItem.raw, undefined);
   assert.strictEqual(cleanItem.mealSlots, undefined);
   assert.strictEqual(cleanItem.materializedMeals, undefined);
+  assert.strictEqual(cleanItem.entityId, undefined);
+  assert.strictEqual(cleanItem.allowedActions, undefined);
+  assert(cleanItem.orderSummary.display.titleAr);
+  assert(cleanItem.kitchen.meals[0].display.titleAr);
+  assert(cleanItem.kitchen.meals[0].display.preparationTextAr);
 
   const rawResponse = normalizeKitchenQueueResponse({
     date: "2026-06-12",
     items: [{ entityId: "day1", entityType: "subscription_day", kitchenDetails, paymentValidity: paidValidity, mealSlots: day.mealSlots }],
   }, { includeRaw: true });
   assert(Array.isArray(rawResponse.items[0].raw.mealSlots), "includeRaw attaches legacy internals under raw only");
+  assert.strictEqual(rawResponse.items[0].entityId, "day1", "includeRaw keeps temporary legacy aliases");
 
   const pendingClean = normalizeKitchenQueueResponse({
     date: "2026-06-12",
@@ -340,6 +347,101 @@ function run() {
   assert.strictEqual(shouldUseCleanQueueContract("courier", {}), true);
   assert.strictEqual(shouldUseCleanQueueContract("pickup", { view: "legacy" }), false);
   assert.strictEqual(shouldUseCleanQueueContract("courier", { view: "legacy" }), false);
+
+  const sandwichResponse = normalizeKitchenQueueResponse({
+    date: "2026-06-13",
+    items: [{
+      entityId: "sandwichDay",
+      entityType: "subscription_day",
+      subscriptionId: "sub1",
+      user: { id: "user1", name: "Sara", phone: "+966500000000" },
+      date: "2026-06-13",
+      status: "locked",
+      fulfillmentType: "branch_pickup",
+      plan: buildPlanPayload({
+        ...subscription,
+        selectedGrams: 100,
+      }, "ar"),
+      kitchenDetails: {
+        mealSlots: [{
+          slotIndex: 1,
+          slotKey: "slot_1",
+          selectionType: "sandwich",
+          productId: "sandwich1",
+          productKey: "chicken_sandwich",
+          productNameI18n: { ar: "ساندويتش دجاج", en: "Chicken Sandwich" },
+          sandwichId: "sandwich1",
+          sandwichKey: "chicken_sandwich",
+          sandwichNameI18n: { ar: "ساندويتش دجاج", en: "Chicken Sandwich" },
+          proteinKey: "beef",
+          proteinNameI18n: { ar: "لحم", en: "Beef" },
+          proteinGrams: 100,
+          carbSelections: [{ carbId: "carb1", key: "rice", nameI18n: { ar: "أرز", en: "Rice" }, grams: 150 }],
+          quantity: 1,
+        }],
+        addons: [{ id: "addon1", key: "soup", nameI18n: { ar: "شوربة", en: "Soup" }, quantity: 1 }],
+      },
+      paymentValidity: paidValidity,
+      allowedActions: [{ id: "prepare", label: { ar: "تحضير", en: "Prepare" } }],
+    }],
+  });
+  const sandwichItem = sandwichResponse.items[0];
+  const sandwichMeal = sandwichItem.kitchen.meals[0];
+  assert.strictEqual(sandwichMeal.mealType, "sandwich");
+  assert.strictEqual(sandwichMeal.mealTypeLabel.ar, "ساندويتش");
+  assert.strictEqual(sandwichMeal.product.id, "sandwich1");
+  assert.strictEqual(sandwichMeal.product.key, "chicken_sandwich");
+  assert.strictEqual(sandwichMeal.product.name.ar, "ساندويتش دجاج");
+  assert.strictEqual(sandwichMeal.product.name.en, "Chicken Sandwich");
+  assert.strictEqual(sandwichMeal.product.displayName, "ساندويتش دجاج");
+  assert.strictEqual(sandwichMeal.sandwich.id, "sandwich1");
+  assert.strictEqual(sandwichMeal.sandwich.displayName, "ساندويتش دجاج");
+  assert.strictEqual(sandwichMeal.protein.name.ar, "لحم");
+  assert.strictEqual(sandwichMeal.protein.displayName, "لحم");
+  assert.strictEqual(sandwichMeal.protein.grams, 100);
+  assert.strictEqual(sandwichItem.subscription.plan.proteinGrams, 100);
+  assert.strictEqual(sandwichMeal.carbs[0].name.ar, "أرز");
+  assert.strictEqual(sandwichMeal.carbs[0].displayName, "أرز");
+  assert.strictEqual(sandwichItem.orderSummary.addonCount, 1);
+  assert.strictEqual(sandwichItem.orderSummary.itemCount, 2);
+  assert.strictEqual(sandwichItem.kitchen.addons[0].name.ar, "شوربة");
+  assert.strictEqual(sandwichItem.dataQuality.isComplete, true);
+
+  const missingResponse = normalizeKitchenQueueResponse({
+    date: "2026-06-13",
+    items: [{
+      entityId: "badDay",
+      entityType: "subscription_day",
+      date: "2026-06-13",
+      status: "locked",
+      kitchenDetails: {
+        mealSlots: [{ slotIndex: 1, slotKey: "slot_1", selectionType: "sandwich", proteinKey: "unknown", carbSelections: [{ carbId: "missingCarb", grams: 150 }] }],
+        addons: [],
+      },
+      paymentValidity: paidValidity,
+      allowedActions: [],
+    }],
+  });
+  const warningCodes = missingResponse.items[0].dataQuality.warnings.map((warning) => warning.code);
+  assert.strictEqual(missingResponse.items[0].dataQuality.isComplete, false);
+  assert(warningCodes.includes("MISSING_PRODUCT"));
+  assert(warningCodes.includes("MISSING_SANDWICH"));
+  assert(warningCodes.includes("MISSING_PRODUCT_NAME"));
+  assert(warningCodes.includes("MISSING_PROTEIN_NAME"));
+  assert(warningCodes.includes("MISSING_CARB_NAME"));
+
+  const canceledResponse = normalizeKitchenQueueResponse({
+    date: "2026-06-13",
+    items: [{ entityId: "canceled", entityType: "subscription_day", status: "canceled_at_branch", kitchenDetails: { mealSlots: [], addons: [] }, paymentValidity: paidValidity }],
+  });
+  assert.strictEqual(canceledResponse.items.length, 0);
+  const includedCanceled = normalizeKitchenQueueResponse({
+    date: "2026-06-13",
+    items: [{ entityId: "canceled", entityType: "subscription_day", status: "canceled_at_branch", kitchenDetails: { mealSlots: [], addons: [] }, paymentValidity: paidValidity }],
+  }, { includeCanceled: true });
+  assert.strictEqual(includedCanceled.items[0].source.lifecycleGroup, "archived");
+  assert.strictEqual(includedCanceled.items[0].source.isActionable, false);
+  assert(includedCanceled.items[0].dataQuality.warnings.some((warning) => warning.code === "CANCELED_EMPTY_ROW"));
 
   const deduction = serializeManualDeductionLog({
     _id: "log1",

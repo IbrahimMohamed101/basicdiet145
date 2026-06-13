@@ -13,6 +13,19 @@ function localizedName(value, lang = "en") {
   return pickLang(value, lang) || pickLang(value, "en") || pickLang(value, "ar") || "";
 }
 
+function localizedNameObject(value, fallback = "") {
+  if (!value) return { ar: fallback || "", en: fallback || "" };
+  if (typeof value === "string") return { ar: value, en: value };
+  const ar = value.ar || value.en || fallback || "";
+  const en = value.en || value.ar || fallback || "";
+  return { ar: String(ar || ""), en: String(en || "") };
+}
+
+function getFromMap(map, id) {
+  if (!map || !id) return null;
+  return map.get(String(id)) || null;
+}
+
 function resolvePlanDocument(subscription = {}) {
   return subscription && subscription.planId && typeof subscription.planId === "object"
     ? subscription.planId
@@ -26,6 +39,7 @@ function buildPlanPayload(subscription = {}, lang = "en") {
     id: stringifyId((plan && plan._id) || (subscription && subscription.planId)),
     key: plan && plan.key ? String(plan.key) : null,
     name: localizedName(plan && plan.name, lang),
+    nameI18n: localizedNameObject(plan && plan.name, plan && plan.key ? String(plan.key) : ""),
     daysCount: plan && plan.daysCount !== undefined ? Number(plan.daysCount || 0) : null,
     durationDays: plan && plan.durationDays !== undefined ? Number(plan.durationDays || 0) : null,
     totalMeals: Number(subscription && subscription.totalMeals || 0),
@@ -73,7 +87,13 @@ function classifyOptions(options, matcher) {
   });
 }
 
-function buildMealSlotPayload(slot = {}, subscription = {}, lang = "en") {
+function resolveCatalogDoc(catalogMaps = {}, kind, id, key) {
+  const byId = getFromMap(catalogMaps[`${kind}ById`], id);
+  if (byId) return byId;
+  return getFromMap(catalogMaps[`${kind}ByKey`], key);
+}
+
+function buildMealSlotPayload(slot = {}, subscription = {}, lang = "en", catalogMaps = {}) {
   const confirmation = slot.confirmationSnapshot || {};
   const display = slot.displaySnapshot || {};
   const fulfillment = slot.fulfillmentSnapshot || {};
@@ -85,32 +105,59 @@ function buildMealSlotPayload(slot = {}, subscription = {}, lang = "en") {
       ? slot.carbs
       : (slot.carbId ? [{ carbId: slot.carbId, grams: null }] : []));
   const product = confirmation.product || display.product || fulfillment.product || {};
+  const materializedProduct = slot.materializedMeal || {};
+  const productId = stringifyId(slot.productId || product.id || product._id || materializedProduct.productId);
+  const productKey = slot.productKey || product.key || materializedProduct.productKey || null;
+  const sandwichId = stringifyId(slot.sandwichId || materializedProduct.sandwichId || (slot.selectionType === "sandwich" ? productId : null));
+  const productDoc = resolveCatalogDoc(catalogMaps, "product", productId, productKey);
+  const sandwichDoc = resolveCatalogDoc(catalogMaps, "sandwich", sandwichId || productId, productKey);
+  const proteinDoc = resolveCatalogDoc(
+    catalogMaps,
+    "protein",
+    slot.proteinId || fulfillment.proteinId || materializedProduct.proteinId,
+    fulfillment.proteinKey || confirmation.proteinKey || slot.proteinFamilyKey || materializedProduct.proteinFamilyKey
+  );
 
   return {
     slotIndex: slot.slotIndex !== undefined ? Number(slot.slotIndex || 0) : null,
     slotKey: slot.slotKey || null,
     selectionType: slot.selectionType || null,
-    productId: stringifyId(slot.productId || product.id || product._id),
-    productKey: slot.productKey || product.key || null,
-    productName: localizedName(product.name || product.title, lang),
-    proteinId: stringifyId(slot.proteinId || fulfillment.proteinId),
+    productId,
+    productKey,
+    productName: localizedName(product.name || product.title || (productDoc && productDoc.name) || (sandwichDoc && sandwichDoc.name), lang),
+    productNameI18n: localizedNameObject(product.name || product.title || (productDoc && productDoc.name) || (sandwichDoc && sandwichDoc.name), productKey || sandwichId || ""),
+    sandwichId,
+    sandwichKey: slot.sandwichKey || (sandwichDoc && sandwichDoc.key) || productKey || null,
+    sandwichName: localizedName((sandwichDoc && sandwichDoc.name) || product.name || product.title, lang),
+    sandwichNameI18n: localizedNameObject((sandwichDoc && sandwichDoc.name) || product.name || product.title, productKey || sandwichId || ""),
+    proteinId: stringifyId(slot.proteinId || fulfillment.proteinId || materializedProduct.proteinId),
     proteinKey: fulfillment.proteinKey || confirmation.proteinKey || null,
     proteinName: snapshotName(confirmation, ["protein", "name"], lang)
       || snapshotName(display, ["protein", "name"], lang)
-      || localizedName(fulfillment.proteinName, lang),
+      || localizedName(fulfillment.proteinName || (proteinDoc && proteinDoc.name), lang),
+    proteinNameI18n: localizedNameObject(
+      (confirmation.protein && confirmation.protein.name)
+        || (display.protein && display.protein.name)
+        || fulfillment.proteinName
+        || (proteinDoc && proteinDoc.name),
+      fulfillment.proteinKey || confirmation.proteinKey || slot.proteinFamilyKey || ""
+    ),
     proteinGrams: Number(subscription && subscription.selectedGrams || 0) || null,
     proteinFamilyKey: slot.proteinFamilyKey || null,
     carbSelections: carbSelections.map((carb) => ({
       carbId: stringifyId(carb && carb.carbId),
       key: carb && carb.key ? String(carb.key) : null,
-      name: localizedName((carb && (carb.name || carb.carbName)) || null, lang),
+      name: localizedName((carb && (carb.name || carb.carbName)) || (resolveCatalogDoc(catalogMaps, "carb", carb && carb.carbId, carb && carb.key) || {}).name || null, lang),
+      nameI18n: localizedNameObject(
+        (carb && (carb.name || carb.carbName)) || (resolveCatalogDoc(catalogMaps, "carb", carb && carb.carbId, carb && carb.key) || {}).name,
+        carb && (carb.key || carb.carbId) ? String(carb.key || carb.carbId) : ""
+      ),
       grams: carb && carb.grams !== undefined && carb.grams !== null ? Number(carb.grams || 0) : null,
     })),
     salad: slot.salad || slot.customSalad || null,
     sauce: classifyOptions(selectedOptions, (key) => key.includes("sauce")),
     selectedOptions,
     sides: classifyOptions(selectedOptions, (key) => key.includes("side")),
-    sandwichId: stringifyId(slot.sandwichId),
     isPremium: Boolean(slot.isPremium),
     premiumKey: slot.premiumKey || null,
     premiumSource: slot.premiumSource || "none",
@@ -125,6 +172,7 @@ function buildAddonPayload(addon = {}, lang = "en") {
     id: stringifyId(id),
     key: addon.key || addon.addonKey || null,
     name: localizedName(addon.name || addon.addonName, lang),
+    nameI18n: localizedNameObject(addon.name || addon.addonName, addon.key || addon.addonKey || ""),
     quantity: Number(addon.qty || addon.quantity || 1),
     priceHalala: Number(addon.priceHalala || addon.unitPriceHalala || addon.totalPriceHalala || 0),
   };
@@ -187,9 +235,17 @@ function buildOrderKitchenDetailsPayload(order = {}, lang = "en") {
   return { mealSlots, addons };
 }
 
-function buildKitchenDetailsPayload(day = {}, subscription = {}, lang = "en") {
+function buildKitchenDetailsPayload(day = {}, subscription = {}, lang = "en", catalogMaps = {}) {
+  const materializedBySlotKey = new Map(
+    (Array.isArray(day.materializedMeals) ? day.materializedMeals : [])
+      .map((meal) => [String(meal && meal.slotKey || ""), meal])
+      .filter(([key]) => key)
+  );
   const mealSlots = Array.isArray(day.mealSlots)
-    ? day.mealSlots.map((slot) => buildMealSlotPayload(slot, subscription, lang))
+    ? day.mealSlots.map((slot) => buildMealSlotPayload({
+      ...slot,
+      materializedMeal: materializedBySlotKey.get(String(slot && slot.slotKey || "")) || null,
+    }, subscription, lang, catalogMaps))
     : [];
   const addonSources = []
     .concat(Array.isArray(day.addonSelections) ? day.addonSelections : [])
