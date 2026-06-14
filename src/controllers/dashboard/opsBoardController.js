@@ -20,6 +20,7 @@ const opsTransitionService = require("../../services/dashboard/opsTransitionServ
 const opsActionPolicy = require("../../services/dashboard/opsActionPolicy");
 const dashboardDtoService = require("../../services/dashboard/dashboardDtoService");
 const { executeDashboardOrderAction } = require("../../services/orders/orderDashboardService");
+const { validateSubscriptionDayOperationalGate } = require("../../services/dashboard/subscriptionDayOperationalGateService");
 const errorResponse = require("../../utils/errorResponse");
 const dateUtils = require("../../utils/date");
 const { getRequestLang } = require("../../utils/i18n");
@@ -826,6 +827,11 @@ async function action(req, res) {
   if (!validation.allowed) {
     const code = validation.reason === "INVALID_STATE_TRANSITION" ? "INVALID_TRANSITION" : validation.reason;
     return errorResponse(res, 409, code, `Action ${actionId} is not allowed in current state`);
+  }
+
+  const gate = validateSubscriptionDayOperationalGate(day, actionId);
+  if (!gate.allowed) {
+    return errorResponse(res, gate.status, gate.code, gate.message);
   }
 
   await opsTransitionService.executeAction(actionId, {

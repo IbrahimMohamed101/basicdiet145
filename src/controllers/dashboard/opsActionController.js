@@ -6,6 +6,7 @@ const SubscriptionDay = require("../../models/SubscriptionDay");
 const SubscriptionPickupRequest = require("../../models/SubscriptionPickupRequest");
 const Subscription = require("../../models/Subscription");
 const { executeDashboardOrderAction } = require("../../services/orders/orderDashboardService");
+const { validateSubscriptionDayOperationalGate } = require("../../services/dashboard/subscriptionDayOperationalGateService");
 const errorResponse = require("../../utils/errorResponse");
 const { getRequestLang } = require("../../utils/i18n");
 // Settlement on read is DISABLED — see pastSubscriptionDaySettlementService.js
@@ -105,6 +106,11 @@ async function handleAction(req, res) {
 
       if (mode === "pickup" && ["prepare", "start_preparation", "ready_for_pickup", "ready-for-pickup", "fulfill", "no_show"].includes(action)) {
         return errorResponse(res, 422, "PICKUP_REQUEST_REQUIRED", "Pickup preparation requires an explicit client request");
+      }
+
+      const gate = validateSubscriptionDayOperationalGate(doc, action);
+      if (!gate.allowed) {
+        return errorResponse(res, gate.status, gate.code, gate.message);
       }
       
       const validation = opsActionPolicy.validateAction({
