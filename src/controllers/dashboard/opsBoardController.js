@@ -811,7 +811,9 @@ async function action(req, res) {
 
   const existingDay = await SubscriptionDay.findById(entityId).select("date").lean();
   // Settlement on read intentionally removed — meals are not consumed by date passage.
-  const day = await SubscriptionDay.findById(entityId).populate("subscriptionId", "deliveryMode").lean();
+  const day = await SubscriptionDay.findById(entityId)
+    .populate("subscriptionId", "deliveryMode selectedMealsPerDay deliveryWindow deliveryAddress")
+    .lean();
   if (!day) return errorResponse(res, 404, "NOT_FOUND", "Subscription day not found");
   const mode = getDeliveryMode(day.subscriptionId || {});
   if (mode === "pickup" && ["prepare", "start_preparation", "ready_for_pickup", "ready-for-pickup", "fulfill", "no_show"].includes(actionId)) {
@@ -829,7 +831,7 @@ async function action(req, res) {
     return errorResponse(res, 409, code, `Action ${actionId} is not allowed in current state`);
   }
 
-  const gate = validateSubscriptionDayOperationalGate(day, actionId);
+  const gate = validateSubscriptionDayOperationalGate(day, actionId, { subscription: day.subscriptionId || {} });
   if (!gate.allowed) {
     return errorResponse(res, gate.status, gate.code, gate.message);
   }

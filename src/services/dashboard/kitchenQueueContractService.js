@@ -10,6 +10,8 @@ const MEAL_TYPE_LABELS = {
   premium_large_salad: { ar: "سلطة كبيرة مميزة", en: "Premium Large Salad" },
   basic_salad: { ar: "سلطة", en: "Salad" },
   sandwich: { ar: "ساندويتش", en: "Sandwich" },
+  chef_choice: { ar: "اختيار الشيف", en: "Chef Choice" },
+  unspecified_meal: { ar: "اختيار الشيف", en: "Chef Choice" },
 };
 
 // Meal types whose product identity is fully determined by the semantic mealType label.
@@ -22,6 +24,8 @@ const SEMANTIC_PRODUCT_COMPLETE_TYPES = new Set([
   "standard_meal",
   "premium_meal",
   "premium_large_salad",
+  "chef_choice",
+  "unspecified_meal",
 ]);
 
 const SEMANTIC_LABELS = {
@@ -93,12 +97,17 @@ const WARNING_MESSAGES = {
   MISSING_PLAN: ["بيانات الباقة غير موجودة", "Plan data is missing"],
   MISSING_CUSTOMER: ["بيانات العميل غير موجودة", "Customer data is missing"],
   EMPTY_KITCHEN_MEALS: ["لا توجد وجبات للتحضير", "No kitchen meals to prepare"],
+  CHEF_CHOICE_MEALS: ["العميل لم يحدد الوجبات، سيتم تجهيز وجبات اختيار الشيف", "Customer did not select meals; Chef Choice meals will be prepared"],
   CANCELED_EMPTY_ROW: ["هذا الطلب ملغي ولا يحتوي وجبات للتحضير", "Canceled row has no meals to prepare"],
   UNRESOLVED_OPTION_NAME: ["تعذر تحديد اسم العنصر من الكتالوج", "Could not resolve option name from catalog"],
   UNRESOLVED_ADDON_NAME: ["تعذر تحديد اسم الإضافة من الكتالوج", "Could not resolve add-on name from catalog"],
   MISSING_ARABIC_ADDON_NAME: ["اسم الإضافة العربي غير موجود", "Arabic add-on name is missing"],
   UNRESOLVED_SALAD_GROUP_ITEM: ["تعذر تحديد اسم مكون السلطة من الكتالوج", "Could not resolve salad group item name from catalog"],
   FALLBACK_DISPLAY_NAME_USED: ["تم استخدام اسم بديل للعرض", "Fallback display name was used"],
+};
+
+const WARNING_SEVERITY = {
+  CHEF_CHOICE_MEALS: "info",
 };
 
 function asId(value) {
@@ -201,7 +210,7 @@ function semanticLabelFor(key) {
 
 function withWarning(warnings, code, field) {
   const [messageAr, messageEn] = WARNING_MESSAGES[code] || [code, code];
-  warnings.push({ code, field, messageAr, messageEn });
+  warnings.push({ code, field, severity: WARNING_SEVERITY[code] || "warning", messageAr, messageEn });
 }
 
 function sumQuantity(items) {
@@ -418,6 +427,7 @@ function normalizeMeal(slot = {}, slotIndex, fulfillmentType, warnings) {
   const badgesAr = [mealTypeLabel.ar, proteinGrams ? `${proteinGrams}g` : null, slot.isPremium ? "مميز" : null]
     .filter(Boolean);
   const primaryName = mealType === "sandwich" && sandwich ? sandwich.displayName : product.displayName;
+  const isChefChoice = ["chef_choice", "unspecified_meal"].includes(String(mealType || ""));
   const semanticProductComplete = SEMANTIC_PRODUCT_COMPLETE_TYPES.has(String(slot.productKey || ""))
     || SEMANTIC_PRODUCT_COMPLETE_TYPES.has(String(mealType || ""));
 
@@ -457,11 +467,36 @@ function normalizeMeal(slot = {}, slotIndex, fulfillmentType, warnings) {
     display: {
       titleAr: proteinGrams ? `${primaryName} - ${proteinGrams}g` : primaryName,
       subtitleAr: `${FULFILLMENT_LABELS[fulfillmentType].ar} - ${Math.max(1, asNumber(slot.quantity, 1))} وجبة`,
-      preparationTextAr: proteinGrams
+      preparationTextAr: isChefChoice
+        ? "حضّر وجبة اختيار الشيف"
+        : (proteinGrams
         ? `حضّر ${primaryName} مع بروتين ${proteinGrams}g`
-        : `حضّر ${primaryName}`,
+        : `حضّر ${primaryName}`),
       badgesAr,
     },
+  };
+}
+
+function normalizeSelectionMode(value, meals) {
+  const mode = String(value || "").trim();
+  if (mode === "chef_choice") return "chef_choice";
+  if ((Array.isArray(meals) ? meals : []).some((meal) => ["chef_choice", "unspecified_meal"].includes(String(meal && meal.mealType || "")))) {
+    return "chef_choice";
+  }
+  return (Array.isArray(meals) && meals.length > 0) ? "customer_selected" : "none";
+}
+
+function selectionModeLabel(mode) {
+  if (mode === "chef_choice") return { ar: "اختيار الشيف", en: "Chef Choice" };
+  if (mode === "customer_selected") return { ar: "اختيار العميل", en: "Customer selected" };
+  return { ar: "", en: "" };
+}
+
+function selectionNotice(mode) {
+  if (mode !== "chef_choice") return null;
+  return {
+    ar: "العميل لم يحدد الوجبات، سيتم تجهيز وجبات اختيار الشيف",
+    en: "Customer did not select meals; Chef Choice meals will be prepared",
   };
 }
 
@@ -495,6 +530,42 @@ function countTextAr(count, singular, plural) {
   return `${count} ${count === 1 ? singular : plural}`;
 }
 
+function formatWindowTextAr(window) {
+  if (!window) return null;
+  if (typeof window === "object") {
+    const from = window.from || window.start || window.startTime || window.startAt;
+    const to = window.to || window.end || window.endTime || window.endAt;
+    if (from && to) return `من ${from} إلى ${to}`;
+    return window.textAr || window.labelAr || window.text || null;
+  }
+  const text = String(window);
+  const match = text.match(/^\s*([0-2]?\d:[0-5]\d)\s*(?:-|–|—|to)\s*([0-2]?\d:[0-5]\d)\s*$/i);
+  return match ? `من ${match[1]} إلى ${match[2]}` : text;
+}
+
+function normalizeAddressDisplay(address) {
+  if (!address || typeof address !== "object") return address || null;
+  const parts = [
+    address.displayAddressAr,
+    address.display && address.display.ar,
+    address.line1,
+    address.district,
+    address.street,
+    address.building ? `مبنى ${address.building}` : null,
+    address.apartment ? `شقة ${address.apartment}` : null,
+    address.city,
+  ].filter(Boolean);
+  const displayAddressAr = parts.length ? parts.join("، ") : null;
+  return {
+    ...address,
+    displayAddressAr,
+    display: {
+      ...(address.display && typeof address.display === "object" ? address.display : {}),
+      ar: (address.display && address.display.ar) || displayAddressAr,
+    },
+  };
+}
+
 function normalizeKitchenQueueItem(item, { includeRaw = false, includeLegacyAliases = false } = {}) {
   const ids = buildIds(item);
   const warnings = [];
@@ -513,6 +584,9 @@ function normalizeKitchenQueueItem(item, { includeRaw = false, includeLegacyAlia
     : sumQuantity(meals);
   const addonCount = sumQuantity(addons);
   const delivery = item.delivery || {};
+  const deliveryAddress = normalizeAddressDisplay(delivery.address);
+  const deliveryWindow = delivery.window || delivery.deliveryWindow || (item.context && item.context.window) || null;
+  const selectionMode = normalizeSelectionMode(kitchenDetails.selectionMode || item.selectionMode, meals);
   const timestamps = item.timestamps || {};
   const status = item.status || null;
   const lifecycleGroup = lifecycleGroupFor(status);
@@ -520,6 +594,7 @@ function normalizeKitchenQueueItem(item, { includeRaw = false, includeLegacyAlia
 
   if (!((item.customer && item.customer.id) || (item.user && item.user.id))) withWarning(warnings, "MISSING_CUSTOMER", "customer.id");
   if (!item.plan) withWarning(warnings, "MISSING_PLAN", "subscription.plan");
+  if (selectionMode === "chef_choice") withWarning(warnings, "CHEF_CHOICE_MEALS", "kitchen.meals");
   if (mealCount === 0) withWarning(warnings, "EMPTY_KITCHEN_MEALS", "kitchen.meals");
   if (lifecycleGroup === "archived" && mealCount === 0) withWarning(warnings, "CANCELED_EMPTY_ROW", "source.status");
   if (mealCount === 0 && sourceType !== "pickup_request") {
@@ -548,7 +623,9 @@ function normalizeKitchenQueueItem(item, { includeRaw = false, includeLegacyAlia
   }
 
   const planName = item.plan ? nameObject(item.plan.nameI18n || item.plan.name, item.plan.key || item.plan.id || "") : nameObject("", "");
-  const titleAr = meals[0] ? meals[0].display.titleAr : (lifecycleGroup === "archived" ? "طلب ملغي" : "طلب بدون وجبات");
+  const titleAr = selectionMode === "chef_choice"
+    ? "اختيار الشيف"
+    : (meals[0] ? meals[0].display.titleAr : (lifecycleGroup === "archived" ? "طلب ملغي" : "طلب بدون وجبات"));
   const fulfillmentLabel = FULFILLMENT_LABELS[fulfillmentType] || nameObject(fulfillmentType, fulfillmentType);
   const paymentStatus = payment.paymentStatus || null;
   const paymentReason = payment.reason || null;
@@ -604,6 +681,9 @@ function normalizeKitchenQueueItem(item, { includeRaw = false, includeLegacyAlia
       },
     },
     kitchen: { meals, addons },
+    selectionMode,
+    selectionModeLabel: selectionModeLabel(selectionMode),
+    selectionNotice: selectionNotice(selectionMode),
     fulfillment: {
       type: fulfillmentType,
       typeLabel: fulfillmentLabel,
@@ -611,8 +691,10 @@ function normalizeKitchenQueueItem(item, { includeRaw = false, includeLegacyAlia
         deliveryId: asId(delivery.deliveryId),
         date: delivery.date || item.date || null,
         status: delivery.status || null,
-        address: delivery.address || null,
-        window: delivery.window || delivery.deliveryWindow || (item.context && item.context.window) || null,
+        address: deliveryAddress,
+        displayAddressAr: deliveryAddress && deliveryAddress.displayAddressAr,
+        window: deliveryWindow,
+        windowTextAr: formatWindowTextAr(deliveryWindow),
         zoneId: asId(delivery.zoneId),
         courierId: asId(delivery.courierId),
       },

@@ -126,7 +126,7 @@ async function seedUser(label) {
   });
 }
 
-async function seedSubscription({ label, deliveryMode, remainingMeals }) {
+async function seedSubscription({ label, deliveryMode, remainingMeals, selectedMealsPerDay = 1 }) {
   const [user, plan] = await Promise.all([
     seedUser(label),
     seedPlan(label),
@@ -141,7 +141,7 @@ async function seedSubscription({ label, deliveryMode, remainingMeals }) {
     totalMeals: remainingMeals,
     remainingMeals,
     selectedGrams: 200,
-    selectedMealsPerDay: 1,
+    selectedMealsPerDay,
     deliveryMode,
     pickupLocationId: deliveryMode === "pickup" ? "main" : "",
     deliveryAddress: deliveryMode === "delivery" ? { line1: `${TEST_TAG} delivery address` } : undefined,
@@ -276,6 +276,76 @@ async function sumPickupMealCounts(subscriptionId) {
       });
       assert([200, 409].includes(duplicateFulfill.status), JSON.stringify(duplicateFulfill.body));
       assert.strictEqual(await remainingMeals(subscription._id), 2);
+    });
+
+    await test("home delivery chef choice lifecycle deducts entitlement once", async () => {
+      const { subscription } = await seedSubscription({
+        label: "home-delivery-chef-choice",
+        deliveryMode: "delivery",
+        remainingMeals: 10,
+        selectedMealsPerDay: 2,
+      });
+      const day = await SubscriptionDay.create({
+        subscriptionId: subscription._id,
+        date: TODAY,
+        status: "open",
+        plannerState: "confirmed",
+        planningState: "confirmed",
+        mealSlots: [],
+        materializedMeals: [],
+        plannerMeta: {
+          requiredSlotCount: 2,
+          emptySlotCount: 2,
+          completeSlotCount: 0,
+          isDraftValid: true,
+          isConfirmable: true,
+          confirmedAt: new Date(),
+          confirmedByRole: "client",
+        },
+        planningMeta: {
+          requiredMealCount: 2,
+          selectedTotalMealCount: 0,
+          isExactCountSatisfied: false,
+        },
+      });
+
+      const queueRes = await api.get(`/api/dashboard/kitchen/queue?date=${TODAY}&method=delivery`).set(adminHeaders);
+      assert.strictEqual(queueRes.status, 200, JSON.stringify(queueRes.body));
+      const queueRow = queueRes.body.data.items.find((item) => item.ids.subscriptionDayId === String(day._id));
+      assert(queueRow, "chef choice row should be present");
+      assert.strictEqual(queueRow.orderSummary.mealCount, 2);
+      assert.strictEqual(queueRow.kitchen.meals.length, 2);
+      assert.strictEqual(queueRow.kitchen.meals[0].display.titleAr, "اختيار الشيف");
+      assert.strictEqual(queueRow.selectionMode, "chef_choice");
+      assert.strictEqual(queueRow.customer.phone, `${TEST_TAG}-home-delivery-chef-choice`);
+      assert.strictEqual(queueRow.fulfillment.delivery.windowTextAr, "من 12:00 إلى 14:00");
+      assert(queueRow.fulfillment.delivery.address.displayAddressAr.includes("delivery address"));
+
+      let actionRes = await api.post("/api/dashboard/ops/actions/prepare").set(adminHeaders).send({
+        entityType: "subscription_day",
+        entityId: String(day._id),
+      });
+      assert.strictEqual(actionRes.status, 200, JSON.stringify(actionRes.body));
+
+      actionRes = await api.post("/api/dashboard/ops/actions/dispatch").set(adminHeaders).send({
+        entityType: "subscription_day",
+        entityId: String(day._id),
+      });
+      assert.strictEqual(actionRes.status, 200, JSON.stringify(actionRes.body));
+
+      actionRes = await api.post("/api/dashboard/ops/actions/fulfill").set(adminHeaders).send({
+        entityType: "subscription_day",
+        entityId: String(day._id),
+      });
+      assert.strictEqual(actionRes.status, 200, JSON.stringify(actionRes.body));
+      assert.strictEqual(await remainingMeals(subscription._id), 8);
+
+      const duplicateFulfill = await api.post("/api/dashboard/ops/actions/fulfill").set(adminHeaders).send({
+        entityType: "subscription_day",
+        entityId: String(day._id),
+      });
+      assert([200, 409].includes(duplicateFulfill.status), JSON.stringify(duplicateFulfill.body));
+      assert.strictEqual(await remainingMeals(subscription._id), 8);
     });
 
     await test("branch pickup reserves on creation and fulfills without double deduction", async () => {

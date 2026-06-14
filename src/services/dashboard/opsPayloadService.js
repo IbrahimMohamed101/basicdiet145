@@ -2,6 +2,12 @@
 
 const { pickLang } = require("../../utils/i18n");
 const { buildDayCommercialState } = require("../subscription/subscriptionDayCommercialStateService");
+const {
+  buildChefChoiceMealSlots,
+  hasExplicitKitchenMeals,
+  isValidHomeDeliveryChefChoiceDay,
+  resolveHomeDeliveryEntitlementCount,
+} = require("./homeDeliveryChefChoiceService");
 
 function stringifyId(value) {
   if (!value) return null;
@@ -384,12 +390,18 @@ function buildKitchenDetailsPayload(day = {}, subscription = {}, lang = "en", ca
       .map((meal) => [String(meal && meal.slotKey || ""), meal])
       .filter(([key]) => key)
   );
-  const mealSlots = Array.isArray(day.mealSlots)
+  const hasSelectedMeals = hasExplicitKitchenMeals(day);
+  let mealSlots = Array.isArray(day.mealSlots) && hasSelectedMeals
     ? day.mealSlots.map((slot) => buildMealSlotPayload({
       ...slot,
       materializedMeal: materializedBySlotKey.get(String(slot && slot.slotKey || "")) || null,
     }, subscription, lang, catalogMaps))
     : [];
+  let selectionMode = hasSelectedMeals ? "customer_selected" : "none";
+  if (mealSlots.length === 0 && isValidHomeDeliveryChefChoiceDay(day, subscription)) {
+    mealSlots = buildChefChoiceMealSlots(resolveHomeDeliveryEntitlementCount(day, subscription));
+    selectionMode = "chef_choice";
+  }
   const addonSources = []
     .concat(Array.isArray(day.addonSelections) ? day.addonSelections : [])
     .concat(Array.isArray(day.oneTimeAddonSelections) ? day.oneTimeAddonSelections : [])
@@ -398,6 +410,7 @@ function buildKitchenDetailsPayload(day = {}, subscription = {}, lang = "en", ca
   return {
     mealSlots,
     addons: addonSources.map((addon) => buildAddonPayload(addon, lang, catalogMaps)),
+    selectionMode,
   };
 }
 

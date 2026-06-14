@@ -2,27 +2,17 @@
 
 const opsActionPolicy = require("./opsActionPolicy");
 const { buildPaymentValidityPayload } = require("./opsPayloadService");
+const {
+  hasExplicitKitchenMeals,
+  isValidHomeDeliveryChefChoiceDay,
+} = require("./homeDeliveryChefChoiceService");
 
 function hasKitchenMeals(day = {}) {
-  const mealSlots = Array.isArray(day.mealSlots) ? day.mealSlots : [];
-  if (mealSlots.some((slot) => slot && slot.status === "complete")) return true;
-  if (Array.isArray(day.materializedMeals) && day.materializedMeals.length > 0) return true;
-  if (Array.isArray(day.selections) && day.selections.length > 0) return true;
-  if (Array.isArray(day.baseMealSlots) && day.baseMealSlots.length > 0) return true;
-  return false;
+  return hasExplicitKitchenMeals(day);
 }
 
-function validateSubscriptionDayOperationalGate(day, actionId) {
+function validateSubscriptionDayOperationalGate(day, actionId, { subscription = {} } = {}) {
   const normalizedAction = opsActionPolicy.normalizeActionId(actionId);
-  if (["prepare", "start_preparation"].includes(normalizedAction) && !hasKitchenMeals(day)) {
-    return {
-      allowed: false,
-      status: 422,
-      code: "EMPTY_KITCHEN_MEALS",
-      message: "Cannot prepare a subscription day without selected meals",
-    };
-  }
-
   if (!["prepare", "start_preparation", "fulfill"].includes(normalizedAction)) {
     return { allowed: true };
   }
@@ -34,6 +24,17 @@ function validateSubscriptionDayOperationalGate(day, actionId) {
       status: 409,
       code: payment.reason || "PAYMENT_REQUIRED",
       message: "Payment must be settled before operational fulfillment",
+    };
+  }
+
+  if (["prepare", "start_preparation"].includes(normalizedAction)
+    && !hasKitchenMeals(day)
+    && !isValidHomeDeliveryChefChoiceDay(day, subscription)) {
+    return {
+      allowed: false,
+      status: 422,
+      code: "EMPTY_KITCHEN_MEALS",
+      message: "Cannot prepare a subscription day without selected meals",
     };
   }
 

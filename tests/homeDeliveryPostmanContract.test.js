@@ -90,6 +90,10 @@ function completeSlots(count, { pendingPayment = false } = {}) {
   });
 }
 
+function stripArabicDiacritics(value) {
+  return String(value || "").replace(/[\u064B-\u065F\u0670]/g, "");
+}
+
 async function seedPlan(label, mealsPerDay = 1) {
   return Plan.create({
     key: `${TEST_TAG}-${label}`,
@@ -105,10 +109,15 @@ async function seedPlan(label, mealsPerDay = 1) {
   });
 }
 
-async function seedHomeDeliveryDay(label, { status = "open", mealCount = 1, pendingPayment = false } = {}) {
+async function seedHomeDeliveryDay(label, {
+  status = "open",
+  mealCount = 1,
+  entitlementCount = Math.max(1, mealCount),
+  pendingPayment = false,
+} = {}) {
   const [user, plan] = await Promise.all([
     User.create({ phone: `${TEST_TAG}-${label}`, name: `${TEST_TAG} ${label}`, role: "client", isActive: true }),
-    seedPlan(label, Math.max(1, mealCount)),
+    seedPlan(label, Math.max(1, entitlementCount)),
   ]);
 
   const subscription = await Subscription.create({
@@ -121,7 +130,7 @@ async function seedHomeDeliveryDay(label, { status = "open", mealCount = 1, pend
     totalMeals: 10,
     remainingMeals: 10,
     selectedGrams: 200,
-    selectedMealsPerDay: Math.max(1, mealCount),
+    selectedMealsPerDay: entitlementCount,
     deliveryMode: "delivery",
     deliveryAddress: { line1: `${TEST_TAG} ${label} address`, city: "Riyadh" },
     deliveryWindow: "12:00-14:00",
@@ -144,23 +153,23 @@ async function seedHomeDeliveryDay(label, { status = "open", mealCount = 1, pend
       premiumExtraFeeHalala: slot.premiumExtraFeeHalala,
     })),
     plannerMeta: {
-      requiredSlotCount: Math.max(1, mealCount),
-      emptySlotCount: mealCount > 0 ? 0 : 1,
+      requiredSlotCount: entitlementCount,
+      emptySlotCount: Math.max(0, entitlementCount - mealCount),
       completeSlotCount: mealCount,
       partialSlotCount: 0,
-      premiumSlotCount: pendingPayment ? mealCount : 0,
-      premiumPendingPaymentCount: pendingPayment ? mealCount : 0,
-      premiumTotalHalala: pendingPayment ? mealCount * 1200 : 0,
-      isDraftValid: mealCount > 0,
-      isConfirmable: mealCount > 0,
-      confirmedAt: mealCount > 0 ? new Date() : null,
-      confirmedByRole: mealCount > 0 ? "client" : null,
+      premiumSlotCount: pendingPayment ? entitlementCount : 0,
+      premiumPendingPaymentCount: pendingPayment ? entitlementCount : 0,
+      premiumTotalHalala: pendingPayment ? entitlementCount * 1200 : 0,
+      isDraftValid: entitlementCount > 0,
+      isConfirmable: entitlementCount > 0,
+      confirmedAt: entitlementCount > 0 ? new Date() : null,
+      confirmedByRole: entitlementCount > 0 ? "client" : null,
     },
-    premiumExtraPayment: pendingPayment ? { status: "pending", amountHalala: mealCount * 1200, currency: "SAR" } : undefined,
+    premiumExtraPayment: pendingPayment ? { status: "pending", amountHalala: entitlementCount * 1200, currency: "SAR" } : undefined,
     planningMeta: {
-      requiredMealCount: Math.max(1, mealCount),
+      requiredMealCount: entitlementCount,
       selectedTotalMealCount: mealCount,
-      isExactCountSatisfied: mealCount > 0,
+      isExactCountSatisfied: mealCount === entitlementCount,
     },
   });
 
@@ -197,8 +206,12 @@ async function dashboardAction(api, headers, action, dayId) {
       assert.strictEqual(row.ids.entityId, String(day._id));
       assert.strictEqual(row.ids.pickupRequestId, null);
       assert.strictEqual(row.fulfillment.type, "home_delivery");
+      assert.strictEqual(row.fulfillment.typeLabel.ar, "توصيل للمنزل");
       assert.strictEqual(row.fulfillment.pickup.pickupRequestId, null);
       assert.strictEqual(row.orderSummary.mealCount, 2);
+      assert.strictEqual(row.selectionMode, "customer_selected");
+      assert.strictEqual(row.selectionModeLabel.ar, "اختيار العميل");
+      assert.strictEqual(row.kitchen.meals[0].product.displayName, "Delivery Meal 1");
       assert.strictEqual(row.actions.canPrepare, true);
     });
 
@@ -209,23 +222,41 @@ async function dashboardAction(api, headers, action, dayId) {
       assert.strictEqual(res.body.error.code, "INVALID_TRANSITION");
     });
 
-    await test("planned delivery day without meals is visible but cannot prepare", async () => {
-      const { day } = await seedHomeDeliveryDay("empty", { mealCount: 0 });
+    await test("planned delivery day without selected meals uses Chef Choice entitlement", async () => {
+      const { day } = await seedHomeDeliveryDay("chef-choice", { mealCount: 0, entitlementCount: 2 });
       const queue = await api.get(`/api/dashboard/kitchen/queue?date=${TEST_DATE}&method=delivery`).set(adminHeaders);
       assert.strictEqual(queue.status, 200, JSON.stringify(queue.body));
       const row = findQueueRow(queue.body, day._id);
-      assert(row, "empty day row should exist");
-      assert.strictEqual(row.kitchen.meals.length, 0);
-      assert(row.dataQuality.warnings.some((warning) => warning.code === "EMPTY_KITCHEN_MEALS"));
-      assert.strictEqual(row.actions.canPrepare, false);
+      assert(row, "chef choice day row should exist");
+      assert.strictEqual(row.orderSummary.mealCount, 2);
+      assert.strictEqual(row.orderSummary.mealCountTextAr, "2 وجبات");
+      assert.strictEqual(row.orderSummary.display.titleAr, "اختيار الشيف");
+      assert.strictEqual(row.orderSummary.display.subtitleAr, "توصيل للمنزل - 2 وجبات");
+      assert.strictEqual(row.kitchen.meals.length, 2);
+      assert.strictEqual(row.kitchen.meals[0].mealType, "chef_choice");
+      assert.strictEqual(row.kitchen.meals[0].mealTypeLabel.ar, "اختيار الشيف");
+      assert.strictEqual(row.kitchen.meals[0].product.name.ar, "اختيار الشيف");
+      assert.strictEqual(row.kitchen.meals[0].display.titleAr, "اختيار الشيف");
+      assert.strictEqual(stripArabicDiacritics(row.kitchen.meals[0].display.preparationTextAr), "حضر وجبة اختيار الشيف");
+      assert(row.kitchen.meals[0].display.badgesAr.includes("اختيار الشيف"));
+      assert.strictEqual(row.selectionMode, "chef_choice");
+      assert.strictEqual(row.selectionModeLabel.ar, "اختيار الشيف");
+      assert.strictEqual(row.selectionNotice.ar, "العميل لم يحدد الوجبات، سيتم تجهيز وجبات اختيار الشيف");
+      assert(row.dataQuality.warnings.some((warning) => warning.code === "CHEF_CHOICE_MEALS" && warning.severity === "info"));
+      assert.strictEqual(row.dataQuality.warnings.some((warning) => warning.code === "EMPTY_KITCHEN_MEALS"), false);
+      assert.strictEqual(row.actions.canPrepare, true);
+      assert(row.actions.allowed.some((action) => ["prepare", "start_preparation"].includes(action.id)));
+      assert.strictEqual(row.fulfillment.delivery.windowTextAr, "من 12:00 إلى 14:00");
+      assert(row.fulfillment.delivery.address.displayAddressAr.includes("address"));
 
       const prepare = await dashboardAction(api, adminHeaders, "prepare", day._id);
-      assert.strictEqual(prepare.status, 422, JSON.stringify(prepare.body));
-      assert.strictEqual(prepare.body.error.code, "EMPTY_KITCHEN_MEALS");
+      assert.strictEqual(prepare.status, 200, JSON.stringify(prepare.body));
+      const preparedDay = await SubscriptionDay.findById(day._id).select("status").lean();
+      assert.strictEqual(preparedDay.status, "in_preparation");
     });
 
     await test("unpaid delivery day is blocked by payment gate", async () => {
-      const { day } = await seedHomeDeliveryDay("unpaid", { mealCount: 1, pendingPayment: true });
+      const { day } = await seedHomeDeliveryDay("unpaid", { mealCount: 0, entitlementCount: 2, pendingPayment: true });
       const queue = await api.get(`/api/dashboard/kitchen/queue?date=${TEST_DATE}&method=delivery`).set(adminHeaders);
       assert.strictEqual(queue.status, 200, JSON.stringify(queue.body));
       const row = findQueueRow(queue.body, day._id);
@@ -237,6 +268,22 @@ async function dashboardAction(api, headers, action, dayId) {
       const prepare = await dashboardAction(api, adminHeaders, "prepare", day._id);
       assert.strictEqual(prepare.status, 409, JSON.stringify(prepare.body));
       assert.strictEqual(prepare.body.error.code, "PREMIUM_PAYMENT_REQUIRED");
+    });
+
+    await test("home delivery without entitlement remains blocked as empty kitchen meals", async () => {
+      const { day } = await seedHomeDeliveryDay("no-entitlement", { mealCount: 0, entitlementCount: 0 });
+      const queue = await api.get(`/api/dashboard/kitchen/queue?date=${TEST_DATE}&method=delivery`).set(adminHeaders);
+      assert.strictEqual(queue.status, 200, JSON.stringify(queue.body));
+      const row = findQueueRow(queue.body, day._id);
+      assert(row, "no-entitlement row should exist");
+      assert.strictEqual(row.kitchen.meals.length, 0);
+      assert.strictEqual(row.orderSummary.mealCount, 0);
+      assert(row.dataQuality.warnings.some((warning) => warning.code === "EMPTY_KITCHEN_MEALS"));
+      assert.strictEqual(row.actions.canPrepare, false);
+
+      const prepare = await dashboardAction(api, adminHeaders, "prepare", day._id);
+      assert.strictEqual(prepare.status, 422, JSON.stringify(prepare.body));
+      assert.strictEqual(prepare.body.error.code, "EMPTY_KITCHEN_MEALS");
     });
 
     await test("client token cannot perform dashboard ops action", async () => {

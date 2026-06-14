@@ -854,6 +854,49 @@ function run() {
   assert.strictEqual(emptyPrepareResponse.items[0].payment.canPrepare, false);
   assert(!emptyPrepareResponse.items[0].actions.allowed.some((action) => action.id === "prepare"));
 
+  const chefChoiceDetails = buildKitchenDetailsPayload({
+    date: "2026-06-14",
+    status: "locked",
+    mealSlots: [],
+    materializedMeals: [],
+    planningMeta: { requiredMealCount: 2, selectedTotalMealCount: 0 },
+  }, {
+    deliveryMode: "delivery",
+    selectedMealsPerDay: 2,
+    deliveryWindow: "09:00-10:00",
+    deliveryAddress: { line1: "King Fahd Road", city: "Riyadh" },
+  }, "ar");
+  const chefChoiceResponse = normalizeKitchenQueueResponse({
+    date: "2026-06-14",
+    items: [{
+      entityId: "chefChoiceDay",
+      entityType: "subscription_day",
+      customer: { id: "user1", name: "Sara", phone: "+966500000000" },
+      date: "2026-06-14",
+      status: "locked",
+      fulfillmentType: "home_delivery",
+      kitchenDetails: chefChoiceDetails,
+      delivery: {
+        date: "2026-06-14",
+        window: "09:00-10:00",
+        address: { line1: "King Fahd Road", city: "Riyadh" },
+      },
+      paymentValidity: { paymentStatus: "not_required", canPrepare: true, canFulfill: false },
+      allowedActions: [{ id: "prepare", label: { ar: "تحضير", en: "Prepare" } }],
+    }],
+  });
+  const chefChoiceItem = chefChoiceResponse.items[0];
+  assert.strictEqual(chefChoiceItem.selectionMode, "chef_choice");
+  assert.strictEqual(chefChoiceItem.orderSummary.mealCount, 2);
+  assert.strictEqual(chefChoiceItem.orderSummary.display.titleAr, "اختيار الشيف");
+  assert.strictEqual(chefChoiceItem.kitchen.meals.length, 2);
+  assert.strictEqual(chefChoiceItem.kitchen.meals[0].product.name.ar, "اختيار الشيف");
+  assert.strictEqual(chefChoiceItem.kitchen.meals[0].display.preparationTextAr, "حضّر وجبة اختيار الشيف");
+  assert.strictEqual(chefChoiceItem.fulfillment.delivery.windowTextAr, "من 09:00 إلى 10:00");
+  assert(chefChoiceItem.fulfillment.delivery.address.displayAddressAr.includes("King Fahd Road"));
+  assert(chefChoiceItem.dataQuality.warnings.some((warning) => warning.code === "CHEF_CHOICE_MEALS" && warning.severity === "info"));
+  assert.strictEqual(chefChoiceItem.dataQuality.warnings.some((warning) => warning.code === "EMPTY_KITCHEN_MEALS"), false);
+
   const deduction = serializeManualDeductionLog({
     _id: "log1",
     entityId: "sub1",

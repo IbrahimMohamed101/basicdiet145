@@ -101,14 +101,16 @@ async function handleAction(req, res) {
       }
 
       // 2. Validate action using Policy Engine
-      const sub = await Subscription.findById(doc.subscriptionId).select("deliveryMode").lean();
+      const sub = await Subscription.findById(doc.subscriptionId)
+        .select("deliveryMode selectedMealsPerDay deliveryWindow deliveryAddress")
+        .lean();
       const mode = sub && sub.deliveryMode === "pickup" ? "pickup" : "delivery";
 
       if (mode === "pickup" && ["prepare", "start_preparation", "ready_for_pickup", "ready-for-pickup", "fulfill", "no_show"].includes(action)) {
         return errorResponse(res, 422, "PICKUP_REQUEST_REQUIRED", "Pickup preparation requires an explicit client request");
       }
 
-      const gate = validateSubscriptionDayOperationalGate(doc, action);
+      const gate = validateSubscriptionDayOperationalGate(doc, action, { subscription: sub });
       if (!gate.allowed) {
         return errorResponse(res, gate.status, gate.code, gate.message);
       }

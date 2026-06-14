@@ -160,27 +160,55 @@ Content-Type: application/json
 
 Expected: `200`, status `fulfilled`, `timestamps.fulfilledAt` present after queue reload, and no pickup code/request.
 
-## B. Planned Day Without Meals
+## Business Note
+
+Home Delivery demand is based on the scheduled subscription entitlement. If a valid Home Delivery day has a delivery date, window, address, and daily meal entitlement, missing customer meal selections become Chef Choice meals and do not block preparation. `EMPTY_KITCHEN_MEALS` remains blocking only when there is no operational entitlement or the row is not a valid Home Delivery row.
+
+## B. Planned Home Delivery Day Without Customer Meal Selections
 
 ```http
 GET {{baseUrl}}/api/dashboard/kitchen/queue?date={{testDate}}&method=delivery
 Authorization: Bearer {{adminToken}}
 ```
 
-Expected row for `{{emptySubscriptionDayId}}`:
+Expected row for `{{chefChoiceSubscriptionDayId}}`:
 
 ```json
 {
-  "kitchen": { "meals": [] },
-  "actions": { "canPrepare": false },
-  "payment": { "canPrepare": false },
+  "selectionMode": "chef_choice",
+  "selectionModeLabel": { "ar": "اختيار الشيف", "en": "Chef Choice" },
+  "selectionNotice": {
+    "ar": "العميل لم يحدد الوجبات، سيتم تجهيز وجبات اختيار الشيف"
+  },
+  "orderSummary": {
+    "mealCount": 2,
+    "mealCountTextAr": "2 وجبات",
+    "display": {
+      "titleAr": "اختيار الشيف",
+      "subtitleAr": "توصيل للمنزل - 2 وجبات"
+    }
+  },
+  "kitchen": {
+    "meals": [{
+      "mealType": "chef_choice",
+      "mealTypeLabel": { "ar": "اختيار الشيف", "en": "Chef Choice" },
+      "product": { "name": { "ar": "اختيار الشيف", "en": "Chef Choice" } },
+      "display": {
+        "titleAr": "اختيار الشيف",
+        "preparationTextAr": "حضّر وجبة اختيار الشيف",
+        "badgesAr": ["اختيار الشيف"]
+      }
+    }]
+  },
+  "actions": { "canPrepare": true },
+  "payment": { "canPrepare": true },
   "dataQuality": {
-    "warnings": [{ "code": "EMPTY_KITCHEN_MEALS" }]
+    "warnings": [{ "code": "CHEF_CHOICE_MEALS" }]
   }
 }
 ```
 
-Prepare should fail:
+Prepare should succeed and move the day to `in_preparation`:
 
 ```http
 POST {{baseUrl}}/api/dashboard/ops/actions/prepare
@@ -189,11 +217,11 @@ Content-Type: application/json
 
 {
   "entityType": "subscription_day",
-  "entityId": "{{emptySubscriptionDayId}}"
+  "entityId": "{{chefChoiceSubscriptionDayId}}"
 }
 ```
 
-Expected: `422`, `error.code=EMPTY_KITCHEN_MEALS`.
+Expected: `200`.
 
 ## C. Payment Required
 
@@ -360,7 +388,7 @@ For every state, verify:
 - `actions.allowed`, `actions.disabled`, `actions.canPrepare`, `actions.canDispatch`, `actions.canFulfill` match the current status
 - `timestamps.preparedAt` is currently not populated for Home Delivery prepare; use `source.status=in_preparation`
 - `timestamps.fulfilledAt` is populated after fulfill
-- `dataQuality.warnings` contains `EMPTY_KITCHEN_MEALS` only for no-meal rows
+- `dataQuality.warnings` contains `CHEF_CHOICE_MEALS` for entitlement-backed Chef Choice rows and `EMPTY_KITCHEN_MEALS` only for no-entitlement/no-operational rows
 
 ## Automated Regression
 
