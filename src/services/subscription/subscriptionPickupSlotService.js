@@ -3,6 +3,7 @@
 const crypto = require("crypto");
 
 const SubscriptionPickupRequest = require("../../models/SubscriptionPickupRequest");
+const { buildKitchenDetailsPayload } = require("../dashboard/opsPayloadService");
 const { buildDayCommercialState } = require("./subscriptionDayCommercialStateService");
 
 const ACTIVE_OR_CONSUMING_PICKUP_STATUSES = ["locked", "in_preparation", "ready_for_pickup", "fulfilled", "no_show"];
@@ -69,6 +70,12 @@ function asObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
 
+function toPlainObject(value) {
+  if (!value || typeof value !== "object") return value || {};
+  if (typeof value.toObject === "function") return value.toObject({ depopulate: false });
+  return value;
+}
+
 function localizedPair(value, fallback = null) {
   if (value && typeof value === "object" && !Array.isArray(value)) {
     const en = value.en || value.english || value.nameEn || value.titleEn || value.ar || value.name || fallback;
@@ -85,6 +92,19 @@ function firstLocalizedPair(...values) {
     if (pair.ar || pair.en) return pair;
   }
   return { ar: null, en: null };
+}
+
+function hasLocalizedText(value) {
+  const pair = localizedPair(value);
+  return Boolean(pair.ar || pair.en);
+}
+
+function selectionTypeLabel(selectionType, isPremium = false) {
+  const type = String(selectionType || "").trim();
+  if (type === "premium_meal" || isPremium) return { ar: "وجبة مميزة", en: "Premium meal" };
+  if (type === "premium_large_salad") return { ar: "سلطة مميزة", en: "Premium salad" };
+  if (type === "sandwich") return { ar: "ساندويتش", en: "Sandwich" };
+  return { ar: "وجبة عادية", en: "Standard meal" };
 }
 
 function moneyFromHalala(value) {
@@ -139,20 +159,234 @@ function resolveReasonCopy(reason) {
   };
 }
 
-function buildProductPayload(slot = {}) {
+function combineKitchenSlots(arSlot = null, enSlot = null) {
+  if (!arSlot && !enSlot) return null;
+  return {
+    ar: arSlot || {},
+    en: enSlot || {},
+    base: enSlot || arSlot || {},
+  };
+}
+
+function buildKitchenSlotMap({ day = {}, subscription = {}, catalogMaps = {} }) {
+  let arSlots = [];
+  let enSlots = [];
+  try {
+    arSlots = buildKitchenDetailsPayload(day || {}, subscription || {}, "ar", catalogMaps || {}).mealSlots || [];
+    enSlots = buildKitchenDetailsPayload(day || {}, subscription || {}, "en", catalogMaps || {}).mealSlots || [];
+  } catch (err) {
+    arSlots = [];
+    enSlots = [];
+  }
+  const arByKey = new Map(arSlots.map((slot) => [resolveSlotId(slot), slot]).filter(([key]) => key));
+  const enByKey = new Map(enSlots.map((slot) => [resolveSlotId(slot), slot]).filter(([key]) => key));
+  const keys = new Set([...arByKey.keys(), ...enByKey.keys()]);
+  return new Map([...keys].map((key) => [key, combineKitchenSlots(arByKey.get(key), enByKey.get(key))]));
+}
+
+function kitchenPair(kitchenSlot, field, i18nField = `${field}I18n`) {
+  if (!kitchenSlot) return { ar: null, en: null };
+  return firstLocalizedPair(
+    kitchenSlot.base && kitchenSlot.base[i18nField],
+    {
+      ar: kitchenSlot.ar && kitchenSlot.ar[field],
+      en: kitchenSlot.en && kitchenSlot.en[field],
+    }
+  );
+}
+
+function getFromMap(map, value) {
+  if (!map || value === undefined || value === null) return null;
+  return map.get(String(value)) || null;
+}
+
+function resolveCatalogProduct(slot = {}, catalogMaps = {}) {
+  return getFromMap(catalogMaps.productById, slot.productId)
+    || getFromMap(catalogMaps.productByKey, slot.productKey)
+    || null;
+}
+
+function resolveCatalogOption(option = {}, catalogMaps = {}) {
+  return getFromMap(catalogMaps.optionById, option.optionId || option.id || option._id)
+    || getFromMap(catalogMaps.optionByKey, option.optionKey || option.key)
+    || null;
+}
+
+function resolveCatalogGroup(option = {}, catalogMaps = {}) {
+  return getFromMap(catalogMaps.groupById, option.groupId)
+    || getFromMap(catalogMaps.groupByKey, option.groupKey || option.canonicalGroupKey)
+    || null;
+}
+
+function resolveLegacyProtein(slot = {}, catalogMaps = {}) {
+  return getFromMap(catalogMaps.proteinById, slot.proteinId)
+    || getFromMap(catalogMaps.proteinByKey, slot.proteinKey || slot.premiumKey || slot.proteinFamilyKey)
+    || null;
+}
+
+function resolveLegacyCarbs(slot = {}, catalogMaps = {}) {
+  const carbs = Array.isArray(slot.carbs)
+    ? slot.carbs
+    : (Array.isArray(slot.carbSelections)
+      ? slot.carbSelections
+      : (slot.carbId ? [{ carbId: slot.carbId, grams: null }] : []));
+  return carbs.map((carb) => ({
+    source: carb,
+    doc: getFromMap(catalogMaps.carbById, carb && carb.carbId)
+      || getFromMap(catalogMaps.carbByKey, carb && (carb.key || carb.carbKey)),
+  }));
+}
+
+function joinPairs(pairs, separator = " / ") {
+  const present = pairs.filter((pair) => pair && (pair.ar || pair.en));
+  if (!present.length) return { ar: null, en: null };
+  return {
+    ar: present.map((pair) => pair.ar || pair.en).filter(Boolean).join(separator) || null,
+    en: present.map((pair) => pair.en || pair.ar).filter(Boolean).join(separator) || null,
+  };
+}
+
+function legacyMealPair(slot = {}, catalogMaps = {}) {
+  const protein = resolveLegacyProtein(slot, catalogMaps);
+  const carbPairs = resolveLegacyCarbs(slot, catalogMaps).map(({ source, doc }) => firstLocalizedPair(doc && doc.name, source && (source.name || source.carbName)));
+  return joinPairs([
+    firstLocalizedPair(protein && protein.name, slot.proteinName, slot.proteinId ? slot.premiumKey : null),
+    ...carbPairs,
+  ]);
+}
+
+function legacyOptionRows(slot = {}, catalogMaps = {}) {
+  const rows = [];
+  const protein = resolveLegacyProtein(slot, catalogMaps);
+  if (protein || slot.proteinId) {
+    rows.push({
+      optionId: slot.proteinId || (protein && protein._id),
+      optionKey: (protein && (protein.key || protein.premiumKey)) || slot.proteinKey || slot.premiumKey || slot.proteinFamilyKey || null,
+      nameI18n: firstLocalizedPair(protein && protein.name, slot.proteinName, slot.premiumKey),
+      groupKey: "protein",
+      groupNameI18n: { ar: "البروتين", en: "Protein" },
+      quantity: 1,
+    });
+  }
+  resolveLegacyCarbs(slot, catalogMaps).forEach(({ source, doc }) => {
+    if (!doc && !(source && source.carbId)) return;
+    rows.push({
+      optionId: source && source.carbId || (doc && doc._id),
+      optionKey: (doc && doc.key) || (source && (source.key || source.carbKey)) || null,
+      nameI18n: firstLocalizedPair(doc && doc.name, source && (source.name || source.carbName)),
+      groupKey: "carbs",
+      groupNameI18n: { ar: "الكارب", en: "Carbs" },
+      quantity: 1,
+    });
+  });
+  return rows;
+}
+
+function buildLegacySnapshots(slot = {}, catalogMaps = {}) {
+  const hasLegacySelection = Boolean(
+    slot.proteinId
+      || slot.carbId
+      || (Array.isArray(slot.carbs) && slot.carbs.length > 0)
+      || (Array.isArray(slot.carbSelections) && slot.carbSelections.length > 0)
+  );
+  if (!hasLegacySelection) return {};
+  const protein = resolveLegacyProtein(slot, catalogMaps);
+  const legacyName = legacyMealPair(slot, catalogMaps);
+  if (!protein && !legacyName.ar && !legacyName.en) return {};
+  const carbNutrition = resolveLegacyCarbs(slot, catalogMaps).reduce((sum, { doc }) => {
+    const nutrition = asObject(doc && doc.nutrition);
+    return {
+      calories: sum.calories + Number(nutrition.calories || 0),
+      proteinGrams: sum.proteinGrams + Number(nutrition.proteinGrams || 0),
+      carbGrams: sum.carbGrams + Number(nutrition.carbGrams || 0),
+      fatGrams: sum.fatGrams + Number(nutrition.fatGrams || 0),
+    };
+  }, { calories: 0, proteinGrams: 0, carbGrams: 0, fatGrams: 0 });
+  const proteinNutrition = asObject(protein && protein.nutrition);
+  const product = {
+    id: stringifyId(slot.proteinId || (protein && protein._id)),
+    key: (protein && (protein.key || protein.premiumKey)) || slot.proteinKey || slot.premiumKey || slot.proteinFamilyKey || null,
+    name: legacyName,
+    description: firstLocalizedPair(protein && protein.description),
+    imageUrl: (protein && protein.imageUrl) || "",
+    calories: Number(proteinNutrition.calories || 0) + carbNutrition.calories,
+    macros: {
+      protein: Number(proteinNutrition.proteinGrams || 0) + carbNutrition.proteinGrams,
+      carbs: Number(proteinNutrition.carbGrams || 0) + carbNutrition.carbGrams,
+      fat: Number(proteinNutrition.fatGrams || 0) + carbNutrition.fatGrams,
+    },
+  };
+  const groups = legacyOptionRows(slot, catalogMaps).map((row) => ({
+    groupId: row.groupId || null,
+    groupKey: row.groupKey,
+    groupName: row.groupNameI18n,
+    optionId: stringifyId(row.optionId),
+    optionKey: row.optionKey,
+    optionName: row.nameI18n,
+    quantity: Number(row.quantity || 1),
+  }));
+  return {
+    displaySnapshot: {
+      product,
+      groups,
+    },
+    confirmationSnapshot: {
+      product,
+      selectedOptions: groups,
+      protein: protein ? {
+        id: stringifyId(protein._id),
+        key: protein.key || protein.premiumKey || null,
+        name: firstLocalizedPair(protein.name),
+      } : undefined,
+    },
+  };
+}
+
+function enrichMealSlotWithResolvedSnapshots(slot = {}, catalogMaps = {}) {
+  const plainSlot = toPlainObject(slot);
+  const legacy = buildLegacySnapshots(plainSlot, catalogMaps);
+  if (!legacy.displaySnapshot && !legacy.confirmationSnapshot) return plainSlot;
+  return {
+    ...plainSlot,
+    displaySnapshot: plainSlot.displaySnapshot || legacy.displaySnapshot,
+    confirmationSnapshot: plainSlot.confirmationSnapshot || legacy.confirmationSnapshot,
+  };
+}
+
+function enrichDayMealSlotsWithResolvedSnapshots(day = {}, catalogMaps = {}) {
+  const plainDay = toPlainObject(day);
+  if (!plainDay || !Array.isArray(plainDay.mealSlots)) return plainDay;
+  return {
+    ...plainDay,
+    mealSlots: plainDay.mealSlots.map((slot) => enrichMealSlotWithResolvedSnapshots(slot, catalogMaps)),
+  };
+}
+
+function buildProductPayload(slot = {}, kitchenSlot = null, productDoc = null) {
   const confirmation = asObject(slot.confirmationSnapshot);
   const display = asObject(slot.displaySnapshot);
   const fulfillment = asObject(slot.fulfillmentSnapshot);
   const product = asObject(confirmation.product || display.product || fulfillment.product);
+  const kitchen = kitchenSlot && kitchenSlot.base ? kitchenSlot.base : {};
   const macros = asObject(product.macros || display.macros || confirmation.macros || fulfillment.macros);
-  const name = firstLocalizedPair(product.name, product.title, display.productName, fulfillment.productName, slot.productName, slot.productKey);
-  const description = firstLocalizedPair(product.description, display.description, confirmation.description);
+  const fallbackLabel = selectionTypeLabel(slot.selectionType, slot.isPremium);
+  const name = firstLocalizedPair(
+    product.name,
+    product.title,
+    productDoc && productDoc.name,
+    kitchenPair(kitchenSlot, "productName"),
+    display.productName,
+    fulfillment.productName,
+    slot.productName,
+    fallbackLabel
+  );
+  const description = firstLocalizedPair(product.description, productDoc && productDoc.description, kitchen.productDescriptionI18n, display.description, confirmation.description);
   return {
-    id: stringifyId(slot.productId || product.id || product._id),
-    key: slot.productKey || product.key || null,
+    id: stringifyId(slot.productId || product.id || product._id || kitchen.productId || (productDoc && productDoc._id)),
+    key: slot.productKey || product.key || kitchen.productKey || (productDoc && productDoc.key) || null,
     name,
     description,
-    image: product.image || product.imageUrl || product.photo || display.image || confirmation.image || fulfillment.image || null,
+    image: product.image || product.imageUrl || product.photo || display.image || confirmation.image || fulfillment.image || kitchen.image || (productDoc && productDoc.imageUrl) || null,
     calories: Number(product.calories || display.calories || confirmation.calories || fulfillment.calories || 0),
     macros: {
       protein: Number(macros.protein || macros.proteinGrams || 0),
@@ -162,14 +396,48 @@ function buildProductPayload(slot = {}) {
   };
 }
 
-function buildOptionPayload(option = {}) {
-  const name = firstLocalizedPair(option.name, option.optionName, option.label, option.optionKey);
-  const groupName = firstLocalizedPair(option.groupName, option.groupLabel, option.groupKey);
+function mergeKitchenOptions(kitchenSlot = null) {
+  if (!kitchenSlot) return [];
+  const arOptions = Array.isArray(kitchenSlot.ar && kitchenSlot.ar.selectedOptions) ? kitchenSlot.ar.selectedOptions : [];
+  const enOptions = Array.isArray(kitchenSlot.en && kitchenSlot.en.selectedOptions) ? kitchenSlot.en.selectedOptions : [];
+  const max = Math.max(arOptions.length, enOptions.length);
+  const merged = [];
+  for (let index = 0; index < max; index += 1) {
+    const ar = arOptions[index] || {};
+    const en = enOptions[index] || {};
+    merged.push({
+      ...(en || ar),
+      nameI18n: { ar: ar.name || null, en: en.name || null },
+      groupNameI18n: { ar: ar.groupName || null, en: en.groupName || null },
+    });
+  }
+  return merged;
+}
+
+function optionSources(slot = {}, kitchenSlot = null) {
+  const confirmation = asObject(slot.confirmationSnapshot);
+  const display = asObject(slot.displaySnapshot);
+  const sources = [
+    Array.isArray(confirmation.selectedOptions) ? confirmation.selectedOptions : [],
+    Array.isArray(display.groups) ? display.groups : [],
+    mergeKitchenOptions(kitchenSlot),
+    Array.isArray(slot.selectedOptions) ? slot.selectedOptions : [],
+  ];
+  return sources.find((items) => items.some((item) => hasLocalizedText(item.nameI18n || item.name || item.optionName || item.label)))
+    || sources.find((items) => items.length > 0)
+    || [];
+}
+
+function buildOptionPayload(option = {}, catalogMaps = {}) {
+  const optionDoc = resolveCatalogOption(option, catalogMaps);
+  const groupDoc = resolveCatalogGroup(option, catalogMaps);
+  const name = firstLocalizedPair(option.nameI18n, option.name, option.optionName, option.label, optionDoc && optionDoc.name, option.optionKey);
+  const groupName = firstLocalizedPair(option.groupNameI18n, groupDoc && groupDoc.name, option.groupName, option.groupLabel, option.group, option.groupKey);
   return {
-    id: stringifyId(option.optionId || option.id || option._id),
-    key: option.optionKey || option.key || null,
+    id: stringifyId(option.optionId || option.id || option._id || (optionDoc && optionDoc._id)),
+    key: option.optionKey || option.key || (optionDoc && optionDoc.key) || null,
     name,
-    groupKey: option.groupKey || option.canonicalGroupKey || null,
+    groupKey: option.groupKey || option.canonicalGroupKey || (groupDoc && groupDoc.key) || null,
     groupName,
     quantity: Number(option.quantity || option.qty || 1),
   };
@@ -213,8 +481,9 @@ function buildPaymentPayload({ slot = {}, day = {}, reason = null, addons = [] }
 }
 
 function buildDisplayPayload({ product, meal, slot = {}, available, unavailableReason, payment }) {
-  const titleAr = meal.title.ar || product.name.ar || slot.slotKey || "وجبة";
-  const titleEn = meal.title.en || product.name.en || slot.slotKey || "Meal";
+  const label = selectionTypeLabel(slot.selectionType, slot.isPremium);
+  const titleAr = meal.title.ar || product.name.ar || meal.title.en || product.name.en || label.ar || slot.slotKey || "وجبة";
+  const titleEn = meal.title.en || product.name.en || meal.title.ar || product.name.ar || label.en || slot.slotKey || "Meal";
   const subtitleAr = meal.subtitle.ar || product.description.ar || null;
   const subtitleEn = meal.subtitle.en || product.description.en || null;
   const unavailableCopy = unavailableReason ? resolveReasonCopy(unavailableReason) : { ar: null, en: null };
@@ -248,13 +517,15 @@ function buildDisplayPayload({ product, meal, slot = {}, available, unavailableR
   };
 }
 
-function buildClientSlotDetails({ slot = {}, day = {}, available, unavailableReason }) {
-  const product = buildProductPayload(slot);
+function buildClientSlotDetails({ slot = {}, day = {}, available, unavailableReason, kitchenSlot = null, productDoc = null, catalogMaps = {} }) {
+  const product = buildProductPayload(slot, kitchenSlot, productDoc);
+  const label = selectionTypeLabel(slot.selectionType, slot.isPremium);
   const mealTitle = firstLocalizedPair(
     asObject(slot.displaySnapshot).title,
     asObject(slot.confirmationSnapshot).title,
+    kitchenPair(kitchenSlot, "productName"),
     product.name,
-    slot.productKey
+    label
   );
   const mealSubtitle = firstLocalizedPair(
     asObject(slot.displaySnapshot).subtitle,
@@ -268,7 +539,7 @@ function buildClientSlotDetails({ slot = {}, day = {}, available, unavailableRea
     mealType: slot.selectionType || "standard_meal",
     quantity: 1,
   };
-  const options = (Array.isArray(slot.selectedOptions) ? slot.selectedOptions : []).map(buildOptionPayload);
+  const options = optionSources(slot, kitchenSlot).map((option) => buildOptionPayload(option, catalogMaps));
   const addons = (Array.isArray(day && day.addonSelections) ? day.addonSelections : []).map(buildAddonPayload);
   const payment = buildPaymentPayload({ slot, day, reason: unavailableReason, addons });
   return {
@@ -303,12 +574,16 @@ function buildSlotReservationMap(pickupRequests = []) {
   return map;
 }
 
-function buildAvailabilityFromDay({ day, pickupRequests = [] }) {
+function buildAvailabilityFromDay({ day, pickupRequests = [], subscription = {}, catalogMaps = {} }) {
+  const resolvedDay = enrichDayMealSlotsWithResolvedSnapshots(day || {}, catalogMaps);
   const selectedIds = new Set();
   const reservationMap = buildSlotReservationMap(pickupRequests);
-  const addonPaymentReason = dayHasUnpaidAddons(day) ? resolveCanonicalPaymentReason(day) || "ADDON_PAYMENT_REQUIRED" : null;
-  const slots = (Array.isArray(day && day.mealSlots) ? day.mealSlots : []).map((slot) => {
+  const addonPaymentReason = dayHasUnpaidAddons(resolvedDay) ? resolveCanonicalPaymentReason(resolvedDay) || "ADDON_PAYMENT_REQUIRED" : null;
+  const kitchenSlots = buildKitchenSlotMap({ day: resolvedDay, subscription, catalogMaps });
+  const slots = (Array.isArray(resolvedDay && resolvedDay.mealSlots) ? resolvedDay.mealSlots : []).map((slot) => {
     const slotId = resolveSlotId(slot);
+    const kitchenSlot = kitchenSlots.get(slotId) || null;
+    const productDoc = resolveCatalogProduct(slot, catalogMaps);
     const reservation = reservationMap.get(slotId);
     const paymentReason = slotHasUnpaidPremium(slot) ? resolveCanonicalPaymentReason(day) || "PREMIUM_PAYMENT_REQUIRED" : addonPaymentReason;
     const reasons = [];
@@ -334,14 +609,14 @@ function buildAvailabilityFromDay({ day, pickupRequests = [] }) {
       unavailableReason,
       reasons,
       reservedByPickupRequestId: reservation ? reservation.requestId : null,
-      ...buildClientSlotDetails({ slot, day, available, unavailableReason }),
+      ...buildClientSlotDetails({ slot, day: resolvedDay, available, unavailableReason, kitchenSlot, productDoc, catalogMaps }),
     };
   });
 
   return {
-    date: day ? day.date : null,
-    subscriptionDayId: day && day._id ? String(day._id) : null,
-    paymentReason: addonPaymentReason || resolveCanonicalPaymentReason(day),
+    date: resolvedDay ? resolvedDay.date : null,
+    subscriptionDayId: resolvedDay && resolvedDay._id ? String(resolvedDay._id) : null,
+    paymentReason: addonPaymentReason || resolveCanonicalPaymentReason(resolvedDay),
     slots,
     availableSlotIds: slots.filter((slot) => slot.available).map((slot) => slot.slotId),
     unavailableSlotIds: slots.filter((slot) => !slot.available).map((slot) => slot.slotId),
@@ -408,6 +683,8 @@ module.exports = {
   buildAvailabilityFromDay,
   buildPickupRequestPayloadHash,
   createServiceError,
+  enrichDayMealSlotsWithResolvedSnapshots,
+  enrichMealSlotWithResolvedSnapshots,
   findBlockingPickupRequests,
   normalizeSelectedMealSlotIds,
   resolveCanonicalPaymentReason,

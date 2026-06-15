@@ -3,6 +3,11 @@
 const Subscription = require("../../models/Subscription");
 const SubscriptionDay = require("../../models/SubscriptionDay");
 const SubscriptionPickupRequest = require("../../models/SubscriptionPickupRequest");
+const MenuProduct = require("../../models/MenuProduct");
+const MenuOption = require("../../models/MenuOption");
+const MenuOptionGroup = require("../../models/MenuOptionGroup");
+const BuilderProtein = require("../../models/BuilderProtein");
+const BuilderCarb = require("../../models/BuilderCarb");
 require("../../models/Plan");
 const dateUtils = require("../../utils/date");
 const { validateDayBeforeLockOrPrepare } = require("./subscriptionDayExecutionValidationService");
@@ -21,6 +26,7 @@ const {
   assertSelectedSlotsAvailableForPickup,
   buildAvailabilityFromDay,
   buildPickupRequestPayloadHash,
+  enrichDayMealSlotsWithResolvedSnapshots,
   findBlockingPickupRequests,
   normalizeSelectedMealSlotIds,
   resolveCanonicalPaymentReason,
@@ -125,27 +131,154 @@ function buildPickupAvailabilitySummary({ subscription = {}, availability = {} }
   };
 }
 
+function addSetValue(set, value) {
+  if (value === undefined || value === null) return;
+  const raw = String(value).trim();
+  if (raw) set.add(raw);
+}
+
+function isObjectIdString(value) {
+  return /^[a-fA-F0-9]{24}$/.test(String(value || ""));
+}
+
+function addDocToMaps(maps, kind, doc) {
+  if (!doc) return;
+  if (doc._id) maps[`${kind}ById`].set(String(doc._id), doc);
+  if (doc.key) maps[`${kind}ByKey`].set(String(doc.key), doc);
+}
+
+async function loadPickupAvailabilityCatalogMaps(day, { session = null } = {}) {
+  const productIds = new Set();
+  const productKeys = new Set();
+  const optionIds = new Set();
+  const optionKeys = new Set();
+  const groupIds = new Set();
+  const groupKeys = new Set();
+  const proteinIds = new Set();
+  const proteinKeys = new Set();
+  const carbIds = new Set();
+  const carbKeys = new Set();
+
+  for (const slot of Array.isArray(day && day.mealSlots) ? day.mealSlots : []) {
+    addSetValue(productIds, slot && slot.productId);
+    addSetValue(productKeys, slot && slot.productKey);
+    addSetValue(proteinIds, slot && slot.proteinId);
+    addSetValue(proteinKeys, slot && (slot.proteinKey || slot.premiumKey || slot.proteinFamilyKey));
+    addSetValue(carbIds, slot && slot.carbId);
+    for (const carb of Array.isArray(slot && slot.carbs) ? slot.carbs : []) {
+      addSetValue(carbIds, carb && carb.carbId);
+      addSetValue(carbKeys, carb && (carb.key || carb.carbKey));
+    }
+    for (const carb of Array.isArray(slot && slot.carbSelections) ? slot.carbSelections : []) {
+      addSetValue(carbIds, carb && carb.carbId);
+      addSetValue(carbKeys, carb && (carb.key || carb.carbKey));
+    }
+    for (const option of Array.isArray(slot && slot.selectedOptions) ? slot.selectedOptions : []) {
+      addSetValue(optionIds, option && option.optionId);
+      addSetValue(optionKeys, option && option.optionKey);
+      addSetValue(groupIds, option && option.groupId);
+      addSetValue(groupKeys, option && (option.groupKey || option.canonicalGroupKey));
+    }
+  }
+  for (const meal of Array.isArray(day && day.materializedMeals) ? day.materializedMeals : []) {
+    addSetValue(proteinIds, meal && meal.proteinId);
+    addSetValue(proteinKeys, meal && meal.premiumKey);
+    addSetValue(carbIds, meal && meal.carbId);
+  }
+
+  const productQueryParts = [];
+  const optionQueryParts = [];
+  const groupQueryParts = [];
+  const proteinQueryParts = [];
+  const carbQueryParts = [];
+  const validProductIds = [...productIds].filter(isObjectIdString);
+  const validOptionIds = [...optionIds].filter(isObjectIdString);
+  const validGroupIds = [...groupIds].filter(isObjectIdString);
+  const validProteinIds = [...proteinIds].filter(isObjectIdString);
+  const validCarbIds = [...carbIds].filter(isObjectIdString);
+  if (validProductIds.length) productQueryParts.push({ _id: { $in: validProductIds } });
+  if (productKeys.size) productQueryParts.push({ key: { $in: [...productKeys] } });
+  if (validOptionIds.length) optionQueryParts.push({ _id: { $in: validOptionIds } });
+  if (optionKeys.size) optionQueryParts.push({ key: { $in: [...optionKeys] } });
+  if (validGroupIds.length) groupQueryParts.push({ _id: { $in: validGroupIds } });
+  if (groupKeys.size) groupQueryParts.push({ key: { $in: [...groupKeys] } });
+  if (validProteinIds.length) proteinQueryParts.push({ _id: { $in: validProteinIds } });
+  if (proteinKeys.size) proteinQueryParts.push({
+    $or: [
+      { key: { $in: [...proteinKeys] } },
+      { premiumKey: { $in: [...proteinKeys] } },
+      { proteinFamilyKey: { $in: [...proteinKeys] } },
+    ],
+  });
+  if (validCarbIds.length) carbQueryParts.push({ _id: { $in: validCarbIds } });
+  if (carbKeys.size) carbQueryParts.push({ key: { $in: [...carbKeys] } });
+
+  const productQuery = productQueryParts.length ? MenuProduct.find({ $or: productQueryParts }) : null;
+  const optionQuery = optionQueryParts.length ? MenuOption.find({ $or: optionQueryParts }) : null;
+  const groupQuery = groupQueryParts.length ? MenuOptionGroup.find({ $or: groupQueryParts }) : null;
+  const proteinQuery = proteinQueryParts.length ? BuilderProtein.find({ $or: proteinQueryParts }) : null;
+  const carbQuery = carbQueryParts.length ? BuilderCarb.find({ $or: carbQueryParts }) : null;
+  if (session) {
+    if (productQuery) productQuery.session(session);
+    if (optionQuery) optionQuery.session(session);
+    if (groupQuery) groupQuery.session(session);
+    if (proteinQuery) proteinQuery.session(session);
+    if (carbQuery) carbQuery.session(session);
+  }
+
+  const [products, options, groups, proteins, carbs] = await Promise.all([
+    productQuery ? productQuery.lean() : [],
+    optionQuery ? optionQuery.lean() : [],
+    groupQuery ? groupQuery.lean() : [],
+    proteinQuery ? proteinQuery.lean() : [],
+    carbQuery ? carbQuery.lean() : [],
+  ]);
+  const maps = {
+    productById: new Map(),
+    productByKey: new Map(),
+    optionById: new Map(),
+    optionByKey: new Map(),
+    groupById: new Map(),
+    groupByKey: new Map(),
+    proteinById: new Map(),
+    proteinByKey: new Map(),
+    carbById: new Map(),
+    carbByKey: new Map(),
+  };
+  products.forEach((doc) => addDocToMaps(maps, "product", doc));
+  options.forEach((doc) => addDocToMaps(maps, "option", doc));
+  groups.forEach((doc) => addDocToMaps(maps, "group", doc));
+  proteins.forEach((doc) => {
+    addDocToMaps(maps, "protein", doc);
+    if (doc.premiumKey) maps.proteinByKey.set(String(doc.premiumKey), doc);
+    if (doc.proteinFamilyKey) maps.proteinByKey.set(String(doc.proteinFamilyKey), doc);
+  });
+  carbs.forEach((doc) => addDocToMaps(maps, "carb", doc));
+  return maps;
+}
+
 function assertValidMealCount(mealCount) {
   if (!Number.isInteger(mealCount) || mealCount <= 0) {
     throw createServiceError("INVALID_MEAL_COUNT", "mealCount must be a positive integer", 400);
   }
 }
 
-function buildPickupRequestSnapshot(day) {
+function buildPickupRequestSnapshot(day, catalogMaps = {}) {
+  const resolvedDay = enrichDayMealSlotsWithResolvedSnapshots(day || {}, catalogMaps);
   return {
-    dayStatus: day && day.status ? day.status : "open",
-    mealSelections: Array.isArray(day && day.selections) ? day.selections : [],
-    mealSlots: Array.isArray(day && day.mealSlots) ? day.mealSlots : [],
-    materializedMeals: Array.isArray(day && day.materializedMeals) ? day.materializedMeals : [],
-    addons: Array.isArray(day && day.addonSelections) ? day.addonSelections : [],
-    premium: Array.isArray(day && day.premiumUpgradeSelections) ? day.premiumUpgradeSelections : [],
+    dayStatus: resolvedDay && resolvedDay.status ? resolvedDay.status : "open",
+    mealSelections: Array.isArray(resolvedDay && resolvedDay.selections) ? resolvedDay.selections : [],
+    mealSlots: Array.isArray(resolvedDay && resolvedDay.mealSlots) ? resolvedDay.mealSlots : [],
+    materializedMeals: Array.isArray(resolvedDay && resolvedDay.materializedMeals) ? resolvedDay.materializedMeals : [],
+    addons: Array.isArray(resolvedDay && resolvedDay.addonSelections) ? resolvedDay.addonSelections : [],
+    premium: Array.isArray(resolvedDay && resolvedDay.premiumUpgradeSelections) ? resolvedDay.premiumUpgradeSelections : [],
     createdFrom: "client_pickup_request",
   };
 }
 
-function buildSelectedPickupRequestSnapshot(day, selectedMealSlotIds) {
+function buildSelectedPickupRequestSnapshot(day, selectedMealSlotIds, catalogMaps = {}) {
   const ids = new Set(normalizeSelectedMealSlotIds(selectedMealSlotIds));
-  const base = buildPickupRequestSnapshot(day);
+  const base = buildPickupRequestSnapshot(day, catalogMaps);
   return {
     ...base,
     mealSlots: Array.isArray(base.mealSlots)
@@ -231,6 +364,7 @@ async function createPickupRequestDocument({
   requestPayloadHash = null,
   selectionMode = "legacy_meal_count",
   idempotencyKey,
+  catalogMaps = {},
   session = null,
 }) {
   const createPayload = {
@@ -245,8 +379,8 @@ async function createPickupRequestDocument({
     status: "locked",
     idempotencyKey: idempotencyKey || null,
     snapshot: selectionMode === "slot_ids"
-      ? buildSelectedPickupRequestSnapshot(day, selectedMealSlotIds)
-      : buildPickupRequestSnapshot(day),
+      ? buildSelectedPickupRequestSnapshot(day, selectedMealSlotIds, catalogMaps)
+      : buildPickupRequestSnapshot(day, catalogMaps),
   };
 
   const created = await SubscriptionPickupRequest.create(
@@ -332,6 +466,7 @@ async function createSubscriptionPickupRequestForClient({
   const dayQuery = SubscriptionDay.findOne({ subscriptionId: subscription._id, date });
   if (session) dayQuery.session(session);
   const day = await dayQuery;
+  const catalogMaps = day ? await loadPickupAvailabilityCatalogMaps(day, { session }) : {};
   assertPickupRequestDayIsEligible(day);
   if (day) {
     validateDayBeforeLockOrPrepare({
@@ -353,7 +488,7 @@ async function createSubscriptionPickupRequestForClient({
     });
   } else if (day && Array.isArray(day.mealSlots) && day.mealSlots.length > 0) {
     const pickupRequests = await findBlockingPickupRequests({ subscriptionId: subscription._id, date, session });
-    const availability = buildAvailabilityFromDay({ day, pickupRequests });
+    const availability = buildAvailabilityFromDay({ day, pickupRequests, subscription, catalogMaps });
     const availableCount = availability.availableSlotIds.length;
     if (availableCount < normalizedMealCount) {
       const reason = availability.slots.find((slot) => !slot.available)?.unavailableReason || "MEAL_SLOT_UNAVAILABLE";
@@ -381,6 +516,7 @@ async function createSubscriptionPickupRequestForClient({
       requestPayloadHash,
       selectionMode: usesSlotSelection ? "slot_ids" : "legacy_meal_count",
       idempotencyKey: normalizedIdempotencyKey,
+      catalogMaps,
       session,
     });
   } catch (err) {
@@ -454,7 +590,13 @@ async function getPickupAvailabilityForClient({
   if (session) dayQuery.session(session);
   const day = await dayQuery.lean();
   const pickupRequests = await findBlockingPickupRequests({ subscriptionId: subscription._id, date, session });
-  const availability = buildAvailabilityFromDay({ day, pickupRequests });
+  const catalogMaps = day ? await loadPickupAvailabilityCatalogMaps(day, { session }) : {};
+  const availability = buildAvailabilityFromDay({
+    day,
+    pickupRequests,
+    subscription,
+    catalogMaps,
+  });
   const wallet = buildPickupAvailabilityWallet(subscription, availability);
   const summary = buildPickupAvailabilitySummary({ subscription, availability });
   return {
