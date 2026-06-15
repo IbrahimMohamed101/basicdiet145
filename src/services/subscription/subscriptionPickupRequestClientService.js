@@ -109,9 +109,17 @@ function buildPickupAvailabilityWallet(subscription = {}, availability = {}) {
 }
 
 function buildPickupAvailabilitySummary({ subscription = {}, availability = {} }) {
-  const slots = Array.isArray(availability.slots) ? availability.slots : [];
-  const availableCount = slots.filter((slot) => slot && slot.available).length;
-  const unavailableCount = slots.length - availableCount;
+  const selectableItems = Array.isArray(availability.pickupItems)
+    ? availability.pickupItems.filter((item) => item && item.selectionMode === "independent")
+    : [];
+  const fallbackSlots = Array.isArray(availability.slots) ? availability.slots : [];
+  const countSource = selectableItems.length ? selectableItems : fallbackSlots;
+  const availableCount = countSource.filter((item) => {
+    if (!item) return false;
+    if (item.availability) return Boolean(item.availability.available && item.availability.canSelect);
+    return Boolean(item.available);
+  }).length;
+  const unavailableCount = countSource.length - availableCount;
   const appendLimit = Number(subscription.remainingMeals || 0);
   const canAppendMeals = appendLimit > 0;
   return {
@@ -608,6 +616,10 @@ async function getPickupAvailabilityForClient({
     wallet,
     summary,
     slots: availability.slots,
+    dayAddons: availability.dayAddons,
+    addonSummary: availability.addonSummary,
+    pickupItems: availability.pickupItems,
+    sections: availability.sections,
     availableSlotIds: availability.availableSlotIds,
     unavailableSlotIds: availability.unavailableSlotIds,
   };

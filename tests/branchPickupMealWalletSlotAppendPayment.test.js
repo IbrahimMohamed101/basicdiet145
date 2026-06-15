@@ -545,6 +545,90 @@ function legacyBuilderSlot(slotIndex, fixture, { premium = false } = {}) {
       assert(premiumSlot.display.badgesAr.includes("وجبة مميزة"));
     });
 
+    await test("pickup availability exposes normalized pickupItems, sections, and dayAddons", async () => {
+      const standard = await seedCanonicalMenuFixture("mixed_standard");
+      const premium = await seedCanonicalMenuFixture("mixed_premium");
+      const salad = await seedCanonicalMenuFixture("mixed_salad");
+      const sandwich = await seedCanonicalMenuFixture("mixed_sandwich");
+      const legacyProtein = await seedLegacyBuilderFixture("mixed_protein", { premium: false });
+      const { user, subscription, day } = await seedSubscriptionWithDay({
+        label: "availability-mixed-items",
+        slots: [
+          catalogOnlySlot(1, standard, { selectionType: "standard_meal" }),
+          catalogOnlySlot(2, premium, { selectionType: "premium_meal", isPremium: true, premiumSource: "balance" }),
+          catalogOnlySlot(3, salad, { selectionType: "premium_large_salad", isPremium: true, premiumSource: "paid_extra" }),
+          catalogOnlySlot(4, sandwich, { selectionType: "sandwich" }),
+          legacyBuilderSlot(5, legacyProtein, { premium: false }),
+        ],
+      });
+      await SubscriptionDay.updateOne(
+        { _id: day._id },
+        {
+          $set: {
+            addonSelections: [
+              {
+                addonId: new mongoose.Types.ObjectId(),
+                key: "berry_juice",
+                name: "Berry Juice",
+                category: "juice",
+                source: "subscription",
+                priceHalala: 0,
+                currency: "SAR",
+              },
+              {
+                addonId: new mongoose.Types.ObjectId(),
+                key: "green_juice",
+                name: "Green Juice",
+                category: "juice",
+                source: "paid",
+                priceHalala: 1100,
+                currency: "SAR",
+              },
+            ],
+          },
+        }
+      );
+
+      const res = await api.get(`/api/subscriptions/${subscription._id}/pickup-availability?date=${TODAY}`).set(auth(token(user._id)));
+      assert.strictEqual(res.status, 200, JSON.stringify(res.body));
+      const data = res.body.data;
+      assert(Array.isArray(data.pickupItems), "pickupItems should be present");
+      assert(Array.isArray(data.sections), "sections should be present");
+      assert.strictEqual(data.dayAddons.length, 2);
+      assert.strictEqual(data.addonSummary.totalCount, 2);
+      assert.strictEqual(data.addonSummary.pendingCount, 0);
+      assert.strictEqual(data.addonSummary.amountDue, 0);
+
+      const itemTypes = data.pickupItems.map((item) => item.itemType);
+      assert(itemTypes.includes("meal"), itemTypes);
+      assert(itemTypes.includes("premium_meal"), itemTypes);
+      assert(itemTypes.includes("large_salad"), itemTypes);
+      assert(itemTypes.includes("sandwich"), itemTypes);
+      assert(itemTypes.includes("protein"), itemTypes);
+      assert(itemTypes.includes("addon"), itemTypes);
+
+      const addons = data.pickupItems.filter((item) => item.itemType === "addon");
+      assert.strictEqual(addons.length, 2);
+      assert(addons.every((item) => item.selectionMode === "included_with_day"));
+      assert.strictEqual(addons.find((item) => item.title.en === "Green Juice").availability.canSelect, false);
+
+      const proteinItem = data.pickupItems.find((item) => item.itemType === "protein");
+      assert(proteinItem, "protein component should be exposed as pickup item");
+      assert.strictEqual(proteinItem.selectionMode, "included_with_slot");
+      assert.strictEqual(proteinItem.availability.canSelect, false);
+
+      const sectionByKey = new Map(data.sections.map((section) => [section.sectionKey, section]));
+      assert.strictEqual(sectionByKey.get("meals").items.length, 2);
+      assert.strictEqual(sectionByKey.get("premium_meals").items.length, 1);
+      assert.strictEqual(sectionByKey.get("salads").items.length, 1);
+      assert.strictEqual(sectionByKey.get("sandwiches").items.length, 1);
+      assert(sectionByKey.get("proteins").items.length >= 1);
+      assert.strictEqual(sectionByKey.get("addons").items.length, 2);
+      assert.strictEqual(data.summary.availableCount, 5);
+      assert.strictEqual(data.slots[0].addons[0].addonScope, "day");
+      assert.strictEqual(data.slots[0].addons[0].inheritedFromDay, true);
+    });
+
     await test("pickup request selected snapshot and dashboard queue keep resolved legacy meal names", async () => {
       const fixture = await seedLegacyBuilderFixture("legacy_snapshot", { premium: true });
       const { user, subscription } = await seedSubscriptionWithDay({
@@ -642,6 +726,15 @@ function legacyBuilderSlot(slotIndex, fixture, { premium = false } = {}) {
       assert.strictEqual(slot.addons[0].name.en, "Protein Bar");
       assert.strictEqual(slot.addons[0].paymentStatus, "pending");
       assert.strictEqual(slot.display.unavailableTextAr, "يجب إتمام دفع الإضافات أولا");
+      assert.strictEqual(res.body.data.dayAddons.length, 1);
+      assert.strictEqual(res.body.data.addonSummary.pendingCount, 1);
+      const addonItem = res.body.data.pickupItems.find((item) => item.itemType === "addon");
+      assert(addonItem, "unpaid addon should be visible as pickup item");
+      assert.strictEqual(addonItem.payment.required, true);
+      assert.strictEqual(addonItem.availability.unavailableReason, "ADDON_PAYMENT_REQUIRED");
+      assert.strictEqual(addonItem.selectionMode, "included_with_day");
+      const addonSection = res.body.data.sections.find((section) => section.sectionKey === "addons");
+      assert.strictEqual(addonSection.items.length, 1);
     });
 
     await test("pickup availability reserved slot includes reservation id and Arabic display text", async () => {

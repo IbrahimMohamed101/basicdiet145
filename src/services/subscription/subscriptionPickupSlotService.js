@@ -454,6 +454,8 @@ function buildAddonPayload(addon = {}) {
     price: moneyFromHalala(addon.priceHalala || addon.unitPriceHalala || addon.totalPriceHalala),
     paymentStatus: canonicalPaymentStatus({ required: paymentRequired, paid }),
     paymentRequired,
+    addonScope: "day",
+    inheritedFromDay: true,
   };
 }
 
@@ -553,6 +555,240 @@ function buildClientSlotDetails({ slot = {}, day = {}, available, unavailableRea
   };
 }
 
+function itemTypeForSelectionType(selectionType, isPremium = false) {
+  const type = String(selectionType || "").trim();
+  if (type === "premium_large_salad") return "large_salad";
+  if (type === "sandwich") return "sandwich";
+  if (type === "premium_meal" || isPremium) return "premium_meal";
+  if (type === "standard_meal" || type === "basic_meal") return "meal";
+  if (type === "protein") return "protein";
+  if (type === "addon") return "addon";
+  return "unknown";
+}
+
+function categoryKeyForItemType(itemType) {
+  const map = {
+    meal: "meals",
+    premium_meal: "premium_meals",
+    large_salad: "salads",
+    protein: "proteins",
+    sandwich: "sandwiches",
+    addon: "addons",
+  };
+  return map[itemType] || "meals";
+}
+
+function componentTypeFromGroup(groupKey, itemType = "unknown") {
+  const key = String(groupKey || "").toLowerCase();
+  if (key.includes("protein")) return "protein";
+  if (key.includes("carb")) return "carb";
+  if (key.includes("sauce")) return "sauce";
+  if (key.includes("side")) return "side";
+  if (key.includes("addon")) return "addon";
+  return itemType === "addon" ? "addon" : "side";
+}
+
+function buildComponentsFromOptions(options = []) {
+  return (Array.isArray(options) ? options : []).map((option) => ({
+    id: option.id || null,
+    key: option.key || null,
+    type: componentTypeFromGroup(option.groupKey),
+    name: option.name || { ar: null, en: null },
+    groupKey: option.groupKey || null,
+    groupName: option.groupName || { ar: null, en: null },
+    quantity: Number(option.quantity || 1),
+  }));
+}
+
+function buildPickupItemFromSlot(slot = {}) {
+  const itemType = itemTypeForSelectionType(slot.selectionType, slot.isPremium);
+  return {
+    itemId: slot.slotId,
+    itemType,
+    source: "mealSlot",
+    sourceId: slot.slotId,
+    slotId: slot.slotId,
+    slotKey: slot.slotKey,
+    slotIndex: Number(slot.slotIndex || 0),
+    selectionType: slot.selectionType || (itemType === "meal" ? "standard_meal" : itemType),
+    categoryKey: categoryKeyForItemType(itemType),
+    quantity: Number(slot.meal && slot.meal.quantity || 1),
+    title: slot.meal && slot.meal.title ? slot.meal.title : { ar: slot.display && slot.display.titleAr || null, en: slot.display && slot.display.titleEn || null },
+    subtitle: slot.meal && slot.meal.subtitle ? slot.meal.subtitle : { ar: slot.display && slot.display.subtitleAr || null, en: slot.display && slot.display.subtitleEn || null },
+    image: slot.meal && slot.meal.image || slot.product && slot.product.image || slot.display && slot.display.image || null,
+    product: slot.product || null,
+    components: buildComponentsFromOptions(slot.options),
+    payment: slot.payment || null,
+    availability: {
+      available: Boolean(slot.available),
+      canSelect: Boolean(slot.canSelect),
+      unavailableReason: slot.unavailableReason || null,
+      reservedByPickupRequestId: slot.reservedByPickupRequestId || null,
+      reasons: Array.isArray(slot.reasons) ? slot.reasons : [],
+    },
+    display: slot.display || null,
+    selectionMode: "independent",
+  };
+}
+
+function buildDisplayFromAddon({ addon, paymentRequired }) {
+  const unavailableCopy = paymentRequired ? resolveReasonCopy("ADDON_PAYMENT_REQUIRED") : { ar: null, en: null };
+  const title = addon.name || { ar: addon.key || null, en: addon.key || null };
+  return {
+    titleAr: title.ar || title.en || addon.key || "إضافة",
+    titleEn: title.en || title.ar || addon.key || "Add-on",
+    subtitleAr: null,
+    subtitleEn: null,
+    image: addon.image || null,
+    badgesAr: paymentRequired ? ["بانتظار الدفع"] : [],
+    badgesEn: paymentRequired ? ["Payment pending"] : [],
+    statusTextAr: paymentRequired ? unavailableCopy.ar : "مشمولة مع طلب الاستلام",
+    statusTextEn: paymentRequired ? unavailableCopy.en : "Included with pickup",
+    selectionTextAr: null,
+    selectionTextEn: null,
+    unavailableTextAr: paymentRequired ? unavailableCopy.ar : null,
+    unavailableTextEn: paymentRequired ? unavailableCopy.en : null,
+  };
+}
+
+function buildPickupItemFromDayAddon(addon = {}, index = 0) {
+  const normalized = buildAddonPayload(addon);
+  const itemId = normalized.id ? `addon_${normalized.id}` : `addon_${index + 1}`;
+  const paymentRequired = Boolean(normalized.paymentRequired);
+  const product = {
+    id: normalized.id,
+    key: normalized.key,
+    name: normalized.name,
+    description: { ar: null, en: null },
+    image: null,
+    calories: 0,
+    macros: { protein: 0, carbs: 0, fat: 0 },
+  };
+  const display = buildDisplayFromAddon({ addon: normalized, paymentRequired });
+  return {
+    itemId,
+    itemType: "addon",
+    source: "dayAddon",
+    sourceId: normalized.id,
+    slotId: null,
+    slotKey: null,
+    slotIndex: null,
+    selectionType: "addon",
+    categoryKey: "addons",
+    quantity: Number(normalized.quantity || 1),
+    title: normalized.name,
+    subtitle: { ar: null, en: null },
+    image: null,
+    product,
+    components: [{
+      id: normalized.id,
+      key: normalized.key,
+      type: "addon",
+      name: normalized.name,
+      groupKey: "addons",
+      groupName: { ar: "الإضافات", en: "Add-ons" },
+      quantity: Number(normalized.quantity || 1),
+    }],
+    payment: {
+      required: paymentRequired,
+      status: normalized.paymentStatus,
+      reason: paymentRequired ? "ADDON_PAYMENT_REQUIRED" : null,
+      amountDue: paymentRequired ? Number(normalized.price || 0) : 0,
+      currency: addon.currency || "SAR",
+      premiumRequired: false,
+      addonRequired: paymentRequired,
+    },
+    availability: {
+      available: !paymentRequired,
+      canSelect: false,
+      unavailableReason: paymentRequired ? "ADDON_PAYMENT_REQUIRED" : null,
+      reservedByPickupRequestId: null,
+      reasons: paymentRequired ? ["ADDON_PAYMENT_REQUIRED"] : [],
+    },
+    display,
+    selectionMode: "included_with_day",
+    addonScope: "day",
+    inheritedFromDay: false,
+  };
+}
+
+function buildPickupItemsFromSlotComponents(slot = {}) {
+  return buildComponentsFromOptions(slot.options)
+    .filter((component) => component.type === "protein")
+    .map((component, index) => ({
+      itemId: `${slot.slotId}_protein_${component.id || component.key || index + 1}`,
+      itemType: "protein",
+      source: "plannerSelection",
+      sourceId: component.id || component.key || null,
+      slotId: slot.slotId,
+      slotKey: slot.slotKey,
+      slotIndex: Number(slot.slotIndex || 0),
+      selectionType: "protein",
+      categoryKey: "proteins",
+      quantity: Number(component.quantity || 1),
+      title: component.name || { ar: null, en: null },
+      subtitle: slot.meal && slot.meal.title ? slot.meal.title : { ar: null, en: null },
+      image: null,
+      product: {
+        id: component.id || null,
+        key: component.key || null,
+        name: component.name || { ar: null, en: null },
+        description: { ar: null, en: null },
+        image: null,
+        calories: 0,
+        macros: { protein: 0, carbs: 0, fat: 0 },
+      },
+      components: [component],
+      payment: slot.payment || null,
+      availability: {
+        available: Boolean(slot.available),
+        canSelect: false,
+        unavailableReason: slot.unavailableReason || null,
+        reservedByPickupRequestId: slot.reservedByPickupRequestId || null,
+        reasons: Array.isArray(slot.reasons) ? slot.reasons : [],
+      },
+      display: {
+        ...(slot.display || {}),
+        titleAr: component.name && (component.name.ar || component.name.en) || null,
+        titleEn: component.name && (component.name.en || component.name.ar) || null,
+        selectionTextAr: null,
+        selectionTextEn: null,
+      },
+      selectionMode: "included_with_slot",
+    }));
+}
+
+const SECTION_DEFS = [
+  { sectionKey: "meals", titleAr: "الوجبات", titleEn: "Meals" },
+  { sectionKey: "premium_meals", titleAr: "الوجبات المميزة", titleEn: "Premium Meals" },
+  { sectionKey: "salads", titleAr: "السلطات", titleEn: "Salads" },
+  { sectionKey: "proteins", titleAr: "البروتين", titleEn: "Protein" },
+  { sectionKey: "sandwiches", titleAr: "الساندوتشات", titleEn: "Sandwiches" },
+  { sectionKey: "addons", titleAr: "الإضافات", titleEn: "Add-ons" },
+];
+
+function buildSections(pickupItems = []) {
+  return SECTION_DEFS.map((section) => ({
+    ...section,
+    items: pickupItems.filter((item) => item.categoryKey === section.sectionKey),
+  }));
+}
+
+function buildAddonSummary(dayAddons = []) {
+  const totalCount = dayAddons.reduce((sum, addon) => sum + Number(addon.quantity || 1), 0);
+  const pendingCount = dayAddons.filter((addon) => addon.paymentRequired).length;
+  const amountDue = dayAddons
+    .filter((addon) => addon.paymentRequired)
+    .reduce((sum, addon) => sum + Number(addon.price || 0), 0);
+  return {
+    totalCount,
+    pendingCount,
+    paidCount: dayAddons.filter((addon) => addon.paymentStatus === "paid").length,
+    amountDue,
+    currency: "SAR",
+  };
+}
+
 function resolveCanonicalPaymentReason(day = {}) {
   const commercial = buildDayCommercialState(day || {});
   return (commercial.paymentRequirement && commercial.paymentRequirement.blockingReason)
@@ -612,12 +848,25 @@ function buildAvailabilityFromDay({ day, pickupRequests = [], subscription = {},
       ...buildClientSlotDetails({ slot, day: resolvedDay, available, unavailableReason, kitchenSlot, productDoc, catalogMaps }),
     };
   });
+  const dayAddons = (Array.isArray(resolvedDay && resolvedDay.addonSelections) ? resolvedDay.addonSelections : [])
+    .map((addon) => buildAddonPayload(addon));
+  const pickupItems = [
+    ...slots.map(buildPickupItemFromSlot),
+    ...slots.flatMap(buildPickupItemsFromSlotComponents),
+    ...(Array.isArray(resolvedDay && resolvedDay.addonSelections) ? resolvedDay.addonSelections : [])
+      .map((addon, index) => buildPickupItemFromDayAddon(addon, index)),
+  ];
+  const sections = buildSections(pickupItems);
 
   return {
     date: resolvedDay ? resolvedDay.date : null,
     subscriptionDayId: resolvedDay && resolvedDay._id ? String(resolvedDay._id) : null,
     paymentReason: addonPaymentReason || resolveCanonicalPaymentReason(resolvedDay),
     slots,
+    dayAddons,
+    addonSummary: buildAddonSummary(dayAddons),
+    pickupItems,
+    sections,
     availableSlotIds: slots.filter((slot) => slot.available).map((slot) => slot.slotId),
     unavailableSlotIds: slots.filter((slot) => !slot.available).map((slot) => slot.slotId),
   };
