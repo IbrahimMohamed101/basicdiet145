@@ -131,10 +131,107 @@ async function seedSubscriptionWithDay({
   return { subscription, day };
 }
 
+function buildMealSlots(count) {
+  return Array.from({ length: count }, (_, index) => ({
+    slotIndex: index + 1,
+    slotKey: `slot_${index + 1}`,
+    status: "complete",
+    selectionType: "standard_meal",
+    productKey: `meal_${index + 1}`,
+    confirmationSnapshot: {
+      product: {
+        key: `meal_${index + 1}`,
+        name: {
+          ar: `وجبة ${index + 1}`,
+          en: `Meal ${index + 1}`,
+        },
+      },
+    },
+    isPremium: false,
+    premiumSource: "none",
+  }));
+}
+
+async function seedSubscriptionWithPickupItems({
+  user,
+  remainingMeals = 10,
+} = {}) {
+  const { subscription, day } = await seedSubscriptionWithDay({ user, remainingMeals });
+  const addonA = new mongoose.Types.ObjectId();
+  const addonB = new mongoose.Types.ObjectId();
+  const addonSelections = [
+    {
+      addonId: addonA,
+      name: { ar: "إضافة أ", en: "Addon A" },
+      category: "addon",
+      source: "paid",
+      qty: 2,
+      priceHalala: 0,
+      currency: "SAR",
+    },
+    {
+      addonId: addonB,
+      name: { ar: "إضافة ب", en: "Addon B" },
+      category: "addon",
+      source: "paid",
+      qty: 2,
+      priceHalala: 0,
+      currency: "SAR",
+    },
+  ];
+
+  await SubscriptionDay.collection.updateOne(
+    { _id: day._id },
+    {
+      $set: {
+        plannerMeta: {
+          requiredSlotCount: 3,
+          completeSlotCount: 3,
+          partialSlotCount: 0,
+          emptySlotCount: 0,
+          isDraftValid: true,
+          isConfirmable: true,
+          confirmedAt: new Date(),
+          confirmedByRole: "client",
+        },
+        planningMeta: {
+          requiredMealCount: 3,
+          selectedTotalMealCount: 3,
+          isExactCountSatisfied: true,
+          confirmedAt: new Date(),
+          confirmedByRole: "client",
+        },
+        mealSlots: buildMealSlots(3),
+        addonSelections,
+      },
+    }
+  );
+
+  return {
+    subscription,
+    day,
+    addonA,
+    addonB,
+    addonA1: `addon_${addonA}_1`,
+    addonA2: `addon_${addonA}_2`,
+    addonB1: `addon_${addonB}_1`,
+    addonB2: `addon_${addonB}_2`,
+  };
+}
+
 async function getRemainingMeals(subscriptionId) {
   const subscription = await Subscription.findById(subscriptionId).select("remainingMeals").lean();
   assert(subscription, "subscription should exist");
   return Number(subscription.remainingMeals || 0);
+}
+
+function pickupItemIds(payload) {
+  return (payload.pickupItems || []).map((item) => item.itemId).sort();
+}
+
+function sectionItemIds(payload, sectionKey) {
+  const section = (payload.sections || []).find((row) => row.sectionKey === sectionKey);
+  return ((section && section.items) || []).map((item) => item.itemId).sort();
 }
 
 (async function run() {
@@ -331,6 +428,137 @@ async function getRemainingMeals(subscriptionId) {
         .set(auth(token));
 
       assert.strictEqual(res.status, 403, JSON.stringify(res.body));
+    });
+
+    await test("pickup item selection reserves selected add-ons and default availability returns only remaining items", async () => {
+      const user = await seedUser("pickup-items-addons");
+      const token = issueAppAccessToken(user._id);
+      const seeded = await seedSubscriptionWithPickupItems({ user, remainingMeals: 10 });
+      const selectedFirst = ["slot_1", seeded.addonA1, seeded.addonB1];
+
+      const before = await api
+        .get(`/api/subscriptions/${seeded.subscription._id}/pickup-availability?date=${TODAY}`)
+        .set(auth(token));
+      assert.strictEqual(before.status, 200, JSON.stringify(before.body));
+      assert.deepStrictEqual(
+        pickupItemIds(before.body.data),
+        ["slot_1", "slot_2", "slot_3", seeded.addonA1, seeded.addonA2, seeded.addonB1, seeded.addonB2].sort()
+      );
+      assert.strictEqual(sectionItemIds(before.body.data, "addons").length, 4);
+      assert.strictEqual((before.body.data.dayAddons || []).length, 4);
+
+      const createFirst = await api
+        .post(`/api/subscriptions/${seeded.subscription._id}/pickup-requests`)
+        .set(auth(token))
+        .send({
+          date: TODAY,
+          selectedPickupItemIds: selectedFirst,
+          idempotencyKey: `${TEST_TAG}-pickup-items-addons-1`,
+        });
+      assert.strictEqual(createFirst.status, 200, JSON.stringify(createFirst.body));
+      assert.deepStrictEqual(createFirst.body.data.selectedPickupItemIds.slice().sort(), selectedFirst.slice().sort());
+      assert.strictEqual(createFirst.body.data.selectedPickupItems.length, 3);
+      assert.deepStrictEqual(createFirst.body.data.selectedMealSlotIds, ["slot_1"]);
+      assert.strictEqual(createFirst.body.data.mealCount, 1);
+      assert.strictEqual(createFirst.body.data.addonCount, 2);
+      assert.strictEqual(createFirst.body.data.itemCount, 3);
+      assert.strictEqual(await getRemainingMeals(seeded.subscription._id), 9);
+
+      const afterFirst = await api
+        .get(`/api/subscriptions/${seeded.subscription._id}/pickup-availability?date=${TODAY}`)
+        .set(auth(token));
+      assert.strictEqual(afterFirst.status, 200, JSON.stringify(afterFirst.body));
+      assert.deepStrictEqual(
+        pickupItemIds(afterFirst.body.data),
+        ["slot_2", "slot_3", seeded.addonA2, seeded.addonB2].sort()
+      );
+      assert.deepStrictEqual(sectionItemIds(afterFirst.body.data, "addons"), [seeded.addonA2, seeded.addonB2].sort());
+      assert.deepStrictEqual((afterFirst.body.data.dayAddons || []).map((item) => item.itemId).sort(), [seeded.addonA2, seeded.addonB2].sort());
+
+      const includeUnavailable = await api
+        .get(`/api/subscriptions/${seeded.subscription._id}/pickup-availability?date=${TODAY}&includeUnavailable=true`)
+        .set(auth(token));
+      assert.strictEqual(includeUnavailable.status, 200, JSON.stringify(includeUnavailable.body));
+      assert.strictEqual(includeUnavailable.body.data.pickupItems.length, 7);
+      const unavailableById = new Map(includeUnavailable.body.data.pickupItems.map((item) => [item.itemId, item]));
+      for (const id of selectedFirst) {
+        const item = unavailableById.get(id);
+        assert(item, `${id} should be present with includeUnavailable`);
+        assert.strictEqual(item.availability.state, "reserved");
+        assert.strictEqual(item.availability.available, false);
+        assert.strictEqual(item.availability.canSelect, false);
+        assert(item.availability.reservedByPickupRequestId, `${id} should carry reservedByPickupRequestId`);
+      }
+      assert.strictEqual(unavailableById.get(seeded.addonA1).display.statusTextAr, "تم طلب استلام هذه الإضافة بالفعل");
+      assert.strictEqual(unavailableById.get(seeded.addonA1).display.statusTextEn, "This add-on has already been requested for pickup");
+      assert.strictEqual(includeUnavailable.body.data.pickupItems.filter((item) => item.availability.state === "reserved").length, 3);
+      assert.strictEqual(includeUnavailable.body.data.pickupItems.filter((item) => item.availability.state === "available").length, 4);
+
+      const createSecond = await api
+        .post(`/api/subscriptions/${seeded.subscription._id}/pickup-requests`)
+        .set(auth(token))
+        .send({
+          date: TODAY,
+          selectedPickupItemIds: ["slot_2", seeded.addonA2],
+          idempotencyKey: `${TEST_TAG}-pickup-items-addons-2`,
+        });
+      assert.strictEqual(createSecond.status, 200, JSON.stringify(createSecond.body));
+      assert.strictEqual(createSecond.body.data.mealCount, 1);
+      assert.strictEqual(createSecond.body.data.addonCount, 1);
+      assert.strictEqual(createSecond.body.data.itemCount, 2);
+      assert.strictEqual(await getRemainingMeals(seeded.subscription._id), 8);
+
+      const afterSecond = await api
+        .get(`/api/subscriptions/${seeded.subscription._id}/pickup-availability?date=${TODAY}`)
+        .set(auth(token));
+      assert.strictEqual(afterSecond.status, 200, JSON.stringify(afterSecond.body));
+      assert.deepStrictEqual(pickupItemIds(afterSecond.body.data), ["slot_3", seeded.addonB2].sort());
+
+      const reusedAddon = await api
+        .post(`/api/subscriptions/${seeded.subscription._id}/pickup-requests`)
+        .set(auth(token))
+        .send({
+          date: TODAY,
+          selectedPickupItemIds: [seeded.addonA1],
+          idempotencyKey: `${TEST_TAG}-pickup-items-addons-reuse`,
+        });
+      assert.strictEqual(reusedAddon.status, 422, JSON.stringify(reusedAddon.body));
+      assert.strictEqual(reusedAddon.body.error.code, "PICKUP_ITEM_UNAVAILABLE");
+      assert.strictEqual(await getRemainingMeals(seeded.subscription._id), 8);
+    });
+
+    await test("selectedMealSlotIds legacy flow reserves only meal slots and leaves add-ons selectable", async () => {
+      const user = await seedUser("pickup-items-legacy-slots");
+      const token = issueAppAccessToken(user._id);
+      const seeded = await seedSubscriptionWithPickupItems({ user, remainingMeals: 10 });
+
+      const create = await api
+        .post(`/api/subscriptions/${seeded.subscription._id}/pickup-requests`)
+        .set(auth(token))
+        .send({
+          date: TODAY,
+          selectedMealSlotIds: ["slot_1"],
+          idempotencyKey: `${TEST_TAG}-pickup-items-legacy-slots`,
+        });
+      assert.strictEqual(create.status, 200, JSON.stringify(create.body));
+      assert.deepStrictEqual(create.body.data.selectedPickupItemIds, ["slot_1"]);
+      assert.strictEqual(create.body.data.mealCount, 1);
+      assert.strictEqual(create.body.data.addonCount, 0);
+      assert.strictEqual(create.body.data.itemCount, 1);
+      assert.strictEqual(await getRemainingMeals(seeded.subscription._id), 9);
+
+      const availability = await api
+        .get(`/api/subscriptions/${seeded.subscription._id}/pickup-availability?date=${TODAY}`)
+        .set(auth(token));
+      assert.strictEqual(availability.status, 200, JSON.stringify(availability.body));
+      assert.deepStrictEqual(
+        pickupItemIds(availability.body.data),
+        ["slot_2", "slot_3", seeded.addonA1, seeded.addonA2, seeded.addonB1, seeded.addonB2].sort()
+      );
+      assert.deepStrictEqual(
+        sectionItemIds(availability.body.data, "addons"),
+        [seeded.addonA1, seeded.addonA2, seeded.addonB1, seeded.addonB2].sort()
+      );
     });
   } finally {
     await cleanup().catch(() => {});

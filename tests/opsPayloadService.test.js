@@ -15,6 +15,9 @@ const {
   shouldUseCleanQueueContract,
 } = require("../src/services/dashboard/kitchenQueueContractService");
 const {
+  mapSubscriptionPickupRequestToDTO,
+} = require("../src/services/dashboard/dashboardDtoService");
+const {
   serializeManualDeductionLog,
 } = require("../src/services/dashboard/manualSubscriptionDeductionService");
 
@@ -376,6 +379,45 @@ function run() {
   );
   assert.strictEqual(pickupQueue.items[0].snapshot, undefined);
   assert.strictEqual(courierQueue.items[0].mealSlots, undefined);
+
+  const selectedPickupRequestDto = mapSubscriptionPickupRequestToDTO({
+    _id: "pickupSelected1",
+    subscriptionId: "sub1",
+    subscriptionDayId: "day1",
+    userId: "user1",
+    date: "2026-06-12",
+    mealCount: 1,
+    status: "locked",
+    creditsReserved: true,
+    selectedPickupItemIds: ["slot_1", "addon_A_1", "addon_B_1"],
+    selectedPickupItems: [
+      { itemId: "slot_1", itemType: "meal" },
+      { itemId: "addon_A_1", itemType: "addon" },
+      { itemId: "addon_B_1", itemType: "addon" },
+    ],
+    snapshot: {
+      mealSlots: [day.mealSlots[0]],
+      addons: [
+        { addonId: "addon_A", name: { ar: "إضافة أ", en: "Addon A" }, qty: 1 },
+        { addonId: "addon_B", name: { ar: "إضافة ب", en: "Addon B" }, qty: 1 },
+      ],
+      selectedMealSlotIds: ["slot_1"],
+      selectedPickupItemIds: ["slot_1", "addon_A_1", "addon_B_1"],
+    },
+    createdAt: new Date("2026-06-12T08:00:00Z"),
+  }, subscription, { _id: "user1", name: "Sara", phone: "+966500000000" }, "ops", "en");
+  const selectedPickupQueue = normalizeDashboardQueueResponse({
+    date: "2026-06-12",
+    businessDate: "2026-06-12",
+    items: [selectedPickupRequestDto],
+  });
+  assert.strictEqual(selectedPickupQueue.items[0].source.type, "pickup_request");
+  assert.deepStrictEqual(selectedPickupQueue.items[0].kitchen.meals.map((meal) => meal.slotKey), ["slot_1"]);
+  assert.deepStrictEqual(selectedPickupQueue.items[0].kitchen.addons.map((addon) => addon.id), ["addon_A", "addon_B"]);
+  assert.strictEqual(selectedPickupQueue.items[0].orderSummary.mealCount, 1);
+  assert.strictEqual(selectedPickupQueue.items[0].orderSummary.addonCount, 2);
+  assert.strictEqual(selectedPickupQueue.items[0].orderSummary.itemCount, 3);
+
   const pickupRawQueue = normalizeDashboardQueueResponse({
     date: "2026-06-12",
     items: [{ entityId: "pickupRequest1", entityType: "subscription_pickup_request", kitchenDetails, paymentValidity: paidValidity, snapshot: { raw: true } }],
