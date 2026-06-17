@@ -630,7 +630,7 @@ async function createOrder(user, overrides = {}) {
       });
       const res = await api.get("/api/dashboard/kitchen/queue?date=2026-05-04&method=pickup").set(auth());
       expectStatus(res, 200, "kitchen queue payment filter");
-      const ids = res.body.data.items.map((item) => item.entityId);
+      const ids = res.body.data.items.map((item) => item.entityId || (item.ids && item.ids.entityId));
       assert(ids.includes(String(paid._id)));
       assert(!ids.includes(String(unpaid._id)));
     });

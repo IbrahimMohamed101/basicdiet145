@@ -1287,4 +1287,6 @@ module.exports = {
   performDaySelectionValidation,
   performBulkDaySelectionPlanningBalanceValidation,
   performDayPlanningConfirmation,
+  consumeAddonBalanceAtomically,
+  releaseAddonBalanceAtomically,
 };

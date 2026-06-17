@@ -3002,9 +3002,150 @@ async function persistNormalizedSettings(normalizedSettings) {
     operations.push(persistSettingValue("custom_meal_base_price", normalizedSettings.custom_meal_base_price));
     persisted.custom_meal_base_price = normalizedSettings.custom_meal_base_price;
   }
+  if (Object.prototype.hasOwnProperty.call(normalizedSettings, "pickup_locations")) {
+    operations.push(persistSettingValue("pickup_locations", normalizedSettings.pickup_locations));
+    persisted.pickup_locations = normalizedSettings.pickup_locations;
+  }
 
   await Promise.all(operations);
   return persisted;
+}
+
+function normalizePickupLocationsOrThrow(value) {
+  if (!Array.isArray(value)) {
+    throw createControlledError(400, "INVALID", "pickup_locations must be an array");
+  }
+
+  const ids = new Set();
+  const arNames = new Set();
+  const enNames = new Set();
+
+  return value.map((loc, index) => {
+    if (!loc || typeof loc !== "object" || Array.isArray(loc)) {
+      throw createControlledError(400, "INVALID", `Pickup location at index ${index} must be an object`);
+    }
+
+    const id = String(loc.id || loc.code || loc.branchId || loc.pickupLocationId || "").trim();
+    if (!id) {
+      throw createControlledError(400, "INVALID", `Pickup location at index ${index} must have a non-empty id`);
+    }
+
+    if (ids.has(id)) {
+      throw createControlledError(400, "INVALID", `Duplicate pickup location ID: ${id}`);
+    }
+    ids.add(id);
+
+    if (!loc.name || typeof loc.name !== "object" || Array.isArray(loc.name)) {
+      throw createControlledError(400, "INVALID", `Pickup location ${id} must have a name object with 'ar' and 'en' fields`);
+    }
+    const nameAr = String(loc.name.ar || "").trim();
+    const nameEn = String(loc.name.en || "").trim();
+    if (!nameAr || !nameEn) {
+      throw createControlledError(400, "INVALID", `Pickup location ${id} must have non-empty name.ar and name.en`);
+    }
+
+    if (arNames.has(nameAr)) {
+      throw createControlledError(400, "INVALID", `Duplicate Arabic name: ${nameAr}`);
+    }
+    if (enNames.has(nameEn)) {
+      throw createControlledError(400, "INVALID", `Duplicate English name: ${nameEn}`);
+    }
+    arNames.add(nameAr);
+    enNames.add(nameEn);
+
+    if (!loc.address || typeof loc.address !== "object" || Array.isArray(loc.address)) {
+      throw createControlledError(400, "INVALID", `Pickup location ${id} must have an address object with 'ar' and 'en' fields`);
+    }
+    const addressAr = String(loc.address.ar || "").trim();
+    const addressEn = String(loc.address.en || "").trim();
+    if (!addressAr || !addressEn) {
+      throw createControlledError(400, "INVALID", `Pickup location ${id} must have non-empty address.ar and address.en`);
+    }
+
+    let latitude = null;
+    let longitude = null;
+    if (loc.latitude !== undefined && loc.latitude !== null) {
+      const lat = Number(loc.latitude);
+      if (!Number.isFinite(lat) || lat < -90 || lat > 90) {
+        throw createControlledError(400, "INVALID", `Pickup location ${id} has invalid latitude`);
+      }
+      latitude = lat;
+    }
+    if (loc.longitude !== undefined && loc.longitude !== null) {
+      const lng = Number(loc.longitude);
+      if (!Number.isFinite(lng) || lng < -180 || lng > 180) {
+        throw createControlledError(400, "INVALID", `Pickup location ${id} has invalid longitude`);
+      }
+      longitude = lng;
+    }
+
+    const isActive = loc.isActive === undefined ? true : Boolean(loc.isActive);
+
+    const normalizedLoc = {
+      id,
+      key: id,
+      code: id,
+      slug: id,
+      branchId: id,
+      pickupLocationId: id,
+      name: {
+        ar: nameAr,
+        en: nameEn,
+      },
+      title: {
+        ar: nameAr,
+        en: nameEn,
+      },
+      address: {
+        ar: addressAr,
+        en: addressEn,
+        line1: {
+          ar: addressAr,
+          en: addressEn,
+        },
+        lat: latitude,
+        lng: longitude,
+      },
+      isActive,
+      active: isActive,
+      enabled: isActive,
+      isAvailable: isActive,
+      available: isActive,
+      pickupEnabled: isActive,
+      isPickupEnabled: isActive,
+      supportsPickup: isActive,
+      phone: loc.phone ? String(loc.phone).trim() : null,
+      isDefault: loc.isDefault === undefined ? false : Boolean(loc.isDefault),
+      mapUrl: loc.mapUrl ? String(loc.mapUrl).trim() : null,
+      latitude,
+      longitude,
+    };
+
+    if (loc.workingHours) {
+      normalizedLoc.workingHours = String(loc.workingHours).trim();
+      normalizedLoc.hours = normalizedLoc.workingHours;
+    } else if (loc.hours) {
+      normalizedLoc.workingHours = String(loc.hours).trim();
+      normalizedLoc.hours = normalizedLoc.workingHours;
+    }
+
+    const defaultWindows = ["18:00-20:00"];
+    if (loc.pickupWindows && Array.isArray(loc.pickupWindows)) {
+      normalizedLoc.pickupWindows = loc.pickupWindows.map(w => String(w).trim());
+      normalizedLoc.windows = normalizedLoc.pickupWindows;
+    } else if (loc.windows && Array.isArray(loc.windows)) {
+      normalizedLoc.windows = loc.windows.map(w => String(w).trim());
+      normalizedLoc.pickupWindows = normalizedLoc.windows;
+    } else if (loc.pickupWindow) {
+      normalizedLoc.pickupWindows = [String(loc.pickupWindow).trim()];
+      normalizedLoc.windows = normalizedLoc.pickupWindows;
+    } else {
+      normalizedLoc.pickupWindows = defaultWindows;
+      normalizedLoc.windows = defaultWindows;
+    }
+
+    return normalizedLoc;
+  });
 }
 
 function normalizeSettingsPatchPayloadOrThrow(payload) {
@@ -3026,6 +3167,7 @@ function normalizeSettingsPatchPayloadOrThrow(payload) {
     "vat_percentage",
     "custom_salad_base_price",
     "custom_meal_base_price",
+    "pickup_locations",
   ]);
   const providedKeys = Object.keys(payload).filter((key) => key !== "reason");
   if (!providedKeys.length) {
@@ -3080,6 +3222,9 @@ function normalizeSettingsPatchPayloadOrThrow(payload) {
   }
   if (Object.prototype.hasOwnProperty.call(payload, "custom_meal_base_price")) {
     normalized.custom_meal_base_price = normalizeCustomMealBasePriceOrThrow(payload.custom_meal_base_price);
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, "pickup_locations")) {
+    normalized.pickup_locations = normalizePickupLocationsOrThrow(payload.pickup_locations);
   }
 
   return normalized;

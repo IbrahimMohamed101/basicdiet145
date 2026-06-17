@@ -765,9 +765,15 @@ function buildPickupItemFromDayAddonUnit(addon = {}, index = 0, unitIndex = 1) {
 }
 
 function expandDayAddonPickupItems(addonSelections = []) {
+  const counts = new Map();
   return (Array.isArray(addonSelections) ? addonSelections : []).flatMap((addon, index) => {
+    const aid = String(addon.addonId || addon.id || addon._id || "");
+    const currentCount = counts.get(aid) || 0;
     const quantity = Math.max(1, Number(addon && (addon.quantity || addon.qty) || 1));
-    return Array.from({ length: quantity }, (_, unitIndex) => buildPickupItemFromDayAddonUnit(addon, index, unitIndex + 1));
+    counts.set(aid, currentCount + quantity);
+    return Array.from({ length: quantity }, (_, unitIndex) => {
+      return buildPickupItemFromDayAddonUnit(addon, index, currentCount + unitIndex + 1);
+    });
   });
 }
 
@@ -1100,4 +1106,5 @@ module.exports = {
   normalizeSelectedPickupItemIds,
   resolveCanonicalPaymentReason,
   resolveSlotId,
+  expandDayAddonPickupItems,
 };

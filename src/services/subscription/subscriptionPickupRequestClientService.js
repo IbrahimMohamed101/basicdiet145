@@ -460,6 +460,53 @@ async function createSubscriptionPickupRequestForClient({
   lang = "en",
   session = null,
 } = {}) {
+  let useSession = session;
+  let localSession = null;
+  if (!useSession) {
+    const mongoose = require("mongoose");
+    localSession = await mongoose.startSession();
+    localSession.startTransaction();
+    useSession = localSession;
+  }
+
+  try {
+    const result = await _createSubscriptionPickupRequestForClientInternal({
+      userId,
+      subscriptionId,
+      date,
+      mealCount,
+      selectedMealSlotIds,
+      selectedPickupItemIds,
+      idempotencyKey,
+      lang,
+      session: useSession,
+    });
+
+    if (localSession) {
+      await localSession.commitTransaction();
+      localSession.endSession();
+    }
+    return result;
+  } catch (err) {
+    if (localSession) {
+      await localSession.abortTransaction();
+      localSession.endSession();
+    }
+    throw err;
+  }
+}
+
+async function _createSubscriptionPickupRequestForClientInternal({
+  userId,
+  subscriptionId,
+  date,
+  mealCount,
+  selectedMealSlotIds,
+  selectedPickupItemIds,
+  idempotencyKey = null,
+  lang = "en",
+  session = null,
+} = {}) {
   const normalizedSelectedMealSlotIds = selectedMealSlotIds !== undefined
     ? normalizeSelectedMealSlotIds(selectedMealSlotIds)
     : [];
@@ -646,7 +693,6 @@ async function createSubscriptionPickupRequestForClient({
     );
     throw err;
   }
-
   return {
     pickupRequest,
     data: mapPickupRequestForClient(pickupRequest, { lang, idempotent: false }),

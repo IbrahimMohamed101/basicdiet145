@@ -2,6 +2,7 @@
 
 const { Router } = require("express");
 const controller = require("../controllers/dashboard/subscriptionManualDeductionController");
+const auditController = require("../controllers/dashboard/subscriptionAuditController");
 const adminController = require("../controllers/adminController");
 const asyncHandler = require("../middleware/asyncHandler");
 const { dashboardAuthMiddleware, dashboardRoleMiddleware } = require("../middleware/dashboardAuth");
@@ -13,6 +14,20 @@ router.get(
   dashboardAuthMiddleware,
   dashboardRoleMiddleware(["admin"]),
   asyncHandler(controller.searchByPhone)
+);
+
+router.get(
+  "/:subscriptionId/audit",
+  dashboardAuthMiddleware,
+  dashboardRoleMiddleware(["admin"]),
+  asyncHandler(auditController.getSubscriptionAudit)
+);
+
+router.get(
+  "/:subscriptionId/lifecycle",
+  dashboardAuthMiddleware,
+  dashboardRoleMiddleware(["admin"]),
+  asyncHandler(auditController.getSubscriptionLifecycle)
 );
 
 router.get(

@@ -545,6 +545,7 @@ async function handleCancel({ entityId, entityType, payload, userId, role, sessi
       pickupRequestId: doc._id,
       session,
     });
+
     doc.status = "canceled";
     doc.canceledAt = new Date();
     doc.canceledBy = String(userId || "");
