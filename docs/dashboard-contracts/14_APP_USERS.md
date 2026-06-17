@@ -59,4 +59,4 @@ Provides user search, details, subscription histories, and activation control fo
 * Disabling a user does not automatically cancel their active delivery days. An operator must cancel or freeze the active subscription if needed.
 
 ## 13. Status
-`READY`
+`READY_WITH_LIMITATIONS` (Verified via integration smoke tests, but lacks comprehensive assertions on response body fields inside `dashboardContracts.test.js`).

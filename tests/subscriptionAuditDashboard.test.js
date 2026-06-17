@@ -19,6 +19,7 @@ const DashboardUser = require("../src/models/DashboardUser");
 const Delivery = require("../src/models/Delivery");
 const { DASHBOARD_JWT_SECRET } = require("../src/services/dashboardTokenService");
 const { resolveMongoUri } = require("../src/utils/mongoUriResolver");
+const dateUtils = require("../src/utils/date");
 const {
   assertSelectedSlotsAvailableForPickup,
   assertSelectedPickupItemsAvailable,
@@ -538,6 +539,8 @@ async function runTests() {
       }
     ]);
 
+    const today = dateUtils.getTodayKSADate();
+    const nextMonth = dateUtils.addDaysToKSADateString(today, 30);
     const addonId = new mongoose.Types.ObjectId();
     const sub = await Subscription.create({
       userId: customer._id,
@@ -549,14 +552,14 @@ async function runTests() {
       addonBalance: [
         { addonId, purchasedQty: 4, remainingQty: 0 }
       ],
-      startDate: "2026-06-17",
-      endDate: "2026-07-17",
+      startDate: today,
+      endDate: nextMonth,
     });
 
     const mealSlotId = new mongoose.Types.ObjectId();
     const day = await SubscriptionDay.create({
       subscriptionId: sub._id,
-      date: "2026-06-17",
+      date: today,
       status: "open",
       mealSlots: [
         { _id: mealSlotId, slotIndex: 1, slotKey: "slot_1", selectionType: "standard_meal", status: "complete" }
@@ -573,7 +576,7 @@ async function runTests() {
     let avail = await getPickupAvailabilityForClient({
       userId: customer._id,
       subscriptionId: sub._id,
-      date: "2026-06-17",
+      date: today,
     });
 
     assert.strictEqual(avail.pickupItems.filter(i => i.itemType === "addon").length, 4);
@@ -584,7 +587,7 @@ async function runTests() {
     const pickupRes = await createSubscriptionPickupRequestForClient({
       userId: customer._id,
       subscriptionId: sub._id,
-      date: "2026-06-17",
+      date: today,
       mealCount: 0,
       selectedPickupItemIds: [mealSlotItemId, ...addonItemIds],
     });
@@ -592,7 +595,7 @@ async function runTests() {
     avail = await getPickupAvailabilityForClient({
       userId: customer._id,
       subscriptionId: sub._id,
-      date: "2026-06-17",
+      date: today,
     });
     const remainingAddonItems = avail.pickupItems.filter(i => i.itemType === "addon");
     assert.strictEqual(remainingAddonItems.length, 2);
@@ -636,7 +639,7 @@ async function runTests() {
     const availAfter = await getPickupAvailabilityForClient({
       userId: customer._id,
       subscriptionId: sub._id,
-      date: "2026-06-17",
+      date: today,
     });
 
     const remainingAddonItemsAfter = availAfter.pickupItems.filter(i => i.itemType === "addon");

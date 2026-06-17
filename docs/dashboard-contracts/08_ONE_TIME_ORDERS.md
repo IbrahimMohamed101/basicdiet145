@@ -62,4 +62,4 @@ Provides monitoring, lifecycle state changes, timeline history, and actions for 
 * Customer might request cancellation after preparation has started. The backend logs the operator who approved the cancellation.
 
 ## 13. Status
-`READY`
+`READY_WITH_LIMITATIONS` (Verified via the `oneTimeOrders.test.js` integration suite, but lacks dedicated detailed validations inside `dashboardContracts.test.js`).

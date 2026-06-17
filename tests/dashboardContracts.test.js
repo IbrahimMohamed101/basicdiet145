@@ -36,6 +36,7 @@ const PromoCode = require("../src/models/PromoCode");
 const Setting = require("../src/models/Setting");
 const Order = require("../src/models/Order");
 const { DASHBOARD_JWT_SECRET } = require("../src/services/dashboardTokenService");
+const dateUtils = require("../src/utils/date");
 
 const TEST_TAG = `dash-contract-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 const results = { passed: 0, failed: 0 };
@@ -656,6 +657,8 @@ async function runTests() {
 
   // 18. Partial Pickup and Addon Invariant: 4 planned -> pick 2 -> remaining availability is 2, unpicked NOT refunded
   await test("Subscription Invariant: 4 planned addons -> pick 2 -> future availability returns exactly 2", async () => {
+    const today = dateUtils.getTodayKSADate();
+    const nextMonth = dateUtils.addDaysToKSADateString(today, 30);
     const addonId = new mongoose.Types.ObjectId();
     const sub = await Subscription.create({
       userId: seedData.client._id,
@@ -668,13 +671,13 @@ async function runTests() {
       addonBalance: [
         { addonId, purchasedQty: 4, remainingQty: 0 }
       ],
-      startDate: "2026-06-17",
-      endDate: "2026-07-17",
+      startDate: today,
+      endDate: nextMonth,
     });
 
     const day = await SubscriptionDay.create({
       subscriptionId: sub._id,
-      date: "2026-06-17",
+      date: today,
       status: "open",
       mealSlots: [
         { _id: new mongoose.Types.ObjectId(), slotIndex: 1, slotKey: "slot_1", selectionType: "standard_meal", status: "complete" }
@@ -693,7 +696,7 @@ async function runTests() {
     let avail = await getPickupAvailabilityForClient({
       userId: seedData.client._id,
       subscriptionId: sub._id,
-      date: "2026-06-17",
+      date: today,
     });
     assert.strictEqual(avail.pickupItems.filter(i => i.itemType === "addon").length, 4);
 
@@ -704,7 +707,7 @@ async function runTests() {
     const pickupRes = await createSubscriptionPickupRequestForClient({
       userId: seedData.client._id,
       subscriptionId: sub._id,
-      date: "2026-06-17",
+      date: today,
       mealCount: 0,
       selectedPickupItemIds: [mealSlotItemId, ...addonItemIds],
     });
@@ -713,7 +716,7 @@ async function runTests() {
     avail = await getPickupAvailabilityForClient({
       userId: seedData.client._id,
       subscriptionId: sub._id,
-      date: "2026-06-17",
+      date: today,
     });
     const remainingAddonItems = avail.pickupItems.filter(i => i.itemType === "addon");
     assert.strictEqual(remainingAddonItems.length, 2, "Should return exactly 2 unpicked addons");

@@ -20,7 +20,13 @@ The dashboard screens are divided into three phases based on operational and fin
 9. **Accounting** (`/accounting`): Daily report generation, financial metrics, and export features.
 
 ### Phase 2: Configuration & Menu Catalog
-10. **Menu Catalog** (`/menu?tab=catalog`): Item library, categories, and customization groups.
+10. **Menu Catalog** (`/menu`): Sub-categorized into specific areas:
+    * **11A: Menu Categories**: Reusable category folders.
+    * **11B: Menu Products**: Menu items, prices, duplication, and reordering.
+    * **11C: Menu Product Customization**: Per-product option group and option relationships, min/max rules, and price overrides.
+    * **11D: Menu Option Groups**: Global customization option groups (proteins, carbs, add-ons).
+    * **11E: Menu Options**: Global customization options and toggle statuses.
+    * **11F: Menu Preview & Release**: Catalog preview, validation, publishing, and rollback history.
 11. **Promo Codes** (`/promo-codes`): Discount codes, validation rules, and usage metrics.
 12. **Settings** (`/settings`): CUTOFF times, skip allowances, and global VAT rules.
 13. **Restaurant Hours** (`/restaurant-hours`): Operating hours and instant open/close controls.
@@ -31,6 +37,8 @@ The dashboard screens are divided into three phases based on operational and fin
 16. **App Users** (`/users`): Customer profile status, activation toggles, and subscription histories.
 17. **Dashboard Users** (`/dashboard-users`): Access roles, emails, and permissions for admin, kitchen, courier, and cashier accounts.
 18. **One-time Orders** (`/one-time-orders`): Non-subscription order flows, timeline events, and status updates.
+19. **Notifications** (`/notifications`): Push notification stats and sent history logs.
+20. **Profile** (`/profile`): Active admin profile view.
 
 ---
 
@@ -38,9 +46,7 @@ The dashboard screens are divided into three phases based on operational and fin
 
 ### 1. VAT and Currency
 * **Global Standard**: All monetary values are handled in Halalas (1/100 of Currency, e.g. SAR).
-* **VAT Logic**: A flat 16% inclusive VAT structure is enforced. The formula to extract VAT from an inclusive total is:
-  $$\text{VAT Amount} = \text{Total Inclusive} - \text{Round}\left(\frac{\text{Total Inclusive}}{1.16}\right)$$
-* Displayed totals to customers must exactly match their paid totals.
+* **VAT Logic**: Pricing and VAT behavior must follow backend settings/accounting contracts only.
 
 ### 2. Unified Branch Pickup & Partial Fulfillment
 The backend enforces a strict item-based reservation model for branch pickup subscription days, detailed in [BRANCH_PICKUP_FLUTTER_PICKUP_ITEMS_README.md](file:///home/hema/Projects/basicdiet145/docs/BRANCH_PICKUP_FLUTTER_PICKUP_ITEMS_README.md).
@@ -63,33 +69,44 @@ The backend enforces a strict item-based reservation model for branch pickup sub
 
 ## Summary Matrix
 
-| # | Screen | Dashboard Route | Backend Endpoint(s) | Risk Level | Status | Test Coverage | Notes |
-|---|--------|-----------------|---------------------|------------|--------|---------------|-------|
-| 01 | Dashboard Home | `/dashboard` | `GET /api/dashboard/overview` | LOW | ✅ READY | Test #1 — checks `stats` and `recentSubscriptions` array | Read-only aggregation |
-| 02 | Payments | `/payments` | `GET /api/dashboard/payments`, `GET .../payments/:id`, `POST .../payments/:id/verify` | HIGH | ✅ READY | Test #2 — checks array shape, detail ID, verify transitions to `paid` | Moyasar mock required for verify |
-| 03 | Accounting | `/accounting` | `GET /api/dashboard/accounting/daily-report`, `GET .../daily-report/export` | HIGH | ✅ READY | Test #3 — checks `summary` and `reconciliation` nodes, CSV export 200 | Inclusive VAT formula enforced server-side |
-| 04 | Promo Codes | `/promo-codes` | `GET /api/dashboard/promo-codes`, `PATCH .../toggle`, `POST .../validate` | MEDIUM | ✅ READY | Test #4 — list, validate (checks `valid: true`), toggle (checks `isActive: false`) | Validate must run before toggle |
-| 05 | Add-ons | `/addons` | `GET /api/dashboard/addons`, `PATCH .../toggle` | LOW | ✅ READY | Test #5 — list + toggle (HTTP 200 only) | ⚠️ No field assertions on list response |
-| 06 | Packages | `/packages` | `GET /api/dashboard/plans` | LOW | ✅ READY | Test #6 — checks `data` is an array | Plans are read-only in contract tests |
-| 07 | Subscriptions | `/subscriptions` | `GET /api/dashboard/subscriptions`, `GET .../audit`, `GET .../lifecycle` | CRITICAL | ✅ READY | Test #7 — list, audit checks `invariants`, lifecycle 200 | Partial pickup invariants fully documented |
-| 08 | One-time Orders | `/one-time-orders` | `GET /api/dashboard/orders` | MEDIUM | ✅ READY | ⚠️ No dedicated test in dashboardContracts.test.js | Covered by existing `oneTimeOrders.test.js` suite |
-| 09 | Operations | `/operations` | `GET /api/dashboard/ops/list`, `GET /api/dashboard/ops/search` | HIGH | ✅ READY | Test #8 — list + search (HTTP 200 only) | ⚠️ No field assertions; action transitions not tested here |
-| 10 | Manual Deduction | `/manual-deduction` | `GET /api/dashboard/ops/cashier/customer-lookup`, `POST /api/dashboard/ops/cashier/customer-consumption` | HIGH | ✅ READY | Test #9 — lookup + consumption (HTTP 200) | Correct route prefix documented (was previously wrong) |
-| 11 | Menu Catalog | `/menu?tab=catalog` | `GET /api/dashboard/menu/preview`, `GET /api/dashboard/menu/versions` | LOW | ✅ READY | Test #10 — preview + versions (HTTP 200) | Publish/diff endpoints not tested |
-| 12 | Delivery | `/delivery` | `GET /api/courier/deliveries/today` | HIGH | ⚠️ NEEDS_TESTS | Test #11 — list (HTTP 200 only) | No E2E fulfillment flow tested. Route prefix is `/api/courier/` not `/api/dashboard/courier/` |
-| 13 | Delivery Zones | `/zones` | `GET /api/dashboard/zones`, `GET .../zones/:id` | LOW | ✅ READY | Test #12 — list + detail (HTTP 200) | ⚠️ No field assertions on zone response body |
-| 14 | App Users | `/users` | `GET /api/dashboard/users`, `GET .../users/:id` | MEDIUM | ✅ READY | Test #13 — list + detail (HTTP 200) | ⚠️ No field assertions on user response body |
-| 15 | Dashboard Users | `/dashboard-users` | `GET /api/dashboard/dashboard-users` | HIGH | ✅ READY | Test #14 — list (HTTP 200 only) | ⚠️ Create/update/delete not tested |
-| 16 | Settings | `/settings` | `GET /api/dashboard/settings`, `GET .../settings/restaurant-hours`, `PATCH /api/dashboard/settings` | HIGH | ✅ READY | Test #15 — get settings, restaurant hours, patch settings | |
-| 17 | Restaurant Hours | `/restaurant-hours` | `GET /api/dashboard/settings/restaurant-hours` | MEDIUM | ✅ READY | Test #15 (shared) — restaurant-hours GET (HTTP 200) | Part of combined settings test |
-| 18 | Pickup Branches | `/pickup-branches` | `GET /api/dashboard/settings` (read), `PATCH /api/dashboard/settings` (write validated) | HIGH | ✅ READY | Test #15 (shared) — settings list and PATCH update | `pickup_locations` fully validated and supported via settings patch |
+| # | Screen | Dashboard Route | Backend Endpoint(s) | Status | Test Coverage | Notes |
+|---|--------|-----------------|---------------------|--------|---------------|-------|
+| 01 | Dashboard Home | `/dashboard` | `GET /api/dashboard/overview` | `READY` | Test #1 | |
+| 02 | Payments | `/payments` | `GET /api/dashboard/payments`, `POST .../payments/:id/verify` | `READY` | Test #2 | |
+| 03 | Accounting | `/accounting` | `GET /api/dashboard/accounting/daily-report`, `GET .../export` | `READY` | Test #3 | |
+| 04 | Promo Codes | `/promo-codes` | `GET /api/dashboard/promo-codes`, `PATCH .../toggle` | `READY` | Test #4 | |
+| 05 | Add-ons | `/addons` | `GET /api/dashboard/addons`, `PATCH .../toggle` | `READY_WITH_LIMITATIONS` | Test #5 | Smoke tests only |
+| 06 | Packages | `/packages` | `GET /api/dashboard/plans` | `READY_WITH_LIMITATIONS` | Test #6 | Smoke tests only |
+| 07 | Subscriptions | `/subscriptions` | `GET /api/dashboard/subscriptions`, `GET .../:id/audit`, `GET .../:id/lifecycle` | `READY` | Test #7, #18 | |
+| 08 | One-time Orders | `/one-time-orders` | `GET /api/dashboard/orders` | `READY_WITH_LIMITATIONS` | Integration Suite | Tested in `oneTimeOrders.test.js` |
+| 09 | Operations | `/operations` | `GET /api/dashboard/ops/list`, `GET /api/dashboard/ops/search` | `READY_WITH_LIMITATIONS` | Test #8 | Smoke tests only |
+| 10 | Manual Deduction | `/manual-deduction` | `GET /api/dashboard/ops/cashier/customer-lookup`, `POST .../customer-consumption` | `READY` | Test #9 | |
+| 11A | Menu Categories | `/menu` (Categories) | `GET /api/dashboard/menu/categories`, `POST .../categories` | `READY_WITH_LIMITATIONS` | Test #10 | |
+| 11B | Menu Products | `/menu` (Products) | `GET /api/dashboard/menu/products`, `POST .../products` | `READY_WITH_LIMITATIONS` | Test #10 | |
+| 11C | Menu Product Customization | `/menu` (Customization) | `GET /api/dashboard/menu/products/:productId/composer?contractVersion=v4` | `READY_WITH_LIMITATIONS` | Test #10 | |
+| 11D | Menu Option Groups | `/menu` (Groups) | `GET /api/dashboard/menu/option-groups`, `POST .../option-groups` | `READY_WITH_LIMITATIONS` | Test #10 | |
+| 11E | Menu Options | `/menu` (Options) | `GET /api/dashboard/menu/options`, `POST .../options` | `READY_WITH_LIMITATIONS` | Test #10 | |
+| 11F | Menu Preview/Release | `/menu` (Preview/Release) | `GET /api/dashboard/menu/preview`, `POST .../publish`, `POST .../rollback/:versionId`, `POST .../validate` | `READY_WITH_LIMITATIONS` | Test #10 | ⚠️ Mismatch: Frontend references `/validation` but backend has `/validate` |
+| 12 | Delivery | `/delivery` | `GET /api/courier/deliveries/today` | `NEEDS_TESTS` | Test #11 (Smoke) | No E2E fulfillment flow tests |
+| 13 | Delivery Zones | `/zones` | `GET /api/dashboard/zones` | `READY_WITH_LIMITATIONS` | Test #12 | Smoke tests only |
+| 14 | App Users | `/users` | `GET /api/dashboard/users` | `READY_WITH_LIMITATIONS` | Test #13 | Smoke tests only |
+| 15 | Dashboard Users | `/dashboard-users` | `GET /api/dashboard/dashboard-users` | `READY_WITH_LIMITATIONS` | Test #14 | Smoke tests only |
+| 16 | Settings | `/settings` | `GET /api/dashboard/settings`, `PATCH /api/dashboard/settings` | `READY` | Test #15 | |
+| 17 | Restaurant Hours | `/restaurant-hours` | `GET /api/dashboard/settings/restaurant-hours` | `READY` | Test #15 | |
+| 18 | Pickup Branches | `/pickup-branches` | `GET /api/dashboard/settings`, `PATCH /api/dashboard/settings` | `READY` | Test #15 | Validated via `pickup_locations` in settings |
+| 19 | Notifications | `/notifications` | `GET /api/dashboard/notifications/summary`, `GET /api/dashboard/notification-logs` | `NEEDS_TESTS` | None | Endpoints verified in backend code |
+| 20 | Profile | `/profile` | `GET /api/dashboard/auth/me`, `POST /api/dashboard/auth/logout` | `NEEDS_TESTS` | None | Endpoints verified in backend code |
 
-### Status Legend
-| Symbol | Meaning |
-|--------|---------|
-| ✅ READY | Endpoint documented, tested, backend verified |
-| ⚠️ NEEDS_TESTS | Endpoint exists, partially tested, gaps remain |
-| 🔴 NEEDS_BACKEND_FIX | Backend bug or missing feature confirmed |
+---
+
+## Screen Status Tag definitions
+
+* **`READY`**: Fully implemented, verified, and backed by comprehensive tests.
+* **`READY_WITH_LIMITATIONS`**: Implemented and functional, but has limited test coverage or specific business assumptions.
+* **`NEEDS_TESTS`**: Implemented on the backend, but lacks automated test validation.
+* **`NEEDS_BACKEND_FIX`**: Endpoint exists but has bugs or misses key capabilities required by the dashboard.
+* **`LEGACY_OR_UNCLEAR`**: Deprecated or legacy behavior.
+* **`OUT_OF_SCOPE`**: Intentionally excluded from the contract pack.
 
 ---
 
