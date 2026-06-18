@@ -435,12 +435,10 @@ async function getSubscriptionMealPlannerMenu(req, res) {
   const data = {
     builderCatalog: appBuilderCatalog,
     addonCatalog: buildAddonCatalogFromLegacyPlannerAddons(legacyPlannerAddons),
+    plannerCatalog: plannerCatalog || { sections: [] },
   };
   if (includeLegacy && builderCatalogV2) {
     data.builderCatalogV2 = builderCatalogV2;
-  }
-  if (includeLegacy && plannerCatalog) {
-    data.plannerCatalog = plannerCatalog;
   }
 
   if (includeLegacy) {

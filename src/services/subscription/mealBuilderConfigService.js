@@ -540,10 +540,35 @@ function serializeSection(section = {}) {
   };
 }
 
-async function getCurrentPublishedConfig({ lean = true, session = null } = {}) {
+async function getCurrentPublishedConfig({ lean = true, session = null, allowVirtualFallback = false } = {}) {
   const query = MealBuilderConfig.findOne({ status: "published", isCurrent: true }).sort({ publishedAt: -1, updatedAt: -1 });
   if (session) query.session(session);
-  return lean ? query.lean() : query;
+  const result = await (lean ? query.lean() : query);
+  if (!result && allowVirtualFallback) {
+    const basicMeal = await MenuProduct.findOne({ key: "basic_meal" }).lean();
+    if (basicMeal) {
+      const sections = await buildDefaultVisualTemplateSections();
+      const virtualConfig = {
+        _id: new mongoose.Types.ObjectId("600000000000000000000001"),
+        status: "published",
+        isCurrent: true,
+        contractVersion: CONTRACT_VERSION,
+        revisionHash: "virtual_canonical_hash",
+        source: "system",
+        createdBySystem: true,
+        publishedAt: new Date("2026-06-18T12:00:00.000Z"),
+        sections,
+        notes: "Virtual canonical fallback config",
+        createdAt: new Date("2026-06-18T12:00:00.000Z"),
+        updatedAt: new Date("2026-06-18T12:00:00.000Z"),
+      };
+      if (!lean) {
+        return new MealBuilderConfig(virtualConfig);
+      }
+      return virtualConfig;
+    }
+  }
+  return result;
 }
 
 async function getCurrentDraftConfig() {
@@ -551,15 +576,42 @@ async function getCurrentDraftConfig() {
 }
 
 async function getDashboardState({ lang = "en" } = {}) {
-  const [draft, published] = await Promise.all([getCurrentDraftConfig(), getCurrentPublishedConfig()]);
+  const [draft, published] = await Promise.all([
+    getCurrentDraftConfig(),
+    getCurrentPublishedConfig({ allowVirtualFallback: true }),
+  ]);
   const [draftValidation, publishedValidation] = await Promise.all([
     draft ? validateConfigObject(draft) : null,
     published ? validateConfigObject(published) : null,
   ]);
+
+  let serializedPublished = published ? serializeConfig(published) : null;
+  if (serializedPublished && published.source === "system") {
+    serializedPublished.createdBySystem = false;
+    serializedPublished.source = "bootstrap";
+  }
+
+  let plannerCatalog = null;
+  if (published) {
+    try {
+      plannerCatalog = await buildPlannerCatalogFromPublishedBuilder({ lang, config: published });
+    } catch (err) {
+      // ignore
+    }
+  }
+  if (!plannerCatalog || !plannerCatalog.sections || !plannerCatalog.sections.length) {
+    const { getSubscriptionBuilderCatalogWithV2 } = require("../catalog/CatalogService");
+    const canonical = await getSubscriptionBuilderCatalogWithV2({ lang, includeV3: true }).catch(() => null);
+    if (canonical && canonical.plannerCatalog) {
+      plannerCatalog = canonical.plannerCatalog;
+    }
+  }
+
   return {
     draft: draft ? serializeConfig(draft) : null,
-    published: published ? serializeConfig(published) : null,
+    published: serializedPublished,
     preview: published ? publicContract(await buildPublishedContract({ config: published, lang, includeUnavailable: true })) : null,
+    plannerCatalog: plannerCatalog || { sections: [] },
     validation: {
       draft: draftValidation,
       published: publishedValidation,
@@ -3010,12 +3062,13 @@ async function buildPlannerCatalogFromPublishedBuilder({ lang = "en", config = n
     catalogHash: stableHash(stablePayload),
     publishedVersionId: null,
     builderRevisionHash: contract.revisionHash,
+    source: published.source || "dashboard",
   };
 }
 
 async function buildPublishedMembership() {
   const published = await getCurrentPublishedConfig();
-  if (!published) return { hasPublishedConfig: false, membership: createEmptyMembership(), revisionHash: null };
+  if (!published || published.source === "system") return { hasPublishedConfig: false, membership: createEmptyMembership(), revisionHash: null };
   const contract = await buildPublishedContract({ config: published, lang: "en" });
   return {
     hasPublishedConfig: true,
@@ -3040,7 +3093,10 @@ function isOptionIncluded(membership, selectionType, productId, groupId, optionI
 }
 
 async function getReadinessReport() {
-  const [draft, published] = await Promise.all([getCurrentDraftConfig(), getCurrentPublishedConfig()]);
+  const [draft, published] = await Promise.all([
+    getCurrentDraftConfig(),
+    getCurrentPublishedConfig({ allowVirtualFallback: true }),
+  ]);
   if (!published) {
     const errors = [{ level: "error", code: "MEAL_BUILDER_NOT_PUBLISHED", message: "No published Meal Builder config exists" }];
     if (!draft) errors.unshift({ level: "error", code: "MEAL_BUILDER_DRAFT_NOT_FOUND", message: "No current Meal Builder draft exists" });

@@ -158,7 +158,8 @@ function expectStatus(res, status, label) {
 
 function assertBuilderCatalogV3Payload(data) {
   assert(data && data.builderCatalog, "v3 payload has builderCatalog");
-  assert.strictEqual(data.plannerCatalog, undefined, "normal payload does not expose plannerCatalog");
+  assert(data.plannerCatalog, "normal payload has plannerCatalog");
+  assert(Array.isArray(data.plannerCatalog.sections) && data.plannerCatalog.sections.length > 0, "plannerCatalog has sections");
   assert.strictEqual(data.builderCatalogV2, undefined, "normal payload does not expose builderCatalogV2");
   for (const key of ["categories", "proteins", "carbs", "premiumProteins", "premiumLargeSalad"]) {
     assert.strictEqual(data.builderCatalog[key], undefined, `v3 builderCatalog omits legacy ${key}`);
@@ -252,7 +253,8 @@ async function main() {
 
     res = await api.get("/api/subscriptions/meal-planner-menu?lang=en");
     expectStatus(res, 200, "planner menu after builder publish");
-    assert.strictEqual(res.body.data.plannerCatalog, undefined, "normal response omits plannerCatalog");
+    assert(res.body.data.plannerCatalog, "normal response has plannerCatalog");
+    assert(Array.isArray(res.body.data.plannerCatalog.sections) && res.body.data.plannerCatalog.sections.length > 0, "plannerCatalog has sections");
     assert.strictEqual(res.body.data.builderCatalogV2, undefined, "normal response omits builderCatalogV2");
     const planner = res.body.data.builderCatalog;
     assert.strictEqual(planner.contractVersion, "meal_planner_menu.v3");
