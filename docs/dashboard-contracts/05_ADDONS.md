@@ -2,46 +2,110 @@
 
 This contract defines how the Dashboard frontend should render and manage add-on items, add-on subscription plans, linked menu products, and plan-based add-on pricing.
 
+This document is a Dashboard Frontend handoff. It describes request payloads, response shapes, validation rules, and UI usage rules. It does not require the frontend team to inspect backend implementation files.
+
+## Authentication
+
+All endpoints in this document are Dashboard endpoints and must be called with the existing Dashboard authentication/authorization headers used by the admin dashboard.
+
+```http
+Authorization: Bearer <dashboard_admin_token>
+Content-Type: application/json
+```
+
 ## Core Concepts
 
 ### 1. Add-on Item
-* A one-time sellable item.
+
+An Add-on Item is a one-time sellable add-on item.
+
+Key rules:
+
 * Appears under `data.items`.
-* Has direct price fields such as `priceHalala`, `priceSar`, `priceLabel`.
 * Uses `kind: "item"`.
 * Backend derives `type: "one_time"`.
+* Has direct price fields:
+  * `priceHalala`
+  * `priceSar`
+  * `priceLabel`
+* `priceHalala` is the editable canonical price field.
+* `priceSar` and `priceLabel` are read-only display fields.
+
+Example items:
+
+* Mango Juice
+* Apple Juice
+* Orange Juice
+* Protein Snack
+* Healthy Dessert
+* Snack Box
 
 ### 2. Add-on Subscription Plan
-* A subscription add-on selected with a base subscription plan.
+
+An Add-on Subscription Plan is a subscription add-on sold with a base subscription plan.
+
+Key rules:
+
 * Appears under `data.plans`.
 * Uses `kind: "plan"`.
 * Backend derives `type: "subscription"`.
-* Does not use direct price as the source of truth.
+* Does not use a top-level direct price as the source of truth.
 * Uses `planPrices[]` for pricing by base subscription plan.
-* Has linked `menuProducts[]` that define what the customer can select later.
+* Uses `menuProducts[]` to define the products the customer can select later.
+* `pricingMode` should be `"base_plan_matrix"`.
+
+Example plans:
+
+* Juice Subscription
+* Snack Subscription
+* Small Salad Subscription
 
 ### 3. Linked Menu Products
-* These are nested under each add-on subscription plan.
+
+Linked Menu Products are the actual catalog products attached to an Add-on Subscription Plan.
+
+Key rules:
+
+* Nested under each add-on subscription plan as `menuProducts[]`.
+* Submitted by the Dashboard frontend as `menuProductIds[]`.
 * They are not top-level add-on purchase cards.
-* The dashboard uses them to show/edit which products belong to an add-on plan.
-* Example: Juice Subscription can include Orange Juice, Apple Juice, Mango Juice.
-* Example: Small Salad Subscription can include Green Salad - 100g.
+* They define what the customer can select later under the purchased add-on entitlement.
+
+Examples:
+
+* Juice Subscription can include Orange Juice, Apple Juice, Mango Juice.
+* Small Salad Subscription can include Green Salad - 100g.
+* Snack Subscription can include Protein Snack, Healthy Dessert, Snack Box.
 
 ### 4. Plan Prices
+
+Plan Prices are the add-on subscription pricing matrix rows.
+
+Key rules:
+
 * Nested under each add-on subscription plan as `planPrices[]`.
 * Each row maps one add-on plan to one base subscription plan.
-* Price is flat package price for that base plan.
-* Do not multiply by days or meals in frontend.
-* Do not calculate final quote in frontend.
+* Each row uses:
+  * `basePlanId`
+  * `priceHalala`
+  * `isActive`
+* Price is a flat package price for that base plan.
+* Frontend must not multiply this price by days.
+* Frontend must not multiply this price by meals.
+* Frontend must not calculate customer quote totals from this page.
 
 ## Primary Dashboard Read Endpoint
 
-GET `/api/dashboard/addons`
+```http
+GET /api/dashboard/addons
+```
 
-**Purpose**: 
+### Purpose
+
 Loads the full Add-ons dashboard screen.
 
-The dashboard must use this endpoint as the main source of truth for:
+The Dashboard frontend must use this endpoint as the main source of truth for:
+
 * one-time add-on items
 * subscription add-on plans
 * linked menu products
@@ -49,7 +113,7 @@ The dashboard must use this endpoint as the main source of truth for:
 * category select options
 * summary counts
 
-**Important**: The Dashboard frontend should not call `/api/dashboard/addon-prices` to render the main Add-ons screen.
+The Dashboard Add-ons screen must not call `/api/dashboard/addon-prices` to render the main screen.
 
 ### Response Shape
 
@@ -179,118 +243,215 @@ The dashboard must use this endpoint as the main source of truth for:
 }
 ```
 
-*Note: All IDs in examples are placeholders. The dashboard must use IDs returned by the relevant read/picker endpoints:*
-* *add-on IDs from `GET /api/dashboard/addons`*
-* *menu product IDs from the menu products picker endpoint*
-* *base plan IDs from the base plans picker endpoint*
+### ID Source Note
 
-### Field Reference Table
+All IDs in examples are placeholders. The Dashboard frontend must use IDs returned by the relevant read/picker endpoints:
 
-**`data.items[]`**
+* add-on item/plan IDs from `GET /api/dashboard/addons`
+* menu product IDs from `GET /api/dashboard/menu/products`
+* base subscription plan IDs from `GET /api/dashboard/plans`
+
+## Field Reference
+
+### `data.items[]`
+
 | Field | Type | Meaning | Frontend Usage | Read/Write |
 |---|---|---|---|---|
-| `id` / `_id` | string | Unique identifier | Used for updates/toggles | Read-only |
-| `kind` | string | Always `"item"` | Differentiates items from plans | Read-only |
-| `type` | string | Always `"one_time"` | Derived type | Read-only |
-| `name` | object | Localized `{ ar, en }` name | Display in lists | Writeable |
-| `category` | string | Add-on category | Display / Edit | Writeable |
-| `priceHalala`| number | Price in halala | Edit field value | Writeable |
-| `priceSar` | number | Price in SAR | Display | Read-only |
-| `priceLabel` | string | Formatted price string | Display | Read-only |
+| `id` / `_id` | string | Add-on item ID | Use for update, toggle, delete | Read-only |
+| `kind` | string | Always `"item"` | Distinguish item from plan | Read-only |
+| `type` | string | Always `"one_time"` | Display/debug context | Read-only |
+| `name` | object | Localized `{ ar, en }` name | Display/edit | Writable |
+| `category` | string | Item category | Display/edit | Writable |
+| `priceHalala` | number | Canonical price in halala | Form input | Writable |
+| `priceSar` | number | Price in SAR | Display only | Read-only |
+| `priceLabel` | string | Formatted price | Display only | Read-only |
 | `currency` | string | Currency code | Display context | Read-only |
-| `isActive` | boolean | Toggle status | Status badge / toggle | Writeable |
+| `isActive` | boolean | Active/disabled status | Status badge/toggle | Writable |
 
-**`data.plans[]`**
+### `data.plans[]`
+
 | Field | Type | Meaning | Frontend Usage | Read/Write |
 |---|---|---|---|---|
-| `id` / `_id` | string | Unique identifier | Used for updates/toggles | Read-only |
-| `kind` | string | Always `"plan"` | Differentiates plans from items | Read-only |
-| `type` | string | Always `"subscription"` | Derived type | Read-only |
-| `name` | object | Localized `{ ar, en }` name | Display in lists | Writeable |
-| `category` | string | Plan category | Display / Edit | Writeable |
-| `maxPerDay` | number | Daily entitlement limit | Edit field value | Writeable |
-| `pricingMode`| string | `"base_plan_matrix"` | Internal mode | Read-only |
-| `menuProductIds` | array | Linked product IDs | Form submission payload | Writeable |
-| `menuProductsCount` | number | Total linked products | Summary display | Read-only |
-| `planPricesCount` | number | Total pricing matrix rows | Summary display | Read-only |
-| `isActive` | boolean | Toggle status | Status badge / toggle | Writeable |
+| `id` / `_id` | string | Add-on plan ID | Use for update, toggle, delete | Read-only |
+| `kind` | string | Always `"plan"` | Distinguish plan from item | Read-only |
+| `type` | string | Always `"subscription"` | Display/debug context | Read-only |
+| `name` | object | Localized `{ ar, en }` name | Display/edit | Writable |
+| `category` | string | Add-on plan entitlement category | Select input | Writable |
+| `maxPerDay` | number | Daily entitlement limit | Form input | Writable |
+| `pricingMode` | string | Usually `"base_plan_matrix"` | Display/debug context | Read-only |
+| `menuProductIds` | string[] | Linked menu product IDs | Multi-select value | Writable |
+| `menuProductsCount` | number | Number of linked products | Summary display | Read-only |
+| `menuProducts` | array | Linked menu product details | Preview/display | Read-only |
+| `planPricesCount` | number | Number of matrix rows | Summary display | Read-only |
+| `planPrices` | array | Matrix price rows | Price matrix display/edit | Writable via payload |
+| `isActive` | boolean | Active/disabled status | Status badge/toggle | Writable |
 
-**`data.plans[].menuProducts[]`**
+### `data.plans[].menuProducts[]`
+
 | Field | Type | Meaning | Frontend Usage | Read/Write |
 |---|---|---|---|---|
-| `id` / `_id` | string | Product ID | Matches `menuProductIds` | Read-only |
-| `key` | string | Internal unique key | Context | Read-only |
-| `name` | object | Localized `{ ar, en }` name | Display in product lists | Read-only |
-| `image` | string | Product image URL | Thumbnail display | Read-only |
-| `category` | string | Menu category (e.g. `drinks`) | Grouping | Read-only |
-| `isActive` | boolean | Product active status | Filtering / Warning | Read-only |
+| `id` / `_id` | string | Menu product ID | Matches `menuProductIds[]` | Read-only |
+| `key` | string | Product key | Debug/context | Read-only |
+| `name` | object | Localized `{ ar, en }` name | Product label | Read-only |
+| `image` | string | Product image URL | Thumbnail | Read-only |
+| `category` | string | Menu catalog category | Group/filter display | Read-only |
+| `isActive` | boolean | Product active status | Warning/filter display | Read-only |
 
-**`data.plans[].planPrices[]`**
+### `data.plans[].planPrices[]`
+
 | Field | Type | Meaning | Frontend Usage | Read/Write |
 |---|---|---|---|---|
-| `id` / `_id` | string | Matrix row ID | Identifying the row | Read-only |
-| `addonPlanId` | string | ID of this plan | Context | Read-only |
-| `basePlanId` | string | Target base plan ID | Form submission payload | Writeable |
-| `basePlanName` | object | Localized name of base plan| Label for pricing row | Read-only |
-| `daysCount` | number | Base plan days | Context | Read-only |
-| `mealsCount` | number | Base plan meals | Context | Read-only |
-| `basePlanPriceHalala` | number | Price of base plan | Context | Read-only |
-| `priceHalala`| number | Flat addon package price | Edit field value | Writeable |
-| `priceSar` | number | Addon package price (SAR) | Display | Read-only |
-| `priceLabel` | string | Addon package price label | Display | Read-only |
+| `id` / `_id` | string | Matrix row ID | Display/debug context | Read-only |
+| `addonPlanId` | string | Parent add-on plan ID | Context | Read-only |
+| `basePlanId` | string | Base subscription plan ID | Payload value | Writable |
+| `basePlanName` | object | Localized base plan name | Matrix row label | Read-only |
+| `daysCount` | number | Base plan days | Context only | Read-only |
+| `mealsCount` | number | Base plan meals | Context only | Read-only |
+| `basePlanPriceHalala` | number | Base plan price in halala | Context only | Read-only |
+| `priceHalala` | number | Flat add-on package price | Price input | Writable |
+| `priceSar` | number | Price in SAR | Display only | Read-only |
+| `priceLabel` | string | Formatted price | Display only | Read-only |
 | `currency` | string | Currency code | Context | Read-only |
-| `isActive` | boolean | Status of pricing row | Toggle | Writeable |
+| `isActive` | boolean | Matrix row status | Price row toggle | Writable |
 
-**`data.meta.addonPlanCategories[]`**
+### `data.meta.addonPlanCategories[]`
+
 | Field | Type | Meaning | Frontend Usage | Read/Write |
 |---|---|---|---|---|
-| `key` | string | Strict category value | Internal select value | Read-only |
-| `label` | object | Localized `{ ar, en }` name | Select option text | Read-only |
-| `description`| object | Localized `{ ar, en }` desc | Select option subtext | Read-only |
+| `key` | string | Strict category value | Select value | Read-only |
+| `label` | object | Localized `{ ar, en }` label | Select option text | Read-only |
+| `description` | object | Localized `{ ar, en }` description | Select subtext/helper | Read-only |
 
-**`data.summary`**
+### `data.summary`
+
 | Field | Type | Meaning | Frontend Usage | Read/Write |
 |---|---|---|---|---|
-| `itemsCount` | number | Rendered items | Info display | Read-only |
-| `plansCount` | number | Rendered plans | Info display | Read-only |
-| `matrixRowsCount` | number | Total pricing rows | Info display | Read-only |
-| `currency` | string | Default currency | Context | Read-only |
+| `itemsCount` | number | Number of displayed one-time items | Summary card | Read-only |
+| `plansCount` | number | Number of displayed subscription plans | Summary card | Read-only |
+| `matrixRowsCount` | number | Total displayed matrix rows | Summary card | Read-only |
+| `currency` | string | Default currency | Display context | Read-only |
 
 ## Category Rules
 
-For add-on subscription plans, category is a strict backend-defined enum.
+For add-on subscription plans, `category` is a strict backend-defined enum.
 
-**Allowed values**:
+Allowed plan category values:
+
 * `juice`
 * `small_salad`
 * `snack`
 
-Dashboard must render the plan category field as a Select using:
-`data.meta.addonPlanCategories`
+The Dashboard frontend must render the plan category field as a Select using:
 
-**Important distinction**:
+```txt
+data.meta.addonPlanCategories
+```
+
+Important distinction:
+
 * `plan.category` is the add-on entitlement category.
 * `menuProducts[].category` is the menu product catalog category.
 * These are different concepts and must not be mixed.
 
-Do not hardcode category labels in frontend if backend provides `meta.addonPlanCategories`.
+Do not hardcode add-on plan category labels if `data.meta.addonPlanCategories` is available.
 
-**Invalid examples**:
+Invalid plan category examples:
+
 * `proteins`
 * `sandwiches`
 * `addons`
 * `salads`
 * `desert`
 
-These must not be sent as add-on plan categories.
+These values must not be submitted as add-on subscription plan categories.
+
+## Menu Products Picker Source
+
+```http
+GET /api/dashboard/menu/products
+```
+
+### Purpose
+
+Fetches menu products for the multi-select used when linking products to add-on subscription plans.
+
+### Minimal Response Shape
+
+```json
+{
+  "status": true,
+  "data": [
+    {
+      "id": "menu_product_id_example",
+      "_id": "menu_product_id_example",
+      "key": "orange_juice",
+      "name": {
+        "ar": "عصير برتقال",
+        "en": "Orange Juice"
+      },
+      "category": "drinks",
+      "isActive": true
+    }
+  ]
+}
+```
+
+### Frontend Usage
+
+* Render a multi-select using `name` and `category`.
+* Use `data[].id` as the selected value.
+* Submit selected IDs as `menuProductIds[]` in:
+  * `POST /api/dashboard/addons`
+  * `PUT /api/dashboard/addons/:id`
+
+## Base Plans Picker Source
+
+```http
+GET /api/dashboard/plans
+```
+
+### Purpose
+
+Fetches base subscription plans for the add-on pricing matrix.
+
+### Minimal Response Shape
+
+```json
+{
+  "status": true,
+  "data": [
+    {
+      "id": "base_plan_id_example",
+      "_id": "base_plan_id_example",
+      "name": {
+        "ar": "اشتراك 7 أيام",
+        "en": "7-Day Meal Subscription"
+      },
+      "isActive": true
+    }
+  ]
+}
+```
+
+### Frontend Usage
+
+* Render one matrix row per active/sellable base subscription plan.
+* Use `data[].id` as `planPrices[].basePlanId`.
+* Each row submitted to `POST`/`PUT /api/dashboard/addons` should include:
+  * `basePlanId`
+  * `priceHalala`
+  * `isActive`
 
 ## Create Add-on Item
 
-POST `/api/dashboard/addons`
+```http
+POST /api/dashboard/addons
+```
 
-Use this when creating a one-time add-on item.
+Use this endpoint to create a one-time add-on item.
 
-**Payload**:
+### Payload
+
 ```json
 {
   "kind": "item",
@@ -304,15 +465,20 @@ Use this when creating a one-time add-on item.
 }
 ```
 
-**Rules**:
+### Payload Rules
+
 * `kind` is required.
-* `name.ar` and `name.en` are required.
-* `priceHalala` is required for `kind: "item"`.
-* `priceHalala` is integer halala.
-* `priceSar` and `priceLabel` are read-only response fields.
+* `kind` must be `"item"`.
+* `name.ar` is required.
+* `name.en` is required.
+* `priceHalala` is required.
+* `priceHalala` must be an integer halala amount.
+* `priceSar` is read-only and must not be submitted.
+* `priceLabel` is read-only and must not be submitted.
 * Backend derives `type: "one_time"`.
 
-**Expected success response**:
+### Success Response
+
 ```json
 {
   "status": true,
@@ -337,11 +503,14 @@ Use this when creating a one-time add-on item.
 
 ## Create Add-on Subscription Plan
 
-POST `/api/dashboard/addons`
+```http
+POST /api/dashboard/addons
+```
 
-Use this when creating a subscription add-on plan with linked menu products and pricing matrix rows in one request.
+Use this endpoint to create a subscription add-on plan with linked menu products and pricing matrix rows in one request.
 
-**Payload**:
+### Payload
+
 ```json
 {
   "kind": "plan",
@@ -378,19 +547,44 @@ Use this when creating a subscription add-on plan with linked menu products and 
 }
 ```
 
-**Rules**:
+### Payload Rules
+
 * `kind` is required.
 * `kind` must be `"plan"`.
-* `category` must be one of `juice`, `small_salad`, `snack`.
-* `menuProductIds` are required for `kind: "plan"`.
-* `planPrices` are required for `kind: "plan"`.
+* `name.ar` is required.
+* `name.en` is required.
+* `category` is required.
+* `category` must be one of:
+  * `juice`
+  * `small_salad`
+  * `snack`
+* `menuProductIds` is required by the Dashboard contract.
+* `menuProductIds` must be a non-empty array.
+* `planPrices` is required by the Dashboard contract.
+* `planPrices` must be a non-empty array.
 * `planPrices[].basePlanId` is required.
 * `planPrices[].priceHalala` is required.
-* `priceHalala` at top level is not the pricing source for `kind: "plan"`.
+* `planPrices[].priceHalala` must be an integer halala amount.
+* `planPrices[].isActive` is optional; default UI value should be `true`.
+* Top-level `priceHalala` is not the pricing source for `kind: "plan"`.
 * Frontend must not multiply add-on plan prices by days or meals.
 * Backend derives `type: "subscription"`.
 
-**Expected success response**:
+### Frontend Submit Blocking Rules
+
+The Dashboard frontend must block submit before calling the API if:
+
+* `menuProductIds` is missing.
+* `menuProductIds` is empty.
+* `planPrices` is missing.
+* `planPrices` is empty.
+* any `planPrices[].basePlanId` is missing.
+* any `planPrices[].priceHalala` is missing or not an integer.
+
+Backend compatibility behavior must not be used as Dashboard behavior. Even if a permissive backend accepts an incomplete payload, the Dashboard UI must treat incomplete add-on plans as invalid.
+
+### Success Response
+
 ```json
 {
   "status": true,
@@ -418,7 +612,10 @@ Use this when creating a subscription add-on plan with linked menu products and 
         "id": "orange_juice_product_id",
         "_id": "orange_juice_product_id",
         "key": "orange_juice",
-        "name": { "ar": "عصير برتقال", "en": "Orange Juice" },
+        "name": {
+          "ar": "عصير برتقال",
+          "en": "Orange Juice"
+        },
         "image": "",
         "category": "drinks",
         "isActive": true
@@ -431,7 +628,10 @@ Use this when creating a subscription add-on plan with linked menu products and 
         "_id": "price_row_id_1",
         "addonPlanId": "new_plan_id_example",
         "basePlanId": "seven_day_base_plan_id",
-        "basePlanName": { "ar": "اشتراك 7 أيام", "en": "7-Day Meal Subscription" },
+        "basePlanName": {
+          "ar": "اشتراك 7 أيام",
+          "en": "7-Day Meal Subscription"
+        },
         "daysCount": 7,
         "mealsCount": 14,
         "basePlanPriceHalala": 34800,
@@ -448,11 +648,14 @@ Use this when creating a subscription add-on plan with linked menu products and 
 
 ## Update Add-on Item
 
-PUT `/api/dashboard/addons/:id`
+```http
+PUT /api/dashboard/addons/:id
+```
 
-Use this to update a one-time add-on item.
+Use this endpoint to update a one-time add-on item.
 
-**Payload**:
+### Payload
+
 ```json
 {
   "kind": "item",
@@ -466,18 +669,48 @@ Use this to update a one-time add-on item.
 }
 ```
 
-**Rules**:
+### Payload Rules
+
 * Send the full current editable item state.
+* `kind` must be `"item"`.
 * `priceHalala` remains the direct item price.
+* `priceSar` and `priceLabel` are read-only and must not be submitted.
 * Response returns the updated item.
+
+### Success Response
+
+```json
+{
+  "status": true,
+  "data": {
+    "id": "item_id_example",
+    "_id": "item_id_example",
+    "kind": "item",
+    "type": "one_time",
+    "name": {
+      "ar": "عصير مانجو",
+      "en": "Mango Juice"
+    },
+    "category": "juice",
+    "priceHalala": 1200,
+    "priceSar": 12,
+    "priceLabel": "12 SAR",
+    "currency": "SAR",
+    "isActive": true
+  }
+}
+```
 
 ## Update Add-on Subscription Plan
 
-PUT `/api/dashboard/addons/:id`
+```http
+PUT /api/dashboard/addons/:id
+```
 
-Use this to update a subscription add-on plan and its aggregate relations in one request.
+Use this endpoint to update a subscription add-on plan and its aggregate relations in one request.
 
-**Payload**:
+### Payload
+
 ```json
 {
   "kind": "plan",
@@ -514,62 +747,229 @@ Use this to update a subscription add-on plan and its aggregate relations in one
 }
 ```
 
-**Rules**:
-* This request updates plan metadata, linked menu products, and plan prices.
+### Payload Rules
+
+* Send the full current editable plan state.
+* `kind` must be `"plan"`.
+* This request updates:
+  * plan metadata
+  * linked menu products
+  * plan price matrix rows
+  * active status
+* `menuProductIds` must be a non-empty array.
+* `planPrices` must be a non-empty array.
 * Frontend should not call separate pricing-row endpoints for normal plan editing.
 * Response returns the updated full plan with nested `menuProducts` and `planPrices`.
 
-## Toggle / Delete / Status
+### Success Response
 
-* `PATCH /api/dashboard/addons/:id/toggle`
-  * **Purpose**: Toggles the `isActive` status of an add-on item or plan.
-  * **Payload**: None required.
-  * **Expected success response**: Returns the updated add-on object with the new `isActive` boolean.
-  * **Frontend behavior**: Automatically updates the status without requiring a full re-fetch or form submission.
-
-* `DELETE /api/dashboard/addons/:id`
-  * **Purpose**: Soft-deactivates an add-on item or plan.
-  * **Payload**: None required.
-  * **Expected success response**:
-    ```json
-    {
-      "status": true,
-      "data": {
-        "id": "addon_id_example",
-        "isActive": false
-      }
-    }
-    ```
-  * **Frontend behavior**: Removes the item/plan from the active view or marks it as deleted/disabled in the UI.
-
-## Secondary Pricing Row Endpoints
-
-The endpoints for `/api/dashboard/addon-prices` are for **secondary/advanced use only**.
-
-**Important wording**:
-The Dashboard Add-ons screen should use `GET /api/dashboard/addons` as its main read model.
-The main Add-ons page must not use `/api/dashboard/addon-prices` for rendering.
-Normal add-on plan create/update operations must use the primary `/api/dashboard/addons` endpoints with nested `planPrices` arrays.
-
-**Usage context**:
-These endpoints are designed for bulk pricing updates or specialized matrix inspection tools, not for standard plan configuration.
-
-## Validation Errors
-
-### 1. Unknown plan category
-
-**Payload**:
 ```json
 {
-  "kind": "plan",
-  "name": { "ar": "خطة", "en": "Plan" },
-  "category": "proteins"
+  "status": true,
+  "data": {
+    "id": "addon_plan_id_example",
+    "_id": "addon_plan_id_example",
+    "kind": "plan",
+    "type": "subscription",
+    "name": {
+      "ar": "اشتراك العصير",
+      "en": "Juice Subscription"
+    },
+    "category": "juice",
+    "maxPerDay": 1,
+    "pricingMode": "base_plan_matrix",
+    "menuProductIds": [
+      "orange_juice_product_id",
+      "apple_juice_product_id",
+      "mango_juice_product_id"
+    ],
+    "isActive": true,
+    "menuProductsCount": 3,
+    "menuProducts": [
+      {
+        "id": "orange_juice_product_id",
+        "_id": "orange_juice_product_id",
+        "key": "orange_juice",
+        "name": {
+          "ar": "عصير برتقال",
+          "en": "Orange Juice"
+        },
+        "image": "",
+        "category": "drinks",
+        "isActive": true
+      }
+    ],
+    "planPricesCount": 3,
+    "planPrices": [
+      {
+        "id": "price_row_id_1",
+        "_id": "price_row_id_1",
+        "addonPlanId": "addon_plan_id_example",
+        "basePlanId": "seven_day_base_plan_id",
+        "basePlanName": {
+          "ar": "اشتراك 7 أيام",
+          "en": "7-Day Meal Subscription"
+        },
+        "daysCount": 7,
+        "mealsCount": 14,
+        "basePlanPriceHalala": 34800,
+        "priceHalala": 10000,
+        "priceSar": 100,
+        "priceLabel": "100 SAR",
+        "currency": "SAR",
+        "isActive": true
+      }
+    ]
+  }
 }
 ```
 
-**Expected**: HTTP 400
+## Toggle / Delete / Status
 
-**Example response**:
+### Toggle Add-on Status
+
+```http
+PATCH /api/dashboard/addons/:id/toggle
+```
+
+#### Purpose
+
+Toggles the `isActive` status of an add-on item or add-on subscription plan.
+
+#### Payload
+
+No JSON body is required.
+
+#### Success Response
+
+```json
+{
+  "status": true,
+  "data": {
+    "id": "addon_id_example",
+    "_id": "addon_id_example",
+    "isActive": false
+  }
+}
+```
+
+#### Frontend Behavior
+
+* Update the status badge from the returned `isActive`.
+* Optionally remove inactive records from the active view.
+* Refetch `GET /api/dashboard/addons` if the UI needs fully refreshed nested plan data.
+
+### Delete Add-on
+
+```http
+DELETE /api/dashboard/addons/:id
+```
+
+#### Purpose
+
+Soft-deactivates an add-on item or add-on subscription plan.
+
+#### Payload
+
+No JSON body is required.
+
+#### Success Response
+
+```json
+{
+  "status": true,
+  "data": {
+    "id": "addon_id_example",
+    "isActive": false
+  }
+}
+```
+
+#### Frontend Behavior
+
+* Treat this as a soft delete.
+* Remove the item/plan from the active view or mark it as disabled.
+* Do not assume the record was physically removed from the database.
+
+## Secondary Pricing Row Endpoints
+
+The `/api/dashboard/addon-prices` endpoint group is secondary/advanced only.
+
+The Dashboard Add-ons screen must use:
+
+```http
+GET /api/dashboard/addons
+```
+
+as its main read model.
+
+Rules:
+
+* The main Add-ons page must not use `/api/dashboard/addon-prices` for rendering.
+* Normal add-on plan creation must use `POST /api/dashboard/addons` with nested `planPrices[]`.
+* Normal add-on plan updates must use `PUT /api/dashboard/addons/:id` with nested `planPrices[]`.
+* `/api/dashboard/addon-prices` may be used only for advanced/bulk matrix tooling if such UI exists.
+
+## Success and Error Response Shapes
+
+### Success Shape
+
+Successful responses use:
+
+```json
+{
+  "status": true,
+  "data": {}
+}
+```
+
+### Validation Error Shape
+
+Validation errors use:
+
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "INVALID",
+    "message": "Human readable error message"
+  }
+}
+```
+
+The frontend should display `error.message` to the operator and may use `error.code` for conditional handling.
+
+## Validation Rules and Errors
+
+### 1. Unknown plan category
+
+#### Bad Payload
+
+```json
+{
+  "kind": "plan",
+  "name": {
+    "ar": "خطة",
+    "en": "Plan"
+  },
+  "category": "proteins",
+  "menuProductIds": ["menu_product_id"],
+  "planPrices": [
+    {
+      "basePlanId": "base_plan_id",
+      "priceHalala": 1000,
+      "isActive": true
+    }
+  ]
+}
+```
+
+#### Expected
+
+HTTP 400
+
+#### Example Response
+
 ```json
 {
   "ok": false,
@@ -580,23 +980,29 @@ These endpoints are designed for bulk pricing updates or specialized matrix insp
 }
 ```
 
-### 2. Missing planPrices for kind: "plan"
+### 2. Invalid `planPrices` type
 
-If `planPrices` is sent but is not an array:
+#### Bad Payload
 
-**Payload**:
 ```json
 {
   "kind": "plan",
-  "name": { "ar": "خطة", "en": "Plan" },
+  "name": {
+    "ar": "خطة",
+    "en": "Plan"
+  },
   "category": "juice",
+  "menuProductIds": ["menu_product_id"],
   "planPrices": "invalid_type"
 }
 ```
 
-**Expected**: HTTP 400
+#### Expected
 
-**Example response**:
+HTTP 400
+
+#### Example Response
+
 ```json
 {
   "ok": false,
@@ -607,22 +1013,35 @@ If `planPrices` is sent but is not an array:
 }
 ```
 
-*(Note: If `planPrices` is omitted entirely, the backend accepts the payload and creates a plan with zero pricing rows. The dashboard frontend should enforce the presence of prices before submission.)*
+### 3. Invalid `menuProductIds` type
 
-### 3. Missing menuProductIds for kind: "plan"
+#### Bad Payload
 
-If `menuProductIds` is sent but is not an array (during an update):
-
-**Payload**:
 ```json
 {
-  "menuProductIds": "invalid_type"
+  "kind": "plan",
+  "name": {
+    "ar": "خطة",
+    "en": "Plan"
+  },
+  "category": "juice",
+  "menuProductIds": "invalid_type",
+  "planPrices": [
+    {
+      "basePlanId": "base_plan_id",
+      "priceHalala": 1000,
+      "isActive": true
+    }
+  ]
 }
 ```
 
-**Expected**: HTTP 400
+#### Expected
 
-**Example response**:
+HTTP 400
+
+#### Example Response
+
 ```json
 {
   "ok": false,
@@ -633,22 +1052,27 @@ If `menuProductIds` is sent but is not an array (during an update):
 }
 ```
 
-*(Note: If omitted entirely during creation, the backend defaults to an empty array without throwing an error.)*
+### 4. Missing `priceHalala` for `kind: "item"`
 
-### 4. Missing priceHalala for kind: "item"
+#### Bad Payload
 
-**Payload**:
 ```json
 {
   "kind": "item",
-  "name": { "ar": "عنصر", "en": "Item" },
+  "name": {
+    "ar": "عنصر",
+    "en": "Item"
+  },
   "category": "juice"
 }
 ```
 
-**Expected**: HTTP 400
+#### Expected
 
-**Example response**:
+HTTP 400
+
+#### Example Response
+
 ```json
 {
   "ok": false,
@@ -659,26 +1083,35 @@ If `menuProductIds` is sent but is not an array (during an update):
 }
 ```
 
-### 5. Invalid basePlanId
+### 5. Invalid `basePlanId`
 
-**Payload**:
+#### Bad Payload
+
 ```json
 {
   "kind": "plan",
-  "name": { "ar": "خطة", "en": "Plan" },
+  "name": {
+    "ar": "خطة",
+    "en": "Plan"
+  },
   "category": "juice",
+  "menuProductIds": ["menu_product_id"],
   "planPrices": [
     {
       "basePlanId": "invalid_mongo_id",
-      "priceHalala": 1000
+      "priceHalala": 1000,
+      "isActive": true
     }
   ]
 }
 ```
 
-**Expected**: HTTP 400
+#### Expected
 
-**Example response**:
+HTTP 400
+
+#### Example Response
+
 ```json
 {
   "ok": false,
@@ -689,21 +1122,35 @@ If `menuProductIds` is sent but is not an array (during an update):
 }
 ```
 
-### 6. Invalid menuProductId
+### 6. Invalid `menuProductId`
 
-**Payload**:
+#### Bad Payload
+
 ```json
 {
   "kind": "plan",
-  "name": { "ar": "خطة", "en": "Plan" },
+  "name": {
+    "ar": "خطة",
+    "en": "Plan"
+  },
   "category": "juice",
-  "menuProductIds": ["invalid_mongo_id"]
+  "menuProductIds": ["invalid_mongo_id"],
+  "planPrices": [
+    {
+      "basePlanId": "base_plan_id",
+      "priceHalala": 1000,
+      "isActive": true
+    }
+  ]
 }
 ```
 
-**Expected**: HTTP 400
+#### Expected
 
-**Example response**:
+HTTP 400
+
+#### Example Response
+
 ```json
 {
   "ok": false,
@@ -714,117 +1161,92 @@ If `menuProductIds` is sent but is not an array (during an update):
 }
 ```
 
-## Menu Products Picker Source
-
-**Endpoint**: `GET /api/dashboard/menu/products`
-**Method**: `GET`
-
-**Purpose**: Fetches the list of all available menu products in the catalog. The dashboard uses this to populate the multi-select dropdown for linking products to add-on subscription plans.
-
-**Minimal response shape**:
-```json
-{
-  "status": true,
-  "data": [
-    {
-      "id": "menu_product_id_example",
-      "_id": "menu_product_id_example",
-      "key": "orange_juice",
-      "name": { "ar": "عصير برتقال", "en": "Orange Juice" },
-      "category": "drinks",
-      "isActive": true
-    }
-  ]
-}
-```
-
-**Frontend guidance**: 
-* Render a multi-select list using `name` and `category` from the response.
-* Use `data[].id` as the selected values.
-* The selected values are submitted as `menuProductIds[]` in `POST` / `PUT` `/api/dashboard/addons`.
-
-## Base Plans Picker Source
-
-**Endpoint**: `GET /api/dashboard/plans`
-**Method**: `GET`
-
-**Purpose**: Fetches the list of base subscription plans. The dashboard uses this to render the pricing matrix configuration rows for add-on subscription plans.
-
-**Minimal response shape**:
-```json
-{
-  "status": true,
-  "data": [
-    {
-      "id": "base_plan_id_example",
-      "_id": "base_plan_id_example",
-      "name": { "ar": "اشتراك 7 أيام", "en": "7-Day Meal Subscription" },
-      "isActive": true
-    }
-  ]
-}
-```
-
-**Frontend guidance**:
-* Filter for active, sellable base plans.
-* For every sellable base subscription plan, render one matrix row containing: `basePlanId + priceHalala + isActive`.
-* Use `data[].id` from the picker response as the `planPrices[].basePlanId` when submitting the matrix to `POST` / `PUT` `/api/dashboard/addons`.
-
 ## Frontend UI Guidance
 
-1. **Add-ons page loading**:
-   * Call `GET /api/dashboard/addons`.
-   * Render `data.items` as one-time add-on items.
-   * Render `data.plans` as subscription add-on plans.
-   * Render plan category select from `data.meta.addonPlanCategories`.
+### 1. Add-ons Page Loading
 
-2. **Plan card/table**:
-   For each plan show:
-   * name
-   * category label
-   * menuProductsCount
-   * planPricesCount
-   * isActive
-   * planPrices by base plan
+* Call `GET /api/dashboard/addons`.
+* Render `data.items` as one-time add-on items.
+* Render `data.plans` as subscription add-on plans.
+* Render plan category select from `data.meta.addonPlanCategories`.
+* Do not call `/api/dashboard/addon-prices` to render the main page.
 
-3. **Item card/table**:
-   For each item show:
-   * name
-   * category
-   * priceLabel
-   * isActive
+### 2. Item Table/Card
 
-4. **Editing plan**:
-   Use one form that edits:
-   * name
-   * category
-   * maxPerDay
-   * menuProductIds
-   * planPrices
-   * isActive
-   
-   Submit the whole form to: `PUT /api/dashboard/addons/:id`
+For each item show:
 
-5. **Pricing**:
-   * Use `priceHalala` internally in payload.
-   * Display `priceLabel` from response.
-   * Do not calculate add-on subscription plan totals in frontend.
-   * Do not multiply matrix price by days/meals.
+* Arabic/English name
+* category
+* `priceLabel`
+* active status
+* edit action
+* toggle action
+* delete action
 
-6. **Linked products**:
-   * `menuProducts[]` are selectable products under a plan.
-   * They are not subscription plan cards.
-   * Do not flatten them into top-level add-on plans.
+### 3. Plan Table/Card
+
+For each plan show:
+
+* Arabic/English name
+* category label from `data.meta.addonPlanCategories`
+* `menuProductsCount`
+* `planPricesCount`
+* active status
+* linked menu products preview
+* plan prices by base plan
+* edit action
+* toggle action
+* delete action
+
+### 4. Editing an Add-on Plan
+
+Use one form that edits:
+
+* `name.ar`
+* `name.en`
+* `category`
+* `maxPerDay`
+* `menuProductIds`
+* `planPrices`
+* `isActive`
+
+Submit the whole form to:
+
+```http
+PUT /api/dashboard/addons/:id
+```
+
+Do not submit separate pricing-row requests for normal plan editing.
+
+### 5. Pricing UI Rules
+
+* Use `priceHalala` in payloads.
+* Display `priceLabel` from API responses.
+* Do not calculate add-on subscription plan totals in frontend.
+* Do not multiply matrix price by days or meals.
+* Do not use MenuProduct prices as subscription add-on prices.
+* Do not use one-time item prices as subscription add-on plan prices.
+
+### 6. Linked Product UI Rules
+
+* `menuProducts[]` are selectable products under a plan.
+* They are not subscription plan cards.
+* Do not flatten them into top-level add-on plans.
+* Use `menuProductIds[]` only when creating/updating an add-on subscription plan.
 
 ## Customer/Mobile Context
 
 Customer/mobile subscription creation uses:
-GET `/api/subscriptions/addons/options?planId=:basePlanId`
 
-*Note: This dashboard document focuses on Dashboard endpoints.*
+```http
+GET /api/subscriptions/addons/options?planId=:basePlanId
+```
 
-**Important context**:
-* Mobile/customer chooses add-on plans during subscription creation.
+This Dashboard contract focuses on Dashboard endpoints.
+
+Important context:
+
+* Mobile/customer chooses add-on subscription plans during subscription creation.
 * Daily selection later chooses menu products allowed by the purchased add-on plan.
 * Dashboard must not confuse add-on plan IDs with menu product IDs.
 
@@ -839,3 +1261,5 @@ GET `/api/subscriptions/addons/options?planId=:basePlanId`
 * [ ] I do not call `/api/dashboard/addon-prices` to render the main screen.
 * [ ] I do not multiply add-on plan price by days or meals.
 * [ ] I do not flatten `menuProducts` as top-level add-ons.
+* [ ] I block add-on plan submit when `menuProductIds` is empty.
+* [ ] I block add-on plan submit when `planPrices` is empty.
