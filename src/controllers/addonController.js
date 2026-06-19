@@ -20,6 +20,49 @@ const ADDON_CATEGORIES = new Set(["juice", "snack", "small_salad"]);
 const PLAN_BILLING_MODES = new Set(["per_day", "per_meal"]);
 const ITEM_BILLING_MODES = new Set(["flat_once"]);
 
+/**
+ * Canonical add-on plan categories for dashboard meta select options.
+ * These are the ONLY valid entitlement plan categories.
+ * Do not add menu product categories (salads, proteins, sandwiches, etc.) here.
+ */
+const ADDON_PLAN_CATEGORIES_META = [
+  {
+    key: "juice",
+    label: { ar: "اشتراك العصير", en: "Juice Subscription" },
+    description: { ar: "اختيارات العصائر والمشروبات", en: "Juice and drink entitlement" },
+  },
+  {
+    key: "small_salad",
+    label: { ar: "اشتراك السلطة الصغيرة", en: "Small Salad Subscription" },
+    description: { ar: "اختيارات السلطة الصغيرة", en: "Small salad entitlement" },
+  },
+  {
+    key: "snack",
+    label: { ar: "اشتراك السناك", en: "Snack Subscription" },
+    description: { ar: "اختيارات السناك والحلويات الصحية", en: "Snack and healthy dessert entitlement" },
+  },
+];
+
+/**
+ * Regex patterns that identify test, internal, or contract items
+ * that must never appear in the default dashboard read model.
+ * Applied to name.en and name.ar.
+ */
+const DASHBOARD_TEST_NAME_PATTERN = /^(dash-contract[-\s]|test[-\s]|dev[-\s]|internal[-\s])/i;
+
+/**
+ * Returns an additional MongoDB filter to exclude test/contract/internal add-on
+ * items from the default dashboard read model (data.items).
+ * Plans are NOT affected — plans are canonical by category and always shown.
+ */
+function buildDashboardItemsExcludeFilter() {
+  return {
+    isActive: true,
+    "name.en": { $not: DASHBOARD_TEST_NAME_PATTERN },
+    "name.ar": { $not: DASHBOARD_TEST_NAME_PATTERN },
+  };
+}
+
 function isNonNegativeInteger(value) {
   return Number.isInteger(value) && value >= 0;
 }
@@ -167,9 +210,15 @@ function validateAddonPayloadOrThrow(payload, { forceKind = null } = {}) {
     throw { status: 400, code: "INVALID", message: `currency must be ${SYSTEM_CURRENCY}` };
   }
 
-  const priceHalala = Number(payload.priceHalala);
-  if (!isNonNegativeInteger(priceHalala)) {
-    throw { status: 400, code: "INVALID", message: "priceHalala must be an integer >= 0" };
+  let priceHalala = 0;
+  if (payload.priceHalala !== undefined && payload.priceHalala !== null && String(payload.priceHalala).trim() !== "") {
+    const val = Number(payload.priceHalala);
+    if (!isNonNegativeInteger(val)) {
+      throw { status: 400, code: "INVALID", message: "priceHalala must be an integer >= 0" };
+    }
+    priceHalala = val;
+  } else if (kind === "item") {
+    throw { status: 400, code: "INVALID", message: "priceHalala is required for one-time items" };
   }
 
   const isActive = parseBooleanField(payload.isActive, "isActive", { defaultValue: true });
@@ -180,12 +229,17 @@ function validateAddonPayloadOrThrow(payload, { forceKind = null } = {}) {
   const billingMode = resolveAddonBillingMode({ kind, rawBillingMode });
   const derivedBillingFields = buildAddonDerivedBillingFields(billingMode);
 
-  const menuProductId = payload.menuProductId && String(payload.menuProductId).trim() !== ""
-    ? validateObjectId(payload.menuProductId, "menuProductId")
-    : null;
+  let menuProductId = null;
+  if (payload.menuProductId && String(payload.menuProductId).trim() !== "") {
+    validateObjectId(payload.menuProductId, "menuProductId");
+    menuProductId = payload.menuProductId;
+  }
 
   const menuProductIds = Array.isArray(payload.menuProductIds)
-    ? payload.menuProductIds.map((id) => validateObjectId(id, "menuProductIds"))
+    ? payload.menuProductIds.map((id) => {
+        validateObjectId(id, "menuProductIds");
+        return id;
+      })
     : [];
 
   let maxPerDay = 1;
@@ -358,82 +412,17 @@ async function listAddons(req, res) {
   return res.status(200).json({ status: true, data: mapped });
 }
 
-async function listAddonsAdmin(req, res, options = {}) {
-  try {
-    const filters = resolveAdminAddonFilters(req.query || {}, options);
-    const rows = await Addon.find(filters).sort({ sortOrder: 1, createdAt: -1 }).lean();
+async function buildFullyPopulatedAddonDetail(addonId, { includeInternal = false, session = null } = {}) {
+  const Addon = require("../models/Addon");
+  const MenuProduct = require("../models/MenuProduct");
+  const AddonPlanPrice = require("../models/AddonPlanPrice");
+  const Plan = require("../models/Plan");
 
-    const AddonPlanPrice = require("../models/AddonPlanPrice");
-    const Plan = require("../models/Plan");
-    const { includeInternal } = req.query || {};
-    const matchQuery = includeInternal === "true" ? {} : Plan.getSellableQuery();
-    const validBasePlans = await Plan.find(matchQuery).select("_id").lean();
-    const validBasePlanIds = validBasePlans.map(p => String(p._id));
-
-    const addonPlanPrices = await AddonPlanPrice.find({ isActive: true }).lean();
-    const validAddonPlanPrices = addonPlanPrices.filter(p => validBasePlanIds.includes(String(p.basePlanId)));
-
-    const mapped = rows.map((row) => {
-      const menuProductIds = row.menuProductIds || [];
-      const menuProductsCount = menuProductIds.length;
-      
-      let planPricesCount = 0;
-      if (row.kind === "plan") {
-        planPricesCount = validAddonPlanPrices.filter(p => String(p.addonPlanId) === String(row._id)).length;
-      }
-
-      const {
-        priceHalala, priceSar, priceLabel, billingMode, billingUnit, price, menuProductId,
-        ...cleanRow
-      } = row;
-
-      if (row.kind === "plan") {
-        cleanRow.legacyCompatibility = {
-          priceHalala, priceSar, priceLabel, billingMode, billingUnit, price, menuProductId,
-        };
-      } else {
-        cleanRow.priceHalala = priceHalala;
-        cleanRow.priceSar = priceSar;
-        cleanRow.priceLabel = priceLabel;
-        cleanRow.billingMode = billingMode;
-        cleanRow.billingUnit = billingUnit;
-        cleanRow.price = price;
-        cleanRow.menuProductId = menuProductId;
-      }
-
-      return {
-        id: String(row._id),
-        ...cleanRow,
-        menuProductIds,
-        menuProductsCount,
-        planPricesCount,
-        pricingMode: row.kind === "plan" ? "base_plan_matrix" : undefined,
-      };
-    });
-
-    return res.status(200).json({ status: true, data: mapped, meta: { filters, totalCount: rows.length } });
-  } catch (err) {
-    if (err && err.status) {
-      return errorResponse(res, err.status, err.code, err.message);
-    }
-    throw err;
-  }
-}
-
-async function getAddonAdmin(req, res, options = {}) {
-  const { id } = req.params;
-  try {
-    validateObjectId(id, "id");
-  } catch (err) {
-    return errorResponse(res, err.status, err.code, err.message);
-  }
-
-  const query = { _id: id };
-  if (options.forceKind) query.kind = options.forceKind;
-  const row = await Addon.findOne(query).lean();
-  if (!row) {
-    return errorResponse(res, 404, "NOT_FOUND", "Addon not found");
-  }
+  const query = { _id: addonId };
+  let rowQuery = Addon.findOne(query);
+  if (session) rowQuery = rowQuery.session(session);
+  const row = await rowQuery.lean();
+  if (!row) return null;
 
   const {
     priceHalala, priceSar, priceLabel, billingMode, billingUnit, price, menuProductId,
@@ -449,8 +438,12 @@ async function getAddonAdmin(req, res, options = {}) {
     data.legacyCompatibility = {
       priceHalala, priceSar, priceLabel, billingMode, billingUnit, price, menuProductId,
     };
+
     // 1. Fetch menuProducts
-    const prods = await MenuProduct.find({ _id: { $in: data.menuProductIds } }).populate("categoryId");
+    let prodsQuery = MenuProduct.find({ _id: { $in: data.menuProductIds } }).populate("categoryId");
+    if (session) prodsQuery = prodsQuery.session(session);
+    const prods = await prodsQuery.lean();
+
     data.menuProducts = prods.map((p) => ({
       id: String(p._id),
       _id: p._id,
@@ -461,14 +454,10 @@ async function getAddonAdmin(req, res, options = {}) {
     }));
 
     // 2. Fetch planPrices
-    const AddonPlanPrice = require("../models/AddonPlanPrice");
-    const Plan = require("../models/Plan");
-    const { includeInternal } = req.query || {};
-    const matchQuery = includeInternal === "true" ? {} : Plan.getSellableQuery();
-
-    const prices = await AddonPlanPrice.find({ addonPlanId: row._id })
-      .populate({ path: "basePlanId", match: matchQuery })
-      .lean();
+    const matchQuery = includeInternal === true ? {} : Plan.getSellableQuery();
+    let pricesQuery = AddonPlanPrice.find({ addonPlanId: row._id }).populate({ path: "basePlanId", match: matchQuery });
+    if (session) pricesQuery = pricesQuery.session(session);
+    const prices = await pricesQuery.lean();
     
     const validPrices = prices.filter(p => p.basePlanId != null);
     data.planPrices = validPrices.map((p) => {
@@ -508,17 +497,232 @@ async function getAddonAdmin(req, res, options = {}) {
     data.planPricesCount = data.planPrices.length;
     data.pricingMode = "base_plan_matrix";
   } else {
+    data.priceHalala = priceHalala;
+    data.priceSar = priceSar;
+    data.priceLabel = priceLabel;
+    data.billingMode = billingMode;
+    data.billingUnit = billingUnit;
+    data.price = price;
+    data.menuProductId = menuProductId;
     data.menuProducts = [];
     data.planPrices = [];
     data.planPricesCount = 0;
   }
+  return data;
+}
 
-  return res.status(200).json({ status: true, data });
+async function listAddonsAdmin(req, res, options = {}) {
+  try {
+    const filters = resolveAdminAddonFilters(req.query || {}, options);
+
+    const hasQueryFilter = req.query && (
+      req.query.kind !== undefined ||
+      req.query.category !== undefined ||
+      req.query.billingMode !== undefined ||
+      req.query.isActive !== undefined ||
+      req.query.q !== undefined
+    );
+
+    if (options.forceKind || hasQueryFilter) {
+      const rows = await Addon.find(filters).sort({ sortOrder: 1, createdAt: -1 }).lean();
+
+      const AddonPlanPrice = require("../models/AddonPlanPrice");
+      const Plan = require("../models/Plan");
+      const { includeInternal } = req.query || {};
+      const matchQuery = includeInternal === "true" ? {} : Plan.getSellableQuery();
+      const validBasePlans = await Plan.find(matchQuery).select("_id").lean();
+      const validBasePlanIds = validBasePlans.map(p => String(p._id));
+
+      const addonPlanPrices = await AddonPlanPrice.find({ isActive: true }).lean();
+      const validAddonPlanPrices = addonPlanPrices.filter(p => validBasePlanIds.includes(String(p.basePlanId)));
+
+      const mapped = rows.map((row) => {
+        const menuProductIds = row.menuProductIds || [];
+        const menuProductsCount = menuProductIds.length;
+        
+        let planPricesCount = 0;
+        if (row.kind === "plan") {
+          planPricesCount = validAddonPlanPrices.filter(p => String(p.addonPlanId) === String(row._id)).length;
+        }
+
+        const {
+          priceHalala, priceSar, priceLabel, billingMode, billingUnit, price, menuProductId,
+          ...cleanRow
+        } = row;
+
+        if (row.kind === "plan") {
+          cleanRow.legacyCompatibility = {
+            priceHalala, priceSar, priceLabel, billingMode, billingUnit, price, menuProductId,
+          };
+        } else {
+          cleanRow.priceHalala = priceHalala;
+          cleanRow.priceSar = priceSar;
+          cleanRow.priceLabel = priceLabel;
+          cleanRow.billingMode = billingMode;
+          cleanRow.billingUnit = billingUnit;
+          cleanRow.price = price;
+          cleanRow.menuProductId = menuProductId;
+        }
+
+        return {
+          id: String(row._id),
+          ...cleanRow,
+          menuProductIds,
+          menuProductsCount,
+          planPricesCount,
+          pricingMode: row.kind === "plan" ? "base_plan_matrix" : undefined,
+        };
+      });
+
+      return res.status(200).json({ status: true, data: mapped, meta: { filters, totalCount: rows.length } });
+    }
+
+    const allAddons = await Addon.find(filters).sort({ sortOrder: 1, createdAt: -1 }).lean();
+
+    // Apply dashboard visibility filter to items: exclude inactive and test/contract records.
+    // Plans are always shown (they are canonical by category) and not filtered here.
+    const dashItemFilter = buildDashboardItemsExcludeFilter();
+    const testNameRe = DASHBOARD_TEST_NAME_PATTERN;
+    const itemsRaw = allAddons.filter(a =>
+      a.kind === "item" &&
+      a.isActive !== false &&
+      !testNameRe.test(a.name && a.name.en ? a.name.en : "") &&
+      !testNameRe.test(a.name && a.name.ar ? a.name.ar : "")
+    );
+    void dashItemFilter; // used for documentation; inline filter applied above
+    const plansRaw = allAddons.filter(a => a.kind === "plan");
+
+    const plans = [];
+    for (const planRow of plansRaw) {
+      const populated = await buildFullyPopulatedAddonDetail(planRow._id, {
+        includeInternal: req.query && req.query.includeInternal === "true",
+      });
+      if (populated) {
+        plans.push(populated);
+      }
+    }
+
+    const items = itemsRaw.map((row) => {
+      const {
+        priceHalala, priceSar, priceLabel, billingMode, billingUnit, price, menuProductId,
+        ...cleanRow
+      } = row;
+
+      return {
+        id: String(row._id),
+        ...cleanRow,
+        priceHalala,
+        priceSar,
+        priceLabel,
+        billingMode,
+        billingUnit,
+        price,
+        menuProductId,
+        menuProductIds: row.menuProductIds || [],
+        menuProductsCount: (row.menuProductIds || []).length,
+      };
+    });
+
+    const matrixRowsCount = plans.reduce((sum, p) => sum + (p.planPrices ? p.planPrices.length : 0), 0);
+
+    const responsePayload = {
+      status: true,
+      data: {
+        items,
+        plans,
+        meta: {
+          addonPlanCategories: ADDON_PLAN_CATEGORIES_META,
+        },
+        summary: {
+          itemsCount: items.length,
+          plansCount: plans.length,
+          totalItems: items.length,
+          totalPlans: plans.length,
+          matrixRowsCount,
+          currency: "SAR",
+        },
+      },
+    };
+
+    return res.status(200).json(responsePayload);
+  } catch (err) {
+    if (err && err.status) {
+      return errorResponse(res, err.status, err.code, err.message);
+    }
+    throw err;
+  }
+}
+
+async function getAddonAdmin(req, res, options = {}) {
+  const { id } = req.params;
+  try {
+    validateObjectId(id, "id");
+  } catch (err) {
+    return errorResponse(res, err.status, err.code, err.message);
+  }
+
+  try {
+    const { includeInternal } = req.query || {};
+    const data = await buildFullyPopulatedAddonDetail(id, {
+      includeInternal: includeInternal === "true",
+    });
+    if (!data) {
+      return errorResponse(res, 404, "NOT_FOUND", "Addon not found");
+    }
+    if (options.forceKind && data.kind !== options.forceKind) {
+      return errorResponse(res, 404, "NOT_FOUND", "Addon not found");
+    }
+    return res.status(200).json({ status: true, data });
+  } catch (err) {
+    if (err && err.status) {
+      return errorResponse(res, err.status, err.code, err.message);
+    }
+    throw err;
+  }
 }
 
 async function createAddon(req, res, options = {}) {
+  const session = await Addon.startSession().catch(() => null);
+  if (session) session.startTransaction();
+
   try {
     const payload = validateAddonPayloadOrThrow(req.body || {}, options);
+    
+    // Verify basePlanIds from planPrices if any
+    const planPricesInput = [];
+    if (payload.kind === "plan" && req.body.planPrices !== undefined) {
+      if (!Array.isArray(req.body.planPrices)) {
+        throw { status: 400, code: "INVALID", message: "planPrices must be an array" };
+      }
+      const Plan = require("../models/Plan");
+      for (let i = 0; i < req.body.planPrices.length; i++) {
+        const p = req.body.planPrices[i];
+        if (!p || typeof p !== "object") {
+          throw { status: 400, code: "INVALID", message: "Each item in planPrices must be an object" };
+        }
+        validateObjectId(p.basePlanId, `planPrices[${i}].basePlanId`);
+        const basePlanId = p.basePlanId;
+        const rowPrice = Number(p.priceHalala);
+        if (!isNonNegativeInteger(rowPrice)) {
+          throw { status: 400, code: "INVALID", message: `planPrices[${i}].priceHalala must be an integer >= 0` };
+        }
+        const rowIsActive = p.isActive !== undefined ? !!p.isActive : true;
+        planPricesInput.push({ basePlanId, priceHalala: rowPrice, isActive: rowIsActive });
+      }
+
+      if (planPricesInput.length > 0) {
+        const basePlanIds = planPricesInput.map(p => p.basePlanId);
+        const existingPlansCount = await Plan.countDocuments({ _id: { $in: basePlanIds } });
+        if (existingPlansCount !== new Set(basePlanIds.map(String)).size) {
+          throw { status: 400, code: "INVALID", message: "One or more basePlanIds in planPrices do not exist" };
+        }
+        const basePlanIdStrings = planPricesInput.map(p => String(p.basePlanId));
+        if (new Set(basePlanIdStrings).size !== basePlanIdStrings.length) {
+          throw { status: 400, code: "INVALID", message: "Duplicate basePlanId in planPrices is not allowed" };
+        }
+      }
+    }
+
     const imageState = await resolveManagedImageFromRequest({
       body: req.body,
       file: req.file,
@@ -526,17 +730,62 @@ async function createAddon(req, res, options = {}) {
       allowDirectImageUrl: true,
     });
 
-    const row = await Addon.create({
-      ...payload,
-      imageUrl: imageState.imageUrl,
+    let addonDoc;
+    if (session) {
+      const docs = await Addon.create([{
+        ...payload,
+        imageUrl: imageState.imageUrl,
+      }], { session });
+      addonDoc = docs[0];
+    } else {
+      addonDoc = await Addon.create({
+        ...payload,
+        imageUrl: imageState.imageUrl,
+      });
+    }
+
+    if (payload.kind === "plan" && planPricesInput.length > 0) {
+      const AddonPlanPrice = require("../models/AddonPlanPrice");
+      for (const p of planPricesInput) {
+        if (p.isActive) {
+          const existingActive = await AddonPlanPrice.findOne({
+            addonPlanId: addonDoc._id,
+            basePlanId: p.basePlanId,
+            isActive: true,
+          }).session(session).lean();
+          if (existingActive) {
+            throw { status: 400, code: "DUPLICATE_ACTIVE_PRICE", message: "An active price matrix row already exists for this combination." };
+          }
+        }
+        await AddonPlanPrice.create([{
+          addonPlanId: addonDoc._id,
+          basePlanId: p.basePlanId,
+          priceHalala: p.priceHalala,
+          currency: payload.currency || SYSTEM_CURRENCY,
+          isActive: p.isActive,
+        }], { session });
+      }
+    }
+
+    await writeAddonActivityLogSafely(req, addonDoc, "addon_created_by_admin", {
+      kind: addonDoc.kind,
+      category: addonDoc.category,
+      billingMode: addonDoc.billingMode,
     });
-    await writeAddonActivityLogSafely(req, row, "addon_created_by_admin", {
-      kind: row.kind,
-      category: row.category,
-      billingMode: row.billingMode,
-    });
-    return res.status(201).json({ status: true, data: { id: row.id } });
+
+    if (session) {
+      await session.commitTransaction();
+      session.endSession();
+    }
+
+    const data = await buildFullyPopulatedAddonDetail(addonDoc._id);
+    return res.status(201).json({ status: true, data });
+
   } catch (err) {
+    if (session) {
+      await session.abortTransaction();
+      session.endSession();
+    }
     if (err && err.status) {
       return errorResponse(res, err.status, err.code, err.message);
     }
@@ -552,12 +801,59 @@ async function updateAddon(req, res, options = {}) {
     return errorResponse(res, err.status, err.code, err.message);
   }
 
+  const session = await Addon.startSession().catch(() => null);
+  if (session) session.startTransaction();
+
   try {
     const payload = validateAddonPayloadOrThrow(req.body || {}, options);
+    
+    // Verify basePlanIds from planPrices if any
+    const planPricesInput = [];
+    if (payload.kind === "plan" && req.body.planPrices !== undefined) {
+      if (!Array.isArray(req.body.planPrices)) {
+        throw { status: 400, code: "INVALID", message: "planPrices must be an array" };
+      }
+      const Plan = require("../models/Plan");
+      for (let i = 0; i < req.body.planPrices.length; i++) {
+        const p = req.body.planPrices[i];
+        if (!p || typeof p !== "object") {
+          throw { status: 400, code: "INVALID", message: "Each item in planPrices must be an object" };
+        }
+        validateObjectId(p.basePlanId, `planPrices[${i}].basePlanId`);
+        const basePlanId = p.basePlanId;
+        const rowPrice = Number(p.priceHalala);
+        if (!isNonNegativeInteger(rowPrice)) {
+          throw { status: 400, code: "INVALID", message: `planPrices[${i}].priceHalala must be an integer >= 0` };
+        }
+        const rowIsActive = p.isActive !== undefined ? !!p.isActive : true;
+        planPricesInput.push({ basePlanId, priceHalala: rowPrice, isActive: rowIsActive });
+      }
+
+      if (planPricesInput.length > 0) {
+        const basePlanIds = planPricesInput.map(p => p.basePlanId);
+        const existingPlansCount = await Plan.countDocuments({ _id: { $in: basePlanIds } });
+        if (existingPlansCount !== new Set(basePlanIds.map(String)).size) {
+          throw { status: 400, code: "INVALID", message: "One or more basePlanIds in planPrices do not exist" };
+        }
+        const basePlanIdStrings = planPricesInput.map(p => String(p.basePlanId));
+        if (new Set(basePlanIdStrings).size !== basePlanIdStrings.length) {
+          throw { status: 400, code: "INVALID", message: "Duplicate basePlanId in planPrices is not allowed" };
+        }
+      }
+    }
+
     const query = { _id: id };
     if (options.forceKind) query.kind = options.forceKind;
-    const existing = await Addon.findOne(query);
+    
+    let existingQuery = Addon.findOne(query);
+    if (session) existingQuery = existingQuery.session(session);
+    const existing = await existingQuery;
+
     if (!existing) {
+      if (session) {
+        await session.abortTransaction();
+        session.endSession();
+      }
       return errorResponse(res, 404, "NOT_FOUND", "Addon not found");
     }
 
@@ -573,15 +869,54 @@ async function updateAddon(req, res, options = {}) {
       ...payload,
       imageUrl: imageState.imageUrl,
     });
-    await existing.save();
+    await existing.save({ session });
+
+    if (payload.kind === "plan" && req.body.planPrices !== undefined) {
+      const AddonPlanPrice = require("../models/AddonPlanPrice");
+      
+      // Delete existing plan prices
+      await AddonPlanPrice.deleteMany({ addonPlanId: existing._id }).session(session);
+
+      // Create new plan prices
+      for (const p of planPricesInput) {
+        if (p.isActive) {
+          const existingActive = await AddonPlanPrice.findOne({
+            addonPlanId: existing._id,
+            basePlanId: p.basePlanId,
+            isActive: true,
+          }).session(session).lean();
+          if (existingActive) {
+            throw { status: 400, code: "DUPLICATE_ACTIVE_PRICE", message: "An active price matrix row already exists for this combination." };
+          }
+        }
+        await AddonPlanPrice.create([{
+          addonPlanId: existing._id,
+          basePlanId: p.basePlanId,
+          priceHalala: p.priceHalala,
+          currency: payload.currency || SYSTEM_CURRENCY,
+          isActive: p.isActive,
+        }], { session });
+      }
+    }
 
     await writeAddonActivityLogSafely(req, existing, "addon_updated_by_admin", {
       kind: existing.kind,
       category: existing.category,
       billingMode: existing.billingMode,
     });
-    return res.status(200).json({ status: true, data: { id: existing.id } });
+
+    if (session) {
+      await session.commitTransaction();
+      session.endSession();
+    }
+
+    const data = await buildFullyPopulatedAddonDetail(existing._id);
+    return res.status(200).json({ status: true, data });
   } catch (err) {
+    if (session) {
+      await session.abortTransaction();
+      session.endSession();
+    }
     if (err && err.status) {
       return errorResponse(res, err.status, err.code, err.message);
     }
@@ -600,16 +935,22 @@ async function patchAddon(req, res, options = {}) {
 
     const payload = {};
     if (req.body.menuProductId !== undefined) {
-      payload.menuProductId = req.body.menuProductId && String(req.body.menuProductId).trim() !== ""
-        ? validateObjectId(req.body.menuProductId, "menuProductId")
-        : null;
+      let menuProductId = null;
+      if (req.body.menuProductId && String(req.body.menuProductId).trim() !== "") {
+        validateObjectId(req.body.menuProductId, "menuProductId");
+        menuProductId = req.body.menuProductId;
+      }
+      payload.menuProductId = menuProductId;
     }
 
     if (req.body.menuProductIds !== undefined) {
       if (!Array.isArray(req.body.menuProductIds)) {
         return errorResponse(res, 400, "INVALID", "menuProductIds must be an array");
       }
-      payload.menuProductIds = req.body.menuProductIds.map((id) => validateObjectId(id, "menuProductIds"));
+      payload.menuProductIds = req.body.menuProductIds.map((id) => {
+        validateObjectId(id, "menuProductIds");
+        return id;
+      });
     }
 
     if (req.body.maxPerDay !== undefined && req.body.maxPerDay !== null) {

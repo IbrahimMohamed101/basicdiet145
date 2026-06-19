@@ -11,6 +11,7 @@ const request = require("supertest");
 const { createApp } = require("../src/app");
 const { dashboardAuth } = require("./helpers/dashboardAuthHelper");
 const Addon = require("../src/models/Addon");
+const AddonPlanPrice = require("../src/models/AddonPlanPrice");
 const BuilderCarb = require("../src/models/BuilderCarb");
 const BuilderCategory = require("../src/models/BuilderCategory");
 const BuilderProtein = require("../src/models/BuilderProtein");
@@ -21,6 +22,7 @@ const User = require("../src/models/User");
 const Zone = require("../src/models/Zone");
 const Subscription = require("../src/models/Subscription");
 const SubscriptionDay = require("../src/models/SubscriptionDay");
+const SubscriptionPickupRequest = require("../src/models/SubscriptionPickupRequest");
 const CheckoutDraft = require("../src/models/CheckoutDraft");
 const Payment = require("../src/models/Payment");
 const PromoCode = require("../src/models/PromoCode");
@@ -91,6 +93,7 @@ async function cleanup() {
     DashboardUser.deleteMany({ email: { $regex: TEST_TAG } }),
     Subscription.deleteMany({ _id: { $in: subIds } }),
     Addon.deleteMany({ _id: { $in: addonIds } }),
+    AddonPlanPrice.deleteMany({ addonPlanId: { $in: addonIds } }),
     BuilderCategory.deleteMany({ _id: { $in: builderCategoryIds } }),
     BuilderProtein.deleteMany({ _id: { $in: builderProteinIds } }),
     BuilderCarb.deleteMany({ _id: { $in: builderCarbIds } }),
@@ -139,6 +142,12 @@ async function seedBaseData() {
     billingMode: "per_day",
     priceHalala: 1000,
     currency: "SAR",
+    isActive: true,
+  });
+  await AddonPlanPrice.create({
+    addonPlanId: addonPlan._id,
+    basePlanId: plan._id,
+    priceHalala: 7000,
     isActive: true,
   });
   const addonItem = await Addon.create({
@@ -712,7 +721,7 @@ async function main() {
       mealSlots: [{ slotIndex: 1, slotKey: "slot_1", status: "complete" }],
     });
 
-    res = await api.get("/api/dashboard/kitchen/queue?date=2026-05-10&method=delivery").set(kitchenHeaders);
+    res = await api.get("/api/dashboard/kitchen/queue?date=2026-05-10&method=delivery&view=legacy").set(kitchenHeaders);
     expectStatus(res, 200, "kitchen queue");
     const openDeliveryQueueItem = res.body.data.items.find((item) => item.subscriptionDayId === String(deliveryDay._id));
     assert(openDeliveryQueueItem);
@@ -722,7 +731,7 @@ async function main() {
     );
     assert(openDeliveryQueueItem.allowedActions.every((action) => action.endpoint && action.method === "POST"));
 
-    res = await api.post("/api/dashboard/kitchen/actions/lock").set(kitchenHeaders).send({
+    res = await api.post("/api/dashboard/kitchen/actions/lock?view=legacy").set(adminHeaders).send({
       entityId: String(deliveryDay._id),
       entityType: "subscription_day",
       payload: { reason: "lock before kitchen prep" },
@@ -730,7 +739,7 @@ async function main() {
     expectStatus(res, 200, "kitchen lock delivery day");
     assert.strictEqual(res.body.data.status, "locked");
 
-    res = await api.post("/api/dashboard/kitchen/actions/prepare").set(kitchenHeaders).send({
+    res = await api.post("/api/dashboard/kitchen/actions/prepare?view=legacy").set(kitchenHeaders).send({
       entityId: String(deliveryDay._id),
       entityType: "subscription_day",
       payload: { reason: "start kitchen prep" },
@@ -743,7 +752,7 @@ async function main() {
     );
     assert(!res.body.data.allowedActions.some((action) => action.id === "set_ready"));
 
-    res = await api.post("/api/dashboard/courier/actions/dispatch").set(courierHeaders).send({
+    res = await api.post("/api/dashboard/courier/actions/dispatch?view=legacy").set(courierHeaders).send({
       entityId: String(deliveryDay._id),
       entityType: "subscription_day",
       payload: { reason: "dispatch to courier", notes: "Left branch" },
@@ -751,18 +760,18 @@ async function main() {
     expectStatus(res, 200, "courier dispatch delivery day");
     assert.strictEqual(res.body.data.status, "out_for_delivery");
 
-    res = await api.get("/api/dashboard/courier/queue?date=2026-05-10&method=delivery").set(courierHeaders);
+    res = await api.get("/api/dashboard/courier/queue?date=2026-05-10&method=delivery&view=legacy").set(courierHeaders);
     expectStatus(res, 200, "courier queue includes subscription delivery day");
     assert(res.body.data.items.some((item) => item.subscriptionDayId === String(deliveryDay._id)));
 
-    res = await api.post("/api/dashboard/courier/actions/notify_arrival").set(courierHeaders).send({
+    res = await api.post("/api/dashboard/courier/actions/notify_arrival?view=legacy").set(adminHeaders).send({
       entityId: String(deliveryDay._id),
       entityType: "subscription_day",
       payload: { reason: "arrived nearby" },
     });
     expectStatus(res, 200, "courier notify arrival");
 
-    res = await api.post("/api/dashboard/courier/actions/fulfill").set(courierHeaders).send({
+    res = await api.post("/api/dashboard/courier/actions/fulfill?view=legacy").set(courierHeaders).send({
       entityId: String(deliveryDay._id),
       entityType: "subscription_day",
       payload: { reason: "delivered to customer" },
@@ -781,14 +790,14 @@ async function main() {
       }],
       mealSlots: [{ slotIndex: 1, slotKey: "slot_1", status: "complete" }],
     });
-    res = await api.post("/api/dashboard/courier/actions/dispatch").set(courierHeaders).send({
+    res = await api.post("/api/dashboard/courier/actions/dispatch?view=legacy").set(courierHeaders).send({
       entityId: String(deliveryCancelDay._id),
       entityType: "subscription_day",
       payload: { reason: "dispatch cancellation regression" },
     });
     expectStatus(res, 200, "courier dispatch cancel regression day");
 
-    res = await api.post("/api/dashboard/courier/actions/cancel").set(courierHeaders).send({
+    res = await api.post("/api/dashboard/courier/actions/cancel?view=legacy").set(adminHeaders).send({
       entityId: String(deliveryCancelDay._id),
       entityType: "subscription_day",
       payload: { reason: "customer unavailable" },
@@ -823,31 +832,40 @@ async function main() {
       }],
       mealSlots: [{ slotIndex: 1, slotKey: "slot_1", status: "complete" }],
     });
+    const pickupRequest = await SubscriptionPickupRequest.create({
+      subscriptionId: pickupSubscription._id,
+      subscriptionDayId: pickupDay._id,
+      userId: ctx.user._id,
+      date: "2026-05-10",
+      mealCount: 1,
+      status: "locked",
+      creditsReserved: true,
+    });
 
-    res = await api.post("/api/dashboard/kitchen/actions/prepare").set(kitchenHeaders).send({
-      entityId: String(pickupDay._id),
-      entityType: "subscription_day",
+    res = await api.post("/api/dashboard/kitchen/actions/prepare?view=legacy").set(kitchenHeaders).send({
+      entityId: String(pickupRequest._id),
+      entityType: "subscription_pickup_request",
       payload: { reason: "prepare pickup" },
     });
-    expectStatus(res, 200, "kitchen prepare pickup day");
+    expectStatus(res, 200, "kitchen prepare pickup request");
     assert.strictEqual(res.body.data.status, "in_preparation");
 
-    res = await api.post("/api/dashboard/kitchen/actions/ready_for_pickup").set(kitchenHeaders).send({
-      entityId: String(pickupDay._id),
-      entityType: "subscription_day",
+    res = await api.post("/api/dashboard/kitchen/actions/ready_for_pickup?view=legacy").set(kitchenHeaders).send({
+      entityId: String(pickupRequest._id),
+      entityType: "subscription_pickup_request",
       payload: { reason: "ready at branch" },
     });
-    expectStatus(res, 200, "ready for pickup");
+    expectStatus(res, 200, "ready for pickup request");
     assert.strictEqual(res.body.data.status, "ready_for_pickup");
     const pickupCode = res.body.data.pickup && res.body.data.pickup.pickupCode;
     assert.match(pickupCode, /^\d{6}$/);
 
-    res = await api.post("/api/dashboard/pickup/actions/fulfill").set(kitchenHeaders).send({
-      entityId: String(pickupDay._id),
-      entityType: "subscription_day",
+    res = await api.post("/api/dashboard/pickup/actions/fulfill?view=legacy").set(kitchenHeaders).send({
+      entityId: String(pickupRequest._id),
+      entityType: "subscription_pickup_request",
       payload: { reason: "Customer picked up from branch", notes: "Verified at branch", pickupCode },
     });
-    expectStatus(res, 200, "pickup fulfill collected");
+    expectStatus(res, 200, "pickup fulfill collected request");
     assert.strictEqual(res.body.data.status, "fulfilled");
 
     const canceledPickupDay = await SubscriptionDay.create({
@@ -857,7 +875,7 @@ async function main() {
       pickupRequested: true,
       pickupPreparedAt: new Date(),
     });
-    res = await api.post("/api/dashboard/pickup/actions/cancel").set(kitchenHeaders).send({
+    res = await api.post("/api/dashboard/pickup/actions/cancel?view=legacy").set(adminHeaders).send({
       entityId: String(canceledPickupDay._id),
       entityType: "subscription_day",
       payload: { reason: "customer did not collect" },
@@ -865,7 +883,7 @@ async function main() {
     expectStatus(res, 200, "pickup cancel");
     assert.strictEqual(res.body.data.status, "canceled_at_branch");
 
-    res = await api.post("/api/dashboard/pickup/actions/reopen").set(adminHeaders).send({
+    res = await api.post("/api/dashboard/pickup/actions/reopen?view=legacy").set(adminHeaders).send({
       entityId: String(canceledPickupDay._id),
       entityType: "subscription_day",
       payload: { reason: "branch reopened by admin" },
