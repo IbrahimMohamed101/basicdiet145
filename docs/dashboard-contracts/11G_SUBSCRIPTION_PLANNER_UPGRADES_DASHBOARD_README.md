@@ -1,600 +1,291 @@
-# 11G — Subscription Planner Upgrades Dashboard README
+# 11G — Subscription Planner Upgrades Dashboard API Contract
 
-## Status
+Verified on 2026-06-20 against `dashboardMealBuilder` routes/controller, `mealBuilderConfigService`, `MealBuilderConfig`, premium-limit service, and dashboard-to-Flutter tests.
 
-`BACKEND_FOUNDATION_READY_FOR_DASHBOARD_UI`
+## Business meaning and ownership
 
-This document explains the new Dashboard screen required for managing subscription meal planner upgrade sections:
+Premium upgrades replace existing meal slots; they are not extra meals. The hard limit is computed as `maxPremiumUpgrades = totalSubscriptionMeals`, so selected upgrades cannot exceed the subscription's meal count. This limit is read-only and is enforced in subscription quote/selection flows—not configured by the Meal Builder dashboard.
 
-* `premium_meal`
-* `premium_large_salad`
+The dashboard decides which subscription catalog options/products are exposed as `premium_meal` and `premium_large_salad`. It stores IDs in Meal Builder sections. Global content and default premium prices still come from menu products/options (11B/11E), and product-specific overrides from 11C. The dashboard must never copy names, hydrated objects, `premiumUpgradeLimit`, selected counts, or calculated prices into the Meal Builder draft.
 
-The backend foundation is ready and verified. The Dashboard team can now build a UI screen on top of the existing Meal Builder draft/config flow.
+All endpoints below require dashboard bearer auth and role `admin`/`superadmin`. Success: `{ "status": true, "data": ... }`. Error: `{ "ok": false, "error": { "code": "...", "message": "...", "details": ... } }`.
 
----
+Editable section fields: `key`, `sectionType`, `sourceKind`, localized `titleOverride`, source/context IDs, `selectedOptionIds`, `selectedProductIds`, `includeMode`, `selectionType`, `sortOrder`, `required`, `minSelections`, `maxSelections`, `multiSelect`, `visible`, `availableFor` (subscription only), `metadata`, `rules`. Read-only: config/section IDs, status/current flags, contract/revision/source/bootstrap metadata, publish/actor/timestamps, hydrated candidates/status/errors/warnings, preview/plannerCatalog, validation/readiness, computed premium prices, and upgrade limits.
 
-## 1. Purpose
+Canonical section types: `option_group`, `product_category`, `product_list`. Source kinds: empty string, `visual_family`, `configurable_product`, `product_list`, `premium_visual`. Include modes: `all`, `selected`. An `option_group` requires `productContextId` and `sourceGroupId`; `product_category` requires `sourceCategoryId`; selected `product_list` requires non-empty `selectedProductIds`. Min >= 0; max is null or >= min. Only `availableFor:["subscription"]` is accepted.
 
-The Dashboard needs a new admin screen that allows admins to control subscription planner upgrades without changing backend code or Flutter code.
-
-Suggested screen name:
-
-```txt
-Subscription Planner Upgrades
+## GET /api/dashboard/meal-builder
+### Purpose
+Return current draft, published config, published preview, Flutter planner read model, and validation.
+### Used By
+Meal Builder overview/upgrades screen.
+### Auth
+Dashboard `admin`/`superadmin` required.
+### Path Params
+None.
+### Query Params
+No service query params. `Accept-Language: ar|en` controls hydration labels.
+### Request Body
+No request body.
+### Success Response
+```json
+{"status":true,"data":{"draft":{"id":"665f1b2e7b9a4d0012ba0001","status":"draft","isCurrent":true,"contractVersion":"subscription_meal_builder.v1","revisionHash":"","source":"dashboard","notes":"Upgrade choices","sections":[{"key":"premium","sectionType":"option_group","sourceKind":"premium_visual","productContextId":"665f1b2e7b9a4d0012b20001","sourceGroupId":"665f1b2e7b9a4d0012c30001","selectedOptionIds":["665f1b2e7b9a4d0012e50001"],"selectedProductIds":[],"includeMode":"selected","selectionType":"premium_meal","sortOrder":5,"required":false,"minSelections":0,"maxSelections":1,"multiSelect":false,"visible":true,"availableFor":["subscription"],"metadata":{},"rules":{}}]},"published":{"id":"665f1b2e7b9a4d0012ba0000","status":"published","revisionHash":"sha256:abc123"},"preview":{"contractVersion":"subscription_meal_builder.v1","sections":[]},"plannerCatalog":{"sections":[]},"validation":{"draft":{"status":"ready","ready":true,"errors":[],"warnings":[]},"published":{"status":"ready","ready":true,"errors":[],"warnings":[]}}}}
 ```
-
-Alternative name:
-
-```txt
-Meal Planner Upgrades
-```
-
-This screen controls two business-critical planner upgrade areas:
-
-1. **Premium Meal**
-   A meal upgrade where the customer selects a premium protein and pays an extra fee, while still consuming one normal meal slot.
-
-2. **Premium Large Salad**
-   A configurable planner product representing a large salad + protein, with selectable option groups such as leafy greens, vegetables, proteins, fruits, cheese/nuts, and sauces.
-
-These are **not subscription add-ons**.
-
----
-
-## 2. Important Business Rule
-
-Premium Meal and Premium Large Salad must not be treated like add-ons.
-
-### Add-ons
-
-Examples:
-
-```txt
-Juice Subscription
-Snack Subscription
-Small Salad Subscription
-```
-
-Add-ons have separate entitlement/balance logic.
-
-### Planner Upgrades
-
-Examples:
-
-```txt
-premium_meal
-premium_large_salad
-```
-
-Planner upgrades belong inside the meal planner flow.
-
-They consume meal planner capacity and must remain compatible with:
-
+### Error Response
+`{"ok":false,"error":{"code":"MEAL_BUILDER_INTERNAL_ERROR","message":"Unexpected Meal Builder error"}}`
+### Frontend Notes
+Everything is read-only on this GET. Render draft editor, published status, and validation separately. `plannerCatalog` is the compatibility read model consumed downstream.
+### Validation
+No request payload.
+### Important Do/Don't
+Do label premium options as slot upgrades. Do not display them as extra meal quantities.
+### Postman
 ```http
-GET /api/subscriptions/meal-planner-menu
+GET {{baseUrl}}/api/dashboard/meal-builder
+Authorization: Bearer {{dashboardToken}}
+Accept-Language: en
+Content-Type: application/json
 ```
 
----
-
-## 3. Flutter Compatibility Requirements
-
-The Dashboard must not change or break the Flutter-facing contract.
-
-These section keys must remain stable:
-
-```txt
-standard_meal
-premium_meal
-sandwich
-premium_large_salad
+## GET /api/dashboard/meal-builder/draft/hydrated
+### Purpose
+Load the current draft with selected products/options, availability, pricing, and validation diagnostics hydrated for editing.
+### Used By
+Upgrade section editor.
+### Auth
+Dashboard `admin`/`superadmin` required.
+### Path Params
+None.
+### Query Params
+None; language comes from `Accept-Language`.
+### Request Body
+No request body.
+### Success Response
+```json
+{"status":true,"data":{"contractVersion":"dashboard_meal_builder_hydrated_draft.v1","draft":{"id":"665f1b2e7b9a4d0012ba0001","status":"draft","sections":[{"key":"premium","selectionType":"premium_meal","selectedOptions":[{"id":"665f1b2e7b9a4d0012e50001","key":"salmon","selected":true,"errors":[],"warnings":[]}],"selectedProducts":[],"items":[],"hydration":{"selectedOptionCount":1,"selectedProductCount":0,"errorCount":0,"warningCount":0}}]},"ready":true,"errors":[],"warnings":[],"sections":[],"validation":{"status":"ready","ready":true,"errors":[],"warnings":[],"checks":[],"summary":{"sections":1,"errors":0,"warnings":0}}}}
 ```
-
-This exact product key must remain stable:
-
-```txt
-premium_large_salad
+### Error Response
+```json
+{"status":true,"data":{"contractVersion":"dashboard_meal_builder_hydrated_draft.v1","draft":null,"ready":false,"errors":[{"level":"error","code":"MEAL_BUILDER_DRAFT_MISSING","message":"No current Meal Builder draft exists."}],"warnings":[],"sections":[]}}
 ```
-
-Flutter must not be required to fuzzy-match salad products.
-
-Flutter should continue reading the existing meal planner response shape from:
-
+### Frontend Notes
+Missing draft is a successful HTTP read with `ready:false`. Hydrated objects and prices are read-only; persist only canonical ID fields through PUT.
+### Validation
+Existing legacy drafts may be migrated to the canonical template and return migration warnings.
+### Important Do/Don't
+Do render item-level errors. Do not submit `selectedOptions`, `items`, hydration, errors, or warnings.
+### Postman
 ```http
-GET /api/subscriptions/meal-planner-menu
+GET {{baseUrl}}/api/dashboard/meal-builder/draft/hydrated
+Authorization: Bearer {{dashboardToken}}
+Accept-Language: en
+Content-Type: application/json
 ```
 
-The Dashboard screen should only update backend config. The backend will continue serializing the existing Flutter contract.
-
----
-
-## 4. Backend Implementation Status
-
-Backend dynamic planner upgrade rules are implemented through `MealBuilderConfig`.
-
-The new dynamic rules live inside the existing visual `premium` section rules object.
-
-Backend file currently owning this behavior:
-
-```txt
-src/services/subscription/mealBuilderConfigService.js
+## POST /api/dashboard/meal-builder/draft
+### Purpose
+Create a new current draft; old current drafts are demoted. Omitting `sections` creates the backend default visual template.
+### Used By
+Initialize/reset draft action.
+### Auth
+Dashboard `admin`/`superadmin` required.
+### Path Params
+None.
+### Query Params
+None.
+### Request Body
+```json
+{"notes":"Premium upgrades configuration","sections":[{"key":"premium","sectionType":"option_group","sourceKind":"premium_visual","titleOverride":{"ar":"الترقيات المميزة","en":"Premium Upgrades"},"productContextId":"665f1b2e7b9a4d0012b20001","sourceGroupId":"665f1b2e7b9a4d0012c30001","selectedOptionIds":["665f1b2e7b9a4d0012e50001"],"selectedProductIds":[],"includeMode":"selected","selectionType":"premium_meal","sortOrder":5,"required":false,"minSelections":0,"maxSelections":1,"multiSelect":false,"visible":true,"availableFor":["subscription"],"metadata":{},"rules":{}}]}
 ```
-
-Test coverage file:
-
-```txt
-tests/dashboardSubscriptionPlannerConfig.test.js
-```
-
-Verified behavior:
-
-```txt
-Premium Meal:
-- extraFeeHalala can be overridden from config
-- disabled premium protein is removed from output
-- config-only premium list is respected
-- missing rules fallback to legacy constants
-
-Premium Large Salad:
-- exact product key premium_large_salad is preserved
-- extraFeeHalala can be overridden from config
-- blocked groups are removed from output
-- allowedOptionKeys restrict output options
-- minSelections/maxSelections overrides work
-- invalid group/option validation errors are returned
-```
-
-Related tests:
-
-```bash
-NODE_ENV=test node tests/dashboardSubscriptionPlannerConfig.test.js
-NODE_ENV=test node tests/subscriptionPlannerDashboardToFlutter.e2e.test.js
-NODE_ENV=test node tests/dashboardMealBuilderRegression.test.js
-NODE_ENV=test node tests/dashboardSubscriptionMenuReadiness.test.js
-```
-
----
-
-## 5. Current Dashboard Integration Approach
-
-For now, the Dashboard screen should use the existing Meal Builder draft/config flow.
-
-Do not invent a separate frontend-only config.
-
-The Dashboard should load, edit, validate, save, and publish the existing backend config.
-
-Expected existing flow:
-
+### Success Response
+`{"status":true,"data":{"id":"665f1b2e7b9a4d0012ba0001","status":"draft","isCurrent":true,"contractVersion":"subscription_meal_builder.v1","source":"dashboard","notes":"Premium upgrades configuration","sections":[{"key":"premium","selectionType":"premium_meal","selectedOptionIds":["665f1b2e7b9a4d0012e50001"]}],"publishedAt":null}}`
+### Error Response
+`{"ok":false,"error":{"code":"MEAL_BUILDER_INVALID_SECTION_REFERENCE","message":"option_group sections require productContextId and sourceGroupId","details":{"index":0}}}`
+### Frontend Notes
+Send IDs only. Response metadata read-only. Creating does not publish.
+### Validation
+Canonical section rules above; referenced catalog entities/relations are checked by validation and normalization.
+### Important Do/Don't
+Do preserve all intended sections in the array. Do not describe premium choices as counts or extras.
+### Postman
 ```http
-POST /api/dashboard/meal-builder/draft
-GET  /api/dashboard/meal-builder/draft/hydrated
-POST /api/dashboard/meal-builder/validate
-PUT  /api/dashboard/meal-builder/draft
-POST /api/dashboard/meal-builder/publish
+POST {{baseUrl}}/api/dashboard/meal-builder/draft
+Authorization: Bearer {{dashboardToken}}
+Content-Type: application/json
+
+{"notes":"Premium upgrades configuration","sections":[{"key":"premium","sectionType":"option_group","sourceKind":"premium_visual","productContextId":"{{productId}}","sourceGroupId":"{{optionGroupId}}","selectedOptionIds":["{{optionId}}"],"includeMode":"selected","selectionType":"premium_meal","sortOrder":5,"required":false,"minSelections":0,"maxSelections":1,"visible":true,"availableFor":["subscription"]}]}
 ```
 
-After publish, verify Flutter-facing output through:
-
+## PUT /api/dashboard/meal-builder/draft
+### Purpose
+Replace the current draft sections and optionally notes; creates a draft if absent.
+### Used By
+Save changes button.
+### Auth
+Dashboard `admin`/`superadmin` required.
+### Path Params
+None.
+### Query Params
+None.
+### Request Body
+Same canonical full-section-array shape as POST. `sections` omitted becomes an empty array.
+```json
+{"notes":"Premium meal and premium salad choices","sections":[{"key":"premium","sectionType":"product_list","sourceKind":"product_list","selectedProductIds":["665f1b2e7b9a4d0012b20099"],"includeMode":"selected","selectionType":"premium_large_salad","sortOrder":6,"required":false,"minSelections":0,"maxSelections":1,"multiSelect":false,"visible":true,"availableFor":["subscription"],"metadata":{},"rules":{}}]}
+```
+### Success Response
+`{"status":true,"data":{"id":"665f1b2e7b9a4d0012ba0001","status":"draft","isCurrent":true,"notes":"Premium meal and premium salad choices","sections":[{"key":"premium","selectionType":"premium_large_salad","selectedProductIds":["665f1b2e7b9a4d0012b20099"]}],"updatedAt":"2026-06-20T11:00:00.000Z"}}`
+### Error Response
+`{"ok":false,"error":{"code":"MEAL_BUILDER_INVALID_CHANNEL","message":"Meal Builder is subscription-only"}}`
+### Frontend Notes
+This is replacement semantics. Send canonical fields only; response metadata read-only.
+### Validation
+Same as POST; section IDs normalized and ordering sorted by `sortOrder`.
+### Important Do/Don't
+Do send every section you want to retain. Do not send one section expecting PATCH semantics.
+### Postman
 ```http
-GET /api/subscriptions/meal-planner-menu
+PUT {{baseUrl}}/api/dashboard/meal-builder/draft
+Authorization: Bearer {{dashboardToken}}
+Content-Type: application/json
+
+{"notes":"Updated upgrades","sections":[{"key":"premium","sectionType":"product_list","sourceKind":"product_list","selectedProductIds":["{{productId}}"],"includeMode":"selected","selectionType":"premium_large_salad","sortOrder":6,"visible":true,"availableFor":["subscription"]}]}
 ```
 
----
-
-## 6. Data Location
-
-The Dashboard screen should find the visual section with:
-
-```txt
-section.key = premium
+## GET /api/dashboard/meal-builder/pickers/:sectionKey
+### Purpose
+Return eligible catalog candidates for one canonical section.
+### Used By
+Premium meal/salad selection dialogs.
+### Auth
+Dashboard `admin`/`superadmin` required.
+### Path Params
+`sectionKey` required supported canonical key (including `premium`; unsupported keys return 400).
+### Query Params
+`q`/`search` string; `include=all`; `includeUnavailable` boolean default false; `includeNotLinked` boolean default true; `diagnostics` boolean default false; `page` integer default 1; `limit` integer bounded by service.
+### Request Body
+No request body.
+### Success Response
+```json
+{"status":true,"data":{"contractVersion":"dashboard_meal_builder_picker.v1","sectionKey":"premium","candidateType":"mixed","product":{"id":"665f1b2e7b9a4d0012b20001","key":"basic_meal","name":{"ar":"وجبة أساسية","en":"Basic Meal"}},"group":{"id":"665f1b2e7b9a4d0012c30001","key":"proteins","name":{"ar":"البروتين","en":"Protein"}},"rules":{"selectionType":"premium_meal","requiredPremiumKeys":[]},"candidates":[{"id":"665f1b2e7b9a4d0012e50001","key":"salmon","name":{"ar":"سلمون","en":"Salmon"},"priceHalala":3000,"selected":true,"available":true,"errors":[],"warnings":[]}],"meta":{"page":1,"limit":25,"total":1,"pages":1}}}
 ```
-
-Inside that section, planner upgrade rules live under:
-
-```js
-section.rules.premium_meal
-section.rules.premium_large_salad
-```
-
-Do not rename the visual `premium` section unless the backend contract changes.
-
----
-
-## 7. Premium Meal Config Shape
-
-The `premium_meal` config controls which proteins appear as premium meal upgrades.
-
-Expected shape:
-
-```js
-{
-  "upgradeType": "premium_protein",
-  "linkedProductKey": "basic_meal",
-  "premiumProteinOptions": [
-    {
-      "optionKey": "beef_steak",
-      "extraFeeHalala": 2000,
-      "enabled": true,
-      "sortOrder": 10
-    },
-    {
-      "optionKey": "shrimp",
-      "extraFeeHalala": 2000,
-      "enabled": true,
-      "sortOrder": 20
-    },
-    {
-      "optionKey": "salmon",
-      "extraFeeHalala": 2000,
-      "enabled": true,
-      "sortOrder": 30
-    }
-  ]
-}
-```
-
-### Dashboard fields
-
-The Premium Meal UI should allow the admin to control:
-
-```txt
-enabled/disabled per premium protein
-extraFeeHalala per premium protein
-sortOrder per premium protein
-```
-
-The following should be locked/read-only unless backend explicitly allows changes later:
-
-```txt
-upgradeType = premium_protein
-linkedProductKey = basic_meal
-```
-
-### Business meaning
-
-Premium Meal is a meal upgrade.
-
-Example:
-
-If a customer has 14 meals and chooses 4 premium meals:
-
-```txt
-10 standard meals
-4 premium meals
-total remains 14 meals
-```
-
-Premium Meal must not create extra meals.
-
----
-
-## 8. Premium Large Salad Config Shape
-
-The `premium_large_salad` config controls the configurable large salad planner product.
-
-Expected shape:
-
-```js
-{
-  "upgradeType": "premium_large_salad",
-  "linkedProductKey": "premium_large_salad",
-  "extraFeeHalala": 2900,
-  "blockedGroupKeys": ["extra_protein_50g"],
-  "groups": [
-    {
-      "groupKey": "leafy_greens",
-      "enabled": true,
-      "minSelections": 0,
-      "maxSelections": 2,
-      "allowedOptionKeys": ["lettuce", "arugula", "cabbage"]
-    },
-    {
-      "groupKey": "vegetables_legumes",
-      "enabled": true,
-      "minSelections": 0,
-      "maxSelections": 19,
-      "allowedOptionKeys": []
-    },
-    {
-      "groupKey": "proteins",
-      "enabled": true,
-      "minSelections": 1,
-      "maxSelections": 1,
-      "allowedOptionKeys": [
-        "boiled_eggs",
-        "tuna",
-        "chicken_fajita",
-        "spicy_chicken",
-        "italian_spiced_chicken",
-        "chicken_tikka",
-        "asian_chicken",
-        "chicken_strips",
-        "grilled_chicken",
-        "mexican_chicken",
-        "fish_fillet"
-      ]
-    }
-  ]
-}
-```
-
-### Dashboard fields
-
-The Premium Large Salad UI should allow the admin to control:
-
-```txt
-extraFeeHalala
-blockedGroupKeys
-enabled/disabled per group
-minSelections per group
-maxSelections per group
-allowedOptionKeys per group
-```
-
-The following should be locked/read-only unless backend explicitly allows changes later:
-
-```txt
-upgradeType = premium_large_salad
-linkedProductKey = premium_large_salad
-```
-
-### allowedOptionKeys behavior
-
-If `allowedOptionKeys` is an empty array:
-
-```txt
-allow all currently linked options in that group
-```
-
-If `allowedOptionKeys` contains keys:
-
-```txt
-only these options should appear in the final planner output
-```
-
----
-
-## 9. Suggested Dashboard UI Layout
-
-### Page title
-
-```txt
-Subscription Planner Upgrades
-```
-
-### Main sections
-
-```txt
-1. Premium Meal
-2. Premium Large Salad
-```
-
----
-
-### Premium Meal section UI
-
-Recommended table:
-
-| Protein    | Enabled | Extra Fee SAR | Sort Order |
-| ---------- | ------: | ------------: | ---------: |
-| Beef Steak |  yes/no |         20.00 |         10 |
-| Shrimp     |  yes/no |         20.00 |         20 |
-| Salmon     |  yes/no |         20.00 |         30 |
-
-Notes:
-
-* Display fee in SAR.
-* Save as halala.
-* Disabled proteins must disappear from Flutter planner output.
-* At least one enabled premium protein is recommended.
-
----
-
-### Premium Large Salad section UI
-
-Recommended layout:
-
-```txt
-Extra Fee SAR
-Blocked Groups
-Groups Table
-```
-
-Groups table:
-
-| Group        | Enabled | Min | Max | Allowed Options            |
-| ------------ | ------: | --: | --: | -------------------------- |
-| Leafy Greens |  yes/no |   0 |   2 | lettuce, arugula, cabbage  |
-| Vegetables   |  yes/no |   0 |  19 | all / selected             |
-| Proteins     |  yes/no |   1 |   1 | tuna, chicken, boiled eggs |
-| Sauces       |  yes/no |   1 |   1 | selected sauces            |
-
-Notes:
-
-* Admin should pick allowed options from existing backend option groups.
-* Do not allow free-text option keys unless this is an internal/debug tool.
-* Use backend hydrated data/pickers if available.
-* If a group is blocked, it must not appear in final planner output.
-
----
-
-## 10. Validation Rules
-
-Dashboard should call backend validation before saving/publishing.
-
-Backend validation should reject:
-
-```txt
-premium_meal linkedProductKey not equal to basic_meal
-premium_meal optionKey not found in protein options
-premium_meal extraFeeHalala < 0
-premium_large_salad linkedProductKey not equal to premium_large_salad
-premium_large_salad groupKey not found
-premium_large_salad optionKey not found under selected group
-invalid min/max selection values
-blocked groups appearing in output
-renamed planner section keys
-```
-
-Known validation error codes include:
-
-```txt
-MEAL_BUILDER_PREMIUM_MEAL_INVALID_FEE
-MEAL_BUILDER_PREMIUM_MEAL_INVALID_OPTION
-MEAL_BUILDER_PREMIUM_LARGE_SALAD_INVALID_GROUP
-MEAL_BUILDER_PREMIUM_LARGE_SALAD_INVALID_OPTION
-```
-
-Dashboard should display these errors clearly to the admin.
-
----
-
-## 11. Save/Publish Flow
-
-Recommended UI flow:
-
-```txt
-1. Load current hydrated draft.
-2. Locate section.key = premium.
-3. Render rules.premium_meal.
-4. Render rules.premium_large_salad.
-5. Admin edits values.
-6. Call validate.
-7. If validation passes, save draft.
-8. Admin publishes.
-9. After publish, optionally verify /api/subscriptions/meal-planner-menu.
-```
-
-Do not publish automatically after every edit unless this is explicitly approved.
-
----
-
-## 12. Safety Rules For Dashboard Team
-
-Do not do these:
-
-```txt
-Do not rename premium_meal.
-Do not rename premium_large_salad.
-Do not rename premium_large_salad product key.
-Do not move Premium Meal into add-ons.
-Do not move Premium Large Salad into add-ons.
-Do not calculate prices in frontend.
-Do not calculate meal balance in frontend.
-Do not hardcode premium proteins in Flutter.
-Do not rely on fuzzy salad matching.
-```
-
-Dashboard can display and edit config, but backend remains the source of truth.
-
----
-
-## 13. Acceptance Criteria
-
-The Dashboard screen is considered ready when:
-
-```txt
-1. Admin can view current Premium Meal config.
-2. Admin can enable/disable premium proteins.
-3. Admin can edit premium protein extra fees.
-4. Admin can view current Premium Large Salad config.
-5. Admin can edit large salad extra fee.
-6. Admin can block/unblock option groups.
-7. Admin can restrict allowed options per group.
-8. Admin can edit min/max group limits.
-9. Validation errors are displayed clearly.
-10. Saving does not break /api/subscriptions/meal-planner-menu.
-11. Published output still contains:
-   - standard_meal
-   - premium_meal
-   - sandwich
-   - premium_large_salad
-12. Published output still uses exact product key:
-   - premium_large_salad
-```
-
----
-
-## 14. QA Checklist
-
-After Dashboard implementation, QA should verify:
-
-```txt
-Premium Meal:
-- Beef Steak appears when enabled.
-- Shrimp disappears when disabled.
-- Custom extra fee appears in planner output.
-- Config with one premium protein only outputs that one protein.
-- Missing config still falls back safely.
-
-Premium Large Salad:
-- Product key remains premium_large_salad.
-- Extra fee changes after publish.
-- Blocked group does not appear.
-- allowedOptionKeys restricts options.
-- min/max overrides appear.
-- invalid group/option shows validation error.
-
-Flutter compatibility:
-- Existing meal planner screen still opens.
-- No section is missing.
-- Premium Large Salad selection still works.
-- Add-ons remain separate from meals.
-```
-
----
-
-## 15. Current Backend Test Commands
-
-Use these to verify backend compatibility after dashboard-facing changes:
-
-```bash
-NODE_ENV=test node tests/dashboardSubscriptionPlannerConfig.test.js
-NODE_ENV=test node tests/subscriptionPlannerDashboardToFlutter.e2e.test.js
-NODE_ENV=test node tests/dashboardMealBuilderRegression.test.js
-NODE_ENV=test node tests/dashboardSubscriptionMenuReadiness.test.js
-```
-
----
-
-## 16. Current Known Limitation
-
-A dedicated simplified endpoint such as:
-
+### Error Response
+`{"ok":false,"error":{"code":"MEAL_BUILDER_PICKER_SECTION_INVALID","message":"Unsupported Meal Builder picker section","details":{"sectionKey":"unknown"}}}`
+### Frontend Notes
+Candidates/prices/status are read-only; save selected IDs only. Premium option pricing is effective catalog/relation pricing.
+### Validation
+Unavailable/unlinked candidates are filtered according to flags; search is server-side.
+### Important Do/Don't
+Do display why candidates are unavailable. Do not submit candidate objects or price values in draft.
+### Postman
 ```http
-GET /api/dashboard/subscription-planner/config
-PUT /api/dashboard/subscription-planner/config
+GET {{baseUrl}}/api/dashboard/meal-builder/pickers/premium?q=salmon&page=1&limit=20&includeUnavailable=false
+Authorization: Bearer {{dashboardToken}}
+Accept-Language: en
+Content-Type: application/json
 ```
 
-may be added later for a cleaner Dashboard UI.
+## POST /api/dashboard/meal-builder/validate
+### Purpose
+Validate either supplied unsaved sections or the current saved draft.
+### Used By
+Live validation and pre-publish validation.
+### Auth
+Dashboard `admin`/`superadmin` required.
+### Path Params
+None.
+### Query Params
+None.
+### Request Body
+Send `{ "sections": [...] }` to validate unsaved canonical sections, or `{}` to validate current draft.
+```json
+{"sections":[{"key":"premium","sectionType":"option_group","sourceKind":"premium_visual","productContextId":"665f1b2e7b9a4d0012b20001","sourceGroupId":"665f1b2e7b9a4d0012c30001","selectedOptionIds":["665f1b2e7b9a4d0012e50001"],"includeMode":"selected","selectionType":"premium_meal","sortOrder":5,"visible":true,"availableFor":["subscription"]}]}
+```
+### Success Response
+`{"status":true,"data":{"status":"ready","ready":true,"errors":[],"warnings":[],"checks":[],"summary":{"sections":1,"errors":0,"warnings":0}}}`
+### Error Response
+With no draft this remains HTTP 200: `{"status":true,"data":{"status":"error","ready":false,"errors":[{"level":"error","code":"MEAL_BUILDER_DRAFT_NOT_FOUND","message":"No current Meal Builder draft found"}],"warnings":[],"checks":[],"summary":{"sections":0,"errors":1,"warnings":0}}}`.
+### Frontend Notes
+All result fields read-only. Disable publish unless `ready=true`.
+### Validation
+Checks references, global/relation state, subscription channel, premium identity/pricing, and premium-large-salad relations.
+### Important Do/Don't
+Do validate the exact unsaved payload before saving/publishing. Do not treat HTTP 200 alone as readiness.
+### Postman
+```http
+POST {{baseUrl}}/api/dashboard/meal-builder/validate
+Authorization: Bearer {{dashboardToken}}
+Content-Type: application/json
 
-For now, the backend foundation works through the existing Meal Builder config flow.
-
-Dashboard should avoid depending on private frontend-only state.
-
----
-
-## 17. Final Summary
-
-This screen exists to make subscription planner upgrades admin-configurable.
-
-It controls:
-
-```txt
-premium_meal
-premium_large_salad
+{}
 ```
 
-It must preserve Flutter compatibility and keep backend as the source of truth.
-
-Premium Meal and Premium Large Salad are planner upgrade sections, not add-ons.
-
-The correct architecture is:
-
-```txt
-Dashboard UI
-→ MealBuilderConfig rules
-→ backend validation
-→ publish
-→ /api/subscriptions/meal-planner-menu
-→ Flutter
+## POST /api/dashboard/meal-builder/publish
+### Purpose
+Validate and publish the current draft as a new immutable current config/read contract.
+### Used By
+Publish Meal Builder action.
+### Auth
+Dashboard `admin`/`superadmin` required.
+### Path Params
+None.
+### Query Params
+None.
+### Request Body
+Optional notes only.
+```json
+{"notes":"Enable salmon and premium large salad upgrades"}
 ```
+### Success Response
+```json
+{"status":true,"data":{"config":{"id":"665f1b2e7b9a4d0012ba0002","status":"published","isCurrent":true,"contractVersion":"subscription_meal_builder.v1","revisionHash":"sha256:abc123","source":"dashboard","publishedAt":"2026-06-20T12:00:00.000Z","notes":"Enable salmon and premium large salad upgrades","sections":[]},"validation":{"status":"ready","ready":true,"errors":[],"warnings":[]},"contract":{"contractVersion":"subscription_meal_builder.v1","revisionHash":"sha256:abc123","sections":[]}}}
+```
+### Error Response
+`{"ok":false,"error":{"code":"MEAL_BUILDER_VALIDATION_FAILED","message":"Meal Builder draft is not publishable","details":{"ready":false,"errors":[{"code":"MEAL_BUILDER_PREMIUM_PRICE_INVALID"}]}}}`
+### Frontend Notes
+Show revision hash/time and refetch dashboard state. All output read-only. Unlike menu publish, this endpoint enforces validation.
+### Validation
+Current draft required; must be publishable; old published config becomes archived.
+### Important Do/Don't
+Do explicitly confirm. Do not publish menu catalog and Meal Builder interchangeably—they are separate release actions.
+### Postman
+```http
+POST {{baseUrl}}/api/dashboard/meal-builder/publish
+Authorization: Bearer {{dashboardToken}}
+Content-Type: application/json
+
+{"notes":"Enable premium upgrades"}
+```
+
+## GET /api/dashboard/meal-builder/readiness
+### Purpose
+Return deployment/QA readiness for draft and published config.
+### Used By
+Health banner and release gate.
+### Auth
+Dashboard `admin`/`superadmin` required.
+### Path Params
+None.
+### Query Params
+None.
+### Request Body
+No request body.
+### Success Response
+`{"status":true,"data":{"status":"ready","ready":true,"errors":[],"warnings":[],"checks":[],"summary":{"draft":true,"published":true,"sections":6,"errors":0,"warnings":0,"revisionHash":"sha256:abc123","route":"/api/dashboard/meal-builder/readiness"}}}`
+### Error Response
+Not-ready is HTTP 200: `{"status":true,"data":{"status":"error","ready":false,"errors":[{"level":"error","code":"MEAL_BUILDER_NOT_PUBLISHED","message":"No published Meal Builder config exists"}],"warnings":[],"checks":[],"summary":{"draft":true,"published":false,"sections":0,"errors":1,"warnings":0}}}`.
+### Frontend Notes
+Read-only; gate release based on `ready`, not HTTP status.
+### Validation
+Requires both a current draft and valid published config to report ready.
+### Important Do/Don't
+Do expose errors/checks to QA. Do not use readiness as a save endpoint.
+### Postman
+```http
+GET {{baseUrl}}/api/dashboard/meal-builder/readiness
+Authorization: Bearer {{dashboardToken}}
+Content-Type: application/json
+```
+
+## NOT IMPLEMENTED / Do not guess
+
+There is no dashboard endpoint to edit `premiumUpgradeLimit`, total/remaining upgrade counts, or per-subscription upgrade usage. There is no dedicated “premium price configuration” endpoint; edit the underlying product/option halala values via 11B/11E or product-specific overrides via 11C, then validate and publish both the menu and Meal Builder as appropriate. There is no Meal Builder rollback endpoint. Backend implementation is required for any of those dashboard features.
