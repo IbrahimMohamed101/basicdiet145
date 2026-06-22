@@ -1355,6 +1355,7 @@ async function runTests() {
     const originalMealCategoryFindOne = MealCategory.findOne;
     const originalMealFind = Meal.find;
     const originalSaladIngredientFind = SaladIngredient.find;
+    const originalPremiumUpgradeConfigFind = PremiumUpgradeConfig.find;
 
     BuilderProtein.find = () => mockQuery([]);
     BuilderCarb.find = () => mockQuery([]);
@@ -1363,6 +1364,7 @@ async function runTests() {
     MealCategory.findOne = () => mockQuery(null);
     Meal.find = () => mockQuery([]);
     SaladIngredient.find = () => mockQuery([]);
+    PremiumUpgradeConfig.find = () => mockQuery([]);
 
     try {
       const result = await buildMealSlotDraft({
@@ -1388,6 +1390,7 @@ async function runTests() {
       MealCategory.findOne = originalMealCategoryFindOne;
       Meal.find = originalMealFind;
       SaladIngredient.find = originalSaladIngredientFind;
+      PremiumUpgradeConfig.find = originalPremiumUpgradeConfigFind;
     }
   });
 

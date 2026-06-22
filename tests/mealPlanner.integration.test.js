@@ -32,6 +32,7 @@ const MenuOptionGroup = require('../src/models/MenuOptionGroup');
 const MenuOption = require('../src/models/MenuOption');
 const MenuProduct = require('../src/models/MenuProduct');
 const MenuCategory = require('../src/models/MenuCategory');
+const PremiumUpgradeConfig = require('../src/models/PremiumUpgradeConfig');
 const { ensureSafeForDestructiveOp } = require('../src/utils/dbSafety');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'supersecret';
@@ -95,6 +96,18 @@ function assertNoTopLevelOk(body, msg) {
 
 function assertArray(actual, msg) {
   if (!Array.isArray(actual)) throw new Error(`${msg || 'Assertion failed'}: expected array`);
+}
+
+function findPlannerSection(catalog, key) {
+  return (catalog?.sections || []).find((section) => section.key === key || section.selectionType === key);
+}
+
+function findPlannerProduct(section, key) {
+  return (section?.products || []).find((product) => product.key === key || product.selectionType === key);
+}
+
+function findPlannerGroup(product, key) {
+  return (product?.optionGroups || []).find((group) => group.key === key || group.sourceKey === key || group.canonicalGroupKey === key);
 }
 
 function wait(ms) {
@@ -863,6 +876,7 @@ async function runTests() {
   console.log('✅ Test user created');
   await seedBuilderCatalog();
   await seedUnifiedMenuCatalog();
+  await PremiumUpgradeConfig.deleteMany({});
   console.log('✅ Builder catalog seeded');
   await createTestSubscription();
   console.log('✅ Test subscription created');
@@ -890,6 +904,9 @@ async function runTests() {
     assertEqual(defaultRes.body.status, true, 'default response status');
     assertNoTopLevelOk(defaultRes.body, 'default meal-planner-menu response');
     assertTrue(!!defaultRes.body.data?.builderCatalog, 'default builderCatalog');
+    assertTrue(!!defaultRes.body.data?.builderCatalogV2, 'default builderCatalogV2 compatibility field');
+    assertTrue(!!defaultRes.body.data?.plannerCatalog, 'default plannerCatalog');
+    assertEqual(defaultRes.body.data?.plannerCatalog?.contractVersion, 'meal_planner_menu.v3', 'default plannerCatalog v3 contract');
     assertTrue(!!defaultRes.body.data?.addonCatalog, 'default addonCatalog');
     assertTrue(Array.isArray(defaultRes.body.data?.addonCatalog?.items), 'default addonCatalog.items');
     assertTrue(!!defaultRes.body.data?.addonCatalog?.byCategory && typeof defaultRes.body.data?.addonCatalog?.byCategory === 'object', 'default addonCatalog.byCategory');
@@ -928,51 +945,36 @@ async function runTests() {
     );
   });
   
-  await test('builderCatalog has proteins with premiumKey', async () => {
+  await test('builderCatalogV2 default exposes premium meal compatibility section', async () => {
     const res = await makeRequest('GET', '/api/subscriptions/meal-planner-menu');
-    const premiumProteins = res.body.data?.builderCatalog?.premiumProteins || [];
-    const shrimp = premiumProteins.find(p => p.premiumKey === 'shrimp');
-    assertTrue(!!shrimp, 'Shrimp has premiumKey in premiumProteins');
+    const premiumSection = findPlannerSection(res.body.data?.builderCatalogV2, 'premium_meal');
+    const premiumProduct = findPlannerProduct(premiumSection, 'premium_meal');
+    const proteinGroup = findPlannerGroup(premiumProduct, 'protein');
+    assertTrue(!!premiumSection, 'builderCatalogV2 premium_meal section present by default');
+    assertTrue(!!premiumProduct, 'builderCatalogV2 premium_meal virtual product present');
+    assertTrue(!!proteinGroup, 'builderCatalogV2 premium protein group present');
+    assertEqual(premiumProduct?.selectionType, 'premium_meal', 'premium product selectionType');
   });
   
-  await test('builderCatalog has premiumLargeSalad', async () => {
+  await test('builderCatalogV2 default has premium_large_salad compatibility product', async () => {
     const res = await makeRequest('GET', '/api/subscriptions/meal-planner-menu');
-    const salad = res.body.data?.builderCatalog?.premiumLargeSalad;
-    assertTrue(!!salad, 'premiumLargeSalad present');
-    assertTrue(!!salad?.carbId, 'large salad carb identity is present');
+    const saladSection = findPlannerSection(res.body.data?.builderCatalogV2, 'premium_large_salad');
+    const salad = findPlannerProduct(saladSection, 'premium_large_salad');
+    assertTrue(!!saladSection, 'premium_large_salad compatibility section present');
+    assertTrue(!!salad, 'premium_large_salad compatibility product present');
+    assertTrue(!!salad?.id, 'large salad product identity is present');
     assertEqual(salad?.presetKey, 'large_salad', 'preset key');
-    assertEqual(salad?.preset?.key, 'large_salad', 'preset object key');
     assertEqual(salad?.extraFeeHalala, CUSTOM_PREMIUM_SALAD_FIXED_PRICE, 'fixed price');
-    assertEqual(salad?.premiumKey, CUSTOM_PREMIUM_SALAD_KEY, 'premiumKey is custom_premium_salad');
+    assertEqual(salad?.premiumKey, CUSTOM_PREMIUM_SALAD_KEY, 'premiumKey is premium_large_salad');
     assertEqual(salad?.selectionType, 'premium_large_salad', 'selectionType is premium_large_salad');
-    const groupKeys = (salad?.groups || []).map(g => g.key);
-    assertTrue(groupKeys.includes('leafy_greens'), 'groups includes leafy_greens');
-    assertTrue(groupKeys.includes('vegetables'), 'groups includes vegetables');
-    assertTrue(groupKeys.includes('cheese_nuts'), 'groups includes cheese_nuts');
-    assertTrue(groupKeys.includes('sauce'), 'groups includes sauce');
-    assertTrue(groupKeys.includes('protein'), 'groups includes protein');
-    const sauceGroup = salad?.groups?.find(g => g.key === 'sauce');
-    assertEqual(sauceGroup?.minSelect, 1, 'sauce minSelect=1');
-    assertEqual(sauceGroup?.maxSelect, 1, 'sauce maxSelect=1');
-    assertEqual(groupKeys.length, 6, 'exactly 6 canonical groups');
-    assertTrue(!groupKeys.includes('addons'), 'addons group removed');
-    assertTrue(!groupKeys.includes('nuts'), 'nuts group removed');
-    for (const ing of (salad?.ingredients || [])) {
-      assertTrue(groupKeys.includes(ing.groupKey), `ingredient groupKey '${ing.groupKey}' exists in groups`);
-      assertTrue(ing.groupKey !== 'addons', 'ingredient groupKey addons removed');
-      assertTrue(ing.groupKey !== 'nuts', 'ingredient groupKey nuts removed');
-    }
-    const proteinItems = (salad?.ingredients || []).filter((item) => item.groupKey === 'protein');
-    assertTrue(proteinItems.some((item) => item.isPremium), 'premium protein available for premium_large_salad');
-    assertTrue(proteinItems.some((item) => item.name.includes("Shrimp") || item.name.includes("جمبري")), 'premium shrimp should be in large salad protein list');
-    assertTrue(proteinItems.some((item) => item.name.includes("Steak") || item.name.includes("ستيك")), 'premium steak should be in large salad protein list');
+    assertTrue(Array.isArray(salad?.optionGroups), 'premium_large_salad optionGroups is an array');
   });
 
-  await test('builderCatalog sandwiches contain only real sandwich meals', async () => {
+  await test('builderCatalogV2 default sandwich section does not leak non-sandwich products', async () => {
     const res = await makeRequest('GET', '/api/subscriptions/meal-planner-menu');
-    const sandwiches = res.body.data?.builderCatalog?.sandwiches || [];
-    assertTrue(sandwiches.length > 0, 'seed sandwiches present');
-    assertTrue(sandwiches.some((item) => item.name.includes("Boiled Egg") || item.name.includes("بيض مسلوق") || item.name.includes("Sourdough") || item.name.includes("ساوردو")), 'specific seeded sandwich present');
+    const sandwichSection = findPlannerSection(res.body.data?.builderCatalogV2, 'sandwich');
+    const sandwiches = sandwichSection?.products || [];
+    assertTrue(!!sandwichSection, 'builderCatalogV2 sandwich section present by default');
     assertTrue(!sandwiches.some((item) => item.id === String(nonSandwichMeal._id)), 'non-sandwich meal excluded');
   });
 

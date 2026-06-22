@@ -35,6 +35,9 @@ const {
   resolvePremiumLargeSaladPricing,
 } = require("./premiumLargeSaladPricingService");
 const {
+  loadClientPremiumUpgradeConfigState,
+} = require("../subscription/premiumUpgradeConfigService");
+const {
   inferCardVariantFromKey,
   normalizeGroupUiMetadata,
   normalizeProductUiMetadata,
@@ -189,22 +192,28 @@ function isPremiumMealProtein(option) {
   return PREMIUM_MEAL_PROTEIN_KEY_SET.has(key);
 }
 
-function resolvePremiumMealExtraFeeHalala(option) {
+function resolvePremiumMealExtraFeeHalala(option, premiumConfigState = null) {
   const key = String(option?.key || option?.premiumKey || "").trim().toLowerCase();
+  const config = premiumConfigState && typeof premiumConfigState.getActiveConfig === "function"
+    ? premiumConfigState.getActiveConfig(key)
+    : null;
+  if (config) {
+    return Number(config.upgradeDeltaHalala || 0);
+  }
   if (PREMIUM_MEAL_EXTRA_FEE_HALALA_BY_KEY[key] !== undefined) {
     return PREMIUM_MEAL_EXTRA_FEE_HALALA_BY_KEY[key];
   }
   return Number(option?.extraFeeHalala ?? option?.extraPriceHalala ?? 0);
 }
 
-function buildProteinPayload(option, lang, { isPremium }) {
+function buildProteinPayload(option, lang, { isPremium, premiumConfigState = null }) {
   const proteinFamilyKey = inferProteinFamilyKey(option);
   const displayCategoryKey = normalizeProteinDisplayCategoryKey(option.displayCategoryKey, {
     isPremium,
     proteinFamilyKey,
   });
-  const extraFeeHalala = isPremium ? resolvePremiumMealExtraFeeHalala(option) : 0;
   const premiumKey = String(option.premiumKey || option.key || "").trim() || null;
+  const extraFeeHalala = isPremium ? resolvePremiumMealExtraFeeHalala(option, premiumConfigState) : 0;
 
   return {
     id: String(option._id),
@@ -262,6 +271,20 @@ function buildSandwichPayload(product, lang) {
     priceHalala: Number(product.priceHalala || 0),
     proteinFamilyKey: product.proteinFamilyKey || "other",
     sortOrder: Number(product.sortOrder || 0),
+  };
+}
+
+function applyPremiumLargeSaladConfigToPricing(pricing, premiumConfigState) {
+  const config = premiumConfigState && typeof premiumConfigState.getActiveConfig === "function"
+    ? premiumConfigState.getActiveConfig(PREMIUM_LARGE_SALAD_PREMIUM_KEY)
+    : null;
+  if (!config) return pricing;
+  const configuredDelta = Number(config.upgradeDeltaHalala || 0);
+  return {
+    ...pricing,
+    extraFeeHalala: configuredDelta,
+    priceHalala: configuredDelta,
+    source: "PremiumUpgradeConfig",
   };
 }
 
@@ -626,6 +649,7 @@ async function buildV3ProductOptionGroups({
   product,
   lang,
   optionFilter = null,
+  optionPayloadResolver = null,
   groupKeyResolver = null,
   groupPayloadResolver = null,
 }) {
@@ -681,7 +705,10 @@ async function buildV3ProductOptionGroups({
           if (typeof optionFilter === "function" && !optionFilter({ option, group, relation: optionRelation })) {
             return null;
           }
-          return buildV3OptionPayload({ option, relation: optionRelation, lang });
+          const overrides = typeof optionPayloadResolver === "function"
+            ? optionPayloadResolver({ option, group, relation: optionRelation }) || {}
+            : {};
+          return buildV3OptionPayload({ option, relation: optionRelation, lang, overrides });
         })
         .filter(Boolean)
         .sort(sortByCatalogOrder);
@@ -765,6 +792,7 @@ async function buildCanonicalPlannerCatalogV3({ builderCatalog, context = {}, la
   const basicMealProduct = context.basicMealProduct || null;
   const premiumLargeSaladProduct = context.premiumLargeSaladProduct || null;
   const premiumLargeSaladPricing = context.premiumLargeSaladPricing || {};
+  const premiumConfigState = context.premiumConfigState || null;
 
   const standardMealGroups = await buildV3ProductOptionGroups({
     product: basicMealProduct,
@@ -780,9 +808,19 @@ async function buildCanonicalPlannerCatalogV3({ builderCatalog, context = {}, la
     product: basicMealProduct,
     lang,
     optionFilter({ option, group }) {
-      if (group.key === MENU_PROTEIN_GROUP_KEY) return isPremiumMealProtein(option);
+      if (group.key === MENU_PROTEIN_GROUP_KEY) {
+        if (!isPremiumMealProtein(option)) return false;
+        return !premiumConfigState?.hasConfigs || premiumConfigState.isAllowed(option.premiumKey || option.key);
+      }
       if (group.key === MENU_CARB_GROUP_KEY) return isCustomerVisibleCarb(option);
       return true;
+    },
+    optionPayloadResolver({ option, group }) {
+      if (group.key !== MENU_PROTEIN_GROUP_KEY) return {};
+      const config = premiumConfigState?.getActiveConfig ? premiumConfigState.getActiveConfig(option.premiumKey || option.key) : null;
+      if (!config) return {};
+      const fee = Number(config.upgradeDeltaHalala || 0);
+      return { extraPriceHalala: fee, extraFeeHalala: fee };
     },
   });
   const premiumMealGroups = premiumMealRelationGroups;
@@ -1191,7 +1229,7 @@ async function buildSubscriptionBuilderCatalogV2({ builderCatalog, context = {},
 
 async function buildSubscriptionBuilderCatalogBundle({ lang = "en", includeV2 = true, includeV3 = false } = {}) {
   const coldSandwichCategory = await MenuCategory.findOne(activeCatalogQuery({ key: "cold_sandwiches" })).lean();
-  const [proteinGroupData, carbGroupData, sandwichRows, basicMealProduct, premiumLargeSaladPricing] = await Promise.all([
+  const [proteinGroupData, carbGroupData, sandwichRows, basicMealProduct, rawPremiumLargeSaladPricing, premiumConfigState] = await Promise.all([
     getGroupOptionsWithGroup(MENU_PROTEIN_GROUP_KEY),
     getGroupOptionsWithGroup(MENU_CARB_GROUP_KEY),
     coldSandwichCategory
@@ -1209,7 +1247,9 @@ async function buildSubscriptionBuilderCatalogBundle({ lang = "en", includeV2 = 
       ...availableForChannelQuery("subscription"),
     })).lean(),
     resolvePremiumLargeSaladPricing(),
+    loadClientPremiumUpgradeConfigState(),
   ]);
+  const premiumLargeSaladPricing = applyPremiumLargeSaladConfigToPricing(rawPremiumLargeSaladPricing, premiumConfigState);
   const sandwichCatalogItemsById = await loadCatalogItemsByIdForDocs(sandwichRows);
   const sandwiches = await enrichSandwichProductsWithCompatibilityMetadata(
     filterGloballyAvailable(sandwichRows, sandwichCatalogItemsById)
@@ -1232,6 +1272,7 @@ async function buildSubscriptionBuilderCatalogBundle({ lang = "en", includeV2 = 
     .map((option) => {
       return buildProteinPayload(option, lang, { 
         isPremium: isPremiumMealProtein(option),
+        premiumConfigState,
       });
     })
     .sort(sortByCatalogOrder);
@@ -1249,7 +1290,12 @@ async function buildSubscriptionBuilderCatalogBundle({ lang = "en", includeV2 = 
     return STANDARD_MEAL_EXTENDED_PROTEIN_KEY_SET.has(key);
   });
   const proteins = mealProteins.filter((protein) => !protein.isPremium);
-  const premiumProteins = mealProteins.filter((protein) => protein.isPremium);
+  const premiumProteins = mealProteins.filter((protein) => (
+    protein.isPremium
+    && (!premiumConfigState.hasConfigs || premiumConfigState.isAllowed(protein.premiumKey || protein.key))
+  ));
+  const isPremiumLargeSaladConfigAllowed = !premiumConfigState.hasConfigs
+    || premiumConfigState.isAllowed(PREMIUM_LARGE_SALAD_PREMIUM_KEY);
 
   const selectableCarbs = carbOptions
     .filter((option) => isCustomerVisibleCarb(option))
@@ -1272,7 +1318,7 @@ async function buildSubscriptionBuilderCatalogBundle({ lang = "en", includeV2 = 
 
   const premiumLargeSalad = {
     id: MEAL_SELECTION_TYPES.PREMIUM_LARGE_SALAD,
-    enabled: Boolean(premiumLargeSaladProduct) && !premiumLargeSaladPricing.isCatalogUnavailable,
+    enabled: Boolean(premiumLargeSaladProduct) && !premiumLargeSaladPricing.isCatalogUnavailable && isPremiumLargeSaladConfigAllowed,
     carbId: premiumLargeSaladProduct ? String(premiumLargeSaladProduct._id) : null,
     premiumKey: PREMIUM_LARGE_SALAD_PREMIUM_KEY,
     selectionType: MEAL_SELECTION_TYPES.PREMIUM_LARGE_SALAD,
@@ -1334,6 +1380,7 @@ async function buildSubscriptionBuilderCatalogBundle({ lang = "en", includeV2 = 
     premiumLargeSalad,
     rules: getMealPlannerRules(),
   });
+  const effectivePremiumLargeSaladProduct = isPremiumLargeSaladConfigAllowed ? premiumLargeSaladProduct : null;
   const builderCatalogV2 = includeV2
     ? await buildSubscriptionBuilderCatalogV2({
       builderCatalog,
@@ -1342,7 +1389,7 @@ async function buildSubscriptionBuilderCatalogBundle({ lang = "en", includeV2 = 
         proteinGroup: proteinGroupData.group,
         carbGroup: carbGroupData.group,
         sandwiches,
-        premiumLargeSaladProduct,
+        premiumLargeSaladProduct: effectivePremiumLargeSaladProduct,
         premiumLargeSaladPricing,
         normalizedProteins,
       },
@@ -1355,8 +1402,9 @@ async function buildSubscriptionBuilderCatalogBundle({ lang = "en", includeV2 = 
       context: {
         basicMealProduct,
         sandwiches,
-        premiumLargeSaladProduct,
+        premiumLargeSaladProduct: effectivePremiumLargeSaladProduct,
         premiumLargeSaladPricing,
+        premiumConfigState,
       },
     })
     : null;

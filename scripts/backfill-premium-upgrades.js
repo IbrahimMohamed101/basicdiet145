@@ -18,6 +18,8 @@ async function backfillPremiumUpgrades() {
 
   let createdCount = 0;
   let skippedCount = 0;
+  const unresolvedSources = [];
+  const priceDiscrepancies = [];
 
   for (const protein of proteins) {
     const premiumKey = protein.premiumKey || protein.key;
@@ -29,6 +31,13 @@ async function backfillPremiumUpgrades() {
 
     const existing = await PremiumUpgradeConfig.findOne({ premiumKey });
     if (existing) {
+      if (Number(existing.upgradeDeltaHalala || 0) !== Number(protein.extraFeeHalala || 0)) {
+        priceDiscrepancies.push({
+          premiumKey,
+          legacyPriceHalala: Number(protein.extraFeeHalala || 0),
+          configPriceHalala: Number(existing.upgradeDeltaHalala || 0),
+        });
+      }
       console.log(`Config for ${premiumKey} already exists. Skipping.`);
       skippedCount++;
       continue;
@@ -38,6 +47,7 @@ async function backfillPremiumUpgrades() {
     const option = await MenuOption.findOne({ key: premiumKey, isActive: true });
     if (!option) {
       console.warn(`Could not find active MenuOption for ${premiumKey}. Skipping.`);
+      unresolvedSources.push({ premiumKey, sourceType: "menu_option" });
       skippedCount++;
       continue;
     }
@@ -68,6 +78,18 @@ async function backfillPremiumUpgrades() {
   console.log("Checking premium large salad...");
   const existingSalad = await PremiumUpgradeConfig.findOne({ premiumKey: PREMIUM_LARGE_SALAD_KEY });
   if (existingSalad) {
+    try {
+      const saladPricing = await resolvePremiumLargeSaladPricing();
+      if (Number(existingSalad.upgradeDeltaHalala || 0) !== Number(saladPricing.extraFeeHalala || 0)) {
+        priceDiscrepancies.push({
+          premiumKey: PREMIUM_LARGE_SALAD_KEY,
+          legacyPriceHalala: Number(saladPricing.extraFeeHalala || 0),
+          configPriceHalala: Number(existingSalad.upgradeDeltaHalala || 0),
+        });
+      }
+    } catch (err) {
+      unresolvedSources.push({ premiumKey: PREMIUM_LARGE_SALAD_KEY, sourceType: "menu_product", error: err.message });
+    }
     console.log(`Config for ${PREMIUM_LARGE_SALAD_KEY} already exists. Skipping.`);
     skippedCount++;
   } else {
@@ -97,19 +119,29 @@ async function backfillPremiumUpgrades() {
           createdCount++;
         } else {
           console.warn("Could not find MenuProduct for premium large salad.");
+          unresolvedSources.push({ premiumKey: PREMIUM_LARGE_SALAD_KEY, sourceType: "menu_product" });
           skippedCount++;
         }
       } else {
         console.warn("Could not resolve premium large salad pricing.");
+        unresolvedSources.push({ premiumKey: PREMIUM_LARGE_SALAD_KEY, sourceType: "menu_product" });
         skippedCount++;
       }
     } catch (err) {
       console.error("Error creating salad config:", err);
+      unresolvedSources.push({ premiumKey: PREMIUM_LARGE_SALAD_KEY, sourceType: "menu_product", error: err.message });
       skippedCount++;
     }
   }
 
   console.log(`Backfill complete. Created: ${createdCount}, Skipped: ${skippedCount}`);
+  if (unresolvedSources.length) {
+    console.warn("Unresolved premium upgrade sources:", JSON.stringify(unresolvedSources, null, 2));
+  }
+  if (priceDiscrepancies.length) {
+    console.warn("Legacy/config premium price discrepancies:", JSON.stringify(priceDiscrepancies, null, 2));
+  }
+  return { createdCount, skippedCount, unresolvedSources, priceDiscrepancies };
 }
 
 async function run() {

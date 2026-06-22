@@ -54,6 +54,7 @@ Premium protections:
 
 - Premium proteins stay `selectionType=premium_meal` and continue to use canonical premium balance/payment logic.
 - Premium large salad stays `selectionType=premium_large_salad`; pricing comes from `premiumLargeSaladPricingService`.
+- Catalog bootstrap creates the eligible sources for `beef_steak`, `shrimp`, `salmon`, and `premium_large_salad`, but deliberately does not create `PremiumUpgradeConfig` rows. An empty config collection therefore keeps legacy fallback active; use the explicit backfill workflow when all known keys can be migrated together.
 - Disallowed salad proteins and `extra_protein_50g` make the seed fail instead of publishing an unsafe builder.
 - Missing optional premium large salad data logs a warning and still allows the standard builder sections to seed.
 

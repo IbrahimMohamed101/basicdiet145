@@ -67,6 +67,19 @@ Existing compatibility fields remain available in default responses:
 - `builderCatalogV2`
 - `addonCatalog`
 
+## PremiumUpgradeConfig Deployment Rule
+
+`PremiumUpgradeConfig` is the subscription planner premium-upgrade pricing authority once configured.
+
+- If the `PremiumUpgradeConfig` collection is empty, the backend keeps the legacy fallback pricing/catalog behavior.
+- Once any `PremiumUpgradeConfig` rows exist, configs become authoritative for new subscription planner premium upgrades.
+- Production must avoid partial backfill. Backfill must create all known keys, or no keys, before relying on config-authoritative behavior.
+- Known config keys are `beef_steak`, `shrimp`, `salmon`, and `premium_large_salad`.
+- Hidden, disabled, or archived configs are hidden from the client planner and rejected for new submissions.
+- Backfill creates missing config rows only; it does not rewrite historical records, paid premium selections, premium balances, subscription days, or orders.
+- One-time order pricing does not use `PremiumUpgradeConfig`.
+- Flutter does not need `PremiumUpgradeConfig` IDs or request changes.
+
 ## Canonical Save/Validate Payload
 
 Use request-level contract version:

@@ -475,7 +475,7 @@ async function getSubscriptionMealPlannerMenu(req, res) {
     addonCatalog: buildAddonCatalogFromLegacyPlannerAddons(legacyPlannerAddons),
     plannerCatalog: plannerCatalog || { sections: [] },
   };
-  if (includeLegacy && builderCatalogV2) {
+  if (builderCatalogV2) {
     data.builderCatalogV2 = builderCatalogV2;
   }
 

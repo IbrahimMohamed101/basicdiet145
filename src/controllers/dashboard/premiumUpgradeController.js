@@ -1,4 +1,12 @@
 const premiumUpgradeConfigService = require("../../services/subscription/premiumUpgradeConfigService");
+const errorResponse = require("../../utils/errorResponse");
+
+function handlePremiumUpgradeError(res, error, next) {
+  if (error && error.status && error.code) {
+    return errorResponse(res, error.status, error.code, error.message, error.details);
+  }
+  return next(error);
+}
 
 /**
  * @route GET /api/dashboard/premium-upgrades
@@ -10,7 +18,7 @@ async function getConfigs(req, res, next) {
     const result = await premiumUpgradeConfigService.getConfigs(req.query);
     res.json(result);
   } catch (error) {
-    next(error);
+    return handlePremiumUpgradeError(res, error, next);
   }
 }
 
@@ -24,7 +32,7 @@ async function getCandidates(req, res, next) {
     const result = await premiumUpgradeConfigService.getCandidates(req.query);
     res.json(result);
   } catch (error) {
-    next(error);
+    return handlePremiumUpgradeError(res, error, next);
   }
 }
 
@@ -38,7 +46,7 @@ async function getReadiness(req, res, next) {
     const result = await premiumUpgradeConfigService.getReadiness();
     res.json(result);
   } catch (error) {
-    next(error);
+    return handlePremiumUpgradeError(res, error, next);
   }
 }
 
@@ -53,7 +61,7 @@ async function createConfig(req, res, next) {
     const result = await premiumUpgradeConfigService.createConfig(req.body, adminId);
     res.status(201).json({ data: result });
   } catch (error) {
-    next(error);
+    return handlePremiumUpgradeError(res, error, next);
   }
 }
 
@@ -68,7 +76,7 @@ async function updateConfig(req, res, next) {
     const result = await premiumUpgradeConfigService.updateConfig(req.params.id, req.body, adminId);
     res.json({ data: result });
   } catch (error) {
-    next(error);
+    return handlePremiumUpgradeError(res, error, next);
   }
 }
 
@@ -83,7 +91,7 @@ async function updateConfigState(req, res, next) {
     const result = await premiumUpgradeConfigService.updateConfigState(req.params.id, req.body, adminId);
     res.json({ data: result });
   } catch (error) {
-    next(error);
+    return handlePremiumUpgradeError(res, error, next);
   }
 }
 
@@ -98,7 +106,7 @@ async function archiveConfig(req, res, next) {
     const result = await premiumUpgradeConfigService.archiveConfig(req.params.id, req.body, adminId);
     res.json({ data: result });
   } catch (error) {
-    next(error);
+    return handlePremiumUpgradeError(res, error, next);
   }
 }
 

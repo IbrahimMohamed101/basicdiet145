@@ -1,6 +1,8 @@
 process.env.NODE_ENV = "test";
 process.env.DASHBOARD_JWT_SECRET = process.env.DASHBOARD_JWT_SECRET || "dashboardsecret";
 process.env.JWT_SECRET = process.env.JWT_SECRET || "supersecret";
+process.env.ALLOW_CATALOG_RESET = "true";
+process.env.BOOTSTRAP_SYNC = "true";
 
 const assert = require("assert");
 const mongoose = require("mongoose");
@@ -10,7 +12,7 @@ const request = require("supertest");
 const { createApp } = require("../src/app");
 const MenuOption = require("../src/models/MenuOption");
 const MenuOptionGroup = require("../src/models/MenuOptionGroup");
-const { seedOneTimeMenu } = require("../scripts/seed-one-time-menu");
+const { seedCatalog } = require("../scripts/bootstrap/seed-catalog");
 
 const TEST_DB_NAME = `builder_catalog_v2_contract_${Date.now()}`;
 
@@ -82,6 +84,21 @@ function allV2Groups(catalog) {
   ).flatMap((product) => product.optionGroups || []));
 }
 
+function resolvePremiumSaladPriceSource(catalog) {
+  if (catalog?.premiumLargeSalad) {
+    return catalog.premiumLargeSalad;
+  }
+  const saladSection = sectionByKey(catalog || {}, "premium_large_salad");
+  const saladProduct = saladSection && firstProduct(saladSection, "premium_large_salad pricing source");
+  if (saladProduct?.pricing) {
+    return {
+      priceHalala: saladProduct.pricing.priceHalala ?? saladProduct.pricing.basePriceHalala,
+      priceSource: saladProduct.pricing.priceSource ?? saladProduct.priceSource,
+    };
+  }
+  return saladProduct || null;
+}
+
 function assertDefaultTopLevelCompatibility(data) {
   assert.deepStrictEqual(
     Object.keys(data).sort(),
@@ -110,7 +127,7 @@ function assertIncludeLegacyCompatibility(data) {
   assertArray(data.addons.items, "legacy addons.items");
 }
 
-function assertBuilderCatalogV2(catalog, legacyCatalog) {
+function assertBuilderCatalogV2(catalog, compatibilityCatalog) {
   assert.strictEqual(catalog.catalogVersion, "meal_planner_menu.v2", "catalogVersion is stable");
   assert.strictEqual(catalog.currency, "SAR", "catalog currency is stable");
   assertArray(catalog.sections, "builderCatalogV2.sections");
@@ -189,8 +206,10 @@ function assertBuilderCatalogV2(catalog, legacyCatalog) {
   assert.strictEqual(saladProduct.presetKey, "large_salad", "premium salad presetKey");
   assertHalala(saladProduct.priceHalala, "premium salad priceHalala");
   assertHalala(saladProduct.extraFeeHalala, "premium salad extraFeeHalala");
-  assert.strictEqual(saladProduct.priceHalala, legacyCatalog.premiumLargeSalad.priceHalala, "premium salad V2 price matches V1 compatibility catalog");
-  assert.strictEqual(saladProduct.priceSource, legacyCatalog.premiumLargeSalad.priceSource, "premium salad V2 priceSource matches V1 compatibility catalog");
+  const saladPriceSource = resolvePremiumSaladPriceSource(compatibilityCatalog);
+  assertObject(saladPriceSource, "premium salad compatibility price source");
+  assert.strictEqual(saladProduct.priceHalala, saladPriceSource.priceHalala, "premium salad V2 price matches compatibility catalog");
+  assert.strictEqual(saladProduct.priceSource, saladPriceSource.priceSource, "premium salad V2 priceSource matches compatibility catalog");
   assertArray(saladProduct.optionGroups, "premium salad optionGroups");
   assert.deepStrictEqual(
     saladProduct.optionGroups.map((group) => group.key).sort(),
@@ -256,8 +275,11 @@ function assertPlannerCatalogV3(catalog) {
   assertObject(saladProduct.pricing, "plannerCatalog premium salad pricing");
   assertArray(saladProduct.optionGroups, "plannerCatalog premium salad optionGroups");
   assert(
-    saladProduct.optionGroups.some((group) => group.key === "vegetables_legumes" && group.canonicalGroupKey === "vegetables"),
-    "plannerCatalog keeps DB salad group key with migration alias"
+    saladProduct.optionGroups.some((group) => (
+      (group.key === "vegetables_legumes" && group.canonicalGroupKey === "vegetables")
+      || group.key === "vegetables"
+    )),
+    "plannerCatalog exposes the canonical vegetables salad group"
   );
   assert(
     !saladProduct.optionGroups.some((group) => group.key === "extra_protein_50g"),
@@ -330,11 +352,7 @@ async function enrichContractFixtureMetadata() {
 async function run() {
   await connect();
   try {
-    await seedOneTimeMenu({
-      actor: { role: "test" },
-      notes: "builderCatalogV2 contract fixture",
-      mode: "force",
-    });
+    await seedCatalog({ reset: true, sync: true });
     await enrichContractFixtureMetadata();
 
     const app = createApp();
@@ -345,7 +363,7 @@ async function run() {
     assert.strictEqual(res.body.status, true, "default response status");
     assertObject(res.body.data, "default response data");
     assertDefaultTopLevelCompatibility(res.body.data);
-    assertBuilderCatalogV2(res.body.data.builderCatalogV2, res.body.data.builderCatalog);
+    assertBuilderCatalogV2(res.body.data.builderCatalogV2, res.body.data.plannerCatalog || res.body.data.builderCatalog);
 
     res = await api.get("/api/subscriptions/meal-planner-menu?contractVersion=v3&lang=en");
     assert.strictEqual(res.status, 200, `v3 catalog status: ${JSON.stringify(res.body)}`);
@@ -360,7 +378,7 @@ async function run() {
     assert.strictEqual(res.body.status, true, "includeLegacy response status");
     assertObject(res.body.data, "includeLegacy response data");
     assertIncludeLegacyCompatibility(res.body.data);
-    assertBuilderCatalogV2(res.body.data.builderCatalogV2, res.body.data.builderCatalog);
+    assertBuilderCatalogV2(res.body.data.builderCatalogV2, res.body.data.legacyBuilderCatalog || res.body.data.plannerCatalog || res.body.data.builderCatalog);
 
     console.log("builderCatalogV2 contract checks passed");
   } finally {

@@ -29,6 +29,7 @@ const {
   loadCatalogItemsByIdForDocs,
 } = require("../catalog/catalogAvailabilityService");
 const { resolvePremiumLargeSaladPricing } = require("../catalog/premiumLargeSaladPricingService");
+const { loadClientPremiumUpgradeConfigState } = require("./premiumUpgradeConfigService");
 
 const CONTRACT_VERSION = "subscription_meal_builder.v1";
 const SECTION_TYPES = new Set(["option_group", "product_category", "product_list"]);
@@ -2765,17 +2766,27 @@ async function buildPublishedContract({ config = null, lang = "en", includeUnava
   }
   const sections = normalizeSections(published.sections || []);
   const docs = await resolveDocsForSections(sections);
-  const premiumLargeSaladPricing = await resolvePremiumLargeSaladPricing();
+  const premiumConfigState = await loadClientPremiumUpgradeConfigState();
+  const premiumLargeSaladConfig = premiumConfigState.getActiveConfig("premium_large_salad");
+  const rawPremiumLargeSaladPricing = await resolvePremiumLargeSaladPricing();
+  const premiumLargeSaladPricing = premiumLargeSaladConfig
+    ? {
+      ...rawPremiumLargeSaladPricing,
+      priceHalala: Number(premiumLargeSaladConfig.upgradeDeltaHalala || 0),
+      extraFeeHalala: Number(premiumLargeSaladConfig.upgradeDeltaHalala || 0),
+      source: "PremiumUpgradeConfig",
+    }
+    : rawPremiumLargeSaladPricing;
   const payloadSections = [];
   const membership = createEmptyMembership();
 
   for (const section of sections) {
     if (section.visible === false || !section.availableFor.includes("subscription")) continue;
     if (section.sectionType === "option_group") {
-      const payload = buildOptionGroupSection(section, docs, lang, includeUnavailable, membership, premiumLargeSaladPricing);
+      const payload = buildOptionGroupSection(section, docs, lang, includeUnavailable, membership, premiumLargeSaladPricing, premiumConfigState);
       if (payload && (includeUnavailable || payload.items.length)) payloadSections.push(payload);
     } else {
-      const payload = buildProductSection(section, docs, lang, includeUnavailable, membership, premiumLargeSaladPricing);
+      const payload = buildProductSection(section, docs, lang, includeUnavailable, membership, premiumLargeSaladPricing, premiumConfigState);
       if (payload && (includeUnavailable || payload.items.length)) payloadSections.push(payload);
     }
   }
@@ -2858,7 +2869,7 @@ function buildSectionBase(section, titleSource, lang) {
   };
 }
 
-function buildOptionGroupSection(section, docs, lang, includeUnavailable, membership, premiumLargeSaladPricing = {}) {
+function buildOptionGroupSection(section, docs, lang, includeUnavailable, membership, premiumLargeSaladPricing = {}, premiumConfigState = null) {
   const product = docs.productsById.get(String(section.productContextId));
   const group = docs.groupsById.get(String(section.sourceGroupId));
   if (!product || !group) return null;
@@ -2889,12 +2900,15 @@ function buildOptionGroupSection(section, docs, lang, includeUnavailable, member
     } else {
       filteredOptions = options.filter(option => isPremiumProtein(option));
     }
+    if (premiumConfigState?.hasConfigs) {
+      filteredOptions = filteredOptions.filter((option) => premiumConfigState.isAllowed(option.premiumKey || option.key));
+    }
   }
 
   const items = filteredOptions.map((option) => {
     const relation = relationByOption.get(String(option._id));
     addMembership(membership, section.selectionType, product._id, group._id, option._id);
-    return buildOptionItem({ option, relation, group, product, selectionType: section.selectionType, lang, rules: section.rules });
+    return buildOptionItem({ option, relation, group, product, selectionType: section.selectionType, lang, rules: section.rules, premiumConfigState });
   });
   addMembership(membership, section.selectionType, product._id, group._id);
 
@@ -2908,6 +2922,13 @@ function buildOptionGroupSection(section, docs, lang, includeUnavailable, member
       const resolvedSelectionType = selectedProduct.key === "premium_large_salad"
         ? MEAL_SELECTION_TYPES.PREMIUM_LARGE_SALAD
         : productSelectionType({ selectionType: "" }, selectedProduct);
+      if (
+        resolvedSelectionType === MEAL_SELECTION_TYPES.PREMIUM_LARGE_SALAD
+        && premiumConfigState?.hasConfigs
+        && !premiumConfigState.isAllowed(PREMIUM_LARGE_SALAD_PREMIUM_KEY)
+      ) {
+        continue;
+      }
       addMembership(membership, resolvedSelectionType, selectedProduct._id);
       items.push(buildProductItem({
         product: selectedProduct,
@@ -2918,6 +2939,7 @@ function buildOptionGroupSection(section, docs, lang, includeUnavailable, member
         premiumLargeSaladPricing,
         includeUnavailable,
         rules: section.rules,
+        premiumConfigState,
       }));
     }
   }
@@ -2942,7 +2964,7 @@ function buildOptionGroupSection(section, docs, lang, includeUnavailable, member
   };
 }
 
-function buildProductSection(section, docs, lang, includeUnavailable, membership, premiumLargeSaladPricing) {
+function buildProductSection(section, docs, lang, includeUnavailable, membership, premiumLargeSaladPricing, premiumConfigState = null) {
   const category = section.sourceCategoryId ? docs.categoriesById.get(String(section.sourceCategoryId)) : null;
   const products = resolveSectionProducts(section, docs)
     .filter((product) => includeUnavailable || customerReady(product, docs.catalogItemsById))
@@ -2950,9 +2972,16 @@ function buildProductSection(section, docs, lang, includeUnavailable, membership
 
   const items = products.map((product) => {
     const selectionType = productSelectionType(section, product);
+    if (
+      selectionType === MEAL_SELECTION_TYPES.PREMIUM_LARGE_SALAD
+      && premiumConfigState?.hasConfigs
+      && !premiumConfigState.isAllowed(PREMIUM_LARGE_SALAD_PREMIUM_KEY)
+    ) {
+      return null;
+    }
     addMembership(membership, selectionType, product._id);
-    return buildProductItem({ product, selectionType, docs, lang, membership, premiumLargeSaladPricing, includeUnavailable, rules: section.rules });
-  });
+    return buildProductItem({ product, selectionType, docs, lang, membership, premiumLargeSaladPricing, includeUnavailable, rules: section.rules, premiumConfigState });
+  }).filter(Boolean);
 
   return {
     ...buildSectionBase(section, category || { name: section.titleOverride }, lang),
@@ -2962,7 +2991,7 @@ function buildProductSection(section, docs, lang, includeUnavailable, membership
   };
 }
 
-function buildOptionItem({ option, relation, group, product, selectionType, lang, rules }) {
+function buildOptionItem({ option, relation, group, product, selectionType, lang, rules, premiumConfigState = null }) {
   let isPremium = selectionType === MEAL_SELECTION_TYPES.PREMIUM_MEAL && isPremiumProtein(option);
   let premiumFee = Number(relation?.extraPriceHalala ?? option.extraPriceHalala ?? option.extraFeeHalala ?? 0);
 
@@ -2974,6 +3003,12 @@ function buildOptionItem({ option, relation, group, product, selectionType, lang
      } else if (!pmOpt || pmOpt.enabled === false) {
        isPremium = false;
      }
+  }
+  const premiumKey = option.premiumKey || option.key || null;
+  const activeConfig = premiumConfigState?.getActiveConfig ? premiumConfigState.getActiveConfig(premiumKey) : null;
+  if (selectionType === MEAL_SELECTION_TYPES.PREMIUM_MEAL && activeConfig) {
+    isPremium = true;
+    premiumFee = Number(activeConfig.upgradeDeltaHalala || 0);
   }
 
   const priceHalala = Number(relation?.extraPriceHalala ?? option.extraPriceHalala ?? 0);
@@ -2991,7 +3026,7 @@ function buildOptionItem({ option, relation, group, product, selectionType, lang
     selectionType,
     isPremium,
     premiumKind: isPremium ? "premium_protein" : null,
-    premiumKey: isPremium ? (option.premiumKey || option.key || null) : null,
+    premiumKey: isPremium ? premiumKey : null,
     priceHalala,
     premiumPriceHalala: isPremium ? premiumFee : 0,
     requiresPremiumBalance: isPremium,
@@ -3000,10 +3035,10 @@ function buildOptionItem({ option, relation, group, product, selectionType, lang
   };
 }
 
-function buildProductItem({ product, selectionType, docs, lang, membership, premiumLargeSaladPricing, includeUnavailable, rules }) {
+function buildProductItem({ product, selectionType, docs, lang, membership, premiumLargeSaladPricing, includeUnavailable, rules, premiumConfigState = null }) {
   const isPremiumSalad = selectionType === MEAL_SELECTION_TYPES.PREMIUM_LARGE_SALAD;
   const isSandwich = selectionType === MEAL_SELECTION_TYPES.SANDWICH;
-  const optionGroups = buildProductOptionGroups({ product, selectionType, docs, lang, membership, includeUnavailable, rules });
+  const optionGroups = buildProductOptionGroups({ product, selectionType, docs, lang, membership, includeUnavailable, rules, premiumConfigState });
   let priceHalala = isPremiumSalad
     ? Number(premiumLargeSaladPricing.priceHalala ?? product.priceHalala ?? 0)
     : Number(product.priceHalala || 0);
@@ -3039,7 +3074,7 @@ function buildProductItem({ product, selectionType, docs, lang, membership, prem
   };
 }
 
-function buildProductOptionGroups({ product, selectionType, docs, lang, membership, includeUnavailable, rules }) {
+function buildProductOptionGroups({ product, selectionType, docs, lang, membership, includeUnavailable, rules, premiumConfigState = null }) {
   const groupRelations = docs.groupRelations
     .filter((relation) => String(relation.productId) === String(product._id))
     .filter((relation) => includeUnavailable || relationReady(relation))
@@ -3074,6 +3109,13 @@ function buildProductOptionGroups({ product, selectionType, docs, lang, membersh
       .map((optionRelation) => ({ relation: optionRelation, option: docs.optionsById.get(String(optionRelation.optionId)) }))
       .filter(({ option }) => option && (includeUnavailable || customerReady(option, docs.catalogItemsById)))
       .filter(({ option }) => {
+         if (
+           selectionType === MEAL_SELECTION_TYPES.PREMIUM_MEAL
+           && premiumConfigState?.hasConfigs
+           && !premiumConfigState.isAllowed(option.premiumKey || option.key)
+         ) {
+           return false;
+         }
          if (selectionType !== MEAL_SELECTION_TYPES.PREMIUM_LARGE_SALAD) return true;
          if (rules && rules.premium_large_salad && rules.premium_large_salad.groups) {
             const gRule = rules.premium_large_salad.groups.find(g => matchSaladGroupKey(g.groupKey, group.key));
@@ -3086,7 +3128,7 @@ function buildProductOptionGroups({ product, selectionType, docs, lang, membersh
       .sort((a, b) => Number(a.relation.sortOrder || 0) - Number(b.relation.sortOrder || 0))
       .map(({ relation: optionRelation, option }) => {
         addMembership(membership, selectionType, product._id, group._id, option._id);
-        return buildOptionItem({ option, relation: optionRelation, group, product, selectionType, lang, rules });
+        return buildOptionItem({ option, relation: optionRelation, group, product, selectionType, lang, rules, premiumConfigState });
       });
     return {
       id: String(group._id),
@@ -3220,12 +3262,38 @@ function plannerSectionFromBuilderSection(section = {}) {
   };
 }
 
+function filterPlannerSectionByPremiumConfig(section, premiumConfigState) {
+  if (!premiumConfigState?.hasConfigs) return section;
+  const products = (section.products || []).map((product) => {
+    if (
+      product.selectionType === MEAL_SELECTION_TYPES.PREMIUM_LARGE_SALAD
+      && !premiumConfigState.isAllowed(PREMIUM_LARGE_SALAD_PREMIUM_KEY)
+    ) {
+      return null;
+    }
+    const optionGroups = (product.optionGroups || []).map((group) => ({
+      ...group,
+      options: (group.options || []).filter((option) => {
+        const optionLooksPremium = option.isPremium === true || option.premiumKey || option.selectionType === MEAL_SELECTION_TYPES.PREMIUM_MEAL;
+        if (product.selectionType !== MEAL_SELECTION_TYPES.PREMIUM_MEAL && !optionLooksPremium) {
+          return true;
+        }
+        return premiumConfigState.isAllowed(option.premiumKey || option.key);
+      }),
+    })).filter((group) => (group.options || []).length);
+    return { ...product, optionGroups };
+  }).filter((product) => product && (product.selectionType === MEAL_SELECTION_TYPES.SANDWICH || (product.optionGroups || []).length || product.selectionType === MEAL_SELECTION_TYPES.PREMIUM_LARGE_SALAD));
+  return { ...section, products };
+}
+
 async function buildPlannerCatalogFromPublishedBuilder({ lang = "en", config = null } = {}) {
   const published = config || await getCurrentPublishedConfig();
   if (!published) return null;
   const contract = await buildPublishedContract({ config: published, lang });
+  const premiumConfigState = await loadClientPremiumUpgradeConfigState();
   const sections = (contract.sections || [])
     .map(plannerSectionFromBuilderSection)
+    .map((section) => filterPlannerSectionByPremiumConfig(section, premiumConfigState))
     .filter((section) => section.products.length)
     .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
   const stablePayload = {
