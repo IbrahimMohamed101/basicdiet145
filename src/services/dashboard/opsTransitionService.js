@@ -38,7 +38,11 @@ async function executeAction(actionId, { entityId, entityType, userId, role, pay
     ? "prepare"
     : actionId === "ready-for-pickup"
       ? "ready_for_pickup"
-      : actionId;
+      : actionId === "ready-for-delivery"
+        ? "ready_for_delivery"
+        : (actionId === "pickup" || actionId === "collect")
+          ? "dispatch"
+          : actionId;
 
   if (adminOnlyActions.includes(normalizedActionId) && !["admin", "superadmin"].includes(String(role || ""))) {
     const err = new Error("Dashboard admin permission is required");
@@ -66,6 +70,9 @@ async function executeAction(actionId, { entityId, entityType, userId, role, pay
         break;
       case "prepare":
         result = await handlePrepare({ entityId, entityType: normalizedEntityType, userId, role, payload, session });
+        break;
+      case "ready_for_delivery":
+        result = await handleReadyForDelivery({ entityId, entityType: normalizedEntityType, userId, role, payload, session });
         break;
       case "dispatch":
         result = await handleDispatch({ entityId, entityType: normalizedEntityType, userId, role, payload, session });
@@ -237,6 +244,81 @@ async function handlePrepare({ entityId, entityType, userId, role, payload, sess
     data: doc,
     sideEffects: {
       action: "prepare",
+      entityType,
+      entityId,
+      toStatus,
+    },
+  };
+}
+
+async function handleReadyForDelivery({ entityId, entityType, userId, role, payload, session }) {
+  if (entityType !== "subscription") {
+    throw new Error("INVALID_STATE_TRANSITION");
+  }
+
+  const doc = await SubscriptionDay.findById(entityId).session(session);
+  if (!doc) throw new Error("Entity not found");
+
+  const sub = await Subscription.findById(doc.subscriptionId).session(session).lean();
+  if (!sub || sub.deliveryMode !== "delivery") {
+    const err = new Error("Only applies to delivery subscriptions");
+    err.code = "DELIVERY_MODE_REQUIRED";
+    err.status = 400;
+    throw err;
+  }
+
+  const toStatus = "ready_for_delivery";
+  if (doc.status === toStatus) {
+    return { data: doc, idempotent: true };
+  }
+
+  const fromStatus = doc.status;
+  validateTransition(entityType, fromStatus, toStatus);
+
+  doc.status = toStatus;
+  appendOperationAudit(doc, "ready_for_delivery", userId, role);
+  await doc.save({ session });
+
+  // Sync Delivery SoT
+  const deliveryData = {
+    status: "ready_for_delivery",
+  };
+
+  await Delivery.updateOne(
+    {
+      $or: [
+        { dayId: doc._id },
+        { subscriptionId: sub._id, date: doc.date },
+      ],
+    },
+    {
+      $set: {
+        ...deliveryData,
+        subscriptionId: sub._id,
+        dayId: doc._id,
+        date: doc.date,
+        address: doc.deliveryAddressOverride || sub.deliveryAddress,
+        window: doc.deliveryWindowOverride || sub.deliveryWindow,
+      },
+    },
+    { upsert: true, session }
+  );
+
+  await writeSubscriptionDayAudit({
+    day: doc,
+    action: "ready_for_delivery",
+    fromStatus,
+    toStatus,
+    userId,
+    role,
+    payload,
+    session,
+  });
+
+  return {
+    data: doc,
+    sideEffects: {
+      action: "ready_for_delivery",
       entityType,
       entityId,
       toStatus,

@@ -307,7 +307,21 @@ function resolveAdminAddonFilters(query = {}, { forceKind = null } = {}) {
     }
     filters.billingMode = billingMode;
   }
-  if (query.isActive !== undefined && query.isActive !== null && String(query.isActive).trim() !== "") {
+  const status = query.status === undefined || query.status === null || String(query.status).trim() === ""
+    ? "all"
+    : String(query.status).trim().toLowerCase();
+  if (!["active", "inactive", "archived", "all"].includes(status)) {
+    throw { status: 400, code: "INVALID", message: "status must be one of: active, inactive, archived, all" };
+  }
+  if (status === "active") {
+    filters.isActive = true;
+    filters.isArchived = { $ne: true };
+  } else if (status === "inactive") {
+    filters.isActive = false;
+    filters.isArchived = { $ne: true };
+  } else if (status === "archived") {
+    filters.isArchived = true;
+  } else if (query.isActive !== undefined && query.isActive !== null && String(query.isActive).trim() !== "") {
     filters.isActive = parseBooleanField(query.isActive, "isActive");
   }
   if (query.q !== undefined && query.q !== null && String(query.q).trim() !== "") {
@@ -319,7 +333,7 @@ function resolveAdminAddonFilters(query = {}, { forceKind = null } = {}) {
 }
 
 function resolvePublicAddonFilters(query = {}) {
-  const filters = { isActive: true };
+  const filters = { isActive: true, isArchived: { $ne: true } };
 
   if (query.type !== undefined && query.type !== null && String(query.type).trim() !== "") {
     const type = String(query.type).trim();
@@ -560,8 +574,12 @@ function toDashboardAddonPlanLeanDTO(plan) {
     id: String(plan._id || plan.id),
     name: plan.name || { ar: "", en: "" },
     category: plan.category || "",
+    kind: plan.kind || "plan",
+    type: plan.type || "subscription",
     maxPerDay: plan.maxPerDay ?? 1,
     isActive: plan.isActive !== false,
+    isArchived: plan.isArchived === true,
+    archivedAt: plan.archivedAt || null,
     menuProductIds: (plan.menuProductIds || []).map(String),
     menuProducts: (plan.menuProducts || []).map(toDashboardMenuProductPickerDTO),
     planPrices: (plan.planPrices || []).map(toDashboardPlanPriceLeanDTO)
@@ -580,7 +598,7 @@ async function listAddonsAdmin(req, res, options = {}) {
       req.query.q !== undefined
     );
 
-    if (options.forceKind || hasQueryFilter) {
+    if (!options.dashboardPlanList && (options.forceKind || hasQueryFilter)) {
       const rows = await Addon.find(filters).sort({ sortOrder: 1, createdAt: -1 }).lean();
 
       const AddonPlanPrice = require("../models/AddonPlanPrice");
@@ -634,19 +652,9 @@ async function listAddonsAdmin(req, res, options = {}) {
       return res.status(200).json({ status: true, data: mapped, meta: { filters, totalCount: rows.length } });
     }
 
-    const AddonPlanPrice = require("../models/AddonPlanPrice");
-    const pricedPlanIds = await AddonPlanPrice.distinct("addonPlanId");
     const allAddons = await Addon.find({
       ...filters,
-      _id: { $in: pricedPlanIds },
-      isActive: true,
       kind: "plan",
-      $or: [
-        { type: "subscription" },
-        { pricingModel: "subscription" },
-        { billingMode: { $in: ["per_day", "per_meal"] } },
-        { pricingMode: "base_plan_matrix" },
-      ],
     }).sort({ sortOrder: 1, createdAt: -1 }).lean();
 
     const viewFull = req.query && req.query.view === "full";
@@ -730,7 +738,7 @@ async function listAddonsAdmin(req, res, options = {}) {
 }
 
 async function listDashboardAddonPlans(req, res) {
-  return listAddonsAdmin({ ...req, query: {} }, res);
+  return listAddonsAdmin(req, res, { forceKind: "plan", dashboardPlanList: true });
 }
 
 async function getAddonAdmin(req, res, options = {}) {
@@ -1100,7 +1108,12 @@ async function deleteAddon(req, res, options = {}) {
 
   const query = { _id: id };
   if (options.forceKind) query.kind = options.forceKind;
-  const row = await Addon.findOneAndUpdate(query, { $set: { isActive: false } }, { new: true });
+  const archivedAt = new Date();
+  const row = await Addon.findOneAndUpdate(
+    query,
+    { $set: { isActive: false, isArchived: true, archivedAt } },
+    { new: true }
+  );
   if (!row) {
     return errorResponse(res, 404, "NOT_FOUND", "Addon not found");
   }
@@ -1111,8 +1124,8 @@ async function deleteAddon(req, res, options = {}) {
   return res.status(200).json({
     status: true,
     data: options.dashboardPlanDelete
-      ? { id: row.id, archived: true, isActive: false }
-      : { id: row.id, isActive: row.isActive },
+      ? { id: row.id, archived: true, isActive: false, isArchived: true, archivedAt: row.archivedAt }
+      : { id: row.id, isActive: row.isActive, isArchived: true, archivedAt: row.archivedAt },
   });
 }
 
@@ -1126,12 +1139,13 @@ async function toggleAddonActive(req, res, options = {}) {
 
   const query = { _id: id };
   if (options.forceKind) query.kind = options.forceKind;
-  const row = await Addon.findOne(query);
+  const row = await Addon.findOne(query).select("_id isActive kind category");
   if (!row) {
     return errorResponse(res, 404, "NOT_FOUND", "Addon not found");
   }
-  row.isActive = !row.isActive;
-  await row.save();
+  const nextIsActive = !row.isActive;
+  await Addon.updateOne({ _id: row._id }, { $set: { isActive: nextIsActive } });
+  row.isActive = nextIsActive;
 
   await writeAddonActivityLogSafely(req, row, "addon_toggled_by_admin", {
     kind: row.kind,

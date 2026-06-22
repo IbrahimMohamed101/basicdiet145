@@ -9,7 +9,7 @@ const DeliverySchema = new mongoose.Schema(
     dayId: { type: mongoose.Schema.Types.ObjectId, ref: "SubscriptionDay" },
     date: { type: String, trim: true },
     orderId: { type: mongoose.Schema.Types.ObjectId, ref: "Order" },
-    status: { type: String, enum: ["scheduled", "out_for_delivery", "delivered", "canceled"], default: "scheduled" },
+    status: { type: String, enum: ["scheduled", "ready_for_delivery", "out_for_delivery", "delivered", "canceled"], default: "scheduled" },
     address: {
       line1: { type: String },
       line2: { type: String },

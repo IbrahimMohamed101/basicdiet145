@@ -32,6 +32,7 @@ const Payment = require("../src/models/Payment");
 const Plan = require("../src/models/Plan");
 const Zone = require("../src/models/Zone");
 const Addon = require("../src/models/Addon");
+const AddonPlanPrice = require("../src/models/AddonPlanPrice");
 const PromoCode = require("../src/models/PromoCode");
 const Setting = require("../src/models/Setting");
 const Order = require("../src/models/Order");
@@ -142,8 +143,16 @@ async function seedBaseData() {
   const addon = await Addon.create({
     name: { ar: "عصير برتقال", en: `${TEST_TAG} Juice` },
     category: "juice",
-    kind: "item",
-    billingMode: "flat_once",
+    kind: "plan",
+    billingMode: "per_day",
+    priceHalala: 1000,
+    currency: "SAR",
+    isActive: true,
+  });
+
+  await AddonPlanPrice.create({
+    addonPlanId: addon._id,
+    basePlanId: plan._id,
     priceHalala: 1000,
     currency: "SAR",
     isActive: true,
@@ -253,6 +262,7 @@ async function cleanup() {
     Plan.deleteMany({ _id: { $in: planIds } }),
     Zone.deleteMany({ _id: { $in: zoneIds } }),
     Addon.deleteMany({ _id: { $in: addonIds } }),
+    AddonPlanPrice.deleteMany({ addonPlanId: { $in: addonIds } }),
     PromoCode.deleteMany({ _id: { $in: promoIds } }),
     Order.deleteMany({ _id: { $in: orderIds } }),
     DashboardUser.deleteMany({ email: { $regex: TEST_TAG } }),

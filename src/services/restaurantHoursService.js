@@ -152,19 +152,44 @@ async function resolveRestaurantOpenState({
     Setting.findOne({ key: "temporary_closure" }).lean(),
   ]);
 
-  const configuredPickupLocations = Array.isArray(pickupLocationsSetting && pickupLocationsSetting.value)
+  const hasConfiguredPickupLocations = Boolean(
+    pickupLocationsSetting && Array.isArray(pickupLocationsSetting.value)
+  );
+  const pickupLocations = hasConfiguredPickupLocations
     ? pickupLocationsSetting.value
-    : [];
-  const pickupLocations = configuredPickupLocations.length
-    ? configuredPickupLocations
     : [buildDefaultPickupLocation()];
   const activePickupLocations = pickupLocations.filter(isActivePickupLocation);
   const defaultPickupLocationId = "main";
   const requestedPickupLocationId = cleanString(pickupLocationId || branchId);
-  const selectedLocation = resolvePickupBranch(pickupLocations, requestedPickupLocationId);
+  let selectedLocation = null;
+  let pickupLocationError = null;
+
+  if (requestedPickupLocationId === "main") {
+    if (activePickupLocations.length === 1) {
+      selectedLocation = activePickupLocations[0];
+    } else if (activePickupLocations.length === 0) {
+      pickupLocationError = {
+        code: "INVALID_BRANCH",
+        message: 'Cannot resolve branch ID "main": no active pickup branches are configured',
+      };
+    } else {
+      pickupLocationError = {
+        code: "AMBIGUOUS_BRANCH",
+        message: 'Cannot resolve branch ID "main": multiple active pickup branches are configured',
+      };
+    }
+  } else if (requestedPickupLocationId) {
+    const matchedLocation = resolvePickupBranch(pickupLocations, requestedPickupLocationId);
+    if (matchedLocation && isActivePickupLocation(matchedLocation)) {
+      selectedLocation = matchedLocation;
+    }
+  }
+
+  const resolvedPickupLocationId = selectedLocation
+    ? getPickupLocationId(selectedLocation)
+    : requestedPickupLocationId;
   const pickupLocationFound = !requestedPickupLocationId
-    || !pickupLocations.length
-    || Boolean(selectedLocation && isActivePickupLocation(selectedLocation));
+    || Boolean(selectedLocation);
   const weeklyHours = resolveWeeklyScheduleHours(weeklyScheduleSetting && weeklyScheduleSetting.value, now);
   const openTime = weeklyHours.openTime || (openSetting && openSetting.value ? String(openSetting.value) : "00:00");
   const closeTime = weeklyHours.closeTime || (closeSetting && closeSetting.value ? String(closeSetting.value) : "23:59");
@@ -189,8 +214,10 @@ async function resolveRestaurantOpenState({
     message: isOpenNow ? null : CLOSED_MESSAGE,
     messageAr: isOpenNow ? null : CLOSED_MESSAGE_AR,
     messageEn: isOpenNow ? null : CLOSED_MESSAGE_EN,
-    pickupLocationId: requestedPickupLocationId || defaultPickupLocationId || null,
+    pickupLocationId: resolvedPickupLocationId || defaultPickupLocationId || null,
+    resolvedPickupLocationId: resolvedPickupLocationId || null,
     pickupLocationFound,
+    pickupLocationError,
     defaultPickupLocationId,
     availablePickupLocationIds: activePickupLocations.map(getPickupLocationId).filter(Boolean),
     businessDate: dateUtils.getCurrentBusinessDate(openTime, closeTime, now),
@@ -217,8 +244,9 @@ async function assertRestaurantOpenForOrdering(options = {}) {
 
   const hours = await resolveRestaurantOpenState(effectiveOptions);
   if ((effectiveOptions.branchId || effectiveOptions.pickupLocationId) && !hours.pickupLocationFound) {
-    const err = new Error("Invalid branch ID");
-    err.code = "INVALID_BRANCH";
+    const resolutionError = hours.pickupLocationError || {};
+    const err = new Error(resolutionError.message || "Invalid branch ID");
+    err.code = resolutionError.code || "INVALID_BRANCH";
     err.status = 400;
     throw err;
   }

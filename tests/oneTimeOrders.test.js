@@ -585,6 +585,91 @@ function setMoyasarInvoice(invoiceId, updates = {}) {
       assert.notStrictEqual(res.body.error && res.body.error.code, "INVALID_BRANCH");
     });
 
+    await test('POST /api/orders/quote resolves branchId "main" to the only active pickup branch', async () => {
+      const branchId = objectId();
+      await upsertSetting("pickup_locations", [{
+        _id: branchId,
+        id: "only-active-branch",
+        name: { en: "Only Active Branch", ar: "الفرع الوحيد" },
+        isActive: true,
+        pickupEnabled: true,
+      }]);
+
+      const res = await api.post("/api/orders/quote").set(auth(ctx.token)).send(sandwichQuotePayload(ctx));
+      expectStatus(res, 200, "single branch main alias quote");
+    });
+
+    await test('POST /api/orders resolves branchId "main" to the only active pickup branch', async () => {
+      const branchId = objectId();
+      await upsertSetting("pickup_locations", [{
+        _id: branchId,
+        id: "only-active-create-branch",
+        name: { en: "Only Active Create Branch", ar: "فرع الإنشاء الوحيد" },
+        isActive: true,
+        pickupEnabled: true,
+      }]);
+      await Order.deleteMany({ userId: ctx.user._id });
+      await Payment.deleteMany({ userId: ctx.user._id });
+
+      const res = await api.post("/api/orders")
+        .set({ ...auth(ctx.token), "Idempotency-Key": `${TEST_TAG}-main-branch-create` })
+        .send(sandwichQuotePayload(ctx));
+      expectStatus(res, 201, "single branch main alias create");
+
+      const order = await Order.findById(res.body.data.orderId).lean();
+      assert(order);
+      assert.strictEqual(order.pickup.branchId, String(branchId));
+    });
+
+    await test('POST /api/orders/quote rejects branchId "main" when no active pickup branch exists', async () => {
+      await upsertSetting("pickup_locations", []);
+
+      const res = await api.post("/api/orders/quote").set(auth(ctx.token)).send(sandwichQuotePayload(ctx));
+      expectStatus(res, 400, "no active branch main alias quote");
+      assert.strictEqual(res.body.error.code, "INVALID_BRANCH");
+      assert.match(res.body.error.message, /no active pickup branches/i);
+    });
+
+    await test('POST /api/orders/quote rejects branchId "main" when multiple active pickup branches exist', async () => {
+      await upsertSetting("pickup_locations", [
+        {
+          _id: objectId(),
+          id: "active-branch-one",
+          name: { en: "Active Branch One", ar: "الفرع الأول" },
+          isActive: true,
+          pickupEnabled: true,
+        },
+        {
+          _id: objectId(),
+          id: "active-branch-two",
+          name: { en: "Active Branch Two", ar: "الفرع الثاني" },
+          isActive: true,
+          pickupEnabled: true,
+        },
+      ]);
+
+      const res = await api.post("/api/orders/quote").set(auth(ctx.token)).send(sandwichQuotePayload(ctx));
+      expectStatus(res, 400, "ambiguous main branch quote");
+      assert.strictEqual(res.body.error.code, "AMBIGUOUS_BRANCH");
+      assert.match(res.body.error.message, /multiple active pickup branches/i);
+    });
+
+    await test("POST /api/orders/quote still rejects a real invalid pickup branch ID", async () => {
+      await upsertSetting("pickup_locations", [{
+        _id: objectId(),
+        id: "valid-real-branch",
+        name: { en: "Valid Branch", ar: "فرع صالح" },
+        isActive: true,
+        pickupEnabled: true,
+      }]);
+
+      const res = await api.post("/api/orders/quote").set(auth(ctx.token)).send(sandwichQuotePayload(ctx, {
+        pickup: { branchId: String(objectId()), pickupWindow: "18:00-20:00" },
+      }));
+      expectStatus(res, 400, "invalid real branch quote");
+      assert.strictEqual(res.body.error.code, "INVALID_BRANCH");
+    });
+
     await test("POST /api/orders/quote defaults missing pickup branchId to main", async () => {
       await upsertSetting("pickup_locations", [{
         id: "main",

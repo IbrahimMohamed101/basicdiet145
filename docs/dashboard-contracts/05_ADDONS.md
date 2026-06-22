@@ -73,7 +73,7 @@ Common HTTP statuses:
 
 | # | Method | Endpoint | Add-ons page usage |
 | --- | --- | --- | --- |
-| 1 | GET | `/api/dashboard/addons` | Load all visible add-on subscription plans |
+| 1 | GET | `/api/dashboard/addons` | Load all manageable add-on subscription plans |
 | 2 | POST | `/api/dashboard/addons` | Create and link a new add-on subscription plan |
 | 3 | PUT | `/api/dashboard/addons/:id` | Replace editable plan state, product links, and prices |
 | 4 | DELETE | `/api/dashboard/addons/:id` | Safely archive a plan |
@@ -85,9 +85,7 @@ Common HTTP statuses:
 
 ## 1. GET `/api/dashboard/addons`
 
-Loads every active, dashboard-visible add-on subscription plan that has a pricing matrix.
-
-The backend excludes menu products, one-time items, inactive/archived plans, and product/item decoys. It uses internal plan discriminators and matrix-price existence, not display names. The result is not limited to the three seeded plans.
+Loads every add-on subscription plan needed for administration, including active, inactive, archived, and plans that do not yet have pricing rows. This is an administrative read model; the separate public add-on endpoint still exposes only available plans.
 
 ### Postman request
 
@@ -99,7 +97,7 @@ Accept-Language: en
 
 ### Query parameters
 
-None. Query parameters supplied to this dashboard endpoint are ignored so it always returns the canonical lean list.
+`status` accepts `active`, `inactive`, `archived`, or `all`. The default is `all`, making the unfiltered dashboard request management-safe.
 
 ### Request body
 
@@ -119,8 +117,12 @@ None.
           "en": "Yogurt Subscription"
         },
         "category": "snack",
+        "kind": "plan",
+        "type": "subscription",
         "maxPerDay": 1,
         "isActive": true,
+        "isArchived": false,
+        "archivedAt": null,
         "menuProductIds": [
           "68556cc945b68c8b4fd20001",
           "68556cc945b68c8b4fd20002"
@@ -204,12 +206,15 @@ None.
 
 | Field | Type | Meaning |
 | --- | --- | --- |
-| `data.plans` | array | Visible add-on subscription plans |
+| `data.plans` | array | Manageable add-on subscription plans |
 | `id` | string | Add-on plan ID used by PUT, DELETE, and toggle |
 | `name.ar`, `name.en` | string | Arabic and English plan names |
 | `category` | string | `juice`, `snack`, or `small_salad` |
 | `maxPerDay` | number | Maximum add-on selections allowed per day |
-| `isActive` | boolean | Current plan state; default GET only returns `true` plans |
+| `kind`, `type` | string | Plan discriminators (`plan` and normally `subscription`) |
+| `isActive` | boolean | Current availability toggle |
+| `isArchived` | boolean | Whether DELETE has soft-archived the plan |
+| `archivedAt` | string/null | Archive timestamp |
 | `menuProductIds` | string[] | IDs the frontend submits back when saving |
 | `menuProducts` | array | Populated display data for linked products |
 | `planPrices` | array | Add-on pricing rows per base subscription plan |
@@ -222,7 +227,7 @@ None.
 | `data.summary.plansCount` | integer | Number of returned plans |
 | `data.summary.matrixRowsCount` | integer | Total returned `planPrices` rows across all plans |
 
-There is no `data.items`. Internal fields such as `_id`, `kind`, `type`, `pricingMode`, `addonPlanId`, timestamps, and `__v` are not returned.
+There is no `data.items` in the lean response. Internal fields such as `_id`, `pricingMode`, `addonPlanId`, timestamps other than `archivedAt`, and `__v` are not returned.
 
 ---
 
@@ -498,9 +503,9 @@ Content-Type: application/json
 
 ## 4. DELETE `/api/dashboard/addons/:id`
 
-Safely archives a subscription plan by setting `isActive=false`. It does not hard-delete the plan or its pricing rows, so historical subscriptions and payment records remain safe.
+Safely archives a subscription plan by setting `isActive=false`, `isArchived=true`, and `archivedAt` to the current time. It does not hard-delete the plan, its pricing rows, product links, subscription entitlements, or selections.
 
-After success, default GET `/api/dashboard/addons` no longer returns this plan.
+After success, the plan remains in default GET `/api/dashboard/addons` and `?status=all`; use `?status=archived` to request archived plans only.
 
 ### Postman request
 
@@ -527,7 +532,9 @@ None. Do not send `{ "confirm": true }` or another body.
   "data": {
     "id": "68556cc945b68c8b4fd10001",
     "archived": true,
-    "isActive": false
+    "isActive": false,
+    "isArchived": true,
+    "archivedAt": "2026-06-22T12:00:00.000Z"
   }
 }
 ```
@@ -596,7 +603,7 @@ None. An empty `{}` body is tolerated but unnecessary.
 }
 ```
 
-An inactive plan disappears from endpoint 1. If the frontend needs to reactivate a plan after it is no longer in the default list, it must retain its ID or obtain it from an administrative workflow that includes inactive records.
+Toggling changes only `isActive`; it does not modify pricing rows, linked products, subscriptions, selections, or archive fields. Inactive plans remain available from endpoint 1 by default and through `?status=inactive` or `?status=all`.
 
 ---
 

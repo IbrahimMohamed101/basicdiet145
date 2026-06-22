@@ -5,6 +5,7 @@ const User = require("../../models/User");
 const SubscriptionDay = require("../../models/SubscriptionDay");
 const Subscription = require("../../models/Subscription");
 const Order = require("../../models/Order");
+const SubscriptionPickupRequest = require("../../models/SubscriptionPickupRequest");
 const dashboardDtoService = require("./dashboardDtoService");
 
 /**
@@ -81,6 +82,19 @@ async function search({ q, role, lang = "ar" }) {
   .limit(30)
   .lean();
 
+  const pickupRequests = await SubscriptionPickupRequest.find({
+    subscriptionId: { $in: days.map(d => d.subscriptionId).filter(Boolean) },
+    date: { $in: days.map(d => d.date) },
+    status: { $ne: "canceled" }
+  }).lean();
+
+  const pickupRequestMap = new Map();
+  for (const r of pickupRequests) {
+    if (r.subscriptionId && r.date) {
+      pickupRequestMap.set(`${String(r.subscriptionId)}:${r.date}`, r);
+    }
+  }
+
   // 5. Build DTOs
   const userMap = new Map(users.map(u => [String(u._id), u]));
   const subMap = new Map(subscriptions.map(s => [String(s._id), s]));
@@ -93,7 +107,8 @@ async function search({ q, role, lang = "ar" }) {
     if (seenIds.has(String(day._id))) continue;
     const sub = subMap.get(String(day.subscriptionId));
     const user = sub ? userMap.get(String(sub.userId)) : null;
-    results.push(dashboardDtoService.mapSubscriptionDayToDTO(day, null, sub || {}, user, role, lang));
+    const pickupRequest = pickupRequestMap.get(`${String(day.subscriptionId)}:${day.date}`) || null;
+    results.push(dashboardDtoService.mapSubscriptionDayToDTO(day, null, sub || {}, user, role, lang, {}, pickupRequest));
     seenIds.add(String(day._id));
   }
 

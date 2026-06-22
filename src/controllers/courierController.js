@@ -2,8 +2,10 @@ const mongoose = require("mongoose");
 const Delivery = require("../models/Delivery");
 const Subscription = require("../models/Subscription");
 const SubscriptionDay = require("../models/SubscriptionDay");
+const User = require("../models/User");
 const { getTodayKSADate } = require("../utils/date");
 const { writeLog } = require("../utils/log");
+const { mapSubscriptionDelivery } = require("../mappers/deliveryMapper");
 const { notifyUser } = require("../utils/notify");
 const { sendUserNotificationWithDedupe } = require("../services/notificationService");
 const { fulfillSubscriptionDay } = require("../services/fulfillmentService");
@@ -34,27 +36,61 @@ function appendDeliveryCancellationAudit(day, actorId) {
 async function listTodayDeliveries(req, res) {
   try {
     const today = getTodayKSADate();
-    const dayDocs = await SubscriptionDay.find({ date: today }).select("_id").lean();
+    const deliverySubs = await Subscription.find({ deliveryMode: "delivery" }).select("_id").lean();
+    const deliverySubIds = deliverySubs.map(s => s._id);
+
+    const dayDocs = await SubscriptionDay.find({
+      date: today,
+      subscriptionId: { $in: deliverySubIds }
+    }).select("_id").lean();
+
     const dayIds = dayDocs.map((d) => d._id);
     const query = { dayId: { $in: dayIds } };
     const pagination = resolveOptionalPagination(req.query, 300, 50);
 
     if (!pagination) {
       // No pagination requested - return all (current behavior)
-      const deliveries = await Delivery.find(query).sort({ createdAt: -1 }).lean();
-      return res.status(200).json({ status: true, data: deliveries });
+      const deliveries = await Delivery.find(query).populate("dayId").sort({ createdAt: -1 }).lean();
+
+      const subIds = [...new Set(deliveries.map((d) => String(d.subscriptionId)).filter(Boolean))];
+      const subs = subIds.length ? await Subscription.find({ _id: { $in: subIds } }).select("userId").lean() : [];
+      const userIds = [...new Set(subs.map((s) => String(s.userId)).filter(Boolean))];
+      const users = userIds.length ? await User.find({ _id: { $in: userIds } }).select("name phone").lean() : [];
+      
+      const userMap = new Map(users.map((u) => [String(u._id), u]));
+      const subUserMap = new Map(subs.map((s) => [String(s._id), String(s.userId)]));
+
+      const mapped = deliveries.map((d) => {
+        const userId = subUserMap.get(String(d.subscriptionId));
+        return mapSubscriptionDelivery(d, userMap.get(userId));
+      });
+
+      return res.status(200).json({ status: true, data: mapped });
     }
 
     // Pagination requested - apply it
     const skip = (pagination.page - 1) * pagination.limit;
     const [deliveries, total] = await Promise.all([
-      Delivery.find(query).sort({ createdAt: -1 }).skip(skip).limit(pagination.limit).lean(),
+      Delivery.find(query).populate("dayId").sort({ createdAt: -1 }).skip(skip).limit(pagination.limit).lean(),
       Delivery.countDocuments(query),
     ]);
 
+    const subIds = [...new Set(deliveries.map((d) => String(d.subscriptionId)).filter(Boolean))];
+    const subs = subIds.length ? await Subscription.find({ _id: { $in: subIds } }).select("userId").lean() : [];
+    const userIds = [...new Set(subs.map((s) => String(s.userId)).filter(Boolean))];
+    const users = userIds.length ? await User.find({ _id: { $in: userIds } }).select("name phone").lean() : [];
+    
+    const userMap = new Map(users.map((u) => [String(u._id), u]));
+    const subUserMap = new Map(subs.map((s) => [String(s._id), String(s.userId)]));
+
+    const mapped = deliveries.map((d) => {
+      const userId = subUserMap.get(String(d.subscriptionId));
+      return mapSubscriptionDelivery(d, userMap.get(userId));
+    });
+
     return res.status(200).json({
       status: true,
-      data: deliveries,
+      data: mapped,
       meta: buildPaginationMeta(pagination.page, pagination.limit, total),
     });
   } catch (err) {
@@ -102,19 +138,21 @@ async function markArrivingSoon(req, res) {
       { $set: { arrivingSoonReminderSentAt: reminderSentAt } },
       { new: true }
     );
+    const targetDelivery = updated || delivery;
+    const sub = await Subscription.findById(targetDelivery.subscriptionId).lean();
+    let user = null;
+    if (sub && sub.userId) {
+      user = await User.findById(sub.userId).select("name phone").lean();
+    }
+
     if (!updated) {
       return res.status(200).json({
         status: true,
         deduped: true,
-        data: {
-          deliveryId: String(delivery._id),
-          status: normalizeDeliveryStatus(delivery.status),
-          reminderSentAt: delivery.arrivingSoonReminderSentAt,
-        },
+        data: mapSubscriptionDelivery(targetDelivery, user),
       });
     }
 
-    const sub = await Subscription.findById(updated.subscriptionId).lean();
     await writeLog({
       entityType: "delivery",
       entityId: updated._id,
@@ -132,11 +170,7 @@ async function markArrivingSoon(req, res) {
     }
     return res.status(200).json({
       status: true,
-      data: {
-        deliveryId: String(updated._id),
-        status: normalizeDeliveryStatus(updated.status),
-        reminderSentAt: updated.arrivingSoonReminderSentAt,
-      },
+      data: mapSubscriptionDelivery(targetDelivery, user),
     });
   } catch (err) {
     // MEDIUM AUDIT FIX: Express 4 does not catch async errors automatically; return controlled 500.
@@ -160,14 +194,15 @@ async function markDelivered(req, res) {
     }
 
     if (isDeliveryDeliveredStatus(delivery.status)) {
+      const sub = await Subscription.findById(delivery.subscriptionId).lean();
+      let user = null;
+      if (sub && sub.userId) {
+        user = await User.findById(sub.userId).select("name phone").lean();
+      }
       return res.status(200).json({
         status: true,
         idempotent: true,
-        data: {
-          deliveryId: String(delivery._id),
-          status: "delivered",
-          deliveredAt: delivery.deliveredAt || null,
-        },
+        data: mapSubscriptionDelivery(delivery, user),
       });
     }
     if (isDeliveryCanceledStatus(delivery.status)) {
@@ -244,15 +279,15 @@ async function markDelivered(req, res) {
       logger.error("Delivery notification failed", { error: err.message, stack: err.stack, deliveryId: String(delivery._id) });
     }
 
+    const subDoc = await Subscription.findById(delivery.subscriptionId).lean();
+    let userDoc = null;
+    if (subDoc && subDoc.userId) {
+      userDoc = await User.findById(subDoc.userId).select("name phone").lean();
+    }
+
     return res.status(200).json({
       status: true,
-      data: {
-        deliveryId: String(delivery._id),
-        subscriptionDayId: String(delivery.dayId),
-        deliveryStatus: "delivered",
-        subscriptionDayStatus: result && result.day ? result.day.status : "fulfilled",
-        deliveredAt,
-      },
+      data: mapSubscriptionDelivery(delivery, userDoc),
       alreadyFulfilled: Boolean(result && result.alreadyFulfilled),
     });
   } catch (err) {
@@ -277,18 +312,15 @@ async function markCancelled(req, res) {
     }
 
     if (isDeliveryCanceledStatus(delivery.status)) {
+      const sub = await Subscription.findById(delivery.subscriptionId).lean();
+      let user = null;
+      if (sub && sub.userId) {
+        user = await User.findById(sub.userId).select("name phone").lean();
+      }
       return res.status(200).json({
         status: true,
         idempotent: true,
-        data: {
-          deliveryId: String(delivery._id),
-          deliveryStatus: "canceled",
-          canceledAt: delivery.canceledAt || null,
-          cancellationReason: delivery.cancellationReason || null,
-          cancellationCategory: delivery.cancellationCategory || null,
-          cancellationNote: delivery.cancellationNote || null,
-          canceledBy: delivery.canceledByUserId ? String(delivery.canceledByUserId) : null,
-        },
+        data: mapSubscriptionDelivery(delivery, user),
       });
     }
     if (isDeliveryDeliveredStatus(delivery.status)) {
@@ -329,26 +361,21 @@ async function markCancelled(req, res) {
       if (day.status === "delivery_canceled") {
         await session.commitTransaction();
         session.endSession();
+        
+        let user = null;
+        if (sub && sub.userId) {
+          user = await User.findById(sub.userId).select("name phone").lean();
+        }
         return res.status(200).json({
           status: true,
           idempotent: true,
-          data: {
-            deliveryId: String(delivery._id),
-            subscriptionDayId: String(day._id),
-            deliveryStatus: "canceled",
-            subscriptionDayStatus: "delivery_canceled",
-            canceledAt: delivery.canceledAt || null,
-            cancellationReason: delivery.cancellationReason || null,
-            cancellationCategory: delivery.cancellationCategory || null,
-            cancellationNote: delivery.cancellationNote || null,
-            canceledBy: day.canceledBy || (delivery.canceledByUserId ? String(delivery.canceledByUserId) : null),
-          },
+          data: mapSubscriptionDelivery(delivery, user),
         });
       }
-      if (day.status !== "out_for_delivery") {
+      if (day.status !== "out_for_delivery" && day.status !== "ready_for_delivery") {
         await session.abortTransaction();
         session.endSession();
-        return errorResponse(res, 409, "INVALID_TRANSITION", "Only dispatched deliveries can be canceled");
+        return errorResponse(res, 409, "INVALID_TRANSITION", "Only ready or dispatched deliveries can be canceled");
       }
 
       day.status = "delivery_canceled";
@@ -416,19 +443,13 @@ async function markCancelled(req, res) {
       logger.error("Delivery cancellation notification failed", { error: err.message, stack: err.stack, deliveryId: String(delivery._id) });
     }
 
+    let userDoc = null;
+    if (sub && sub.userId) {
+      userDoc = await User.findById(sub.userId).select("name phone").lean();
+    }
     return res.status(200).json({
       status: true,
-      data: {
-        deliveryId: String(delivery._id),
-        subscriptionDayId: day ? String(day._id) : String(delivery.dayId),
-        deliveryStatus: "canceled",
-        subscriptionDayStatus: day ? day.status : "delivery_canceled",
-        canceledAt,
-        cancellationReason: cancellation.reason,
-        cancellationCategory: cancellation.category,
-        cancellationNote: cancellation.note,
-        canceledBy: day ? day.canceledBy : String(req.dashboardUserId || req.userId || ""),
-      },
+      data: mapSubscriptionDelivery(delivery, userDoc),
     });
   } catch (err) {
     // MEDIUM AUDIT FIX: Express 4 does not catch async errors automatically; return controlled 500.
@@ -437,4 +458,78 @@ async function markCancelled(req, res) {
   }
 }
 
-module.exports = { listTodayDeliveries, markArrivingSoon, markDelivered, markCancelled };
+async function markPickup(req, res) {
+  try {
+    const { id } = req.params;
+    try {
+      validateObjectId(id, "id");
+    } catch (err) {
+      return errorResponse(res, err.status, err.code, err.message);
+    }
+
+    const delivery = await Delivery.findById(id);
+    if (!delivery) {
+      return errorResponse(res, 404, "NOT_FOUND", "Delivery not found");
+    }
+
+    if (delivery.status === "out_for_delivery") {
+      const sub = await Subscription.findById(delivery.subscriptionId).lean();
+      let user = null;
+      if (sub && sub.userId) {
+        user = await User.findById(sub.userId).select("name phone").lean();
+      }
+      return res.status(200).json({
+        status: true,
+        idempotent: true,
+        data: mapSubscriptionDelivery(delivery, user),
+      });
+    }
+
+    if (delivery.status === "canceled") {
+      return errorResponse(res, 409, "ALREADY_CANCELED", "Cannot pickup a canceled delivery");
+    }
+    if (delivery.status === "delivered") {
+      return errorResponse(res, 409, "ALREADY_DELIVERED", "Cannot pickup a delivered delivery");
+    }
+
+    if (delivery.status !== "ready_for_delivery") {
+      return errorResponse(res, 409, "INVALID_STATE", "Delivery is not ready for collection yet");
+    }
+
+    const opsTransitionService = require("../services/dashboard/opsTransitionService");
+    await opsTransitionService.executeAction("dispatch", {
+      entityId: String(delivery.dayId),
+      entityType: "subscription",
+      userId: req.userId,
+      role: req.userRole || "courier",
+      payload: {},
+    });
+
+    const updatedDelivery = await Delivery.findById(id);
+    const sub = await Subscription.findById(updatedDelivery.subscriptionId).lean();
+    let user = null;
+    if (sub && sub.userId) {
+      user = await User.findById(sub.userId).select("name phone").lean();
+    }
+
+    return res.status(200).json({
+      status: true,
+      data: mapSubscriptionDelivery(updatedDelivery, user),
+    });
+  } catch (err) {
+    if (err.message === "INVALID_STATE_TRANSITION") {
+      return errorResponse(res, 409, "INVALID_TRANSITION", "Invalid state transition");
+    }
+    logger.error("courierController.markPickup failed", { error: err.message, stack: err.stack });
+    return errorResponse(res, 500, "INTERNAL", "Pickup update failed");
+  }
+}
+
+module.exports = {
+  listTodayDeliveries,
+  markArrivingSoon,
+  markDelivered,
+  markCancelled,
+  markPickup,
+  markCollect: markPickup,
+};

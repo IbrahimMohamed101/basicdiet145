@@ -58,7 +58,7 @@ function resolveUiMetadata(status, lang) {
   };
 }
 
-function mapSubscriptionDayToDTO(day, delivery, subscription, user, role, lang, catalogMaps = {}) {
+function mapSubscriptionDayToDTO(day, delivery, subscription, user, role, lang, catalogMaps = {}, pickupRequest = null) {
   const status = day.status;
   const mode = subscription && subscription.deliveryMode === "pickup" ? "pickup" : "delivery";
   const ui = resolveUiMetadata(status, lang);
@@ -68,13 +68,21 @@ function mapSubscriptionDayToDTO(day, delivery, subscription, user, role, lang, 
     today: day.date,
   });
   
-  const allowedActions = opsActionPolicy.getAllowedActions({
+  const pickupPayload = mode === "pickup" ? buildPickupPayload({ pickupRequest, subscription, day }) : null;
+  
+  let allowedActions = opsActionPolicy.getAllowedActions({
     entityType: "subscription",
     status,
     mode,
     role,
     lang,
   });
+
+  if (mode === "pickup" && (!pickupPayload || !pickupPayload.pickupRequestId)) {
+    allowedActions = allowedActions.filter(
+      (action) => !["prepare", "ready_for_pickup", "fulfill"].includes(action.id)
+    );
+  }
   
   const plan = buildPlanPayload(subscription, lang);
   const kitchenDetails = buildKitchenDetailsPayload(day, subscription, lang, catalogMaps);
@@ -131,7 +139,7 @@ function mapSubscriptionDayToDTO(day, delivery, subscription, user, role, lang, 
       ...deliveryPayload,
       method: mode,
     },
-    pickup: mode === "pickup" ? buildPickupPayload({ subscription, day }) : null,
+    pickup: pickupPayload,
     allowedActions,
     timestamps: {
       createdAt: day.createdAt,

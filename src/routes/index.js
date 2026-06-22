@@ -65,6 +65,7 @@ router.use("/dashboard/menu", dashboardMenuRoutes);
 router.use("/dashboard/meal-builder", dashboardMealBuilderRoutes);
 router.use("/dashboard/catalog-items", dashboardCatalogItemRoutes);
 router.use("/dashboard/ops", dashboardOpsRoutes);
+router.use("/dashboard/operations", dashboardOpsRoutes);
 router.use("/dashboard/subscriptions", dashboardSubscriptionRoutes);
 router.use("/dashboard/accounting", dashboardAccountingRoutes);
 router.use("/dashboard/orders", dashboardOrderRoutes);

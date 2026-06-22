@@ -16,6 +16,8 @@ const AddonSchema = new mongoose.Schema(
     priceLabel: { type: String, default: "" },
     currency: { type: String, default: "SAR" },
     isActive: { type: Boolean, default: true },
+    isArchived: { type: Boolean, default: false, index: true },
+    archivedAt: { type: Date, default: null },
     sortOrder: { type: Number, default: 0 },
 
     // New explicit billing behavior control.

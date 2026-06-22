@@ -150,14 +150,19 @@ async function getEnrichedDTO({ entityId, entityType, role, lang = "ar" }) {
     const day = await SubscriptionDay.findById(entityId).lean();
     if (!day) return null;
 
-    const [sub, delivery] = await Promise.all([
+    const [sub, delivery, pickupRequest] = await Promise.all([
       Subscription.findById(day.subscriptionId).populate("planId", "_id key name daysCount durationDays").lean(),
-      Delivery.findOne({ dayId: day._id }).lean()
+      Delivery.findOne({ dayId: day._id }).lean(),
+      SubscriptionPickupRequest.findOne({
+        subscriptionId: day.subscriptionId,
+        date: day.date,
+        status: { $ne: "canceled" }
+      }).lean()
     ]);
 
     const user = sub ? await User.findById(sub.userId).lean() : null;
 
-    const dto = dashboardDtoService.mapSubscriptionDayToDTO(day, delivery, sub || {}, user, role, lang);
+    const dto = dashboardDtoService.mapSubscriptionDayToDTO(day, delivery, sub || {}, user, role, lang, {}, pickupRequest);
     dto.ui.label = getLocalizedLabel(day.status, lang);
     return dto;
   } else {

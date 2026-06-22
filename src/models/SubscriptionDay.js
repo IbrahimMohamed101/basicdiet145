@@ -187,6 +187,7 @@ const SubscriptionDaySchema = new mongoose.Schema(
         "frozen",
         "locked",
         "in_preparation",
+        "ready_for_delivery",
         "out_for_delivery",
         "ready_for_pickup",
         "fulfilled",

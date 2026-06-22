@@ -48,6 +48,36 @@ const ACTION_REGISTRY = {
     roles: ["superadmin", "admin", "kitchen", "courier"],
     modes: ["delivery"],
   },
+  ready_for_delivery: {
+    id: "ready_for_delivery",
+    label: { ar: "جاهز للتوصيل", en: "Ready for Delivery" },
+    color: "teal",
+    icon: "package",
+    endpoint: "/api/dashboard/ops/actions/ready_for_delivery",
+    method: "POST",
+    roles: ["superadmin", "admin", "kitchen"],
+    modes: ["delivery"],
+  },
+  pickup: {
+    id: "pickup",
+    label: { ar: "استلام", en: "Pick Up" },
+    color: "indigo",
+    icon: "truck",
+    endpoint: "/api/dashboard/ops/actions/pickup",
+    method: "POST",
+    roles: ["superadmin", "admin", "courier"],
+    modes: ["delivery"],
+  },
+  collect: {
+    id: "collect",
+    label: { ar: "استلام", en: "Collect" },
+    color: "indigo",
+    icon: "truck",
+    endpoint: "/api/dashboard/ops/actions/collect",
+    method: "POST",
+    roles: ["superadmin", "admin", "courier"],
+    modes: ["delivery"],
+  },
   ready_for_pickup: {
     id: "ready_for_pickup",
     label: { ar: "جاهز للاستلام", en: "Ready for Pickup" },
@@ -113,7 +143,8 @@ const TRANSITION_RULES = {
   subscription: {
     open: ["prepare", "lock", "cancel"],
     locked: ["prepare", "reopen", "cancel"],
-    in_preparation: ["dispatch", "ready_for_pickup", "cancel"],
+    in_preparation: ["ready_for_pickup", "cancel", "ready_for_delivery"],
+    ready_for_delivery: ["pickup", "collect", "dispatch", "cancel", "fulfill"],
     out_for_delivery: ["notify_arrival", "fulfill", "cancel"],
     ready_for_pickup: ["fulfill", "cancel", "no_show"],
     fulfilled: [],
@@ -146,6 +177,7 @@ const TRANSITION_RULES = {
 
 function normalizeActionId(actionId) {
   if (actionId === "ready-for-pickup") return "ready_for_pickup";
+  if (actionId === "ready-for-delivery") return "ready_for_delivery";
   return actionId;
 }
 

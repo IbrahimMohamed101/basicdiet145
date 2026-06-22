@@ -1,9 +1,11 @@
 const mongoose = require("mongoose");
 const Order = require("../models/Order");
 const Delivery = require("../models/Delivery");
+const User = require("../models/User");
 const { notifyOrderUser } = require("../services/orderNotificationService");
 const { getTodayKSADate } = require("../utils/date");
 const { writeLog } = require("../utils/log");
+const { mapOneTimeOrderDelivery } = require("../mappers/deliveryMapper");
 const {
   canSendArrivingSoonReminder,
   isDeliveryCanceledStatus,
@@ -41,12 +43,16 @@ async function listTodayOrders(_req, res) {
         .map((delivery) => [String(delivery.orderId), delivery])
     );
 
+    const userIds = [...new Set(visibleOrders.map((o) => String(o.userId)).filter(Boolean))];
+    const users = userIds.length ? await User.find({ _id: { $in: userIds } }).select("name phone").lean() : [];
+    const userMap = new Map(users.map((u) => [String(u._id), u]));
+
     const queue = visibleOrders
       .filter((order) => deliveriesByOrderId.has(String(order._id)))
-      .map((order) => ({
-        ...order,
-        delivery: deliveriesByOrderId.get(String(order._id)),
-      }));
+      .map((order) => {
+        const user = userMap.get(String(order.userId));
+        return mapOneTimeOrderDelivery(order, user, deliveriesByOrderId.get(String(order._id)));
+      });
 
     return res.status(200).json({ status: true, data: queue });
   } catch (err) {
@@ -88,16 +94,16 @@ async function markArrivingSoon(req, res) {
     ) {
       return errorResponse(res, 409, "INVALID_TRANSITION", "Invalid state transition");
     }
+    let user = null;
+    if (order.userId) {
+      user = await User.findById(order.userId).select("name phone").lean();
+    }
+    
     if (existingDelivery.arrivingSoonReminderSentAt) {
       return res.status(200).json({
         status: true,
         deduped: true,
-        data: {
-          orderId: String(order._id),
-          deliveryId: String(existingDelivery._id),
-          deliveryStatus: normalizeDeliveryStatus(existingDelivery.status),
-          reminderSentAt: existingDelivery.arrivingSoonReminderSentAt,
-        },
+        data: mapOneTimeOrderDelivery(order, user, existingDelivery),
       });
     }
 
@@ -116,16 +122,13 @@ async function markArrivingSoon(req, res) {
       { new: true }
     );
 
+    const targetDelivery = delivery || existingDelivery;
+
     if (!delivery) {
       return res.status(200).json({
         status: true,
         deduped: true,
-        data: {
-          orderId: String(order._id),
-          deliveryId: String(existingDelivery._id),
-          deliveryStatus: normalizeDeliveryStatus(existingDelivery.status),
-          reminderSentAt: existingDelivery.arrivingSoonReminderSentAt,
-        },
+        data: mapOneTimeOrderDelivery(order, user, targetDelivery),
       });
     }
 
@@ -147,12 +150,7 @@ async function markArrivingSoon(req, res) {
 
     return res.status(200).json({
       status: true,
-      data: {
-        orderId: String(order._id),
-        deliveryId: String(delivery._id),
-        deliveryStatus: normalizeDeliveryStatus(delivery.status),
-        reminderSentAt: delivery.arrivingSoonReminderSentAt,
-      },
+      data: mapOneTimeOrderDelivery(order, user, targetDelivery),
     });
   } catch (err) {
     logger.error("orderCourierController.markArrivingSoon failed", {
@@ -205,16 +203,14 @@ async function markDelivered(req, res) {
     if (order.status === "fulfilled" || isDeliveryDeliveredStatus(delivery.status)) {
       await session.abortTransaction();
       session.endSession();
+      let user = null;
+      if (order.userId) {
+        user = await User.findById(order.userId).select("name phone").lean();
+      }
       return res.status(200).json({
         status: true,
         idempotent: true,
-        data: {
-          orderId: String(order._id),
-          deliveryId: String(delivery._id),
-          orderStatus: "fulfilled",
-          deliveryStatus: "delivered",
-          deliveredAt: order.fulfilledAt || delivery.deliveredAt || null,
-        },
+        data: mapOneTimeOrderDelivery(order, user, delivery),
       });
     }
     if (order.status === ORDER_STATUSES.CANCELLED || order.status === "canceled" || isDeliveryCanceledStatus(delivery.status)) {
@@ -249,15 +245,13 @@ async function markDelivered(req, res) {
     });
 
     await notifyOrderUser({ order, type: "delivered" });
+    let user = null;
+    if (order.userId) {
+      user = await User.findById(order.userId).select("name phone").lean();
+    }
     return res.status(200).json({
       status: true,
-      data: {
-        orderId: String(order._id),
-        deliveryId: String(delivery._id),
-        orderStatus: "fulfilled",
-        deliveryStatus: "delivered",
-        deliveredAt: order.fulfilledAt,
-      },
+      data: mapOneTimeOrderDelivery(order, user, delivery),
     });
   } catch (err) {
     if (session.inTransaction()) {
@@ -311,20 +305,14 @@ async function markCancelled(req, res) {
     if (order.status === ORDER_STATUSES.CANCELLED || order.status === "canceled" || isDeliveryCanceledStatus(delivery.status)) {
       await session.abortTransaction();
       session.endSession();
+      let user = null;
+      if (order.userId) {
+        user = await User.findById(order.userId).select("name phone").lean();
+      }
       return res.status(200).json({
         status: true,
         idempotent: true,
-        data: {
-          orderId: String(order._id),
-          deliveryId: String(delivery._id),
-          orderStatus: ORDER_STATUSES.CANCELLED,
-          deliveryStatus: "canceled",
-          canceledAt: order.canceledAt || delivery.canceledAt || null,
-          cancellationReason: delivery.cancellationReason || null,
-          cancellationCategory: delivery.cancellationCategory || null,
-          cancellationNote: delivery.cancellationNote || null,
-          canceledBy: delivery.canceledByUserId ? String(delivery.canceledByUserId) : null,
-        },
+        data: mapOneTimeOrderDelivery(order, user, delivery),
       });
     }
     if (order.status === "fulfilled" || isDeliveryDeliveredStatus(delivery.status)) {
@@ -381,19 +369,13 @@ async function markCancelled(req, res) {
     });
 
     await notifyOrderUser({ order, type: "canceled" });
+    let user = null;
+    if (order.userId) {
+      user = await User.findById(order.userId).select("name phone").lean();
+    }
     return res.status(200).json({
       status: true,
-      data: {
-        orderId: String(order._id),
-        deliveryId: String(delivery._id),
-        orderStatus: ORDER_STATUSES.CANCELLED,
-        deliveryStatus: "canceled",
-        canceledAt: order.canceledAt,
-        cancellationReason: cancellation.reason,
-        cancellationCategory: cancellation.category,
-        cancellationNote: cancellation.note,
-        canceledBy: String(req.dashboardUserId || req.userId || ""),
-      },
+      data: mapOneTimeOrderDelivery(order, user, delivery),
     });
   } catch (err) {
     if (session.inTransaction()) {

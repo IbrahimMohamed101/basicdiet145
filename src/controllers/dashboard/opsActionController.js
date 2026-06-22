@@ -175,6 +175,97 @@ async function handleAction(req, res) {
   }
 }
 
+async function readyForDelivery(req, res) {
+  const lang = getRequestLang(req);
+  const role = req.userRole;
+  const { id } = req.params;
+
+  try {
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+      return errorResponse(res, 400, "INVALID_ENTITY_ID", "Invalid entityId");
+    }
+
+    const doc = await SubscriptionDay.findById(id).lean();
+    if (!doc) {
+      return errorResponse(res, 404, "NOT_FOUND", "Entity not found");
+    }
+
+    const sub = await Subscription.findById(doc.subscriptionId)
+      .select("deliveryMode selectedMealsPerDay deliveryWindow deliveryAddress")
+      .lean();
+
+    if (!sub || sub.deliveryMode !== "delivery") {
+      return errorResponse(res, 400, "DELIVERY_MODE_REQUIRED", "Only applies to delivery subscriptions");
+    }
+
+    if (doc.status === "ready_for_delivery") {
+      const updatedDTO = await opsReadService.getEnrichedDTO({
+        entityId: id,
+        entityType: "subscription",
+        role,
+        lang,
+      });
+      return res.status(200).json({
+        status: true,
+        data: updatedDTO,
+      });
+    }
+
+    const mode = "delivery";
+
+    const gate = validateSubscriptionDayOperationalGate(doc, "ready_for_delivery", { subscription: sub });
+    if (!gate.allowed) {
+      return errorResponse(res, gate.status, gate.code, gate.message);
+    }
+    
+    const validation = opsActionPolicy.validateAction({
+      entityType: "subscription",
+      status: doc.status,
+      mode,
+      role,
+      actionId: "ready_for_delivery",
+    });
+
+    if (!validation.allowed) {
+      const code = validation.reason === "INVALID_STATE_TRANSITION" ? "INVALID_TRANSITION" : validation.reason;
+      return errorResponse(res, 409, code, `Action ready_for_delivery is not allowed in current state`);
+    }
+
+    await opsTransitionService.executeAction("ready_for_delivery", {
+      entityId: id,
+      entityType: "subscription",
+      userId: req.dashboardUserId || req.userId,
+      role,
+      payload: {},
+    });
+
+    const updatedDTO = await opsReadService.getEnrichedDTO({
+      entityId: id,
+      entityType: "subscription",
+      role,
+      lang,
+    });
+
+    return res.status(200).json({
+      status: true,
+      data: updatedDTO,
+    });
+  } catch (err) {
+    if (err.message === "INVALID_STATE_TRANSITION") {
+      return errorResponse(res, 409, "INVALID_TRANSITION", "This transition is not allowed");
+    }
+    if (err.message && err.message.startsWith("Invalid state transition")) {
+      return errorResponse(res, 409, "INVALID_STATE_TRANSITION", "This transition is not allowed");
+    }
+    if (err.status || err.code) {
+      return errorResponse(res, err.status || 500, err.code || "INTERNAL", err.message, err.details);
+    }
+    console.error("Dashboard readyForDelivery Action Error:", err);
+    return errorResponse(res, 500, "INTERNAL_ERROR", "Action execution failed", { detail: err.message });
+  }
+}
+
 module.exports = {
   handleAction,
+  readyForDelivery,
 };

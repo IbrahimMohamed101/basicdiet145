@@ -6,6 +6,7 @@ const { MongoMemoryReplSet } = require("mongodb-memory-server");
 
 const Addon = require("../src/models/Addon");
 const AddonPlanPrice = require("../src/models/AddonPlanPrice");
+const Subscription = require("../src/models/Subscription");
 const MenuCategory = require("../src/models/MenuCategory");
 const MenuProduct = require("../src/models/MenuProduct");
 const Plan = require("../src/models/Plan");
@@ -13,6 +14,7 @@ const {
   createDashboardAddonPlan,
   deleteDashboardAddonPlan,
   listDashboardAddonPlans,
+  toggleAddonPlanActive,
   updateAddonPlan,
 } = require("../src/controllers/addonController");
 
@@ -31,7 +33,7 @@ async function invoke(handler, { body = {}, params = {}, query = {} } = {}) {
   return res;
 }
 
-const planKeys = ["category", "id", "isActive", "maxPerDay", "menuProductIds", "menuProducts", "name", "planPrices"];
+const planKeys = ["archivedAt", "category", "id", "isActive", "isArchived", "kind", "maxPerDay", "menuProductIds", "menuProducts", "name", "planPrices", "type"];
 const productKeys = ["category", "id", "image", "isActive", "key", "name"];
 const priceKeys = ["basePlanId", "basePlanName", "daysCount", "isActive", "mealsCount", "priceHalala", "priceLabel", "priceSar"];
 
@@ -108,11 +110,11 @@ async function main() {
 
     const listed = await invoke(listDashboardAddonPlans, { query: { view: "full", kind: "item" } });
     assert.strictEqual(listed.statusCode, 200);
-    assert.strictEqual(listed.body.data.items, undefined);
-    assert.strictEqual(listed.body.data.plans.length, 1);
-    assert.strictEqual(listed.body.data.plans[0].id, addonId);
-    assert.ok(!listed.body.data.plans.some((plan) => plan.id === String(decoyPlan._id)));
-    assert.strictEqual(listed.body.data.summary.plansCount, 1);
+    assert.deepStrictEqual(listed.body.data.items, []);
+    assert.strictEqual(listed.body.data.plans.length, 2);
+    assert.ok(listed.body.data.plans.some((plan) => plan.id === addonId));
+    assert.ok(listed.body.data.plans.some((plan) => plan.id === String(decoyPlan._id)));
+    assert.strictEqual(listed.body.data.summary.plansCount, 2);
     assert.strictEqual(listed.body.data.summary.matrixRowsCount, 1);
 
     const updated = await invoke(updateAddonPlan, {
@@ -146,14 +148,50 @@ async function main() {
     }
     assert.strictEqual(await MenuProduct.countDocuments(), 1);
 
+    const subscriptionId = new mongoose.Types.ObjectId();
+    await Subscription.collection.insertOne({
+      _id: subscriptionId,
+      addonSubscriptions: [{ addonId: new mongoose.Types.ObjectId(addonId), category: "snack" }],
+      addonSelections: [{ addonId: new mongoose.Types.ObjectId(addonId), qty: 1 }],
+    });
+
+    const toggled = await invoke(toggleAddonPlanActive, { params: { id: addonId } });
+    assert.strictEqual(toggled.statusCode, 200);
+    assert.strictEqual(toggled.body.data.isActive, false);
+    assert.strictEqual(await AddonPlanPrice.countDocuments({ addonPlanId: addonId }), 1, "toggle must retain matrix rows");
+
+    const inactive = await invoke(listDashboardAddonPlans, { query: { status: "inactive" } });
+    const inactivePlan = inactive.body.data.plans.find((plan) => plan.id === addonId);
+    assert.ok(inactivePlan, "inactive plan must remain manageable");
+    assert.strictEqual(inactivePlan.isActive, false);
+
+    const allAfterToggle = await invoke(listDashboardAddonPlans, { query: { status: "all" } });
+    assert.ok(allAfterToggle.body.data.plans.some((plan) => plan.id === addonId));
+
     const archived = await invoke(deleteDashboardAddonPlan, { params: { id: addonId } });
     assert.strictEqual(archived.statusCode, 200);
-    assert.deepStrictEqual(archived.body.data, { id: addonId, archived: true, isActive: false });
-    assert.ok(await Addon.findById(addonId), "archive must retain the plan for historical references");
+    assert.strictEqual(archived.body.data.id, addonId);
+    assert.strictEqual(archived.body.data.archived, true);
+    assert.strictEqual(archived.body.data.isActive, false);
+    assert.strictEqual(archived.body.data.isArchived, true);
+    assert.ok(archived.body.data.archivedAt);
+    const storedAfterArchive = await Addon.findById(addonId);
+    assert.ok(storedAfterArchive, "archive must retain the plan for historical references");
+    assert.strictEqual(storedAfterArchive.isArchived, true);
+    assert.ok(storedAfterArchive.archivedAt);
     assert.strictEqual(await AddonPlanPrice.countDocuments({ addonPlanId: addonId }), 1, "archive must retain matrix history");
+    const storedSubscription = await Subscription.collection.findOne({ _id: subscriptionId });
+    assert.strictEqual(storedSubscription.addonSubscriptions.length, 1, "archive must retain subscription entitlements");
+    assert.strictEqual(storedSubscription.addonSelections.length, 1, "archive must retain addon selections");
 
     const afterArchive = await invoke(listDashboardAddonPlans);
-    assert.ok(!afterArchive.body.data.plans.some((plan) => plan.id === addonId));
+    const archivedInDefault = afterArchive.body.data.plans.find((plan) => plan.id === addonId);
+    assert.ok(archivedInDefault, "default dashboard list must be management-safe and include archived plans");
+    assert.strictEqual(archivedInDefault.isArchived, true);
+    assert.ok(archivedInDefault.archivedAt);
+
+    const archivedOnly = await invoke(listDashboardAddonPlans, { query: { status: "archived" } });
+    assert.deepStrictEqual(archivedOnly.body.data.plans.map((plan) => plan.id), [addonId]);
     console.log("Dashboard add-on subscription plan CRUD contract passed");
   } finally {
     await mongoose.disconnect();

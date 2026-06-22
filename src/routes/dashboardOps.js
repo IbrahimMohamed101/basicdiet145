@@ -30,6 +30,13 @@ router.post(
   asyncHandler(actionController.handleAction)
 );
 
+router.put(
+  "/subscription-days/:id/ready-for-delivery",
+  dashboardAuthMiddleware,
+  dashboardRoleMiddleware(["admin", "kitchen", "courier"]),
+  asyncHandler(actionController.readyForDelivery)
+);
+
 // Phase 5: Cashier Flow
 router.get(
   "/cashier/customer-lookup",
