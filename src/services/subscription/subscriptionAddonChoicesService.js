@@ -203,7 +203,18 @@ async function resolveAddonChoiceProductById(productId, { models = {} } = {}) {
     _id: productId,
     ...availableForOneTimeQuery(),
   })).lean();
-  if (!product) return null;
+  if (!product) {
+    const AddonModel = mongoose.model("Addon");
+    const addon = await AddonModel.findOne({ _id: productId, kind: "item" }).lean();
+    if (addon && addon.isActive !== false) {
+      return {
+        product: addon,
+        category: { key: addon.category },
+        addonCategory: addon.category,
+      };
+    }
+    return null;
+  }
   const catalogItemsById = await loadCatalogItemsByIdForDocs([product]);
   if (!isLinkedDocGloballyAvailable(product, catalogItemsById)) return null;
   if (!isDailyAddonMenuProduct(product)) return null;

@@ -11,6 +11,7 @@ const Meal = require("../../models/Meal");
 const MealCategory = require("../../models/MealCategory");
 const SaladIngredient = require("../../models/SaladIngredient");
 const Sandwich = require("../../models/Sandwich");
+const PremiumUpgradeConfig = require("../../models/PremiumUpgradeConfig");
 const { isValidObjectId } = mongoose;
 const {
   LEGACY_MEAL_SELECTION_TYPES,
@@ -47,11 +48,6 @@ const MENU_PROTEIN_GROUP_KEY = "proteins";
 const MENU_CARB_GROUP_KEY = "carbs";
 const MENU_SALAD_EXTRA_PROTEIN_GROUP_KEY = "extra_protein_50g";
 const PREMIUM_MEAL_PROTEIN_KEY_SET = new Set(PREMIUM_MEAL_PROTEIN_KEYS);
-const PREMIUM_MEAL_EXTRA_FEE_HALALA_BY_KEY = Object.freeze({
-  beef_steak: 2000,
-  shrimp: 2000,
-  salmon: 2000,
-});
 const SUBSCRIPTION_PREMIUM_LARGE_SALAD_PROTEIN_KEY_SET = new Set(SUBSCRIPTION_PREMIUM_LARGE_SALAD_PROTEIN_KEYS);
 const SUBSCRIPTION_PREMIUM_LARGE_SALAD_EXCLUDED_GROUP_KEY_SET = new Set(SUBSCRIPTION_PREMIUM_LARGE_SALAD_EXCLUDED_GROUP_KEYS);
 
@@ -122,11 +118,11 @@ async function getMenuGroupId(groupKey, session) {
   return group ? group._id : null;
 }
 
-function mapMenuProteinOption(option) {
+function mapMenuProteinOption(option, upgradeDeltaHalalaByKey = new Map()) {
   const proteinKey = String(option.key || option.premiumKey || "").trim().toLowerCase();
   const isPremium = PREMIUM_MEAL_PROTEIN_KEY_SET.has(proteinKey);
   const premiumExtraFeeHalala = isPremium
-    ? (PREMIUM_MEAL_EXTRA_FEE_HALALA_BY_KEY[proteinKey] ?? Number(option.extraFeeHalala ?? option.extraPriceHalala ?? 0))
+    ? (upgradeDeltaHalalaByKey.get(proteinKey) ?? Number(option.extraFeeHalala ?? option.extraPriceHalala ?? 0))
     : 0;
   return {
     ...option,
@@ -834,7 +830,7 @@ async function buildMealSlotDraft({ mealSlots, mealsPerDayLimit, maxSlotCount = 
       : Promise.resolve({ extraFeeHalala: 0 }),
   ]);
 
-  const [menuProteinRows, menuCarbRows, menuSaladOptionRows, legacyProteins, legacyCarbs, sandwichCategory, saladIngredients, catalogSandwiches] = await Promise.all([
+  const [menuProteinRows, menuCarbRows, menuSaladOptionRows, legacyProteins, legacyCarbs, sandwichCategory, saladIngredients, catalogSandwiches, activeConfigs] = await Promise.all([
     menuProteinGroupId
       ? MenuOption.find({
         _id: { $in: validProteinIds },
@@ -899,11 +895,17 @@ async function buildMealSlotDraft({ mealSlots, mealsPerDayLimit, maxSlotCount = 
     shouldLoadSandwiches
       ? Sandwich.find({ _id: { $in: validSandwichIds }, isActive: true }).session(session).lean()
       : Promise.resolve([]),
+    PremiumUpgradeConfig.find({ status: "active", isEnabled: true }).session(session).lean(),
   ]);
   const menuCatalogItemsById = await loadCatalogItemsByIdForDocs(menuProteinRows, menuCarbRows, menuSaladOptionRows);
   const menuProteins = filterGloballyAvailable(menuProteinRows, menuCatalogItemsById);
   const menuCarbs = filterGloballyAvailable(menuCarbRows, menuCatalogItemsById);
   const menuSaladOptions = filterGloballyAvailable(menuSaladOptionRows, menuCatalogItemsById);
+  
+  const upgradeDeltaHalalaByKey = new Map();
+  for (const config of (activeConfigs || [])) {
+    upgradeDeltaHalalaByKey.set(config.premiumKey, config.upgradeDeltaHalala);
+  }
 
   let sandwichMeals = [];
   if (sandwichCategory) {
@@ -918,13 +920,13 @@ async function buildMealSlotDraft({ mealSlots, mealsPerDayLimit, maxSlotCount = 
   const proteinMap = new Map(
     legacyProteins
       .map((p) => [String(p._id), p])
-      .concat(menuProteins.map((p) => [String(p._id), mapMenuProteinOption(p)]))
+      .concat(menuProteins.map((p) => [String(p._id), mapMenuProteinOption(p, upgradeDeltaHalalaByKey)]))
   );
   const proteinIdentityMap = new Map();
   for (const protein of legacyProteins) {
     addProteinIdentity(proteinIdentityMap, protein);
   }
-  for (const protein of menuProteins.map((p) => mapMenuProteinOption(p))) {
+  for (const protein of menuProteins.map((p) => mapMenuProteinOption(p, upgradeDeltaHalalaByKey))) {
     addProteinIdentity(proteinIdentityMap, protein);
   }
   const carbMap = new Map(

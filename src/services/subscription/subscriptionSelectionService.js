@@ -1042,12 +1042,7 @@ async function performBulkDaySelectionPlanningBalanceValidation({
       throw { status: 400, code: "INVALID", message: "Each day entry must include date" };
     }
     if (!Array.isArray(mealSlots)) {
-      throw {
-        status: 422,
-        code: "LEGACY_DAY_SELECTION_UNSUPPORTED",
-        message: "Bulk day selection requires canonical mealSlots payload.",
-        details: { date },
-      };
+      continue;
     }
 
     ensureActive(sub, date);

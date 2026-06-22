@@ -25,6 +25,7 @@ const MealCategory = require('../src/models/MealCategory');
 const Meal = require('../src/models/Meal');
 const SaladIngredient = require('../src/models/SaladIngredient');
 const Sandwich = require('../src/models/Sandwich');
+const PremiumUpgradeConfig = require('../src/models/PremiumUpgradeConfig');
 const CatalogService = require('../src/services/catalog/CatalogService');
 const { resolveCanonicalPremiumIdentity } = require('../src/utils/subscription/premiumIdentity');
 const {
@@ -184,6 +185,7 @@ function buildMockPlannerCatalog() {
       carbs: null,
     },
     menuOptions: [],
+    premiumUpgradeConfigs: [],
     menuProducts: {
       premium_large_salad: {
         _id: "507f191e810c19729de860f1",
@@ -228,6 +230,8 @@ async function withMockedPlannerCatalog(overrides, fn) {
   const originalMealFind = Meal.find;
   const originalSaladIngredientFind = SaladIngredient.find;
   const originalSandwichFind = Sandwich.find;
+  const originalPremiumUpgradeConfigFind = PremiumUpgradeConfig.find;
+  const originalPremiumUpgradeConfigFindOne = PremiumUpgradeConfig.findOne;
 
   const catalog = {
     ...buildMockPlannerCatalog(),
@@ -258,6 +262,8 @@ async function withMockedPlannerCatalog(overrides, fn) {
   Meal.find = () => mockQuery(catalog.sandwiches || []);
   SaladIngredient.find = () => mockQuery(catalog.saladIngredients || []);
   Sandwich.find = () => mockQuery(catalog.catalogSandwiches || []);
+  PremiumUpgradeConfig.find = () => mockQuery(catalog.premiumUpgradeConfigs || []);
+  PremiumUpgradeConfig.findOne = (query = {}) => mockQuery((catalog.premiumUpgradeConfigs || []).find(c => c.premiumKey === query.premiumKey) || null);
 
   try {
     return await fn(catalog);
@@ -276,6 +282,8 @@ async function withMockedPlannerCatalog(overrides, fn) {
     Meal.find = originalMealFind;
     SaladIngredient.find = originalSaladIngredientFind;
     Sandwich.find = originalSandwichFind;
+    PremiumUpgradeConfig.find = originalPremiumUpgradeConfigFind;
+    PremiumUpgradeConfig.findOne = originalPremiumUpgradeConfigFindOne;
   }
 }
 

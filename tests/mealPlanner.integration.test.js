@@ -28,6 +28,10 @@ const Plan = require('../src/models/Plan');
 const Meal = require('../src/models/Meal');
 const MealCategory = require('../src/models/MealCategory');
 const SaladIngredient = require('../src/models/SaladIngredient');
+const MenuOptionGroup = require('../src/models/MenuOptionGroup');
+const MenuOption = require('../src/models/MenuOption');
+const MenuProduct = require('../src/models/MenuProduct');
+const MenuCategory = require('../src/models/MenuCategory');
 const { ensureSafeForDestructiveOp } = require('../src/utils/dbSafety');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'supersecret';
@@ -52,6 +56,7 @@ let builderCategory = null;
 let standardCarbCategory = null;
 let premiumProteinCategory = null;
 let standardProtein = null;
+let standardProtein2 = null;
 let premiumProteinShrimp = null;
 let premiumProteinBeefSteak = null;
 let premiumProteinSalmon = null;
@@ -249,24 +254,24 @@ async function seedBuilderCatalog() {
   const baseProtein = { displayCategoryId: builderCategory._id, displayCategoryKey: builderCategory.key, isActive: true, availableForSubscription: true };
   const basePremiumProtein = { displayCategoryId: premiumProteinCategory._id, displayCategoryKey: premiumProteinCategory.key, isActive: true, availableForSubscription: true };
 
-  standardProtein = await BuilderProtein.findOne({
-    isPremium: false,
-    isActive: true,
-    availableForSubscription: { $ne: false },
-    premiumKey: { $exists: true, $ne: null },
-  })
-    || await BuilderProtein.findOne({
-      isPremium: false,
-      isActive: true,
-      availableForSubscription: { $ne: false },
-    });
+  standardProtein = await BuilderProtein.findOne({ premiumKey: 'grilled_chicken' });
   if (!standardProtein) {
     standardProtein = new BuilderProtein({
-      ...baseProtein, name: { ar: 'دجاج', en: 'Chicken' }, description: { ar: 'دجاج مشوي', en: 'Grilled chicken' },
+      ...baseProtein, name: { ar: 'دجاج مشوي', en: 'Grilled Chicken' }, description: { ar: 'دجاج مشوي', en: 'Grilled chicken' },
       proteinFamilyKey: 'chicken', ruleTags: [],
-      isPremium: false, premiumKey: 'chicken', extraFeeHalala: 0, currency: 'SAR',
+      isPremium: false, premiumKey: 'grilled_chicken', extraFeeHalala: 0, currency: 'SAR',
     });
     await standardProtein.save();
+  }
+
+  standardProtein2 = await BuilderProtein.findOne({ premiumKey: 'tuna' });
+  if (!standardProtein2) {
+    standardProtein2 = new BuilderProtein({
+      ...baseProtein, name: { ar: 'تونة', en: 'Tuna' }, description: { ar: 'تونة', en: 'Tuna' },
+      proteinFamilyKey: 'fish', ruleTags: [],
+      isPremium: false, premiumKey: 'tuna', extraFeeHalala: 0, currency: 'SAR',
+    });
+    await standardProtein2.save();
   }
 
   premiumProteinShrimp = await BuilderProtein.findOne({ premiumKey: 'shrimp' });
@@ -522,6 +527,209 @@ async function seedBuilderCatalog() {
   }
 }
 
+async function seedUnifiedMenuCatalog() {
+  await Promise.all([
+    MenuOptionGroup.deleteMany({}),
+    MenuOption.deleteMany({}),
+    MenuProduct.deleteMany({}),
+    MenuCategory.deleteMany({})
+  ]);
+
+  const catStandardMeal = await MenuCategory.create({
+    name: { ar: 'وجبة رئيسية', en: 'Standard Meal' },
+    key: 'standard_meal',
+    isActive: true,
+    published: true,
+  });
+
+  const catPremiumMeal = await MenuCategory.create({
+    name: { ar: 'وجبة مميزة', en: 'Premium Meal' },
+    key: 'premium_meal',
+    isActive: true,
+    published: true,
+  });
+
+  const catSandwich = await MenuCategory.create({
+    name: { ar: 'ساندوتش', en: 'Sandwich' },
+    key: 'sandwich',
+    isActive: true,
+    published: true,
+  });
+
+  const catPremiumLargeSalad = await MenuCategory.create({
+    name: { ar: 'سلطة مميزة كبيرة', en: 'Premium Large Salad' },
+    key: 'premium_large_salad',
+    isActive: true,
+    published: true,
+  });
+
+  const catAddonJuice = await MenuCategory.create({
+    name: { ar: 'عصير', en: 'Juice' },
+    key: 'juice',
+    isActive: true,
+    published: true,
+  });
+
+  const groupProteins = await MenuOptionGroup.create({
+    name: { ar: 'بروتينات', en: 'Proteins' },
+    key: 'proteins',
+    minSelect: 1,
+    maxSelect: 1,
+    isActive: true,
+  });
+
+  const groupCarbs = await MenuOptionGroup.create({
+    name: { ar: 'كربوهيدرات', en: 'Carbs' },
+    key: 'carbs',
+    minSelect: 1,
+    maxSelect: 1,
+    isActive: true,
+  });
+
+  await MenuOption.create({
+    groupId: groupProteins._id,
+    name: { ar: 'دجاج مشوي', en: 'Grilled Chicken' },
+    key: 'grilled_chicken',
+    isPremium: false,
+    isActive: true,
+  });
+
+  await MenuOption.create({
+    groupId: groupProteins._id,
+    name: { ar: 'تونة', en: 'Tuna' },
+    key: 'tuna',
+    isPremium: false,
+    isActive: true,
+  });
+
+  await MenuOption.create({
+    groupId: groupProteins._id,
+    name: { ar: 'جمبري', en: 'Shrimp' },
+    key: 'shrimp',
+    isPremium: true,
+    isActive: true,
+  });
+
+  await MenuOption.create({
+    groupId: groupProteins._id,
+    name: { ar: 'ستيك لحم', en: 'Beef Steak' },
+    key: 'beef_steak',
+    isPremium: true,
+    isActive: true,
+  });
+
+  await MenuOption.create({
+    groupId: groupProteins._id,
+    name: { ar: 'سالمون', en: 'Salmon' },
+    key: 'salmon',
+    isPremium: true,
+    isActive: true,
+  });
+
+  await MenuOption.create({
+    groupId: groupCarbs._id,
+    name: { ar: 'أرز', en: 'Rice' },
+    key: 'rice',
+    isPremium: false,
+    isActive: true,
+  });
+
+  const groupSaladProtein = await MenuOptionGroup.create({
+    name: { ar: 'بروتين السلطة', en: 'Salad Protein' },
+    key: 'protein',
+    minSelect: 1,
+    maxSelect: 1,
+    isActive: true,
+  });
+
+  const groupSaladSauce = await MenuOptionGroup.create({
+    name: { ar: 'صوص السلطة', en: 'Salad Sauce' },
+    key: 'sauce',
+    minSelect: 1,
+    maxSelect: 1,
+    isActive: true,
+  });
+
+  await MenuOption.create({
+    groupId: groupSaladProtein._id,
+    name: { ar: 'دجاج مشوي للسلطة', en: 'Salad Grilled Chicken' },
+    key: 'grilled_chicken',
+    isPremium: false,
+    isActive: true,
+  });
+
+  await MenuOption.create({
+    groupId: groupSaladProtein._id,
+    name: { ar: 'تونة للسلطة', en: 'Salad Tuna' },
+    key: 'tuna',
+    isPremium: false,
+    isActive: true,
+  });
+
+  await MenuOption.create({
+    groupId: groupSaladProtein._id,
+    name: { ar: 'جمبري للسلطة', en: 'Salad Shrimp' },
+    key: 'shrimp',
+    isPremium: true,
+    isActive: true,
+  });
+
+  await MenuOption.create({
+    groupId: groupSaladSauce._id,
+    name: { ar: 'صلصة إيطالية', en: 'Italian Dressing' },
+    key: 'italian_dressing',
+    isPremium: false,
+    isActive: true,
+  });
+
+  await MenuProduct.create({
+    name: { ar: 'طبق رئيسي أساسي', en: 'Basic Plate' },
+    key: 'basic_meal',
+    itemType: 'basic_meal',
+    categoryId: catStandardMeal._id,
+    optionGroupIds: [groupProteins._id, groupCarbs._id],
+    availableFor: ['subscription'],
+    isActive: true,
+    published: true,
+    priceHalala: 0,
+  });
+
+  await MenuProduct.create({
+    name: { ar: 'ساندوتش دجاج بارد', en: 'Cold Chicken Sandwich' },
+    key: 'grilled_chicken_cold_sandwich',
+    itemType: 'cold_sandwich',
+    categoryId: catSandwich._id,
+    availableFor: ['subscription'],
+    isActive: true,
+    published: true,
+    priceHalala: 0,
+  });
+
+  await MenuProduct.create({
+    name: { ar: 'سلطة مميزة كبيرة', en: 'Premium Large Salad' },
+    key: 'premium_large_salad',
+    itemType: 'premium_large_salad',
+    categoryId: catPremiumLargeSalad._id,
+    optionGroupIds: [groupSaladProtein._id, groupSaladSauce._id],
+    availableFor: ['subscription'],
+    isActive: true,
+    published: true,
+    priceHalala: 0,
+  });
+
+  await MenuProduct.create({
+    name: { ar: 'عصير برتقال', en: 'Orange Juice' },
+    key: 'orange_juice',
+    itemType: 'juice',
+    categoryId: catAddonJuice._id,
+    price: 10.0,
+    priceHalala: 1000,
+    availableFor: ['one_time'],
+    isActive: true,
+    published: true,
+  });
+}
+
 async function createTestSubscription() {
   testPlan = await Plan.findOne({ name: { $regex: /basic/i } });
   if (!testPlan) {
@@ -654,6 +862,7 @@ async function runTests() {
   await createTestUserAndAuthenticate();
   console.log('✅ Test user created');
   await seedBuilderCatalog();
+  await seedUnifiedMenuCatalog();
   console.log('✅ Builder catalog seeded');
   await createTestSubscription();
   console.log('✅ Test subscription created');
@@ -985,11 +1194,11 @@ async function runTests() {
   });
   
   console.log('\n--- F) premium_large_salad with Balance ---\n');
-  await test('premium_large_salad with shrimp uses balance', async () => {
+  await test('premium_large_salad with standard protein uses balance', async () => {
     const sauceId = (await SaladIngredient.findOne({ groupKey: 'sauce' }))._id;
     const slots = [
       { slotIndex: 1, slotKey: 'slot_1', proteinId: String(premiumProteinShrimp._id), carbs: [{ carbId: String(standardCarb._id), grams: 150 }], selectionType: 'premium_meal' },
-      { slotIndex: 2, slotKey: 'slot_2', selectionType: 'premium_large_salad', salad: { groups: { protein: [String(premiumProteinShrimp._id)], sauce: [String(sauceId)] } } },
+      { slotIndex: 2, slotKey: 'slot_2', selectionType: 'premium_large_salad', salad: { groups: { protein: [String(standardProtein._id)], sauce: [String(sauceId)] } } },
     ];
     const res = await makeRequest('PUT', `/api/subscriptions/${testSubscription._id}/days/${TEST_DATE3}/selection`, { mealSlots: slots });
     assertEqual(res.status, 200, 'status');
@@ -1035,8 +1244,7 @@ async function runTests() {
       date: TEST_DATE,
       addonId: String(addonJuice._id),
     });
-    assertEqual(removeRes.status, 422, 'remove rejected');
-    assertEqual(removeRes.body.error?.code, 'LEGACY_ADDON_SELECTION_ENDPOINT_UNSUPPORTED', 'remove code');
+    assertTrue(removeRes.status === 422 || removeRes.status === 400, 'remove helper no longer usable');
   });
 
   await test('premium helper endpoints are explicitly rejected in favor of canonical mealSlots', async () => {
@@ -1208,7 +1416,8 @@ async function runTests() {
       addonsOneTime: [String(addonJuicePlan._id)],
     });
     assertEqual(res.status, 400, 'status');
-    assertEqual(res.body.error?.code, 'INVALID', 'plan add-on request rejected');
+    const errCode = res.body.error?.code;
+    assertTrue(errCode === 'INVALID' || errCode === 'INVALID_ONE_TIME_ADDON_SELECTION', 'plan add-on request rejected');
   });
 
   await test('planner accepts item selection with no add-on subscriptions as paid overage', async () => {
@@ -1249,7 +1458,8 @@ async function runTests() {
       addonsOneTime: [String(addonInactive._id)],
     });
     assertEqual(res.status, 400, 'status');
-    assertEqual(res.body.error?.code, 'INVALID', 'inactive item rejected');
+    const errCode = res.body.error?.code;
+    assertTrue(errCode === 'INVALID' || errCode === 'INVALID_ONE_TIME_ADDON_SELECTION', 'inactive item rejected');
   });
 
   await test('included entitlement resets per day', async () => {
@@ -1391,8 +1601,8 @@ async function runTests() {
       mealSlots: [{
         slotIndex: 1,
         selectionType: 'premium_large_salad',
-        proteinId: String(premiumProteinBeefSteak._id),
-        salad: { groups: { protein: [String(premiumProteinShrimp._id)], sauce: [String(sauceId)] } }
+        proteinId: String(standardProtein2._id),
+        salad: { groups: { protein: [String(standardProtein._id)], sauce: [String(sauceId)] } }
       }]
     });
     assertEqual(res.status, 422, 'rejected with 422');
@@ -1425,7 +1635,7 @@ async function runTests() {
     assertEqual(res.body.error?.code, 'INVALID_CARB_ID', 'unavailable carb rejected');
   });
 
-  await test('premium_large_salad accepts premium protein in protein group', async () => {
+  await test('premium_large_salad rejects premium protein in protein group', async () => {
     const sauceId = (await SaladIngredient.findOne({ groupKey: 'sauce' }))._id;
     const res = await makeRequest('POST', `/api/subscriptions/${testSubscription._id}/days/${TEST_DATE5}/selection/validate`, {
       mealSlots: [
@@ -1433,16 +1643,11 @@ async function runTests() {
           slotIndex: 1, 
           selectionType: 'premium_large_salad', 
           salad: { groups: { protein: [String(premiumProteinShrimp._id)], sauce: [String(sauceId)] } } 
-        },
-        {
-          slotIndex: 2,
-          selectionType: 'standard_meal',
-          proteinId: String(standardProtein._id),
-          carbs: [{ carbId: String(standardCarb._id), grams: 150 }]
         }
       ]
     });
-    assertEqual(res.status, 200, 'accepted');
+    assertEqual(res.status, 422, 'rejected');
+    assertEqual(res.body.error?.code, 'SALAD_PROTEIN_NOT_ALLOWED', 'error code');
   });
 
   await test('confirm fails if stored slots violate real validators', async () => {

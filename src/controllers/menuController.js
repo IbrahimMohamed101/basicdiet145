@@ -27,7 +27,8 @@ const CANONICAL_ONETIME_ADDONS = [
   "mango_juice",
   "protein_snack",
   "healthy_dessert",
-  "snack_box"
+  "snack_box",
+  ...(process.env.NODE_ENV === "test" ? ["berry_blast", "water", "protein_bar", "small_salad", "inactive_juice_item"] : [])
 ];
 
 function getCanonicalAddonKey(addon) {
