@@ -1,0 +1,1111 @@
+{
+  "info": {
+    "_postman_id": "926cfcc5-a0b5-4abd-a4e8-93d6bf1c0210",
+    "name": "BasicDiet145 - Premium Meal Upgrades Dashboard",
+    "description": "Postman collection for Premium Meal Upgrades dashboard flow.\n\nCovers:\n1. List premium upgrade configs\n2. List candidates\n3. Create links from existing menu sources\n4. Update upgrade delta price with expectedRevision\n5. Toggle enabled/visible state\n6. Soft archive\n7. Readiness diagnostics\n\nImportant: Do not run archive/state requests on production unless intended. PremiumUpgradeConfig is authoritative once configs exist.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{dashboardToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Collection-level pre-request hook.",
+          "// Set {{bas}} and {{dashboardToken}} in your Postman environment before running."
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "bas",
+      "value": "https://basicdiet145.onrender.com"
+    },
+    {
+      "key": "dashboardToken",
+      "value": ""
+    },
+    {
+      "key": "basicMealProductId",
+      "value": "6a35521c3f6b8e45eac5b8e9"
+    },
+    {
+      "key": "proteinsGroupId",
+      "value": "6a3551ae3f6b8e45eac5b5e9"
+    },
+    {
+      "key": "beefSourceId",
+      "value": "6a3551b13f6b8e45eac5b5f8"
+    },
+    {
+      "key": "shrimpSourceId",
+      "value": "6a3551b13f6b8e45eac5b5fb"
+    },
+    {
+      "key": "salmonSourceId",
+      "value": "6a3551b23f6b8e45eac5b5fe"
+    },
+    {
+      "key": "premiumLargeSaladSourceId",
+      "value": "6a3552293f6b8e45eac5b947"
+    },
+    {
+      "key": "beefConfigId",
+      "value": ""
+    },
+    {
+      "key": "shrimpConfigId",
+      "value": ""
+    },
+    {
+      "key": "salmonConfigId",
+      "value": ""
+    },
+    {
+      "key": "premiumLargeSaladConfigId",
+      "value": ""
+    },
+    {
+      "key": "beefRevision",
+      "value": ""
+    },
+    {
+      "key": "shrimpRevision",
+      "value": ""
+    },
+    {
+      "key": "salmonRevision",
+      "value": ""
+    },
+    {
+      "key": "premiumLargeSaladRevision",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "01 - Read / Diagnostics",
+      "description": "Read-only requests for listing configs, candidates, and readiness.",
+      "item": [
+        {
+          "name": "List Premium Upgrade Configs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "en"
+              }
+            ],
+            "url": {
+              "raw": "{{bas}}/api/dashboard/premium-upgrades",
+              "host": [
+                "{{bas}}"
+              ],
+              "path": [
+                "api",
+                "dashboard",
+                "premium-upgrades"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP status is 2xx', function () { pm.expect(pm.response.code).to.be.within(200, 299); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Response status flag is true', function () { pm.expect(json.status).to.eql(true); });",
+                  "const items = Array.isArray(json.data) ? json.data : [];",
+                  "pm.test('data is an array', function () { pm.expect(items).to.be.an('array'); });",
+                  "const map = {",
+                  "  beef_steak: 'beef',",
+                  "  shrimp: 'shrimp',",
+                  "  salmon: 'salmon',",
+                  "  premium_large_salad: 'premiumLargeSalad'",
+                  "};",
+                  "items.forEach(function (item) {",
+                  "  const prefix = map[item.premiumKey];",
+                  "  if (prefix) {",
+                  "    pm.collectionVariables.set(prefix + 'ConfigId', item.id);",
+                  "    pm.collectionVariables.set(prefix + 'Revision', String(item.revision));",
+                  "  }",
+                  "});",
+                  "console.log('Premium upgrade config keys:', items.map(i => i.premiumKey));",
+                  "pm.test('Known configs are complete when configs exist', function () {",
+                  "  if (items.length > 0) {",
+                  "    const keys = items.map(i => i.premiumKey);",
+                  "    pm.expect(keys).to.include('beef_steak');",
+                  "    pm.expect(keys).to.include('shrimp');",
+                  "    pm.expect(keys).to.include('salmon');",
+                  "    pm.expect(keys).to.include('premium_large_salad');",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Unlinked Candidates",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "en"
+              }
+            ],
+            "url": {
+              "raw": "{{bas}}/api/dashboard/premium-upgrades/candidates",
+              "host": [
+                "{{bas}}"
+              ],
+              "path": [
+                "api",
+                "dashboard",
+                "premium-upgrades",
+                "candidates"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP status is 2xx', function () { pm.expect(pm.response.code).to.be.within(200, 299); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Response status flag is true', function () { pm.expect(json.status).to.eql(true); });",
+                  "const items = Array.isArray(json.data) ? json.data : [];",
+                  "pm.test('data is an array', function () { pm.expect(items).to.be.an('array'); });",
+                  "console.log('Candidate keys:', items.map(i => i.premiumKey || i.key));",
+                  "items.forEach(function (item) {",
+                  "  pm.expect(item.eligibilityDiagnostics).to.be.an('object');",
+                  "  pm.expect(item.eligibilityDiagnostics.eligible).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List All Candidates Including Linked",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "en"
+              }
+            ],
+            "url": {
+              "raw": "{{bas}}/api/dashboard/premium-upgrades/candidates?includeLinked=true&limit=100",
+              "host": [
+                "{{bas}}"
+              ],
+              "path": [
+                "api",
+                "dashboard",
+                "premium-upgrades",
+                "candidates?includeLinked=true&limit=100"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP status is 2xx', function () { pm.expect(pm.response.code).to.be.within(200, 299); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Response status flag is true', function () { pm.expect(json.status).to.eql(true); });",
+                  "const items = Array.isArray(json.data) ? json.data : [];",
+                  "const keys = items.map(x => x.premiumKey || x.key);",
+                  "console.log('Candidate keys:', keys);",
+                  "pm.test('includeLinked returns all four known premium sources', function () {",
+                  "  pm.expect(keys).to.include('beef_steak');",
+                  "  pm.expect(keys).to.include('shrimp');",
+                  "  pm.expect(keys).to.include('salmon');",
+                  "  pm.expect(keys).to.include('premium_large_salad');",
+                  "});",
+                  "pm.test('All includeLinked candidates are eligible', function () {",
+                  "  items.forEach(function (item) {",
+                  "    pm.expect(item.eligibilityDiagnostics.eligible).to.eql(true);",
+                  "    pm.expect(item.eligibilityDiagnostics.issues).to.be.an('array');",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Candidates - Premium Meal Only",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "en"
+              }
+            ],
+            "url": {
+              "raw": "{{bas}}/api/dashboard/premium-upgrades/candidates?selectionType=premium_meal&includeLinked=true&limit=100",
+              "host": [
+                "{{bas}}"
+              ],
+              "path": [
+                "api",
+                "dashboard",
+                "premium-upgrades",
+                "candidates?selectionType=premium_meal&includeLinked=true&limit=100"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP status is 2xx', function () { pm.expect(pm.response.code).to.be.within(200, 299); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Response status flag is true', function () { pm.expect(json.status).to.eql(true); });",
+                  "const items = Array.isArray(json.data) ? json.data : [];",
+                  "const keys = items.map(x => x.premiumKey || x.key);",
+                  "console.log('Candidate keys:', keys);",
+                  "pm.test('includeLinked returns all four known premium sources', function () {",
+                  "  pm.expect(keys).to.include('beef_steak');",
+                  "  pm.expect(keys).to.include('shrimp');",
+                  "  pm.expect(keys).to.include('salmon');",
+                  "  pm.expect(keys).to.include('premium_large_salad');",
+                  "});",
+                  "pm.test('All includeLinked candidates are eligible', function () {",
+                  "  items.forEach(function (item) {",
+                  "    pm.expect(item.eligibilityDiagnostics.eligible).to.eql(true);",
+                  "    pm.expect(item.eligibilityDiagnostics.issues).to.be.an('array');",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Candidates - Premium Large Salad Only",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "en"
+              }
+            ],
+            "url": {
+              "raw": "{{bas}}/api/dashboard/premium-upgrades/candidates?selectionType=premium_large_salad&includeLinked=true&limit=100",
+              "host": [
+                "{{bas}}"
+              ],
+              "path": [
+                "api",
+                "dashboard",
+                "premium-upgrades",
+                "candidates?selectionType=premium_large_salad&includeLinked=true&limit=100"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP status is 2xx', function () { pm.expect(pm.response.code).to.be.within(200, 299); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Response status flag is true', function () { pm.expect(json.status).to.eql(true); });",
+                  "const items = Array.isArray(json.data) ? json.data : [];",
+                  "const keys = items.map(x => x.premiumKey || x.key);",
+                  "console.log('Candidate keys:', keys);",
+                  "pm.test('includeLinked returns all four known premium sources', function () {",
+                  "  pm.expect(keys).to.include('beef_steak');",
+                  "  pm.expect(keys).to.include('shrimp');",
+                  "  pm.expect(keys).to.include('salmon');",
+                  "  pm.expect(keys).to.include('premium_large_salad');",
+                  "});",
+                  "pm.test('All includeLinked candidates are eligible', function () {",
+                  "  items.forEach(function (item) {",
+                  "    pm.expect(item.eligibilityDiagnostics.eligible).to.eql(true);",
+                  "    pm.expect(item.eligibilityDiagnostics.issues).to.be.an('array');",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Readiness Diagnostics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "en"
+              }
+            ],
+            "url": {
+              "raw": "{{bas}}/api/dashboard/premium-upgrades/readiness",
+              "host": [
+                "{{bas}}"
+              ],
+              "path": [
+                "api",
+                "dashboard",
+                "premium-upgrades",
+                "readiness"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP status is 2xx', function () { pm.expect(pm.response.code).to.be.within(200, 299); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Response status flag is true', function () { pm.expect(json.status).to.eql(true); });",
+                  "const diag = json.diagnostics || {};",
+                  "pm.test('Readiness is true', function () { pm.expect(json.isReady).to.eql(true); });",
+                  "pm.test('No missing sources or invalid relations', function () {",
+                  "  pm.expect(diag.missingSources).to.eql(0);",
+                  "  pm.expect(diag.invalidRelations).to.eql(0);",
+                  "});",
+                  "pm.test('No partial config risk', function () {",
+                  "  pm.expect(diag.configState.partialConfigRisk).to.eql(false);",
+                  "});",
+                  "pm.test('Known keys are present', function () {",
+                  "  const keys = diag.configState.knownKeys || [];",
+                  "  pm.expect(keys).to.include('beef_steak');",
+                  "  pm.expect(keys).to.include('shrimp');",
+                  "  pm.expect(keys).to.include('salmon');",
+                  "  pm.expect(keys).to.include('premium_large_salad');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02 - Create Premium Links",
+      "description": "Creates PremiumUpgradeConfig records from existing menu sources. Run only when configs are missing; do not create partial configs in production.",
+      "item": [
+        {
+          "name": "Create Beef Steak Premium Upgrade",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "en"
+              }
+            ],
+            "url": {
+              "raw": "{{bas}}/api/dashboard/premium-upgrades",
+              "host": [
+                "{{bas}}"
+              ],
+              "path": [
+                "api",
+                "dashboard",
+                "premium-upgrades"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sourceType\": \"menu_option\",\n  \"sourceId\": \"{{beefSourceId}}\",\n  \"sourceProductId\": \"{{basicMealProductId}}\",\n  \"sourceGroupId\": \"{{proteinsGroupId}}\",\n  \"selectionType\": \"premium_meal\",\n  \"displayGroupKey\": \"premium_proteins\",\n  \"upgradeDeltaHalala\": 2000,\n  \"isEnabled\": true,\n  \"isVisible\": true,\n  \"sortOrder\": 10\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP status is 2xx', function () { pm.expect(pm.response.code).to.be.within(200, 299); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Response status flag is true', function () { pm.expect(json.status).to.eql(true); });",
+                  "pm.test('Created premium upgrade config', function () { pm.expect(pm.response.code).to.eql(201); });",
+                  "const item = json.data;",
+                  "pm.test('premiumKey is beef_steak', function () { pm.expect(item.premiumKey).to.eql('beef_steak'); });",
+                  "pm.test('Business rule: does not add meal', function () {",
+                  "  pm.expect(item.businessRule.consumesExistingMealSlot).to.eql(true);",
+                  "  pm.expect(item.businessRule.doesAddMeal).to.eql(false);",
+                  "});",
+                  "pm.collectionVariables.set('beefConfigId', item.id);",
+                  "pm.collectionVariables.set('beefRevision', String(item.revision));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Shrimp Premium Upgrade",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "en"
+              }
+            ],
+            "url": {
+              "raw": "{{bas}}/api/dashboard/premium-upgrades",
+              "host": [
+                "{{bas}}"
+              ],
+              "path": [
+                "api",
+                "dashboard",
+                "premium-upgrades"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sourceType\": \"menu_option\",\n  \"sourceId\": \"{{shrimpSourceId}}\",\n  \"sourceProductId\": \"{{basicMealProductId}}\",\n  \"sourceGroupId\": \"{{proteinsGroupId}}\",\n  \"selectionType\": \"premium_meal\",\n  \"displayGroupKey\": \"premium_proteins\",\n  \"upgradeDeltaHalala\": 2000,\n  \"isEnabled\": true,\n  \"isVisible\": true,\n  \"sortOrder\": 20\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP status is 2xx', function () { pm.expect(pm.response.code).to.be.within(200, 299); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Response status flag is true', function () { pm.expect(json.status).to.eql(true); });",
+                  "pm.test('Created premium upgrade config', function () { pm.expect(pm.response.code).to.eql(201); });",
+                  "const item = json.data;",
+                  "pm.test('premiumKey is shrimp', function () { pm.expect(item.premiumKey).to.eql('shrimp'); });",
+                  "pm.test('Business rule: does not add meal', function () {",
+                  "  pm.expect(item.businessRule.consumesExistingMealSlot).to.eql(true);",
+                  "  pm.expect(item.businessRule.doesAddMeal).to.eql(false);",
+                  "});",
+                  "pm.collectionVariables.set('shrimpConfigId', item.id);",
+                  "pm.collectionVariables.set('shrimpRevision', String(item.revision));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Salmon Premium Upgrade",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "en"
+              }
+            ],
+            "url": {
+              "raw": "{{bas}}/api/dashboard/premium-upgrades",
+              "host": [
+                "{{bas}}"
+              ],
+              "path": [
+                "api",
+                "dashboard",
+                "premium-upgrades"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sourceType\": \"menu_option\",\n  \"sourceId\": \"{{salmonSourceId}}\",\n  \"sourceProductId\": \"{{basicMealProductId}}\",\n  \"sourceGroupId\": \"{{proteinsGroupId}}\",\n  \"selectionType\": \"premium_meal\",\n  \"displayGroupKey\": \"premium_proteins\",\n  \"upgradeDeltaHalala\": 2000,\n  \"isEnabled\": true,\n  \"isVisible\": true,\n  \"sortOrder\": 30\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP status is 2xx', function () { pm.expect(pm.response.code).to.be.within(200, 299); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Response status flag is true', function () { pm.expect(json.status).to.eql(true); });",
+                  "pm.test('Created premium upgrade config', function () { pm.expect(pm.response.code).to.eql(201); });",
+                  "const item = json.data;",
+                  "pm.test('premiumKey is salmon', function () { pm.expect(item.premiumKey).to.eql('salmon'); });",
+                  "pm.test('Business rule: does not add meal', function () {",
+                  "  pm.expect(item.businessRule.consumesExistingMealSlot).to.eql(true);",
+                  "  pm.expect(item.businessRule.doesAddMeal).to.eql(false);",
+                  "});",
+                  "pm.collectionVariables.set('salmonConfigId', item.id);",
+                  "pm.collectionVariables.set('salmonRevision', String(item.revision));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Premium Large Salad Upgrade",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "en"
+              }
+            ],
+            "url": {
+              "raw": "{{bas}}/api/dashboard/premium-upgrades",
+              "host": [
+                "{{bas}}"
+              ],
+              "path": [
+                "api",
+                "dashboard",
+                "premium-upgrades"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sourceType\": \"menu_product\",\n  \"sourceId\": \"{{premiumLargeSaladSourceId}}\",\n  \"sourceProductId\": \"{{premiumLargeSaladSourceId}}\",\n  \"sourceGroupId\": null,\n  \"selectionType\": \"premium_large_salad\",\n  \"displayGroupKey\": \"premium_salads\",\n  \"upgradeDeltaHalala\": 2900,\n  \"isEnabled\": true,\n  \"isVisible\": true,\n  \"sortOrder\": 40\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP status is 2xx', function () { pm.expect(pm.response.code).to.be.within(200, 299); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Response status flag is true', function () { pm.expect(json.status).to.eql(true); });",
+                  "pm.test('Created premium upgrade config', function () { pm.expect(pm.response.code).to.eql(201); });",
+                  "const item = json.data;",
+                  "pm.test('premiumKey is premium_large_salad', function () { pm.expect(item.premiumKey).to.eql('premium_large_salad'); });",
+                  "pm.test('Business rule: does not add meal', function () {",
+                  "  pm.expect(item.businessRule.consumesExistingMealSlot).to.eql(true);",
+                  "  pm.expect(item.businessRule.doesAddMeal).to.eql(false);",
+                  "});",
+                  "pm.collectionVariables.set('premiumLargeSaladConfigId', item.id);",
+                  "pm.collectionVariables.set('premiumLargeSaladRevision', String(item.revision));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03 - Update Upgrade Delta Price",
+      "description": "Safe price update requests using expectedRevision. Run List Premium Upgrade Configs first to refresh IDs/revisions.",
+      "item": [
+        {
+          "name": "Update Beef Steak Delta to 25 SAR",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "en"
+              }
+            ],
+            "url": {
+              "raw": "{{bas}}/api/dashboard/premium-upgrades/{{beefConfigId}}",
+              "host": [
+                "{{bas}}"
+              ],
+              "path": [
+                "api",
+                "dashboard",
+                "premium-upgrades",
+                "{{beefConfigId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"expectedRevision\": \"{{beefRevision}}\",\n  \"upgradeDeltaHalala\": 2500\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP status is 2xx', function () { pm.expect(pm.response.code).to.be.within(200, 299); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Response status flag is true', function () { pm.expect(json.status).to.eql(true); });",
+                  "pm.test('upgradeDeltaHalala is 2500', function () { pm.expect(item.upgradeDeltaHalala).to.eql(2500); });",
+                  "const item = json.data;",
+                  "pm.test('Revision increased / exists', function () { pm.expect(item.revision).to.be.a('number'); });",
+                  "pm.collectionVariables.set('beefRevision', String(item.revision));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Restore Beef Steak Delta to 20 SAR",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "en"
+              }
+            ],
+            "url": {
+              "raw": "{{bas}}/api/dashboard/premium-upgrades/{{beefConfigId}}",
+              "host": [
+                "{{bas}}"
+              ],
+              "path": [
+                "api",
+                "dashboard",
+                "premium-upgrades",
+                "{{beefConfigId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"expectedRevision\": \"{{beefRevision}}\",\n  \"upgradeDeltaHalala\": 2000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP status is 2xx', function () { pm.expect(pm.response.code).to.be.within(200, 299); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Response status flag is true', function () { pm.expect(json.status).to.eql(true); });",
+                  "pm.test('upgradeDeltaHalala is 2000', function () { pm.expect(item.upgradeDeltaHalala).to.eql(2000); });",
+                  "const item = json.data;",
+                  "pm.test('Revision increased / exists', function () { pm.expect(item.revision).to.be.a('number'); });",
+                  "pm.collectionVariables.set('beefRevision', String(item.revision));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Set Premium Large Salad Delta to 29 SAR",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "en"
+              }
+            ],
+            "url": {
+              "raw": "{{bas}}/api/dashboard/premium-upgrades/{{premiumLargeSaladConfigId}}",
+              "host": [
+                "{{bas}}"
+              ],
+              "path": [
+                "api",
+                "dashboard",
+                "premium-upgrades",
+                "{{premiumLargeSaladConfigId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"expectedRevision\": \"{{premiumLargeSaladRevision}}\",\n  \"upgradeDeltaHalala\": 2900\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP status is 2xx', function () { pm.expect(pm.response.code).to.be.within(200, 299); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Response status flag is true', function () { pm.expect(json.status).to.eql(true); });",
+                  "pm.test('upgradeDeltaHalala is 2900', function () { pm.expect(item.upgradeDeltaHalala).to.eql(2900); });",
+                  "const item = json.data;",
+                  "pm.test('Revision increased / exists', function () { pm.expect(item.revision).to.be.a('number'); });",
+                  "pm.collectionVariables.set('premiumLargeSaladRevision', String(item.revision));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "04 - State Toggle",
+      "description": "Toggles visibility/enabled state. Run carefully. Use List first to refresh revisions.",
+      "item": [
+        {
+          "name": "Hide Beef Steak from Planner",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "en"
+              }
+            ],
+            "url": {
+              "raw": "{{bas}}/api/dashboard/premium-upgrades/{{beefConfigId}}/state",
+              "host": [
+                "{{bas}}"
+              ],
+              "path": [
+                "api",
+                "dashboard",
+                "premium-upgrades",
+                "{{beefConfigId}}",
+                "state"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"expectedRevision\": \"{{beefRevision}}\",\n  \"isEnabled\": true,\n  \"isVisible\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP status is 2xx', function () { pm.expect(pm.response.code).to.be.within(200, 299); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Response status flag is true', function () { pm.expect(json.status).to.eql(true); });",
+                  "const item = json.data;",
+                  "pm.test('State fields exist', function () {",
+                  "  pm.expect(item).to.have.property('isEnabled');",
+                  "  pm.expect(item).to.have.property('isVisible');",
+                  "});",
+                  "pm.collectionVariables.set('beefRevision', String(item.revision));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Show Beef Steak in Planner",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "en"
+              }
+            ],
+            "url": {
+              "raw": "{{bas}}/api/dashboard/premium-upgrades/{{beefConfigId}}/state",
+              "host": [
+                "{{bas}}"
+              ],
+              "path": [
+                "api",
+                "dashboard",
+                "premium-upgrades",
+                "{{beefConfigId}}",
+                "state"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"expectedRevision\": \"{{beefRevision}}\",\n  \"isEnabled\": true,\n  \"isVisible\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP status is 2xx', function () { pm.expect(pm.response.code).to.be.within(200, 299); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Response status flag is true', function () { pm.expect(json.status).to.eql(true); });",
+                  "const item = json.data;",
+                  "pm.test('State fields exist', function () {",
+                  "  pm.expect(item).to.have.property('isEnabled');",
+                  "  pm.expect(item).to.have.property('isVisible');",
+                  "});",
+                  "pm.collectionVariables.set('beefRevision', String(item.revision));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "05 - Archive - Dangerous",
+      "description": "Soft archive endpoint. Do not run on production unless intentionally archiving the upgrade.",
+      "item": [
+        {
+          "name": "DANGER - Archive Beef Steak Premium Upgrade",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "en"
+              }
+            ],
+            "url": {
+              "raw": "{{bas}}/api/dashboard/premium-upgrades/{{beefConfigId}}/archive",
+              "host": [
+                "{{bas}}"
+              ],
+              "path": [
+                "api",
+                "dashboard",
+                "premium-upgrades",
+                "{{beefConfigId}}",
+                "archive"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"expectedRevision\": \"{{beefRevision}}\",\n  \"reason\": \"Postman archive test\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP status is 2xx', function () { pm.expect(pm.response.code).to.be.within(200, 299); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Response status flag is true', function () { pm.expect(json.status).to.eql(true); });",
+                  "const item = json.data;",
+                  "pm.test('Config is archived', function () {",
+                  "  pm.expect(item.status).to.eql('archived');",
+                  "  pm.expect(item.archivedAt).to.not.eql(null);",
+                  "});",
+                  "pm.collectionVariables.set('beefRevision', String(item.revision));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
