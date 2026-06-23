@@ -6,7 +6,7 @@ const SubscriptionDay = require("../models/SubscriptionDay");
 const Delivery = require("../models/Delivery");
 const Meal = require("../models/Meal");
 const { isValidKSADateString, getTodayKSADate } = require("../utils/date");
-const { canTransition } = require("../utils/state");
+const { canTransitionStatus } = require("../services/dashboard/opsTransitionPolicy");
 const { writeLog } = require("../utils/log");
 const { notifyUser } = require("../utils/notify");
 const { resolveMealsPerDay, resolveDayWalletSelections } = require("../utils/subscription/subscriptionDaySelectionSync");
@@ -30,6 +30,27 @@ const { resolveOptionalPagination, buildPaginationMeta } = require("../utils/opt
 const {
   buildAddonEntitlementsReadModel,
 } = require("../services/subscription/subscriptionAddonEntitlementReadService");
+const opsTransitionService = require("../services/dashboard/opsTransitionService");
+
+async function executeCanonicalDayAction(req, res, action, extra = {}) {
+  const { id, date } = req.params;
+  const day = req.params.dayId
+    ? await SubscriptionDay.findById(req.params.dayId).lean()
+    : await SubscriptionDay.findOne({ subscriptionId: id, date }).lean();
+  if (!day) return errorResponse(res, 404, "NOT_FOUND", "Day not found");
+  try {
+    const updated = await opsTransitionService.executeAction(action, {
+      entityId: day._id,
+      entityType: "subscription",
+      userId: req.dashboardUserId || req.userId,
+      role: req.userRole || "kitchen",
+      payload: { ...(req.body || {}), ...extra },
+    });
+    return res.status(200).json({ status: true, data: updated });
+  } catch (err) {
+    return errorResponse(res, err.status || 409, err.code || "INVALID_TRANSITION", err.message || "Invalid state transition");
+  }
+}
 
 async function getPickupLocationsSetting() {
   const setting = await Setting.findOne({ key: "pickup_locations" }).lean();
@@ -443,7 +464,61 @@ async function ensureLockedSnapshot(sub, day, session, { pickupLocations = [] } 
   await day.save({ session });
 }
 
+async function bulkLockDaysByDateCanonical(req, res) {
+  const { date } = req.params;
+  if (!isValidKSADateString(date)) return errorResponse(res, 400, "INVALID_DATE", "Invalid date");
+  const days = await SubscriptionDay.find({ date }).lean();
+  const subscriptions = await Subscription.find({
+    _id: { $in: [...new Set(days.map((day) => String(day.subscriptionId)))] },
+  }).select("deliveryMode").lean();
+  const subscriptionMap = new Map(subscriptions.map((sub) => [String(sub._id), sub]));
+  const invalidDays = [];
+  let lockedCount = 0;
+  let missingSubscriptionCount = 0;
+
+  for (const day of days.filter((row) => row.status === "open")) {
+    const subscription = subscriptionMap.get(String(day.subscriptionId));
+    if (!subscription) {
+      missingSubscriptionCount += 1;
+      continue;
+    }
+    if (subscription.deliveryMode === "pickup") {
+      invalidDays.push({ subscriptionId: String(day.subscriptionId), dayId: String(day._id), date, code: "PICKUP_PREPARE_REQUIRED" });
+      continue;
+    }
+    try {
+      await opsTransitionService.executeAction("lock", {
+        entityId: day._id,
+        entityType: "subscription",
+        userId: req.dashboardUserId || req.userId,
+        role: req.userRole || "kitchen",
+        payload: req.body || {},
+      });
+      lockedCount += 1;
+    } catch (err) {
+      invalidDays.push({ subscriptionId: String(day.subscriptionId), dayId: String(day._id), date, code: err.code || "INVALID" });
+    }
+  }
+
+  const alreadyProcessedCount = days.filter((day) => day.status !== "open").length;
+  return res.status(200).json({
+    status: true,
+    data: {
+      date,
+      totalDays: days.length,
+      lockedCount,
+      skippedCount: alreadyProcessedCount + missingSubscriptionCount + invalidDays.length,
+      alreadyProcessedCount,
+      missingSubscriptionCount,
+      invalidCount: invalidDays.length,
+      invalidDays,
+    },
+  });
+}
+
 async function bulkLockDaysByDate(req, res) {
+  return bulkLockDaysByDateCanonical(req, res);
+  /* Historical implementation retained below for reference. */
   const { date } = req.params;
   if (!isValidKSADateString(date)) {
     return errorResponse(res, 400, "INVALID_DATE", "Invalid date");
@@ -540,6 +615,16 @@ async function bulkLockDaysByDate(req, res) {
 }
 
 async function transitionDay(req, res, toStatus) {
+  const actionByStatus = {
+    locked: "lock",
+    in_preparation: "prepare",
+    ready_for_delivery: "ready_for_delivery",
+    out_for_delivery: "dispatch",
+    ready_for_pickup: "ready_for_pickup",
+  };
+  if (actionByStatus[toStatus]) {
+    return executeCanonicalDayAction(req, res, actionByStatus[toStatus]);
+  }
   const { id, date } = req.params;
   try {
     validateObjectId(id, "subscriptionId");
@@ -559,7 +644,7 @@ async function transitionDay(req, res, toStatus) {
       session.endSession();
       return errorResponse(res, 404, "NOT_FOUND", "Day not found");
     }
-    if (!canTransition(day.status, toStatus)) {
+    if (!canTransitionStatus("subscription", day.status, toStatus)) {
       await session.abortTransaction();
       session.endSession();
       return errorResponse(res, 409, "INVALID_TRANSITION", "Invalid state transition");
@@ -709,6 +794,9 @@ async function transitionDay(req, res, toStatus) {
 }
 
 async function reopenLockedDay(req, res) {
+  return executeCanonicalDayAction(req, res, "reopen");
+  /* Historical implementation retained below for reference; routes execute
+     exclusively through opsTransitionService. */
   const { id, date } = req.params;
   try {
     validateObjectId(id, "subscriptionId");
@@ -779,6 +867,8 @@ async function reopenLockedDay(req, res) {
 }
 
 async function fulfillPickup(req, res) {
+  return executeCanonicalDayAction(req, res, "fulfill");
+  /* Historical implementation retained below for reference. */
   const { id, date } = req.params;
   try {
     validateObjectId(id, "subscriptionId");
@@ -859,6 +949,22 @@ async function fulfillPickup(req, res) {
 async function verifyPickup(req, res) {
   const { dayId } = req.params;
   const submittedCode = normalizePickupCode(req.body && req.body.code);
+
+  if (!submittedCode) return errorResponse(res, 400, "PICKUP_CODE_REQUIRED", "Pickup code is required");
+  try {
+    const updated = await opsTransitionService.executeAction("fulfill", {
+      entityId: dayId,
+      entityType: "subscription",
+      userId: req.dashboardUserId || req.userId,
+      role: req.userRole || "kitchen",
+      payload: { pickupCode: submittedCode },
+    });
+    return res.status(200).json({ status: true, data: updated, verified: true, alreadyFulfilled: false });
+  } catch (err) {
+    return errorResponse(res, err.status || 409, err.code || "INVALID_TRANSITION", err.message || "Pickup verification failed");
+  }
+
+  /* Historical implementation retained below for reference. */
 
   try {
     validateObjectId(dayId, "subscriptionDayId");
@@ -974,6 +1080,8 @@ async function verifyPickup(req, res) {
 }
 
 async function markPickupNoShow(req, res) {
+  return executeCanonicalDayAction(req, res, "no_show", { noShow: true });
+  /* Historical implementation retained below for reference. */
   const { dayId } = req.params;
   try {
     validateObjectId(dayId, "subscriptionDayId");
@@ -1074,6 +1182,8 @@ async function markPickupNoShow(req, res) {
 }
 
 async function cancelAtBranch(req, res) {
+  return executeCanonicalDayAction(req, res, "cancel");
+  /* Historical implementation retained below for reference. */
   const { id, date } = req.params;
   try {
     validateObjectId(id, "subscriptionId");

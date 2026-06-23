@@ -62,9 +62,63 @@ async function loadClientPremiumUpgradeConfigState({ session = null } = {}) {
       return activeByKey.get(normalizePremiumKey(premiumKey)) || null;
     },
     isAllowed(premiumKey) {
-      return !configs.length || activeByKey.has(normalizePremiumKey(premiumKey));
+      return activeByKey.has(normalizePremiumKey(premiumKey));
     },
   };
+}
+
+/**
+ * Canonical premium authority.
+ *
+ * Callers may normalize a legacy identifier to a premiumKey before entering
+ * this function, but pricing and eligibility are decided here and nowhere
+ * else. Missing/disabled configuration is deliberately fail-closed.
+ */
+async function resolvePremiumUpgrade(premiumKey, { session = null, includeHidden = false } = {}) {
+  const normalizedKey = normalizePremiumKey(premiumKey);
+  if (!normalizedKey) {
+    throw createError("premiumKey is required", "PREMIUM_KEY_REQUIRED", 400);
+  }
+
+  const filter = {
+    premiumKey: normalizedKey,
+    status: "active",
+    isEnabled: true,
+    ...(includeHidden ? {} : { isVisible: { $ne: false } }),
+  };
+  let query = PremiumUpgradeConfig.findOne(filter);
+  if (session && typeof query.session === "function") query = query.session(session);
+  const config = await query.lean();
+  if (!config) {
+    throw createError(
+      `Premium upgrade is not configured or available: ${normalizedKey}`,
+      "PREMIUM_UPGRADE_UNAVAILABLE",
+      409
+    );
+  }
+
+  const priceHalala = Number(config.upgradeDeltaHalala);
+  if (!Number.isSafeInteger(priceHalala) || priceHalala < 0) {
+    throw createError(
+      `Premium upgrade has invalid canonical pricing: ${normalizedKey}`,
+      "PREMIUM_UPGRADE_INVALID_PRICE",
+      500
+    );
+  }
+
+  return Object.freeze({
+    premiumKey: normalizedKey,
+    priceHalala,
+    upgradeDeltaHalala: priceHalala,
+    currency: String(config.currency || "SAR").toUpperCase(),
+    selectionType: config.selectionType,
+    sourceType: config.sourceType,
+    sourceId: config.sourceId || null,
+    sourceProductId: config.sourceProductId || null,
+    sourceGroupId: config.sourceGroupId || null,
+    configId: config._id,
+    revision: config.revision,
+  });
 }
 
 /**
@@ -357,8 +411,8 @@ async function getReadiness() {
     legacyChecks: {},
     configState: {
       isEmpty: configsEmpty,
-      legacyFallbackActive: configsEmpty,
-      configsAuthoritative: !configsEmpty,
+      legacyFallbackActive: false,
+      configsAuthoritative: true,
       backfillStatus: configsEmpty ? "not_started" : (partialConfigState ? "incomplete" : "complete"),
       partialConfigRisk: partialConfigState,
       knownKeys: KNOWN_PREMIUM_KEYS,
@@ -379,7 +433,7 @@ async function getReadiness() {
 
   const legacyProteins = await BuilderProtein.find({});
   diagnostics.legacyChecks.builderProteinsCount = legacyProteins.length;
-  diagnostics.legacyChecks.fallbackActive = configsEmpty;
+  diagnostics.legacyChecks.fallbackActive = false;
   
   for (const config of configs) {
     const sourceDoc = sourceMap.get(`${config.sourceType}_${config.sourceId}`);
@@ -622,6 +676,7 @@ async function archiveConfig(id, data, adminId) {
 }
 
 module.exports = {
+  resolvePremiumUpgrade,
   loadClientPremiumUpgradeConfigState,
   getConfigs,
   getCandidates,

@@ -28,8 +28,10 @@ const {
   isLinkedDocGloballyAvailable,
   loadCatalogItemsByIdForDocs,
 } = require("../catalog/catalogAvailabilityService");
-const { resolvePremiumLargeSaladPricing } = require("../catalog/premiumLargeSaladPricingService");
-const { loadClientPremiumUpgradeConfigState } = require("./premiumUpgradeConfigService");
+const {
+  loadClientPremiumUpgradeConfigState,
+  resolvePremiumUpgrade,
+} = require("./premiumUpgradeConfigService");
 
 const CONTRACT_VERSION = "subscription_meal_builder.v1";
 const SECTION_TYPES = new Set(["option_group", "product_category", "product_list"]);
@@ -880,10 +882,6 @@ function serializeHydratedOption({
   if (excludePremium && optionIsPremium) {
     reasonCodes.push("PREMIUM_KEY_MISSING");
     errors.push(statusIssue("error", "PREMIUM_KEY_MISSING", "Standard protein section cannot expose premium options"));
-  }
-  if (requirePositivePremiumPrice && !positivePremiumPrice(option, optionRelation)) {
-    reasonCodes.push("PREMIUM_PRICE_MISSING");
-    errors.push(statusIssue("error", "PREMIUM_PRICE_MISSING", "Premium option requires positive premium pricing"));
   }
   if (required && !selected) {
     reasonCodes.push("PREMIUM_REQUIRED_KEY");
@@ -1807,10 +1805,6 @@ function readyDocForSeed(doc, catalogItemsById) {
   return truthy(doc) && subscriptionEnabled(doc) && isLinkedDocGloballyAvailable(doc, catalogItemsById);
 }
 
-function positivePremiumPrice(option, relation) {
-  return Number(relation?.extraPriceHalala ?? option?.extraPriceHalala ?? option?.extraFeeHalala ?? 0) > 0;
-}
-
 function optionKey(option = {}) {
   return String(option.key || option.premiumKey || "").trim().toLowerCase();
 }
@@ -1878,12 +1872,13 @@ async function buildDefaultVisualTemplateSections({ returnDetails = false } = {}
       .map((product) => product._id);
   }
 
+  const premiumConfigState = await loadClientPremiumUpgradeConfigState();
   const premiumProteinOptions = proteinOptions
-    .filter((option) => isPremiumProtein(option) && PREMIUM_MEAL_PROTEIN_KEYS.includes(optionKey(option)) && positivePremiumPrice(option, relationByOptionId.get(String(option._id))));
+    .filter((option) => isPremiumProtein(option) && PREMIUM_MEAL_PROTEIN_KEYS.includes(optionKey(option)) && premiumConfigState.isAllowed(optionKey(option)));
   const premiumSelectedProductIds = [];
   if (saladProduct) {
     const saladCatalogItemsById = await loadCatalogItemsByIdForDocs([saladProduct]);
-    if (readyDocForSeed(saladProduct, saladCatalogItemsById)) premiumSelectedProductIds.push(saladProduct._id);
+    if (readyDocForSeed(saladProduct, saladCatalogItemsById) && premiumConfigState.isAllowed(PREMIUM_LARGE_SALAD_PREMIUM_KEY)) premiumSelectedProductIds.push(saladProduct._id);
   }
   const familyOptionsByKey = new Map();
   if (proteinsGroup) {
@@ -1931,7 +1926,7 @@ async function buildDefaultVisualTemplateSections({ returnDetails = false } = {}
           linkedProductKey: "basic_meal",
           premiumProteinOptions: premiumProteinOptions.map(option => ({
             optionKey: optionKey(option),
-            extraFeeHalala: positivePremiumPrice(option, relationByOptionId.get(String(option._id))) || 2000,
+            extraFeeHalala: Number(premiumConfigState.getActiveConfig(optionKey(option))?.upgradeDeltaHalala || 0),
             enabled: true,
             sortOrder: Number(option.sortOrder || 0)
           }))
@@ -1939,7 +1934,7 @@ async function buildDefaultVisualTemplateSections({ returnDetails = false } = {}
         premium_large_salad: {
           upgradeType: "premium_large_salad",
           linkedProductKey: "premium_large_salad",
-          extraFeeHalala: 2900,
+          extraFeeHalala: Number(premiumConfigState.getActiveConfig(PREMIUM_LARGE_SALAD_PREMIUM_KEY)?.upgradeDeltaHalala || 0),
           blockedGroupKeys: [...SUBSCRIPTION_PREMIUM_LARGE_SALAD_EXCLUDED_GROUP_KEYS],
           groups: [
             {
@@ -2106,6 +2101,7 @@ async function buildDefaultSeedSections({ returnDetails = false } = {}) {
   let standardProteinOptionIds = [];
   let premiumProteinOptionIds = [];
   let carbOptionIds = [];
+  const premiumConfigState = await loadClientPremiumUpgradeConfigState();
   if (basicMeal) {
     const relationRows = await ProductGroupOption.find({ productId: basicMeal._id }).sort({ sortOrder: 1, createdAt: -1 }).lean();
     const relatedOptionIds = relationRows.map((row) => row.optionId);
@@ -2123,12 +2119,12 @@ async function buildDefaultSeedSections({ returnDetails = false } = {}) {
         .map((row) => ({ relation: row, option: optionsById.get(String(row.optionId)) }))
         .filter(({ relation, option }) => relationReady(relation) && relationReady(proteinGroupRelation) && readyDocForSeed(option, catalogItemsById) && isPremiumProtein(option))
         .filter(({ relation, option }) => {
-          const priced = positivePremiumPrice(option, relation);
+          const priced = premiumConfigState.isAllowed(optionKey(option));
           if (!priced) {
             warnings.push({
               level: "warning",
               code: "MEAL_BUILDER_PREMIUM_PROTEIN_PRICE_MISSING",
-              message: "Premium protein was not seeded because it has no premium price",
+              message: "Premium protein was not seeded because it has no canonical premium configuration",
               optionKey: option?.key || "",
             });
           }
@@ -2243,7 +2239,7 @@ async function buildDefaultSeedSections({ returnDetails = false } = {}) {
     const [saladGroupRelations, saladOptionRelations, saladPricing] = await Promise.all([
       ProductOptionGroup.find({ productId: saladProduct._id }).lean(),
       ProductGroupOption.find({ productId: saladProduct._id }).lean(),
-      resolvePremiumLargeSaladPricing(),
+      resolvePremiumUpgrade(PREMIUM_LARGE_SALAD_PREMIUM_KEY).catch(() => null),
     ]);
     const saladGroupIds = new Set([
       ...saladGroupRelations.map((row) => String(row.groupId)),
@@ -2279,7 +2275,7 @@ async function buildDefaultSeedSections({ returnDetails = false } = {}) {
         });
       }
     }
-    const saladPrice = Number((saladPricing || {}).extraFeeHalala ?? (saladPricing || {}).priceHalala ?? saladProduct.priceHalala ?? 0);
+    const saladPrice = Number((saladPricing || {}).priceHalala || 0);
     if (saladInvalidRelations.length) {
       errors.push(...saladInvalidRelations.map((item) => ({ level: "error", ...item })));
     } else if (!readyDocForSeed(saladProduct, saladCatalogItemsById)) {
@@ -2767,16 +2763,14 @@ async function buildPublishedContract({ config = null, lang = "en", includeUnava
   const sections = normalizeSections(published.sections || []);
   const docs = await resolveDocsForSections(sections);
   const premiumConfigState = await loadClientPremiumUpgradeConfigState();
-  const premiumLargeSaladConfig = premiumConfigState.getActiveConfig("premium_large_salad");
-  const rawPremiumLargeSaladPricing = await resolvePremiumLargeSaladPricing();
-  const premiumLargeSaladPricing = premiumLargeSaladConfig
-    ? {
-      ...rawPremiumLargeSaladPricing,
-      priceHalala: Number(premiumLargeSaladConfig.upgradeDeltaHalala || 0),
-      extraFeeHalala: Number(premiumLargeSaladConfig.upgradeDeltaHalala || 0),
-      source: "PremiumUpgradeConfig",
-    }
-    : rawPremiumLargeSaladPricing;
+  const premiumLargeSaladUpgrade = await resolvePremiumUpgrade(PREMIUM_LARGE_SALAD_PREMIUM_KEY).catch(() => null);
+  const premiumLargeSaladPricing = {
+    priceHalala: premiumLargeSaladUpgrade?.priceHalala || 0,
+    extraFeeHalala: premiumLargeSaladUpgrade?.priceHalala || 0,
+    currency: premiumLargeSaladUpgrade?.currency || SYSTEM_CURRENCY,
+    source: "resolvePremiumUpgrade",
+    isCatalogUnavailable: !premiumLargeSaladUpgrade,
+  };
   const payloadSections = [];
   const membership = createEmptyMembership();
 
@@ -2992,26 +2986,14 @@ function buildProductSection(section, docs, lang, includeUnavailable, membership
 }
 
 function buildOptionItem({ option, relation, group, product, selectionType, lang, rules, premiumConfigState = null }) {
-  let isPremium = selectionType === MEAL_SELECTION_TYPES.PREMIUM_MEAL && isPremiumProtein(option);
-  let premiumFee = Number(relation?.extraPriceHalala ?? option.extraPriceHalala ?? option.extraFeeHalala ?? 0);
-
-  if (selectionType === MEAL_SELECTION_TYPES.PREMIUM_MEAL && rules && rules.premium_meal && rules.premium_meal.premiumProteinOptions) {
-     const pmOpt = rules.premium_meal.premiumProteinOptions.find(o => o.optionKey === optionIdentity(option) || o.optionKey === option.key || o.optionKey === option.premiumKey);
-     if (pmOpt && pmOpt.enabled !== false) {
-       isPremium = true;
-       premiumFee = Number(pmOpt.extraFeeHalala);
-     } else if (!pmOpt || pmOpt.enabled === false) {
-       isPremium = false;
-     }
-  }
   const premiumKey = option.premiumKey || option.key || null;
   const activeConfig = premiumConfigState?.getActiveConfig ? premiumConfigState.getActiveConfig(premiumKey) : null;
-  if (selectionType === MEAL_SELECTION_TYPES.PREMIUM_MEAL && activeConfig) {
-    isPremium = true;
-    premiumFee = Number(activeConfig.upgradeDeltaHalala || 0);
-  }
+  const isPremium = selectionType === MEAL_SELECTION_TYPES.PREMIUM_MEAL && Boolean(activeConfig);
+  const premiumFee = isPremium ? Number(activeConfig.upgradeDeltaHalala || 0) : 0;
 
-  const priceHalala = Number(relation?.extraPriceHalala ?? option.extraPriceHalala ?? 0);
+  const priceHalala = isPremium
+    ? premiumFee
+    : Number(relation?.extraPriceHalala ?? option.extraPriceHalala ?? 0);
   return {
     id: String(option._id),
     key: option.key || "",
@@ -3044,9 +3026,6 @@ function buildProductItem({ product, selectionType, docs, lang, membership, prem
     : Number(product.priceHalala || 0);
   
   let premiumFee = isPremiumSalad ? Number(premiumLargeSaladPricing.extraFeeHalala ?? priceHalala) : 0;
-  if (isPremiumSalad && rules && rules.premium_large_salad && rules.premium_large_salad.extraFeeHalala !== undefined) {
-      premiumFee = Number(rules.premium_large_salad.extraFeeHalala);
-  }
 
   return {
     id: String(product._id),

@@ -20,6 +20,27 @@ const { logger } = require("../utils/logger");
 const validateObjectId = require("../utils/validateObjectId");
 const errorResponse = require("../utils/errorResponse");
 const { resolveOptionalPagination, buildPaginationMeta } = require("../utils/optionalPagination");
+const opsTransitionService = require("../services/dashboard/opsTransitionService");
+
+async function executeCanonicalDeliveryAction(req, res, action, payload = {}) {
+  const delivery = await Delivery.findById(req.params.id);
+  if (!delivery) return errorResponse(res, 404, "NOT_FOUND", "Delivery not found");
+  try {
+    await opsTransitionService.executeAction(action, {
+      entityId: delivery.dayId,
+      entityType: "subscription",
+      userId: req.dashboardUserId || req.userId,
+      role: req.userRole || "courier",
+      payload,
+    });
+    const updatedDelivery = await Delivery.findById(delivery._id);
+    const sub = await Subscription.findById(delivery.subscriptionId).lean();
+    const user = sub && sub.userId ? await User.findById(sub.userId).select("name phone").lean() : null;
+    return res.status(200).json({ status: true, data: mapSubscriptionDelivery(updatedDelivery || delivery, user) });
+  } catch (err) {
+    return errorResponse(res, err.status || 409, err.code || "INVALID_TRANSITION", err.message || "Invalid state transition");
+  }
+}
 
 function appendDeliveryCancellationAudit(day, actorId) {
   if (!day) return;
@@ -101,6 +122,8 @@ async function listTodayDeliveries(req, res) {
 }
 
 async function markArrivingSoon(req, res) {
+  return executeCanonicalDeliveryAction(req, res, "notify_arrival");
+  /* Historical implementation retained below for reference. */
   try {
     const { id } = req.params;
     try {
@@ -180,6 +203,8 @@ async function markArrivingSoon(req, res) {
 }
 
 async function markDelivered(req, res) {
+  return executeCanonicalDeliveryAction(req, res, "fulfill");
+  /* Historical implementation retained below for reference. */
   try {
     const { id } = req.params;
     try {
@@ -298,6 +323,18 @@ async function markDelivered(req, res) {
 }
 
 async function markCancelled(req, res) {
+  let canonicalCancellation;
+  try {
+    canonicalCancellation = parseDeliveryCancellationInput(req.body || {});
+  } catch (err) {
+    return errorResponse(res, err.status, err.code, err.message);
+  }
+  return executeCanonicalDeliveryAction(req, res, "cancel", {
+    reason: canonicalCancellation.reason,
+    note: canonicalCancellation.note,
+    cancellationCategory: canonicalCancellation.category,
+  });
+  /* Historical implementation retained below for reference. */
   try {
     const { id } = req.params;
     try {

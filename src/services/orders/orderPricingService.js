@@ -3,6 +3,7 @@ const mongoose = require("mongoose");
 
 const Addon = require("../../models/Addon");
 const BuilderCarb = require("../../models/BuilderCarb");
+const { resolvePremiumUpgrade } = require("../subscription/premiumUpgradeConfigService");
 const BuilderProtein = require("../../models/BuilderProtein");
 const SaladIngredient = require("../../models/SaladIngredient");
 const Sandwich = require("../../models/Sandwich");
@@ -270,7 +271,12 @@ async function priceStandardMealItem({ item, qty, lang }) {
     };
   });
 
-  const premiumExtra = Number(protein.extraFeeHalala || 0);
+  let premiumExtra = 0;
+  if (protein.isPremium) {
+    if (!protein.premiumKey) throw createOrderPricingError("PREMIUM_KEY_REQUIRED", "Premium protein has no canonical premiumKey", 409);
+    const upgrade = await resolvePremiumUpgrade(protein.premiumKey);
+    premiumExtra = upgrade.priceHalala;
+  }
   const unitPriceHalala = Math.max(0, Math.round(Number(resolvedBasePrice || 0) + premiumExtra));
   return {
     itemType: "standard_meal",

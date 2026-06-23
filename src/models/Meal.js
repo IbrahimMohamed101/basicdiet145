@@ -17,6 +17,8 @@ const MealSchema = new mongoose.Schema(
     fatGrams: { type: Number, default: 19, min: 0 },
     categoryId: { type: mongoose.Schema.Types.ObjectId, ref: "MealCategory", default: null, index: true },
     type: { type: String, enum: ["regular", "premium"], default: "regular" },
+    // Compatibility rows are identified canonically before business logic.
+    premiumKey: { type: String, trim: true, lowercase: true, default: null },
     availableForOrder: { type: Boolean, default: true },
     availableForSubscription: { type: Boolean, default: true },
     price: { type: Number, default: 0, min: 0 },

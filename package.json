@@ -14,6 +14,7 @@
     "indexes:production": "node scripts/create-production-indexes.js",
     "test": "node tests/meal_planner_types.test.js",
     "test:fast": "node tests/meal_planner_types.test.js",
+    "test:canonical-authority": "node tests/canonicalAuthority.test.js",
     "test:checkout": "NODE_ENV=test node tests/checkout.integration.test.js",
     "test:orders": "NODE_ENV=test node tests/oneTimeOrderOps.test.js && NODE_ENV=test node tests/oneTimeOrderFullFlow.test.js",
     "test:subscriptions": "NODE_ENV=test node tests/subscriptionBalancePolicy.test.js && NODE_ENV=test node tests/subscriptionDayModificationPolicy.test.js && NODE_ENV=test node tests/subscriptionFulfillmentConcurrency.test.js",

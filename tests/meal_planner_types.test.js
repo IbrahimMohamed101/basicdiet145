@@ -29,9 +29,8 @@ const PremiumUpgradeConfig = require('../src/models/PremiumUpgradeConfig');
 const CatalogService = require('../src/services/catalog/CatalogService');
 const { resolveCanonicalPremiumIdentity } = require('../src/utils/subscription/premiumIdentity');
 const {
-  resolvePremiumLargeSaladPricing,
-  LEGACY_FALLBACK_PRICE_SOURCE,
-} = require('../src/services/catalog/premiumLargeSaladPricingService');
+  resolvePremiumUpgrade,
+} = require('../src/services/subscription/premiumUpgradeConfigService');
 const {
   SUBSCRIPTION_PREMIUM_LARGE_SALAD_PROTEIN_KEYS,
 } = require('../src/config/mealPlannerContract');
@@ -185,7 +184,12 @@ function buildMockPlannerCatalog() {
       carbs: null,
     },
     menuOptions: [],
-    premiumUpgradeConfigs: [],
+    premiumUpgradeConfigs: [
+      { _id: IDS.premiumProtein, premiumKey: 'shrimp', upgradeDeltaHalala: 1500, currency: 'SAR', status: 'active', isEnabled: true, isVisible: true },
+      { _id: IDS.secondPremiumProtein, premiumKey: 'salmon', upgradeDeltaHalala: 1800, currency: 'SAR', status: 'active', isEnabled: true, isVisible: true },
+      { _id: IDS.forbiddenBeefSteakProtein, premiumKey: 'beef_steak', upgradeDeltaHalala: 2000, currency: 'SAR', status: 'active', isEnabled: true, isVisible: true },
+      { _id: '507f191e810c19729de861003', premiumKey: 'premium_large_salad', upgradeDeltaHalala: 3100, currency: 'SAR', status: 'active', isEnabled: true, isVisible: true },
+    ],
     menuProducts: {
       premium_large_salad: {
         _id: "507f191e810c19729de860f1",
@@ -344,19 +348,26 @@ async function runTests() {
     expectEqual(CUSTOM_PREMIUM_SALAD_FIXED_PRICE_HALALA, 2900, 'legacy fallback price');
   });
 
-  await test('premium large salad runtime price uses dashboard MenuProduct', async () => {
-    await withMockedPlannerCatalog({}, async () => {
-      const pricing = await resolvePremiumLargeSaladPricing();
-      expectEqual(pricing.extraFeeHalala, 3100, 'catalog product price');
-      expectEqual(pricing.source, 'menu_product_premium_large_salad', 'price source');
+  await test('premium large salad runtime price uses canonical premium config', async () => {
+    await withMockedPlannerCatalog({ premiumUpgradeConfigs: [{
+      _id: IDS.premiumProtein,
+      premiumKey: 'premium_large_salad',
+      upgradeDeltaHalala: 3100,
+      currency: 'SAR',
+      status: 'active',
+      isEnabled: true,
+      isVisible: true,
+    }] }, async () => {
+      const pricing = await resolvePremiumUpgrade('premium_large_salad');
+      expectEqual(pricing.priceHalala, 3100, 'canonical config price');
 
       const identity = await resolveCanonicalPremiumIdentity({ premiumKey: 'premium_large_salad' });
       expectEqual(identity.unitExtraFeeHalala, 3100, 'quote identity price');
-      expectEqual(identity.resolutionSource, 'menu_product_premium_large_salad', 'quote price source');
+      expectEqual(identity.resolutionSource, 'resolvePremiumUpgrade', 'quote price source');
     });
   });
 
-  await test('changing premium large salad product price changes catalog and quote price', async () => {
+  await test('changing product price does not change canonical premium price', async () => {
     await withMockedPlannerCatalog({
       menuGroups: {
         proteins: { _id: '507f191e810c19729de861001', key: 'proteins', name: { en: 'Proteins' } },
@@ -372,27 +383,38 @@ async function runTests() {
           publishedAt: new Date(),
         },
       },
+      premiumUpgradeConfigs: [{
+        _id: IDS.premiumProtein,
+        premiumKey: 'premium_large_salad',
+        upgradeDeltaHalala: 3100,
+        currency: 'SAR',
+        status: 'active',
+        isEnabled: true,
+        isVisible: true,
+      }],
     }, async () => {
       const catalog = await CatalogService.getSubscriptionBuilderCatalog({ lang: 'en' });
-      expectEqual(catalog.premiumLargeSalad.extraFeeHalala, 4200, 'catalog price follows product');
-      expectEqual(catalog.premiumLargeSalad.priceSource, 'menu_product_premium_large_salad', 'catalog price source');
+      expectEqual(catalog.premiumLargeSalad.extraFeeHalala, 3100, 'catalog price follows canonical config');
+      expectEqual(catalog.premiumLargeSalad.priceSource, 'resolvePremiumUpgrade', 'catalog price source');
 
       const identity = await resolveCanonicalPremiumIdentity({ premiumKey: 'premium_large_salad' });
-      expectEqual(identity.unitExtraFeeHalala, 4200, 'quote identity follows changed product price');
+      expectEqual(identity.unitExtraFeeHalala, 3100, 'quote identity ignores product price');
     });
   });
 
-  await test('premium large salad legacy config fallback is used only when catalog products are missing', async () => {
+  await test('premium upgrade resolver fails closed when config is missing', async () => {
     await withMockedPlannerCatalog({
       menuProducts: {},
+      premiumUpgradeConfigs: [],
     }, async () => {
-      const pricing = await resolvePremiumLargeSaladPricing();
-      expectEqual(pricing.extraFeeHalala, CUSTOM_PREMIUM_SALAD_FIXED_PRICE_HALALA, 'legacy fallback amount');
-      expectEqual(pricing.source, LEGACY_FALLBACK_PRICE_SOURCE, 'legacy fallback source');
+      await assert.rejects(
+        () => resolvePremiumUpgrade('premium_large_salad'),
+        (err) => err.code === 'PREMIUM_UPGRADE_UNAVAILABLE'
+      );
     });
   });
 
-  await test('premium large salad basic_salad fallback still uses dashboard product price', async () => {
+  await test('basic salad is not a premium authority fallback', async () => {
     await withMockedPlannerCatalog({
       menuProducts: {
         basic_salad: {
@@ -404,10 +426,12 @@ async function runTests() {
           publishedAt: new Date(),
         },
       },
+      premiumUpgradeConfigs: [],
     }, async () => {
-      const pricing = await resolvePremiumLargeSaladPricing();
-      expectEqual(pricing.extraFeeHalala, 3600, 'basic_salad fallback product price');
-      expectEqual(pricing.source, 'menu_product_basic_salad_fallback', 'fallback product source');
+      await assert.rejects(
+        () => resolvePremiumUpgrade('premium_large_salad'),
+        (err) => err.code === 'PREMIUM_UPGRADE_UNAVAILABLE'
+      );
     });
   });
 

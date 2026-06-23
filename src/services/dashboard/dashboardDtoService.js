@@ -1,7 +1,6 @@
 const { pickLang } = require("../../utils/i18n");
 const opsActionPolicy = require("./opsActionPolicy");
 const { buildSubscriptionDayFulfillmentState } = require("../subscription/subscriptionDayFulfillmentStateService");
-const { getAllowedOrderActions } = require("../orders/orderOpsTransitionService");
 const { normalizeLegacyOrderStatus } = require("../../utils/orderState");
 const { getOrderFulfillmentMethod } = require("../../utils/oneTimeOrderDeliveryGate");
 const { mapSubscriptionPickupRequestStatus } = require("../subscription/subscriptionPickupRequestClientService");
@@ -154,21 +153,13 @@ function mapOrderToDTO(order, delivery, user, role, lang, catalogMaps = {}) {
   const ui = resolveUiMetadata(status, lang);
   const pickupCode = order.pickupCode || (order.pickup && order.pickup.pickupCode) || null;
 
-  const allowedActions = getAllowedOrderActions(order, { role })
-    .map((actionId) => {
-      const config = opsActionPolicy.ACTION_REGISTRY[actionId];
-      if (!config) return null;
-      return {
-        id: config.id || actionId,
-        label: config.label[lang] || config.label.en,
-        color: config.color,
-        icon: config.icon,
-        endpoint: config.endpoint,
-        method: config.method || "POST",
-        requiresReason: !!config.requiresReason,
-      };
-    })
-    .filter(Boolean);
+  const allowedActions = opsActionPolicy.getAllowedActions({
+    entityType: "order",
+    status,
+    mode,
+    role,
+    lang,
+  });
 
   const deliveryPayload = buildDeliveryPayload(delivery, {
     date: order.fulfillmentDate || order.deliveryDate,

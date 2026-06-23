@@ -18,6 +18,8 @@ const {
   resolveDeliveryCatalog,
 } = require("../utils/subscription/subscriptionCatalog");
 const { getMealPlannerCatalog } = require("../services/subscription/mealPlannerCatalogService");
+const { resolvePremiumUpgrade } = require("../services/subscription/premiumUpgradeConfigService");
+const { resolvePremiumKeyFromName } = require("../utils/subscription/premiumIdentity");
 
 const SYSTEM_CURRENCY = "SAR";
 
@@ -263,26 +265,32 @@ function buildSubscriptionMealCatalog({
 
 async function getOrderMenu(req, res) {
   const lang = getRequestLang(req);
-  const [meals, categories, regularPriceSar, premiumPriceSar, customSaladBasePrice, customMealBasePrice] = await Promise.all([
+  const [meals, categories, regularPriceSar, customSaladBasePrice, customMealBasePrice] = await Promise.all([
     Meal.find({ isActive: true, availableForOrder: { $ne: false }, categoryId: { $ne: null } })
       .sort({ sortOrder: 1, createdAt: -1 })
       .lean(),
     MealCategory.find({}).sort({ sortOrder: 1, createdAt: -1 }).lean(),
     getSettingValue("one_time_meal_price", 25),
-    getSettingValue("one_time_premium_price", 25),
     getSettingValue("custom_salad_base_price", 0),
     getSettingValue("custom_meal_base_price", 0),
   ]);
 
   const normalizedRegularPriceSar = Number.isFinite(Number(regularPriceSar)) ? Number(regularPriceSar) : 25;
-  const normalizedPremiumPriceSar = Number.isFinite(Number(premiumPriceSar))
-    ? Number(premiumPriceSar)
-    : normalizedRegularPriceSar;
   const categoryMap = buildMealCategoryMap(categories, lang);
 
-  const resolvedMeals = meals.map((meal) => {
-    const priceSar = meal.type === "premium" ? normalizedPremiumPriceSar : normalizedRegularPriceSar;
-    const priceHalala = Math.max(0, Math.round(priceSar * 100));
+  const regularPriceHalala = Math.max(0, Math.round(normalizedRegularPriceSar * 100));
+  const resolvedMeals = (await Promise.all(meals.map(async (meal) => {
+    let priceHalala = regularPriceHalala;
+    if (meal.type === "premium") {
+      const premiumKey = meal.premiumKey || resolvePremiumKeyFromName(meal.name?.en || meal.name?.ar || "");
+      if (!premiumKey) return null;
+      try {
+        const upgrade = await resolvePremiumUpgrade(premiumKey);
+        priceHalala += upgrade.priceHalala;
+      } catch (_err) {
+        return null;
+      }
+    }
     const category = resolveMealCategoryForKey(meal.categoryId, categoryMap, lang);
 
     return {
@@ -292,7 +300,7 @@ async function getOrderMenu(req, res) {
       priceSar: priceHalala / 100,
       currency: SYSTEM_CURRENCY,
     };
-  });
+  }))).filter(Boolean);
   const resolvedMealsById = new Map(resolvedMeals.map((meal) => [meal.id, meal]));
 
   const mealSections = buildMealSections({

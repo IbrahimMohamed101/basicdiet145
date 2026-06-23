@@ -34,6 +34,7 @@ const {
 const {
   assertPlanningBalanceAfterSave,
 } = require("./subscriptionPlanningBalanceService");
+const { resolvePremiumUpgrade } = require("./premiumUpgradeConfigService");
 const {
   supersedeInitiatedDayPlanningPaymentsForRevisionChange,
 } = require("./subscriptionDayPaymentLifecycleService");
@@ -170,17 +171,19 @@ function resolveAddonSelectionName(addonDoc) {
   return String(addonDoc.name || "").trim();
 }
 
-async function consumePremiumBalanceAtomically({ subscription, dayId, date, premiumKey, unitExtraFeeHalala = 3000, session }) {
+async function consumePremiumBalanceAtomically({ subscription, dayId, date, premiumKey, session }) {
   if (!session) {
     throw new Error("consumePremiumBalanceAtomically requires a session");
   }
 
+  if (!premiumKey) {
+    return { consumed: false, reason: "no_premium_key", premiumSource: "pending_payment", premiumExtraFeeHalala: 0 };
+  }
+  const canonicalUpgrade = await resolvePremiumUpgrade(premiumKey, { session });
+  const unitExtraFeeHalala = canonicalUpgrade.priceHalala;
+
   if (!subscription || !Array.isArray(subscription.premiumBalance)) {
     return { consumed: false, reason: "no_balance_array", premiumSource: "pending_payment", premiumExtraFeeHalala: unitExtraFeeHalala };
-  }
-
-  if (!premiumKey) {
-    return { consumed: false, reason: "no_premium_key", premiumSource: "pending_payment", premiumExtraFeeHalala: unitExtraFeeHalala };
   }
 
   const bucketIndex = subscription.premiumBalance.findIndex(

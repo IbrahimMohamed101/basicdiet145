@@ -23,10 +23,8 @@ const {
   projectMaterializedAndLegacyFromSlots,
 } = require("./mealSlotPlannerService");
 const {
-  resolvePremiumLargeSaladPricing,
-} = require("../catalog/premiumLargeSaladPricingService");
-const {
   loadClientPremiumUpgradeConfigState,
+  resolvePremiumUpgrade,
 } = require("./premiumUpgradeConfigService");
 const {
   filterGloballyAvailable,
@@ -353,17 +351,13 @@ function selectedOptionField(slotIndex, optionIndex, field) {
   return `mealSlots[${slotIndex}].selectedOptions[${optionIndex}].${field}`;
 }
 
-function applyPremiumLargeSaladConfigToPricing(pricing, premiumConfigState) {
-  const config = premiumConfigState && typeof premiumConfigState.getActiveConfig === "function"
-    ? premiumConfigState.getActiveConfig(PREMIUM_LARGE_SALAD_PREMIUM_KEY)
-    : null;
-  if (!config) return pricing;
-  const configuredDelta = Number(config.upgradeDeltaHalala || 0);
+function premiumUpgradePricing(upgrade) {
+  const configuredDelta = Number(upgrade.priceHalala);
   return {
-    ...pricing,
     extraFeeHalala: configuredDelta,
     priceHalala: configuredDelta,
-    source: "PremiumUpgradeConfig",
+    currency: upgrade.currency,
+    source: "resolvePremiumUpgrade",
   };
 }
 
@@ -399,9 +393,16 @@ async function validateCanonicalMealSlots({
   }
 
   const premiumConfigState = await loadClientPremiumUpgradeConfigState({ session });
-  const premiumLargeSaladPricing = slots.some((slot) => slot?.selectionType === MEAL_SELECTION_TYPES.PREMIUM_LARGE_SALAD)
-    ? applyPremiumLargeSaladConfigToPricing(await resolvePremiumLargeSaladPricing({ session }), premiumConfigState)
-    : { extraFeeHalala: 0, priceHalala: 0 };
+  let premiumLargeSaladPricing = { extraFeeHalala: 0, priceHalala: 0 };
+  if (slots.some((slot) => slot?.selectionType === MEAL_SELECTION_TYPES.PREMIUM_LARGE_SALAD)) {
+    try {
+      premiumLargeSaladPricing = premiumUpgradePricing(
+        await resolvePremiumUpgrade(PREMIUM_LARGE_SALAD_PREMIUM_KEY, { session })
+      );
+    } catch (_err) {
+      premiumLargeSaladPricing = null;
+    }
+  }
   let builderMembership;
   try {
     builderMembership = await mealBuilderConfigService.buildPublishedMembership();
@@ -809,7 +810,7 @@ async function validateCanonicalMealSlots({
         }));
       }
     }
-    if (selectionType === MEAL_SELECTION_TYPES.PREMIUM_LARGE_SALAD && !premiumConfigState.isAllowed(PREMIUM_LARGE_SALAD_PREMIUM_KEY)) {
+    if (selectionType === MEAL_SELECTION_TYPES.PREMIUM_LARGE_SALAD && !premiumLargeSaladPricing) {
       slotErrors.push(buildSlotError({
         slotIndex,
         field: `mealSlots[${slotArrayIndex}].productId`,
@@ -853,12 +854,24 @@ async function validateCanonicalMealSlots({
     if (selectionType === MEAL_SELECTION_TYPES.PREMIUM_MEAL && proteinSelection) {
       isPremium = true;
       premiumKey = proteinSelection.option.premiumKey || proteinSelection.option.key || null;
-      const config = premiumConfigState.getActiveConfig(premiumKey);
-      premiumExtraFeeHalala = Number(config?.upgradeDeltaHalala ?? proteinSelection.selected.unitPriceHalala ?? proteinSelection.option.extraFeeHalala ?? 0);
+      try {
+        const upgrade = await resolvePremiumUpgrade(premiumKey, { session });
+        premiumExtraFeeHalala = upgrade.priceHalala;
+      } catch (_err) {
+        slotErrors.push(buildSlotError({
+          slotIndex,
+          field: `mealSlots[${slotArrayIndex}].selectedOptions`,
+          code: "PREMIUM_UPGRADE_CONFIG_UNAVAILABLE",
+          message: "Premium upgrade is not available",
+          productId,
+          optionId: proteinSelection.selected.optionId,
+          stale: true,
+        }));
+      }
     } else if (selectionType === MEAL_SELECTION_TYPES.PREMIUM_LARGE_SALAD) {
       isPremium = true;
       premiumKey = PREMIUM_LARGE_SALAD_PREMIUM_KEY;
-      premiumExtraFeeHalala = Number(premiumLargeSaladPricing.extraFeeHalala || pricingSnapshot.basePriceHalala || 0);
+      premiumExtraFeeHalala = Number(premiumLargeSaladPricing?.extraFeeHalala || 0);
     }
 
     if (isPremium) {

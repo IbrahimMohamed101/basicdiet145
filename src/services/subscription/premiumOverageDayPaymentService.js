@@ -2,7 +2,6 @@ const mongoose = require("mongoose");
 const Subscription = require("../../models/Subscription");
 const SubscriptionDay = require("../../models/SubscriptionDay");
 const Payment = require("../../models/Payment");
-const Setting = require("../../models/Setting");
 const { logger } = require("../../utils/logger");
 const { buildPaymentDescription } = require("../../utils/subscription/subscriptionWriteLocalization");
 const { buildPaymentMetadataWithInitiationFields, buildPremiumOveragePaymentStatusPayload } = require("./subscriptionPaymentPayloadService");
@@ -17,14 +16,24 @@ const {
   normalizeProviderPaymentStatus,
   pickProviderInvoicePayment,
 } = require("../paymentProviderMetadataService");
+const { resolvePremiumUpgrade } = require("./premiumUpgradeConfigService");
+const { normalizePremiumItemKey } = require("../../utils/subscription/premiumIdentity");
 
 const SYSTEM_CURRENCY = "SAR";
 const PREMIUM_OVERAGE_DAY_PAYMENT_TYPE = "premium_overage_day";
 const FINAL_PAYMENT_STATUSES = new Set(["paid", "failed", "canceled", "expired", "refunded"]);
 
-async function getSettingValue(key, fallback) {
-  const setting = await Setting.findOne({ key }).lean();
-  return setting ? setting.value : fallback;
+function resolveOveragePremiumKeys(day, body, count) {
+  const requestedKey = normalizePremiumItemKey(body && body.premiumKey);
+  const slots = Array.isArray(day && day.mealSlots) ? day.mealSlots : [];
+  const pendingKeys = slots
+    .filter((slot) => slot && slot.isPremium && ["pending_payment", "paid_extra", "paid"].includes(String(slot.premiumSource || "")))
+    .map((slot) => normalizePremiumItemKey(slot.premiumKey))
+    .filter(Boolean);
+  if (pendingKeys.length === count) return pendingKeys;
+  const unique = [...new Set([requestedKey, ...pendingKeys].filter(Boolean))];
+  if (unique.length === 1) return Array.from({ length: count }, () => unique[0]);
+  return [];
 }
 
 function normalizeCurrencyValue(value) {
@@ -92,12 +101,20 @@ async function createPremiumOverageDayPaymentFlow({
     return buildErrorResult(409, "OVERAGE_ALREADY_PAID", "This day premium overage is already paid");
   }
 
-  const premiumPriceSar = Number(await getSettingValue("premium_price", 20));
-  const unitOveragePriceHalala =
-    Number.isFinite(premiumPriceSar) && premiumPriceSar >= 0
-      ? Math.round(premiumPriceSar * 100)
-      : 0;
-  const amount = premiumOverageCount * unitOveragePriceHalala;
+  const overagePremiumKeys = resolveOveragePremiumKeys(day, body, premiumOverageCount);
+  if (overagePremiumKeys.length !== premiumOverageCount) {
+    return buildErrorResult(409, "PREMIUM_KEY_REQUIRED", "Premium overage items must have a canonical premiumKey");
+  }
+  let premiumUpgrades;
+  try {
+    premiumUpgrades = await Promise.all(overagePremiumKeys.map((key) => resolvePremiumUpgrade(key)));
+  } catch (err) {
+    return buildErrorResult(err.status || 409, err.code || "PREMIUM_UPGRADE_UNAVAILABLE", err.message);
+  }
+  const amount = premiumUpgrades.reduce((sum, upgrade) => sum + upgrade.priceHalala, 0);
+  const unitOveragePriceHalala = premiumUpgrades.every((upgrade) => upgrade.priceHalala === premiumUpgrades[0].priceHalala)
+    ? premiumUpgrades[0].priceHalala
+    : null;
 
   const idempotency = await resolveNonCheckoutIdempotency({
     headers,
@@ -149,6 +166,7 @@ async function createPremiumOverageDayPaymentFlow({
         date: String(day.date),
         premiumOverageCount,
         unitOveragePriceHalala,
+        premiumKeys: overagePremiumKeys,
         currency: SYSTEM_CURRENCY,
         redirectToken: redirectContext.token,
       },

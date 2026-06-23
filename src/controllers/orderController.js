@@ -44,6 +44,8 @@ const {
   serializeOrderSummaryForClient,
 } = require("../services/orders/orderSerializationService");
 const { ORDER_STATUSES, normalizeLegacyOrderStatus } = require("../utils/orderState");
+const { resolvePremiumUpgrade } = require("../services/subscription/premiumUpgradeConfigService");
+const { resolvePremiumKeyFromName } = require("../utils/subscription/premiumIdentity");
 
 const SYSTEM_CURRENCY = "SAR";
 const TERMINAL_PAYMENT_FAILURE_STATUSES = new Set(["failed", "canceled", "expired"]);
@@ -1109,34 +1111,39 @@ async function checkoutOrder(req, res) {
     }, {});
 
     const regularPriceSar = Number(await getSettingValue("one_time_meal_price", 25));
-    const premiumPriceSar = Number(await getSettingValue("one_time_premium_price", regularPriceSar));
     const deliveryFeeSar = Number(await getSettingValue("one_time_delivery_fee", 0));
     // VAT_PERCENTAGE is system-owned (16%). Do not read from DB.
 
     const regularUnit = Math.round(regularPriceSar * 100);
-    const premiumUnit = Math.round(premiumPriceSar * 100);
     const deliveryFee = deliveryMode === "delivery" ? Math.round(deliveryFeeSar * 100) : 0;
     const lang = getRequestLang(req);
 
     let quantity = 0;
     let subtotal = 0;
-    const items = meals.map((mealSelection) => {
+    const items = [];
+    for (const mealSelection of meals) {
       const meal = mealMap[String(mealSelection.mealId)];
       const rawQty = parseInt(mealSelection.quantity || 1, 10);
       const qty = Number.isFinite(rawQty) && rawQty > 0 ? rawQty : 1;
-      const unitPrice = meal.type === "premium" ? premiumUnit : regularUnit;
+      let unitPrice = regularUnit;
+      if (meal.type === "premium") {
+        const premiumKey = meal.premiumKey || resolvePremiumKeyFromName(meal.name?.en || meal.name?.ar || "");
+        if (!premiumKey) return errorResponse(res, 409, "PREMIUM_KEY_REQUIRED", "Premium meal has no canonical premiumKey");
+        const upgrade = await resolvePremiumUpgrade(premiumKey);
+        unitPrice += upgrade.priceHalala;
+      }
 
       quantity += qty;
       subtotal += unitPrice * qty;
 
-      return {
+      items.push({
         mealId: meal._id,
         name: pickLang(meal.name, lang),
         type: meal.type,
         quantity: qty,
         unitPrice,
-      };
-    });
+      });
+    }
 
     const customSaladSnapshots = [];
     for (const saladData of customSalads) {

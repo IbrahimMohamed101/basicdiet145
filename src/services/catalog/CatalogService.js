@@ -32,10 +32,8 @@ const {
   normalizeSaladIngredientGroupKey,
 } = require("../../config/mealPlannerContract");
 const {
-  resolvePremiumLargeSaladPricing,
-} = require("./premiumLargeSaladPricingService");
-const {
   loadClientPremiumUpgradeConfigState,
+  resolvePremiumUpgrade,
 } = require("../subscription/premiumUpgradeConfigService");
 const {
   inferCardVariantFromKey,
@@ -56,11 +54,6 @@ const MENU_CARB_GROUP_KEY = "carbs";
 const MENU_SALAD_EXTRA_PROTEIN_GROUP_KEY = "extra_protein_50g";
 const CUSTOMER_VISIBLE_CARB_KEY_SET = new Set(CUSTOMER_VISIBLE_CARB_KEYS);
 const PREMIUM_MEAL_PROTEIN_KEY_SET = new Set(PREMIUM_MEAL_PROTEIN_KEYS);
-const PREMIUM_MEAL_EXTRA_FEE_HALALA_BY_KEY = Object.freeze({
-  beef_steak: 2000,
-  shrimp: 2000,
-  salmon: 2000,
-});
 const SUBSCRIPTION_PREMIUM_LARGE_SALAD_PROTEIN_KEY_SET = new Set(SUBSCRIPTION_PREMIUM_LARGE_SALAD_PROTEIN_KEYS);
 const SUBSCRIPTION_PREMIUM_LARGE_SALAD_EXCLUDED_GROUP_KEY_SET = new Set(SUBSCRIPTION_PREMIUM_LARGE_SALAD_EXCLUDED_GROUP_KEYS);
 const SALAD_SELECTION_GROUP_RULE_BY_KEY = new Map(SALAD_SELECTION_GROUPS.map((group) => [group.key, group]));
@@ -200,10 +193,7 @@ function resolvePremiumMealExtraFeeHalala(option, premiumConfigState = null) {
   if (config) {
     return Number(config.upgradeDeltaHalala || 0);
   }
-  if (PREMIUM_MEAL_EXTRA_FEE_HALALA_BY_KEY[key] !== undefined) {
-    return PREMIUM_MEAL_EXTRA_FEE_HALALA_BY_KEY[key];
-  }
-  return Number(option?.extraFeeHalala ?? option?.extraPriceHalala ?? 0);
+  return 0;
 }
 
 function buildProteinPayload(option, lang, { isPremium, premiumConfigState = null }) {
@@ -271,20 +261,6 @@ function buildSandwichPayload(product, lang) {
     priceHalala: Number(product.priceHalala || 0),
     proteinFamilyKey: product.proteinFamilyKey || "other",
     sortOrder: Number(product.sortOrder || 0),
-  };
-}
-
-function applyPremiumLargeSaladConfigToPricing(pricing, premiumConfigState) {
-  const config = premiumConfigState && typeof premiumConfigState.getActiveConfig === "function"
-    ? premiumConfigState.getActiveConfig(PREMIUM_LARGE_SALAD_PREMIUM_KEY)
-    : null;
-  if (!config) return pricing;
-  const configuredDelta = Number(config.upgradeDeltaHalala || 0);
-  return {
-    ...pricing,
-    extraFeeHalala: configuredDelta,
-    priceHalala: configuredDelta,
-    source: "PremiumUpgradeConfig",
   };
 }
 
@@ -1229,7 +1205,7 @@ async function buildSubscriptionBuilderCatalogV2({ builderCatalog, context = {},
 
 async function buildSubscriptionBuilderCatalogBundle({ lang = "en", includeV2 = true, includeV3 = false } = {}) {
   const coldSandwichCategory = await MenuCategory.findOne(activeCatalogQuery({ key: "cold_sandwiches" })).lean();
-  const [proteinGroupData, carbGroupData, sandwichRows, basicMealProduct, rawPremiumLargeSaladPricing, premiumConfigState] = await Promise.all([
+  const [proteinGroupData, carbGroupData, sandwichRows, basicMealProduct, premiumLargeSaladProductDoc, premiumLargeSaladUpgrade, premiumConfigState] = await Promise.all([
     getGroupOptionsWithGroup(MENU_PROTEIN_GROUP_KEY),
     getGroupOptionsWithGroup(MENU_CARB_GROUP_KEY),
     coldSandwichCategory
@@ -1246,10 +1222,24 @@ async function buildSubscriptionBuilderCatalogBundle({ lang = "en", includeV2 = 
       itemType: "basic_meal",
       ...availableForChannelQuery("subscription"),
     })).lean(),
-    resolvePremiumLargeSaladPricing(),
+    MenuProduct.findOne(activeCatalogQuery({
+      key: PREMIUM_LARGE_SALAD_PREMIUM_KEY,
+      itemType: "premium_large_salad",
+      ...availableForChannelQuery("subscription"),
+    })).lean(),
+    resolvePremiumUpgrade(PREMIUM_LARGE_SALAD_PREMIUM_KEY).catch(() => null),
     loadClientPremiumUpgradeConfigState(),
   ]);
-  const premiumLargeSaladPricing = applyPremiumLargeSaladConfigToPricing(rawPremiumLargeSaladPricing, premiumConfigState);
+  const premiumLargeSaladPricing = {
+    product: premiumLargeSaladProductDoc,
+    productId: premiumLargeSaladProductDoc?._id || null,
+    productKey: premiumLargeSaladProductDoc?.key || null,
+    extraFeeHalala: premiumLargeSaladUpgrade?.priceHalala || 0,
+    priceHalala: premiumLargeSaladUpgrade?.priceHalala || 0,
+    currency: premiumLargeSaladUpgrade?.currency || SYSTEM_CURRENCY,
+    source: "resolvePremiumUpgrade",
+    isCatalogUnavailable: !premiumLargeSaladProductDoc || !premiumLargeSaladUpgrade,
+  };
   const sandwichCatalogItemsById = await loadCatalogItemsByIdForDocs(sandwichRows);
   const sandwiches = await enrichSandwichProductsWithCompatibilityMetadata(
     filterGloballyAvailable(sandwichRows, sandwichCatalogItemsById)
@@ -1264,9 +1254,6 @@ async function buildSubscriptionBuilderCatalogBundle({ lang = "en", includeV2 = 
     )
     ? premiumLargeSaladPricing.product
     : null;
-  if (premiumLargeSaladPricing.source === "menu_product_basic_salad_fallback") {
-    console.warn("[CatalogService] premium_large_salad not found, falling back to basic_salad");
-  }
 
   const normalizedProteins = proteinOptions
     .map((option) => {

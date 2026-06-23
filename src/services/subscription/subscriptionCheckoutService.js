@@ -64,11 +64,13 @@ function normalizePremiumItem(item) {
     canonicalProteinId = proteinId;
   }
 
-  let unitExtraFeeHalala = 0;
-  if (typeof item.unitExtraFeeHalala === "number") {
-    unitExtraFeeHalala = item.unitExtraFeeHalala;
-  } else if (item.protein && typeof item.protein.extraFeeHalala === "number") {
-    unitExtraFeeHalala = item.protein.extraFeeHalala;
+  // The quote service has already resolved this value through
+  // resolvePremiumUpgrade(premiumKey). Never consult legacy protein pricing.
+  const unitExtraFeeHalala = Number(item.unitExtraFeeHalala);
+  if (!premiumKey || !Number.isSafeInteger(unitExtraFeeHalala) || unitExtraFeeHalala < 0) {
+    const err = new Error("Canonical premium quote row is invalid");
+    err.code = "INVALID_PREMIUM_ITEM";
+    throw err;
   }
 
   const name = item.name || (item.protein && (item.protein.name?.en || item.protein.name?.ar)) || null;

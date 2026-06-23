@@ -1,11 +1,7 @@
 const BuilderProtein = require("../../models/BuilderProtein");
-const PremiumUpgradeConfig = require("../../models/PremiumUpgradeConfig");
 const {
-  PREMIUM_LARGE_SALAD_FIXED_PRICE_HALALA,
-} = require("../../config/mealPlannerContract");
-const {
-  resolvePremiumLargeSaladPricing,
-} = require("../../services/catalog/premiumLargeSaladPricingService");
+  resolvePremiumUpgrade,
+} = require("../../services/subscription/premiumUpgradeConfigService");
 
 const PREMIUM_LARGE_SALAD_KEY = "premium_large_salad";
 const LEGACY_CUSTOM_PREMIUM_SALAD_KEY = "custom_premium_salad";
@@ -22,7 +18,6 @@ const STATIC_PREMIUM_ITEMS = {
     premiumKey: PREMIUM_LARGE_SALAD_KEY,
     name: { en: "Premium Large Salad", ar: "سلطة كبيرة مميزة" },
     type: PREMIUM_LARGE_SALAD_KEY,
-    extraFeeHalala: PREMIUM_LARGE_SALAD_FIXED_PRICE_HALALA,
     currency: "SAR",
   },
 };
@@ -43,34 +38,18 @@ function getStaticPremiumItem(premiumKey) {
 
 async function resolveStaticPremiumItem(premiumKey) {
   const normalizedKey = normalizePremiumItemKey(premiumKey);
-  
-  const config = await PremiumUpgradeConfig.findOne({
-    premiumKey: normalizedKey,
-    status: "active",
-    isEnabled: true
-  }).lean();
-
-  if (normalizedKey !== PREMIUM_LARGE_SALAD_KEY) {
-    const staticItem = getStaticPremiumItem(normalizedKey);
-    if (config && staticItem) {
-      return { ...staticItem, extraFeeHalala: config.upgradeDeltaHalala, priceSource: "PremiumUpgradeConfig" };
-    }
-    return staticItem;
-  }
-  const pricing = await resolvePremiumLargeSaladPricing();
-  
-  const extraFeeHalala = config ? config.upgradeDeltaHalala : pricing.extraFeeHalala;
-  const priceSource = config ? "PremiumUpgradeConfig" : pricing.source;
+  if (normalizedKey !== PREMIUM_LARGE_SALAD_KEY) return null;
+  const upgrade = await resolvePremiumUpgrade(normalizedKey);
 
   return {
     premiumKey: PREMIUM_LARGE_SALAD_KEY,
     name: { en: "Premium Large Salad", ar: "سلطة كبيرة مميزة" },
     type: PREMIUM_LARGE_SALAD_KEY,
-    extraFeeHalala,
-    currency: pricing.currency || "SAR",
-    priceSource,
-    productId: pricing.productId ? String(pricing.productId) : null,
-    productKey: pricing.productKey || null,
+    extraFeeHalala: upgrade.priceHalala,
+    currency: upgrade.currency,
+    priceSource: "resolvePremiumUpgrade",
+    productId: upgrade.sourceProductId ? String(upgrade.sourceProductId) : null,
+    productKey: normalizedKey,
   };
 }
 
@@ -215,29 +194,16 @@ async function resolveCanonicalPremiumIdentity(input) {
     }
   }
 
-  let configOverride = false;
   if (resolvedPremiumKey) {
-    const config = await PremiumUpgradeConfig.findOne({
-      premiumKey: resolvedPremiumKey,
-      status: "active",
-      isEnabled: true
-    }).lean();
-
-    if (config) {
-      resolvedUnitExtraFeeHalala = config.upgradeDeltaHalala;
-      resolutionSource = "PremiumUpgradeConfig";
-      configOverride = true;
-      log("PremiumUpgradeConfig.override", { resolvedUnitExtraFeeHalala });
-    }
+    const upgrade = await resolvePremiumUpgrade(resolvedPremiumKey);
+    resolvedUnitExtraFeeHalala = upgrade.priceHalala;
+    resolutionSource = "resolvePremiumUpgrade";
+    log("resolvePremiumUpgrade", { resolvedUnitExtraFeeHalala });
 
     if (isStaticPremiumItem(resolvedPremiumKey)) {
       const staticItem = await resolveStaticPremiumItem(resolvedPremiumKey);
       if (staticItem) {
         resolvedName = staticItem.name.en || staticItem.name.ar || null;
-        if (!configOverride) {
-          resolvedUnitExtraFeeHalala = staticItem.extraFeeHalala || 0;
-          resolutionSource = staticItem.priceSource || "staticPremiumItem";
-        }
         log(resolutionSource, {
           resolvedPremiumKey,
           resolvedName,
@@ -255,9 +221,6 @@ async function resolveCanonicalPremiumIdentity(input) {
         canonicalProteinId = canonicalProteinDoc._id;
         if (!resolvedName && canonicalProteinDoc.name) {
           resolvedName = canonicalProteinDoc.name.en || canonicalProteinDoc.name.ar || null;
-        }
-        if (resolvedUnitExtraFeeHalala === 0 && !configOverride) {
-          resolvedUnitExtraFeeHalala = Number(canonicalProteinDoc.extraFeeHalala || 0);
         }
         log("canonicalProtein.found", {
           canonicalProteinId: String(canonicalProteinId),

@@ -1,7 +1,7 @@
 const Subscription = require("../models/Subscription");
 const SubscriptionDay = require("../models/SubscriptionDay");
 const SubscriptionPickupRequest = require("../models/SubscriptionPickupRequest");
-const { canTransition } = require("../utils/state");
+const { canTransitionStatus } = require("./dashboard/opsTransitionPolicy");
 const { resolveMealsPerDay, resolveDayWalletSelections } = require("../utils/subscription/subscriptionDaySelectionSync");
 const { isPhase2CanonicalDayPlanningEnabled } = require("../utils/featureFlags");
 const { buildScopedCanonicalPlanningSnapshot } = require("./subscription/subscriptionDayPlanningService");
@@ -24,7 +24,7 @@ async function fulfillSubscriptionDay({ subscriptionId, date, dayId, session }) 
     return { ok: true, alreadyFulfilled: true, day, deductedCredits: day.fulfilledSnapshot?.deductedCredits || 0 };
   }
 
-  if (day.status !== "fulfilled" && !canTransition(day.status, "fulfilled")) {
+  if (day.status !== "fulfilled" && !canTransitionStatus("subscription", day.status, "fulfilled")) {
     return { ok: false, code: "INVALID_TRANSITION", message: "Invalid state transition" };
   }
 

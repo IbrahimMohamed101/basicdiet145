@@ -88,6 +88,7 @@ async function main() {
       operationalSku: "queue-action-test-meal",
     }],
     mealSlots: [{ slotIndex: 1, slotKey: "slot_1", status: "complete" }],
+    plannerState: "confirmed",
   });
 
   try {
@@ -113,7 +114,7 @@ async function main() {
     });
     assert.strictEqual(res.status, 200, JSON.stringify(res.body));
     assert.strictEqual(res.body.data.source.status, "in_preparation");
-    assert.deepStrictEqual(res.body.data.actions.allowed.map((action) => action.id), ["dispatch", "cancel"]);
+    assert.deepStrictEqual(res.body.data.actions.allowed.map((action) => action.id), ["ready_for_delivery", "cancel"]);
     assert(!res.body.data.actions.allowed.some((action) => action.id === "set_ready"));
   } finally {
     await cleanup();

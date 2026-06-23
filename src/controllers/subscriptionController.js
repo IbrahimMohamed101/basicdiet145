@@ -9,7 +9,7 @@ const SubscriptionDay = require("../models/SubscriptionDay");
 const Payment = require("../models/Payment");
 const dateUtils = require("../utils/date");
 const { addDaysToKSADateString } = dateUtils;
-const { canTransition } = require("../utils/state");
+const { canTransitionStatus } = require("../services/dashboard/opsTransitionPolicy");
 const { writeLog } = require("../utils/log");
 const { createInvoice, getInvoice } = require("../services/moyasarService");
 const { fulfillSubscriptionDay } = require("../services/fulfillmentService");
@@ -2832,7 +2832,7 @@ async function transitionDay(req, res, toStatus) {
       session.endSession();
       return errorResponse(res, 404, "NOT_FOUND", "Day not found");
     }
-    if (!canTransition(day.status, toStatus)) {
+    if (!canTransitionStatus("subscription", day.status, toStatus)) {
       await session.abortTransaction();
       session.endSession();
       return errorResponse(res, 409, "INVALID_TRANSITION", "Invalid state transition");

@@ -565,21 +565,15 @@ async function resolveCheckoutQuoteOrThrow(
         err.code = "INVALID_PREMIUM_ITEM";
         throw err;
       }
-      const unit = parseNonNegativeInteger(doc.extraFeeHalala);
-      if (unit === null) {
-        const err = new Error(`Premium protein ${item.id} has invalid price`);
-        err.code = "INVALID_PREMIUM_ITEM";
-        throw err;
-      }
       assertSystemCurrencyOrThrow(doc.currency || SYSTEM_CURRENCY, `Premium protein ${item.id} currency`);
 
       if (doc._sourceModel === "MenuOption") {
-        resolved = {
+        resolved = await resolveCanonicalPremiumIdentity({
           premiumKey: doc.premiumKey,
-          unitExtraFeeHalala: unit,
-          canonicalProteinId: doc._id,
+          proteinId: doc._id,
           name: pickLang(doc.name, "en"),
-        };
+        });
+        resolved.canonicalProteinId = resolved.canonicalProteinId || doc._id;
       } else {
         try {
           resolved = await resolveCanonicalPremiumIdentity({

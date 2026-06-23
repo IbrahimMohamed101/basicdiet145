@@ -7,8 +7,12 @@ const BuilderProtein = require("../src/models/BuilderProtein");
 const MenuOption = require("../src/models/MenuOption");
 const MenuProduct = require("../src/models/MenuProduct");
 const PremiumUpgradeConfig = require("../src/models/PremiumUpgradeConfig");
+const Meal = require("../src/models/Meal");
 const { resolvePremiumLargeSaladPricing } = require("../src/services/catalog/premiumLargeSaladPricingService");
-const { PREMIUM_LARGE_SALAD_KEY } = require("../src/utils/subscription/premiumIdentity");
+const {
+  PREMIUM_LARGE_SALAD_KEY,
+  resolvePremiumKeyFromName,
+} = require("../src/utils/subscription/premiumIdentity");
 
 async function backfillPremiumUpgrades() {
   console.log("Starting Premium Upgrade Config backfill...");
@@ -18,6 +22,7 @@ async function backfillPremiumUpgrades() {
 
   let createdCount = 0;
   let skippedCount = 0;
+  let mealIdentityBackfilledCount = 0;
   const unresolvedSources = [];
   const priceDiscrepancies = [];
 
@@ -72,6 +77,24 @@ async function backfillPremiumUpgrades() {
     await config.save();
     console.log(`Created config for ${premiumKey} with delta ${config.upgradeDeltaHalala} halala.`);
     createdCount++;
+  }
+
+  // Compatibility migration only: convert legacy Flutter meal IDs to the
+  // premiumKey consumed by canonical pricing. Runtime code never infers price
+  // or eligibility from these legacy rows.
+  const legacyPremiumMeals = await Meal.find({
+    type: "premium",
+    $or: [{ premiumKey: null }, { premiumKey: "" }, { premiumKey: { $exists: false } }],
+  });
+  for (const meal of legacyPremiumMeals) {
+    const premiumKey = resolvePremiumKeyFromName(meal.name?.en || meal.name?.ar || "");
+    if (!premiumKey) {
+      unresolvedSources.push({ legacyMealId: String(meal._id), sourceType: "meal_identity" });
+      continue;
+    }
+    meal.premiumKey = premiumKey;
+    await meal.save();
+    mealIdentityBackfilledCount++;
   }
 
   // Handle premium large salad
@@ -134,14 +157,14 @@ async function backfillPremiumUpgrades() {
     }
   }
 
-  console.log(`Backfill complete. Created: ${createdCount}, Skipped: ${skippedCount}`);
+  console.log(`Backfill complete. Created: ${createdCount}, Skipped: ${skippedCount}, Meal identities: ${mealIdentityBackfilledCount}`);
   if (unresolvedSources.length) {
     console.warn("Unresolved premium upgrade sources:", JSON.stringify(unresolvedSources, null, 2));
   }
   if (priceDiscrepancies.length) {
     console.warn("Legacy/config premium price discrepancies:", JSON.stringify(priceDiscrepancies, null, 2));
   }
-  return { createdCount, skippedCount, unresolvedSources, priceDiscrepancies };
+  return { createdCount, skippedCount, mealIdentityBackfilledCount, unresolvedSources, priceDiscrepancies };
 }
 
 async function run() {

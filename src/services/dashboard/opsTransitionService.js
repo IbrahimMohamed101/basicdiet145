@@ -7,8 +7,8 @@ const Delivery = require("../../models/Delivery");
 const Subscription = require("../../models/Subscription");
 const SubscriptionAuditLog = require("../../models/SubscriptionAuditLog");
 const { fulfillSubscriptionDay, fulfillSubscriptionPickupRequest } = require("../fulfillmentService");
-const { canTransition } = require("../../utils/state");
-const { ORDER_STATUSES, canOrderTransition } = require("../../utils/orderState");
+const { ORDER_STATUSES } = require("../../utils/orderState");
+const { canTransitionStatus } = require("./opsTransitionPolicy");
 const { writeLog } = require("../../utils/log");
 const { notifyUser } = require("../../utils/notify");
 const { notifyOrderUser } = require("../orderNotificationService");
@@ -24,6 +24,8 @@ const {
 const {
   assertAdminSubscriptionAccess,
 } = require("../subscription/subscriptionAccessGuardService");
+const { lockDaySnapshot } = require("../subscription/subscriptionDayOperationalSnapshotService");
+const { validateDayBeforeLockOrPrepare } = require("../subscription/subscriptionDayExecutionValidationService");
 
 /**
  * Unified Operations Transition Service.
@@ -33,7 +35,7 @@ const {
 async function executeAction(actionId, { entityId, entityType, userId, role, payload = {} }) {
   // Phase 5: Admin role check for admin-specific operations only
   // Courier role is allowed for dispatch operations
-  const adminOnlyActions = ["lock", "cancel", "no_show", "reopen", "notify_arrival"];
+  const adminOnlyActions = ["lock", "no_show", "reopen"];
   const normalizedActionId = actionId === "start_preparation"
     ? "prepare"
     : actionId === "ready-for-pickup"
@@ -169,6 +171,11 @@ async function handleLock({ entityId, entityType, userId, role, payload, session
   const fromStatus = doc.status;
   const toStatus = "locked";
   validateTransition(entityType, fromStatus, toStatus);
+
+  const subscription = await Subscription.findById(doc.subscriptionId).session(session);
+  if (!subscription) throw new Error("Subscription not found");
+  validateDayBeforeLockOrPrepare({ subscription, day: doc });
+  await lockDaySnapshot(subscription, doc, session);
 
   doc.status = toStatus;
   doc.lockedAt = doc.lockedAt || new Date();
@@ -452,9 +459,19 @@ async function handleFulfill({ entityId, entityType, payload, userId, role, sess
     if (sub.deliveryMode === "pickup") {
       await assertBranchPickupRequestExists(day, session);
       if (!day.pickupVerifiedAt) {
-        day.pickupVerifiedAt = new Date();
-        day.pickupVerifiedByDashboardUserId = userId || null;
-        await day.save({ session });
+        if (day.pickupCode) {
+          if (!payload.pickupCode && !payload.code) {
+            const err = new Error("Pickup verification is required before fulfillment");
+            err.code = "PICKUP_VERIFICATION_REQUIRED";
+            err.status = 409;
+            throw err;
+          }
+          await verifyPickupCode(day._id, payload.pickupCode || payload.code, userId, session);
+        } else {
+          day.pickupVerifiedAt = new Date();
+          day.pickupVerifiedByDashboardUserId = userId || null;
+          await day.save({ session });
+        }
       }
     }
 
@@ -789,23 +806,7 @@ async function handleNotifyArrival({ entityId, entityType, session }) {
 
 // Utility Helpers
 function validateTransition(type, from, to) {
-  let allowed;
-  if (type === "subscription") {
-    allowed = canTransition(from, to);
-  } else if (type === "subscription_pickup_request") {
-    const transitions = {
-      locked: ["in_preparation", "canceled"],
-      in_preparation: ["ready_for_pickup", "canceled"],
-      ready_for_pickup: ["fulfilled", "no_show"],
-      fulfilled: [],
-      no_show: [],
-      canceled: [],
-    };
-    allowed = Boolean(transitions[from] && transitions[from].includes(to));
-  } else {
-    allowed = canOrderTransition(from, to);
-  }
-  if (!allowed) {
+  if (!canTransitionStatus(type, from, to)) {
     throw new Error("INVALID_STATE_TRANSITION");
   }
 }

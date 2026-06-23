@@ -1,6 +1,9 @@
 "use strict";
 
-const { normalizeLegacyOrderStatus } = require("../../utils/orderState");
+const {
+  canTransitionStatus,
+  normalizeOperationalStatus,
+} = require("./opsTransitionPolicy");
 
 /**
  * Action Policy Engine for Dashboard Operations.
@@ -139,41 +142,38 @@ const ACTION_REGISTRY = {
   },
 };
 
-const TRANSITION_RULES = {
-  subscription: {
-    open: ["prepare", "lock", "cancel"],
-    locked: ["prepare", "reopen", "cancel"],
-    in_preparation: ["ready_for_pickup", "cancel", "ready_for_delivery"],
-    ready_for_delivery: ["pickup", "collect", "dispatch", "cancel", "fulfill"],
-    out_for_delivery: ["notify_arrival", "fulfill", "cancel"],
-    ready_for_pickup: ["fulfill", "cancel", "no_show"],
-    fulfilled: [],
-    delivery_canceled: ["reopen"],
-    canceled_at_branch: ["reopen"],
-    no_show: ["reopen"],
-    skipped: [],
-    frozen: [],
-  },
-  order: {
-    created: ["lock", "cancel"],
-    confirmed: ["prepare", "cancel"],
-    in_preparation: ["dispatch", "ready_for_pickup", "cancel"],
-    out_for_delivery: ["notify_arrival", "fulfill", "cancel"],
-    ready_for_pickup: ["fulfill", "cancel"],
-    fulfilled: [],
-    cancelled: [],
-    expired: [],
-    pending_payment: [],
-  },
-  subscription_pickup_request: {
-    locked: ["start_preparation", "cancel"],
-    in_preparation: ["ready_for_pickup", "cancel"],
-    ready_for_pickup: ["fulfill", "no_show"],
-    fulfilled: [],
-    no_show: [],
-    canceled: [],
-  },
-};
+const ACTION_DISPLAY_ORDER = Object.freeze([
+  "prepare", "start_preparation", "lock", "ready_for_pickup", "ready_for_delivery",
+  "pickup", "collect", "dispatch", "notify_arrival", "fulfill", "no_show", "reopen", "cancel",
+]);
+
+function actionTargetStatus(entityType, actionId, mode) {
+  const action = normalizeActionId(actionId);
+  if (action === "lock") return "locked";
+  if (action === "prepare" || action === "start_preparation") return "in_preparation";
+  if (action === "ready_for_delivery") return "ready_for_delivery";
+  if (["dispatch", "pickup", "collect"].includes(action)) return "out_for_delivery";
+  if (action === "ready_for_pickup") return "ready_for_pickup";
+  if (action === "fulfill") return "fulfilled";
+  if (action === "no_show") return "no_show";
+  if (action === "reopen") return "open";
+  if (action === "cancel") {
+    if (entityType === "order") return "cancelled";
+    if (entityType === "subscription_pickup_request") return "canceled";
+    return mode === "pickup" ? "canceled_at_branch" : "delivery_canceled";
+  }
+  return null;
+}
+
+function stateAllowsAction({ entityType, status, actionId, mode }) {
+  if (actionId === "start_preparation" && entityType !== "subscription_pickup_request") return false;
+  if (actionId === "prepare" && entityType === "subscription_pickup_request") return false;
+  if (actionId === "notify_arrival") {
+    return normalizeOperationalStatus(entityType, status) === "out_for_delivery";
+  }
+  const target = actionTargetStatus(entityType, actionId, mode);
+  return Boolean(target && canTransitionStatus(entityType, status, target));
+}
 
 function normalizeActionId(actionId) {
   if (actionId === "ready-for-pickup") return "ready_for_pickup";
@@ -199,11 +199,12 @@ function getAllowedActions({ entityType, status, mode, role, lang = "ar" }) {
   const normalizedEntityType = entityType === "subscription_day" || entityType === "pickup_day"
     ? "subscription"
     : entityType;
-  const typeRules = TRANSITION_RULES[normalizedEntityType] || {};
-  const normalizedStatus = normalizedEntityType === "order"
-    ? normalizeLegacyOrderStatus(status)
-    : status;
-  const allowedIds = typeRules[normalizedStatus] || [];
+  const allowedIds = ACTION_DISPLAY_ORDER.filter((actionId) => stateAllowsAction({
+    entityType: normalizedEntityType,
+    status,
+    actionId,
+    mode,
+  }));
 
   return allowedIds
     .map((actionId) => {
@@ -238,9 +239,6 @@ function validateAction({ entityType, status, mode, role, actionId }) {
   const normalizedEntityType = entityType === "subscription_day" || entityType === "pickup_day"
     ? "subscription"
     : entityType;
-  const normalizedStatus = normalizedEntityType === "order"
-    ? normalizeLegacyOrderStatus(status)
-    : status;
   const config = ACTION_REGISTRY[normalizedActionId];
   if (!config) {
     return { allowed: false, reason: "UNKNOWN_ACTION" };
@@ -261,12 +259,12 @@ function validateAction({ entityType, status, mode, role, actionId }) {
     return { allowed: false, reason: "INVALID_ROLE_FOR_MODE" };
   }
 
-  const typeRules = TRANSITION_RULES[normalizedEntityType] || {};
-  const allowedIds = typeRules[normalizedStatus] || [];
-  const transitionActionId = normalizedEntityType === "subscription_pickup_request" && normalizedActionId === "prepare"
-    ? "start_preparation"
-    : normalizedActionId;
-  if (!allowedIds.includes(transitionActionId)) {
+  if (!stateAllowsAction({
+    entityType: normalizedEntityType,
+    status,
+    actionId: normalizedActionId,
+    mode,
+  })) {
     return { allowed: false, reason: "INVALID_STATE_TRANSITION" };
   }
 

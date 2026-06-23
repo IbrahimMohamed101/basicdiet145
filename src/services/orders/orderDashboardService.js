@@ -6,14 +6,23 @@ const Payment = require("../../models/Payment");
 const User = require("../../models/User");
 const { FINAL_ORDER_STATUSES, normalizeLegacyOrderStatus } = require("../../utils/orderState");
 const { serializeOrderForDashboard } = require("./orderSerializationService");
-const {
-  executeOrderAction,
-  getAllowedOrderActions,
-} = require("./orderOpsTransitionService");
+const opsTransitionService = require("../dashboard/opsTransitionService");
+const opsActionPolicy = require("../dashboard/opsActionPolicy");
+const { getOrderFulfillmentMethod } = require("../../utils/oneTimeOrderDeliveryGate");
 const { getOrderTimelineForDashboard } = require("./orderTimelineService");
 const { isOneTimeOrderDeliveryEnabled } = require("../../utils/oneTimeOrderDeliveryGate");
 
 const MAX_LIMIT = 100;
+
+function getAllowedOrderActionIds(order, actor = {}) {
+  return opsActionPolicy.getAllowedActions({
+    entityType: "order",
+    status: order.status,
+    mode: getOrderFulfillmentMethod(order),
+    role: actor.role,
+    lang: "en",
+  }).map((action) => action.id);
+}
 
 function createServiceError(status, code, message, details) {
   const err = new Error(message);
@@ -153,7 +162,7 @@ async function listDashboardOrders({ filters = {}, pagination = {}, actor = {} }
 
   return {
     items: orders.map((order) => serializeOrderForDashboard(order, {
-      allowedActions: getAllowedOrderActions(order, actor),
+      allowedActions: getAllowedOrderActionIds(order, actor),
     })),
     pagination: {
       page,
@@ -184,7 +193,7 @@ async function getDashboardOrder({ orderId, actor = {} }) {
   ]);
 
   return serializeOrderForDashboard(order, {
-    allowedActions: getAllowedOrderActions(order, actor),
+    allowedActions: getAllowedOrderActionIds(order, actor),
     payment,
     activity,
     detail: true,
@@ -192,7 +201,13 @@ async function getDashboardOrder({ orderId, actor = {} }) {
 }
 
 async function executeDashboardOrderAction({ orderId, action, actor = {}, payload = {} }) {
-  await executeOrderAction({ orderId, action, actor, payload });
+  await opsTransitionService.executeAction(action, {
+    entityId: orderId,
+    entityType: "order",
+    userId: actor.userId,
+    role: actor.role,
+    payload,
+  });
   return getDashboardOrder({ orderId, actor });
 }
 
