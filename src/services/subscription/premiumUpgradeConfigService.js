@@ -250,112 +250,204 @@ async function getConfigs(query) {
 /**
  * Get Candidates for premium upgrade
  */
-function activePublishedSubscriptionFilter(extra = {}) {
-  return {
-    isActive: true,
-    isVisible: { $ne: false },
-    isAvailable: { $ne: false },
-    publishedAt: { $ne: null },
-    $or: [
-      { availableFor: { $exists: false } },
-      { availableFor: [] },
-      { availableFor: "subscription" },
-    ],
-    ...extra,
-  };
+function isAddonProduct(product) {
+  const itemType = normalizePremiumKey(product?.itemType);
+  const cardVariant = normalizePremiumKey(product?.ui?.cardVariant);
+  return itemType === "addon" || cardVariant === "addon" || cardVariant === "addon_card";
 }
 
-async function loadKnownPremiumCandidates() {
-  const [basicMeal, proteinGroup, premiumSalad, configs] = await Promise.all([
-    MenuProduct.findOne(activePublishedSubscriptionFilter({ key: "basic_meal" })).lean(),
-    MenuOptionGroup.findOne({
-      key: "proteins",
-      isActive: true,
-      isVisible: { $ne: false },
-      isAvailable: { $ne: false },
-      publishedAt: { $ne: null },
-    }).lean(),
-    MenuProduct.findOne(activePublishedSubscriptionFilter({ key: PREMIUM_LARGE_SALAD_PREMIUM_KEY })).lean(),
+function isActivePublishedAvailable(doc) {
+  return Boolean(doc)
+    && doc.isActive !== false
+    && doc.isVisible !== false
+    && doc.isAvailable !== false
+    && Boolean(doc.publishedAt);
+}
+
+function isActiveAvailableRelation(doc) {
+  return Boolean(doc)
+    && doc.isActive !== false
+    && doc.isVisible !== false
+    && doc.isAvailable !== false;
+}
+
+function isSubscriptionEnabled(doc) {
+  if (!doc || doc.availableForSubscription === false) return false;
+  return !Array.isArray(doc.availableFor)
+    || doc.availableFor.length === 0
+    || doc.availableFor.includes("subscription");
+}
+
+function relationIdentity({ sourceType, sourceId, sourceProductId }) {
+  return `${sourceType}:${String(sourceId)}:${sourceProductId ? String(sourceProductId) : ""}`;
+}
+
+/**
+ * This is the canonical discovery/eligibility resolver used by both the picker
+ * and create. Product-backed upgrades are deliberately limited to the supported
+ * premium-large-salad contract; option-backed upgrades are dynamically found
+ * from all valid subscription product/group contexts. Premium eligibility does
+ * not depend on a legacy premium marker already existing on the option.
+ */
+async function loadEligiblePremiumCandidates() {
+  const [products, groups, options, productGroups, optionRelations, configs] = await Promise.all([
+    MenuProduct.find({}).lean(),
+    MenuOptionGroup.find({}).lean(),
+    MenuOption.find({}).lean(),
+    ProductOptionGroup.find({}).lean(),
+    ProductGroupOption.find({}).lean(),
     PremiumUpgradeConfig.find({}).lean(),
   ]);
 
+  const diagnostics = {
+    totalMenuProductsScanned: products.length,
+    totalMenuOptionsScanned: options.length,
+    totalOptionRelationsScanned: optionRelations.length,
+    excludedAddons: 0,
+    excludedInactiveHiddenUnpublished: 0,
+    excludedNotSubscriptionEnabled: 0,
+    excludedInvalidRelation: 0,
+    excludedUnsupportedProductScope: 0,
+    excludedAlreadyLinked: 0,
+    finalEligibleUnlinkedCount: 0,
+    finalLinkedCount: 0,
+  };
+
+  const productById = new Map(products.map((product) => [String(product._id), product]));
+  const groupById = new Map(groups.map((group) => [String(group._id), group]));
+  const productGroupByKey = new Map(productGroups.map((relation) => [`${relation.productId}:${relation.groupId}`, relation]));
+  const optionRelationsByOptionId = new Map();
+  for (const relation of optionRelations) {
+    const key = String(relation.optionId);
+    if (!optionRelationsByOptionId.has(key)) optionRelationsByOptionId.set(key, []);
+    optionRelationsByOptionId.get(key).push(relation);
+  }
   const linkedKeys = new Set(configs.map((config) => normalizePremiumKey(config.premiumKey)));
+  const linkedRelations = new Set(configs.map(relationIdentity));
   const candidates = [];
 
-  if (basicMeal && proteinGroup) {
-    const productGroup = await ProductOptionGroup.findOne({
-      productId: basicMeal._id,
-      groupId: proteinGroup._id,
-      isActive: true,
-      isVisible: { $ne: false },
-      isAvailable: { $ne: false },
-    }).lean();
+  for (const option of options) {
+    if (!isActivePublishedAvailable(option)) {
+      diagnostics.excludedInactiveHiddenUnpublished++;
+      continue;
+    }
+    if (!isSubscriptionEnabled(option)) {
+      diagnostics.excludedNotSubscriptionEnabled++;
+      continue;
+    }
+    const premiumKey = normalizePremiumKey(option.premiumKey || option.key);
+    if (!premiumKey) {
+      diagnostics.excludedInvalidRelation++;
+      continue;
+    }
 
-    if (productGroup) {
-      const options = await MenuOption.find(activePublishedSubscriptionFilter({
-        groupId: proteinGroup._id,
-        key: { $in: PREMIUM_MEAL_PROTEIN_KEYS },
-        availableForSubscription: { $ne: false },
-      })).lean();
-      const optionById = new Map(options.map((option) => [String(option._id), option]));
-      const relations = await ProductGroupOption.find({
-        productId: basicMeal._id,
-        groupId: proteinGroup._id,
-        optionId: { $in: options.map((option) => option._id) },
-        isActive: true,
-        isVisible: { $ne: false },
-        isAvailable: { $ne: false },
-      }).lean();
-      const relationByOptionId = new Map(relations.map((relation) => [String(relation.optionId), relation]));
-
-      for (const premiumKey of PREMIUM_MEAL_PROTEIN_KEYS) {
-        const option = options.find((row) => normalizePremiumKey(row.premiumKey || row.key) === premiumKey);
-        const relation = option && relationByOptionId.get(String(option._id));
-        if (!option || !relation || !optionById.has(String(option._id))) continue;
-        candidates.push({
-          id: option._id,
-          sourceId: option._id,
-          type: "menu_option",
-          sourceType: "menu_option",
-          sourceProductId: basicMeal._id,
-          sourceGroupId: proteinGroup._id,
-          sourceProductKey: basicMeal.key,
-          sourceGroupKey: proteinGroup.key,
-          key: premiumKey,
-          premiumKey,
-          name: option.name,
-          selectionType: "premium_meal",
-          upgradeDeltaHalala: Number(relation.extraPriceHalala ?? option.extraFeeHalala ?? option.extraPriceHalala ?? 0),
-          currency: option.currency || basicMeal.currency || "SAR",
-          isLinked: linkedKeys.has(premiumKey),
-          eligibilityDiagnostics: { eligible: true, issues: [] },
-        });
+    let validContextCount = 0;
+    let addonContextCount = 0;
+    for (const relation of optionRelationsByOptionId.get(String(option._id)) || []) {
+      const product = productById.get(String(relation.productId));
+      const group = groupById.get(String(relation.groupId));
+      const productGroup = productGroupByKey.get(`${relation.productId}:${relation.groupId}`);
+      if (!isActiveAvailableRelation(relation)
+        || !product
+        || !group
+        || String(option.groupId) !== String(group._id)
+        || !isActivePublishedAvailable(product)
+        || !isSubscriptionEnabled(product)
+        || !isActivePublishedAvailable(group)
+        || !isActiveAvailableRelation(productGroup)) continue;
+      if (isAddonProduct(product)) {
+        addonContextCount++;
+        continue;
       }
+      validContextCount++;
+      const identity = relationIdentity({ sourceType: "menu_option", sourceId: option._id, sourceProductId: product._id });
+      const relationLinked = linkedRelations.has(identity);
+      candidates.push({
+        id: String(option._id),
+        sourceId: String(option._id),
+        type: "menu_option",
+        sourceType: "menu_option",
+        sourceProductId: String(product._id),
+        sourceGroupId: String(group._id),
+        sourceProductKey: product.key || null,
+        sourceGroupKey: group.key || null,
+        key: premiumKey,
+        premiumKey,
+        name: { ar: option.name?.ar || null, en: option.name?.en || null },
+        selectionType: "premium_meal",
+        upgradeDeltaHalala: Number(relation.extraPriceHalala ?? option.extraFeeHalala ?? option.extraPriceHalala ?? 0),
+        currency: "SAR",
+        isLinked: relationLinked || linkedKeys.has(premiumKey),
+        _relationLinked: relationLinked,
+        eligibilityDiagnostics: { eligible: true, issues: [] },
+      });
+    }
+    if (validContextCount === 0) {
+      if (addonContextCount > 0) diagnostics.excludedAddons++;
+      else diagnostics.excludedInvalidRelation++;
     }
   }
 
-  if (premiumSalad) {
+  for (const product of products) {
+    if (!isActivePublishedAvailable(product)) {
+      diagnostics.excludedInactiveHiddenUnpublished++;
+      continue;
+    }
+    if (!isSubscriptionEnabled(product)) {
+      diagnostics.excludedNotSubscriptionEnabled++;
+      continue;
+    }
+    if (isAddonProduct(product)) {
+      diagnostics.excludedAddons++;
+      continue;
+    }
+    if (normalizePremiumKey(product.key) !== PREMIUM_LARGE_SALAD_PREMIUM_KEY) {
+      diagnostics.excludedUnsupportedProductScope++;
+      continue;
+    }
+    const identity = relationIdentity({ sourceType: "menu_product", sourceId: product._id, sourceProductId: product._id });
     candidates.push({
-      id: premiumSalad._id,
-      sourceId: premiumSalad._id,
+      id: String(product._id),
+      sourceId: String(product._id),
       type: "menu_product",
       sourceType: "menu_product",
-      sourceProductId: premiumSalad._id,
+      sourceProductId: String(product._id),
       sourceGroupId: null,
-      sourceProductKey: premiumSalad.key,
+      sourceProductKey: product.key,
       sourceGroupKey: null,
       key: PREMIUM_LARGE_SALAD_PREMIUM_KEY,
       premiumKey: PREMIUM_LARGE_SALAD_PREMIUM_KEY,
-      name: premiumSalad.name,
+      name: { ar: product.name?.ar || null, en: product.name?.en || null },
       selectionType: "premium_large_salad",
-      upgradeDeltaHalala: Number(premiumSalad.priceHalala || 0),
-      currency: premiumSalad.currency || "SAR",
-      isLinked: linkedKeys.has(PREMIUM_LARGE_SALAD_PREMIUM_KEY),
+      upgradeDeltaHalala: Number(product.priceHalala || 0),
+      currency: "SAR",
+      isLinked: linkedRelations.has(identity) || linkedKeys.has(PREMIUM_LARGE_SALAD_PREMIUM_KEY),
       eligibilityDiagnostics: { eligible: true, issues: [] },
     });
   }
 
-  return candidates;
+  // A menu option can be reused by more than one product relation, while a
+  // premium config links the option as one source. Prefer its already-linked
+  // context, then the canonical basic meal context, to avoid duplicate picker
+  // rows that share the same source and premium key.
+  const deduped = new Map();
+  for (const candidate of candidates) {
+    if (candidate.sourceType !== "menu_option") {
+      deduped.set(`${candidate.sourceType}:${candidate.sourceId}`, candidate);
+      continue;
+    }
+    const key = `${candidate.sourceType}:${candidate.sourceId}`;
+    const current = deduped.get(key);
+    const shouldReplace = !current
+      || (!current._relationLinked && candidate._relationLinked)
+      || (!current._relationLinked && !candidate._relationLinked && current.sourceProductKey !== "basic_meal" && candidate.sourceProductKey === "basic_meal");
+    if (shouldReplace) deduped.set(key, candidate);
+  }
+  const eligibleCandidates = [...deduped.values()].map(({ _relationLinked, ...candidate }) => candidate);
+  diagnostics.excludedAlreadyLinked = eligibleCandidates.filter((candidate) => candidate.isLinked).length;
+  diagnostics.finalEligibleUnlinkedCount = eligibleCandidates.filter((candidate) => !candidate.isLinked).length;
+  diagnostics.finalLinkedCount = eligibleCandidates.filter((candidate) => candidate.isLinked).length;
+  return { candidates: eligibleCandidates, diagnostics };
 }
 
 async function getCandidates(query = {}) {
@@ -365,9 +457,11 @@ async function getCandidates(query = {}) {
   const includeLinked = String(query.includeLinked || "false").toLowerCase() === "true";
   const search = String(q || "").trim().toLowerCase();
 
-  let candidates = await loadKnownPremiumCandidates();
+  const resolved = await loadEligiblePremiumCandidates();
+  let candidates = resolved.candidates;
   if (selectionType) candidates = candidates.filter((item) => item.selectionType === selectionType);
   if (sourceType) candidates = candidates.filter((item) => item.sourceType === sourceType);
+  if (query.sourceProductId) candidates = candidates.filter((item) => String(item.sourceProductId) === String(query.sourceProductId));
   if (!includeLinked) candidates = candidates.filter((item) => !item.isLinked);
   if (search) {
     candidates = candidates.filter((item) => (
@@ -381,7 +475,15 @@ async function getCandidates(query = {}) {
   const skip = (pageNum - 1) * limitNum;
   return {
     data: candidates.slice(skip, skip + limitNum),
-    meta: { total, page: pageNum, limit: limitNum },
+    meta: {
+      total,
+      page: pageNum,
+      limit: limitNum,
+      diagnostics: {
+        ...resolved.diagnostics,
+        returnedAfterFilters: total,
+      },
+    },
   };
 }
 
@@ -391,7 +493,7 @@ async function getCandidates(query = {}) {
 async function getReadiness() {
   const configs = await PremiumUpgradeConfig.find({}).lean();
   const sourceMap = await fetchSourcesForConfigs(configs);
-  const candidates = await loadKnownPremiumCandidates();
+  const { candidates } = await loadEligiblePremiumCandidates();
   const candidateByKey = new Map(candidates.map((candidate) => [candidate.premiumKey, candidate]));
   const configuredKnownKeys = [...new Set(configs
     .map((config) => normalizePremiumKey(config.premiumKey))
@@ -407,6 +509,7 @@ async function getReadiness() {
     missingSources: 0,
     invalidRelations: 0,
     duplicateKeys: 0,
+    invalidConfigs: 0,
     priceMismatches: [],
     legacyChecks: {},
     configState: {
@@ -434,12 +537,27 @@ async function getReadiness() {
   const legacyProteins = await BuilderProtein.find({});
   diagnostics.legacyChecks.builderProteinsCount = legacyProteins.length;
   diagnostics.legacyChecks.fallbackActive = false;
+
+  const keyCounts = new Map();
+  for (const config of configs) {
+    const key = normalizePremiumKey(config.premiumKey);
+    keyCounts.set(key, (keyCounts.get(key) || 0) + 1);
+  }
+  diagnostics.duplicateKeys = [...keyCounts.values()].filter((count) => count > 1).length;
   
   for (const config of configs) {
     const sourceDoc = sourceMap.get(`${config.sourceType}_${config.sourceId}`);
     if (!sourceDoc) {
       diagnostics.missingSources++;
     }
+    const eligibleRelation = candidates.some((candidate) => (
+      candidate.sourceType === config.sourceType
+      && String(candidate.sourceId) === String(config.sourceId)
+      && String(candidate.sourceProductId || "") === String(config.sourceProductId || (config.sourceType === "menu_product" ? config.sourceId : ""))
+      && String(candidate.sourceGroupId || "") === String(config.sourceGroupId || "")
+    ));
+    if (sourceDoc && !eligibleRelation) diagnostics.invalidRelations++;
+    if (config.status !== "active" || config.isEnabled === false || config.isVisible === false) diagnostics.invalidConfigs++;
 
     if (config.sourceType === "menu_option") {
       const legacyMatch = legacyProteins.find(lp => lp.key === config.premiumKey);
@@ -447,7 +565,9 @@ async function getReadiness() {
         diagnostics.priceMismatches.push({
           premiumKey: config.premiumKey,
           legacyPrice: legacyMatch.extraFeeHalala,
-          configPrice: config.upgradeDeltaHalala
+          configPrice: config.upgradeDeltaHalala,
+          severity: "warning",
+          blocking: configsEmpty,
         });
       }
     }
@@ -461,13 +581,17 @@ async function getReadiness() {
         premiumKey: PREMIUM_LARGE_SALAD_PREMIUM_KEY,
         legacyPrice: Number(saladPricing.extraFeeHalala || 0),
         configPrice: Number(saladConfig.upgradeDeltaHalala || 0),
+        severity: "warning",
+        blocking: configsEmpty,
       });
     }
   }
 
   return {
-    isReady: diagnostics.priceMismatches.length === 0
-      && diagnostics.missingSources === 0
+    isReady: diagnostics.missingSources === 0
+      && diagnostics.invalidRelations === 0
+      && diagnostics.invalidConfigs === 0
+      && diagnostics.duplicateKeys === 0
       && unresolvedSourceKeys.length === 0
       && !partialConfigState,
     diagnostics
@@ -502,42 +626,26 @@ async function createConfig(data, adminId) {
     throw createError("premium_meal must be backed by a menu option", "PREMIUM_UPGRADE_INVALID_RELATION");
   }
 
-  let sourceDoc = null;
-  if (sourceType === "menu_product") {
-    sourceDoc = await MenuProduct.findById(sourceId);
-  } else {
-    sourceDoc = await MenuOption.findById(sourceId);
-  }
-
+  const sourceDoc = sourceType === "menu_product"
+    ? await MenuProduct.findById(sourceId)
+    : await MenuOption.findById(sourceId);
   if (!sourceDoc) {
     throw createError("Source not found", "PREMIUM_UPGRADE_SOURCE_NOT_FOUND");
   }
-  if (sourceDoc.isActive === false || sourceDoc.isVisible === false || sourceDoc.isAvailable === false) {
-    throw createError("Source is not eligible", "PREMIUM_UPGRADE_SOURCE_NOT_ELIGIBLE");
-  }
-  if (sourceDoc.availableForSubscription === false) {
-    throw createError("Source is not enabled for subscriptions", "PREMIUM_UPGRADE_SOURCE_NOT_ELIGIBLE");
-  }
-  if (Array.isArray(sourceDoc.availableFor) && sourceDoc.availableFor.length > 0 && !sourceDoc.availableFor.includes("subscription")) {
-    throw createError("Source is not enabled for subscriptions", "PREMIUM_UPGRADE_SOURCE_NOT_ELIGIBLE");
-  }
-
-  if (sourceType === "menu_option" && (sourceProductId || sourceGroupId)) {
-    const relation = await ProductGroupOption.findOne({
-      ...(sourceProductId ? { productId: sourceProductId } : {}),
-      ...(sourceGroupId ? { groupId: sourceGroupId } : {}),
-      optionId: sourceId,
-      isActive: true,
-      isVisible: { $ne: false },
-      isAvailable: { $ne: false },
-    }).lean();
-    if (!relation) {
-      throw createError("Invalid source relation", "PREMIUM_UPGRADE_INVALID_RELATION");
-    }
+  const { candidates: eligibleCandidates } = await loadEligiblePremiumCandidates();
+  const eligibleCandidate = eligibleCandidates.find((candidate) => (
+    candidate.sourceType === sourceType
+    && String(candidate.sourceId) === String(sourceId)
+    && String(candidate.sourceProductId || "") === String(sourceProductId || (sourceType === "menu_product" ? sourceId : ""))
+    && String(candidate.sourceGroupId || "") === String(sourceGroupId || "")
+    && candidate.selectionType === selectionType
+  ));
+  if (!eligibleCandidate) {
+    throw createError("Source or relation is not eligible for subscription premium upgrades", "PREMIUM_UPGRADE_INVALID_RELATION");
   }
 
   // Derive premium key
-  const premiumKey = sourceDoc.premiumKey || sourceDoc.key;
+  const premiumKey = eligibleCandidate.premiumKey;
   if (!premiumKey) {
     throw createError("Source has no key", "PREMIUM_UPGRADE_SOURCE_NOT_ELIGIBLE");
   }
@@ -569,7 +677,10 @@ async function createConfig(data, adminId) {
     sourceSnapshot: {
       key: sourceDoc.key,
       name: sourceDoc.name,
-      context: {}
+      context: {
+        productKey: eligibleCandidate.sourceProductKey,
+        groupKey: eligibleCandidate.sourceGroupKey,
+      }
     }
   });
 

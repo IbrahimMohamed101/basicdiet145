@@ -1,812 +1,1662 @@
-# 11G — Subscription Planner Upgrades Dashboard API Contract
+# Premium Meal Upgrades Dashboard — Frontend Handoff README
 
-This document provides the exact Postman-style API contract for the Subscription Planner Upgrades / Meal Builder Dashboard. It contains detailed documentation of all payloads, path parameters, query parameters, headers, success responses, error cases, and field-level descriptions to ensure seamless frontend integration.
+## 0. Scope
+
+This document is the frontend implementation contract for the Dashboard screen:
+
+```text
+Premium Meal Upgrades
+الوجبات المميزة
+```
+
+Recommended dashboard route:
+
+```text
+/premium-upgrades
+```
+
+This screen manages `PremiumUpgradeConfig` records only.
+
+It links existing menu items as subscription premium upgrades. It does **not** create new menu products, menu options, option groups, add-ons, or Meal Builder drafts.
 
 ---
 
-## Postman Setup & Globals
+## 1. Core Business Meaning
 
-### Base URL
+A premium meal upgrade is an upgrade applied to an existing subscription meal slot.
+
+It does not add a new meal.
+
+Example:
+
 ```text
-{{baseUrl}}/api
-```
-*Local environment example:* `http://localhost:3000/api`
+Subscription total meals: 14
+Customer selected premium upgrades: 4
 
-### Required Headers
-All endpoints listed below require an authenticated Dashboard user session with either the `admin` or `superadmin` role.
+Final result:
+10 regular meals
+4 premium upgraded meals
+Total remains 14 meals
+```
+
+Frontend must never display this as:
+
+```text
+extra meal
+additional meal
+add-on
+new meal product
+```
+
+Correct UI wording:
+
+```text
+Upgrade delta
+Upgrade price difference
+فرق سعر الترقية
+```
+
+Incorrect UI wording:
+
+```text
+Meal price
+سعر الوجبة
+Add-on price
+سعر الإضافة
+```
+
+---
+
+## 2. Hard Frontend Boundaries
+
+This screen must not do any of the following:
+
+```text
+Do not use MealBuilderPage.
+Do not call PUT /api/dashboard/meal-builder/draft.
+Do not publish Meal Builder.
+Do not create MenuProduct.
+Do not create MenuOption.
+Do not create option groups.
+Do not manage Add-ons.
+Do not change one-time order pricing.
+Do not change subscription total meal count.
+Do not rewrite historical records.
+Do not require Flutter/mobile changes.
+```
+
+Correct screen action:
+
+```text
+Link eligible existing menu item as premium upgrade.
+```
+
+Wrong screen action:
+
+```text
+Create premium meal.
+```
+
+Recommended primary button label:
+
+```text
+Add Existing Menu Item as Premium Upgrade
+ربط عنصر من المنيو كترقية مميزة
+```
+
+---
+
+## 3. Add-ons Are Separate
+
+Premium upgrades and add-ons are different concepts.
+
+Do not mix them.
+
+| Flow | Payload concept |
+|---|---|
+| Subscription premium upgrades | `premiumItems[{ premiumKey, qty }]` |
+| Subscription add-on plans | `addons[id]` |
+| Planner premium upgrades | premium `mealSlots` with `selectionType + premiumKey` |
+| Planner add-ons | `addonsOneTime` |
+| Dashboard premium upgrades | `/api/dashboard/premium-upgrades` |
+
+This screen must not manage:
+
+```text
+addons
+addonsOneTime
+subscription add-on plans
+juices
+snacks
+add-on entitlements
+```
+
+---
+
+## 4. API Base
+
+All requests are dashboard authenticated.
 
 ```http
-Authorization: Bearer {{dashboardAccessToken}}
+Authorization: Bearer <dashboard_token>
 Accept: application/json
 Content-Type: application/json
-Accept-Language: en
 ```
-- **Authorization**: Bearer token obtained from the dashboard login flow.
-- **Content-Type**: Must be `application/json` for writing operations (`POST`, `PUT`).
-- **Accept-Language**: Controls localization of hydrated catalogs and labels. Supported values: `en`, `ar` (defaults to `en`).
+
+Base path:
+
+```text
+/api/dashboard/premium-upgrades
+```
 
 ---
 
-## Global Envelopes & Error Structures
+## 5. Endpoints Summary
 
-### Common Success Envelope
-All successful requests return an HTTP status code `200` (or `201` for creation) and follow this standard JSON envelope:
-```json
-{
-  "status": true,
-  "data": {}
-}
-```
-
-### Common Error Envelope
-If a request fails validation, authorization, or encounters an internal error, it returns a non-2xx HTTP status and a standard error envelope:
-```json
-{
-  "ok": false,
-  "error": {
-    "code": "ERROR_CODE",
-    "message": "Human-readable error description.",
-    "details": {}
-  }
-}
-```
-
-### HTTP Status Codes
-| Status | Meaning |
-| :--- | :--- |
-| `200` | Request succeeded. Returns the requested resource or result. |
-| `201` | Resource successfully created (returned by `POST /draft`). |
-| `400` | Bad Request. Invalid payload, query parameter, or malformed ObjectId. |
-| `401` | Unauthorized. Missing, expired, or invalid dashboard token. |
-| `403` | Forbidden. Dashboard user does not possess `admin` or `superadmin` roles. |
-| `404` | Not Found. Draft, published configuration, or picker section not found. |
-| `409` | Conflict. Document version mismatch or uniqueness check constraint violated. |
-| `500` | Internal Server Error. Unexpected server exception. |
+| Screen action | Method | Endpoint |
+|---|---:|---|
+| List premium upgrades | GET | `/api/dashboard/premium-upgrades` |
+| List eligible candidates | GET | `/api/dashboard/premium-upgrades/candidates` |
+| Create premium upgrade link | POST | `/api/dashboard/premium-upgrades` |
+| Update price/display/sort | PATCH | `/api/dashboard/premium-upgrades/:id` |
+| Toggle enabled/visible | PATCH | `/api/dashboard/premium-upgrades/:id/state` |
+| Archive premium upgrade | POST | `/api/dashboard/premium-upgrades/:id/archive` |
+| Readiness diagnostics | GET | `/api/dashboard/premium-upgrades/readiness` |
 
 ---
 
-## Endpoint Directory
+## 6. Supported Values / Enums
 
-| # | Method | Path | Description |
-| :--- | :--- | :--- | :--- |
-| **1** | `GET` | `/api/dashboard/meal-builder` | Retrieve current draft, published config, preview, and validations. |
-| **2** | `GET` | `/api/dashboard/meal-builder/draft/hydrated` | Fetch the current draft with fully hydrated options/products and validations. |
-| **3** | `POST` | `/api/dashboard/meal-builder/draft` | Create or reset a new current draft (demotes old drafts). |
-| **4** | `PUT` | `/api/dashboard/meal-builder/draft` | Replace/update sections in the current draft. |
-| **5** | `GET` | `/api/dashboard/meal-builder/pickers/:sectionKey` | Fetch eligible catalog products or options for a specific section key. |
-| **6** | `POST` | `/api/dashboard/meal-builder/validate` | Run full validation on either the current draft or an unsaved payload. |
-| **7** | `POST` | `/api/dashboard/meal-builder/publish` | Lock the current draft and publish it as the active version. |
-| **8** | `GET` | `/api/dashboard/meal-builder/readiness` | Get system deployment and QA readiness checks. |
+Use these exact values.
+
+### `sourceType`
+
+```ts
+type SourceType = 'menu_option' | 'menu_product';
+```
+
+| Value | Meaning |
+|---|---|
+| `menu_option` | Option-backed premium upgrade, e.g. premium protein |
+| `menu_product` | Product-backed premium upgrade, e.g. premium large salad |
+
+### `selectionType`
+
+```ts
+type SelectionType = 'premium_meal' | 'premium_large_salad';
+```
+
+| Value | Meaning |
+|---|---|
+| `premium_meal` | Premium protein/meal upgrade |
+| `premium_large_salad` | Premium large salad upgrade |
+
+### `status`
+
+```ts
+type PremiumUpgradeStatus = 'active' | 'archived';
+```
+
+| Value | Meaning |
+|---|---|
+| `active` | Config can be managed normally |
+| `archived` | Soft archived, hidden from customer planner, kept for history |
+
+### Current known `premiumKey` values
+
+```text
+beef_steak
+shrimp
+salmon
+premium_large_salad
+```
+
+Do not hardcode config IDs.
+
+`premiumKey` is returned by backend and is not manually edited by frontend.
 
 ---
 
-## 1. GET `/api/dashboard/meal-builder`
+## 7. Shared DTOs
 
-### Purpose
-Load the overall Meal Builder state. This includes the current draft configuration, active published configuration, preview model representation, compatibility `plannerCatalog` consumed by older clients, and validations.
+### 7.1 Premium Upgrade Config DTO
 
-### Postman Request
+This DTO is returned by list, create, update, state, and archive endpoints.
+
+```ts
+type PremiumUpgradeConfigDto = {
+  id: string;
+  revision: number;
+
+  sourceType: 'menu_option' | 'menu_product';
+  sourceId: string;
+  sourceProductId: string | null;
+  sourceGroupId: string | null;
+  sourceGroupKey: string | null;
+  sourceKey: string;
+  sourceName: {
+    ar: string | null;
+    en: string | null;
+  };
+
+  selectionType: 'premium_meal' | 'premium_large_salad';
+  premiumKey: string;
+
+  displayGroup: {
+    key: string | null;
+    id: string | null;
+  };
+
+  upgradeDeltaHalala: number;
+  upgradeDeltaSar: number;
+  currency: 'SAR';
+
+  isEnabled: boolean;
+  isVisible: boolean;
+  status: 'active' | 'archived';
+  sortOrder: number;
+
+  sourceStatus: {
+    exists: boolean;
+    active: boolean;
+    visible: boolean;
+    available: boolean;
+    published: boolean;
+    subscriptionEnabled: boolean;
+    relationValid: boolean;
+  };
+
+  validation: {
+    valid: boolean;
+    errors: string[];
+    warnings: string[];
+  };
+
+  businessRule: {
+    consumesExistingMealSlot: true;
+    doesAddMeal: false;
+    limitSource: 'subscription_total_meals';
+  };
+
+  createdAt: string;
+  updatedAt: string;
+  archivedAt: string | null;
+};
+```
+
+### 7.2 Candidate DTO
+
+```ts
+type PremiumUpgradeCandidateDto = {
+  id: string;
+  sourceId: string;
+  type: 'menu_option' | 'menu_product';
+  sourceType: 'menu_option' | 'menu_product';
+
+  sourceProductId: string | null;
+  sourceGroupId: string | null;
+  sourceProductKey: string | null;
+  sourceGroupKey: string | null;
+
+  key: string;
+  premiumKey: string;
+
+  name: {
+    ar: string | null;
+    en: string | null;
+  };
+
+  selectionType: 'premium_meal' | 'premium_large_salad';
+  upgradeDeltaHalala: number;
+  currency: 'SAR';
+
+  isLinked: boolean;
+
+  eligibilityDiagnostics: {
+    eligible: boolean;
+    issues: string[];
+  };
+};
+```
+
+---
+
+## 8. Page Load Flow
+
+On page open:
+
+```text
+1. GET /api/dashboard/premium-upgrades/readiness
+2. GET /api/dashboard/premium-upgrades?page=1&limit=20
+```
+
+Recommended UI layout:
+
+```text
+Readiness banner
+Filters
+Premium upgrades table
+Add/link button
+```
+
+After any mutation:
+
+```text
+1. Use response to update row immediately.
+2. Re-fetch list or row to refresh latest revision.
+3. Optionally re-fetch readiness if state/archive/create changed.
+```
+
+Important:
+
+```text
+Always use latest revision from response for the next PATCH/archive request.
+```
+
+---
+
+# 9. GET List Premium Upgrades
+
+## Endpoint
+
 ```http
-GET {{baseUrl}}/dashboard/meal-builder
-Authorization: Bearer {{dashboardAccessToken}}
-Accept-Language: en
+GET /api/dashboard/premium-upgrades
 ```
 
-### Request Payload
-*None.*
+## Purpose
 
-### Success Response (`200 OK`)
+Display existing premium upgrade configs, including active, hidden, disabled, invalid, and archived items depending on filters.
+
+---
+
+## 9.1 List Filters Form
+
+Send fields as query parameters.
+
+### UI Controls
+
+| Field | UI control | Options | Send value | Default |
+|---|---|---|---|---|
+| `q` | Text input | Any text | string | omit |
+| `status` | Select box | `all`, `active`, `archived` | omit when `all`; otherwise selected value | `all` |
+| `isEnabled` | Select box | `all`, `true`, `false` | omit when `all`; otherwise boolean/string accepted by query | `all` |
+| `isVisible` | Select box | `all`, `true`, `false` | omit when `all`; otherwise boolean/string accepted by query | `all` |
+| `sourceType` | Select box | `all`, `menu_option`, `menu_product` | omit when `all`; otherwise selected value | `all` |
+| `selectionType` | Select box | `all`, `premium_meal`, `premium_large_salad` | omit when `all`; otherwise selected value | `all` |
+| `page` | Number input / pagination state | integer `>= 1` | number | `1` |
+| `limit` | Select box | `10`, `20`, `50`, `100` | number | `20` |
+
+### Query builder rule
+
+Do not send `all` to backend unless backend explicitly supports it. Prefer omitting the filter.
+
+Example frontend query builder:
+
+```ts
+const params = new URLSearchParams();
+
+if (q.trim()) params.set('q', q.trim());
+if (status !== 'all') params.set('status', status);
+if (isEnabled !== 'all') params.set('isEnabled', String(isEnabled === 'true'));
+if (isVisible !== 'all') params.set('isVisible', String(isVisible === 'true'));
+if (sourceType !== 'all') params.set('sourceType', sourceType);
+if (selectionType !== 'all') params.set('selectionType', selectionType);
+
+params.set('page', String(page));
+params.set('limit', String(limit));
+```
+
+---
+
+## 9.2 Example Requests
+
+```http
+GET /api/dashboard/premium-upgrades?page=1&limit=20
+```
+
+```http
+GET /api/dashboard/premium-upgrades?status=active&isEnabled=true&isVisible=true&page=1&limit=20
+```
+
+```http
+GET /api/dashboard/premium-upgrades?selectionType=premium_large_salad&page=1&limit=20
+```
+
+---
+
+## 9.3 Example Response
+
 ```json
 {
-  "status": true,
-  "data": {
-    "draft": {
-      "id": "665f1b2e7b9a4d0012ba0001",
-      "status": "draft",
-      "isCurrent": true,
-      "contractVersion": "subscription_meal_builder.v1",
-      "revisionHash": "",
-      "source": "dashboard",
-      "notes": "Upgrade choices",
-      "sections": [
-        {
-          "id": "665f1b2e7b9a4d0012ba0999",
-          "key": "premium",
-          "type": "option_group",
-          "source": {
-            "kind": "premium_mixed"
-          },
-          "sortOrder": 10,
-          "titleOverride": {
-            "ar": "مميز",
-            "en": "Premium"
-          },
-          "selectionType": "premium_meal",
-          "required": false,
-          "minSelections": 0,
-          "maxSelections": 1,
-          "multiSelect": false,
-          "visible": true,
-          "availableFor": ["subscription"],
-          "metadata": {},
-          "rules": {},
-          "selectedOptionIds": ["665f1b2e7b9a4d0012e50001"],
-          "selectedProductIds": [],
-          "sectionType": "option_group",
-          "sourceKind": "premium_visual",
-          "productContextId": "665f1b2e7b9a4d0012b20001",
-          "sourceGroupId": "665f1b2e7b9a4d0012c30001",
-          "sourceCategoryId": null,
-          "includeMode": "selected"
-        }
-      ],
-      "createdAt": "2026-06-20T12:00:00.000Z",
-      "updatedAt": "2026-06-20T12:10:00.000Z"
-    },
-    "published": {
-      "id": "665f1b2e7b9a4d0012ba0000",
-      "status": "published",
-      "isCurrent": true,
-      "contractVersion": "subscription_meal_builder.v1",
-      "revisionHash": "sha256:abc1234567890def...",
-      "source": "dashboard",
-      "publishedAt": "2026-06-18T10:00:00.000Z",
-      "notes": "Initial deployment",
-      "sections": []
-    },
-    "preview": {
-      "contractVersion": "subscription_meal_builder.v1",
-      "sections": []
-    },
-    "plannerCatalog": {
-      "sections": []
-    },
-    "validation": {
-      "draft": {
-        "status": "ready",
-        "ready": true,
+  "data": [
+    {
+      "id": "6a391431151810f96620286c",
+      "revision": 1,
+      "sourceType": "menu_option",
+      "sourceId": "6a3551b13f6b8e45eac5b5f8",
+      "sourceProductId": "6a35521c3f6b8e45eac5b8e9",
+      "sourceGroupId": "6a3551ae3f6b8e45eac5b5e9",
+      "sourceGroupKey": null,
+      "sourceKey": "beef_steak",
+      "sourceName": {
+        "ar": "ستيك لحم",
+        "en": "Beef Steak"
+      },
+      "selectionType": "premium_meal",
+      "premiumKey": "beef_steak",
+      "displayGroup": {
+        "key": "premium_proteins",
+        "id": null
+      },
+      "upgradeDeltaHalala": 2000,
+      "upgradeDeltaSar": 20,
+      "currency": "SAR",
+      "isEnabled": true,
+      "isVisible": true,
+      "status": "active",
+      "sortOrder": 10,
+      "sourceStatus": {
+        "exists": true,
+        "active": true,
+        "visible": true,
+        "available": true,
+        "published": true,
+        "subscriptionEnabled": true,
+        "relationValid": true
+      },
+      "validation": {
+        "valid": true,
         "errors": [],
         "warnings": []
       },
-      "published": {
-        "status": "ready",
-        "ready": true,
-        "errors": [],
-        "warnings": []
-      }
+      "businessRule": {
+        "consumesExistingMealSlot": true,
+        "doesAddMeal": false,
+        "limitSource": "subscription_total_meals"
+      },
+      "createdAt": "2026-06-22T10:53:37.466Z",
+      "updatedAt": "2026-06-22T10:53:37.466Z",
+      "archivedAt": null
     }
+  ],
+  "meta": {
+    "total": 4,
+    "page": 1,
+    "limit": 20
+  },
+  "status": true
+}
+```
+
+---
+
+## 9.4 Table Columns
+
+| Column | Source field | UI notes |
+|---|---|---|
+| Name | `sourceName.ar`, `sourceName.en` | Show both or current language with fallback |
+| Premium key | `premiumKey` | Read-only |
+| Type | `selectionType` | Badge |
+| Source type | `sourceType` | Badge |
+| Source context | `sourceProductId`, `sourceGroupId`, `sourceGroupKey` | Small text |
+| Upgrade delta | `upgradeDeltaSar` | Display as SAR |
+| Enabled | `isEnabled` | Toggle |
+| Visible | `isVisible` | Toggle |
+| Status | `status` | Badge |
+| Valid | `validation.valid` | Green/red state |
+| Sort | `sortOrder` | Numeric |
+| Actions | row actions | Edit / hide / show / enable / disable / archive |
+
+---
+
+# 10. GET Candidates
+
+## Endpoint
+
+```http
+GET /api/dashboard/premium-upgrades/candidates
+```
+
+## Purpose
+
+Load existing menu sources that can be linked as premium upgrades.
+
+Only candidates returned by backend with:
+
+```json
+{
+  "eligibilityDiagnostics": {
+    "eligible": true,
+    "issues": []
   }
 }
 ```
 
-### Response Field Descriptions
+should be linkable.
 
-#### Base Level Fields
-| Field | Type | Description |
-| :--- | :--- | :--- |
-| `draft` | object \| null | The active working draft. Null if no draft exists. |
-| `published` | object \| null | The current live published configuration. Null if none is published. |
-| `preview` | object \| null | Read-only app representation computed from the published configuration. |
-| `plannerCatalog` | object | The resolved compatibility catalog schema sent to mobile apps. |
-| `validation` | object | The validation status of both the draft and the published configs. |
-
-#### Section Object Fields (Inside `draft.sections` / `published.sections`)
-| Field | Type | Description |
-| :--- | :--- | :--- |
-| `id` | string | Mongoose ObjectId of the section block. |
-| `key` | string | Canonical identifier (e.g. `"premium"`, `"sandwich"`, `"chicken"`, `"beef"`, `"fish"`, `"eggs"`, `"carbs"`). |
-| `type` | string | Canonical layout style: `"mixed"`, `"product_list"`, `"option_family"`, `"option_group"`. |
-| `source` | object | Metadata detailing catalog linkages. Contains `kind`, `categoryKey`, `groupKey`, and/or `displayCategoryKey`. |
-| `sortOrder` | integer | Number defining layout render order (smaller numbers render first). |
-| `titleOverride` | object | Localized custom title object containing Arabic (`ar`) and English (`en`) strings. |
-| `selectionType` | string | Evaluates constraints downstream. Expected values: `"premium_meal"`, `"premium_large_salad"`, `"standard_meal"`, `"sandwich"`. |
-| `required` | boolean | If `true`, requires selecting an item in this section. |
-| `minSelections` | integer | Minimum selections allowed. Must be `>= 0`. |
-| `maxSelections` | integer \| null | Maximum selections allowed. If null, selections are unbounded. |
-| `multiSelect` | boolean | If `true`, allows selecting multiple candidates. |
-| `visible` | boolean | Controls visibility to end-users. |
-| `availableFor` | string[] | Array specifying channels. Hardcoded to `["subscription"]`. |
-| `metadata` | object | Custom key-value pairs stored in the section. |
-| `rules` | object | Writable rules (e.g. standard carb group restrictions). |
-| `selectedOptionIds` | string[] | Array of active MenuOption ObjectIds linked to this section. |
-| `selectedProductIds` | string[] | Array of active MenuProduct ObjectIds linked to this section. |
-| `sectionType` | string | *Deprecated write-field fallback.* (`"option_group"`, `"product_category"`, `"product_list"`). |
-| `sourceKind` | string | *Deprecated write-field fallback.* (`""`, `"visual_family"`, `"configurable_product"`, `"product_list"`, `"premium_visual"`). |
-| `productContextId` | string \| null | *Deprecated write-field fallback.* Parent product ObjectId for option contexts. |
-| `sourceGroupId` | string \| null | *Deprecated write-field fallback.* Source option group ObjectId. |
-| `sourceCategoryId` | string \| null | *Deprecated write-field fallback.* Source category ObjectId. |
-| `includeMode` | string | *Deprecated write-field fallback.* Selection scope (`"all"` or `"selected"`). |
+The frontend must not let the admin manually type source IDs.
 
 ---
 
-## 2. GET `/api/dashboard/meal-builder/draft/hydrated`
+## 10.1 Candidates Filters Form
 
-### Purpose
-Fetch the current draft config with detailed catalog hydration. This translates selected IDs (`selectedOptionIds` and `selectedProductIds`) into rich catalog nodes (names, availability, prices, warnings, and errors) for visual editing and item diagnostics.
+Send fields as query parameters.
 
-### Postman Request
-```http
-GET {{baseUrl}}/dashboard/meal-builder/draft/hydrated
-Authorization: Bearer {{dashboardAccessToken}}
-Accept-Language: en
+| Field | UI control | Options | Send value | Default |
+|---|---|---|---|---|
+| `q` | Text input | Any text | string | omit |
+| `selectionType` | Select box | `all`, `premium_meal`, `premium_large_salad` | omit when `all`; otherwise selected value | `all` |
+| `sourceType` | Select box | `all`, `menu_option`, `menu_product` | omit when `all`; otherwise selected value | `all` |
+| `sourceProductId` | Hidden or advanced select | Existing product ID | string | omit |
+| `includeLinked` | Toggle / checkbox | `true`, `false` | boolean query value | `false` |
+| `page` | Pagination | integer `>= 1` | number | `1` |
+| `limit` | Select box | `10`, `20`, `50`, `100` | number | `20` |
+
+### Candidate modal recommended defaults
+
+```text
+includeLinked = false
+limit = 20
+selectionType = all
+sourceType = all
 ```
 
-### Request Payload
-*None.*
+### Query examples
 
-### Success Response (`200 OK`)
+```http
+GET /api/dashboard/premium-upgrades/candidates
+```
+
+```http
+GET /api/dashboard/premium-upgrades/candidates?includeLinked=true&limit=100
+```
+
+```http
+GET /api/dashboard/premium-upgrades/candidates?selectionType=premium_meal&sourceType=menu_option&includeLinked=false
+```
+
+---
+
+## 10.2 Empty Candidates Response
+
+If all eligible candidates are already linked, this is valid:
+
 ```json
 {
-  "status": true,
-  "data": {
-    "contractVersion": "dashboard_meal_builder_hydrated_draft.v1",
-    "draft": {
-      "id": "665f1b2e7b9a4d0012ba0001",
-      "status": "draft",
-      "isCurrent": true,
-      "sections": [
-        {
-          "key": "premium",
-          "selectionType": "premium_meal",
-          "selectedOptionIds": ["665f1b2e7b9a4d0012e50001"],
-          "selectedProductIds": ["665f1b2e7b9a4d0012b20099"],
-          "selectedOptions": [
-            {
-              "id": "665f1b2e7b9a4d0012e50001",
-              "optionId": "665f1b2e7b9a4d0012e50001",
-              "type": "option",
-              "key": "salmon",
-              "name": {
-                "ar": "سلمون طازج",
-                "en": "Fresh Salmon"
-              },
-              "label": "Fresh Salmon",
-              "familyKey": "fish",
-              "premiumKey": "salmon",
-              "displayCategoryKey": "premium",
-              "selectionType": "premium_meal",
-              "pricing": {
-                "extraPriceHalala": 3000,
-                "extraWeightUnitGrams": 0,
-                "extraWeightPriceHalala": 0,
-                "currency": "SAR"
-              },
-              "selected": true,
-              "eligible": true,
-              "linked": true,
-              "available": true,
-              "active": true,
-              "visible": true,
-              "published": true,
-              "subscriptionEnabled": true,
-              "relationExists": true,
-              "included": true,
-              "includedVia": "product_option_relation",
-              "catalogItemAvailable": true,
-              "reasonCodes": ["SELECTED", "ELIGIBLE"],
-              "warnings": [],
-              "errors": []
-            }
-          ],
-          "selectedProducts": [
-            {
-              "id": "665f1b2e7b9a4d0012b20099",
-              "productId": "665f1b2e7b9a4d0012b20099",
-              "type": "product",
-              "key": "premium_large_salad",
-              "name": {
-                "ar": "سلطة جامبو مميزة",
-                "en": "Premium Large Salad"
-              },
-              "label": "Premium Large Salad",
-              "itemType": "premium_large_salad",
-              "categoryId": "665f1b2e7b9a4d0012b20088",
-              "categoryKey": "salads",
-              "selectionType": "premium_large_salad",
-              "configurable": true,
-              "pricing": {
-                "pricingModel": "fixed",
-                "priceHalala": 2500,
-                "currency": "SAR"
-              },
-              "selected": true,
-              "eligible": true,
-              "linked": true,
-              "available": true,
-              "active": true,
-              "visible": true,
-              "published": true,
-              "subscriptionEnabled": true,
-              "relationExists": true,
-              "catalogItemAvailable": true,
-              "reasonCodes": ["SELECTED", "ELIGIBLE"],
-              "warnings": [],
-              "errors": []
-            }
-          ],
-          "items": [
-            {
-              "id": "665f1b2e7b9a4d0012e50001",
-              "type": "option",
-              "key": "salmon",
-              "label": "Fresh Salmon",
-              "available": true,
-              "errors": [],
-              "warnings": []
-            }
-          ],
-          "hydration": {
-            "selectedOptionCount": 1,
-            "selectedProductCount": 1,
-            "errorCount": 0,
-            "warningCount": 0
-          }
-        }
-      ]
-    },
-    "ready": true,
-    "errors": [],
-    "warnings": [],
-    "sections": [],
-    "validation": {
-      "status": "ready",
-      "ready": true,
-      "errors": [],
-      "warnings": [],
-      "checks": [],
-      "summary": {
-        "sections": 1,
-        "errors": 0,
-        "warnings": 0,
-        "migratedFromLegacyTemplate": false
-      }
-    }
-  }
+  "data": [],
+  "meta": {
+    "total": 0,
+    "page": 1,
+    "limit": 20
+  },
+  "status": true
 }
 ```
 
-### Hydrated Item Field Descriptions (Inside `selectedOptions` & `selectedProducts`)
-| Field | Type | Description |
-| :--- | :--- | :--- |
-| `id` / `optionId` / `productId` | string | ObjectId of the entity. |
-| `type` | string | `"option"` or `"product"`. |
-| `key` | string | String identifier (e.g. `"salmon"`, `"premium_large_salad"`). |
-| `name` | object | Multi-language localized name object `{ ar, en }`. |
-| `label` | string | Single localized string chosen according to the `Accept-Language` header. |
-| `familyKey` | string | (*Options only*) The associated protein family (`"chicken"`, `"beef"`, `"fish"`, `"eggs"`). |
-| `premiumKey` | string | (*Options only*) The option's premium identifier (must match catalog configuration). |
-| `pricing` | object | Financial details in Halala. Contains `priceHalala`, `extraPriceHalala`, and `currency` (`SAR`). |
-| `selected` | boolean | Indicates if the item is currently selected in the draft. |
-| `eligible` | boolean | `true` if the item passes all validation rules for inclusion. |
-| `linked` | boolean | Indicates if correct database relations exist between the parent product and group/option. |
-| `available` | boolean | Reflects active status, availability flags, and visibility. |
-| `active` | boolean | Raw model `isActive` value. |
-| `visible` | boolean | Raw model `isVisible` value. |
-| `published` | boolean | `true` if the item has been released to the catalog. |
-| `subscriptionEnabled` | boolean | `true` if this item is marked for subscription channels. |
-| `relationExists` | boolean | Product-Group-Option relation is present in the database. |
-| `catalogItemAvailable` | boolean | global ledger visibility verification. |
-| `reasonCodes` | string[] | Array of state flags (e.g., `["SELECTED", "ELIGIBLE"]`). |
-| `errors` | object[] | Critical errors blocking the publication of this item (e.g., missing price overrides). |
-| `warnings` | object[] | Non-blocking issues or configuration discrepancies. |
-| `state` | string | UI status helper: `"selected"`, `"eligible"`, `"addable"`, `"not_linked"`, `"unavailable"`, or `"invalid"`. |
+Frontend should show:
+
+```text
+No unlinked eligible premium candidates.
+Use "Include linked" to view already linked items.
+```
+
+Do not show this as an error.
 
 ---
 
-## 3. POST `/api/dashboard/meal-builder/draft`
+## 10.3 Candidate Response Example
 
-### Purpose
-Initialize or reset the current Meal Builder draft. Sending an empty array of `sections` (or omitting them) will cause the backend to generate the default visual layout structure (encompassing standard protein families, premium visual upgrades, sandwiches, and carbs). Any pre-existing draft will have its `isCurrent` flag set to `false`.
-
-### Postman Request
-```http
-POST {{baseUrl}}/dashboard/meal-builder/draft
-Authorization: Bearer {{dashboardAccessToken}}
-Content-Type: application/json
-```
-
-### Request Body
 ```json
 {
-  "notes": "Upgraded catalog pricing template",
-  "sections": [
+  "data": [
     {
-      "key": "premium",
-      "sectionType": "option_group",
-      "sourceKind": "premium_visual",
-      "productContextId": "665f1b2e7b9a4d0012b20001",
-      "sourceGroupId": "665f1b2e7b9a4d0012c30001",
-      "selectedOptionIds": ["665f1b2e7b9a4d0012e50001"],
-      "selectedProductIds": ["665f1b2e7b9a4d0012b20099"],
-      "includeMode": "selected",
-      "selectionType": "premium_meal",
-      "sortOrder": 10,
-      "required": false,
-      "minSelections": 0,
-      "maxSelections": 1,
-      "multiSelect": false,
-      "visible": true,
-      "availableFor": ["subscription"],
-      "metadata": {},
-      "rules": {}
-    }
-  ]
-}
-```
-
-### Payload Validation Rules
-- `notes`: Optional string description.
-- `sections`: Optional array. If omitted, the default Visual Template is seeded.
-- **Section Validation**:
-  - `key`: Required non-empty string.
-  - `sectionType`: Must be `"option_group"`, `"product_category"`, or `"product_list"`.
-  - `sourceKind`: Must be `""`, `"visual_family"`, `"configurable_product"`, `"product_list"`, or `"premium_visual"`.
-  - `includeMode`: Must be `"all"` or `"selected"`.
-  - `minSelections`: Must be an integer `>= 0`.
-  - `maxSelections`: Must be null or an integer `>= minSelections`.
-  - `availableFor`: Must be exactly `["subscription"]`.
-  - **Option Group constraints**: If `sectionType === "option_group"`, both `productContextId` and `sourceGroupId` must be valid, existing ObjectIds.
-  - **Category constraints**: If `sectionType === "product_category"`, `sourceCategoryId` must be a valid, existing ObjectId.
-  - **Product List constraints**: If `sectionType === "product_list"` and `includeMode === "selected"`, `selectedProductIds` must contain at least one valid ObjectId.
-
-### Success Response (`201 Created`)
-```json
-{
-  "status": true,
-  "data": {
-    "id": "665f1b2e7b9a4d0012ba0001",
-    "status": "draft",
-    "isCurrent": true,
-    "contractVersion": "subscription_meal_builder.v1",
-    "notes": "Upgraded catalog pricing template",
-    "sections": [
-      {
-        "key": "premium",
-        "selectionType": "premium_meal",
-        "selectedOptionIds": ["665f1b2e7b9a4d0012e50001"],
-        "selectedProductIds": ["665f1b2e7b9a4d0012b20099"]
-      }
-    ],
-    "publishedAt": null
-  }
-}
-```
-
-### Example Validation Error (`400 Bad Request`)
-```json
-{
-  "ok": false,
-  "error": {
-    "code": "MEAL_BUILDER_INVALID_SECTION_REFERENCE",
-    "message": "option_group sections require productContextId and sourceGroupId",
-    "details": {
-      "index": 0
-    }
-  }
-}
-```
-
----
-
-## 4. PUT `/api/dashboard/meal-builder/draft`
-
-### Purpose
-Perform full-replacement updates on the current working draft sections. If no draft exists, one will be created.
-
-> [!WARNING]
-> This endpoint uses **replacement (overwrite) semantics**. You must submit the entire array of sections you wish to keep. Any omitted sections will be permanently removed.
-
-### Postman Request
-```http
-PUT {{baseUrl}}/dashboard/meal-builder/draft
-Authorization: Bearer {{dashboardAccessToken}}
-Content-Type: application/json
-```
-
-### Request Body
-Follows the exact same shape as the `POST /draft` payload.
-```json
-{
-  "notes": "Update to salad selections",
-  "sections": [
-    {
-      "key": "premium",
-      "sectionType": "product_list",
-      "sourceKind": "product_list",
-      "selectedProductIds": ["665f1b2e7b9a4d0012b20099"],
-      "includeMode": "selected",
-      "selectionType": "premium_large_salad",
-      "sortOrder": 10,
-      "required": false,
-      "minSelections": 0,
-      "maxSelections": 1,
-      "multiSelect": false,
-      "visible": true,
-      "availableFor": ["subscription"],
-      "metadata": {},
-      "rules": {}
-    }
-  ]
-}
-```
-
-### Success Response (`200 OK`)
-```json
-{
-  "status": true,
-  "data": {
-    "id": "665f1b2e7b9a4d0012ba0001",
-    "status": "draft",
-    "isCurrent": true,
-    "notes": "Update to salad selections",
-    "sections": [
-      {
-        "key": "premium",
-        "selectionType": "premium_large_salad",
-        "selectedProductIds": ["665f1b2e7b9a4d0012b20099"]
-      }
-    ],
-    "updatedAt": "2026-06-20T12:30:00.000Z"
-  }
-}
-```
-
----
-
-## 5. GET `/api/dashboard/meal-builder/pickers/:sectionKey`
-
-### Purpose
-Fetch all catalog items (Menu Products or Menu Options) that are eligible candidates for addition to a specific section, based on the section's category/group constraints.
-
-### Postman Request
-```http
-GET {{baseUrl}}/dashboard/meal-builder/pickers/premium?q=salmon&page=1&limit=10&includeUnavailable=false
-Authorization: Bearer {{dashboardAccessToken}}
-Accept-Language: en
-```
-
-### Path Parameters
-| Parameter | Type | Required | Description |
-| :--- | :--- | :--- | :--- |
-| `sectionKey` | string | Yes | The section identifier. Supported values: `"premium"`, `"sandwich"`, `"chicken"`, `"beef"`, `"fish"`, `"eggs"`, `"carbs"`. Unrecognized keys return a `400` error. |
-
-### Query Parameters
-| Parameter | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `q` \| `search` | string | `""` | Search query to match against item key or localized names. |
-| `includeUnavailable` | boolean | `false` | If `true`, returns items that are inactive, unpublished, or out of stock. |
-| `includeNotLinked` | boolean | `true` | If `true`, includes options that exist in the database but have not yet been linked to the parent product relation. |
-| `diagnostics` | boolean | `false` | If `true`, appends system trace markers and database execution details in a root `diagnostics` object. |
-| `page` | integer | `1` | Pagination page number. |
-| `limit` | integer | `50` | Pagination page size (max `100`). |
-
-### Success Response (`200 OK`)
-```json
-{
-  "status": true,
-  "data": {
-    "contractVersion": "dashboard_meal_builder_picker.v1",
-    "sectionKey": "premium",
-    "candidateType": "mixed",
-    "product": {
-      "id": "665f1b2e7b9a4d0012b20001",
-      "key": "basic_meal",
+      "id": "6a3551b13f6b8e45eac5b5f8",
+      "sourceId": "6a3551b13f6b8e45eac5b5f8",
+      "type": "menu_option",
+      "sourceType": "menu_option",
+      "sourceProductId": "6a35521c3f6b8e45eac5b8e9",
+      "sourceGroupId": "6a3551ae3f6b8e45eac5b5e9",
+      "sourceProductKey": "basic_meal",
+      "sourceGroupKey": "proteins",
+      "key": "beef_steak",
+      "premiumKey": "beef_steak",
       "name": {
-        "ar": "وجبة أساسية",
-        "en": "Basic Meal"
-      }
-    },
-    "group": {
-      "id": "665f1b2e7b9a4d0012c30001",
-      "key": "proteins",
-      "name": {
-        "ar": "البروتين",
-        "en": "Protein"
-      }
-    },
-    "rules": {
+        "ar": "ستيك لحم",
+        "en": "Beef Steak"
+      },
       "selectionType": "premium_meal",
-      "requiredPremiumKeys": []
+      "upgradeDeltaHalala": 2000,
+      "currency": "SAR",
+      "isLinked": true,
+      "eligibilityDiagnostics": {
+        "eligible": true,
+        "issues": []
+      }
+    }
+  ],
+  "meta": {
+    "total": 4,
+    "page": 1,
+    "limit": 20
+  },
+  "status": true
+}
+```
+
+---
+
+## 10.4 Candidate Dropdown Behavior
+
+In add/link modal:
+
+| Candidate state | UI behavior |
+|---|---|
+| `eligible=true`, `isLinked=false` | Can select and link |
+| `eligible=true`, `isLinked=true` | Show `Already linked`, disable create action |
+| `eligible=false` | Disable and show `issues` |
+| `data=[]` | Show empty state, not error |
+
+Dropdown option display:
+
+```text
+{Arabic name} / {English name} — {sourceType} — {selectionType}
+```
+
+Dropdown value:
+
+```text
+candidate.id
+```
+
+But payload must use all candidate source fields, not just `id`.
+
+---
+
+# 11. POST Create Premium Upgrade Link
+
+## Endpoint
+
+```http
+POST /api/dashboard/premium-upgrades
+```
+
+## Purpose
+
+Create a `PremiumUpgradeConfig` for an existing eligible candidate.
+
+This creates a link only.
+
+It does not create a menu product or menu option.
+
+---
+
+## 11.1 Add/Link Form
+
+### Step A — Select candidate
+
+UI control:
+
+```text
+Searchable select box / autocomplete
+```
+
+Options source:
+
+```http
+GET /api/dashboard/premium-upgrades/candidates?includeLinked=false
+```
+
+Candidate fields copied into payload:
+
+```text
+sourceType
+sourceId
+sourceProductId
+sourceGroupId
+selectionType
+```
+
+These fields are read-only/hidden in the form.
+
+---
+
+### Step B — Config fields
+
+| Field | UI control | Editable by admin | Values / validation | Payload type |
+|---|---|---:|---|---|
+| `sourceType` | Hidden / read-only text | No | from candidate: `menu_option` or `menu_product` | string |
+| `sourceId` | Hidden | No | from candidate `sourceId` | string |
+| `sourceProductId` | Hidden | No | from candidate; required for `menu_option`; product ID for `menu_product` | string |
+| `sourceGroupId` | Hidden | No | from candidate; `null` for product-backed salad | string/null |
+| `selectionType` | Hidden / read-only badge | No | from candidate: `premium_meal` or `premium_large_salad` | string |
+| `displayGroupKey` | Select box | Yes | `premium_proteins`, `premium_salads` | string |
+| `upgradeDeltaSarInput` | Number input | Yes | SAR display/input, min `0`, step `0.01` | frontend-only |
+| `upgradeDeltaHalala` | Hidden computed value | No direct edit | `Math.round(upgradeDeltaSarInput * 100)` | number |
+| `isEnabled` | Toggle / checkbox | Yes | true/false; default true | boolean |
+| `isVisible` | Toggle / checkbox | Yes | true/false; default true | boolean |
+| `sortOrder` | Number input | Yes | integer or number; default next order | number |
+
+### `displayGroupKey` select options
+
+Use select box:
+
+| Label | Value |
+|---|---|
+| Premium Proteins | `premium_proteins` |
+| Premium Salads | `premium_salads` |
+
+Recommended auto-default:
+
+```ts
+if (candidate.selectionType === 'premium_meal') displayGroupKey = 'premium_proteins';
+if (candidate.selectionType === 'premium_large_salad') displayGroupKey = 'premium_salads';
+```
+
+### Price input rule
+
+The backend expects halala.
+
+The admin should see SAR.
+
+Example:
+
+```text
+Admin types: 20
+Frontend sends: 2000
+```
+
+```ts
+const upgradeDeltaHalala = Math.round(Number(upgradeDeltaSarInput) * 100);
+```
+
+Do not send `upgradeDeltaSar` in write requests.
+
+---
+
+## 11.2 Create Payload Builder
+
+```ts
+function buildCreatePayload(candidate, form) {
+  return {
+    sourceType: candidate.sourceType,
+    sourceId: candidate.sourceId,
+    sourceProductId: candidate.sourceProductId,
+    sourceGroupId: candidate.sourceGroupId,
+    selectionType: candidate.selectionType,
+    displayGroupKey: form.displayGroupKey,
+    upgradeDeltaHalala: Math.round(Number(form.upgradeDeltaSarInput) * 100),
+    isEnabled: Boolean(form.isEnabled),
+    isVisible: Boolean(form.isVisible),
+    sortOrder: Number(form.sortOrder)
+  };
+}
+```
+
+---
+
+## 11.3 Example Payload — Premium Protein / Menu Option
+
+```json
+{
+  "sourceType": "menu_option",
+  "sourceId": "6a3551b13f6b8e45eac5b5f8",
+  "sourceProductId": "6a35521c3f6b8e45eac5b8e9",
+  "sourceGroupId": "6a3551ae3f6b8e45eac5b5e9",
+  "selectionType": "premium_meal",
+  "displayGroupKey": "premium_proteins",
+  "upgradeDeltaHalala": 2000,
+  "isEnabled": true,
+  "isVisible": true,
+  "sortOrder": 10
+}
+```
+
+---
+
+## 11.4 Example Payload — Premium Large Salad / Menu Product
+
+```json
+{
+  "sourceType": "menu_product",
+  "sourceId": "6a3552293f6b8e45eac5b947",
+  "sourceProductId": "6a3552293f6b8e45eac5b947",
+  "sourceGroupId": null,
+  "selectionType": "premium_large_salad",
+  "displayGroupKey": "premium_salads",
+  "upgradeDeltaHalala": 2900,
+  "isEnabled": true,
+  "isVisible": true,
+  "sortOrder": 40
+}
+```
+
+---
+
+## 11.5 Expected Success Response
+
+HTTP:
+
+```text
+201 Created
+```
+
+Body:
+
+```json
+{
+  "data": {
+    "id": "6a391431151810f96620286c",
+    "revision": 1,
+    "sourceType": "menu_option",
+    "sourceId": "6a3551b13f6b8e45eac5b5f8",
+    "sourceProductId": "6a35521c3f6b8e45eac5b8e9",
+    "sourceGroupId": "6a3551ae3f6b8e45eac5b5e9",
+    "sourceGroupKey": null,
+    "sourceKey": "beef_steak",
+    "sourceName": {
+      "ar": "ستيك لحم",
+      "en": "Beef Steak"
     },
-    "candidates": [
-      {
-        "id": "665f1b2e7b9a4d0012e50001",
-        "key": "salmon",
-        "name": {
-          "ar": "سلمون",
-          "en": "Salmon"
-        },
-        "priceHalala": 3000,
-        "selected": true,
-        "available": true,
-        "errors": [],
-        "warnings": []
-      }
-    ],
-    "meta": {
-      "page": 1,
-      "limit": 10,
-      "total": 1,
-      "pages": 1
-    }
-  }
-}
-```
-
----
-
-## 6. POST `/api/dashboard/meal-builder/validate`
-
-### Purpose
-Validate layout configuration rules and database entity integrity. This endpoint can be used to validate unsaved UI changes in real-time, or to validate the saved draft before attempting publication.
-
-### Postman Request
-```http
-POST {{baseUrl}}/dashboard/meal-builder/validate
-Authorization: Bearer {{dashboardAccessToken}}
-Content-Type: application/json
-```
-
-### Request Body
-- To validate unsaved sections, pass: `{"sections": [...]}`.
-- To validate the saved draft database model, pass: `{}`.
-
-### Success Response (`200 OK` - Valid)
-```json
-{
-  "status": true,
-  "data": {
-    "status": "ready",
-    "ready": true,
-    "errors": [],
-    "warnings": [],
-    "checks": [],
-    "summary": {
-      "sections": 1,
-      "errors": 0,
-      "warnings": 0
-    }
-  }
-}
-```
-
-### Success Response (`200 OK` - Invalid Payload/Draft)
-Even if the draft contains validation failures, the endpoint returns an HTTP status `200` but marks `ready: false` with details.
-```json
-{
-  "status": true,
-  "data": {
-    "status": "error",
-    "ready": false,
-    "errors": [
-      {
-        "level": "error",
-        "code": "MEAL_BUILDER_PREMIUM_PRICE_INVALID",
-        "message": "Premium option salmon requires a positive premium extraPriceHalala override."
-      }
-    ],
-    "warnings": [],
-    "checks": [],
-    "summary": {
-      "sections": 1,
-      "errors": 1,
-      "warnings": 0
-    }
-  }
-}
-```
-
----
-
-## 7. POST `/api/dashboard/meal-builder/publish`
-
-### Purpose
-Lock the current draft, run strict validation, compute a static revision hash (SHA-256), and publish it to the system. This demotes the older published version to archived status.
-
-> [!IMPORTANT]
-> The publish endpoint **strictly enforces validations**. If `ready: false` is evaluated, publication will immediately fail with a `400 Bad Request` error.
-
-### Postman Request
-```http
-POST {{baseUrl}}/dashboard/meal-builder/publish
-Authorization: Bearer {{dashboardAccessToken}}
-Content-Type: application/json
-
-{"notes": "Enable salmon and premium large salad upgrades"}
-```
-
-### Success Response (`200 OK`)
-```json
-{
-  "status": true,
-  "data": {
-    "config": {
-      "id": "665f1b2e7b9a4d0012ba0002",
-      "status": "published",
-      "isCurrent": true,
-      "contractVersion": "subscription_meal_builder.v1",
-      "revisionHash": "sha256:abc123456...",
-      "source": "dashboard",
-      "publishedAt": "2026-06-20T13:00:00.000Z",
-      "notes": "Enable salmon and premium large salad upgrades",
-      "sections": []
+    "selectionType": "premium_meal",
+    "premiumKey": "beef_steak",
+    "displayGroup": {
+      "key": "premium_proteins",
+      "id": null
+    },
+    "upgradeDeltaHalala": 2000,
+    "upgradeDeltaSar": 20,
+    "currency": "SAR",
+    "isEnabled": true,
+    "isVisible": true,
+    "status": "active",
+    "sortOrder": 10,
+    "sourceStatus": {
+      "exists": true,
+      "active": true,
+      "visible": true,
+      "available": true,
+      "published": true,
+      "subscriptionEnabled": true,
+      "relationValid": true
     },
     "validation": {
-      "status": "ready",
-      "ready": true,
+      "valid": true,
       "errors": [],
       "warnings": []
     },
-    "contract": {
-      "contractVersion": "subscription_meal_builder.v1",
-      "revisionHash": "sha256:abc123456...",
-      "sections": []
-    }
-  }
-}
-```
-
-### Error Response (`400 Bad Request` - Validation Failed)
-```json
-{
-  "ok": false,
-  "error": {
-    "code": "MEAL_BUILDER_VALIDATION_FAILED",
-    "message": "Meal Builder draft is not publishable",
-    "details": {
-      "ready": false,
-      "errors": [
-        {
-          "code": "MEAL_BUILDER_PREMIUM_PRICE_INVALID",
-          "message": "Premium option salmon requires a positive premium extraPriceHalala override."
-        }
-      ]
-    }
-  }
+    "businessRule": {
+      "consumesExistingMealSlot": true,
+      "doesAddMeal": false,
+      "limitSource": "subscription_total_meals"
+    },
+    "createdAt": "2026-06-22T10:53:37.466Z",
+    "updatedAt": "2026-06-22T10:53:37.466Z",
+    "archivedAt": null
+  },
+  "status": true
 }
 ```
 
 ---
 
-## 8. GET `/api/dashboard/meal-builder/readiness`
+## 11.6 Create Form Submit Rules
 
-### Purpose
-Fetch QA check indicators and deployment gate markers. This reports whether both a current draft and valid published configuration exist, and summarizes overall system health.
+Before submit:
 
-### Postman Request
+```text
+candidate must be selected
+candidate.isLinked must be false
+candidate.eligibilityDiagnostics.eligible must be true
+upgradeDeltaSarInput must be >= 0
+displayGroupKey must be selected
+sortOrder must be a number
+```
+
+After success:
+
+```text
+Close modal
+Show success toast
+Refresh list
+Refresh candidates
+Refresh readiness
+```
+
+---
+
+# 12. PATCH Update Price / Display Group / Sort
+
+## Endpoint
+
 ```http
-GET {{baseUrl}}/dashboard/meal-builder/readiness
-Authorization: Bearer {{dashboardAccessToken}}
+PATCH /api/dashboard/premium-upgrades/:id
 ```
 
-### Success Response (`200 OK`)
+## Purpose
+
+Update editable fields only.
+
+Allowed editable fields for frontend:
+
+```text
+upgradeDeltaHalala
+displayGroupKey
+sortOrder
+metadata
+```
+
+Do not send immutable fields:
+
+```text
+sourceType
+sourceId
+sourceProductId
+sourceGroupId
+selectionType
+premiumKey
+currency
+```
+
+---
+
+## 12.1 Edit Form Fields
+
+| Field | UI control | Required | Options / validation | Payload type |
+|---|---|---:|---|---|
+| `expectedRevision` | Hidden | Yes | current `revision` from latest row data | number |
+| `displayGroupKey` | Select box | No | `premium_proteins`, `premium_salads` | string |
+| `upgradeDeltaSarInput` | Number input | No | SAR input, min `0`, step `0.01` | frontend-only |
+| `upgradeDeltaHalala` | Hidden computed value | No | `Math.round(upgradeDeltaSarInput * 100)` | number |
+| `sortOrder` | Number input | No | number | number |
+
+### Edit modal read-only fields
+
+Show but do not allow editing:
+
+```text
+Name
+premiumKey
+sourceType
+sourceKey
+selectionType
+status
+sourceStatus
+validation
+```
+
+---
+
+## 12.2 Update Payload Examples
+
+### Change only price
+
 ```json
 {
-  "status": true,
-  "data": {
-    "status": "ready",
-    "ready": true,
-    "errors": [],
-    "warnings": [],
-    "checks": [],
-    "summary": {
-      "draft": true,
-      "published": true,
-      "sections": 6,
-      "errors": 0,
-      "warnings": 0,
-      "revisionHash": "sha256:abc123456...",
-      "route": "/api/dashboard/meal-builder/readiness"
-    }
-  }
+  "expectedRevision": 1,
+  "upgradeDeltaHalala": 2500
+}
+```
+
+### Change price and sort
+
+```json
+{
+  "expectedRevision": 2,
+  "upgradeDeltaHalala": 2000,
+  "sortOrder": 10
+}
+```
+
+### Change display group
+
+```json
+{
+  "expectedRevision": 3,
+  "displayGroupKey": "premium_proteins"
 }
 ```
 
 ---
 
-## Frontend Integration Best Practices & Constraints
+## 12.3 Expected Success Response
 
-- **Only Submit Identifiers**: When updating drafts via `POST` or `PUT`, only submit array values for `selectedOptionIds` and `selectedProductIds`. Never submit the hydrated objects (like `selectedOptions` or `selectedProducts`) back to the server; they are calculated on-the-fly and will cause validation errors.
-- **Premium Limit Enforcement**: There is no endpoint to configure `premiumUpgradeLimit` or maximum count limits on the dashboard. The premium limit is calculated automatically based on the user's subscription meal count (`maxPremiumUpgrades = totalMeals`).
-- **Pricing Overrides**: You cannot edit pricing directly within the Meal Builder. Pricing is read-only and sourced from the Catalog / Menu endpoints (11B/11E) or override layers (11C).
-- **Validation-Gated Publish**: Always disable the "Publish" button if `/validate` returns `ready: false` or if `errors` count is greater than `0`.
+HTTP:
+
+```text
+200 OK
+```
+
+Body:
+
+```json
+{
+  "data": {
+    "id": "6a391431151810f96620286c",
+    "revision": 2,
+    "sourceType": "menu_option",
+    "sourceId": "6a3551b13f6b8e45eac5b5f8",
+    "sourceProductId": "6a35521c3f6b8e45eac5b8e9",
+    "sourceGroupId": "6a3551ae3f6b8e45eac5b5e9",
+    "sourceGroupKey": null,
+    "sourceKey": "beef_steak",
+    "sourceName": {
+      "ar": "ستيك لحم",
+      "en": "Beef Steak"
+    },
+    "selectionType": "premium_meal",
+    "premiumKey": "beef_steak",
+    "displayGroup": {
+      "key": "premium_proteins",
+      "id": null
+    },
+    "upgradeDeltaHalala": 2500,
+    "upgradeDeltaSar": 25,
+    "currency": "SAR",
+    "isEnabled": true,
+    "isVisible": true,
+    "status": "active",
+    "sortOrder": 10,
+    "sourceStatus": {
+      "exists": true,
+      "active": true,
+      "visible": true,
+      "available": true,
+      "published": true,
+      "subscriptionEnabled": true,
+      "relationValid": true
+    },
+    "validation": {
+      "valid": true,
+      "errors": [],
+      "warnings": []
+    },
+    "businessRule": {
+      "consumesExistingMealSlot": true,
+      "doesAddMeal": false,
+      "limitSource": "subscription_total_meals"
+    },
+    "createdAt": "2026-06-22T10:53:37.466Z",
+    "updatedAt": "2026-06-22T10:58:05.299Z",
+    "archivedAt": null
+  },
+  "status": true
+}
+```
+
+---
+
+## 12.4 Revision Conflict Handling
+
+If backend returns `PREMIUM_UPGRADE_REVISION_CONFLICT`, show:
+
+```text
+This item was updated by another admin. Please refresh and try again.
+```
+
+Then:
+
+```text
+1. Close or keep modal in disabled state.
+2. Re-fetch list.
+3. Re-open modal with latest revision if admin wants to retry.
+```
+
+---
+
+# 13. PATCH Toggle State
+
+## Endpoint
+
+```http
+PATCH /api/dashboard/premium-upgrades/:id/state
+```
+
+## Purpose
+
+Change enabled/visible state.
+
+Recommended frontend: expose only toggles for:
+
+```text
+isEnabled
+isVisible
+```
+
+Do not expose `status` as a normal edit select. Use the archive endpoint for archiving.
+
+---
+
+## 13.1 State Form / Inline Toggle Fields
+
+| Field | UI control | Required | Options / validation | Payload type |
+|---|---|---:|---|---|
+| `expectedRevision` | Hidden | Yes | current row `revision` | number |
+| `isEnabled` | Toggle / checkbox | No | true/false | boolean |
+| `isVisible` | Toggle / checkbox | No | true/false | boolean |
+
+At least one of `isEnabled` or `isVisible` should be sent.
+
+---
+
+## 13.2 Payload Examples
+
+### Hide from customer planner
+
+```json
+{
+  "expectedRevision": 2,
+  "isVisible": false
+}
+```
+
+### Show again
+
+```json
+{
+  "expectedRevision": 3,
+  "isVisible": true
+}
+```
+
+### Disable selection
+
+```json
+{
+  "expectedRevision": 4,
+  "isEnabled": false
+}
+```
+
+### Enable selection
+
+```json
+{
+  "expectedRevision": 5,
+  "isEnabled": true
+}
+```
+
+### Update both flags together
+
+```json
+{
+  "expectedRevision": 6,
+  "isEnabled": true,
+  "isVisible": true
+}
+```
+
+---
+
+## 13.3 Expected Success Response
+
+```json
+{
+  "data": {
+    "id": "6a391431151810f96620286c",
+    "revision": 7,
+    "sourceType": "menu_option",
+    "sourceId": "6a3551b13f6b8e45eac5b5f8",
+    "sourceProductId": "6a35521c3f6b8e45eac5b8e9",
+    "sourceGroupId": "6a3551ae3f6b8e45eac5b5e9",
+    "sourceGroupKey": null,
+    "sourceKey": "beef_steak",
+    "sourceName": {
+      "ar": "ستيك لحم",
+      "en": "Beef Steak"
+    },
+    "selectionType": "premium_meal",
+    "premiumKey": "beef_steak",
+    "displayGroup": {
+      "key": "premium_proteins",
+      "id": null
+    },
+    "upgradeDeltaHalala": 2000,
+    "upgradeDeltaSar": 20,
+    "currency": "SAR",
+    "isEnabled": true,
+    "isVisible": true,
+    "status": "active",
+    "sortOrder": 10,
+    "sourceStatus": {
+      "exists": true,
+      "active": true,
+      "visible": true,
+      "available": true,
+      "published": true,
+      "subscriptionEnabled": true,
+      "relationValid": true
+    },
+    "validation": {
+      "valid": true,
+      "errors": [],
+      "warnings": []
+    },
+    "businessRule": {
+      "consumesExistingMealSlot": true,
+      "doesAddMeal": false,
+      "limitSource": "subscription_total_meals"
+    },
+    "createdAt": "2026-06-22T10:53:37.466Z",
+    "updatedAt": "2026-06-22T11:10:00.000Z",
+    "archivedAt": null
+  },
+  "status": true
+}
+```
+
+---
+
+## 13.4 State UI Matrix
+
+| Row state | Customer planner behavior | Dashboard behavior |
+|---|---|---|
+| `status=active`, `isEnabled=true`, `isVisible=true` | Visible and selectable | Show normal row |
+| `status=active`, `isVisible=false` | Hidden | Show row with Hidden badge |
+| `status=active`, `isEnabled=false` | Not selectable | Show row with Disabled badge |
+| `status=archived` | Hidden and not selectable | Show only in archived/all filters |
+
+---
+
+# 14. POST Archive
+
+## Endpoint
+
+```http
+POST /api/dashboard/premium-upgrades/:id/archive
+```
+
+## Purpose
+
+Soft archive a premium upgrade.
+
+It does not delete the menu source or historical records.
+
+---
+
+## 14.1 Archive Dialog Fields
+
+| Field | UI control | Required | Options / validation | Payload type |
+|---|---|---:|---|---|
+| `expectedRevision` | Hidden | Yes | current row `revision` | number |
+| `reason` | Text area | Yes | non-empty string, recommended min 3 chars | string |
+
+Recommended dialog text:
+
+```text
+This will archive the premium upgrade only. It will not delete the menu item or any historical customer records.
+```
+
+---
+
+## 14.2 Payload Example
+
+```json
+{
+  "expectedRevision": 7,
+  "reason": "No longer available from supplier"
+}
+```
+
+---
+
+## 14.3 Expected Success Response
+
+```json
+{
+  "data": {
+    "id": "6a391431151810f96620286c",
+    "revision": 8,
+    "sourceType": "menu_option",
+    "sourceId": "6a3551b13f6b8e45eac5b5f8",
+    "sourceProductId": "6a35521c3f6b8e45eac5b8e9",
+    "sourceGroupId": "6a3551ae3f6b8e45eac5b5e9",
+    "sourceGroupKey": null,
+    "sourceKey": "beef_steak",
+    "sourceName": {
+      "ar": "ستيك لحم",
+      "en": "Beef Steak"
+    },
+    "selectionType": "premium_meal",
+    "premiumKey": "beef_steak",
+    "displayGroup": {
+      "key": "premium_proteins",
+      "id": null
+    },
+    "upgradeDeltaHalala": 2000,
+    "upgradeDeltaSar": 20,
+    "currency": "SAR",
+    "isEnabled": false,
+    "isVisible": false,
+    "status": "archived",
+    "sortOrder": 10,
+    "sourceStatus": {
+      "exists": true,
+      "active": true,
+      "visible": true,
+      "available": true,
+      "published": true,
+      "subscriptionEnabled": true,
+      "relationValid": true
+    },
+    "validation": {
+      "valid": true,
+      "errors": [],
+      "warnings": []
+    },
+    "businessRule": {
+      "consumesExistingMealSlot": true,
+      "doesAddMeal": false,
+      "limitSource": "subscription_total_meals"
+    },
+    "createdAt": "2026-06-22T10:53:37.466Z",
+    "updatedAt": "2026-06-22T11:20:00.000Z",
+    "archivedAt": "2026-06-22T11:20:00.000Z"
+  },
+  "status": true
+}
+```
+
+---
+
+## 14.4 Archive UI Rules
+
+After archive success:
+
+```text
+Close dialog.
+Show success toast.
+Remove row from active list if current filter is active.
+Keep row visible if current filter is archived/all.
+Refresh readiness.
+```
+
+Do not offer hard delete.
+
+---
+
+# 15. GET Readiness
+
+## Endpoint
+
+```http
+GET /api/dashboard/premium-upgrades/readiness
+```
+
+## Purpose
+
+Show diagnostics for production readiness.
+
+---
+
+## 15.1 Expected Response
+
+```json
+{
+  "isReady": true,
+  "diagnostics": {
+    "totalConfigs": 4,
+    "activeConfigs": 4,
+    "missingSources": 0,
+    "invalidRelations": 0,
+    "duplicateKeys": 0,
+    "priceMismatches": [],
+    "legacyChecks": {
+      "builderProteinsCount": 20,
+      "fallbackActive": false
+    },
+    "configState": {
+      "isEmpty": false,
+      "legacyFallbackActive": false,
+      "configsAuthoritative": true,
+      "backfillStatus": "complete",
+      "partialConfigRisk": false,
+      "knownKeys": [
+        "beef_steak",
+        "shrimp",
+        "salmon",
+        "premium_large_salad"
+      ],
+      "configuredKnownKeys": [
+        "beef_steak",
+        "shrimp",
+        "salmon",
+        "premium_large_salad"
+      ],
+      "missingConfigKeys": []
+    },
+    "knownSources": [
+      {
+        "premiumKey": "beef_steak",
+        "resolvable": true,
+        "sourceType": "menu_option",
+        "sourceId": "6a3551b13f6b8e45eac5b5f8",
+        "sourceProductId": "6a35521c3f6b8e45eac5b8e9",
+        "sourceGroupId": "6a3551ae3f6b8e45eac5b5e9",
+        "issues": []
+      }
+    ],
+    "unresolvedSourceKeys": []
+  },
+  "status": true
+}
+```
+
+---
+
+## 15.2 Readiness Banner Mapping
+
+| Condition | Banner type | Message |
+|---|---|---|
+| `isReady=true` and `partialConfigRisk=false` | Success | Premium upgrade system is ready. |
+| `configState.isEmpty=true` and `legacyFallbackActive=true` | Info | No configs yet. Legacy fallback is active. |
+| `partialConfigRisk=true` | Critical | Partial config risk detected. Do not publish until all known keys are configured. |
+| `missingSources > 0` | Warning/Critical | Some premium upgrade sources are missing. |
+| `invalidRelations > 0` | Warning/Critical | Some source relations are invalid. |
+| `duplicateKeys > 0` | Critical | Duplicate premium keys detected. |
+| `priceMismatches.length > 0` | Warning | Legacy/config price mismatch detected. |
+
+---
+
+## 15.3 Readiness Details UI
+
+Show:
+
+```text
+totalConfigs
+activeConfigs
+missingSources
+invalidRelations
+duplicateKeys
+priceMismatches
+legacyChecks.fallbackActive
+configState.configsAuthoritative
+configState.backfillStatus
+configState.partialConfigRisk
+configState.knownKeys
+configState.configuredKnownKeys
+configState.missingConfigKeys
+knownSources
+unresolvedSourceKeys
+```
+
+Important rule to display in UI:
+
+```text
+If PremiumUpgradeConfig is empty, legacy fallback may work.
+If any config exists, configs become the source of truth.
+Partial backfill in production is not allowed.
+```
+
+---
+
+# 16. Error Handling
+
+The backend can return errors such as:
+
+```text
+PREMIUM_UPGRADE_INVALID_SOURCE_ID
+PREMIUM_UPGRADE_SOURCE_NOT_FOUND
+PREMIUM_UPGRADE_SOURCE_NOT_ELIGIBLE
+PREMIUM_UPGRADE_RELATION_INVALID
+PREMIUM_UPGRADE_DUPLICATE
+PREMIUM_UPGRADE_KEY_CONFLICT
+PREMIUM_UPGRADE_INVALID_DELTA
+PREMIUM_UPGRADE_REVISION_CONFLICT
+PREMIUM_UPGRADE_ARCHIVED
+```
+
+## 16.1 Recommended Error Parser
+
+The exact error body can vary by backend error middleware. Read code from multiple possible places:
+
+```ts
+function getApiErrorCode(errorResponse) {
+  return (
+    errorResponse?.code ||
+    errorResponse?.error?.code ||
+    errorResponse?.data?.code ||
+    errorResponse?.errors?.[0]?.code ||
+    null
+  );
+}
+```
+
+## 16.2 Error UI Mapping
+
+| Error code | UI message |
+|---|---|
+| `PREMIUM_UPGRADE_INVALID_SOURCE_ID` | Invalid source ID. Refresh candidates and try again. |
+| `PREMIUM_UPGRADE_SOURCE_NOT_FOUND` | The selected menu source no longer exists. |
+| `PREMIUM_UPGRADE_SOURCE_NOT_ELIGIBLE` | This menu item is not eligible as a premium upgrade. |
+| `PREMIUM_UPGRADE_RELATION_INVALID` | The source relation is invalid or missing. |
+| `PREMIUM_UPGRADE_DUPLICATE` | This source is already linked as a premium upgrade. |
+| `PREMIUM_UPGRADE_KEY_CONFLICT` | Premium key already exists. |
+| `PREMIUM_UPGRADE_INVALID_DELTA` | Upgrade delta must be a valid non-negative amount. |
+| `PREMIUM_UPGRADE_REVISION_CONFLICT` | This item was updated by another admin. Refresh and try again. |
+| `PREMIUM_UPGRADE_ARCHIVED` | This premium upgrade is archived and cannot accept this action. |
+
+For unknown errors:
+
+```text
+Something went wrong. Please refresh and try again.
+```
+
+---
+
+# 17. Current Expected Data State
+
+Current configured premium upgrades:
+
+| premiumKey | selectionType | sourceType | expected upgrade delta |
+|---|---|---|---:|
+| `beef_steak` | `premium_meal` | `menu_option` | `2000` |
+| `shrimp` | `premium_meal` | `menu_option` | `2000` |
+| `salmon` | `premium_meal` | `menu_option` | `2000` |
+| `premium_large_salad` | `premium_large_salad` | `menu_product` | `2900` |
+
+Expected readiness:
+
+```text
+isReady = true
+totalConfigs = 4
+activeConfigs = 4
+legacyFallbackActive = false
+configsAuthoritative = true
+backfillStatus = complete
+partialConfigRisk = false
+missingConfigKeys = []
+```
+
+Expected candidates after all four are linked:
+
+```http
+GET /api/dashboard/premium-upgrades/candidates
+```
+
+```json
+{
+  "data": [],
+  "meta": {
+    "total": 0,
+    "page": 1,
+    "limit": 20
+  },
+  "status": true
+}
+```
+
+Expected candidates with linked items included:
+
+```http
+GET /api/dashboard/premium-upgrades/candidates?includeLinked=true
+```
+
+```text
+meta.total = 4
+all items have isLinked = true
+```
+
+---
+
+# 18. Frontend Implementation Checklist
+
+## Must implement
+
+```text
+Readiness card
+List table
+Filters
+Candidates modal
+Create/link form
+Edit price/display/sort form
+State toggles
+Archive dialog
+Error handling
+Revision conflict handling
+Refresh after mutation
+```
+
+## Must not implement
+
+```text
+MealBuilderPage
+Meal Builder draft save
+Meal Builder publish
+Menu product creation
+Menu option creation
+Option group creation
+Add-ons management
+Flutter/mobile contract changes
+One-time order price changes
+```
+
+---
+
+# 19. QA Checklist
+
+1. Open page and confirm readiness is ready.
+2. Confirm list returns 4 configs.
+3. Confirm table shows price as SAR but writes halala.
+4. Confirm candidates without `includeLinked` returns empty when all four are linked.
+5. Confirm candidates with `includeLinked=true` returns 4 linked candidates.
+6. Try edit Beef Steak from 20 SAR to 25 SAR and confirm payload sends `2500`.
+7. Restore Beef Steak from 25 SAR to 20 SAR and confirm payload sends `2000`.
+8. Hide one item using `/state`, then show again.
+9. Try stale revision update and confirm friendly conflict message.
+10. Do not test archive on production unless intentionally archiving.
+11. Confirm browser network tab does not call any Meal Builder endpoints.
+
+---
+
+# 20. Final Rule for Frontend
+
+This page is a `PremiumUpgradeConfig` management screen.
+
+The only valid create action is:
+
+```text
+Select eligible existing menu candidate → Link it as PremiumUpgradeConfig
+```
+
+The page must never create or edit the underlying menu item itself.

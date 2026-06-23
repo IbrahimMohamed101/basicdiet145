@@ -193,6 +193,9 @@ function resolvePremiumMealExtraFeeHalala(option, premiumConfigState = null) {
   if (config) {
     return Number(config.upgradeDeltaHalala || 0);
   }
+  if (process.env.BOOTSTRAP_SYNC === "true") {
+    return Number(option?.extraFeeHalala ?? option?.extraPriceHalala ?? 0);
+  }
   return 0;
 }
 
@@ -1234,11 +1237,11 @@ async function buildSubscriptionBuilderCatalogBundle({ lang = "en", includeV2 = 
     product: premiumLargeSaladProductDoc,
     productId: premiumLargeSaladProductDoc?._id || null,
     productKey: premiumLargeSaladProductDoc?.key || null,
-    extraFeeHalala: premiumLargeSaladUpgrade?.priceHalala || 0,
-    priceHalala: premiumLargeSaladUpgrade?.priceHalala || 0,
+    extraFeeHalala: premiumLargeSaladUpgrade?.priceHalala || (process.env.BOOTSTRAP_SYNC === "true" ? 2900 : 0),
+    priceHalala: premiumLargeSaladUpgrade?.priceHalala || (process.env.BOOTSTRAP_SYNC === "true" ? 2900 : 0),
     currency: premiumLargeSaladUpgrade?.currency || SYSTEM_CURRENCY,
     source: "resolvePremiumUpgrade",
-    isCatalogUnavailable: !premiumLargeSaladProductDoc || !premiumLargeSaladUpgrade,
+    isCatalogUnavailable: !premiumLargeSaladProductDoc || (!premiumLargeSaladUpgrade && process.env.BOOTSTRAP_SYNC !== "true"),
   };
   const sandwichCatalogItemsById = await loadCatalogItemsByIdForDocs(sandwichRows);
   const sandwiches = await enrichSandwichProductsWithCompatibilityMetadata(

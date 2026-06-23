@@ -93,17 +93,27 @@ async function main() {
     expectStatus(res, 200, "empty config list");
     assert.strictEqual(res.body.data.length, 0, "bootstrap does not auto-backfill configs");
 
-    res = await api.get("/api/dashboard/premium-upgrades/candidates").set(headers);
+    res = await api.get("/api/dashboard/premium-upgrades/candidates?limit=100").set(headers);
     expectStatus(res, 200, "all unlinked candidates");
-    assert.deepStrictEqual(
-      res.body.data.map((candidate) => candidate.premiumKey).sort(),
-      ["beef_steak", "premium_large_salad", "salmon", "shrimp"],
-    );
+    for (const premiumKey of ["beef_steak", "shrimp", "salmon", "premium_large_salad"]) {
+      assert(res.body.data.some((candidate) => candidate.premiumKey === premiumKey), `${premiumKey} is eligible`);
+    }
+    assert(res.body.data.some((candidate) => candidate.premiumKey === "chicken"), "existing non-legacy catalog option is eligible");
+    assert(res.body.meta.diagnostics.totalMenuProductsScanned > 0);
+    assert(res.body.meta.diagnostics.totalMenuOptionsScanned > 4);
+    assert(res.body.meta.diagnostics.finalEligibleUnlinkedCount > 4);
+    assert(res.body.meta.diagnostics.excludedAddons > 0);
 
-    res = await api.get("/api/dashboard/premium-upgrades/candidates?selectionType=premium_meal&includeLinked=true").set(headers);
+    res = await api.get("/api/dashboard/premium-upgrades/candidates?selectionType=premium_meal&includeLinked=true&limit=100").set(headers);
     expectStatus(res, 200, "premium meal candidates");
-    assert.deepStrictEqual(res.body.data.map((candidate) => candidate.premiumKey), ["beef_steak", "shrimp", "salmon"]);
-    for (const candidate of res.body.data) {
+    const knownPremiumCandidates = res.body.data.filter((candidate) => ["beef_steak", "shrimp", "salmon"].includes(candidate.premiumKey));
+    assert.strictEqual(knownPremiumCandidates.length, 3);
+    for (const candidate of knownPremiumCandidates) {
+      for (const field of [
+        "id", "sourceId", "sourceType", "type", "sourceProductId", "sourceGroupId",
+        "sourceProductKey", "sourceGroupKey", "key", "premiumKey", "name", "selectionType",
+        "upgradeDeltaHalala", "currency", "isLinked", "eligibilityDiagnostics",
+      ]) assert(Object.prototype.hasOwnProperty.call(candidate, field), `candidate includes ${field}`);
       assert.strictEqual(candidate.sourceType, "menu_option");
       assert.strictEqual(candidate.sourceProductKey, "basic_meal");
       assert.strictEqual(candidate.sourceGroupKey, "proteins");
@@ -111,12 +121,142 @@ async function main() {
       assert.strictEqual(candidate.eligibilityDiagnostics.eligible, true);
     }
 
+    const existingCatalogCandidate = res.body.data.find((candidate) => candidate.premiumKey === "chicken" && candidate.sourceProductKey === "basic_meal");
+    assert(existingCatalogCandidate, "real seeded chicken option resolves to its subscription context");
+    let createFromExisting = await api.post("/api/dashboard/premium-upgrades").set(headers).send(existingCatalogCandidate);
+    expectStatus(createFromExisting, 201, "real catalog candidate can create config");
+    await PremiumUpgradeConfig.deleteOne({ premiumKey: "chicken" });
+
     res = await api.get("/api/dashboard/premium-upgrades/candidates?selectionType=premium_large_salad&includeLinked=true").set(headers);
     expectStatus(res, 200, "premium salad candidate");
     assert.strictEqual(res.body.data.length, 1);
     assert.strictEqual(res.body.data[0].premiumKey, "premium_large_salad");
     assert.strictEqual(res.body.data[0].sourceType, "menu_product");
     assert.strictEqual(res.body.data[0].upgradeDeltaHalala, 2900);
+
+    const dynamicOption = await MenuOption.create({
+      groupId: proteinsGroup._id,
+      key: "dynamic_premium_protein",
+      premiumKey: "dynamic_premium_protein",
+      name: { en: "Dynamic Premium Protein", ar: "بروتين مميز ديناميكي" },
+      selectionType: "premium_meal",
+      isActive: true,
+      isVisible: true,
+      isAvailable: true,
+      availableFor: ["subscription"],
+      availableForSubscription: true,
+      publishedAt: new Date(),
+    });
+    await ProductGroupOption.create({
+      productId: basicMeal._id,
+      groupId: proteinsGroup._id,
+      optionId: dynamicOption._id,
+      extraPriceHalala: 2300,
+    });
+    res = await api.get(`/api/dashboard/premium-upgrades/candidates?sourceProductId=${basicMeal._id}&q=dynamic`).set(headers);
+    expectStatus(res, 200, "dynamic option candidate");
+    assert.strictEqual(res.body.data.length, 1);
+    const dynamicCandidate = res.body.data[0];
+    assert.strictEqual(dynamicCandidate.premiumKey, "dynamic_premium_protein");
+    assert.strictEqual(dynamicCandidate.sourceProductKey, "basic_meal");
+    assert.strictEqual(dynamicCandidate.sourceGroupKey, "proteins");
+    assert.strictEqual(dynamicCandidate.upgradeDeltaHalala, 2300);
+    res = await api.post("/api/dashboard/premium-upgrades").set(headers).send(dynamicCandidate);
+    expectStatus(res, 201, "candidate DTO can create config without invented fields");
+    await PremiumUpgradeConfig.deleteOne({ premiumKey: "dynamic_premium_protein" });
+    await ProductGroupOption.deleteOne({ optionId: dynamicOption._id });
+    await MenuOption.deleteOne({ _id: dynamicOption._id });
+
+    const oneTimeOnlyOption = await MenuOption.create({
+      groupId: proteinsGroup._id,
+      key: "one_time_only_premium",
+      name: { en: "One-time Only Premium", ar: "خيار للطلبات الفردية فقط" },
+      availableFor: ["one_time"],
+      availableForSubscription: false,
+      isActive: true,
+      isVisible: true,
+      isAvailable: true,
+      publishedAt: new Date(),
+    });
+    await ProductGroupOption.create({
+      productId: basicMeal._id,
+      groupId: proteinsGroup._id,
+      optionId: oneTimeOnlyOption._id,
+      extraPriceHalala: 1900,
+    });
+    res = await api.get("/api/dashboard/premium-upgrades/candidates?includeLinked=true&q=one_time_only_premium").set(headers);
+    expectStatus(res, 200, "one-time-only option excluded");
+    assert.strictEqual(res.body.data.length, 0);
+    res = await api.post("/api/dashboard/premium-upgrades").set(headers).send({
+      sourceType: "menu_option",
+      sourceId: String(oneTimeOnlyOption._id),
+      sourceProductId: String(basicMeal._id),
+      sourceGroupId: String(proteinsGroup._id),
+      selectionType: "premium_meal",
+      upgradeDeltaHalala: 1900,
+    });
+    expectStatus(res, 400, "one-time-only option rejected by create validation");
+    await ProductGroupOption.deleteOne({ optionId: oneTimeOnlyOption._id });
+    await MenuOption.deleteOne({ _id: oneTimeOnlyOption._id });
+
+    const unsupportedProduct = await MenuProduct.create({
+      categoryId: basicMeal.categoryId,
+      key: "unsupported_premium_product",
+      name: { en: "Unsupported Premium Product", ar: "منتج مميز غير مدعوم" },
+      priceHalala: 1700,
+      availableFor: ["subscription"],
+      isActive: true,
+      isVisible: true,
+      isAvailable: true,
+      publishedAt: new Date(),
+      ui: { cardVariant: "addon" },
+    });
+    const addonContextOption = await MenuOption.create({
+      groupId: proteinsGroup._id,
+      key: "addon_context_premium",
+      premiumKey: "addon_context_premium",
+      name: { en: "Add-on Context Premium", ar: "خيار إضافة مميز" },
+      selectionType: "premium_meal",
+      availableFor: ["subscription"],
+      availableForSubscription: true,
+      isActive: true,
+      isVisible: true,
+      isAvailable: true,
+      publishedAt: new Date(),
+    });
+    await ProductOptionGroup.create({ productId: unsupportedProduct._id, groupId: proteinsGroup._id });
+    await ProductGroupOption.create({
+      productId: unsupportedProduct._id,
+      groupId: proteinsGroup._id,
+      optionId: addonContextOption._id,
+      extraPriceHalala: 1800,
+    });
+    res = await api.get("/api/dashboard/premium-upgrades/candidates?sourceType=menu_product&includeLinked=true").set(headers);
+    expectStatus(res, 200, "unsupported and add-on products excluded");
+    assert(!res.body.data.some((candidate) => candidate.sourceId === String(unsupportedProduct._id)));
+    res = await api.post("/api/dashboard/premium-upgrades").set(headers).send({
+      sourceType: "menu_product",
+      sourceId: String(unsupportedProduct._id),
+      selectionType: "premium_large_salad",
+      upgradeDeltaHalala: 1700,
+    });
+    expectStatus(res, 400, "unsupported add-on product rejected by create validation");
+    res = await api.get(`/api/dashboard/premium-upgrades/candidates?sourceProductId=${unsupportedProduct._id}&includeLinked=true`).set(headers);
+    expectStatus(res, 200, "add-on product option context excluded");
+    assert.strictEqual(res.body.data.length, 0);
+    res = await api.post("/api/dashboard/premium-upgrades").set(headers).send({
+      sourceType: "menu_option",
+      sourceId: String(addonContextOption._id),
+      sourceProductId: String(unsupportedProduct._id),
+      sourceGroupId: String(proteinsGroup._id),
+      selectionType: "premium_meal",
+      upgradeDeltaHalala: 1800,
+    });
+    expectStatus(res, 400, "add-on option context rejected by create validation");
+    await ProductGroupOption.deleteOne({ optionId: addonContextOption._id });
+    await ProductOptionGroup.deleteOne({ productId: unsupportedProduct._id, groupId: proteinsGroup._id });
+    await MenuOption.deleteOne({ _id: addonContextOption._id });
+    await MenuProduct.deleteOne({ _id: unsupportedProduct._id });
 
     res = await api.get("/api/dashboard/premium-upgrades/readiness").set(headers);
     expectStatus(res, 200, "legacy fallback readiness");
@@ -182,6 +322,43 @@ async function main() {
     expectStatus(res, 201, "create product-backed premium salad config");
     const saladConfig = res.body.data;
     assert.strictEqual(saladConfig.premiumKey, "premium_large_salad");
+
+    const createKnownOptionConfig = async (option, price) => {
+      const candidateRes = await api.get(`/api/dashboard/premium-upgrades/candidates?includeLinked=true&q=${option.key}`).set(headers);
+      expectStatus(candidateRes, 200, `candidate for ${option.key}`);
+      const candidate = candidateRes.body.data.find((row) => row.premiumKey === option.key);
+      assert(candidate, `eligible candidate exists for ${option.key}`);
+      const createRes = await api.post("/api/dashboard/premium-upgrades").set(headers).send({ ...candidate, upgradeDeltaHalala: price });
+      expectStatus(createRes, 201, `create ${option.key} config`);
+      return createRes.body.data;
+    };
+    await createKnownOptionConfig(shrimp, 2000);
+    await createKnownOptionConfig(salmon, 2000);
+
+    res = await api.get("/api/dashboard/premium-upgrades/candidates?includeLinked=true&limit=100").set(headers);
+    expectStatus(res, 200, "all four linked candidates included");
+    for (const premiumKey of ["beef_steak", "shrimp", "salmon", "premium_large_salad"]) {
+      assert(res.body.data.some((candidate) => candidate.premiumKey === premiumKey && candidate.isLinked), `${premiumKey} is linked`);
+    }
+    res = await api.get("/api/dashboard/premium-upgrades/candidates?includeLinked=false&limit=100").set(headers);
+    expectStatus(res, 200, "linked candidates excluded");
+    assert(!res.body.data.some((candidate) => ["beef_steak", "shrimp", "salmon", "premium_large_salad"].includes(candidate.premiumKey)));
+
+    res = await api.patch(`/api/dashboard/premium-upgrades/${beefConfig.id}`).set(headers).send({
+      expectedRevision: beefConfig.revision,
+      upgradeDeltaHalala: 2500,
+    });
+    expectStatus(res, 200, "authoritative beef price diverges from legacy");
+    const authoritativeBeefConfig = res.body.data;
+    res = await api.get("/api/dashboard/premium-upgrades/readiness").set(headers);
+    expectStatus(res, 200, "authoritative mismatch readiness");
+    assert.strictEqual(res.body.isReady, true, JSON.stringify(res.body.diagnostics));
+    assert.strictEqual(res.body.diagnostics.configState.configsAuthoritative, true);
+    assert.strictEqual(res.body.diagnostics.configState.legacyFallbackActive, false);
+    const beefMismatch = res.body.diagnostics.priceMismatches.find((row) => row.premiumKey === "beef_steak");
+    assert(beefMismatch, "legacy/config mismatch remains diagnostic");
+    assert.strictEqual(beefMismatch.blocking, false);
+    assert.strictEqual(beefMismatch.severity, "warning");
 
     res = await api.post("/api/dashboard/premium-upgrades").set(headers).send({
       sourceType: "menu_option",
@@ -253,13 +430,13 @@ async function main() {
     expectStatus(res, 409, "stale expectedRevision rejected");
 
     res = await api.patch(`/api/dashboard/premium-upgrades/${beefConfig.id}`).set(headers).send({
-      expectedRevision: beefConfig.revision,
+      expectedRevision: authoritativeBeefConfig.revision,
       upgradeDeltaHalala: 2000,
     });
     expectStatus(res, 200, "patch updates delta");
     const updatedBeefConfig = res.body.data;
     assert.strictEqual(updatedBeefConfig.upgradeDeltaHalala, 2000);
-    assert.strictEqual(updatedBeefConfig.revision, beefConfig.revision + 1);
+    assert.strictEqual(updatedBeefConfig.revision, authoritativeBeefConfig.revision + 1);
 
     for (const immutableField of ["sourceType", "sourceId", "sourceProductId", "sourceGroupId", "selectionType", "premiumKey", "currency"]) {
       res = await api.patch(`/api/dashboard/premium-upgrades/${beefConfig.id}`).set(headers).send({
