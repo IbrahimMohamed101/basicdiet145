@@ -474,212 +474,36 @@ function getOptionDetail(id, options) {
   return menuCatalogAdminService.getOptionDetail(id, options);
 }
 
-function normalizeCategoryPayload(body = {}, existing = null) {
-  if (!isPlainObject(body)) throw new MenuValidationError("Request body must be an object");
-  assertImmutableKey(body, existing, "key");
-  const hasUi = body.ui !== undefined && body.ui !== null;
-  if (
-    hasUi
-    && (
-      !isPlainObject(body.ui)
-      || (body.ui.cardVariant !== undefined && !isAllowedCategoryCardVariant(body.ui.cardVariant))
-    )
-  ) {
-    throw new MenuValidationError("ui.cardVariant must be one of the supported public category card variants", "INVALID_CARD_VARIANT");
-  }
-  return {
-    key: body.key === undefined && existing ? existing.key : normalizeOptionalKey(body.key),
-    name: body.name === undefined && existing ? existing.name : localizedString(body.name, "name", { required: true }),
-    description: optionalLocalizedString(body.description, "description") || (existing ? existing.description : { ar: "", en: "" }),
-    imageUrl: body.imageUrl === undefined && existing ? existing.imageUrl : String(body.imageUrl || "").trim(),
-    isActive: normalizeBoolean(body.isActive, "isActive", existing ? existing.isActive : true),
-    isVisible: normalizeBoolean(body.isVisible, "isVisible", existing ? truthyByDefault(existing.isVisible) : true),
-    isAvailable: normalizeBoolean(body.isAvailable, "isAvailable", existing ? truthyByDefault(existing.isAvailable) : true),
-    sortOrder: normalizeNonNegativeInteger(body.sortOrder, "sortOrder", existing ? existing.sortOrder : 0),
-    ui: hasUi ? normalizeCategoryUiMetadata(body.ui) : normalizeCategoryUiMetadata(existing && existing.ui),
-    availability: {
-      branchIds: (body.branchIds === undefined && (!body.availability || body.availability.branchIds === undefined) && existing)
-        ? ((existing.availability && existing.availability.branchIds) || [])
-        : normalizeStringArray(
-          body.branchIds !== undefined ? body.branchIds : body.availability && body.availability.branchIds,
-          "branchIds"
-        ),
-    },
-  };
+function normalizeCategoryPayload(body, existing) {
+  return menuCatalogAdminService.normalizeCategoryPayload(body, existing);
 }
 
-function normalizeProductPayload(body = {}, existing = null) {
-  if (!isPlainObject(body)) throw new MenuValidationError("Request body must be an object");
-  assertImmutableKey(body, existing, "key");
-  assertImmutableCatalogItemLink(body, existing);
-  const hasUi = body.ui !== undefined && body.ui !== null;
-  if (hasUi && !isPlainObject(body.ui)) {
-    throw new MenuValidationError("ui must be an object", "INVALID_PRODUCT_UI");
-  }
-  if (hasUi && body.ui.cardVariant !== undefined && !isAllowedCardVariant(body.ui.cardVariant)) {
-    throw new MenuValidationError("ui.cardVariant must be one of the supported public product card variants", "INVALID_CARD_VARIANT");
-  }
-  if (hasUi && body.ui.cardSize !== undefined && !isAllowedProductCardSize(body.ui.cardSize)) {
-    throw new MenuValidationError("ui.cardSize must be one of: large, medium, small", "INVALID_CARD_SIZE");
-  }
-  const uiSource = hasUi && existing
-    ? { ...((existing && existing.ui) || {}), ...body.ui }
-    : (hasUi ? body.ui : existing && existing.ui);
-  const pricingModel = String(body.pricingModel || (existing && existing.pricingModel) || "fixed").trim();
-  if (!["fixed", "per_100g"].includes(pricingModel)) {
-    throw new MenuValidationError("pricingModel must be fixed or per_100g");
-  }
-  const itemType = String(body.itemType || (existing && existing.itemType) || "product").trim();
-  return {
-    categoryId: body.categoryId === undefined && existing ? existing.categoryId : assertObjectId(body.categoryId, "categoryId"),
-    catalogItemId: normalizeOptionalObjectId(body.catalogItemId, "catalogItemId", existing ? (existing.catalogItemId || null) : null),
-    key: body.key === undefined && existing ? existing.key : normalizeOptionalKey(body.key),
-    name: body.name === undefined && existing ? existing.name : localizedString(body.name, "name", { required: true }),
-    description: optionalLocalizedString(body.description, "description") || (existing ? existing.description : { ar: "", en: "" }),
-    imageUrl: body.imageUrl === undefined && existing ? existing.imageUrl : String(body.imageUrl || "").trim(),
-    itemType,
-    pricingModel,
-    priceHalala: normalizeNonNegativeInteger(body.priceHalala, "priceHalala", existing ? existing.priceHalala : 0),
-    baseUnitGrams: normalizeNonNegativeInteger(body.baseUnitGrams, "baseUnitGrams", existing ? existing.baseUnitGrams : 100) || 100,
-    defaultWeightGrams: normalizeNonNegativeInteger(body.defaultWeightGrams, "defaultWeightGrams", existing ? existing.defaultWeightGrams : 0),
-    minWeightGrams: normalizeNonNegativeInteger(body.minWeightGrams, "minWeightGrams", existing ? existing.minWeightGrams : 0),
-    maxWeightGrams: normalizeNonNegativeInteger(body.maxWeightGrams, "maxWeightGrams", existing ? existing.maxWeightGrams : 0),
-    weightStepGrams: normalizeNonNegativeInteger(body.weightStepGrams, "weightStepGrams", existing ? existing.weightStepGrams : 50) || 50,
-    currency: SYSTEM_CURRENCY,
-    availableFor: normalizeAvailableFor(body.availableFor, "availableFor", existing ? (existing.availableFor || []) : ["one_time", "subscription"]),
-    isCustomizable: normalizeBoolean(
-      body.isCustomizable,
-      "isCustomizable",
-      existing
-        ? inferProductCustomizable(existing)
-        : (pricingModel === "per_100g")
-    ),
-    isActive: normalizeBoolean(body.isActive, "isActive", existing ? existing.isActive : true),
-    isVisible: normalizeBoolean(body.isVisible, "isVisible", existing ? truthyByDefault(existing.isVisible) : true),
-    isAvailable: normalizeBoolean(body.isAvailable, "isAvailable", existing ? truthyByDefault(existing.isAvailable) : true),
-    sortOrder: normalizeNonNegativeInteger(body.sortOrder, "sortOrder", existing ? existing.sortOrder : 0),
-    ui: normalizeProductUiMetadata(uiSource),
-    branchAvailability: (body.branchAvailability === undefined && body.branchIds === undefined && existing)
-      ? (existing.branchAvailability || [])
-      : normalizeStringArray(body.branchAvailability !== undefined ? body.branchAvailability : body.branchIds, "branchAvailability"),
-  };
+function normalizeProductPayload(body, existing) {
+  return menuCatalogAdminService.normalizeProductPayload(body, existing);
 }
 
-function normalizeGroupPayload(body = {}, existing = null) {
-  if (!isPlainObject(body)) throw new MenuValidationError("Request body must be an object");
-  assertImmutableKey(body, existing, "key");
-  const hasUi = body.ui !== undefined;
-  if (
-    hasUi
-    && (
-      !isPlainObject(body.ui)
-      || (body.ui.displayStyle !== undefined && !isAllowedGroupDisplayStyle(body.ui.displayStyle))
-    )
-  ) {
-    throw new MenuValidationError("ui.displayStyle must be one of: chips, radio_cards, checkbox_grid, dropdown, stepper", "INVALID_DISPLAY_STYLE");
-  }
-  return {
-    key: body.key === undefined && existing ? existing.key : normalizeOptionalKey(body.key),
-    name: body.name === undefined && existing ? existing.name : localizedString(body.name, "name", { required: true }),
-    description: optionalLocalizedString(body.description, "description") || (existing ? existing.description : { ar: "", en: "" }),
-    isActive: normalizeBoolean(body.isActive, "isActive", existing ? existing.isActive : true),
-    isVisible: normalizeBoolean(body.isVisible, "isVisible", existing ? truthyByDefault(existing.isVisible) : true),
-    isAvailable: normalizeBoolean(body.isAvailable, "isAvailable", existing ? truthyByDefault(existing.isAvailable) : true),
-    sortOrder: normalizeNonNegativeInteger(body.sortOrder, "sortOrder", existing ? existing.sortOrder : 0),
-    ui: hasUi ? normalizeGroupUiMetadata(body.ui) : normalizeGroupUiMetadata(existing && existing.ui),
-  };
+function normalizeGroupPayload(body, existing) {
+  return menuCatalogAdminService.normalizeGroupPayload(body, existing);
 }
 
-function normalizeOptionPayload(body = {}, existing = null) {
-  if (!isPlainObject(body)) throw new MenuValidationError("Request body must be an object");
-  assertImmutableKey(body, existing, "key");
-  assertImmutableCatalogItemLink(body, existing);
-
-  let extraPriceHalala = normalizeNonNegativeInteger(body.extraPriceHalala, "extraPriceHalala", existing ? existing.extraPriceHalala : 0);
-  let extraFeeHalala = normalizeNonNegativeInteger(body.extraFeeHalala, "extraFeeHalala", existing ? (existing.extraFeeHalala || 0) : 0);
-
-  if (body.extraPriceHalala !== undefined && body.extraFeeHalala === undefined) {
-    extraFeeHalala = extraPriceHalala;
-  } else if (body.extraFeeHalala !== undefined && body.extraPriceHalala === undefined) {
-    extraPriceHalala = extraFeeHalala;
-  }
-  const isActive = normalizeBoolean(body.isActive, "isActive", existing ? existing.isActive : true);
-  const isVisible = normalizeBoolean(body.isVisible, "isVisible", existing ? truthyByDefault(existing.isVisible) : true);
-  const isAvailable = normalizeBoolean(body.isAvailable, "isAvailable", existing ? truthyByDefault(existing.isAvailable) : true);
-
-  return {
-    groupId: body.groupId === undefined && existing ? existing.groupId : assertObjectId(body.groupId, "groupId"),
-    catalogItemId: normalizeOptionalObjectId(body.catalogItemId, "catalogItemId", existing ? (existing.catalogItemId || null) : null),
-    key: body.key === undefined && existing ? existing.key : normalizeOptionalKey(body.key),
-    name: body.name === undefined && existing ? existing.name : localizedString(body.name, "name", { required: true }),
-    description: optionalLocalizedString(body.description, "description") || (existing ? existing.description : { ar: "", en: "" }),
-    imageUrl: body.imageUrl === undefined && existing ? existing.imageUrl : String(body.imageUrl || "").trim(),
-    extraPriceHalala,
-    extraWeightUnitGrams: normalizeNonNegativeInteger(body.extraWeightUnitGrams, "extraWeightUnitGrams", existing ? existing.extraWeightUnitGrams : 0),
-    extraWeightPriceHalala: normalizeNonNegativeInteger(body.extraWeightPriceHalala, "extraWeightPriceHalala", existing ? existing.extraWeightPriceHalala : 0),
-    currency: SYSTEM_CURRENCY,
-    availableFor: normalizeAvailableFor(body.availableFor, "availableFor", existing ? (existing.availableFor || []) : ["one_time", "subscription"]),
-    extraFeeHalala,
-    isActive,
-    isVisible,
-    isAvailable,
-    sortOrder: normalizeNonNegativeInteger(body.sortOrder, "sortOrder", existing ? existing.sortOrder : 0),
-  };
+function normalizeOptionPayload(body, existing) {
+  return menuCatalogAdminService.normalizeOptionPayload(body, existing);
 }
 
-function normalizeSelectionRulePayload(body = {}, existing = null, prefix = "") {
-  const min = normalizeNonNegativeInteger(body.minSelections, `${prefix}minSelections`, existing ? existing.minSelections : 0);
-  const max = normalizeNullableNonNegativeInteger(body.maxSelections, `${prefix}maxSelections`, existing ? existing.maxSelections : null);
-  if (max !== null && max < min) {
-    throw new MenuValidationError(`${prefix}maxSelections must be null or >= minSelections`, "INVALID_SELECTION_RULES");
-  }
-  const requiredFallback = existing ? Boolean(existing.isRequired) : min > 0;
-  const isRequired = normalizeBoolean(body.isRequired, `${prefix}isRequired`, requiredFallback);
-  if (isRequired && min <= 0) {
-    throw new MenuValidationError(`${prefix}minSelections must be > 0 when isRequired=true`, "INVALID_SELECTION_RULES");
-  }
-  return { minSelections: min, maxSelections: max, isRequired };
+function normalizeSelectionRulePayload(body, existing, prefix) {
+  return menuCatalogAdminService.normalizeSelectionRulePayload(body, existing, prefix);
 }
 
-function normalizeProductGroupRelationPayload(body = {}, existing = null) {
-  if (!isPlainObject(body)) throw new MenuValidationError("Request body must be an object");
-  return {
-    productId: body.productId === undefined && existing ? existing.productId : assertObjectId(body.productId, "productId"),
-    groupId: body.groupId === undefined && existing ? existing.groupId : assertObjectId(body.groupId || body.id, "groupId"),
-    ...normalizeSelectionRulePayload(body, existing),
-    isActive: normalizeBoolean(body.isActive, "isActive", existing ? existing.isActive : true),
-    isVisible: normalizeBoolean(body.isVisible, "isVisible", existing ? truthyByDefault(existing.isVisible) : true),
-    isAvailable: normalizeBoolean(body.isAvailable, "isAvailable", existing ? truthyByDefault(existing.isAvailable) : true),
-    sortOrder: normalizeNonNegativeInteger(body.sortOrder, "sortOrder", existing ? existing.sortOrder : 0),
-  };
+function normalizeProductGroupRelationPayload(body, existing) {
+  return menuCatalogAdminService.normalizeProductGroupRelationPayload(body, existing);
 }
 
-function normalizeProductGroupOptionRelationPayload(body = {}, existing = null) {
-  if (!isPlainObject(body)) throw new MenuValidationError("Request body must be an object");
-  return {
-    productId: body.productId === undefined && existing ? existing.productId : assertObjectId(body.productId, "productId"),
-    groupId: body.groupId === undefined && existing ? existing.groupId : assertObjectId(body.groupId, "groupId"),
-    optionId: body.optionId === undefined && existing ? existing.optionId : assertObjectId(body.optionId || body.id, "optionId"),
-    extraPriceHalala: normalizeNullableNonNegativeInteger(body.extraPriceHalala, "extraPriceHalala", existing ? existing.extraPriceHalala : null),
-    extraWeightUnitGrams: normalizeNullableNonNegativeInteger(body.extraWeightUnitGrams, "extraWeightUnitGrams", existing ? existing.extraWeightUnitGrams : null),
-    extraWeightPriceHalala: normalizeNullableNonNegativeInteger(body.extraWeightPriceHalala, "extraWeightPriceHalala", existing ? existing.extraWeightPriceHalala : null),
-    isActive: normalizeBoolean(body.isActive, "isActive", existing ? existing.isActive : true),
-    isVisible: normalizeBoolean(body.isVisible, "isVisible", existing ? truthyByDefault(existing.isVisible) : true),
-    isAvailable: normalizeBoolean(body.isAvailable, "isAvailable", existing ? truthyByDefault(existing.isAvailable) : true),
-    sortOrder: normalizeNonNegativeInteger(body.sortOrder, "sortOrder", existing ? existing.sortOrder : 0),
-  };
+function normalizeProductGroupOptionRelationPayload(body, existing) {
+  return menuCatalogAdminService.normalizeProductGroupOptionRelationPayload(body, existing);
 }
 
-function changeAction(payload, fallback = "update") {
-  if (Object.prototype.hasOwnProperty.call(payload, "isVisible")) return "visibility_changed";
-  if (Object.prototype.hasOwnProperty.call(payload, "isAvailable")) return "availability_changed";
-  if (
-    Object.prototype.hasOwnProperty.call(payload, "priceHalala")
-    || Object.prototype.hasOwnProperty.call(payload, "extraPriceHalala")
-    || Object.prototype.hasOwnProperty.call(payload, "extraWeightUnitGrams")
-    || Object.prototype.hasOwnProperty.call(payload, "extraWeightPriceHalala")
-  ) return "price_changed";
-  return fallback;
+function changeAction(payload, fallback) {
+  return menuCatalogAdminService.changeAction(payload, fallback);
 }
 
 async function createEntity(Model, payload, { entityType, actor }) {
