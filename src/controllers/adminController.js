@@ -1126,20 +1126,82 @@ function buildSubscriptionSummariesFromCatalog(subscription, catalog) {
     addonById.set(key, current);
   }
 
-  return {
-    premiumSummary: [],
-    addonsSummary: Array.from(addonById.values()).map((row) => ({
+  const legacyAddonsSummary = Array.from(addonById.values()).map((row) => ({
+    addonId: row.addonId,
+    name: addonNames.get(row.addonId) || "",
+    consumedQtyTotal: row.consumedQtyTotal,
+    minUnitPriceHalala: row.minUnitPriceHalala || 0,
+    maxUnitPriceHalala: row.maxUnitPriceHalala || 0,
+  }));
+
+  const legacyPremiumSummary = Array.isArray(subscription && subscription.premiumSummary) ? subscription.premiumSummary : [];
+  const premiumTotal = Number(subscription && subscription.premiumRemaining !== undefined ? subscription.premiumRemaining : (subscription && subscription.premiumBalance ? subscription.premiumBalance.reduce((acc, row) => acc + (row.remainingQty || 0), 0) : 0));
+  const premiumConsumed = legacyPremiumSummary.length > 0
+    ? legacyPremiumSummary.reduce((acc, item) => acc + Number(item.consumedQtyTotal || 0), 0)
+    : (subscription && subscription.premiumBalance ? subscription.premiumBalance.reduce((acc, row) => acc + Math.max(0, (row.purchasedQty || 0) - (row.remainingQty || 0)), 0) : 0);
+
+  const totalMeals = Number(subscription && subscription.totalMeals !== undefined ? subscription.totalMeals : 0);
+  const remainingMeals = Number(subscription && subscription.remainingMeals !== undefined ? subscription.remainingMeals : 0);
+
+  const balances = {
+    regularMeals: {
+      total: totalMeals,
+      remaining: remainingMeals,
+      consumed: Math.max(0, totalMeals - remainingMeals),
+    },
+    premiumMeals: {
+      total: premiumTotal + premiumConsumed,
+      remaining: premiumTotal,
+      consumed: premiumConsumed,
+    },
+    addons: legacyAddonsSummary.map(row => ({
       addonId: row.addonId,
-      name: addonNames.get(row.addonId) || "",
-      consumedQtyTotal: row.consumedQtyTotal,
-      minUnitPriceHalala: row.minUnitPriceHalala || 0,
-      maxUnitPriceHalala: row.maxUnitPriceHalala || 0,
+      name: { ar: row.name, en: row.name },
+      total: row.consumedQtyTotal,
+      remaining: 0,
+      consumed: row.consumedQtyTotal,
     })),
+  };
+
+  const premiumFulfillmentSummary = {
+    total: premiumTotal + premiumConsumed,
+    remaining: premiumTotal,
+    consumed: premiumConsumed,
+    items: legacyPremiumSummary,
+  };
+
+  const addonsFulfillmentSummary = {
+    total: legacyAddonsSummary.reduce((acc, r) => acc + r.consumedQtyTotal, 0),
+    remaining: 0,
+    consumed: legacyAddonsSummary.reduce((acc, r) => acc + r.consumedQtyTotal, 0),
+    items: legacyAddonsSummary,
+  };
+
+  const status = subscription && subscription.status ? subscription.status : "pending";
+  const allowedActions = {
+    cancel: status === "active" || status === "pending",
+    extend: status === "active",
+    freeze: status === "active",
+    unfreeze: status === "frozen",
+    skipDay: status === "active",
+    unskipDay: status === "active",
+    updateDelivery: status === "active" || status === "pending",
+    editBalances: status === "active" || status === "pending",
+  };
+
+  return {
+    premiumSummary: legacyPremiumSummary,
+    addonsSummary: legacyAddonsSummary,
+    premiumFulfillmentSummary,
+    addonsFulfillmentSummary,
+    balances,
+    allowedActions,
+    premiumRemaining: premiumTotal,
   };
 }
 
 function serializeSubscriptionForClientFromCatalog(subscription, catalog, contractReadView = null) {
-  const { premiumSummary, addonsSummary } = buildSubscriptionSummariesFromCatalog(subscription, catalog);
+  const { premiumSummary, addonsSummary, premiumFulfillmentSummary, addonsFulfillmentSummary, balances, allowedActions, premiumRemaining } = buildSubscriptionSummariesFromCatalog(subscription, catalog);
   const planNames = catalog && catalog.planNames instanceof Map ? catalog.planNames : new Map();
   const deliverySlot = subscription.deliverySlot && typeof subscription.deliverySlot === "object"
     ? subscription.deliverySlot
@@ -1178,8 +1240,13 @@ function serializeSubscriptionForClientFromCatalog(subscription, catalog, contra
     planName,
     deliveryAddress: subscription.deliveryAddress || null,
     deliverySlot,
+    premiumRemaining,
     premiumSummary,
     addonsSummary,
+    premiumFulfillmentSummary,
+    addonsFulfillmentSummary,
+    balances,
+    allowedActions,
     pricingSummary: buildSubscriptionPricingSummary(subscription),
     contract: contractView.contract,
   };
@@ -2877,6 +2944,113 @@ function normalizeDeliveryWindowsOrThrow(windows) {
   return normalized;
 }
 
+function normalizeWeeklyScheduleOrThrow(schedule) {
+  if (schedule === undefined || schedule === null) {
+    return [];
+  }
+  let parsed = schedule;
+  if (typeof parsed === "string") {
+    try {
+      parsed = JSON.parse(parsed);
+    } catch (err) {
+      throw createControlledError(400, "INVALID", "Invalid weekly schedule JSON format");
+    }
+  }
+  if (!parsed || typeof parsed !== "object") {
+    throw createControlledError(400, "INVALID", "Invalid weekly schedule format");
+  }
+
+  let rows = [];
+  if (Array.isArray(parsed)) {
+    rows = parsed;
+  } else {
+    const dayMap = {
+      sunday: 0, 0: 0,
+      monday: 1, 1: 1,
+      tuesday: 2, 2: 2,
+      wednesday: 3, 3: 3,
+      thursday: 4, 4: 4,
+      friday: 5, 5: 5,
+      saturday: 6, 6: 6,
+    };
+    for (const [key, value] of Object.entries(parsed)) {
+      const normalizedKey = String(key).trim().toLowerCase();
+      const dayOfWeek = dayMap[normalizedKey];
+      if (dayOfWeek === undefined) {
+        throw createControlledError(400, "INVALID", `Invalid weekly schedule day key: ${key}`);
+      }
+      if (value && typeof value === "object") {
+        const isClosed = value.isClosed !== undefined ? Boolean(value.isClosed) : value.isOpen !== undefined ? !value.isOpen : false;
+        let openTime = "00:00";
+        let closeTime = "23:59";
+        if (value.openTime) openTime = value.openTime;
+        else if (value.restaurant_open_time) openTime = value.restaurant_open_time;
+        else if (value.opensAt) openTime = value.opensAt;
+        else if (value.from) openTime = value.from;
+        else if (Array.isArray(value.slots) && value.slots.length > 0 && value.slots[0]) {
+          openTime = value.slots[0].openTime || value.slots[0].from || openTime;
+          closeTime = value.slots[0].closeTime || value.slots[0].to || closeTime;
+        }
+        if (value.closeTime) closeTime = value.closeTime;
+        else if (value.restaurant_close_time) closeTime = value.restaurant_close_time;
+        else if (value.closesAt) closeTime = value.closesAt;
+        else if (value.to) closeTime = value.to;
+
+        rows.push({
+          dayOfWeek,
+          isClosed,
+          openTime,
+          closeTime,
+        });
+      }
+    }
+  }
+
+  return rows.map((row) => {
+    if (!row || typeof row !== "object") {
+      throw createControlledError(400, "INVALID", "Invalid weekly schedule row");
+    }
+    const dayOfWeek = Number(row.dayOfWeek ?? row.weekday ?? row.day);
+    if (!Number.isInteger(dayOfWeek) || dayOfWeek < 0 || dayOfWeek > 7) {
+      throw createControlledError(400, "INVALID", "Invalid dayOfWeek in weekly schedule row");
+    }
+    const openTime = row.openTime || row.restaurant_open_time || row.opensAt || row.from || "00:00";
+    const closeTime = row.closeTime || row.restaurant_close_time || row.closesAt || row.to || "23:59";
+    if (!/^\d{2}:\d{2}$/.test(openTime) || !/^\d{2}:\d{2}$/.test(closeTime)) {
+      throw createControlledError(400, "INVALID", "Invalid time format in weekly schedule row, expected HH:mm");
+    }
+    return {
+      dayOfWeek: dayOfWeek === 7 ? 0 : dayOfWeek,
+      isClosed: row.isClosed !== undefined ? Boolean(row.isClosed) : row.closed !== undefined ? Boolean(row.closed) : row.isOpen !== undefined ? !row.isOpen : false,
+      openTime,
+      closeTime,
+    };
+  });
+}
+
+function normalizeTemporaryClosureOrThrow(closure) {
+  if (closure === undefined || closure === null) {
+    return null;
+  }
+  let parsed = closure;
+  if (typeof parsed === "string") {
+    if (parsed.trim() === "") return null;
+    if (parsed.trim() === "true") return { isActive: true };
+    if (parsed.trim() === "false") return { isActive: false };
+    try {
+      parsed = JSON.parse(parsed);
+    } catch (err) {
+      throw createControlledError(400, "INVALID", "Invalid temporary closure JSON format");
+    }
+  }
+  if (parsed === true) return { isActive: true };
+  if (parsed === false) return { isActive: false };
+  if (parsed && typeof parsed === "object") {
+    return { isActive: Boolean(parsed.isActive) };
+  }
+  return null;
+}
+
 function normalizeSkipAllowanceOrThrow(rawValue) {
   if (rawValue === undefined) {
     throw createControlledError(400, "INVALID", "Missing skipAllowance");
@@ -3290,6 +3464,8 @@ async function getRestaurantHours(req, res) {
     ]);
     const openTime = restaurantHours.openTime || "00:00";
     const closeTime = restaurantHours.closeTime || "23:59";
+    const weeklyScheduleValue = weeklyScheduleSetting && weeklyScheduleSetting.value ? weeklyScheduleSetting.value : null;
+    const temporaryClosureValue = temporaryClosureSetting && temporaryClosureSetting.value ? temporaryClosureSetting.value : null;
 
     return res.status(200).json({
       status: true,
@@ -3298,10 +3474,12 @@ async function getRestaurantHours(req, res) {
         restaurant_open_time: openTime,
         restaurant_close_time: closeTime,
         restaurant_is_open: isOpenSetting ? Boolean(isOpenSetting.value) : true,
-        restaurant_hours: weeklyScheduleSetting && weeklyScheduleSetting.value ? weeklyScheduleSetting.value : null,
+        restaurant_hours: weeklyScheduleValue,
+        weekly_schedule: weeklyScheduleValue,
         delivery_windows: deliveryWindowsSetting && Array.isArray(deliveryWindowsSetting.value) ? deliveryWindowsSetting.value : [],
         cutoff_time: cutoffSetting && cutoffSetting.value ? String(cutoffSetting.value) : null,
-        temporary_closure: temporaryClosureSetting && temporaryClosureSetting.value ? temporaryClosureSetting.value : null,
+        temporary_closure: temporaryClosureValue,
+        temporaryClosure: temporaryClosureValue,
         isOpenNow: Boolean(restaurantHours.isOpenNow),
       },
     });
@@ -3327,21 +3505,29 @@ async function updateRestaurantHours(req, res) {
     }
 
     await persistNormalizedSettings(normalized);
-    if (body.isOpen !== undefined || body.restaurant_is_open !== undefined) {
-      await persistSettingValue("restaurant_is_open", body.isOpen !== undefined ? Boolean(body.isOpen) : Boolean(body.restaurant_is_open));
+    let restaurantIsOpen = body.isOpen !== undefined ? Boolean(body.isOpen) : body.restaurant_is_open !== undefined ? Boolean(body.restaurant_is_open) : undefined;
+    if (restaurantIsOpen !== undefined) {
+      await persistSettingValue("restaurant_is_open", restaurantIsOpen);
     }
-    if (body.weeklySchedule !== undefined || body.weekly_schedule !== undefined) {
-      await persistSettingValue("restaurant_hours", body.weeklySchedule || body.weekly_schedule || []);
+
+    let weeklyScheduleValue = undefined;
+    if (body.restaurant_hours !== undefined || body.weeklySchedule !== undefined || body.weekly_schedule !== undefined) {
+      weeklyScheduleValue = normalizeWeeklyScheduleOrThrow(body.restaurant_hours ?? body.weeklySchedule ?? body.weekly_schedule);
+      await persistSettingValue("restaurant_hours", weeklyScheduleValue);
     }
+
+    let temporaryClosureValue = undefined;
     if (body.temporaryClosure !== undefined || body.temporary_closure !== undefined) {
-      await persistSettingValue("temporary_closure", body.temporaryClosure || body.temporary_closure || null);
+      temporaryClosureValue = normalizeTemporaryClosureOrThrow(body.temporaryClosure ?? body.temporary_closure);
+      await persistSettingValue("temporary_closure", temporaryClosureValue);
     }
+
     await writeSettingsActivityLogSafely(req, {
       ...normalized,
-      ...(body.isOpen !== undefined || body.restaurant_is_open !== undefined
-        ? { restaurant_is_open: body.isOpen !== undefined ? Boolean(body.isOpen) : Boolean(body.restaurant_is_open) }
-        : {}),
+      ...(restaurantIsOpen !== undefined ? { restaurant_is_open: restaurantIsOpen } : {}),
     }, { setting: "restaurant_hours" });
+
+    const restaurantHours = await getRestaurantHoursSettings();
 
     return res.status(200).json({
       status: true,
@@ -3349,9 +3535,14 @@ async function updateRestaurantHours(req, res) {
         timezone: "Asia/Riyadh",
         restaurant_open_time: restaurantOpenTime,
         restaurant_close_time: restaurantCloseTime,
-        restaurant_is_open: body.isOpen !== undefined ? Boolean(body.isOpen) : body.restaurant_is_open !== undefined ? Boolean(body.restaurant_is_open) : undefined,
+        restaurant_is_open: restaurantIsOpen,
+        restaurant_hours: weeklyScheduleValue,
+        weekly_schedule: weeklyScheduleValue,
         delivery_windows: normalized.delivery_windows,
         cutoff_time: normalized.cutoff_time,
+        temporary_closure: temporaryClosureValue,
+        temporaryClosure: temporaryClosureValue,
+        isOpenNow: Boolean(restaurantHours.isOpenNow),
       },
     });
   } catch (err) {

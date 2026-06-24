@@ -488,6 +488,7 @@ async function getSubscriptionAudit(req, res) {
   };
 
   const auditStatus = Object.values(invariants).every((v) => v === true) ? "ok" : "mismatch";
+  const severity = auditStatus === "mismatch" ? "high" : "info";
 
   return res.status(200).json({
     status: true,
@@ -505,6 +506,7 @@ async function getSubscriptionAudit(req, res) {
       invariants,
       warnings,
       auditStatus,
+      severity,
     },
   });
 }

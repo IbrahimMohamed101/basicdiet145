@@ -709,12 +709,15 @@ async function main() {
       subscriptionId: ctx.subscription._id,
       date: "2026-05-10",
       status: "open",
-      materializedMeals: [{
-        slotKey: "slot_1",
-        selectionType: "standard_meal",
-        operationalSku: "dashboard-test-meal",
-      }],
-      mealSlots: [{ slotIndex: 1, slotKey: "slot_1", status: "complete" }],
+      plannerState: "confirmed",
+      materializedMeals: [
+        { slotKey: "slot_1", selectionType: "standard_meal", operationalSku: "dashboard-test-meal-1" },
+        { slotKey: "slot_2", selectionType: "standard_meal", operationalSku: "dashboard-test-meal-2" },
+      ],
+      mealSlots: [
+        { slotIndex: 1, slotKey: "slot_1", status: "complete" },
+        { slotIndex: 2, slotKey: "slot_2", status: "complete" },
+      ],
     });
 
     res = await api.get("/api/dashboard/kitchen/queue?date=2026-05-10&method=delivery&view=legacy").set(kitchenHeaders);
@@ -744,9 +747,17 @@ async function main() {
     assert.strictEqual(res.body.data.status, "in_preparation");
     assert.deepStrictEqual(
       res.body.data.allowedActions.map((action) => action.id),
-      ["dispatch", "cancel"]
+      ["ready_for_delivery", "cancel"]
     );
     assert(!res.body.data.allowedActions.some((action) => action.id === "set_ready"));
+
+    res = await api.post("/api/dashboard/kitchen/actions/ready_for_delivery?view=legacy").set(kitchenHeaders).send({
+      entityId: String(deliveryDay._id),
+      entityType: "subscription_day",
+      payload: { reason: "ready for delivery" },
+    });
+    expectStatus(res, 200, "kitchen ready for delivery day");
+    assert.strictEqual(res.body.data.status, "ready_for_delivery");
 
     res = await api.post("/api/dashboard/courier/actions/dispatch?view=legacy").set(courierHeaders).send({
       entityId: String(deliveryDay._id),
@@ -778,13 +789,16 @@ async function main() {
     const deliveryCancelDay = await SubscriptionDay.create({
       subscriptionId: ctx.subscription._id,
       date: "2026-05-11",
-      status: "in_preparation",
-      materializedMeals: [{
-        slotKey: "slot_1",
-        selectionType: "standard_meal",
-        operationalSku: "dashboard-test-cancel-meal",
-      }],
-      mealSlots: [{ slotIndex: 1, slotKey: "slot_1", status: "complete" }],
+      status: "ready_for_delivery",
+      plannerState: "confirmed",
+      materializedMeals: [
+        { slotKey: "slot_1", selectionType: "standard_meal", operationalSku: "dashboard-test-cancel-meal-1" },
+        { slotKey: "slot_2", selectionType: "standard_meal", operationalSku: "dashboard-test-cancel-meal-2" },
+      ],
+      mealSlots: [
+        { slotIndex: 1, slotKey: "slot_1", status: "complete" },
+        { slotIndex: 2, slotKey: "slot_2", status: "complete" },
+      ],
     });
     res = await api.post("/api/dashboard/courier/actions/dispatch?view=legacy").set(courierHeaders).send({
       entityId: String(deliveryCancelDay._id),
@@ -819,26 +833,29 @@ async function main() {
       subscriptionId: pickupSubscription._id,
       date: "2026-05-10",
       status: "open",
+      plannerState: "confirmed",
       pickupRequested: true,
       pickupRequestedAt: new Date(),
-      materializedMeals: [{
-        slotKey: "slot_1",
-        selectionType: "standard_meal",
-        operationalSku: "dashboard-test-pickup-meal",
-      }],
-      mealSlots: [{ slotIndex: 1, slotKey: "slot_1", status: "complete" }],
+      materializedMeals: [
+        { slotKey: "slot_1", selectionType: "standard_meal", operationalSku: "dashboard-test-pickup-meal-1" },
+        { slotKey: "slot_2", selectionType: "standard_meal", operationalSku: "dashboard-test-pickup-meal-2" },
+      ],
+      mealSlots: [
+        { slotIndex: 1, slotKey: "slot_1", status: "complete" },
+        { slotIndex: 2, slotKey: "slot_2", status: "complete" },
+      ],
     });
     const pickupRequest = await SubscriptionPickupRequest.create({
       subscriptionId: pickupSubscription._id,
       subscriptionDayId: pickupDay._id,
       userId: ctx.user._id,
       date: "2026-05-10",
-      mealCount: 1,
+      mealCount: 2,
       status: "locked",
       creditsReserved: true,
     });
 
-    res = await api.post("/api/dashboard/kitchen/actions/prepare?view=legacy").set(kitchenHeaders).send({
+    res = await api.post("/api/dashboard/kitchen/actions/start_preparation?view=legacy").set(kitchenHeaders).send({
       entityId: String(pickupRequest._id),
       entityType: "subscription_pickup_request",
       payload: { reason: "prepare pickup" },
@@ -868,8 +885,17 @@ async function main() {
       subscriptionId: pickupSubscription._id,
       date: "2026-05-11",
       status: "ready_for_pickup",
+      plannerState: "confirmed",
       pickupRequested: true,
       pickupPreparedAt: new Date(),
+      materializedMeals: [
+        { slotKey: "slot_1", selectionType: "standard_meal", operationalSku: "dashboard-test-pickup-meal-1" },
+        { slotKey: "slot_2", selectionType: "standard_meal", operationalSku: "dashboard-test-pickup-meal-2" },
+      ],
+      mealSlots: [
+        { slotIndex: 1, slotKey: "slot_1", status: "complete" },
+        { slotIndex: 2, slotKey: "slot_2", status: "complete" },
+      ],
     });
     res = await api.post("/api/dashboard/pickup/actions/cancel?view=legacy").set(adminHeaders).send({
       entityId: String(canceledPickupDay._id),
