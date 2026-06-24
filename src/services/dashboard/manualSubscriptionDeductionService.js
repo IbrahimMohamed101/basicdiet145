@@ -8,69 +8,17 @@ const ActivityLog = require("../../models/ActivityLog");
 const { pickLang } = require("../../utils/i18n");
 const { getRestaurantBusinessDate } = require("../restaurantHoursService");
 const { runMongoTransactionWithRetry } = require("../mongoTransactionRetryService");
-
-const MANUAL_DEDUCTION_ACTION = "manual_subscription_meal_deduction";
-const ACTIVE_STATUS = "active";
-
-class ManualDeductionError extends Error {
-  constructor(code, message, status = 400, details = undefined) {
-    super(message || code);
-    this.code = code;
-    this.status = status;
-    this.details = details;
-  }
-}
-
-function assertCashierOrAdminRole(role) {
-  if (!["admin", "superadmin", "cashier"].includes(String(role || ""))) {
-    throw new ManualDeductionError("FORBIDDEN", "Dashboard admin or cashier permission is required", 403);
-  }
-}
-
-function normalizeCount(value) {
-  if (value === undefined || value === null || value === "") return 0;
-  const numeric = Number(value);
-  if (!Number.isInteger(numeric)) return NaN;
-  return numeric;
-}
-
-function resolvePremiumRemaining(subscription) {
-  return (Array.isArray(subscription && subscription.premiumBalance) ? subscription.premiumBalance : [])
-    .reduce((sum, row) => sum + Math.max(0, Math.floor(Number(row && row.remainingQty) || 0)), 0);
-}
-
-function resolveBalances(subscription) {
-  const totalMeals = Math.max(0, Math.floor(Number(subscription && subscription.totalMeals) || 0));
-  const remainingMeals = Math.max(0, Math.floor(Number(subscription && subscription.remainingMeals) || 0));
-  const remainingPremiumMeals = resolvePremiumRemaining(subscription);
-  const remainingRegularMeals = Math.max(0, remainingMeals - remainingPremiumMeals);
-  return {
-    totalMeals,
-    consumedMeals: Math.max(0, totalMeals - remainingMeals),
-    remainingMeals,
-    remainingRegularMeals,
-    remainingPremiumMeals,
-  };
-}
-
-function resolveAddonBalances(subscription) {
-  if (!subscription || !Array.isArray(subscription.addonBalance)) return [];
-  const entitlements = Array.isArray(subscription.addonSubscriptions) ? subscription.addonSubscriptions : [];
-
-  return subscription.addonBalance.map(row => {
-    const entitlement = entitlements.find(e => String(e.addonId) === String(row.addonId));
-    const name = entitlement ? (entitlement.name || entitlement.addonPlanName || "") : "";
-    const remainingQty = Math.max(0, Math.floor(Number(row.remainingQty) || 0));
-    const totalQty = Math.max(0, Math.floor(Number(row.purchasedQty) || 0));
-    return {
-      addonId: String(row.addonId),
-      name,
-      remainingQty,
-      totalQty,
-      consumedQty: Math.max(0, totalQty - remainingQty),
-    };
-  });
-}
+const { ACTIVE_STATUS, MANUAL_DEDUCTION_ACTION } = require("./manualDeduction/constants");
+const { ManualDeductionError, assertCashierOrAdminRole } = require("./manualDeduction/ManualDeductionError");
+const {
+  buildPremiumAllocation,
+  chooseDefaultSubscription,
+  resolveAddonBalances,
+  resolveBalances,
+  validateBalances,
+  validateCounts,
+  validateSubscriptionCanDeduct,
+} = require("./manualDeduction/manualDeductionPolicy");
 
 function serializeCustomer(user) {
   return {
@@ -121,16 +69,6 @@ async function buildTodaySummary(subscription, businessDate) {
   };
 }
 
-function chooseDefaultSubscription(subscriptions, businessDate) {
-  const current = subscriptions.find((sub) => {
-    const start = sub.startDate ? String(sub.startDate.toISOString()).slice(0, 10) : null;
-    const endDate = sub.validityEndDate || sub.endDate || null;
-    const end = endDate ? String(endDate.toISOString()).slice(0, 10) : null;
-    return (!start || start <= businessDate) && (!end || end >= businessDate);
-  });
-  return current || subscriptions[0] || null;
-}
-
 async function searchByPhone({ phone, role, lang = "en" }) {
   assertCashierOrAdminRole(role);
   const normalizedPhone = String(phone || "").trim();
@@ -167,107 +105,11 @@ async function searchByPhone({ phone, role, lang = "en" }) {
   };
 }
 
-function validateCounts({ regularMeals, premiumMeals, addons }) {
-  const regular = normalizeCount(regularMeals);
-  const premium = normalizeCount(premiumMeals);
-
-  let validAddons = [];
-  let addonsTotal = 0;
-  if (addons && Array.isArray(addons)) {
-    validAddons = addons.map(a => {
-      const qty = normalizeCount(a.qty);
-      if (!a.addonId || qty < 0) {
-        throw new ManualDeductionError("INVALID_ADDON_COUNT", "Invalid addon count or missing addonId", 400);
-      }
-      addonsTotal += qty;
-      return { addonId: String(a.addonId), qty };
-    }).filter(a => a.qty > 0);
-  }
-
-  if (
-    !Number.isInteger(regular)
-    || !Number.isInteger(premium)
-    || regular < 0
-    || premium < 0
-    || (regular + premium + addonsTotal) <= 0
-  ) {
-    throw new ManualDeductionError("INVALID_MEAL_COUNT", "Invalid meal or addon count", 400);
-  }
-  return { regularMeals: regular, premiumMeals: premium, total: regular + premium, addons: validAddons };
-}
-
-function validateSubscriptionCanDeduct(subscription) {
-  if (!subscription) {
-    throw new ManualDeductionError("SUBSCRIPTION_NOT_FOUND", "Subscription not found", 404);
-  }
-  if (subscription.status !== ACTIVE_STATUS) {
-    throw new ManualDeductionError("SUBSCRIPTION_NOT_ACTIVE", "Subscription is not active", 409);
-  }
-}
-
 async function validateSubscriptionCustomerExists(subscription, session) {
   const customer = await User.exists({ _id: subscription.userId }).session(session);
   if (!customer) {
     throw new ManualDeductionError("CUSTOMER_NOT_FOUND", "Customer not found", 404);
   }
-}
-
-function validateBalances(subscription, counts) {
-  const balances = resolveBalances(subscription);
-  if (counts.total > balances.remainingMeals) {
-    throw new ManualDeductionError("INSUFFICIENT_REMAINING_MEALS", "Not enough remaining meals", 409);
-  }
-  if (counts.regularMeals > balances.remainingRegularMeals) {
-    throw new ManualDeductionError("INSUFFICIENT_REGULAR_MEALS", "Not enough regular meals", 409);
-  }
-  if (counts.premiumMeals > balances.remainingPremiumMeals) {
-    throw new ManualDeductionError("INSUFFICIENT_PREMIUM_MEALS", "Not enough premium meals", 409);
-  }
-
-  const addonBalances = resolveAddonBalances(subscription);
-  const beforeAddons = [];
-  for (const addonReq of counts.addons) {
-    const balance = addonBalances.find(b => String(b.addonId) === String(addonReq.addonId));
-    if (!balance) {
-      throw new ManualDeductionError("UNKNOWN_ADDON", `Unknown addon: ${addonReq.addonId}`, 404);
-    }
-    if (addonReq.qty > balance.remainingQty) {
-      throw new ManualDeductionError("INSUFFICIENT_ADDON_BALANCE", `Not enough balance for addon: ${addonReq.addonId}`, 409);
-    }
-    beforeAddons.push({
-      addonId: addonReq.addonId,
-      qty: addonReq.qty,
-      remainingBefore: balance.remainingQty
-    });
-  }
-
-  return { ...balances, beforeAddons };
-}
-
-function buildPremiumAllocation(subscription, premiumMeals) {
-  let remaining = premiumMeals;
-  const rows = (Array.isArray(subscription.premiumBalance) ? subscription.premiumBalance : [])
-    .filter((row) => row && row._id && Number(row.remainingQty || 0) > 0)
-    .sort((a, b) => {
-      const dateA = a.purchasedAt ? new Date(a.purchasedAt).getTime() : 0;
-      const dateB = b.purchasedAt ? new Date(b.purchasedAt).getTime() : 0;
-      if (dateA !== dateB) return dateA - dateB;
-      return String(a._id).localeCompare(String(b._id));
-    });
-
-  const allocations = [];
-  for (const row of rows) {
-    if (remaining <= 0) break;
-    const qty = Math.min(remaining, Math.max(0, Math.floor(Number(row.remainingQty) || 0)));
-    if (qty > 0) {
-      allocations.push({ rowId: row._id, qty });
-      remaining -= qty;
-    }
-  }
-  if (remaining > 0) {
-    throw new ManualDeductionError("INSUFFICIENT_PREMIUM_MEALS", "Not enough premium meals", 409);
-  }
-  return allocations;
 }
 
 async function deductAtomically({ subscription, counts, session }) {
