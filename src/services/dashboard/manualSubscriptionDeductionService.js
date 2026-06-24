@@ -1,16 +1,10 @@
 "use strict";
 
-const mongoose = require("mongoose");
-const User = require("../../models/User");
-const Plan = require("../../models/Plan");
-const Subscription = require("../../models/Subscription");
-const ActivityLog = require("../../models/ActivityLog");
 const { getRestaurantBusinessDate } = require("../restaurantHoursService");
 const { runMongoTransactionWithRetry } = require("../mongoTransactionRetryService");
-const { ACTIVE_STATUS, MANUAL_DEDUCTION_ACTION } = require("./manualDeduction/constants");
+const { MANUAL_DEDUCTION_ACTION } = require("./manualDeduction/constants");
 const { ManualDeductionError, assertCashierOrAdminRole } = require("./manualDeduction/ManualDeductionError");
 const {
-  buildPremiumAllocation,
   chooseDefaultSubscription,
   resolveAddonBalances,
   resolveBalances,
@@ -25,19 +19,10 @@ const {
   serializeManualDeductionLog,
   serializeSubscription,
 } = require("./manualDeduction/manualDeductionPresenter");
+const manualDeductionRepository = require("./manualDeduction/manualDeductionRepository");
 
 async function findLastManualDeduction(subscriptionId, businessDate = null, session = null) {
-  const query = {
-    entityType: "subscription",
-    entityId: subscriptionId,
-    action: MANUAL_DEDUCTION_ACTION,
-  };
-  if (businessDate) {
-    query["meta.businessDate"] = businessDate;
-  }
-  let cursor = ActivityLog.findOne(query).sort({ createdAt: -1 });
-  if (session) cursor = cursor.session(session);
-  return cursor.lean();
+  return manualDeductionRepository.findLastManualDeduction(subscriptionId, businessDate, session);
 }
 
 async function buildTodaySummary(subscription, businessDate) {
@@ -57,15 +42,12 @@ async function searchByPhone({ phone, role, lang = "en" }) {
     throw new ManualDeductionError("CUSTOMER_NOT_FOUND", "Customer not found", 404);
   }
 
-  const user = await User.findOne({ phone: normalizedPhone }).lean();
+  const user = await manualDeductionRepository.findUserByPhone(normalizedPhone);
   if (!user) {
     throw new ManualDeductionError("CUSTOMER_NOT_FOUND", "Customer not found", 404);
   }
 
-  const activeSubscriptions = await Subscription.find({
-    userId: user._id,
-    status: ACTIVE_STATUS,
-  }).sort({ createdAt: -1 }).lean();
+  const activeSubscriptions = await manualDeductionRepository.findActiveSubscriptionsByUserId(user._id);
 
   if (!activeSubscriptions.length) {
     throw new ManualDeductionError("SUBSCRIPTION_NOT_FOUND", "Active subscription not found", 404);
@@ -74,7 +56,7 @@ async function searchByPhone({ phone, role, lang = "en" }) {
   const businessDate = await getRestaurantBusinessDate();
   const defaultSubscription = chooseDefaultSubscription(activeSubscriptions, businessDate);
   const planIds = [...new Set(activeSubscriptions.map((sub) => String(sub.planId)).filter(Boolean))];
-  const plans = await Plan.find({ _id: { $in: planIds } }).lean();
+  const plans = await manualDeductionRepository.findPlansByIds(planIds);
   const planMap = new Map(plans.map((plan) => [String(plan._id), plan]));
   const today = await buildTodaySummary(defaultSubscription, businessDate);
 
@@ -87,80 +69,14 @@ async function searchByPhone({ phone, role, lang = "en" }) {
 }
 
 async function validateSubscriptionCustomerExists(subscription, session) {
-  const customer = await User.exists({ _id: subscription.userId }).session(session);
+  const customer = await manualDeductionRepository.customerExists(subscription.userId, session);
   if (!customer) {
     throw new ManualDeductionError("CUSTOMER_NOT_FOUND", "Customer not found", 404);
   }
 }
 
 async function deductAtomically({ subscription, counts, session }) {
-  const allocations = buildPremiumAllocation(subscription, counts.premiumMeals);
-  const filter = {
-    _id: subscription._id,
-    status: ACTIVE_STATUS,
-    remainingMeals: { $gte: counts.total },
-  };
-  
-  const andClauses = [];
-  if (allocations.length) {
-    andClauses.push(...allocations.map((allocation) => ({
-      premiumBalance: {
-        $elemMatch: {
-          _id: allocation.rowId,
-          remainingQty: { $gte: allocation.qty },
-        },
-      },
-    })));
-  }
-
-  if (counts.addons && counts.addons.length > 0) {
-    andClauses.push(...counts.addons.map((addonReq) => ({
-      addonBalance: {
-        $elemMatch: {
-          addonId: new mongoose.Types.ObjectId(addonReq.addonId),
-          remainingQty: { $gte: addonReq.qty },
-        },
-      },
-    })));
-  }
-
-  if (andClauses.length > 0) {
-    filter.$and = andClauses;
-  }
-
-  const update = {};
-  if (counts.total > 0) {
-    update.$inc = { remainingMeals: -counts.total };
-  }
-  
-  const options = { new: true, session };
-  const arrayFilters = [];
-  
-  if (allocations.length) {
-    if (!update.$inc) update.$inc = {};
-    allocations.forEach((allocation, index) => {
-      update.$inc[`premiumBalance.$[p${index}].remainingQty`] = -allocation.qty;
-      arrayFilters.push({ [`p${index}._id`]: allocation.rowId });
-    });
-  }
-
-  if (counts.addons && counts.addons.length > 0) {
-    if (!update.$inc) update.$inc = {};
-    counts.addons.forEach((addonReq, index) => {
-      update.$inc[`addonBalance.$[a${index}].remainingQty`] = -addonReq.qty;
-      arrayFilters.push({ [`a${index}.addonId`]: new mongoose.Types.ObjectId(addonReq.addonId) });
-    });
-  }
-
-  if (arrayFilters.length > 0) {
-    options.arrayFilters = arrayFilters;
-  }
-
-  const updated = await Subscription.findOneAndUpdate(filter, update, options);
-  if (!updated) {
-    throw new ManualDeductionError("INSUFFICIENT_REMAINING_MEALS", "Subscription balance changed; not enough remaining balance", 409);
-  }
-  return updated;
+  return manualDeductionRepository.deductAtomically({ subscription, counts, session });
 }
 
 async function ensureNoDeliveryDeductionToday(subscription, businessDate, session) {
@@ -173,12 +89,12 @@ async function ensureNoDeliveryDeductionToday(subscription, businessDate, sessio
 
 async function createDeductionLog({ subscription, counts, before, after, actorId, actorRole, reason, notes, businessDate, session }) {
   const log = buildDeductionLog({ subscription, counts, before, after, actorId, actorRole, reason, notes, businessDate });
-  await ActivityLog.create([log], { session });
+  await manualDeductionRepository.createDeductionLog(log, session);
 }
 
 async function manualDeduction({ subscriptionId, body, actorId, actorRole }) {
   assertCashierOrAdminRole(actorRole);
-  if (!mongoose.Types.ObjectId.isValid(subscriptionId)) {
+  if (!manualDeductionRepository.isValidObjectId(subscriptionId)) {
     throw new ManualDeductionError("SUBSCRIPTION_NOT_FOUND", "Subscription not found", 404);
   }
 
@@ -187,7 +103,7 @@ async function manualDeduction({ subscriptionId, body, actorId, actorRole }) {
 
   try {
     return await runMongoTransactionWithRetry(async (session) => {
-      const subscription = await Subscription.findById(subscriptionId).session(session);
+      const subscription = await manualDeductionRepository.findSubscriptionById(subscriptionId, session);
       validateSubscriptionCanDeduct(subscription);
       await validateSubscriptionCustomerExists(subscription, session);
       await ensureNoDeliveryDeductionToday(subscription, businessDate, session);
@@ -230,16 +146,12 @@ async function manualDeduction({ subscriptionId, body, actorId, actorRole }) {
 
 async function listManualDeductions({ subscriptionId, role, limit = 50 }) {
   assertCashierOrAdminRole(role);
-  if (!mongoose.Types.ObjectId.isValid(subscriptionId)) {
+  if (!manualDeductionRepository.isValidObjectId(subscriptionId)) {
     throw new ManualDeductionError("SUBSCRIPTION_NOT_FOUND", "Subscription not found", 404);
   }
 
   const cappedLimit = Math.min(Math.max(Number(limit) || 50, 1), 100);
-  const logs = await ActivityLog.find({
-    entityType: "subscription",
-    entityId: subscriptionId,
-    action: MANUAL_DEDUCTION_ACTION,
-  }).sort({ createdAt: -1 }).limit(cappedLimit).lean();
+  const logs = await manualDeductionRepository.listManualDeductionLogs(subscriptionId, cappedLimit);
 
   return {
     contractVersion: "dashboard_manual_deductions.v1",
