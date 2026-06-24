@@ -782,30 +782,5 @@ module.exports = {
   listVersions: menuReleaseService.listMenuVersions,
   rollbackMenu: menuReleaseService.rollbackMenuVersion,
   diffMenu: menuReleaseService.getMenuDiff,
-  listAuditLogs: async (options = {}) => {
-    const pagination = parsePaginationOptions(options);
-    const find = MenuAuditLog.find({})
-      .sort({ createdAt: -1 })
-      .lean();
-
-    if (!pagination) {
-      const rows = await find.limit(Math.min(200, Math.max(1, Number(options.limit || 50))));
-      return rows.map(serializeDoc);
-    }
-
-    const [rows, total] = await Promise.all([
-      find.skip(pagination.skip).limit(pagination.limit),
-      MenuAuditLog.countDocuments({}),
-    ]);
-
-    return {
-      items: rows.map(serializeDoc),
-      pagination: {
-        page: pagination.page,
-        limit: pagination.limit,
-        total,
-        pages: Math.ceil(total / pagination.limit),
-      },
-    };
-  },
+  listAuditLogs: (options) => menuCatalogAdminService.listAuditLogs(options),
 };
