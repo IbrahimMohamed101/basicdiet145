@@ -3,12 +3,13 @@
 const { getRestaurantBusinessDate } = require("../restaurantHoursService");
 const { runMongoTransactionWithRetry } = require("../mongoTransactionRetryService");
 const { MANUAL_DEDUCTION_ACTION } = require("./manualDeduction/constants");
-const { ManualDeductionError, assertCashierOrAdminRole } = require("./manualDeduction/ManualDeductionError");
+const { ManualDeductionError } = require("./manualDeduction/ManualDeductionError");
 const { resolveBalances } = require("./manualDeduction/manualDeductionPolicy");
 const { serializeManualDeductionLog } = require("./manualDeduction/manualDeductionPresenter");
 const manualDeductionRepository = require("./manualDeduction/manualDeductionRepository");
 const { createManualDeductionSearchService } = require("./manualDeduction/manualDeductionSearchService");
 const { createManualDeductionCommandService } = require("./manualDeduction/manualDeductionCommandService");
+const { createManualDeductionHistoryService } = require("./manualDeduction/manualDeductionHistoryService");
 
 const { searchByPhone } = createManualDeductionSearchService({
   repository: manualDeductionRepository,
@@ -19,23 +20,9 @@ const { manualDeduction } = createManualDeductionCommandService({
   getBusinessDate: getRestaurantBusinessDate,
   runTransactionWithRetry: runMongoTransactionWithRetry,
 });
-
-async function listManualDeductions({ subscriptionId, role, limit = 50 }) {
-  assertCashierOrAdminRole(role);
-  if (!manualDeductionRepository.isValidObjectId(subscriptionId)) {
-    throw new ManualDeductionError("SUBSCRIPTION_NOT_FOUND", "Subscription not found", 404);
-  }
-
-  const cappedLimit = Math.min(Math.max(Number(limit) || 50, 1), 100);
-  const logs = await manualDeductionRepository.listManualDeductionLogs(subscriptionId, cappedLimit);
-
-  return {
-    contractVersion: "dashboard_manual_deductions.v1",
-    subscriptionId: String(subscriptionId),
-    count: logs.length,
-    items: logs.map(serializeManualDeductionLog),
-  };
-}
+const { listManualDeductions } = createManualDeductionHistoryService({
+  repository: manualDeductionRepository,
+});
 
 module.exports = {
   MANUAL_DEDUCTION_ACTION,
