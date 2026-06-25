@@ -20,6 +20,7 @@ const { ORDER_STATUSES } = require("../utils/orderState");
 const { getOrderFulfillmentMethod, shouldBlockOneTimeOrderDelivery } = require("../utils/oneTimeOrderDeliveryGate");
 const { resolveOptionalPagination, buildPaginationMeta } = require("../utils/optionalPagination");
 const { ACTION_REGISTRY } = require("../services/dashboard/opsActionPolicy");
+const { runMongoTransactionWithRetry } = require("../services/mongoTransactionRetryService");
 
 async function listTodayOrders(req, res) {
   if (!req.userRole) {
@@ -232,68 +233,64 @@ async function markDelivered(req, res) {
   if (shouldBlockOneTimeOrderDelivery(gateOrder)) {
     return errorResponse(res, 409, "DELIVERY_NOT_SUPPORTED", "One-time order delivery is disabled");
   }
-  const session = await mongoose.startSession();
-  session.startTransaction();
   try {
-    const order = await Order.findById(req.params.id).session(session);
-    if (!order) {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 404, "NOT_FOUND", "Order not found");
-    }
-    if (shouldBlockOneTimeOrderDelivery(order)) {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 409, "DELIVERY_NOT_SUPPORTED", "One-time order delivery is disabled");
-    }
-    if (getOrderFulfillmentMethod(order) !== "delivery") {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 400, "INVALID", "Order is not delivery");
-    }
-
-    const delivery = await Delivery.findOne({ orderId: order._id }).session(session);
-    if (!delivery) {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 404, "NOT_FOUND", "Delivery not found");
-    }
-    if (order.status === "fulfilled" || isDeliveryDeliveredStatus(delivery.status)) {
-      await session.abortTransaction();
-      session.endSession();
-      let user = null;
-      if (order.userId) {
-        user = await User.findById(order.userId).select("name phone").lean();
+    const result = await runMongoTransactionWithRetry(async (session, { attempt }) => {
+      const order = await Order.findById(req.params.id).session(session);
+      if (!order) {
+        return { error: true, status: 404, code: "NOT_FOUND", message: "Order not found" };
       }
+      if (shouldBlockOneTimeOrderDelivery(order)) {
+        return { error: true, status: 409, code: "DELIVERY_NOT_SUPPORTED", message: "One-time order delivery is disabled" };
+      }
+      if (getOrderFulfillmentMethod(order) !== "delivery") {
+        return { error: true, status: 400, code: "INVALID", message: "Order is not delivery" };
+      }
+
+      const delivery = await Delivery.findOne({ orderId: order._id }).session(session);
+      if (!delivery) {
+        return { error: true, status: 404, code: "NOT_FOUND", message: "Delivery not found" };
+      }
+      if (order.status === "fulfilled" || isDeliveryDeliveredStatus(delivery.status)) {
+        let user = null;
+        if (order.userId) {
+          user = await User.findById(order.userId).select("name phone").lean();
+        }
+        return { idempotent: true, data: mapOneTimeOrderDelivery(order, user, delivery) };
+      }
+      if (order.status === ORDER_STATUSES.CANCELLED || order.status === "canceled" || isDeliveryCanceledStatus(delivery.status)) {
+        return { error: true, status: 409, code: "ALREADY_CANCELED", message: "Cannot deliver a canceled order" };
+      }
+      if (order.status !== "out_for_delivery") {
+        return { error: true, status: 409, code: "INVALID_TRANSITION", message: "Invalid state transition" };
+      }
+
+      const deliveredAt = new Date();
+      order.status = "fulfilled";
+      order.fulfilledAt = deliveredAt;
+      await order.save({ session });
+
+      delivery.status = "delivered";
+      delivery.deliveredAt = deliveredAt;
+      await delivery.save({ session });
+
+      return { success: true, order, delivery };
+    }, {
+      label: "order_courier_mark_delivered",
+      context: { orderId: req.params.id, role: req.userRole },
+    });
+
+    if (result.error) {
+      return errorResponse(res, result.status, result.code, result.message);
+    }
+    if (result.idempotent) {
       return res.status(200).json({
         status: true,
         idempotent: true,
-        data: mapOneTimeOrderDelivery(order, user, delivery),
+        data: result.data,
       });
     }
-    if (order.status === ORDER_STATUSES.CANCELLED || order.status === "canceled" || isDeliveryCanceledStatus(delivery.status)) {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 409, "ALREADY_CANCELED", "Cannot deliver a canceled order");
-    }
-    if (order.status !== "out_for_delivery") {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 409, "INVALID_TRANSITION", "Invalid state transition");
-    }
 
-    const deliveredAt = new Date();
-    order.status = "fulfilled";
-    order.fulfilledAt = deliveredAt;
-    await order.save({ session });
-
-    delivery.status = "delivered";
-    delivery.deliveredAt = deliveredAt;
-    await delivery.save({ session });
-
-    await session.commitTransaction();
-    session.endSession();
-
+    const { order, delivery } = result;
     await writeLog({
       entityType: "order",
       entityId: order._id,
@@ -312,10 +309,6 @@ async function markDelivered(req, res) {
       data: mapOneTimeOrderDelivery(order, user, delivery),
     });
   } catch (err) {
-    if (session.inTransaction()) {
-      await session.abortTransaction();
-    }
-    session.endSession();
     logger.error("orderCourierController.markDelivered failed", { error: err.message, stack: err.stack });
     return errorResponse(res, 500, "INTERNAL", "Order delivery update failed");
   }
@@ -359,82 +352,76 @@ async function markCancelled(req, res) {
   if (shouldBlockOneTimeOrderDelivery(gateOrder)) {
     return errorResponse(res, 409, "DELIVERY_NOT_SUPPORTED", "One-time order delivery is disabled");
   }
-  const session = await mongoose.startSession();
-  session.startTransaction();
   try {
-    const order = await Order.findById(req.params.id).session(session);
-    if (!order) {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 404, "NOT_FOUND", "Order not found");
-    }
-    if (shouldBlockOneTimeOrderDelivery(order)) {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 409, "DELIVERY_NOT_SUPPORTED", "One-time order delivery is disabled");
-    }
-    if (getOrderFulfillmentMethod(order) !== "delivery") {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 400, "INVALID", "Order is not delivery");
-    }
-
-    const delivery = await Delivery.findOne({ orderId: order._id }).session(session);
-    if (!delivery) {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 404, "NOT_FOUND", "Delivery not found");
-    }
-    if (order.status === ORDER_STATUSES.CANCELLED || order.status === "canceled" || isDeliveryCanceledStatus(delivery.status)) {
-      await session.abortTransaction();
-      session.endSession();
-      let user = null;
-      if (order.userId) {
-        user = await User.findById(order.userId).select("name phone").lean();
+    const result = await runMongoTransactionWithRetry(async (session, { attempt }) => {
+      const order = await Order.findById(req.params.id).session(session);
+      if (!order) {
+        return { error: true, status: 404, code: "NOT_FOUND", message: "Order not found" };
       }
+      if (shouldBlockOneTimeOrderDelivery(order)) {
+        return { error: true, status: 409, code: "DELIVERY_NOT_SUPPORTED", message: "One-time order delivery is disabled" };
+      }
+      if (getOrderFulfillmentMethod(order) !== "delivery") {
+        return { error: true, status: 400, code: "INVALID", message: "Order is not delivery" };
+      }
+
+      const delivery = await Delivery.findOne({ orderId: order._id }).session(session);
+      if (!delivery) {
+        return { error: true, status: 404, code: "NOT_FOUND", message: "Delivery not found" };
+      }
+      if (order.status === ORDER_STATUSES.CANCELLED || order.status === "canceled" || isDeliveryCanceledStatus(delivery.status)) {
+        let user = null;
+        if (order.userId) {
+          user = await User.findById(order.userId).select("name phone").lean();
+        }
+        return { idempotent: true, data: mapOneTimeOrderDelivery(order, user, delivery) };
+      }
+      if (order.status === "fulfilled" || isDeliveryDeliveredStatus(delivery.status)) {
+        return { error: true, status: 409, code: "ALREADY_DELIVERED", message: "Cannot cancel delivered order" };
+      }
+      let cancellation;
+      try {
+        cancellation = parseDeliveryCancellationInput(req.body || {});
+      } catch (err) {
+        return { error: true, status: err.status, code: err.code, message: err.message };
+      }
+      if (order.status !== "out_for_delivery") {
+        return { error: true, status: 409, code: "INVALID_TRANSITION", message: "Only dispatched orders can be canceled" };
+      }
+
+      const canceledAt = new Date();
+      order.status = ORDER_STATUSES.CANCELLED;
+      order.cancelledAt = canceledAt;
+      order.canceledAt = canceledAt;
+      await order.save({ session });
+
+      delivery.status = "canceled";
+      delivery.canceledAt = canceledAt;
+      delivery.cancellationReason = cancellation.reason;
+      delivery.cancellationCategory = cancellation.category;
+      delivery.cancellationNote = cancellation.note;
+      delivery.canceledByRole = req.userRole || null;
+      delivery.canceledByUserId = req.dashboardUserId || req.userId || null;
+      await delivery.save({ session });
+
+      return { success: true, order, delivery, cancellation, canceledAt };
+    }, {
+      label: "order_courier_mark_cancelled",
+      context: { orderId: req.params.id, role: req.userRole },
+    });
+
+    if (result.error) {
+      return errorResponse(res, result.status, result.code, result.message);
+    }
+    if (result.idempotent) {
       return res.status(200).json({
         status: true,
         idempotent: true,
-        data: mapOneTimeOrderDelivery(order, user, delivery),
+        data: result.data,
       });
     }
-    if (order.status === "fulfilled" || isDeliveryDeliveredStatus(delivery.status)) {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 409, "ALREADY_DELIVERED", "Cannot cancel delivered order");
-    }
-    let cancellation;
-    try {
-      cancellation = parseDeliveryCancellationInput(req.body || {});
-    } catch (err) {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, err.status, err.code, err.message);
-    }
-    if (order.status !== "out_for_delivery") {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 409, "INVALID_TRANSITION", "Only dispatched orders can be canceled");
-    }
 
-    const canceledAt = new Date();
-    order.status = ORDER_STATUSES.CANCELLED;
-    order.cancelledAt = canceledAt;
-    order.canceledAt = canceledAt;
-    await order.save({ session });
-
-    delivery.status = "canceled";
-    delivery.canceledAt = canceledAt;
-    delivery.cancellationReason = cancellation.reason;
-    delivery.cancellationCategory = cancellation.category;
-    delivery.cancellationNote = cancellation.note;
-    delivery.canceledByRole = req.userRole || null;
-    delivery.canceledByUserId = req.dashboardUserId || req.userId || null;
-    await delivery.save({ session });
-
-    await session.commitTransaction();
-    session.endSession();
-
+    const { order, delivery, cancellation, canceledAt } = result;
     await writeLog({
       entityType: "order",
       entityId: order._id,
@@ -461,10 +448,6 @@ async function markCancelled(req, res) {
       data: mapOneTimeOrderDelivery(order, user, delivery),
     });
   } catch (err) {
-    if (session.inTransaction()) {
-      await session.abortTransaction();
-    }
-    session.endSession();
     logger.error("orderCourierController.markCancelled failed", { error: err.message, stack: err.stack });
     return errorResponse(res, 500, "INTERNAL", "Order cancellation failed");
   }

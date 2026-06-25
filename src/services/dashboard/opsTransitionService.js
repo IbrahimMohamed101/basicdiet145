@@ -27,6 +27,7 @@ const {
 const { lockDaySnapshot } = require("../subscription/subscriptionDayOperationalSnapshotService");
 const { validateDayBeforeLockOrPrepare } = require("../subscription/subscriptionDayExecutionValidationService");
 const dateUtils = require("../../utils/date");
+const { runMongoTransactionWithRetry } = require("../mongoTransactionRetryService");
 
 /**
  * Unified Operations Transition Service.
@@ -57,9 +58,8 @@ async function executeAction(actionId, { entityId, entityType, userId, role, pay
   const normalizedEntityType = entityType === "subscription_day" || entityType === "pickup_day"
     ? "subscription"
     : entityType;
-  const session = await mongoose.startSession();
-  session.startTransaction();
-  try {
+
+  const result = await runMongoTransactionWithRetry(async (session, { attempt }) => {
     const Model = normalizedEntityType === "subscription_pickup_request"
       ? SubscriptionPickupRequest
       : normalizedEntityType === "subscription"
@@ -97,56 +97,53 @@ async function executeAction(actionId, { entityId, entityType, userId, role, pay
         throw createOneTimeOrderDeliveryDisabledError();
       }
     }
-    let result;
+    let resObj;
     switch (normalizedActionId) {
       case "lock":
-        result = await handleLock({ entityId, entityType: normalizedEntityType, userId, role, payload, session });
+        resObj = await handleLock({ entityId, entityType: normalizedEntityType, userId, role, payload, session });
         break;
       case "prepare":
-        result = await handlePrepare({ entityId, entityType: normalizedEntityType, userId, role, payload, session });
+        resObj = await handlePrepare({ entityId, entityType: normalizedEntityType, userId, role, payload, session });
         break;
       case "ready_for_delivery":
-        result = await handleReadyForDelivery({ entityId, entityType: normalizedEntityType, userId, role, payload, session });
+        resObj = await handleReadyForDelivery({ entityId, entityType: normalizedEntityType, userId, role, payload, session });
         break;
       case "dispatch":
-        result = await handleDispatch({ entityId, entityType: normalizedEntityType, userId, role, payload, session });
+        resObj = await handleDispatch({ entityId, entityType: normalizedEntityType, userId, role, payload, session });
         break;
       case "ready_for_pickup":
-        result = await handleReadyForPickup({ entityId, entityType: normalizedEntityType, userId, role, payload, session });
+        resObj = await handleReadyForPickup({ entityId, entityType: normalizedEntityType, userId, role, payload, session });
         break;
       case "fulfill":
-        result = await handleFulfill({ entityId, entityType: normalizedEntityType, userId, role, payload, session });
+        resObj = await handleFulfill({ entityId, entityType: normalizedEntityType, userId, role, payload, session });
         break;
       case "cancel":
-        result = await handleCancel({ entityId, entityType: normalizedEntityType, userId, role, payload, session });
+        resObj = await handleCancel({ entityId, entityType: normalizedEntityType, userId, role, payload, session });
         break;
       case "no_show":
-        result = await handleNoShow({ entityId, entityType: normalizedEntityType, userId, role, payload, session });
+        resObj = await handleNoShow({ entityId, entityType: normalizedEntityType, userId, role, payload, session });
         break;
       case "reopen":
-        result = await handleReopen({ entityId, entityType: normalizedEntityType, userId, role, payload, session });
+        resObj = await handleReopen({ entityId, entityType: normalizedEntityType, userId, role, payload, session });
         break;
       case "notify_arrival":
-        result = await handleNotifyArrival({ entityId, entityType: normalizedEntityType, userId, role, payload, session });
+        resObj = await handleNotifyArrival({ entityId, entityType: normalizedEntityType, userId, role, payload, session });
         break;
       default:
         throw new Error(`Unsupported action: ${actionId}`);
     }
+    return resObj;
+  }, {
+    label: `ops_transition_${normalizedActionId}`,
+    context: { action: normalizedActionId, entityType: normalizedEntityType, entityId: String(entityId), role: String(role || "") },
+  });
 
-    await session.commitTransaction();
-    session.endSession();
-
-    // Trigger post-transaction side effects (notifications/logs)
-    if (result.sideEffects) {
-      await triggerSideEffects(result.sideEffects, { userId, role });
-    }
-
-    return result.data;
-  } catch (err) {
-    await session.abortTransaction();
-    session.endSession();
-    throw err;
+  // Trigger post-transaction side effects (notifications/logs)
+  if (result.sideEffects) {
+    await triggerSideEffects(result.sideEffects, { userId, role });
   }
+
+  return result.data;
 }
 
 function appendOperationAudit(doc, action, userId, role) {
