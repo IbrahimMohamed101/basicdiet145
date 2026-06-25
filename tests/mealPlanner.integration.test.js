@@ -704,6 +704,7 @@ async function seedUnifiedMenuCatalog() {
     availableFor: ['subscription'],
     isActive: true,
     published: true,
+    publishedAt: new Date(),
     priceHalala: 0,
   });
 
@@ -715,6 +716,7 @@ async function seedUnifiedMenuCatalog() {
     availableFor: ['subscription'],
     isActive: true,
     published: true,
+    publishedAt: new Date(),
     priceHalala: 0,
   });
 
@@ -727,6 +729,7 @@ async function seedUnifiedMenuCatalog() {
     availableFor: ['subscription'],
     isActive: true,
     published: true,
+    publishedAt: new Date(),
     priceHalala: 0,
   });
 
@@ -740,6 +743,7 @@ async function seedUnifiedMenuCatalog() {
     availableFor: ['one_time'],
     isActive: true,
     published: true,
+    publishedAt: new Date(),
   });
 }
 

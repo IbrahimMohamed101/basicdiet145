@@ -1,6 +1,6 @@
 const BuilderProtein = require("../../models/BuilderProtein");
 const {
-  resolvePremiumUpgrade,
+  resolveSubscriptionPremiumUpgradePricing,
 } = require("../../services/subscription/premiumUpgradeConfigService");
 
 const PREMIUM_LARGE_SALAD_KEY = "premium_large_salad";
@@ -39,7 +39,7 @@ function getStaticPremiumItem(premiumKey) {
 async function resolveStaticPremiumItem(premiumKey) {
   const normalizedKey = normalizePremiumItemKey(premiumKey);
   if (normalizedKey !== PREMIUM_LARGE_SALAD_KEY) return null;
-  const upgrade = await resolvePremiumUpgrade(normalizedKey);
+  const upgrade = await resolveSubscriptionPremiumUpgradePricing(normalizedKey);
 
   return {
     premiumKey: PREMIUM_LARGE_SALAD_KEY,
@@ -47,7 +47,7 @@ async function resolveStaticPremiumItem(premiumKey) {
     type: PREMIUM_LARGE_SALAD_KEY,
     extraFeeHalala: upgrade.priceHalala,
     currency: upgrade.currency,
-    priceSource: "resolvePremiumUpgrade",
+    priceSource: upgrade.priceSource,
     productId: upgrade.sourceProductId ? String(upgrade.sourceProductId) : null,
     productKey: normalizedKey,
   };
@@ -195,10 +195,13 @@ async function resolveCanonicalPremiumIdentity(input) {
   }
 
   if (resolvedPremiumKey) {
-    const upgrade = await resolvePremiumUpgrade(resolvedPremiumKey);
+    const upgrade = await resolveSubscriptionPremiumUpgradePricing(resolvedPremiumKey, {
+      fallbackPriceHalala: resolvedUnitExtraFeeHalala,
+      builderProteinDoc,
+    });
     resolvedUnitExtraFeeHalala = upgrade.priceHalala;
-    resolutionSource = "resolvePremiumUpgrade";
-    log("resolvePremiumUpgrade", { resolvedUnitExtraFeeHalala });
+    resolutionSource = upgrade.priceSource;
+    log(resolutionSource, { resolvedUnitExtraFeeHalala });
 
     if (isStaticPremiumItem(resolvedPremiumKey)) {
       const staticItem = await resolveStaticPremiumItem(resolvedPremiumKey);

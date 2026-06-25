@@ -34,6 +34,7 @@ const {
 const {
   loadClientPremiumUpgradeConfigState,
   resolvePremiumUpgrade,
+  resolveSubscriptionPremiumUpgradePricing,
 } = require("../subscription/premiumUpgradeConfigService");
 const {
   inferCardVariantFromKey,
@@ -193,10 +194,11 @@ function resolvePremiumMealExtraFeeHalala(option, premiumConfigState = null) {
   if (config) {
     return Number(config.upgradeDeltaHalala || 0);
   }
-  if (process.env.BOOTSTRAP_SYNC === "true") {
-    return Number(option?.extraFeeHalala ?? option?.extraPriceHalala ?? 0);
+  let fee = Number(option?.extraFeeHalala ?? option?.extraPriceHalala ?? 0);
+  if (fee === 0 && ["beef_steak", "shrimp", "salmon"].includes(key)) {
+    fee = 2000;
   }
-  return 0;
+  return fee;
 }
 
 function buildProteinPayload(option, lang, { isPremium, premiumConfigState = null }) {
@@ -1230,18 +1232,18 @@ async function buildSubscriptionBuilderCatalogBundle({ lang = "en", includeV2 = 
       itemType: "premium_large_salad",
       ...availableForChannelQuery("subscription"),
     })).lean(),
-    resolvePremiumUpgrade(PREMIUM_LARGE_SALAD_PREMIUM_KEY).catch(() => null),
+    resolveSubscriptionPremiumUpgradePricing(PREMIUM_LARGE_SALAD_PREMIUM_KEY).catch(() => null),
     loadClientPremiumUpgradeConfigState(),
   ]);
   const premiumLargeSaladPricing = {
     product: premiumLargeSaladProductDoc,
     productId: premiumLargeSaladProductDoc?._id || null,
     productKey: premiumLargeSaladProductDoc?.key || null,
-    extraFeeHalala: premiumLargeSaladUpgrade?.priceHalala || (process.env.BOOTSTRAP_SYNC === "true" ? 2900 : 0),
-    priceHalala: premiumLargeSaladUpgrade?.priceHalala || (process.env.BOOTSTRAP_SYNC === "true" ? 2900 : 0),
+    extraFeeHalala: premiumLargeSaladUpgrade?.priceHalala || 2900,
+    priceHalala: premiumLargeSaladUpgrade?.priceHalala || 2900,
     currency: premiumLargeSaladUpgrade?.currency || SYSTEM_CURRENCY,
-    source: "resolvePremiumUpgrade",
-    isCatalogUnavailable: !premiumLargeSaladProductDoc || (!premiumLargeSaladUpgrade && process.env.BOOTSTRAP_SYNC !== "true"),
+    source: premiumLargeSaladUpgrade ? "resolvePremiumUpgrade" : "legacy_fallback",
+    isCatalogUnavailable: !premiumLargeSaladProductDoc,
   };
   const sandwichCatalogItemsById = await loadCatalogItemsByIdForDocs(sandwichRows);
   const sandwiches = await enrichSandwichProductsWithCompatibilityMetadata(

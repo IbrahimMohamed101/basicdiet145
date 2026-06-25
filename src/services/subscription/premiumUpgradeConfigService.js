@@ -62,7 +62,10 @@ async function loadClientPremiumUpgradeConfigState({ session = null } = {}) {
       return activeByKey.get(normalizePremiumKey(premiumKey)) || null;
     },
     isAllowed(premiumKey) {
-      return activeByKey.has(normalizePremiumKey(premiumKey));
+      const norm = normalizePremiumKey(premiumKey);
+      if (activeByKey.has(norm)) return true;
+      if (KNOWN_PREMIUM_KEYS.includes(norm) || norm === "custom_premium_salad") return true;
+      return false;
     },
   };
 }
@@ -786,8 +789,123 @@ async function archiveConfig(id, data, adminId) {
   return mapConfigToDTO(config, sourceMap.get(`${config.sourceType}_${config.sourceId}`));
 }
 
+/**
+ * Unified backend resolver for subscription premium upgrade pricing.
+ * Used by mobile meal planner catalog response, subscription quote, subscription checkout/create,
+ * and legacy Flutter compatibility path.
+ *
+ * Pricing precedence:
+ * 1. Active PremiumUpgradeConfig if available.
+ * 2. Existing legacy/catalog premium pricing source if config is missing:
+ *    - menu option relation price
+ *    - builder premium price
+ *    - legacy premium identity price
+ *    - known project fallback already used before
+ * 3. For known default premium proteins, do not allow accidental 0:
+ *    - beef_steak
+ *    - shrimp
+ *    - salmon
+ *
+ * Important:
+ * - Do not silently return 0 for known paid premium proteins.
+ * - 0 is allowed only if explicitly configured as free by an active backend config.
+ * - premium_large_salad must remain 2900 or config-driven if config exists.
+ */
+async function resolveSubscriptionPremiumUpgradePricing(premiumKey, { fallbackPriceHalala, optionDoc, builderProteinDoc, session = null } = {}) {
+  const normalizedKey = normalizePremiumKey(premiumKey);
+  if (!normalizedKey) {
+    throw createError("premiumKey is required", "PREMIUM_KEY_REQUIRED", 400);
+  }
+
+  // 1. Active PremiumUpgradeConfig if available.
+  try {
+    const upgrade = await resolvePremiumUpgrade(normalizedKey, { session });
+    return {
+      premiumKey: normalizedKey,
+      priceHalala: upgrade.priceHalala,
+      upgradeDeltaHalala: upgrade.upgradeDeltaHalala,
+      currency: upgrade.currency,
+      selectionType: upgrade.selectionType,
+      sourceType: upgrade.sourceType,
+      sourceId: upgrade.sourceId,
+      sourceProductId: upgrade.sourceProductId,
+      sourceGroupId: upgrade.sourceGroupId,
+      configId: upgrade.configId,
+      revision: upgrade.revision,
+      priceSource: "resolvePremiumUpgrade",
+      isConfigured: true,
+    };
+  } catch (err) {
+    // If config is missing/unavailable, do not fail-closed for known legacy mobile premium keys!
+    // Only truly unknown/unresolvable premium keys should return INVALID_PREMIUM_ITEM.
+    const isKnown = KNOWN_PREMIUM_KEYS.includes(normalizedKey) || normalizedKey === "custom_premium_salad";
+    if (!isKnown && !optionDoc && !builderProteinDoc && fallbackPriceHalala === undefined) {
+      const error = new Error(`Invalid premiumKey: ${normalizedKey} - Premium upgrade is not configured or available`);
+      error.code = "INVALID_PREMIUM_ITEM";
+      error.status = 409;
+      throw error;
+    }
+
+    // 2. Existing legacy/catalog premium pricing source if config is missing
+    let priceHalala = undefined;
+
+    if (optionDoc && (optionDoc.extraPriceHalala !== undefined || optionDoc.extraFeeHalala !== undefined)) {
+      priceHalala = Number(optionDoc.extraPriceHalala ?? optionDoc.extraFeeHalala);
+    } else if (builderProteinDoc && builderProteinDoc.extraFeeHalala !== undefined) {
+      priceHalala = Number(builderProteinDoc.extraFeeHalala);
+    } else if (fallbackPriceHalala !== undefined) {
+      priceHalala = Number(fallbackPriceHalala);
+    }
+
+    // If still undefined or 0 for known premium items, apply the legacy fallback rules
+    if (normalizedKey === "premium_large_salad" || normalizedKey === "custom_premium_salad") {
+      if (priceHalala === undefined || priceHalala === 0) {
+        priceHalala = 2900;
+      }
+    } else if (["beef_steak", "shrimp", "salmon"].includes(normalizedKey)) {
+      // 3. For known default premium proteins, do not allow accidental 0
+      if (priceHalala === undefined || priceHalala === 0) {
+        try {
+          const BuilderProtein = require("../../models/BuilderProtein");
+          let bpQuery = BuilderProtein.findOne({ premiumKey: normalizedKey, isPremium: true, isActive: true });
+          if (session && typeof bpQuery.session === "function") bpQuery = bpQuery.session(session);
+          const bp = await bpQuery.lean();
+          if (bp && bp.extraFeeHalala) {
+            priceHalala = Number(bp.extraFeeHalala);
+          }
+        } catch (_ignore) {}
+        
+        if (priceHalala === undefined || priceHalala === 0) {
+          priceHalala = 2000; // Legacy fallback for premium proteins
+        }
+      }
+    }
+
+    if (priceHalala === undefined) {
+      priceHalala = 0;
+    }
+
+    return {
+      premiumKey: normalizedKey,
+      priceHalala,
+      upgradeDeltaHalala: priceHalala,
+      currency: "SAR",
+      selectionType: normalizedKey === "premium_large_salad" ? "premium_large_salad" : "premium_meal",
+      sourceType: normalizedKey === "premium_large_salad" ? "menu_product" : "menu_option",
+      sourceId: optionDoc ? String(optionDoc._id) : (builderProteinDoc ? String(builderProteinDoc._id) : null),
+      sourceProductId: null,
+      sourceGroupId: null,
+      configId: null,
+      revision: 0,
+      priceSource: "legacy_fallback",
+      isConfigured: false,
+    };
+  }
+}
+
 module.exports = {
   resolvePremiumUpgrade,
+  resolveSubscriptionPremiumUpgradePricing,
   loadClientPremiumUpgradeConfigState,
   getConfigs,
   getCandidates,

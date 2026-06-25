@@ -16,7 +16,7 @@ const {
   normalizeProviderPaymentStatus,
   pickProviderInvoicePayment,
 } = require("../paymentProviderMetadataService");
-const { resolvePremiumUpgrade } = require("./premiumUpgradeConfigService");
+const { resolvePremiumUpgrade, resolveSubscriptionPremiumUpgradePricing } = require("./premiumUpgradeConfigService");
 const { normalizePremiumItemKey } = require("../../utils/subscription/premiumIdentity");
 
 const SYSTEM_CURRENCY = "SAR";
@@ -107,7 +107,7 @@ async function createPremiumOverageDayPaymentFlow({
   }
   let premiumUpgrades;
   try {
-    premiumUpgrades = await Promise.all(overagePremiumKeys.map((key) => resolvePremiumUpgrade(key)));
+    premiumUpgrades = await Promise.all(overagePremiumKeys.map((key) => resolveSubscriptionPremiumUpgradePricing(key)));
   } catch (err) {
     return buildErrorResult(err.status || 409, err.code || "PREMIUM_UPGRADE_UNAVAILABLE", err.message);
   }

@@ -25,6 +25,7 @@ const {
 const {
   loadClientPremiumUpgradeConfigState,
   resolvePremiumUpgrade,
+  resolveSubscriptionPremiumUpgradePricing,
 } = require("./premiumUpgradeConfigService");
 const {
   filterGloballyAvailable,
@@ -357,7 +358,7 @@ function premiumUpgradePricing(upgrade) {
     extraFeeHalala: configuredDelta,
     priceHalala: configuredDelta,
     currency: upgrade.currency,
-    source: "resolvePremiumUpgrade",
+    source: upgrade.priceSource || "resolvePremiumUpgrade",
   };
 }
 
@@ -396,7 +397,7 @@ async function validateCanonicalMealSlots({
   let premiumLargeSaladPricing = { extraFeeHalala: 0, priceHalala: 0 };
   if (slots.some((slot) => slot?.selectionType === MEAL_SELECTION_TYPES.PREMIUM_LARGE_SALAD)) {
     premiumLargeSaladPricing = premiumUpgradePricing(
-      await resolvePremiumUpgrade(PREMIUM_LARGE_SALAD_PREMIUM_KEY, { session })
+      await resolveSubscriptionPremiumUpgradePricing(PREMIUM_LARGE_SALAD_PREMIUM_KEY, { session })
     );
   }
   let builderMembership;
@@ -850,7 +851,10 @@ async function validateCanonicalMealSlots({
     if (selectionType === MEAL_SELECTION_TYPES.PREMIUM_MEAL && proteinSelection) {
       isPremium = true;
       premiumKey = proteinSelection.option.premiumKey || proteinSelection.option.key || null;
-      const upgrade = await resolvePremiumUpgrade(premiumKey, { session });
+      const upgrade = await resolveSubscriptionPremiumUpgradePricing(premiumKey, {
+        optionDoc: proteinSelection.option,
+        session,
+      });
       premiumExtraFeeHalala = upgrade.priceHalala;
     } else if (selectionType === MEAL_SELECTION_TYPES.PREMIUM_LARGE_SALAD) {
       isPremium = true;

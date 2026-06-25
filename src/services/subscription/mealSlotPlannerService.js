@@ -33,7 +33,7 @@ const {
   buildPaymentRequirement,
   buildPlannerRevisionHash,
 } = require("./subscriptionDayCommercialStateService");
-const { resolvePremiumUpgrade } = require("./premiumUpgradeConfigService");
+const { resolvePremiumUpgrade, resolveSubscriptionPremiumUpgradePricing } = require("./premiumUpgradeConfigService");
 const { 
   NEW_TYPES, 
   mapLegacySelectionType, 
@@ -929,7 +929,7 @@ async function buildMealSlotDraft({ mealSlots, mealsPerDayLimit, maxSlotCount = 
 
   const resolvedUpgrades = await Promise.all([...allPremiumKeys].map(async (premiumKey) => {
     try {
-      const upgrade = await resolvePremiumUpgrade(premiumKey, { session });
+      const upgrade = await resolveSubscriptionPremiumUpgradePricing(premiumKey, { session });
       return { premiumKey, upgrade };
     } catch (err) {
       return { premiumKey, error: err };

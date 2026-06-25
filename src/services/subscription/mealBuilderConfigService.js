@@ -31,6 +31,7 @@ const {
 const {
   loadClientPremiumUpgradeConfigState,
   resolvePremiumUpgrade,
+  resolveSubscriptionPremiumUpgradePricing,
 } = require("./premiumUpgradeConfigService");
 
 const CONTRACT_VERSION = "subscription_meal_builder.v1";
@@ -2239,7 +2240,7 @@ async function buildDefaultSeedSections({ returnDetails = false } = {}) {
     const [saladGroupRelations, saladOptionRelations, saladPricing] = await Promise.all([
       ProductOptionGroup.find({ productId: saladProduct._id }).lean(),
       ProductGroupOption.find({ productId: saladProduct._id }).lean(),
-      resolvePremiumUpgrade(PREMIUM_LARGE_SALAD_PREMIUM_KEY).catch(() => null),
+      resolveSubscriptionPremiumUpgradePricing(PREMIUM_LARGE_SALAD_PREMIUM_KEY).catch(() => null),
     ]);
     const saladGroupIds = new Set([
       ...saladGroupRelations.map((row) => String(row.groupId)),
@@ -2763,12 +2764,12 @@ async function buildPublishedContract({ config = null, lang = "en", includeUnava
   const sections = normalizeSections(published.sections || []);
   const docs = await resolveDocsForSections(sections);
   const premiumConfigState = await loadClientPremiumUpgradeConfigState();
-  const premiumLargeSaladUpgrade = await resolvePremiumUpgrade(PREMIUM_LARGE_SALAD_PREMIUM_KEY).catch(() => null);
+  const premiumLargeSaladUpgrade = await resolveSubscriptionPremiumUpgradePricing(PREMIUM_LARGE_SALAD_PREMIUM_KEY).catch(() => null);
   const premiumLargeSaladPricing = {
-    priceHalala: premiumLargeSaladUpgrade?.priceHalala || 0,
-    extraFeeHalala: premiumLargeSaladUpgrade?.priceHalala || 0,
+    priceHalala: premiumLargeSaladUpgrade?.priceHalala || 2900,
+    extraFeeHalala: premiumLargeSaladUpgrade?.priceHalala || 2900,
     currency: premiumLargeSaladUpgrade?.currency || SYSTEM_CURRENCY,
-    source: "resolvePremiumUpgrade",
+    source: premiumLargeSaladUpgrade?.priceSource || "legacy_fallback",
     isCatalogUnavailable: !premiumLargeSaladUpgrade,
   };
   const payloadSections = [];

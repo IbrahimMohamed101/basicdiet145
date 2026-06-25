@@ -21,7 +21,7 @@ const {
 const { applyPromoCodeToSubscriptionQuote } = require("../promoCodeService");
 const { getRestaurantBusinessDate } = require("../restaurantHoursService");
 const { resolveCanonicalPremiumIdentity, normalizePremiumItemKey } = require("../../utils/subscription/premiumIdentity");
-const { resolvePremiumUpgrade } = require("./premiumUpgradeConfigService");
+const { resolveSubscriptionPremiumUpgradePricing } = require("./premiumUpgradeConfigService");
 const {
   assertPremiumUpgradeLimit,
   buildPremiumUpgradeLimit,
@@ -588,24 +588,14 @@ async function resolveCheckoutQuoteOrThrow(
       throw err;
     }
 
-    let unitExtraFeeHalala = Number(resolved.unitExtraFeeHalala || 0);
-    let priceSource = resolved.resolutionSource || null;
-    let isExplicitlyFree = false;
-
-    try {
-      const upgrade = await resolvePremiumUpgrade(premiumKey);
-      unitExtraFeeHalala = Number(upgrade.priceHalala);
-      priceSource = "resolvePremiumUpgrade";
-      if (unitExtraFeeHalala === 0) {
-        isExplicitlyFree = true;
-      }
-    } catch (upgradeErr) {
-      if (!unitExtraFeeHalala) {
-        const err = new Error(`Premium upgrade is not configured or available: ${premiumKey}`);
-        err.code = "INVALID_PREMIUM_ITEM";
-        throw err;
-      }
-    }
+    const upgrade = await resolveSubscriptionPremiumUpgradePricing(premiumKey, {
+      fallbackPriceHalala: resolved.unitExtraFeeHalala,
+      optionDoc: doc && doc._sourceModel === "MenuOption" ? doc : null,
+      builderProteinDoc: doc && doc._sourceModel !== "MenuOption" ? doc : null,
+    });
+    const unitExtraFeeHalala = Number(upgrade.priceHalala);
+    const priceSource = upgrade.priceSource;
+    const isExplicitlyFree = upgrade.isConfigured && unitExtraFeeHalala === 0;
 
     if (!Number.isSafeInteger(unitExtraFeeHalala) || (unitExtraFeeHalala === 0 && !isExplicitlyFree) || unitExtraFeeHalala < 0) {
       const err = new Error(`Premium upgrade has invalid canonical pricing: ${premiumKey}`);

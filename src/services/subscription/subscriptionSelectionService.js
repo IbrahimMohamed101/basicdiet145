@@ -34,7 +34,7 @@ const {
 const {
   assertPlanningBalanceAfterSave,
 } = require("./subscriptionPlanningBalanceService");
-const { resolvePremiumUpgrade } = require("./premiumUpgradeConfigService");
+const { resolvePremiumUpgrade, resolveSubscriptionPremiumUpgradePricing } = require("./premiumUpgradeConfigService");
 const {
   supersedeInitiatedDayPlanningPaymentsForRevisionChange,
 } = require("./subscriptionDayPaymentLifecycleService");
@@ -179,7 +179,7 @@ async function consumePremiumBalanceAtomically({ subscription, dayId, date, prem
   if (!premiumKey) {
     return { consumed: false, reason: "no_premium_key", premiumSource: "pending_payment", premiumExtraFeeHalala: 0 };
   }
-  const canonicalUpgrade = await resolvePremiumUpgrade(premiumKey, { session });
+  const canonicalUpgrade = await resolveSubscriptionPremiumUpgradePricing(premiumKey, { session });
   const unitExtraFeeHalala = canonicalUpgrade.priceHalala;
 
   if (!subscription || !Array.isArray(subscription.premiumBalance)) {
@@ -751,7 +751,7 @@ async function performDaySelectionUpdate({ userId, subscriptionId, date, selecti
           const mapKey = `${sel.baseSlotKey}_${sel.premiumKey}`;
           const existingClaim = existingBalanceMap.get(mapKey);
 
-          const upgrade = await resolvePremiumUpgrade(sel.premiumKey, { session });
+          const upgrade = await resolveSubscriptionPremiumUpgradePricing(sel.premiumKey, { session, fallbackPriceHalala: sel.unitExtraFeeHalala });
           if (existingClaim) {
              processedPremiumSelections.push({ ...sel, premiumSource: "balance", unitExtraFeeHalala: upgrade.priceHalala });
              existingBalanceMap.delete(mapKey);
