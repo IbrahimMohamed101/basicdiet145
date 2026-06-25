@@ -45,7 +45,7 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 function normalizeDate(value) {
   const date = String(value || "").trim();
-  return DATE_RE.test(date) ? date : dateUtils.toKSADateString(new Date());
+  return DATE_RE.test(date) ? date : dateUtils.getTodayKSADate();
 }
 
 function normalizeStatusList(value, fallback) {

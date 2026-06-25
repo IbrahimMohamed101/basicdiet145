@@ -20,8 +20,8 @@ function getTodayKSADate(now = new Date()) {
     return toKSADateString(getCurrentKSA(now));
 }
 
-function getTomorrowKSADate() {
-    return toKSADateString(addDays(getCurrentKSA(), 1));
+function getTomorrowKSADate(now = new Date()) {
+    return toKSADateString(addDays(getCurrentKSA(now), 1));
 }
 
 function isValidTimeString(timeStr) {
@@ -54,13 +54,13 @@ function addDaysToKSADateString(dateStr, days) {
     return formatUtcDateAsDateString(base);
 }
 
-function isBeforeCutoff(cutoffTimeStr) {
+function isBeforeCutoff(cutoffTimeStr, now = new Date()) {
     // CR-10 FIX: Validate cutoff format before parsing
     if (!isValidTimeString(cutoffTimeStr)) {
         throw new Error("Invalid cutoff format. Expected HH:mm");
     }
 
-    const nowTime = formatInTimeZone(new Date(), KSA_TIMEZONE, "HH:mm");
+    const nowTime = formatInTimeZone(now, KSA_TIMEZONE, "HH:mm");
     return toMinutes(nowTime) < toMinutes(cutoffTimeStr);
 }
 
@@ -143,8 +143,8 @@ function isInSubscriptionRange(dateStr, endDate) {
 }
 
 // CR-09 FIX: Add lower bound validation (date must be >= today)
-function isOnOrAfterTodayKSADate(dateStr) {
-    const today = getTodayKSADate();
+function isOnOrAfterTodayKSADate(dateStr, now = new Date()) {
+    const today = getTodayKSADate(now);
     return compareKSADateStrings(dateStr, today) >= 0;
 }
 

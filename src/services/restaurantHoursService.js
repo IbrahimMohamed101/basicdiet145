@@ -256,13 +256,13 @@ async function assertRestaurantOpenForOrdering(options = {}) {
   return hours;
 }
 
-async function getRestaurantBusinessDate() {
-  const restaurantHours = await getRestaurantHours();
+async function getRestaurantBusinessDate(now = new Date()) {
+  const restaurantHours = await getRestaurantHours({ now });
   return restaurantHours.businessDate;
 }
 
-async function getRestaurantBusinessTomorrow() {
-  const restaurantHours = await getRestaurantHours();
+async function getRestaurantBusinessTomorrow(now = new Date()) {
+  const restaurantHours = await getRestaurantHours({ now });
   return restaurantHours.businessTomorrow;
 }
 
