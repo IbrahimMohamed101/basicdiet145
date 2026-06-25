@@ -41,6 +41,7 @@ router.get(
 router.get("/subscriptions/:id", dashboardAdminOrCashierRead, asyncHandler(controller.getSubscriptionAdmin));
 router.get("/users", dashboardAdminOrCashierRead, asyncHandler(controller.listAppUsers));
 router.get("/users/:id/subscriptions", dashboardAdminOrCashierRead, asyncHandler(controller.listAppUserSubscriptions));
+router.post("/users/:id/reset-password", asyncHandler(controller.resetAppUserPassword));
 router.get("/users/:id", dashboardAdminOrCashierRead, asyncHandler(controller.getAppUser));
 router.get("/orders", dashboardAdminOrCashierRead, asyncHandler(controller.listOrdersAdmin));
 router.get("/orders/:id", dashboardAdminOrCashierRead, asyncHandler(controller.getOrderAdmin));
@@ -397,6 +398,7 @@ router.delete("/zones/:id", asyncHandler(zoneController.deleteZoneAdmin));
 router.get("/users", asyncHandler(controller.listAppUsers));
 router.post("/users", asyncHandler(controller.createAppUserAdmin));
 router.get("/users/:id/subscriptions", asyncHandler(controller.listAppUserSubscriptions));
+router.post("/users/:id/reset-password", asyncHandler(controller.resetAppUserPassword));
 router.get("/users/:id", asyncHandler(controller.getAppUser));
 router.put("/users/:id", asyncHandler(controller.updateAppUser));
 router.get("/subscriptions/summary", asyncHandler(controller.getSubscriptionsSummaryAdmin));

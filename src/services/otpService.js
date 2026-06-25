@@ -10,6 +10,22 @@ const { logger } = require("../utils/logger");
 
 const E164_REGEX = /^\+[1-9]\d{7,14}$/;
 const OTP_CONTEXTS = new Set(["generic", "app_login", "app_register", "password_reset"]);
+const OTP_DISABLED_MESSAGE = "OTP authentication is currently disabled";
+
+function isOtpAuthEnabled() {
+  return String(process.env.AUTH_OTP_ENABLED || "true").trim().toLowerCase() !== "false";
+}
+
+function throwOtpDisabled() {
+  throw new ApiError({
+    status: 403,
+    code: "OTP_AUTH_DISABLED",
+    message: OTP_DISABLED_MESSAGE,
+    details: {
+      messageAr: "تسجيل الدخول برمز التحقق غير متاح حاليًا",
+    },
+  });
+}
 
 /* ── OTP configuration ────────────────────────────────────────────────── */
 
@@ -161,6 +177,9 @@ function hashOtp(phoneE164, otp) {
 /* ── core OTP operations ──────────────────────────────────────────────── */
 
 async function requestOtpForPhone(phoneE164, options = {}) {
+  if (!isOtpAuthEnabled()) {
+    throwOtpDisabled();
+  }
   const phone = assertValidPhoneE164(phoneE164);
   const { ttlMinutes, cooldownSeconds, maxAttempts } = getOtpConfig();
   const now = new Date();
@@ -233,6 +252,9 @@ async function requestOtpForPhone(phoneE164, options = {}) {
 }
 
 async function verifyOtpCode({ phoneE164, otp }) {
+  if (!isOtpAuthEnabled()) {
+    throwOtpDisabled();
+  }
   const phone = assertValidPhoneE164(phoneE164);
   const code = assertValidOtpCode(otp);
 
@@ -323,6 +345,7 @@ async function verifyOtpCode({ phoneE164, otp }) {
 module.exports = {
   assertValidPhoneE164,
   normalizePhoneE164,
+  isOtpAuthEnabled,
   requestOtpForPhone,
   verifyOtpCode,
 };

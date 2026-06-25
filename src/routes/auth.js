@@ -3,6 +3,7 @@ const {
   requestOtp,
   requestRegisterOtp,
   verifyOtp,
+  register,
   verifyRegister,
   login,
   guest,
@@ -12,6 +13,7 @@ const {
   logoutAll,
   forgotPassword,
   resetPassword,
+  changePassword,
   updateDeviceToken,
   deleteDeviceToken,
 } = require("../controllers/authController");
@@ -66,6 +68,7 @@ router.post("/otp/request", otpLimiter, asyncHandler(requestOtp));
 router.post("/otp/verify", otpVerifyLimiter, asyncHandler(verifyOtp));
 router.post("/register/request-otp", otpLimiter, asyncHandler(requestRegisterOtp));
 router.post("/register/verify", otpVerifyLimiter, asyncHandler(verifyRegister));
+router.post("/register", mobileLoginLimiter, asyncHandler(register));
 router.post("/login", mobileLoginLimiter, asyncHandler(login));
 router.post("/guest", mobileLoginLimiter, asyncHandler(guest));
 router.post("/refresh", asyncHandler(refresh));
@@ -74,6 +77,7 @@ router.post("/logout", authMiddleware, asyncHandler(logout));
 router.post("/logout-all", authMiddleware, asyncHandler(logoutAll));
 router.post("/password/forgot", otpLimiter, asyncHandler(forgotPassword));
 router.post("/password/reset", otpVerifyLimiter, asyncHandler(resetPassword));
+router.post("/change-password", authMiddleware, asyncHandler(changePassword));
 router.post("/device-token", authMiddleware, asyncHandler(updateDeviceToken));
 router.delete("/device-token", authMiddleware, asyncHandler(deleteDeviceToken));
 

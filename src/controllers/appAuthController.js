@@ -28,6 +28,13 @@ function handleError(res, err) {
     return errorResponse(res, 409, "CONFLICT", `${key} already in use`);
   }
   if (isApiError(err)) {
+    if (err.code === "OTP_AUTH_DISABLED") {
+      return res.status(err.status).json({
+        status: false,
+        message: "OTP authentication is currently disabled",
+        messageAr: "تسجيل الدخول برمز التحقق غير متاح حاليًا",
+      });
+    }
     return errorResponse(res, err.status, err.code, err.message, err.details);
   }
   return errorResponse(res, 500, "INTERNAL", "Unexpected error");

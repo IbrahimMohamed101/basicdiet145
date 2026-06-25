@@ -51,6 +51,7 @@ const {
   validateDashboardPassword,
   hashDashboardPassword,
 } = require("../services/dashboardPasswordService");
+const { validateAppPassword, hashAppPassword } = require("../services/appPasswordService");
 const { assertValidPhoneE164 } = require("../services/otpService");
 const SubscriptionLifecycleService = require("../services/subscription/subscriptionLifecycleService");
 const SubscriptionOperationsReadService = require("../services/subscription/subscriptionOperationsReadService");
@@ -3881,6 +3882,72 @@ async function listAppUsers(req, res) {
   });
 }
 
+async function resetAppUserPassword(req, res) {
+  const { id } = req.params;
+  if (req.dashboardUserRole !== "admin" && req.dashboardUserRole !== "superadmin") {
+    return res.status(403).json({
+      status: false,
+      message: "Forbidden",
+      messageAr: "ليس لديك صلاحية لإعادة تعيين كلمة مرور العميل",
+    });
+  }
+  if (!validateObjectIdOrRespond(res, id, "id")) {
+    return undefined;
+  }
+
+  const { newPassword, confirmPassword, forcePasswordChange, reason } = req.body || {};
+  const passwordValidation = validateAppPassword(newPassword);
+  if (!passwordValidation.ok) {
+    return errorResponse(res, 400, "WEAK_PASSWORD", passwordValidation.message);
+  }
+  if (confirmPassword === undefined || confirmPassword === null || String(confirmPassword) !== String(newPassword || "")) {
+    return errorResponse(res, 400, "PASSWORD_CONFIRMATION_MISMATCH", "confirmPassword must match newPassword");
+  }
+
+  const user = await User.findOne({ _id: id, role: "client" });
+  if (!user) {
+    return res.status(404).json({
+      status: false,
+      message: "Customer account was not found",
+      messageAr: "العميل غير موجود",
+    });
+  }
+
+  const now = new Date();
+  user.passwordHash = await hashAppPassword(newPassword);
+  user.passwordSetAt = now;
+  user.passwordChangedAt = now;
+  user.forcePasswordChange = forcePasswordChange === undefined ? true : Boolean(forcePasswordChange);
+  user.authProvider = "password";
+  user.authMethods = Array.from(new Set([...(Array.isArray(user.authMethods) ? user.authMethods : []), "password"]));
+  user.failedLoginAttempts = 0;
+  user.lockedUntil = null;
+  await user.save();
+
+  await writeActivityLogSafely({
+    entityType: "user",
+    entityId: user._id,
+    action: "customer_password_reset_by_admin",
+    byUserId: req.dashboardUserId,
+    byRole: req.dashboardUserRole,
+    meta: {
+      reason: reason ? String(reason).slice(0, 500) : null,
+      forcePasswordChange: user.forcePasswordChange,
+    },
+  }, { source: "resetAppUserPassword" });
+
+  return res.status(200).json({
+    status: true,
+    message: "Password reset successfully",
+    messageAr: "تم إعادة تعيين كلمة المرور بنجاح",
+    data: {
+      userId: String(user._id),
+      forcePasswordChange: Boolean(user.forcePasswordChange),
+      passwordSetAt: user.passwordSetAt,
+    },
+  });
+}
+
 async function getAppUser(req, res) {
   const { id } = req.params;
   if (!validateObjectIdOrRespond(res, id, "id")) {
@@ -5741,6 +5808,7 @@ module.exports = {
   getTodayReport,
   listAppUsers,
   createAppUserAdmin,
+  resetAppUserPassword,
   getAppUser,
   updateAppUser,
   listAppUserSubscriptions,

@@ -9,6 +9,7 @@ const {
   GUEST_TOKEN_EXPIRES_SECONDS,
 } = require("../services/appTokenService");
 const { validateAppPassword, hashAppPassword, compareAppPassword } = require("../services/appPasswordService");
+const { writeLog } = require("../utils/log");
 const {
   createRefreshSession,
   findUsableRefreshSession,
@@ -26,6 +27,7 @@ function serializeCoreUser(user) {
     phoneE164: user.phoneE164 || user.phone,
     phoneVerified: Boolean(user.phoneVerified),
     email: user.email || null,
+    forcePasswordChange: Boolean(user.forcePasswordChange),
     role: "client",
     createdAt: user.createdAt,
   };
@@ -38,6 +40,7 @@ function serializeAuthUser(user) {
     email: user.email || null,
     phoneE164: user.phoneE164 || user.phone,
     phoneVerified: Boolean(user.phoneVerified),
+    forcePasswordChange: Boolean(user.forcePasswordChange),
   };
 }
 
@@ -57,12 +60,26 @@ function handleError(res, err) {
     return errorResponse(res, 409, "CONFLICT", `${key} already in use`);
   }
   if (isApiError(err)) {
+    if (err.code === "OTP_AUTH_DISABLED") {
+      return res.status(err.status).json({
+        status: false,
+        message: "OTP authentication is currently disabled",
+        messageAr: "تسجيل الدخول برمز التحقق غير متاح حاليًا",
+      });
+    }
     const details = err.code === "OTP_COOLDOWN" && err.details
       ? { retryAfterSeconds: err.details.cooldownSecondsRemaining }
       : err.details;
     return errorResponse(res, err.status, mapAuthErrorCode(err.code), err.message, details);
   }
   if (err && err.status && err.code) {
+    if (err.code === "OTP_AUTH_DISABLED") {
+      return res.status(err.status).json({
+        status: false,
+        message: "OTP authentication is currently disabled",
+        messageAr: "تسجيل الدخول برمز التحقق غير متاح حاليًا",
+      });
+    }
     return errorResponse(res, err.status, err.code, err.message, err.details);
   }
   return errorResponse(res, 500, "INTERNAL", "Unexpected error");
@@ -77,6 +94,46 @@ function findClientUserByPhone(phoneE164) {
     role: "client",
     $or: [{ phoneE164 }, { phone: phoneE164 }],
   });
+}
+
+function getRequestPhone(body = {}) {
+  return body.phoneE164 || body.phone;
+}
+
+function isPasswordAuthEnabled() {
+  return String(process.env.AUTH_PASSWORD_LOGIN_ENABLED || "true").trim().toLowerCase() !== "false";
+}
+
+function passwordAuthDisabledResponse(res) {
+  return res.status(403).json({
+    status: false,
+    message: "Password authentication is currently disabled",
+    messageAr: "تسجيل الدخول بكلمة المرور غير متاح حاليًا",
+  });
+}
+
+function assertPasswordConfirmation(password, confirmPassword) {
+  if (confirmPassword === undefined || confirmPassword === null || String(confirmPassword) !== String(password || "")) {
+    const err = new Error("confirmPassword must match password");
+    err.status = 400;
+    err.code = "PASSWORD_CONFIRMATION_MISMATCH";
+    throw err;
+  }
+}
+
+async function writeCustomerAuthActivityLog(user, action, meta = {}) {
+  try {
+    await writeLog({
+      entityType: "user",
+      entityId: user._id,
+      action,
+      byUserId: user._id,
+      byRole: "client",
+      meta,
+    });
+  } catch (_err) {
+    // Auth should not fail because non-critical audit persistence failed.
+  }
 }
 
 function normalizeOptionalFullName(fullName) {
@@ -201,6 +258,68 @@ async function requestOtp(req, res) {
     const { phoneE164 } = req.body || {};
     const result = await requestOtpForPhone(phoneE164, { ipAddress: getRequestIp(req) });
     return res.status(200).json({ status: "otp_sent", phoneE164: result.phone });
+  } catch (err) {
+    return handleError(res, err);
+  }
+}
+
+async function register(req, res) {
+  try {
+    if (!isPasswordAuthEnabled()) {
+      return passwordAuthDisabledResponse(res);
+    }
+    const { password, confirmPassword, deviceId, deviceName, fullName, email } = req.body || {};
+    const phone = assertValidPhoneE164(getRequestPhone(req.body || {}));
+    const passwordValidation = validateAppPassword(password);
+    if (!passwordValidation.ok) {
+      return errorResponse(res, 400, "WEAK_PASSWORD", passwordValidation.message);
+    }
+    assertPasswordConfirmation(password, confirmPassword);
+    const normalizedFullName = normalizeOptionalFullName(fullName);
+    const normalizedEmail = normalizeOptionalEmail(email);
+
+    const existingUser = await findClientUserByPhone(phone);
+    if (existingUser && existingUser.passwordHash) {
+      return errorResponse(res, 409, "USER_ALREADY_REGISTERED", "Phone number is already in use");
+    }
+
+    await ensureRegistrationEmailAvailable(normalizedEmail, phone, existingUser ? existingUser._id : null);
+
+    const now = new Date();
+    const coreUser = existingUser || new User({ phone, phoneE164: phone, role: "client" });
+    if (coreUser.isActive === false) {
+      return errorResponse(res, 403, "FORBIDDEN", "User account is inactive");
+    }
+
+    coreUser.phone = phone;
+    coreUser.phoneE164 = phone;
+    coreUser.phoneVerified = true;
+    if (normalizedFullName !== undefined) {
+      coreUser.name = normalizedFullName || undefined;
+    }
+    if (normalizedEmail !== undefined) {
+      coreUser.email = normalizedEmail || undefined;
+    }
+    coreUser.passwordHash = await hashAppPassword(password);
+    coreUser.passwordSetAt = now;
+    coreUser.passwordChangedAt = now;
+    coreUser.forcePasswordChange = false;
+    coreUser.authProvider = "password";
+    coreUser.authMethods = Array.from(new Set([...(Array.isArray(coreUser.authMethods) ? coreUser.authMethods : []), "password"]));
+    coreUser.lastLoginAt = now;
+    coreUser.failedLoginAttempts = 0;
+    coreUser.lockedUntil = null;
+    await coreUser.save();
+    await ensureLinkedAppUser(coreUser);
+
+    const payload = await buildTokenResponse({
+      req,
+      user: coreUser,
+      status: "registered",
+      deviceId,
+      deviceName,
+    });
+    return res.status(201).json(payload);
   } catch (err) {
     return handleError(res, err);
   }
@@ -370,8 +489,11 @@ async function verifyRegister(req, res) {
 
 async function login(req, res) {
   try {
+    if (!isPasswordAuthEnabled()) {
+      return passwordAuthDisabledResponse(res);
+    }
     const { phoneE164, password, deviceId, deviceName } = req.body || {};
-    const phone = assertValidPhoneE164(phoneE164);
+    const phone = assertValidPhoneE164(phoneE164 || req.body.phone);
     const coreUser = await findClientUserByPhone(phone);
 
     if (coreUser && coreUser.phoneVerified === true && !coreUser.passwordHash) {
@@ -383,13 +505,17 @@ async function login(req, res) {
       : false;
 
     if (!coreUser || !passwordMatches) {
-      return errorResponse(res, 401, "INVALID_CREDENTIALS", "Invalid phone number or password");
+      return errorResponse(res, 401, "INVALID_CREDENTIALS", "Invalid phone or password", {
+        messageAr: "رقم الجوال أو كلمة المرور غير صحيحة",
+      });
     }
     if (coreUser.isActive === false) {
       return errorResponse(res, 403, "FORBIDDEN", "User account is inactive");
     }
 
     coreUser.lastLoginAt = new Date();
+    coreUser.failedLoginAttempts = 0;
+    coreUser.lockedUntil = null;
     await coreUser.save();
 
     const payload = await buildTokenResponse({
@@ -400,6 +526,46 @@ async function login(req, res) {
       deviceName,
     });
     return res.status(200).json(payload);
+  } catch (err) {
+    return handleError(res, err);
+  }
+}
+
+async function changePassword(req, res) {
+  try {
+    if (!isPasswordAuthEnabled()) {
+      return passwordAuthDisabledResponse(res);
+    }
+    const { currentPassword, newPassword, confirmPassword } = req.body || {};
+    const user = await User.findOne({ _id: req.userId, role: "client" });
+    if (!user) {
+      return errorResponse(res, 401, "AUTH_REQUIRED", "Authentication required");
+    }
+    if (!user.passwordHash || !(await compareAppPassword(currentPassword, user.passwordHash))) {
+      return errorResponse(res, 401, "INVALID_CREDENTIALS", "Invalid current password");
+    }
+    const passwordValidation = validateAppPassword(newPassword);
+    if (!passwordValidation.ok) {
+      return errorResponse(res, 400, "WEAK_PASSWORD", passwordValidation.message);
+    }
+    assertPasswordConfirmation(newPassword, confirmPassword);
+
+    const now = new Date();
+    user.passwordHash = await hashAppPassword(newPassword);
+    user.passwordChangedAt = now;
+    user.passwordSetAt = user.passwordSetAt || now;
+    user.forcePasswordChange = false;
+    user.authProvider = "password";
+    user.authMethods = Array.from(new Set([...(Array.isArray(user.authMethods) ? user.authMethods : []), "password"]));
+    await user.save();
+    await revokeAllUserSessions(user._id);
+    await writeCustomerAuthActivityLog(user, "customer_password_changed", { source: "customer_auth" });
+
+    return res.status(200).json({
+      status: true,
+      message: "Password changed successfully",
+      messageAr: "تم تغيير كلمة المرور بنجاح",
+    });
   } catch (err) {
     return handleError(res, err);
   }
@@ -490,6 +656,13 @@ async function logoutAll(req, res) {
 
 async function forgotPassword(req, res) {
   try {
+    if (String(process.env.AUTH_OTP_ENABLED || "true").trim().toLowerCase() === "false") {
+      return res.status(403).json({
+        status: false,
+        message: "OTP authentication is currently disabled",
+        messageAr: "تسجيل الدخول برمز التحقق غير متاح حاليًا",
+      });
+    }
     const { phoneE164 } = req.body || {};
     const phone = assertValidPhoneE164(phoneE164);
     const coreUser = await findClientUserByPhone(phone);
@@ -507,6 +680,13 @@ async function forgotPassword(req, res) {
 
 async function resetPassword(req, res) {
   try {
+    if (String(process.env.AUTH_OTP_ENABLED || "true").trim().toLowerCase() === "false") {
+      return res.status(403).json({
+        status: false,
+        message: "OTP authentication is currently disabled",
+        messageAr: "تسجيل الدخول برمز التحقق غير متاح حاليًا",
+      });
+    }
     const { phoneE164, otp, newPassword } = req.body || {};
     const passwordValidation = validateAppPassword(newPassword);
     if (!passwordValidation.ok) {
@@ -522,6 +702,11 @@ async function resetPassword(req, res) {
     coreUser.phone = phone;
     coreUser.phoneE164 = phone;
     coreUser.passwordHash = await hashAppPassword(newPassword);
+    coreUser.passwordSetAt = new Date();
+    coreUser.passwordChangedAt = new Date();
+    coreUser.forcePasswordChange = false;
+    coreUser.authProvider = "password";
+    coreUser.authMethods = Array.from(new Set([...(Array.isArray(coreUser.authMethods) ? coreUser.authMethods : []), "password"]));
     coreUser.phoneVerified = true;
     await coreUser.save();
     await ensureLinkedAppUser(coreUser);
@@ -565,6 +750,7 @@ module.exports = {
   requestOtp,
   requestRegisterOtp,
   verifyOtp,
+  register,
   verifyRegister,
   login,
   guest,
@@ -574,6 +760,7 @@ module.exports = {
   logoutAll,
   forgotPassword,
   resetPassword,
+  changePassword,
   updateDeviceToken,
   deleteDeviceToken,
 };
