@@ -52,6 +52,11 @@ async function openRestaurant() {
     Setting.updateOne({ key: "restaurant_is_open" }, { $set: { value: true } }, { upsert: true }),
     Setting.updateOne({ key: "restaurant_open_time" }, { $set: { value: "00:00" } }, { upsert: true }),
     Setting.updateOne({ key: "restaurant_close_time" }, { $set: { value: "23:59" } }, { upsert: true }),
+    Setting.updateOne(
+      { key: "pickup_locations" },
+      { $set: { value: [{ id: "main", locationId: "main", name: { en: "Main", ar: "الرئيسي" }, isActive: true }] } },
+      { upsert: true }
+    ),
   ]);
 }
 
@@ -84,7 +89,7 @@ function completeSlots(count) {
   }));
 }
 
-async function createOpenDay(subscription, date, status = "open") {
+async function createOpenDay(subscription, date, status = "open", overrides = {}) {
   return SubscriptionDay.create({
     subscriptionId: subscription._id,
     date,
@@ -105,6 +110,7 @@ async function createOpenDay(subscription, date, status = "open") {
       selectedTotalMealCount: 3,
       isExactCountSatisfied: true,
     },
+    ...overrides,
   });
 }
 
@@ -161,16 +167,19 @@ async function main() {
     });
 
     await test("home delivery day 1 branch pickup is allowed through pickup request", async () => {
-      const subscription = await createSubscription({ mode: "delivery", startDate: today, remainingMeals: 5 });
-      await createOpenDay(subscription, today, "open");
+      const subscription = await createSubscription({ mode: "delivery", startDate: today, remainingMeals: 3 });
+      await createOpenDay(subscription, today, "open", {
+        fulfillmentModeOverride: "pickup",
+        pickupLocationIdOverride: "main",
+      });
       const result = await createSubscriptionPickupRequestForClient({
         userId: subscription.userId,
         subscriptionId: subscription._id,
         date: today,
-        mealCount: 5,
+        mealCount: 3,
         idempotencyKey: `phase4-day1-${subscription._id}`,
       });
-      assert.strictEqual(result.data.mealCount, 5);
+      assert.strictEqual(result.data.mealCount, 3);
       assert.strictEqual(result.data.status, "locked");
       const refreshed = await Subscription.findById(subscription._id).lean();
       assert.strictEqual(Number(refreshed.remainingMeals), 0);
@@ -192,7 +201,22 @@ async function main() {
 
     await test("branch pickup can reserve all remaining meals and has no daily cap", async () => {
       const subscription = await createSubscription({ mode: "pickup", startDate: today, remainingMeals: 7, selectedMealsPerDay: 1 });
-      await createOpenDay(subscription, today, "open");
+      await createOpenDay(subscription, today, "open", {
+        mealSlots: completeSlots(7),
+        plannerMeta: {
+          requiredSlotCount: 1,
+          maxSlotCount: 10,
+          completeSlotCount: 7,
+          premiumSlotCount: 0,
+          isDraftValid: true,
+          isConfirmable: true,
+        },
+        planningMeta: {
+          requiredMealCount: 1,
+          selectedTotalMealCount: 7,
+          isExactCountSatisfied: true,
+        },
+      });
       const policy = buildFulfillmentPolicy({ subscription, date: today });
       assert.strictEqual(policy.dailyMealLimitEnforced, false);
       const result = await createSubscriptionPickupRequestForClient({
@@ -208,7 +232,22 @@ async function main() {
 
     await test("branch pickup rejects above remaining balance", async () => {
       const subscription = await createSubscription({ mode: "pickup", startDate: today, remainingMeals: 3 });
-      await createOpenDay(subscription, today, "open");
+      await createOpenDay(subscription, today, "open", {
+        mealSlots: completeSlots(4),
+        plannerMeta: {
+          requiredSlotCount: 1,
+          maxSlotCount: 10,
+          completeSlotCount: 4,
+          premiumSlotCount: 0,
+          isDraftValid: true,
+          isConfirmable: true,
+        },
+        planningMeta: {
+          requiredMealCount: 1,
+          selectedTotalMealCount: 4,
+          isExactCountSatisfied: true,
+        },
+      });
       await assert.rejects(
         () => createSubscriptionPickupRequestForClient({
           userId: subscription.userId,
@@ -232,9 +271,13 @@ async function main() {
       );
     });
 
-    await test("policy helper exposes day 1 exception and day 2 delivery-only rule", async () => {
+    await test("policy helper exposes explicit day 1 override and day 2 delivery-only rule", async () => {
       const day1Subscription = await createSubscription({ mode: "delivery", startDate: today });
-      assert.doesNotThrow(() => assertFulfillmentMethodAllowed({ subscription: day1Subscription, date: today, requestedMethod: "pickup" }));
+      const day1 = await createOpenDay(day1Subscription, today, "open", {
+        fulfillmentModeOverride: "pickup",
+        pickupLocationIdOverride: "main",
+      });
+      assert.doesNotThrow(() => assertFulfillmentMethodAllowed({ subscription: day1Subscription, day: day1, date: today, requestedMethod: "pickup" }));
       const day2Subscription = await createSubscription({ mode: "delivery", startDate: yesterday });
       assert.throws(
         () => assertFulfillmentMethodAllowed({ subscription: day2Subscription, date: today, requestedMethod: "pickup" }),

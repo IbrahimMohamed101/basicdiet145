@@ -59,10 +59,10 @@ function isValidHomeDeliveryChefChoiceDay(day = {}, subscription = {}) {
   return resolveHomeDeliveryEntitlementCount(day, subscription) > 0;
 }
 
-function buildChefChoiceMealSlots(count) {
+function buildChefChoiceMealSlots(count, { startIndex = 1 } = {}) {
   return Array.from({ length: positiveInteger(count) }, (_, index) => ({
-    slotIndex: index + 1,
-    slotKey: `chef_choice_${index + 1}`,
+    slotIndex: startIndex + index,
+    slotKey: `chef_choice_${startIndex + index}`,
     status: "complete",
     selectionType: "chef_choice",
     mealType: "chef_choice",
@@ -79,6 +79,7 @@ module.exports = {
   CHEF_CHOICE_NOTICE_AR,
   buildChefChoiceMealSlots,
   hasExplicitKitchenMeals,
+  isHomeDeliverySubscription,
   isValidHomeDeliveryChefChoiceDay,
   resolveDeliveryAddress,
   resolveDeliveryWindow,

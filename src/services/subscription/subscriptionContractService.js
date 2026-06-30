@@ -107,7 +107,7 @@ function buildPhase1SubscriptionContract({ payload = {}, resolvedQuote, actorCon
   }
 
   const resolvedStart = resolvePhase1StartDate({
-    requestedStartDate: payload.startDate !== undefined ? payload.startDate : (resolvedQuote.startDate || null),
+    requestedStartDate: resolvedQuote && resolvedQuote.startDate ? resolvedQuote.startDate : (payload.startDate !== undefined ? payload.startDate : null),
     now,
     timezone: PHASE1_CONTRACT_TIMEZONE,
     currentBusinessDate,

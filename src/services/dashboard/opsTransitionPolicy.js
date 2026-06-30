@@ -13,7 +13,7 @@ const TRANSITIONS = Object.freeze({
   subscription: Object.freeze({
     open: ["locked", "in_preparation", "delivery_canceled", "canceled_at_branch"],
     locked: ["open", "in_preparation", "delivery_canceled", "canceled_at_branch"],
-    in_preparation: ["ready_for_pickup", "ready_for_delivery", "delivery_canceled", "canceled_at_branch"],
+    in_preparation: ["ready_for_pickup", "ready_for_delivery", "out_for_delivery", "delivery_canceled", "canceled_at_branch"],
     ready_for_delivery: ["out_for_delivery", "fulfilled", "delivery_canceled"],
     out_for_delivery: ["fulfilled", "delivery_canceled"],
     ready_for_pickup: ["fulfilled", "canceled_at_branch", "no_show"],

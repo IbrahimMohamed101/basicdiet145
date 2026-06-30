@@ -25,7 +25,9 @@ const { buildMealBalance } = require("./subscriptionClientSupportService");
 const {
   resolveSameDayFulfillmentMethod,
   resolveScheduledDeliveryDateTime,
+  DELIVERY_SELECTION_CUTOFF_HOURS,
 } = require("./subscriptionDayModificationPolicyService");
+const { resolveEffectiveFulfillmentMode } = require("./subscriptionFulfillmentPolicyService");
 
 /**
  * @typedef {import("../../types/subscriptionTimeline").TimelineDay} TimelineDay
@@ -374,6 +376,38 @@ function normalizeTimelinePaymentStatus(payment, commercialState) {
       : "not_required";
 }
 
+/**
+ * Determines whether the delivery selection cutoff has passed for a subscription day.
+ *
+ * The cutoff is DELIVERY_SELECTION_CUTOFF_HOURS before the start of the delivery window.
+ * Only applies to same-day delivery days (date === businessDate).
+ * For pickup days or future/past days this always returns { cutoffPassed: false }.
+ *
+ * @param {{ subscription: object, day: object, date: string, businessDate: string, now: Date }} param0
+ * @returns {{ cutoffPassed: boolean, lockDateTime: Date|null, deliveryWindow: string|null }}
+ */
+function resolveDeliverySelectionCutoffState({ subscription, day, date, businessDate, now }) {
+  // Determine effective fulfillment mode (respects day-level override)
+  const effectiveMode = resolveEffectiveFulfillmentMode({ subscription, day, date });
+
+  // Only applies to delivery mode, only on today (same-day)
+  if (effectiveMode !== "delivery" || date !== businessDate) {
+    return { cutoffPassed: false, lockDateTime: null, deliveryWindow: null };
+  }
+
+  const schedule = resolveScheduledDeliveryDateTime({ subscription, day, date });
+  if (!(schedule.lockDateTime instanceof Date) || Number.isNaN(schedule.lockDateTime.getTime())) {
+    return { cutoffPassed: false, lockDateTime: null, deliveryWindow: schedule.deliveryWindow || null };
+  }
+
+  return {
+    cutoffPassed: now.getTime() >= schedule.lockDateTime.getTime(),
+    lockDateTime: schedule.lockDateTime,
+    deliveryWindow: schedule.deliveryWindow || null,
+    cutoffHours: DELIVERY_SELECTION_CUTOFF_HOURS,
+  };
+}
+
 function deriveTimelineCanEdit({ subscription, day, businessDate, now = new Date() }) {
   if (!day || String(subscription && subscription.status || "") !== "active") return false;
   if (String(day.status || "open") !== "open") return false;
@@ -583,11 +617,48 @@ async function buildSubscriptionTimeline(subscriptionId, options = {}) {
       businessDate,
       now,
     });
-    const status = resolveTimelineLegacyStatus({
+    const cutoffState = resolveDeliverySelectionCutoffState({
+      subscription,
+      day: dbDay || { date: currentDate, status: "open" },
+      date: currentDate,
+      businessDate,
+      now,
+    });
+
+    // Effective fulfillment mode per day (respects day-level pickup override)
+    const effectiveFulfillmentMode = resolveEffectiveFulfillmentMode({
+      subscription,
+      day: dbDay || { date: currentDate, status: "open" },
+      date: currentDate,
+    });
+
+    // --- Timeline status resolution ---
+    // Start from the legacy status (based on DB day.status)
+    let resolvedStatus = resolveTimelineLegacyStatus({
       isExtension,
       day: dbDay,
       isPlanned: planningContract.isPlanned,
     });
+    let resolvedDayStatus = String((dbDay || { status: "open" }).status || "open");
+    let cutoffLockedReason = null;
+    let cutoffLockedMessage = null;
+
+    // If the delivery selection cutoff has passed and the day is still shown as open,
+    // force the timeline badge to "locked" and annotate with the cutoff reason.
+    // This applies ONLY when no operational state has already been written (day.status === "open").
+    if (
+      cutoffState.cutoffPassed
+      && effectiveFulfillmentMode === "delivery"
+      && (resolvedStatus === "open" || resolvedStatus === "planned")
+    ) {
+      resolvedStatus = "locked";
+      resolvedDayStatus = "locked";
+      cutoffLockedReason = "DELIVERY_SELECTION_CUTOFF_PASSED";
+      cutoffLockedMessage = "\u0627\u0646\u062a\u0647\u0649 \u0648\u0642\u062a \u0627\u062e\u062a\u064a\u0627\u0631 \u0648\u062c\u0628\u0627\u062a \u0647\u0630\u0627 \u0627\u0644\u064a\u0648\u0645";
+    }
+
+    const status = resolvedStatus;
+    const dayStatus = resolvedDayStatus;
     const fulfillmentState = buildSubscriptionDayFulfillmentState({
       subscription,
       day: dbDay || { date: currentDate, status: "open" },
@@ -595,7 +666,6 @@ async function buildSubscriptionTimeline(subscriptionId, options = {}) {
       today: businessDate,
     });
     const dayForFulfillment = projectedDay;
-    const dayStatus = String(dayForFulfillment.status || "open");
     const statusLabel = resolveReadLabel("timelineStatuses", status, lang)
       || resolveReadLabel("dayStatuses", dayStatus, lang);
     const fulfillmentReadFields = buildFulfillmentReadFields({
@@ -610,10 +680,15 @@ async function buildSubscriptionTimeline(subscriptionId, options = {}) {
       statusLabel,
     });
 
+    // Determine final lockedReason/lockedMessage: prefer cutoff annotation, then fulfillment fields
+    const finalLockedReason = cutoffLockedReason || fulfillmentReadFields.lockedReason || null;
+    const finalLockedMessage = cutoffLockedMessage || fulfillmentReadFields.lockedMessage || null;
+
     timelineDays.push({
       date: currentDate,
       status,
       dayStatus,
+      fulfillmentMode: effectiveFulfillmentMode,
       isPast,
       autoSettled: Boolean(dbDay && dbDay.autoSettled),
       settledAt: dbDay && dbDay.settledAt ? dbDay.settledAt : null,
@@ -632,6 +707,9 @@ async function buildSubscriptionTimeline(subscriptionId, options = {}) {
       ...planningContract,
       ...fulfillmentState,
       ...fulfillmentReadFields,
+      // Override lockedReason/lockedMessage with cutoff annotation when applicable
+      lockedReason: finalLockedReason,
+      lockedMessage: finalLockedMessage,
     });
   }
 
@@ -723,5 +801,6 @@ function buildExtensionSourceMap(tokens = [], endDateStr) {
 module.exports = {
   buildSubscriptionTimeline,
   deriveTimelinePlanningContract,
+  resolveDeliverySelectionCutoffState,
   resolveTimelineLegacyStatus,
 };

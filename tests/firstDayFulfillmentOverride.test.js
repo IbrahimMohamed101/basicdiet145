@@ -109,12 +109,10 @@ async function cleanup() {
 
   try {
     const startDate = dateUtils.getTodayKSADate();
-    const sd = new Date(`${startDate}T12:00:00Z`);
-    sd.setDate(sd.getDate() + 1);
-    const secondDate = sd.toISOString().split("T")[0];
+    const secondDate = dateUtils.addDaysToKSADateString(startDate, 1);
 
     let normalSubscriptionId;
-    await test("1. Existing delivery subscription without override", async () => {
+    await test("1. Same-day delivery subscription without override starts next service day", async () => {
       const payload = {
         planId: String(testPlan._id),
         grams: 200,
@@ -133,6 +131,9 @@ async function cleanup() {
       assert.strictEqual(res.status, 201, JSON.stringify(res.body));
       const draft = await CheckoutDraft.findById(res.body.data.draftId).lean();
       assert.strictEqual(draft.delivery.firstDayFulfillmentOverride, null);
+      assert.strictEqual(dateUtils.toKSADateString(draft.startDate), secondDate);
+      assert.strictEqual(res.body.data.fulfillmentOptions.startDateShifted, true);
+      assert.strictEqual(res.body.data.fulfillmentOptions.deliveryStartDateIfNoPickup, secondDate);
 
       const payment = await Payment.create({
         userId: testUser._id, draftId: draft._id, type: "subscription_activation",
@@ -143,22 +144,27 @@ async function cleanup() {
 
       const sub = await Subscription.findById(normalSubscriptionId).lean();
       assert.strictEqual(sub.deliveryMode, "delivery");
+      assert.strictEqual(dateUtils.toKSADateString(sub.startDate), secondDate);
 
       const days = await SubscriptionDay.find({ subscriptionId: normalSubscriptionId }).sort("date").lean();
+      assert.strictEqual(days[0].date, secondDate);
       assert.strictEqual(days[0].fulfillmentModeOverride, null);
 
-      const statusRes = await api.get(`/api/subscriptions/${normalSubscriptionId}/days/${startDate}/fulfillment/status`).set(clientAuth(testUser._id));
+      const sameDay = await SubscriptionDay.findOne({ subscriptionId: normalSubscriptionId, date: startDate }).lean();
+      assert.strictEqual(sameDay, null, "same-day delivery day must not be created");
+
+      const statusRes = await api.get(`/api/subscriptions/${normalSubscriptionId}/days/${secondDate}/fulfillment/status`).set(clientAuth(testUser._id));
       assert.strictEqual(statusRes.status, 200);
       assert.strictEqual(statusRes.body.data.deliveryMode, "delivery");
       assert.strictEqual(statusRes.body.data.firstDayFulfillmentOverride, false);
 
       const availRes = await api.get(`/api/subscriptions/${normalSubscriptionId}/pickup-availability?date=${startDate}`).set(clientAuth(testUser._id));
-      assert.strictEqual(availRes.status, 400, JSON.stringify(availRes.body));
-      assert.strictEqual(availRes.body.error.code, "INVALID_DELIVERY_MODE");
+      assert.strictEqual(availRes.status, 422, JSON.stringify(availRes.body));
+      assert.strictEqual(availRes.body.error.code, "SUBSCRIPTION_NOT_STARTED");
 
       const reqRes = await api.post(`/api/subscriptions/${normalSubscriptionId}/pickup-requests`).set(clientAuth(testUser._id)).send({ date: startDate, mealCount: 1 });
-      assert.strictEqual(reqRes.status, 400, JSON.stringify(reqRes.body));
-      assert.strictEqual(reqRes.body.error.code, "INVALID_DELIVERY_MODE");
+      assert.strictEqual(reqRes.status, 422, JSON.stringify(reqRes.body));
+      assert.strictEqual(reqRes.body.error.code, "SUBSCRIPTION_NOT_STARTED");
     });
 
     let overrideSubscriptionId;
@@ -204,6 +210,109 @@ async function cleanup() {
 
       assert.strictEqual(days[1].fulfillmentModeOverride, null);
       assert.strictEqual(days[1].pickupLocationIdOverride, null);
+    });
+
+    await test("2b. Renewal today with first-day pickup override keeps Day 1 pickup", async () => {
+      const expiredSub = await Subscription.create({
+        userId: testUser._id,
+        planId: testPlan._id,
+        status: "active",
+        startDate: new Date(`${dateUtils.addDaysToKSADateString(startDate, -7)}T00:00:00+03:00`),
+        endDate: new Date(`${dateUtils.addDaysToKSADateString(startDate, -1)}T00:00:00+03:00`),
+        validityEndDate: new Date(`${dateUtils.addDaysToKSADateString(startDate, -1)}T00:00:00+03:00`),
+        totalMeals: 12,
+        remainingMeals: 0,
+        selectedGrams: 200,
+        selectedMealsPerDay: 2,
+        deliveryMode: "delivery",
+        deliveryAddress: { street: "Old Delivery St", city: "Riyadh" },
+        deliveryWindow: "16:00-18:00",
+        deliverySlot: { type: "delivery", window: "16:00-18:00", slotId: "delivery_slot_1" },
+        deliveryZoneId: testZone._id,
+      });
+
+      const res = await api.post(`/api/subscriptions/${expiredSub._id}/renew`).set(clientAuth(testUser._id)).send({
+        planId: String(testPlan._id),
+        grams: 200,
+        mealsPerDay: 2,
+        startDate,
+        delivery: {
+          type: "delivery",
+          address: { street: "Renew Override St", city: "Riyadh" },
+          zoneId: String(testZone._id),
+          slot: { slotId: "delivery_slot_1" },
+          firstDayFulfillmentOverride: { type: "pickup", pickupLocationId: branchId },
+        },
+        idempotencyKey: `renew_override_${TEST_TAG}`,
+      });
+      assert.strictEqual(res.status, 201, JSON.stringify(res.body));
+      const draft = await CheckoutDraft.findById(res.body.data.draftId).lean();
+      assert.strictEqual(draft.delivery.firstDayFulfillmentOverride.type, "pickup");
+
+      const payment = await Payment.create({
+        userId: testUser._id, draftId: draft._id, type: "subscription_renewal",
+        amount: draft.breakdown.totalHalala, currency: "SAR", status: "paid", provider: "moyasar",
+      });
+      const act = await finalizeSubscriptionDraftPaymentFlow({ draft, payment }, null);
+      const renewedSub = await Subscription.findById(act.subscriptionId).lean();
+      assert.strictEqual(renewedSub.deliveryMode, "delivery");
+      assert.strictEqual(String(renewedSub.renewedFromSubscriptionId), String(expiredSub._id));
+      assert.strictEqual(dateUtils.toKSADateString(renewedSub.startDate), startDate);
+
+      const days = await SubscriptionDay.find({ subscriptionId: act.subscriptionId }).sort("date").lean();
+      assert.strictEqual(days[0].date, startDate);
+      assert.strictEqual(days[0].fulfillmentModeOverride, "pickup");
+      assert.strictEqual(days[0].pickupLocationIdOverride, branchId);
+      assert.strictEqual(days[1].date, secondDate);
+      assert.strictEqual(days[1].fulfillmentModeOverride, null);
+    });
+
+    await test("2c. Renewal today without pickup override starts next service day", async () => {
+      const expiredSub = await Subscription.create({
+        userId: testUser._id,
+        planId: testPlan._id,
+        status: "active",
+        startDate: new Date(`${dateUtils.addDaysToKSADateString(startDate, -7)}T00:00:00+03:00`),
+        endDate: new Date(`${dateUtils.addDaysToKSADateString(startDate, -1)}T00:00:00+03:00`),
+        validityEndDate: new Date(`${dateUtils.addDaysToKSADateString(startDate, -1)}T00:00:00+03:00`),
+        totalMeals: 12,
+        remainingMeals: 0,
+        selectedGrams: 200,
+        selectedMealsPerDay: 2,
+        deliveryMode: "delivery",
+        deliveryAddress: { street: "Old Delivery St", city: "Riyadh" },
+        deliveryWindow: "16:00-18:00",
+        deliverySlot: { type: "delivery", window: "16:00-18:00", slotId: "delivery_slot_1" },
+        deliveryZoneId: testZone._id,
+      });
+
+      const res = await api.post(`/api/subscriptions/${expiredSub._id}/renew`).set(clientAuth(testUser._id)).send({
+        planId: String(testPlan._id),
+        grams: 200,
+        mealsPerDay: 2,
+        startDate,
+        delivery: {
+          type: "delivery",
+          address: { street: "Renew Delivery St", city: "Riyadh" },
+          zoneId: String(testZone._id),
+          slot: { slotId: "delivery_slot_1" },
+        },
+        idempotencyKey: `renew_delivery_${TEST_TAG}`,
+      });
+      assert.strictEqual(res.status, 201, JSON.stringify(res.body));
+      const draft = await CheckoutDraft.findById(res.body.data.draftId).lean();
+      assert.strictEqual(draft.delivery.firstDayFulfillmentOverride, null);
+      assert.strictEqual(dateUtils.toKSADateString(draft.startDate), secondDate);
+
+      const payment = await Payment.create({
+        userId: testUser._id, draftId: draft._id, type: "subscription_renewal",
+        amount: draft.breakdown.totalHalala, currency: "SAR", status: "paid", provider: "moyasar",
+      });
+      const act = await finalizeSubscriptionDraftPaymentFlow({ draft, payment }, null);
+      const renewedSub = await Subscription.findById(act.subscriptionId).lean();
+      assert.strictEqual(dateUtils.toKSADateString(renewedSub.startDate), secondDate);
+      const sameDay = await SubscriptionDay.findOne({ subscriptionId: act.subscriptionId, date: startDate }).lean();
+      assert.strictEqual(sameDay, null);
     });
 
     await test("3. Pickup policy behavior", async () => {
@@ -253,15 +362,11 @@ async function cleanup() {
         { $set: { status: "in_preparation", plannerState: "confirmed", planningState: "confirmed", plannerMeta: { completeSlotCount: 2 }, planningMeta: { selectedTotalMealCount: 2 }, mealSlots: [{ slotIndex: 1, slotKey: "slot_1", status: "complete", selectionType: "standard_meal", productKey: "p1" }] } }
       );
 
-      // Use view=legacy to get the legacy raw format where subscriptionId is a root field.
-      // The clean contract (default) wraps everything under ids.subscriptionId.
-      // The courier queue (queryBoardDays) filters by subscription.deliveryMode, not day.fulfillmentModeOverride.
-      // Both days belong to a delivery subscription, so both appear in method=delivery queue.
       const courier1 = await api.get(`/api/dashboard/courier/queue?date=${startDate}&method=delivery&view=legacy`).set(adminHeaders);
       assert.strictEqual(courier1.status, 200);
       const courier1Items = Array.isArray(courier1.body.data) ? courier1.body.data : (courier1.body.data && courier1.body.data.items ? courier1.body.data.items : []);
       const inCourier1 = courier1Items.some(item => item.subscriptionId === String(overrideSubscriptionId));
-      assert.strictEqual(inCourier1, true, "day 1 (pickup override) appears in courier/delivery queue — parent subscription is delivery; ops/list handles exclusion separately when pickup request active");
+      assert.strictEqual(inCourier1, false, "day 1 pickup override must not appear in courier/delivery queue");
 
       const courier2 = await api.get(`/api/dashboard/courier/queue?date=${secondDate}&method=delivery&view=legacy`).set(adminHeaders);
       assert.strictEqual(courier2.status, 200);

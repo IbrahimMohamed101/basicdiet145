@@ -28,6 +28,7 @@ const { lockDaySnapshot } = require("../subscription/subscriptionDayOperationalS
 const { validateDayBeforeLockOrPrepare } = require("../subscription/subscriptionDayExecutionValidationService");
 const dateUtils = require("../../utils/date");
 const { runMongoTransactionWithRetry } = require("../mongoTransactionRetryService");
+const { resolveEffectiveFulfillmentMode } = require("../subscription/subscriptionFulfillmentPolicyService");
 
 /**
  * Unified Operations Transition Service.
@@ -144,6 +145,14 @@ async function executeAction(actionId, { entityId, entityType, userId, role, pay
   }
 
   return result.data;
+}
+
+function getEffectiveMode(subscription, day) {
+  return resolveEffectiveFulfillmentMode({
+    subscription: subscription || {},
+    day,
+    date: day && day.date,
+  });
 }
 
 function appendOperationAudit(doc, action, userId, role) {
@@ -296,7 +305,7 @@ async function handleReadyForDelivery({ entityId, entityType, userId, role, payl
   if (!doc) throw new Error("Entity not found");
 
   const sub = await Subscription.findById(doc.subscriptionId).session(session).lean();
-  if (!sub || sub.deliveryMode !== "delivery") {
+  if (!sub || getEffectiveMode(sub, doc) !== "delivery") {
     const err = new Error("Only applies to delivery subscriptions");
     err.code = "DELIVERY_MODE_REQUIRED";
     err.status = 400;
@@ -387,7 +396,7 @@ async function handleDispatch({ entityId, entityType, userId, role, payload, ses
 
   if (entityType === "subscription") {
     const sub = await Subscription.findById(doc.subscriptionId).session(session).lean();
-    if (sub && sub.deliveryMode === "pickup") throw new Error("INVALID_STATE_TRANSITION");
+    if (!sub || getEffectiveMode(sub, doc) !== "delivery") throw new Error("INVALID_STATE_TRANSITION");
     await Delivery.updateOne(
       {
         $or: [
@@ -485,7 +494,7 @@ async function handleFulfill({ entityId, entityType, payload, userId, role, sess
 
     const sub = await Subscription.findById(day.subscriptionId).session(session).lean();
     if (!sub) throw new Error("Subscription not found");
-    if (sub.deliveryMode === "pickup") {
+    if (getEffectiveMode(sub, day) === "pickup") {
       await assertBranchPickupRequestExists(day, session);
       if (!day.pickupVerifiedAt) {
         if (day.pickupCode) {
@@ -694,7 +703,7 @@ async function handleCancel({ entityId, entityType, payload, userId, role, sessi
   let toStatus = entityType === "subscription" ? "delivery_canceled" : ORDER_STATUSES.CANCELLED;
   if (entityType === "subscription") {
     const sub = await Subscription.findById(doc.subscriptionId).session(session).lean();
-    if (sub && sub.deliveryMode === "pickup") {
+    if (sub && getEffectiveMode(sub, doc) === "pickup") {
       toStatus = payload && payload.noShow ? "no_show" : "canceled_at_branch";
     }
   }
@@ -851,7 +860,7 @@ function ensurePaidOrder(order) {
 async function assertBranchPickupRequestExists(doc, session) {
   if (!doc || doc.constructor.modelName !== "SubscriptionDay") return;
   const sub = await Subscription.findById(doc.subscriptionId).session(session).lean();
-  if (!sub || sub.deliveryMode !== "pickup") return;
+  if (!sub || getEffectiveMode(sub, doc) !== "pickup") return;
 
   const request = await SubscriptionPickupRequest.findOne({
     subscriptionId: sub._id,

@@ -4,10 +4,14 @@ const { subHours } = require("date-fns");
 const { formatInTimeZone, fromZonedTime } = require("date-fns-tz");
 const dateUtils = require("../../utils/date");
 const { getRestaurantBusinessDate } = require("../restaurantHoursService");
+const { resolveEffectiveFulfillmentMode } = require("./subscriptionFulfillmentPolicyService");
 
-const DAY_LOCKED_BEFORE_DELIVERY_CODE = "DAY_LOCKED_BEFORE_DELIVERY";
-const DAY_LOCKED_BEFORE_DELIVERY_MESSAGE_EN = "You cannot modify the order less than one hour before delivery time";
-const DAY_LOCKED_BEFORE_DELIVERY_MESSAGE_AR = "لا يمكن تعديل الطلب قبل موعد التوصيل بأقل من ساعة";
+const DELIVERY_SELECTION_CUTOFF_HOURS = 2;
+const DELIVERY_SELECTION_CUTOFF_PASSED_CODE = "DELIVERY_SELECTION_CUTOFF_PASSED";
+// Legacy alias kept for backward compatibility
+const DAY_LOCKED_BEFORE_DELIVERY_CODE = DELIVERY_SELECTION_CUTOFF_PASSED_CODE;
+const DAY_LOCKED_BEFORE_DELIVERY_MESSAGE_EN = "Meal selection is closed. The cutoff is 2 hours before the delivery window starts";
+const DAY_LOCKED_BEFORE_DELIVERY_MESSAGE_AR = "انتهى وقت اختيار وجبات هذا اليوم. يُغلق الاختيار قبل بدء نافذة التوصيل بساعتين";
 const DELIVERY_TIME_UNAVAILABLE_CODE = "DELIVERY_TIME_UNAVAILABLE";
 
 function buildPolicyError({
@@ -41,6 +45,11 @@ function normalizeWindowValue(value) {
 }
 
 function resolveSameDayFulfillmentMethod({ subscription, day } = {}) {
+  const dayOverrideMode = String(day && day.fulfillmentModeOverride || "").trim();
+  if (["pickup", "delivery"].includes(dayOverrideMode)) {
+    return resolveEffectiveFulfillmentMode({ subscription, day, date: day && day.date });
+  }
+
   const subscriptionMode = String(subscription && subscription.deliveryMode ? subscription.deliveryMode : "").trim();
   const subscriptionSlotType = String(
     subscription && subscription.deliverySlot && subscription.deliverySlot.type
@@ -128,7 +137,7 @@ function resolveScheduledDeliveryDateTime({ subscription, day, date }) {
     `${date}T${deliveryTime}:00`,
     dateUtils.KSA_TIMEZONE
   );
-  const lockDateTime = subHours(deliveryDateTime, 1);
+  const lockDateTime = subHours(deliveryDateTime, DELIVERY_SELECTION_CUTOFF_HOURS);
 
   return {
     fulfillmentMethod,
@@ -221,7 +230,7 @@ async function assertSubscriptionDayModifiable({
 
   if (now.getTime() >= deliverySchedule.lockDateTime.getTime()) {
     throw buildPolicyError({
-      code: DAY_LOCKED_BEFORE_DELIVERY_CODE,
+      code: DELIVERY_SELECTION_CUTOFF_PASSED_CODE,
       message: DAY_LOCKED_BEFORE_DELIVERY_MESSAGE_EN,
       messageAr: DAY_LOCKED_BEFORE_DELIVERY_MESSAGE_AR,
       status: 400,
@@ -234,6 +243,7 @@ async function assertSubscriptionDayModifiable({
         deliveryTime: deliverySchedule.deliveryTime,
         deliveryDateTime: formatPolicyDateTime(deliverySchedule.deliveryDateTime),
         lockDateTime: formatPolicyDateTime(deliverySchedule.lockDateTime),
+        cutoffHours: DELIVERY_SELECTION_CUTOFF_HOURS,
       },
     });
   }
@@ -253,6 +263,9 @@ async function assertSubscriptionDayModifiable({
 }
 
 module.exports = {
+  DELIVERY_SELECTION_CUTOFF_HOURS,
+  DELIVERY_SELECTION_CUTOFF_PASSED_CODE,
+  // Legacy alias
   DAY_LOCKED_BEFORE_DELIVERY_CODE,
   DAY_LOCKED_BEFORE_DELIVERY_MESSAGE_AR,
   DAY_LOCKED_BEFORE_DELIVERY_MESSAGE_EN,

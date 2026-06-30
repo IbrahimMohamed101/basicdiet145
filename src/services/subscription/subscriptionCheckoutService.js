@@ -634,6 +634,7 @@ async function performSubscriptionCheckout(userId, idempotencyKey, body, lang, r
             currency: breakdown.currency || SYSTEM_CURRENCY,
           }),
           promoCode: buildPromoResponseBlock(quote && quote.promoCode ? quote.promoCode : null),
+          fulfillmentOptions: quote.fulfillmentOptions || null,
           summary: quote
             ? {
               lineItems: resolveQuoteSummary({

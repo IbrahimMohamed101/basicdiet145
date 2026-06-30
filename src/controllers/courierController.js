@@ -23,6 +23,7 @@ const errorResponse = require("../utils/errorResponse");
 const { resolveOptionalPagination, buildPaginationMeta } = require("../utils/optionalPagination");
 const opsTransitionService = require("../services/dashboard/opsTransitionService");
 const { ACTION_REGISTRY } = require("../services/dashboard/opsActionPolicy");
+const { resolveEffectiveFulfillmentMode } = require("../services/subscription/subscriptionFulfillmentPolicyService");
 
 async function executeCanonicalDeliveryAction(req, res, action, payload = {}) {
   if (!req.userRole) {
@@ -94,10 +95,14 @@ async function listTodayDeliveries(req, res) {
     const subMap = new Map(deliverySubs.map(s => [String(s._id), s]));
 
     // 2. Get Subscription Days
-    const dayDocs = await SubscriptionDay.find({
+    const allDayDocs = await SubscriptionDay.find({
       date: today,
       subscriptionId: { $in: deliverySubIds }
     }).lean();
+    const dayDocs = allDayDocs.filter((day) => {
+      const sub = subMap.get(String(day.subscriptionId));
+      return resolveEffectiveFulfillmentMode({ subscription: sub || {}, day, date: day.date }) === "delivery";
+    });
     const dayIds = dayDocs.map(d => d._id);
 
     // 3. Get One-Time Orders

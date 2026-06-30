@@ -54,8 +54,8 @@ function buildDeliverySubscription(window = "13:00-16:00") {
 async function run() {
   const businessDate = "2026-04-29";
   const getBusinessDateFn = async () => businessDate;
-  const beforeLockNow = new Date("2026-04-29T11:30:00+03:00");
-  const insideLockNow = new Date("2026-04-29T12:15:00+03:00");
+  const beforeLockNow = new Date("2026-04-29T07:30:00+03:00");  // 10:30 KSA — before 11:00 cutoff for 13:00 window
+  const insideLockNow = new Date("2026-04-29T12:15:00+03:00");  // 12:15 KSA — after 11:00 cutoff for 13:00 window
 
   await expectAllowed("1. pickup same-day selection is allowed", {
     subscription: buildPickupSubscription(),
@@ -78,21 +78,21 @@ async function run() {
     getBusinessDateFn,
   });
 
-  await expectAllowed("4. delivery same-day selection is allowed more than 1 hour before delivery time", {
+  await expectAllowed("4. delivery same-day selection is allowed more than 2 hours before delivery time", {
     subscription: buildDeliverySubscription("13:00-16:00"),
     date: businessDate,
     now: beforeLockNow,
     getBusinessDateFn,
   });
 
-  await expectAllowed("5. delivery same-day add-on payment is allowed more than 1 hour before delivery time", {
+  await expectAllowed("5. delivery same-day add-on payment is allowed more than 2 hours before delivery time", {
     subscription: buildDeliverySubscription("13:00-16:00"),
     date: businessDate,
     now: beforeLockNow,
     getBusinessDateFn,
   });
 
-  await expectAllowed("6. delivery same-day premium payment is allowed more than 1 hour before delivery time", {
+  await expectAllowed("6. delivery same-day premium payment is allowed more than 2 hours before delivery time", {
     subscription: buildDeliverySubscription("13:00-16:00"),
     date: businessDate,
     now: beforeLockNow,
@@ -100,7 +100,7 @@ async function run() {
   });
 
   const selectionLockError = await expectRejected(
-    "7. delivery same-day selection is rejected within 1 hour before delivery time",
+    "7. delivery same-day selection is rejected within 2 hours before delivery time",
     {
       subscription: buildDeliverySubscription("13:00-16:00"),
       date: businessDate,
@@ -111,14 +111,14 @@ async function run() {
   );
   assert(selectionLockError.messageAr, "7. expected Arabic lock message");
 
-  await expectRejected("8. delivery same-day add-on payment is rejected within 1 hour before delivery time", {
+  await expectRejected("8. delivery same-day add-on payment is rejected within 2 hours before delivery time", {
     subscription: buildDeliverySubscription("13:00-16:00"),
     date: businessDate,
     now: insideLockNow,
     getBusinessDateFn,
   }, DAY_LOCKED_BEFORE_DELIVERY_CODE);
 
-  await expectRejected("9. delivery same-day premium payment is rejected within 1 hour before delivery time", {
+  await expectRejected("9. delivery same-day premium payment is rejected within 2 hours before delivery time", {
     subscription: buildDeliverySubscription("13:00-16:00"),
     date: businessDate,
     now: insideLockNow,

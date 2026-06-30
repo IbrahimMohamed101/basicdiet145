@@ -262,6 +262,9 @@ async function performSubscriptionRenewal(userId, subscriptionId, body, lang, ru
       slot: body.delivery && body.delivery.slot ? body.delivery.slot : (previousSubscription.deliverySlot || {}),
       zoneId: body.delivery && body.delivery.zoneId ? body.delivery.zoneId : (previousSubscription.deliveryZoneId || null),
       pickupLocationId: body.delivery && body.delivery.pickupLocationId ? body.delivery.pickupLocationId : null,
+      firstDayFulfillmentOverride: body.delivery && body.delivery.firstDayFulfillmentOverride
+        ? body.delivery.firstDayFulfillmentOverride
+        : null,
     },
     renewedFromSubscriptionId: subscriptionId,
     startDate: body.startDate || null,
@@ -295,6 +298,7 @@ async function performSubscriptionRenewal(userId, subscriptionId, body, lang, ru
         source: "renewal",
         now: new Date(),
         currentBusinessDate,
+        renewalSeed: { subscriptionId },
       });
       renewalPayload.contractVersion = canonicalContract.contractVersion;
       renewalPayload.contractMode = canonicalContract.contractMode;
@@ -443,8 +447,10 @@ async function performSubscriptionRenewal(userId, subscriptionId, body, lang, ru
         source: "renewal",
         now: new Date(),
         currentBusinessDate,
+        renewalSeed: { subscriptionId },
       });
       Object.assign(draftPayload, runtime.buildCanonicalDraftPersistenceFields({ contract: canonicalContract }));
+      draftPayload.renewedFromSubscriptionId = subscriptionId;
     }
 
     renewalStage = "draft_create";

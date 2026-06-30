@@ -33,6 +33,7 @@ const {
   buildPickupPayload,
   buildPlanPayload,
 } = require("../../services/dashboard/opsPayloadService");
+const { resolveEffectiveFulfillmentMode } = require("../../services/subscription/subscriptionFulfillmentPolicyService");
 const {
   isTruthyQuery,
   normalizeKitchenQueueItem,
@@ -55,6 +56,14 @@ function normalizeStatusList(value, fallback) {
 
 function getDeliveryMode(subscription) {
   return subscription && subscription.deliveryMode === "pickup" ? "pickup" : "delivery";
+}
+
+function getEffectiveDeliveryMode(day, subscription) {
+  return resolveEffectiveFulfillmentMode({
+    subscription: subscription || {},
+    day,
+    date: day && day.date,
+  });
 }
 
 function getAddress(day, subscription) {
@@ -106,7 +115,7 @@ async function buildZoneMap(subscriptions) {
 function mapDay(day, latestAction, zoneMap, lang, role, delivery = null, catalogMaps = {}) {
   const subscription = day.subscriptionId || {};
   const user = subscription.userId || {};
-  const mode = getDeliveryMode(subscription);
+  const mode = getEffectiveDeliveryMode(day, subscription);
   const zone = subscription.deliveryZoneId ? zoneMap.get(String(subscription.deliveryZoneId)) : null;
   const allowedActions = opsActionPolicy.getAllowedActions({
     entityType: "subscription",
@@ -468,7 +477,7 @@ async function queryBoardDays(req, { screen }) {
   const days = await SubscriptionDay.find(dayQuery)
     .populate({
       path: "subscriptionId",
-      select: "_id userId planId selectedGrams selectedMealsPerDay totalMeals remainingMeals deliveryMode deliveryWindow deliveryAddress deliveryZoneId pickupLocationId",
+      select: "_id userId planId selectedGrams selectedMealsPerDay totalMeals remainingMeals deliveryMode deliveryWindow deliveryAddress deliveryZoneId pickupLocationId startDate",
       populate: [
         { path: "userId", select: "_id name phone" },
         { path: "planId", select: "_id key name daysCount durationDays" },
@@ -478,14 +487,12 @@ async function queryBoardDays(req, { screen }) {
     .lean();
 
   let filteredByMethod = days.filter((day) => {
-    const mode = getDeliveryMode(day.subscriptionId || {});
+    const mode = getEffectiveDeliveryMode(day, day.subscriptionId || {});
     if (method === "all") return true;
     return mode === method;
   });
   if (screen === "pickup") {
-    // BUGFIX: Keep only pickup-mode subscription days on the pickup board.
-    // Previously this was !== "pickup" which removed pickup days — incorrect.
-    filteredByMethod = filteredByMethod.filter((day) => getDeliveryMode(day.subscriptionId || {}) === "pickup");
+    filteredByMethod = filteredByMethod.filter((day) => getEffectiveDeliveryMode(day, day.subscriptionId || {}) === "pickup");
   }
 
   const [latestActionMap, zoneMap, deliveryDocs] = await Promise.all([
@@ -571,7 +578,7 @@ async function queryBoardDays(req, { screen }) {
     })
       .populate({
         path: "subscriptionId",
-        select: "_id userId planId selectedGrams selectedMealsPerDay totalMeals remainingMeals deliveryMode pickupLocationId",
+        select: "_id userId planId selectedGrams selectedMealsPerDay totalMeals remainingMeals deliveryMode pickupLocationId startDate",
         populate: [
           { path: "userId", select: "_id name phone" },
           { path: "planId", select: "_id key name daysCount durationDays" },
@@ -677,7 +684,7 @@ async function queueDetail(req, res) {
   const day = await SubscriptionDay.findById(req.params.dayId)
     .populate({
       path: "subscriptionId",
-      select: "_id userId planId selectedGrams selectedMealsPerDay totalMeals remainingMeals deliveryMode deliveryWindow deliveryAddress deliveryZoneId pickupLocationId",
+      select: "_id userId planId selectedGrams selectedMealsPerDay totalMeals remainingMeals deliveryMode deliveryWindow deliveryAddress deliveryZoneId pickupLocationId startDate",
       populate: [
         { path: "userId", select: "_id name phone" },
         { path: "planId", select: "_id key name daysCount durationDays" },
@@ -688,7 +695,7 @@ async function queueDetail(req, res) {
     const pickupRequest = await SubscriptionPickupRequest.findById(req.params.dayId)
       .populate({
         path: "subscriptionId",
-        select: "_id userId planId selectedGrams selectedMealsPerDay totalMeals remainingMeals deliveryMode pickupLocationId",
+        select: "_id userId planId selectedGrams selectedMealsPerDay totalMeals remainingMeals deliveryMode pickupLocationId startDate",
         populate: [
           { path: "userId", select: "_id name phone" },
           { path: "planId", select: "_id key name daysCount durationDays" },
@@ -812,10 +819,10 @@ async function action(req, res) {
   const existingDay = await SubscriptionDay.findById(entityId).select("date").lean();
   // Settlement on read intentionally removed — meals are not consumed by date passage.
   const day = await SubscriptionDay.findById(entityId)
-    .populate("subscriptionId", "deliveryMode selectedMealsPerDay deliveryWindow deliveryAddress")
+    .populate("subscriptionId", "deliveryMode selectedMealsPerDay deliveryWindow deliveryAddress startDate")
     .lean();
   if (!day) return errorResponse(res, 404, "NOT_FOUND", "Subscription day not found");
-  const mode = getDeliveryMode(day.subscriptionId || {});
+  const mode = getEffectiveDeliveryMode(day, day.subscriptionId || {});
   if (mode === "pickup" && ["prepare", "start_preparation", "ready_for_pickup", "ready-for-pickup", "fulfill", "no_show"].includes(actionId)) {
     return errorResponse(res, 422, "PICKUP_REQUEST_REQUIRED", "Pickup preparation requires an explicit client request");
   }

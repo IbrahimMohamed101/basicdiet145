@@ -53,18 +53,37 @@ function isFirstSubscriptionDay({ subscription, date } = {}) {
   return Boolean(startDate && normalizedDate === startDate);
 }
 
-function buildFulfillmentPolicy({ subscription, day, date } = {}) {
-  const normalizedMode = String(subscription && subscription.deliveryMode || "").trim() === "pickup"
+function normalizeRootFulfillmentMode(subscription = {}) {
+  return String(subscription && subscription.deliveryMode || "").trim() === "pickup"
     ? "pickup"
     : "delivery";
+}
+
+function resolveEffectiveFulfillmentMode({ subscription, day, date } = {}) {
+  const normalizedMode = normalizeRootFulfillmentMode(subscription);
+  const overrideMode = String(day && day.fulfillmentModeOverride || "").trim();
   const effectiveDate = String(date || (day && day.date) || "").trim();
   const isFirstDay = isFirstSubscriptionDay({ subscription, date: effectiveDate });
-  const effectiveFulfillmentMode = (isFirstDay && day && day.fulfillmentModeOverride)
-    ? day.fulfillmentModeOverride
-    : normalizedMode;
+
+  if (["pickup", "delivery"].includes(overrideMode) && (isFirstDay || !subscription || !subscription.startDate)) {
+    return overrideMode;
+  }
+  return normalizedMode;
+}
+
+function hasFirstDayPickupOverride({ subscription, day, date } = {}) {
+  return resolveEffectiveFulfillmentMode({ subscription, day, date }) === "pickup"
+    && normalizeRootFulfillmentMode(subscription) === "delivery";
+}
+
+function buildFulfillmentPolicy({ subscription, day, date } = {}) {
+  const normalizedMode = normalizeRootFulfillmentMode(subscription);
+  const effectiveDate = String(date || (day && day.date) || "").trim();
+  const isFirstDay = isFirstSubscriptionDay({ subscription, date: effectiveDate });
+  const effectiveFulfillmentMode = resolveEffectiveFulfillmentMode({ subscription, day, date: effectiveDate });
   const allowedMethods = normalizedMode === "pickup"
     ? ["pickup"]
-    : ((isFirstDay && day && day.fulfillmentModeOverride === "pickup") ? ["delivery", "pickup"] : ["delivery"]);
+    : (effectiveFulfillmentMode === "pickup" && isFirstDay ? ["pickup"] : ["delivery"]);
 
   return {
     subscriptionMode: normalizedMode,
@@ -108,7 +127,10 @@ module.exports = {
   assertFulfillmentMethodAllowed,
   buildFulfillmentPolicy,
   createFulfillmentPolicyError,
+  hasFirstDayPickupOverride,
   isFirstSubscriptionDay,
+  normalizeRootFulfillmentMode,
+  resolveEffectiveFulfillmentMode,
   resolveSubscriptionDateRange,
   shouldEnforceDailyMealLimit,
 };

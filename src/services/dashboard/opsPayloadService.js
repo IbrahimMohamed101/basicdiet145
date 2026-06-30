@@ -5,7 +5,10 @@ const { buildDayCommercialState } = require("../subscription/subscriptionDayComm
 const {
   buildChefChoiceMealSlots,
   hasExplicitKitchenMeals,
+  isHomeDeliverySubscription,
   isValidHomeDeliveryChefChoiceDay,
+  resolveDeliveryAddress,
+  resolveDeliveryWindow,
   resolveHomeDeliveryEntitlementCount,
 } = require("./homeDeliveryChefChoiceService");
 
@@ -401,6 +404,19 @@ function buildKitchenDetailsPayload(day = {}, subscription = {}, lang = "en", ca
   if (mealSlots.length === 0 && isValidHomeDeliveryChefChoiceDay(day, subscription)) {
     mealSlots = buildChefChoiceMealSlots(resolveHomeDeliveryEntitlementCount(day, subscription));
     selectionMode = "chef_choice";
+  } else if (mealSlots.length > 0) {
+    const requiredCount = resolveHomeDeliveryEntitlementCount(day, subscription);
+    const missingCount = Math.max(0, requiredCount - mealSlots.length);
+    if (
+      missingCount > 0
+      && isHomeDeliverySubscription(subscription)
+      && resolveDeliveryWindow(day, subscription)
+      && resolveDeliveryAddress(day, subscription)
+    ) {
+      const maxSlotIndex = mealSlots.reduce((max, slot) => Math.max(max, Number(slot && slot.slotIndex || 0)), 0);
+      mealSlots = mealSlots.concat(buildChefChoiceMealSlots(missingCount, { startIndex: maxSlotIndex + 1 }));
+      selectionMode = "mixed_customer_and_chef_choice";
+    }
   }
   const addonSources = []
     .concat(Array.isArray(day.addonSelections) ? day.addonSelections : [])

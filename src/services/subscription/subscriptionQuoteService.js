@@ -470,6 +470,65 @@ async function parseFutureStartDate(rawValue) {
   return { ok: true, value: parsed };
 }
 
+function toKsaMidnightDate(dateStr) {
+  return new Date(`${dateStr}T00:00:00+03:00`);
+}
+
+function normalizeFirstDayOverride(override) {
+  if (!override) return null;
+  const type = typeof override === "object" ? override.type : override;
+  if (String(type || "").trim() !== "pickup") return null;
+  const pickupLocationId = typeof override === "object" ? String(override.pickupLocationId || "").trim() : "";
+  return { type: "pickup", pickupLocationId: pickupLocationId || null };
+}
+
+function resolveFirstServiceDate({
+  requestedStartDate,
+  currentBusinessDate,
+  rootDeliveryType,
+  firstDayPickupOverride,
+} = {}) {
+  const requestedDate = requestedStartDate
+    ? dateUtils.toKSADateString(requestedStartDate)
+    : currentBusinessDate;
+  const rootType = rootDeliveryType === "pickup" ? "pickup" : "delivery";
+  const override = normalizeFirstDayOverride(firstDayPickupOverride);
+  const isSameDay = requestedDate === currentBusinessDate;
+  const sameDayDeliveryAllowed = false;
+  const firstDayPickupOverrideAvailable = rootType === "delivery" && isSameDay;
+  const deliveryStartDateIfNoPickup = rootType === "delivery" && isSameDay
+    ? dateUtils.addDaysToKSADateString(currentBusinessDate, 1)
+    : requestedDate;
+
+  if (rootType === "delivery" && isSameDay && !override) {
+    return {
+      requestedDate,
+      resolvedDate: deliveryStartDateIfNoPickup,
+      shifted: true,
+      fulfillmentOptions: {
+        sameDayDeliveryAllowed,
+        sameDayPickupAllowed: true,
+        firstDayPickupOverrideAvailable,
+        deliveryStartDateIfNoPickup,
+        reason: "SAME_DAY_DELIVERY_NOT_AVAILABLE",
+      },
+    };
+  }
+
+  return {
+    requestedDate,
+    resolvedDate: requestedDate,
+    shifted: false,
+    fulfillmentOptions: {
+      sameDayDeliveryAllowed: rootType === "delivery" ? !isSameDay : false,
+      sameDayPickupAllowed: rootType === "pickup" || firstDayPickupOverrideAvailable,
+      firstDayPickupOverrideAvailable,
+      deliveryStartDateIfNoPickup,
+      reason: rootType === "delivery" && isSameDay ? "SAME_DAY_DELIVERY_NOT_AVAILABLE" : null,
+    },
+  };
+}
+
 async function resolveCheckoutQuoteOrThrow(
   payload,
   {
@@ -508,6 +567,14 @@ async function resolveCheckoutQuoteOrThrow(
     err.code = "VALIDATION_ERROR";
     throw err;
   }
+  const currentBusinessDate = await getRestaurantBusinessDate();
+  const serviceDate = resolveFirstServiceDate({
+    requestedStartDate: startValidation.value,
+    currentBusinessDate,
+    rootDeliveryType: delivery.type,
+    firstDayPickupOverride: delivery.firstDayFulfillmentOverride,
+  });
+  const resolvedStartDate = toKsaMidnightDate(serviceDate.resolvedDate);
 
   const planQuery = { _id: planId };
   if (enforceActivePlan) {
@@ -862,7 +929,14 @@ async function resolveCheckoutQuoteOrThrow(
     plan,
     grams,
     mealsPerDay,
-    startDate: startValidation.value,
+    startDate: resolvedStartDate,
+    requestedStartDate: serviceDate.requestedDate,
+    fulfillmentOptions: {
+      ...serviceDate.fulfillmentOptions,
+      requestedStartDate: serviceDate.requestedDate,
+      resolvedStartDate: serviceDate.resolvedDate,
+      startDateShifted: serviceDate.shifted,
+    },
     delivery,
     premiumCount,
     premiumUnitPriceHalala,

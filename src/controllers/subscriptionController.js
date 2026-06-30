@@ -1035,6 +1035,7 @@ async function quoteSubscription(req, res, runtimeOverrides = null) {
         summary: resolveQuoteSummary(quote, lang),
         premiumItemCount: Array.isArray(quote.premiumItems) ? quote.premiumItems.length : 0,
         premiumUpgradeLimit: quote.premiumUpgradeLimit || null,
+        fulfillmentOptions: quote.fulfillmentOptions || null,
       },
     });
   } catch (err) {
