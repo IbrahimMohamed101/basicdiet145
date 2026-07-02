@@ -29,6 +29,47 @@ function resolveStatus(deliveryStatus, arrivingSoonReminderSentAt) {
   return normalized || "preparing";
 }
 
+function buildAllowedAction({ id, type, entityId }) {
+  const actionConfig = {
+    pickup: {
+      label: "Pick Up",
+      method: "PUT",
+      endpoint: type === "subscription_delivery" ? `/api/courier/deliveries/${entityId}/collect` : null,
+    },
+    arriving_soon: {
+      label: "Arriving Soon",
+      method: "PUT",
+      endpoint: type === "one_time_order" ? `/api/courier/orders/${entityId}/arriving-soon` : `/api/courier/deliveries/${entityId}/arriving-soon`,
+    },
+    delivered: {
+      label: "Mark Delivered",
+      method: "PUT",
+      endpoint: type === "one_time_order" ? `/api/courier/orders/${entityId}/delivered` : `/api/courier/deliveries/${entityId}/delivered`,
+    },
+    cancel: {
+      label: "Cancel",
+      method: "PUT",
+      endpoint: type === "one_time_order" ? `/api/courier/orders/${entityId}/cancel` : `/api/courier/deliveries/${entityId}/cancel`,
+    },
+  }[id];
+
+  if (!actionConfig) return null;
+  return {
+    id,
+    label: actionConfig.label,
+    method: actionConfig.method,
+    endpoint: actionConfig.endpoint || undefined,
+    disabled: !actionConfig.endpoint,
+    reason: actionConfig.endpoint ? undefined : "NO_COURIER_ENDPOINT_FOR_ACTION",
+  };
+}
+
+function buildAllowedActions(actionIds, { type, entityId }) {
+  return actionIds
+    .map((id) => buildAllowedAction({ id, type, entityId }))
+    .filter(Boolean);
+}
+
 function mapSubscriptionDelivery(delivery, user) {
   const addr = delivery.address || {};
   const day = delivery.dayId && typeof delivery.dayId === "object" ? delivery.dayId : null;
@@ -45,12 +86,16 @@ function mapSubscriptionDelivery(delivery, user) {
   const canMarkDelivered = statusResolved === "out_for_delivery" || statusResolved === "arriving_soon";
   const canCancel = delivery.status !== "delivered" && delivery.status !== "canceled" && delivery.status !== "failed";
 
-  const allowedActions = [
+  const allowedActionIds = [
     canCourierPickup ? "pickup" : null,
     canMarkArrivingSoon ? "arriving_soon" : null,
     canMarkDelivered ? "delivered" : null,
     canCancel && (delivery.status === "out_for_delivery" || delivery.status === "ready_for_delivery") ? "cancel" : null,
   ].filter(Boolean);
+  const allowedActions = buildAllowedActions(allowedActionIds, {
+    type: "subscription_delivery",
+    entityId: String(delivery._id),
+  });
 
   return {
     id: String(delivery._id),
@@ -89,6 +134,7 @@ function mapSubscriptionDelivery(delivery, user) {
     canMarkDelivered,
     canCancel,
     allowedActions,
+    allowedActionIds,
     cancellationReason: delivery.cancellationReason || (day && day.cancellationReason) || null,
     cancellationNote: delivery.cancellationNote || (day && day.cancellationNote) || null,
     timestamps: {
@@ -127,15 +173,20 @@ function mapOneTimeOrderDelivery(order, user, delivery) {
   const canMarkDelivered = statusResolved === "out_for_delivery" || statusResolved === "arriving_soon";
   const canCancel = deliv.status !== "delivered" && deliv.status !== "canceled" && deliv.status !== "failed";
 
-  const allowedActions = [
+  const deliveryEntityId = deliv._id ? String(deliv._id) : String(order._id);
+  const allowedActionIds = [
     canCourierPickup ? "pickup" : null,
     canMarkArrivingSoon ? "arriving_soon" : null,
     canMarkDelivered ? "delivered" : null,
     canCancel && (deliv.status === "out_for_delivery" || deliv.status === "ready_for_delivery") ? "cancel" : null,
   ].filter(Boolean);
+  const allowedActions = buildAllowedActions(allowedActionIds, {
+    type: "one_time_order",
+    entityId: String(order._id),
+  });
 
   return {
-    id: deliv._id ? String(deliv._id) : String(order._id),
+    id: deliveryEntityId,
     type: "one_time_order",
     entityId: String(order._id),
     entityType: "order",
@@ -172,6 +223,7 @@ function mapOneTimeOrderDelivery(order, user, delivery) {
     canMarkDelivered,
     canCancel,
     allowedActions,
+    allowedActionIds,
     cancellationReason: (deliv && deliv.cancellationReason) || order.cancellationReason || null,
     cancellationNote: (deliv && deliv.cancellationNote) || order.cancellationNote || null,
     timestamps: {

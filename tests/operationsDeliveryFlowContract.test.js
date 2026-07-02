@@ -339,6 +339,18 @@ async function runTests() {
     assert.strictEqual(deliv.canMarkArrivingSoon, false, "Should not allow arriving_soon yet");
     assert.strictEqual(deliv.canMarkDelivered, false, "Should not allow mark delivered before picked up");
     assert.strictEqual(deliv.canCancel, true, "Should allow cancellation");
+    assert.deepStrictEqual(
+      deliv.allowedActionIds,
+      ["pickup", "cancel"],
+      "Courier DTO keeps a simple ID list for compatibility"
+    );
+    assert.deepStrictEqual(
+      deliv.allowedActions.map((action) => action.id),
+      ["pickup", "cancel"],
+      "Courier DTO returns structured allowedActions"
+    );
+    assert(deliv.allowedActions.every((action) => action.label && action.method === "PUT" && action.endpoint), "Structured actions include label, PUT method, and endpoint");
+    assert(deliv.allowedActions.some((action) => action.id === "pickup" && action.endpoint.endsWith(`/api/courier/deliveries/${deliv.id}/collect`)), "Pickup action points at collect endpoint");
 
     // Should NOT include the pickup subscription day
     const pick = items.find(i => String(i.subscriptionDayId) === String(seedData.pickupDay._id));

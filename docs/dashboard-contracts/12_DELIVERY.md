@@ -11,7 +11,7 @@ Provides delivery drivers (couriers) and operations managers with views of deliv
 ## 3. Visible UI Requirements
 * **Schedule Queue**: List of today's deliveries grouped by Delivery Window (e.g. `08:00 - 11:00`) and Zone.
 * **Map/Navigation Links**: Direct navigation using address coordinates (`latitude`/`longitude`) or structured street fields.
-* **Courier Actions**: Action buttons rendered dynamically based on status flags (`canCourierPickup`, `canMarkArrivingSoon`, `canMarkDelivered`, `canCancel`).
+* **Courier Actions**: Action buttons rendered dynamically from structured `allowedActions`. Legacy status flags (`canCourierPickup`, `canMarkArrivingSoon`, `canMarkDelivered`, `canCancel`) and `allowedActionIds` are retained for compatibility.
 
 ---
 
@@ -81,9 +81,25 @@ No request body.
       "canMarkArrivingSoon": false,
       "canMarkDelivered": false,
       "canCancel": true,
-      "allowedActions": [
+      "allowedActionIds": [
         "pickup",
         "cancel"
+      ],
+      "allowedActions": [
+        {
+          "id": "pickup",
+          "label": "Pick Up",
+          "method": "PUT",
+          "endpoint": "/api/courier/deliveries/665f1b2e7b9a4d0012a10002/collect",
+          "disabled": false
+        },
+        {
+          "id": "cancel",
+          "label": "Cancel",
+          "method": "PUT",
+          "endpoint": "/api/courier/deliveries/665f1b2e7b9a4d0012a10002/cancel",
+          "disabled": false
+        }
       ],
       "cancellationReason": null,
       "cancellationNote": null,
@@ -109,14 +125,14 @@ No request body.
 
 ### Frontend Notes
 * **Filtering**: The backend automatically filters out branch pickup and customer pickup orders. It includes both subscription deliveries and one-time orders.
-* **Fulfillment State**: Driver should check status flags like `canCourierPickup` and the `allowedActions` array before attempting actions.
+* **Fulfillment State**: Driver should render actions from `allowedActions` and may use status flags like `canCourierPickup` for legacy enable/disable states.
 * **UI Interpretation**:
   * `preparing` / `in_preparation` = Kitchen is preparing
   * `ready_for_delivery` = Ready for courier pickup
   * `out_for_delivery` = Out for delivery
   * `delivered` / `fulfilled` = Delivered
   * `canceled` / `failed` = Cancelled or failed delivery
-* **Allowed Actions Policy**: Actions are backend-owned. Use `allowedActions` array. Preparing items do not allow pickup/delivered actions. Ready-for-delivery items allow pickup. Out-for-delivery items allow arriving soon, delivered, and cancel. Delivered/cancelled items allow no terminal mutation actions.
+* **Allowed Actions Policy**: Actions are backend-owned. Use the structured `allowedActions` array. Preparing items do not allow pickup/delivered actions. Ready-for-delivery items allow pickup. Out-for-delivery items allow arriving soon, delivered, and cancel. Delivered/cancelled items allow no terminal mutation actions.
 
 ### Read-only and Editable Fields
 * All fields in the response are read-only.
