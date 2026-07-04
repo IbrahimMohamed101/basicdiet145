@@ -657,6 +657,18 @@ async function buildSubscriptionTimeline(subscriptionId, options = {}) {
       cutoffLockedMessage = "\u0627\u0646\u062a\u0647\u0649 \u0648\u0642\u062a \u0627\u062e\u062a\u064a\u0627\u0631 \u0648\u062c\u0628\u0627\u062a \u0647\u0630\u0627 \u0627\u0644\u064a\u0648\u0645";
     }
 
+    // Ensure timeline status consistency: if a day is open but not editable,
+    // force it to 'locked' so the client UI renders the badge correctly instead
+    // of an 'Open' badge with locked content.
+    if (resolvedStatus === "open" && !planningContract.canEdit) {
+      resolvedStatus = "locked";
+      resolvedDayStatus = "locked";
+      if (!cutoffLockedReason) {
+        cutoffLockedReason = "LOCKED_FOR_EDITING";
+        cutoffLockedMessage = "\u0647\u0630\u0627 \u0627\u0644\u064a\u0648\u0645 \u0645\u0642\u0641\u0644";
+      }
+    }
+
     const status = resolvedStatus;
     const dayStatus = resolvedDayStatus;
     const fulfillmentState = buildSubscriptionDayFulfillmentState({
@@ -688,7 +700,6 @@ async function buildSubscriptionTimeline(subscriptionId, options = {}) {
       date: currentDate,
       status,
       dayStatus,
-      fulfillmentMode: effectiveFulfillmentMode,
       isPast,
       autoSettled: Boolean(dbDay && dbDay.autoSettled),
       settledAt: dbDay && dbDay.settledAt ? dbDay.settledAt : null,
@@ -707,6 +718,11 @@ async function buildSubscriptionTimeline(subscriptionId, options = {}) {
       ...planningContract,
       ...fulfillmentState,
       ...fulfillmentReadFields,
+      fulfillmentMode: effectiveFulfillmentMode,
+      effectiveFulfillmentMode,
+      fulfillmentModeOverride: dbDay?.fulfillmentModeOverride || null,
+      pickupLocationIdOverride: dbDay?.pickupLocationIdOverride || null,
+      firstDayFulfillmentOverride: Boolean(dbDay?.fulfillmentModeOverride === "pickup"),
       // Override lockedReason/lockedMessage with cutoff annotation when applicable
       lockedReason: finalLockedReason,
       lockedMessage: finalLockedMessage,

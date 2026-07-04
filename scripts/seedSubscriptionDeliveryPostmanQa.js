@@ -515,6 +515,7 @@ async function createExpiredSubscription({ user, plan, zone, label, today }) {
   return Subscription.create({
     userId: user._id,
     planId: plan._id,
+    contractMode: "canonical",
     status: "active",
     startDate: new Date(`${startDate}T00:00:00+03:00`),
     endDate: new Date(`${endDate}T00:00:00+03:00`),
@@ -595,6 +596,7 @@ async function createOperationalSubscription({ user, plan, zone, today }) {
   const subscription = await Subscription.create({
     userId: user._id,
     planId: plan._id,
+    contractMode: "canonical",
     status: "active",
     startDate: new Date(`${today}T00:00:00+03:00`),
     endDate: new Date(`${dateUtils.addDaysToKSADateString(today, 6)}T00:00:00+03:00`),

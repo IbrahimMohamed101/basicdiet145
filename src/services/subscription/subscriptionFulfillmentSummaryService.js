@@ -184,7 +184,8 @@ function buildFulfillmentCopy({
   fulfillmentState = {},
   statusLabel = "",
 } = {}) {
-  const mode = subscription && subscription.deliveryMode === "pickup" ? "pickup" : "delivery";
+  const baseMode = subscription && subscription.deliveryMode === "pickup" ? "pickup" : "delivery";
+  const mode = day && day.fulfillmentModeOverride ? day.fulfillmentModeOverride : baseMode;
   const status = resolveStatusForLabel(day, subscription && subscription.status);
   const label = statusLabel || resolveReadLabel("dayStatuses", status, lang) || resolveReadLabel("subscriptionStatuses", status, lang);
   const title = mode === "pickup" ? t("read.fulfillment.pickupTitle", lang) : t("read.fulfillment.deliveryTitle", lang);
