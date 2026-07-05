@@ -971,6 +971,12 @@ function createMenuCatalogAdminService(deps) {
         exists: (key) => MenuCategory.exists({ key }),
       });
     }
+    // Domain rule: publishedAt is the customer-visibility gate (see truthy() and activeIssue()).
+    // isActive=true on dashboard creation means the admin intends this to be immediately
+    // customer-visible. Setting publishedAt here is intentional and domain-correct.
+    if (payload.isActive) {
+      payload.publishedAt = new Date();
+    }
     return createEntity(MenuCategory, payload, { entityType: "menu_category", actor });
   }
 
@@ -982,6 +988,12 @@ function createMenuCatalogAdminService(deps) {
         fallbackPrefix: "item",
         exists: (key) => MenuProduct.exists({ key }),
       });
+    }
+    // Domain rule: publishedAt is the customer-visibility gate (see truthy() and activeIssue()).
+    // isActive=true on dashboard creation means the admin intends this to be immediately
+    // customer-visible. Setting publishedAt here is intentional and domain-correct.
+    if (payload.isActive) {
+      payload.publishedAt = new Date();
     }
     const category = await MenuCategory.findOne({ _id: payload.categoryId, isActive: true }).lean();
     if (!category) throw new MenuValidationError("categoryId does not reference an active category", "CATEGORY_NOT_FOUND", 404);
@@ -998,6 +1010,12 @@ function createMenuCatalogAdminService(deps) {
         exists: (key) => MenuOptionGroup.exists({ key }),
       });
     }
+    // Domain rule: publishedAt is the customer-visibility gate (see truthy() and activeIssue()).
+    // isActive=true on dashboard creation means the admin intends this to be immediately
+    // customer-visible. Setting publishedAt here is intentional and domain-correct.
+    if (payload.isActive) {
+      payload.publishedAt = new Date();
+    }
     return createEntity(MenuOptionGroup, payload, { entityType: "menu_option_group", actor });
   }
 
@@ -1009,6 +1027,12 @@ function createMenuCatalogAdminService(deps) {
         fallbackPrefix: "option",
         exists: (key) => MenuOption.exists({ groupId: payload.groupId, key }),
       });
+    }
+    // Domain rule: publishedAt is the customer-visibility gate (see truthy() and activeIssue()).
+    // isActive=true on dashboard creation means the admin intends this to be immediately
+    // customer-visible. Setting publishedAt here is intentional and domain-correct.
+    if (payload.isActive) {
+      payload.publishedAt = new Date();
     }
     if (payload.catalogItemId) await assertCatalogItemLinkable(payload.catalogItemId);
     const option = await createEntity(MenuOption, payload, { entityType: "menu_option", actor });

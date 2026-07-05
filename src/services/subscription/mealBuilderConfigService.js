@@ -2357,9 +2357,14 @@ async function resolveDocsForSections(sections = []) {
   ]);
   const relationOptionIds = optionRelations.map((row) => String(row.optionId));
   const relationGroupIdsFromRows = optionRelations.map((row) => String(row.groupId));
+  // Also include groups referenced by ProductOptionGroup (product-group relations) that may have
+  // zero option assignments. Without this, option-less groups (e.g. leafy_greens with no options yet)
+  // would be absent from groupsById, causing false validation errors.
+  const productGroupRelGroupIds = groupRelations.map((row) => String(row.groupId));
+  const allRelationGroupIds = [...new Set([...relationGroupIdsFromRows, ...productGroupRelGroupIds])];
   const [relationOptions, relationGroups] = await Promise.all([
     MenuOption.find({ _id: { $in: relationOptionIds } }).lean(),
-    MenuOptionGroup.find({ _id: { $in: relationGroupIdsFromRows } }).lean(),
+    MenuOptionGroup.find({ _id: { $in: allRelationGroupIds } }).lean(),
   ]);
   for (const option of relationOptions) optionsById.set(String(option._id), option);
   for (const group of relationGroups) groupsById.set(String(group._id), group);
@@ -3028,6 +3033,13 @@ function buildProductItem({ product, selectionType, docs, lang, membership, prem
   
   let premiumFee = isPremiumSalad ? Number(premiumLargeSaladPricing.extraFeeHalala ?? priceHalala) : 0;
 
+  // Standalone classification is driven exclusively by section selectionType:
+  // - selectionType=sandwich and selectionType=full_meal_product → isStandaloneMeal=true → standalone
+  // - selectionType=standard_meal and others → builder required, even with zero visible option groups
+  // Removed: zero-option-group global fallback (optionGroups.length === 0) which masked broken builder
+  // products on standard_meal sections by silently treating them as full meals.
+  const effectivelyStandalone = isStandaloneMeal;
+
   return {
     id: String(product._id),
     key: product.key || "",
@@ -3044,9 +3056,9 @@ function buildProductItem({ product, selectionType, docs, lang, membership, prem
     premiumPriceHalala: isPremiumSalad ? premiumFee : 0,
     requiresPremiumBalance: isPremiumSalad,
     action: {
-      type: isStandaloneMeal ? "direct_add" : "open_builder",
-      requiresBuilder: !isStandaloneMeal,
-      treatAsFullMeal: isStandaloneMeal || undefined,
+      type: effectivelyStandalone ? "direct_add" : "open_builder",
+      requiresBuilder: !effectivelyStandalone,
+      treatAsFullMeal: effectivelyStandalone || undefined,
     },
     available: true,
     optionGroups,
