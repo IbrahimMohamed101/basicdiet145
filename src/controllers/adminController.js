@@ -204,7 +204,7 @@ function parsePathPositiveIntegerOrRespond(res, value, fieldName) {
   try {
     return parsePositiveIntegerOrThrow(value, fieldName);
   } catch (err) {
-    if (isControlledError(err)) {
+    console.error(err); if (isControlledError(err)) {
       errorResponse(res, err.status, err.code, err.message);
       return null;
     }
@@ -726,7 +726,7 @@ function mapSubscriptionQuoteError(err) {
     return { status: 500, code: "INTERNAL", message: "Unexpected error" };
   }
 
-  if (isControlledError(err)) {
+  console.error(err); if (isControlledError(err)) {
     return err;
   }
 
@@ -1599,12 +1599,13 @@ async function createAppUserAdmin(req, res) {
       return errorResponse(res, 409, "CONFLICT", "App user already exists");
     }
 
-    const session = await mongoose.startSession();
+    const { startSafeSession } = require("../utils/mongoTransactionSupport");
+  const session = await startSafeSession();
     let createdCoreUser;
     let createdAppUser;
 
     try {
-      session.startTransaction();
+      if (typeof session.startTransaction === "function") session.startTransaction();
       createdCoreUser = await User.create(
         [{
           phone,
@@ -1626,7 +1627,7 @@ async function createAppUserAdmin(req, res) {
         { session }
       );
 
-      await session.commitTransaction();
+      if (typeof session.commitTransaction === "function") await session.commitTransaction();
     } catch (err) {
       await session.abortTransaction();
       throw err;
@@ -1647,7 +1648,7 @@ async function createAppUserAdmin(req, res) {
       }),
     });
   } catch (err) {
-    if (isControlledError(err)) {
+    console.error(err); if (isControlledError(err)) {
       return errorResponse(res, err.status, err.code, err.message);
     }
     if (err && err.code === 11000) {
@@ -1705,7 +1706,7 @@ async function createSubscriptionAdmin(req, res, nextOrRuntimeOverrides = null, 
   const session = await runtime.startSession();
 
   try {
-    session.startTransaction();
+    if (typeof session.startTransaction === "function") session.startTransaction();
 
     const daysCount = Number(quote.plan.daysCount || 0);
     const mealsPerDay = Number(quote.mealsPerDay || 0);
@@ -1809,7 +1810,7 @@ async function createSubscriptionAdmin(req, res, nextOrRuntimeOverrides = null, 
       await subscription.save({ session });
     }
 
-    await session.commitTransaction();
+    if (typeof session.commitTransaction === "function") await session.commitTransaction();
     session.endSession();
 
     await runtime.writeActivityLogSafely({
@@ -1868,7 +1869,7 @@ async function createSubscriptionAdmin(req, res, nextOrRuntimeOverrides = null, 
       },
     });
   } catch (err) {
-    if (session.inTransaction()) {
+    if (session.inTransaction && session.inTransaction()) {
       await session.abortTransaction();
     }
     session.endSession();
@@ -2284,7 +2285,7 @@ async function listPlansAdmin(req, res) {
       },
     });
   } catch (err) {
-    if (isControlledError(err)) {
+    console.error(err); if (isControlledError(err)) {
       return errorResponse(res, err.status, err.code, err.message);
     }
     throw err;
@@ -2317,7 +2318,7 @@ async function createPlan(req, res) {
     }, { planId: plan.id });
     return res.status(201).json({ status: true, data: { id: plan.id } });
   } catch (err) {
-    if (isControlledError(err)) {
+    console.error(err); if (isControlledError(err)) {
       return errorResponse(res, err.status, err.code, err.message);
     }
     throw err;
@@ -2352,7 +2353,7 @@ async function updatePlan(req, res) {
     }, { planId: updated.id });
     return res.status(200).json({ status: true, data: { id: updated.id } });
   } catch (err) {
-    if (isControlledError(err)) {
+    console.error(err); if (isControlledError(err)) {
       return errorResponse(res, err.status, err.code, err.message);
     }
     throw err;
@@ -2399,7 +2400,7 @@ async function togglePlanActive(req, res) {
   try {
     assertActivePlanViabilityOrThrow(plan);
   } catch (err) {
-    if (isControlledError(err)) {
+    console.error(err); if (isControlledError(err)) {
       return errorResponse(res, err.status, err.code, err.message);
     }
     throw err;
@@ -2431,7 +2432,7 @@ async function updatePlanSortOrder(req, res) {
     }
     return res.status(200).json({ status: true, data: { id: updated.id, sortOrder: updated.sortOrder } });
   } catch (err) {
-    if (isControlledError(err)) {
+    console.error(err); if (isControlledError(err)) {
       return errorResponse(res, err.status, err.code, err.message);
     }
     throw err;
@@ -2467,7 +2468,7 @@ async function clonePlan(req, res) {
     const cloned = await Plan.create(normalizedPayload);
     return res.status(201).json({ status: true, data: { id: cloned.id } });
   } catch (err) {
-    if (isControlledError(err)) {
+    console.error(err); if (isControlledError(err)) {
       return errorResponse(res, err.status, err.code, err.message);
     }
     throw err;
@@ -2509,7 +2510,7 @@ async function createGramsRow(req, res) {
       },
     });
   } catch (err) {
-    if (isControlledError(err)) {
+    console.error(err); if (isControlledError(err)) {
       return errorResponse(res, err.status, err.code, err.message);
     }
     throw err;
@@ -2564,7 +2565,7 @@ async function cloneGramsRow(req, res) {
     await plan.save();
     return res.status(201).json({ status: true, data: { id: plan.id } });
   } catch (err) {
-    if (isControlledError(err)) {
+    console.error(err); if (isControlledError(err)) {
       return errorResponse(res, err.status, err.code, err.message);
     }
     throw err;
@@ -2606,7 +2607,7 @@ async function deleteGramsRow(req, res) {
   try {
     assertActivePlanViabilityOrThrow(plan);
   } catch (err) {
-    if (isControlledError(err)) {
+    console.error(err); if (isControlledError(err)) {
       return errorResponse(res, err.status, err.code, err.message);
     }
     throw err;
@@ -2644,7 +2645,7 @@ async function toggleGramsRow(req, res) {
   try {
     assertActivePlanViabilityOrThrow(plan);
   } catch (err) {
-    if (isControlledError(err)) {
+    console.error(err); if (isControlledError(err)) {
       return errorResponse(res, err.status, err.code, err.message);
     }
     throw err;
@@ -2693,7 +2694,7 @@ async function updateGramsSortOrder(req, res) {
 
     return res.status(200).json({ status: true, data: { id: plan.id, grams, sortOrder } });
   } catch (err) {
-    if (isControlledError(err)) {
+    console.error(err); if (isControlledError(err)) {
       return errorResponse(res, err.status, err.code, err.message);
     }
     throw err;
@@ -2756,7 +2757,7 @@ async function cloneMealsOption(req, res) {
     await plan.save();
     return res.status(201).json({ status: true, data: { id: plan.id } });
   } catch (err) {
-    if (isControlledError(err)) {
+    console.error(err); if (isControlledError(err)) {
       return errorResponse(res, err.status, err.code, err.message);
     }
     throw err;
@@ -2816,7 +2817,7 @@ async function createMealsOption(req, res) {
       },
     });
   } catch (err) {
-    if (isControlledError(err)) {
+    console.error(err); if (isControlledError(err)) {
       return errorResponse(res, err.status, err.code, err.message);
     }
     throw err;
@@ -2865,7 +2866,7 @@ async function deleteMealsOption(req, res) {
   try {
     assertActivePlanViabilityOrThrow(plan);
   } catch (err) {
-    if (isControlledError(err)) {
+    console.error(err); if (isControlledError(err)) {
       return errorResponse(res, err.status, err.code, err.message);
     }
     throw err;
@@ -2913,7 +2914,7 @@ async function toggleMealsOption(req, res) {
   try {
     assertActivePlanViabilityOrThrow(plan);
   } catch (err) {
-    if (isControlledError(err)) {
+    console.error(err); if (isControlledError(err)) {
       return errorResponse(res, err.status, err.code, err.message);
     }
     throw err;
@@ -2973,7 +2974,7 @@ async function updateMealsSortOrder(req, res) {
 
     return res.status(200).json({ status: true, data: { id: plan.id, grams, mealsPerDay, sortOrder } });
   } catch (err) {
-    if (isControlledError(err)) {
+    console.error(err); if (isControlledError(err)) {
       return errorResponse(res, err.status, err.code, err.message);
     }
     throw err;
@@ -3545,7 +3546,7 @@ async function updateCutoff(req, res) {
     await writeSettingsActivityLogSafely(req, persisted, { setting: "cutoff_time" });
     return res.status(200).json({ status: true });
   } catch (err) {
-    if (isControlledError(err)) {
+    console.error(err); if (isControlledError(err)) {
       return errorResponse(res, err.status, err.code, err.message);
     }
     throw err;
@@ -3646,7 +3647,7 @@ async function updateRestaurantHours(req, res) {
       },
     });
   } catch (err) {
-    if (isControlledError(err)) {
+    console.error(err); if (isControlledError(err)) {
       return errorResponse(res, err.status, err.code, err.message);
     }
     throw err;
@@ -3684,7 +3685,7 @@ async function updateDeliveryWindows(req, res) {
     await writeSettingsActivityLogSafely(req, persisted, { setting: "delivery_windows" });
     return res.status(200).json({ status: true });
   } catch (err) {
-    if (isControlledError(err)) {
+    console.error(err); if (isControlledError(err)) {
       return errorResponse(res, err.status, err.code, err.message);
     }
     throw err;
@@ -3700,7 +3701,7 @@ async function updateSkipAllowance(req, res) {
     await writeSettingsActivityLogSafely(req, persisted, { setting: "skip_allowance" });
     return res.status(200).json({ status: true, data: { skipAllowance: normalized } });
   } catch (err) {
-    if (isControlledError(err)) {
+    console.error(err); if (isControlledError(err)) {
       return errorResponse(res, err.status, err.code, err.message);
     }
     throw err;
@@ -3716,7 +3717,7 @@ async function updatePremiumPrice(req, res) {
     await writeSettingsActivityLogSafely(req, persisted, { setting: "premium_price" });
     return res.status(200).json({ status: true });
   } catch (err) {
-    if (isControlledError(err)) {
+    console.error(err); if (isControlledError(err)) {
       return errorResponse(res, err.status, err.code, err.message);
     }
     throw err;
@@ -3736,7 +3737,7 @@ async function updateSubscriptionDeliveryFee(req, res) {
     await writeSettingsActivityLogSafely(req, persisted, { setting: "subscription_delivery_fee_halala" });
     return res.status(200).json({ status: true, data: persisted });
   } catch (err) {
-    if (isControlledError(err)) {
+    console.error(err); if (isControlledError(err)) {
       return errorResponse(res, err.status, err.code, err.message);
     }
     throw err;
@@ -3756,7 +3757,7 @@ async function updateVatPercentage(req, res) {
     await writeSettingsActivityLogSafely(req, persisted, { setting: "vat_percentage" });
     return res.status(200).json({ status: true, data: persisted });
   } catch (err) {
-    if (isControlledError(err)) {
+    console.error(err); if (isControlledError(err)) {
       return errorResponse(res, err.status, err.code, err.message);
     }
     throw err;
@@ -3776,7 +3777,7 @@ async function updateCustomSaladBasePrice(req, res) {
     await writeSettingsActivityLogSafely(req, persisted, { setting: "custom_salad_base_price" });
     return res.status(200).json({ status: true, data: persisted });
   } catch (err) {
-    if (isControlledError(err)) {
+    console.error(err); if (isControlledError(err)) {
       return errorResponse(res, err.status, err.code, err.message);
     }
     throw err;
@@ -3796,7 +3797,7 @@ async function updateCustomMealBasePrice(req, res) {
     await writeSettingsActivityLogSafely(req, persisted, { setting: "custom_meal_base_price" });
     return res.status(200).json({ status: true, data: persisted });
   } catch (err) {
-    if (isControlledError(err)) {
+    console.error(err); if (isControlledError(err)) {
       return errorResponse(res, err.status, err.code, err.message);
     }
     throw err;
@@ -3810,7 +3811,7 @@ async function patchSettings(req, res) {
     await writeSettingsActivityLogSafely(req, persisted, { setting: "patch" });
     return res.status(200).json({ status: true, data: persisted });
   } catch (err) {
-    if (isControlledError(err)) {
+    console.error(err); if (isControlledError(err)) {
       return errorResponse(res, err.status, err.code, err.message);
     }
     throw err;
@@ -4083,7 +4084,7 @@ async function listSubscriptionsAdmin(req, res) {
       },
     });
   } catch (err) {
-    if (isControlledError(err)) {
+    console.error(err); if (isControlledError(err)) {
       return errorResponse(res, err.status, err.code, err.message);
     }
     throw err;
@@ -4139,7 +4140,7 @@ async function getSubscriptionsSummaryAdmin(req, res) {
       },
     });
   } catch (err) {
-    if (isControlledError(err)) {
+    console.error(err); if (isControlledError(err)) {
       return errorResponse(res, err.status, err.code, err.message);
     }
     throw err;
@@ -4171,7 +4172,7 @@ async function exportSubscriptionsAdmin(req, res) {
       },
     });
   } catch (err) {
-    if (isControlledError(err)) {
+    console.error(err); if (isControlledError(err)) {
       return errorResponse(res, err.status, err.code, err.message);
     }
     throw err;
@@ -4557,7 +4558,7 @@ async function updateSubscriptionAddonEntitlementsAdmin(req, res) {
 
     return res.status(200).json({ status: true, data: { addonSubscriptions: subscription.addonSubscriptions } });
   } catch (err) {
-    if (isControlledError(err)) {
+    console.error(err); if (isControlledError(err)) {
       return errorResponse(res, err.status, err.code, err.message);
     }
     logger.error("adminController.updateSubscriptionAddonEntitlementsAdmin failed", {
@@ -4669,9 +4670,15 @@ async function updateSubscriptionBalancesAdmin(req, res) {
     return errorResponse(res, 400, "INVALID", "At least one of premiumBalance or addonBalance is required");
   }
 
+  const { startSafeSession } = require("../utils/mongoTransactionSupport");
+  const session = await startSafeSession();
+  if (typeof session.startTransaction === "function") session.startTransaction();
+
   try {
-    const subscription = await Subscription.findById(id);
+    const subscription = await Subscription.findById(id).session(session);
     if (!subscription) {
+      await session.abortTransaction();
+      session.endSession();
       return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
     }
 
@@ -4695,7 +4702,35 @@ async function updateSubscriptionBalancesAdmin(req, res) {
     if (Object.prototype.hasOwnProperty.call(body, "addonBalance")) {
       subscription.addonBalance = await normalizeAddonBalanceRowsOrThrow(body.addonBalance);
     }
-    await subscription.save();
+
+    // --- CONCURRENCY SAFETY WARNING ---
+    // This operation performs a full in-memory array replace of addonBalance and premiumBalance.
+    // Because Railway MongoDB standalone replicas do not support true multi-document transactions,
+    // this array overwrite is NOT safe against concurrent balance changes (e.g. if a cron job 
+    // consumes a balance exactly right now). 
+    // We perform an optimistic check here to log a warning if a drift is detected.
+    const concurrentCheck = await Subscription.findById(id).select("addonBalance premiumBalance").lean();
+    if (concurrentCheck) {
+      const getConsumed = (arr) => (arr || []).reduce((sum, b) => sum + (b.consumedQty || 0), 0);
+      const getRemaining = (arr) => (arr || []).reduce((sum, b) => sum + (b.remainingQty || 0), 0);
+      
+      const beforeAddonConsumed = getConsumed(before.addonBalance);
+      const currentAddonConsumed = getConsumed(concurrentCheck.addonBalance);
+      const beforePremiumRemaining = getRemaining(before.premiumBalance);
+      const currentPremiumRemaining = getRemaining(concurrentCheck.premiumBalance);
+
+      if (beforeAddonConsumed !== currentAddonConsumed || beforePremiumRemaining !== currentPremiumRemaining) {
+        logger.warn("updateSubscriptionBalancesAdmin RACE CONDITION: Concurrent balance change detected. Admin overwrite may clobber concurrent consumption due to lack of transactions.", {
+          subscriptionId: id,
+          beforeAddonConsumed,
+          currentAddonConsumed,
+          beforePremiumRemaining,
+          currentPremiumRemaining,
+        });
+      }
+    }
+
+    await subscription.save({ session });
 
     const after = {
       premiumBalance: (subscription.premiumBalance || []).map((row) => ({
@@ -4727,6 +4762,9 @@ async function updateSubscriptionBalancesAdmin(req, res) {
       meta: { before, after, reason },
     }, { subscriptionId: id });
 
+    if (typeof session.commitTransaction === "function") await session.commitTransaction();
+    session.endSession();
+
     return res.status(200).json({
       status: true,
       data: {
@@ -4735,7 +4773,12 @@ async function updateSubscriptionBalancesAdmin(req, res) {
       },
     });
   } catch (err) {
-    if (isControlledError(err)) {
+    if (session.inTransaction && session.inTransaction()) {
+      await session.abortTransaction();
+    }
+    session.endSession();
+
+    console.error(err); if (isControlledError(err)) {
       return errorResponse(res, err.status, err.code, err.message);
     }
     logger.error("adminController.updateSubscriptionBalancesAdmin failed", {
@@ -4893,8 +4936,9 @@ async function extendSubscriptionAdmin(req, res) {
   }
 
   const lang = getRequestLang(req);
-  const session = await mongoose.startSession();
-  session.startTransaction();
+  const { startSafeSession } = require("../utils/mongoTransactionSupport");
+  const session = await startSafeSession();
+  if (typeof session.startTransaction === "function") session.startTransaction();
 
   try {
     const subscription = await Subscription.findById(id).session(session);
@@ -4969,12 +5013,21 @@ async function extendSubscriptionAdmin(req, res) {
     subscription.endDate = newBaseEndDate;
     subscription.validityEndDate = newValidityEndDate;
     subscription.totalMeals = Number(subscription.totalMeals || 0) + addedMeals;
-    subscription.remainingMeals = Number(subscription.remainingMeals || 0) + addedMeals;
     await subscription.save({ session });
+
+    // Atomic update for remainingMeals to avoid read-then-write race conditions
+    await Subscription.findOneAndUpdate(
+      { _id: subscription._id },
+      { $inc: { remainingMeals: addedMeals } },
+      { session }
+    );
+    
+    // Update local object for response serialization
+    subscription.remainingMeals = Number(subscription.remainingMeals || 0) + addedMeals;
 
     const user = subscription.userId ? await User.findById(subscription.userId).session(session).lean() : null;
 
-    await session.commitTransaction();
+    if (typeof session.commitTransaction === "function") await session.commitTransaction();
     session.endSession();
 
     await writeActivityLogSafely({
@@ -5364,7 +5417,7 @@ async function verifyPaymentAdmin(req, res, runtimeOverrides = null) {
   const session = await startSessionFn();
   let synchronized = false;
   try {
-    session.startTransaction();
+    if (typeof session.startTransaction === "function") session.startTransaction();
 
     const paymentInSession = await Payment.findById(id).session(session);
     if (!paymentInSession) {
@@ -5489,10 +5542,10 @@ async function verifyPaymentAdmin(req, res, runtimeOverrides = null) {
       }
     }
 
-    await session.commitTransaction();
+    if (typeof session.commitTransaction === "function") await session.commitTransaction();
     session.endSession();
   } catch (err) {
-    if (session.inTransaction()) {
+    if (session.inTransaction && session.inTransaction()) {
       await session.abortTransaction();
     }
     session.endSession();

@@ -275,6 +275,8 @@ const SubscriptionDaySchema = new mongoose.Schema(
       default: [],
     },
     creditsDeducted: { type: Boolean, default: false },
+    addonCreditsReleased: { type: Boolean, default: false },
+    premiumCreditsReleased: { type: Boolean, default: false },
     autoLocked: { type: Boolean, default: false },
     deliveryAddressOverride: {
       line1: { type: String },

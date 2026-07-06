@@ -29,6 +29,12 @@ const { validateDayBeforeLockOrPrepare } = require("../subscription/subscription
 const dateUtils = require("../../utils/date");
 const { runMongoTransactionWithRetry } = require("../mongoTransactionRetryService");
 const { resolveEffectiveFulfillmentMode } = require("../subscription/subscriptionFulfillmentPolicyService");
+const {
+  releaseAddonBalanceAtomically,
+  consumeAddonBalanceAtomically,
+  releasePremiumBalanceAtomically,
+  consumePremiumBalanceAtomically,
+} = require("../subscription/subscriptionSelectionService");
 
 /**
  * Unified Operations Transition Service.
@@ -704,7 +710,7 @@ async function handleCancel({ entityId, entityType, payload, userId, role, sessi
   if (entityType === "subscription") {
     const sub = await Subscription.findById(doc.subscriptionId).session(session).lean();
     if (sub && getEffectiveMode(sub, doc) === "pickup") {
-      toStatus = payload && payload.noShow ? "no_show" : "canceled_at_branch";
+      toStatus = "canceled_at_branch";
     }
   }
   if (doc.status === toStatus) {
@@ -718,6 +724,53 @@ async function handleCancel({ entityId, entityType, payload, userId, role, sessi
   doc.canceledBy = String(userId || "");
   doc.cancellationReason = payload.reason;
   doc.cancellationNote = payload.notes || payload.note;
+
+  if (entityType === "subscription") {
+    // Only load subscription once for both addon + premium release
+    const needsAddonRelease = !doc.addonCreditsReleased;
+    const needsPremiumRelease = !doc.premiumCreditsReleased;
+
+    if (needsAddonRelease || needsPremiumRelease) {
+      const sub = await Subscription.findById(doc.subscriptionId).session(session);
+      if (sub) {
+        // --- Addon balance rollback ---
+        if (needsAddonRelease && Array.isArray(doc.addonSelections)) {
+          for (const sel of doc.addonSelections) {
+            if (sel.source === "subscription") {
+              await releaseAddonBalanceAtomically({
+                subscription: sub,
+                addonId: sel.addonId,
+                addonPlanId: sel.addonPlanId,
+                category: sel.category,
+                unitPriceHalala: sel.unitPriceHalala || 0,
+                session,
+              });
+              // Mark as pending_payment to prevent double-release if reopened
+              sel.source = "pending_payment";
+            }
+          }
+          doc.addonCreditsReleased = true;
+        }
+
+        // --- Premium balance rollback ---
+        if (needsPremiumRelease && Array.isArray(doc.premiumUpgradeSelections)) {
+          for (const sel of doc.premiumUpgradeSelections) {
+            if (sel.premiumSource === "balance") {
+              await releasePremiumBalanceAtomically({
+                subscription: sub,
+                premiumKey: sel.premiumKey,
+                session,
+              });
+              // Mark as pending_payment to prevent double-release if reopened
+              sel.premiumSource = "pending_payment";
+            }
+          }
+          doc.premiumCreditsReleased = true;
+        }
+      }
+    }
+  }
+
   appendOperationAudit(doc, "cancel", userId, role);
   await doc.save({ session });
   if (entityType === "subscription") {
@@ -751,44 +804,78 @@ async function handleCancel({ entityId, entityType, payload, userId, role, sessi
 }
 
 async function handleNoShow({ entityId, entityType, payload, userId, role, session }) {
-  if (entityType !== "subscription_pickup_request") {
-    if (entityType === "subscription") {
-      const day = await SubscriptionDay.findById(entityId).session(session);
-      await assertBranchPickupRequestExists(day, session);
+  if (entityType === "subscription_pickup_request") {
+    const doc = await SubscriptionPickupRequest.findById(entityId).session(session);
+    if (!doc) throw new Error("Entity not found");
+    if (doc.status === "no_show") {
+      return { data: doc, idempotent: true };
     }
-    return handleCancel({
-      entityId,
-      entityType,
-      payload: { ...payload, noShow: true },
-      userId,
-      role,
+    const fromStatus = doc.status;
+    validateTransition(entityType, fromStatus, "no_show");
+    doc.status = "no_show";
+    doc.pickupNoShowAt = new Date();
+    doc.canceledAt = doc.canceledAt || new Date();
+    doc.cancellationReason = payload.reason || "no_show";
+    doc.cancellationNote = payload.notes || payload.note;
+    appendPickupRequestAudit(doc, "no_show", userId, role);
+    await doc.save({ session });
+    await consumeReservedPickupMeals({
+      pickupRequestId: doc._id,
       session,
     });
+    const updated = await SubscriptionPickupRequest.findById(entityId).session(session);
+    return {
+      data: updated || doc,
+      sideEffects: { action: "no_show", entityType, entityId, toStatus: "no_show" },
+    };
   }
 
-  const doc = await SubscriptionPickupRequest.findById(entityId).session(session);
-  if (!doc) throw new Error("Entity not found");
-  if (doc.status === "no_show") {
-    return { data: doc, idempotent: true };
+  if (entityType === "subscription") {
+    const doc = await SubscriptionDay.findById(entityId).session(session);
+    if (!doc) throw new Error("Entity not found");
+    await assertBranchPickupRequestExists(doc, session);
+    
+    if (doc.status === "no_show") {
+      return { data: doc, idempotent: true };
+    }
+    const fromStatus = doc.status;
+    validateTransition(entityType, fromStatus, "no_show");
+    
+    doc.status = "no_show";
+    doc.pickupNoShowAt = new Date();
+    doc.canceledAt = doc.canceledAt || new Date();
+    doc.canceledBy = String(userId || "");
+    doc.cancellationReason = payload.reason || "no_show";
+    doc.cancellationNote = payload.notes || payload.note;
+    
+    // Policy Fix: no_show forfeits meals AND balances. 
+    // We explicitly DO NOT call releaseAddonBalanceAtomically or releasePremiumBalanceAtomically here.
+
+    appendOperationAudit(doc, "no_show", userId, role);
+    await doc.save({ session });
+    await writeSubscriptionDayAudit({ day: doc, action: "no_show", fromStatus, toStatus: "no_show", userId, role, payload, session });
+
+    // Sync Delivery if one exists (rare for pickup, but safe to include)
+    if (doc.deliveryRecord) {
+      const { updateDeliveryByDayId } = require("./deliverySyncService");
+      await updateDeliveryByDayId({
+        dayId: doc._id,
+        updates: {
+          status: "canceled",
+          canceledAt: new Date(),
+          cancellationReason: payload.reason || "no_show",
+        },
+        session,
+      });
+    }
+
+    return {
+      data: doc,
+      sideEffects: { action: "no_show", entityType, entityId, toStatus: "no_show" },
+    };
   }
-  const fromStatus = doc.status;
-  validateTransition(entityType, fromStatus, "no_show");
-  doc.status = "no_show";
-  doc.pickupNoShowAt = new Date();
-  doc.canceledAt = doc.canceledAt || new Date();
-  doc.cancellationReason = payload.reason || "no_show";
-  doc.cancellationNote = payload.notes || payload.note;
-  appendPickupRequestAudit(doc, "no_show", userId, role);
-  await doc.save({ session });
-  await consumeReservedPickupMeals({
-    pickupRequestId: doc._id,
-    session,
-  });
-  const updated = await SubscriptionPickupRequest.findById(entityId).session(session);
-  return {
-    data: updated || doc,
-    sideEffects: { action: "no_show", entityType, entityId, toStatus: "no_show" },
-  };
+
+  throw new Error(`no_show not supported for entityType: ${entityType}`);
 }
 
 async function handleReopen({ entityId, entityType, userId, role, payload, session }) {
@@ -810,6 +897,50 @@ async function handleReopen({ entityId, entityType, userId, role, payload, sessi
     doc.cancellationReason = null;
     doc.cancellationNote = null;
     doc.pickupNoShowAt = null;
+
+    if (doc.addonCreditsReleased || doc.premiumCreditsReleased) {
+      const sub = await Subscription.findById(doc.subscriptionId).session(session);
+      if (sub) {
+        if (doc.addonCreditsReleased && Array.isArray(doc.addonSelections)) {
+          for (const sel of doc.addonSelections) {
+            if (sel.source === "pending_payment") {
+              const walletResult = await consumeAddonBalanceAtomically({
+                subscription: sub,
+                dayId: doc._id,
+                date: doc.date,
+                addonId: sel.addonId,
+                addonPlanId: sel.addonPlanId || null,
+                category: sel.category || null,
+                session
+              });
+              if (walletResult.consumed) {
+                sel.source = "subscription";
+              }
+            }
+          }
+        }
+        
+        if (doc.premiumCreditsReleased && Array.isArray(doc.premiumUpgradeSelections)) {
+          for (const sel of doc.premiumUpgradeSelections) {
+            if (sel.premiumSource === "pending_payment") {
+              const walletResult = await consumePremiumBalanceAtomically({
+                subscription: sub,
+                dayId: doc._id,
+                date: doc.date,
+                premiumKey: sel.premiumKey,
+                session
+              });
+              if (walletResult.consumed) {
+                sel.premiumSource = "balance";
+              }
+            }
+          }
+        }
+      }
+      doc.addonCreditsReleased = false;
+      doc.premiumCreditsReleased = false;
+    }
+
     appendOperationAudit(doc, "reopen", userId, role);
   }
   await doc.save({ session });

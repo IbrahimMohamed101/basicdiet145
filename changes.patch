@@ -1,0 +1,479 @@
+diff --git a/src/controllers/adminController.js b/src/controllers/adminController.js
+index e1123183..3c7c5d69 100644
+--- a/src/controllers/adminController.js
++++ b/src/controllers/adminController.js
+@@ -4669,9 +4669,14 @@ async function updateSubscriptionBalancesAdmin(req, res) {
+     return errorResponse(res, 400, "INVALID", "At least one of premiumBalance or addonBalance is required");
+   }
+ 
++  const session = await mongoose.startSession();
++  session.startTransaction();
++
+   try {
+-    const subscription = await Subscription.findById(id);
++    const subscription = await Subscription.findById(id).session(session);
+     if (!subscription) {
++      await session.abortTransaction();
++      session.endSession();
+       return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
+     }
+ 
+@@ -4695,7 +4700,35 @@ async function updateSubscriptionBalancesAdmin(req, res) {
+     if (Object.prototype.hasOwnProperty.call(body, "addonBalance")) {
+       subscription.addonBalance = await normalizeAddonBalanceRowsOrThrow(body.addonBalance);
+     }
+-    await subscription.save();
++
++    // --- CONCURRENCY SAFETY WARNING ---
++    // This operation performs a full in-memory array replace of addonBalance and premiumBalance.
++    // Because Railway MongoDB standalone replicas do not support true multi-document transactions,
++    // this array overwrite is NOT safe against concurrent balance changes (e.g. if a cron job 
++    // consumes a balance exactly right now). 
++    // We perform an optimistic check here to log a warning if a drift is detected.
++    const concurrentCheck = await Subscription.findById(id).select("addonBalance premiumBalance").lean();
++    if (concurrentCheck) {
++      const getConsumed = (arr) => (arr || []).reduce((sum, b) => sum + (b.consumedQty || 0), 0);
++      const getRemaining = (arr) => (arr || []).reduce((sum, b) => sum + (b.remainingQty || 0), 0);
++      
++      const beforeAddonConsumed = getConsumed(before.addonBalance);
++      const currentAddonConsumed = getConsumed(concurrentCheck.addonBalance);
++      const beforePremiumRemaining = getRemaining(before.premiumBalance);
++      const currentPremiumRemaining = getRemaining(concurrentCheck.premiumBalance);
++
++      if (beforeAddonConsumed !== currentAddonConsumed || beforePremiumRemaining !== currentPremiumRemaining) {
++        logger.warn("updateSubscriptionBalancesAdmin RACE CONDITION: Concurrent balance change detected. Admin overwrite may clobber concurrent consumption due to lack of transactions.", {
++          subscriptionId: id,
++          beforeAddonConsumed,
++          currentAddonConsumed,
++          beforePremiumRemaining,
++          currentPremiumRemaining,
++        });
++      }
++    }
++
++    await subscription.save({ session });
+ 
+     const after = {
+       premiumBalance: (subscription.premiumBalance || []).map((row) => ({
+@@ -4727,6 +4760,9 @@ async function updateSubscriptionBalancesAdmin(req, res) {
+       meta: { before, after, reason },
+     }, { subscriptionId: id });
+ 
++    await session.commitTransaction();
++    session.endSession();
++
+     return res.status(200).json({
+       status: true,
+       data: {
+@@ -4735,6 +4771,11 @@ async function updateSubscriptionBalancesAdmin(req, res) {
+       },
+     });
+   } catch (err) {
++    if (session.inTransaction()) {
++      await session.abortTransaction();
++    }
++    session.endSession();
++
+     if (isControlledError(err)) {
+       return errorResponse(res, err.status, err.code, err.message);
+     }
+@@ -4969,9 +5010,18 @@ async function extendSubscriptionAdmin(req, res) {
+     subscription.endDate = newBaseEndDate;
+     subscription.validityEndDate = newValidityEndDate;
+     subscription.totalMeals = Number(subscription.totalMeals || 0) + addedMeals;
+-    subscription.remainingMeals = Number(subscription.remainingMeals || 0) + addedMeals;
+     await subscription.save({ session });
+ 
++    // Atomic update for remainingMeals to avoid read-then-write race conditions
++    await Subscription.findOneAndUpdate(
++      { _id: subscription._id },
++      { $inc: { remainingMeals: addedMeals } },
++      { session }
++    );
++    
++    // Update local object for response serialization
++    subscription.remainingMeals = Number(subscription.remainingMeals || 0) + addedMeals;
++
+     const user = subscription.userId ? await User.findById(subscription.userId).session(session).lean() : null;
+ 
+     await session.commitTransaction();
+diff --git a/src/models/SubscriptionDay.js b/src/models/SubscriptionDay.js
+index 678a78d0..72250d78 100644
+--- a/src/models/SubscriptionDay.js
++++ b/src/models/SubscriptionDay.js
+@@ -275,6 +275,8 @@ const SubscriptionDaySchema = new mongoose.Schema(
+       default: [],
+     },
+     creditsDeducted: { type: Boolean, default: false },
++    addonCreditsReleased: { type: Boolean, default: false },
++    premiumCreditsReleased: { type: Boolean, default: false },
+     autoLocked: { type: Boolean, default: false },
+     deliveryAddressOverride: {
+       line1: { type: String },
+diff --git a/src/services/dashboard/opsTransitionService.js b/src/services/dashboard/opsTransitionService.js
+index 3ce06f05..f2a5e3bf 100644
+--- a/src/services/dashboard/opsTransitionService.js
++++ b/src/services/dashboard/opsTransitionService.js
+@@ -29,6 +29,12 @@ const { validateDayBeforeLockOrPrepare } = require("../subscription/subscription
+ const dateUtils = require("../../utils/date");
+ const { runMongoTransactionWithRetry } = require("../mongoTransactionRetryService");
+ const { resolveEffectiveFulfillmentMode } = require("../subscription/subscriptionFulfillmentPolicyService");
++const {
++  releaseAddonBalanceAtomically,
++  consumeAddonBalanceAtomically,
++  releasePremiumBalanceAtomically,
++  consumePremiumBalanceAtomically,
++} = require("../subscription/subscriptionSelectionService");
+ 
+ /**
+  * Unified Operations Transition Service.
+@@ -704,7 +710,7 @@ async function handleCancel({ entityId, entityType, payload, userId, role, sessi
+   if (entityType === "subscription") {
+     const sub = await Subscription.findById(doc.subscriptionId).session(session).lean();
+     if (sub && getEffectiveMode(sub, doc) === "pickup") {
+-      toStatus = payload && payload.noShow ? "no_show" : "canceled_at_branch";
++      toStatus = "canceled_at_branch";
+     }
+   }
+   if (doc.status === toStatus) {
+@@ -718,6 +724,53 @@ async function handleCancel({ entityId, entityType, payload, userId, role, sessi
+   doc.canceledBy = String(userId || "");
+   doc.cancellationReason = payload.reason;
+   doc.cancellationNote = payload.notes || payload.note;
++
++  if (entityType === "subscription") {
++    // Only load subscription once for both addon + premium release
++    const needsAddonRelease = !doc.addonCreditsReleased;
++    const needsPremiumRelease = !doc.premiumCreditsReleased;
++
++    if (needsAddonRelease || needsPremiumRelease) {
++      const sub = await Subscription.findById(doc.subscriptionId).session(session);
++      if (sub) {
++        // --- Addon balance rollback ---
++        if (needsAddonRelease && Array.isArray(doc.addonSelections)) {
++          for (const sel of doc.addonSelections) {
++            if (sel.source === "subscription") {
++              await releaseAddonBalanceAtomically({
++                subscription: sub,
++                addonId: sel.addonId,
++                addonPlanId: sel.addonPlanId,
++                category: sel.category,
++                unitPriceHalala: sel.unitPriceHalala || 0,
++                session,
++              });
++              // Mark as pending_payment to prevent double-release if reopened
++              sel.source = "pending_payment";
++            }
++          }
++          doc.addonCreditsReleased = true;
++        }
++
++        // --- Premium balance rollback ---
++        if (needsPremiumRelease && Array.isArray(doc.premiumUpgradeSelections)) {
++          for (const sel of doc.premiumUpgradeSelections) {
++            if (sel.premiumSource === "balance") {
++              await releasePremiumBalanceAtomically({
++                subscription: sub,
++                premiumKey: sel.premiumKey,
++                session,
++              });
++              // Mark as pending_payment to prevent double-release if reopened
++              sel.premiumSource = "pending_payment";
++            }
++          }
++          doc.premiumCreditsReleased = true;
++        }
++      }
++    }
++  }
++
+   appendOperationAudit(doc, "cancel", userId, role);
+   await doc.save({ session });
+   if (entityType === "subscription") {
+@@ -751,44 +804,78 @@ async function handleCancel({ entityId, entityType, payload, userId, role, sessi
+ }
+ 
+ async function handleNoShow({ entityId, entityType, payload, userId, role, session }) {
+-  if (entityType !== "subscription_pickup_request") {
+-    if (entityType === "subscription") {
+-      const day = await SubscriptionDay.findById(entityId).session(session);
+-      await assertBranchPickupRequestExists(day, session);
++  if (entityType === "subscription_pickup_request") {
++    const doc = await SubscriptionPickupRequest.findById(entityId).session(session);
++    if (!doc) throw new Error("Entity not found");
++    if (doc.status === "no_show") {
++      return { data: doc, idempotent: true };
+     }
+-    return handleCancel({
+-      entityId,
+-      entityType,
+-      payload: { ...payload, noShow: true },
+-      userId,
+-      role,
++    const fromStatus = doc.status;
++    validateTransition(entityType, fromStatus, "no_show");
++    doc.status = "no_show";
++    doc.pickupNoShowAt = new Date();
++    doc.canceledAt = doc.canceledAt || new Date();
++    doc.cancellationReason = payload.reason || "no_show";
++    doc.cancellationNote = payload.notes || payload.note;
++    appendPickupRequestAudit(doc, "no_show", userId, role);
++    await doc.save({ session });
++    await consumeReservedPickupMeals({
++      pickupRequestId: doc._id,
+       session,
+     });
++    const updated = await SubscriptionPickupRequest.findById(entityId).session(session);
++    return {
++      data: updated || doc,
++      sideEffects: { action: "no_show", entityType, entityId, toStatus: "no_show" },
++    };
+   }
+ 
+-  const doc = await SubscriptionPickupRequest.findById(entityId).session(session);
+-  if (!doc) throw new Error("Entity not found");
+-  if (doc.status === "no_show") {
+-    return { data: doc, idempotent: true };
++  if (entityType === "subscription") {
++    const doc = await SubscriptionDay.findById(entityId).session(session);
++    if (!doc) throw new Error("Entity not found");
++    await assertBranchPickupRequestExists(doc, session);
++    
++    if (doc.status === "no_show") {
++      return { data: doc, idempotent: true };
++    }
++    const fromStatus = doc.status;
++    validateTransition(entityType, fromStatus, "no_show");
++    
++    doc.status = "no_show";
++    doc.pickupNoShowAt = new Date();
++    doc.canceledAt = doc.canceledAt || new Date();
++    doc.canceledBy = String(userId || "");
++    doc.cancellationReason = payload.reason || "no_show";
++    doc.cancellationNote = payload.notes || payload.note;
++    
++    // Policy Fix: no_show forfeits meals AND balances. 
++    // We explicitly DO NOT call releaseAddonBalanceAtomically or releasePremiumBalanceAtomically here.
++
++    appendOperationAudit(doc, "no_show", userId, role);
++    await doc.save({ session });
++    await writeSubscriptionDayAudit({ day: doc, action: "no_show", fromStatus, toStatus: "no_show", userId, role, payload, session });
++
++    // Sync Delivery if one exists (rare for pickup, but safe to include)
++    if (doc.deliveryRecord) {
++      const { updateDeliveryByDayId } = require("./deliverySyncService");
++      await updateDeliveryByDayId({
++        dayId: doc._id,
++        updates: {
++          status: "canceled",
++          canceledAt: new Date(),
++          cancellationReason: payload.reason || "no_show",
++        },
++        session,
++      });
++    }
++
++    return {
++      data: doc,
++      sideEffects: { action: "no_show", entityType, entityId, toStatus: "no_show" },
++    };
+   }
+-  const fromStatus = doc.status;
+-  validateTransition(entityType, fromStatus, "no_show");
+-  doc.status = "no_show";
+-  doc.pickupNoShowAt = new Date();
+-  doc.canceledAt = doc.canceledAt || new Date();
+-  doc.cancellationReason = payload.reason || "no_show";
+-  doc.cancellationNote = payload.notes || payload.note;
+-  appendPickupRequestAudit(doc, "no_show", userId, role);
+-  await doc.save({ session });
+-  await consumeReservedPickupMeals({
+-    pickupRequestId: doc._id,
+-    session,
+-  });
+-  const updated = await SubscriptionPickupRequest.findById(entityId).session(session);
+-  return {
+-    data: updated || doc,
+-    sideEffects: { action: "no_show", entityType, entityId, toStatus: "no_show" },
+-  };
++
++  throw new Error(`no_show not supported for entityType: ${entityType}`);
+ }
+ 
+ async function handleReopen({ entityId, entityType, userId, role, payload, session }) {
+@@ -810,6 +897,50 @@ async function handleReopen({ entityId, entityType, userId, role, payload, sessi
+     doc.cancellationReason = null;
+     doc.cancellationNote = null;
+     doc.pickupNoShowAt = null;
++
++    if (doc.addonCreditsReleased || doc.premiumCreditsReleased) {
++      const sub = await Subscription.findById(doc.subscriptionId).session(session);
++      if (sub) {
++        if (doc.addonCreditsReleased && Array.isArray(doc.addonSelections)) {
++          for (const sel of doc.addonSelections) {
++            if (sel.source === "pending_payment") {
++              const walletResult = await consumeAddonBalanceAtomically({
++                subscription: sub,
++                dayId: doc._id,
++                date: doc.date,
++                addonId: sel.addonId,
++                addonPlanId: sel.addonPlanId || null,
++                category: sel.category || null,
++                session
++              });
++              if (walletResult.consumed) {
++                sel.source = "subscription";
++              }
++            }
++          }
++        }
++        
++        if (doc.premiumCreditsReleased && Array.isArray(doc.premiumUpgradeSelections)) {
++          for (const sel of doc.premiumUpgradeSelections) {
++            if (sel.premiumSource === "pending_payment") {
++              const walletResult = await consumePremiumBalanceAtomically({
++                subscription: sub,
++                dayId: doc._id,
++                date: doc.date,
++                premiumKey: sel.premiumKey,
++                session
++              });
++              if (walletResult.consumed) {
++                sel.premiumSource = "balance";
++              }
++            }
++          }
++        }
++      }
++      doc.addonCreditsReleased = false;
++      doc.premiumCreditsReleased = false;
++    }
++
+     appendOperationAudit(doc, "reopen", userId, role);
+   }
+   await doc.save({ session });
+diff --git a/src/services/subscription/subscriptionCancellationService.js b/src/services/subscription/subscriptionCancellationService.js
+index 537ec25e..dc13449b 100644
+--- a/src/services/subscription/subscriptionCancellationService.js
++++ b/src/services/subscription/subscriptionCancellationService.js
+@@ -6,6 +6,10 @@ const SubscriptionDay = require("../../models/SubscriptionDay");
+ const dateUtils = require("../../utils/date");
+ const { resolveMealsPerDay } = require("../../utils/subscription/subscriptionDaySelectionSync");
+ const { getRestaurantBusinessDate } = require("../restaurantHoursService");
++const {
++  releaseAddonBalanceAtomically,
++  releasePremiumBalanceAtomically,
++} = require("./subscriptionSelectionService");
+ 
+ const CANCELABLE_STATUSES = new Set(["active", "pending_payment"]);
+ const COMMITTED_DAY_STATUSES = ["locked", "in_preparation", "out_for_delivery", "ready_for_pickup"];
+@@ -25,6 +29,13 @@ const defaultRuntime = {
+       creditsDeducted: { $ne: true },
+     }).session(session);
+   },
++  findFutureOpenAndFrozenDays({ subscriptionId, today, session }) {
++    return SubscriptionDay.find({
++      subscriptionId,
++      date: { $gte: today },
++      status: { $in: REMOVABLE_DAY_STATUSES },
++    }).session(session);
++  },
+   deleteFutureOpenAndFrozenDays({ subscriptionId, today, session }) {
+     return SubscriptionDay.deleteMany({
+       subscriptionId,
+@@ -110,21 +121,92 @@ async function cancelSubscriptionDomain({ subscriptionId, actor, runtime = null
+         Number(undeductedCommittedDays || 0) * mealsPerDay
+       );
+ 
++      // Release addon & premium balances for future open/frozen days
++      const futureDays = await resolvedRuntime.findFutureOpenAndFrozenDays({
++        subscriptionId: subscription._id,
++        today,
++        session,
++      });
++
++      for (const day of futureDays) {
++        if (!day.addonCreditsReleased && Array.isArray(day.addonSelections)) {
++          for (const sel of day.addonSelections) {
++            if (sel.source === "subscription") {
++              await releaseAddonBalanceAtomically({
++                subscription,
++                addonId: sel.addonId,
++                addonPlanId: sel.addonPlanId,
++                category: sel.category,
++                unitPriceHalala: sel.unitPriceHalala || 0,
++                session,
++              });
++            }
++          }
++        }
++
++        if (!day.premiumCreditsReleased && Array.isArray(day.premiumUpgradeSelections)) {
++          for (const sel of day.premiumUpgradeSelections) {
++            if (sel.premiumSource === "balance") {
++              await releasePremiumBalanceAtomically({
++                subscription,
++                premiumKey: sel.premiumKey,
++                session,
++              });
++            }
++          }
++        }
++      }
++
+       const deleteResult = await resolvedRuntime.deleteFutureOpenAndFrozenDays({
+         subscriptionId: subscription._id,
+         today,
+         session,
+       });
+       removedFutureDays = Number((deleteResult && deleteResult.deletedCount) || 0);
+-      subscription.remainingMeals = preservedCredits;
+     } else {
+-      subscription.remainingMeals = 0;
++      preservedCredits = 0;
+     }
+ 
+     const canceledAt = resolvedRuntime.now();
++    const creditsToForfeit = Math.max(0, Number(subscription.remainingMeals || 0) - preservedCredits);
++    
++    // Atomic update to avoid in-memory read-then-write race conditions
++    // Try $inc first to preserve any concurrent deductions
++    const updateQuery = { _id: subscription._id };
++    if (creditsToForfeit > 0) {
++      updateQuery.remainingMeals = { $gte: creditsToForfeit };
++    }
++
++    let updatedSub = await Subscription.findOneAndUpdate(
++      updateQuery,
++      { 
++        $inc: { remainingMeals: -creditsToForfeit },
++        $set: { 
++          status: "canceled", 
++          canceledAt 
++        } 
++      },
++      { session, new: true }
++    );
++    
++    if (!updatedSub && creditsToForfeit > 0) {
++      // Fallback: if balance dropped concurrently below the forfeit amount, force it to preservedCredits
++      updatedSub = await Subscription.findOneAndUpdate(
++        { _id: subscription._id },
++        { 
++          $set: { 
++            remainingMeals: preservedCredits, 
++            status: "canceled", 
++            canceledAt 
++          } 
++        },
++        { session, new: true }
++      );
++    }
++    
++    subscription.remainingMeals = updatedSub ? updatedSub.remainingMeals : preservedCredits;
+     subscription.status = "canceled";
+     subscription.canceledAt = canceledAt;
+-    await subscription.save({ session });
+ 
+     await session.commitTransaction();
+     transactionOpen = false;

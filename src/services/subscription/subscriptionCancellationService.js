@@ -6,6 +6,10 @@ const SubscriptionDay = require("../../models/SubscriptionDay");
 const dateUtils = require("../../utils/date");
 const { resolveMealsPerDay } = require("../../utils/subscription/subscriptionDaySelectionSync");
 const { getRestaurantBusinessDate } = require("../restaurantHoursService");
+const {
+  releaseAddonBalanceAtomically,
+  releasePremiumBalanceAtomically,
+} = require("./subscriptionSelectionService");
 
 const CANCELABLE_STATUSES = new Set(["active", "pending_payment"]);
 const COMMITTED_DAY_STATUSES = ["locked", "in_preparation", "out_for_delivery", "ready_for_pickup"];
@@ -23,6 +27,13 @@ const defaultRuntime = {
       subscriptionId,
       status: { $in: COMMITTED_DAY_STATUSES },
       creditsDeducted: { $ne: true },
+    }).session(session);
+  },
+  findFutureOpenAndFrozenDays({ subscriptionId, today, session }) {
+    return SubscriptionDay.find({
+      subscriptionId,
+      date: { $gte: today },
+      status: { $in: REMOVABLE_DAY_STATUSES },
     }).session(session);
   },
   deleteFutureOpenAndFrozenDays({ subscriptionId, today, session }) {
@@ -110,21 +121,92 @@ async function cancelSubscriptionDomain({ subscriptionId, actor, runtime = null 
         Number(undeductedCommittedDays || 0) * mealsPerDay
       );
 
+      // Release addon & premium balances for future open/frozen days
+      const futureDays = await resolvedRuntime.findFutureOpenAndFrozenDays({
+        subscriptionId: subscription._id,
+        today,
+        session,
+      });
+
+      for (const day of futureDays) {
+        if (!day.addonCreditsReleased && Array.isArray(day.addonSelections)) {
+          for (const sel of day.addonSelections) {
+            if (sel.source === "subscription") {
+              await releaseAddonBalanceAtomically({
+                subscription,
+                addonId: sel.addonId,
+                addonPlanId: sel.addonPlanId,
+                category: sel.category,
+                unitPriceHalala: sel.unitPriceHalala || 0,
+                session,
+              });
+            }
+          }
+        }
+
+        if (!day.premiumCreditsReleased && Array.isArray(day.premiumUpgradeSelections)) {
+          for (const sel of day.premiumUpgradeSelections) {
+            if (sel.premiumSource === "balance") {
+              await releasePremiumBalanceAtomically({
+                subscription,
+                premiumKey: sel.premiumKey,
+                session,
+              });
+            }
+          }
+        }
+      }
+
       const deleteResult = await resolvedRuntime.deleteFutureOpenAndFrozenDays({
         subscriptionId: subscription._id,
         today,
         session,
       });
       removedFutureDays = Number((deleteResult && deleteResult.deletedCount) || 0);
-      subscription.remainingMeals = preservedCredits;
     } else {
-      subscription.remainingMeals = 0;
+      preservedCredits = 0;
     }
 
     const canceledAt = resolvedRuntime.now();
+    const creditsToForfeit = Math.max(0, Number(subscription.remainingMeals || 0) - preservedCredits);
+    
+    // Atomic update to avoid in-memory read-then-write race conditions
+    // Try $inc first to preserve any concurrent deductions
+    const updateQuery = { _id: subscription._id };
+    if (creditsToForfeit > 0) {
+      updateQuery.remainingMeals = { $gte: creditsToForfeit };
+    }
+
+    let updatedSub = await Subscription.findOneAndUpdate(
+      updateQuery,
+      { 
+        $inc: { remainingMeals: -creditsToForfeit },
+        $set: { 
+          status: "canceled", 
+          canceledAt 
+        } 
+      },
+      { session, new: true }
+    );
+    
+    if (!updatedSub && creditsToForfeit > 0) {
+      // Fallback: if balance dropped concurrently below the forfeit amount, force it to preservedCredits
+      updatedSub = await Subscription.findOneAndUpdate(
+        { _id: subscription._id },
+        { 
+          $set: { 
+            remainingMeals: preservedCredits, 
+            status: "canceled", 
+            canceledAt 
+          } 
+        },
+        { session, new: true }
+      );
+    }
+    
+    subscription.remainingMeals = updatedSub ? updatedSub.remainingMeals : preservedCredits;
     subscription.status = "canceled";
     subscription.canceledAt = canceledAt;
-    await subscription.save({ session });
 
     await session.commitTransaction();
     transactionOpen = false;
