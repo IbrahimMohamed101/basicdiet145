@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { startSafeSession } = require("../../utils/mongoTransactionSupport");
 const Subscription = require("../../models/Subscription");
 const SubscriptionDay = require("../../models/SubscriptionDay");
 const dateUtils = require("../../utils/date");
@@ -798,7 +799,7 @@ async function performDaySelectionUpdate({ userId, subscriptionId, date, selecti
   }
 
   // 5. Atomic Update Execution
-  const session = await mongoose.startSession();
+  const session = await startSafeSession();
   session.startTransaction();
   try {
     const subInSession = await Subscription.findById(canonicalSubscriptionId).session(session);
@@ -1223,7 +1224,7 @@ async function performBulkDaySelectionPlanningBalanceValidation({
 }
 
 async function performDayPlanningConfirmation({ userId, subscriptionId, date, runtime }) {
-  const session = await mongoose.startSession();
+  const session = await startSafeSession();
   session.startTransaction();
   try {
     let subInSession = await Subscription.findById(subscriptionId).session(session);
