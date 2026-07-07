@@ -3,6 +3,7 @@ const BuilderProtein = require("../../models/BuilderProtein");
 const MenuOption = require("../../models/MenuOption");
 const MenuOptionGroup = require("../../models/MenuOptionGroup");
 const Addon = require("../../models/Addon");
+const AddonPlanPrice = require("../../models/AddonPlanPrice");
 const Zone = require("../../models/Zone");
 const Setting = require("../../models/Setting");
 const dateUtils = require("../../utils/date");
@@ -634,17 +635,19 @@ async function resolveCheckoutQuoteOrThrow(
   const premiumIds = premiumItems.map((item) => item.id || item.premiumKey);
   const addonIds = addonItems.map((item) => item.id);
 
-  const [builderPremiumDocs, menuPremiumDocs, addonDocs] = await Promise.all([
+  const [builderPremiumDocs, menuPremiumDocs, addonDocs, addonPlanPrices] = await Promise.all([
     hasPremiumKey 
       ? Promise.resolve([])
       : (premiumIds.length ? BuilderProtein.find({ _id: { $in: premiumIds }, isActive: true, isPremium: true }).lean() : Promise.resolve([])),
     hasPremiumKey ? Promise.resolve([]) : findMenuPremiumOptionsByIds(premiumIds),
     addonIds.length ? Addon.find({ _id: { $in: addonIds }, isArchived: { $ne: true } }).lean() : Promise.resolve([]),
+    addonIds.length ? AddonPlanPrice.find({ addonPlanId: { $in: addonIds }, basePlanId: plan._id, isActive: true }).lean() : Promise.resolve([]),
   ]);
 
   const premiumDocs = builderPremiumDocs.concat(menuPremiumDocs.map(mapMenuPremiumOptionForQuote));
   const premiumById = new Map(premiumDocs.map((doc) => [String(doc._id), doc]));
   const addonById = new Map(addonDocs.map((doc) => [String(doc._id), doc]));
+  const addonPlanPriceByAddonId = new Map(addonPlanPrices.map((p) => [String(p.addonPlanId), p]));
 
   let premiumTotalHalala = 0;
   const resolvedPremiumItems = [];
@@ -760,7 +763,18 @@ async function resolveCheckoutQuoteOrThrow(
       throw err;
     }
 
-    const unit = resolveAddonUnitPriceHalala(doc);
+    let unit = resolveAddonUnitPriceHalala(doc);
+    if (doc.pricingMode === "base_plan_matrix") {
+      const matrixPrice = addonPlanPriceByAddonId.get(String(doc._id));
+      if (matrixPrice) {
+        unit = Number(matrixPrice.priceHalala);
+      } else {
+        const err = new Error(`Addon plan ${item.id} is not configured for the selected base plan`);
+        err.code = "INVALID_SELECTION";
+        throw err;
+      }
+    }
+    
     assertSystemCurrencyOrThrow(doc.currency || SYSTEM_CURRENCY, `Addon plan ${item.id} currency`);
 
     const quantityPerDay = Math.max(1, Math.floor(Number(item.quantityPerDay || 1)));

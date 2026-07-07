@@ -379,7 +379,7 @@ async function createUnifiedDayPaymentFlow({
       });
     }
 
-    const invoiceMetadata = {
+    const providerInvoiceMetadata = {
       type: UNIFIED_DAY_PAYMENT_TYPE,
       subscriptionId: String(sub._id),
       userId: String(userId),
@@ -389,12 +389,16 @@ async function createUnifiedDayPaymentFlow({
       premiumAmountHalala,
       addonsAmountHalala,
       totalHalala,
-      premiumSelections: premiumSnapshot.premiumSelections,
       extraPremiumCount: premiumSnapshot.extraPremiumCount,
-      oneTimeAddonSelections: addonSnapshot.oneTimeAddonSelections,
       oneTimeAddonCount: addonSnapshot.oneTimeAddonCount,
       currency: SYSTEM_CURRENCY,
       redirectToken: redirectContext.token,
+    };
+
+    const paymentDbMetadata = {
+      ...providerInvoiceMetadata,
+      premiumSelections: premiumSnapshot.premiumSelections,
+      oneTimeAddonSelections: addonSnapshot.oneTimeAddonSelections,
     };
 
     let invoice;
@@ -408,7 +412,7 @@ async function createUnifiedDayPaymentFlow({
         callbackUrl: `${appUrl}/api/webhooks/moyasar`,
         successUrl: redirectContext.providerSuccessUrl,
         backUrl: redirectContext.providerCancelUrl,
-        metadata: invoiceMetadata,
+        metadata: providerInvoiceMetadata,
       });
     } catch (err) {
       logger.error("Unified day payment initiation: createInvoice failed", { error: err.message, subscriptionId, date });
@@ -431,7 +435,7 @@ async function createUnifiedDayPaymentFlow({
         userId,
         subscriptionId: sub._id,
         providerInvoiceId: invoice.id,
-        metadata: buildPaymentMetadataWithInitiationFields(invoiceMetadata, {
+        metadata: buildPaymentMetadataWithInitiationFields(paymentDbMetadata, {
           paymentUrl: invoice.url,
           responseShape: UNIFIED_DAY_PAYMENT_TYPE,
           totalHalala,
@@ -451,25 +455,45 @@ async function createUnifiedDayPaymentFlow({
     }
 
     const paymentId = payment && payment._id ? payment._id : payment && payment.id ? payment.id : null;
-    if (premiumAmountHalala > 0) {
+    if (premiumAmountHalala > 0 || addonsAmountHalala > 0) {
       let dayUpdateResult;
       try {
+        const updateDoc = {
+          $set: {
+            plannerRevisionHash: derivedDay.plannerRevisionHash,
+          }
+        };
+
+        if (premiumAmountHalala > 0) {
+          updateDoc.$set["premiumExtraPayment.status"] = "pending";
+          updateDoc.$set["premiumExtraPayment.revisionHash"] = derivedDay.plannerRevisionHash;
+          updateDoc.$set["premiumExtraPayment.paymentId"] = paymentId;
+          updateDoc.$set["premiumExtraPayment.providerInvoiceId"] = invoice.id;
+          updateDoc.$set["premiumExtraPayment.createdAt"] = (derivedDay.premiumExtraPayment && derivedDay.premiumExtraPayment.createdAt) || new Date();
+          updateDoc.$set["premiumExtraPayment.amountHalala"] = premiumAmountHalala;
+          updateDoc.$set["premiumExtraPayment.extraPremiumCount"] = premiumSnapshot.extraPremiumCount;
+          updateDoc.$set["premiumExtraPayment.currency"] = invoiceCurrency;
+          updateDoc.$set["premiumExtraPayment.reused"] = false;
+        }
+
+        if (addonsAmountHalala > 0) {
+          const existingAddonSelections = Array.isArray(day.addonSelections) ? day.addonSelections : [];
+          updateDoc.$set.addonSelections = existingAddonSelections.map(sel => {
+            if (sel && sel.source === "pending_payment") {
+              const plainSel = sel.toObject ? sel.toObject() : sel;
+              return {
+                ...plainSel,
+                paymentId,
+                providerInvoiceId: invoice.id,
+              };
+            }
+            return sel.toObject ? sel.toObject() : sel;
+          });
+        }
+
         dayUpdateResult = await SubscriptionDay.updateOne(
           { _id: day._id, status: "open" },
-          {
-            $set: {
-              plannerRevisionHash: derivedDay.plannerRevisionHash,
-              "premiumExtraPayment.status": "pending",
-              "premiumExtraPayment.revisionHash": derivedDay.plannerRevisionHash,
-              "premiumExtraPayment.paymentId": paymentId,
-              "premiumExtraPayment.providerInvoiceId": invoice.id,
-              "premiumExtraPayment.createdAt": derivedDay.premiumExtraPayment.createdAt || new Date(),
-              "premiumExtraPayment.amountHalala": premiumAmountHalala,
-              "premiumExtraPayment.extraPremiumCount": premiumSnapshot.extraPremiumCount,
-              "premiumExtraPayment.currency": invoiceCurrency,
-              "premiumExtraPayment.reused": false,
-            },
-          }
+          updateDoc
         );
       } catch (err) {
         logger.error("Unified day payment initiation: day update failed", { error: err.message, subscriptionId, date });
