@@ -3592,12 +3592,17 @@ async function getRestaurantHours(req, res) {
 async function updateRestaurantHours(req, res) {
   try {
     const body = req.body || {};
-    const restaurantOpenTime = normalizeCutoffTimeOrThrow(body.restaurant_open_time || body.openTime);
-    const restaurantCloseTime = normalizeCutoffTimeOrThrow(body.restaurant_close_time || body.closeTime);
-    const normalized = {
-      restaurant_open_time: restaurantOpenTime,
-      restaurant_close_time: restaurantCloseTime,
-    };
+    const normalized = {};
+    let restaurantOpenTime;
+    if (body.restaurant_open_time !== undefined || body.openTime !== undefined) {
+      restaurantOpenTime = normalizeCutoffTimeOrThrow(body.restaurant_open_time || body.openTime);
+      normalized.restaurant_open_time = restaurantOpenTime;
+    }
+    let restaurantCloseTime;
+    if (body.restaurant_close_time !== undefined || body.closeTime !== undefined) {
+      restaurantCloseTime = normalizeCutoffTimeOrThrow(body.restaurant_close_time || body.closeTime);
+      normalized.restaurant_close_time = restaurantCloseTime;
+    }
     if (body.deliveryWindows || body.delivery_windows) {
       normalized.delivery_windows = normalizeDeliveryWindowsOrThrow(body.deliveryWindows || body.delivery_windows);
     }
