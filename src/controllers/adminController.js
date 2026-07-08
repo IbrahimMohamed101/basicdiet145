@@ -4724,13 +4724,14 @@ async function updateSubscriptionBalancesAdmin(req, res) {
       const currentPremiumRemaining = getRemaining(concurrentCheck.premiumBalance);
 
       if (beforeAddonConsumed !== currentAddonConsumed || beforePremiumRemaining !== currentPremiumRemaining) {
-        logger.warn("updateSubscriptionBalancesAdmin RACE CONDITION: Concurrent balance change detected. Admin overwrite may clobber concurrent consumption due to lack of transactions.", {
+        logger.warn("updateSubscriptionBalancesAdmin RACE CONDITION: Concurrent balance change detected. Admin overwrite blocked with 409.", {
           subscriptionId: id,
           beforeAddonConsumed,
           currentAddonConsumed,
           beforePremiumRemaining,
           currentPremiumRemaining,
         });
+        return errorResponse(res, 409, "CONFLICT", "Concurrent balance modification detected. Please refresh and try again.");
       }
     }
 

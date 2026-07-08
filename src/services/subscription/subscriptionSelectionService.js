@@ -48,6 +48,7 @@ const {
   hasPendingOrUnpaidPayment,
   hasSupersededPayment,
 } = require("./subscriptionDayLockService");
+const { resolveSubscriptionAddonBalanceWithAudit, buildClientAddonBalance } = require("./subscriptionAddonBalanceService");
 
 async function resolvePlanningSubscriptionForOperation(subscription, session = null) {
   let resolvedSubscription = subscription;
@@ -103,10 +104,17 @@ async function reconcileAddonInclusions(
   const simulatedRemaining = new Map();
   const hasAddonBalance = Array.isArray(subscription && subscription.addonBalance) && subscription.addonBalance.length > 0;
 
+  // 1. Fetch unified category balances (this safely combines explicit buckets and audit fallback per category)
+  const computedBalances = buildClientAddonBalance(subscription, null);
+
+  // 2. Prepare the simulated remaining map per category/bucket
   if (hasAddonBalance) {
     for (const bucket of subscription.addonBalance) {
       if (!bucket || !bucket._id) continue;
-      let qty = Number(bucket.remainingQty || 0);
+      // If the entire subscription is flagged or this specific bucket's category is flagged, we degrade gracefully (qty = 0)
+      const categoryFlagged = computedBalances && computedBalances.addonBalanceNeedsReview;
+      let qty = categoryFlagged ? 0 : Number(bucket.remainingQty || 0);
+
       // Add back existing day selections that were already deducted
       if (day && Array.isArray(day.addonSelections)) {
         for (const sel of day.addonSelections) {
@@ -125,14 +133,23 @@ async function reconcileAddonInclusions(
       }
       simulatedRemaining.set(String(bucket._id), qty);
     }
-  } else if (subscription && Array.isArray(subscription.addonSubscriptions)) {
-    // Legacy subscription fallback
-    for (const entry of subscription.addonSubscriptions) {
-      if (!entry) continue;
-      const key = entry.category || String(entry.addonId || entry.addonPlanId || "");
-      if (key) {
-        simulatedRemaining.set(key, Number(entry.includedCount || entry.maxPerDay || 1));
+  } else if (computedBalances) {
+    // Legacy dynamic balance fallback (Per-Category check instead of global hasAddonBalance bypass)
+    for (const category of Object.keys(computedBalances)) {
+      if (category === "addonBalanceNeedsReview") continue;
+      
+      // Graceful Degradation: If review is needed, set available free qty to 0 (items become pending_payment)
+      let qty = computedBalances.addonBalanceNeedsReview ? 0 : Number(computedBalances[category].remainingUnits || 0);
+      
+      // Add back existing day selections that were already deducted
+      if (day && Array.isArray(day.addonSelections)) {
+        for (const sel of day.addonSelections) {
+          if (sel.source === "subscription" && sel.category === category) {
+            qty += 1;
+          }
+        }
       }
+      simulatedRemaining.set(category, qty);
     }
   }
 
@@ -196,7 +213,7 @@ async function reconcileAddonInclusions(
           }
         }
       } else {
-        const key = entitlement.category || String(entitlement.addonId || entitlement.addonPlanId || "");
+        const key = entitlement.category;
         const rem = simulatedRemaining.get(key) || 0;
         if (rem > 0) {
           canCover = true;
@@ -644,6 +661,8 @@ async function performDaySelectionUpdate({ userId, subscriptionId, date, selecti
   const subForDraft = resolvedPlanningSubscription.subscription;
   const canonicalSubscriptionId = resolvedPlanningSubscription.subscriptionId;
 
+  await resolveSubscriptionAddonBalanceWithAudit(subForDraft);
+
   const planningLimits = await resolveMealSlotPlanningLimits(subForDraft);
   const mealsPerDayLimit = planningLimits.requiredSlotCount;
   if (totalSelected > mealsPerDayLimit) throw { status: 400, code: "DAILY_CAP", message: "Selections exceed meals per day" };
@@ -1053,6 +1072,9 @@ async function performDaySelectionValidation({
   const sub = resolvedPlanningSubscription.subscription;
   const resolvedSubscriptionId = resolvedPlanningSubscription.subscriptionId;
   if (!sub) throw { status: 404, code: "NOT_FOUND", message: "Subscription not found" };
+
+  await resolveSubscriptionAddonBalanceWithAudit(sub);
+
   ensureActive(sub, date);
   await validateSelectionDateRangeOrThrow(date, sub);
 

@@ -16,7 +16,7 @@ router.get(
 for (const screen of ["kitchen", "courier", "pickup"]) {
   router.get(
     `/${screen}/queue`,
-    dashboardRoleMiddleware(["admin", "kitchen", "courier"]),
+    dashboardRoleMiddleware(["admin", "kitchen", "cashier"]),
     (req, _res, next) => {
       req.params.screen = screen;
       next();
@@ -25,7 +25,7 @@ for (const screen of ["kitchen", "courier", "pickup"]) {
   );
   router.get(
     `/${screen}/queue/:dayId`,
-    dashboardRoleMiddleware(["admin", "kitchen", "courier"]),
+    dashboardRoleMiddleware(["admin", "kitchen", "cashier"]),
     (req, _res, next) => {
       req.params.screen = screen;
       next();
@@ -34,7 +34,7 @@ for (const screen of ["kitchen", "courier", "pickup"]) {
   );
   router.post(
     `/${screen}/actions/:action`,
-    dashboardRoleMiddleware(["admin", "kitchen", "courier"]),
+    dashboardRoleMiddleware(["admin", "kitchen", "cashier"]),
     (req, _res, next) => {
       req.params.screen = screen;
       next();

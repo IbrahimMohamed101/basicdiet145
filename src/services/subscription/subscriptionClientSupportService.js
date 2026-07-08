@@ -26,6 +26,9 @@ const {
 const {
   buildAddonEntitlementsReadModel,
 } = require("./subscriptionAddonEntitlementReadService");
+const {
+  buildClientAddonBalance,
+} = require("./subscriptionAddonBalanceService");
 const { toKSADateString } = require("../../utils/date");
 const { logger } = require("../../utils/logger");
 
@@ -178,10 +181,22 @@ function shapeMealPlannerReadFields({ subscription = null, day, lang = "ar", pic
     ? buildMealBalance(subscription, effectiveBusinessDate)
     : undefined;
 
+  const addonBalance = (subscription && effectiveBusinessDate)
+    ? buildClientAddonBalance(subscription, effectiveBusinessDate)
+    : undefined;
+
+  // Explicitly surface the review flag if it exists, so the client app or backend knows it's blocked
+  let addonBalanceNeedsReview = false;
+  if (addonBalance && addonBalance.addonBalanceNeedsReview) {
+    addonBalanceNeedsReview = true;
+  }
+
   return {
     ...shaped,
     ...fulfillmentReadFields,
     mealBalance,
+    addonBalance,
+    addonBalanceNeedsReview,
     rules: getMealPlannerRules(),
     commercialStateLabel,
     premiumExtraPayment: {

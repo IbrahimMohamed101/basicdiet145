@@ -21,6 +21,7 @@ const router = Router();
 router.use(dashboardAuthMiddleware);
 
 const dashboardAdminOrCashierRead = dashboardRoleMiddleware(["admin", "cashier"]);
+const dashboardAdminOrKitchen = dashboardRoleMiddleware(["admin", "kitchen"]);
 
 router.get("/overview", dashboardAdminOrCashierRead, asyncHandler(controller.getDashboardOverview));
 router.get("/search", dashboardAdminOrCashierRead, asyncHandler(controller.searchDashboard));
@@ -51,6 +52,33 @@ router.get("/payments/:id", dashboardAdminOrCashierRead, asyncHandler(controller
 router.post("/subscriptions/quote", dashboardAdminOrCashierRead, asyncHandler(controller.quoteSubscriptionAdmin));
 router.post("/subscriptions", dashboardAdminOrCashierRead, asyncHandler(controller.createSubscriptionAdmin));
 router.post("/payments/:id/verify", dashboardRoleMiddleware(["admin"]), asyncHandler(controller.verifyPaymentAdmin));
+
+router.get("/addons", dashboardAdminOrKitchen, asyncHandler(addonController.listDashboardAddonPlans));
+router.post("/addons", dashboardAdminOrKitchen, asyncHandler(addonController.createDashboardAddonPlan));
+router.patch("/addons/:id/toggle", dashboardAdminOrKitchen, asyncHandler(addonController.toggleAddonPlanActive));
+router.put("/addons/:id", adminImageUploadMiddleware, dashboardAdminOrKitchen, asyncHandler(addonController.updateAddonPlan));
+router.delete("/addons/:id", dashboardAdminOrKitchen, asyncHandler(addonController.deleteDashboardAddonPlan));
+
+router.get("/addon-plans", dashboardAdminOrKitchen, asyncHandler(addonController.listAddonPlansAdmin));
+router.post("/addon-plans", adminImageUploadMiddleware, dashboardAdminOrKitchen, asyncHandler(addonController.createAddonPlan));
+router.patch("/addon-plans/:id/toggle", dashboardAdminOrKitchen, asyncHandler(addonController.toggleAddonPlanActive));
+router.get("/addon-plans/:id", dashboardAdminOrKitchen, asyncHandler(addonController.getAddonPlanAdmin));
+router.put("/addon-plans/:id", adminImageUploadMiddleware, dashboardAdminOrKitchen, asyncHandler(addonController.updateAddonPlan));
+router.delete("/addon-plans/:id", dashboardAdminOrKitchen, asyncHandler(addonController.deleteAddonPlan));
+
+router.get("/addon-items", dashboardAdminOrKitchen, asyncHandler(addonController.listAddonItemsAdmin));
+router.post("/addon-items", adminImageUploadMiddleware, dashboardAdminOrKitchen, asyncHandler(addonController.createAddonItem));
+router.patch("/addon-items/:id/toggle", dashboardAdminOrKitchen, asyncHandler(addonController.toggleAddonItemActive));
+router.get("/addon-items/:id", dashboardAdminOrKitchen, asyncHandler(addonController.getAddonItemAdmin));
+router.put("/addon-items/:id", adminImageUploadMiddleware, dashboardAdminOrKitchen, asyncHandler(addonController.updateAddonItem));
+router.delete("/addon-items/:id", dashboardAdminOrKitchen, asyncHandler(addonController.deleteAddonItem));
+
+router.get("/addon-prices", dashboardAdminOrKitchen, asyncHandler(addonPlanPriceController.listAddonPrices));
+router.post("/addon-prices", dashboardAdminOrKitchen, asyncHandler(addonPlanPriceController.createAddonPrice));
+router.get("/addon-prices/:id", dashboardAdminOrKitchen, asyncHandler(addonPlanPriceController.getAddonPrice));
+router.put("/addon-prices/:id", dashboardAdminOrKitchen, asyncHandler(addonPlanPriceController.updateAddonPrice));
+router.delete("/addon-prices/:id", dashboardAdminOrKitchen, asyncHandler(addonPlanPriceController.deleteAddonPrice));
+router.patch("/addon-prices/:id/toggle", dashboardAdminOrKitchen, asyncHandler(addonPlanPriceController.toggleAddonPriceActive));
 
 router.use(dashboardRoleMiddleware(["admin"]));
 
@@ -226,32 +254,7 @@ router.patch(
   asyncHandler(controller.updateMealsSortOrder)
 );
 
-router.get("/addons", asyncHandler(addonController.listDashboardAddonPlans));
-router.post("/addons", asyncHandler(addonController.createDashboardAddonPlan));
-router.patch("/addons/:id/toggle", asyncHandler(addonController.toggleAddonPlanActive));
-router.put("/addons/:id", adminImageUploadMiddleware, asyncHandler(addonController.updateAddonPlan));
-router.delete("/addons/:id", asyncHandler(addonController.deleteDashboardAddonPlan));
 
-router.get("/addon-plans", asyncHandler(addonController.listAddonPlansAdmin));
-router.post("/addon-plans", adminImageUploadMiddleware, asyncHandler(addonController.createAddonPlan));
-router.patch("/addon-plans/:id/toggle", asyncHandler(addonController.toggleAddonPlanActive));
-router.get("/addon-plans/:id", asyncHandler(addonController.getAddonPlanAdmin));
-router.put("/addon-plans/:id", adminImageUploadMiddleware, asyncHandler(addonController.updateAddonPlan));
-router.delete("/addon-plans/:id", asyncHandler(addonController.deleteAddonPlan));
-
-router.get("/addon-items", asyncHandler(addonController.listAddonItemsAdmin));
-router.post("/addon-items", adminImageUploadMiddleware, asyncHandler(addonController.createAddonItem));
-router.patch("/addon-items/:id/toggle", asyncHandler(addonController.toggleAddonItemActive));
-router.get("/addon-items/:id", asyncHandler(addonController.getAddonItemAdmin));
-router.put("/addon-items/:id", adminImageUploadMiddleware, asyncHandler(addonController.updateAddonItem));
-router.delete("/addon-items/:id", asyncHandler(addonController.deleteAddonItem));
-
-router.get("/addon-prices", asyncHandler(addonPlanPriceController.listAddonPrices));
-router.post("/addon-prices", asyncHandler(addonPlanPriceController.createAddonPrice));
-router.get("/addon-prices/:id", asyncHandler(addonPlanPriceController.getAddonPrice));
-router.put("/addon-prices/:id", asyncHandler(addonPlanPriceController.updateAddonPrice));
-router.delete("/addon-prices/:id", asyncHandler(addonPlanPriceController.deleteAddonPrice));
-router.patch("/addon-prices/:id/toggle", asyncHandler(addonPlanPriceController.toggleAddonPriceActive));
 router.get("/builder-premium-meals", asyncHandler(builderPremiumMealController.listBuilderPremiumMealsAdmin));
 router.get("/builder-premium-meals/:id", asyncHandler(builderPremiumMealController.getBuilderPremiumMealAdmin));
 router.post(

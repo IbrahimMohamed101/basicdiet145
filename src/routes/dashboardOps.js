@@ -11,14 +11,14 @@ const router = Router();
 router.get(
   "/list",
   dashboardAuthMiddleware,
-  dashboardRoleMiddleware(["admin", "kitchen", "courier"]),
+  dashboardRoleMiddleware(["admin", "kitchen", "cashier"]),
   asyncHandler(controller.listOperations)
 );
 
 router.get(
   "/search",
   dashboardAuthMiddleware,
-  dashboardRoleMiddleware(["admin", "kitchen", "courier"]),
+  dashboardRoleMiddleware(["admin", "kitchen", "cashier"]),
   asyncHandler(controller.searchOperations)
 );
 
@@ -26,14 +26,14 @@ router.get(
 router.post(
   "/actions/:action",
   dashboardAuthMiddleware,
-  dashboardRoleMiddleware(["admin", "kitchen", "courier"]),
+  dashboardRoleMiddleware(["admin", "kitchen", "cashier"]),
   asyncHandler(actionController.handleAction)
 );
 
 router.put(
   "/subscription-days/:id/ready-for-delivery",
   dashboardAuthMiddleware,
-  dashboardRoleMiddleware(["admin", "kitchen", "courier"]),
+  dashboardRoleMiddleware(["admin", "kitchen", "cashier"]),
   asyncHandler(actionController.readyForDelivery)
 );
 

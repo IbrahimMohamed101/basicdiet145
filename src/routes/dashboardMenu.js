@@ -6,7 +6,7 @@ const { dashboardAuthMiddleware, dashboardRoleMiddleware } = require("../middlew
 
 const router = Router();
 
-router.use(dashboardAuthMiddleware, dashboardRoleMiddleware(["admin", "superadmin"]));
+router.use(dashboardAuthMiddleware, dashboardRoleMiddleware(["admin", "superadmin", "kitchen"]));
 
 router.get("/preview", asyncHandler(controller.getPreview));
 

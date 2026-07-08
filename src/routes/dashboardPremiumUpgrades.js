@@ -7,7 +7,7 @@ const { dashboardAuthMiddleware, dashboardRoleMiddleware } = require("../middlew
 const router = Router();
 
 // Protect all routes with dashboard authentication and admin/superadmin roles
-router.use(dashboardAuthMiddleware, dashboardRoleMiddleware(["admin", "superadmin"]));
+router.use(dashboardAuthMiddleware, dashboardRoleMiddleware(["admin", "superadmin", "kitchen"]));
 
 // Phase 1/2: Expose read, candidates, and readiness
 router.get("/", asyncHandler(controller.getConfigs));
