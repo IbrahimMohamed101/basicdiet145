@@ -410,10 +410,10 @@ function buildProductPayload(slot = {}, kitchenSlot = null, productDoc = null) {
   const macros = asObject(product.macros || display.macros || confirmation.macros || fulfillment.macros);
   const fallbackLabel = selectionTypeLabel(slot.selectionType, slot.isPremium);
   const name = bilingualPair(firstLocalizedPair(
-    product.name,
-    product.title,
     productDoc && productDoc.name,
     kitchenPair(kitchenSlot, "productName"),
+    product.name,
+    product.title,
     display.productName,
     fulfillment.productName,
     slot.productName,
@@ -560,9 +560,10 @@ function buildClientSlotDetails({ slot = {}, day = {}, available, unavailableRea
   const product = buildProductPayload(slot, kitchenSlot, productDoc);
   const label = selectionTypeLabel(slot.selectionType, slot.isPremium);
   const mealTitle = bilingualPair(firstLocalizedPair(
+    productDoc && productDoc.name,
+    kitchenPair(kitchenSlot, "productName"),
     asObject(slot.displaySnapshot).title,
     asObject(slot.confirmationSnapshot).title,
-    kitchenPair(kitchenSlot, "productName"),
     product.name,
     label
   ), label);
