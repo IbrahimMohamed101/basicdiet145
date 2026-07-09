@@ -302,7 +302,7 @@ async function updateDaySelectionForClient({
       lang,
     });
 
-    return buildSuccessResult(200, shapedDay, {
+    return buildSuccessResult(shapedDay.paymentRequirement?.requiresPayment ? 402 : 200, shapedDay, {
       idempotent: Boolean(result.idempotent),
     });
   } catch (err) {
@@ -322,7 +322,7 @@ async function updateDaySelectionForClient({
       return buildErrorResult(400, err.code, err.message);
     }
     if (err.status && err.code) {
-      return buildErrorResult(err.status, err.code, resolveClientFacingErrorMessage(err, lang), buildControllerErrorDetails(err));
+      return buildErrorResult(err.status, err.code, resolveClientFacingErrorMessage(err, lang), buildControllerErrorDetails(err, lang));
     }
     logger.error("Update day selection failed", { subscriptionId, date, error: err.message, stack: err.stack });
     return buildErrorResult(500, "INTERNAL", "Selection failed");
@@ -405,7 +405,7 @@ async function appendDayMealsForClient({
       return buildErrorResult(409, "DATA_INTEGRITY_ERROR", err.message);
     }
     if (err.status && err.code) {
-      return buildErrorResult(err.status, err.code, resolveClientFacingErrorMessage(err, lang), buildControllerErrorDetails(err));
+      return buildErrorResult(err.status, err.code, resolveClientFacingErrorMessage(err, lang), buildControllerErrorDetails(err, lang));
     }
     logger.error("Append day meals failed", { subscriptionId, date, error: err.message, stack: err.stack });
     return buildErrorResult(500, "INTERNAL", "Append meals failed");
@@ -455,7 +455,7 @@ async function validateDaySelectionForClient({
       return buildErrorResult(400, err.code, err.message);
     }
     if (err.status && err.code) {
-      return buildErrorResult(err.status, err.code, resolveClientFacingErrorMessage(err, lang), buildControllerErrorDetails(err));
+      return buildErrorResult(err.status, err.code, resolveClientFacingErrorMessage(err, lang), buildControllerErrorDetails(err, lang));
     }
     logger.error("Validate day selection failed", { subscriptionId, date, error: err.message, stack: err.stack });
     return buildErrorResult(500, "INTERNAL", "Validation failed");
@@ -525,7 +525,7 @@ async function confirmDayPlanningForClient({
     });
   } catch (err) {
     if (err.status && err.code) {
-      return buildErrorResult(err.status, err.code, resolveClientFacingErrorMessage(err, lang), buildControllerErrorDetails(err));
+      return buildErrorResult(err.status, err.code, resolveClientFacingErrorMessage(err, lang), buildControllerErrorDetails(err, lang));
     }
     if (
       err.code === "PLANNING_INCOMPLETE"

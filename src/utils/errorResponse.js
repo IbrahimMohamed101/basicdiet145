@@ -24,6 +24,27 @@ module.exports = (res, status, code, message, details) => {
     });
   }
 
+  const paymentRequirement = resolvedDetails
+    && resolvedDetails.paymentRequirement
+    && typeof resolvedDetails.paymentRequirement === "object"
+    ? resolvedDetails.paymentRequirement
+    : null;
+
+  if (Number(status) === 402 && paymentRequirement) {
+    return res.status(status).json({
+      ok: false,
+      status,
+      code,
+      message: localizedMsg,
+      paymentRequirement,
+      error: {
+        code,
+        message: localizedMsg,
+        details: resolvedDetails,
+      },
+    });
+  }
+
   return res.status(status).json({
     ok: false,
     error: {

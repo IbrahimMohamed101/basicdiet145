@@ -51,7 +51,7 @@ async function updateBulkDaySelectionsForClient({
       requests,
     });
   } catch (err) {
-    const details = buildControllerErrorDetails(err);
+    const details = buildControllerErrorDetails(err, lang);
     return buildErrorResult(
       err && err.status ? err.status : 500,
       err && err.code ? err.code : "INTERNAL",
@@ -131,7 +131,7 @@ async function updateBulkDaySelectionsForClient({
         ok: false,
         code: err && err.code ? err.code : "INTERNAL",
         message: err ? (localizePolicyErrorMessage(err, lang) || err.message || "Selection failed") : "Selection failed",
-        ...(buildControllerErrorDetails(err) ? { details: buildControllerErrorDetails(err) } : {}),
+        ...(buildControllerErrorDetails(err, lang) ? { details: buildControllerErrorDetails(err, lang) } : {}),
       });
     }
   }

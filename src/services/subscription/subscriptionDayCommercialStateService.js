@@ -1,4 +1,5 @@
 const crypto = require("crypto");
+const { buildAddonCategoryAllowances } = require("./subscriptionAddonBalanceService");
 
 const SYSTEM_CURRENCY = "SAR";
 const FULFILLABLE_DAY_STATUSES = new Set(["open"]);
@@ -391,7 +392,7 @@ function buildCommercialState({
   return "ready_to_confirm";
 }
 
-function buildDayCommercialState(day = {}) {
+function buildDayCommercialState(day = {}, { subscription = null } = {}) {
   const normalizedStatus = normalizeString(day.status, "open");
   const normalizedPlannerState = normalizeString(day.plannerState, "draft");
   const plannerMeta = day && typeof day.plannerMeta === "object" ? day.plannerMeta : {};
@@ -441,6 +442,7 @@ function buildDayCommercialState(day = {}) {
     plannerRevisionHash,
     premiumSummary,
     addonSummary: buildAddonSummary({ addonSelections: day.addonSelections, currency: premiumSummary.currency }),
+    addonCategoryAllowances: buildAddonCategoryAllowances(subscription, day),
     premiumExtraPayment,
     paymentRequirement,
     commercialState,
@@ -449,12 +451,14 @@ function buildDayCommercialState(day = {}) {
   };
 }
 
-function applyCommercialStateToDay(day = {}) {
-  const derived = buildDayCommercialState(day);
+function applyCommercialStateToDay(day = {}, options = {}) {
+  const derived = buildDayCommercialState(day, options);
   return {
     ...day,
     plannerRevisionHash: derived.plannerRevisionHash,
     premiumSummary: derived.premiumSummary,
+    addonSummary: derived.addonSummary,
+    addonCategoryAllowances: derived.addonCategoryAllowances,
     premiumExtraPayment: derived.premiumExtraPayment,
     paymentRequirement: derived.paymentRequirement,
     commercialState: derived.commercialState,

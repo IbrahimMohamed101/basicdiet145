@@ -525,7 +525,7 @@ async function runPremiumFlow(ctx) {
   await SubscriptionDay.create({ subscriptionId: ctx.subscription._id, date, status: "open" });
 
   const saveRes = await request("PUT", `/api/subscriptions/${ctx.subscription._id}/days/${date}/selection`, fullSelection(ctx), ctx.token);
-  assertEqual(saveRes.status, 200, "Premium save status", saveRes.body);
+  assertEqual(saveRes.status, 402, "Premium save status", saveRes.body);
   assertPaymentRequirementConsistent(saveRes.body.data.paymentRequirement, "premium save");
   assertEqual(saveRes.body.data.paymentRequirement.blockingReason, "PREMIUM_PAYMENT_REQUIRED", "Premium save blocking reason", saveRes.body.data.paymentRequirement);
 
@@ -581,7 +581,7 @@ async function runAddonFlow(ctx) {
     ...standardSelection(ctx),
     addonsOneTime: [String(ctx.addon._id)],
   }, ctx.token);
-  assertEqual(saveRes.status, 200, "Add-on save status", saveRes.body);
+  assertEqual(saveRes.status, 402, "Add-on save status", saveRes.body);
   assertPaymentRequirementConsistent(saveRes.body.data.paymentRequirement, "add-on save");
   assertEqual(saveRes.body.data.paymentRequirement.blockingReason, "ADDON_PAYMENT_REQUIRED", "Add-on save blocking reason", saveRes.body.data.paymentRequirement);
 
@@ -617,7 +617,7 @@ async function runUnifiedDayPaymentFlow(ctx) {
   const saladDate = dateOffset(21);
   await SubscriptionDay.create({ subscriptionId: ctx.subscription._id, date: saladDate, status: "open" });
   const saladSaveRes = await request("PUT", `/api/subscriptions/${ctx.subscription._id}/days/${saladDate}/selection`, premiumLargeSaladSelection(ctx), ctx.token);
-  assertEqual(saladSaveRes.status, 200, "Unified premium large salad save status", saladSaveRes.body);
+  assertEqual(saladSaveRes.status, 402, "Unified premium large salad save status", saladSaveRes.body);
   const persistedSaladDay = await SubscriptionDay.findOne({ subscriptionId: ctx.subscription._id, date: saladDate }).lean();
   assertEqual(persistedSaladDay.plannerRevisionHash, saladSaveRes.body.data.plannerRevisionHash, "Selection response hash is persisted", persistedSaladDay);
   assertEqual(persistedSaladDay.premiumExtraPayment.revisionHash, saladSaveRes.body.data.plannerRevisionHash, "Selection response premium payment hash is persisted", persistedSaladDay.premiumExtraPayment);
@@ -625,7 +625,7 @@ async function runUnifiedDayPaymentFlow(ctx) {
     plannerRevisionHash: saladSaveRes.body.data.plannerRevisionHash,
   }, ctx.token);
   assertEqual(saladCreateRes.status, 201, "Unified premium large salad creation accepts selection hash", saladCreateRes.body);
-  assertEqual(saladCreateRes.body.data.premiumAmountHalala, 3000, "Unified premium large salad premium amount", saladCreateRes.body.data);
+  assertEqual(saladCreateRes.body.data.premiumAmountHalala, 2900, "Unified premium large salad premium amount", saladCreateRes.body.data);
   assertEqual(saladCreateRes.body.data.addonsAmountHalala, 0, "Unified premium large salad add-on amount", saladCreateRes.body.data);
 
   const saladReadDate = dateOffset(22);
@@ -634,7 +634,7 @@ async function runUnifiedDayPaymentFlow(ctx) {
     ...premiumLargeSaladSelection(ctx),
     addonsOneTime: [String(ctx.addon1300._id), String(ctx.addon1900._id)],
   }, ctx.token);
-  assertEqual(saladReadSaveRes.status, 200, "Unified premium large salad add-on save status", saladReadSaveRes.body);
+  assertEqual(saladReadSaveRes.status, 402, "Unified premium large salad add-on save status", saladReadSaveRes.body);
   const saladDayRes = await request("GET", `/api/subscriptions/${ctx.subscription._id}/days/${saladReadDate}`, null, ctx.token);
   assertEqual(saladDayRes.status, 200, "Unified premium large salad add-on read status", saladDayRes.body);
   assertEqual(saladDayRes.body.data.plannerRevisionHash, saladReadSaveRes.body.data.plannerRevisionHash, "GET day hash matches selection response", saladDayRes.body.data);
@@ -642,9 +642,9 @@ async function runUnifiedDayPaymentFlow(ctx) {
     plannerRevisionHash: saladDayRes.body.data.plannerRevisionHash,
   }, ctx.token);
   assertEqual(saladAddonCreateRes.status, 201, "Unified premium large salad add-on creation accepts GET hash", saladAddonCreateRes.body);
-  assertEqual(saladAddonCreateRes.body.data.premiumAmountHalala, 3000, "Unified premium large salad add-on premium amount", saladAddonCreateRes.body.data);
+  assertEqual(saladAddonCreateRes.body.data.premiumAmountHalala, 2900, "Unified premium large salad add-on premium amount", saladAddonCreateRes.body.data);
   assertEqual(saladAddonCreateRes.body.data.addonsAmountHalala, 3200, "Unified premium large salad add-on add-on amount", saladAddonCreateRes.body.data);
-  assertEqual(saladAddonCreateRes.body.data.totalHalala, 6200, "Unified premium large salad add-on total", saladAddonCreateRes.body.data);
+  assertEqual(saladAddonCreateRes.body.data.totalHalala, 6100, "Unified premium large salad add-on total", saladAddonCreateRes.body.data);
 
   const staleAfterChangeDate = dateOffset(23);
   await SubscriptionDay.create({ subscriptionId: ctx.subscription._id, date: staleAfterChangeDate, status: "open" });
@@ -775,7 +775,7 @@ async function runUnifiedDayPaymentFlow(ctx) {
   assertEqual(reportedValidateRes.body.data.addonSummary.totalExtraHalala, 1100, "Reported combined validation add-on summary", reportedValidateRes.body.data.addonSummary);
 
   const reportedSaveRes = await request("PUT", `/api/subscriptions/${ctx.subscription._id}/days/${reportedCombinedDate}/selection`, reportedPayload, ctx.token);
-  assertEqual(reportedSaveRes.status, 200, "Reported combined save status", reportedSaveRes.body);
+  assertEqual(reportedSaveRes.status, 402, "Reported combined save status", reportedSaveRes.body);
   assertEqual(reportedSaveRes.body.data.paymentRequirement.requiresPayment, true, "Reported combined save requires payment", reportedSaveRes.body.data.paymentRequirement);
   assertEqual(reportedSaveRes.body.data.paymentRequirement.premiumPendingPaymentCount, 1, "Reported combined save premium count", reportedSaveRes.body.data.paymentRequirement);
   assertEqual(reportedSaveRes.body.data.paymentRequirement.addonPendingPaymentCount, 1, "Reported combined save add-on count", reportedSaveRes.body.data.paymentRequirement);
@@ -809,7 +809,7 @@ async function runUnifiedDayPaymentFlow(ctx) {
     ...fullSelection(ctx),
     addonsOneTime: [String(ctx.addon1300._id), String(ctx.addon1900._id)],
   }, ctx.token);
-  assertEqual(addonPaidPremiumSaveRes.status, 200, "Unified addon-paid premium save status", addonPaidPremiumSaveRes.body);
+  assertEqual(addonPaidPremiumSaveRes.status, 402, "Unified addon-paid premium save status", addonPaidPremiumSaveRes.body);
   assertEqual(addonPaidPremiumSaveRes.body.data.paymentRequirement.premiumPendingPaymentCount, 1, "Unified addon-paid premium save has pending premium", addonPaidPremiumSaveRes.body.data.paymentRequirement);
   assertEqual(addonPaidPremiumSaveRes.body.data.paymentRequirement.addonPendingPaymentCount, 0, "Unified addon-paid premium save keeps add-ons settled", addonPaidPremiumSaveRes.body.data.paymentRequirement);
 

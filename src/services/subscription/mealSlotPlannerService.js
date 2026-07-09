@@ -29,10 +29,6 @@ const {
   normalizeProteinFamilyKey,
   normalizeSaladIngredientGroupKey,
 } = require("../../config/mealPlannerContract");
-const {
-  buildPaymentRequirement,
-  buildPlannerRevisionHash,
-} = require("./subscriptionDayCommercialStateService");
 const { resolvePremiumUpgrade, resolveSubscriptionPremiumUpgradePricing } = require("./premiumUpgradeConfigService");
 const { 
   NEW_TYPES, 
@@ -689,25 +685,6 @@ async function projectMaterializedAndLegacyForExistingSlots({ mealSlots, session
   return projectMaterializedAndLegacyFromSlots({ processedSlots: mealSlots, now: new Date() });
 }
 
-function mapPaymentRequirement({ plannerMeta, premiumExtraPayment = null, plannerState = "draft", status = "open" }) {
-  return buildPaymentRequirement({
-    plannerMeta,
-    premiumExtraPayment,
-    plannerState,
-    status,
-    currency: SYSTEM_CURRENCY,
-  });
-}
-
-function buildPremiumExtraRevisionHash({ mealSlots }) {
-  return buildPlannerRevisionHash({
-    mealSlots: (Array.isArray(mealSlots) ? mealSlots : []).map((slot) => ({
-      ...slot,
-      slotKey: resolveMealSlotKey(slot),
-    })),
-  });
-}
-
 function isBaseBeefSlot(slot) {
   return Boolean(
     slot
@@ -1207,8 +1184,6 @@ module.exports = {
   normalizeMealSlotsInput,
   collectDuplicateSlotErrors,
   collectSlotCountErrors,
-  mapPaymentRequirement,
-  buildPremiumExtraRevisionHash,
   isBaseBeefSlot,
   isSandwichSlot,
   recomputePlannerMetaFromSlots,

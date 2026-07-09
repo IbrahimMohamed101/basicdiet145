@@ -7,7 +7,6 @@ const { getRestaurantBusinessDate } = require("../restaurantHoursService");
 const { resolveMealsPerDay, applyDayWalletSelections } = require("../../utils/subscription/subscriptionDaySelectionSync");
 const {
   getMealPlannerRules,
-  mapPaymentRequirement,
   buildMealSlotDraft,
   recomputePlannerMetaFromSlots,
   projectMaterializedAndLegacyFromSlots,
@@ -626,6 +625,53 @@ function buildAppendMealSlots(existingDay, appendMealSlots = []) {
   return existingSlots.concat(appendedSlots);
 }
 
+async function evaluateDaySelectionPricingState({
+  subscription,
+  subscriptionId,
+  date,
+  existingDay,
+  draft,
+  requestedOneTimeAddonIds,
+}) {
+  const totalSubscriptionMeals = resolveTotalSubscriptionMealsFromSubscription(subscription);
+  const existingPremiumUpgradeCount = await countPersistedPremiumUpgradesForSubscription({
+    subscriptionId,
+    excludeDate: date,
+  });
+  const incomingPremiumUpgradeCount = countPremiumUpgradeSelections(draft.premiumUpgradeSelections);
+  assertPremiumUpgradeLimit({
+    premiumUpgradeCount: existingPremiumUpgradeCount + incomingPremiumUpgradeCount,
+    totalSubscriptionMeals,
+  });
+
+  await assertPlanningBalanceAfterSave({
+    subscription,
+    affectedDates: [date],
+    incomingDaySelections: [{ date, mealSlots: draft.processedSlots }],
+  });
+
+  const addonContainer = {
+    addonSelections: existingDay ? JSON.parse(JSON.stringify(existingDay.addonSelections || [])) : [],
+  };
+  if (requestedOneTimeAddonIds !== undefined) {
+    await reconcileAddonInclusions(subscription, addonContainer, requestedOneTimeAddonIds);
+  }
+
+  const commercialState = buildDayCommercialState({
+    status: existingDay && existingDay.status ? existingDay.status : "open",
+    plannerState: "draft",
+    mealSlots: draft.processedSlots,
+    plannerMeta: draft.plannerMeta,
+    addonSelections: addonContainer.addonSelections,
+    premiumExtraPayment: existingDay && existingDay.premiumExtraPayment ? existingDay.premiumExtraPayment : null,
+  }, { subscription });
+
+  return {
+    addonSelections: addonContainer.addonSelections,
+    commercialState,
+  };
+}
+
 async function performDaySelectionUpdate({ userId, subscriptionId, date, selections = [], premiumSelections = [], mealSlots, contractVersion, requestedOneTimeAddonIds, runtime, appendOnly = false }) {
   const totalSelected = (selections || []).length + (premiumSelections || []).length;
 
@@ -754,54 +800,21 @@ async function performDaySelectionUpdate({ userId, subscriptionId, date, selecti
     draft.baseMealSlots = projection.baseMealSlots;
   }
 
-  {
-    const totalSubscriptionMeals = resolveTotalSubscriptionMealsFromSubscription(subForDraft);
-    const existingPremiumUpgradeCount = await countPersistedPremiumUpgradesForSubscription({
-      subscriptionId: canonicalSubscriptionId,
-      excludeDate: date,
-    });
-    const incomingPremiumUpgradeCount = countPremiumUpgradeSelections(draft.premiumUpgradeSelections);
-    assertPremiumUpgradeLimit({
-      premiumUpgradeCount: existingPremiumUpgradeCount + incomingPremiumUpgradeCount,
-      totalSubscriptionMeals,
-    });
-  }
-
-  const addonContainer = {
-    addonSelections: existingDay ? JSON.parse(JSON.stringify(existingDay.addonSelections || [])) : [],
-  };
-  if (requestedOneTimeAddonIds !== undefined) {
-    await reconcileAddonInclusions(subForDraft, addonContainer, requestedOneTimeAddonIds);
-  }
-
-  // 3. Calculate Commercial State & Revision Hash
-  const derivedDraftState = buildDayCommercialState({
-    status: existingDay && existingDay.status ? existingDay.status : "open",
-    plannerState: "draft",
-    mealSlots: draft.processedSlots,
-    plannerMeta: draft.plannerMeta,
-    addonSelections: addonContainer.addonSelections,
-    premiumExtraPayment: existingDay && existingDay.premiumExtraPayment ? existingDay.premiumExtraPayment : null,
+  const pricingState = await evaluateDaySelectionPricingState({
+    subscription: subForDraft,
+    subscriptionId: canonicalSubscriptionId,
+    date,
+    existingDay,
+    draft,
+    requestedOneTimeAddonIds,
   });
+  const addonContainer = { addonSelections: pricingState.addonSelections };
+  const derivedDraftState = pricingState.commercialState;
 
   // Security/Quota Check: Strict rejection for PUT /selection if payment is required
-  if (!appendOnly && derivedDraftState.paymentRequirement.requiresPayment) {
-    const blockingReason = derivedDraftState.paymentRequirement.blockingReason || "PAYMENT_REQUIRED";
-    throw {
-      status: 402,
-      code: blockingReason,
-      message: "Selections exceed allowed quota or require payment.",
-      details: derivedDraftState.paymentRequirement
-    };
-  }
+  // Now handled by returning 402 gracefully after saving the draft in subscriptionPlanningClientService.js
 
   // 4. Idempotency Short-circuit
-  await assertPlanningBalanceAfterSave({
-    subscription: subForDraft,
-    affectedDates: [date],
-    incomingDaySelections: [{ date, mealSlots: draft.processedSlots }],
-  });
-
   if (existingDay && existingDay.plannerRevisionHash === derivedDraftState.plannerRevisionHash) {
     await finalizeDayCommercialStateForPersistence(existingDay);
     return { subscription: subForDraft, day: existingDay, idempotent: true };
@@ -1013,7 +1026,7 @@ async function performDaySelectionUpdate({ userId, subscriptionId, date, selecti
     }
     await subInSession.save({ session });
 
-    const finalCommercialState = buildDayCommercialState(day.toObject ? day.toObject() : day);
+    const finalCommercialState = buildDayCommercialState(day.toObject ? day.toObject() : day, { subscription: subInSession });
 
     await session.commitTransaction();
     session.endSession();
@@ -1024,6 +1037,7 @@ async function performDaySelectionUpdate({ userId, subscriptionId, date, selecti
       plannerRevisionHash: day.plannerRevisionHash,
       premiumSummary: finalCommercialState.premiumSummary,
       addonSummary: finalCommercialState.addonSummary,
+      addonCategoryAllowances: finalCommercialState.addonCategoryAllowances,
       premiumExtraPayment: day.premiumExtraPayment,
       paymentRequirement: finalCommercialState.paymentRequirement,
       commercialState: finalCommercialState.commercialState,
@@ -1087,43 +1101,16 @@ async function performDaySelectionValidation({
     throw { status: 422, code: draft.errorCode || "INVALID_MEAL_PLAN", message: draft.errorMessage || "Meal planner validation failed", slotErrors: draft.slotErrors, rules: getMealPlannerRules(), valid: false };
   }
 
-  {
-    const totalSubscriptionMeals = resolveTotalSubscriptionMealsFromSubscription(sub);
-    const existingPremiumUpgradeCount = await countPersistedPremiumUpgradesForSubscription({
-      subscriptionId: resolvedSubscriptionId,
-      excludeDate: date,
-    });
-    const incomingPremiumUpgradeCount = countPremiumUpgradeSelections(draft.premiumUpgradeSelections);
-    assertPremiumUpgradeLimit({
-      premiumUpgradeCount: existingPremiumUpgradeCount + incomingPremiumUpgradeCount,
-      totalSubscriptionMeals,
-    });
-  }
-
-  await assertPlanningBalanceAfterSave({
+  const pricingState = await evaluateDaySelectionPricingState({
     subscription: sub,
-    affectedDates: [date],
-    incomingDaySelections: [{ date, mealSlots: draft.processedSlots }],
+    subscriptionId: resolvedSubscriptionId,
+    date,
+    existingDay: day,
+    draft,
+    requestedOneTimeAddonIds,
   });
-
-  let addonSelections = Array.isArray(day && day.addonSelections)
-    ? JSON.parse(JSON.stringify(day.addonSelections))
-    : [];
-
-  if (requestedOneTimeAddonIds !== undefined) {
-    const addonContainer = { addonSelections };
-    await reconcileAddonInclusions(sub, addonContainer, requestedOneTimeAddonIds);
-    addonSelections = addonContainer.addonSelections;
-  }
-
-  const derivedDraftState = buildDayCommercialState({
-    plannerState: "draft",
-    status: day && day.status ? day.status : "open",
-    mealSlots: draft.processedSlots,
-    plannerMeta: draft.plannerMeta,
-    addonSelections,
-    premiumExtraPayment: day && day.premiumExtraPayment ? day.premiumExtraPayment : null,
-  });
+  const addonSelections = pricingState.addonSelections;
+  const derivedDraftState = pricingState.commercialState;
 
   return {
     valid: true,
@@ -1134,6 +1121,7 @@ async function performDaySelectionValidation({
     plannerRevisionHash: derivedDraftState.plannerRevisionHash,
     premiumSummary: derivedDraftState.premiumSummary,
     addonSummary: derivedDraftState.addonSummary,
+    addonCategoryAllowances: derivedDraftState.addonCategoryAllowances,
     premiumExtraPayment: derivedDraftState.premiumExtraPayment,
     paymentRequirement: derivedDraftState.paymentRequirement,
     commercialState: derivedDraftState.commercialState,

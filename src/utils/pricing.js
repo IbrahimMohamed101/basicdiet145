@@ -16,27 +16,7 @@ function normalizeVatPercentage(value, fallback = DEFAULT_VAT_PERCENTAGE) {
   return parsed;
 }
 
-function computeExclusiveVatBreakdown({
-  basePriceHalala = 0,
-  vatPercentage = DEFAULT_VAT_PERCENTAGE,
-} = {}) {
-  throw new Error("computeExclusiveVatBreakdown is deprecated and MUST NOT be used. Use computeInclusiveVatBreakdown instead.");
-
-  const normalizedBasePriceHalala = normalizeHalala(basePriceHalala);
-  const normalizedVatPercentage = normalizeVatPercentage(vatPercentage);
-  const vatHalala = Math.round((normalizedBasePriceHalala * normalizedVatPercentage) / 100);
-  const totalPriceHalala = normalizedBasePriceHalala + vatHalala;
-
-  return {
-    basePriceHalala: normalizedBasePriceHalala,
-    subtotalHalala: normalizedBasePriceHalala,
-    vatPercentage: normalizedVatPercentage,
-    vatHalala,
-    totalPriceHalala,
-    totalHalala: totalPriceHalala,
-  };
-}
-
+// VAT is inclusive in this system. computeVatBreakdown is the inclusive variant.
 function computeInclusiveVatBreakdown(totalInclusiveHalala = 0, vatPercentage = DEFAULT_VAT_PERCENTAGE) {
   const normalizedTotalInclusiveHalala = normalizeHalala(totalInclusiveHalala);
   const normalizedVatPercentage = normalizeVatPercentage(vatPercentage);
@@ -59,9 +39,6 @@ function computeInclusiveVatBreakdown(totalInclusiveHalala = 0, vatPercentage = 
   };
 }
 
-// VAT is inclusive in this system. computeVatBreakdown is the inclusive variant.
-// computeExclusiveVatBreakdown is kept for backward-compatibility but should not be
-// used for any new or customer-facing pricing logic.
 const computeVatBreakdown = computeInclusiveVatBreakdown;
 
 function normalizeStoredVatBreakdown({
@@ -157,7 +134,6 @@ function buildMoneySummary({
 
 module.exports = {
   computeVatBreakdown,
-  computeExclusiveVatBreakdown,
   computeInclusiveVatBreakdown,
   normalizeStoredVatBreakdown,
   buildMoneySummary,

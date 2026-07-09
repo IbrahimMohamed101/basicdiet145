@@ -150,7 +150,7 @@ function shapeMealPlannerReadFields({ subscription = null, day, lang = "ar", pic
     subscription,
     day: applyLegacyMealPlannerResponseMirrors({
       subscription,
-      day: applyCommercialStateToDay(day),
+      day: applyCommercialStateToDay(day, { subscription }),
       lang,
     }),
     today: businessDate || undefined,
@@ -211,8 +211,25 @@ function shapeMealPlannerReadFields({ subscription = null, day, lang = "ar", pic
   };
 }
 
-function buildControllerErrorDetails(err) {
+function buildPaymentRequirementReadFields(paymentRequirement, lang = "ar") {
+  if (!paymentRequirement || typeof paymentRequirement !== "object") return paymentRequirement;
+  return {
+    ...paymentRequirement,
+    pricingStatusLabel: resolveReadLabel("pricingStatuses", paymentRequirement.pricingStatus, lang),
+    blockingReasonLabel: paymentRequirement.blockingReason
+      ? resolveReadLabel("paymentBlockingReasons", paymentRequirement.blockingReason, lang)
+      : null,
+  };
+}
+
+function buildControllerErrorDetails(err, lang = "ar") {
   const details = err && err.details && typeof err.details === "object" ? { ...err.details } : undefined;
+  if (err && err.paymentRequirement && typeof err.paymentRequirement === "object") {
+    return {
+      ...(details || {}),
+      paymentRequirement: buildPaymentRequirementReadFields(err.paymentRequirement, lang),
+    };
+  }
   if (err && err.slotErrors) {
     return {
       ...(details || {}),

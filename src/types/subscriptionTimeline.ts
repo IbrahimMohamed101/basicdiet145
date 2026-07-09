@@ -82,9 +82,13 @@ export type TimelineDay = {
     requiresPayment: boolean;
     pricingStatus: "not_required" | "priced" | "pending" | "failed";
     blockingReason: string | null;
+    pricingStatusLabel?: string | null;
+    blockingReasonLabel?: string | null;
     canCreatePayment: boolean;
     premiumSelectedCount: number;
     premiumPendingPaymentCount: number;
+    addonSelectedCount: number;
+    addonPendingPaymentCount: number;
     pendingAmountHalala: number;
     amountHalala: number;
     currency: string;

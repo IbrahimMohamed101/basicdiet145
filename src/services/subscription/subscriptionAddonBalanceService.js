@@ -91,7 +91,106 @@ function buildClientAddonBalance(subscription, businessDate, auditedConsumptionM
   return Object.keys(result).length > 0 ? result : undefined;
 }
 
+function countReservedAddonSelectionsForCategory(day = {}, category = "") {
+  const selections = Array.isArray(day && day.addonSelections) ? day.addonSelections : [];
+  return selections.reduce((sum, selection) => {
+    if (!selection || selection.source !== "subscription") return sum;
+    if (category && selection.category !== category) return sum;
+    return sum + Math.max(1, Math.floor(Number(selection.qty || 1)));
+  }, 0);
+}
+
+function buildAddonCategoryAllowances(subscription, day = {}) {
+  if (!subscription) return [];
+
+  const balances = Array.isArray(subscription.addonBalance) ? subscription.addonBalance : [];
+  const entitlements = Array.isArray(subscription.addonSubscriptions) ? subscription.addonSubscriptions : [];
+  const byCategory = new Map();
+
+  for (const entitlement of entitlements) {
+    if (!entitlement || !entitlement.category) continue;
+    const category = String(entitlement.category);
+    if (!byCategory.has(category)) {
+      byCategory.set(category, {
+        category,
+        includedTotalQty: 0,
+        consumedQty: 0,
+        reservedQty: 0,
+        remainingIncludedQty: 0,
+        overageUnitPriceHalala: Number(entitlement.unitPlanPriceHalala || entitlement.priceHalala || 0),
+        currency: entitlement.currency || "SAR",
+        hasBalanceBucket: false,
+      });
+    }
+    const row = byCategory.get(category);
+    row.includedTotalQty += Math.max(0, Math.floor(Number(entitlement.includedTotalQty || 0)));
+    if (!row.overageUnitPriceHalala) {
+      row.overageUnitPriceHalala = Number(entitlement.unitPlanPriceHalala || entitlement.priceHalala || 0);
+    }
+    row.currency = row.currency || entitlement.currency || "SAR";
+  }
+
+  for (const bucket of balances) {
+    if (!bucket || !bucket.category) continue;
+    const category = String(bucket.category);
+    const includedTotalQty = Math.max(0, Math.floor(Number(
+      bucket.includedTotalQty != null ? bucket.includedTotalQty : bucket.purchasedQty || 0
+    )));
+    const remainingQty = Math.max(0, Math.floor(Number(bucket.remainingQty || 0)));
+    const reservedQty = countReservedAddonSelectionsForCategory(day, category);
+    const rawConsumedQty = Math.max(0, Math.floor(Number(
+      bucket.consumedQty != null
+        ? bucket.consumedQty
+        : includedTotalQty - remainingQty
+    )));
+    const consumedQty = Math.max(0, rawConsumedQty - reservedQty);
+
+    const current = byCategory.get(category) || {
+      category,
+      includedTotalQty: 0,
+      consumedQty: 0,
+      reservedQty: 0,
+      remainingIncludedQty: 0,
+      overageUnitPriceHalala: 0,
+      currency: bucket.currency || "SAR",
+      hasBalanceBucket: false,
+    };
+    if (!current.hasBalanceBucket) {
+      current.includedTotalQty = 0;
+      current.consumedQty = 0;
+      current.reservedQty = 0;
+      current.remainingIncludedQty = 0;
+      current.hasBalanceBucket = true;
+    }
+
+    current.includedTotalQty += includedTotalQty;
+    current.consumedQty += consumedQty;
+    current.reservedQty += reservedQty;
+    current.remainingIncludedQty += Math.max(0, includedTotalQty - consumedQty - reservedQty);
+    current.overageUnitPriceHalala = Number(
+      bucket.overageUnitPriceHalala != null
+        ? bucket.overageUnitPriceHalala
+        : bucket.unitPriceHalala || current.overageUnitPriceHalala || 0
+    );
+    current.currency = bucket.currency || current.currency || "SAR";
+    byCategory.set(category, current);
+  }
+
+  return Array.from(byCategory.values())
+    .map((row) => ({
+      category: row.category,
+      includedTotalQty: Math.max(0, Math.floor(Number(row.includedTotalQty || 0))),
+      consumedQty: Math.max(0, Math.floor(Number(row.consumedQty || 0))),
+      reservedQty: Math.max(0, Math.floor(Number(row.reservedQty || 0))),
+      remainingIncludedQty: Math.max(0, Math.floor(Number(row.remainingIncludedQty || 0))),
+      overageUnitPriceHalala: Math.max(0, Math.floor(Number(row.overageUnitPriceHalala || 0))),
+      currency: row.currency || "SAR",
+    }))
+    .sort((a, b) => a.category.localeCompare(b.category));
+}
+
 module.exports = {
   resolveSubscriptionAddonBalanceWithAudit,
   buildClientAddonBalance,
+  buildAddonCategoryAllowances,
 };
