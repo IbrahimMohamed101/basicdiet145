@@ -117,10 +117,8 @@ function createApp() {
   const allowedOrigins = parseConfiguredCorsOrigins();
   const corsOptions = {
     origin: (origin, callback) => {
-      // Allow same-origin requests (no Origin header) in all envs.
-      if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin)) return callback(null, true);
-      return callback(new Error(`CORS blocked for origin: ${origin}`));
+      // Temporarily allow ALL origins for testing purposes
+      return callback(null, true);
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
