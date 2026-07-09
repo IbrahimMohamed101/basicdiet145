@@ -1613,6 +1613,8 @@ async function createAppUserAdmin(req, res) {
           email: email || undefined,
           role: "client",
           isActive,
+          accountStatus: "pending_activation",
+          createdByAdminId: req.dashboardUserId,
         }],
         { session }
       );
@@ -1628,6 +1630,15 @@ async function createAppUserAdmin(req, res) {
       );
 
       if (typeof session.commitTransaction === "function") await session.commitTransaction();
+
+      await writeActivityLogSafely({
+        entityType: "user",
+        entityId: createdCoreUser[0]._id,
+        action: "admin_created_app_user",
+        byUserId: req.dashboardUserId,
+        byRole: req.dashboardUserRole,
+        meta: { phone },
+      }, { source: "createAppUserAdmin" });
     } catch (err) {
       await session.abortTransaction();
       throw err;
@@ -3931,14 +3942,7 @@ async function resetAppUserPassword(req, res) {
     return undefined;
   }
 
-  const { newPassword, confirmPassword, forcePasswordChange, reason } = req.body || {};
-  const passwordValidation = validateAppPassword(newPassword);
-  if (!passwordValidation.ok) {
-    return errorResponse(res, 400, "WEAK_PASSWORD", passwordValidation.message);
-  }
-  if (confirmPassword === undefined || confirmPassword === null || String(confirmPassword) !== String(newPassword || "")) {
-    return errorResponse(res, 400, "PASSWORD_CONFIRMATION_MISMATCH", "confirmPassword must match newPassword");
-  }
+  const { reason } = req.body || {};
 
   const user = await User.findOne({ _id: id, role: "client" });
   if (!user) {
@@ -3950,12 +3954,10 @@ async function resetAppUserPassword(req, res) {
   }
 
   const now = new Date();
-  user.passwordHash = await hashAppPassword(newPassword);
-  user.passwordSetAt = now;
-  user.passwordChangedAt = now;
-  user.forcePasswordChange = forcePasswordChange === undefined ? true : Boolean(forcePasswordChange);
-  user.authProvider = "password";
-  user.authMethods = Array.from(new Set([...(Array.isArray(user.authMethods) ? user.authMethods : []), "password"]));
+  user.passwordHash = null;
+  user.passwordSetAt = null;
+  user.accountStatus = "reset_requested";
+  user.resetRequestedAt = now;
   user.failedLoginAttempts = 0;
   user.lockedUntil = null;
   await user.save();
@@ -3963,23 +3965,22 @@ async function resetAppUserPassword(req, res) {
   await writeActivityLogSafely({
     entityType: "user",
     entityId: user._id,
-    action: "customer_password_reset_by_admin",
+    action: "admin_requested_password_reset",
     byUserId: req.dashboardUserId,
     byRole: req.dashboardUserRole,
     meta: {
       reason: reason ? String(reason).slice(0, 500) : null,
-      forcePasswordChange: user.forcePasswordChange,
     },
   }, { source: "resetAppUserPassword" });
 
   return res.status(200).json({
     status: true,
-    message: "Password reset successfully",
-    messageAr: "تم إعادة تعيين كلمة المرور بنجاح",
+    message: "Password reset requested successfully",
+    messageAr: "تم طلب إعادة تعيين كلمة المرور بنجاح",
     data: {
       userId: String(user._id),
-      forcePasswordChange: Boolean(user.forcePasswordChange),
-      passwordSetAt: user.passwordSetAt,
+      accountStatus: user.accountStatus,
+      resetRequestedAt: user.resetRequestedAt,
     },
   });
 }

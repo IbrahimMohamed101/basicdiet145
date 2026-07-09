@@ -498,11 +498,17 @@ async function getReadiness() {
   const sourceMap = await fetchSourcesForConfigs(configs);
   const { candidates } = await loadEligiblePremiumCandidates();
   const candidateByKey = new Map(candidates.map((candidate) => [candidate.premiumKey, candidate]));
+  
+  const allKnownKeys = [...new Set([
+    ...KNOWN_PREMIUM_KEYS,
+    ...configs.map(c => normalizePremiumKey(c.premiumKey)).filter(Boolean)
+  ])];
+  
   const configuredKnownKeys = [...new Set(configs
-    .map((config) => normalizePremiumKey(config.premiumKey))
-    .filter((key) => KNOWN_PREMIUM_KEYS.includes(key)))];
+    .map((config) => normalizePremiumKey(config.premiumKey)))];
+    
   const missingConfigKeys = KNOWN_PREMIUM_KEYS.filter((key) => !configuredKnownKeys.includes(key));
-  const unresolvedSourceKeys = KNOWN_PREMIUM_KEYS.filter((key) => !candidateByKey.has(key));
+  const unresolvedSourceKeys = allKnownKeys.filter((key) => !candidateByKey.has(key));
   const configsEmpty = configs.length === 0;
   const partialConfigState = !configsEmpty && missingConfigKeys.length > 0;
   
@@ -521,11 +527,11 @@ async function getReadiness() {
       configsAuthoritative: true,
       backfillStatus: configsEmpty ? "not_started" : (partialConfigState ? "incomplete" : "complete"),
       partialConfigRisk: partialConfigState,
-      knownKeys: KNOWN_PREMIUM_KEYS,
+      knownKeys: allKnownKeys,
       configuredKnownKeys,
       missingConfigKeys,
     },
-    knownSources: KNOWN_PREMIUM_KEYS.map((premiumKey) => ({
+    knownSources: allKnownKeys.map((premiumKey) => ({
       premiumKey,
       resolvable: candidateByKey.has(premiumKey),
       sourceType: candidateByKey.get(premiumKey)?.sourceType || null,
@@ -553,12 +559,13 @@ async function getReadiness() {
     if (!sourceDoc) {
       diagnostics.missingSources++;
     }
-    const eligibleRelation = candidates.some((candidate) => (
-      candidate.sourceType === config.sourceType
-      && String(candidate.sourceId) === String(config.sourceId)
-      && String(candidate.sourceProductId || "") === String(config.sourceProductId || (config.sourceType === "menu_product" ? config.sourceId : ""))
-      && String(candidate.sourceGroupId || "") === String(config.sourceGroupId || "")
-    ));
+    const eligibleRelation = candidates.some((candidate) => {
+      const matchSource = candidate.sourceType === config.sourceType && String(candidate.sourceId) === String(config.sourceId);
+      if (!matchSource) return false;
+      if (config.sourceProductId && String(candidate.sourceProductId) !== String(config.sourceProductId)) return false;
+      if (config.sourceGroupId && String(candidate.sourceGroupId) !== String(config.sourceGroupId)) return false;
+      return true;
+    });
     if (sourceDoc && !eligibleRelation) diagnostics.invalidRelations++;
     if (config.status !== "active" || config.isEnabled === false || config.isVisible === false) diagnostics.invalidConfigs++;
 

@@ -18,6 +18,9 @@ const UserSchema = new mongoose.Schema(
     email: { type: String, trim: true, lowercase: true },
     role: { type: String, enum: ["client", "admin", "kitchen", "courier"], default: "client" },
     isActive: { type: Boolean, default: true },
+    accountStatus: { type: String, enum: ["active", "pending_activation", "reset_requested"], default: "active" },
+    resetRequestedAt: { type: Date, default: null },
+    createdByAdminId: { type: mongoose.Schema.Types.ObjectId, ref: "DashboardUser", default: null },
     fcmTokens: [{ type: String }],
   },
   { timestamps: true }

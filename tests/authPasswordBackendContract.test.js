@@ -207,82 +207,68 @@ async function run() {
 
   await test("12. Admin can reset customer password", async () => {
     const res = await api.post(`/api/dashboard/users/${customerId}/reset-password`).set(adminHeaders).send({
-      newPassword: TEMP_PASSWORD,
-      confirmPassword: TEMP_PASSWORD,
       reason: "Customer forgot password",
     });
     expectStatus(res, 200, "admin reset");
     assert.strictEqual(res.body.status, true);
     assert.strictEqual(res.body.data.userId, customerId);
-    assert.strictEqual(res.body.data.forcePasswordChange, true);
+    assert.strictEqual(res.body.data.accountStatus, "reset_requested");
   });
 
   await test("13. Superadmin can reset customer password", async () => {
-    const res = await api.post(`/api/dashboard/users/${customerId}/reset-password`).set(superadminHeaders).send({
-      newPassword: TEMP_PASSWORD,
-      confirmPassword: TEMP_PASSWORD,
-    });
+    const res = await api.post(`/api/dashboard/users/${customerId}/reset-password`).set(superadminHeaders).send({});
     expectStatus(res, 200, "superadmin reset");
     assert.strictEqual(res.body.status, true);
   });
 
   await test("14. Cashier cannot reset customer password", async () => {
-    const res = await api.post(`/api/dashboard/users/${customerId}/reset-password`).set(cashierHeaders).send({
-      newPassword: TEMP_PASSWORD,
-      confirmPassword: TEMP_PASSWORD,
-    });
+    const res = await api.post(`/api/dashboard/users/${customerId}/reset-password`).set(cashierHeaders).send({});
     expectStatus(res, 403, "cashier reset");
     assert.strictEqual(res.body.status, false);
   });
 
   await test("15. Reset requires an existing customer", async () => {
     const missingId = new mongoose.Types.ObjectId();
-    const res = await api.post(`/api/dashboard/users/${missingId}/reset-password`).set(adminHeaders).send({
-      newPassword: TEMP_PASSWORD,
-      confirmPassword: TEMP_PASSWORD,
-    });
+    const res = await api.post(`/api/dashboard/users/${missingId}/reset-password`).set(adminHeaders).send({});
     expectStatus(res, 404, "missing reset user");
     assert.strictEqual(res.body.status, false);
   });
 
-  await test("16. Reset stores hashed password, force flag, and ActivityLog", async () => {
+  await test("16. Reset clears hashed password and logs ActivityLog", async () => {
     const user = await User.findById(customerId).lean();
-    assert(user.passwordHash);
-    assert.notStrictEqual(user.passwordHash, TEMP_PASSWORD);
-    assert.strictEqual(await compareAppPassword(TEMP_PASSWORD, user.passwordHash), true);
-    assert.strictEqual(user.forcePasswordChange, true);
+    assert.strictEqual(user.passwordHash, null);
+    assert.strictEqual(user.accountStatus, "reset_requested");
     const log = await ActivityLog.findOne({
       entityType: "user",
       entityId: customerId,
-      action: "customer_password_reset_by_admin",
+      action: "admin_requested_password_reset",
     }).lean();
     assert(log, "reset activity log exists");
-    assert.notStrictEqual(JSON.stringify(log), TEMP_PASSWORD);
   });
 
-  await test("17. Customer can login with temporary password and sees forcePasswordChange", async () => {
+  await test("17. Customer login returns RESET_REQUESTED", async () => {
     const res = await api.post("/api/auth/login").send({ phone: TEST_PHONE, password: TEMP_PASSWORD });
-    expectStatus(res, 200, "temporary login");
-    assert.strictEqual(res.body.user.forcePasswordChange, true);
+    expectStatus(res, 403, "temporary login");
+    assert.strictEqual(res.body.error.code, "RESET_REQUESTED");
+  });
+
+  await test("18. Customer can use register endpoint to set new password", async () => {
+    const res = await api.post("/api/auth/register").send({
+      phone: TEST_PHONE,
+      password: NEW_PASSWORD,
+      confirmPassword: NEW_PASSWORD,
+    });
+    expectStatus(res, 201, "register to reset password");
+    assert.strictEqual(res.body.ok, true);
+    assert.strictEqual(res.body.status, "registered");
     accessToken = res.body.accessToken;
   });
 
-  await test("18. Customer can change password", async () => {
-    const res = await api.post("/api/auth/change-password").set(authHeader(accessToken)).send({
-      currentPassword: TEMP_PASSWORD,
-      newPassword: NEW_PASSWORD,
-      confirmPassword: NEW_PASSWORD,
-    });
-    expectStatus(res, 200, "change password");
-    assert.strictEqual(res.body.status, true);
-  });
-
-  await test("19. Change password clears forcePasswordChange and old password no longer works", async () => {
+  await test("19. Register endpoint sets accountStatus to active and sets password", async () => {
     const user = await User.findById(customerId).lean();
-    assert.strictEqual(user.forcePasswordChange, false);
+    assert.strictEqual(user.accountStatus, "active");
     assert.strictEqual(await compareAppPassword(NEW_PASSWORD, user.passwordHash), true);
-    const oldLogin = await api.post("/api/auth/login").send({ phone: TEST_PHONE, password: TEMP_PASSWORD });
-    expectStatus(oldLogin, 401, "old password login");
+
     const newLogin = await api.post("/api/auth/login").send({ phone: TEST_PHONE, password: NEW_PASSWORD });
     expectStatus(newLogin, 200, "new password login");
   });

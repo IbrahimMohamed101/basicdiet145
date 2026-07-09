@@ -1,5 +1,8 @@
 const BuilderProtein = require("../models/BuilderProtein");
 const BuilderCategory = require("../models/BuilderCategory");
+const PremiumUpgradeConfig = require("../models/PremiumUpgradeConfig");
+const MenuOption = require("../models/MenuOption");
+const MenuProduct = require("../models/MenuProduct");
 const { getRequestLang } = require("../utils/i18n");
 const { resolvePremiumMealCatalogEntry } = require("../utils/subscription/subscriptionCatalog");
 const validateObjectId = require("../utils/validateObjectId");
@@ -267,11 +270,56 @@ async function validatePremiumMealPayloadOrThrow(payload) {
 
 async function listBuilderPremiumMeals(req, res) {
   const lang = getRequestLang(req);
-  const rows = await BuilderProtein.find({ isActive: true, isPremium: true })
+  const legacyRows = await BuilderProtein.find({ isActive: true, isPremium: true })
     .sort({ sortOrder: 1, createdAt: -1 })
     .lean();
-  const mapped = rows.map((row) => mapBuilderProteinToPremiumMealEntry(row, lang));
+
+  const activeConfigs = await PremiumUpgradeConfig.find({ status: "active", isEnabled: true, isVisible: true }).lean();
   
+  const mapped = [];
+  const handledKeys = new Set();
+
+  for (const config of activeConfigs) {
+    if (config.premiumKey === "custom_premium_salad" || config.selectionType === "premium_large_salad") continue;
+    
+    let row = legacyRows.find(r => r.premiumKey === config.premiumKey || r.key === config.premiumKey);
+    if (!row) {
+      let sourceDoc = null;
+      if (config.sourceType === "menu_option") {
+        sourceDoc = await MenuOption.findById(config.sourceId).lean();
+      } else if (config.sourceType === "menu_product") {
+        sourceDoc = await MenuProduct.findById(config.sourceId).lean();
+      }
+      
+      if (sourceDoc) {
+        row = {
+          _id: config._id,
+          name: sourceDoc.name,
+          description: sourceDoc.description,
+          imageUrl: sourceDoc.imageUrl || "",
+          currency: config.currency || "SAR",
+          extraFeeHalala: config.upgradeDeltaHalala,
+          nutrition: sourceDoc.nutrition || {},
+          premiumKey: config.premiumKey,
+          isPremium: true,
+        };
+      }
+    } else {
+      row.extraFeeHalala = config.upgradeDeltaHalala;
+    }
+
+    if (row) {
+      mapped.push(mapBuilderProteinToPremiumMealEntry(row, lang));
+      handledKeys.add(config.premiumKey);
+    }
+  }
+
+  for (const row of legacyRows) {
+    if (!handledKeys.has(row.premiumKey) && !handledKeys.has(row.key)) {
+      mapped.push(mapBuilderProteinToPremiumMealEntry(row, lang));
+    }
+  }
+
   const customSaladEntry = buildCustomPremiumSaladEntry(lang);
   const allEntries = [...mapped, customSaladEntry];
   
@@ -279,18 +327,71 @@ async function listBuilderPremiumMeals(req, res) {
 }
 
 async function listBuilderPremiumMealsAdmin(_req, res) {
-  const rows = await BuilderProtein.find({ isPremium: true })
+  const legacyRows = await BuilderProtein.find({ isPremium: true })
     .sort({ sortOrder: 1, createdAt: -1 })
     .lean();
 
+  const activeConfigs = await PremiumUpgradeConfig.find({ status: "active" }).lean();
+  
+  const mapped = [];
+  const handledKeys = new Set();
+
+  for (const config of activeConfigs) {
+    if (config.premiumKey === "custom_premium_salad" || config.selectionType === "premium_large_salad") continue;
+    
+    let row = legacyRows.find(r => r.premiumKey === config.premiumKey || r.key === config.premiumKey);
+    if (!row) {
+      let sourceDoc = null;
+      if (config.sourceType === "menu_option") {
+        sourceDoc = await MenuOption.findById(config.sourceId).lean();
+      } else if (config.sourceType === "menu_product") {
+        sourceDoc = await MenuProduct.findById(config.sourceId).lean();
+      }
+      
+      if (sourceDoc) {
+        row = {
+          _id: config._id,
+          name: sourceDoc.name,
+          description: sourceDoc.description,
+          imageUrl: sourceDoc.imageUrl || "",
+          currency: config.currency || "SAR",
+          extraFeeHalala: config.upgradeDeltaHalala,
+          nutrition: sourceDoc.nutrition || {},
+          premiumKey: config.premiumKey,
+          isPremium: true,
+          isActive: config.isEnabled && config.isVisible,
+          sortOrder: config.sortOrder || 0,
+        };
+      }
+    } else {
+      row.extraFeeHalala = config.upgradeDeltaHalala;
+    }
+
+    if (row) {
+      mapped.push({
+        ...row,
+        id: String(row._id),
+        displayCategoryId: row.displayCategoryId ? String(row.displayCategoryId) : null,
+        imageUrl: row.imageUrl || "",
+      });
+      handledKeys.add(config.premiumKey);
+    }
+  }
+
+  for (const row of legacyRows) {
+    if (!handledKeys.has(row.premiumKey) && !handledKeys.has(row.key)) {
+      mapped.push({
+        ...row,
+        id: String(row._id),
+        displayCategoryId: row.displayCategoryId ? String(row.displayCategoryId) : null,
+        imageUrl: row.imageUrl || "",
+      });
+    }
+  }
+
   return res.status(200).json({
     status: true,
-    data: rows.map((row) => ({
-      ...row,
-      id: String(row._id),
-      displayCategoryId: row.displayCategoryId ? String(row.displayCategoryId) : null,
-      imageUrl: row.imageUrl || "",
-    })),
+    data: mapped,
   });
 }
 

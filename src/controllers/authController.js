@@ -283,6 +283,13 @@ async function register(req, res) {
       return errorResponse(res, 409, "USER_ALREADY_REGISTERED", "Phone number is already in use");
     }
 
+    if (existingUser && existingUser.accountStatus === "reset_requested") {
+      const resetWindowMs = 48 * 60 * 60 * 1000;
+      if (existingUser.resetRequestedAt && Date.now() - existingUser.resetRequestedAt.getTime() > resetWindowMs) {
+        return errorResponse(res, 403, "RESET_WINDOW_EXPIRED", "The password reset window has expired. Please contact support.");
+      }
+    }
+
     await ensureRegistrationEmailAvailable(normalizedEmail, phone, existingUser ? existingUser._id : null);
 
     const now = new Date();
@@ -304,6 +311,8 @@ async function register(req, res) {
     coreUser.passwordSetAt = now;
     coreUser.passwordChangedAt = now;
     coreUser.forcePasswordChange = false;
+    coreUser.accountStatus = "active";
+    coreUser.resetRequestedAt = null;
     coreUser.authProvider = "password";
     coreUser.authMethods = Array.from(new Set([...(Array.isArray(coreUser.authMethods) ? coreUser.authMethods : []), "password"]));
     coreUser.lastLoginAt = now;
@@ -442,6 +451,13 @@ async function verifyRegister(req, res) {
       );
     }
 
+    if (coreUser && coreUser.accountStatus === "reset_requested") {
+      const resetWindowMs = 48 * 60 * 60 * 1000;
+      if (coreUser.resetRequestedAt && Date.now() - coreUser.resetRequestedAt.getTime() > resetWindowMs) {
+        return errorResponse(res, 403, "RESET_WINDOW_EXPIRED", "The password reset window has expired. Please contact support.");
+      }
+    }
+
     if (!coreUser) {
       coreUser = new User({ phone, phoneE164: phone, role: "client" });
     }
@@ -470,6 +486,8 @@ async function verifyRegister(req, res) {
       coreUser.email = effectiveEmail || undefined;
     }
     coreUser.passwordHash = await hashAppPassword(password);
+    coreUser.accountStatus = "active";
+    coreUser.resetRequestedAt = null;
     coreUser.lastLoginAt = new Date();
     await coreUser.save();
     await ensureLinkedAppUser(coreUser);
@@ -496,6 +514,16 @@ async function login(req, res) {
     const phone = assertValidPhoneE164(phoneE164 || req.body.phone);
     const coreUser = await findClientUserByPhone(phone);
 
+    if (coreUser && coreUser.accountStatus === "reset_requested") {
+      const resetWindowMs = 48 * 60 * 60 * 1000;
+      if (coreUser.resetRequestedAt && Date.now() - coreUser.resetRequestedAt.getTime() > resetWindowMs) {
+        return errorResponse(res, 403, "RESET_WINDOW_EXPIRED", "The password reset window has expired. Please contact support.");
+      }
+      return errorResponse(res, 403, "RESET_REQUESTED", "Password reset requested. Please set a new password.");
+    }
+    if (coreUser && coreUser.accountStatus === "pending_activation") {
+      return errorResponse(res, 403, "PENDING_ACTIVATION", "Account pending activation. Please set a password.");
+    }
     if (coreUser && coreUser.phoneVerified === true && !coreUser.passwordHash) {
       return errorResponse(res, 403, "PASSWORD_RESET_REQUIRED", "Password setup is required");
     }
