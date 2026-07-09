@@ -253,10 +253,23 @@ function buildMealSlotPayload(slot = {}, subscription = {}, lang = "en", catalog
     fulfillment.proteinKey || confirmation.proteinKey || slot.proteinFamilyKey || materializedProduct.proteinFamilyKey
   );
 
+  const selectionType = slot.selectionType || null;
+  const selectionTypeI18n = (() => {
+    switch (selectionType) {
+      case "standard_meal": return { ar: "وجبة قياسية", en: "Standard Meal" };
+      case "premium_meal": return { ar: "وجبة مميزة (بريميوم)", en: "Premium Meal" };
+      case "premium_large_salad": return { ar: "سلطة مميزة", en: "Premium Salad" };
+      case "sandwich": return { ar: "ساندويتش", en: "Sandwich" };
+      case "chef_choice": return { ar: "اختيار الشيف", en: "Chef Choice" };
+      default: return { ar: selectionType || "وجبة", en: selectionType || "Meal" };
+    }
+  })();
+
   return {
     slotIndex: slot.slotIndex !== undefined ? Number(slot.slotIndex || 0) : null,
     slotKey: slot.slotKey || null,
-    selectionType: slot.selectionType || null,
+    selectionType,
+    selectionTypeI18n,
     productId,
     productKey,
     productName: localizedName(productNameSource, lang),
@@ -307,9 +320,14 @@ function buildAddonPayload(addon = {}, lang = "en", catalogMaps = {}) {
   const doc = resolveAnyCatalogDoc(catalogMaps, ["addon", "product"], id, key);
   const snapshotName = addon.name || addon.addonName;
   const catalogName = doc && doc.name;
-  const nameSource = hasArabicName(snapshotName)
+  let nameSource = hasArabicName(snapshotName)
     ? snapshotName
     : (hasArabicName(catalogName) ? catalogName : (snapshotName || catalogName));
+
+  if (!hasAnyName(nameSource)) {
+    nameSource = { ar: "إضافة (غير متوفرة)", en: "Addon (Unavailable)" };
+  }
+
   return {
     id: stringifyId(id),
     key: key || (doc && doc.key) || null,
@@ -350,10 +368,22 @@ function buildOrderKitchenDetailsPayload(order = {}, lang = "en", catalogMaps = 
     const productNameSource = item.name || (item.productSnapshot && item.productSnapshot.name) || (productDoc && productDoc.name);
     const proteinNameSource = selections.proteinName || (proteinDoc && proteinDoc.name);
 
+    const selectionTypeI18n = (() => {
+      switch (itemType) {
+        case "standard_meal": return { ar: "وجبة قياسية", en: "Standard Meal" };
+        case "premium_meal": return { ar: "وجبة مميزة (بريميوم)", en: "Premium Meal" };
+        case "premium_large_salad": return { ar: "سلطة مميزة", en: "Premium Salad" };
+        case "sandwich": return { ar: "ساندويتش", en: "Sandwich" };
+        case "chef_choice": return { ar: "اختيار الشيف", en: "Chef Choice" };
+        default: return { ar: itemType || "وجبة", en: itemType || "Meal" };
+      }
+    })();
+
     mealSlots.push({
       slotIndex: index + 1,
       slotKey: `order_item_${index + 1}`,
       selectionType: itemType,
+      selectionTypeI18n,
       productId,
       productKey,
       productName: localizedName(productNameSource, lang),
