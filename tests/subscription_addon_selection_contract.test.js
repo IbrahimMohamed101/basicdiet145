@@ -51,6 +51,8 @@ async function run() {
   };
 
   const subscription = {
+    status: "active",
+    addonBalance: [{ _id: "507f191e810c19729de87009", addonId: IDS.addonPlan, category: "juice", remainingQty: 5 }],
     addonSubscriptions: [
       {
         addonId: IDS.addonPlan,
@@ -255,6 +257,8 @@ async function run() {
 
   // Test B: item inside menuProductIds with legacy balance → subscription coverage
   const subscriptionWithBalance = {
+    status: "active",
+    addonBalance: [{ _id: "507f191e810c19729de87019", addonPlanId: JUICE_PLAN_ID, category: "juice", remainingQty: 5 }],
     addonSubscriptions: [
       {
         addonId: JUICE_PLAN_ID,
@@ -265,7 +269,6 @@ async function run() {
         menuProductIds: [JUICE_A_ID],
       },
     ],
-    // Legacy balance path (no addonBalance array) — simulatedRemaining uses category key
   };
 
   const testBDay = { addonSelections: [] };

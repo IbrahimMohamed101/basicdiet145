@@ -764,13 +764,13 @@ async function resolveCheckoutQuoteOrThrow(
     }
 
     let unit = resolveAddonUnitPriceHalala(doc);
-    if (doc.pricingMode === "base_plan_matrix") {
+    if (doc.pricingMode === "base_plan_matrix" || doc.kind === "plan") {
       const matrixPrice = addonPlanPriceByAddonId.get(String(doc._id));
       if (matrixPrice) {
         unit = Number(matrixPrice.priceHalala);
       } else {
         const err = new Error(`Addon plan ${item.id} is not configured for the selected base plan`);
-        err.code = "INVALID_SELECTION";
+        err.code = "PRICE_MATRIX_NOT_FOUND";
         throw err;
       }
     }

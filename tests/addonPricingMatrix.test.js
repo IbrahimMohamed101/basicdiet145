@@ -409,26 +409,24 @@ async function runTests() {
       assert.strictEqual(overageDay.addonSelections[i].priceHalala, 1500);
     }
 
-    // Invalid selection (forbiddenProduct)
+    // Invalid selection (forbiddenProduct) - should fall through to pending_payment, not reject
     const day2 = { addonSelections: [] };
-    try {
-      await reconcileAddonInclusions(
-        subscription,
-        day2,
-        [String(forbiddenProduct._id)],
-        {
-          resolveChoiceProductById: async (id) => {
-            if (id === String(forbiddenProduct._id)) {
-              return { product: forbiddenProduct, addonCategory: "snack" };
-            }
-            return null;
-          },
-        }
-      );
-      assert.fail("Should have failed validation because product is not in menuProductIds");
-    } catch (err) {
-      assert.strictEqual(err.code, "INVALID_ADDON_SELECTION");
-    }
+    await reconcileAddonInclusions(
+      subscription,
+      day2,
+      [String(forbiddenProduct._id)],
+      {
+        resolveChoiceProductById: async (id) => {
+          if (id === String(forbiddenProduct._id)) {
+            return { product: forbiddenProduct, addonCategory: "snack" };
+          }
+          return null;
+        },
+      }
+    );
+    assert.strictEqual(day2.addonSelections.length, 1);
+    assert.strictEqual(day2.addonSelections[0].source, "pending_payment");
+    assert.strictEqual(day2.addonSelections[0].priceHalala, 1200);
 
     console.log("--- 5. Testing Catalog Filtering by subscriptionId ---");
     // Re-save subscription to DB to test buildAddonChoicesCatalog
@@ -463,8 +461,12 @@ async function runTests() {
     });
 
     const snackChoices = choicesCatalog.snack.choices;
-    assert.ok(snackChoices.some(c => String(c.id) === String(allowedProduct._id)));
-    assert.ok(!snackChoices.some(c => String(c.id) === String(forbiddenProduct._id)));
+    const allowedChoice = snackChoices.find(c => String(c.id) === String(allowedProduct._id));
+    const forbiddenChoice = snackChoices.find(c => String(c.id) === String(forbiddenProduct._id));
+    assert.ok(allowedChoice, "allowedProduct should be in choices");
+    assert.ok(forbiddenChoice, "forbiddenProduct should be in choices");
+    assert.strictEqual(allowedChoice.isEligibleForAllowance, true);
+    assert.strictEqual(forbiddenChoice.isEligibleForAllowance, false);
 
     console.log("--- 5.5 Regression Test: Customer checkout quote resolves flat pricing matrix price without multiplying by days ---");
     const regBasePlanId = "6a2454c04a2465a2f7a07800";

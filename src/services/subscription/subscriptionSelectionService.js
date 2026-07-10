@@ -87,6 +87,14 @@ async function reconcileAddonInclusions(
   requestedAddonIds = [],
   { resolveChoiceProductById = resolveAddonChoiceProductById } = {}
 ) {
+  // START ENTRY-POINT DEBUG LOGS
+  console.log("\n========== [DEBUG - ADDON INPUT] ==========");
+  console.log("subscriptionId:", subscription && subscription._id ? subscription._id.toString() : "NONE");
+  console.log("addonBalance:", JSON.stringify(subscription && subscription.addonBalance ? subscription.addonBalance : [], null, 2));
+  console.log("requested count:", requestedAddonIds ? requestedAddonIds.length : 0);
+  console.log("===========================================\n");
+  // END ENTRY-POINT DEBUG LOGS
+
   if (!Array.isArray(requestedAddonIds) || requestedAddonIds.length === 0) {
     day.addonSelections = [];
     return;
@@ -106,37 +114,23 @@ async function reconcileAddonInclusions(
   // 1. Fetch unified category balances (this safely combines explicit buckets and audit fallback per category)
   const computedBalances = buildClientAddonBalance(subscription, null);
 
-  if (computedBalances && computedBalances.addonBalanceNeedsReview) {
-    throw { 
-      status: 409, 
-      code: "ADDON_BALANCE_MISSING_REVIEW_REQUIRED", 
-      message: "Subscription is missing addon balance tracking and requires administrative review to proceed." 
-    };
-  }
-
-  // 2. Prepare the simulated remaining map per category/bucket
+  // 2. Prepare the simulated remaining map per category
   if (hasAddonBalance) {
     for (const bucket of subscription.addonBalance) {
-      if (!bucket || !bucket._id) continue;
+      if (!bucket || !bucket.category) continue;
+      const cat = bucket.category;
       let qty = Number(bucket.remainingQty || 0);
 
       // Add back existing day selections that were already deducted
       if (day && Array.isArray(day.addonSelections)) {
         for (const sel of day.addonSelections) {
-          if (sel.source === "subscription") {
-            const match = findAddonBalanceBucket(subscription, {
-              addonId: sel.addonId,
-              addonPlanId: sel.addonPlanId,
-              category: sel.category,
-              unitPriceHalala: sel.unitPriceHalala
-            });
-            if (match && String(match._id) === String(bucket._id)) {
-              qty += 1;
-            }
+          if (sel.source === "subscription" && sel.category === cat) {
+            qty += 1;
           }
         }
       }
-      simulatedRemaining.set(String(bucket._id), qty);
+      const current = simulatedRemaining.get(cat) || 0;
+      simulatedRemaining.set(cat, current + qty);
     }
   }
 
@@ -155,6 +149,12 @@ async function reconcileAddonInclusions(
     const doc = choice.product;
     const category = choice.addonCategory;
     const entitlement = findAddonEntitlementForChoice(subscription, category, addonId);
+
+    console.log({
+      addonId: doc._id,
+      category,
+      remainingBefore: simulatedRemaining.get(category),
+    });
 
     let source = "pending_payment";
     const unitPriceHalala = doc.priceHalala || Math.round((doc.price || 0) * 100);
@@ -185,18 +185,10 @@ async function reconcileAddonInclusions(
 
     if (entitlement && !isRestrictedByPlan) {
       let canCover = false;
-      const bucket = findAddonBalanceBucket(subscription, {
-        addonId: doc._id,
-        addonPlanId: entitlement ? (entitlement.addonPlanId || entitlement.addonId) : null,
-        category,
-        unitPriceHalala
-      });
-      if (bucket && bucket._id) {
-        const rem = simulatedRemaining.get(String(bucket._id)) || 0;
-        if (rem > 0) {
-          canCover = true;
-          simulatedRemaining.set(String(bucket._id), rem - 1);
-        }
+      const rem = simulatedRemaining.get(category) || 0;
+      if (rem > 0) {
+        canCover = true;
+        simulatedRemaining.set(category, rem - 1);
       }
 
       if (canCover) {
@@ -204,6 +196,12 @@ async function reconcileAddonInclusions(
         priceHalala = 0;
       }
     }
+
+    console.log({
+      category,
+      remainingAfter: simulatedRemaining.get(category),
+      pricingReason: source,
+    });
 
     newSelections.push({
       addonId: doc._id,
@@ -217,6 +215,12 @@ async function reconcileAddonInclusions(
       consumedAt: new Date(),
     });
   }
+
+  console.log("\nFinal simulatedRemaining:", Object.fromEntries(simulatedRemaining));
+  console.log("Selections:", newSelections.map(s => ({
+    addon: s.addonId,
+    source: s.source,
+  })));
 
   day.addonSelections = newSelections;
 }
@@ -654,6 +658,12 @@ async function evaluateDaySelectionPricingState({
     addonSelections: existingDay ? JSON.parse(JSON.stringify(existingDay.addonSelections || [])) : [],
   };
   if (requestedOneTimeAddonIds !== undefined) {
+    console.log("[DEBUG - BEFORE RECONCILE]", {
+      subscriptionId: subscription._id,
+      addonBalance: subscription.addonBalance,
+      requestedAddonCount: Array.isArray(requestedOneTimeAddonIds) ? requestedOneTimeAddonIds.length : 0,
+    });
+    
     await reconcileAddonInclusions(subscription, addonContainer, requestedOneTimeAddonIds);
   }
 
@@ -665,6 +675,12 @@ async function evaluateDaySelectionPricingState({
     addonSelections: addonContainer.addonSelections,
     premiumExtraPayment: existingDay && existingDay.premiumExtraPayment ? existingDay.premiumExtraPayment : null,
   }, { subscription });
+
+  console.log("[DEBUG - AFTER RECONCILE]", {
+    included: addonContainer.addonSelections.filter(i => i.source === "subscription").length,
+    pending: addonContainer.addonSelections.filter(i => i.source === "pending_payment").length,
+    amountDue: commercialState.paymentRequirement ? commercialState.paymentRequirement.pendingAmountHalala : 0,
+  });
 
   return {
     addonSelections: addonContainer.addonSelections,
