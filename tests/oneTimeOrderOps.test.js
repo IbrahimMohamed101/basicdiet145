@@ -18,9 +18,10 @@ const { DASHBOARD_JWT_SECRET } = require("../src/services/dashboardTokenService"
 const { ORDER_STATUSES } = require("../src/utils/orderState");
 
 const TEST_TAG = `one-time-order-ops-${Date.now()}`;
+const TEST_DATE = new Date(Date.now() + 86400000 + 3 * 3600000).toISOString().split('T')[0];
 const results = { passed: 0, failed: 0 };
 const ORIGINAL_ONE_TIME_ORDER_DELIVERY_ENABLED = process.env.ONE_TIME_ORDER_DELIVERY_ENABLED;
-delete process.env.ONE_TIME_ORDER_DELIVERY_ENABLED;
+process.env.ONE_TIME_ORDER_DELIVERY_ENABLED = "false";
 const dashboardUsers = new Map();
 
 async function test(name, fn) {
@@ -125,8 +126,8 @@ async function createOrder(user, overrides = {}) {
     status: ORDER_STATUSES.CONFIRMED,
     paymentStatus: "paid",
     fulfillmentMethod,
-    fulfillmentDate: "2026-05-04",
-    deliveryDate: "2026-05-04",
+    fulfillmentDate: TEST_DATE,
+    deliveryDate: TEST_DATE,
     items: [{
       itemType: "sandwich",
       name: { ar: "", en: `${TEST_TAG} Sandwich` },
@@ -628,7 +629,7 @@ async function createOrder(user, overrides = {}) {
         status: ORDER_STATUSES.PENDING_PAYMENT,
         paymentStatus: "initiated",
       });
-      const res = await api.get("/api/dashboard/kitchen/queue?date=2026-05-04&method=pickup").set(auth());
+      const res = await api.get(`/api/dashboard/kitchen/queue?date=${TEST_DATE}&method=pickup`).set(auth());
       expectStatus(res, 200, "kitchen queue payment filter");
       const ids = res.body.data.items.map((item) => item.entityId || (item.ids && item.ids.entityId));
       assert(ids.includes(String(paid._id)));

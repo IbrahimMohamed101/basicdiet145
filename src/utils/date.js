@@ -90,7 +90,7 @@ function getCurrentBusinessDate(openTimeStr, closeTimeStr, now = new Date()) {
         throw new Error("Invalid time format. Expected HH:mm");
     }
 
-    const today = getTodayKSADate(now);
+    const today = module.exports.getTodayKSADate(now);
     const openMinutes = toMinutes(openTimeStr);
     const closeMinutes = toMinutes(closeTimeStr);
     const nowTime = formatInTimeZone(now, KSA_TIMEZONE, "HH:mm");
@@ -144,7 +144,7 @@ function isInSubscriptionRange(dateStr, endDate) {
 
 // CR-09 FIX: Add lower bound validation (date must be >= today)
 function isOnOrAfterTodayKSADate(dateStr, now = new Date()) {
-    const today = getTodayKSADate(now);
+    const today = module.exports.getTodayKSADate(now);
     return compareKSADateStrings(dateStr, today) >= 0;
 }
 

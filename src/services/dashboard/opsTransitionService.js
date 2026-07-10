@@ -382,6 +382,16 @@ async function handleDispatch({ entityId, entityType, userId, role, payload, ses
   const doc = await Model.findById(entityId).session(session);
   if (!doc) throw new Error("Entity not found");
 
+  if (entityType === "order") {
+    const mode = String(doc.fulfillmentMethod || doc.deliveryMode || "").trim().toLowerCase();
+    if (mode !== "delivery") {
+      const err = new Error("Action requires delivery order");
+      err.code = "INVALID_FULFILLMENT_METHOD";
+      err.status = 409;
+      throw err;
+    }
+  }
+
   const toStatus = "out_for_delivery";
   if (doc.status === toStatus) {
     return { data: doc, idempotent: true };
@@ -638,11 +648,13 @@ async function handleReadyForPickup({ entityId, entityType, userId, role, payloa
     doc.pickupCode = String(crypto.randomInt(100000, 999999));
     doc.pickupCodeIssuedAt = new Date();
   } else if (doc.deliveryMode === "pickup" || doc.fulfillmentMethod === "pickup") {
-    const pickupCode = doc.pickupCode || (doc.pickup && doc.pickup.pickupCode) || String(crypto.randomInt(100000, 999999));
+    const pickupCode = payload.pickupCode
+      ? String(payload.pickupCode).trim()
+      : (doc.pickupCode || (doc.pickup && doc.pickup.pickupCode) || String(crypto.randomInt(100000, 999999)));
     doc.pickupCode = pickupCode;
     doc.pickupCodeIssuedAt = doc.pickupCodeIssuedAt || new Date();
     doc.pickup = doc.pickup || {};
-    doc.pickup.pickupCode = doc.pickup.pickupCode || pickupCode;
+    doc.pickup.pickupCode = pickupCode;
     doc.pickup.readyAt = doc.pickup.readyAt || new Date();
   }
   appendOperationAudit(doc, "ready_for_pickup", userId, role);
@@ -722,8 +734,34 @@ async function handleCancel({ entityId, entityType, payload, userId, role, sessi
   doc.status = toStatus;
   doc.canceledAt = new Date();
   doc.canceledBy = String(userId || "");
-  doc.cancellationReason = payload.reason;
-  doc.cancellationNote = payload.notes || payload.note;
+
+  if (entityType === "order") {
+    const roleStr = String(role || "").toLowerCase();
+    const inputReason = String(payload.reason || "").trim();
+    const reason = inputReason || "admin_cancelled";
+
+    let cancellationReason = reason;
+    let actorType = "admin";
+
+    if (reason === "restaurant_rejected" || reason === "restaurant_cancelled") {
+      actorType = "restaurant";
+      cancellationReason = reason;
+    } else if (roleStr === "kitchen") {
+      actorType = "restaurant";
+      cancellationReason = reason === "admin_cancelled" ? "restaurant_cancelled" : reason;
+    } else {
+      actorType = "admin";
+      cancellationReason = reason === "stock_out" ? "restaurant_rejected" : reason;
+    }
+
+    doc.cancellationReason = cancellationReason;
+    doc.cancellationActorType = actorType;
+    doc.cancellationSource = "dashboard";
+    doc.cancellationNote = payload.notes || payload.note || "";
+  } else {
+    doc.cancellationReason = payload.reason;
+    doc.cancellationNote = payload.notes || payload.note;
+  }
 
   if (entityType === "subscription") {
     // Only load subscription once for both addon + premium release
@@ -879,6 +917,12 @@ async function handleNoShow({ entityId, entityType, payload, userId, role, sessi
 }
 
 async function handleReopen({ entityId, entityType, userId, role, payload, session }) {
+  if (entityType === "order") {
+    const err = new Error("Reopen is not supported for one-time orders");
+    err.code = "REOPEN_NOT_SUPPORTED";
+    err.status = 409;
+    throw err;
+  }
   const Model = entityType === "subscription" ? SubscriptionDay : Order;
   const doc = await Model.findById(entityId).session(session);
   if (!doc) throw new Error("Entity not found");
@@ -976,7 +1020,10 @@ async function handleNotifyArrival({ entityId, entityType, session }) {
 // Utility Helpers
 function validateTransition(type, from, to) {
   if (!canTransitionStatus(type, from, to)) {
-    throw new Error("INVALID_STATE_TRANSITION");
+    const err = new Error("INVALID_STATE_TRANSITION");
+    err.code = "INVALID_STATE_TRANSITION";
+    err.status = 409;
+    throw err;
   }
 }
 
@@ -984,6 +1031,7 @@ function ensurePaidOrder(order) {
   if (!order || order.paymentStatus !== "paid") {
     const err = new Error("ORDER_PAYMENT_REQUIRED");
     err.code = "ORDER_PAYMENT_REQUIRED";
+    err.status = 409;
     throw err;
   }
 }
@@ -1011,11 +1059,15 @@ async function triggerSideEffects(effects, { userId, role }) {
   try {
     const { action, entityType, entityId, toStatus } = effects;
 
+    const logAction = entityType === "order"
+      ? `dashboard_order_${action}`
+      : `dashboard_${action}`;
+
     // 1. Logging
     await writeLog({
       entityType,
       entityId,
-      action: `dashboard_${action}`,
+      action: logAction,
       byUserId: userId,
       byRole: role,
       meta: { toStatus },

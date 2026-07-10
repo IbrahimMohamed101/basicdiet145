@@ -10,11 +10,14 @@ const opsTransitionService = require("../dashboard/opsTransitionService");
 const opsActionPolicy = require("../dashboard/opsActionPolicy");
 const { getOrderFulfillmentMethod } = require("../../utils/oneTimeOrderDeliveryGate");
 const { getOrderTimelineForDashboard } = require("./orderTimelineService");
-const { isOneTimeOrderDeliveryEnabled } = require("../../utils/oneTimeOrderDeliveryGate");
+const { isOneTimeOrderDeliveryEnabled, shouldBlockOneTimeOrderDelivery } = require("../../utils/oneTimeOrderDeliveryGate");
 
 const MAX_LIMIT = 100;
 
 function getAllowedOrderActionIds(order, actor = {}) {
+  if (shouldBlockOneTimeOrderDelivery(order)) {
+    return [];
+  }
   return opsActionPolicy.getAllowedActions({
     entityType: "order",
     status: order.status,
