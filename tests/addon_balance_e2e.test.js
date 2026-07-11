@@ -3,7 +3,7 @@ const { MongoMemoryServer } = require("mongodb-memory-server");
 const sinon = require("sinon");
 const fs = require("fs");
 
-const { performDaySelectionValidation } = require("../src/services/subscription/subscriptionSelectionService");
+const { performDaySelectionValidation, performDaySelectionUpdate } = require("../src/services/subscription/subscriptionSelectionService");
 const { resolveSubscriptionAddonBalanceWithAudit } = require("../src/services/subscription/subscriptionAddonBalanceService");
 
 const Subscription = require("../src/models/Subscription");
@@ -113,37 +113,137 @@ async function runTests() {
     console.error("❌ Test 2 Failed:", err.message);
   }
 
-  // Test 3: Missing Balance Fallback
+  // Test 3: Update consumes across multiple same-category addonBalance buckets
   try {
-    console.log("\nTest 3: Missing Balance Fallback (No addonBalance bucket but entitlement exists)");
+    console.log("\nTest 3: Atomic consumption across multiple juice buckets (20 total remaining)");
     const sub3 = new Subscription({
+      userId,
+      clientId,
+      planId: plan._id,
+      status: "active",
+      totalMeals: 30,
+      remainingMeals: 30,
+      duration: 30,
+      contractMode: "canonical",
+      deliveryMode: "delivery",
+      validityEndDate: new Date("2026-12-31T00:00:00Z"),
+      addonBalance: [
+        { addonId: juiceAddon._id, category: "juice", includedTotalQty: 30, remainingQty: 3, consumedQty: 27 },
+        { addonId: juiceAddon._id, category: "juice", includedTotalQty: 30, remainingQty: 17, consumedQty: 13 },
+      ],
+      addonSubscriptions: [{ addonId: juiceAddon._id, category: "juice", maxPerDay: 10 }],
+    });
+    await sub3.save({ validateBeforeSave: false });
+
+    const requestedIds = Array(5).fill(juiceAddon._id.toString());
+    const result3 = await performDaySelectionUpdate({
+      userId: userId.toString(),
+      subscriptionId: sub3._id.toString(),
+      date,
+      mealSlots: [],
+      contractVersion: "canonical",
+      requestedOneTimeAddonIds: requestedIds,
+    });
+
+    const totalRemaining = (await Subscription.findById(sub3._id).lean()).addonBalance
+      .reduce((sum, row) => sum + Number(row.remainingQty || 0), 0);
+    if (result3.addonSummary.inclusiveCount !== 5 || result3.addonSummary.pendingPaymentCount !== 0) {
+      throw new Error(`Expected 5 inclusive, 0 pending after save. Got ${result3.addonSummary.inclusiveCount} inclusive, ${result3.addonSummary.pendingPaymentCount} pending.`);
+    }
+    if (result3.paymentRequirement && result3.paymentRequirement.requiresPayment) {
+      throw new Error("Expected no payment required when total addon balance is sufficient");
+    }
+    if (totalRemaining !== 15) {
+      throw new Error(`Expected 15 remainingQty total after consuming 5, got ${totalRemaining}`);
+    }
+    const sources = result3.day.addonSelections.map((item) => item.source);
+    if (!sources.every((source) => source === "subscription")) {
+      throw new Error("Expected all 5 addons to be covered by subscription balance");
+    }
+
+    console.log("✅ Test 3 Passed: update consumed across multiple addonBalance buckets and returned no payment requirement.");
+  } catch (err) {
+    console.error("❌ Test 3 Failed:", err.message);
+  }
+
+  // Test 4: Validate with multiple same-category addonBalance buckets
+  try {
+    console.log("\nTest 4: Validate covers 8 requested juice addons across two juice buckets");
+    const subValidate = new Subscription({
+      userId,
+      clientId,
+      planId: plan._id,
+      status: "active",
+      totalMeals: 30,
+      remainingMeals: 30,
+      duration: 30,
+      contractMode: "canonical",
+      deliveryMode: "delivery",
+      validityEndDate: new Date("2026-12-31T00:00:00Z"),
+      addonBalance: [
+        { addonId: juiceAddon._id, category: "juice", includedTotalQty: 30, remainingQty: 3, consumedQty: 27 },
+        { addonId: juiceAddon._id, category: "juice", includedTotalQty: 30, remainingQty: 17, consumedQty: 13 },
+      ],
+      addonSubscriptions: [{ addonId: juiceAddon._id, category: "juice", maxPerDay: 10 }],
+    });
+    await subValidate.save({ validateBeforeSave: false });
+
+    const validationDay = new SubscriptionDay({ subscriptionId: subValidate._id, date, status: "open" });
+    await validationDay.save({ validateBeforeSave: false });
+
+    const validateRequestedIds = Array(8).fill(juiceAddon._id.toString());
+    const validationResult = await performDaySelectionValidation({
+      userId: userId.toString(),
+      subscriptionId: subValidate._id.toString(),
+      date,
+      mealSlots: [],
+      contractVersion: "canonical",
+      requestedOneTimeAddonIds: validateRequestedIds,
+    });
+
+    if (validationResult.addonSummary.inclusiveCount !== 8 || validationResult.addonSummary.pendingPaymentCount !== 0) {
+      throw new Error(`Expected 8 inclusive and 0 pending on validation, got ${validationResult.addonSummary.inclusiveCount} inclusive and ${validationResult.addonSummary.pendingPaymentCount} pending.`);
+    }
+    if (validationResult.addonSummary.totalExtraHalala !== 0) {
+      throw new Error(`Expected amount due 0 on validation, got ${validationResult.addonSummary.totalExtraHalala}`);
+    }
+
+    console.log("✅ Test 4 Passed: validate covers all 8 juice addons from multiple same-category buckets.");
+  } catch (err) {
+    console.error("❌ Test 4 Failed:", err.message);
+  }
+
+  // Test 5: Missing Balance Fallback
+  try {
+    console.log("\nTest 5: Missing Balance Fallback (No addonBalance bucket but entitlement exists)");
+    const sub4 = new Subscription({
       userId, clientId, planId: plan._id, status: "active", totalMeals: 30, duration: 30, contractMode: "canonical",
       addonBalance: [],
       addonSubscriptions: [{
         addonId: juiceAddon._id, category: "juice", maxPerDay: 2
       }]
     });
-    await sub3.save({ validateBeforeSave: false });
+    await sub4.save({ validateBeforeSave: false });
 
-    const day3 = new SubscriptionDay({ subscriptionId: sub3._id, date, status: "open" });
-    await day3.save({ validateBeforeSave: false });
+    const day4 = new SubscriptionDay({ subscriptionId: sub4._id, date, status: "open" });
+    await day4.save({ validateBeforeSave: false });
 
     const requestedIds = [juiceAddon._id.toString()];
-    const result3 = await performDaySelectionValidation({
-      userId: userId.toString(), subscriptionId: sub3._id.toString(), date, mealSlots: [], contractVersion: "canonical", requestedOneTimeAddonIds: requestedIds
+    const result4 = await performDaySelectionValidation({
+      userId: userId.toString(), subscriptionId: sub4._id.toString(), date, mealSlots: [], contractVersion: "canonical", requestedOneTimeAddonIds: requestedIds
     });
 
-    if (result3.addonSummary.inclusiveCount !== 0 || result3.addonSummary.pendingPaymentCount !== 1) {
-      throw new Error(`Expected 0 inclusive, 1 pending. Got ${result3.addonSummary.inclusiveCount} inclusive, ${result3.addonSummary.pendingPaymentCount} pending.`);
+    if (result4.addonSummary.inclusiveCount !== 0 || result4.addonSummary.pendingPaymentCount !== 1) {
+      throw new Error(`Expected 0 inclusive, 1 pending. Got ${result4.addonSummary.inclusiveCount} inclusive, ${result4.addonSummary.pendingPaymentCount} pending.`);
     }
-    console.log("✅ Test 3 Passed: Validation gracefully degraded missing balance to pending_payment.");
+    console.log("✅ Test 5 Passed: Validation gracefully degraded missing balance to pending_payment.");
   } catch (err) {
-    console.error("❌ Test 3 Failed:", err.message);
+    console.error("❌ Test 5 Failed:", err.message);
   }
 
-  // Test 4: menuProductIds allowlist bypass blocking
+  // Test 6: menuProductIds allowlist bypass blocking
   try {
-    console.log("\nTest 4: menuProductIds allowlist restriction");
+    console.log("\nTest 6: menuProductIds allowlist restriction");
     const sub4 = new Subscription({
       userId, clientId, planId: plan._id, status: "active", totalMeals: 30, duration: 30, contractMode: "canonical",
       addonBalance: [{
@@ -170,9 +270,9 @@ async function runTests() {
     if (result4.addonSummary.inclusiveCount !== 0 || result4.addonSummary.pendingPaymentCount !== 1) {
       throw new Error(`Expected 0 inclusive, 1 pending (allowlist block). Got ${result4.addonSummary.inclusiveCount} inclusive, ${result4.addonSummary.pendingPaymentCount} pending.`);
     }
-    console.log("✅ Test 4 Passed: menuProductIds restriction correctly prevented balance coverage for unlisted item.");
+    console.log("✅ Test 6 Passed: menuProductIds restriction correctly prevented balance coverage for unlisted item.");
   } catch (err) {
-    console.error("❌ Test 4 Failed:", err.message);
+    console.error("❌ Test 6 Failed:", err.message);
   }
 
   await teardown();

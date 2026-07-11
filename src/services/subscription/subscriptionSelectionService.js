@@ -87,13 +87,6 @@ async function reconcileAddonInclusions(
   requestedAddonIds = [],
   { resolveChoiceProductById = resolveAddonChoiceProductById } = {}
 ) {
-  // START ENTRY-POINT DEBUG LOGS
-  console.log("\n========== [DEBUG - ADDON INPUT] ==========");
-  console.log("subscriptionId:", subscription && subscription._id ? subscription._id.toString() : "NONE");
-  console.log("addonBalance:", JSON.stringify(subscription && subscription.addonBalance ? subscription.addonBalance : [], null, 2));
-  console.log("requested count:", requestedAddonIds ? requestedAddonIds.length : 0);
-  console.log("===========================================\n");
-  // END ENTRY-POINT DEBUG LOGS
 
   if (!Array.isArray(requestedAddonIds) || requestedAddonIds.length === 0) {
     day.addonSelections = [];
@@ -110,9 +103,6 @@ async function reconcileAddonInclusions(
   // Build simulation map for remaining quantities
   const simulatedRemaining = new Map();
   const hasAddonBalance = Array.isArray(subscription && subscription.addonBalance) && subscription.addonBalance.length > 0;
-
-  // 1. Fetch unified category balances (this safely combines explicit buckets and audit fallback per category)
-  const computedBalances = buildClientAddonBalance(subscription, null);
 
   // 2. Prepare the simulated remaining map per category
   if (hasAddonBalance) {
@@ -150,11 +140,6 @@ async function reconcileAddonInclusions(
     const category = choice.addonCategory;
     const entitlement = findAddonEntitlementForChoice(subscription, category, addonId);
 
-    console.log({
-      addonId: doc._id,
-      category,
-      remainingBefore: simulatedRemaining.get(category),
-    });
 
     let source = "pending_payment";
     const unitPriceHalala = doc.priceHalala || Math.round((doc.price || 0) * 100);
@@ -197,11 +182,6 @@ async function reconcileAddonInclusions(
       }
     }
 
-    console.log({
-      category,
-      remainingAfter: simulatedRemaining.get(category),
-      pricingReason: source,
-    });
 
     newSelections.push({
       addonId: doc._id,
@@ -216,11 +196,6 @@ async function reconcileAddonInclusions(
     });
   }
 
-  console.log("\nFinal simulatedRemaining:", Object.fromEntries(simulatedRemaining));
-  console.log("Selections:", newSelections.map(s => ({
-    addon: s.addonId,
-    source: s.source,
-  })));
 
   day.addonSelections = newSelections;
 }
@@ -244,11 +219,12 @@ function findAddonEntitlementForChoice(subscription, category, addonId = null) {
   }) || null;
 }
 
-function findAddonBalanceBucket(subscription, { addonId = null, addonPlanId = null, category = null, unitPriceHalala = null } = {}) {
+function findAddonBalanceBucket(subscription, { addonId = null, addonPlanId = null, category = null, unitPriceHalala = null, requirePositiveRemaining = false } = {}) {
   const balances = Array.isArray(subscription && subscription.addonBalance) ? subscription.addonBalance : [];
   const entitlements = Array.isArray(subscription && subscription.addonSubscriptions) ? subscription.addonSubscriptions : [];
   return balances.find((bucket) => {
     if (!bucket) return false;
+    if (requirePositiveRemaining && Number(bucket.remainingQty || 0) <= 0) return false;
     if (addonPlanId && String(bucket.addonPlanId || bucket.addonId || "") === String(addonPlanId)) return true;
     if (addonId && String(bucket.addonId || "") === String(addonId)) return true;
     if (category && bucket.category === category) return true;
@@ -359,7 +335,7 @@ async function consumeAddonBalanceAtomically({ subscription, dayId, date, addonI
   if (!session) throw new Error("consumeAddonBalanceAtomically requires a session");
   if (!subscription || !Array.isArray(subscription.addonBalance)) return { consumed: false };
 
-  const bucket = findAddonBalanceBucket(subscription, { addonId, addonPlanId, category });
+  const bucket = findAddonBalanceBucket(subscription, { addonId, addonPlanId, category, requirePositiveRemaining: true });
   const bucketIndex = bucket
     ? subscription.addonBalance.findIndex((b) => b._id && bucket._id && String(b._id) === String(bucket._id))
     : -1;
@@ -379,6 +355,19 @@ async function consumeAddonBalanceAtomically({ subscription, dayId, date, addonI
   );
 
   if (!atomicResult) return { consumed: false };
+
+  // Keep the in-memory Mongoose document synchronized with the atomic
+  // addon balance updates performed via findOneAndUpdate(). Without this,
+  // the subsequent subscription.save({ session }) could overwrite the
+  // atomically updated addonBalance with stale in-memory values.
+  const inMemoryBucket = subscription.addonBalance[bucketIndex];
+  if (inMemoryBucket) {
+    inMemoryBucket.remainingQty = Math.max(0, (inMemoryBucket.remainingQty || 0) - 1);
+    inMemoryBucket.consumedQty = (inMemoryBucket.consumedQty || 0) + 1;
+    if (typeof subscription.markModified === "function") {
+      subscription.markModified("addonBalance");
+    }
+  }
 
   return {
     consumed: true,
@@ -411,7 +400,9 @@ async function releaseAddonBalanceAtomically({ subscription, addonId, addonPlanI
     { session, new: true }
   );
 
+  let releasedWithDecrement = true;
   if (!atomicResult) {
+    releasedWithDecrement = false;
     atomicResult = await Subscription.findOneAndUpdate(
       {
         _id: subscription._id,
@@ -424,7 +415,24 @@ async function releaseAddonBalanceAtomically({ subscription, addonId, addonPlanI
     );
   }
 
-  return { released: !!atomicResult };
+  if (!atomicResult) return { released: false };
+
+  // Keep the in-memory Mongoose document synchronized with the atomic
+  // addon balance updates performed via findOneAndUpdate(). Without this,
+  // the subsequent subscription.save({ session }) could overwrite the
+  // atomically updated addonBalance with stale in-memory values.
+  const inMemoryBucket = subscription.addonBalance[bucketIndex];
+  if (inMemoryBucket) {
+    inMemoryBucket.remainingQty = (inMemoryBucket.remainingQty || 0) + 1;
+    if (releasedWithDecrement) {
+      inMemoryBucket.consumedQty = Math.max(0, (inMemoryBucket.consumedQty || 0) - 1);
+    }
+    if (typeof subscription.markModified === "function") {
+      subscription.markModified("addonBalance");
+    }
+  }
+
+  return { released: true };
 }
 
 function reconcilePremiumBalanceForDay(subscription, existingDay, newPremiumUpgradeSelections, { dayId, date } = {}) {
@@ -658,13 +666,7 @@ async function evaluateDaySelectionPricingState({
     addonSelections: existingDay ? JSON.parse(JSON.stringify(existingDay.addonSelections || [])) : [],
   };
   if (requestedOneTimeAddonIds !== undefined) {
-    console.log("[DEBUG - BEFORE RECONCILE]", {
-      subscriptionId: subscription._id,
-      addonBalance: subscription.addonBalance,
-      requestedAddonCount: Array.isArray(requestedOneTimeAddonIds) ? requestedOneTimeAddonIds.length : 0,
-    });
-    
-    await reconcileAddonInclusions(subscription, addonContainer, requestedOneTimeAddonIds);
+      await reconcileAddonInclusions(subscription, addonContainer, requestedOneTimeAddonIds);
   }
 
   const commercialState = buildDayCommercialState({
@@ -676,11 +678,6 @@ async function evaluateDaySelectionPricingState({
     premiumExtraPayment: existingDay && existingDay.premiumExtraPayment ? existingDay.premiumExtraPayment : null,
   }, { subscription });
 
-  console.log("[DEBUG - AFTER RECONCILE]", {
-    included: addonContainer.addonSelections.filter(i => i.source === "subscription").length,
-    pending: addonContainer.addonSelections.filter(i => i.source === "pending_payment").length,
-    amountDue: commercialState.paymentRequirement ? commercialState.paymentRequirement.pendingAmountHalala : 0,
-  });
 
   return {
     addonSelections: addonContainer.addonSelections,
