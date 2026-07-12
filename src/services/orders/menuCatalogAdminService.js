@@ -268,12 +268,26 @@ function createMenuCatalogAdminService(deps) {
       query.categoryId = new mongoose.Types.ObjectId(String(categoryId));
     }
 
-    if (availableFor !== undefined && availableFor !== null && String(availableFor).trim() !== "") {
+    const isAddonPlanPicker = (
+      String(options.context || options.linkableFor || "").trim() === "addon_plan"
+      || String(options.view || "").trim() === "addon_plan_picker"
+    );
+
+    if (!isAddonPlanPicker && availableFor !== undefined && availableFor !== null && String(availableFor).trim() !== "") {
       const channel = String(availableFor).trim();
       if (!["one_time", "subscription"].includes(channel)) {
         throw new MenuValidationError("availableFor contains an unsupported channel");
       }
       query.availableFor = { $in: [channel] };
+    }
+
+    if (isAddonPlanPicker && !options.includeInactive) {
+      if (options.isVisible === undefined || options.isVisible === null || String(options.isVisible).trim() === "") {
+        query.isVisible = true;
+      }
+      if (options.isAvailable === undefined || options.isAvailable === null || String(options.isAvailable).trim() === "") {
+        query.isAvailable = true;
+      }
     }
 
     if (itemType !== undefined && itemType !== null && String(itemType).trim() !== "") {
@@ -312,31 +326,36 @@ function createMenuCatalogAdminService(deps) {
   }
 
   function serializeDashboardPickerProduct(row) {
+    const category = row.categoryId && typeof row.categoryId === "object" ? row.categoryId : null;
     return {
       id: String(row._id),
       key: row.key,
       name: row.name,
-      category: row.categoryId ? row.categoryId.key : (row.category || ""),
+      category: category ? category.key : (row.category || ""),
+      categoryName: category && category.name ? category.name : { ar: "", en: "" },
       image: row.imageUrl || "",
       isActive: row.isActive !== false,
+      isVisible: row.isVisible !== false,
+      isAvailable: row.isAvailable !== false,
     };
   }
 
   async function listProducts(options = {}) {
     const query = buildProductFilter(options);
-    if (options.view === "picker") {
+    const isPickerView = options.view === "picker" || options.view === "addon_plan_picker";
+    if (isPickerView && !options.includeInactive) {
       query.isActive = true;
     }
     
     const pagination = parsePaginationOptions(options);
     let find = MenuProduct.find(query).sort({ sortOrder: 1, createdAt: -1 });
     
-    if (options.view === "picker") {
+    if (isPickerView) {
       find = find.populate("categoryId");
     }
     
     find = find.lean();
-    const serializeFn = options.view === "picker" ? serializeDashboardPickerProduct : serializeDoc;
+    const serializeFn = isPickerView ? serializeDashboardPickerProduct : serializeDoc;
 
     if (!pagination) {
       const rows = await find;
@@ -369,18 +388,15 @@ function createMenuCatalogAdminService(deps) {
   }
 
   async function listCategories(options = {}) {
-    if (options.view === "picker") {
+    if (options.view === "picker" || options.view === "addon_plan_picker") {
       const categoryQuery = buildListQuery(options);
-      
-      const productQuery = { isActive: true };
-      if (options.isVisible !== undefined && options.isVisible !== null && String(options.isVisible).trim() !== "") {
-        productQuery.isVisible = normalizeBoolean(options.isVisible, "isVisible");
-      }
-      if (options.isAvailable !== undefined && options.isAvailable !== null && String(options.isAvailable).trim() !== "") {
-        productQuery.isAvailable = normalizeBoolean(options.isAvailable, "isAvailable");
-      }
-      if (options.availableFor) {
-        productQuery.availableFor = { $in: [options.availableFor] };
+
+      // Keep category counts on the exact same product filter used by the picker.
+      // categoryId is intentionally omitted so every category receives its own count.
+      const productQuery = buildProductFilter(options);
+      delete productQuery.categoryId;
+      if (!options.includeInactive) {
+        productQuery.isActive = true;
       }
       
       const products = await MenuProduct.find(productQuery).select("categoryId").lean();

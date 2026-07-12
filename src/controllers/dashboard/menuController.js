@@ -28,6 +28,8 @@ function listOptions(req) {
     limit: req.query.limit,
     contractVersion: req.query.contractVersion,
     view: req.query.view,
+    context: req.query.context,
+    linkableFor: req.query.linkableFor,
   };
 }
 

@@ -471,7 +471,7 @@ async function buildFullyPopulatedAddonDetail(addonId, { includeInternal = false
 
   const data = { ...cleanRow };
   data.id = String(row._id);
-  data.menuProductIds = row.menuProductIds || [];
+  data.menuProductIds = (row.menuProductIds || []).map(String);
   data.menuCategoryKeys = [];
   data.menuProductsCount = data.menuProductIds.length;
 
@@ -486,21 +486,18 @@ async function buildFullyPopulatedAddonDetail(addonId, { includeInternal = false
     let prodsQuery = MenuProduct.find({ _id: { $in: data.menuProductIds } }).populate("categoryId");
     if (session) prodsQuery = prodsQuery.session(session);
     const prods = await prodsQuery.lean();
+    const productsById = new Map(prods.map((product) => [String(product._id), product]));
 
-    data.menuProducts = prods.map((p) => ({
-      id: String(p._id),
-      _id: p._id,
-      key: p.key,
-      name: p.name,
-      image: p.imageUrl || "",
-      category: p.categoryId ? p.categoryId.key : "",
-      isActive: p.isActive,
-    }));
+    // Preserve the configured add-on product order and only count products that
+    // still resolve. Do not apply customer-channel filters to admin linkage data.
+    data.menuProducts = data.menuProductIds
+      .map((productId) => productsById.get(String(productId)))
+      .filter(Boolean)
+      .map(toDashboardMenuProductPickerDTO);
 
     // 3. Resolve union of products
-    const explicitProductIds = data.menuProductIds.map(String);
-    data.resolvedMenuProductIds = explicitProductIds;
-    data.resolvedMenuProductsCount = explicitProductIds.length;
+    data.resolvedMenuProductIds = data.menuProducts.map((product) => product.id);
+    data.resolvedMenuProductsCount = data.resolvedMenuProductIds.length;
 
     // 4. Fetch planPrices
     const matchQuery = includeInternal === true ? {} : Plan.getSellableQuery();
@@ -564,13 +561,19 @@ async function buildFullyPopulatedAddonDetail(addonId, { includeInternal = false
 }
 
 function toDashboardMenuProductPickerDTO(p) {
+  const populatedCategory = p.categoryId && typeof p.categoryId === "object" ? p.categoryId : null;
   return {
     id: String(p._id || p.id),
     key: p.key || "",
     name: p.name || { ar: "", en: "" },
-    category: p.category || "",
+    category: populatedCategory ? populatedCategory.key : (p.category || ""),
+    categoryName: populatedCategory && populatedCategory.name
+      ? populatedCategory.name
+      : (p.categoryName || { ar: "", en: "" }),
     image: p.imageUrl || p.image || "",
-    isActive: p.isActive !== false
+    isActive: p.isActive !== false,
+    isVisible: p.isVisible !== false,
+    isAvailable: p.isAvailable !== false,
   };
 }
 
@@ -601,8 +604,8 @@ function toDashboardAddonPlanLeanDTO(plan) {
     menuProductIds: (plan.menuProductIds || []).map(String),
     menuCategoryKeys: [],
     menuCategories: [],
-    resolvedMenuProductIds: (plan.menuProductIds || []).map(String),
-    resolvedMenuProductsCount: (plan.menuProductIds || []).length,
+    resolvedMenuProductIds: (plan.resolvedMenuProductIds || []).map(String),
+    resolvedMenuProductsCount: Number(plan.resolvedMenuProductsCount || 0),
     menuProducts: (plan.menuProducts || []).map(toDashboardMenuProductPickerDTO),
     planPrices: (plan.planPrices || []).map(toDashboardPlanPriceLeanDTO)
   };

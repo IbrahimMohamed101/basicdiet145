@@ -51,7 +51,7 @@ const planKeys = [
   "resolvedMenuProductsCount",
   "type"
 ];
-const productKeys = ["category", "id", "image", "isActive", "key", "name"];
+const productKeys = ["category", "categoryName", "id", "image", "isActive", "isAvailable", "isVisible", "key", "name"];
 const priceKeys = ["basePlanId", "basePlanName", "daysCount", "isActive", "mealsCount", "priceHalala", "priceLabel", "priceSar"];
 
 async function main() {
@@ -76,6 +76,48 @@ async function main() {
       isVisible: true,
       isAvailable: true,
     });
+    const oneTimeProduct = await MenuProduct.create({
+      categoryId: category._id,
+      key: "one_time_snack_contract",
+      name: { ar: "سناك الطلب الواحد", en: "One-time Snack" },
+      priceHalala: 800,
+      availableFor: ["one_time"],
+      isActive: true,
+      isVisible: true,
+      isAvailable: true,
+    });
+    await MenuProduct.create([
+      {
+        categoryId: category._id,
+        key: "inactive_snack_contract",
+        name: { ar: "غير نشط", en: "Inactive" },
+        priceHalala: 800,
+        availableFor: ["one_time"],
+        isActive: false,
+        isVisible: true,
+        isAvailable: true,
+      },
+      {
+        categoryId: category._id,
+        key: "invisible_snack_contract",
+        name: { ar: "غير ظاهر", en: "Invisible" },
+        priceHalala: 800,
+        availableFor: ["one_time"],
+        isActive: true,
+        isVisible: false,
+        isAvailable: true,
+      },
+      {
+        categoryId: category._id,
+        key: "unavailable_snack_contract",
+        name: { ar: "غير متاح", en: "Unavailable" },
+        priceHalala: 800,
+        availableFor: ["one_time"],
+        isActive: true,
+        isVisible: true,
+        isAvailable: false,
+      },
+    ]);
     const basePlan = await Plan.create({
       name: { ar: "سبعة أيام", en: "Seven Days" },
       daysCount: 7,
@@ -94,12 +136,46 @@ async function main() {
     assert.strictEqual(pickerRes[0].key, "snacks");
     assert.strictEqual(pickerRes[0].productsCount, 1);
 
+    // Add-on plan linking is an admin concern and must not inherit the
+    // subscription-channel filter used by existing menu consumers.
+    const subscriptionProducts = await menuCatalogService.listProducts({
+      view: "picker",
+      availableFor: "subscription",
+      isVisible: "true",
+      isAvailable: "true",
+    });
+    assert.deepStrictEqual(subscriptionProducts.map((row) => row.key), ["yogurt_cup_contract"]);
+
+    const addonPlanProducts = await menuCatalogService.listProducts({
+      view: "picker",
+      context: "addon_plan",
+    });
+    assert.deepStrictEqual(
+      addonPlanProducts.map((row) => row.key).sort(),
+      ["one_time_snack_contract", "yogurt_cup_contract"]
+    );
+    assert.deepStrictEqual(Object.keys(addonPlanProducts[0]).sort(), productKeys);
+    assert.deepStrictEqual(addonPlanProducts[0].categoryName, category.name.toObject());
+
+    const addonPlanProductsIncludingInactive = await menuCatalogService.listProducts({
+      view: "picker",
+      context: "addon_plan",
+      includeInactive: true,
+    });
+    assert.strictEqual(addonPlanProductsIncludingInactive.length, 5);
+
+    const addonPlanCategories = await menuCatalogService.listCategories({
+      view: "picker",
+      context: "addon_plan",
+    });
+    assert.strictEqual(addonPlanCategories[0].productsCount, addonPlanProducts.length);
+
     const createBody = {
       name: { ar: "اشتراك الزبادي", en: "Yogurt Subscription" },
       category: "snack",
       maxPerDay: 1,
       isActive: true,
-      menuProductIds: [String(product._id)],
+      menuProductIds: [String(product._id), String(oneTimeProduct._id)],
       planPrices: [{ basePlanId: String(basePlan._id), priceHalala: 7000, isActive: true }],
     };
     const created = await invoke(createDashboardAddonPlan, { body: createBody });
@@ -110,8 +186,10 @@ async function main() {
     assert.strictEqual(created.body.data.menuProducts[0].id, String(product._id));
     assert.strictEqual(created.body.data.planPrices[0].basePlanId, String(basePlan._id));
     assert.strictEqual(created.body.data.planPrices[0].priceHalala, 7000);
-    assert.deepStrictEqual(created.body.data.resolvedMenuProductIds, [String(product._id)]);
-    assert.strictEqual(created.body.data.resolvedMenuProductsCount, 1);
+    assert.deepStrictEqual(created.body.data.resolvedMenuProductIds, [String(product._id), String(oneTimeProduct._id)]);
+    assert.strictEqual(created.body.data.resolvedMenuProductsCount, 2);
+    assert.strictEqual(created.body.data.menuProducts.length, 2);
+    assert.strictEqual(created.body.data.menuProducts[1].key, "one_time_snack_contract");
     const addonId = created.body.data.id;
 
     // Test Category-Linked Addon Creation (now fails since category-linking is no longer allowed)
@@ -127,7 +205,7 @@ async function main() {
     assert.strictEqual(catCreated.statusCode, 400);
     assert.ok(catCreated.body.error.message.includes("menuProductIds must contain at least one product"));
 
-    assert.strictEqual(await MenuProduct.countDocuments(), 1, "POST links products; it must not create them");
+    assert.strictEqual(await MenuProduct.countDocuments(), 5, "POST links products; it must not create them");
     assert.strictEqual(await AddonPlanPrice.countDocuments({ addonPlanId: addonId, basePlanId: basePlan._id }), 1);
     const stored = await Addon.findById(addonId).lean();
     assert.strictEqual(stored.kind, "plan");
@@ -149,7 +227,9 @@ async function main() {
       priceHalala: 0,
       billingMode: "per_day",
       isActive: true,
-      menuProductIds: [String(product._id)], // Plan must have product linking
+      // Include a stale historical reference to verify that resolved counts are
+      // based on real products rather than the configured ObjectId array length.
+      menuProductIds: [String(product._id), String(new mongoose.Types.ObjectId())],
     });
 
     const listed = await invoke(listDashboardAddonPlans, { query: { view: "full", kind: "item" } });
@@ -160,6 +240,15 @@ async function main() {
     assert.ok(listed.body.data.plans.some((plan) => plan.id === String(decoyPlan._id)));
     assert.strictEqual(listed.body.data.summary.plansCount, 2);
     assert.strictEqual(listed.body.data.summary.matrixRowsCount, 1);
+    const listedCreatedPlan = listed.body.data.plans.find((plan) => plan.id === addonId);
+    assert.deepStrictEqual(listedCreatedPlan.resolvedMenuProductIds, [String(product._id), String(oneTimeProduct._id)]);
+    assert.strictEqual(listedCreatedPlan.resolvedMenuProductsCount, 2);
+    assert.strictEqual(listedCreatedPlan.menuProducts.length, 2);
+    const listedDecoyPlan = listed.body.data.plans.find((plan) => plan.id === String(decoyPlan._id));
+    assert.strictEqual(listedDecoyPlan.menuProductIds.length, 2);
+    assert.deepStrictEqual(listedDecoyPlan.resolvedMenuProductIds, [String(product._id)]);
+    assert.strictEqual(listedDecoyPlan.resolvedMenuProductsCount, 1);
+    assert.strictEqual(listedDecoyPlan.menuProducts.length, 1);
 
     const updated = await invoke(updateAddonPlan, {
       params: { id: addonId },
@@ -167,7 +256,7 @@ async function main() {
         name: { ar: "اشتراك الزبادي المطور", en: "Updated Yogurt Subscription" },
         category: "snack",
         maxPerDay: 0,
-        menuProductIds: [String(product._id)],
+        menuProductIds: [String(product._id), String(oneTimeProduct._id)],
         planPrices: [{ basePlanId: String(basePlan._id), priceHalala: 7500, isActive: true }],
       },
     });
@@ -191,7 +280,7 @@ async function main() {
       assert.strictEqual(invalid.statusCode, 400);
       assert.ok(invalid.body.error.message.includes(messageFragment), invalid.body.error.message);
     }
-    assert.strictEqual(await MenuProduct.countDocuments(), 1);
+    assert.strictEqual(await MenuProduct.countDocuments(), 5);
 
     const subscriptionId = new mongoose.Types.ObjectId();
     await Subscription.collection.insertOne({
