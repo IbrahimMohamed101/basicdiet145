@@ -852,7 +852,7 @@ const externalProductRows = [
   { key: "water", category: "drinks", itemType: "drink", name: name("مياه عادية", "Water"), priceHalala: 200 },
 ].map((row) => ({
   pricingModel: "fixed",
-  availableFor: row.itemType === "cold_sandwich" ? ["one_time", "subscription"] : ["one_time"],
+  availableFor: ["cold_sandwich", "juice", "dessert"].includes(row.itemType) ? ["one_time", "subscription"] : ["one_time"],
   ui: { cardVariant: row.itemType === "cold_sandwich" ? "sandwich_card" : "addon_card", cardSize: "small", imageRatio: "square" },
   ...row,
 }));
@@ -1430,28 +1430,20 @@ async function seedSubscriptionAddons(productMap, { sync = false } = {}) {
   const AddonPlanPrice = require("../../src/models/AddonPlanPrice");
   const Plan = require("../../src/models/Plan");
 
-  // Fetch relevant products by key
+  // Fetch relevant products by key/itemType
   const juiceProducts = await MenuProduct.find({
-    key: { $in: ["orange_juice", "apple_juice", "mango_juice"] }
+    itemType: "juice",
+    isActive: true
   }).lean();
 
   const snackProducts = await MenuProduct.find({
-    key: { $in: ["protein_snack", "healthy_dessert", "snack_box"] }
+    itemType: "dessert",
+    isActive: true
   }).lean();
 
-  const saladCategory = await MenuCategory.findOne({ key: "light_options" }).lean();
   const saladProducts = await MenuProduct.find({
-    $or: [
-      {
-        categoryId: saladCategory ? saladCategory._id : null,
-        itemType: { $in: ["green_salad", "fruit_salad"] },
-        isActive: true
-      },
-      {
-        key: { $in: ["greek_salad", "fruit_salad_addon", "vegetable_salad", "green_salad", "fruit_salad"] },
-        isActive: true
-      }
-    ]
+    key: { $in: ["greek_salad", "fruit_salad_addon", "vegetable_salad"] },
+    isActive: true
   }).lean();
 
   const juiceProductIds = juiceProducts.map((p) => p._id);

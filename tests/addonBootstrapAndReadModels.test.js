@@ -68,7 +68,7 @@ async function runTests() {
     assert.strictEqual(juiceSub.maxPerDay, 1);
     assert.strictEqual(juiceSub.pricingMode, "base_plan_matrix");
     assert.ok(juiceSub.menuProductIds.includes(orangeJuice._id), "Juice plan should link to Orange Juice");
-    assert.strictEqual(juiceSub.menuProductIds.length, 3);
+    assert.strictEqual(juiceSub.menuProductIds.length, 9);
 
     const base7Day = await Plan.findOne({ durationDays: 7 });
     assert.ok(base7Day, "7-Day base plan should be seeded");
@@ -99,7 +99,7 @@ async function runTests() {
     const plansList = resList.data.data;
     assert.strictEqual(plansList.length, 3);
     const juiceListPlan = plansList.find(p => p.category === "juice");
-    assert.strictEqual(juiceListPlan.menuProductsCount, 3);
+    assert.strictEqual(juiceListPlan.menuProductsCount, 9);
     assert.strictEqual(juiceListPlan.pricingMode, "base_plan_matrix");
     assert.strictEqual(juiceListPlan.planPricesCount, 3, "planPricesCount should strictly count sellable base plans only");
     assert.strictEqual(juiceListPlan.priceHalala, undefined, "Legacy priceHalala should be stripped from top level");
@@ -116,11 +116,11 @@ async function runTests() {
     const detailData = resDetail.data.data;
     assert.strictEqual(detailData.id, juiceSub._id.toString());
     assert.strictEqual(detailData.pricingMode, "base_plan_matrix");
-    assert.strictEqual(detailData.menuProductsCount, 3);
+    assert.strictEqual(detailData.menuProductsCount, 9);
     assert.strictEqual(detailData.priceHalala, undefined, "Legacy priceHalala should be stripped from top level");
     assert.ok(detailData.legacyCompatibility, "legacyCompatibility should exist on detail");
     assert.strictEqual(detailData.legacyCompatibility.priceHalala, 1100);
-    assert.strictEqual(detailData.menuProducts.length, 3);
+    assert.strictEqual(detailData.menuProducts.length, 9);
     assert.strictEqual(detailData.menuProducts[0].name.en, "Orange Juice");
     assert.strictEqual(detailData.planPricesCount, 3);
     assert.strictEqual(detailData.planPrices.length, 3);
@@ -191,7 +191,7 @@ async function runTests() {
     assert.strictEqual(juiceOpt.priceLabel, "100 SAR");
     assert.strictEqual(juiceOpt.pricingMode, "base_plan_matrix");
     assert.strictEqual(juiceOpt.maxPerDay, 1);
-    assert.strictEqual(juiceOpt.menuProductsCount, 3);
+    assert.strictEqual(juiceOpt.menuProductsCount, 9);
     assert.ok(juiceOpt.menuProducts.find(p => p.name.en === "Orange Juice"), "Should contain Orange Juice in menuProducts");
 
     const snackOpt = custOpts.find(o => o.category === "snack");
@@ -201,15 +201,16 @@ async function runTests() {
     const saladOpt = custOpts.find(o => o.category === "small_salad");
     assert.ok(saladOpt);
     assert.strictEqual(saladOpt.priceHalala, 9000, "Small salad matrix price for 7-day must be 9000");
-    const greenSaladProd = saladOpt.menuProducts.find(p => p.key === "green_salad");
-    assert.ok(greenSaladProd, "Small Salad Subscription must include Green Salad - 100g");
-    assert.strictEqual(greenSaladProd.isActive, true, "Green Salad must be active");
+    const greekSaladProd = saladOpt.menuProducts.find(p => p.key === "greek_salad");
+    assert.ok(greekSaladProd, "Small Salad Subscription must include Greek Salad");
+    assert.strictEqual(greekSaladProd.isActive, true, "Greek Salad must be active");
 
     console.log("--- 7.5 Testing Daily selection validation ---");
     const { reconcileAddonInclusions } = require("../src/services/subscription/subscriptionSelectionService");
     const { resolveAddonChoiceProductById } = require("../src/services/subscription/subscriptionAddonChoicesService");
 
     const saladSubDoc = await Addon.findOne({ kind: "plan", category: "small_salad" });
+    const greekSaladDoc = await MenuProduct.findOne({ key: "greek_salad" });
     const greenSaladDoc = await MenuProduct.findOne({ key: "green_salad" });
     const disallowedDoc = await MenuProduct.findOne({ key: "greek_yogurt" });
 
@@ -220,6 +221,7 @@ async function runTests() {
           category: "small_salad",
           name: "Small Salad Subscription",
           maxPerDay: 1,
+          menuProductIds: saladSubDoc.menuProductIds,
         }
       ],
       addonBalance: [
@@ -231,20 +233,33 @@ async function runTests() {
       ]
     };
 
-    // Daily selection validation accepts Green Salad - 100g
+    // Daily selection validation accepts Greek Salad
     const selectionDay = { addonSelections: [] };
     await reconcileAddonInclusions(
       clientSub,
       selectionDay,
-      [greenSaladDoc._id.toString()],
+      [greekSaladDoc._id.toString()],
       { resolveChoiceProductById: resolveAddonChoiceProductById }
     );
     assert.strictEqual(selectionDay.addonSelections.length, 1);
-    assert.strictEqual(String(selectionDay.addonSelections[0].addonId), String(greenSaladDoc._id));
+    assert.strictEqual(String(selectionDay.addonSelections[0].addonId), String(greekSaladDoc._id));
     assert.strictEqual(selectionDay.addonSelections[0].source, "subscription");
     assert.strictEqual(selectionDay.addonSelections[0].priceHalala, 0);
 
-    // Daily selection validation rejects products outside the entitlement
+    // Green salad is outside the entitlement but a valid daily addon, so it falls back to paid
+    const paidSelectionDay = { addonSelections: [] };
+    await reconcileAddonInclusions(
+      clientSub,
+      paidSelectionDay,
+      [greenSaladDoc._id.toString()],
+      { resolveChoiceProductById: resolveAddonChoiceProductById }
+    );
+    assert.strictEqual(paidSelectionDay.addonSelections.length, 1);
+    assert.strictEqual(String(paidSelectionDay.addonSelections[0].addonId), String(greenSaladDoc._id));
+    assert.strictEqual(paidSelectionDay.addonSelections[0].source, "pending_payment");
+    assert.strictEqual(paidSelectionDay.addonSelections[0].priceHalala, 1500);
+
+    // Daily selection validation rejects products outside the mapping category
     const invalidSelectionDay = { addonSelections: [] };
     try {
       await reconcileAddonInclusions(
