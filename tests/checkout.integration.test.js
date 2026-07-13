@@ -16,7 +16,21 @@ require('dotenv').config();
 const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
 const http = require('http');
+const { MongoMemoryReplSet } = require('mongodb-memory-server');
 
+const moyasarService = require('../src/services/moyasarService');
+let mockInvoiceSequence = 0;
+moyasarService.createInvoice = async (payload) => {
+  mockInvoiceSequence += 1;
+  return {
+    id: `inv_checkout_integration_${mockInvoiceSequence}`,
+    url: `https://payments.example.test/checkout/${mockInvoiceSequence}`,
+    amount: payload.amount,
+    currency: payload.currency || 'SAR',
+    status: 'initiated',
+    metadata: payload.metadata || {},
+  };
+};
 const { createApp } = require('../src/app');
 const User = require('../src/models/User');
 const Subscription = require('../src/models/Subscription');
@@ -46,6 +60,7 @@ function issueAppAccessToken(userId) {
 const isTestEnv = process.env.NODE_ENV === 'test';
 
 let server = null;
+let mongoReplSet = null;
 let app = null;
 let testUser = null;
 let authToken = null;
@@ -370,7 +385,13 @@ async function stopServer() {
 const { resolveMongoUri, getDbNameFromUri } = require("../src/utils/mongoUriResolver");
 
 async function connectDatabase() {
-  const mongoUri = resolveMongoUri();
+  const useMemoryReplSet = String(process.env.USE_MONGODB_MEMORY_REPLSET || '').toLowerCase() === 'true';
+  const mongoUri = useMemoryReplSet
+    ? await (async () => {
+      mongoReplSet = await MongoMemoryReplSet.create({ replSet: { storageEngine: 'wiredTiger' } });
+      return mongoReplSet.getUri(`checkout_integration_${Date.now()}`);
+    })()
+    : resolveMongoUri();
   const dbName = getDbNameFromUri(mongoUri);
 
   console.log(`Connecting to database: ${dbName}...`);
@@ -391,6 +412,10 @@ async function connectDatabase() {
 
 async function disconnectDatabase() {
   await mongoose.disconnect();
+  if (mongoReplSet) {
+    await mongoReplSet.stop();
+    mongoReplSet = null;
+  }
 }
 
 async function runTests() {
