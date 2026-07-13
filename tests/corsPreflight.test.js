@@ -64,6 +64,39 @@ function includesHeaderValue(headerValue, expectedValue) {
     assert.strictEqual(res.headers["access-control-allow-origin"], "https://dashboard.example.com");
   });
 
+  await test("rejects an untrusted browser origin", async () => {
+    delete process.env.CORS_ORIGINS;
+    const app = createApp();
+    const res = await request(app)
+      .options("/api/subscriptions/checkout")
+      .set("Origin", "https://malicious.example.com")
+      .set("Access-Control-Request-Method", "POST")
+      .set("Access-Control-Request-Headers", "authorization,content-type");
+
+    assert.strictEqual(res.status, 403);
+    assert.strictEqual(res.headers["access-control-allow-origin"], undefined);
+    assert.strictEqual(res.body?.error?.code, "CORS");
+  });
+
+  await test("allows checkout idempotency and correlation headers", async () => {
+    const app = createApp();
+    const res = await request(app)
+      .options("/api/subscriptions/checkout")
+      .set("Origin", "http://localhost:5173")
+      .set("Access-Control-Request-Method", "POST")
+      .set(
+        "Access-Control-Request-Headers",
+        "authorization,content-type,idempotency-key,x-idempotency-key,x-request-id,x-correlation-id"
+      );
+
+    assert.strictEqual(res.status, 204);
+    const allowed = res.headers["access-control-allow-headers"];
+    assert.ok(includesHeaderValue(allowed, "Idempotency-Key"));
+    assert.ok(includesHeaderValue(allowed, "X-Idempotency-Key"));
+    assert.ok(includesHeaderValue(allowed, "X-Request-Id"));
+    assert.ok(includesHeaderValue(allowed, "X-Correlation-Id"));
+  });
+
   if (results.failed > 0) {
     process.exitCode = 1;
   }
