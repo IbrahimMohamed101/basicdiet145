@@ -1,3 +1,4 @@
+# One-shot workflow; it deletes itself after applying the fixes.
 name: Agent final CI fixes
 
 on:
