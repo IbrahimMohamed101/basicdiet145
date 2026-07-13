@@ -94,6 +94,9 @@ jobs:
       - name: Checkout
         run: npm run test:checkout
 
+      - name: Concurrent checkout invoice initialization
+        run: npm run test:checkout-concurrency
+
       - name: One-time order lifecycle
         run: npm run test:orders
 
