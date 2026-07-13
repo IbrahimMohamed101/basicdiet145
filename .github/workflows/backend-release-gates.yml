@@ -15,7 +15,7 @@ permissions:
 jobs:
   contracts-and-addon-lifecycle:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 40
 
     steps:
       - name: Checkout
@@ -30,36 +30,80 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Unit baseline
-        run: npm test
+      - id: unit_baseline
+        name: Unit baseline
+        continue-on-error: true
+        run: npm test 2>&1 | tee -a ci-contracts.log; exit ${PIPESTATUS[0]}
 
-      - name: Add-on allocation policies
-        run: npm run test:addon-credit-allocation
+      - id: addon_allocation
+        name: Add-on allocation policies
+        continue-on-error: true
+        run: npm run test:addon-credit-allocation 2>&1 | tee -a ci-contracts.log; exit ${PIPESTATUS[0]}
 
-      - name: Add-on dashboard and mobile parity
-        run: npm run test:addon-dashboard-mobile-parity
+      - id: addon_parity
+        name: Add-on dashboard and mobile parity
+        continue-on-error: true
+        run: npm run test:addon-dashboard-mobile-parity 2>&1 | tee -a ci-contracts.log; exit ${PIPESTATUS[0]}
 
-      - name: Add-on activation, balance, save, and confirmation lifecycle
-        run: npm run test:addon-credit-lifecycle
+      - id: addon_lifecycle
+        name: Add-on activation, balance, save, and confirmation lifecycle
+        continue-on-error: true
+        run: npm run test:addon-credit-lifecycle 2>&1 | tee -a ci-contracts.log; exit ${PIPESTATUS[0]}
 
-      - name: Catalog and validator consistency
-        run: npm run test:catalog-validator-consistency
+      - id: catalog_consistency
+        name: Catalog and validator consistency
+        continue-on-error: true
+        run: npm run test:catalog-validator-consistency 2>&1 | tee -a ci-contracts.log; exit ${PIPESTATUS[0]}
 
-      - name: Dashboard and mobile menu parity
-        run: npm run test:menu-dashboard-mobile-parity
+      - id: menu_parity
+        name: Dashboard and mobile menu parity
+        continue-on-error: true
+        run: npm run test:menu-dashboard-mobile-parity 2>&1 | tee -a ci-contracts.log; exit ${PIPESTATUS[0]}
 
-      - name: Meal Builder parity
-        run: npm run test:meal-builder-dashboard-mobile-parity
+      - id: builder_parity
+        name: Meal Builder parity
+        continue-on-error: true
+        run: npm run test:meal-builder-dashboard-mobile-parity 2>&1 | tee -a ci-contracts.log; exit ${PIPESTATUS[0]}
 
-      - name: Premium salad eligibility
-        run: npm run test:premium-salad-eligibility
+      - id: premium_salad
+        name: Premium salad eligibility
+        continue-on-error: true
+        run: npm run test:premium-salad-eligibility 2>&1 | tee -a ci-contracts.log; exit ${PIPESTATUS[0]}
 
-      - name: Mobile contracts
-        run: npm run test:mobile-contracts
+      - id: mobile_contracts
+        name: Mobile contracts
+        continue-on-error: true
+        run: npm run test:mobile-contracts 2>&1 | tee -a ci-contracts.log; exit ${PIPESTATUS[0]}
+
+      - name: Upload contracts logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: contracts-and-addon-lifecycle-logs
+          path: ci-contracts.log
+
+      - name: Enforce contracts gates
+        if: always()
+        run: |
+          outcomes=(
+            "${{ steps.unit_baseline.outcome }}"
+            "${{ steps.addon_allocation.outcome }}"
+            "${{ steps.addon_parity.outcome }}"
+            "${{ steps.addon_lifecycle.outcome }}"
+            "${{ steps.catalog_consistency.outcome }}"
+            "${{ steps.menu_parity.outcome }}"
+            "${{ steps.builder_parity.outcome }}"
+            "${{ steps.premium_salad.outcome }}"
+            "${{ steps.mobile_contracts.outcome }}"
+          )
+          printf 'Gate outcomes: %s\n' "${outcomes[*]}"
+          for outcome in "${outcomes[@]}"; do
+            test "$outcome" = "success" || exit 1
+          done
 
   commerce-and-security:
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       USE_MONGODB_MEMORY_REPLSET: "true"
 
@@ -79,39 +123,86 @@ jobs:
       - name: Normalize isolated checkout test database name
         run: sed -i 's/checkout_integration_/checkout_integration_test_/g' tests/checkout.integration.test.js
 
-      - name: Production dependency audit
-        run: npm audit --omit=dev --audit-level=high
+      - id: dependency_audit
+        name: Production dependency audit
+        continue-on-error: true
+        run: npm audit --omit=dev --audit-level=high 2>&1 | tee -a ci-commerce.log; exit ${PIPESTATUS[0]}
 
-      - name: Canonical ownership rules
-        run: npm run test:canonical-authority
+      - id: canonical_authority
+        name: Canonical ownership rules
+        continue-on-error: true
+        run: npm run test:canonical-authority 2>&1 | tee -a ci-commerce.log; exit ${PIPESTATUS[0]}
 
-      - name: Dashboard menu role policy
-        run: npm run test:dashboard-menu-roles
+      - id: dashboard_roles
+        name: Dashboard menu role policy
+        continue-on-error: true
+        run: npm run test:dashboard-menu-roles 2>&1 | tee -a ci-commerce.log; exit ${PIPESTATUS[0]}
 
-      - name: One-time menu and role permissions
-        run: npm run test:one-time-menu
+      - id: checkout
+        name: Checkout
+        continue-on-error: true
+        run: npm run test:checkout 2>&1 | tee -a ci-commerce.log; exit ${PIPESTATUS[0]}
 
-      - name: Checkout
-        run: npm run test:checkout
+      - id: checkout_concurrency
+        name: Concurrent checkout invoice initialization
+        continue-on-error: true
+        run: npm run test:checkout-concurrency 2>&1 | tee -a ci-commerce.log; exit ${PIPESTATUS[0]}
 
-      - name: Concurrent checkout invoice initialization
-        run: npm run test:checkout-concurrency
+      - id: one_time_menu
+        name: One-time menu and role permissions
+        continue-on-error: true
+        run: npm run test:one-time-menu 2>&1 | tee -a ci-commerce.log; exit ${PIPESTATUS[0]}
 
-      - name: One-time order lifecycle
-        run: npm run test:orders
+      - id: orders
+        name: One-time order lifecycle
+        continue-on-error: true
+        run: npm run test:orders 2>&1 | tee -a ci-commerce.log; exit ${PIPESTATUS[0]}
 
-      - name: Subscription lifecycle policies
-        run: npm run test:subscriptions
+      - id: subscriptions
+        name: Subscription lifecycle policies
+        continue-on-error: true
+        run: npm run test:subscriptions 2>&1 | tee -a ci-commerce.log; exit ${PIPESTATUS[0]}
 
-      - name: Authentication and webhook security
-        run: npm run test:security
+      - id: security
+        name: Authentication and webhook security
+        continue-on-error: true
+        run: npm run test:security 2>&1 | tee -a ci-commerce.log; exit ${PIPESTATUS[0]}
 
-      - name: Payment initialization safety
-        run: npm run test:payment-init-logging
+      - id: payment_init
+        name: Payment initialization safety
+        continue-on-error: true
+        run: npm run test:payment-init-logging 2>&1 | tee -a ci-commerce.log; exit ${PIPESTATUS[0]}
+
+      - name: Upload commerce logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: commerce-and-security-logs
+          path: ci-commerce.log
+
+      - name: Enforce commerce gates
+        if: always()
+        run: |
+          outcomes=(
+            "${{ steps.dependency_audit.outcome }}"
+            "${{ steps.canonical_authority.outcome }}"
+            "${{ steps.dashboard_roles.outcome }}"
+            "${{ steps.checkout.outcome }}"
+            "${{ steps.checkout_concurrency.outcome }}"
+            "${{ steps.one_time_menu.outcome }}"
+            "${{ steps.orders.outcome }}"
+            "${{ steps.subscriptions.outcome }}"
+            "${{ steps.security.outcome }}"
+            "${{ steps.payment_init.outcome }}"
+          )
+          printf 'Gate outcomes: %s\n' "${outcomes[*]}"
+          for outcome in "${outcomes[@]}"; do
+            test "$outcome" = "success" || exit 1
+          done
 
   operations-and-admin:
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       USE_MONGODB_MEMORY_REPLSET: "true"
 
@@ -131,20 +222,55 @@ jobs:
       - name: Normalize isolated meal planner test database name
         run: sed -i 's/meal_planner_integration_/meal_planner_integration_test_/g' tests/mealPlanner.integration.test.js
 
-      - name: Meal planner integration
-        run: npm run test:integration
+      - id: meal_planner
+        name: Meal planner integration
+        continue-on-error: true
+        run: npm run test:integration 2>&1 | tee -a ci-operations.log; exit ${PIPESTATUS[0]}
 
-      - name: Builder v2 explicit compatibility
-        run: npm run test:builder-catalog-v2-contract
+      - id: builder_v2
+        name: Builder v2 explicit compatibility
+        continue-on-error: true
+        run: npm run test:builder-catalog-v2-contract 2>&1 | tee -a ci-operations.log; exit ${PIPESTATUS[0]}
 
-      - name: Dashboard manual deductions and pickup
-        run: npm run test:dashboard-manual-deduction
+      - id: manual_deduction
+        name: Dashboard manual deductions and pickup
+        continue-on-error: true
+        run: npm run test:dashboard-manual-deduction 2>&1 | tee -a ci-operations.log; exit ${PIPESTATUS[0]}
 
-      - name: Dashboard accounting
-        run: npm run test:dashboard-accounting
+      - id: accounting
+        name: Dashboard accounting
+        continue-on-error: true
+        run: npm run test:dashboard-accounting 2>&1 | tee -a ci-operations.log; exit ${PIPESTATUS[0]}
 
-      - name: Account deletion
-        run: npm run test:account-deletion
+      - id: account_deletion
+        name: Account deletion
+        continue-on-error: true
+        run: npm run test:account-deletion 2>&1 | tee -a ci-operations.log; exit ${PIPESTATUS[0]}
 
-      - name: Weekly menu dashboard
-        run: npm run test:weekly-menu-dashboard
+      - id: weekly_menu
+        name: Weekly menu dashboard
+        continue-on-error: true
+        run: npm run test:weekly-menu-dashboard 2>&1 | tee -a ci-operations.log; exit ${PIPESTATUS[0]}
+
+      - name: Upload operations logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: operations-and-admin-logs
+          path: ci-operations.log
+
+      - name: Enforce operations gates
+        if: always()
+        run: |
+          outcomes=(
+            "${{ steps.meal_planner.outcome }}"
+            "${{ steps.builder_v2.outcome }}"
+            "${{ steps.manual_deduction.outcome }}"
+            "${{ steps.accounting.outcome }}"
+            "${{ steps.account_deletion.outcome }}"
+            "${{ steps.weekly_menu.outcome }}"
+          )
+          printf 'Gate outcomes: %s\n' "${outcomes[*]}"
+          for outcome in "${outcomes[@]}"; do
+            test "$outcome" = "success" || exit 1
+          done
