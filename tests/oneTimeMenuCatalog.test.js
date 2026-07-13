@@ -675,12 +675,17 @@ async function seedViaDashboard(api) {
       assert(endpointCatalog, "endpoint returns builderCatalog");
       assert.strictEqual(endpointCatalog.contractVersion, "meal_planner_menu.v3");
       assert(res.body.data.plannerCatalog, "endpoint includes plannerCatalog");
-      assert(res.body.data.builderCatalogV2, "endpoint includes builderCatalogV2");
+      assert.strictEqual(res.body.data.builderCatalogV2, undefined, "default v3 response omits builderCatalogV2");
       for (const key of ["categories", "proteins", "carbs", "premiumProteins", "premiumLargeSalad"]) {
         assert.strictEqual(endpointCatalog[key], undefined, `endpoint builderCatalog omits legacy ${key}`);
       }
 
       assert(Array.isArray(endpointCatalog.sections), "endpoint builderCatalog.sections is an array");
+
+      const v2Res = await api.get("/api/subscriptions/meal-planner-menu?lang=en&contractVersion=v2");
+      expectStatus(v2Res, 200, "subscription meal planner menu v2 compatibility");
+      assert(v2Res.body.data.builderCatalogV2, "explicit v2 request includes builderCatalogV2");
+      assert.strictEqual(v2Res.body.data.builderCatalogV2.contractVersion, "meal_planner_menu.v2");
     });
 
     await resetDatabase();
