@@ -8,26 +8,18 @@ const {
   isLinkedDocGloballyAvailable,
   loadCatalogItemsByIdForDocs,
 } = require("../catalog/catalogAvailabilityService");
+const {
+  SUBSCRIPTION_ADDON_CATEGORIES,
+  SUBSCRIPTION_ADDON_CHOICE_MAPPINGS,
+  buildAddonEntitlementEligibility,
+  isAddonChoiceEligibleForAllowance,
+  resolveAddonCategoryForMenuProduct,
+} = require("./subscriptionAddonPolicyService");
+const {
+  availableForChannelQuery,
+} = require("./subscriptionMenuEligibilityPolicyService");
 
 const SYSTEM_CURRENCY = "SAR";
-
-const SUBSCRIPTION_ADDON_CHOICE_MAPPINGS = Object.freeze({
-  juice: Object.freeze({
-    category: "juice",
-    sourceCategories: Object.freeze(["juices", "drinks"]),
-  }),
-  snack: Object.freeze({
-    category: "snack",
-    sourceCategories: Object.freeze(["desserts"]),
-  }),
-  small_salad: Object.freeze({
-    category: "small_salad",
-    sourceCategories: Object.freeze(["light_options"]),
-    productKeys: Object.freeze(["green_salad", "small_salad", "fruit_salad", "greek_salad", "vegetable_salad", "fruit_salad_addon"]),
-  }),
-});
-
-const SUBSCRIPTION_ADDON_CATEGORIES = Object.freeze(Object.keys(SUBSCRIPTION_ADDON_CHOICE_MAPPINGS));
 
 function isDailyAddonMenuProduct(product) {
   return String(product && product.kind || "").toLowerCase() !== "plan"
@@ -38,16 +30,6 @@ function isDailyAddonMenuProduct(product) {
 
 function localized(value, lang) {
   return pickLang(value, lang) || pickLang(value, "en") || pickLang(value, "ar") || "";
-}
-
-function availableForOneTimeQuery() {
-  return {
-    $or: [
-      { availableFor: { $exists: false } },
-      { availableFor: [] },
-      { availableFor: "one_time" },
-    ],
-  };
 }
 
 function activePublishedQuery(extra = {}) {
@@ -120,7 +102,7 @@ async function findMappedProducts(categoryRows, mapping, { MenuProductModel = Me
   const categoryIds = categoryRows.map((category) => category._id);
   const productQuery = activePublishedQuery({
     categoryId: { $in: categoryIds },
-    ...availableForOneTimeQuery(),
+    ...availableForChannelQuery("one_time"),
   });
   if (Array.isArray(mapping.productKeys) && mapping.productKeys.length) {
     productQuery.key = { $in: mapping.productKeys };
@@ -139,22 +121,11 @@ async function buildAddonChoicesCatalog({
   subscriptionId = null,
   models = {},
 } = {}) {
-  const entitledCategories = new Set();
-  const legacyEligibleProductIds = new Set();
-  let hasSubscriptionFilter = false;
+  let entitlementEligibility = buildAddonEntitlementEligibility(null);
   if (subscriptionId) {
     const SubscriptionModel = models.SubscriptionModel || mongoose.model("Subscription");
     const sub = await SubscriptionModel.findById(subscriptionId).lean();
-    if (sub && Array.isArray(sub.addonSubscriptions)) {
-      hasSubscriptionFilter = true;
-      for (const ent of sub.addonSubscriptions) {
-        if (ent && ent.category) {
-          entitledCategories.add(String(ent.category));
-        } else if (ent && Array.isArray(ent.menuProductIds)) {
-          ent.menuProductIds.forEach((id) => legacyEligibleProductIds.add(String(id)));
-        }
-      }
-    }
+    entitlementEligibility = buildAddonEntitlementEligibility(sub);
   }
 
   const categories = normalizeCategoryFilter(category);
@@ -181,10 +152,13 @@ async function buildAddonChoicesCatalog({
       })
       .filter(Boolean);
 
-    if (hasSubscriptionFilter) {
+    if (entitlementEligibility.hasSubscriptionFilter) {
       choices.forEach((choice) => {
-        choice.isEligibleForAllowance = entitledCategories.has(addonCategory)
-          || legacyEligibleProductIds.has(String(choice.id));
+        choice.isEligibleForAllowance = isAddonChoiceEligibleForAllowance(
+          entitlementEligibility,
+          addonCategory,
+          choice.id
+        );
       });
     }
 
@@ -204,7 +178,7 @@ async function resolveAddonChoiceProductById(productId, { models = {} } = {}) {
   const MenuCategoryModel = models.MenuCategoryModel || MenuCategory;
   const product = await MenuProductModel.findOne(activePublishedQuery({
     _id: productId,
-    ...availableForOneTimeQuery(),
+    ...availableForChannelQuery("one_time"),
   })).lean();
   if (!product) {
     const AddonModel = mongoose.model("Addon");
@@ -227,15 +201,12 @@ async function resolveAddonChoiceProductById(productId, { models = {} } = {}) {
   })).lean();
   if (!category) return null;
 
-  for (const mapping of Object.values(SUBSCRIPTION_ADDON_CHOICE_MAPPINGS)) {
-    if (!mapping.sourceCategories.includes(category.key)) continue;
-    if (Array.isArray(mapping.productKeys) && mapping.productKeys.length && !mapping.productKeys.includes(product.key)) {
-      continue;
-    }
+  const addonCategory = resolveAddonCategoryForMenuProduct(product, category.key);
+  if (addonCategory) {
     return {
       product,
       category,
-      addonCategory: mapping.category,
+      addonCategory,
     };
   }
 

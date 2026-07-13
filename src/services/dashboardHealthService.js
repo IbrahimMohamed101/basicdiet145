@@ -13,7 +13,7 @@ const ProductOptionGroup = require("../models/ProductOptionGroup");
 const catalogHealthService = require("./catalogHealthService");
 const {
   SUBSCRIPTION_ADDON_CHOICE_MAPPINGS,
-} = require("./subscription/subscriptionAddonChoicesService");
+} = require("./subscription/subscriptionAddonPolicyService");
 const {
   MEAL_SELECTION_TYPES,
   PREMIUM_MEAL_PROTEIN_KEYS,
@@ -24,8 +24,9 @@ const {
   loadCatalogItemsByIdForDocs,
 } = require("./catalog/catalogAvailabilityService");
 const {
+  isMenuItemEnabledForSubscription,
   isSubscriptionPremiumLargeSaladProtein,
-} = require("./subscription/premiumLargeSaladEligibilityService");
+} = require("./subscription/subscriptionMenuEligibilityPolicyService");
 
 function countBy(rows, selector) {
   return (Array.isArray(rows) ? rows : []).reduce((acc, row) => {
@@ -57,13 +58,6 @@ function addCheck(collection, level, code, message, details = {}) {
   };
   collection.push(row);
   return row;
-}
-
-function isSubscriptionEnabled(doc) {
-  if (!doc) return false;
-  if (doc.availableForSubscription === false) return false;
-  if (!Array.isArray(doc.availableFor) || doc.availableFor.length === 0) return true;
-  return doc.availableFor.includes("subscription");
 }
 
 function isOneTimeEnabled(doc) {
@@ -225,7 +219,7 @@ async function getSubscriptionPlannerReadinessReport() {
     const product = productsByKey.get(key);
     const issue = activePublishedIssue(product, "PLANNER_PRODUCT", product?._id);
     if (issue) addCheck(errors, "error", issue, `Required subscription planner product ${key} is not ready`, { productKey: key, productId: product?._id ? String(product._id) : null });
-    else if (!isSubscriptionEnabled(product)) addCheck(errors, "error", "PLANNER_PRODUCT_NOT_SUBSCRIPTION_ENABLED", `Required product ${key} is not subscription-enabled`, { productKey: key, productId: String(product._id) });
+    else if (!isMenuItemEnabledForSubscription(product)) addCheck(errors, "error", "PLANNER_PRODUCT_NOT_SUBSCRIPTION_ENABLED", `Required product ${key} is not subscription-enabled`, { productKey: key, productId: String(product._id) });
     else if (!isLinkedDocGloballyAvailable(product, catalogItemsById)) addCheck(errors, "error", "PLANNER_PRODUCT_CATALOG_ITEM_UNAVAILABLE", `Required product ${key} has an unavailable linked CatalogItem`, { productKey: key, productId: String(product._id) });
     else addCheck(checks, "ok", "PLANNER_PRODUCT_READY", `Required product ${key} is ready`, { productKey: key, productId: String(product._id) });
   }
@@ -273,7 +267,7 @@ async function getSubscriptionPlannerReadinessReport() {
       const optionIssue = activePublishedIssue(option, "PLANNER_OPTION", relation.optionId);
       if (!groupRelation) addCheck(errors, "error", "PLANNER_PRODUCT_GROUP_RELATION_NOT_FOUND", `Product ${productKey} option relation references a missing group relation`, { productKey, groupId: String(relation.groupId), optionId: String(relation.optionId) });
       if (optionIssue) addCheck(errors, "error", optionIssue, `Product ${productKey} option ${key || relation.optionId} is not ready`, { productKey, groupKey, optionKey: key, optionId: String(relation.optionId) });
-      else if (!isSubscriptionEnabled(option) && ["basic_meal", "premium_large_salad"].includes(productKey)) addCheck(errors, "error", "PLANNER_OPTION_UNAVAILABLE", `Option ${key} is not subscription-enabled`, { productKey, groupKey, optionKey: key, optionId: String(option._id) });
+      else if (!isMenuItemEnabledForSubscription(option) && ["basic_meal", "premium_large_salad"].includes(productKey)) addCheck(errors, "error", "PLANNER_OPTION_UNAVAILABLE", `Option ${key} is not subscription-enabled`, { productKey, groupKey, optionKey: key, optionId: String(option._id) });
       else if (!isLinkedDocGloballyAvailable(option, optionCatalogItemsById)) addCheck(errors, "error", "PLANNER_OPTION_CATALOG_ITEM_UNAVAILABLE", `Option ${key} has an unavailable linked CatalogItem`, { productKey, groupKey, optionKey: key, optionId: String(option._id) });
       if (relation.isActive === false || relation.isVisible === false || relation.isAvailable === false) {
         addCheck(errors, "error", "PLANNER_PRODUCT_OPTION_RELATION_UNAVAILABLE", `Product ${productKey} option relation ${key || relation.optionId} is unavailable`, { productKey, groupKey, optionKey: key, optionId: String(relation.optionId) });

@@ -10,6 +10,9 @@ const {
   PREMIUM_LARGE_SALAD_PREMIUM_KEY,
 } = require("../../config/mealPlannerContract");
 const { resolvePremiumLargeSaladPricing } = require("../catalog/premiumLargeSaladPricingService");
+const {
+  isMenuItemEnabledForSubscription,
+} = require("./subscriptionMenuEligibilityPolicyService");
 
 const KNOWN_PREMIUM_KEYS = Object.freeze([
   ...PREMIUM_MEAL_PROTEIN_KEYS,
@@ -281,13 +284,6 @@ function isActiveAvailableRelation(doc) {
     && doc.isAvailable !== false;
 }
 
-function isSubscriptionEnabled(doc) {
-  if (!doc || doc.availableForSubscription === false) return false;
-  return !Array.isArray(doc.availableFor)
-    || doc.availableFor.length === 0
-    || doc.availableFor.includes("subscription");
-}
-
 function relationIdentity({ sourceType, sourceId, sourceProductId }) {
   return `${sourceType}:${String(sourceId)}:${sourceProductId ? String(sourceProductId) : ""}`;
 }
@@ -341,7 +337,7 @@ async function loadEligiblePremiumCandidates() {
       diagnostics.excludedInactiveHiddenUnpublished++;
       continue;
     }
-    if (!isSubscriptionEnabled(option)) {
+    if (!isMenuItemEnabledForSubscription(option)) {
       diagnostics.excludedNotSubscriptionEnabled++;
       continue;
     }
@@ -362,7 +358,7 @@ async function loadEligiblePremiumCandidates() {
         || !group
         || String(option.groupId) !== String(group._id)
         || !isActivePublishedAvailable(product)
-        || !isSubscriptionEnabled(product)
+        || !isMenuItemEnabledForSubscription(product)
         || !isActivePublishedAvailable(group)
         || !isActiveAvailableRelation(productGroup)) continue;
       if (isAddonProduct(product)) {
@@ -403,7 +399,7 @@ async function loadEligiblePremiumCandidates() {
       diagnostics.excludedInactiveHiddenUnpublished++;
       continue;
     }
-    if (!isSubscriptionEnabled(product)) {
+    if (!isMenuItemEnabledForSubscription(product)) {
       diagnostics.excludedNotSubscriptionEnabled++;
       continue;
     }

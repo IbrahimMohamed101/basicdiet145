@@ -33,15 +33,18 @@ const {
   resolveSubscriptionPremiumUpgradePricing,
 } = require("./premiumUpgradeConfigService");
 const {
+  availableForChannelQuery,
   isConfiguredPremiumLargeSaladProtein,
+  isMenuItemEnabledForSubscription,
   isSubscriptionPremiumLargeSaladProtein,
-} = require("./premiumLargeSaladEligibilityService");
+  isSubscriptionPremiumMealProtein,
+  isSubscriptionPremiumMealProteinKey,
+} = require("./subscriptionMenuEligibilityPolicyService");
 
 const CONTRACT_VERSION = "subscription_meal_builder.v1";
 const SECTION_TYPES = new Set(["option_group", "product_category", "product_list"]);
 const INCLUDE_MODES = new Set(["all", "selected"]);
 const SOURCE_KINDS = new Set(["", "visual_family", "configurable_product", "product_list", "premium_visual"]);
-const PREMIUM_PROTEIN_KEYS = new Set(PREMIUM_MEAL_PROTEIN_KEYS);
 const SALAD_EXCLUDED_GROUP_KEYS = new Set(SUBSCRIPTION_PREMIUM_LARGE_SALAD_EXCLUDED_GROUP_KEYS);
 const VISUAL_TEMPLATE_ORDER = Object.freeze(["premium", "sandwich", "chicken", "beef", "fish", "eggs", "carbs"]);
 const VISUAL_PROTEIN_FAMILY_KEYS = new Set(["chicken", "beef", "fish", "eggs"]);
@@ -361,21 +364,8 @@ function truthy(doc) {
   return doc && doc.isActive !== false && doc.isVisible !== false && doc.isAvailable !== false && doc.publishedAt;
 }
 
-function subscriptionEnabled(doc) {
-  if (!doc) return false;
-  if (doc.availableForSubscription === false) return false;
-  if (!Array.isArray(doc.availableFor) || doc.availableFor.length === 0) return true;
-  return doc.availableFor.includes("subscription");
-}
-
 function optionIdentity(option = {}) {
   return String(option.key || option.premiumKey || "").trim().toLowerCase();
-}
-
-function isPremiumProtein(option = {}) {
-  const key = optionIdentity(option);
-  const premiumKey = String(option.premiumKey || "").trim().toLowerCase();
-  return PREMIUM_PROTEIN_KEYS.has(key) || PREMIUM_PROTEIN_KEYS.has(premiumKey);
 }
 
 function isSaladAllowedProtein(option = {}) {
@@ -703,7 +693,7 @@ function baseDocStatus(doc, catalogItemsById, prefix, label) {
   const visible = doc ? doc.isVisible !== false : false;
   const available = doc ? doc.isAvailable !== false : false;
   const published = doc ? Boolean(doc.publishedAt) : false;
-  const subEnabled = subscriptionEnabled(doc);
+  const subEnabled = isMenuItemEnabledForSubscription(doc);
   const catalogAvailable = doc ? catalogItemAvailable(doc, catalogItemsById) : false;
   const reasonCodes = [];
   const errors = [];
@@ -870,7 +860,7 @@ function serializeHydratedOption({
     ? [...docStatus.errors]
     : [...docStatus.errors, ...relStatus.errors];
   const familyKey = optionFamilyKey(option);
-  const optionIsPremium = isPremiumProtein(option);
+  const optionIsPremium = isSubscriptionPremiumMealProtein(option);
 
   if (expectedFamilyKey && familyKey !== expectedFamilyKey) {
     reasonCodes.push("WRONG_VISUAL_FAMILY");
@@ -1118,13 +1108,13 @@ function runtimeCommitInfo() {
 function isCanonicalStandardProteinForPicker(option = {}, sectionKey = "") {
   const key = optionKey(option);
   if (!key || NON_PROTEIN_PICKER_OPTION_KEYS.has(key) || key.startsWith("extra_")) return false;
-  if (isPremiumProtein(option)) return false;
+  if (isSubscriptionPremiumMealProtein(option)) return false;
   return optionFamilyKey(option) === sectionKey;
 }
 
 function standardProteinKeysForFamily(sectionKey = "") {
   return STANDARD_MEAL_EXTENDED_PROTEIN_KEYS
-    .filter((key) => !PREMIUM_PROTEIN_KEYS.has(key))
+    .filter((key) => !isSubscriptionPremiumMealProteinKey(key))
     .filter((key) => resolveProteinVisualFamilyKey({ key }) === sectionKey);
 }
 
@@ -1800,7 +1790,7 @@ async function publishDraft({ actor = {}, notes = "" } = {}) {
 }
 
 function readyDocForSeed(doc, catalogItemsById) {
-  return truthy(doc) && subscriptionEnabled(doc) && isLinkedDocGloballyAvailable(doc, catalogItemsById);
+  return truthy(doc) && isMenuItemEnabledForSubscription(doc) && isLinkedDocGloballyAvailable(doc, catalogItemsById);
 }
 
 function optionKey(option = {}) {
@@ -1859,11 +1849,7 @@ async function buildDefaultVisualTemplateSections({ returnDetails = false } = {}
 
   const sandwichProducts = await MenuProduct.find({
     itemType: { $in: ["cold_sandwich", "full_meal_product"] },
-    $or: [
-      { availableFor: { $exists: false } },
-      { availableFor: [] },
-      { availableFor: "subscription" },
-    ],
+    ...availableForChannelQuery("subscription"),
   }).sort({ sortOrder: 1, createdAt: -1 }).lean();
   const sandwichCatalogItemsById = await loadCatalogItemsByIdForDocs(sandwichProducts);
   sandwichProductIds = sandwichProducts
@@ -1872,7 +1858,7 @@ async function buildDefaultVisualTemplateSections({ returnDetails = false } = {}
 
   const premiumConfigState = await loadClientPremiumUpgradeConfigState();
   const premiumProteinOptions = proteinOptions
-    .filter((option) => isPremiumProtein(option) && PREMIUM_MEAL_PROTEIN_KEYS.includes(optionKey(option)) && premiumConfigState.isAllowed(optionKey(option)));
+    .filter((option) => isSubscriptionPremiumMealProtein(option) && PREMIUM_MEAL_PROTEIN_KEYS.includes(optionKey(option)) && premiumConfigState.isAllowed(optionKey(option)));
   const premiumSelectedProductIds = [];
   if (saladProduct) {
     const saladCatalogItemsById = await loadCatalogItemsByIdForDocs([saladProduct]);
@@ -2109,11 +2095,11 @@ async function buildDefaultSeedSections({ returnDetails = false } = {}) {
       const proteinRelations = relationRows.filter((row) => String(row.groupId) === String(proteinsGroup._id));
       standardProteinOptionIds = proteinRelations
         .map((row) => ({ relation: row, option: optionsById.get(String(row.optionId)) }))
-        .filter(({ relation, option }) => relationReady(relation) && relationReady(proteinGroupRelation) && readyDocForSeed(option, catalogItemsById) && !isPremiumProtein(option))
+        .filter(({ relation, option }) => relationReady(relation) && relationReady(proteinGroupRelation) && readyDocForSeed(option, catalogItemsById) && !isSubscriptionPremiumMealProtein(option))
         .map(({ option }) => option._id);
       premiumProteinOptionIds = proteinRelations
         .map((row) => ({ relation: row, option: optionsById.get(String(row.optionId)) }))
-        .filter(({ relation, option }) => relationReady(relation) && relationReady(proteinGroupRelation) && readyDocForSeed(option, catalogItemsById) && isPremiumProtein(option))
+        .filter(({ relation, option }) => relationReady(relation) && relationReady(proteinGroupRelation) && readyDocForSeed(option, catalogItemsById) && isSubscriptionPremiumMealProtein(option))
         .filter(({ relation, option }) => {
           const priced = premiumConfigState.isAllowed(optionKey(option));
           if (!priced) {
@@ -2199,11 +2185,7 @@ async function buildDefaultSeedSections({ returnDetails = false } = {}) {
   }
   const sandwichProducts = await MenuProduct.find({
     itemType: { $in: ["cold_sandwich", "full_meal_product"] },
-    $or: [
-      { availableFor: { $exists: false } },
-      { availableFor: [] },
-      { availableFor: "subscription" },
-    ],
+    ...availableForChannelQuery("subscription"),
   }).sort({ sortOrder: 1, createdAt: -1 }).lean();
   const sandwichCatalogItemsById = await loadCatalogItemsByIdForDocs(sandwichProducts);
   const sandwichProductIds = sandwichProducts
@@ -2656,7 +2638,7 @@ function validateVisualTemplateSections(sections, warnings, errors) {
 function validateProductForBuilder(product, catalogItemsById, errors, details = {}) {
   const issue = activeIssue(product, "MEAL_BUILDER_PRODUCT");
   if (issue) return addCheck(errors, "error", issue, "Meal Builder product is not ready", details);
-  if (!subscriptionEnabled(product)) return addCheck(errors, "error", "MEAL_BUILDER_PRODUCT_NOT_SUBSCRIPTION_ENABLED", "Meal Builder product is not subscription-enabled", details);
+  if (!isMenuItemEnabledForSubscription(product)) return addCheck(errors, "error", "MEAL_BUILDER_PRODUCT_NOT_SUBSCRIPTION_ENABLED", "Meal Builder product is not subscription-enabled", details);
   if (!isLinkedDocGloballyAvailable(product, catalogItemsById)) return addCheck(errors, "error", "MEAL_BUILDER_PRODUCT_CATALOG_ITEM_UNAVAILABLE", "Meal Builder product CatalogItem is unavailable", details);
   return null;
 }
@@ -2674,13 +2656,13 @@ function validateOptionRelationForBuilder({ relation, option }, catalogItemsById
   }
   const issue = activeIssue(option, "MEAL_BUILDER_OPTION");
   if (issue) return addCheck(errors, "error", issue, "Meal Builder option is not ready", optionDetails);
-  if (!subscriptionEnabled(option)) return addCheck(errors, "error", "MEAL_BUILDER_OPTION_NOT_SUBSCRIPTION_ENABLED", "Meal Builder option is not subscription-enabled", optionDetails);
+  if (!isMenuItemEnabledForSubscription(option)) return addCheck(errors, "error", "MEAL_BUILDER_OPTION_NOT_SUBSCRIPTION_ENABLED", "Meal Builder option is not subscription-enabled", optionDetails);
   if (!isLinkedDocGloballyAvailable(option, catalogItemsById)) return addCheck(errors, "error", "MEAL_BUILDER_OPTION_CATALOG_ITEM_UNAVAILABLE", "Meal Builder option CatalogItem is unavailable", optionDetails);
 
-  if (details.selectionType === MEAL_SELECTION_TYPES.STANDARD_MEAL && isPremiumProtein(option)) {
+  if (details.selectionType === MEAL_SELECTION_TYPES.STANDARD_MEAL && isSubscriptionPremiumMealProtein(option)) {
     return addCheck(errors, "error", "MEAL_BUILDER_STANDARD_EXPOSES_PREMIUM_PROTEIN", "Standard meal builder section cannot expose premium protein", optionDetails);
   }
-  if (details.selectionType === MEAL_SELECTION_TYPES.PREMIUM_MEAL && !isPremiumProtein(option)) {
+  if (details.selectionType === MEAL_SELECTION_TYPES.PREMIUM_MEAL && !isSubscriptionPremiumMealProtein(option)) {
     return addCheck(errors, "error", "MEAL_BUILDER_PREMIUM_MEAL_REQUIRES_PREMIUM_PROTEIN", "Premium meal builder section requires premium protein options", optionDetails);
   }
   if (details.selectionType === MEAL_SELECTION_TYPES.PREMIUM_LARGE_SALAD && !isSaladAllowedProtein(option)) {
@@ -2694,7 +2676,7 @@ function validateVisualFamilyOptionForBuilder(option, catalogItemsById, errors, 
   if (!option) return addCheck(errors, "error", "MEAL_BUILDER_OPTION_NOT_FOUND", "Visual family selected option is missing", optionDetails);
   const issue = activeIssue(option, "MEAL_BUILDER_OPTION");
   if (issue) return addCheck(errors, "error", issue, "Meal Builder option is not ready", optionDetails);
-  if (!subscriptionEnabled(option)) return addCheck(errors, "error", "MEAL_BUILDER_OPTION_NOT_SUBSCRIPTION_ENABLED", "Meal Builder option is not subscription-enabled", optionDetails);
+  if (!isMenuItemEnabledForSubscription(option)) return addCheck(errors, "error", "MEAL_BUILDER_OPTION_NOT_SUBSCRIPTION_ENABLED", "Meal Builder option is not subscription-enabled", optionDetails);
   if (!isLinkedDocGloballyAvailable(option, catalogItemsById)) return addCheck(errors, "error", "MEAL_BUILDER_OPTION_CATALOG_ITEM_UNAVAILABLE", "Meal Builder option CatalogItem is unavailable", optionDetails);
   if (!isCanonicalStandardProteinForPicker(option, details.sectionKey)) {
     return addCheck(errors, "error", "MEAL_BUILDER_VISUAL_FAMILY_OPTION_INVALID", "Visual family section contains an invalid protein option", optionDetails);
@@ -2831,7 +2813,7 @@ function addMembership(membership, selectionType, productId, groupId = null, opt
 }
 
 function customerReady(doc, catalogItemsById) {
-  return truthy(doc) && subscriptionEnabled(doc) && isLinkedDocGloballyAvailable(doc, catalogItemsById);
+  return truthy(doc) && isMenuItemEnabledForSubscription(doc) && isLinkedDocGloballyAvailable(doc, catalogItemsById);
 }
 
 function relationReady(doc) {
@@ -2893,7 +2875,7 @@ function buildOptionGroupSection(section, docs, lang, includeUnavailable, member
         return pmOpt && pmOpt.enabled !== false;
       });
     } else {
-      filteredOptions = options.filter(option => isPremiumProtein(option));
+      filteredOptions = options.filter(option => isSubscriptionPremiumMealProtein(option));
     }
     if (premiumConfigState?.hasConfigs) {
       filteredOptions = filteredOptions.filter((option) => premiumConfigState.isAllowed(option.premiumKey || option.key));

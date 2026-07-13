@@ -1,4 +1,7 @@
 const mongoose = require("mongoose");
+const {
+  availableForChannelQuery,
+} = require("../subscription/subscriptionMenuEligibilityPolicyService");
 
 const BuilderProtein = require("../../models/BuilderProtein");
 const MenuAuditLog = require("../../models/MenuAuditLog");
@@ -257,16 +260,6 @@ function customerCatalogQuery(extra = {}) {
     isAvailable: { $ne: false },
     publishedAt: { $ne: null },
     ...extra,
-  };
-}
-
-function availableForChannelQuery(channel) {
-  return {
-    $or: [
-      { availableFor: { $exists: false } },
-      { availableFor: [] },
-      { availableFor: channel },
-    ],
   };
 }
 

@@ -15,7 +15,6 @@ const Sandwich = require("../../models/Sandwich");
 const { isValidObjectId } = mongoose;
 const {
   LEGACY_MEAL_SELECTION_TYPES,
-  PREMIUM_MEAL_PROTEIN_KEYS,
   PREMIUM_LARGE_SALAD_FIXED_PRICE_HALALA,
   PREMIUM_LARGE_SALAD_PREMIUM_KEY,
   PREMIUM_LARGE_SALAD_PRESET_KEY,
@@ -31,8 +30,11 @@ const {
 } = require("../../config/mealPlannerContract");
 const { resolvePremiumUpgrade, resolveSubscriptionPremiumUpgradePricing } = require("./premiumUpgradeConfigService");
 const {
+  availableForChannelQuery,
+  getProteinCatalogKey,
   isSubscriptionPremiumLargeSaladProtein,
-} = require("./premiumLargeSaladEligibilityService");
+  isSubscriptionPremiumMealProteinKey,
+} = require("./subscriptionMenuEligibilityPolicyService");
 const { 
   NEW_TYPES, 
   mapLegacySelectionType, 
@@ -43,7 +45,6 @@ const DEFAULT_SLOT_KEY_PREFIX = "slot_";
 const MENU_PROTEIN_GROUP_KEY = "proteins";
 const MENU_CARB_GROUP_KEY = "carbs";
 const MENU_SALAD_EXTRA_PROTEIN_GROUP_KEY = "extra_protein_50g";
-const PREMIUM_MEAL_PROTEIN_KEY_SET = new Set(PREMIUM_MEAL_PROTEIN_KEYS);
 const SUBSCRIPTION_PREMIUM_LARGE_SALAD_EXCLUDED_GROUP_KEY_SET = new Set(SUBSCRIPTION_PREMIUM_LARGE_SALAD_EXCLUDED_GROUP_KEYS);
 
 const CUSTOM_PREMIUM_SALAD_TYPE = LEGACY_MEAL_SELECTION_TYPES.CUSTOM_PREMIUM_SALAD;
@@ -115,7 +116,7 @@ async function getMenuGroupId(groupKey, session) {
 
 function mapMenuProteinOption(option, upgradeDeltaHalalaByKey = new Map()) {
   const proteinKey = String(option.key || option.premiumKey || "").trim().toLowerCase();
-  const isPremium = option.isPremium === true || PREMIUM_MEAL_PROTEIN_KEY_SET.has(proteinKey);
+  const isPremium = option.isPremium === true || isSubscriptionPremiumMealProteinKey(proteinKey);
   const premiumExtraFeeHalala = isPremium
     ? (upgradeDeltaHalalaByKey.get(proteinKey) ?? 0)
     : 0;
@@ -185,10 +186,6 @@ function buildProteinTypeErrorDetails(slot) {
     receivedPremiumKey: slot && slot.premiumKey ? String(slot.premiumKey) : null,
     selectionType: slot && slot.selectionType ? String(slot.selectionType) : null,
   };
-}
-
-function getProteinCatalogKey(protein) {
-  return String(protein?.key || protein?.premiumKey || "").trim().toLowerCase();
 }
 
 function resolvePremiumMealProtein(slot, proteins, proteinIdentityMap) {
@@ -854,11 +851,7 @@ async function buildMealSlotDraft({ mealSlots, mealsPerDayLimit, maxSlotCount = 
         isVisible: { $ne: false },
         isAvailable: { $ne: false },
         availableForSubscription: { $ne: false },
-        $or: [
-          { availableFor: { $exists: false } },
-          { availableFor: [] },
-          { availableFor: "subscription" },
-        ],
+        ...availableForChannelQuery("subscription"),
       }).session(session).lean()
       : Promise.resolve([]),
     menuCarbGroupId
@@ -869,11 +862,7 @@ async function buildMealSlotDraft({ mealSlots, mealsPerDayLimit, maxSlotCount = 
         isVisible: { $ne: false },
         isAvailable: { $ne: false },
         availableForSubscription: { $ne: false },
-        $or: [
-          { availableFor: { $exists: false } },
-          { availableFor: [] },
-          { availableFor: "subscription" },
-        ],
+        ...availableForChannelQuery("subscription"),
       }).session(session).lean()
       : Promise.resolve([]),
     menuSaladExtraProteinGroupId
@@ -884,11 +873,7 @@ async function buildMealSlotDraft({ mealSlots, mealsPerDayLimit, maxSlotCount = 
         isVisible: { $ne: false },
         isAvailable: { $ne: false },
         availableForSubscription: { $ne: false },
-        $or: [
-          { availableFor: { $exists: false } },
-          { availableFor: [] },
-          { availableFor: "subscription" },
-        ],
+        ...availableForChannelQuery("subscription"),
       }).session(session).lean()
       : Promise.resolve([]),
     BuilderProtein.find({

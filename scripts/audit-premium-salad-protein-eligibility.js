@@ -16,7 +16,7 @@ const CatalogService = require("../src/services/catalog/CatalogService");
 const mealBuilderConfigService = require("../src/services/subscription/mealBuilderConfigService");
 const {
   isSubscriptionPremiumLargeSaladProtein,
-} = require("../src/services/subscription/premiumLargeSaladEligibilityService");
+} = require("../src/services/subscription/subscriptionMenuEligibilityPolicyService");
 
 function argument(name) {
   const prefix = `--${name}=`;

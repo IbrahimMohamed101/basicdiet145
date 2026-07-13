@@ -31,6 +31,9 @@ const {
   filterGloballyAvailable,
   loadCatalogItemsByIdForDocs,
 } = require("../catalog/catalogAvailabilityService");
+const {
+  availableForChannelQuery,
+} = require("./subscriptionMenuEligibilityPolicyService");
 
 async function findMenuPremiumOptionsByIds(ids) {
   if (!ids.length) return [];
@@ -43,11 +46,7 @@ async function findMenuPremiumOptionsByIds(ids) {
     isVisible: { $ne: false },
     isAvailable: { $ne: false },
     availableForSubscription: { $ne: false },
-    $or: [
-      { availableFor: { $exists: false } },
-      { availableFor: [] },
-      { availableFor: "subscription" },
-    ],
+    ...availableForChannelQuery("subscription"),
     extraPriceHalala: { $gt: 0 },
   }).lean();
   const catalogItemsById = await loadCatalogItemsByIdForDocs(rows);

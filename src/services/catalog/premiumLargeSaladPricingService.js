@@ -7,6 +7,9 @@ const {
   PREMIUM_LARGE_SALAD_FIXED_PRICE_HALALA,
   PREMIUM_LARGE_SALAD_PREMIUM_KEY,
 } = require("../../config/mealPlannerContract");
+const {
+  availableForChannelQuery,
+} = require("../subscription/subscriptionMenuEligibilityPolicyService");
 
 const PREMIUM_LARGE_SALAD_PRODUCT_KEY = "premium_large_salad";
 const PREMIUM_LARGE_SALAD_FALLBACK_PRODUCT_KEY = "basic_salad";
@@ -18,11 +21,7 @@ function activeSubscriptionProductQuery(extra = {}) {
     isVisible: { $ne: false },
     isAvailable: { $ne: false },
     publishedAt: { $ne: null },
-    $or: [
-      { availableFor: { $exists: false } },
-      { availableFor: [] },
-      { availableFor: "subscription" },
-    ],
+    ...availableForChannelQuery("subscription"),
     ...extra,
   };
 }

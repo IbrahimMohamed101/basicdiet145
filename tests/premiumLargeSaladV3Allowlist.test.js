@@ -21,7 +21,7 @@ const mealBuilderConfigService = require("../src/services/subscription/mealBuild
 const {
   isConfiguredPremiumLargeSaladProtein,
   isSubscriptionPremiumLargeSaladProtein,
-} = require("../src/services/subscription/premiumLargeSaladEligibilityService");
+} = require("../src/services/subscription/subscriptionMenuEligibilityPolicyService");
 
 function tokenFor(userId) {
   return jwt.sign(

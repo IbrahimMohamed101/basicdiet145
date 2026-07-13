@@ -8,7 +8,6 @@ const {
   MEAL_SELECTION_TYPES,
   PREMIUM_LARGE_SALAD_PREMIUM_KEY,
   PREMIUM_LARGE_SALAD_PRESET_KEY,
-  PREMIUM_MEAL_PROTEIN_KEYS,
   STANDARD_CARB_RULES,
   SUBSCRIPTION_PREMIUM_LARGE_SALAD_EXCLUDED_GROUP_KEYS,
   SYSTEM_CURRENCY,
@@ -33,14 +32,15 @@ const {
 } = require("../catalog/catalogAvailabilityService");
 const mealBuilderConfigService = require("./mealBuilderConfigService");
 const {
+  isMenuItemEnabledForSubscription,
   isSubscriptionPremiumLargeSaladProtein,
-} = require("./premiumLargeSaladEligibilityService");
+  isSubscriptionPremiumMealProtein,
+} = require("./subscriptionMenuEligibilityPolicyService");
 
 const CANONICAL_PLANNER_CONTRACT_VERSION = "meal_planner_menu.v3";
 const MENU_PROTEIN_GROUP_KEY = "proteins";
 const MENU_CARB_GROUP_KEY = "carbs";
 const MENU_SALAD_EXTRA_PROTEIN_GROUP_KEY = "extra_protein_50g";
-const PREMIUM_MEAL_PROTEIN_KEY_SET = new Set(PREMIUM_MEAL_PROTEIN_KEYS);
 const PREMIUM_LARGE_SALAD_EXCLUDED_GROUP_KEY_SET = new Set(SUBSCRIPTION_PREMIUM_LARGE_SALAD_EXCLUDED_GROUP_KEYS);
 
 const SELECTION_TYPE_PRODUCT_RULES = Object.freeze({
@@ -140,13 +140,6 @@ function buildCanonicalValidationFailure(slotErrors, debug = undefined) {
     rules: getMealPlannerRules(),
     debug,
   };
-}
-
-function isSubscriptionEnabled(doc) {
-  if (!doc) return false;
-  if (doc.availableForSubscription === false) return false;
-  if (!Array.isArray(doc.availableFor) || doc.availableFor.length === 0) return true;
-  return doc.availableFor.includes("subscription");
 }
 
 function validateCatalogDocState({ doc, slotIndex, field, entity, id }) {
@@ -272,12 +265,6 @@ function canonicalSaladGroupKey(groupKey) {
   if (raw === "sauces") return "sauce";
   if (raw === "proteins") return "protein";
   return normalizeSaladIngredientGroupKey(raw) || raw;
-}
-
-function isPremiumMealProtein(option) {
-  const premiumKey = String(option?.premiumKey || "").trim().toLowerCase();
-  const key = String(option?.key || "").trim().toLowerCase();
-  return PREMIUM_MEAL_PROTEIN_KEY_SET.has(premiumKey) || PREMIUM_MEAL_PROTEIN_KEY_SET.has(key);
 }
 
 function buildDisplaySnapshot({ product, optionRowsById, groupRowsById, selectedOptions }) {
@@ -493,7 +480,7 @@ async function validateCanonicalMealSlots({
       continue;
     }
     debugSlot.validationTimeline.push("✓ Product active");
-    if (!isSubscriptionEnabled(product)) {
+    if (!isMenuItemEnabledForSubscription(product)) {
       debugSlot.validationTimeline.push("✗ Product is not subscription-enabled");
       slotErrors.push(buildSlotError({
         slotIndex,
@@ -741,7 +728,7 @@ async function validateCanonicalMealSlots({
         }));
         continue;
       }
-      if (!isSubscriptionEnabled(option)) {
+      if (!isMenuItemEnabledForSubscription(option)) {
         analysis.reason = "OPTION_NOT_SUBSCRIPTION_ENABLED: option does not support subscriptions";
         slotErrors.push(buildSlotError({
           slotIndex,
@@ -945,7 +932,7 @@ async function validateCanonicalMealSlots({
       }
     }
 
-    if (selectionType === MEAL_SELECTION_TYPES.PREMIUM_MEAL && proteinSelection && !isPremiumMealProtein(proteinSelection.option)) {
+    if (selectionType === MEAL_SELECTION_TYPES.PREMIUM_MEAL && proteinSelection && !isSubscriptionPremiumMealProtein(proteinSelection.option)) {
       slotErrors.push(buildSlotError({
         slotIndex,
         field: `mealSlots[${slotArrayIndex}].selectedOptions`,
@@ -981,7 +968,7 @@ async function validateCanonicalMealSlots({
         stale: true,
       }));
     }
-    if (selectionType === MEAL_SELECTION_TYPES.STANDARD_MEAL && proteinSelection && isPremiumMealProtein(proteinSelection.option)) {
+    if (selectionType === MEAL_SELECTION_TYPES.STANDARD_MEAL && proteinSelection && isSubscriptionPremiumMealProtein(proteinSelection.option)) {
       slotErrors.push(buildSlotError({
         slotIndex,
         field: `mealSlots[${slotArrayIndex}].selectedOptions`,
@@ -1066,7 +1053,7 @@ async function validateCanonicalMealSlots({
       proteinFamilyKey: proteinSelection ? normalizeProteinFamilyKey(proteinSelection.option.proteinFamilyKey || proteinSelection.option.displayCategoryKey) : null,
       proteinDisplayCategoryKey: proteinSelection
         ? normalizeProteinDisplayCategoryKey(proteinSelection.option.displayCategoryKey, {
-          isPremium: isPremiumMealProtein(proteinSelection.option),
+          isPremium: isSubscriptionPremiumMealProtein(proteinSelection.option),
           proteinFamilyKey: proteinSelection.option.proteinFamilyKey,
         })
         : null,

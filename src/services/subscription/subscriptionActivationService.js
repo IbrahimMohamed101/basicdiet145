@@ -22,6 +22,9 @@ const {
   assertPremiumUpgradeLimit,
   countPremiumItemsQty,
 } = require("./premiumUpgradeLimitService");
+const {
+  buildAddonBalanceRowsFromEntitlements,
+} = require("./subscriptionAddonBalanceService");
 
 const SYSTEM_CURRENCY = "SAR";
 
@@ -258,38 +261,6 @@ function assertPremiumBalanceMatchesContractPricing(contractSnapshot, rows) {
       fallbackMessage: "Contract premium total is missing while premium entitlements exist",
     });
   }
-}
-
-function buildAddonBalanceRowsFromEntitlements(addonSubscriptions, { daysCount = 0 } = {}) {
-  return (Array.isArray(addonSubscriptions) ? addonSubscriptions : []).map((row) => {
-    const quantityPerDay = Math.max(1, Math.floor(Number(row && (row.quantityPerDay || row.purchasedDailyQty) || 1)));
-    const includedTotalQty = Math.max(0, Math.floor(Number(
-      row && row.includedTotalQty != null ? row.includedTotalQty : Number(daysCount || 0) * quantityPerDay
-    )));
-    const unitPriceHalala = Number(row && (row.unitPlanPriceHalala != null ? row.unitPlanPriceHalala : row.priceHalala) || 0);
-    const extraPurchasedQty = Math.max(0, Math.floor(Number(row && row.extraPurchasedQty || 0)));
-    const purchasedQty = includedTotalQty + extraPurchasedQty;
-    const addonPlanId = row && (row.addonPlanId || row.addonId);
-    return {
-      addonPlanId,
-      addonId: row && (row.addonId || row.addonPlanId),
-      name: row && (row.addonPlanName || row.name || ""),
-      category: row && row.category || "",
-      purchasedDailyQty: quantityPerDay,
-      includedTotalQty,
-      purchasedQty,
-      consumedQty: 0,
-      reservedQty: 0,
-      remainingQty: purchasedQty,
-      extraPurchasedQty,
-      overageConsumedQty: 0,
-      unitIncludedPriceHalala: unitPriceHalala,
-      overageUnitPriceHalala: unitPriceHalala,
-      unitPriceHalala,
-      currency: row && row.currency || SYSTEM_CURRENCY,
-      purchasedAt: new Date(),
-    };
-  }).filter((row) => row.addonId);
 }
 
 async function resolveActivationPremiumBalanceRows(draft, contractSnapshot) {

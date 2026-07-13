@@ -14,7 +14,6 @@ const {
   CUSTOMER_VISIBLE_CARB_KEYS,
   PREMIUM_LARGE_SALAD_PREMIUM_KEY,
   PREMIUM_LARGE_SALAD_PRESET_KEY,
-  PREMIUM_MEAL_PROTEIN_KEYS,
   PROTEIN_DISPLAY_GROUPS,
   SALAD_SELECTION_GROUPS,
   SYSTEM_CURRENCY,
@@ -47,8 +46,10 @@ const {
   loadCatalogItemsByIdForDocs,
 } = require("./catalogAvailabilityService");
 const {
+  availableForChannelQuery,
   isSubscriptionPremiumLargeSaladProtein,
-} = require("../subscription/premiumLargeSaladEligibilityService");
+  isSubscriptionPremiumMealProtein,
+} = require("../subscription/subscriptionMenuEligibilityPolicyService");
 
 const BUILDER_CATALOG_V2_VERSION = "meal_planner_menu.v2";
 const PLANNER_CATALOG_V3_VERSION = "meal_planner_menu.v3";
@@ -56,7 +57,6 @@ const MENU_PROTEIN_GROUP_KEY = "proteins";
 const MENU_CARB_GROUP_KEY = "carbs";
 const MENU_SALAD_EXTRA_PROTEIN_GROUP_KEY = "extra_protein_50g";
 const CUSTOMER_VISIBLE_CARB_KEY_SET = new Set(CUSTOMER_VISIBLE_CARB_KEYS);
-const PREMIUM_MEAL_PROTEIN_KEY_SET = new Set(PREMIUM_MEAL_PROTEIN_KEYS);
 const SUBSCRIPTION_PREMIUM_LARGE_SALAD_EXCLUDED_GROUP_KEY_SET = new Set(SUBSCRIPTION_PREMIUM_LARGE_SALAD_EXCLUDED_GROUP_KEYS);
 const SALAD_SELECTION_GROUP_RULE_BY_KEY = new Map(SALAD_SELECTION_GROUPS.map((group) => [group.key, group]));
 
@@ -114,16 +114,6 @@ function activeRelationQuery(extra = {}) {
   };
 }
 
-function availableForChannelQuery(channel) {
-  return {
-    $or: [
-      { availableFor: { $exists: false } },
-      { availableFor: [] },
-      { availableFor: channel },
-    ],
-  };
-}
-
 function sortByCatalogOrder(left, right) {
   const leftSort = Number(left?.sortOrder || 0);
   const rightSort = Number(right?.sortOrder || 0);
@@ -173,13 +163,6 @@ function inferProteinFamilyKey(option) {
   const explicit = normalizeProteinFamilyKey(option.proteinFamilyKey, "");
   if (explicit) return explicit;
   return normalizeProteinFamilyKey(option.displayCategoryKey || option.key);
-}
-
-function isPremiumMealProtein(option) {
-  const premiumKey = String(option?.premiumKey || "").trim().toLowerCase();
-  if (premiumKey && PREMIUM_MEAL_PROTEIN_KEY_SET.has(premiumKey)) return true;
-  const key = String(option?.key || "").trim().toLowerCase();
-  return PREMIUM_MEAL_PROTEIN_KEY_SET.has(key);
 }
 
 function resolvePremiumMealExtraFeeHalala(option, premiumConfigState = null) {
@@ -615,7 +598,7 @@ function buildV3OptionPayload({ option, relation, lang, overrides = {} }) {
     proteinFamilyKey,
     proteinFamilyNameI18n: proteinFamilyKey ? getProteinFamilyNameI18n(proteinFamilyKey) : undefined,
     displayCategoryKey: option.displayCategoryKey || proteinFamilyKey || "",
-    isPremium: overrides.isPremium === undefined ? Boolean(option.isPremium || isPremiumMealProtein(option)) : Boolean(overrides.isPremium),
+    isPremium: overrides.isPremium === undefined ? Boolean(option.isPremium || isSubscriptionPremiumMealProtein(option)) : Boolean(overrides.isPremium),
     premiumKey: option.premiumKey || option.key || null,
     ruleTags: Array.isArray(option.ruleTags) ? option.ruleTags : [],
     sortOrder: Number(relation?.sortOrder ?? option.sortOrder ?? 0),
@@ -775,7 +758,7 @@ async function buildCanonicalPlannerCatalogV3({ builderCatalog, context = {}, la
     product: basicMealProduct,
     lang,
     optionFilter({ option, group }) {
-      if (group.key === MENU_PROTEIN_GROUP_KEY) return !isPremiumMealProtein(option);
+      if (group.key === MENU_PROTEIN_GROUP_KEY) return !isSubscriptionPremiumMealProtein(option);
       if (group.key === MENU_CARB_GROUP_KEY) return isCustomerVisibleCarb(option);
       return true;
     },
@@ -786,7 +769,7 @@ async function buildCanonicalPlannerCatalogV3({ builderCatalog, context = {}, la
     lang,
     optionFilter({ option, group }) {
       if (group.key === MENU_PROTEIN_GROUP_KEY) {
-        if (!isPremiumMealProtein(option)) return false;
+        if (!isSubscriptionPremiumMealProtein(option)) return false;
         return !premiumConfigState?.hasConfigs || premiumConfigState.isAllowed(option.premiumKey || option.key);
       }
       if (group.key === MENU_CARB_GROUP_KEY) return isCustomerVisibleCarb(option);
@@ -1256,7 +1239,7 @@ async function buildSubscriptionBuilderCatalogBundle({ lang = "en", includeV2 = 
   const normalizedProteins = proteinOptions
     .map((option) => {
       return buildProteinPayload(option, lang, { 
-        isPremium: isPremiumMealProtein(option),
+        isPremium: isSubscriptionPremiumMealProtein(option),
         premiumConfigState,
       });
     })
