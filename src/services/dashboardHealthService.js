@@ -18,12 +18,14 @@ const {
   MEAL_SELECTION_TYPES,
   PREMIUM_MEAL_PROTEIN_KEYS,
   SUBSCRIPTION_PREMIUM_LARGE_SALAD_EXCLUDED_GROUP_KEYS,
-  SUBSCRIPTION_PREMIUM_LARGE_SALAD_PROTEIN_KEYS,
 } = require("../config/mealPlannerContract");
 const {
   isLinkedDocGloballyAvailable,
   loadCatalogItemsByIdForDocs,
 } = require("./catalog/catalogAvailabilityService");
+const {
+  isSubscriptionPremiumLargeSaladProtein,
+} = require("./subscription/premiumLargeSaladEligibilityService");
 
 function countBy(rows, selector) {
   return (Array.isArray(rows) ? rows : []).reduce((acc, row) => {
@@ -206,7 +208,6 @@ async function getSubscriptionPlannerReadinessReport() {
   const requiredProductKeys = ["basic_meal", "premium_large_salad"];
   const requiredGroupKeys = ["proteins", "carbs"];
   const premiumProteinKeySet = new Set(PREMIUM_MEAL_PROTEIN_KEYS);
-  const saladAllowedProteinKeySet = new Set(SUBSCRIPTION_PREMIUM_LARGE_SALAD_PROTEIN_KEYS);
   const saladExcludedGroupKeySet = new Set(SUBSCRIPTION_PREMIUM_LARGE_SALAD_EXCLUDED_GROUP_KEYS);
 
   const [products, groups, categories] = await Promise.all([
@@ -283,7 +284,7 @@ async function getSubscriptionPlannerReadinessReport() {
       if (productKey === "premium_large_salad" && saladExcludedGroupKeySet.has(groupKey)) {
         addCheck(errors, "error", "PREMIUM_LARGE_SALAD_EXTRA_PROTEIN_EXPOSED", "Premium large salad exposes extra_protein_50g", { productKey, groupKey, optionKey: key, optionId: String(relation.optionId) });
       }
-      if (productKey === "premium_large_salad" && groupKey === "proteins" && !saladAllowedProteinKeySet.has(key)) {
+      if (productKey === "premium_large_salad" && groupKey === "proteins" && !isSubscriptionPremiumLargeSaladProtein(option)) {
         addCheck(errors, "error", "PREMIUM_LARGE_SALAD_PROTEIN_NOT_ALLOWED", `Premium large salad exposes disallowed protein ${key}`, { productKey, optionKey: key, optionId: String(relation.optionId) });
       }
     }

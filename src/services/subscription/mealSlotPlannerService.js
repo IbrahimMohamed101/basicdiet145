@@ -23,7 +23,6 @@ const {
   SANDWICH_CATEGORY_KEYS,
   STANDARD_CARB_RULES,
   SUBSCRIPTION_PREMIUM_LARGE_SALAD_EXCLUDED_GROUP_KEYS,
-  SUBSCRIPTION_PREMIUM_LARGE_SALAD_PROTEIN_KEYS,
   SYSTEM_CURRENCY,
   getMealPlannerRules,
   normalizeProteinDisplayCategoryKey,
@@ -31,6 +30,9 @@ const {
   normalizeSaladIngredientGroupKey,
 } = require("../../config/mealPlannerContract");
 const { resolvePremiumUpgrade, resolveSubscriptionPremiumUpgradePricing } = require("./premiumUpgradeConfigService");
+const {
+  isSubscriptionPremiumLargeSaladProtein,
+} = require("./premiumLargeSaladEligibilityService");
 const { 
   NEW_TYPES, 
   mapLegacySelectionType, 
@@ -42,7 +44,6 @@ const MENU_PROTEIN_GROUP_KEY = "proteins";
 const MENU_CARB_GROUP_KEY = "carbs";
 const MENU_SALAD_EXTRA_PROTEIN_GROUP_KEY = "extra_protein_50g";
 const PREMIUM_MEAL_PROTEIN_KEY_SET = new Set(PREMIUM_MEAL_PROTEIN_KEYS);
-const SUBSCRIPTION_PREMIUM_LARGE_SALAD_PROTEIN_KEY_SET = new Set(SUBSCRIPTION_PREMIUM_LARGE_SALAD_PROTEIN_KEYS);
 const SUBSCRIPTION_PREMIUM_LARGE_SALAD_EXCLUDED_GROUP_KEY_SET = new Set(SUBSCRIPTION_PREMIUM_LARGE_SALAD_EXCLUDED_GROUP_KEYS);
 
 const CUSTOM_PREMIUM_SALAD_TYPE = LEGACY_MEAL_SELECTION_TYPES.CUSTOM_PREMIUM_SALAD;
@@ -387,13 +388,28 @@ function validatePremiumLargeSalad(slot, proteinMap, saladIngredientMap, saladOp
       selectedProteinId = normalizedGroupItems[0];
       const protein = proteinMap ? proteinMap.get(selectedProteinId) : null;
       if (!protein) {
-        return { valid: false, code: "SALAD_PROTEIN_INVALID", message: "Invalid salad protein" };
+        return {
+          valid: false,
+          code: "SALAD_PROTEIN_INVALID",
+          message: "Invalid salad protein",
+          details: {
+            proteinId: selectedProteinId,
+            stale: true,
+            hint: "Refresh planner catalog and retry.",
+          },
+        };
       }
-      if (protein.isPremium || !SUBSCRIPTION_PREMIUM_LARGE_SALAD_PROTEIN_KEY_SET.has(getProteinCatalogKey(protein))) {
+      if (!isSubscriptionPremiumLargeSaladProtein(protein)) {
         return {
           valid: false,
           code: "SALAD_PROTEIN_NOT_ALLOWED",
           message: "Selected protein is not available for subscription premium large salad",
+          details: {
+            proteinId: selectedProteinId,
+            proteinKey: getProteinCatalogKey(protein),
+            stale: true,
+            hint: "Refresh planner catalog and retry.",
+          },
         };
       }
       continue;

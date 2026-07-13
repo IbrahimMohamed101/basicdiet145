@@ -36,6 +36,7 @@ const {
 } = require('../src/config/mealPlannerContract');
 
 const assert = require('assert');
+const mongoose = require('mongoose');
 
 const ALLOWED_SALAD_PROTEIN_IDS = Object.fromEntries(
   SUBSCRIPTION_PREMIUM_LARGE_SALAD_PROTEIN_KEYS.map((key, index) => [
@@ -1105,6 +1106,44 @@ async function runTests() {
     });
   });
 
+  await test('premium large salad treats string and ObjectId component IDs consistently', async () => {
+    await withMockedPlannerCatalog({}, async () => {
+      const result = await buildPremiumLargeSaladDraft({
+        protein: [new mongoose.Types.ObjectId(IDS.allowedSaladProtein)],
+        sauce: [new mongoose.Types.ObjectId(IDS.sauceOne)],
+      }, {
+        proteinId: new mongoose.Types.ObjectId(IDS.allowedSaladProtein),
+      });
+      expectTrue(result.valid, 'ObjectId component IDs validate like their string forms');
+      expectEqual(String(result.processedSlots[0].proteinId), IDS.allowedSaladProtein, 'protein ID resolves to the same identity');
+    });
+  });
+
+  await test('premium large salad validation is deterministic and does not mutate subscription state', async () => {
+    await withMockedPlannerCatalog({}, async () => {
+      const subscription = { premiumBalance: [] };
+      const before = JSON.stringify(subscription);
+      const input = {
+        protein: [IDS.allowedSaladProtein],
+        sauce: [IDS.sauceOne],
+      };
+      const first = await buildMealSlotDraft({
+        mealSlots: [{ slotIndex: 1, selectionType: 'premium_large_salad', salad: { groups: input } }],
+        mealsPerDayLimit: 1,
+        subscription,
+      });
+      const second = await buildMealSlotDraft({
+        mealSlots: [{ slotIndex: 1, selectionType: 'premium_large_salad', salad: { groups: input } }],
+        mealsPerDayLimit: 1,
+        subscription,
+      });
+      expectTrue(first.valid, 'first validation succeeds');
+      expectTrue(second.valid, 'second validation succeeds');
+      expectEqual(JSON.stringify(second.processedSlots), JSON.stringify(first.processedSlots), 'repeated results match');
+      expectEqual(JSON.stringify(subscription), before, 'subscription is not mutated');
+    });
+  });
+
   await test('premium large salad rejects generic standard protein outside allowlist', async () => {
     await withMockedPlannerCatalog({}, async () => {
       const result = await buildPremiumLargeSaladDraft({
@@ -1113,6 +1152,7 @@ async function runTests() {
       });
       expectFalse(result.valid, 'generic standard protein rejected');
       expectEqual(result.errorCode, 'SALAD_PROTEIN_NOT_ALLOWED', 'error code');
+      expectEqual(result.slotErrors[0].hint, 'Refresh planner catalog and retry.', 'stale catalog refresh hint');
     });
   });
 

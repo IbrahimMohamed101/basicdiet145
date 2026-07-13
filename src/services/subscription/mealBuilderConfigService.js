@@ -19,7 +19,6 @@ const {
   STANDARD_MEAL_EXTENDED_PROTEIN_KEYS,
   SUBSCRIPTION_COLD_SANDWICH_KEYS,
   SUBSCRIPTION_PREMIUM_LARGE_SALAD_EXCLUDED_GROUP_KEYS,
-  SUBSCRIPTION_PREMIUM_LARGE_SALAD_PROTEIN_KEYS,
   SYSTEM_CURRENCY,
   getMealPlannerRules,
   resolveProteinVisualFamilyKey,
@@ -33,13 +32,16 @@ const {
   resolvePremiumUpgrade,
   resolveSubscriptionPremiumUpgradePricing,
 } = require("./premiumUpgradeConfigService");
+const {
+  isConfiguredPremiumLargeSaladProtein,
+  isSubscriptionPremiumLargeSaladProtein,
+} = require("./premiumLargeSaladEligibilityService");
 
 const CONTRACT_VERSION = "subscription_meal_builder.v1";
 const SECTION_TYPES = new Set(["option_group", "product_category", "product_list"]);
 const INCLUDE_MODES = new Set(["all", "selected"]);
 const SOURCE_KINDS = new Set(["", "visual_family", "configurable_product", "product_list", "premium_visual"]);
 const PREMIUM_PROTEIN_KEYS = new Set(PREMIUM_MEAL_PROTEIN_KEYS);
-const SALAD_ALLOWED_PROTEIN_KEYS = new Set(SUBSCRIPTION_PREMIUM_LARGE_SALAD_PROTEIN_KEYS);
 const SALAD_EXCLUDED_GROUP_KEYS = new Set(SUBSCRIPTION_PREMIUM_LARGE_SALAD_EXCLUDED_GROUP_KEYS);
 const VISUAL_TEMPLATE_ORDER = Object.freeze(["premium", "sandwich", "chicken", "beef", "fish", "eggs", "carbs"]);
 const VISUAL_PROTEIN_FAMILY_KEYS = new Set(["chicken", "beef", "fish", "eggs"]);
@@ -377,7 +379,7 @@ function isPremiumProtein(option = {}) {
 }
 
 function isSaladAllowedProtein(option = {}) {
-  return SALAD_ALLOWED_PROTEIN_KEYS.has(optionIdentity(option));
+  return isSubscriptionPremiumLargeSaladProtein(option);
 }
 
 function stableHash(payload) {
@@ -3102,13 +3104,17 @@ function buildProductOptionGroups({ product, selectionType, docs, lang, membersh
            return false;
          }
          if (selectionType !== MEAL_SELECTION_TYPES.PREMIUM_LARGE_SALAD) return true;
+         // Dashboard rules may narrow the subscription salad policy, but cannot make a forbidden protein customer-selectable.
+         if (String(group.key || "") === "proteins" && !isSaladAllowedProtein(option)) return false;
          if (rules && rules.premium_large_salad && rules.premium_large_salad.groups) {
             const gRule = rules.premium_large_salad.groups.find(g => matchSaladGroupKey(g.groupKey, group.key));
             if (gRule && Array.isArray(gRule.allowedOptionKeys) && gRule.allowedOptionKeys.length > 0) {
-               return gRule.allowedOptionKeys.includes(option.key) || gRule.allowedOptionKeys.includes(option.premiumKey) || gRule.allowedOptionKeys.includes(optionIdentity(option));
+               return String(group.key || "") === "proteins"
+                 ? isConfiguredPremiumLargeSaladProtein(option, gRule.allowedOptionKeys)
+                 : gRule.allowedOptionKeys.includes(option.key) || gRule.allowedOptionKeys.includes(option.premiumKey) || gRule.allowedOptionKeys.includes(optionIdentity(option));
             }
          }
-         return String(group.key || "") !== "proteins" || isSaladAllowedProtein(option);
+         return true;
       })
       .sort((a, b) => Number(a.relation.sortOrder || 0) - Number(b.relation.sortOrder || 0))
       .map(({ relation: optionRelation, option }) => {

@@ -17,6 +17,11 @@ const ProductOptionGroup = require("../src/models/ProductOptionGroup");
 const Subscription = require("../src/models/Subscription");
 const User = require("../src/models/User");
 const { buildCanonicalPlannerCatalogV3 } = require("../src/services/catalog/CatalogService");
+const mealBuilderConfigService = require("../src/services/subscription/mealBuilderConfigService");
+const {
+  isConfiguredPremiumLargeSaladProtein,
+  isSubscriptionPremiumLargeSaladProtein,
+} = require("../src/services/subscription/premiumLargeSaladEligibilityService");
 
 function tokenFor(userId) {
   return jwt.sign(
@@ -226,9 +231,84 @@ async function run() {
     }
     assert(!premiumSaladProduct.optionGroups.some((group) => group.key === "extra_protein_50g"), "v3 catalog excludes extra protein group");
 
+    const stalePublishedConfig = {
+      source: "dashboard",
+      sections: [{
+        key: "premium_large_salad",
+        sectionType: "product_list",
+        includeMode: "selected",
+        selectedProductIds: [fixture.salad._id],
+        selectionType: "premium_large_salad",
+        visible: true,
+        availableFor: ["subscription"],
+        rules: {
+          premium_large_salad: {
+            linkedProductKey: "premium_large_salad",
+            groups: [{
+              groupKey: "proteins",
+              allowedOptionKeys: ["grilled_chicken", "beef", "beef_steak"],
+            }],
+          },
+        },
+      }],
+    };
+    const publishedPlannerCatalog = await mealBuilderConfigService.buildPlannerCatalogFromPublishedBuilder({
+      config: stalePublishedConfig,
+      lang: "en",
+    });
+    const publishedSaladProduct = publishedPlannerCatalog.sections
+      .flatMap((section) => section.products || [])
+      .find((product) => product.key === "premium_large_salad");
+    const publishedProteinGroup = publishedSaladProduct.optionGroups.find((group) => group.key === "proteins");
+    assert.deepStrictEqual(
+      publishedProteinGroup.options.map((option) => option.key),
+      ["grilled_chicken"],
+      "dashboard restrictions may narrow, but never widen, the subscription salad allowlist"
+    );
+    assert.strictEqual(isSubscriptionPremiumLargeSaladProtein({ key: "grilled_chicken" }), true);
+    assert.strictEqual(isSubscriptionPremiumLargeSaladProtein({ key: "beef" }), false);
+    assert.strictEqual(
+      isConfiguredPremiumLargeSaladProtein({ key: "beef" }, ["beef"]),
+      false,
+      "configured keys cannot bypass the canonical allowlist"
+    );
+
     let res = await api.post(url).set(auth).send(slot(fixture, fixture.allowedProtein));
     assert.strictEqual(res.status, 200, `allowed salad protein accepted: ${JSON.stringify(res.body)}`);
     assert.strictEqual(res.body.data.valid, true);
+
+    const repeatedRes = await api.post(url).set(auth).send(slot(fixture, fixture.allowedProtein));
+    assert.strictEqual(repeatedRes.status, 200, `repeated validation accepted: ${JSON.stringify(repeatedRes.body)}`);
+    assert.deepStrictEqual(
+      {
+        valid: repeatedRes.body.data.valid,
+        mealSlots: repeatedRes.body.data.mealSlots,
+        paymentRequirement: repeatedRes.body.data.paymentRequirement,
+      },
+      {
+        valid: res.body.data.valid,
+        mealSlots: res.body.data.mealSlots,
+        paymentRequirement: res.body.data.paymentRequirement,
+      },
+      "repeated validation is deterministic"
+    );
+
+    for (const exposedOption of proteinGroup.options) {
+      const matchingFixtureOption = [
+        fixture.allowedProtein,
+        fixture.disallowedRegular,
+        fixture.disallowedPremium,
+        fixture.disallowedShrimp,
+        fixture.disallowedSalmon,
+      ].find((option) => String(option._id) === String(exposedOption.id));
+      assert(matchingFixtureOption, `fixture contains exposed option ${exposedOption.key}`);
+      const exposedValidation = await api.post(url).set(auth).send(slot(fixture, matchingFixtureOption));
+      assert.strictEqual(
+        exposedValidation.status,
+        200,
+        `every exposed premium salad protein validates: ${exposedOption.key} ${JSON.stringify(exposedValidation.body)}`
+      );
+    }
 
     res = await api.post(url).set(auth).send(slot(fixture, fixture.disallowedRegular));
     assert.strictEqual(res.status, 422, `disallowed regular protein rejected: ${JSON.stringify(res.body)}`);
@@ -237,6 +317,12 @@ async function run() {
     res = await api.post(url).set(auth).send(slot(fixture, fixture.disallowedPremium));
     assert.strictEqual(res.status, 422, `disallowed premium protein rejected: ${JSON.stringify(res.body)}`);
     assert.strictEqual(res.body.error.code, "SALAD_PROTEIN_NOT_ALLOWED");
+
+    await MenuOption.updateOne({ _id: fixture.allowedProtein._id }, { $set: { isAvailable: false } });
+    res = await api.post(url).set(auth).send(slot(fixture, fixture.allowedProtein));
+    assert.strictEqual(res.status, 422, `unavailable allowed protein rejected: ${JSON.stringify(res.body)}`);
+    assert.strictEqual(res.body.error.code, "PLANNER_OPTION_UNAVAILABLE");
+    await MenuOption.updateOne({ _id: fixture.allowedProtein._id }, { $set: { isAvailable: true } });
 
     res = await api.post(url).set(auth).send(slot(fixture, fixture.extraProtein, fixture.extraProteinGroup));
     assert.strictEqual(res.status, 422, `extra_protein_50g rejected: ${JSON.stringify(res.body)}`);
