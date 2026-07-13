@@ -225,6 +225,10 @@ jobs:
           )
           printf 'Gate outcomes: %s\n' "${outcomes[*]}"
           for outcome in "${outcomes[@]}"; do
+            if [ -z "$outcome" ]; then
+              echo "CRITICAL: A required step outcome is missing or empty. This usually means a step ID was changed or skipped."
+              exit 1
+            fi
             test "$outcome" = "success" || exit 1
           done
 
@@ -306,5 +310,9 @@ jobs:
           )
           printf 'Gate outcomes: %s\n' "${outcomes[*]}"
           for outcome in "${outcomes[@]}"; do
+            if [ -z "$outcome" ]; then
+              echo "CRITICAL: A required step outcome is missing or empty. This usually means a step ID was changed or skipped."
+              exit 1
+            fi
             test "$outcome" = "success" || exit 1
           done
