@@ -38,6 +38,13 @@ assert(!premiumOverage.includes("premium_price"), "premium overage must not read
 assert(premiumOverage.includes("resolvePremiumUpgrade"));
 
 const orderPricing = read("src/services/orders/orderPricingService.js");
-assert(orderPricing.includes("resolvePremiumUpgrade(protein.premiumKey)"));
+assert(
+  !orderPricing.includes("premiumUpgradeConfigService"),
+  "one-time order pricing must remain isolated from subscription premium pricing"
+);
+assert(
+  orderPricing.includes("protein.extraFeeHalala"),
+  "legacy one-time builder pricing must use its own protein surcharge"
+);
 
 console.log("canonicalAuthority.test.js passed");
