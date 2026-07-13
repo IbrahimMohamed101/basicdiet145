@@ -12,6 +12,7 @@ require('dotenv').config();
 const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
 const http = require('http');
+const { MongoMemoryReplSet } = require('mongodb-memory-server');
 
 const { createApp } = require('../src/app');
 const subscriptionController = require('../src/controllers/subscriptionController');
@@ -49,6 +50,7 @@ function issueAppAccessToken(userId) {
 const isTestEnv = process.env.NODE_ENV === 'test';
 
 let server = null;
+let mongoReplSet = null;
 let app = null;
 let testUser = null;
 let testSubscription = null;
@@ -826,7 +828,13 @@ async function stopServer() {
 const { resolveMongoUri, getDbNameFromUri } = require("../src/utils/mongoUriResolver");
 
 async function connectDatabase() {
-  const mongoUri = resolveMongoUri();
+  const useMemoryReplSet = String(process.env.USE_MONGODB_MEMORY_REPLSET || '').toLowerCase() === 'true';
+  const mongoUri = useMemoryReplSet
+    ? await (async () => {
+      mongoReplSet = await MongoMemoryReplSet.create({ replSet: { storageEngine: 'wiredTiger' } });
+      return mongoReplSet.getUri(`meal_planner_integration_${Date.now()}`);
+    })()
+    : resolveMongoUri();
   const dbName = getDbNameFromUri(mongoUri);
 
   console.log(`Connecting to database: ${dbName}...`);
@@ -847,6 +855,10 @@ async function connectDatabase() {
 
 async function disconnectDatabase() {
   await mongoose.disconnect();
+  if (mongoReplSet) {
+    await mongoReplSet.stop();
+    mongoReplSet = null;
+  }
 }
 
 async function runTests() {
