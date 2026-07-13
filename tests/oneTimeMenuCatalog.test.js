@@ -685,7 +685,7 @@ async function seedViaDashboard(api) {
       const v2Res = await api.get("/api/subscriptions/meal-planner-menu?lang=en&contractVersion=v2");
       expectStatus(v2Res, 200, "subscription meal planner menu v2 compatibility");
       assert(v2Res.body.data.builderCatalogV2, "explicit v2 request includes builderCatalogV2");
-      assert.strictEqual(v2Res.body.data.builderCatalogV2.contractVersion, "meal_planner_menu.v2");
+      assert.strictEqual(v2Res.body.data.builderCatalogV2.catalogVersion, "meal_planner_menu.v2");
     });
 
     await resetDatabase();
