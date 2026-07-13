@@ -4,6 +4,7 @@ process.env.JWT_SECRET = process.env.JWT_SECRET || "supersecret";
 const assert = require("assert");
 const jwt = require("jsonwebtoken");
 const mongoose = require("mongoose");
+const { MongoMemoryReplSet } = require("mongodb-memory-server");
 const request = require("supertest");
 
 const { createApp } = require("../src/app");
@@ -18,11 +19,13 @@ const { DASHBOARD_JWT_SECRET } = require("../src/services/dashboardTokenService"
 const { ORDER_STATUSES } = require("../src/utils/orderState");
 
 const TEST_TAG = `one-time-order-ops-${Date.now()}`;
+const TEST_DB_NAME = TEST_TAG.replace(/-/g, "_");
 const TEST_DATE = new Date(Date.now() + 86400000 + 3 * 3600000).toISOString().split('T')[0];
 const results = { passed: 0, failed: 0 };
 const ORIGINAL_ONE_TIME_ORDER_DELIVERY_ENABLED = process.env.ONE_TIME_ORDER_DELIVERY_ENABLED;
 process.env.ONE_TIME_ORDER_DELIVERY_ENABLED = "false";
 const dashboardUsers = new Map();
+let replSet;
 
 async function test(name, fn) {
   try {
@@ -72,7 +75,23 @@ async function withOneTimeDeliveryEnabled(fn) {
 
 async function connectDatabase() {
   if (mongoose.connection.readyState === 0) {
-    await mongoose.connect(process.env.MONGO_URI || process.env.MONGODB_URI || "mongodb://localhost:27017/basicdiet_test");
+    replSet = await MongoMemoryReplSet.create({
+      replSet: { count: 1, dbName: TEST_DB_NAME },
+    });
+    const uri = replSet.getUri(TEST_DB_NAME);
+    process.env.MONGO_URI = uri;
+    process.env.MONGODB_URI = uri;
+    await mongoose.connect(uri, { serverSelectionTimeoutMS: 10000 });
+  }
+}
+
+async function disconnectDatabase() {
+  if (mongoose.connection.readyState !== 0) {
+    await mongoose.disconnect();
+  }
+  if (replSet) {
+    await replSet.stop();
+    replSet = null;
   }
 }
 
@@ -642,7 +661,7 @@ async function createOrder(user, overrides = {}) {
       process.env.ONE_TIME_ORDER_DELIVERY_ENABLED = ORIGINAL_ONE_TIME_ORDER_DELIVERY_ENABLED;
     }
     await cleanup();
-    await mongoose.disconnect();
+    await disconnectDatabase();
   }
 
   console.log(`\nOne-time order ops tests complete: ${results.passed} passed, ${results.failed} failed`);

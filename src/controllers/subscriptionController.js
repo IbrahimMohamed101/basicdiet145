@@ -1046,6 +1046,9 @@ async function quoteSubscription(req, res, runtimeOverrides = null) {
     if (err.code === "PREMIUM_UPGRADE_LIMIT_EXCEEDED") {
       return errorResponse(res, err.status || 422, err.code, err.message, err.details);
     }
+    if (err.code === "SAME_DAY_PICKUP_LOCATION_NOT_CONFIGURED") {
+      return errorResponse(res, err.status || 422, err.code, err.message);
+    }
     if (err.code === "INVALID_DELIVERY_SLOT" || err.code === "DELIVERY_WINDOW_MISSING") {
       return errorResponse(res, 422, err.code, err.message);
     }
@@ -1097,6 +1100,9 @@ async function checkoutSubscription(req, res, runtimeOverrides = null) {
     }
     if (err.code === "PREMIUM_UPGRADE_LIMIT_EXCEEDED") {
       return errorResponse(res, err.status || 422, err.code, err.message, err.details);
+    }
+    if (err.code === "SAME_DAY_PICKUP_LOCATION_NOT_CONFIGURED") {
+      return errorResponse(res, err.status || 422, err.code, err.message);
     }
     if (err.code === "INVALID_DELIVERY_SLOT" || err.code === "DELIVERY_WINDOW_MISSING") {
       return errorResponse(res, 422, err.code, err.message);

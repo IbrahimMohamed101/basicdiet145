@@ -91,6 +91,14 @@ async function setup() {
   ]);
 }
 
+async function setPickupLocations(locations) {
+  await Setting.updateOne(
+    { key: "pickup_locations" },
+    { $set: { value: locations } },
+    { upsert: true }
+  );
+}
+
 async function cleanup() {
   await CheckoutDraft.deleteMany({ userId: testUser._id });
   const subs = await Subscription.find({ userId: testUser._id }).lean();
@@ -112,7 +120,7 @@ async function cleanup() {
     const secondDate = dateUtils.addDaysToKSADateString(startDate, 1);
 
     let normalSubscriptionId;
-    await test("1. Same-day delivery subscription without override starts next service day", async () => {
+    await test("1. Same-day delivery subscription without override starts today with automatic pickup", async () => {
       const payload = {
         planId: String(testPlan._id),
         grams: 200,
@@ -129,10 +137,17 @@ async function cleanup() {
 
       const res = await api.post("/api/subscriptions/checkout").set(clientAuth(testUser._id)).send(payload);
       assert.strictEqual(res.status, 201, JSON.stringify(res.body));
+      const retryRes = await api.post("/api/subscriptions/checkout").set(clientAuth(testUser._id)).send(payload);
+      assert.strictEqual(retryRes.status, 200, JSON.stringify(retryRes.body));
+      assert.strictEqual(String(retryRes.body.data.draftId), String(res.body.data.draftId));
+
       const draft = await CheckoutDraft.findById(res.body.data.draftId).lean();
-      assert.strictEqual(draft.delivery.firstDayFulfillmentOverride, null);
-      assert.strictEqual(dateUtils.toKSADateString(draft.startDate), secondDate);
-      assert.strictEqual(res.body.data.fulfillmentOptions.startDateShifted, true);
+      assert.strictEqual(draft.delivery.firstDayFulfillmentOverride.type, "pickup");
+      assert.strictEqual(draft.delivery.firstDayFulfillmentOverride.pickupLocationId, branchId);
+      assert.strictEqual(draft.contractSnapshot.delivery.firstDayFulfillmentOverride.type, "pickup");
+      assert.strictEqual(draft.contractSnapshot.delivery.firstDayFulfillmentOverride.pickupLocationId, branchId);
+      assert.strictEqual(dateUtils.toKSADateString(draft.startDate), startDate);
+      assert.strictEqual(res.body.data.fulfillmentOptions.startDateShifted, false);
       assert.strictEqual(res.body.data.fulfillmentOptions.deliveryStartDateIfNoPickup, secondDate);
 
       const payment = await Payment.create({
@@ -144,27 +159,29 @@ async function cleanup() {
 
       const sub = await Subscription.findById(normalSubscriptionId).lean();
       assert.strictEqual(sub.deliveryMode, "delivery");
-      assert.strictEqual(dateUtils.toKSADateString(sub.startDate), secondDate);
+      assert.strictEqual(dateUtils.toKSADateString(sub.startDate), startDate);
 
       const days = await SubscriptionDay.find({ subscriptionId: normalSubscriptionId }).sort("date").lean();
-      assert.strictEqual(days[0].date, secondDate);
-      assert.strictEqual(days[0].fulfillmentModeOverride, null);
+      assert.strictEqual(days[0].date, startDate);
+      assert.strictEqual(days[0].fulfillmentModeOverride, "pickup");
+      assert.strictEqual(days[0].pickupLocationIdOverride, branchId);
+      assert.strictEqual(days[1].date, secondDate);
+      assert.strictEqual(days[1].fulfillmentModeOverride, null);
+      assert.strictEqual(days[1].pickupLocationIdOverride, null);
 
-      const sameDay = await SubscriptionDay.findOne({ subscriptionId: normalSubscriptionId, date: startDate }).lean();
-      assert.strictEqual(sameDay, null, "same-day delivery day must not be created");
+      const refreshedDraft = await CheckoutDraft.findById(draft._id);
+      const refreshedPayment = await Payment.findById(payment._id);
+      const retryAct = await finalizeSubscriptionDraftPaymentFlow({ draft: refreshedDraft, payment: refreshedPayment }, null);
+      assert.strictEqual(retryAct.subscriptionId, String(normalSubscriptionId));
+      assert.strictEqual(await SubscriptionDay.countDocuments({ subscriptionId: normalSubscriptionId }), testPlan.daysCount);
 
-      const statusRes = await api.get(`/api/subscriptions/${normalSubscriptionId}/days/${secondDate}/fulfillment/status`).set(clientAuth(testUser._id));
+      const statusRes = await api.get(`/api/subscriptions/${normalSubscriptionId}/days/${startDate}/fulfillment/status`).set(clientAuth(testUser._id));
       assert.strictEqual(statusRes.status, 200);
       assert.strictEqual(statusRes.body.data.deliveryMode, "delivery");
-      assert.strictEqual(statusRes.body.data.firstDayFulfillmentOverride, false);
-
-      const availRes = await api.get(`/api/subscriptions/${normalSubscriptionId}/pickup-availability?date=${startDate}`).set(clientAuth(testUser._id));
-      assert.strictEqual(availRes.status, 422, JSON.stringify(availRes.body));
-      assert.strictEqual(availRes.body.error.code, "SUBSCRIPTION_NOT_STARTED");
-
-      const reqRes = await api.post(`/api/subscriptions/${normalSubscriptionId}/pickup-requests`).set(clientAuth(testUser._id)).send({ date: startDate, mealCount: 1 });
-      assert.strictEqual(reqRes.status, 422, JSON.stringify(reqRes.body));
-      assert.strictEqual(reqRes.body.error.code, "SUBSCRIPTION_NOT_STARTED");
+      assert.strictEqual(statusRes.body.data.fulfillmentModeOverride, "pickup");
+      assert.strictEqual(statusRes.body.data.effectiveFulfillmentMode, "pickup");
+      assert.strictEqual(statusRes.body.data.pickupLocationIdOverride, branchId);
+      assert.strictEqual(statusRes.body.data.firstDayFulfillmentOverride, true);
     });
 
     let overrideSubscriptionId;
@@ -192,6 +209,8 @@ async function cleanup() {
       const draft = await CheckoutDraft.findById(res.body.data.draftId).lean();
       assert.strictEqual(draft.delivery.firstDayFulfillmentOverride.type, "pickup");
       assert.strictEqual(draft.delivery.firstDayFulfillmentOverride.pickupLocationId, branchId);
+      assert.strictEqual(dateUtils.toKSADateString(draft.startDate), startDate);
+      assert.strictEqual(res.body.data.fulfillmentOptions.startDateShifted, false);
 
       const payment = await Payment.create({
         userId: testUser._id, draftId: draft._id, type: "subscription_activation",
@@ -267,7 +286,7 @@ async function cleanup() {
       assert.strictEqual(days[1].fulfillmentModeOverride, null);
     });
 
-    await test("2c. Renewal today without pickup override starts next service day", async () => {
+    await test("2c. Renewal today without pickup override starts today with automatic pickup", async () => {
       const expiredSub = await Subscription.create({
         userId: testUser._id,
         planId: testPlan._id,
@@ -301,8 +320,9 @@ async function cleanup() {
       });
       assert.strictEqual(res.status, 201, JSON.stringify(res.body));
       const draft = await CheckoutDraft.findById(res.body.data.draftId).lean();
-      assert.strictEqual(draft.delivery.firstDayFulfillmentOverride, null);
-      assert.strictEqual(dateUtils.toKSADateString(draft.startDate), secondDate);
+      assert.strictEqual(draft.delivery.firstDayFulfillmentOverride.type, "pickup");
+      assert.strictEqual(draft.delivery.firstDayFulfillmentOverride.pickupLocationId, branchId);
+      assert.strictEqual(dateUtils.toKSADateString(draft.startDate), startDate);
 
       const payment = await Payment.create({
         userId: testUser._id, draftId: draft._id, type: "subscription_renewal",
@@ -310,9 +330,46 @@ async function cleanup() {
       });
       const act = await finalizeSubscriptionDraftPaymentFlow({ draft, payment }, null);
       const renewedSub = await Subscription.findById(act.subscriptionId).lean();
-      assert.strictEqual(dateUtils.toKSADateString(renewedSub.startDate), secondDate);
-      const sameDay = await SubscriptionDay.findOne({ subscriptionId: act.subscriptionId, date: startDate }).lean();
-      assert.strictEqual(sameDay, null);
+      assert.strictEqual(dateUtils.toKSADateString(renewedSub.startDate), startDate);
+      const days = await SubscriptionDay.find({ subscriptionId: act.subscriptionId }).sort("date").lean();
+      assert.strictEqual(days[0].date, startDate);
+      assert.strictEqual(days[0].fulfillmentModeOverride, "pickup");
+      assert.strictEqual(days[0].pickupLocationIdOverride, branchId);
+      assert.strictEqual(days[1].date, secondDate);
+      assert.strictEqual(days[1].fulfillmentModeOverride, null);
+    });
+
+    await test("2d. Delivery subscription starting tomorrow has no automatic override", async () => {
+      const payload = {
+        planId: String(testPlan._id),
+        grams: 200,
+        mealsPerDay: 2,
+        startDate: secondDate,
+        delivery: {
+          type: "delivery",
+          address: { street: "Tomorrow Delivery St", city: "Riyadh" },
+          zoneId: String(testZone._id),
+          slot: { slotId: "delivery_slot_1" },
+        },
+        idempotencyKey: `tomorrow_${TEST_TAG}`,
+      };
+
+      const res = await api.post("/api/subscriptions/checkout").set(clientAuth(testUser._id)).send(payload);
+      assert.strictEqual(res.status, 201, JSON.stringify(res.body));
+      const draft = await CheckoutDraft.findById(res.body.data.draftId).lean();
+      assert.strictEqual(draft.delivery.firstDayFulfillmentOverride, null);
+      assert.strictEqual(dateUtils.toKSADateString(draft.startDate), secondDate);
+      assert.strictEqual(res.body.data.fulfillmentOptions.startDateShifted, false);
+
+      const payment = await Payment.create({
+        userId: testUser._id, draftId: draft._id, type: "subscription_activation",
+        amount: draft.breakdown.totalHalala, currency: "SAR", status: "paid", provider: "moyasar",
+      });
+      const act = await finalizeSubscriptionDraftPaymentFlow({ draft, payment }, null);
+      const days = await SubscriptionDay.find({ subscriptionId: act.subscriptionId }).sort("date").lean();
+      assert.strictEqual(days[0].date, secondDate);
+      assert.strictEqual(days[0].fulfillmentModeOverride, null);
+      assert.strictEqual(days[0].pickupLocationIdOverride, null);
     });
 
     await test("3. Pickup policy behavior", async () => {
@@ -391,6 +448,14 @@ async function cleanup() {
       const resInvalid = await api.post("/api/subscriptions/checkout").set(clientAuth(testUser._id)).send(invalidPayload);
       assert.strictEqual(resInvalid.status, 400, JSON.stringify(resInvalid.body));
 
+      const malformedPayload = {
+        planId: String(testPlan._id), grams: 200, mealsPerDay: 2, startDate,
+        delivery: { type: "delivery", address: { street: "St", city: "Riyadh" }, zoneId: String(testZone._id), slot: { slotId: "delivery_slot_1" }, firstDayFulfillmentOverride: { type: "delivery", pickupLocationId: branchId } },
+        idempotencyKey: `malformed_${TEST_TAG}`,
+      };
+      const resMalformed = await api.post("/api/subscriptions/checkout").set(clientAuth(testUser._id)).send(malformedPayload);
+      assert.strictEqual(resMalformed.status, 400, JSON.stringify(resMalformed.body));
+
       const pickupPayload = {
         planId: String(testPlan._id), grams: 200, mealsPerDay: 2, startDate,
         delivery: { type: "pickup", pickupLocationId: branchId, firstDayFulfillmentOverride: { type: "pickup", pickupLocationId: branchId } },
@@ -400,6 +465,56 @@ async function cleanup() {
       assert.strictEqual(resPickup.status, 201, JSON.stringify(resPickup.body));
       const pickupDraft = await CheckoutDraft.findById(resPickup.body.data.draftId).lean();
       assert.strictEqual(pickupDraft.delivery.firstDayFulfillmentOverride, null, "unknown override on pickup subscription is ignored safely");
+    });
+
+    await test("7. Same-day automatic pickup requires a deterministic active pickup location", async () => {
+      const basePayload = {
+        planId: String(testPlan._id),
+        grams: 200,
+        mealsPerDay: 2,
+        startDate,
+        delivery: {
+          type: "delivery",
+          address: { street: "Location Required St", city: "Riyadh" },
+          zoneId: String(testZone._id),
+          slot: { slotId: "delivery_slot_1" },
+        },
+      };
+
+      const beforeDraftCount = await CheckoutDraft.countDocuments({ userId: testUser._id });
+      await setPickupLocations([]);
+      const missingRes = await api.post("/api/subscriptions/checkout").set(clientAuth(testUser._id)).send({
+        ...basePayload,
+        idempotencyKey: `missing_location_${TEST_TAG}`,
+      });
+      assert.strictEqual(missingRes.status, 422, JSON.stringify(missingRes.body));
+      assert.strictEqual(missingRes.body.error.code, "SAME_DAY_PICKUP_LOCATION_NOT_CONFIGURED");
+      assert.strictEqual(await CheckoutDraft.countDocuments({ userId: testUser._id }), beforeDraftCount);
+
+      await setPickupLocations([
+        { id: "branch_a", locationId: "branch_a", name: { ar: "أ", en: "A" }, address: { street: "A" }, isActive: true },
+        { id: "branch_b", locationId: "branch_b", name: { ar: "ب", en: "B" }, address: { street: "B" }, isActive: true },
+      ]);
+      const ambiguousRes = await api.post("/api/subscriptions/checkout").set(clientAuth(testUser._id)).send({
+        ...basePayload,
+        idempotencyKey: `ambiguous_location_${TEST_TAG}`,
+      });
+      assert.strictEqual(ambiguousRes.status, 422, JSON.stringify(ambiguousRes.body));
+      assert.strictEqual(ambiguousRes.body.error.code, "SAME_DAY_PICKUP_LOCATION_NOT_CONFIGURED");
+
+      await setPickupLocations([
+        { id: "branch_a", locationId: "branch_a", name: { ar: "أ", en: "A" }, address: { street: "A" }, isActive: true },
+        { id: "branch_b", locationId: "branch_b", name: { ar: "ب", en: "B" }, address: { street: "B" }, isActive: true, isDefault: true },
+      ]);
+      const defaultRes = await api.post("/api/subscriptions/checkout").set(clientAuth(testUser._id)).send({
+        ...basePayload,
+        idempotencyKey: `default_location_${TEST_TAG}`,
+      });
+      assert.strictEqual(defaultRes.status, 201, JSON.stringify(defaultRes.body));
+      const draft = await CheckoutDraft.findById(defaultRes.body.data.draftId).lean();
+      assert.strictEqual(draft.delivery.firstDayFulfillmentOverride.pickupLocationId, "branch_b");
+
+      await setPickupLocations([{ id: branchId, locationId: branchId, name: { ar: "الفرع", en: "Branch" }, address: { street: "Branch St" }, isActive: true }]);
     });
 
   } finally {

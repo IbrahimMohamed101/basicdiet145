@@ -557,6 +557,9 @@ async function performSubscriptionRenewal(userId, subscriptionId, body, lang, ru
     if (!draft && err.code === "PREMIUM_UPGRADE_LIMIT_EXCEEDED") {
       throw { status: err.status || 422, code: err.code, message: err.message, data: err.details };
     }
+    if (!draft && err.code === "SAME_DAY_PICKUP_LOCATION_NOT_CONFIGURED") {
+      throw { status: err.status || 422, code: err.code, message: err.message };
+    }
     if (!draft && err.code === "VALIDATION_ERROR") {
       throw { status: 400, code: "VALIDATION_ERROR", message: err.message };
     }

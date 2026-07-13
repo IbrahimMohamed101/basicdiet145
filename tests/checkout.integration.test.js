@@ -44,6 +44,7 @@ const Setting = require('../src/models/Setting');
 const Addon = require('../src/models/Addon');
 const { ensureSafeForDestructiveOp } = require('../src/utils/dbSafety');
 const { VAT_PERCENTAGE } = require('../src/config/vat');
+const dateUtils = require('../src/utils/date');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'supersecret';
 const PORT = process.env.PORT || 3000;
@@ -628,14 +629,23 @@ async function runTests() {
     assertEqual(subscription.deliverySlot?.window, TEST_DELIVERY_WINDOW, 'subscription delivery window retained');
     assertEqual(subscription.deliveryWindow, TEST_DELIVERY_WINDOW, 'subscription deliveryWindow retained');
 
-    const statusRes = await makeRequest('GET', `/api/subscriptions/${result.subscriptionId}/days/${startDate}/fulfillment/status`);
-    assertEqual(statusRes.status, 200, 'fulfillment status response');
-    assertEqual(statusRes.body.data?.deliveryMode, 'delivery', 'fulfillment delivery mode');
-    assertNotNull(statusRes.body.data?.deliveryAddress, 'fulfillment delivery address returned');
-    assertNotNull(statusRes.body.data?.deliveryWindow, 'fulfillment delivery window returned');
-    assertEqual(statusRes.body.data?.deliveryWindow?.window, TEST_DELIVERY_WINDOW, 'fulfillment delivery window value');
-    assertEqual(statusRes.body.data?.deliverySlot?.slotId, TEST_DELIVERY_SLOT_ID, 'fulfillment delivery slotId');
-    assertEqual(statusRes.body.data?.lockedReason, null, 'fulfillment is not locked for missing window');
+    const day1StatusRes = await makeRequest('GET', `/api/subscriptions/${result.subscriptionId}/days/${startDate}/fulfillment/status`);
+    assertEqual(day1StatusRes.status, 200, 'day 1 fulfillment status response');
+    assertEqual(day1StatusRes.body.data?.deliveryMode, 'delivery', 'day 1 root delivery mode');
+    assertEqual(day1StatusRes.body.data?.effectiveFulfillmentMode, 'pickup', 'day 1 uses pickup override');
+    assertEqual(day1StatusRes.body.data?.fulfillmentModeOverride, 'pickup', 'day 1 pickup override returned');
+    assertEqual(day1StatusRes.body.data?.firstDayFulfillmentOverride, true, 'day 1 first-day override flag');
+
+    const secondDate = dateUtils.addDaysToKSADateString(startDate, 1);
+    const statusRes = await makeRequest('GET', `/api/subscriptions/${result.subscriptionId}/days/${secondDate}/fulfillment/status`);
+    assertEqual(statusRes.status, 200, 'day 2 fulfillment status response');
+    assertEqual(statusRes.body.data?.deliveryMode, 'delivery', 'day 2 delivery mode');
+    assertEqual(statusRes.body.data?.effectiveFulfillmentMode, 'delivery', 'day 2 effective delivery mode');
+    assertNotNull(statusRes.body.data?.deliveryAddress, 'day 2 fulfillment delivery address returned');
+    assertNotNull(statusRes.body.data?.deliveryWindow, 'day 2 fulfillment delivery window returned');
+    assertEqual(statusRes.body.data?.deliveryWindow?.window, TEST_DELIVERY_WINDOW, 'day 2 fulfillment delivery window value');
+    assertEqual(statusRes.body.data?.deliverySlot?.slotId, TEST_DELIVERY_SLOT_ID, 'day 2 fulfillment delivery slotId');
+    assertEqual(statusRes.body.data?.lockedReason, null, 'day 2 fulfillment is not locked for missing window');
   });
 
   await test('POST /api/subscriptions/quote rejects invalid delivery slot with 422', async () => {

@@ -219,6 +219,14 @@ function buildPhase1SubscriptionContract({ payload = {}, resolvedQuote, actorCon
       zoneId: delivery.zoneId ? String(delivery.zoneId) : null,
       zoneName: delivery.zoneName ? String(delivery.zoneName) : "",
       pickupLocationId: delivery.pickupLocationId ? String(delivery.pickupLocationId) : null,
+      firstDayFulfillmentOverride: delivery.firstDayFulfillmentOverride
+        ? {
+          type: String(delivery.firstDayFulfillmentOverride.type || ""),
+          pickupLocationId: delivery.firstDayFulfillmentOverride.pickupLocationId
+            ? String(delivery.firstDayFulfillmentOverride.pickupLocationId)
+            : null,
+        }
+        : null,
     },
     policySnapshot: {
       freezePolicy: resolveFreezePolicy(plan),

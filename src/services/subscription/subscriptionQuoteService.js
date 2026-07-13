@@ -450,7 +450,7 @@ function resolveDeliveryInput(payload = {}) {
   return { type: normalizedType, address, slot, pickupLocationId, zoneId, zoneName, firstDayFulfillmentOverride };
 }
 
-async function parseFutureStartDate(rawValue) {
+async function parseFutureStartDate(rawValue, currentBusinessDate = null) {
   if (rawValue === undefined || rawValue === null || rawValue === "") {
     return { ok: true, value: null };
   }
@@ -463,7 +463,7 @@ async function parseFutureStartDate(rawValue) {
     return { ok: false, message: "startDate must be a valid date" };
   }
   const parsedDate = dateUtils.toKSADateString(parsed);
-  const today = await getRestaurantBusinessDate();
+  const today = currentBusinessDate || await getRestaurantBusinessDate();
   if (!dateUtils.isOnOrAfterKSADate(parsedDate, today)) {
     return { ok: false, message: "startDate must be today or a future date" };
   }
@@ -474,12 +474,135 @@ function toKsaMidnightDate(dateStr) {
   return new Date(`${dateStr}T00:00:00+03:00`);
 }
 
+function createSameDayPickupLocationError(message = "A default active pickup location is required for same-day delivery starts") {
+  const err = new Error(message);
+  err.code = "SAME_DAY_PICKUP_LOCATION_NOT_CONFIGURED";
+  err.status = 422;
+  return err;
+}
+
+function isActivePickupLocation(location) {
+  return Boolean(location)
+    && typeof location === "object"
+    && !Array.isArray(location)
+    && location.isActive !== false
+    && location.active !== false
+    && location.enabled !== false
+    && location.isEnabled !== false
+    && location.isAvailable !== false
+    && location.available !== false
+    && location.pickupEnabled !== false
+    && location.isPickupEnabled !== false
+    && location.supportsPickup !== false
+    && location.pickupAvailable !== false
+    && location.availableForPickup !== false
+    && location.acceptsPickup !== false;
+}
+
+function getPickupLocationId(location) {
+  if (!location || typeof location !== "object") return "";
+  return String(
+    location.id
+    || location.locationId
+    || location.pickupLocationId
+    || location.branchId
+    || location.key
+    || location.code
+    || location.slug
+    || ""
+  ).trim();
+}
+
 function normalizeFirstDayOverride(override) {
   if (!override) return null;
   const type = typeof override === "object" ? override.type : override;
   if (String(type || "").trim() !== "pickup") return null;
   const pickupLocationId = typeof override === "object" ? String(override.pickupLocationId || "").trim() : "";
   return { type: "pickup", pickupLocationId: pickupLocationId || null };
+}
+
+function normalizeFirstDayOverrideOrThrow(override) {
+  if (!override) return null;
+  if (!override || typeof override !== "object" || Array.isArray(override)) {
+    const err = new Error("firstDayFulfillmentOverride must be an object");
+    err.code = "VALIDATION_ERROR";
+    throw err;
+  }
+  const type = String(override.type || "").trim();
+  const pickupLocationId = String(override.pickupLocationId || "").trim();
+  if (type !== "pickup") {
+    const err = new Error("firstDayFulfillmentOverride.type must be pickup");
+    err.code = "VALIDATION_ERROR";
+    throw err;
+  }
+  if (!pickupLocationId) {
+    const err = new Error("firstDayFulfillmentOverride.pickupLocationId is required");
+    err.code = "VALIDATION_ERROR";
+    throw err;
+  }
+  return { type: "pickup", pickupLocationId };
+}
+
+function resolveAutomaticSameDayPickupLocation(activePickupLocations = []) {
+  const defaults = activePickupLocations.filter((location) => location && location.isDefault === true);
+  if (defaults.length === 1) {
+    const pickupLocationId = getPickupLocationId(defaults[0]);
+    if (pickupLocationId) return pickupLocationId;
+  }
+  if (defaults.length > 1) {
+    throw createSameDayPickupLocationError("Multiple default pickup locations are configured");
+  }
+  if (activePickupLocations.length === 1) {
+    const pickupLocationId = getPickupLocationId(activePickupLocations[0]);
+    if (pickupLocationId) return pickupLocationId;
+  }
+  throw createSameDayPickupLocationError();
+}
+
+function validateFirstDayPickupOverrideOrThrow({ override, activePickupLocations, lang }) {
+  const normalized = normalizeFirstDayOverrideOrThrow(override);
+  if (!normalized) return null;
+  const resolvedPickupLocation = resolvePickupLocationSelection(
+    activePickupLocations,
+    normalized.pickupLocationId,
+    lang,
+    []
+  );
+  if (!resolvedPickupLocation) {
+    const err = new Error("Invalid pickup location in firstDayFulfillmentOverride");
+    err.code = "VALIDATION_ERROR";
+    throw err;
+  }
+  return normalized;
+}
+
+async function applySameDayDeliveryPickupOverride({ delivery, requestedStartDate, currentBusinessDate, lang }) {
+  if (!delivery || delivery.type !== "delivery") return delivery;
+
+  const pickupLocations = await getSettingValue("pickup_locations", []);
+  const activePickupLocations = Array.isArray(pickupLocations)
+    ? pickupLocations.filter(isActivePickupLocation)
+    : [];
+  const existingOverride = validateFirstDayPickupOverrideOrThrow({
+    override: delivery.firstDayFulfillmentOverride,
+    activePickupLocations,
+    lang,
+  });
+  if (existingOverride) {
+    delivery.firstDayFulfillmentOverride = existingOverride;
+    return delivery;
+  }
+
+  const requestedDate = requestedStartDate
+    ? dateUtils.toKSADateString(requestedStartDate)
+    : currentBusinessDate;
+  if (requestedDate !== currentBusinessDate) {
+    return delivery;
+  }
+
+  const pickupLocationId = resolveAutomaticSameDayPickupLocation(activePickupLocations);
+  delivery.firstDayFulfillmentOverride = { type: "pickup", pickupLocationId };
+  return delivery;
 }
 
 function resolveFirstServiceDate({
@@ -561,13 +684,19 @@ async function resolveCheckoutQuoteOrThrow(
   }
 
   const delivery = resolveDeliveryInput(payload || {});
-  const startValidation = await parseFutureStartDate(payload.startDate);
+  const currentBusinessDate = await getRestaurantBusinessDate();
+  const startValidation = await parseFutureStartDate(payload.startDate, currentBusinessDate);
   if (!startValidation.ok) {
     const err = new Error(startValidation.message);
     err.code = "VALIDATION_ERROR";
     throw err;
   }
-  const currentBusinessDate = await getRestaurantBusinessDate();
+  await applySameDayDeliveryPickupOverride({
+    delivery,
+    requestedStartDate: startValidation.value,
+    currentBusinessDate,
+    lang,
+  });
   const serviceDate = resolveFirstServiceDate({
     requestedStartDate: startValidation.value,
     currentBusinessDate,
@@ -846,21 +975,15 @@ async function resolveCheckoutQuoteOrThrow(
   let deliveryFeeHalala = 0;
   if (delivery.type === "delivery") {
     if (delivery.firstDayFulfillmentOverride) {
-      const overrideObj = delivery.firstDayFulfillmentOverride;
-      const overrideType = overrideObj && typeof overrideObj === "object" ? overrideObj.type : overrideObj;
-      const overrideLocId = overrideObj && typeof overrideObj === "object" ? overrideObj.pickupLocationId : null;
-      if (overrideType === "pickup" && overrideLocId) {
-        const pickupLocations = await getSettingValue("pickup_locations", []);
-        const activePickupLocations = Array.isArray(pickupLocations)
-          ? pickupLocations.filter((location) => location && location.isActive !== false)
-          : [];
-        const resolvedPickupLocation = resolvePickupLocationSelection(activePickupLocations, overrideLocId, lang, windows);
-        if (!resolvedPickupLocation) {
-          const err = new Error("Invalid pickup location in firstDayFulfillmentOverride");
-          err.code = "VALIDATION_ERROR";
-          throw err;
-        }
-      }
+      const pickupLocations = await getSettingValue("pickup_locations", []);
+      const activePickupLocations = Array.isArray(pickupLocations)
+        ? pickupLocations.filter(isActivePickupLocation)
+        : [];
+      delivery.firstDayFulfillmentOverride = validateFirstDayPickupOverrideOrThrow({
+        override: delivery.firstDayFulfillmentOverride,
+        activePickupLocations,
+        lang,
+      });
     }
     if (!delivery.zoneId) {
       throw createDeliverySlotError("VALIDATION_ERROR", "Delivery zone is required for delivery subscriptions");

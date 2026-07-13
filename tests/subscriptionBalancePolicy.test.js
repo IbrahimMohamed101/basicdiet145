@@ -7,6 +7,7 @@ require("dotenv").config();
 
 const assert = require("assert");
 const mongoose = require("mongoose");
+const { MongoMemoryReplSet } = require("mongodb-memory-server");
 
 const User = require("../src/models/User");
 const Plan = require("../src/models/Plan");
@@ -38,6 +39,8 @@ const SaladIngredient = require("../src/models/SaladIngredient");
 const Sandwich = require("../src/models/Sandwich");
 
 const TEST_TAG = `balance-policy-${Date.now()}`;
+const TEST_DB_NAME = TEST_TAG.replace(/-/g, "_");
+let replSet;
 dateUtils.getTodayKSADate = () => "2026-06-01";
 const PLANNER_IDS = {
   regularProtein: "507f191e810c19729de870a1",
@@ -115,7 +118,23 @@ function buildStandardSlots(count) {
 
 async function connect() {
   if (mongoose.connection.readyState === 0) {
-    await mongoose.connect(process.env.MONGO_URI || process.env.MONGODB_URI || "mongodb://localhost:27017/basicdiet_test");
+    replSet = await MongoMemoryReplSet.create({
+      replSet: { count: 1, dbName: TEST_DB_NAME },
+    });
+    const uri = replSet.getUri(TEST_DB_NAME);
+    process.env.MONGO_URI = uri;
+    process.env.MONGODB_URI = uri;
+    await mongoose.connect(uri, { serverSelectionTimeoutMS: 10000 });
+  }
+}
+
+async function disconnect() {
+  if (mongoose.connection.readyState !== 0) {
+    await mongoose.disconnect();
+  }
+  if (replSet) {
+    await replSet.stop();
+    replSet = null;
   }
 }
 
@@ -661,12 +680,12 @@ async function runTests() {
 
     console.log("All subscription balance policy automated tests passed perfectly.");
     await cleanup();
-    await mongoose.disconnect();
+    await disconnect();
 
   } catch (err) {
     console.error("Test failed:", err);
     await cleanup();
-    await mongoose.disconnect();
+    await disconnect();
     process.exit(1);
   }
 }

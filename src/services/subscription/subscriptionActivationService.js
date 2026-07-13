@@ -418,7 +418,7 @@ function buildCanonicalActivationPayload({ userId, planId, contractVersion, cont
 
   const dayEntries = Array.from({ length: daysCount }, (_, index) => {
     const isFirstDay = index === 0;
-    const overrideObj = legacyRuntimeData.delivery?.firstDayFulfillmentOverride;
+    const overrideObj = legacyRuntimeData.delivery?.firstDayFulfillmentOverride || delivery.firstDayFulfillmentOverride;
     const overrideType = overrideObj && typeof overrideObj === "object" ? overrideObj.type : overrideObj;
     const overrideLocId = overrideObj && typeof overrideObj === "object" ? overrideObj.pickupLocationId : null;
     const isPickupOverride = isFirstDay && overrideType === "pickup";

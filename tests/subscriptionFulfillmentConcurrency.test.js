@@ -7,6 +7,7 @@ require("dotenv").config();
 
 const assert = require("assert");
 const mongoose = require("mongoose");
+const { MongoMemoryReplSet } = require("mongodb-memory-server");
 
 const Subscription = require("../src/models/Subscription");
 const SubscriptionDay = require("../src/models/SubscriptionDay");
@@ -19,10 +20,28 @@ const TEST_SUBSCRIPTION_ID = new mongoose.Types.ObjectId();
 const TEST_USER_ID = new mongoose.Types.ObjectId();
 const TEST_PLAN_ID = new mongoose.Types.ObjectId();
 const TEST_TAG = `fulfillment-concurrency-${Date.now()}`;
+const TEST_DB_NAME = TEST_TAG.replace(/-/g, "_");
+let replSet;
 
 async function connect() {
   if (mongoose.connection.readyState !== 0) return;
-  await mongoose.connect(process.env.MONGO_URI || process.env.MONGODB_URI || "mongodb://localhost:27017/basicdiet_test");
+  replSet = await MongoMemoryReplSet.create({
+    replSet: { count: 1, dbName: TEST_DB_NAME },
+  });
+  const uri = replSet.getUri(TEST_DB_NAME);
+  process.env.MONGO_URI = uri;
+  process.env.MONGODB_URI = uri;
+  await mongoose.connect(uri, { serverSelectionTimeoutMS: 10000 });
+}
+
+async function disconnect() {
+  if (mongoose.connection.readyState !== 0) {
+    await mongoose.disconnect();
+  }
+  if (replSet) {
+    await replSet.stop();
+    replSet = null;
+  }
 }
 
 async function cleanup() {
@@ -122,9 +141,7 @@ async function seed() {
     console.log("subscriptionFulfillmentConcurrency.test.js passed");
   } finally {
     await cleanup().catch(() => {});
-    if (mongoose.connection.readyState !== 0) {
-      await mongoose.disconnect();
-    }
+    await disconnect();
   }
 })().catch((err) => {
   console.error(err && err.stack ? err.stack : err);
