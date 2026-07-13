@@ -466,7 +466,8 @@ async function runTests() {
     assert.ok(allowedChoice, "allowedProduct should be in choices");
     assert.ok(forbiddenChoice, "forbiddenProduct should be in choices");
     assert.strictEqual(allowedChoice.isEligibleForAllowance, true);
-    assert.strictEqual(forbiddenChoice.isEligibleForAllowance, false);
+    assert.strictEqual(forbiddenChoice.isEligibleForAllowance, true,
+      "All mapped snack products are eligible while the subscription has snack credits");
 
     console.log("--- 5.5 Regression Test: Customer checkout quote resolves flat pricing matrix price without multiplying by days ---");
     const regBasePlanId = "6a2454c04a2465a2f7a07800";

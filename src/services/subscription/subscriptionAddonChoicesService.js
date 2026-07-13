@@ -139,7 +139,8 @@ async function buildAddonChoicesCatalog({
   subscriptionId = null,
   models = {},
 } = {}) {
-  let allowedProductIdsByCat = new Map();
+  const entitledCategories = new Set();
+  const legacyEligibleProductIds = new Set();
   let hasSubscriptionFilter = false;
   if (subscriptionId) {
     const SubscriptionModel = models.SubscriptionModel || mongoose.model("Subscription");
@@ -147,8 +148,10 @@ async function buildAddonChoicesCatalog({
     if (sub && Array.isArray(sub.addonSubscriptions)) {
       hasSubscriptionFilter = true;
       for (const ent of sub.addonSubscriptions) {
-        if (Array.isArray(ent.menuProductIds) && ent.menuProductIds.length > 0) {
-          allowedProductIdsByCat.set(ent.category, ent.menuProductIds.map((id) => String(id)));
+        if (ent && ent.category) {
+          entitledCategories.add(String(ent.category));
+        } else if (ent && Array.isArray(ent.menuProductIds)) {
+          ent.menuProductIds.forEach((id) => legacyEligibleProductIds.add(String(id)));
         }
       }
     }
@@ -179,12 +182,10 @@ async function buildAddonChoicesCatalog({
       .filter(Boolean);
 
     if (hasSubscriptionFilter) {
-      const allowedIds = allowedProductIdsByCat.get(addonCategory);
-      if (allowedIds) {
-        choices.forEach((choice) => {
-          choice.isEligibleForAllowance = allowedIds.includes(String(choice.id));
-        });
-      }
+      choices.forEach((choice) => {
+        choice.isEligibleForAllowance = entitledCategories.has(addonCategory)
+          || legacyEligibleProductIds.has(String(choice.id));
+      });
     }
 
     data[addonCategory] = {

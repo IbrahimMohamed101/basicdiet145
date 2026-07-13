@@ -538,7 +538,9 @@ async function main() {
       user._id,
       plan._id,
       addon._id,
-      addonProducts.map(p => p._id)
+      // Reproduce the production mismatch: the entitlement snapshot contains
+      // only three products while the category catalog and balance allow more.
+      addonProducts.slice(0, 3).map(p => p._id)
     );
 
     // Generate JWT

@@ -211,11 +211,17 @@ function findAddonEntitlementForChoice(subscription, category, addonId = null) {
   const entitlements = Array.isArray(subscription && subscription.addonSubscriptions) ? subscription.addonSubscriptions : [];
   return entitlements.find((entry) => {
     if (!entry) return false;
-    if (Array.isArray(entry.menuProductIds) && entry.menuProductIds.length > 0) {
-      if (!addonId) return false;
+
+    // The resolver has already proved that the product is an active daily
+    // add-on in this canonical category. Entitlements grant category credits;
+    // menuProductIds is a catalog snapshot and must not cap those credits.
+    if (category && entry.category === category) return true;
+
+    // Backward-compatible fallback for legacy entitlement rows that predate
+    // category snapshots. Never let a mismatched modern category use this path.
+    if (!entry.category && addonId && Array.isArray(entry.menuProductIds)) {
       return entry.menuProductIds.some(pid => String(pid) === String(addonId));
     }
-    if (category && entry.category === category) return true;
     if (addonId && String(entry.addonId || entry.addonPlanId || "") === String(addonId)) return true;
     return false;
   }) || null;

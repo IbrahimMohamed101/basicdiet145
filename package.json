@@ -31,6 +31,7 @@
     "test:subscription-plan-seed": "node tests/seedSubscriptionPlans.test.js",
     "test:account-deletion": "NODE_ENV=test node tests/accountDeletion.test.js",
     "test:weekly-menu-dashboard": "NODE_ENV=test node tests/weeklyMenuDashboard.test.js",
+    "test:addon-credit-allocation": "NODE_ENV=test node tests/subscriptionAddonCreditAllocation.test.js && NODE_ENV=test node tests/subscription_addon_selection_contract.test.js",
     "seed": "node scripts/seed-demo-data.js",
     "seed:subscription-addons": "node scripts/seed-subscription-addons.js",
     "seed:subscription-plans": "node scripts/seed-subscription-plans.js",

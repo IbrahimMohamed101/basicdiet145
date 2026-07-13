@@ -124,6 +124,19 @@ function buildModels() {
 
   return {
     ids,
+    SubscriptionModel: {
+      findById() {
+        return {
+          lean: () => Promise.resolve({
+            addonSubscriptions: [{
+              addonPlanId: ids.planAddon,
+              category: "juice",
+              menuProductIds: [ids.berry],
+            }],
+          }),
+        };
+      },
+    },
     MenuCategoryModel: {
       find(query) {
         const keys = query.key && query.key.$in ? query.key.$in : [];
@@ -167,6 +180,39 @@ async function run() {
   assert(data.juice.choices.every((choice) => choice.type === "menu_product"));
   assert(!data.juice.choices.some((choice) => choice.kind === "plan" || choice.type === "subscription"));
   assert(!data.juice.choices.some((choice) => choice.id === fixtureModels.ids.planAddon));
+
+  const entitledData = await buildAddonChoicesCatalog({
+    lang: "en",
+    subscriptionId: "507f191e810c19729de86999",
+    models: fixtureModels,
+  });
+  assert(entitledData.juice.choices.every((choice) => choice.isEligibleForAllowance === true),
+    "all mapped juice products are eligible for the purchased juice category balance");
+  assert(entitledData.snack.choices.every((choice) => choice.isEligibleForAllowance === false));
+
+  const legacyModels = buildModels();
+  legacyModels.SubscriptionModel = {
+    findById() {
+      return {
+        lean: () => Promise.resolve({
+          addonSubscriptions: [{ menuProductIds: [legacyModels.ids.berry] }],
+        }),
+      };
+    },
+  };
+  const legacyEntitledData = await buildAddonChoicesCatalog({
+    lang: "en",
+    subscriptionId: "507f191e810c19729de86998",
+    models: legacyModels,
+  });
+  assert.strictEqual(
+    legacyEntitledData.juice.choices.find((choice) => choice.id === legacyModels.ids.berry).isEligibleForAllowance,
+    true
+  );
+  assert.strictEqual(
+    legacyEntitledData.juice.choices.find((choice) => choice.id === legacyModels.ids.water).isEligibleForAllowance,
+    false
+  );
 
   const snackCategoryKeys = data.snack.choices.map((choice) => choice.categoryKey);
   assert.deepStrictEqual(snackCategoryKeys, ["desserts"]);
