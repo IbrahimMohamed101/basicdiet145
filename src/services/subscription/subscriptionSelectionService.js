@@ -455,6 +455,41 @@ function clonePlain(value) {
   return JSON.parse(JSON.stringify(value || null));
 }
 
+function preservePersistedValidationTimestamps(draft, existingDay) {
+  const existingSlots = Array.isArray(existingDay && existingDay.mealSlots)
+    ? existingDay.mealSlots
+    : [];
+  const existingBySlotKey = new Map();
+  const existingBySlotIndex = new Map();
+
+  for (const slot of existingSlots) {
+    if (!slot) continue;
+    if (slot.slotKey) existingBySlotKey.set(String(slot.slotKey), slot);
+    if (slot.slotIndex !== undefined && slot.slotIndex !== null) {
+      existingBySlotIndex.set(Number(slot.slotIndex), slot);
+    }
+  }
+
+  for (const slot of Array.isArray(draft && draft.processedSlots) ? draft.processedSlots : []) {
+    const persistedSlot = (slot.slotKey && existingBySlotKey.get(String(slot.slotKey)))
+      || existingBySlotIndex.get(Number(slot.slotIndex));
+    // Validation is read-only: this field describes the persisted slot's last
+    // modification, not the time at which a hypothetical response was built.
+    slot.updatedAt = persistedSlot && persistedSlot.updatedAt
+      ? persistedSlot.updatedAt
+      : null;
+  }
+
+  if (draft && draft.plannerMeta) {
+    const persistedLastEditedAt = existingDay
+      && existingDay.plannerMeta
+      && existingDay.plannerMeta.lastEditedAt;
+    draft.plannerMeta.lastEditedAt = persistedLastEditedAt || null;
+  }
+
+  return draft;
+}
+
 function isPickupAppendAllowedForExistingDay(subscription, day) {
   if (!subscription || subscription.deliveryMode !== "pickup" || !day) return false;
   if (["skipped", "frozen"].includes(String(day.status || "open"))) return false;
@@ -955,6 +990,8 @@ async function performDaySelectionValidation({
     throw { status: 422, code: draft.errorCode || "INVALID_MEAL_PLAN", message: draft.errorMessage || "Meal planner validation failed", slotErrors: draft.slotErrors, debug: draft.debug, rules: getMealPlannerRules(), valid: false };
   }
 
+  preservePersistedValidationTimestamps(draft, day);
+
   const pricingState = await evaluateDaySelectionPricingState({
     subscription: sub,
     subscriptionId: resolvedSubscriptionId,
@@ -1280,4 +1317,5 @@ module.exports = {
   releaseAddonBalanceAtomically,
   resolveMealSlotPlanningLimits,
   buildPlanningDraftSubscriptionView,
+  preservePersistedValidationTimestamps,
 };

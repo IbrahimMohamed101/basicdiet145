@@ -15,6 +15,7 @@ const MenuProduct = require("../src/models/MenuProduct");
 const ProductGroupOption = require("../src/models/ProductGroupOption");
 const ProductOptionGroup = require("../src/models/ProductOptionGroup");
 const Subscription = require("../src/models/Subscription");
+const SubscriptionDay = require("../src/models/SubscriptionDay");
 const User = require("../src/models/User");
 const { buildCanonicalPlannerCatalogV3 } = require("../src/services/catalog/CatalogService");
 const mealBuilderConfigService = require("../src/services/subscription/mealBuilderConfigService");
@@ -276,21 +277,60 @@ async function run() {
     let res = await api.post(url).set(auth).send(slot(fixture, fixture.allowedProtein));
     assert.strictEqual(res.status, 200, `allowed salad protein accepted: ${JSON.stringify(res.body)}`);
     assert.strictEqual(res.body.data.valid, true);
+    assert.strictEqual(res.body.data.mealSlots[0].updatedAt, null, "an unpersisted validation draft has no modification timestamp");
+    assert.strictEqual(res.body.data.plannerMeta.lastEditedAt, null, "an unpersisted validation draft has no edit timestamp");
+
+    const subscriptionBeforeRepeatedValidation = JSON.parse(JSON.stringify(
+      await Subscription.findById(subscription._id).lean()
+    ));
+    assert.strictEqual(await SubscriptionDay.countDocuments({ subscriptionId: subscription._id }), 0);
 
     const repeatedRes = await api.post(url).set(auth).send(slot(fixture, fixture.allowedProtein));
     assert.strictEqual(repeatedRes.status, 200, `repeated validation accepted: ${JSON.stringify(repeatedRes.body)}`);
     assert.deepStrictEqual(
-      {
-        valid: repeatedRes.body.data.valid,
-        mealSlots: repeatedRes.body.data.mealSlots,
-        paymentRequirement: repeatedRes.body.data.paymentRequirement,
-      },
-      {
-        valid: res.body.data.valid,
-        mealSlots: res.body.data.mealSlots,
-        paymentRequirement: res.body.data.paymentRequirement,
-      },
+      repeatedRes.body.data,
+      res.body.data,
       "repeated validation is deterministic"
+    );
+    assert.strictEqual(await SubscriptionDay.countDocuments({ subscriptionId: subscription._id }), 0, "validation does not create a day");
+    assert.deepStrictEqual(
+      JSON.parse(JSON.stringify(await Subscription.findById(subscription._id).lean())),
+      subscriptionBeforeRepeatedValidation,
+      "validation does not save the subscription or consume/reserve balances"
+    );
+
+    const persistedSlotUpdatedAt = new Date("2026-10-02T08:30:00.000Z");
+    const persistedPlannerLastEditedAt = new Date("2026-10-02T08:31:00.000Z");
+    await SubscriptionDay.create({
+      subscriptionId: subscription._id,
+      date: "2026-10-10",
+      status: "open",
+      plannerVersion: "v1",
+      plannerState: "draft",
+      mealSlots: res.body.data.mealSlots.map((mealSlot) => ({
+        ...mealSlot,
+        updatedAt: persistedSlotUpdatedAt,
+      })),
+      plannerMeta: {
+        ...res.body.data.plannerMeta,
+        lastEditedAt: persistedPlannerLastEditedAt,
+      },
+    });
+    const persistedDayBeforeValidation = JSON.parse(JSON.stringify(
+      await SubscriptionDay.findOne({ subscriptionId: subscription._id, date: "2026-10-10" }).lean()
+    ));
+
+    const persistedRes = await api.post(url).set(auth).send(slot(fixture, fixture.allowedProtein));
+    const repeatedPersistedRes = await api.post(url).set(auth).send(slot(fixture, fixture.allowedProtein));
+    assert.strictEqual(persistedRes.status, 200, `persisted draft validation accepted: ${JSON.stringify(persistedRes.body)}`);
+    assert.strictEqual(repeatedPersistedRes.status, 200, `repeated persisted draft validation accepted: ${JSON.stringify(repeatedPersistedRes.body)}`);
+    assert.strictEqual(persistedRes.body.data.mealSlots[0].updatedAt, persistedSlotUpdatedAt.toISOString());
+    assert.strictEqual(persistedRes.body.data.plannerMeta.lastEditedAt, persistedPlannerLastEditedAt.toISOString());
+    assert.deepStrictEqual(repeatedPersistedRes.body.data, persistedRes.body.data, "persisted validation remains deterministic");
+    assert.deepStrictEqual(
+      JSON.parse(JSON.stringify(await SubscriptionDay.findOne({ subscriptionId: subscription._id, date: "2026-10-10" }).lean())),
+      persistedDayBeforeValidation,
+      "validation does not rewrite the persisted day or its timestamps"
     );
 
     for (const exposedOption of proteinGroup.options) {

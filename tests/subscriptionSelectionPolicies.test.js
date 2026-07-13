@@ -126,6 +126,26 @@ function run() {
     addonAllocationService.reconcileAddonInclusions
   );
 
+  const persistedSlotUpdatedAt = new Date("2026-10-02T08:30:00.000Z");
+  const persistedPlannerLastEditedAt = new Date("2026-10-02T08:31:00.000Z");
+  const validationDraft = {
+    processedSlots: [
+      { slotIndex: 1, slotKey: "slot_1", updatedAt: new Date("2026-10-03T09:00:00.000Z") },
+      { slotIndex: 2, slotKey: "slot_2", updatedAt: new Date("2026-10-03T09:00:00.000Z") },
+    ],
+    plannerMeta: { lastEditedAt: new Date("2026-10-03T09:00:00.000Z") },
+  };
+  const persistedDay = {
+    mealSlots: [{ slotIndex: 1, slotKey: "slot_1", updatedAt: persistedSlotUpdatedAt }],
+    plannerMeta: { lastEditedAt: persistedPlannerLastEditedAt },
+  };
+  const persistedDayBefore = JSON.stringify(persistedDay);
+  subscriptionSelectionService.preservePersistedValidationTimestamps(validationDraft, persistedDay);
+  assert.strictEqual(validationDraft.processedSlots[0].updatedAt, persistedSlotUpdatedAt);
+  assert.strictEqual(validationDraft.processedSlots[1].updatedAt, null);
+  assert.strictEqual(validationDraft.plannerMeta.lastEditedAt, persistedPlannerLastEditedAt);
+  assert.strictEqual(JSON.stringify(persistedDay), persistedDayBefore, "timestamp projection does not mutate persisted state");
+
   console.log("subscription selection policy characterization tests passed");
 }
 
