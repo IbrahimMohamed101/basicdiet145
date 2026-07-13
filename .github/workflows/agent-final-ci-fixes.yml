@@ -1,0 +1,90 @@
+name: Agent final CI fixes
+
+on:
+  push:
+    branches:
+      - agent/checkout-invoice-concurrency-hardening
+
+permissions:
+  contents: write
+
+jobs:
+  apply-fixes:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/checkout-invoice-concurrency-hardening
+          fetch-depth: 0
+
+      - name: Apply exact fixes
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          checkout = Path("src/services/subscription/subscriptionCheckoutService.js")
+          content = checkout.read_text()
+          old = '''          const recovered = await CheckoutDraft.findOne({ userId, idempotencyKey })
+            .sort({ createdAt: -1 })
+            .lean();'''
+          new = '''          const recovered = await CheckoutDraft.findOne({
+            userId,
+            $or: [
+              { idempotencyKey },
+              { requestHash, status: "pending_payment" },
+            ],
+          })
+            .sort({ createdAt: -1 })
+            .lean();'''
+          if old not in content:
+              raise SystemExit("Checkout duplicate recovery block not found")
+          checkout.write_text(content.replace(old, new, 1))
+
+          lifecycle = Path("tests/addon_balance_e2e.test.js")
+          content = lifecycle.read_text()
+          old_import = '''const Plan = require("../src/models/Plan");
+const ProductGroupOption = require("../src/models/ProductGroupOption");'''
+          new_import = '''const Plan = require("../src/models/Plan");
+const Addon = require("../src/models/Addon");
+const AddonPlanPrice = require("../src/models/AddonPlanPrice");
+const ProductGroupOption = require("../src/models/ProductGroupOption");'''
+          if old_import not in content:
+              raise SystemExit("Lifecycle import anchor not found")
+          content = content.replace(old_import, new_import, 1)
+
+          old_setup = '''  await mongoose.connect(uri, { serverSelectionTimeoutMS: 10000 });
+
+  try {'''
+          new_setup = '''  await mongoose.connect(uri, { serverSelectionTimeoutMS: 10000 });
+
+  // MongoDB cannot create or modify a collection catalog safely inside the
+  // first multi-document transaction. Pre-create the collections and indexes
+  // used by createDashboardAddonPlan so the lifecycle test exercises only
+  // application transaction behavior, not first-use DDL races.
+  await Promise.all([
+    Addon.createCollection(),
+    AddonPlanPrice.createCollection(),
+  ]);
+  await Promise.all([
+    Addon.syncIndexes(),
+    AddonPlanPrice.syncIndexes(),
+  ]);
+
+  try {'''
+          if old_setup not in content:
+              raise SystemExit("Lifecycle setup anchor not found")
+          lifecycle.write_text(content.replace(old_setup, new_setup, 1))
+          PY
+
+      - name: Remove one-shot workflow
+        run: git rm .github/workflows/agent-final-ci-fixes.yml
+
+      - name: Commit fixes
+        run: |
+          git config user.name "OpenAI Agent"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/services/subscription/subscriptionCheckoutService.js tests/addon_balance_e2e.test.js
+          git diff --cached --check
+          git commit -m "Recover duplicate checkout drafts by request hash"
+          git push origin HEAD:agent/checkout-invoice-concurrency-hardening
