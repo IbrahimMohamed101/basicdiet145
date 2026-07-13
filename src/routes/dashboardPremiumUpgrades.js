@@ -2,12 +2,18 @@ const { Router } = require("express");
 
 const controller = require("../controllers/dashboard/premiumUpgradeController");
 const asyncHandler = require("../middleware/asyncHandler");
-const { dashboardAuthMiddleware, dashboardRoleMiddleware } = require("../middleware/dashboardAuth");
+const {
+  dashboardAuthMiddleware,
+  dashboardRoleMiddleware,
+  dashboardMutationRoleMiddleware,
+} = require("../middleware/dashboardAuth");
 
 const router = Router();
 
 // Protect all routes with dashboard authentication and admin/superadmin roles
 router.use(dashboardAuthMiddleware, dashboardRoleMiddleware(["admin", "superadmin", "kitchen"]));
+
+router.use(dashboardMutationRoleMiddleware(["admin", "superadmin"]));
 
 // Phase 1/2: Expose read, candidates, and readiness
 router.get("/", asyncHandler(controller.getConfigs));
