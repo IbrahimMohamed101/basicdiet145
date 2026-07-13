@@ -2,11 +2,20 @@ const { Router } = require("express");
 
 const controller = require("../controllers/dashboard/menuController");
 const asyncHandler = require("../middleware/asyncHandler");
-const { dashboardAuthMiddleware, dashboardRoleMiddleware } = require("../middleware/dashboardAuth");
+const {
+  dashboardAuthMiddleware,
+  dashboardRoleMiddleware,
+  dashboardMutationRoleMiddleware,
+} = require("../middleware/dashboardAuth");
 
 const router = Router();
 
 router.use(dashboardAuthMiddleware, dashboardRoleMiddleware(["admin", "superadmin", "kitchen"]));
+
+// Kitchen staff need the catalog for fulfillment, but catalog configuration is
+// an administrative concern. Keep all reads available while denying every
+// mutation unless the current Dashboard user is an admin/superadmin.
+router.use(dashboardMutationRoleMiddleware(["admin", "superadmin"]));
 
 router.get("/preview", asyncHandler(controller.getPreview));
 

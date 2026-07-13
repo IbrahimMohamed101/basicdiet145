@@ -249,14 +249,7 @@ async function withMockedPlannerCatalog(overrides, fn) {
   MenuOptionGroup.find = () => mockQuery(Object.values(catalog.menuGroups || {}).filter(Boolean));
   MenuOptionGroup.findOne = (query = {}) => mockQuery((catalog.menuGroups || {})[query.key] || null);
   MenuCategory.findOne = (query = {}) => mockQuery((catalog.menuCategories || {})[query.key] || null);
-  MenuProduct.find = () => ({
-    sort() {
-      return this;
-    },
-    lean() {
-      return Promise.resolve(catalog.sandwichProducts || []);
-    },
-  });
+  MenuProduct.find = () => mockQuery(catalog.sandwichProducts || []);
   MenuProduct.findOne = (query = {}) => {
     const key = query && query.key;
     return mockQuery((catalog.menuProducts || {})[key] || null);

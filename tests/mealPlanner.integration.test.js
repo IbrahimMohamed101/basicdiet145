@@ -12,6 +12,7 @@ require('dotenv').config();
 const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
 const http = require('http');
+const { MongoMemoryReplSet } = require('mongodb-memory-server');
 
 const { createApp } = require('../src/app');
 const subscriptionController = require('../src/controllers/subscriptionController');
@@ -49,6 +50,7 @@ function issueAppAccessToken(userId) {
 const isTestEnv = process.env.NODE_ENV === 'test';
 
 let server = null;
+let mongoReplSet = null;
 let app = null;
 let testUser = null;
 let testSubscription = null;
@@ -781,6 +783,19 @@ async function createTestSubscription() {
     addonSubscriptions: [
       { addonId: addonJuicePlan._id, category: 'juice', includedCount: 1, maxPerDay: 1, status: 'active' },
     ],
+    addonBalance: [
+      {
+        addonId: addonJuicePlan._id,
+        addonPlanId: addonJuicePlan._id,
+        category: 'juice',
+        includedTotalQty: 1,
+        purchasedQty: 1,
+        remainingQty: 1,
+        consumedQty: 0,
+        overageUnitPriceHalala: Number(addonJuice.priceHalala || 0),
+        currency: 'SAR',
+      },
+    ],
   });
   await subscription.save();
   testSubscription = subscription;
@@ -813,7 +828,13 @@ async function stopServer() {
 const { resolveMongoUri, getDbNameFromUri } = require("../src/utils/mongoUriResolver");
 
 async function connectDatabase() {
-  const mongoUri = resolveMongoUri();
+  const useMemoryReplSet = String(process.env.USE_MONGODB_MEMORY_REPLSET || '').toLowerCase() === 'true';
+  const mongoUri = useMemoryReplSet
+    ? await (async () => {
+      mongoReplSet = await MongoMemoryReplSet.create({ replSet: { storageEngine: 'wiredTiger' } });
+      return mongoReplSet.getUri(`meal_planner_integration_${Date.now()}`);
+    })()
+    : resolveMongoUri();
   const dbName = getDbNameFromUri(mongoUri);
 
   console.log(`Connecting to database: ${dbName}...`);
@@ -834,6 +855,10 @@ async function connectDatabase() {
 
 async function disconnectDatabase() {
   await mongoose.disconnect();
+  if (mongoReplSet) {
+    await mongoReplSet.stop();
+    mongoReplSet = null;
+  }
 }
 
 async function runTests() {
@@ -908,7 +933,7 @@ async function runTests() {
     assertEqual(defaultRes.body.status, true, 'default response status');
     assertNoTopLevelOk(defaultRes.body, 'default meal-planner-menu response');
     assertTrue(!!defaultRes.body.data?.builderCatalog, 'default builderCatalog');
-    assertTrue(!!defaultRes.body.data?.builderCatalogV2, 'default builderCatalogV2 compatibility field');
+    assertEqual(defaultRes.body.data?.builderCatalogV2, undefined, 'default v3 response hides builderCatalogV2');
     assertTrue(!!defaultRes.body.data?.plannerCatalog, 'default plannerCatalog');
     assertEqual(defaultRes.body.data?.plannerCatalog?.contractVersion, 'meal_planner_menu.v3', 'default plannerCatalog v3 contract');
     assertTrue(!!defaultRes.body.data?.addonCatalog, 'default addonCatalog');
@@ -949,19 +974,19 @@ async function runTests() {
     );
   });
   
-  await test('builderCatalogV2 default exposes premium meal compatibility section', async () => {
-    const res = await makeRequest('GET', '/api/subscriptions/meal-planner-menu');
+  await test('explicit builderCatalogV2 exposes premium meal compatibility section', async () => {
+    const res = await makeRequest('GET', '/api/subscriptions/meal-planner-menu?contractVersion=v2');
     const premiumSection = findPlannerSection(res.body.data?.builderCatalogV2, 'premium_meal');
     const premiumProduct = findPlannerProduct(premiumSection, 'premium_meal');
     const proteinGroup = findPlannerGroup(premiumProduct, 'protein');
-    assertTrue(!!premiumSection, 'builderCatalogV2 premium_meal section present by default');
+    assertTrue(!!premiumSection, 'builderCatalogV2 premium_meal section present when v2 is requested');
     assertTrue(!!premiumProduct, 'builderCatalogV2 premium_meal virtual product present');
     assertTrue(!!proteinGroup, 'builderCatalogV2 premium protein group present');
     assertEqual(premiumProduct?.selectionType, 'premium_meal', 'premium product selectionType');
   });
   
-  await test('builderCatalogV2 default has premium_large_salad compatibility product', async () => {
-    const res = await makeRequest('GET', '/api/subscriptions/meal-planner-menu');
+  await test('explicit builderCatalogV2 has premium_large_salad compatibility product', async () => {
+    const res = await makeRequest('GET', '/api/subscriptions/meal-planner-menu?contractVersion=v2');
     const saladSection = findPlannerSection(res.body.data?.builderCatalogV2, 'premium_large_salad');
     const salad = findPlannerProduct(saladSection, 'premium_large_salad');
     assertTrue(!!saladSection, 'premium_large_salad compatibility section present');
@@ -974,11 +999,11 @@ async function runTests() {
     assertTrue(Array.isArray(salad?.optionGroups), 'premium_large_salad optionGroups is an array');
   });
 
-  await test('builderCatalogV2 default sandwich section does not leak non-sandwich products', async () => {
-    const res = await makeRequest('GET', '/api/subscriptions/meal-planner-menu');
+  await test('explicit builderCatalogV2 sandwich section does not leak non-sandwich products', async () => {
+    const res = await makeRequest('GET', '/api/subscriptions/meal-planner-menu?contractVersion=v2');
     const sandwichSection = findPlannerSection(res.body.data?.builderCatalogV2, 'sandwich');
     const sandwiches = sandwichSection?.products || [];
-    assertTrue(!!sandwichSection, 'builderCatalogV2 sandwich section present by default');
+    assertTrue(!!sandwichSection, 'builderCatalogV2 sandwich section present when v2 is requested');
     assertTrue(!sandwiches.some((item) => item.id === String(nonSandwichMeal._id)), 'non-sandwich meal excluded');
   });
 
@@ -1278,7 +1303,7 @@ async function runTests() {
       mealSlots: slots,
       addonsOneTime: [String(addonJuice._id), String(addonJuice2._id)],
     });
-    assertEqual(res.status, 200, 'status');
+    assertEqual(res.status, 402, 'save returns payment-required status while persisting pending overage');
     const day = await getActiveSubscriptionDay(TEST_DATE4);
     assertEqual((day?.addonSelections || []).length, 2, 'two addon selections persisted');
     const first = (day?.addonSelections || []).find((item) => String(item.addonId) === String(addonJuice._id));
@@ -1296,11 +1321,15 @@ async function runTests() {
       { slotIndex: 2, slotKey: 'slot_2', proteinId: String(standardProtein._id), carbs: [{ carbId: String(standardCarb._id), grams: 150 }], selectionType: 'standard_meal' },
     ];
 
+    await Subscription.updateOne(
+      { _id: testSubscription._id },
+      { $set: { 'addonBalance.0.remainingQty': 1, 'addonBalance.0.consumedQty': 0 } }
+    );
     const saveRes = await makeRequest('PUT', `/api/subscriptions/${testSubscription._id}/days/${paymentDate}/selection`, {
       mealSlots: slots,
       addonsOneTime: [String(addonJuice._id), String(addonJuice2._id)],
     });
-    assertEqual(saveRes.status, 200, 'save status');
+    assertEqual(saveRes.status, 402, 'save reports the pending add-on payment');
     assertEqual(saveRes.body.data?.paymentRequirement?.addonPendingPaymentCount, 1, 'one paid add-on pending after save');
     assertEqual(saveRes.body.data?.paymentRequirement?.premiumPendingPaymentCount, 0, 'no premium payment pending after save');
 
@@ -1404,7 +1433,7 @@ async function runTests() {
       mealSlots: slots,
       addonsOneTime: [String(addonSmallSalad._id)],
     });
-    assertEqual(res.status, 200, 'status');
+    assertEqual(res.status, 402, 'paid overage save reports payment required');
     const day = await getActiveSubscriptionDay(TEST_DATE5);
     const selection = (day?.addonSelections || []).find((item) => String(item.addonId) === String(addonSmallSalad._id));
     assertTrue(!!selection, 'small salad selection persisted');
@@ -1429,7 +1458,9 @@ async function runTests() {
   await test('planner accepts item selection with no add-on subscriptions as paid overage', async () => {
     const original = await Subscription.findById(testSubscription._id);
     const originalEntitlements = JSON.parse(JSON.stringify(original.addonSubscriptions || []));
+    const originalBalance = JSON.parse(JSON.stringify(original.addonBalance || []));
     original.addonSubscriptions = [];
+    original.addonBalance = [];
     await original.save();
 
     try {
@@ -1441,7 +1472,7 @@ async function runTests() {
         mealSlots: slots,
         addonsOneTime: [String(addonJuice._id)],
       });
-      assertEqual(res.status, 200, 'status');
+      assertEqual(res.status, 402, 'save reports payment required without a balance');
       const day = await getActiveSubscriptionDay(TEST_DATE7);
       const selection = (day?.addonSelections || []).find((item) => String(item.addonId) === String(addonJuice._id));
       assertTrue(!!selection, 'juice selection persisted');
@@ -1450,6 +1481,7 @@ async function runTests() {
     } finally {
       const restore = await Subscription.findById(testSubscription._id);
       restore.addonSubscriptions = originalEntitlements;
+      restore.addonBalance = originalBalance;
       await restore.save();
     }
   });
@@ -1468,7 +1500,7 @@ async function runTests() {
     assertTrue(errCode === 'INVALID' || errCode === 'INVALID_ONE_TIME_ADDON_SELECTION', 'inactive item rejected');
   });
 
-  await test('included entitlement resets per day', async () => {
+  await test('global add-on balance does not reset per day', async () => {
     const slots = [
       { slotIndex: 1, slotKey: 'slot_1', proteinId: String(standardProtein._id), carbs: [{ carbId: String(standardCarb._id), grams: 150 }], selectionType: 'standard_meal' },
       { slotIndex: 2, slotKey: 'slot_2', proteinId: String(standardProtein._id), carbs: [{ carbId: String(standardCarb._id), grams: 150 }], selectionType: 'standard_meal' },
@@ -1477,12 +1509,12 @@ async function runTests() {
       mealSlots: slots,
       addonsOneTime: [String(addonJuice._id)],
     });
-    assertEqual(res.status, 200, 'status');
+    assertEqual(res.status, 402, 'exhausted global balance requires payment on a later day');
     const day = await getActiveSubscriptionDay(TEST_DATE8);
     const selection = (day?.addonSelections || []).find((item) => String(item.addonId) === String(addonJuice._id));
     assertTrue(!!selection, 'juice selection persisted');
-    assertEqual(selection?.source, 'subscription', 'first item on a new day is included again');
-    assertEqual(Number(selection?.priceHalala || 0), 0, 'included price reset to zero on new day');
+    assertEqual(selection?.source, 'pending_payment', 'a new day does not recreate spent credits');
+    assertEqual(Number(selection?.priceHalala || 0), Number(addonJuice.priceHalala || 0), 'overage keeps the item price');
   });
   
   console.log('\n--- G) Current Overview ---\n');

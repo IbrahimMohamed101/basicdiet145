@@ -130,4 +130,20 @@ function dashboardRoleMiddleware(allowedRoles) {
   };
 }
 
-module.exports = { decodeDashboardToken, dashboardAuthMiddleware, dashboardOptionalAuthMiddleware, dashboardRoleMiddleware };
+function dashboardMutationRoleMiddleware(allowedRoles) {
+  const authorizeMutation = dashboardRoleMiddleware(allowedRoles);
+  return (req, res, next) => {
+    if (["GET", "HEAD", "OPTIONS"].includes(String(req.method || "").toUpperCase())) {
+      return next();
+    }
+    return authorizeMutation(req, res, next);
+  };
+}
+
+module.exports = {
+  decodeDashboardToken,
+  dashboardAuthMiddleware,
+  dashboardOptionalAuthMiddleware,
+  dashboardRoleMiddleware,
+  dashboardMutationRoleMiddleware,
+};

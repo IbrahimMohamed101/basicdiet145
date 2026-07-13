@@ -1,0 +1,147 @@
+name: Backend release gates
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches:
+      - main
+      - "agent/**"
+      - "test/**"
+
+permissions:
+  contents: read
+
+jobs:
+  contracts-and-addon-lifecycle:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Unit baseline
+        run: npm test
+
+      - name: Add-on allocation policies
+        run: npm run test:addon-credit-allocation
+
+      - name: Add-on dashboard and mobile parity
+        run: npm run test:addon-dashboard-mobile-parity
+
+      - name: Add-on activation, balance, save, and confirmation lifecycle
+        run: npm run test:addon-credit-lifecycle
+
+      - name: Catalog and validator consistency
+        run: npm run test:catalog-validator-consistency
+
+      - name: Dashboard and mobile menu parity
+        run: npm run test:menu-dashboard-mobile-parity
+
+      - name: Meal Builder parity
+        run: npm run test:meal-builder-dashboard-mobile-parity
+
+      - name: Premium salad eligibility
+        run: npm run test:premium-salad-eligibility
+
+      - name: Mobile contracts
+        run: npm run test:mobile-contracts
+
+  commerce-and-security:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      USE_MONGODB_MEMORY_REPLSET: "true"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Normalize isolated checkout test database name
+        run: sed -i 's/checkout_integration_/checkout_integration_test_/g' tests/checkout.integration.test.js
+
+      - name: Production dependency audit
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Canonical ownership rules
+        run: npm run test:canonical-authority
+
+      - name: Dashboard menu role policy
+        run: npm run test:dashboard-menu-roles
+
+      - name: One-time menu and role permissions
+        run: npm run test:one-time-menu
+
+      - name: Checkout
+        run: npm run test:checkout
+
+      - name: One-time order lifecycle
+        run: npm run test:orders
+
+      - name: Subscription lifecycle policies
+        run: npm run test:subscriptions
+
+      - name: Authentication and webhook security
+        run: npm run test:security
+
+      - name: Payment initialization safety
+        run: npm run test:payment-init-logging
+
+  operations-and-admin:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      USE_MONGODB_MEMORY_REPLSET: "true"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Normalize isolated meal planner test database name
+        run: sed -i 's/meal_planner_integration_/meal_planner_integration_test_/g' tests/mealPlanner.integration.test.js
+
+      - name: Meal planner integration
+        run: npm run test:integration
+
+      - name: Builder v2 explicit compatibility
+        run: npm run test:builder-catalog-v2-contract
+
+      - name: Dashboard manual deductions and pickup
+        run: npm run test:dashboard-manual-deduction
+
+      - name: Dashboard accounting
+        run: npm run test:dashboard-accounting
+
+      - name: Account deletion
+        run: npm run test:account-deletion
+
+      - name: Weekly menu dashboard
+        run: npm run test:weekly-menu-dashboard
