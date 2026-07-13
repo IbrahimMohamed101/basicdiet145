@@ -347,14 +347,21 @@ async function getPublishedMenu({ lang = "en", branchId = "" } = {}) {
     const group = groupsById.get(String(relation.groupId));
     if (product && product.isCustomizable === false) return;
     if (!product || !group || !isCustomerVisibleGroup(product, group)) return;
-    const optionRows = (optionRelationsByProductGroup.get(`${relation.productId}:${relation.groupId}`) || [])
+    const rawOptionRelations = optionRelationsByProductGroup.get(`${relation.productId}:${relation.groupId}`) || [];
+    let mismatchedOptionRelationCount = 0;
+    const optionRows = rawOptionRelations
       .map((optionRelation) => {
         const option = optionsById.get(String(optionRelation.optionId));
+        if (option && String(option.groupId) !== String(optionRelation.groupId)) {
+          mismatchedOptionRelationCount += 1;
+          return null;
+        }
         if (!option || !isCustomerVisibleOption(option, group, product)) return null;
         return serializePublicOption(optionRelation, option, lang);
       })
       .filter(Boolean)
       .sort((a, b) => a.sortOrder - b.sortOrder);
+    if (rawOptionRelations.length > 0 && mismatchedOptionRelationCount === rawOptionRelations.length && optionRows.length === 0) return;
     const serializedGroup = serializePublicGroup(relation, group, optionRows, lang);
     const productKey = String(product._id);
     if (!product._publicGroups) product._publicGroups = [];

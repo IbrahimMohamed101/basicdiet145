@@ -2851,6 +2851,15 @@ function buildOptionGroupSection(section, docs, lang, includeUnavailable, member
   const group = docs.groupsById.get(String(section.sourceGroupId));
   if (!product || !group) return null;
 
+  const groupRelation = docs.groupRelations.find((relation) => (
+    String(relation.productId) === String(product._id)
+    && String(relation.groupId) === String(group._id)
+  ));
+  if (!includeUnavailable && !relationReady(groupRelation)) {
+    addMembership(membership, section.selectionType, product._id);
+    return null;
+  }
+
   const selected = new Set((section.selectedOptionIds || []).map(String));
   const visualFamilySection = isVisualProteinFamilySection(section);
   const relationByOption = new Map(docs.optionRelations
@@ -2937,6 +2946,14 @@ function buildOptionGroupSection(section, docs, lang, includeUnavailable, member
     },
     sourceGroupId: String(group._id),
     groupKey: group.key || "",
+    relation: groupRelation ? {
+      id: String(groupRelation._id),
+      productId: String(groupRelation.productId),
+      groupId: String(groupRelation.groupId),
+      isActive: groupRelation.isActive !== false,
+      isVisible: groupRelation.isVisible !== false,
+      isAvailable: groupRelation.isAvailable !== false,
+    } : null,
     items,
   };
 }
