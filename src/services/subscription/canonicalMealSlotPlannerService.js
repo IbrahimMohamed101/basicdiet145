@@ -11,7 +11,6 @@ const {
   PREMIUM_MEAL_PROTEIN_KEYS,
   STANDARD_CARB_RULES,
   SUBSCRIPTION_PREMIUM_LARGE_SALAD_EXCLUDED_GROUP_KEYS,
-  SUBSCRIPTION_PREMIUM_LARGE_SALAD_PROTEIN_KEYS,
   SYSTEM_CURRENCY,
   normalizeProteinDisplayCategoryKey,
   normalizeProteinFamilyKey,
@@ -33,13 +32,15 @@ const {
   loadCatalogItemsByIdForDocs,
 } = require("../catalog/catalogAvailabilityService");
 const mealBuilderConfigService = require("./mealBuilderConfigService");
+const {
+  isSubscriptionPremiumLargeSaladProtein,
+} = require("./premiumLargeSaladEligibilityService");
 
 const CANONICAL_PLANNER_CONTRACT_VERSION = "meal_planner_menu.v3";
 const MENU_PROTEIN_GROUP_KEY = "proteins";
 const MENU_CARB_GROUP_KEY = "carbs";
 const MENU_SALAD_EXTRA_PROTEIN_GROUP_KEY = "extra_protein_50g";
 const PREMIUM_MEAL_PROTEIN_KEY_SET = new Set(PREMIUM_MEAL_PROTEIN_KEYS);
-const SUBSCRIPTION_PREMIUM_LARGE_SALAD_PROTEIN_KEY_SET = new Set(SUBSCRIPTION_PREMIUM_LARGE_SALAD_PROTEIN_KEYS);
 const PREMIUM_LARGE_SALAD_EXCLUDED_GROUP_KEY_SET = new Set(SUBSCRIPTION_PREMIUM_LARGE_SALAD_EXCLUDED_GROUP_KEYS);
 
 const SELECTION_TYPE_PRODUCT_RULES = Object.freeze({
@@ -277,14 +278,6 @@ function isPremiumMealProtein(option) {
   const premiumKey = String(option?.premiumKey || "").trim().toLowerCase();
   const key = String(option?.key || "").trim().toLowerCase();
   return PREMIUM_MEAL_PROTEIN_KEY_SET.has(premiumKey) || PREMIUM_MEAL_PROTEIN_KEY_SET.has(key);
-}
-
-function getProteinCatalogKey(option) {
-  return String(option?.key || option?.premiumKey || "").trim().toLowerCase();
-}
-
-function isSubscriptionPremiumLargeSaladProtein(option) {
-  return SUBSCRIPTION_PREMIUM_LARGE_SALAD_PROTEIN_KEY_SET.has(getProteinCatalogKey(option));
 }
 
 function buildDisplaySnapshot({ product, optionRowsById, groupRowsById, selectedOptions }) {
@@ -847,6 +840,7 @@ async function validateCanonicalMealSlots({
           productId,
           groupId,
           optionId,
+          stale: true,
         }));
         continue;
       }

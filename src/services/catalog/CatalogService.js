@@ -20,7 +20,6 @@ const {
   SYSTEM_CURRENCY,
   SUBSCRIPTION_COLD_SANDWICH_KEYS,
   SUBSCRIPTION_PREMIUM_LARGE_SALAD_EXCLUDED_GROUP_KEYS,
-  SUBSCRIPTION_PREMIUM_LARGE_SALAD_PROTEIN_KEYS,
   STANDARD_MEAL_EXTENDED_PROTEIN_KEY_SET,
   buildProteinOptionSections,
   getProteinFamilyNameI18n,
@@ -47,6 +46,9 @@ const {
   isLinkedDocGloballyAvailable,
   loadCatalogItemsByIdForDocs,
 } = require("./catalogAvailabilityService");
+const {
+  isSubscriptionPremiumLargeSaladProtein,
+} = require("../subscription/premiumLargeSaladEligibilityService");
 
 const BUILDER_CATALOG_V2_VERSION = "meal_planner_menu.v2";
 const PLANNER_CATALOG_V3_VERSION = "meal_planner_menu.v3";
@@ -55,7 +57,6 @@ const MENU_CARB_GROUP_KEY = "carbs";
 const MENU_SALAD_EXTRA_PROTEIN_GROUP_KEY = "extra_protein_50g";
 const CUSTOMER_VISIBLE_CARB_KEY_SET = new Set(CUSTOMER_VISIBLE_CARB_KEYS);
 const PREMIUM_MEAL_PROTEIN_KEY_SET = new Set(PREMIUM_MEAL_PROTEIN_KEYS);
-const SUBSCRIPTION_PREMIUM_LARGE_SALAD_PROTEIN_KEY_SET = new Set(SUBSCRIPTION_PREMIUM_LARGE_SALAD_PROTEIN_KEYS);
 const SUBSCRIPTION_PREMIUM_LARGE_SALAD_EXCLUDED_GROUP_KEY_SET = new Set(SUBSCRIPTION_PREMIUM_LARGE_SALAD_EXCLUDED_GROUP_KEYS);
 const SALAD_SELECTION_GROUP_RULE_BY_KEY = new Map(SALAD_SELECTION_GROUPS.map((group) => [group.key, group]));
 
@@ -138,11 +139,6 @@ function hasRuleTag(option, tag) {
 
 function isCustomerVisibleCarb(option) {
   return CUSTOMER_VISIBLE_CARB_KEY_SET.has(option?.key) && !hasRuleTag(option, "missing_external");
-}
-
-function isSubscriptionPremiumLargeSaladProtein(option) {
-  const key = String(option?.key || option?.premiumKey || "").trim().toLowerCase();
-  return SUBSCRIPTION_PREMIUM_LARGE_SALAD_PROTEIN_KEY_SET.has(key) && !option?.isPremium;
 }
 
 function normalizeMenuSaladGroupKey(groupKey) {
