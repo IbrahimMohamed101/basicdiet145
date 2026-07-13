@@ -675,7 +675,7 @@ async function seedViaDashboard(api) {
       assert(endpointCatalog, "endpoint returns builderCatalog");
       assert.strictEqual(endpointCatalog.contractVersion, "meal_planner_menu.v3");
       assert(res.body.data.plannerCatalog, "endpoint includes plannerCatalog");
-      assert.strictEqual(res.body.data.builderCatalogV2, undefined, "default v3 response omits builderCatalogV2");
+      assert(res.body.data.builderCatalogV2, "default v3 response includes builderCatalogV2 compatibility mirror");
       for (const key of ["categories", "proteins", "carbs", "premiumProteins", "premiumLargeSalad"]) {
         assert.strictEqual(endpointCatalog[key], undefined, `endpoint builderCatalog omits legacy ${key}`);
       }

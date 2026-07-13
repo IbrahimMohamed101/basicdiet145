@@ -1,4 +1,4 @@
-const { createInvoice } = require("../moyasarService");
+const { createSubscriptionCheckoutInvoice } = require("./subscriptionInvoiceInitializationService");
 const { buildPhase1SubscriptionContract, buildCanonicalDraftPersistenceFields } = require("./subscriptionContractService");
 const { resolveCheckoutQuoteOrThrow } = require("./subscriptionQuoteService");
 const {
@@ -8,7 +8,7 @@ const {
 
 const sliceBDefaultRuntime = () => ({
   resolveCheckoutQuoteOrThrow,
-  createInvoice,
+  createInvoice: createSubscriptionCheckoutInvoice,
   buildPhase1SubscriptionContract,
   buildCanonicalDraftPersistenceFields,
   finalizeSubscriptionDraftPaymentFlow,

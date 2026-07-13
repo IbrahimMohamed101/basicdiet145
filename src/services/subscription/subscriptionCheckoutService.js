@@ -488,9 +488,12 @@ async function performSubscriptionCheckout(userId, idempotencyKey, body, lang, r
         if (err && err.code === 11000) {
           logger.warn(
             "Subscription checkout race condition: Duplicate draft creation attempt caught",
-            { userId, idempotencyKey }
+            { userId, idempotencyKey, requestHash }
           );
-          const recovered = await CheckoutDraft.findOne({ userId, idempotencyKey })
+          const recovered = await CheckoutDraft.findOne({
+            userId,
+            $or: [{ idempotencyKey }, { requestHash, status: "pending_payment" }]
+          })
             .sort({ createdAt: -1 })
             .lean();
           if (recovered) {

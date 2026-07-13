@@ -925,7 +925,7 @@ async function runTests() {
   }
   
   console.log('\n--- A) Meal Planner Menu ---\n');
-  await test('meal-planner-menu default addonCatalog reuses the exact legacy add-on list while hiding legacy fields', async () => {
+  await test('meal-planner-menu keeps compatibility catalogs while hiding legacy lists', async () => {
     const defaultRes = await makeRequest('GET', '/api/subscriptions/meal-planner-menu');
     const legacyRes = await makeRequest('GET', '/api/subscriptions/meal-planner-menu?includeLegacy=true');
 
@@ -933,7 +933,7 @@ async function runTests() {
     assertEqual(defaultRes.body.status, true, 'default response status');
     assertNoTopLevelOk(defaultRes.body, 'default meal-planner-menu response');
     assertTrue(!!defaultRes.body.data?.builderCatalog, 'default builderCatalog');
-    assertEqual(defaultRes.body.data?.builderCatalogV2, undefined, 'default v3 response hides builderCatalogV2');
+    assertTrue(!!defaultRes.body.data?.builderCatalogV2, 'default v3 response keeps builderCatalogV2 compatibility mirror');
     assertTrue(!!defaultRes.body.data?.plannerCatalog, 'default plannerCatalog');
     assertEqual(defaultRes.body.data?.plannerCatalog?.contractVersion, 'meal_planner_menu.v3', 'default plannerCatalog v3 contract');
     assertTrue(!!defaultRes.body.data?.addonCatalog, 'default addonCatalog');
