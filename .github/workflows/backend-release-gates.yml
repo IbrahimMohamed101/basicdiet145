@@ -86,15 +86,15 @@ jobs:
         if: always()
         run: |
           outcomes=(
-            "${{ steps.unit_baseline.outcome }}"
-            "${{ steps.addon_allocation.outcome }}"
-            "${{ steps.addon_parity.outcome }}"
-            "${{ steps.addon_lifecycle.outcome }}"
-            "${{ steps.catalog_consistency.outcome }}"
-            "${{ steps.menu_parity.outcome }}"
-            "${{ steps.builder_parity.outcome }}"
-            "${{ steps.premium_salad.outcome }}"
-            "${{ steps.mobile_contracts.outcome }}"
+            "${{ steps.unit_baseline.conclusion }}"
+            "${{ steps.addon_allocation.conclusion }}"
+            "${{ steps.addon_parity.conclusion }}"
+            "${{ steps.addon_lifecycle.conclusion }}"
+            "${{ steps.catalog_consistency.conclusion }}"
+            "${{ steps.menu_parity.conclusion }}"
+            "${{ steps.builder_parity.conclusion }}"
+            "${{ steps.premium_salad.conclusion }}"
+            "${{ steps.mobile_contracts.conclusion }}"
           )
           printf 'Gate outcomes: %s\n' "${outcomes[*]}"
           for outcome in "${outcomes[@]}"; do
@@ -212,16 +212,16 @@ jobs:
         if: always()
         run: |
           outcomes=(
-            "${{ steps.dependency_audit.outcome }}"
-            "${{ steps.canonical_authority.outcome }}"
-            "${{ steps.dashboard_roles.outcome }}"
-            "${{ steps.checkout.outcome }}"
-            "${{ steps.checkout_concurrency.outcome }}"
-            "${{ steps.one_time_menu.outcome }}"
-            "${{ steps.orders.outcome }}"
-            "${{ steps.subscriptions.outcome }}"
-            "${{ steps.security.outcome }}"
-            "${{ steps.payment_init.outcome }}"
+            "${{ steps.dependency_audit.conclusion }}"
+            "${{ steps.canonical_authority.conclusion }}"
+            "${{ steps.dashboard_roles.conclusion }}"
+            "${{ steps.checkout.conclusion }}"
+            "${{ steps.checkout_concurrency.conclusion }}"
+            "${{ steps.one_time_menu.conclusion }}"
+            "${{ steps.orders.conclusion }}"
+            "${{ steps.subscriptions.conclusion }}"
+            "${{ steps.security.conclusion }}"
+            "${{ steps.payment_init.conclusion }}"
           )
           printf 'Gate outcomes: %s\n' "${outcomes[*]}"
           for outcome in "${outcomes[@]}"; do
@@ -301,12 +301,12 @@ jobs:
         if: always()
         run: |
           outcomes=(
-            "${{ steps.meal_planner.outcome }}"
-            "${{ steps.builder_v2.outcome }}"
-            "${{ steps.manual_deduction.outcome }}"
-            "${{ steps.accounting.outcome }}"
-            "${{ steps.account_deletion.outcome }}"
-            "${{ steps.weekly_menu.outcome }}"
+            "${{ steps.meal_planner.conclusion }}"
+            "${{ steps.builder_v2.conclusion }}"
+            "${{ steps.manual_deduction.conclusion }}"
+            "${{ steps.accounting.conclusion }}"
+            "${{ steps.account_deletion.conclusion }}"
+            "${{ steps.weekly_menu.conclusion }}"
           )
           printf 'Gate outcomes: %s\n' "${outcomes[*]}"
           for outcome in "${outcomes[@]}"; do
