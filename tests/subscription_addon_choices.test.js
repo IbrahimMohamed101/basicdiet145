@@ -2,6 +2,7 @@ const assert = require("assert");
 
 const {
   buildAddonChoicesCatalog,
+  buildAddonChoicePricingPreview,
   resolveAddonChoiceProductById,
   SUBSCRIPTION_ADDON_CHOICE_MAPPINGS,
 } = require("../src/services/subscription/subscriptionAddonChoicesService");
@@ -26,18 +27,26 @@ function buildModels() {
     drinksCategory: "507f191e810c19729de86002",
     dessertsCategory: "507f191e810c19729de86003",
     lightCategory: "507f191e810c19729de86004",
+    mealsCategory: "507f191e810c19729de86005",
     planAddon: "507f191e810c19729de86100",
+    mealPlanAddon: "507f191e810c19729de86109",
     berry: "507f191e810c19729de86101",
     water: "507f191e810c19729de86102",
     brownie: "507f191e810c19729de86103",
     greenSalad: "507f191e810c19729de86104",
     yogurt: "507f191e810c19729de86105",
+    chickenMeal: "507f191e810c19729de86106",
+    beefMeal: "507f191e810c19729de86107",
+    unrelatedMeal: "507f191e810c19729de86108",
+    subscriptionOwner: "507f191e810c19729de86201",
+    otherOwner: "507f191e810c19729de86202",
   };
   const categories = [
     { _id: ids.juicesCategory, key: "juices", isActive: true, isVisible: true, isAvailable: true, publishedAt: new Date() },
     { _id: ids.drinksCategory, key: "drinks", isActive: true, isVisible: true, isAvailable: true, publishedAt: new Date() },
     { _id: ids.dessertsCategory, key: "desserts", isActive: true, isVisible: true, isAvailable: true, publishedAt: new Date() },
     { _id: ids.lightCategory, key: "light_options", isActive: true, isVisible: true, isAvailable: true, publishedAt: new Date() },
+    { _id: ids.mealsCategory, key: "meals", isActive: true, isVisible: true, isAvailable: true, publishedAt: new Date() },
   ];
   const products = [
     {
@@ -120,25 +129,120 @@ function buildModels() {
       isAvailable: true,
       ui: { cardVariant: "standard" },
     },
+    {
+      _id: ids.chickenMeal,
+      key: "grilled_chicken_meal",
+      categoryId: ids.mealsCategory,
+      name: { en: "Grilled Chicken Meal", ar: "وجبة دجاج" },
+      description: { en: "", ar: "" },
+      priceHalala: 2500,
+      currency: "SAR",
+      itemType: "meal",
+      availableFor: ["one_time"],
+      isActive: true,
+      isVisible: true,
+      isAvailable: true,
+      publishedAt: new Date(),
+      ui: { cardVariant: "standard" },
+    },
+    {
+      _id: ids.beefMeal,
+      key: "beef_meal",
+      categoryId: ids.mealsCategory,
+      name: { en: "Beef Meal", ar: "وجبة لحم" },
+      description: { en: "", ar: "" },
+      priceHalala: 2700,
+      currency: "SAR",
+      itemType: "meal",
+      availableFor: ["one_time"],
+      isActive: true,
+      isVisible: true,
+      isAvailable: true,
+      publishedAt: new Date(),
+      ui: { cardVariant: "standard" },
+    },
+    {
+      _id: ids.unrelatedMeal,
+      key: "unrelated_meal",
+      categoryId: ids.mealsCategory,
+      name: { en: "Unrelated Meal", ar: "وجبة أخرى" },
+      description: { en: "", ar: "" },
+      priceHalala: 2800,
+      currency: "SAR",
+      itemType: "meal",
+      availableFor: ["one_time"],
+      isActive: true,
+      isVisible: true,
+      isAvailable: true,
+      publishedAt: new Date(),
+      ui: { cardVariant: "standard" },
+    },
   ];
+  function subscriptionDoc() {
+    return {
+      _id: "507f191e810c19729de86999",
+      userId: ids.subscriptionOwner,
+      addonSubscriptions: [
+        {
+          addonPlanId: ids.planAddon,
+          addonPlanName: "Juice Plan",
+          category: "juice",
+          maxPerDay: 2,
+          includedTotalQty: 5,
+          menuProductIds: [ids.berry],
+        },
+        {
+          addonPlanId: ids.mealPlanAddon,
+          addonPlanName: "Meal Plan",
+          category: "meal",
+          maxPerDay: 3,
+          includedTotalQty: 7,
+          menuProductIds: [ids.beefMeal, ids.berry, ids.chickenMeal],
+        },
+      ],
+      addonBalance: [
+        { addonPlanId: ids.planAddon, category: "juice", includedTotalQty: 5, remainingQty: 2 },
+        { addonPlanId: ids.mealPlanAddon, category: "meal", includedTotalQty: 7, remainingQty: 4 },
+      ],
+    };
+  }
+  function matchesActiveQuery(row, query) {
+    if (query.isActive === true && row.isActive === false) return false;
+    if (query.isVisible && query.isVisible.$ne === false && row.isVisible === false) return false;
+    if (query.isAvailable && query.isAvailable.$ne === false && row.isAvailable === false) return false;
+    if (query.publishedAt && query.publishedAt.$ne === null && row.publishedAt === null) return false;
+    if (query.$or && !query.$or.some((entry) => {
+      if (entry.availableFor && entry.availableFor.$exists === false) return row.availableFor === undefined;
+      if (Array.isArray(entry.availableFor)) return Array.isArray(row.availableFor) && row.availableFor.length === 0;
+      if (entry.availableFor) return Array.isArray(row.availableFor) && row.availableFor.includes(entry.availableFor);
+      return false;
+    })) return false;
+    return true;
+  }
 
   return {
     ids,
     SubscriptionModel: {
       findById() {
         return {
-          lean: () => Promise.resolve({
-            addonSubscriptions: [{
-              addonPlanId: ids.planAddon,
-              category: "juice",
-              menuProductIds: [ids.berry],
-            }],
-          }),
+          lean: () => Promise.resolve(subscriptionDoc()),
+        };
+      },
+      findOne(query) {
+        const doc = String(query.userId || "") === ids.subscriptionOwner
+          ? subscriptionDoc()
+          : null;
+        return {
+          lean: () => Promise.resolve(doc),
         };
       },
     },
     MenuCategoryModel: {
       find(query) {
+        if (query._id && query._id.$in) {
+          const categoryIds = query._id.$in.map(String);
+          return queryResult(categories.filter((category) => categoryIds.includes(String(category._id))));
+        }
         const keys = query.key && query.key.$in ? query.key.$in : [];
         return queryResult(categories.filter((category) => keys.includes(category.key)));
       },
@@ -151,10 +255,18 @@ function buildModels() {
     },
     MenuProductModel: {
       find(query) {
+        if (query._id && query._id.$in) {
+          const productIds = query._id.$in.map(String);
+          return queryResult(products.filter((product) => (
+            productIds.includes(String(product._id))
+            && matchesActiveQuery(product, query)
+          )));
+        }
         const categoryIds = query.categoryId && query.categoryId.$in ? query.categoryId.$in : [];
         const keys = query.key && query.key.$in ? query.key.$in : null;
         return queryResult(products.filter((product) => {
           if (!categoryIds.includes(product.categoryId)) return false;
+          if (!matchesActiveQuery(product, query)) return false;
           return !keys || keys.includes(product.key);
         }));
       },
@@ -186,16 +298,139 @@ async function run() {
     subscriptionId: "507f191e810c19729de86999",
     models: fixtureModels,
   });
-  assert(entitledData.juice.choices.every((choice) => choice.isEligibleForAllowance === true),
-    "all mapped juice products are eligible for the purchased juice category balance");
-  assert(entitledData.snack.choices.every((choice) => choice.isEligibleForAllowance === false));
+  assert.deepStrictEqual(Object.keys(entitledData), ["juice", "meal"]);
+  assert.strictEqual(entitledData.juice.catalogType, "subscription_entitlements");
+  assert.deepStrictEqual(entitledData.juice.choices.map((choice) => choice.id), [fixtureModels.ids.berry]);
+  assert(!entitledData.juice.choices.some((choice) => choice.id === fixtureModels.ids.water),
+    "subscription-specific choices must not include globally mapped products from another plan");
+  assert.deepStrictEqual(
+    entitledData.meal.choices.map((choice) => choice.id),
+    [fixtureModels.ids.beefMeal, fixtureModels.ids.berry, fixtureModels.ids.chickenMeal],
+    "subscription-specific choices preserve menuProductIds order"
+  );
+  assert(!entitledData.meal.choices.some((choice) => choice.id === fixtureModels.ids.unrelatedMeal));
+  assert.strictEqual(entitledData.meal.choices[0].addonPlanId, fixtureModels.ids.mealPlanAddon);
+  assert.strictEqual(entitledData.meal.choices[0].addonPlanName, "Meal Plan");
+  assert.strictEqual(entitledData.meal.choices[0].category, "meal");
+  assert.strictEqual(entitledData.meal.choices[0].maxPerDay, 3);
+  assert.strictEqual(entitledData.meal.choices[0].remainingQty, 4);
+  assert.strictEqual(entitledData.meal.choices[0].includedTotalQty, 7);
+  assert.strictEqual(entitledData.meal.choices[0].isEligibleForAllowance, true);
+  assert.strictEqual(
+    entitledData.meal.choices.find((choice) => choice.id === fixtureModels.ids.berry).addonPlanId,
+    fixtureModels.ids.mealPlanAddon,
+    "duplicate products across plans are returned deterministically with plan context"
+  );
+  assert.strictEqual(entitledData.meal.choices[0].coveredQty, 1);
+  assert.strictEqual(entitledData.meal.choices[0].paidQty, 0);
+  assert.strictEqual(entitledData.meal.choices[0].payableTotalHalala, 0);
+  assert.strictEqual(entitledData.meal.choices[0].pricingMode, "allowance_covered");
+
+  const currentSubscriptionData = await buildAddonChoicesCatalog({
+    lang: "en",
+    userId: fixtureModels.ids.subscriptionOwner,
+    models: fixtureModels,
+  });
+  assert.deepStrictEqual(Object.keys(currentSubscriptionData), ["juice", "meal"]);
+  assert.deepStrictEqual(
+    currentSubscriptionData.meal.choices.map((choice) => choice.id),
+    [fixtureModels.ids.beefMeal, fixtureModels.ids.berry, fixtureModels.ids.chickenMeal],
+    "authenticated requests without subscriptionId resolve the current subscription snapshot"
+  );
+
+  const mealOnlyData = await buildAddonChoicesCatalog({
+    lang: "en",
+    category: "meal",
+    subscriptionId: "507f191e810c19729de86999",
+    models: fixtureModels,
+  });
+  assert.deepStrictEqual(Object.keys(mealOnlyData), ["meal"]);
+  assert.deepStrictEqual(
+    mealOnlyData.meal.choices.map((choice) => choice.id),
+    [fixtureModels.ids.beefMeal, fixtureModels.ids.berry, fixtureModels.ids.chickenMeal]
+  );
+
+  const partialPreview = buildAddonChoicePricingPreview({
+    subscription: {
+      addonSubscriptions: [{
+        addonPlanId: fixtureModels.ids.mealPlanAddon,
+        category: "meal",
+        maxPerDay: 3,
+        menuProductIds: [fixtureModels.ids.beefMeal],
+      }],
+      addonBalance: [{
+        addonPlanId: fixtureModels.ids.mealPlanAddon,
+        category: "meal",
+        includedTotalQty: 5,
+        remainingQty: 2,
+      }],
+    },
+    entitlement: {
+      addonPlanId: fixtureModels.ids.mealPlanAddon,
+      category: "meal",
+      maxPerDay: 3,
+      menuProductIds: [fixtureModels.ids.beefMeal],
+    },
+    product: {
+      _id: fixtureModels.ids.beefMeal,
+      priceHalala: 2700,
+      currency: "SAR",
+    },
+    category: "meal",
+    quantity: 3,
+  });
+  assert.strictEqual(partialPreview.coveredQty, 2);
+  assert.strictEqual(partialPreview.paidQty, 1);
+  assert.strictEqual(partialPreview.payableTotalHalala, 2700);
+  assert.strictEqual(partialPreview.pricingMode, "allowance_partial");
+
+  const exhaustedPreview = buildAddonChoicePricingPreview({
+    subscription: {
+      addonSubscriptions: [{
+        addonPlanId: fixtureModels.ids.mealPlanAddon,
+        category: "meal",
+        maxPerDay: 3,
+        menuProductIds: [fixtureModels.ids.beefMeal],
+      }],
+      addonBalance: [{
+        addonPlanId: fixtureModels.ids.mealPlanAddon,
+        category: "meal",
+        includedTotalQty: 5,
+        remainingQty: 0,
+      }],
+    },
+    entitlement: {
+      addonPlanId: fixtureModels.ids.mealPlanAddon,
+      category: "meal",
+      maxPerDay: 3,
+      menuProductIds: [fixtureModels.ids.beefMeal],
+    },
+    product: {
+      _id: fixtureModels.ids.beefMeal,
+      priceHalala: 2700,
+      currency: "SAR",
+    },
+    category: "meal",
+    quantity: 2,
+  });
+  assert.strictEqual(exhaustedPreview.coveredQty, 0);
+  assert.strictEqual(exhaustedPreview.paidQty, 2);
+  assert.strictEqual(exhaustedPreview.payableTotalHalala, 5400);
+  assert.strictEqual(exhaustedPreview.pricingMode, "paid_overage");
 
   const legacyModels = buildModels();
   legacyModels.SubscriptionModel = {
     findById() {
       return {
         lean: () => Promise.resolve({
-          addonSubscriptions: [{ menuProductIds: [legacyModels.ids.berry] }],
+          _id: "507f191e810c19729de86998",
+          userId: legacyModels.ids.subscriptionOwner,
+          addonSubscriptions: [{
+            addonPlanId: legacyModels.ids.planAddon,
+            addonPlanName: "Legacy Juice Plan",
+            category: "juice",
+            maxPerDay: 1,
+          }],
         }),
       };
     },
@@ -205,13 +440,10 @@ async function run() {
     subscriptionId: "507f191e810c19729de86998",
     models: legacyModels,
   });
-  assert.strictEqual(
-    legacyEntitledData.juice.choices.find((choice) => choice.id === legacyModels.ids.berry).isEligibleForAllowance,
-    true
-  );
-  assert.strictEqual(
-    legacyEntitledData.juice.choices.find((choice) => choice.id === legacyModels.ids.water).isEligibleForAllowance,
-    false
+  assert.deepStrictEqual(
+    legacyEntitledData.juice.choices.map((choice) => choice.id).sort(),
+    [legacyModels.ids.berry, legacyModels.ids.water].sort(),
+    "legacy rows without menuProductIds use the controlled category mapping fallback"
   );
 
   const snackCategoryKeys = data.snack.choices.map((choice) => choice.categoryKey);
@@ -253,6 +485,39 @@ async function run() {
   const oneTimeFilters = resolvePublicAddonFilters({ type: "one_time" });
   assert(oneTimeFilters.$or.some((entry) => entry.kind === "item"));
   assert(!oneTimeFilters.$or.some((entry) => entry.kind === "plan"));
+
+  await assert.rejects(
+    () => buildAddonChoicesCatalog({
+      subscriptionId: "507f191e810c19729de86999",
+      userId: fixtureModels.ids.otherOwner,
+      models: fixtureModels,
+    }),
+    (err) => err.status === 403 && err.code === "FORBIDDEN"
+  );
+
+  await assert.rejects(
+    () => buildAddonChoicesCatalog({
+      subscriptionId: "not-an-id",
+      userId: fixtureModels.ids.subscriptionOwner,
+      models: fixtureModels,
+    }),
+    (err) => err.status === 400 && err.code === "INVALID_ID"
+  );
+
+  const missingModels = buildModels();
+  missingModels.SubscriptionModel = {
+    findById() {
+      return { lean: () => Promise.resolve(null) };
+    },
+  };
+  await assert.rejects(
+    () => buildAddonChoicesCatalog({
+      subscriptionId: "507f191e810c19729de86990",
+      userId: fixtureModels.ids.subscriptionOwner,
+      models: missingModels,
+    }),
+    (err) => err.status === 404 && err.code === "NOT_FOUND"
+  );
 }
 
 run()

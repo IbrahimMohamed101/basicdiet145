@@ -2370,11 +2370,23 @@ async function validateDaySelection(req, res) {
 
 async function getSubscriptionAddonChoices(req, res) {
   const lang = getRequestLang(req);
+  const subscriptionId = req.query && req.query.subscriptionId;
+  if (subscriptionId && !req.userId) {
+    return errorResponse(res, 401, "AUTH_REQUIRED", "Authentication required");
+  }
+  if (subscriptionId) {
+    try {
+      validateObjectId(subscriptionId, "subscriptionId");
+    } catch (err) {
+      return errorResponse(res, err.status, err.code, err.message);
+    }
+  }
   try {
     const data = await buildAddonChoicesCatalog({
       lang,
       category: req.query && req.query.category,
-      subscriptionId: req.query && req.query.subscriptionId,
+      subscriptionId,
+      userId: req.userId,
     });
     return res.status(200).json({ status: true, data });
   } catch (err) {

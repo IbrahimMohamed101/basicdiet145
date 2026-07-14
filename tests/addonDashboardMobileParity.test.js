@@ -3,25 +3,35 @@ process.env.NODE_ENV = "test";
 const assert = require("assert");
 const mongoose = require("mongoose");
 const { MongoMemoryReplSet } = require("mongodb-memory-server");
+const request = require("supertest");
 
+const { createApp } = require("../src/app");
 const Addon = require("../src/models/Addon");
 const AddonPlanPrice = require("../src/models/AddonPlanPrice");
 const MenuCategory = require("../src/models/MenuCategory");
 const MenuProduct = require("../src/models/MenuProduct");
 const Plan = require("../src/models/Plan");
 const Subscription = require("../src/models/Subscription");
+const User = require("../src/models/User");
+const {
+  issueAppAccessToken,
+} = require("../src/services/appTokenService");
 const menuCatalogService = require("../src/services/orders/menuCatalogService");
 const {
   buildAddonChoicesCatalog,
 } = require("../src/services/subscription/subscriptionAddonChoicesService");
 const {
   createDashboardAddonPlan,
+  deleteDashboardAddonPlan,
   listDashboardAddonPlans,
   updateAddonPlan,
 } = require("../src/controllers/addonController");
 const {
   getSubscriptionAddonChoices,
 } = require("../src/controllers/subscriptionController");
+const {
+  resolveCheckoutQuoteOrThrow,
+} = require("../src/services/subscription/subscriptionQuoteService");
 
 function response() {
   return {
@@ -38,14 +48,36 @@ function response() {
   };
 }
 
-async function invoke(handler, { body = {}, params = {}, query = {}, headers = {} } = {}) {
+async function invoke(handler, { body = {}, params = {}, query = {}, headers = {}, userId = null } = {}) {
   const res = response();
-  await handler({ body, params, query, headers }, res);
+  await handler({ body, params, query, headers, userId }, res);
   return res;
 }
 
 function ids(rows) {
   return rows.map((row) => String(row.id || row._id));
+}
+
+function assertFlutterChoiceFields(choice) {
+  for (const field of [
+    "id",
+    "key",
+    "name",
+    "nameAr",
+    "nameI18n",
+    "description",
+    "descriptionI18n",
+    "imageUrl",
+    "categoryKey",
+    "itemType",
+    "type",
+    "available",
+    "active",
+    "ui",
+    "isEligibleForAllowance",
+  ]) {
+    assert(Object.prototype.hasOwnProperty.call(choice, field), `choice keeps Flutter field ${field}`);
+  }
 }
 
 async function main() {
@@ -83,7 +115,6 @@ async function main() {
         sortOrder: index + 1,
       }))
     );
-
     await MenuProduct.create([
       {
         categoryId: category._id,
@@ -148,6 +179,11 @@ async function main() {
       isAvailable: true,
       isActive: true,
       currency: "SAR",
+      gramsOptions: [{
+        grams: 150,
+        isActive: true,
+        mealsOptions: [{ mealsPerDay: 2, priceHalala: 70000, compareAtHalala: 80000, isActive: true }],
+      }],
     });
     const configuredIds = [
       eligibleProducts[2],
@@ -209,8 +245,114 @@ async function main() {
     assert.deepStrictEqual(listedPlan.resolvedMenuProductIds, updatedIds);
     assert.strictEqual(listedPlan.resolvedMenuProductsCount, updatedIds.length);
 
+    const mealCategory = await MenuCategory.create({
+      key: "meals",
+      name: { ar: "الوجبات", en: "Meals" },
+      isActive: true,
+      isVisible: true,
+      isAvailable: true,
+      publishedAt: new Date(),
+      sortOrder: 2,
+    });
+    const dessertCategory = await MenuCategory.create({
+      key: "desserts",
+      name: { ar: "الحلى", en: "Desserts" },
+      isActive: true,
+      isVisible: true,
+      isAvailable: true,
+      publishedAt: new Date(),
+      sortOrder: 3,
+    });
+    const mealProducts = await MenuProduct.create([
+      {
+        categoryId: mealCategory._id,
+        key: "addon_parity_chicken_meal",
+        name: { ar: "وجبة دجاج", en: "Chicken Meal" },
+        description: { ar: "", en: "" },
+        priceHalala: 3200,
+        currency: "SAR",
+        itemType: "meal",
+        availableFor: ["one_time"],
+        isActive: true,
+        isVisible: true,
+        isAvailable: true,
+        publishedAt: new Date(),
+        sortOrder: 1,
+      },
+      {
+        categoryId: mealCategory._id,
+        key: "addon_parity_beef_meal",
+        name: { ar: "وجبة لحم", en: "Beef Meal" },
+        description: { ar: "", en: "" },
+        priceHalala: 3500,
+        currency: "SAR",
+        itemType: "meal",
+        availableFor: ["one_time"],
+        isActive: true,
+        isVisible: true,
+        isAvailable: true,
+        publishedAt: new Date(),
+        sortOrder: 2,
+      },
+      {
+        categoryId: mealCategory._id,
+        key: "addon_parity_unrelated_meal",
+        name: { ar: "وجبة خارج الخطة", en: "Unrelated Meal" },
+        description: { ar: "", en: "" },
+        priceHalala: 3600,
+        currency: "SAR",
+        itemType: "meal",
+        availableFor: ["one_time"],
+        isActive: true,
+        isVisible: true,
+        isAvailable: true,
+        publishedAt: new Date(),
+        sortOrder: 3,
+      },
+    ]);
+    const dessertProducts = await MenuProduct.create([
+      {
+        categoryId: dessertCategory._id,
+        key: "addon_parity_cheesecake",
+        name: { ar: "تشيز كيك", en: "Cheesecake" },
+        description: { ar: "", en: "" },
+        priceHalala: 1800,
+        currency: "SAR",
+        itemType: "dessert",
+        availableFor: ["one_time"],
+        isActive: true,
+        isVisible: true,
+        isAvailable: true,
+        publishedAt: new Date(),
+        sortOrder: 1,
+      },
+      {
+        categoryId: dessertCategory._id,
+        key: "addon_parity_unrelated_dessert",
+        name: { ar: "حلى خارج الخطة", en: "Unrelated Dessert" },
+        description: { ar: "", en: "" },
+        priceHalala: 1900,
+        currency: "SAR",
+        itemType: "dessert",
+        availableFor: ["one_time"],
+        isActive: true,
+        isVisible: true,
+        isAvailable: true,
+        publishedAt: new Date(),
+        sortOrder: 2,
+      },
+    ]);
+
+    const clientUser = await User.create({
+      phone: `+155501${Date.now()}`,
+      name: "Addon Parity Client",
+      role: "client",
+      isActive: true,
+    });
+    const mealAddonPlanId = new mongoose.Types.ObjectId();
+    const dessertAddonPlanId = new mongoose.Types.ObjectId();
     const subscription = await Subscription.create({
-      userId: new mongoose.Types.ObjectId(),
+      userId: clientUser._id,
       clientId: new mongoose.Types.ObjectId(),
       planId: basePlan._id,
       status: "active",
@@ -221,8 +363,46 @@ async function main() {
       addonSubscriptions: [{
         addonId: created.body.data.id,
         addonPlanId: created.body.data.id,
+        addonPlanName: "Juice Plan",
         category: "juice",
+        maxPerDay: 8,
         menuProductIds: configuredIds.slice(0, 3),
+      }, {
+        addonId: mealAddonPlanId,
+        addonPlanId: mealAddonPlanId,
+        addonPlanName: "Meal Add-on Plan",
+        category: "meal",
+        maxPerDay: 2,
+        menuProductIds: [mealProducts[1]._id, mealProducts[0]._id],
+      }, {
+        addonId: dessertAddonPlanId,
+        addonPlanId: dessertAddonPlanId,
+        addonPlanName: "Dessert Add-on Plan",
+        category: "dessert",
+        maxPerDay: 1,
+        menuProductIds: [dessertProducts[0]._id],
+      }],
+      addonBalance: [{
+        addonId: created.body.data.id,
+        addonPlanId: created.body.data.id,
+        category: "juice",
+        includedTotalQty: 3,
+        remainingQty: 2,
+        unitPriceHalala: 1000,
+      }, {
+        addonId: mealAddonPlanId,
+        addonPlanId: mealAddonPlanId,
+        category: "meal",
+        includedTotalQty: 2,
+        remainingQty: 0,
+        unitPriceHalala: 3500,
+      }, {
+        addonId: dessertAddonPlanId,
+        addonPlanId: dessertAddonPlanId,
+        category: "dessert",
+        includedTotalQty: 1,
+        remainingQty: 1,
+        unitPriceHalala: 1800,
       }],
     });
 
@@ -231,15 +411,92 @@ async function main() {
       category: "juice",
       subscriptionId: String(subscription._id),
     });
-    assert.deepStrictEqual(ids(choices.juice.choices), ids(eligibleProducts));
+    assert.deepStrictEqual(ids(choices.juice.choices), configuredIds.slice(0, 3));
     assert(choices.juice.choices.every((choice) => choice.isEligibleForAllowance === true));
+    assert.strictEqual(choices.juice.choices[0].addonPlanId, created.body.data.id);
+    assert.strictEqual(choices.juice.choices[0].addonPlanName, "Juice Plan");
+    assert.strictEqual(choices.juice.choices[0].maxPerDay, 8);
 
     const choicesResponse = await invoke(getSubscriptionAddonChoices, {
       query: { category: "juice", subscriptionId: String(subscription._id) },
       headers: { "accept-language": "en" },
+      userId: String(subscription.userId),
     });
     assert.strictEqual(choicesResponse.statusCode, 200);
-    assert.deepStrictEqual(ids(choicesResponse.body.data.juice.choices), ids(eligibleProducts));
+    assert.deepStrictEqual(ids(choicesResponse.body.data.juice.choices), configuredIds.slice(0, 3));
+
+    const api = request(createApp());
+    const appHeaders = {
+      Authorization: `Bearer ${issueAppAccessToken(clientUser)}`,
+      "Accept-Language": "en",
+    };
+    const mobileChoicesResponse = await api
+      .get("/api/subscriptions/addon-choices")
+      .set(appHeaders);
+    assert.strictEqual(mobileChoicesResponse.status, 200, JSON.stringify(mobileChoicesResponse.body));
+    assert.strictEqual(mobileChoicesResponse.body.status, true);
+    assert.deepStrictEqual(
+      Object.keys(mobileChoicesResponse.body.data).sort(),
+      ["dessert", "juice", "meal"],
+      "current subscription is resolved and every purchased category is returned"
+    );
+    for (const categoryKey of ["juice", "meal", "dessert"]) {
+      assert.strictEqual(mobileChoicesResponse.body.data[categoryKey].category, categoryKey);
+      assert(Array.isArray(mobileChoicesResponse.body.data[categoryKey].choices), `${categoryKey} keeps choices array`);
+      mobileChoicesResponse.body.data[categoryKey].choices.forEach(assertFlutterChoiceFields);
+    }
+    assert.deepStrictEqual(ids(mobileChoicesResponse.body.data.juice.choices), configuredIds.slice(0, 3));
+    assert.deepStrictEqual(ids(mobileChoicesResponse.body.data.meal.choices), [
+      String(mealProducts[1]._id),
+      String(mealProducts[0]._id),
+    ]);
+    assert.deepStrictEqual(ids(mobileChoicesResponse.body.data.dessert.choices), [String(dessertProducts[0]._id)]);
+    assert(
+      !mobileChoicesResponse.body.data.meal.choices.some((choice) => String(choice.id) === String(mealProducts[2]._id)),
+      "unrelated global meal product is not allowance-eligible"
+    );
+    assert(
+      !mobileChoicesResponse.body.data.dessert.choices.some((choice) => String(choice.id) === String(dessertProducts[1]._id)),
+      "unrelated global dessert product is not allowance-eligible"
+    );
+    assert.strictEqual(mobileChoicesResponse.body.data.juice.choices[0].payableTotalHalala, 0);
+    assert.strictEqual(mobileChoicesResponse.body.data.juice.choices[0].coveredQty, 1);
+    assert.strictEqual(mobileChoicesResponse.body.data.meal.choices[0].coveredQty, 0);
+    assert.strictEqual(mobileChoicesResponse.body.data.meal.choices[0].paidQty, 1);
+    assert.strictEqual(mobileChoicesResponse.body.data.meal.choices[0].payableTotalHalala, 3500);
+
+    const mobileMealOnlyResponse = await api
+      .get("/api/subscriptions/addon-choices?category=meal")
+      .set(appHeaders);
+    assert.strictEqual(mobileMealOnlyResponse.status, 200, JSON.stringify(mobileMealOnlyResponse.body));
+    assert.deepStrictEqual(Object.keys(mobileMealOnlyResponse.body.data), ["meal"]);
+    assert.deepStrictEqual(ids(mobileMealOnlyResponse.body.data.meal.choices), [
+      String(mealProducts[1]._id),
+      String(mealProducts[0]._id),
+    ]);
+
+    const unauthenticatedChoicesResponse = await invoke(getSubscriptionAddonChoices, {
+      query: { category: "juice", subscriptionId: String(subscription._id) },
+    });
+    assert.strictEqual(unauthenticatedChoicesResponse.statusCode, 401);
+
+    const forbiddenChoicesResponse = await invoke(getSubscriptionAddonChoices, {
+      query: { category: "juice", subscriptionId: String(subscription._id) },
+      userId: String(new mongoose.Types.ObjectId()),
+    });
+    assert.strictEqual(forbiddenChoicesResponse.statusCode, 403);
+
+    const invalidChoicesResponse = await invoke(getSubscriptionAddonChoices, {
+      query: { subscriptionId: "not-an-id" },
+      userId: String(subscription.userId),
+    });
+    assert.strictEqual(invalidChoicesResponse.statusCode, 400);
+
+    const missingChoicesResponse = await invoke(getSubscriptionAddonChoices, {
+      query: { subscriptionId: String(new mongoose.Types.ObjectId()) },
+      userId: String(subscription.userId),
+    });
+    assert.strictEqual(missingChoicesResponse.statusCode, 404);
 
     await MenuProduct.updateOne(
       { _id: eligibleProducts[4]._id },
@@ -252,10 +509,38 @@ async function main() {
       category: "juice",
       subscriptionId: String(subscription._id),
     });
-    assert.strictEqual(afterVisibilityProducts.length, 4);
-    assert.strictEqual(afterVisibilityCategories[0].productsCount, 4);
-    assert.strictEqual(afterVisibilityChoices.juice.choices.length, 4);
+    assert.strictEqual(
+      afterVisibilityProducts.filter((product) => String(product.key || "").startsWith("addon_parity_juice_")).length,
+      4
+    );
+    const afterVisibilityJuiceCategory = afterVisibilityCategories.find((row) => row.key === "juices");
+    assert.strictEqual(afterVisibilityJuiceCategory.productsCount, 4);
+    assert.strictEqual(afterVisibilityChoices.juice.choices.length, 2);
     assert.deepStrictEqual(listedPlan.menuProductIds, [...updatedIds, String(staleId)]);
+
+    const archived = await invoke(deleteDashboardAddonPlan, { params: { id: created.body.data.id } });
+    assert.strictEqual(archived.statusCode, 200);
+    const afterArchiveChoices = await buildAddonChoicesCatalog({
+      lang: "en",
+      category: "juice",
+      subscriptionId: String(subscription._id),
+    });
+    assert.deepStrictEqual(
+      ids(afterArchiveChoices.juice.choices),
+      configuredIds.slice(0, 3).filter((id) => id !== String(eligibleProducts[4]._id)),
+      "archiving the live plan must not replace the subscription snapshot"
+    );
+
+    await assert.rejects(
+      () => resolveCheckoutQuoteOrThrow({
+        planId: String(basePlan._id),
+        grams: 150,
+        mealsPerDay: 2,
+        delivery: { type: "pickup", pickupLocationId: "main" },
+        addons: [{ id: created.body.data.id }],
+      }, { lang: "en", allowMissingDeliveryAddress: true }),
+      (err) => err.code === "NOT_FOUND"
+    );
 
     console.log("Add-on dashboard and mobile parity test passed");
   } finally {

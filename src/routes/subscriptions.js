@@ -6,6 +6,7 @@ const menuController = require("../controllers/menuController");
 const mealBuilderController = require("../controllers/mealBuilderController");
 const addonController = require("../controllers/addonController");
 const { authMiddleware } = require("../middleware/auth");
+const optionalAuthMiddleware = require("../middleware/optionalAuth");
 const { checkoutLimiter } = require("../middleware/rateLimit");
 const asyncHandler = require("../middleware/asyncHandler");
 
@@ -82,7 +83,7 @@ router.get("/menu", asyncHandler(menuController.getSubscriptionMenu));
 router.get("/meal-planner-menu", asyncHandler(menuController.getSubscriptionMealPlannerMenu));
 router.get("/meal-builder", asyncHandler(mealBuilderController.getPublishedMealBuilder));
 router.get("/delivery-options", asyncHandler(menuController.getDeliveryOptions));
-router.get("/addon-choices", asyncHandler(controller.getSubscriptionAddonChoices));
+router.get("/addon-choices", optionalAuthMiddleware, asyncHandler(controller.getSubscriptionAddonChoices));
 
 router.use(authMiddleware);
 
