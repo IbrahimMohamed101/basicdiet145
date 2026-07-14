@@ -80,7 +80,7 @@ async function resolvePlanningSubscriptionForOperation(subscription, session = n
   };
 }
 
-async function consumePremiumBalanceAtomically({ subscription, dayId, date, premiumKey, session }) {
+async function consumePremiumBalanceAtomically({ subscription, dayId, date, premiumKey, session, unitExtraFeeHalala }) {
   if (!session) {
     throw new Error("consumePremiumBalanceAtomically requires a session");
   }
@@ -88,11 +88,11 @@ async function consumePremiumBalanceAtomically({ subscription, dayId, date, prem
   if (!premiumKey) {
     return { consumed: false, reason: "no_premium_key", premiumSource: "pending_payment", premiumExtraFeeHalala: 0 };
   }
-  const canonicalUpgrade = await resolveSubscriptionPremiumUpgradePricing(premiumKey, { session });
-  const unitExtraFeeHalala = canonicalUpgrade.priceHalala;
+  const canonicalUpgrade = await resolveSubscriptionPremiumUpgradePricing(premiumKey, { session, fallbackPriceHalala: unitExtraFeeHalala });
+  const resolvedUnitExtraFeeHalala = canonicalUpgrade.priceHalala;
 
   if (!subscription || !Array.isArray(subscription.premiumBalance)) {
-    return { consumed: false, reason: "no_balance_array", premiumSource: "pending_payment", premiumExtraFeeHalala: unitExtraFeeHalala };
+    return { consumed: false, reason: "no_balance_array", premiumSource: "pending_payment", premiumExtraFeeHalala: resolvedUnitExtraFeeHalala };
   }
 
   const bucketIndex = subscription.premiumBalance.findIndex(
