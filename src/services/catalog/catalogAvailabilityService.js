@@ -5,13 +5,23 @@ function catalogItemIdOf(doc) {
   return String(doc.catalogItemId);
 }
 
+function isDocumentUsable(doc) {
+  return Boolean(doc)
+    && doc.isActive !== false
+    && doc.isAvailable !== false
+    && doc.isVisible !== false
+    && doc.isArchived !== true
+    && doc.isDeleted !== true
+    && !doc.archivedAt
+    && !doc.deletedAt;
+}
+
 function isCatalogItemUsable(catalogItem) {
-  return Boolean(catalogItem)
-    && catalogItem.isActive !== false
-    && catalogItem.isAvailable !== false;
+  return isDocumentUsable(catalogItem);
 }
 
 function isLinkedDocGloballyAvailable(doc, catalogItemsById = new Map()) {
+  if (!isDocumentUsable(doc)) return false;
   const catalogItemId = catalogItemIdOf(doc);
   if (!catalogItemId) return true;
   return isCatalogItemUsable(catalogItemsById.get(catalogItemId));
@@ -63,8 +73,8 @@ async function assertCatalogItemLinkable(catalogItemId, { allowInactive = false 
     err.messageAr = "لم يتم العثور على الصنف";
     throw err;
   }
-  if (!allowInactive && row.isActive === false) {
-    const err = new Error("CatalogItem is inactive");
+  if (!allowInactive && !isCatalogItemUsable(row)) {
+    const err = new Error("CatalogItem is inactive or unavailable");
     err.code = "CATALOG_ITEM_INACTIVE";
     err.status = 409;
     err.messageAr = "الصنف غير نشط";
@@ -81,6 +91,7 @@ module.exports = {
   createCatalogAvailabilityError,
   filterGloballyAvailable,
   isCatalogItemUsable,
+  isDocumentUsable,
   isLinkedDocGloballyAvailable,
   loadCatalogItemsByIdForDocs,
 };
