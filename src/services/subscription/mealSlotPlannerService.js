@@ -938,7 +938,10 @@ async function buildMealSlotDraft({ mealSlots, mealsPerDayLimit, maxSlotCount = 
 
   const resolvedUpgrades = await Promise.all([...allPremiumKeys].map(async (premiumKey) => {
     try {
-      const upgrade = await resolveSubscriptionPremiumUpgradePricing(premiumKey, { session });
+      const fallbackPriceHalala = premiumKey === PREMIUM_LARGE_SALAD_PREMIUM_KEY 
+        ? PREMIUM_LARGE_SALAD_FIXED_PRICE_HALALA 
+        : undefined;
+      const upgrade = await resolveSubscriptionPremiumUpgradePricing(premiumKey, { session, fallbackPriceHalala });
       return { premiumKey, upgrade };
     } catch (err) {
       return { premiumKey, error: err };
