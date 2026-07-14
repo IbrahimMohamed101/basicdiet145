@@ -1,0 +1,22 @@
+name: Apply add-on mobile visibility fix
+
+on:
+  push:
+    branches:
+      - agent/fix-addon-mobile-visibility
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-commit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/fix-addon-mobile-visibility
+          fetch-depth: 0
+
+      - name
