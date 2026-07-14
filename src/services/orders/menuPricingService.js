@@ -11,7 +11,7 @@ const { pickLang } = require("../../utils/i18n");
 const { computeInclusiveVatBreakdown } = require("../../utils/pricing");
 const { VAT_PERCENTAGE } = require("../../config/vat");
 const {
-  assertLinkedDocGloballyAvailable,
+  isLinkedDocGloballyAvailable,
   loadCatalogItemsByIdForDocs,
 } = require("../catalog/catalogAvailabilityService");
 
@@ -162,10 +162,12 @@ function isRelationAvailable(doc) {
 async function loadProductContext(productId) {
   const product = await MenuProduct.findById(productId).lean();
   if (!product) throw createMenuPricingError("ITEM_NOT_FOUND", "Product was not found", 404);
-  const productCatalogItemsById = await loadCatalogItemsByIdForDocs([product]);
-  assertLinkedDocGloballyAvailable(product, productCatalogItemsById, "Product catalog item is unavailable");
   if (!isCatalogAvailable(product) || !isAvailableForChannel(product, "one_time")) {
     throw createMenuPricingError("PRODUCT_NOT_AVAILABLE", "Product is unavailable", 409);
+  }
+  const productCatalogItemsById = await loadCatalogItemsByIdForDocs([product]);
+  if (!isLinkedDocGloballyAvailable(product, productCatalogItemsById)) {
+    throw createMenuPricingError("PRODUCT_NOT_AVAILABLE", "Product catalog item is unavailable", 409);
   }
   const category = await MenuCategory.findById(product.categoryId).lean();
   if (!isCatalogAvailable(category)) {
@@ -264,9 +266,11 @@ function validateAndPriceOptions({ selections, context, lang }) {
     if (!isCatalogAvailable(group)) {
       throw createMenuPricingError("OPTION_GROUP_NOT_AVAILABLE", "Option group is unavailable", 409);
     }
-    assertLinkedDocGloballyAvailable(option, catalogItemsById, "Option catalog item is unavailable");
     if (!isRelationAvailable(optionRelation) || !isCatalogAvailable(option) || !isAvailableForChannel(option, "one_time")) {
       throw createMenuPricingError("OPTION_NOT_AVAILABLE", "Option is unavailable", 409);
+    }
+    if (!isLinkedDocGloballyAvailable(option, catalogItemsById)) {
+      throw createMenuPricingError("OPTION_NOT_AVAILABLE", "Option catalog item is unavailable", 409);
     }
     if (!option) throw createMenuPricingError("OPTION_NOT_ALLOWED", "Option is not allowed for this product");
     const extraPriceHalala = optionRelation.extraPriceHalala === null || optionRelation.extraPriceHalala === undefined

@@ -723,7 +723,25 @@ async function activateSubscriptionFromCanonicalDraft({ draft, payment, session,
 
 async function activateSubscriptionFromCanonicalContract({ userId, planId, contract, legacyRuntimeData = {}, session, persistence = defaultPersistence() }) {
   const { subscriptionPayload, dayEntries } = buildCanonicalContractActivationPayload({ userId, planId, contract, legacyRuntimeData });
-  return persistActivatedSubscription({ subscriptionPayload, dayEntries, session, persistence });
+  if (session) {
+    return persistActivatedSubscription({ subscriptionPayload, dayEntries, session, persistence });
+  }
+
+  const ownedSession = await mongoose.startSession();
+  let activatedSubscription = null;
+  try {
+    await ownedSession.withTransaction(async () => {
+      activatedSubscription = await persistActivatedSubscription({
+        subscriptionPayload,
+        dayEntries,
+        session: ownedSession,
+        persistence,
+      });
+    });
+    return activatedSubscription;
+  } finally {
+    await ownedSession.endSession();
+  }
 }
 
 // Removed activatePendingLegacySubscription as the system now uses unified draft-to-subscription activation.

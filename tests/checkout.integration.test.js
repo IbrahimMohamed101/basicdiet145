@@ -809,8 +809,16 @@ async function runTests() {
   });
 
   await test('legacy subscription missing delivery window returns lockedReason and deliveryAddress', async () => {
+    const legacyUser = await User.create({
+      phone: `+9665099${Date.now()}`,
+      name: 'Legacy Fulfillment Test User',
+      role: 'client',
+      isActive: true,
+    });
+    const previousToken = authToken;
+    authToken = issueAppAccessToken(legacyUser._id);
     const legacySub = await Subscription.create({
-      userId: testUser._id,
+      userId: legacyUser._id,
       planId: testPlan._id,
       status: 'active',
       startDate: new Date(`${startDate}T00:00:00.000Z`),
@@ -837,6 +845,7 @@ async function runTests() {
     assertNotNull(res.body.data?.deliveryAddress, 'legacy delivery address returned');
     assertEqual(res.body.data?.deliveryWindow, null, 'legacy delivery window remains null');
     assertEqual(res.body.data?.lockedReason, 'DELIVERY_WINDOW_MISSING', 'legacy missing delivery window locked reason');
+    authToken = previousToken;
   });
 
   await test('POST /api/subscriptions/quote auto-selects sole pickup location when omitted', async () => {

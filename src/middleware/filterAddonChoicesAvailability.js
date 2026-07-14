@@ -58,20 +58,27 @@ function filterAddonChoicesPayload(payload, activePlanIds) {
       ...originalChoices.map(planIdOf),
     ].filter(Boolean));
 
-    const entitlements = originalEntitlements.filter((row) => {
-      const planId = planIdOf(row);
-      return !planId || activePlanIds.has(planId);
-    });
+    // Purchased entitlement rows are immutable snapshots. Archiving the live
+    // dashboard plan must stop new sales, but it must not remove an already-paid
+    // customer's remaining choices or balance.
+    const entitlements = originalEntitlements;
 
     const choices = originalChoices.filter((row) => {
       const planId = planIdOf(row);
-      return !planId || activePlanIds.has(planId);
+      if (!planId || activePlanIds.has(planId)) return true;
+      return row && (
+        row.isEligibleForAllowance === true
+        || row.entitlementIndex !== undefined
+        || Boolean(row.entitlementKey)
+      );
     });
 
     const hasActiveReferencedPlan = [...referencedPlanIds].some((planId) => activePlanIds.has(planId));
+    const hasPurchasedEntitlement = entitlements.length > 0
+      || choices.some((row) => row && (row.isEligibleForAllowance === true || row.entitlementIndex !== undefined || Boolean(row.entitlementKey)));
     const isLegacyGenericCategory = LEGACY_GENERIC_CATEGORIES.has(String(category));
 
-    if (!isLegacyGenericCategory && referencedPlanIds.size > 0 && !hasActiveReferencedPlan) {
+    if (!isLegacyGenericCategory && referencedPlanIds.size > 0 && !hasActiveReferencedPlan && !hasPurchasedEntitlement) {
       continue;
     }
 

@@ -287,9 +287,8 @@ async function main() {
           includedTotalQty: 20,
           unitPlanPriceHalala: 1000,
           currency: "SAR",
-          // This intentionally mirrors the historical three-ID snapshot. It is
-          // catalog metadata, not the boundary of the purchased juice credit.
-          menuProductIds: allJuiceIds.slice(0, 3),
+          // Modern entitlements use exact immutable product membership.
+          menuProductIds: allJuiceIds,
         }],
       },
     };
@@ -313,7 +312,7 @@ async function main() {
     assert.strictEqual(subscription.addonBalance[0].consumedQty, 0);
     assert.deepStrictEqual(
       subscription.addonSubscriptions[0].menuProductIds.map(String),
-      allJuiceIds.slice(0, 3)
+      allJuiceIds
     );
 
     const mealFixture = await seedCanonicalMealFixture();

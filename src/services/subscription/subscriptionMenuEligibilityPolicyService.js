@@ -45,8 +45,9 @@ function isSubscriptionPremiumMealProtein(option = {}) {
 }
 
 function isSubscriptionPremiumLargeSaladProtein(option = {}) {
-  return option.isPremium !== true
-    && PREMIUM_LARGE_SALAD_PROTEIN_KEY_SET.has(getProteinCatalogKey(option));
+  if (option.isPremium === true) return false;
+  return PREMIUM_LARGE_SALAD_PROTEIN_KEY_SET.has(normalizeCatalogKey(option.key))
+    || PREMIUM_LARGE_SALAD_PROTEIN_KEY_SET.has(normalizeCatalogKey(option.premiumKey));
 }
 
 function isConfiguredPremiumLargeSaladProtein(option = {}, allowedOptionKeys = []) {

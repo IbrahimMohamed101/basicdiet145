@@ -1,0 +1,53 @@
+name: Premium meal backend lifecycle
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches:
+      - "test/premium-meal-backend-lifecycle"
+
+permissions:
+  contents: read
+
+jobs:
+  premium-meal-lifecycle:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    env:
+      USE_MONGODB_MEMORY_REPLSET: "true"
+      MONGO_URI: mongodb://127.0.0.1:27017/basicdiet_premium_lifecycle_test?replicaSet=rs0
+      MONGODB_URI: mongodb://127.0.0.1:27017/basicdiet_premium_lifecycle_test?replicaSet=rs0
+      MONGO_URI_TEST: mongodb://127.0.0.1:27017/basicdiet_premium_lifecycle_test?replicaSet=rs0
+      NODE_ENV: test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Start MongoDB replica set
+        run: bash scripts/ci/start-mongo-replset.sh basicdiet-premium-lifecycle-mongo
+
+      - name: Normalize isolated integration database names
+        run: |
+          sed -i 's/checkout_integration_/checkout_integration_test_/g' tests/checkout.integration.test.js
+          sed -i 's/meal_planner_integration_/meal_planner_integration_test_/g' tests/mealPlanner.integration.test.js
+
+      - name: Run premium meal backend lifecycle
+        run: bash scripts/run-premium-meal-backend-lifecycle.sh 2>&1 | tee premium-meal-lifecycle.log
+
+      - name: Upload premium lifecycle log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: premium-meal-backend-lifecycle-log
+          path: premium-meal-lifecycle.log

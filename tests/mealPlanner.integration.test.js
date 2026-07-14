@@ -1122,8 +1122,16 @@ async function runTests() {
   });
 
   await test('TOTAL_BALANCE_WITHIN_VALIDITY allows slots up to maxConsumableMealsNow', async () => {
+    const balanceUser = await User.create({
+      phone: `+9665088${Date.now()}`,
+      name: 'Balance Policy Test User',
+      role: 'client',
+      isActive: true,
+    });
+    const previousToken = authToken;
+    authToken = issueAppAccessToken(balanceUser._id);
     const balanceSub = await Subscription.create({
-      userId: testUser._id,
+      userId: balanceUser._id,
       planId: testPlan._id,
       selectedMealsPerDay: 1,
       startDate: testSubscription.startDate,
@@ -1165,6 +1173,7 @@ async function runTests() {
     } finally {
       await SubscriptionDay.deleteMany({ subscriptionId: balanceSub._id });
       await Subscription.deleteOne({ _id: balanceSub._id });
+      authToken = previousToken;
     }
   });
 
