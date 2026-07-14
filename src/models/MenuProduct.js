@@ -56,6 +56,27 @@ const ProductUiSchema = new mongoose.Schema(
   { _id: false }
 );
 
+function addLifecycleAvailabilityFilter(query) {
+  const filter = query.getFilter();
+  if (filter.isActive !== true) return;
+  if (filter.isArchived === undefined) query.where({ isArchived: { $ne: true } });
+  if (filter.archivedAt === undefined) query.where({ archivedAt: null });
+  if (filter.isDeleted === undefined) query.where({ isDeleted: { $ne: true } });
+  if (filter.deletedAt === undefined) query.where({ deletedAt: null });
+}
+
+function syncArchiveUpdateLifecycle(query) {
+  const update = query.getUpdate() || {};
+  const set = update.$set || update;
+  if (set.isArchived === true || set.isDeleted === true || set.archivedAt || set.deletedAt) {
+    if (!update.$set) update.$set = {};
+    update.$set.isActive = false;
+    update.$set.isVisible = false;
+    update.$set.isAvailable = false;
+    query.setUpdate(update);
+  }
+}
+
 const MenuProductSchema = new mongoose.Schema(
   {
     categoryId: { type: mongoose.Schema.Types.ObjectId, ref: "MenuCategory", required: true, index: true },
@@ -84,6 +105,10 @@ const MenuProductSchema = new mongoose.Schema(
     },
     isCustomizable: { type: Boolean, default: false, index: true },
     isActive: { type: Boolean, default: true, index: true },
+    isArchived: { type: Boolean, default: false, index: true },
+    archivedAt: { type: Date, default: null },
+    isDeleted: { type: Boolean, default: false, index: true },
+    deletedAt: { type: Date, default: null },
     isVisible: { type: Boolean, default: true, index: true },
     isAvailable: { type: Boolean, default: true, index: true },
     sortOrder: { type: Number, default: 0 },
@@ -94,6 +119,23 @@ const MenuProductSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+MenuProductSchema.pre("validate", function syncLifecycleState(next) {
+  if (this.isArchived || this.isDeleted || this.archivedAt || this.deletedAt) {
+    this.isActive = false;
+    this.isVisible = false;
+    this.isAvailable = false;
+  }
+  next();
+});
+MenuProductSchema.pre(/^find/, function filterArchivedPublicRows(next) {
+  addLifecycleAvailabilityFilter(this);
+  next();
+});
+MenuProductSchema.pre(["updateOne", "updateMany", "findOneAndUpdate"], function syncArchiveUpdates(next) {
+  syncArchiveUpdateLifecycle(this);
+  next();
+});
 
 MenuProductSchema.index({ key: 1 }, { unique: true });
 MenuProductSchema.index({ categoryId: 1, isActive: 1, isVisible: 1, isAvailable: 1, publishedAt: 1, sortOrder: 1, createdAt: -1 });

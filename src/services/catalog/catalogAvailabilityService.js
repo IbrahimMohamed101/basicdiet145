@@ -8,7 +8,11 @@ function catalogItemIdOf(doc) {
 function isCatalogItemUsable(catalogItem) {
   return Boolean(catalogItem)
     && catalogItem.isActive !== false
-    && catalogItem.isAvailable !== false;
+    && catalogItem.isAvailable !== false
+    && catalogItem.isArchived !== true
+    && !catalogItem.archivedAt
+    && catalogItem.isDeleted !== true
+    && !catalogItem.deletedAt;
 }
 
 function isLinkedDocGloballyAvailable(doc, catalogItemsById = new Map()) {
@@ -63,8 +67,8 @@ async function assertCatalogItemLinkable(catalogItemId, { allowInactive = false 
     err.messageAr = "لم يتم العثور على الصنف";
     throw err;
   }
-  if (!allowInactive && row.isActive === false) {
-    const err = new Error("CatalogItem is inactive");
+  if (!allowInactive && !isCatalogItemUsable(row)) {
+    const err = new Error("CatalogItem is inactive or archived");
     err.code = "CATALOG_ITEM_INACTIVE";
     err.status = 409;
     err.messageAr = "الصنف غير نشط";
