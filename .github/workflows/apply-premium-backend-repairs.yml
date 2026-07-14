@@ -35,14 +35,20 @@ jobs:
           node --check tests/checkout.integration.test.js
           node --check tests/mealPlanner.integration.test.js
           node --check tests/oneTimeMenuCatalog.test.js
-      - name: Commit repairs and remove temporary automation
+      - name: Commit repairs
         run: |
-          rm -f scripts/apply-premium-backend-repairs.js
-          rm -f .github/workflows/apply-premium-backend-repairs.yml
-          rm -f .github/workflows/export-source.yml
-          rm -f repair-trigger.txt
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
+          git add \
+            .github/workflows/backend-release-gates.yml \
+            src/middleware/filterAddonChoicesAvailability.js \
+            src/services/orders/menuPricingService.js \
+            src/services/subscription/subscriptionActivationService.js \
+            src/services/subscription/subscriptionMenuEligibilityPolicyService.js \
+            tests/addon_balance_e2e.test.js \
+            tests/checkout.integration.test.js \
+            tests/mealPlanner.integration.test.js \
+            tests/oneTimeMenuCatalog.test.js
+          git status --short
           git commit -m "fix(backend): repair premium and add-on lifecycles"
           git push origin HEAD:test/premium-meal-backend-lifecycle
