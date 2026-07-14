@@ -4,13 +4,16 @@ on:
   push:
     branches:
       - "test/premium-meal-backend-lifecycle"
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: write
 
 jobs:
   apply:
-    if: github.event.head_commit.message != 'fix(backend): repair premium and add-on lifecycles'
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -37,6 +40,7 @@ jobs:
           rm -f scripts/apply-premium-backend-repairs.js
           rm -f .github/workflows/apply-premium-backend-repairs.yml
           rm -f .github/workflows/export-source.yml
+          rm -f repair-trigger.txt
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
