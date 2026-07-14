@@ -1,0 +1,44 @@
+name: Apply premium backend repairs
+
+on:
+  push:
+    branches:
+      - "test/premium-meal-backend-lifecycle"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.event.head_commit.message != 'fix(backend): repair premium and add-on lifecycles'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: test/premium-meal-backend-lifecycle
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Apply repairs
+        run: node scripts/apply-premium-backend-repairs.js
+      - name: Validate syntax
+        run: |
+          node --check src/services/subscription/subscriptionActivationService.js
+          node --check src/services/subscription/subscriptionMenuEligibilityPolicyService.js
+          node --check src/middleware/filterAddonChoicesAvailability.js
+          node --check src/services/orders/menuPricingService.js
+          node --check tests/addon_balance_e2e.test.js
+          node --check tests/checkout.integration.test.js
+          node --check tests/mealPlanner.integration.test.js
+          node --check tests/oneTimeMenuCatalog.test.js
+      - name: Commit repairs and remove temporary automation
+        run: |
+          rm -f scripts/apply-premium-backend-repairs.js
+          rm -f .github/workflows/apply-premium-backend-repairs.yml
+          rm -f .github/workflows/export-source.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix(backend): repair premium and add-on lifecycles"
+          git push origin HEAD:test/premium-meal-backend-lifecycle
