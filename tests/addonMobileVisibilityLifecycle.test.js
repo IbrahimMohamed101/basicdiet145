@@ -197,6 +197,7 @@ async function main() {
         menuProductIds: productIds,
       }],
       addonBalance: [{
+        addonId: addonPlanId,
         addonPlanId,
         category: "meal",
         includedTotalQty: 5,
