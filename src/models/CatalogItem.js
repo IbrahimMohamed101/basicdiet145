@@ -19,6 +19,26 @@ const NutritionSchema = new mongoose.Schema(
   { _id: false }
 );
 
+function addLifecycleAvailabilityFilter(query) {
+  const filter = query.getFilter();
+  if (filter.isActive !== true) return;
+  if (filter.isArchived === undefined) query.where({ isArchived: { $ne: true } });
+  if (filter.archivedAt === undefined) query.where({ archivedAt: null });
+  if (filter.isDeleted === undefined) query.where({ isDeleted: { $ne: true } });
+  if (filter.deletedAt === undefined) query.where({ deletedAt: null });
+}
+
+function syncArchiveUpdateLifecycle(query) {
+  const update = query.getUpdate() || {};
+  const set = update.$set || update;
+  if (set.isArchived === true || set.isDeleted === true || set.archivedAt || set.deletedAt) {
+    if (!update.$set) update.$set = {};
+    update.$set.isActive = false;
+    update.$set.isAvailable = false;
+    query.setUpdate(update);
+  }
+}
+
 const CatalogItemSchema = new mongoose.Schema(
   {
     key: {
@@ -50,6 +70,10 @@ const CatalogItemSchema = new mongoose.Schema(
     },
     nutrition: { type: NutritionSchema, default: () => ({}) },
     isActive: { type: Boolean, default: true, index: true },
+    isArchived: { type: Boolean, default: false, index: true },
+    archivedAt: { type: Date, default: null },
+    isDeleted: { type: Boolean, default: false, index: true },
+    deletedAt: { type: Date, default: null },
     isAvailable: { type: Boolean, default: true, index: true },
   },
   { timestamps: true }
@@ -72,6 +96,10 @@ CatalogItemSchema.pre("validate", async function catalogItemValidate(next) {
   if (!this.nameI18n || (!this.nameI18n.ar && !this.nameI18n.en)) {
     this.invalidate("nameI18n", "At least one localized name is required");
   }
+  if (this.isArchived || this.isDeleted || this.archivedAt || this.deletedAt) {
+    this.isActive = false;
+    this.isAvailable = false;
+  }
   return next();
 });
 
@@ -83,5 +111,15 @@ CatalogItemSchema.pre("save", function catalogItemSave(next) {
   }
   return next();
 });
+CatalogItemSchema.pre(/^find/, function filterArchivedPublicRows(next) {
+  addLifecycleAvailabilityFilter(this);
+  next();
+});
+for (const operation of ["updateOne", "updateMany", "findOneAndUpdate"]) {
+  CatalogItemSchema.pre(operation, function syncArchiveUpdates(next) {
+    syncArchiveUpdateLifecycle(this);
+    next();
+  });
+}
 
 module.exports = mongoose.model("CatalogItem", CatalogItemSchema);
