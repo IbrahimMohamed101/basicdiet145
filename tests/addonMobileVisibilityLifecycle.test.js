@@ -162,7 +162,12 @@ async function main() {
       gramsOptions: [{
         grams: 150,
         isActive: true,
-        mealsOptions: [{ mealsPerDay: 2, priceHalala: 70000, isActive: true }],
+        mealsOptions: [{
+          mealsPerDay: 2,
+          priceHalala: 70000,
+          compareAtHalala: 70000,
+          isActive: true,
+        }],
       }],
     });
     const addonPlanId = new mongoose.Types.ObjectId();
