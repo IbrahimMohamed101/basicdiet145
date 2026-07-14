@@ -2,13 +2,23 @@ const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const errorResponse = require("../utils/errorResponse");
 const { JWT_ACCESS_SECRET } = require("../services/appTokenService");
+const {
+  filterAddonChoicesAvailability,
+} = require("./filterAddonChoicesAvailability");
 
 const LEGACY_JWT_SECRET = process.env.JWT_SECRET;
+
+function continueRequest(req, res, next) {
+  if (String(req.originalUrl || req.url || "").includes("/subscriptions/addon-choices")) {
+    return filterAddonChoicesAvailability(req, res, next);
+  }
+  return next();
+}
 
 async function optionalAuthMiddleware(req, res, next) {
   const authHeader = req.headers.authorization;
   if (!authHeader) {
-    return next();
+    return continueRequest(req, res, next);
   }
   if (!authHeader.startsWith("Bearer ")) {
     return errorResponse(res, 401, "TOKEN_INVALID", "Invalid access token");
@@ -38,7 +48,7 @@ async function optionalAuthMiddleware(req, res, next) {
     };
     req.isGuest = true;
     req.userRole = "guest";
-    return next();
+    return continueRequest(req, res, next);
   }
 
   if (decoded.tokenType !== "app_access" || decoded.role !== "client" || !decoded.userId) {
@@ -62,7 +72,7 @@ async function optionalAuthMiddleware(req, res, next) {
     userId: String(user._id),
     isGuest: false,
   };
-  return next();
+  return continueRequest(req, res, next);
 }
 
 module.exports = optionalAuthMiddleware;
