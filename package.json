@@ -40,7 +40,7 @@
     "test:catalog-validator-consistency": "NODE_ENV=test node tests/catalogValidatorConsistency.test.js",
     "test:meal-builder-dashboard-mobile-parity": "NODE_ENV=test node tests/mealBuilderDashboardMobileParity.test.js",
     "test:menu-dashboard-mobile-parity": "NODE_ENV=test node tests/menuDashboardMobileParity.test.js",
-    "test:addon-dashboard-mobile-parity": "NODE_ENV=test node tests/addonDashboardMobileParity.test.js",
+    "test:addon-dashboard-mobile-parity": "NODE_ENV=test node tests/addonDashboardMobileParity.test.js && NODE_ENV=test node tests/addonMobileVisibilityLifecycle.test.js",
     "test:subscription-selection-policies": "NODE_ENV=test node tests/subscriptionSelectionPolicies.test.js",
     "seed": "node scripts/seed-demo-data.js",
     "seed:subscription-addons": "node scripts/seed-subscription-addons.js",
