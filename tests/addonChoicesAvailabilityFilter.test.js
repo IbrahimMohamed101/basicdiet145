@@ -2,6 +2,7 @@ const assert = require("assert");
 
 const {
   filterAddonChoicesPayload,
+  mergeActivePlanCatalog,
 } = require("../src/middleware/filterAddonChoicesAvailability");
 const {
   filterGloballyAvailable,
@@ -72,6 +73,40 @@ function run() {
     "active dynamic categories remain while inactive plan rows are removed"
   );
   assert.strictEqual(filtered.data.hot_drinks.entitlements.length, 1);
+
+  const activePlanCatalog = {
+    meal: {
+      category: "meal",
+      activeAddonPlans: [{ addonPlanId: activePlanId, addonPlanName: "Meal Plan" }],
+      choices: [{
+        id: "dashboard-active-meal",
+        addonPlanId: activePlanId,
+        addonPlanName: "Meal Plan",
+        category: "meal",
+        isEligibleForAllowance: false,
+      }],
+    },
+    hot_drinks: {
+      category: "hot_drinks",
+      activeAddonPlans: [{ addonPlanId: activePlanId, addonPlanName: "Hot Drinks" }],
+      choices: [{
+        id: "coffee",
+        addonPlanId: activePlanId,
+        addonPlanName: "Hot Drinks",
+        category: "hot_drinks",
+        isEligibleForAllowance: false,
+      }],
+    },
+  };
+  const merged = mergeActivePlanCatalog(filtered, activePlanCatalog);
+  assert(merged.data.meal, "a newly activated dashboard plan creates its dynamic mobile category");
+  assert.deepStrictEqual(merged.data.meal.choices.map((choice) => choice.id), ["dashboard-active-meal"]);
+  assert.strictEqual(merged.data.meal.choices[0].isEligibleForAllowance, false);
+  assert.strictEqual(
+    merged.data.hot_drinks.choices.filter((choice) => choice.id === "coffee").length,
+    1,
+    "active plan merge does not duplicate an existing product row"
+  );
 
   const activeDoc = { isActive: true, isAvailable: true, isVisible: true };
   const inactiveDoc = { ...activeDoc, isActive: false };
