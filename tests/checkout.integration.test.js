@@ -48,7 +48,7 @@ const PremiumUpgradeConfig = require('../src/models/PremiumUpgradeConfig');
 const { ensureSafeForDestructiveOp } = require('../src/utils/dbSafety');
 const { VAT_PERCENTAGE } = require('../src/config/vat');
 const dateUtils = require('../src/utils/date');
-const { getRestaurantBusinessDate } = require('../src/services/restaurantHoursService');
+const { getRestaurantBusinessDate, getRestaurantBusinessTomorrow } = require('../src/services/restaurantHoursService');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'supersecret';
 const PORT = process.env.PORT || 3000;
@@ -538,7 +538,7 @@ async function runTests() {
   console.log(`  Canonical Beef Steak ID: ${canonicalBeefSteak._id}`);
   console.log(`  Delivery Zone ID: ${testZone._id}`);
   
-  const startDate = buildDateOffset(1);
+  const startDate = await getRestaurantBusinessTomorrow();
   const sameDayStartDate = await getRestaurantBusinessDate();
   const buildBaseSubscriptionPayload = () => ({
     planId: String(testPlan._id),
