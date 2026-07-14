@@ -1,9 +1,44 @@
 const Addon = require("../models/Addon");
+const MenuCategory = require("../models/MenuCategory");
+const MenuProduct = require("../models/MenuProduct");
+const { getRequestLang } = require("../utils/i18n");
+const {
+  filterGloballyAvailable,
+  loadCatalogItemsByIdForDocs,
+} = require("../services/catalog/catalogAvailabilityService");
+const {
+  isDailyAddonMenuProduct,
+  resolveDisplayCategoryForProduct,
+  serializeChoice,
+} = require("../services/subscription/subscriptionAddonChoicesService");
+const {
+  availableForChannelQuery,
+} = require("../services/subscription/subscriptionMenuEligibilityPolicyService");
 
 const LEGACY_GENERIC_CATEGORIES = new Set(["juice", "snack", "small_salad"]);
 
 function planIdOf(value) {
   return String(value && (value.addonPlanId || value.addonId) || "").trim();
+}
+
+function localizedPlanName(plan) {
+  if (!plan || !plan.name) return "";
+  if (typeof plan.name === "string") return plan.name;
+  return String(plan.name.ar || plan.name.en || "");
+}
+
+function customerVisibleQuery(extra = {}) {
+  return {
+    isActive: true,
+    isVisible: { $ne: false },
+    isAvailable: { $ne: false },
+    isArchived: { $ne: true },
+    archivedAt: null,
+    isDeleted: { $ne: true },
+    deletedAt: null,
+    publishedAt: { $ne: null },
+    ...extra,
+  };
 }
 
 function filterAddonChoicesPayload(payload, activePlanIds) {
@@ -36,15 +71,10 @@ function filterAddonChoicesPayload(payload, activePlanIds) {
     const hasActiveReferencedPlan = [...referencedPlanIds].some((planId) => activePlanIds.has(planId));
     const isLegacyGenericCategory = LEGACY_GENERIC_CATEGORIES.has(String(category));
 
-    // Dynamic categories are introduced by purchased add-on plans. Once every
-    // referenced plan is inactive, archived, or removed, the category must not
-    // survive only because its underlying menu products are still public.
     if (!isLegacyGenericCategory && referencedPlanIds.size > 0 && !hasActiveReferencedPlan) {
       continue;
     }
 
-    // For explicit entitlement-only responses, remove empty groups after their
-    // inactive plan rows have been filtered. Legacy generic groups may remain.
     if (!isLegacyGenericCategory && choices.length === 0 && entitlements.length === 0) {
       continue;
     }
@@ -59,19 +89,124 @@ function filterAddonChoicesPayload(payload, activePlanIds) {
   return { ...payload, data: filteredData };
 }
 
+function mergeActivePlanCatalog(payload, planCatalog) {
+  if (!payload || payload.status !== true || !payload.data || typeof payload.data !== "object") {
+    return payload;
+  }
+
+  const data = { ...payload.data };
+  for (const [category, planGroup] of Object.entries(planCatalog || {})) {
+    const currentGroup = data[category] && typeof data[category] === "object"
+      ? data[category]
+      : { category, catalogType: "generic", choices: [] };
+    const choices = Array.isArray(currentGroup.choices) ? [...currentGroup.choices] : [];
+
+    for (const planChoice of planGroup.choices || []) {
+      const existingIndex = choices.findIndex((choice) => String(choice && choice.id || "") === String(planChoice.id));
+      if (existingIndex >= 0) {
+        const existing = choices[existingIndex];
+        choices[existingIndex] = {
+          ...planChoice,
+          ...existing,
+          addonPlanId: existing.addonPlanId || planChoice.addonPlanId,
+          addonPlanName: existing.addonPlanName || planChoice.addonPlanName,
+          isEligibleForAllowance: existing.isEligibleForAllowance === true,
+        };
+      } else {
+        choices.push(planChoice);
+      }
+    }
+
+    data[category] = {
+      ...currentGroup,
+      category,
+      choices,
+      activeAddonPlans: planGroup.activeAddonPlans,
+    };
+  }
+
+  return { ...payload, data };
+}
+
+async function buildActivePlanCatalog(activePlans, lang) {
+  const productIds = [...new Set(
+    activePlans.flatMap((plan) => Array.isArray(plan.menuProductIds) ? plan.menuProductIds.map(String) : [])
+  )];
+  if (!productIds.length) return {};
+
+  const products = await MenuProduct.find(customerVisibleQuery({
+    _id: { $in: productIds },
+    ...availableForChannelQuery("one_time"),
+  })).sort({ sortOrder: 1, createdAt: -1 }).lean();
+  const catalogItemsById = await loadCatalogItemsByIdForDocs(products);
+  const usableProducts = filterGloballyAvailable(products, catalogItemsById).filter(isDailyAddonMenuProduct);
+  const productsById = new Map(usableProducts.map((product) => [String(product._id), product]));
+
+  const categoryIds = [...new Set(usableProducts.map((product) => String(product.categoryId || "")).filter(Boolean))];
+  const categories = categoryIds.length
+    ? await MenuCategory.find(customerVisibleQuery({ _id: { $in: categoryIds } })).lean()
+    : [];
+  const categoriesById = new Map(categories.map((category) => [String(category._id), category]));
+  const data = {};
+
+  for (const plan of activePlans) {
+    const addonPlanId = String(plan._id);
+    for (const productId of Array.isArray(plan.menuProductIds) ? plan.menuProductIds : []) {
+      const product = productsById.get(String(productId));
+      if (!product) continue;
+      const sourceCategory = categoriesById.get(String(product.categoryId));
+      if (!sourceCategory) continue;
+      const displayCategory = resolveDisplayCategoryForProduct(product, sourceCategory, {
+        entitlementCategory: plan.category,
+      });
+      if (!displayCategory) continue;
+
+      if (!data[displayCategory]) {
+        data[displayCategory] = {
+          category: displayCategory,
+          choices: [],
+          activeAddonPlans: [],
+        };
+      }
+      if (!data[displayCategory].activeAddonPlans.some((row) => row.addonPlanId === addonPlanId)) {
+        data[displayCategory].activeAddonPlans.push({
+          addonPlanId,
+          addonPlanName: localizedPlanName(plan),
+          entitlementCategory: plan.category || "",
+        });
+      }
+      if (data[displayCategory].choices.some((choice) => String(choice.id) === String(product._id))) continue;
+
+      data[displayCategory].choices.push({
+        ...serializeChoice(product, sourceCategory.key, lang),
+        category: displayCategory,
+        addonPlanId,
+        addonPlanName: localizedPlanName(plan),
+        entitlementCategory: plan.category || "",
+        isEligibleForAllowance: false,
+      });
+    }
+  }
+
+  return data;
+}
+
 async function filterAddonChoicesAvailability(req, res, next) {
   try {
     const activePlans = await Addon.find({
       kind: "plan",
       isActive: true,
       isArchived: { $ne: true },
-    }).select({ _id: 1 }).lean();
+      archivedAt: null,
+    }).select({ _id: 1, name: 1, category: 1, menuProductIds: 1, sortOrder: 1 }).sort({ sortOrder: 1, createdAt: -1 }).lean();
 
     const activePlanIds = new Set(activePlans.map((row) => String(row._id)));
+    const activePlanCatalog = await buildActivePlanCatalog(activePlans, getRequestLang(req));
     const originalJson = res.json.bind(res);
 
     res.json = function filteredJson(payload) {
-      return originalJson(filterAddonChoicesPayload(payload, activePlanIds));
+      const filtered = filterAddonChoicesPayload(payload, activePlanIds);
+      return originalJson(mergeActivePlanCatalog(filtered, activePlanCatalog));
     };
 
     return next();
@@ -81,6 +216,8 @@ async function filterAddonChoicesAvailability(req, res, next) {
 }
 
 module.exports = {
+  buildActivePlanCatalog,
   filterAddonChoicesAvailability,
   filterAddonChoicesPayload,
+  mergeActivePlanCatalog,
 };
