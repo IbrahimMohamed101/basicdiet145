@@ -1,5 +1,24 @@
 const mongoose = require("mongoose");
 
+function addLifecycleAvailabilityFilter(query) {
+  const filter = query.getFilter();
+  if (filter.isActive !== true) return;
+  if (filter.isArchived === undefined) query.where({ isArchived: { $ne: true } });
+  if (filter.archivedAt === undefined) query.where({ archivedAt: null });
+  if (filter.isDeleted === undefined) query.where({ isDeleted: { $ne: true } });
+  if (filter.deletedAt === undefined) query.where({ deletedAt: null });
+}
+
+function syncArchiveUpdateLifecycle(query) {
+  const update = query.getUpdate() || {};
+  const set = update.$set || update;
+  if (set.isArchived === true || set.isDeleted === true || set.archivedAt || set.deletedAt) {
+    if (!update.$set) update.$set = {};
+    update.$set.isActive = false;
+    query.setUpdate(update);
+  }
+}
+
 const AddonSchema = new mongoose.Schema(
   {
     name: {
@@ -18,6 +37,8 @@ const AddonSchema = new mongoose.Schema(
     isActive: { type: Boolean, default: true },
     isArchived: { type: Boolean, default: false, index: true },
     archivedAt: { type: Date, default: null },
+    isDeleted: { type: Boolean, default: false, index: true },
+    deletedAt: { type: Date, default: null },
     sortOrder: { type: Number, default: 0 },
 
     // New explicit billing behavior control.
@@ -65,11 +86,11 @@ const AddonSchema = new mongoose.Schema(
       trim: true,
     },
 
-    menuProductId: { 
-      type: mongoose.Schema.Types.ObjectId, 
-      ref: "MenuProduct", 
+    menuProductId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "MenuProduct",
       default: null,
-      index: true 
+      index: true,
     },
 
     menuProductIds: {
@@ -135,8 +156,23 @@ AddonSchema.pre("validate", function syncBillingModeAndKind(next) {
     this.billingUnit = "meal";
   }
 
+  if (this.isArchived || this.isDeleted || this.archivedAt || this.deletedAt) {
+    this.isActive = false;
+  }
+
   next();
 });
+
+AddonSchema.pre(/^find/, function filterArchivedActiveRows(next) {
+  addLifecycleAvailabilityFilter(this);
+  next();
+});
+for (const operation of ["updateOne", "updateMany", "findOneAndUpdate"]) {
+  AddonSchema.pre(operation, function syncArchiveUpdates(next) {
+    syncArchiveUpdateLifecycle(this);
+    next();
+  });
+}
 
 AddonSchema.index(
   { kind: 1, category: 1, isActive: 1 },
