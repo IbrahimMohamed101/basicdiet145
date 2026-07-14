@@ -21,6 +21,9 @@ const {
   normalizePremiumItemKey,
   PREMIUM_LARGE_SALAD_KEY,
 } = require("../../utils/subscription/premiumIdentity");
+const {
+  findCurrentActiveSubscriptionForUser,
+} = require("./subscriptionCurrentResolverService");
 
 const ACTIVE_PICKUP_REQUEST_STATUSES = ["locked", "in_preparation", "ready_for_pickup"];
 
@@ -325,14 +328,10 @@ function buildSubscriptionPremiumBalanceSummary(subscription, premiumCatalog, la
 function defaultRuntime() {
   return {
     findCurrentSubscription(userId) {
-      return Subscription.findOne(
-        {
-          userId,
-          status: { $in: ["active", "pending_payment"] },
-        },
-        null,
-        { sort: { createdAt: -1 } }
-      ).lean();
+      return findCurrentActiveSubscriptionForUser(userId, {
+        SubscriptionModel: Subscription,
+        context: "current_subscription_overview",
+      });
     },
     findPlanById(planId) {
       return Plan.findById(planId).lean();

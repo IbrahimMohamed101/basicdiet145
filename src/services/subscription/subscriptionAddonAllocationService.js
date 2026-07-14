@@ -2,9 +2,13 @@ const {
   resolveAddonChoiceProductById,
 } = require("./subscriptionAddonChoicesService");
 const {
-  buildSimulatedAddonRemainingByCategory,
-  findAddonEntitlementForChoice,
+  buildSimulatedAddonRemainingByEntitlement,
+  getAddonEntitlementKey,
+  getEligibleAddonEntitlementsForProduct,
 } = require("./subscriptionAddonPolicyService");
+const {
+  resolveAuthoritativeAddonUnitPriceHalala,
+} = require("./subscriptionAddonPricingService");
 
 function resolveAddonSelectionName(addonDoc) {
   if (!addonDoc || addonDoc.name == null) return "";
@@ -33,7 +37,7 @@ async function reconcileAddonInclusions(
     if (choice) choiceMap.set(String(addonId), choice);
   }
 
-  const simulatedRemaining = buildSimulatedAddonRemainingByCategory(subscription, day);
+  const simulatedRemaining = buildSimulatedAddonRemainingByEntitlement(subscription, day);
   const newSelections = [];
 
   for (const addonId of requestedAddonIds) {
@@ -48,9 +52,18 @@ async function reconcileAddonInclusions(
 
     const doc = choice.product;
     const category = choice.addonCategory;
-    const entitlement = findAddonEntitlementForChoice(subscription, category, addonId);
+    const eligibleEntitlements = getEligibleAddonEntitlementsForProduct(subscription, {
+      productId: addonId,
+      category,
+    });
+    const selectedMatch = eligibleEntitlements.find(({ entry, index }) => {
+      const key = getAddonEntitlementKey(entry, index);
+      return Number(simulatedRemaining.get(key) || 0) > 0;
+    }) || eligibleEntitlements[0] || null;
+    const entitlement = selectedMatch ? selectedMatch.entry : null;
+    const entitlementKey = selectedMatch ? getAddonEntitlementKey(selectedMatch.entry, selectedMatch.index) : null;
     let source = "pending_payment";
-    const unitPriceHalala = doc.priceHalala || Math.round((doc.price || 0) * 100);
+    let unitPriceHalala = resolveAuthoritativeAddonUnitPriceHalala(doc, { required: !entitlement });
     let priceHalala = unitPriceHalala;
 
     const existingPaid = (day.addonSelections || []).find(
@@ -62,11 +75,14 @@ async function reconcileAddonInclusions(
     }
 
     if (entitlement) {
-      const remainingQty = simulatedRemaining.get(category) || 0;
+      const remainingQty = simulatedRemaining.get(entitlementKey) || 0;
       if (remainingQty > 0) {
-        simulatedRemaining.set(category, remainingQty - 1);
+        simulatedRemaining.set(entitlementKey, remainingQty - 1);
         source = "subscription";
         priceHalala = 0;
+      } else {
+        unitPriceHalala = resolveAuthoritativeAddonUnitPriceHalala(doc, { required: true });
+        priceHalala = unitPriceHalala;
       }
     }
 

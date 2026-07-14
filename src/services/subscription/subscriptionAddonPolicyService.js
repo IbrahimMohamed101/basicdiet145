@@ -22,28 +22,104 @@ function buildAddonEntitlementEligibility(subscription) {
   const entitlements = Array.isArray(subscription && subscription.addonSubscriptions)
     ? subscription.addonSubscriptions
     : null;
-  const entitledCategories = new Set();
-  const legacyEligibleProductIds = new Set();
+  const legacyEligibleCategories = new Set();
+  const eligibleProductIds = new Set();
 
   for (const entitlement of entitlements || []) {
-    if (entitlement && entitlement.category) {
-      entitledCategories.add(String(entitlement.category));
-    } else if (entitlement && Array.isArray(entitlement.menuProductIds)) {
-      entitlement.menuProductIds.forEach((id) => legacyEligibleProductIds.add(String(id)));
+    if (!entitlement) continue;
+    if (hasModernAddonProductSnapshot(entitlement)) {
+      entitlement.menuProductIds.forEach((id) => eligibleProductIds.add(String(id)));
+    } else if (entitlement.category) {
+      legacyEligibleCategories.add(String(entitlement.category));
     }
   }
 
   return {
     hasSubscriptionFilter: entitlements !== null,
-    entitledCategories,
-    legacyEligibleProductIds,
+    legacyEligibleCategories,
+    eligibleProductIds,
   };
 }
 
 function isAddonChoiceEligibleForAllowance(eligibility, category, productId) {
   if (!eligibility || eligibility.hasSubscriptionFilter !== true) return undefined;
-  return eligibility.entitledCategories.has(String(category || ""))
-    || eligibility.legacyEligibleProductIds.has(String(productId || ""));
+  return eligibility.eligibleProductIds.has(String(productId || ""))
+    || eligibility.legacyEligibleCategories.has(String(category || ""));
+}
+
+function resolveEntitlementPlanId(entitlement) {
+  return String(entitlement && (entitlement.addonPlanId || entitlement.addonId) || "");
+}
+
+function hasModernAddonProductSnapshot(entitlement) {
+  return Array.isArray(entitlement && entitlement.menuProductIds)
+    && entitlement.menuProductIds.length > 0;
+}
+
+function isAddonEntitlementEligibleForProduct(entitlement, {
+  productId,
+  category,
+  addonPlanId = null,
+} = {}) {
+  if (!entitlement) return false;
+  const normalizedProductId = String(productId || "");
+  const normalizedCategory = String(category || "");
+  const normalizedPlanId = String(addonPlanId || "");
+  const entryPlanId = resolveEntitlementPlanId(entitlement);
+
+  if (normalizedPlanId && entryPlanId !== normalizedPlanId) return false;
+
+  if (hasModernAddonProductSnapshot(entitlement)) {
+    return entitlement.menuProductIds.some((id) => String(id) === normalizedProductId);
+  }
+
+  if (normalizedCategory && String(entitlement.category || "") === normalizedCategory) return true;
+  if (normalizedProductId && String(entitlement.addonId || entitlement.addonPlanId || "") === normalizedProductId) return true;
+  return false;
+}
+
+function getAddonEntitlementKey(entitlement, index = 0) {
+  const category = String(entitlement && entitlement.category || "legacy");
+  const planId = resolveEntitlementPlanId(entitlement);
+  return `${category}:${planId || index}`;
+}
+
+function getEligibleAddonEntitlementsForProduct(subscription, {
+  productId,
+  category,
+  addonPlanId = null,
+} = {}) {
+  const entitlements = Array.isArray(subscription && subscription.addonSubscriptions)
+    ? subscription.addonSubscriptions
+    : [];
+  return entitlements
+    .map((entry, index) => ({ entry, index }))
+    .filter(({ entry }) => isAddonEntitlementEligibleForProduct(entry, { productId, category, addonPlanId }));
+}
+
+function selectAddonEntitlementForProduct(subscription, {
+  productId,
+  category,
+  addonPlanId = null,
+  preferPositiveRemaining = false,
+} = {}) {
+  const matches = getEligibleAddonEntitlementsForProduct(subscription, { productId, category, addonPlanId });
+  if (!matches.length) return null;
+
+  if (preferPositiveRemaining) {
+    const positive = matches.find(({ entry }) => {
+      const bucket = findAddonBalanceBucket(subscription, {
+        addonPlanId: entry && (entry.addonPlanId || entry.addonId),
+        addonId: entry && (entry.addonId || entry.addonPlanId),
+        category: entry && entry.category,
+        requirePositiveRemaining: true,
+      });
+      return Boolean(bucket);
+    });
+    if (positive) return positive.entry;
+  }
+
+  return matches[0].entry;
 }
 
 function resolveAddonCategoryForMenuProduct(product, menuCategoryKey) {
@@ -62,21 +138,11 @@ function resolveAddonCategoryForMenuProduct(product, menuCategoryKey) {
 }
 
 function findAddonEntitlementForChoice(subscription, category, addonId = null) {
-  const entitlements = Array.isArray(subscription && subscription.addonSubscriptions)
-    ? subscription.addonSubscriptions
-    : [];
-  return entitlements.find((entry) => {
-    if (!entry) return false;
-    // Modern entitlements grant credits by canonical category. menuProductIds
-    // remains a catalog snapshot and is only authoritative for legacy rows
-    // that do not contain a category.
-    if (category && entry.category === category) return true;
-    if (!entry.category && addonId && Array.isArray(entry.menuProductIds)) {
-      return entry.menuProductIds.some((productId) => String(productId) === String(addonId));
-    }
-    if (addonId && String(entry.addonId || entry.addonPlanId || "") === String(addonId)) return true;
-    return false;
-  }) || null;
+  return selectAddonEntitlementForProduct(subscription, {
+    productId: addonId,
+    category,
+    preferPositiveRemaining: true,
+  });
 }
 
 function buildSimulatedAddonRemainingByCategory(subscription, day = {}) {
@@ -105,6 +171,41 @@ function buildSimulatedAddonRemainingByCategory(subscription, day = {}) {
       category,
       (simulatedRemaining.get(category) || 0) + remainingQty
     );
+  }
+
+  return simulatedRemaining;
+}
+
+function buildSimulatedAddonRemainingByEntitlement(subscription, day = {}) {
+  const entitlements = Array.isArray(subscription && subscription.addonSubscriptions)
+    ? subscription.addonSubscriptions
+    : [];
+  const existingSelections = Array.isArray(day && day.addonSelections)
+    ? day.addonSelections
+    : [];
+  const simulatedRemaining = new Map();
+
+  entitlements.forEach((entitlement, index) => {
+    if (!entitlement) return;
+    const key = getAddonEntitlementKey(entitlement, index);
+    const bucket = findAddonBalanceBucket(subscription, {
+      addonPlanId: entitlement.addonPlanId || entitlement.addonId,
+      addonId: entitlement.addonId || entitlement.addonPlanId,
+      category: entitlement.category,
+    });
+    simulatedRemaining.set(key, Number(bucket && bucket.remainingQty || 0));
+  });
+
+  for (const selection of existingSelections) {
+    if (!selection || selection.source !== "subscription") continue;
+    const match = getEligibleAddonEntitlementsForProduct(subscription, {
+      productId: selection.addonId,
+      category: selection.category,
+      addonPlanId: selection.addonPlanId,
+    })[0];
+    if (!match) continue;
+    const key = getAddonEntitlementKey(match.entry, match.index);
+    simulatedRemaining.set(key, (simulatedRemaining.get(key) || 0) + 1);
   }
 
   return simulatedRemaining;
@@ -146,9 +247,16 @@ module.exports = {
   SUBSCRIPTION_ADDON_CATEGORIES,
   SUBSCRIPTION_ADDON_CHOICE_MAPPINGS,
   buildAddonEntitlementEligibility,
+  buildSimulatedAddonRemainingByEntitlement,
   buildSimulatedAddonRemainingByCategory,
   findAddonBalanceBucket,
   findAddonEntitlementForChoice,
+  getAddonEntitlementKey,
+  getEligibleAddonEntitlementsForProduct,
+  hasModernAddonProductSnapshot,
+  isAddonEntitlementEligibleForProduct,
   isAddonChoiceEligibleForAllowance,
   resolveAddonCategoryForMenuProduct,
+  resolveEntitlementPlanId,
+  selectAddonEntitlementForProduct,
 };

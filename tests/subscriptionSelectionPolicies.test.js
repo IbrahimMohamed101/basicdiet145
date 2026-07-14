@@ -64,20 +64,25 @@ function run() {
     addonSubscriptions: [{ addonPlanId: "plan-juice", category: "juice", menuProductIds: ["juice-1"] }],
   };
   const modernEligibility = addonPolicy.buildAddonEntitlementEligibility(modernSubscription);
-  assert.strictEqual(addonPolicy.isAddonChoiceEligibleForAllowance(modernEligibility, "juice", "juice-2"), true);
-  assert.strictEqual(addonPolicy.isAddonChoiceEligibleForAllowance(modernEligibility, "snack", "juice-1"), false);
+  assert.strictEqual(addonPolicy.isAddonChoiceEligibleForAllowance(modernEligibility, "juice", "juice-1"), true);
+  assert.strictEqual(addonPolicy.isAddonChoiceEligibleForAllowance(modernEligibility, "juice", "juice-2"), false);
+  assert.strictEqual(addonPolicy.isAddonChoiceEligibleForAllowance(modernEligibility, "snack", "juice-1"), true);
   assert.strictEqual(
-    addonPolicy.findAddonEntitlementForChoice(modernSubscription, "juice", "juice-2"),
+    addonPolicy.findAddonEntitlementForChoice(modernSubscription, "juice", "juice-1"),
     modernSubscription.addonSubscriptions[0]
   );
+  assert.strictEqual(addonPolicy.findAddonEntitlementForChoice(modernSubscription, "juice", "juice-2"), null);
 
   const legacySubscription = {
-    addonSubscriptions: [{ addonPlanId: "legacy-plan", menuProductIds: ["juice-1"] }],
+    addonSubscriptions: [{ addonPlanId: "legacy-plan", category: "juice" }],
   };
   const legacyEligibility = addonPolicy.buildAddonEntitlementEligibility(legacySubscription);
   assert.strictEqual(addonPolicy.isAddonChoiceEligibleForAllowance(legacyEligibility, "juice", "juice-1"), true);
-  assert.strictEqual(addonPolicy.isAddonChoiceEligibleForAllowance(legacyEligibility, "juice", "juice-2"), false);
-  assert.strictEqual(addonPolicy.findAddonEntitlementForChoice(legacySubscription, "juice", "juice-2"), null);
+  assert.strictEqual(addonPolicy.isAddonChoiceEligibleForAllowance(legacyEligibility, "juice", "juice-2"), true);
+  assert.strictEqual(
+    addonPolicy.findAddonEntitlementForChoice(legacySubscription, "juice", "juice-2"),
+    legacySubscription.addonSubscriptions[0]
+  );
 
   const balanceSubscription = {
     addonBalance: [{ category: "juice", remainingQty: 5, includedTotalQty: 10, consumedQty: 3, reservedQty: 2 }],

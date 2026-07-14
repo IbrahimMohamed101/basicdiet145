@@ -51,6 +51,7 @@
     "bootstrap:data:sync": "BOOTSTRAP_SYNC=true node scripts/bootstrap/index.js -- --sync",
     "ensure:pickup-main": "node scripts/ensure-default-pickup-location.js",
     "audit:pickup-addresses": "node scripts/audit-pickup-address-serialization.js",
+    "audit:active-subscriptions": "node scripts/audit_duplicate_active_subscriptions.js",
     "migrate:builder-to-menu": "node scripts/migrate-builder-to-menu.js",
     "seed:clear": "node scripts/seed-demo-data.js --clear",
     "seed:full": "node scripts/seed-demo-data.js --clear --users=50 --subscriptions=80 --orders=50",

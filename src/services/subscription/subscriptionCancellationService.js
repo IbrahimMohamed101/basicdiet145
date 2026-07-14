@@ -62,30 +62,40 @@ function resolveRuntime(runtime = null) {
   return { ...defaultRuntime, ...runtime };
 }
 
-async function cancelSubscriptionDomain({ subscriptionId, actor, runtime = null }) {
+async function cancelSubscriptionDomain({
+  subscriptionId,
+  actor,
+  session: suppliedSession = null,
+  reason = "",
+  replacedBySubscriptionId = null,
+  runtime = null,
+}) {
   const resolvedRuntime = resolveRuntime(runtime);
-  const session = await resolvedRuntime.startSession();
+  const ownsSession = !suppliedSession;
+  const session = suppliedSession || await resolvedRuntime.startSession();
   let transactionOpen = false;
 
   try {
-    session.startTransaction();
-    transactionOpen = true;
+    if (ownsSession) {
+      session.startTransaction();
+      transactionOpen = true;
+    }
 
     const subscription = await resolvedRuntime.findSubscriptionById({ subscriptionId, session });
     if (!subscription) {
-      await session.abortTransaction();
+      if (transactionOpen) await session.abortTransaction();
       transactionOpen = false;
       return { outcome: "not_found" };
     }
 
     if (actor && actor.kind === "client" && String(subscription.userId) !== String(actor.userId)) {
-      await session.abortTransaction();
+      if (transactionOpen) await session.abortTransaction();
       transactionOpen = false;
       return { outcome: "forbidden" };
     }
 
     if (subscription.status === "canceled") {
-      await session.commitTransaction();
+      if (transactionOpen) await session.commitTransaction();
       transactionOpen = false;
       return {
         outcome: "already_canceled",
@@ -97,7 +107,7 @@ async function cancelSubscriptionDomain({ subscriptionId, actor, runtime = null 
     }
 
     if (!CANCELABLE_STATUSES.has(subscription.status)) {
-      await session.abortTransaction();
+      if (transactionOpen) await session.abortTransaction();
       transactionOpen = false;
       return {
         outcome: "invalid_transition",
@@ -170,6 +180,12 @@ async function cancelSubscriptionDomain({ subscriptionId, actor, runtime = null 
 
     const canceledAt = resolvedRuntime.now();
     const creditsToForfeit = Math.max(0, Number(subscription.remainingMeals || 0) - preservedCredits);
+    const replacementSet = {};
+    if (reason) replacementSet.cancellationReason = String(reason);
+    if (replacedBySubscriptionId) {
+      replacementSet.replacedBySubscriptionId = replacedBySubscriptionId;
+      replacementSet.replacedAt = canceledAt;
+    }
     
     // Atomic update to avoid in-memory read-then-write race conditions
     // Try $inc first to preserve any concurrent deductions
@@ -184,7 +200,8 @@ async function cancelSubscriptionDomain({ subscriptionId, actor, runtime = null 
         $inc: { remainingMeals: -creditsToForfeit },
         $set: { 
           status: "canceled", 
-          canceledAt 
+          canceledAt,
+          ...replacementSet,
         } 
       },
       { session, new: true }
@@ -198,7 +215,8 @@ async function cancelSubscriptionDomain({ subscriptionId, actor, runtime = null 
           $set: { 
             remainingMeals: preservedCredits, 
             status: "canceled", 
-            canceledAt 
+            canceledAt,
+            ...replacementSet,
           } 
         },
         { session, new: true }
@@ -209,7 +227,7 @@ async function cancelSubscriptionDomain({ subscriptionId, actor, runtime = null 
     subscription.status = "canceled";
     subscription.canceledAt = canceledAt;
 
-    await session.commitTransaction();
+    if (transactionOpen) await session.commitTransaction();
     transactionOpen = false;
 
     return {
@@ -220,6 +238,8 @@ async function cancelSubscriptionDomain({ subscriptionId, actor, runtime = null 
         removedFutureDays,
         preservedCredits,
         canceledAt: canceledAt.toISOString(),
+        cancellationReason: reason || "",
+        replacedBySubscriptionId: replacedBySubscriptionId ? String(replacedBySubscriptionId) : null,
       },
     };
   } catch (err) {
@@ -232,7 +252,7 @@ async function cancelSubscriptionDomain({ subscriptionId, actor, runtime = null 
     }
     throw err;
   } finally {
-    if (session && typeof session.endSession === "function") {
+    if (ownsSession && session && typeof session.endSession === "function") {
       session.endSession();
     }
   }

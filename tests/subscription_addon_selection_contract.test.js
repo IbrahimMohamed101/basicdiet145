@@ -364,7 +364,7 @@ async function run() {
         category: "juice",
         name: "Juice Subscription",
         maxPerDay: 7,
-        // menuProductIds restricted to 3 — was incorrectly blocking the other 4
+        // Modern snapshots are exact: only these three products are covered.
         menuProductIds: [JUICE_IDS.orange, JUICE_IDS.apple, JUICE_IDS.mango],
       },
       {
@@ -378,8 +378,8 @@ async function run() {
     ],
   };
 
-  // Test D — Production repro: 7 juice items, balance=7, menuProductIds=[3 IDs]
-  // Expected: all 7 products use the category balance; menuProductIds is not a credit cap.
+  // Test D — Modern membership: 7 juice items, balance=7, menuProductIds=[3 IDs]
+  // Expected: only linked products use the allowance; unrelated same-category products are paid.
   const testDDay = { addonSelections: [] };
   await reconcileAddonInclusions(
     productionReplicaSub,
@@ -393,18 +393,20 @@ async function run() {
   assert.strictEqual(testDDay.addonSelections.length, 7,
     "Test D: all 7 juice selections must be present");
   assert.strictEqual(
-    testDDay.addonSelections.filter((s) => s.source === "subscription").length, 7,
-    "Test D: all 7 juices must be source=subscription"
+    testDDay.addonSelections.filter((s) => s.source === "subscription").length, 3,
+    "Test D: only the 3 linked juices must be source=subscription"
   );
   assert.strictEqual(
-    testDDay.addonSelections.filter((s) => s.source === "pending_payment").length, 0,
-    "Test D: no juice may be pending while category balance remains"
+    testDDay.addonSelections.filter((s) => s.source === "pending_payment").length, 4,
+    "Test D: unrelated same-category juices must be pending_payment"
   );
-  testDDay.addonSelections.forEach((sel) => {
-    assert.strictEqual(sel.priceHalala, 0, `Test D: ${String(sel.addonId)} must have priceHalala=0`);
-  });
+  testDDay.addonSelections
+    .filter((sel) => sel.source === "subscription")
+    .forEach((sel) => {
+      assert.strictEqual(sel.priceHalala, 0, `Test D: ${String(sel.addonId)} must have priceHalala=0`);
+    });
 
-  // Test E — Partial balance: 7 juice items, balance=5 → 5 subscription + 2 pending_payment
+  // Test E — Partial modern membership: only linked products can use allowance.
   const partialSub = {
     status: "active",
     addonBalance: [
@@ -440,12 +442,12 @@ async function run() {
   assert.strictEqual(testEDay.addonSelections.length, 7,
     "Test E: all 7 juice selections must be present");
   assert.strictEqual(
-    testEDay.addonSelections.filter((s) => s.source === "subscription").length, 5,
-    "Test E: exactly 5 juices must be subscription-covered"
+    testEDay.addonSelections.filter((s) => s.source === "subscription").length, 3,
+    "Test E: exactly 3 linked juices must be subscription-covered"
   );
   assert.strictEqual(
-    testEDay.addonSelections.filter((s) => s.source === "pending_payment").length, 2,
-    "Test E: exactly 2 juices must be pending_payment"
+    testEDay.addonSelections.filter((s) => s.source === "pending_payment").length, 4,
+    "Test E: exactly 4 unlinked juices must be pending_payment"
   );
   testEDay.addonSelections
     .filter((s) => s.source === "pending_payment")
@@ -488,8 +490,12 @@ async function run() {
   assert.strictEqual(testGDay.addonSelections.length, 5,
     "Test G: 5 total selections");
   assert.strictEqual(
-    testGDay.addonSelections.filter((s) => s.category === "juice" && s.source === "subscription").length, 3,
-    "Test G: all 3 juice items are subscription-covered"
+    testGDay.addonSelections.filter((s) => s.category === "juice" && s.source === "subscription").length, 1,
+    "Test G: only the linked juice item is subscription-covered"
+  );
+  assert.strictEqual(
+    testGDay.addonSelections.filter((s) => s.category === "juice" && s.source === "pending_payment").length, 2,
+    "Test G: unlinked same-category juice items are pending_payment"
   );
   assert.strictEqual(
     testGDay.addonSelections.filter((s) => s.category === "small_salad" && s.source === "subscription").length, 2,

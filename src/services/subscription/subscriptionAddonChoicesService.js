@@ -20,6 +20,9 @@ const {
   resolveEntitlementBalance,
 } = require("./subscriptionAddonPricingService");
 const {
+  findCurrentActiveSubscriptionForUser,
+} = require("./subscriptionCurrentResolverService");
+const {
   availableForChannelQuery,
 } = require("./subscriptionMenuEligibilityPolicyService");
 
@@ -275,14 +278,10 @@ async function buildSubscriptionAddonChoicesCatalog({
 }
 
 function findCurrentSubscriptionForUser(userId, { SubscriptionModel } = {}) {
-  return SubscriptionModel.findOne(
-    {
-      userId,
-      status: { $in: ["active", "pending_payment"] },
-    },
-    null,
-    { sort: { createdAt: -1 } }
-  ).lean();
+  return findCurrentActiveSubscriptionForUser(userId, {
+    SubscriptionModel,
+    context: "addon_choices_current_subscription",
+  });
 }
 
 async function findActiveOneTimeCategories(sourceCategoryKeys, { MenuCategoryModel = MenuCategory } = {}) {

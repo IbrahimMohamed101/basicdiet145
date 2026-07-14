@@ -25,6 +25,12 @@ const {
 const {
   buildAddonBalanceRowsFromEntitlements,
 } = require("./subscriptionAddonBalanceService");
+const {
+  cancelSubscriptionDomain,
+} = require("./subscriptionCancellationService");
+const {
+  findActiveSubscriptionsForUser,
+} = require("./subscriptionCurrentResolverService");
 
 const SYSTEM_CURRENCY = "SAR";
 
@@ -406,6 +412,7 @@ function buildCanonicalActivationPayload({ userId, planId, contractVersion, cont
   const end = addDays(start, daysCount - 1);
 
   const subscriptionPayload = {
+    _id: new mongoose.Types.ObjectId(),
     userId,
     planId: planId || plan.planId,
     status: "active",
@@ -572,15 +579,97 @@ function defaultPersistence() {
     async getPlan(planId, { session } = {}) {
       return Plan.findById(planId).session(session).lean();
     },
+    async findPreviousActiveSubscriptions(userId, { session, excludeSubscriptionId } = {}) {
+      return findActiveSubscriptionsForUser(userId, {
+        session,
+        excludeSubscriptionId,
+        lean: true,
+      });
+    },
+    async cancelSubscriptionForReplacement({ subscriptionId, actor, session, reason, replacedBySubscriptionId }) {
+      return cancelSubscriptionDomain({
+        subscriptionId,
+        actor,
+        session,
+        reason,
+        replacedBySubscriptionId,
+      });
+    },
   };
 }
 
-async function persistActivatedSubscription({ subscriptionPayload, dayEntries, session, persistence = defaultPersistence() }) {
-  const subscription = await persistence.createSubscription(subscriptionPayload, { session });
+function isDuplicateActiveSubscriptionError(err) {
+  return Boolean(
+    err
+    && (err.code === 11000 || err.code === 11001)
+    && (
+      String(err.message || "").includes("userId")
+      || (err.keyPattern && err.keyPattern.userId)
+      || (err.keyValue && err.keyValue.userId)
+    )
+  );
+}
+
+function createActiveSubscriptionConflictError(err) {
+  const conflict = new Error("User already has an active subscription");
+  conflict.status = 409;
+  conflict.code = "ACTIVE_SUBSCRIPTION_CONFLICT";
+  conflict.cause = err;
+  return conflict;
+}
+
+async function cancelPreviousActiveSubscriptionsForReplacement({
+  subscriptionPayload,
+  session,
+  persistence = defaultPersistence(),
+}) {
+  const previousSubscriptions = await persistence.findPreviousActiveSubscriptions(subscriptionPayload.userId, {
+    session,
+    excludeSubscriptionId: subscriptionPayload._id,
+  });
+
+  const canceled = [];
+  for (const previous of previousSubscriptions) {
+    const result = await persistence.cancelSubscriptionForReplacement({
+      subscriptionId: previous._id,
+      actor: { kind: "system", reason: "subscription_replacement" },
+      session,
+      reason: "replaced_by_new_subscription",
+      replacedBySubscriptionId: subscriptionPayload._id,
+    });
+    if (!["canceled", "already_canceled"].includes(result && result.outcome)) {
+      const err = new Error("Previous active subscription could not be canceled");
+      err.status = 409;
+      err.code = "SUBSCRIPTION_REPLACEMENT_CANCEL_FAILED";
+      err.details = { subscriptionId: String(previous._id), outcome: result && result.outcome };
+      throw err;
+    }
+    canceled.push(result);
+  }
+
+  return canceled;
+}
+
+async function persistActivatedSubscription({ subscriptionPayload, dayEntries, session, persistence = defaultPersistence(), replaceExistingActive = true }) {
+  const replacementResults = replaceExistingActive && session
+    ? await cancelPreviousActiveSubscriptionsForReplacement({ subscriptionPayload, session, persistence })
+    : [];
+
+  let subscription;
+  try {
+    subscription = await persistence.createSubscription(subscriptionPayload, { session });
+  } catch (err) {
+    if (isDuplicateActiveSubscriptionError(err)) {
+      throw createActiveSubscriptionConflictError(err);
+    }
+    throw err;
+  }
   const existingDays = await persistence.countSubscriptionDays(subscription._id, { session });
   if (!existingDays) {
     await persistence.insertSubscriptionDays(dayEntries.map((entry) => ({ ...entry, subscriptionId: subscription._id })), { session });
   }
+  subscription.$locals = subscription.$locals || {};
+  subscription.$locals.replacedSubscriptions = replacementResults;
   return subscription;
 }
 
@@ -599,6 +688,9 @@ async function activateSubscriptionFromCanonicalDraft({ draft, payment, session,
     const err = new Error("Checkout draft not found");
     err.code = "NOT_FOUND";
     throw err;
+  }
+  if (payment && String(payment.status || "").trim().toLowerCase() !== "paid") {
+    return { applied: false, reason: "payment_not_paid" };
   }
 
   const { subscriptionPayload, dayEntries } = await buildCanonicalSubscriptionActivationPayload({ draft: draftDoc });
@@ -669,7 +761,14 @@ async function finalizeSubscriptionDraftPaymentFlow({ draft, payment, session },
   if (!["pending_payment", "failed", "canceled", "expired"].includes(draft.status)) return { applied: false, reason: `draft_not_recoverable:${draft.status}` };
   
   // Directly activate as there is no longer a separate "legacy" path.
-  return runtime.activateSubscriptionFromCanonicalDraft({ draft, payment, session });
+  try {
+    return await runtime.activateSubscriptionFromCanonicalDraft({ draft, payment, session });
+  } catch (err) {
+    if (isDuplicateActiveSubscriptionError(err)) {
+      throw createActiveSubscriptionConflictError(err);
+    }
+    throw err;
+  }
 }
 
 module.exports = {
@@ -677,6 +776,8 @@ module.exports = {
   buildCanonicalContractActivationPayload,
   activateSubscriptionFromCanonicalDraft,
   activateSubscriptionFromCanonicalContract,
+  cancelPreviousActiveSubscriptionsForReplacement,
   finalizeSubscriptionDraftPaymentFlow,
   assertValidPremiumBalanceRows,
+  isDuplicateActiveSubscriptionError,
 };

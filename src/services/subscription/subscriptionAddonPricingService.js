@@ -1,5 +1,7 @@
 const {
   findAddonBalanceBucket,
+  resolveEntitlementPlanId,
+  selectAddonEntitlementForProduct,
 } = require("./subscriptionAddonPolicyService");
 
 const SYSTEM_CURRENCY = "SAR";
@@ -12,10 +14,6 @@ function toNonNegativeInteger(value, fallback = 0) {
 function toPositiveInteger(value, fallback = 1) {
   const number = Math.floor(Number(value));
   return Number.isFinite(number) && number > 0 ? number : fallback;
-}
-
-function resolveEntitlementPlanId(entitlement) {
-  return String(entitlement && (entitlement.addonPlanId || entitlement.addonId) || "");
 }
 
 function resolveEntitlementBalance(subscription, entitlement) {
@@ -39,28 +37,32 @@ function resolveEntitlementBalance(subscription, entitlement) {
   return { bucket, includedTotalQty, remainingQty };
 }
 
-function selectAddonEntitlementForProduct(subscription, {
-  productId,
-  category,
-  addonPlanId = null,
-} = {}) {
-  const entitlements = Array.isArray(subscription && subscription.addonSubscriptions)
-    ? subscription.addonSubscriptions
-    : [];
-  const normalizedProductId = String(productId || "");
-  const normalizedCategory = String(category || "");
-  const normalizedPlanId = String(addonPlanId || "");
+function createInvalidAddonPriceError(product) {
+  const err = new Error("Invalid add-on price");
+  err.status = 422;
+  err.code = "INVALID_ADDON_PRICE";
+  err.messageKey = "errors.addon.invalidPrice";
+  err.fallbackMessage = "Invalid add-on price";
+  err.details = {
+    productId: product && product._id ? String(product._id) : null,
+  };
+  return err;
+}
 
-  return entitlements.find((entry) => {
-    if (!entry) return false;
-    const entryPlanId = resolveEntitlementPlanId(entry);
-    if (normalizedPlanId && entryPlanId !== normalizedPlanId) return false;
-    if (normalizedCategory && String(entry.category || "") !== normalizedCategory) return false;
-    if (!Array.isArray(entry.menuProductIds) || entry.menuProductIds.length === 0) {
-      return Boolean(normalizedCategory && String(entry.category || "") === normalizedCategory);
-    }
-    return entry.menuProductIds.some((id) => String(id) === normalizedProductId);
-  }) || null;
+function resolveAuthoritativeAddonUnitPriceHalala(product, { required = false } = {}) {
+  const hasPrice = product && Object.prototype.hasOwnProperty.call(product, "priceHalala");
+  const value = hasPrice ? product.priceHalala : undefined;
+  const valid = typeof value === "number"
+    && Number.isFinite(value)
+    && Number.isInteger(value)
+    && value >= 0;
+
+  if (!valid) {
+    if (required) throw createInvalidAddonPriceError(product);
+    return 0;
+  }
+
+  return value;
 }
 
 function buildAddonChoicePricingPreview({
@@ -75,10 +77,10 @@ function buildAddonChoicePricingPreview({
     productId: product && product._id,
     category,
   });
-  const unitPriceHalala = toNonNegativeInteger(product && product.priceHalala, 0);
   const currency = (product && product.currency) || (selectedEntitlement && selectedEntitlement.currency) || SYSTEM_CURRENCY;
 
   if (!selectedEntitlement) {
+    const unitPriceHalala = resolveAuthoritativeAddonUnitPriceHalala(product, { required: true });
     return {
       requestedQty,
       coveredQty: 0,
@@ -114,6 +116,7 @@ function buildAddonChoicePricingPreview({
     : coveredQty > 0
       ? "allowance_partial"
       : "paid_overage";
+  const unitPriceHalala = resolveAuthoritativeAddonUnitPriceHalala(product, { required: paidQty > 0 });
 
   return {
     requestedQty,
@@ -134,6 +137,8 @@ function buildAddonChoicePricingPreview({
 
 module.exports = {
   buildAddonChoicePricingPreview,
+  createInvalidAddonPriceError,
+  resolveAuthoritativeAddonUnitPriceHalala,
   resolveEntitlementBalance,
   selectAddonEntitlementForProduct,
 };

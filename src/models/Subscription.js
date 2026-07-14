@@ -132,6 +132,9 @@ const SubscriptionSchema = new mongoose.Schema(
     endDate: { type: Date },
     validityEndDate: { type: Date },
     canceledAt: { type: Date, default: null },
+    cancellationReason: { type: String, trim: true, default: "" },
+    replacedBySubscriptionId: { type: mongoose.Schema.Types.ObjectId, ref: "Subscription", default: null },
+    replacedAt: { type: Date, default: null },
     totalMeals: { type: Number, required: true },
     remainingMeals: { type: Number, required: true },
     addonSubscriptions: { type: [AddonSubscriptionEntitlementSchema], default: [] },
@@ -200,10 +203,14 @@ const SubscriptionSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Performance: Common queries filter by userId (client subscriptions list) and status (admin dashboards).
-SubscriptionSchema.index({ userId: 1 });
+// Performance: common per-user reads are covered by the userId prefix of { userId, status } below.
 SubscriptionSchema.index({ status: 1, createdAt: -1 });
 // Support efficient lookups for per-user subscription lists that may be filtered by status.
 SubscriptionSchema.index({ userId: 1, status: 1 });
+// Enforce the domain invariant after duplicate active production rows have been audited/repaired.
+SubscriptionSchema.index(
+  { userId: 1 },
+  { unique: true, partialFilterExpression: { status: "active" } }
+);
 
 module.exports = mongoose.model("Subscription", SubscriptionSchema);

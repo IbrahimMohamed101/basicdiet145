@@ -65,7 +65,7 @@ function balance({ category, planId, remainingQty, includedTotalQty, consumedQty
   };
 }
 
-function subscription({ juice, snack, juiceMenuProductIds = JUICE_IDS.slice(0, 3), legacyJuiceEntitlement = false }) {
+function subscription({ juice, snack, juiceMenuProductIds = JUICE_IDS, legacyJuiceEntitlement = false }) {
   const addonSubscriptions = [];
   const addonBalance = [];
   if (juice) {
@@ -119,20 +119,23 @@ async function run() {
   assert.strictEqual(result.summary.pending, 1);
   assert.strictEqual(result.summary.amountDue, 1100);
 
-  // Scenario 3: production regression — a three-product catalog snapshot must
-  // not cap a customer who has twenty category credits.
-  sub = subscription({ juice: { remainingQty: 20, includedTotalQty: 20 } });
+  // Scenario 3: modern snapshots are exact. A same-category product that was
+  // not included in menuProductIds is paid, not free.
+  sub = subscription({
+    juice: { remainingQty: 20, includedTotalQty: 20 },
+    juiceMenuProductIds: JUICE_IDS.slice(0, 3),
+  });
   result = await allocate(sub, JUICE_IDS.slice(0, 8));
-  assert.strictEqual(result.summary.covered, 8);
-  assert.strictEqual(result.summary.pending, 0);
-  assert.strictEqual(result.summary.amountDue, 0);
+  assert.strictEqual(result.summary.covered, 3);
+  assert.strictEqual(result.summary.pending, 5);
+  assert.strictEqual(result.summary.amountDue, 5500);
 
-  // Scenario 4: the same invariant applies to snacks.
+  // Scenario 4: the same exact-snapshot invariant applies to snacks.
   sub = subscription({ snack: { remainingQty: 15, includedTotalQty: 15 } });
   result = await allocate(sub, SNACK_IDS.slice(0, 10));
-  assert.strictEqual(result.summary.covered, 10);
-  assert.strictEqual(result.summary.pending, 0);
-  assert.strictEqual(result.summary.amountDue, 0);
+  assert.strictEqual(result.summary.covered, 3);
+  assert.strictEqual(result.summary.pending, 7);
+  assert.strictEqual(result.summary.amountDue, 9100);
 
   // Scenario 5: exhausted balance charges the complete request.
   sub = subscription({ juice: { remainingQty: 0, includedTotalQty: 20, consumedQty: 20 } });
@@ -163,9 +166,9 @@ async function run() {
     snack: { remainingQty: 6, includedTotalQty: 6 },
   });
   result = await allocate(sub, JUICE_IDS.slice(0, 7).concat(SNACK_IDS.slice(0, 5)));
-  assert.strictEqual(result.summary.covered, 12);
-  assert.strictEqual(result.summary.pending, 0);
-  assert.strictEqual(result.summary.amountDue, 0);
+  assert.strictEqual(result.summary.covered, 10);
+  assert.strictEqual(result.summary.pending, 2);
+  assert.strictEqual(result.summary.amountDue, 2600);
 
   // Scenario 9: remainingQty already represents genuinely available persisted
   // credits. consumed/reserved metadata must not be subtracted a second time.
@@ -199,7 +202,8 @@ async function run() {
   assert.strictEqual(result.summary.pending, 4);
   assert.strictEqual(result.summary.amountDue, 4400);
 
-  // Legacy entitlements without category retain their explicit-product fallback.
+  // Legacy entitlements without category but with a product snapshot remain
+  // product-specific.
   sub = subscription({
     juice: { remainingQty: 2, includedTotalQty: 2 },
     juiceMenuProductIds: [JUICE_IDS[0]],
@@ -208,6 +212,71 @@ async function run() {
   result = await allocate(sub, [JUICE_IDS[0], JUICE_IDS[1]]);
   assert.strictEqual(result.summary.covered, 1);
   assert.strictEqual(result.summary.pending, 1);
+
+  // Legacy entitlements with no menuProductIds preserve the controlled
+  // category fallback.
+  sub = subscription({
+    juice: { remainingQty: 2, includedTotalQty: 2 },
+    juiceMenuProductIds: [],
+  });
+  result = await allocate(sub, [JUICE_IDS[0], JUICE_IDS[1]]);
+  assert.strictEqual(result.summary.covered, 2);
+  assert.strictEqual(result.summary.pending, 0);
+
+  // Duplicate product across two plans is allocated deterministically: the
+  // first matching entitlement is consumed first, then the second.
+  sub = {
+    status: "active",
+    addonSubscriptions: [
+      entitlement({ category: "juice", planId: JUICE_PLAN_ID, menuProductIds: [JUICE_IDS[0]] }),
+      entitlement({ category: "juice", planId: SNACK_PLAN_ID, menuProductIds: [JUICE_IDS[0]] }),
+    ],
+    addonBalance: [
+      balance({ category: "juice", planId: JUICE_PLAN_ID, remainingQty: 1, includedTotalQty: 1 }),
+      balance({ category: "juice", planId: SNACK_PLAN_ID, remainingQty: 1, includedTotalQty: 1 }),
+    ],
+  };
+  result = await allocate(sub, [JUICE_IDS[0], JUICE_IDS[0]]);
+  assert.strictEqual(result.summary.covered, 2);
+  assert.deepStrictEqual(
+    result.day.addonSelections.map((row) => String(row.addonPlanId)),
+    [JUICE_PLAN_ID, SNACK_PLAN_ID]
+  );
+
+  async function allocateWithPrice(priceHalala, remainingQty = 0) {
+    const testSub = subscription({
+      juice: { remainingQty, includedTotalQty: 1 },
+      juiceMenuProductIds: [JUICE_IDS[0]],
+    });
+    const day = { addonSelections: [] };
+    await reconcileAddonInclusions(testSub, day, [JUICE_IDS[0]], {
+      resolveChoiceProductById: async () => ({
+        addonCategory: "juice",
+        product: {
+          _id: JUICE_IDS[0],
+          name: { en: "Juice", ar: "عصير" },
+          ...(priceHalala === undefined ? {} : { priceHalala }),
+          currency: "SAR",
+        },
+      }),
+    });
+    return day;
+  }
+
+  for (const invalidPrice of [undefined, Number.NaN, Number.POSITIVE_INFINITY, -1, 1100.5]) {
+    await assert.rejects(
+      () => allocateWithPrice(invalidPrice, 0),
+      (err) => err.status === 422 && err.code === "INVALID_ADDON_PRICE"
+    );
+  }
+
+  let zeroPriceDay = await allocateWithPrice(0, 0);
+  assert.strictEqual(zeroPriceDay.addonSelections[0].source, "pending_payment");
+  assert.strictEqual(zeroPriceDay.addonSelections[0].priceHalala, 0);
+
+  const coveredInvalidPriceDay = await allocateWithPrice(Number.NaN, 1);
+  assert.strictEqual(coveredInvalidPriceDay.addonSelections[0].source, "subscription");
+  assert.strictEqual(coveredInvalidPriceDay.addonSelections[0].priceHalala, 0);
 
   console.log("subscription add-on credit allocation tests passed");
 }

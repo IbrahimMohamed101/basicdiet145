@@ -15,6 +15,9 @@ function queryResult(result) {
     sort() {
       return this;
     },
+    limit() {
+      return this;
+    },
     lean() {
       return Promise.resolve(result);
     },
@@ -236,6 +239,12 @@ function buildModels() {
           lean: () => Promise.resolve(doc),
         };
       },
+      find(query) {
+        const doc = String(query.userId || "") === ids.subscriptionOwner && query.status === "active"
+          ? subscriptionDoc()
+          : null;
+        return queryResult(doc ? [doc] : []);
+      },
     },
     MenuCategoryModel: {
       find(query) {
@@ -301,6 +310,8 @@ async function run() {
   assert.deepStrictEqual(Object.keys(entitledData), ["juice", "meal"]);
   assert.strictEqual(entitledData.juice.catalogType, "subscription_entitlements");
   assert.deepStrictEqual(entitledData.juice.choices.map((choice) => choice.id), [fixtureModels.ids.berry]);
+  assert.strictEqual(entitledData.juice.choices[0].priceHalala, 1100);
+  assert.strictEqual(entitledData.juice.choices[0].priceSar, 11);
   assert(!entitledData.juice.choices.some((choice) => choice.id === fixtureModels.ids.water),
     "subscription-specific choices must not include globally mapped products from another plan");
   assert.deepStrictEqual(
@@ -383,6 +394,71 @@ async function run() {
   assert.strictEqual(partialPreview.paidQty, 1);
   assert.strictEqual(partialPreview.payableTotalHalala, 2700);
   assert.strictEqual(partialPreview.pricingMode, "allowance_partial");
+
+  const coveredInvalidPricePreview = buildAddonChoicePricingPreview({
+    subscription: {
+      addonSubscriptions: [{
+        addonPlanId: fixtureModels.ids.mealPlanAddon,
+        category: "meal",
+        maxPerDay: 1,
+        menuProductIds: [fixtureModels.ids.beefMeal],
+      }],
+      addonBalance: [{
+        addonPlanId: fixtureModels.ids.mealPlanAddon,
+        category: "meal",
+        includedTotalQty: 1,
+        remainingQty: 1,
+      }],
+    },
+    entitlement: {
+      addonPlanId: fixtureModels.ids.mealPlanAddon,
+      category: "meal",
+      maxPerDay: 1,
+      menuProductIds: [fixtureModels.ids.beefMeal],
+    },
+    product: {
+      _id: fixtureModels.ids.beefMeal,
+      priceHalala: Number.NaN,
+      currency: "SAR",
+    },
+    category: "meal",
+    quantity: 1,
+  });
+  assert.strictEqual(coveredInvalidPricePreview.paidQty, 0);
+  assert.strictEqual(coveredInvalidPricePreview.payableTotalHalala, 0);
+
+  assert.throws(
+    () => buildAddonChoicePricingPreview({
+      subscription: {
+        addonSubscriptions: [{
+          addonPlanId: fixtureModels.ids.mealPlanAddon,
+          category: "meal",
+          maxPerDay: 3,
+          menuProductIds: [fixtureModels.ids.beefMeal],
+        }],
+        addonBalance: [{
+          addonPlanId: fixtureModels.ids.mealPlanAddon,
+          category: "meal",
+          includedTotalQty: 1,
+          remainingQty: 1,
+        }],
+      },
+      entitlement: {
+        addonPlanId: fixtureModels.ids.mealPlanAddon,
+        category: "meal",
+        maxPerDay: 3,
+        menuProductIds: [fixtureModels.ids.beefMeal],
+      },
+      product: {
+        _id: fixtureModels.ids.beefMeal,
+        priceHalala: 2700.5,
+        currency: "SAR",
+      },
+      category: "meal",
+      quantity: 2,
+    }),
+    (err) => err.status === 422 && err.code === "INVALID_ADDON_PRICE"
+  );
 
   const exhaustedPreview = buildAddonChoicePricingPreview({
     subscription: {
