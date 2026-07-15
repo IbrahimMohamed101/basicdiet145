@@ -1,120 +1,213 @@
 # Production Readiness Report
 
-Generated: 2026-07-15
+Updated: 2026-07-16
 
 ## Summary
 
 Branch: `main`
 
-Cleanup starting commit: `123398058e9f0f6874ef1d023b79e99e73d4b586`
+Reviewed baseline: `519efefd233337aae83cb62d0edf68c78307a825`
 
-Validation-fix starting commit: `ae44b84089ff0491ed859277365845cd5b206303`
+Release-gate hardening commit: `93035a57d8deedcb6d884aac766c2cf91331dc32`
 
-Final status: **READY FOR PRODUCTION QA**
+Current status: **READY FOR PRODUCTION QA**
 
-The previous production blockers in backend validation are resolved. The final automated validation matrix completed with exit code `0` for every required command, including the premium lifecycle wrapper.
+The backend contains the production cleanup, validation-blocker fixes, dashboard user search, Kitchen read-only catalog permissions, Arabic manual-deduction responses, deterministic add-on parity testing, and the current premium source-relation contract.
 
-This is not a controlled production release sign-off yet. `npm audit --omit=dev` still reports moderate production dependency advisories through `firebase-admin`/Google Cloud transitive `uuid` usage, with npm's offered full fix requiring a breaking `firebase-admin@14.1.0` upgrade. Manual staging/provider checks are still required.
+This report is not a controlled production release sign-off. Staging/provider checks and production-data readiness still need to be completed.
 
-## Changes Made In This Pass
+## Confirmed Code State
 
-- Added `docs/PRODUCTION_VALIDATION_BLOCKERS_ANALYSIS.md` with command-by-command classifications and evidence before code changes.
-- Fixed legacy category-only add-on entitlement coverage while keeping modern `menuProductIds` snapshots exact and category-isolated.
-- Persisted the consumed add-on wallet bucket's unit price, currency, and bucket id on covered selections so later releases satisfy strict bucket identity checks.
-- Rejected dashboard add-on plans whose `menuProductIds` resolve to a category different from the plan category.
-- Removed the subscription-only protein allowlist from the one-time order menu serializer so `basic_meal` exposes configured one-time protein relations.
-- Updated one-time menu catalog tests for current seed option identities and source-linked premium config readiness.
-- Updated checkout integration fixture isolation so independent activation scenarios do not violate the production invariant that a user may not have overlapping active subscriptions.
+### Authentication
 
-## Root Causes Resolved
+The backend supports:
 
-- `validate:backend`: one-time `basic_meal` proteins were hidden by a serializer filter intended for subscription protein contracts; the test fixture also used stale premium config relation shape.
-- `test:addon-credit-allocation`: category-only legacy add-on entitlement rows with balance were not eligible for same-category products.
-- `test:addon-credit-lifecycle`: covered selections stored product unit price while release compared against wallet bucket unit price, causing `bucket_identity_mismatch`.
-- `test:addon-dashboard-mobile-parity`: dashboard add-on plan create/update accepted category-mismatched products.
-- Premium lifecycle wrapper: integration add-on covered-vs-paid calculations inherited the legacy entitlement eligibility defect.
-- `test:checkout`: once rerun, deterministic fixture pollution appeared because separate activation scenarios reused one test user without retiring the prior active subscription.
+- Admin-created users with generated temporary passwords.
+- Forced password change using a restricted password-change token.
+- `authVersion` access/refresh revocation.
+- Admin password reset that invalidates previous sessions.
+- OTP reset clearing temporary-password state.
 
-## Public Behavior
+### Add-ons and balances
 
-- Premium relink contract was not changed. `PATCH /api/dashboard/premium-upgrades/:id` still uses `expectedRevision`, `kind`, and `sourceId`; `premiumKey` preservation and relation validation remain intact.
-- Add-on behavior was corrected, not relaxed: modern product snapshots remain exact, categories remain isolated, and bucket identity checks remain strict.
-- Dashboard add-on plan writes now reject invalid category/product combinations with `ADDON_PLAN_CATEGORY_PRODUCT_MISMATCH`.
-- One-time `basic_meal` now exposes configured protein options in the public order menu instead of an empty protein group.
+The backend contains fixes for:
 
-## Files Changed
+- Legacy category-only entitlement coverage for same-category products.
+- Exact modern product snapshot enforcement.
+- Category isolation.
+- Strict wallet bucket identity persistence.
+- Idempotent credit release.
+- Covered-versus-paid behavior.
+- Dashboard product/category validation.
 
-- `docs/PRODUCTION_VALIDATION_BLOCKERS_ANALYSIS.md`
-- `docs/PRODUCTION_READINESS_REPORT.md`
-- `src/controllers/addonController.js`
-- `src/services/orders/menuCatalogService.js`
-- `src/services/subscription/subscriptionAddonPolicyService.js`
-- `src/services/subscription/subscriptionSelectionService.js`
-- `tests/checkout.integration.test.js`
-- `tests/oneTimeMenuCatalog.test.js`
+### Dashboard users
 
-## Final Validation Results
+`GET /api/dashboard/users` supports filtering before pagination by:
 
-Final validation logs are under `/tmp/basicdiet-validation-final-*`.
+- Name.
+- Phone and normalized phone forms.
+- Email.
+- Active/inactive status.
+- Temporary-password authentication state.
 
-| Command | Result |
-| --- | --- |
-| `npm ci` | Pass, exit `0`; 654 packages installed/audited. npm reported 11 total vulnerabilities in install output. |
-| `npm test` | Pass, exit `0`; 66 passed, 0 failed. |
-| `npm run validate:backend` | Pass, exit `0`; all enabled checks passed. Optional local DB/catalog/Newman checks skipped by documented flags/files. |
-| `npm run test:security` | Pass, exit `0`; security hardening units passed. |
-| `npm run test:checkout` | Pass, exit `0`; 34 passed, 0 failed, 0 skipped. |
-| `npm run test:checkout-concurrency` | Pass, exit `0`; 3 passed, 0 failed. |
-| `npm run test:subscriptions` | Pass, exit `0`; balance policy, day modification policy, and fulfillment concurrency passed. |
-| `npm run test:mobile-contracts` | Pass, exit `0`; mobile API contracts 7 passed / 0 failed; Flutter auth 27 passed / 0 failed; fulfillment contracts passed. |
-| `npm run test:builder-catalog-v2-contract` | Pass, exit `0`; builderCatalogV2 contract checks passed. |
-| `npm run test:addon-credit-allocation` | Pass, exit `0`; all allocation/policy matrix scripts passed. |
-| `npm run test:addon-credit-lifecycle` | Pass, exit `0`; release idempotency and E2E lifecycle passed. |
-| `npm run test:addon-dashboard-mobile-parity` | Pass, exit `0`; parity test passed. |
-| `NODE_ENV=test bash scripts/run-premium-meal-backend-lifecycle.sh` | Pass, exit `0`; premium lifecycle gate passed; `mealPlanner.integration.test.js` reported 49 passed, 0 failed, 0 skipped. |
+Search input is escaped before use in regular expressions.
 
-Additional check:
+### Kitchen permissions
 
-- `npm audit --omit=dev`: failed, exit `1`; 8 moderate production vulnerabilities from `uuid <11.1.1` through `firebase-admin`, `@google-cloud/firestore`, `@google-cloud/storage`, `google-gax`, `gaxios`, `retry-request`, and `teeny-request`. npm's full suggested fix is `npm audit fix --force`, which would install `firebase-admin@14.1.0` and is a breaking dependency upgrade.
-- `graphify update .`: attempted after code changes and failed because Graphify refused to overwrite the existing graph (`4914` new nodes vs `5031` existing nodes). `graphify update . force=True` failed with the same guard.
+Kitchen users have read-only access to the data needed by the add-ons workspace, including:
 
-## Infrastructure Requirements
+- `GET /api/dashboard/plans`
+- `GET /api/dashboard/plans/:id`
+- Add-on plans, items, and prices read endpoints.
 
-- Local Node/npm environment.
-- `mongodb-memory-server` and `mongodb-memory-server` replica sets for DB-backed and transaction-backed tests.
-- `validate:backend` optional DB checks remain disabled unless explicitly enabled with safe non-production env vars.
-- No production database, live payment provider, dashboard repo, or Flutter repo was required for the automated validation run.
+Plan and add-on mutations remain admin-only.
 
-## Remaining Risks And Manual QA
+### Manual deduction localization
 
-- Review or formally accept the moderate production dependency advisory before controlled production release.
-- Run staging checks with real environment variables validated by `validateEnv()`.
-- Verify Moyasar payment init, callback, and webhook behavior with real provider configuration.
-- Verify delivery and pickup flows against staging operational data.
-- Verify dashboard premium relink with payloads containing only `expectedRevision`, `kind`, and `sourceId`.
-- Verify deployment readiness, secrets, observability, backups, and production data assumptions outside the local automated harness.
+Manual-deduction validation preserves stable error codes and returns Arabic user-facing messages when `Accept-Language: ar` is supplied, including insufficient total, regular, and premium meal balances.
+
+### One-time menu
+
+Configured `basic_meal` protein options are exposed to the one-time menu instead of being removed by subscription-only serialization rules.
+
+## Canonical Premium Relink Contract
+
+Endpoint:
+
+```http
+PATCH /api/dashboard/premium-upgrades/:id
+```
+
+Product source or an option with one eligible relation:
+
+```json
+{
+  "expectedRevision": 4,
+  "kind": "option",
+  "sourceId": "<source id>"
+}
+```
+
+For an option that appears in multiple active product/group relations, the selected `/sources` row must provide exact relation context:
+
+```json
+{
+  "expectedRevision": 4,
+  "kind": "option",
+  "sourceId": "<option id>",
+  "relationId": "<relation id returned by /sources>"
+}
+```
+
+Compatibility behavior may accept both `sourceProductId` and `sourceGroupId` when they are supplied consistently.
+
+Rules:
+
+- The backend preserves `premiumKey`.
+- The client must not control `premiumKey` or `selectionType`.
+- Ambiguous option relinks without relation context return `PREMIUM_SOURCE_RELATION_AMBIGUOUS`.
+- Invalid or conflicting relation context returns `PREMIUM_SOURCE_RELATION_INVALID`.
+- Incompatible business identity returns `PREMIUM_RELINK_KEY_MISMATCH`.
+- Revision conflict protection remains required.
+
+## Canonical Release Gate
+
+Run:
+
+```bash
+npm ci
+npm run test:release-gates
+```
+
+`test:release-gates` now includes:
+
+- Backend structural validation.
+- Default regression tests.
+- Security tests.
+- Checkout and concurrency.
+- One-time orders.
+- Subscription policies and concurrency.
+- Add-on allocation, lifecycle, parity, and owned-meal entitlement.
+- Mobile contracts.
+- Payment initialization logging.
+- Builder catalog contract.
+- Dashboard users search.
+- Kitchen read-only permissions.
+- Manual deduction and pickup flow.
+- One-time menu contract.
+- Premium meal backend lifecycle.
+
+The add-on Dashboard/Mobile parity test runs once and fails deterministically; it no longer retries itself using `command || command`.
+
+## Previous Automated Evidence
+
+The validation pass completed successfully before the latest release-gate composition change:
+
+- `npm test`: 66 passed, 0 failed.
+- `npm run validate:backend`: passed.
+- Security suite: passed.
+- Checkout: 34 passed, 0 failed.
+- Checkout concurrency: 3 passed, 0 failed.
+- Subscription suites: passed.
+- Add-on allocation/lifecycle/parity: passed.
+- Mobile contracts: passed.
+- Builder catalog v2 contract: passed.
+- Premium lifecycle integration: 49 passed, 0 failed.
+
+The expanded `npm run test:release-gates` must be executed on the current HEAD after pulling because this GitHub API editing environment cannot execute the repository test suite.
+
+## Remaining Production Work
+
+### Production data
+
+Verify:
+
+```http
+GET /api/dashboard/premium-upgrades/readiness
+```
+
+Required result:
+
+```text
+isReady = true
+missingSources = 0
+invalidRelations = 0
+invalidConfigs = 0
+duplicateKeys = 0
+```
+
+Any stale premium rows must be repaired through a reviewed, dry-run-capable, idempotent operation.
+
+### Package lifecycle
+
+Run staging E2E for:
+
+```text
+create → list → details → update → quote/checkout compatibility → disable/archive
+```
+
+A Dashboard-created plan must remain canonical, visible, editable, and consumable by checkout/mobile APIs.
+
+### Delivery and operations
+
+Run the full staging lifecycle for pickup and delivery, including discovery of valid delivery slots/windows, kitchen preparation, courier transitions, fulfillment, cancellation, and backend-owned `allowedActions`.
+
+### Providers and infrastructure
+
+Verify:
+
+- Moyasar payment initialization, callback, and webhook signatures.
+- Production CORS origins and secrets.
+- Database backups and indexes.
+- Graceful shutdown and observability.
+- Deployment health checks using `/live`, `/ready`, and `/health`.
+
+### Dependency advisory
+
+`npm audit --omit=dev` previously reported 8 moderate transitive advisories through `firebase-admin` and Google Cloud packages. The proposed full npm fix requires a breaking `firebase-admin` major upgrade and must not be applied with `npm audit fix --force` without a dedicated migration and Firebase regression pass.
 
 ## Final Readiness Status
 
 **READY FOR PRODUCTION QA**
 
-Automated backend validation blockers are resolved. Controlled production release should wait for dependency advisory disposition and manual staging/provider QA.
-
-## Commit Hashes
-
-Previous cleanup commits:
-
-- `66a3e69c` `docs: add backend production cleanup audit`
-- `e8fac6b2` `test: align premium planner fixtures with source-linked configs`
-- `60cb2ca5` `chore: remove proven generated backend artifacts`
-- `b3e9e951` `chore: harden startup logging and health checks`
-- `4115bf0c` `chore: fix dashboard user seed script path`
-- `ae44b840` `docs: add backend production readiness report`
-
-Validation-fix commits:
-
-- `b928bf6d` `docs: analyze backend production validation blockers`
-- `212758fa` `fix(addons): restore entitlement coverage and bucket identity`
-- `017f29c2` `fix(menu): expose one-time meal protein options`
-- `665090f1` `test(checkout): isolate activation scenarios`
-- Report commit: this commit (`docs: update backend production readiness report`; final hash reported in handoff).
+The backend code is suitable for final staging validation. Controlled production release must wait for the expanded release gate on current HEAD, production premium readiness, real package/delivery E2E, provider verification, and formal disposition of the moderate dependency advisories.
