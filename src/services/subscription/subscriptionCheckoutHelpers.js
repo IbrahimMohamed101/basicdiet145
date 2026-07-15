@@ -48,6 +48,17 @@ function buildCheckoutDraftSummary(draft) {
   };
 }
 
+function buildCheckoutAddonIdentityRows(draft) {
+  return (Array.isArray(draft && draft.addonSubscriptions) ? draft.addonSubscriptions : []).map((row) => ({
+    addonPlanId: row.addonPlanId ? String(row.addonPlanId) : (row.addonId ? String(row.addonId) : ""),
+    addonId: row.addonId ? String(row.addonId) : (row.addonPlanId ? String(row.addonPlanId) : ""),
+    productId: Array.isArray(row.menuProductIds) && row.menuProductIds.length === 1 ? String(row.menuProductIds[0]) : null,
+    menuProductIds: Array.isArray(row.menuProductIds) ? row.menuProductIds.map(String) : [],
+    category: String(row.category || ""),
+    quantityPerDay: Number(row.quantityPerDay || row.purchasedDailyQty || 1),
+  }));
+}
+
 function buildCheckoutInitFailureReason(stage, err) {
   const normalizedStage = String(stage || "checkout_init").trim() || "checkout_init";
   const detail = err && err.code
@@ -390,6 +401,7 @@ function buildCheckoutReusePayload(draft, payment, { reused = false } = {}) {
       }
       : null),
     summary: buildCheckoutDraftSummary(draft),
+    addonSubscriptions: buildCheckoutAddonIdentityRows(draft),
     premiumItemCount: Array.isArray(draft.premiumItems) ? draft.premiumItems.length : 0,
     premiumUpgradeLimit: draft.premiumUpgradeLimit || buildPremiumUpgradeLimit({
       totalSubscriptionMeals: Number(draft.daysCount || 0) * Number(draft.mealsPerDay || 0),

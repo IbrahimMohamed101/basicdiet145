@@ -199,12 +199,7 @@ async function consumeAddonBalanceAtomically({ subscription, dayId, date, addonI
       _id: subscription._id,
       addonBalance: {
         $elemMatch: {
-          _id: bucket._id,
-          addonId: bucket.addonId,
-          addonPlanId: bucket.addonPlanId || null,
-          category: bucket.category || "",
-          unitPriceHalala: Number(bucket.unitPriceHalala || 0),
-          currency: bucket.currency || "SAR",
+          ...buildAddonBalanceAtomicIdentity(bucket),
           remainingQty: { $gt: 0 },
         },
       },
@@ -258,14 +253,25 @@ function normalizeOptionalAddonUnitPrice(value) {
   return Number.isInteger(numberValue) && numberValue >= 0 ? numberValue : NaN;
 }
 
-function buildAddonBalanceReleaseIdentity(bucket, quantity = 1) {
+function buildAddonBalanceAtomicIdentity(bucket) {
   const identity = {
     _id: bucket._id,
     addonId: bucket.addonId,
     addonPlanId: bucket.addonPlanId || null,
     category: bucket.category || "",
-    unitPriceHalala: Number(bucket.unitPriceHalala || 0),
     currency: bucket.currency || "SAR",
+  };
+
+  if (hasOwnValue(bucket, "unitPriceHalala")) {
+    identity.unitPriceHalala = Number(bucket.unitPriceHalala || 0);
+  }
+
+  return identity;
+}
+
+function buildAddonBalanceReleaseIdentity(bucket, quantity = 1) {
+  const identity = {
+    ...buildAddonBalanceAtomicIdentity(bucket),
     consumedQty: { $gte: quantity },
   };
 

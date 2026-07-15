@@ -2,6 +2,8 @@ const Plan = require("../../models/Plan");
 const BuilderProtein = require("../../models/BuilderProtein");
 const MenuOption = require("../../models/MenuOption");
 const MenuOptionGroup = require("../../models/MenuOptionGroup");
+const MenuCategory = require("../../models/MenuCategory");
+const MenuProduct = require("../../models/MenuProduct");
 const Addon = require("../../models/Addon");
 const AddonPlanPrice = require("../../models/AddonPlanPrice");
 const Zone = require("../../models/Zone");
@@ -34,6 +36,10 @@ const {
 const {
   availableForChannelQuery,
 } = require("./subscriptionMenuEligibilityPolicyService");
+const {
+  normalizeSubscriptionAddonCategory,
+  resolveAddonCategoryForMenuProduct,
+} = require("./subscriptionAddonPolicyService");
 
 async function findMenuPremiumOptionsByIds(ids) {
   if (!ids.length) return [];
@@ -335,59 +341,314 @@ function normalizePremiumItemsByKey(rawItems) {
   return Array.from(byKey.entries()).map(([premiumKey, qty]) => ({ premiumKey, qty }));
 }
 
-function normalizeCheckoutAddonSelectionsOrThrow(rawItems, itemName = "addons") {
+function createAddonSelectionError(code, message, field, details = {}) {
+  const err = new Error(message);
+  err.code = code;
+  err.status = code === "ADDON_PLAN_NOT_FOUND" || code === "ADDON_PRODUCT_NOT_FOUND"
+    ? 404
+    : code === "INVALID_ADDON_SELECTION"
+      ? 400
+      : 422;
+  err.field = field;
+  err.details = { field, ...details };
+  return err;
+}
+
+function assertCheckoutObjectId(value, field, code = "INVALID_ADDON_SELECTION") {
+  try {
+    validateObjectId(value, field);
+  } catch (_err) {
+    throw createAddonSelectionError(code, `${field} must be a valid ObjectId`, field);
+  }
+  return String(value);
+}
+
+function normalizeCheckoutAddonSelectionShape(item, index = 0) {
+  const sourceRequestShape = typeof item === "string" ? "legacy_string_id" : "object";
+  const raw = typeof item === "string"
+    ? { id: item }
+    : item && typeof item === "object" && !Array.isArray(item)
+      ? item
+      : null;
+  if (!raw) {
+    throw createAddonSelectionError("INVALID_ADDON_SELECTION", "addons must contain strings or objects", `addons[${index}]`);
+  }
+
+  let quantityPerDay = 1;
+  const rawQty = raw.quantityPerDay !== undefined
+    ? raw.quantityPerDay
+    : raw.qty !== undefined
+      ? raw.qty
+      : raw.quantity;
+  if (rawQty !== undefined) {
+    quantityPerDay = Number(rawQty);
+    if (!Number.isInteger(quantityPerDay) || quantityPerDay < 1 || typeof rawQty === "string") {
+      throw createAddonSelectionError("INVALID_ADDON_SELECTION", "quantityPerDay must be an integer >= 1", `addons[${index}].quantityPerDay`);
+    }
+  }
+
+  const explicitAddonPlanId = raw.addonPlanId != null && String(raw.addonPlanId).trim()
+    ? assertCheckoutObjectId(raw.addonPlanId, `addons[${index}].addonPlanId`)
+    : null;
+  const explicitAddonId = raw.addonId != null && String(raw.addonId).trim()
+    ? assertCheckoutObjectId(raw.addonId, `addons[${index}].addonId`)
+    : null;
+  const explicitProductId = raw.productId != null && String(raw.productId).trim()
+    ? assertCheckoutObjectId(raw.productId, `addons[${index}].productId`)
+    : raw.menuProductId != null && String(raw.menuProductId).trim()
+      ? assertCheckoutObjectId(raw.menuProductId, `addons[${index}].menuProductId`)
+      : null;
+  const explicitMenuProductIds = Array.isArray(raw.menuProductIds)
+    ? raw.menuProductIds.map((id, productIndex) => assertCheckoutObjectId(id, `addons[${index}].menuProductIds[${productIndex}]`))
+    : [];
+  const legacyId = raw.id != null && String(raw.id).trim()
+    ? assertCheckoutObjectId(raw.id, `addons[${index}].id`)
+    : null;
+  const category = raw.category != null && String(raw.category).trim()
+    ? String(raw.category).trim().toLowerCase()
+    : null;
+
+  const productIds = [];
+  if (explicitProductId) productIds.push(explicitProductId);
+  for (const id of explicitMenuProductIds) productIds.push(id);
+
+  return {
+    addonPlanId: explicitAddonPlanId || explicitAddonId || null,
+    addonId: explicitAddonId || explicitAddonPlanId || null,
+    productIds,
+    category,
+    quantityPerDay,
+    legacyId,
+    sourceRequestShape,
+    raw,
+  };
+}
+
+function uniqueStrings(values) {
+  return [...new Set((values || []).map((value) => String(value || "")).filter(Boolean))];
+}
+
+function isNewSaleProductUsable(product) {
+  return Boolean(product)
+    && product.isActive !== false
+    && product.isVisible !== false
+    && product.isAvailable !== false
+    && product.publishedAt != null
+    && String(product.kind || "").toLowerCase() !== "plan"
+    && String(product.type || "").toLowerCase() !== "subscription"
+    && String(product.itemType || "").toLowerCase() !== "subscription"
+    && String(product.billingMode || "").toLowerCase() !== "per_day";
+}
+
+function normalizeAddonPlanCategory(addon) {
+  return normalizeSubscriptionAddonCategory(addon && addon.category, { allowEmpty: true }) || String(addon && addon.category || "").trim().toLowerCase();
+}
+
+async function resolveCheckoutAddonSelectionsOrThrow(rawItems, { basePlanId } = {}) {
   if (rawItems === undefined || rawItems === null) {
     return [];
   }
   if (!Array.isArray(rawItems)) {
-    const err = new Error(`${itemName} must be an array`);
-    err.code = "VALIDATION_ERROR";
-    throw err;
+    throw createAddonSelectionError("INVALID_ADDON_SELECTION", "addons must be an array", "addons");
   }
 
-  const byId = new Map();
-  for (const item of rawItems) {
-    const addonId = typeof item === "string"
-      ? item
-      : item && typeof item === "object" && !Array.isArray(item)
-        ? (item.addonPlanId || item.id || item.addonId)
-        : null;
+  const shapes = rawItems.map((item, index) => normalizeCheckoutAddonSelectionShape(item, index));
+  const candidateIds = uniqueStrings(shapes.flatMap((shape) => [
+    shape.addonPlanId,
+    shape.addonId,
+    shape.legacyId,
+    ...shape.productIds,
+  ]));
+  if (!candidateIds.length) return [];
 
-    try {
-      validateObjectId(addonId, "addonId");
-    } catch (_err) {
-      const err = new Error("addonId must be a valid ObjectId");
-      err.code = "VALIDATION_ERROR";
-      throw err;
+  const [addonDocs, productDocs] = await Promise.all([
+    Addon.find({ _id: { $in: candidateIds }, isArchived: { $ne: true } }).lean(),
+    MenuProduct.find({ _id: { $in: candidateIds } }).lean(),
+  ]);
+  const addonById = new Map(addonDocs.map((doc) => [String(doc._id), doc]));
+  const productById = new Map(productDocs.map((doc) => [String(doc._id), doc]));
+  const linkedPlanProductIds = uniqueStrings(addonDocs.flatMap((doc) => Array.isArray(doc.menuProductIds) ? doc.menuProductIds : []))
+    .filter((id) => !productById.has(id));
+  if (linkedPlanProductIds.length) {
+    const linkedProducts = await MenuProduct.find({ _id: { $in: linkedPlanProductIds } }).lean();
+    for (const product of linkedProducts) {
+      productById.set(String(product._id), product);
+    }
+  }
+
+  const productOnlyLegacyIds = shapes
+    .filter((shape) => !shape.addonPlanId && !shape.addonId && shape.legacyId && productById.has(shape.legacyId) && !addonById.has(shape.legacyId))
+    .map((shape) => shape.legacyId);
+  const productIdsNeedingPlanProof = uniqueStrings([
+    ...productOnlyLegacyIds,
+    ...shapes.filter((shape) => !shape.addonPlanId && !shape.addonId).flatMap((shape) => shape.productIds),
+  ]);
+  const plansContainingLegacyProducts = productIdsNeedingPlanProof.length
+    ? await Addon.find({
+      kind: "plan",
+      isActive: true,
+      isArchived: { $ne: true },
+      archivedAt: null,
+      menuProductIds: { $in: productIdsNeedingPlanProof },
+    }).lean()
+    : [];
+  for (const plan of plansContainingLegacyProducts) {
+    addonById.set(String(plan._id), plan);
+  }
+  const plansByContainedProductId = new Map();
+  for (const plan of plansContainingLegacyProducts) {
+    for (const productId of Array.isArray(plan.menuProductIds) ? plan.menuProductIds : []) {
+      const key = String(productId);
+      if (!plansByContainedProductId.has(key)) plansByContainedProductId.set(key, []);
+      plansByContainedProductId.get(key).push(plan);
+    }
+  }
+
+  const normalizedRows = [];
+  for (const shape of shapes) {
+    if (shape.legacyId && addonById.has(shape.legacyId) && productById.has(shape.legacyId) && !shape.addonPlanId && !shape.productIds.length) {
+      throw createAddonSelectionError("AMBIGUOUS_ADDON_SELECTION_ID", "Legacy add-on id exists as both an add-on plan and menu product", "id", { id: shape.legacyId });
     }
 
-    let quantityPerDay = 1;
-    if (item && typeof item === "object" && !Array.isArray(item)) {
-      const rawQty = item.quantityPerDay !== undefined
-        ? item.quantityPerDay
-        : item.qty !== undefined
-          ? item.qty
-          : item.quantity;
-      if (rawQty !== undefined) {
-        quantityPerDay = Number(rawQty);
-        if (!Number.isInteger(quantityPerDay) || quantityPerDay < 1 || typeof rawQty === "string") {
-          const err = new Error("quantityPerDay must be an integer >= 1");
-          err.code = "VALIDATION_ERROR";
-          throw err;
-        }
+    let addonPlanId = shape.addonPlanId || shape.addonId || null;
+    let productIds = [...shape.productIds];
+
+    if (shape.legacyId) {
+      const legacyIsPlan = addonById.has(shape.legacyId);
+      const legacyIsProduct = productById.has(shape.legacyId);
+      if (addonPlanId && shape.legacyId !== addonPlanId && legacyIsPlan) {
+        throw createAddonSelectionError("INVALID_ADDON_SELECTION", "Conflicting add-on plan identifiers", "id", { id: shape.legacyId, addonPlanId });
+      }
+      if (!addonPlanId && legacyIsPlan) {
+        addonPlanId = shape.legacyId;
+      } else if (legacyIsProduct && !productIds.includes(shape.legacyId)) {
+        productIds.push(shape.legacyId);
+      } else if (!legacyIsPlan && !legacyIsProduct) {
+        throw createAddonSelectionError("ADDON_PLAN_NOT_FOUND", "Add-on selection id was not found", "id", { id: shape.legacyId });
       }
     }
 
-    const key = String(addonId);
-    const existing = byId.get(key);
-    byId.set(key, {
-      id: key,
-      addonPlanId: key,
-      quantityPerDay: (existing ? existing.quantityPerDay : 0) + quantityPerDay,
+    if (!addonPlanId && productIds.length) {
+      const candidatePlansById = new Map();
+      for (const productId of productIds) {
+        const plans = plansByContainedProductId.get(String(productId)) || [];
+        for (const plan of plans) candidatePlansById.set(String(plan._id), plan);
+      }
+      if (candidatePlansById.size === 1) {
+        addonPlanId = [...candidatePlansById.keys()][0];
+      } else if (candidatePlansById.size > 1) {
+        throw createAddonSelectionError("AMBIGUOUS_ADDON_SELECTION_ID", "Product id belongs to multiple active add-on plans", "id", { productIds });
+      } else {
+        throw createAddonSelectionError("ADDON_PLAN_NOT_FOUND", "No active add-on plan contains the selected product", "addonPlanId", { productIds });
+      }
+    }
+
+    if (!addonPlanId) {
+      throw createAddonSelectionError("ADDON_PLAN_NOT_FOUND", "addonPlanId is required", "addonPlanId");
+    }
+
+    const addonPlan = addonById.get(String(addonPlanId));
+    if (!addonPlan) {
+      throw createAddonSelectionError("ADDON_PLAN_NOT_FOUND", "Add-on plan was not found", "addonPlanId", { addonPlanId });
+    }
+    if (addonPlan.kind !== "plan") {
+      throw createAddonSelectionError("INVALID_ADDON_SELECTION", "Add-on selection must reference a subscription plan", "addonPlanId", { addonPlanId });
+    }
+    if (addonPlan.isActive === false) {
+      throw createAddonSelectionError("ADDON_PLAN_INACTIVE", "Add-on plan is inactive", "addonPlanId", { addonPlanId });
+    }
+    if (resolveSubscriptionAddonBillingMode(addonPlan, { defaultMode: "per_day" }) !== "per_day") {
+      throw createAddonSelectionError("INVALID_ADDON_SELECTION", "Add-on plan must use per_day billing for subscription checkout", "addonPlanId", { addonPlanId });
+    }
+
+    const planCategory = normalizeAddonPlanCategory(addonPlan);
+    const planProductIds = uniqueStrings(addonPlan.menuProductIds || []);
+    if (!productIds.length) {
+      productIds = planProductIds;
+    }
+    productIds = uniqueStrings(productIds);
+    if (!productIds.length) {
+      if (["meal", "dessert", "premium_meal", "premium_large_salad"].includes(planCategory)) {
+        throw createAddonSelectionError("ADDON_PRODUCT_NOT_FOUND", "Add-on plan has no selectable products", "productId", { addonPlanId });
+      }
+      normalizedRows.push({
+        id: String(addonPlanId),
+        addonPlanId: String(addonPlanId),
+        addonId: String(addonPlanId),
+        productIds: [],
+        productId: null,
+        menuProductIds: [],
+        category: planCategory,
+        quantityPerDay: shape.quantityPerDay,
+        sourceRequestShape: shape.sourceRequestShape,
+        addonPlan,
+        products: [],
+      });
+      continue;
+    }
+
+    const missingProductId = productIds.find((productId) => !productById.has(String(productId)));
+    if (missingProductId) {
+      throw createAddonSelectionError("ADDON_PRODUCT_NOT_FOUND", "Selected add-on product was not found", "productId", { productId: missingProductId });
+    }
+    const notInPlanProductId = productIds.find((productId) => !planProductIds.includes(String(productId)));
+    if (notInPlanProductId) {
+      throw createAddonSelectionError("ADDON_PRODUCT_NOT_IN_PLAN", "Selected add-on product does not belong to the selected plan", "productId", { productId: notInPlanProductId, addonPlanId });
+    }
+
+    const categoryIds = uniqueStrings(productIds.map((productId) => productById.get(String(productId)).categoryId));
+    const categories = categoryIds.length ? await MenuCategory.find({ _id: { $in: categoryIds } }).lean() : [];
+    const categoryById = new Map(categories.map((category) => [String(category._id), category]));
+    const requestedCategory = shape.category ? normalizeSubscriptionAddonCategory(shape.category) : null;
+    if (shape.category && (!requestedCategory || requestedCategory !== planCategory)) {
+      throw createAddonSelectionError("ADDON_CATEGORY_MISMATCH", "Requested add-on category does not match the add-on plan", "category", {
+        requestedCategory: shape.category,
+        planCategory,
+      });
+    }
+    for (const productId of productIds) {
+      const product = productById.get(String(productId));
+      const sourceCategory = categoryById.get(String(product.categoryId));
+      const productCategory = normalizeSubscriptionAddonCategory(resolveAddonCategoryForMenuProduct(product, sourceCategory && sourceCategory.key));
+      if (!productCategory || (planCategory && productCategory !== planCategory)) {
+        throw createAddonSelectionError("ADDON_CATEGORY_MISMATCH", "Selected add-on product category does not match the add-on plan", "productId", {
+          productId,
+          productCategory,
+          planCategory,
+        });
+      }
+      if (!isNewSaleProductUsable(product)) {
+        throw createAddonSelectionError("ADDON_PRODUCT_UNAVAILABLE_FOR_NEW_PURCHASE", "Selected add-on product is unavailable for new purchase", "productId", { productId });
+      }
+    }
+
+    normalizedRows.push({
+      id: String(addonPlanId),
+      addonPlanId: String(addonPlanId),
+      addonId: String(addonPlanId),
+      productIds,
+      productId: productIds.length === 1 ? productIds[0] : null,
+      menuProductIds: productIds,
+      category: planCategory,
+      quantityPerDay: shape.quantityPerDay,
+      sourceRequestShape: shape.sourceRequestShape,
+      addonPlan,
+      products: productIds.map((productId) => productById.get(String(productId))),
     });
   }
 
-  return Array.from(byId.values());
+  const byPlanAndProducts = new Map();
+  for (const row of normalizedRows) {
+    const key = `${row.addonPlanId}:${row.menuProductIds.join(",")}`;
+    const existing = byPlanAndProducts.get(key);
+    if (existing) {
+      existing.quantityPerDay += row.quantityPerDay;
+    } else {
+      byPlanAndProducts.set(key, row);
+    }
+  }
+
+  return Array.from(byPlanAndProducts.values());
 }
 
 function buildAddonBalanceRowsFromQuote(quote) {
@@ -762,7 +1023,7 @@ async function resolveCheckoutQuoteOrThrow(
       "premiumItems"
     );
   }
-  addonItems = normalizeCheckoutAddonSelectionsOrThrow(payload.addons, "addons");
+  addonItems = await resolveCheckoutAddonSelectionsOrThrow(payload.addons, { basePlanId: plan._id });
 
   const premiumCountInput = parseOptionalNonNegativeInteger(payload.premiumCount);
   const compatibilityPremiumCount = sumCheckoutPremiumItemsQty(premiumItems);
@@ -888,7 +1149,7 @@ async function resolveCheckoutQuoteOrThrow(
   let addonsTotalHalala = 0;
   const resolvedAddonItems = [];
   for (const item of addonItems) {
-    const doc = addonById.get(item.id);
+    const doc = item.addonPlan || addonById.get(item.id);
     if (!doc) {
       const err = new Error(`Addon plan ${item.id} not found or inactive`);
       err.code = "NOT_FOUND";
@@ -939,6 +1200,9 @@ async function resolveCheckoutQuoteOrThrow(
     resolvedAddonItems.push({
       addon: doc,
       addonPlanId: doc._id,
+      productId: item.productId,
+      menuProductIds: item.menuProductIds,
+      products: item.products,
       category: doc.category,
       qty: quantityPerDay,
       quantityPerDay,
@@ -951,6 +1215,7 @@ async function resolveCheckoutQuoteOrThrow(
       totalHalala: lineTotal,
       priceHalala: lineTotal,
       currency: SYSTEM_CURRENCY,
+      sourceRequestShape: item.sourceRequestShape || null,
     });
   }
 
@@ -1063,7 +1328,10 @@ async function resolveCheckoutQuoteOrThrow(
   const basePlanNetHalala = divisor > 0 ? Math.round(basePlanPriceHalala / divisor) : basePlanPriceHalala;
   const addonSubscriptions = [];
   for (const item of resolvedAddonItems) {
-    const resolvedProductIds = (item.addon.menuProductIds || []).map(String);
+    const resolvedProductIds = (Array.isArray(item.menuProductIds) && item.menuProductIds.length
+      ? item.menuProductIds
+      : item.addon.menuProductIds || []
+    ).map(String);
     addonSubscriptions.push({
       addonId: item.addon._id,
       addonPlanId: item.addon._id,
@@ -1082,6 +1350,7 @@ async function resolveCheckoutQuoteOrThrow(
       menuProductIds: resolvedProductIds,
       menuCategoryKeys: [],
       priceSource: "base_plan_addon_price",
+      sourceRequestShape: item.sourceRequestShape || null,
     });
   }
 
@@ -1143,4 +1412,5 @@ async function resolveCheckoutQuoteOrThrow(
 module.exports = {
   resolveCheckoutQuoteOrThrow,
   buildAddonBalanceRowsFromQuote,
+  resolveCheckoutAddonSelectionsOrThrow,
 };

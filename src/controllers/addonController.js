@@ -21,7 +21,7 @@ const SYSTEM_CURRENCY = "SAR";
 const ADDON_IMAGE_FOLDER = "addons";
 const ADDON_BILLING_MODES = new Set(["flat_once", "per_day", "per_meal"]);
 const ADDON_KINDS = new Set(["plan", "item"]);
-const ADDON_CATEGORIES = new Set(["juice", "snack", "small_salad"]);
+const ADDON_CATEGORIES = new Set(["juice", "snack", "small_salad", "meal", "dessert", "premium_meal", "premium_large_salad"]);
 const PLAN_BILLING_MODES = new Set(["per_day", "per_meal"]);
 const ITEM_BILLING_MODES = new Set(["flat_once"]);
 
@@ -45,6 +45,16 @@ const ADDON_PLAN_CATEGORIES_META = [
     key: "snack",
     label: { ar: "اشتراك السناك", en: "Snack Subscription" },
     description: { ar: "اختيارات السناك والحلويات الصحية", en: "Snack and healthy dessert entitlement" },
+  },
+  {
+    key: "meal",
+    label: { ar: "اشتراك الوجبات", en: "Meal Subscription" },
+    description: { ar: "اختيارات وجبات محفوظة ضمن الاشتراك", en: "Meal entitlement choices" },
+  },
+  {
+    key: "dessert",
+    label: { ar: "اشتراك الحلى", en: "Dessert Subscription" },
+    description: { ar: "اختيارات الحلى المحفوظة ضمن الاشتراك", en: "Dessert entitlement choices" },
   },
 ];
 

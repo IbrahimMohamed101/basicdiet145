@@ -154,11 +154,14 @@ function buildPhase1SubscriptionContract({ payload = {}, resolvedQuote, actorCon
     purchasedDailyQty: Number(as.purchasedDailyQty || as.quantityPerDay || 1),
     includedTotalQty: Number(as.includedTotalQty || 0),
     unitPlanPriceHalala: Number(as.unitPlanPriceHalala || as.priceHalala || 0),
+    unitPriceHalala: Number(as.unitPriceHalala || as.unitPlanPriceHalala || as.priceHalala || 0),
     totalHalala: Number(as.totalHalala || 0),
     currency: String(as.currency || "SAR"),
     menuProductIds: as.menuProductIds || [],
     menuCategoryKeys: [],
     priceSource: as.priceSource || "",
+    menuProductsSnapshot: as.menuProductsSnapshot || undefined,
+    sourceRequestShape: as.sourceRequestShape || null,
   }));
 
   const contractSnapshot = {

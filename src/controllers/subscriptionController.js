@@ -1067,6 +1067,9 @@ async function quoteSubscription(req, res, runtimeOverrides = null) {
     if (err.code === "PRICE_MATRIX_NOT_FOUND") {
       return errorResponse(res, err.status || 400, err.code, err.message);
     }
+    if (String(err.code || "").startsWith("ADDON_") || err.code === "AMBIGUOUS_ADDON_SELECTION_ID" || err.code === "INVALID_ADDON_SELECTION") {
+      return errorResponse(res, err.status || 422, err.code, err.message, err.details || { field: err.field || null });
+    }
     throw err;
   }
 }
@@ -1121,6 +1124,9 @@ async function checkoutSubscription(req, res, runtimeOverrides = null) {
     }
     if (err.code === "PRICE_MATRIX_NOT_FOUND") {
       return errorResponse(res, err.status || 400, err.code, err.message);
+    }
+    if (String(err.code || "").startsWith("ADDON_") || err.code === "AMBIGUOUS_ADDON_SELECTION_ID" || err.code === "INVALID_ADDON_SELECTION") {
+      return errorResponse(res, err.status || 422, err.code, err.message, err.details || { field: err.field || null });
     }
     logger.error("Subscription checkout failed", { error: err.message, stack: err.stack });
     return errorResponse(

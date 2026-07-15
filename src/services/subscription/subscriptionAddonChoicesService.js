@@ -117,6 +117,8 @@ function serializeChoice(product, categoryKey, lang) {
   const priceHalala = Number(product.priceHalala || 0);
   return {
     id: String(product._id),
+    productId: String(product._id),
+    menuProductId: String(product._id),
     key: product.key || "",
     name: localized(product.name, lang),
     nameAr: pickLang(product.name, "ar") || "",
@@ -593,6 +595,11 @@ function isOwnedResolutionHardError(err) {
   ].includes(err && err.code);
 }
 
+function hasPersistedOwnedProductSnapshot(entitlement) {
+  return (Array.isArray(entitlement && entitlement.menuProductIds) && entitlement.menuProductIds.length > 0)
+    || (Array.isArray(entitlement && entitlement.menuProductsSnapshot) && entitlement.menuProductsSnapshot.length > 0);
+}
+
 async function resolveAddonChoiceProductById(productId, {
   subscription = null,
   entitlement = null,
@@ -605,8 +612,9 @@ async function resolveAddonChoiceProductById(productId, {
   if (!mongoose.Types.ObjectId.isValid(String(productId || ""))) return null;
 
   if (subscription) {
+    let owned = null;
     try {
-      const owned = await resolveOwnedAddonEntitlementChoice({
+      owned = await resolveOwnedAddonEntitlementChoice({
         subscription,
         productId,
         addonPlanId: addonPlanId || (entitlement && (entitlement.addonPlanId || entitlement.addonId)) || null,
@@ -627,8 +635,13 @@ async function resolveAddonChoiceProductById(productId, {
         };
       }
     } catch (err) {
-      if (isOwnedResolutionHardError(err)) throw err;
-      if (err && err.code !== ERROR_CODE_ENTITLEMENT_NOT_OWNED) throw err;
+      if (err && err.code === ERROR_CODE_SNAPSHOT_MISSING && owned && !hasPersistedOwnedProductSnapshot(owned.entitlement)) {
+        // Legacy category-only add-on entitlements predate menu product
+        // snapshots. Let the resolver continue to the Addon item fallback.
+      } else {
+        if (isOwnedResolutionHardError(err)) throw err;
+        if (err && err.code !== ERROR_CODE_ENTITLEMENT_NOT_OWNED) throw err;
+      }
     }
   }
 

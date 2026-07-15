@@ -488,6 +488,7 @@ async function performSubscriptionCheckout(userId, idempotencyKey, body, lang, r
             menuProductIds: sub.menuProductIds,
             menuCategoryKeys: [],
             priceSource: sub.priceSource,
+            sourceRequestShape: sub.sourceRequestShape || null,
             menuProductsSnapshot,
           };
         })),

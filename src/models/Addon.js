@@ -60,7 +60,7 @@ const AddonSchema = new mongoose.Schema(
 
     category: {
       type: String,
-      enum: ["juice", "snack", "small_salad"],
+      enum: ["juice", "snack", "small_salad", "meal", "dessert", "premium_meal", "premium_large_salad"],
       required: true,
       trim: true,
     },

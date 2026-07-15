@@ -3,7 +3,7 @@
 const SubscriptionDay = require("../../models/SubscriptionDay");
 const { toKSADateString } = require("../../utils/date");
 const {
-  SUBSCRIPTION_ADDON_CATEGORIES,
+  ALL_SUPPORTED_SUBSCRIPTION_ADDON_CATEGORIES,
   normalizeSubscriptionAddonCategory,
 } = require("./subscriptionAddonPolicyService");
 
@@ -75,7 +75,7 @@ function buildClientAddonBalance(subscription, businessDate, auditedConsumptionM
   const entitlements = Array.isArray(subscription.addonSubscriptions) ? subscription.addonSubscriptions : [];
   const auditMap = auditedConsumptionMap || subscription._auditedAddonConsumption || {};
 
-  for (const category of SUBSCRIPTION_ADDON_CATEGORIES) {
+  for (const category of ALL_SUPPORTED_SUBSCRIPTION_ADDON_CATEGORIES) {
     const categoryBuckets = balances.filter((bucket) => normalizeSubscriptionAddonCategory(bucket && bucket.category) === category);
     if (categoryBuckets.length) {
       const totalUnits = categoryBuckets.reduce((sum, bucket) => sum + Number(bucket.includedTotalQty || 0), 0);

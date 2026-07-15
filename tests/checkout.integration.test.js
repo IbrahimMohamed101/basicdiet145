@@ -892,7 +892,7 @@ async function runTests() {
 
     const res = await makeRequest('POST', '/api/subscriptions/quote', quotePayload);
     assertEqual(res.status, 400, 'quote rejected');
-    assertEqual(res.body.error?.code, 'INVALID', 'item add-on purchase rejected');
+    assertEqual(res.body.error?.code, 'INVALID_ADDON_SELECTION', 'item add-on purchase rejected');
   });
 
   await test('POST /api/subscriptions/quote accepts premium_large_salad premium item', async () => {

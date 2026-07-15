@@ -604,7 +604,7 @@ async function main() {
         delivery: { type: "pickup", pickupLocationId: "main" },
         addons: [{ id: created.body.data.id }],
       }, { lang: "en", allowMissingDeliveryAddress: true }),
-      (err) => err.code === "NOT_FOUND"
+      (err) => err.code === "ADDON_PLAN_NOT_FOUND"
     );
 
     console.log("Add-on dashboard and mobile parity test passed");
