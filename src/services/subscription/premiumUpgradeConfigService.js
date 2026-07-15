@@ -1482,6 +1482,7 @@ async function resolveSubscriptionPremiumUpgradePricing(premiumKey, { fallbackPr
 
 module.exports = {
   resolvePremiumUpgrade,
+  resolveConfigHealth,
   resolveSubscriptionPremiumUpgradePricing,
   loadClientPremiumUpgradeConfigState,
   listActiveReadyPremiumUpgradeConfigs,

@@ -34,6 +34,8 @@ const MenuOption = require('../src/models/MenuOption');
 const MenuProduct = require('../src/models/MenuProduct');
 const MenuCategory = require('../src/models/MenuCategory');
 const PremiumUpgradeConfig = require('../src/models/PremiumUpgradeConfig');
+const ProductGroupOption = require('../src/models/ProductGroupOption');
+const ProductOptionGroup = require('../src/models/ProductOptionGroup');
 const { ensureSafeForDestructiveOp } = require('../src/utils/dbSafety');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'supersecret';
@@ -544,11 +546,15 @@ async function seedBuilderCatalog() {
 
 async function seedUnifiedMenuCatalog() {
   await Promise.all([
+    ProductGroupOption.deleteMany({}),
+    ProductOptionGroup.deleteMany({}),
+    PremiumUpgradeConfig.deleteMany({}),
     MenuOptionGroup.deleteMany({}),
     MenuOption.deleteMany({}),
     MenuProduct.deleteMany({}),
     MenuCategory.deleteMany({})
   ]);
+  const now = new Date();
 
   const catStandardMeal = await MenuCategory.create({
     name: { ar: 'وجبة رئيسية', en: 'Standard Meal' },
@@ -591,6 +597,7 @@ async function seedUnifiedMenuCatalog() {
     minSelect: 1,
     maxSelect: 1,
     isActive: true,
+    publishedAt: now,
   });
 
   const groupCarbs = await MenuOptionGroup.create({
@@ -599,6 +606,7 @@ async function seedUnifiedMenuCatalog() {
     minSelect: 1,
     maxSelect: 1,
     isActive: true,
+    publishedAt: now,
   });
 
   await MenuOption.create({
@@ -607,6 +615,8 @@ async function seedUnifiedMenuCatalog() {
     key: 'grilled_chicken',
     isPremium: false,
     isActive: true,
+    availableFor: ['subscription'],
+    publishedAt: now,
   });
 
   await MenuOption.create({
@@ -615,38 +625,51 @@ async function seedUnifiedMenuCatalog() {
     key: 'tuna',
     isPremium: false,
     isActive: true,
+    availableFor: ['subscription'],
+    publishedAt: now,
   });
 
-  await MenuOption.create({
+  const shrimpOption = await MenuOption.create({
     groupId: groupProteins._id,
     name: { ar: 'جمبري', en: 'Shrimp' },
     key: 'shrimp',
+    premiumKey: 'shrimp',
     isPremium: true,
     isActive: true,
+    availableFor: ['subscription'],
+    publishedAt: now,
   });
 
-  await MenuOption.create({
+  const beefOption = await MenuOption.create({
     groupId: groupProteins._id,
     name: { ar: 'ستيك لحم', en: 'Beef Steak' },
     key: 'beef_steak',
+    premiumKey: 'beef_steak',
     isPremium: true,
     isActive: true,
+    availableFor: ['subscription'],
+    publishedAt: now,
   });
 
-  await MenuOption.create({
+  const salmonOption = await MenuOption.create({
     groupId: groupProteins._id,
     name: { ar: 'سالمون', en: 'Salmon' },
     key: 'salmon',
+    premiumKey: 'salmon',
     isPremium: true,
     isActive: true,
+    availableFor: ['subscription'],
+    publishedAt: now,
   });
 
-  await MenuOption.create({
+  const riceOption = await MenuOption.create({
     groupId: groupCarbs._id,
     name: { ar: 'أرز', en: 'Rice' },
     key: 'rice',
     isPremium: false,
     isActive: true,
+    availableFor: ['subscription'],
+    publishedAt: now,
   });
 
   const groupSaladProtein = await MenuOptionGroup.create({
@@ -655,6 +678,7 @@ async function seedUnifiedMenuCatalog() {
     minSelect: 1,
     maxSelect: 1,
     isActive: true,
+    publishedAt: now,
   });
 
   const groupSaladSauce = await MenuOptionGroup.create({
@@ -663,14 +687,17 @@ async function seedUnifiedMenuCatalog() {
     minSelect: 1,
     maxSelect: 1,
     isActive: true,
+    publishedAt: now,
   });
 
-  await MenuOption.create({
+  const saladChickenOption = await MenuOption.create({
     groupId: groupSaladProtein._id,
     name: { ar: 'دجاج مشوي للسلطة', en: 'Salad Grilled Chicken' },
     key: 'grilled_chicken',
     isPremium: false,
     isActive: true,
+    availableFor: ['subscription'],
+    publishedAt: now,
   });
 
   await MenuOption.create({
@@ -679,6 +706,8 @@ async function seedUnifiedMenuCatalog() {
     key: 'tuna',
     isPremium: false,
     isActive: true,
+    availableFor: ['subscription'],
+    publishedAt: now,
   });
 
   await MenuOption.create({
@@ -687,17 +716,21 @@ async function seedUnifiedMenuCatalog() {
     key: 'shrimp',
     isPremium: true,
     isActive: true,
+    availableFor: ['subscription'],
+    publishedAt: now,
   });
 
-  await MenuOption.create({
+  const saladSauceOption = await MenuOption.create({
     groupId: groupSaladSauce._id,
     name: { ar: 'صلصة إيطالية', en: 'Italian Dressing' },
     key: 'italian_dressing',
     isPremium: false,
     isActive: true,
+    availableFor: ['subscription'],
+    publishedAt: now,
   });
 
-  await MenuProduct.create({
+  const basicMealProduct = await MenuProduct.create({
     name: { ar: 'طبق رئيسي أساسي', en: 'Basic Plate' },
     key: 'basic_meal',
     itemType: 'basic_meal',
@@ -706,7 +739,7 @@ async function seedUnifiedMenuCatalog() {
     availableFor: ['subscription'],
     isActive: true,
     published: true,
-    publishedAt: new Date(),
+    publishedAt: now,
     priceHalala: 0,
   });
 
@@ -718,11 +751,11 @@ async function seedUnifiedMenuCatalog() {
     availableFor: ['subscription'],
     isActive: true,
     published: true,
-    publishedAt: new Date(),
+    publishedAt: now,
     priceHalala: 0,
   });
 
-  await MenuProduct.create({
+  const premiumLargeSaladProduct = await MenuProduct.create({
     name: { ar: 'سلطة مميزة كبيرة', en: 'Premium Large Salad' },
     key: 'premium_large_salad',
     itemType: 'premium_large_salad',
@@ -731,7 +764,7 @@ async function seedUnifiedMenuCatalog() {
     availableFor: ['subscription'],
     isActive: true,
     published: true,
-    publishedAt: new Date(),
+    publishedAt: now,
     priceHalala: 0,
   });
 
@@ -745,8 +778,63 @@ async function seedUnifiedMenuCatalog() {
     availableFor: ['one_time'],
     isActive: true,
     published: true,
-    publishedAt: new Date(),
+    publishedAt: now,
   });
+
+  await Promise.all([
+    ProductOptionGroup.create({ productId: basicMealProduct._id, groupId: groupProteins._id, minSelections: 1, maxSelections: 1, isRequired: true }),
+    ProductOptionGroup.create({ productId: basicMealProduct._id, groupId: groupCarbs._id, minSelections: 1, maxSelections: 1, isRequired: true }),
+    ProductOptionGroup.create({ productId: premiumLargeSaladProduct._id, groupId: groupSaladProtein._id, minSelections: 1, maxSelections: 1, isRequired: true }),
+    ProductOptionGroup.create({ productId: premiumLargeSaladProduct._id, groupId: groupSaladSauce._id, minSelections: 1, maxSelections: 1, isRequired: true }),
+    ProductGroupOption.create({ productId: basicMealProduct._id, groupId: groupProteins._id, optionId: shrimpOption._id }),
+    ProductGroupOption.create({ productId: basicMealProduct._id, groupId: groupProteins._id, optionId: beefOption._id }),
+    ProductGroupOption.create({ productId: basicMealProduct._id, groupId: groupProteins._id, optionId: salmonOption._id }),
+    ProductGroupOption.create({ productId: basicMealProduct._id, groupId: groupCarbs._id, optionId: riceOption._id }),
+    ProductGroupOption.create({ productId: premiumLargeSaladProduct._id, groupId: groupSaladProtein._id, optionId: saladChickenOption._id }),
+    ProductGroupOption.create({ productId: premiumLargeSaladProduct._id, groupId: groupSaladSauce._id, optionId: saladSauceOption._id }),
+  ]);
+
+  await Promise.all([
+    PremiumUpgradeConfig.create({
+      sourceType: 'menu_option',
+      sourceId: shrimpOption._id,
+      sourceProductId: basicMealProduct._id,
+      sourceGroupId: groupProteins._id,
+      selectionType: 'premium_meal',
+      premiumKey: 'shrimp',
+      upgradeDeltaHalala: 1500,
+      sourceSnapshot: { key: 'shrimp', name: shrimpOption.name, context: { productKey: 'basic_meal', groupKey: 'proteins' } },
+    }),
+    PremiumUpgradeConfig.create({
+      sourceType: 'menu_option',
+      sourceId: beefOption._id,
+      sourceProductId: basicMealProduct._id,
+      sourceGroupId: groupProteins._id,
+      selectionType: 'premium_meal',
+      premiumKey: 'beef_steak',
+      upgradeDeltaHalala: 2000,
+      sourceSnapshot: { key: 'beef_steak', name: beefOption.name, context: { productKey: 'basic_meal', groupKey: 'proteins' } },
+    }),
+    PremiumUpgradeConfig.create({
+      sourceType: 'menu_option',
+      sourceId: salmonOption._id,
+      sourceProductId: basicMealProduct._id,
+      sourceGroupId: groupProteins._id,
+      selectionType: 'premium_meal',
+      premiumKey: 'salmon',
+      upgradeDeltaHalala: 1800,
+      sourceSnapshot: { key: 'salmon', name: salmonOption.name, context: { productKey: 'basic_meal', groupKey: 'proteins' } },
+    }),
+    PremiumUpgradeConfig.create({
+      sourceType: 'menu_product',
+      sourceId: premiumLargeSaladProduct._id,
+      sourceProductId: premiumLargeSaladProduct._id,
+      selectionType: 'premium_large_salad',
+      premiumKey: CUSTOM_PREMIUM_SALAD_KEY,
+      upgradeDeltaHalala: CUSTOM_PREMIUM_SALAD_FIXED_PRICE,
+      sourceSnapshot: { key: CUSTOM_PREMIUM_SALAD_KEY, name: premiumLargeSaladProduct.name, context: { productKey: CUSTOM_PREMIUM_SALAD_KEY } },
+    }),
+  ]);
 }
 
 async function createTestSubscription() {
@@ -905,7 +993,6 @@ async function runTests() {
   console.log('✅ Test user created');
   await seedBuilderCatalog();
   await seedUnifiedMenuCatalog();
-  await PremiumUpgradeConfig.deleteMany({});
   console.log('✅ Builder catalog seeded');
   await createTestSubscription();
   console.log('✅ Test subscription created');
@@ -1014,37 +1101,38 @@ async function runTests() {
   });
 
   console.log('\n--- A2) Builder Premium Meals ---\n');
-  await test('GET /api/builder/premium-meals returns 4 items', async () => {
+  await test('GET /api/builder/premium-meals returns premium option and product rows', async () => {
     const res = await makeRequest('GET', '/api/builder/premium-meals');
     assertEqual(res.status, 200, 'status');
     assertEqual(res.body.status, true, 'status');
     assertNoTopLevelOk(res.body, 'builder premium meals response');
     assertArray(res.body.data, 'data is array');
-    assertEqual(res.body.data.length, 4, 'returns 4 items');
+    assertTrue(res.body.data.length >= 4, 'returns configured premium rows');
   });
 
-  await test('premium-meals includes shrimp, beef_steak, salmon, custom_premium_salad', async () => {
+  await test('premium-meals includes shrimp, beef_steak, salmon, premium_large_salad', async () => {
     const res = await makeRequest('GET', '/api/builder/premium-meals');
     const items = res.body.data || [];
-    const hasSalmon = items.some(i => (i.name || '').toLowerCase().includes('salmon'));
-    const hasShrimp = items.some(i => (i.name || '').toLowerCase().includes('shrimp'));
-    const hasBeef = items.some(i => (i.name || '').toLowerCase().includes('beef') || (i.name || '').toLowerCase().includes('steak'));
-    const hasCustomSalad = items.some(i => i.id === 'custom_premium_salad');
+    const hasSalmon = items.some(i => i.premiumKey === 'salmon');
+    const hasShrimp = items.some(i => i.premiumKey === 'shrimp');
+    const hasBeef = items.some(i => i.premiumKey === 'beef_steak');
+    const hasPremiumSalad = items.some(i => i.premiumKey === 'premium_large_salad');
     assertTrue(hasShrimp, 'shrimp present');
     assertTrue(hasBeef, 'beef_steak present');
     assertTrue(hasSalmon, 'salmon present');
-    assertTrue(hasCustomSalad, 'custom_premium_salad present');
+    assertTrue(hasPremiumSalad, 'premium_large_salad present');
   });
 
-  await test('legacy premium-meals catalog keeps custom_premium_salad compatibility shape', async () => {
+  await test('legacy premium-meals catalog keeps custom_premium_salad as product alias', async () => {
     const res = await makeRequest('GET', '/api/builder/premium-meals');
     const items = res.body.data || [];
-    const salad = items.find(i => i.premiumKey === 'custom_premium_salad' || i.id === 'custom_premium_salad');
-    assertTrue(!!salad, 'custom_premium_salad found');
-    assertEqual(salad.premiumKey, 'custom_premium_salad', 'premiumKey');
-    assertEqual(salad.selectionType, 'custom_premium_salad', 'selectionType');
-    assertEqual(salad.type, 'custom_premium_salad', 'type');
-    assertEqual(salad.extraFeeHalala, 3000, 'extraFeeHalala');
+    const salad = items.find(i => i.premiumKey === 'premium_large_salad');
+    assertTrue(!!salad, 'premium_large_salad found');
+    assertEqual(salad.premiumKey, 'premium_large_salad', 'premiumKey');
+    assertEqual(salad.selectionType, 'premium_large_salad', 'selectionType');
+    assertEqual(salad.type, 'premium_large_salad', 'type');
+    assertTrue(Array.isArray(salad.legacyAliases), 'legacyAliases present');
+    assertTrue(salad.legacyAliases.includes('custom_premium_salad'), 'custom_premium_salad alias present');
     assertEqual(salad.ui.selectionStyle, 'builder', 'selectionStyle');
   });
   

@@ -4,7 +4,6 @@ const PremiumUpgradeConfig = require("../models/PremiumUpgradeConfig");
 const MenuOption = require("../models/MenuOption");
 const MenuProduct = require("../models/MenuProduct");
 const { getRequestLang } = require("../utils/i18n");
-const { resolvePremiumMealCatalogEntry } = require("../utils/subscription/subscriptionCatalog");
 const validateObjectId = require("../utils/validateObjectId");
 const errorResponse = require("../utils/errorResponse");
 const { resolveManagedImageFromRequest } = require("../services/adminImageService");
@@ -17,70 +16,257 @@ const {
 const {
   normalizeProteinFamilyKey: normalizeProteinFamilyKeyFromContract,
 } = require("../config/mealPlannerContract");
+const {
+  listActiveReadyPremiumUpgradeConfigs,
+  resolveConfigHealth,
+} = require("../services/subscription/premiumUpgradeConfigService");
 
 const SYSTEM_CURRENCY = "SAR";
 const PREMIUM_MEAL_IMAGE_FOLDER = "premium-meals";
 const ALLOWED_PROTEIN_FAMILIES = new Set(["chicken", "beef", "fish", "eggs", "other", "seafood"]);
 
 const CUSTOM_PREMIUM_SALAD_KEY = "custom_premium_salad";
-const CUSTOM_PREMIUM_SALAD_PRICE_HALALA = 3000;
-const CUSTOM_PREMIUM_SALAD_IMAGE_URL = "https://images.pexels.com/photos/27969809/pexels-photo-27969809.jpeg?auto=compress&cs=tinysrgb&w=1200";
-const PREMIUM_PROTEIN_SELECTION_TYPE = "premium_protein";
-const PREMIUM_PROTEIN_TYPE = "premium_protein";
+const SOURCE_TYPE_TO_KIND = Object.freeze({
+  menu_option: "option",
+  menu_product: "product",
+});
+const SOURCE_TYPE_TO_SOURCE_MODEL = Object.freeze({
+  menu_option: "MenuOption",
+  menu_product: "MenuProduct",
+  builder_protein: "BuilderProtein",
+});
 
-function buildCustomPremiumSaladEntry(lang) {
-  // This endpoint intentionally preserves the legacy premium-meals catalog contract.
-  // The planner uses selectionType "premium_large_salad"; /builder/premium-meals
-  // keeps "custom_premium_salad" for backward-compatible catalog consumers.
-  const names = {
-    ar: "سلطة مميزة",
-    en: "Custom Premium Salad",
-  };
-  const descriptions = {
-    ar: "سلطة كبيرة قابلة للتخصيص مع بروتين وخضار طازجة وصوص من اختيارك",
-    en: "Large customizable salad with protein, fresh vegetables, and your choice of dressing",
-  };
-  const name = names[lang] || names.en;
-  const description = descriptions[lang] || descriptions.en;
+function normalizePremiumKey(value) {
+  return String(value || "").trim().toLowerCase();
+}
 
+function normalizeLocalized(value) {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return {
+      ar: typeof value.ar === "string" ? value.ar : "",
+      en: typeof value.en === "string" ? value.en : "",
+    };
+  }
+  if (typeof value === "string") {
+    return { ar: "", en: value };
+  }
+  return { ar: "", en: "" };
+}
+
+function localizedText(value, lang) {
+  const localized = normalizeLocalized(value);
+  return localized[lang] || localized.en || localized.ar || "";
+}
+
+function normalizeNutritionForDto(value) {
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
   return {
-    id: CUSTOM_PREMIUM_SALAD_KEY,
-    premiumKey: CUSTOM_PREMIUM_SALAD_KEY,
-    selectionType: CUSTOM_PREMIUM_SALAD_KEY,
-    type: CUSTOM_PREMIUM_SALAD_KEY,
-    name,
-    description,
-    imageUrl: CUSTOM_PREMIUM_SALAD_IMAGE_URL,
-    currency: "SAR",
-    extraFeeHalala: CUSTOM_PREMIUM_SALAD_PRICE_HALALA,
-    extraFeeSar: 30,
-    priceHalala: CUSTOM_PREMIUM_SALAD_PRICE_HALALA,
-    priceSar: 30,
-    priceLabel: "30 SAR",
-    ui: {
-      title: name,
-      subtitle: description,
-      ctaLabel: lang === "ar" ? "اصنع" : "Build",
-      selectionStyle: "builder",
-    },
+    calories: Number(source.calories || 0),
+    proteinGrams: Number(source.proteinGrams || 0),
+    carbGrams: Number(source.carbGrams || 0),
+    fatGrams: Number(source.fatGrams || 0),
   };
 }
 
-function mapBuilderProteinToPremiumMealEntry(row, lang) {
-  const nutrition = row && row.nutrition && typeof row.nutrition === "object" ? row.nutrition : {};
-  return resolvePremiumMealCatalogEntry({
-    _id: row._id,
-    name: row.name,
-    description: row.description,
+function buildConfigPremiumMealEntry(config, sourceDoc, { health = null, lang = "en", diagnostics = null } = {}) {
+  const configId = String(config._id);
+  const sourceId = config.sourceId ? String(config.sourceId) : (sourceDoc?._id ? String(sourceDoc._id) : "");
+  const sourceType = String(config.sourceType || "");
+  const kind = SOURCE_TYPE_TO_KIND[sourceType] || "";
+  const sourceName = normalizeLocalized(sourceDoc?.name || config.sourceSnapshot?.name);
+  const sourceDescription = normalizeLocalized(sourceDoc?.description || config.sourceSnapshot?.description);
+  const premiumKey = normalizePremiumKey(config.premiumKey || sourceDoc?.premiumKey || sourceDoc?.key);
+  const priceHalala = Number(config.upgradeDeltaHalala || 0);
+  const currency = String(config.currency || SYSTEM_CURRENCY).toUpperCase();
+  const isReady = (health?.status || "ready") === "ready";
+  const entry = {
+    _id: configId,
+    id: configId,
+    configId,
+    revision: Number(config.revision || 0),
+    sourceId,
+    sourceModel: SOURCE_TYPE_TO_SOURCE_MODEL[sourceType] || "",
+    sourceType,
+    kind,
+    selectionType: config.selectionType || (sourceType === "menu_product" ? "premium_large_salad" : "premium_meal"),
+    premiumKey,
+    key: premiumKey,
+    name: sourceName,
+    description: sourceDescription,
+    imageUrl: String(sourceDoc?.imageUrl || config.sourceSnapshot?.context?.imageUrl || ""),
+    nutrition: normalizeNutritionForDto(sourceDoc?.nutrition),
+    extraFeeHalala: priceHalala,
+    priceHalala,
+    extraFeeSar: priceHalala / 100,
+    priceSar: priceHalala / 100,
+    priceLabel: `${priceHalala / 100} ${currency}`,
+    currency,
+    isPremium: true,
+    isActive: isReady,
+    availableForSubscription: isReady,
+    sortOrder: Number(config.sortOrder || 0),
+    health: health?.status || "ready",
+    issueCode: health?.code || null,
+    managementSource: "premium_upgrade_config",
+    legacy: false,
+    type: config.selectionType || "",
+    sourceKey: sourceDoc?.key || sourceDoc?.premiumKey || config.sourceSnapshot?.key || premiumKey,
+    sourceName,
+    sourceProductId: config.sourceProductId ? String(config.sourceProductId) : (sourceType === "menu_product" ? sourceId : null),
+    sourceGroupId: config.sourceGroupId ? String(config.sourceGroupId) : null,
+    sourceGroupKey: config.sourceSnapshot?.context?.groupKey || null,
+    sourceProductKey: config.sourceSnapshot?.context?.productKey || (sourceType === "menu_product" ? (sourceDoc?.key || premiumKey) : null),
+    ui: {
+      title: localizedText(sourceName, lang),
+      subtitle: localizedText(sourceDescription, lang),
+      ctaLabel: "Select",
+      selectionStyle: sourceType === "menu_product" ? "builder" : "option",
+    },
+  };
+
+  if (entry.selectionType === "premium_large_salad") {
+    entry.legacyAliases = [CUSTOM_PREMIUM_SALAD_KEY];
+  }
+  if (diagnostics) {
+    entry.diagnostics = diagnostics;
+  }
+  return entry;
+}
+
+function buildLegacyPremiumMealEntry(row) {
+  const id = String(row._id);
+  const premiumKey = normalizePremiumKey(row.premiumKey || row.key || id);
+  const priceHalala = Number(row.extraFeeHalala || 0);
+  const currency = String(row.currency || SYSTEM_CURRENCY).toUpperCase();
+  return {
+    ...row,
+    _id: id,
+    id,
+    configId: null,
+    revision: 0,
+    sourceId: id,
+    sourceModel: SOURCE_TYPE_TO_SOURCE_MODEL.builder_protein,
+    sourceType: "builder_protein",
+    kind: "option",
+    selectionType: row.selectionType || "premium_meal",
+    premiumKey,
+    key: premiumKey,
+    name: normalizeLocalized(row.name),
+    description: normalizeLocalized(row.description),
     imageUrl: row.imageUrl || "",
-    currency: row.currency || SYSTEM_CURRENCY,
-    extraFeeHalala: Number(row.extraFeeHalala || 0),
-    proteinGrams: Number(nutrition.proteinGrams || 0),
-    carbGrams: Number(nutrition.carbGrams || 0),
-    fatGrams: Number(nutrition.fatGrams || 0),
-    premiumKey: row.premiumKey || null,
-    isPremium: row.isPremium,
-  }, lang);
+    nutrition: normalizeNutritionForDto(row.nutrition),
+    extraFeeHalala: priceHalala,
+    priceHalala,
+    extraFeeSar: priceHalala / 100,
+    priceSar: priceHalala / 100,
+    priceLabel: `${priceHalala / 100} ${currency}`,
+    currency,
+    isPremium: true,
+    isActive: row.isActive !== false,
+    availableForSubscription: row.availableForSubscription !== false,
+    sortOrder: Number(row.sortOrder || 0),
+    health: "ready",
+    managementSource: "legacy_builder_protein",
+    legacy: true,
+    displayCategoryId: row.displayCategoryId ? String(row.displayCategoryId) : null,
+  };
+}
+
+async function buildUnifiedPremiumMealRows({ includeLegacy = true, lang = "en" } = {}) {
+  const readyRows = await listActiveReadyPremiumUpgradeConfigs();
+  const mapped = [];
+  const handledKeys = new Set();
+  const handledSources = new Set();
+
+  for (const { config, sourceDoc, health } of readyRows) {
+    const premiumKey = normalizePremiumKey(config.premiumKey);
+    const sourceIdentity = `${config.sourceType}:${String(config.sourceId || "")}`;
+    if (!premiumKey || handledKeys.has(premiumKey) || handledSources.has(sourceIdentity)) continue;
+    mapped.push(buildConfigPremiumMealEntry(config, sourceDoc, { health, lang }));
+    handledKeys.add(premiumKey);
+    handledSources.add(sourceIdentity);
+  }
+
+  if (!includeLegacy) return mapped;
+
+  const legacyRows = await BuilderProtein.find({
+    isPremium: true,
+    isActive: true,
+    isArchived: { $ne: true },
+    availableForSubscription: { $ne: false },
+  }).sort({ sortOrder: 1, createdAt: -1 }).lean();
+
+  for (const row of legacyRows) {
+    const legacyKey = normalizePremiumKey(row.premiumKey || row.key);
+    const sourceIdentity = `builder_protein:${String(row._id)}`;
+    if ((legacyKey && handledKeys.has(legacyKey)) || handledSources.has(sourceIdentity)) continue;
+    mapped.push(buildLegacyPremiumMealEntry(row));
+    if (legacyKey) handledKeys.add(legacyKey);
+    handledSources.add(sourceIdentity);
+  }
+
+  return mapped.sort((left, right) => {
+    const bySort = Number(left.sortOrder || 0) - Number(right.sortOrder || 0);
+    if (bySort !== 0) return bySort;
+    return String(left.key || "").localeCompare(String(right.key || ""));
+  });
+}
+
+async function loadConfigSource(config) {
+  if (!config) return null;
+  if (config.sourceType === "menu_option") {
+    return MenuOption.findById(config.sourceId).lean();
+  }
+  if (config.sourceType === "menu_product") {
+    return MenuProduct.findById(config.sourceId).lean();
+  }
+  return null;
+}
+
+async function findConfigBackedRowByIdOrSourceId(id, { lang = "en" } = {}) {
+  let config = await PremiumUpgradeConfig.findById(id).lean();
+  if (!config) {
+    const configsBySource = await PremiumUpgradeConfig.find({
+      sourceId: id,
+      status: "active",
+      isEnabled: true,
+      isVisible: true,
+    }).lean();
+    if (configsBySource.length === 1) {
+      config = configsBySource[0];
+    } else if (configsBySource.length > 1) {
+      const err = new Error("Premium source id matches multiple configured upgrades");
+      err.status = 409;
+      err.code = "AMBIGUOUS_PREMIUM_SOURCE";
+      throw err;
+    }
+  }
+  if (!config) return null;
+
+  const sourceDoc = await loadConfigSource(config);
+  const health = await resolveConfigHealth(config, { sourceDoc });
+  const isSelectable = config.status === "active"
+    && config.isEnabled === true
+    && config.isVisible === true
+    && health.status === "ready";
+  if (!isSelectable) return null;
+  return buildConfigPremiumMealEntry(config, sourceDoc, {
+    health,
+    lang,
+    diagnostics: { resolvedBy: String(config._id) === String(id) ? "config_id" : "source_id" },
+  });
+}
+
+async function rejectConfigBackedMutationIfNeeded(id, res) {
+  const exists = await PremiumUpgradeConfig.exists({ _id: id });
+  if (!exists) return false;
+  errorResponse(
+    res,
+    409,
+    "UNSUPPORTED_CONFIG_BACKED_ROW",
+    "This premium meal is managed by PremiumUpgradeConfig; use the premium upgrade management API for config-backed rows"
+  );
+  return true;
 }
 
 function isNonNegativeInteger(value) {
@@ -271,128 +457,16 @@ async function validatePremiumMealPayloadOrThrow(payload) {
 
 async function listBuilderPremiumMeals(req, res) {
   const lang = getRequestLang(req);
-  const legacyRows = await BuilderProtein.find({ isActive: true, isPremium: true })
-    .sort({ sortOrder: 1, createdAt: -1 })
-    .lean();
-
-  const activeConfigs = await PremiumUpgradeConfig.find({ status: "active", isEnabled: true, isVisible: true }).lean();
-  
-  const mapped = [];
-  const handledKeys = new Set();
-
-  for (const config of activeConfigs) {
-    if (config.premiumKey === "custom_premium_salad" || config.selectionType === "premium_large_salad") continue;
-    
-    let row = legacyRows.find(r => r.premiumKey === config.premiumKey || r.key === config.premiumKey);
-    if (!row) {
-      let sourceDoc = null;
-      if (config.sourceType === "menu_option") {
-        sourceDoc = await MenuOption.findById(config.sourceId).lean();
-      } else if (config.sourceType === "menu_product") {
-        sourceDoc = await MenuProduct.findById(config.sourceId).lean();
-      }
-      
-      if (sourceDoc) {
-        row = {
-          _id: config._id,
-          name: sourceDoc.name,
-          description: sourceDoc.description,
-          imageUrl: sourceDoc.imageUrl || "",
-          currency: config.currency || "SAR",
-          extraFeeHalala: config.upgradeDeltaHalala,
-          nutrition: sourceDoc.nutrition || {},
-          premiumKey: config.premiumKey,
-          isPremium: true,
-        };
-      }
-    } else {
-      row.extraFeeHalala = config.upgradeDeltaHalala;
-    }
-
-    if (row) {
-      mapped.push(mapBuilderProteinToPremiumMealEntry(row, lang));
-      handledKeys.add(config.premiumKey);
-    }
-  }
-
-  for (const row of legacyRows) {
-    if (!handledKeys.has(row.premiumKey) && !handledKeys.has(row.key)) {
-      mapped.push(mapBuilderProteinToPremiumMealEntry(row, lang));
-    }
-  }
-
-  const customSaladEntry = buildCustomPremiumSaladEntry(lang);
-  const allEntries = [...mapped, customSaladEntry];
-  
-  return res.status(200).json({ status: true, data: allEntries });
+  const data = await buildUnifiedPremiumMealRows({ includeLegacy: true, lang });
+  return res.status(200).json({ status: true, data });
 }
 
-async function listBuilderPremiumMealsAdmin(_req, res) {
-  const legacyRows = await BuilderProtein.find({ isPremium: true })
-    .sort({ sortOrder: 1, createdAt: -1 })
-    .lean();
-
-  const activeConfigs = await PremiumUpgradeConfig.find({ status: "active" }).lean();
-  
-  const mapped = [];
-  const handledKeys = new Set();
-
-  for (const config of activeConfigs) {
-    if (config.premiumKey === "custom_premium_salad" || config.selectionType === "premium_large_salad") continue;
-    
-    let row = legacyRows.find(r => r.premiumKey === config.premiumKey || r.key === config.premiumKey);
-    if (!row) {
-      let sourceDoc = null;
-      if (config.sourceType === "menu_option") {
-        sourceDoc = await MenuOption.findById(config.sourceId).lean();
-      } else if (config.sourceType === "menu_product") {
-        sourceDoc = await MenuProduct.findById(config.sourceId).lean();
-      }
-      
-      if (sourceDoc) {
-        row = {
-          _id: config._id,
-          name: sourceDoc.name,
-          description: sourceDoc.description,
-          imageUrl: sourceDoc.imageUrl || "",
-          currency: config.currency || "SAR",
-          extraFeeHalala: config.upgradeDeltaHalala,
-          nutrition: sourceDoc.nutrition || {},
-          premiumKey: config.premiumKey,
-          isPremium: true,
-          isActive: config.isEnabled && config.isVisible,
-          sortOrder: config.sortOrder || 0,
-        };
-      }
-    } else {
-      row.extraFeeHalala = config.upgradeDeltaHalala;
-    }
-
-    if (row) {
-      mapped.push({
-        ...row,
-        id: String(row._id),
-        displayCategoryId: row.displayCategoryId ? String(row.displayCategoryId) : null,
-        imageUrl: row.imageUrl || "",
-      });
-      handledKeys.add(config.premiumKey);
-    }
-  }
-
-  for (const row of legacyRows) {
-    if (!handledKeys.has(row.premiumKey) && !handledKeys.has(row.key)) {
-      mapped.push({
-        ...row,
-        id: String(row._id),
-        displayCategoryId: row.displayCategoryId ? String(row.displayCategoryId) : null,
-        imageUrl: row.imageUrl || "",
-      });
-    }
-  }
-
+async function listBuilderPremiumMealsAdmin(req, res) {
+  const lang = getRequestLang(req);
+  const data = await buildUnifiedPremiumMealRows({ includeLegacy: true, lang });
   return res.status(200).json({
     status: true,
-    data: mapped,
+    data,
   });
 }
 
@@ -404,6 +478,16 @@ async function getBuilderPremiumMealAdmin(req, res) {
     return errorResponse(res, err.status, err.code, err.message);
   }
 
+  let configBackedRow;
+  try {
+    configBackedRow = await findConfigBackedRowByIdOrSourceId(id, { lang: getRequestLang(req) });
+  } catch (err) {
+    return errorResponse(res, err.status || 500, err.code || "ERROR", err.message);
+  }
+  if (configBackedRow) {
+    return res.status(200).json({ status: true, data: configBackedRow });
+  }
+
   const row = await BuilderProtein.findOne({ _id: id, isPremium: true }).lean();
   if (!row) {
     return errorResponse(res, 404, "NOT_FOUND", "Premium meal not found");
@@ -412,10 +496,8 @@ async function getBuilderPremiumMealAdmin(req, res) {
   return res.status(200).json({
     status: true,
     data: {
-      ...row,
-      id: String(row._id),
-      displayCategoryId: row.displayCategoryId ? String(row.displayCategoryId) : null,
-      imageUrl: row.imageUrl || "",
+      ...buildLegacyPremiumMealEntry(row),
+      diagnostics: { resolvedBy: "legacy_builder_protein_id" },
     },
   });
 }
@@ -452,6 +534,7 @@ async function updateBuilderPremiumMeal(req, res) {
   }
 
   try {
+    if (await rejectConfigBackedMutationIfNeeded(id, res)) return;
     const payload = await validatePremiumMealPayloadOrThrow(req.body || {});
     const existing = await BuilderProtein.findOne({ _id: id, isPremium: true });
     if (!existing) {
@@ -489,6 +572,7 @@ async function deleteBuilderPremiumMeal(req, res) {
     return errorResponse(res, err.status, err.code, err.message);
   }
 
+  if (await rejectConfigBackedMutationIfNeeded(id, res)) return;
   const row = await BuilderProtein.findOne({ _id: id, isPremium: true });
   if (!row) {
     return errorResponse(res, 404, "NOT_FOUND", "Premium meal not found");
@@ -505,6 +589,7 @@ async function toggleBuilderPremiumMealActive(req, res) {
     return errorResponse(res, err.status, err.code, err.message);
   }
 
+  if (await rejectConfigBackedMutationIfNeeded(id, res)) return;
   const row = await BuilderProtein.findOne({ _id: id, isPremium: true });
   if (!row) {
     return errorResponse(res, 404, "NOT_FOUND", "Premium meal not found");
@@ -525,6 +610,7 @@ async function updateBuilderPremiumMealSortOrder(req, res) {
   }
 
   try {
+    if (await rejectConfigBackedMutationIfNeeded(id, res)) return;
     const sortOrder = normalizeSortOrder(req.body && req.body.sortOrder, "sortOrder");
     const row = await BuilderProtein.findOneAndUpdate(
       { _id: id, isPremium: true },
@@ -551,6 +637,7 @@ async function cloneBuilderPremiumMeal(req, res) {
     return errorResponse(res, err.status, err.code, err.message);
   }
 
+  if (await rejectConfigBackedMutationIfNeeded(id, res)) return;
   const row = await BuilderProtein.findOne({ _id: id, isPremium: true }).lean();
   if (!row) {
     return errorResponse(res, 404, "NOT_FOUND", "Premium meal not found");
