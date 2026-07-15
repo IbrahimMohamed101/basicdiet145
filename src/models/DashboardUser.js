@@ -11,6 +11,8 @@ const DashboardUserSchema = new mongoose.Schema(
     failedAttempts: { type: Number, default: 0 },
     lockUntil: { type: Date, default: null },
     passwordChangedAt: { type: Date, default: null },
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "DashboardUser", default: null },
+    updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "DashboardUser", default: null },
   },
   { timestamps: true }
 );
