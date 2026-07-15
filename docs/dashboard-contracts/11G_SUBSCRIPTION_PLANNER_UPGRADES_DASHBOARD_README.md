@@ -711,12 +711,15 @@
   ```text
   sourceType
   sourceId
+  relationId
   sourceProductId
   sourceGroupId
   selectionType
   ```
 
   These fields are read-only/hidden in the form.
+
+  When using `GET /api/dashboard/premium-upgrades/sources` as the picker, copy the selected row's `relationId` for option rows. `sourceId` alone is valid only when that option has exactly one eligible active product/group relation.
 
   ---
 
@@ -726,6 +729,7 @@
   |---|---|---:|---|---|
   | `sourceType` | Hidden / read-only text | No | from candidate: `menu_option` or `menu_product` | string |
   | `sourceId` | Hidden | No | from candidate `sourceId` | string |
+  | `relationId` | Hidden | No | from selected `/sources` option row; required when the same option appears in multiple active relations | string |
   | `sourceProductId` | Hidden | No | from candidate; required for `menu_option`; product ID for `menu_product` | string |
   | `sourceGroupId` | Hidden | No | from candidate; `null` for product-backed salad | string/null |
   | `selectionType` | Hidden / read-only badge | No | from candidate: `premium_meal` or `premium_large_salad` | string |
@@ -780,6 +784,7 @@
     return {
       sourceType: candidate.sourceType,
       sourceId: candidate.sourceId,
+      relationId: candidate.relationId,
       sourceProductId: candidate.sourceProductId,
       sourceGroupId: candidate.sourceGroupId,
       selectionType: candidate.selectionType,
@@ -800,6 +805,7 @@
   {
     "sourceType": "menu_option",
     "sourceId": "6a3551b13f6b8e45eac5b5f8",
+    "relationId": "menu_option:6a3551b13f6b8e45eac5b5f8:6a35521c3f6b8e45eac5b8e9:6a3551ae3f6b8e45eac5b5e9",
     "sourceProductId": "6a35521c3f6b8e45eac5b8e9",
     "sourceGroupId": "6a3551ae3f6b8e45eac5b5e9",
     "selectionType": "premium_meal",
@@ -957,7 +963,7 @@
   currency
   ```
 
-  `sourceProductId` and `sourceGroupId` are response/display fields. For relink, the frontend sends only `kind` and `sourceId`; the backend derives the stored relation context.
+  `sourceProductId` and `sourceGroupId` are response/display fields. For relink, the frontend sends `kind` and `sourceId`; for option sources that appear in more than one active product/group relation, also send the selected row's `relationId` from `/sources` or send both `sourceProductId` and `sourceGroupId`.
 
   ---
 
@@ -1127,7 +1133,7 @@
   }
   ```
 
-  Frontend rule: do not send `sourceProductId`, `sourceGroupId`, `selectionType`, or `premiumKey` for relink. The backend resolves and validates the product/group relation from `kind + sourceId`, preserves the existing `premiumKey`, rejects incompatible sources with `PREMIUM_RELINK_KEY_MISMATCH`, and rejects unresolved/ambiguous option relations with `PREMIUM_SOURCE_RELATION_INVALID`.
+  Frontend rule: do not send `selectionType` or `premiumKey` for relink. The backend resolves and validates the product/group relation from `kind + sourceId` when there is exactly one eligible relation. If an option source is ambiguous, send `relationId` from the selected `/sources` row or send both `sourceProductId` and `sourceGroupId`; otherwise the backend rejects it with `PREMIUM_SOURCE_RELATION_AMBIGUOUS`. Incompatible sources still fail with `PREMIUM_RELINK_KEY_MISMATCH`, and invalid relation IDs fail with `PREMIUM_SOURCE_RELATION_INVALID`.
 
   ---
 

@@ -207,6 +207,93 @@ async function main() {
     await ProductGroupOption.deleteOne({ optionId: dynamicOption._id });
     await MenuOption.deleteOne({ _id: dynamicOption._id });
 
+    const alternateMealForAmbiguousOption = await MenuProduct.create({
+      categoryId: basicMeal.categoryId,
+      key: "alternate_basic_meal_for_premium_relation",
+      name: { en: "Alternate Basic Meal", ar: "وجبة أساسية بديلة" },
+      priceHalala: 2100,
+      availableFor: ["subscription"],
+      availableForSubscription: true,
+      isActive: true,
+      isVisible: true,
+      isAvailable: true,
+      publishedAt: new Date(),
+    });
+    await ProductOptionGroup.create({
+      productId: alternateMealForAmbiguousOption._id,
+      groupId: proteinsGroup._id,
+      minSelections: 1,
+      maxSelections: 1,
+      isRequired: true,
+      isActive: true,
+      isVisible: true,
+      isAvailable: true,
+    });
+    const multiContextOption = await MenuOption.create({
+      groupId: proteinsGroup._id,
+      key: "multi_context_premium",
+      premiumKey: "multi_context_premium",
+      name: { en: "Multi Context Premium", ar: "خيار مميز متعدد السياق" },
+      selectionType: "premium_meal",
+      isActive: true,
+      isVisible: true,
+      isAvailable: true,
+      availableFor: ["subscription"],
+      availableForSubscription: true,
+      publishedAt: new Date(),
+    });
+    await ProductGroupOption.create([
+      {
+        productId: basicMeal._id,
+        groupId: proteinsGroup._id,
+        optionId: multiContextOption._id,
+        extraPriceHalala: 2400,
+      },
+      {
+        productId: alternateMealForAmbiguousOption._id,
+        groupId: proteinsGroup._id,
+        optionId: multiContextOption._id,
+        extraPriceHalala: 2600,
+      },
+    ]);
+    res = await api.get("/api/dashboard/premium-upgrades/sources?kind=option&q=multi_context_premium&limit=100").set(headers);
+    expectStatus(res, 200, "ambiguous option source picker rows");
+    const multiContextSources = res.body.data.filter((source) => source.sourceId === String(multiContextOption._id));
+    assert.strictEqual(multiContextSources.length, 2, "source picker exposes one row per option relation");
+    assert(multiContextSources.every((source) => source.relationId), "ambiguous source rows include relationId");
+    res = await api.post("/api/dashboard/premium-upgrades").set(headers).send({
+      kind: "option",
+      sourceId: String(multiContextOption._id),
+      upgradeDeltaHalala: 2500,
+      currency: "SAR",
+      isActive: true,
+      isVisible: true,
+      sortOrder: 10,
+    });
+    expectStatus(res, 400, "ambiguous simplified option create requires relation");
+    assert.strictEqual(res.body.error.code, "PREMIUM_SOURCE_RELATION_AMBIGUOUS");
+    assert.strictEqual(res.body.error.details.candidateRelations.length, 2);
+    const selectedAmbiguousSource = multiContextSources.find((source) => source.sourceProductKey === "alternate_basic_meal_for_premium_relation");
+    assert(selectedAmbiguousSource, "alternate relation is selectable by relationId");
+    res = await api.post("/api/dashboard/premium-upgrades").set(headers).send({
+      kind: "option",
+      sourceId: String(multiContextOption._id),
+      relationId: selectedAmbiguousSource.relationId,
+      upgradeDeltaHalala: 2500,
+      currency: "SAR",
+      isActive: true,
+      isVisible: true,
+      sortOrder: 10,
+    });
+    expectStatus(res, 201, "ambiguous option create accepts selected relationId");
+    assert.strictEqual(res.body.data.source.productId, String(alternateMealForAmbiguousOption._id));
+    assert.strictEqual(res.body.data.source.groupId, String(proteinsGroup._id));
+    await PremiumUpgradeConfig.deleteOne({ premiumKey: "multi_context_premium" });
+    await ProductGroupOption.deleteMany({ optionId: multiContextOption._id });
+    await ProductOptionGroup.deleteOne({ productId: alternateMealForAmbiguousOption._id, groupId: proteinsGroup._id });
+    await MenuOption.deleteOne({ _id: multiContextOption._id });
+    await MenuProduct.deleteOne({ _id: alternateMealForAmbiguousOption._id });
+
     const oneTimeOnlyOption = await MenuOption.create({
       groupId: proteinsGroup._id,
       key: "one_time_only_premium",

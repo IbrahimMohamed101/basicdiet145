@@ -558,6 +558,7 @@ When submitting the POST request, the frontend form should structure the payload
 |---|---|---|---|
 | `sourceType` | Read-only (Hidden) | Yes | Auto-filled from candidate (`menu_option` or `menu_product`) |
 | `sourceId` | Read-only (Hidden) | Yes | Auto-filled from candidate (UUID) |
+| `relationId` | Read-only (Hidden) | Required when ambiguous | Copy from the selected `/sources` option row when the same option appears in multiple active product/group relations. |
 | `sourceProductId` | Read-only (Hidden) | Yes (if `menu_option`) | Auto-filled from candidate (UUID). |
 | `sourceGroupId` | Read-only (Hidden) | Yes (if `menu_option`) | Auto-filled from candidate (UUID). Can be null for `menu_product`. |
 | `selectionType` | Read-only (Hidden) | Yes | Auto-filled from candidate (`premium_meal` or `premium_large_salad`) |
@@ -570,6 +571,7 @@ When submitting the POST request, the frontend form should structure the payload
 ### Frontend validation before submit
 
 - Ensure all required read-only fields from the candidate are included in the payload.
+- If the picker is `/api/dashboard/premium-upgrades/sources` and the selected option appears in multiple rows with the same `sourceId`, include that row's `relationId` or include both `sourceProductId` and `sourceGroupId`.
 - `upgradeDeltaHalala` must be integer `>= 0`.
 - Do not allow duplicate submit for already linked candidates.
 - Do not allow manual `premiumKey` editing (Server derives `premiumKey`).
@@ -626,7 +628,7 @@ Source relink exception:
 
 For product-backed premium salad relink, use `"kind": "product"` and the product `sourceId`.
 
-The frontend should not send `sourceProductId`, `sourceGroupId`, `selectionType`, or `premiumKey` for relink. The backend derives and validates option `sourceProductId`/`sourceGroupId` from `kind + sourceId`, preserves the existing `premiumKey`, rejects incompatible sources with `PREMIUM_RELINK_KEY_MISMATCH`, and rejects unresolved/ambiguous option relations with `PREMIUM_SOURCE_RELATION_INVALID`.
+The frontend should not send `selectionType` or `premiumKey` for relink. The backend derives and validates option `sourceProductId`/`sourceGroupId` from `kind + sourceId` only when there is exactly one eligible relation. If the option appears in multiple active product/group relations, send `relationId` from the selected `/sources` row or send both `sourceProductId` and `sourceGroupId`; otherwise the backend rejects the request with `PREMIUM_SOURCE_RELATION_AMBIGUOUS`. Incompatible sources fail with `PREMIUM_RELINK_KEY_MISMATCH`, and invalid relation IDs fail with `PREMIUM_SOURCE_RELATION_INVALID`.
 
 ### Payload Form Definition (Update Details)
 

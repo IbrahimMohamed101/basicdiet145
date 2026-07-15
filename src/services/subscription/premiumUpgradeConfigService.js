@@ -30,11 +30,12 @@ const HEALTH_READY = "ready";
 const HEALTH_BROKEN = "broken";
 const SYSTEM_PREMIUM_CURRENCY = "SAR";
 
-function createError(message, code, status = 400) {
+function createError(message, code, status = 400, details = undefined) {
   const err = new Error(message);
   err.code = code;
   err.status = status;
   err.statusCode = status;
+  if (details !== undefined) err.details = details;
   return err;
 }
 
@@ -103,6 +104,20 @@ function relationIdFor({ sourceType, sourceId, sourceProductId = null, sourceGro
     return `menu_product:${String(sourceId)}`;
   }
   return `${String(sourceType || "")}:${String(sourceId || "")}`;
+}
+
+function parseOptionRelationId(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  const parts = raw.split(":");
+  if (parts.length !== 4 || parts[0] !== "menu_option") {
+    throw createError("Invalid premium source relation id", "PREMIUM_SOURCE_RELATION_INVALID", 400);
+  }
+  const [, sourceId, sourceProductId, sourceGroupId] = parts;
+  if (!isValidObjectId(sourceId) || !isValidObjectId(sourceProductId) || !isValidObjectId(sourceGroupId)) {
+    throw createError("Invalid premium source relation id", "PREMIUM_SOURCE_RELATION_INVALID", 400);
+  }
+  return { sourceId, sourceProductId, sourceGroupId };
 }
 
 function sourceModelForSourceType(sourceType) {
@@ -1262,6 +1277,33 @@ async function assertSourceCollectionMatch(kind, sourceId) {
   }
 }
 
+async function buildOptionRelationAmbiguityDetails(option) {
+  const { candidates } = await loadEligiblePremiumCandidates();
+  const candidateRelations = candidates
+    .filter((candidate) => (
+      candidate.sourceType === "menu_option"
+      && idsEqual(candidate.sourceId, option._id)
+    ))
+    .map((candidate) => ({
+      relationId: candidate.relationId || relationIdFor(candidate),
+      sourceId: candidate.sourceId,
+      sourceProductId: candidate.sourceProductId || null,
+      sourceGroupId: candidate.sourceGroupId || null,
+      sourceProductKey: candidate.sourceProductKey || null,
+      sourceGroupKey: candidate.sourceGroupKey || null,
+      key: candidate.key || candidate.premiumKey || "",
+      name: localizedName(candidate.name),
+    }));
+
+  return {
+    kind: "option",
+    sourceId: String(option._id),
+    requiredWhenAmbiguous: ["relationId"],
+    acceptedAlternativeFields: ["sourceProductId", "sourceGroupId"],
+    candidateRelations,
+  };
+}
+
 async function resolvePremiumSourceIdentity(data = {}, { requireExactOptionRelation = false } = {}) {
   const kind = normalizeAdminKind(data);
   const sourceType = ADMIN_KIND_TO_SOURCE_TYPE[kind];
@@ -1299,14 +1341,36 @@ async function resolvePremiumSourceIdentity(data = {}, { requireExactOptionRelat
     throw createError("Premium source is not selectable", "PREMIUM_SOURCE_NOT_SELECTABLE", 400);
   }
 
+  const parsedRelationId = parseOptionRelationId(data.relationId);
+  if (parsedRelationId) {
+    if (!idsEqual(parsedRelationId.sourceId, option._id)) {
+      throw createError("Premium source relation id does not match sourceId", "PREMIUM_SOURCE_RELATION_INVALID", 400);
+    }
+    if (data.sourceProductId && !idsEqual(data.sourceProductId, parsedRelationId.sourceProductId)) {
+      throw createError("Premium source relation id conflicts with sourceProductId", "PREMIUM_SOURCE_RELATION_INVALID", 400);
+    }
+    if (data.sourceGroupId && !idsEqual(data.sourceGroupId, parsedRelationId.sourceGroupId)) {
+      throw createError("Premium source relation id conflicts with sourceGroupId", "PREMIUM_SOURCE_RELATION_INVALID", 400);
+    }
+  }
+
   const probeConfig = {
     sourceType,
     sourceId: option._id,
-    sourceProductId: data.sourceProductId || null,
-    sourceGroupId: data.sourceGroupId || option.groupId || null,
+    sourceProductId: parsedRelationId?.sourceProductId || data.sourceProductId || null,
+    sourceGroupId: parsedRelationId?.sourceGroupId || data.sourceGroupId || option.groupId || null,
   };
   const relation = await resolveOptionRelationContext(probeConfig, option, { requireExact: requireExactOptionRelation });
   if (!relation.valid) {
+    if (relation.ambiguous) {
+      const details = await buildOptionRelationAmbiguityDetails(option);
+      throw createError(
+        "Premium option source is ambiguous; send relationId from /sources or sourceProductId/sourceGroupId",
+        "PREMIUM_SOURCE_RELATION_AMBIGUOUS",
+        400,
+        details
+      );
+    }
     throw createError("Premium source relation is invalid", "PREMIUM_SOURCE_RELATION_INVALID", 400);
   }
   const premiumKey = sourceKeyFor(option);
