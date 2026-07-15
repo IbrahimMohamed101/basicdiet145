@@ -35,8 +35,8 @@ function testPlansAcceptDynamicCounts() {
 
   assert.strictEqual(rows.length, 4, "arbitrary initial plan count is accepted");
   assert.strictEqual(result.planCount, 4);
-  assert.strictEqual(result.nestedPricePoints, 7, "arbitrary nested price-point count is derived from data");
-  assert.strictEqual(countNestedPricePoints(rows), 7);
+  assert.strictEqual(result.nestedPricePoints, 8, "arbitrary nested price-point count is derived from data");
+  assert.strictEqual(countNestedPricePoints(rows), 8);
 }
 
 function testPlanValidationIsStructural() {
