@@ -11,7 +11,7 @@ permissions:
 jobs:
   full-cycle:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       NODE_ENV: test
       JWT_SECRET: test-premium-addon-cycle-secret
@@ -29,35 +29,83 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Premium identity and activation
+      - id: premium_identity
+        name: Premium identity and activation
+        continue-on-error: true
         run: node tests/premiumLifecycleIdentity.test.js
 
-      - name: Premium purchase limit
+      - id: premium_limit
+        name: Premium purchase limit
+        continue-on-error: true
         run: node tests/subscriptionPremiumUpgradeLimit.test.js
 
-      - name: Dashboard premium source lifecycle
+      - id: premium_dashboard
+        name: Dashboard premium source lifecycle
+        continue-on-error: true
         run: node tests/dashboardPremiumUpgrades.test.js
 
-      - name: Checkout lifecycle
+      - id: checkout
+        name: Checkout lifecycle
+        continue-on-error: true
         run: node tests/checkout.integration.test.js
 
-      - name: Meal planner full integration
+      - id: meal_planner
+        name: Meal planner full integration
+        continue-on-error: true
         run: node tests/mealPlanner.integration.test.js
 
-      - name: Exact add-on entitlement and allocation
+      - id: addon_allocation
+        name: Exact add-on entitlement and allocation
+        continue-on-error: true
         run: npm run test:addon-credit-allocation
 
-      - name: Add-on balance consume and release lifecycle
+      - id: addon_lifecycle
+        name: Add-on balance consume and release lifecycle
+        continue-on-error: true
         run: npm run test:addon-credit-lifecycle
 
-      - name: Subscription balance and fulfillment lifecycle
+      - id: subscriptions
+        name: Subscription balance and fulfillment lifecycle
+        continue-on-error: true
         run: npm run test:subscriptions
 
-      - name: Pickup and dashboard operation lifecycle
+      - id: pickup
+        name: Pickup and dashboard operation lifecycle
+        continue-on-error: true
         run: npm run test:dashboard-manual-deduction
 
-      - name: Builder catalog contract
+      - id: builder_catalog
+        name: Builder catalog contract
+        continue-on-error: true
         run: npm run test:builder-catalog-v2-contract
 
-      - name: Dashboard/mobile menu parity
+      - id: parity
+        name: Dashboard/mobile menu parity
+        continue-on-error: true
         run: npm run test:meal-builder-dashboard-mobile-parity
+
+      - name: Lifecycle result summary
+        if: always()
+        run: |
+          echo "premium_identity=${{ steps.premium_identity.outcome }}"
+          echo "premium_limit=${{ steps.premium_limit.outcome }}"
+          echo "premium_dashboard=${{ steps.premium_dashboard.outcome }}"
+          echo "checkout=${{ steps.checkout.outcome }}"
+          echo "meal_planner=${{ steps.meal_planner.outcome }}"
+          echo "addon_allocation=${{ steps.addon_allocation.outcome }}"
+          echo "addon_lifecycle=${{ steps.addon_lifecycle.outcome }}"
+          echo "subscriptions=${{ steps.subscriptions.outcome }}"
+          echo "pickup=${{ steps.pickup.outcome }}"
+          echo "builder_catalog=${{ steps.builder_catalog.outcome }}"
+          echo "parity=${{ steps.parity.outcome }}"
+          test "${{ steps.premium_identity.outcome }}" = success
+          test "${{ steps.premium_limit.outcome }}" = success
+          test "${{ steps.premium_dashboard.outcome }}" = success
+          test "${{ steps.checkout.outcome }}" = success
+          test "${{ steps.meal_planner.outcome }}" = success
+          test "${{ steps.addon_allocation.outcome }}" = success
+          test "${{ steps.addon_lifecycle.outcome }}" = success
+          test "${{ steps.subscriptions.outcome }}" = success
+          test "${{ steps.pickup.outcome }}" = success
+          test "${{ steps.builder_catalog.outcome }}" = success
+          test "${{ steps.parity.outcome }}" = success
