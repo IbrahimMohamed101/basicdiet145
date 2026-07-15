@@ -579,36 +579,44 @@ async function seedViaDashboard(api) {
       assertGroupRule(greenSalad, "vegetables_legumes", 0, 19);
       assertGroupRule(greenSalad, "sauces", 1, 1);
 
-      const premiumSaladOptions = new Map(basicSaladProteins.options.map((option) => [option.key, option]));
-      ["beef_steak", "shrimp", "salmon"].forEach((optionKey) => {
-        const premiumOption = premiumSaladOptions.get(optionKey);
-        assert(premiumOption, `basic_salad contains ${optionKey}`);
-        assert.strictEqual(premiumOption.extraPriceHalala, 1600, `basic_salad ${optionKey} extra price`);
-        assert.strictEqual(premiumOption.extraWeightUnitGrams, 50, `basic_salad ${optionKey} extra unit`);
-        assert.strictEqual(premiumOption.extraWeightPriceHalala, 1000, `basic_salad ${optionKey} extra weight price`);
+      const basicSaladOptionsByName = new Map(basicSaladProteins.options.map((option) => [option.nameI18n.en, option]));
+      [
+        ["beef_steak", "Steak"],
+        ["shrimp", "Shrimp"],
+        ["salmon", "Salmon"],
+      ].forEach(([premiumKey, optionName]) => {
+        const premiumOption = basicSaladOptionsByName.get(optionName);
+        assert(premiumOption, `basic_salad contains ${premiumKey}`);
+        assert.strictEqual(premiumOption.extraPriceHalala, 1600, `basic_salad ${premiumKey} extra price`);
+        assert.strictEqual(premiumOption.extraWeightUnitGrams, 50, `basic_salad ${premiumKey} extra unit`);
+        assert.strictEqual(premiumOption.extraWeightPriceHalala, 1000, `basic_salad ${premiumKey} extra weight price`);
       });
-      ["فاهيتا", "دجاج سبايسي", "دجاج توابل إيطالية", "دجاج تكا", "دجاج آسيوي", "استربس", "دجاج مشوي", "دجاج مكسيكي"].forEach((optionName) => {
-        assert.strictEqual(premiumSaladOptions.get(optionName).extraWeightPriceHalala, 500, `basic_salad ${optionName} chicken extra weight`);
+      ["Fajita", "Spicy Chicken", "Italian Herb Chicken", "Chicken Tikka", "Asian Chicken", "Chicken Strips", "Grilled Chicken", "Mexican Chicken"].forEach((optionName) => {
+        assert.strictEqual(basicSaladOptionsByName.get(optionName).extraWeightPriceHalala, 500, `basic_salad ${optionName} chicken extra weight`);
       });
-      ["كرات لحم", "لحم استرغانوف"].forEach((optionName) => {
-        assert.strictEqual(premiumSaladOptions.get(optionName).extraPriceHalala, 300, `basic_salad ${optionName} extra price`);
-        assert.strictEqual(premiumSaladOptions.get(optionName).extraWeightPriceHalala, 600, `basic_salad ${optionName} meat extra weight`);
+      ["Meatballs", "Beef Stroganoff"].forEach((optionName) => {
+        assert.strictEqual(basicSaladOptionsByName.get(optionName).extraPriceHalala, 300, `basic_salad ${optionName} extra price`);
+        assert.strictEqual(basicSaladOptionsByName.get(optionName).extraWeightPriceHalala, 600, `basic_salad ${optionName} meat extra weight`);
       });
 
-      const premiumMealOptions = new Map(basicMealProteins.options.map((option) => [option.key, option]));
-      ["beef_steak", "shrimp", "salmon"].forEach((optionKey) => {
-        const premiumOption = premiumMealOptions.get(optionKey);
-        assert(premiumOption, `basic_meal contains ${optionKey}`);
-        assert.strictEqual(premiumOption.extraPriceHalala, 2000, `basic_meal ${optionKey} extra price`);
-        assert.strictEqual(premiumOption.extraWeightUnitGrams, 50, `basic_meal ${optionKey} extra unit`);
-        assert.strictEqual(premiumOption.extraWeightPriceHalala, 1000, `basic_meal ${optionKey} extra weight price`);
+      const basicMealOptionsByName = new Map(basicMealProteins.options.map((option) => [option.nameI18n.en, option]));
+      [
+        ["beef_steak", "Steak"],
+        ["shrimp", "Shrimp"],
+        ["salmon", "Salmon"],
+      ].forEach(([premiumKey, optionName]) => {
+        const premiumOption = basicMealOptionsByName.get(optionName);
+        assert(premiumOption, `basic_meal contains ${premiumKey}`);
+        assert.strictEqual(premiumOption.extraPriceHalala, 2000, `basic_meal ${premiumKey} extra price`);
+        assert.strictEqual(premiumOption.extraWeightUnitGrams, 50, `basic_meal ${premiumKey} extra unit`);
+        assert.strictEqual(premiumOption.extraWeightPriceHalala, 1000, `basic_meal ${premiumKey} extra weight price`);
       });
-      ["فاهيتا", "دجاج زبدة", "دجاج كريمة", "دجاج كاري وجوز الهند", "دجاج سبايسي", "دجاج توابل إيطالية", "دجاج تكا", "دجاج آسيوي", "استربس", "دجاج مشوي", "دجاج مكسيكي"].forEach((optionName) => {
-        assert.strictEqual(premiumMealOptions.get(optionName).extraWeightPriceHalala, 500, `basic_meal ${optionName} chicken extra weight`);
+      ["Fajita", "Butter Chicken", "Cream Chicken", "Coconut Curry Chicken", "Spicy Chicken", "Italian Herb Chicken", "Chicken Tikka", "Asian Chicken", "Chicken Strips", "Grilled Chicken", "Mexican Chicken"].forEach((optionName) => {
+        assert.strictEqual(basicMealOptionsByName.get(optionName).extraWeightPriceHalala, 500, `basic_meal ${optionName} chicken extra weight`);
       });
-      ["كرات لحم", "لحم استرغانوف"].forEach((optionName) => {
-        assert.strictEqual(premiumMealOptions.get(optionName).extraPriceHalala, 300, `basic_meal ${optionName} extra price`);
-        assert.strictEqual(premiumMealOptions.get(optionName).extraWeightPriceHalala, 600, `basic_meal ${optionName} meat extra weight`);
+      ["Meatballs", "Beef Stroganoff"].forEach((optionName) => {
+        assert.strictEqual(basicMealOptionsByName.get(optionName).extraPriceHalala, 300, `basic_meal ${optionName} extra price`);
+        assert.strictEqual(basicMealOptionsByName.get(optionName).extraWeightPriceHalala, 600, `basic_meal ${optionName} meat extra weight`);
       });
 
       seededProductRows
@@ -624,18 +632,24 @@ async function seedViaDashboard(api) {
       assert(proteinsGroup, "proteins option group exists");
       const shrimp = await MenuOption.findOne({ groupId: proteinsGroup._id, "name.en": "Shrimp" });
       assert(shrimp, "shrimp menu option exists");
+      const basicMealProduct = await MenuProduct.findOne({ key: "basic_meal" }).lean();
+      assert(basicMealProduct, "basic_meal product exists");
       shrimp.extraPriceHalala = 1600;
       shrimp.displayCategoryKey = "premium";
       shrimp.proteinFamilyKey = "fish";
       shrimp.premiumKey = "shrimp";
       shrimp.ruleTags = ["premium"];
       shrimp.selectionType = "premium_meal";
+      shrimp.availableForSubscription = true;
+      shrimp.availableFor = ["one_time", "subscription"];
       await shrimp.save();
 
       const PremiumUpgradeConfig = require("../src/models/PremiumUpgradeConfig");
       await PremiumUpgradeConfig.create({
         sourceType: "menu_option",
         sourceId: shrimp._id,
+        sourceProductId: basicMealProduct._id,
+        sourceGroupId: proteinsGroup._id,
         selectionType: "premium_meal",
         premiumKey: "shrimp",
         upgradeDeltaHalala: 1600,
@@ -643,6 +657,11 @@ async function seedViaDashboard(api) {
         status: "active",
         isEnabled: true,
         isVisible: true,
+        sourceSnapshot: {
+          key: shrimp.key,
+          name: shrimp.name,
+          context: { productKey: "basic_meal", groupKey: "proteins" },
+        },
       });
 
       const chicken = await MenuOption.findOne({ groupId: proteinsGroup._id, "name.en": "Grilled Chicken" });
@@ -669,7 +688,6 @@ async function seedViaDashboard(api) {
       assert.strictEqual(sandwich.calories, 220, "builderCatalog sandwich includes compatibility calories");
       assert.strictEqual(sandwich.proteinFamilyKey, "chicken", "builderCatalog sandwich includes compatibility protein family");
       assert(catalog.premiumLargeSalad, "premiumLargeSalad is present");
-      console.log("premiumLargeSalad dump:", JSON.stringify(catalog.premiumLargeSalad, null, 2));
       assert(catalog.premiumLargeSalad.carbId, "premiumLargeSalad keeps carbId field");
       assert((catalog.premiumLargeSalad.ingredients || []).some((item) => item.groupKey === "protein" && item.id === String(shrimp._id)), "premiumLargeSalad includes protein menu options");
 
