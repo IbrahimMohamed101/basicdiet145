@@ -29,9 +29,7 @@ function isBootstrapOwned(config) {
 }
 
 function validationMessage(validation) {
-  return (validation.errors || [])
-    .map((item) => `${item.code}: ${item.message}`)
-    .join("; ");
+  return (validation.errors || []).map((item) => `${item.code}: ${item.message}`).join("; ");
 }
 
 function createConfigPayload({ status, sections, publishedAt = null }) {
@@ -74,11 +72,7 @@ async function buildValidatedSeedPayload() {
   return { sections: seed.sections, warnings: seed.warnings, validation };
 }
 
-async function seedMealBuilderConfig({
-  sync = false,
-  dryRun = false,
-  log = console,
-} = {}) {
+async function seedMealBuilderConfig({ sync = false, dryRun = false, log = console } = {}) {
   const result = {
     dryRun: Boolean(dryRun),
     sync: Boolean(sync),
@@ -88,6 +82,8 @@ async function seedMealBuilderConfig({
     createdPublished: false,
     updatedPublished: false,
     skippedPublished: false,
+    protectedDraft: false,
+    protectedPublished: false,
     warnings: [],
     validation: null,
     readiness: null,
@@ -102,8 +98,8 @@ async function seedMealBuilderConfig({
     MealBuilderConfig.findOne({ status: "published", isCurrent: true }).sort({ publishedAt: -1, updatedAt: -1 }).lean(),
   ]);
 
-  const canSyncDraft = sync;
-  const canSyncPublished = sync;
+  const canSyncDraft = sync && isBootstrapOwned(currentDraft);
+  const canSyncPublished = sync && isBootstrapOwned(currentPublished);
 
   for (const warning of warnings) {
     (log.warn || log.log).call(log, `[meal-builder-bootstrap:warning] ${warning.code}: ${warning.message}`);
@@ -112,8 +108,8 @@ async function seedMealBuilderConfig({
   if (dryRun) {
     log.log("[meal-builder-bootstrap:dry-run] No Meal Builder config writes will be attempted.");
     log.log(`[meal-builder-bootstrap:dry-run] sections=${sections.length} validation=${validation.status}`);
-    log.log(`[meal-builder-bootstrap:dry-run] draft=${!currentDraft ? "would-create" : canSyncDraft ? "would-update" : "skip-existing"}`);
-    log.log(`[meal-builder-bootstrap:dry-run] published=${!currentPublished ? "would-publish" : canSyncPublished ? "would-update" : "skip-existing"}`);
+    log.log(`[meal-builder-bootstrap:dry-run] draft=${!currentDraft ? "would-create" : canSyncDraft ? "would-update-bootstrap-owned" : "protect-existing"}`);
+    log.log(`[meal-builder-bootstrap:dry-run] published=${!currentPublished ? "would-publish" : canSyncPublished ? "would-update-bootstrap-owned" : "protect-existing"}`);
     return result;
   }
 
@@ -126,6 +122,7 @@ async function seedMealBuilderConfig({
     result.updatedDraft = true;
   } else {
     result.skippedDraft = true;
+    result.protectedDraft = !isBootstrapOwned(currentDraft);
   }
 
   const publishedPayload = createConfigPayload({ status: "published", sections, publishedAt: new Date() });
@@ -137,25 +134,23 @@ async function seedMealBuilderConfig({
     result.updatedPublished = true;
   } else {
     result.skippedPublished = true;
+    result.protectedPublished = !isBootstrapOwned(currentPublished);
   }
 
   if (result.createdPublished || result.updatedPublished || currentPublished) {
     result.readiness = await getReadinessReport();
   }
 
-  log.log(
-    [
-      "Meal Builder bootstrap:",
-      `draft=${result.createdDraft ? "created" : result.updatedDraft ? "updated" : "skipped"}`,
-      `published=${result.createdPublished ? "created" : result.updatedPublished ? "updated" : "skipped"}`,
-      `warnings=${result.warnings.length}`,
-      `validation=${validation.status}`,
-    ].join(" ")
-  );
+  log.log([
+    "Meal Builder bootstrap:",
+    `draft=${result.createdDraft ? "created" : result.updatedDraft ? "updated-bootstrap-owned" : result.protectedDraft ? "protected-user-owned" : "skipped"}`,
+    `published=${result.createdPublished ? "created" : result.updatedPublished ? "updated-bootstrap-owned" : result.protectedPublished ? "protected-user-owned" : "skipped"}`,
+    `warnings=${result.warnings.length}`,
+    `validation=${validation.status}`,
+  ].join(" "));
+
   if (result.readiness) {
-    log.log(
-      `Meal Builder readiness: status=${result.readiness.status} sections=${result.readiness.summary.sections} errors=${result.readiness.summary.errors} warnings=${result.readiness.summary.warnings}`
-    );
+    log.log(`Meal Builder readiness: status=${result.readiness.status} sections=${result.readiness.summary.sections} errors=${result.readiness.summary.errors} warnings=${result.readiness.summary.warnings}`);
   }
 
   return result;
