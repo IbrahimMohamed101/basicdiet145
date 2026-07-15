@@ -247,6 +247,15 @@ function hasOwnValue(source, key) {
   return Boolean(source && Object.prototype.hasOwnProperty.call(source, key));
 }
 
+function addonSelectionIdentityKey(selection = {}) {
+  return [
+    selection.addonId || selection.productId || selection.menuProductId || "",
+    selection.addonPlanId || "",
+    selection.balanceBucketId || "",
+    selection.category || "",
+  ].map((part) => String(part || "")).join(":");
+}
+
 function normalizeOptionalAddonUnitPrice(value) {
   if (value === undefined || value === null || value === "") return null;
   const numberValue = Number(value);
@@ -976,7 +985,7 @@ async function performDaySelectionUpdate({ userId, subscriptionId, date, selecti
       if (existingDay && Array.isArray(existingDay.addonSelections)) {
          for (const sel of existingDay.addonSelections) {
            if (sel.source === "subscription") {
-             const key = String(sel.addonId);
+             const key = addonSelectionIdentityKey(sel);
              const list = existingAddonWalletMap.get(key) || [];
              list.push(sel);
              existingAddonWalletMap.set(key, list);
@@ -988,7 +997,7 @@ async function performDaySelectionUpdate({ userId, subscriptionId, date, selecti
       if (Array.isArray(day.addonSelections)) {
          for (const sel of day.addonSelections) {
             if (sel.source === "subscription") {
-               const key = String(sel.addonId);
+               const key = addonSelectionIdentityKey(sel);
                const existingList = existingAddonWalletMap.get(key);
                if (existingList && existingList.length > 0) {
                   existingList.shift();
@@ -1089,9 +1098,21 @@ async function performDaySelectionUpdate({ userId, subscriptionId, date, selecti
              dayId: day._id,
              date: day.date,
              addonId: sel.addonId,
+             productId: sel.productId || sel.addonId || null,
+             menuProductId: sel.menuProductId || sel.productId || sel.addonId || null,
              addonPlanId: sel.addonPlanId || null,
-             qty: 1,
+             addonKey: sel.addonKey || sel.productKey || "",
+             productKey: sel.productKey || sel.addonKey || "",
+             name: sel.name || "",
+             nameI18n: sel.nameI18n || undefined,
+             imageUrl: sel.imageUrl || "",
+             qty: Math.max(1, Math.floor(Number(sel.qty || sel.quantity || 1))),
+             quantity: Math.max(1, Math.floor(Number(sel.quantity || sel.qty || 1))),
+             coveredQty: Math.max(0, Math.floor(Number(sel.coveredQty || (sel.source === "subscription" ? 1 : 0)))),
+             paidQty: Math.max(0, Math.floor(Number(sel.paidQty || (sel.source === "subscription" ? 0 : 1)))),
+             priceHalala: Number(sel.priceHalala || 0),
              unitPriceHalala: Object.prototype.hasOwnProperty.call(sel, "unitPriceHalala") ? sel.unitPriceHalala : sel.priceHalala,
+             payableTotalHalala: Number(sel.payableTotalHalala || sel.priceHalala || 0),
              currency: sel.currency,
              category: sel.category || "",
              entitlementKey: sel.entitlementKey || "",

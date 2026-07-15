@@ -114,6 +114,19 @@ function snapshotIdOf(snapshot) {
   return String(snapshot && (snapshot.id || snapshot._id) || "");
 }
 
+function entitlementProductIds(entitlement) {
+  const ids = new Set();
+  for (const id of Array.isArray(entitlement && entitlement.menuProductIds) ? entitlement.menuProductIds : []) {
+    const normalized = String(id || "").trim();
+    if (normalized) ids.add(normalized);
+  }
+  for (const snapshot of Array.isArray(entitlement && entitlement.menuProductsSnapshot) ? entitlement.menuProductsSnapshot : []) {
+    const normalized = snapshotIdOf(snapshot).trim();
+    if (normalized) ids.add(normalized);
+  }
+  return [...ids];
+}
+
 function materializeProductFromSnapshot(snapshot) {
   return {
     _id: snapshot.id || snapshot._id,
@@ -341,12 +354,13 @@ async function resolveOwnedAddonEntitlementChoice({
     : [];
 
   // 3. Search addonSubscriptions for a matching entitlement.
-  // Priority: addonPlanId > category. Both must match when supplied.
+  // Category is only an isolation check. It is never sufficient to prove coverage.
   let matchedEntitlement = null;
   let matchedIndex = -1;
   let sawPlanMismatch = false;
   let sawCategoryMismatch = false;
   let sawProductMismatch = false;
+  const hasExplicitIdentity = Boolean(normalizedAddonPlanId || normalizedBalanceBucketId);
 
   for (let i = 0; i < entitlements.length; i++) {
     const entry = entitlements[i];
@@ -365,26 +379,25 @@ async function resolveOwnedAddonEntitlementChoice({
       continue;
     }
 
-    // 5. Require productId in menuProductIds
-    const menuProductIds = normalizeIdList(entry.menuProductIds);
-    const snapshotProductIds = Array.isArray(entry.menuProductsSnapshot)
-      ? entry.menuProductsSnapshot.map(snapshotIdOf).filter(Boolean)
-      : [];
-    if (normalizedProductId && menuProductIds.length > 0) {
-      if (!menuProductIds.includes(normalizedProductId)) {
+    const productIds = entitlementProductIds(entry);
+    if (normalizedProductId) {
+      if (productIds.length > 0) {
+        if (!productIds.includes(normalizedProductId)) {
+          sawProductMismatch = true;
+          continue;
+        }
+      } else if (entryPlanId !== normalizedProductId && (!normalizedAddonPlanId || entryPlanId !== normalizedAddonPlanId)) {
         sawProductMismatch = true;
         continue;
       }
-    } else if (normalizedProductId && snapshotProductIds.length > 0 && !snapshotProductIds.includes(normalizedProductId)) {
-      sawProductMismatch = true;
+    } else if (!hasExplicitIdentity) {
       continue;
     }
 
-    // Prefer the first match; if multiple match (category-only), we need addonPlanId
+    // Product-only legacy payloads are allowed only when exactly one plan contains the product.
     if (matchedEntitlement !== null && !normalizedAddonPlanId) {
-      // Ambiguous: multiple buckets possible, category-only match is not allowed
       const err = new Error(
-        "Ambiguous owned entitlement: multiple buckets match category alone. Supply addonPlanId."
+        "Ambiguous owned entitlement: multiple buckets match the add-on product. Supply addonPlanId."
       );
       err.status = 409;
       err.code = "ENTITLEMENT_AMBIGUOUS";
@@ -411,7 +424,7 @@ async function resolveOwnedAddonEntitlementChoice({
         productId: normalizedProductId,
       });
     }
-    if (normalizedProductId && sawProductMismatch) {
+    if (normalizedProductId && sawProductMismatch && (normalizedAddonPlanId || normalizedCategory || normalizedBalanceBucketId)) {
       throw createIntegrityError(ERROR_CODE_ENTITLEMENT_PRODUCT_NOT_FOUND, "Owned entitlement product not found in entitlement snapshot", {
         addonPlanId: normalizedAddonPlanId,
         category: normalizedCategory,

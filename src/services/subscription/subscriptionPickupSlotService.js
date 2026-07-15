@@ -486,7 +486,7 @@ function buildAddonPayload(addon = {}) {
   const paymentRequired = addon.source === "pending_payment";
   const paid = addon.source === "paid" || addon.source === "wallet" || addon.source === "subscription";
   return {
-    id: stringifyId(addon.addonId || addon.id || addon._id),
+    id: stringifyId(addon.addonId || addon.productId || addon.menuProductId || addon.id || addon._id),
     key: addon.key || addon.addonKey || null,
     name: bilingualPair(firstLocalizedPair(addon.name, addon.addonName), { ar: "إضافة", en: "Add-on" }),
     quantity: Number(addon.quantity || addon.qty || 1),

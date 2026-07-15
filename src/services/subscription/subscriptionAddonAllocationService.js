@@ -20,6 +20,14 @@ function resolveAddonSelectionName(addonDoc) {
   return String(addonDoc.name || "").trim();
 }
 
+function resolveAddonSelectionNameI18n(addonDoc) {
+  if (!addonDoc || !addonDoc.name || typeof addonDoc.name !== "object") return undefined;
+  return {
+    ar: addonDoc.name.ar || addonDoc.name.en || "",
+    en: addonDoc.name.en || addonDoc.name.ar || "",
+  };
+}
+
 async function reconcileAddonInclusions(
   subscription,
   day,
@@ -54,7 +62,7 @@ async function reconcileAddonInclusions(
     const doc = choice.product;
     const category = choice.addonCategory;
     const eligibleEntitlements = getEligibleAddonEntitlementsForProduct(subscription, {
-      productId: addonId,
+      productId: doc && doc._id ? doc._id : addonId,
       category,
     });
     const selectedMatch = eligibleEntitlements.find(({ entry, index }) => {
@@ -92,16 +100,33 @@ async function reconcileAddonInclusions(
       }
     }
 
+    const quantity = 1;
+    const coveredQty = source === "subscription" ? quantity : 0;
+    const paidQty = source === "subscription" ? 0 : quantity;
+    const productId = doc && doc._id ? doc._id : addonId;
+    const addonPlanId = entitlement ? (entitlement.addonPlanId || entitlement.addonId) : null;
+
     newSelections.push({
-      addonId: doc._id,
-      addonPlanId: entitlement ? (entitlement.addonPlanId || entitlement.addonId) : null,
+      addonId: productId,
+      productId,
+      menuProductId: productId,
+      addonPlanId,
+      addonKey: doc.key || "",
+      productKey: doc.key || "",
       name: resolveAddonSelectionName(doc),
+      nameI18n: resolveAddonSelectionNameI18n(doc),
+      imageUrl: doc.imageUrl || "",
       category,
       entitlementKey: source === "subscription" ? entitlementKey : "",
       balanceBucketId: source === "subscription" && balanceBucket ? balanceBucket._id : null,
       source,
+      qty: quantity,
+      quantity,
+      coveredQty,
+      paidQty,
       priceHalala,
       unitPriceHalala,
+      payableTotalHalala: paidQty * unitPriceHalala,
       currency: doc.currency || "SAR",
       consumedAt: new Date(),
     });

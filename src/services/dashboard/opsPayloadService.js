@@ -315,7 +315,7 @@ function buildMealSlotPayload(slot = {}, subscription = {}, lang = "en", catalog
 }
 
 function buildAddonPayload(addon = {}, lang = "en", catalogMaps = {}) {
-  const id = addon.addonId || addon.id || addon._id || null;
+  const id = addon.addonId || addon.productId || addon.menuProductId || addon.id || addon._id || null;
   const key = addon.key || addon.addonKey || null;
   const doc = resolveAnyCatalogDoc(catalogMaps, ["addon", "product"], id, key);
   const snapshotName = addon.name || addon.addonName;

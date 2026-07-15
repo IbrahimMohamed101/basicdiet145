@@ -35,14 +35,31 @@ function resolveEntitlementPlanId(entitlement) {
 }
 
 function hasModernAddonProductSnapshot(entitlement) {
-  return Array.isArray(entitlement && entitlement.menuProductIds) && entitlement.menuProductIds.length > 0;
+  return (Array.isArray(entitlement && entitlement.menuProductIds) && entitlement.menuProductIds.length > 0)
+    || (Array.isArray(entitlement && entitlement.menuProductsSnapshot) && entitlement.menuProductsSnapshot.length > 0);
+}
+
+function snapshotIdOf(snapshot) {
+  return String(snapshot && (snapshot.id || snapshot._id) || "");
+}
+
+function getEntitlementMenuProductIds(entitlement) {
+  const ids = new Set();
+  for (const id of Array.isArray(entitlement && entitlement.menuProductIds) ? entitlement.menuProductIds : []) {
+    const normalized = String(id || "").trim();
+    if (normalized) ids.add(normalized);
+  }
+  for (const snapshot of Array.isArray(entitlement && entitlement.menuProductsSnapshot) ? entitlement.menuProductsSnapshot : []) {
+    const normalized = snapshotIdOf(snapshot).trim();
+    if (normalized) ids.add(normalized);
+  }
+  return [...ids];
 }
 
 function buildAddonEntitlementEligibility(subscription) {
   const entitlements = Array.isArray(subscription && subscription.addonSubscriptions)
     ? subscription.addonSubscriptions
     : null;
-  const legacyEligibleCategories = new Set();
   const eligibleProductIdsByCategory = new Map();
 
   for (const entitlement of entitlements || []) {
@@ -51,17 +68,15 @@ function buildAddonEntitlementEligibility(subscription) {
     if (hasModernAddonProductSnapshot(entitlement)) {
       const categoryKey = category || "legacy";
       if (!eligibleProductIdsByCategory.has(categoryKey)) eligibleProductIdsByCategory.set(categoryKey, new Set());
-      for (const id of entitlement.menuProductIds) {
+      for (const id of getEntitlementMenuProductIds(entitlement)) {
         eligibleProductIdsByCategory.get(categoryKey).add(String(id));
       }
       continue;
     }
-    if (category) legacyEligibleCategories.add(category);
   }
 
   return {
     hasSubscriptionFilter: entitlements !== null,
-    legacyEligibleCategories,
     eligibleProductIdsByCategory,
   };
 }
@@ -71,8 +86,7 @@ function isAddonChoiceEligibleForAllowance(eligibility, category, productId) {
   const normalizedCategory = normalizeSubscriptionAddonCategory(category);
   if (!normalizedCategory) return false;
   const ids = eligibility.eligibleProductIdsByCategory.get(normalizedCategory);
-  return Boolean(ids && ids.has(String(productId || "")))
-    || eligibility.legacyEligibleCategories.has(normalizedCategory);
+  return Boolean(ids && ids.has(String(productId || "")));
 }
 
 function isAddonEntitlementEligibleForProduct(entitlement, { productId, category, addonPlanId = null } = {}) {
@@ -86,12 +100,16 @@ function isAddonEntitlementEligibleForProduct(entitlement, { productId, category
   if (normalizedPlanId && entryPlanId !== normalizedPlanId) return false;
   if (normalizedCategory && entitlementCategory && normalizedCategory !== entitlementCategory) return false;
 
-  if (hasModernAddonProductSnapshot(entitlement)) {
-    return entitlement.menuProductIds.some((id) => String(id) === normalizedProductId);
+  const productIds = getEntitlementMenuProductIds(entitlement);
+  if (normalizedProductId && productIds.length > 0) {
+    return productIds.some((id) => String(id) === normalizedProductId);
   }
-  if (normalizedCategory && entitlementCategory === normalizedCategory) return true;
-  if (normalizedProductId && String(entitlement.addonId || entitlement.addonPlanId || "") === normalizedProductId) return true;
-  return false;
+
+  if (normalizedProductId) {
+    return Boolean(entryPlanId && entryPlanId === normalizedProductId);
+  }
+
+  return Boolean(normalizedPlanId && entryPlanId === normalizedPlanId);
 }
 
 function getAddonEntitlementKey(entitlement, index = 0) {
@@ -117,6 +135,7 @@ function selectAddonEntitlementForProduct(subscription, {
 } = {}) {
   const matches = getEligibleAddonEntitlementsForProduct(subscription, { productId, category, addonPlanId });
   if (!matches.length) return null;
+  if (!addonPlanId && matches.length > 1) return null;
 
   if (preferPositiveRemaining) {
     const positive = matches.find(({ entry }) => Boolean(findAddonBalanceBucket(subscription, {

@@ -167,6 +167,15 @@ function normalizeIdList(ids) {
     .filter((id) => mongoose.Types.ObjectId.isValid(id));
 }
 
+function snapshotProductIdList(entitlement) {
+  return normalizeIdList([
+    ...(Array.isArray(entitlement && entitlement.menuProductIds) ? entitlement.menuProductIds : []),
+    ...(Array.isArray(entitlement && entitlement.menuProductsSnapshot)
+      ? entitlement.menuProductsSnapshot.map((snapshot) => snapshot && (snapshot.id || snapshot._id))
+      : []),
+  ]);
+}
+
 function normalizeEntitlementName(entitlement) {
   return String(
     entitlement && (
@@ -342,19 +351,13 @@ async function buildSubscriptionAddonChoicesCatalog({
   }
 
   for (const [index, entitlement] of entitlements.entries()) {
-    const snapshotProductIds = normalizeIdList(entitlement.menuProductIds);
+    const snapshotProductIds = snapshotProductIdList(entitlement);
     const entitlementCategory = String(entitlement.category || requestedCategory || "legacy");
-    const fallbackGroupCategory = entitlementCategory;
     let loadedProducts = [];
     if (snapshotProductIds.length) {
       loadedProducts = await loadOwnedSnapshotProducts(snapshotProductIds, entitlement, {
         MenuProductModel: models.MenuProductModel,
       });
-    } else if (SUBSCRIPTION_ADDON_CHOICE_MAPPINGS[fallbackGroupCategory]) {
-      const mapping = SUBSCRIPTION_ADDON_CHOICE_MAPPINGS[fallbackGroupCategory];
-      const categoryRows = await findActiveOneTimeCategories(mapping.sourceCategories, models);
-      const genericProducts = await findMappedProducts(categoryRows, mapping, models);
-      loadedProducts = genericProducts.map(product => ({ product, fromSnapshot: false, id: product._id }));
     }
 
     const productsList = loadedProducts.map(p => p.product).filter(Boolean);
@@ -442,7 +445,7 @@ async function resolveEntitlementDisplayCategories(subscription, { models = {} }
     : [];
   const displayCategories = new Set();
   for (const entitlement of entitlements) {
-    const snapshotProductIds = normalizeIdList(entitlement && entitlement.menuProductIds);
+    const snapshotProductIds = snapshotProductIdList(entitlement);
     if (!snapshotProductIds.length) {
       if (entitlement && entitlement.category) displayCategories.add(String(entitlement.category));
       continue;
@@ -637,7 +640,7 @@ async function resolveAddonChoiceProductById(productId, {
       }
     } catch (err) {
       if (err && err.code === ERROR_CODE_SNAPSHOT_MISSING && owned && !hasPersistedOwnedProductSnapshot(owned.entitlement)) {
-        // Legacy category-only add-on entitlements predate menu product
+        // Historical exact Addon-item entitlements predate menu product
         // snapshots. Let the resolver continue to the Addon item fallback.
       } else {
         if (isOwnedResolutionHardError(err)) throw err;

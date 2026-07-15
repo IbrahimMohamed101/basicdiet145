@@ -303,14 +303,25 @@ function buildPickupRequestSnapshot(day, catalogMaps = {}) {
   };
 }
 
+function addonSelectionIdSet(addon = {}) {
+  return new Set([
+    addon.addonId,
+    addon.productId,
+    addon.menuProductId,
+    addon.id,
+    addon._id,
+  ].map((value) => value === undefined || value === null ? "" : String(value)).filter(Boolean));
+}
+
 function buildSelectedPickupRequestSnapshot(day, selectedMealSlotIds, catalogMaps = {}, selectedPickupItems = []) {
   const ids = new Set(normalizeSelectedMealSlotIds(selectedMealSlotIds));
   const selectedAddonCountsBySourceId = (Array.isArray(selectedPickupItems) ? selectedPickupItems : [])
     .filter((item) => item && item.itemType === "addon")
     .reduce((map, item) => {
-      const key = item.sourceId ? String(item.sourceId) : null;
-      if (!key) return map;
-      map.set(key, Number(map.get(key) || 0) + 1);
+      const key = item.sourceId || item.addonId || (item.product && (item.product.id || item.product._id));
+      const normalizedKey = key ? String(key) : null;
+      if (!normalizedKey) return map;
+      map.set(normalizedKey, Number(map.get(normalizedKey) || 0) + 1);
       return map;
     }, new Map());
   const base = buildPickupRequestSnapshot(day, catalogMaps);
@@ -321,10 +332,12 @@ function buildSelectedPickupRequestSnapshot(day, selectedMealSlotIds, catalogMap
       : [],
     addons: Array.isArray(base.addons)
       ? base.addons
-        .filter((addon) => selectedAddonCountsBySourceId.has(String(addon.addonId || addon.id || addon._id || "")))
+        .filter((addon) => [...addonSelectionIdSet(addon)].some((id) => selectedAddonCountsBySourceId.has(id)))
         .map((addon) => ({
           ...addon,
-          quantity: selectedAddonCountsBySourceId.get(String(addon.addonId || addon.id || addon._id || "")) || 1,
+          quantity: [...addonSelectionIdSet(addon)]
+            .map((id) => selectedAddonCountsBySourceId.get(id))
+            .find((count) => count !== undefined) || 1,
         }))
       : [],
     selectedMealSlotIds: [...ids],
