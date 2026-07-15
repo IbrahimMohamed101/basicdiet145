@@ -66,7 +66,7 @@ function run() {
   const modernEligibility = addonPolicy.buildAddonEntitlementEligibility(modernSubscription);
   assert.strictEqual(addonPolicy.isAddonChoiceEligibleForAllowance(modernEligibility, "juice", "juice-1"), true);
   assert.strictEqual(addonPolicy.isAddonChoiceEligibleForAllowance(modernEligibility, "juice", "juice-2"), false);
-  assert.strictEqual(addonPolicy.isAddonChoiceEligibleForAllowance(modernEligibility, "snack", "juice-1"), true);
+  assert.strictEqual(addonPolicy.isAddonChoiceEligibleForAllowance(modernEligibility, "snack", "juice-1"), false);
   assert.strictEqual(
     addonPolicy.findAddonEntitlementForChoice(modernSubscription, "juice", "juice-1"),
     modernSubscription.addonSubscriptions[0]

@@ -217,62 +217,179 @@ async function consumeAddonBalanceAtomically({ subscription, dayId, date, addonI
   };
 }
 
-async function releaseAddonBalanceAtomically({ subscription, addonId, addonPlanId = null, category = null, unitPriceHalala, session }) {
+function findAddonBalanceBucketIndex(addonBalance, bucketId) {
+  return Array.isArray(addonBalance)
+    ? addonBalance.findIndex((b) => b && b._id && bucketId && String(b._id) === String(bucketId))
+    : -1;
+}
+
+function normalizeAddonReleaseCurrency(currency) {
+  return String(currency || "").trim().toUpperCase();
+}
+
+function hasOwnValue(source, key) {
+  return Boolean(source && Object.prototype.hasOwnProperty.call(source, key));
+}
+
+function normalizeOptionalAddonUnitPrice(value) {
+  if (value === undefined || value === null || value === "") return null;
+  const numberValue = Number(value);
+  return Number.isInteger(numberValue) && numberValue >= 0 ? numberValue : NaN;
+}
+
+function buildAddonBalanceReleaseIdentity(bucket, quantity = 1) {
+  const identity = {
+    _id: bucket._id,
+    addonId: bucket.addonId,
+    addonPlanId: bucket.addonPlanId || null,
+    category: bucket.category || "",
+    unitPriceHalala: Number(bucket.unitPriceHalala || 0),
+    currency: bucket.currency || "SAR",
+    consumedQty: { $gte: quantity },
+  };
+
+  return identity;
+}
+
+function bucketIdentityMatches(expectedBucket, actualBucket) {
+  if (!expectedBucket || !actualBucket) return false;
+  const expectedPlanId = String(expectedBucket.addonPlanId || expectedBucket.addonId || "");
+  const actualPlanId = String(actualBucket.addonPlanId || actualBucket.addonId || "");
+  return String(actualBucket._id || "") === String(expectedBucket._id || "")
+    && String(actualBucket.addonId || "") === String(expectedBucket.addonId || "")
+    && actualPlanId === expectedPlanId
+    && String(actualBucket.category || "") === String(expectedBucket.category || "")
+    && Number(actualBucket.unitPriceHalala || 0) === Number(expectedBucket.unitPriceHalala || 0)
+    && normalizeAddonReleaseCurrency(actualBucket.currency || "SAR") === normalizeAddonReleaseCurrency(expectedBucket.currency || "SAR");
+}
+
+function suppliedAddonReleaseIdentityMatchesBucket(bucket, {
+  addonId = null,
+  addonPlanId = null,
+  category = null,
+  unitPriceHalala = null,
+  currency = null,
+} = {}) {
+  if (!bucket) return false;
+  const normalizedPlanId = String(addonPlanId || "");
+  const normalizedAddonId = String(addonId || "");
+  const bucketPlanId = String(bucket.addonPlanId || bucket.addonId || "");
+  const bucketAddonId = String(bucket.addonId || "");
+
+  if (normalizedPlanId && bucketPlanId !== normalizedPlanId) return false;
+  if (!normalizedPlanId && normalizedAddonId && bucketAddonId !== normalizedAddonId && bucketPlanId !== normalizedAddonId) return false;
+  if (category !== null && category !== undefined && String(bucket.category || "") !== String(category || "")) return false;
+
+  const normalizedUnitPriceHalala = normalizeOptionalAddonUnitPrice(unitPriceHalala);
+  if (Number.isNaN(normalizedUnitPriceHalala)) return false;
+  if (normalizedUnitPriceHalala !== null && Number(bucket.unitPriceHalala || 0) !== normalizedUnitPriceHalala) return false;
+
+  const suppliedCurrency = normalizeAddonReleaseCurrency(currency);
+  if (suppliedCurrency && normalizeAddonReleaseCurrency(bucket.currency || "SAR") !== suppliedCurrency) return false;
+
+  return true;
+}
+
+async function diagnoseAddonReleaseFailure({ subscriptionId, bucket, quantity, session }) {
+  const latest = await Subscription.findOne(
+    {
+      _id: subscriptionId,
+      "addonBalance._id": bucket && bucket._id,
+    },
+    { "addonBalance.$": 1 }
+  ).session(session);
+  const latestBucket = latest && Array.isArray(latest.addonBalance) ? latest.addonBalance[0] : null;
+
+  if (!latestBucket) return "bucket_not_found";
+  if (!bucketIdentityMatches(bucket, latestBucket)) return "bucket_identity_mismatch";
+  if (Number(latestBucket.consumedQty || 0) < quantity) return "no_consumed_balance";
+  return "atomic_release_failed";
+}
+
+function isAddonReleaseIdempotentResult(result) {
+  return Boolean(result && (result.released === true || result.reason === "no_consumed_balance"));
+}
+
+function assertAddonBalanceReleaseSucceeded(result, context = {}) {
+  if (isAddonReleaseIdempotentResult(result)) return;
+  const reason = String(result && result.reason || "atomic_release_failed");
+  const err = new Error(`Add-on balance release failed: ${reason}`);
+  err.code = "ADDON_BALANCE_RELEASE_FAILED";
+  err.status = 409;
+  err.reason = reason;
+  err.details = {
+    addonId: context.addonId ? String(context.addonId) : null,
+    addonPlanId: context.addonPlanId ? String(context.addonPlanId) : null,
+    category: context.category || null,
+  };
+  throw err;
+}
+
+async function releaseAddonBalanceAtomically({ subscription, addonId, addonPlanId = null, category = null, unitPriceHalala, currency = null, session }) {
   if (!session) throw new Error("releaseAddonBalanceAtomically requires a session");
   if (!subscription || !Array.isArray(subscription.addonBalance)) return { released: false };
 
-  const bucket = findAddonBalanceBucket(subscription, { addonId, addonPlanId, category, unitPriceHalala });
-  const bucketIndex = bucket
-    ? subscription.addonBalance.findIndex((b) => b._id && bucket._id && String(b._id) === String(bucket._id))
-    : -1;
+  const hasStrongIdentifier = Boolean(addonPlanId || addonId);
+  if (!hasStrongIdentifier) return { released: false, reason: "bucket_not_found" };
 
-  if (bucketIndex < 0) return { released: false };
+  // The current persisted selection model records one row per covered add-on
+  // credit. Keep release as a single-credit operation unless consume is changed
+  // to reserve multiple credits per selection.
+  const releaseQuantity = 1;
+  const bucket = findAddonBalanceBucket(subscription, { addonId, addonPlanId, category });
+  const bucketIndex = bucket ? findAddonBalanceBucketIndex(subscription.addonBalance, bucket._id) : -1;
 
-  let atomicResult = await Subscription.findOneAndUpdate(
+  if (bucketIndex < 0) return { released: false, reason: "bucket_not_found" };
+  if (!suppliedAddonReleaseIdentityMatchesBucket(bucket, { addonId, addonPlanId, category, unitPriceHalala, currency })) {
+    return { released: false, reason: "bucket_identity_mismatch" };
+  }
+
+  const atomicResult = await Subscription.findOneAndUpdate(
     {
       _id: subscription._id,
-      "addonBalance._id": bucket._id,
-      "addonBalance.consumedQty": { $gt: 0 },
+      addonBalance: {
+        $elemMatch: buildAddonBalanceReleaseIdentity(bucket, releaseQuantity),
+      },
     },
     {
-      $inc: { "addonBalance.$.remainingQty": 1, "addonBalance.$.consumedQty": -1 },
+      $inc: {
+        "addonBalance.$.remainingQty": releaseQuantity,
+        "addonBalance.$.consumedQty": -releaseQuantity,
+      },
     },
     { session, new: true }
   );
 
-  let releasedWithDecrement = true;
   if (!atomicResult) {
-    releasedWithDecrement = false;
-    atomicResult = await Subscription.findOneAndUpdate(
-      {
-        _id: subscription._id,
-        "addonBalance._id": bucket._id,
-      },
-      {
-        $inc: { "addonBalance.$.remainingQty": 1 },
-      },
-      { session, new: true }
-    );
+    const reason = await diagnoseAddonReleaseFailure({
+      subscriptionId: subscription._id,
+      bucket,
+      quantity: releaseQuantity,
+      session,
+    });
+    return { released: false, reason };
   }
-
-  if (!atomicResult) return { released: false };
 
   // Keep the in-memory Mongoose document synchronized with the atomic
   // addon balance updates performed via findOneAndUpdate(). Without this,
   // the subsequent subscription.save({ session }) could overwrite the
   // atomically updated addonBalance with stale in-memory values.
   const inMemoryBucket = subscription.addonBalance[bucketIndex];
+  const updatedBucketIndex = findAddonBalanceBucketIndex(atomicResult.addonBalance, bucket._id);
+  const updatedBucket = updatedBucketIndex >= 0 ? atomicResult.addonBalance[updatedBucketIndex] : null;
   if (inMemoryBucket) {
-    inMemoryBucket.remainingQty = (inMemoryBucket.remainingQty || 0) + 1;
-    if (releasedWithDecrement) {
-      inMemoryBucket.consumedQty = Math.max(0, (inMemoryBucket.consumedQty || 0) - 1);
-    }
+    inMemoryBucket.remainingQty = Number(updatedBucket && updatedBucket.remainingQty || 0);
+    inMemoryBucket.consumedQty = Number(updatedBucket && updatedBucket.consumedQty || 0);
     if (typeof subscription.markModified === "function") {
       subscription.markModified("addonBalance");
     }
   }
 
-  return { released: true };
+  return {
+    released: true,
+    remainingQty: Number(updatedBucket && updatedBucket.remainingQty || 0),
+    consumedQty: Number(updatedBucket && updatedBucket.consumedQty || 0),
+  };
 }
 
 function reconcilePremiumBalanceForDay(subscription, existingDay, newPremiumUpgradeSelections, { dayId, date } = {}) {
@@ -870,14 +987,16 @@ async function performDaySelectionUpdate({ userId, subscriptionId, date, selecti
       // Release survivors (addons that were using subscription balance but are now removed)
       for (const list of existingAddonWalletMap.values()) {
          for (const sel of list) {
-            await releaseAddonBalanceAtomically({
+            const releaseResult = await releaseAddonBalanceAtomically({
                subscription: subInSession,
                addonId: sel.addonId,
                addonPlanId: sel.addonPlanId || null,
                category: sel.category || null,
-               unitPriceHalala: sel.unitPriceHalala || 0,
+               unitPriceHalala: hasOwnValue(sel, "unitPriceHalala") ? sel.unitPriceHalala : null,
+               currency: sel.currency || null,
                session
             });
+            assertAddonBalanceReleaseSucceeded(releaseResult, sel);
          }
       }
     }
@@ -1315,6 +1434,7 @@ module.exports = {
   performDayPlanningConfirmation,
   consumeAddonBalanceAtomically,
   releaseAddonBalanceAtomically,
+  assertAddonBalanceReleaseSucceeded,
   resolveMealSlotPlanningLimits,
   buildPlanningDraftSubscriptionView,
   preservePersistedValidationTimestamps,

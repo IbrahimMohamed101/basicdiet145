@@ -93,6 +93,16 @@ async function validate(sub, requestedIds, existingSelections = []) {
   return { day, summary: commercialSummary(day, sub) };
 }
 
+function stableAllocationResult(result) {
+  return {
+    summary: result.summary,
+    selections: result.day.addonSelections.map((row) => {
+      const { consumedAt, ...stable } = row;
+      return stable;
+    }),
+  };
+}
+
 async function run() {
   const users = [
     subscription(1, [{ category: "juice", planId: PLANS.juice, products: [PRODUCTS.juiceA, PRODUCTS.juiceB, PRODUCTS.juiceC], remaining: 7, total: 7 }]),
@@ -140,7 +150,7 @@ async function run() {
 
   users.forEach((sub, index) => assert.strictEqual(JSON.stringify(sub), before[index]));
   const repeated = await validate(users[1], [PRODUCTS.juiceA, PRODUCTS.juiceB, PRODUCTS.juiceC]);
-  assert.deepStrictEqual(repeated, results[1]);
+  assert.deepStrictEqual(stableAllocationResult(repeated), stableAllocationResult(results[1]));
 
   const editSub = subscription(6, [{
     category: "juice",

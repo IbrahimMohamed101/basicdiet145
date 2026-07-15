@@ -1,18 +1,25 @@
 const SUBSCRIPTION_ADDON_CHOICE_MAPPINGS = Object.freeze({
-  meal: Object.freeze({ category: "meal", sourceCategories: Object.freeze(["meal", "meals"]) }),
-  snack: Object.freeze({ category: "snack", sourceCategories: Object.freeze(["snack", "snacks"]) }),
   juice: Object.freeze({ category: "juice", sourceCategories: Object.freeze(["juice", "juices", "drinks"]) }),
-  dessert: Object.freeze({ category: "dessert", sourceCategories: Object.freeze(["dessert", "desserts"]) }),
-  premium_meal: Object.freeze({ category: "premium_meal", sourceCategories: Object.freeze(["premium_meal", "premium_meals"]) }),
-  premium_large_salad: Object.freeze({ category: "premium_large_salad", sourceCategories: Object.freeze(["premium_large_salad", "premium_large_salads"]) }),
+  snack: Object.freeze({ category: "snack", sourceCategories: Object.freeze(["desserts"]) }),
+  small_salad: Object.freeze({
+    category: "small_salad",
+    sourceCategories: Object.freeze(["light_options"]),
+    productKeys: Object.freeze(["green_salad", "fruit_salad", "fruit_salad_addon", "greek_yogurt", "greek_salad", "vegetable_salad"]),
+    itemTypes: Object.freeze(["green_salad", "fruit_salad", "greek_yogurt"]),
+  }),
 });
 
 const SUBSCRIPTION_ADDON_CATEGORIES = Object.freeze(Object.keys(SUBSCRIPTION_ADDON_CHOICE_MAPPINGS));
+const DYNAMIC_SUBSCRIPTION_ADDON_CATEGORIES = Object.freeze(["meal", "dessert"]);
+const ALL_SUPPORTED_SUBSCRIPTION_ADDON_CATEGORIES = Object.freeze([
+  ...SUBSCRIPTION_ADDON_CATEGORIES,
+  ...DYNAMIC_SUBSCRIPTION_ADDON_CATEGORIES,
+]);
 
 function normalizeSubscriptionAddonCategory(value, { allowEmpty = false } = {}) {
   const normalized = String(value || "").trim().toLowerCase();
   if (!normalized && allowEmpty) return "";
-  return SUBSCRIPTION_ADDON_CATEGORIES.includes(normalized) ? normalized : null;
+  return ALL_SUPPORTED_SUBSCRIPTION_ADDON_CATEGORIES.includes(normalized) ? normalized : null;
 }
 
 function resolveEntitlementPlanId(entitlement) {
@@ -116,12 +123,34 @@ function selectAddonEntitlementForProduct(subscription, {
 }
 
 function resolveAddonCategoryForMenuProduct(product, menuCategoryKey) {
-  const itemType = normalizeSubscriptionAddonCategory(product && product.itemType);
-  if (itemType) return itemType;
+  const productKey = String(product && product.key || "").trim().toLowerCase();
+  const itemTypeRaw = String(product && product.itemType || "").trim().toLowerCase();
+  const itemType = normalizeSubscriptionAddonCategory(itemTypeRaw);
   const sourceKey = String(menuCategoryKey || "").trim().toLowerCase();
+
+  const smallSaladMapping = SUBSCRIPTION_ADDON_CHOICE_MAPPINGS.small_salad;
+  if (smallSaladMapping.sourceCategories.includes(sourceKey)) {
+    if (
+      smallSaladMapping.productKeys.includes(productKey)
+      || smallSaladMapping.itemTypes.includes(itemTypeRaw)
+      || itemType === "small_salad"
+    ) {
+      return "small_salad";
+    }
+    return null;
+  }
+
+  if (!productKey && !itemTypeRaw && (sourceKey === "dessert" || sourceKey === "desserts")) {
+    return "dessert";
+  }
+
+  if (itemType && itemType !== "dessert") return itemType;
   for (const mapping of Object.values(SUBSCRIPTION_ADDON_CHOICE_MAPPINGS)) {
     if (mapping.sourceCategories.includes(sourceKey)) return mapping.category;
   }
+  if (sourceKey === "meal" || sourceKey === "meals") return "meal";
+  if (sourceKey === "dessert" || sourceKey === "desserts") return "dessert";
+  if (itemType) return itemType;
   return null;
 }
 
@@ -203,8 +232,11 @@ function findAddonBalanceBucket(subscription, {
     const bucketAddonId = String(bucket.addonId || "");
 
     if (normalizedCategory && bucketCategory !== normalizedCategory) return false;
-    if (normalizedPlanId && bucketPlanId !== normalizedPlanId) return false;
-    if (normalizedAddonId && bucketAddonId !== normalizedAddonId && bucketPlanId !== normalizedAddonId) return false;
+    if (normalizedPlanId) {
+      if (bucketPlanId !== normalizedPlanId) return false;
+    } else if (normalizedAddonId && bucketAddonId !== normalizedAddonId && bucketPlanId !== normalizedAddonId) {
+      return false;
+    }
     if (unitPriceHalala !== null && Number(bucket.unitPriceHalala || 0) !== Number(unitPriceHalala || 0)) return false;
     return Boolean(normalizedCategory || normalizedPlanId || normalizedAddonId || unitPriceHalala !== null);
   }) || null;

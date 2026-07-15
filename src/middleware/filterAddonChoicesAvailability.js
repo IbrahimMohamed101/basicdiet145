@@ -96,13 +96,14 @@ function filterAddonChoicesPayload(payload, activePlanIds) {
   return { ...payload, data: filteredData };
 }
 
-function mergeActivePlanCatalog(payload, planCatalog) {
+function mergeActivePlanCatalog(payload, planCatalog, { requestedCategory = "" } = {}) {
   if (!payload || payload.status !== true || !payload.data || typeof payload.data !== "object") {
     return payload;
   }
 
   const data = { ...payload.data };
   for (const [category, planGroup] of Object.entries(planCatalog || {})) {
+    if (requestedCategory && String(category) !== String(requestedCategory)) continue;
     const currentGroup = data[category] && typeof data[category] === "object"
       ? data[category]
       : { category, catalogType: "generic", choices: [] };
@@ -213,7 +214,8 @@ async function filterAddonChoicesAvailability(req, res, next) {
 
     res.json = function filteredJson(payload) {
       const filtered = filterAddonChoicesPayload(payload, activePlanIds);
-      return originalJson(mergeActivePlanCatalog(filtered, activePlanCatalog));
+      const requestedCategory = req.query && req.query.category ? String(req.query.category).trim() : "";
+      return originalJson(mergeActivePlanCatalog(filtered, activePlanCatalog, { requestedCategory }));
     };
 
     return next();

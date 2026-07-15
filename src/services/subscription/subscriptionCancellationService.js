@@ -9,6 +9,7 @@ const { resolveMealsPerDay } = require("../../utils/subscription/subscriptionDay
 const { getRestaurantBusinessDate } = require("../restaurantHoursService");
 const {
   releaseAddonBalanceAtomically,
+  assertAddonBalanceReleaseSucceeded,
   releasePremiumBalanceAtomically,
 } = require("./subscriptionSelectionService");
 
@@ -143,14 +144,16 @@ async function cancelSubscriptionDomain({
         if (!day.addonCreditsReleased && Array.isArray(day.addonSelections)) {
           for (const sel of day.addonSelections) {
             if (sel.source === "subscription") {
-              await releaseAddonBalanceAtomically({
+              const releaseResult = await releaseAddonBalanceAtomically({
                 subscription,
                 addonId: sel.addonId,
                 addonPlanId: sel.addonPlanId,
                 category: sel.category,
-                unitPriceHalala: sel.unitPriceHalala || 0,
+                unitPriceHalala: Object.prototype.hasOwnProperty.call(sel, "unitPriceHalala") ? sel.unitPriceHalala : null,
+                currency: sel.currency || null,
                 session,
               });
+              assertAddonBalanceReleaseSucceeded(releaseResult, sel);
             }
           }
         }

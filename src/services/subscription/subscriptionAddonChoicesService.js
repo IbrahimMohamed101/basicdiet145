@@ -465,6 +465,12 @@ function overlayEntitlementMetadata(genericData, entitlementData) {
   );
 }
 
+function filterCatalogToRequestedCategory(data, category) {
+  const requestedCategory = normalizeOptionalCategory(category);
+  if (!requestedCategory) return data;
+  return data && data[requestedCategory] ? { [requestedCategory]: data[requestedCategory] } : {};
+}
+
 function findCurrentSubscriptionForUser(userId, { SubscriptionModel } = {}) {
   return findCurrentActiveSubscriptionForUser(userId, {
     SubscriptionModel,
@@ -515,7 +521,7 @@ async function buildAddonChoicesCatalog({
       userId,
       models,
     });
-    return entitlementData;
+    return filterCatalogToRequestedCategory(entitlementData, category);
   }
 
   const SubscriptionModel = models.SubscriptionModel || mongoose.model("Subscription");
@@ -555,10 +561,10 @@ async function buildAddonChoicesCatalog({
         }
       }
     }
-    return merged;
+    return filterCatalogToRequestedCategory(merged, category);
   }
 
-  return data;
+  return filterCatalogToRequestedCategory(data, category);
 }
 
 async function resolveAddonChoiceProductById(productId, { models = {} } = {}) {

@@ -367,6 +367,35 @@ async function main() {
     storedSubscription = await Subscription.findById(subscription._id).lean();
     assert.strictEqual(sumRemaining(storedSubscription), 12, "repeated save must not consume twice");
 
+    const removalBody = {
+      ...selectionBody,
+      addonsOneTime: [],
+    };
+    res = await api
+      .put(`/api/subscriptions/${subscription._id}/days/${date}/selection`)
+      .set(auth)
+      .send(removalBody);
+    assert.strictEqual(res.status, 200, JSON.stringify(res.body));
+    storedSubscription = await Subscription.findById(subscription._id).lean();
+    assert.strictEqual(sumRemaining(storedSubscription), 20, "removing saved add-ons releases exactly eight credits");
+
+    res = await api
+      .put(`/api/subscriptions/${subscription._id}/days/${date}/selection`)
+      .set(auth)
+      .send(removalBody);
+    assert.strictEqual(res.status, 200, JSON.stringify(res.body));
+    assert.strictEqual(res.body.idempotent, true, "repeating the same removal must short-circuit");
+    storedSubscription = await Subscription.findById(subscription._id).lean();
+    assert.strictEqual(sumRemaining(storedSubscription), 20, "repeated removal must not mint credits");
+
+    res = await api
+      .put(`/api/subscriptions/${subscription._id}/days/${date}/selection`)
+      .set(auth)
+      .send(selectionBody);
+    assert.strictEqual(res.status, 200, JSON.stringify(res.body));
+    storedSubscription = await Subscription.findById(subscription._id).lean();
+    assert.strictEqual(sumRemaining(storedSubscription), 12, "re-adding after removal consumes exactly eight credits");
+
     res = await api
       .post(`/api/subscriptions/${subscription._id}/days/${date}/confirm`)
       .set(auth)

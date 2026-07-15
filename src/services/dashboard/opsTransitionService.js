@@ -31,6 +31,7 @@ const { runMongoTransactionWithRetry } = require("../mongoTransactionRetryServic
 const { resolveEffectiveFulfillmentMode } = require("../subscription/subscriptionFulfillmentPolicyService");
 const {
   releaseAddonBalanceAtomically,
+  assertAddonBalanceReleaseSucceeded,
   consumeAddonBalanceAtomically,
   releasePremiumBalanceAtomically,
   consumePremiumBalanceAtomically,
@@ -775,14 +776,16 @@ async function handleCancel({ entityId, entityType, payload, userId, role, sessi
         if (needsAddonRelease && Array.isArray(doc.addonSelections)) {
           for (const sel of doc.addonSelections) {
             if (sel.source === "subscription") {
-              await releaseAddonBalanceAtomically({
+              const releaseResult = await releaseAddonBalanceAtomically({
                 subscription: sub,
                 addonId: sel.addonId,
                 addonPlanId: sel.addonPlanId,
                 category: sel.category,
-                unitPriceHalala: sel.unitPriceHalala || 0,
+                unitPriceHalala: Object.prototype.hasOwnProperty.call(sel, "unitPriceHalala") ? sel.unitPriceHalala : null,
+                currency: sel.currency || null,
                 session,
               });
+              assertAddonBalanceReleaseSucceeded(releaseResult, sel);
               // Mark as pending_payment to prevent double-release if reopened
               sel.source = "pending_payment";
             }

@@ -2382,13 +2382,17 @@ async function getSubscriptionAddonChoices(req, res) {
     }
   }
   try {
+    const requestedCategory = req.query && req.query.category ? String(req.query.category).trim() : "";
     const data = await buildAddonChoicesCatalog({
       lang,
-      category: req.query && req.query.category,
+      category: requestedCategory,
       subscriptionId,
       userId: req.userId,
     });
-    return res.status(200).json({ status: true, data });
+    const responseData = requestedCategory
+      ? (data && data[requestedCategory] ? { [requestedCategory]: data[requestedCategory] } : {})
+      : data;
+    return res.status(200).json({ status: true, data: responseData });
   } catch (err) {
     if (err && err.status) {
       return errorResponse(res, err.status, err.code || "INVALID", err.message || "Invalid add-on choice filters");
