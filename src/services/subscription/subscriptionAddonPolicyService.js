@@ -1,22 +1,49 @@
 const SUBSCRIPTION_ADDON_CHOICE_MAPPINGS = Object.freeze({
-  juice: Object.freeze({
-    category: "juice",
-    sourceCategories: Object.freeze(["juices", "drinks"]),
+  meal: Object.freeze({
+    category: "meal",
+    sourceCategories: Object.freeze(["meal", "meals"]),
   }),
   snack: Object.freeze({
     category: "snack",
-    sourceCategories: Object.freeze(["desserts"]),
+    sourceCategories: Object.freeze(["snack", "snacks"]),
   }),
-  small_salad: Object.freeze({
-    category: "small_salad",
-    sourceCategories: Object.freeze(["light_options"]),
-    productKeys: Object.freeze(["green_salad", "small_salad", "fruit_salad", "greek_salad", "vegetable_salad", "fruit_salad_addon"]),
+  juice: Object.freeze({
+    category: "juice",
+    sourceCategories: Object.freeze(["juice", "juices", "drinks"]),
+  }),
+  dessert: Object.freeze({
+    category: "dessert",
+    sourceCategories: Object.freeze(["dessert", "desserts"]),
+  }),
+  premium_meal: Object.freeze({
+    category: "premium_meal",
+    sourceCategories: Object.freeze(["premium_meal", "premium_meals"]),
+  }),
+  premium_large_salad: Object.freeze({
+    category: "premium_large_salad",
+    sourceCategories: Object.freeze(["premium_large_salad", "premium_large_salads"]),
   }),
 });
 
 const SUBSCRIPTION_ADDON_CATEGORIES = Object.freeze(
   Object.keys(SUBSCRIPTION_ADDON_CHOICE_MAPPINGS)
 );
+
+function normalizeSubscriptionAddonCategory(value, { allowEmpty = false } = {}) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized && allowEmpty) return "";
+  if (!SUBSCRIPTION_ADDON_CATEGORIES.includes(normalized)) return null;
+  return normalized;
+}
+
+function resolveEntitlementPlanId(entitlement) {
+  return String(entitlement && (entitlement.addonPlanId || entitlement.addonId) || "");
+}
+
+function hasModernAddonProductSnapshot(entitlement) {
+  return Array.isArray(entitlement && entitlement.menuProductIds)
+    && entitlement.menuProductIds.length > 0;
+}
 
 function buildAddonEntitlementEligibility(subscription) {
   const entitlements = Array.isArray(subscription && subscription.addonSubscriptions)
@@ -29,9 +56,10 @@ function buildAddonEntitlementEligibility(subscription) {
     if (!entitlement) continue;
     if (hasModernAddonProductSnapshot(entitlement)) {
       entitlement.menuProductIds.forEach((id) => eligibleProductIds.add(String(id)));
-    } else if (entitlement.category) {
-      legacyEligibleCategories.add(String(entitlement.category));
+      continue;
     }
+    const category = normalizeSubscriptionAddonCategory(entitlement.category);
+    if (category) legacyEligibleCategories.add(category);
   }
 
   return {
@@ -43,17 +71,9 @@ function buildAddonEntitlementEligibility(subscription) {
 
 function isAddonChoiceEligibleForAllowance(eligibility, category, productId) {
   if (!eligibility || eligibility.hasSubscriptionFilter !== true) return undefined;
+  const normalizedCategory = normalizeSubscriptionAddonCategory(category);
   return eligibility.eligibleProductIds.has(String(productId || ""))
-    || eligibility.legacyEligibleCategories.has(String(category || ""));
-}
-
-function resolveEntitlementPlanId(entitlement) {
-  return String(entitlement && (entitlement.addonPlanId || entitlement.addonId) || "");
-}
-
-function hasModernAddonProductSnapshot(entitlement) {
-  return Array.isArray(entitlement && entitlement.menuProductIds)
-    && entitlement.menuProductIds.length > 0;
+    || Boolean(normalizedCategory && eligibility.legacyEligibleCategories.has(normalizedCategory));
 }
 
 function isAddonEntitlementEligibleForProduct(entitlement, {
@@ -63,23 +83,25 @@ function isAddonEntitlementEligibleForProduct(entitlement, {
 } = {}) {
   if (!entitlement) return false;
   const normalizedProductId = String(productId || "");
-  const normalizedCategory = String(category || "");
+  const normalizedCategory = normalizeSubscriptionAddonCategory(category);
+  const entitlementCategory = normalizeSubscriptionAddonCategory(entitlement.category, { allowEmpty: true });
   const normalizedPlanId = String(addonPlanId || "");
   const entryPlanId = resolveEntitlementPlanId(entitlement);
 
   if (normalizedPlanId && entryPlanId !== normalizedPlanId) return false;
+  if (normalizedCategory && entitlementCategory && normalizedCategory !== entitlementCategory) return false;
 
   if (hasModernAddonProductSnapshot(entitlement)) {
     return entitlement.menuProductIds.some((id) => String(id) === normalizedProductId);
   }
 
-  if (normalizedCategory && String(entitlement.category || "") === normalizedCategory) return true;
+  if (normalizedCategory && entitlementCategory === normalizedCategory) return true;
   if (normalizedProductId && String(entitlement.addonId || entitlement.addonPlanId || "") === normalizedProductId) return true;
   return false;
 }
 
 function getAddonEntitlementKey(entitlement, index = 0) {
-  const category = String(entitlement && entitlement.category || "legacy");
+  const category = normalizeSubscriptionAddonCategory(entitlement && entitlement.category, { allowEmpty: true }) || "legacy";
   const planId = resolveEntitlementPlanId(entitlement);
   return `${category}:${planId || index}`;
 }
@@ -107,15 +129,12 @@ function selectAddonEntitlementForProduct(subscription, {
   if (!matches.length) return null;
 
   if (preferPositiveRemaining) {
-    const positive = matches.find(({ entry }) => {
-      const bucket = findAddonBalanceBucket(subscription, {
-        addonPlanId: entry && (entry.addonPlanId || entry.addonId),
-        addonId: entry && (entry.addonId || entry.addonPlanId),
-        category: entry && entry.category,
-        requirePositiveRemaining: true,
-      });
-      return Boolean(bucket);
-    });
+    const positive = matches.find(({ entry }) => Boolean(findAddonBalanceBucket(subscription, {
+      addonPlanId: entry && (entry.addonPlanId || entry.addonId),
+      addonId: entry && (entry.addonId || entry.addonPlanId),
+      category: entry && entry.category,
+      requirePositiveRemaining: true,
+    })));
     if (positive) return positive.entry;
   }
 
@@ -123,15 +142,12 @@ function selectAddonEntitlementForProduct(subscription, {
 }
 
 function resolveAddonCategoryForMenuProduct(product, menuCategoryKey) {
+  const itemType = normalizeSubscriptionAddonCategory(product && product.itemType);
+  if (itemType) return itemType;
+
+  const sourceKey = String(menuCategoryKey || "").trim().toLowerCase();
   for (const mapping of Object.values(SUBSCRIPTION_ADDON_CHOICE_MAPPINGS)) {
-    if (!mapping.sourceCategories.includes(menuCategoryKey)) continue;
-    if (
-      Array.isArray(mapping.productKeys)
-      && mapping.productKeys.length > 0
-      && !mapping.productKeys.includes(product && product.key)
-    ) {
-      continue;
-    }
+    if (!mapping.sourceCategories.includes(sourceKey)) continue;
     return mapping.category;
   }
   return null;
@@ -155,22 +171,19 @@ function buildSimulatedAddonRemainingByCategory(subscription, day = {}) {
   const simulatedRemaining = new Map();
 
   for (const bucket of balances) {
-    if (!bucket || !bucket.category) continue;
-    const category = bucket.category;
-    // remainingQty is already net of consumed/reserved units. Editing restores
-    // this day's existing claims in-memory without mutating the subscription.
+    const category = normalizeSubscriptionAddonCategory(bucket && bucket.category);
+    if (!category) continue;
     let remainingQty = Number(bucket.remainingQty || 0);
-
     for (const selection of existingSelections) {
-      if (selection.source === "subscription" && selection.category === category) {
-        remainingQty += 1;
+      if (
+        selection
+        && selection.source === "subscription"
+        && normalizeSubscriptionAddonCategory(selection.category) === category
+      ) {
+        remainingQty += Math.max(1, Math.floor(Number(selection.qty || 1)));
       }
     }
-
-    simulatedRemaining.set(
-      category,
-      (simulatedRemaining.get(category) || 0) + remainingQty
-    );
+    simulatedRemaining.set(category, (simulatedRemaining.get(category) || 0) + remainingQty);
   }
 
   return simulatedRemaining;
@@ -205,7 +218,10 @@ function buildSimulatedAddonRemainingByEntitlement(subscription, day = {}) {
     })[0];
     if (!match) continue;
     const key = getAddonEntitlementKey(match.entry, match.index);
-    simulatedRemaining.set(key, (simulatedRemaining.get(key) || 0) + 1);
+    simulatedRemaining.set(
+      key,
+      (simulatedRemaining.get(key) || 0) + Math.max(1, Math.floor(Number(selection.qty || 1)))
+    );
   }
 
   return simulatedRemaining;
@@ -221,25 +237,26 @@ function findAddonBalanceBucket(subscription, {
   const balances = Array.isArray(subscription && subscription.addonBalance)
     ? subscription.addonBalance
     : [];
-  const entitlements = Array.isArray(subscription && subscription.addonSubscriptions)
-    ? subscription.addonSubscriptions
-    : [];
+  const normalizedCategory = category == null
+    ? null
+    : normalizeSubscriptionAddonCategory(category);
+  const normalizedPlanId = String(addonPlanId || "");
+  const normalizedAddonId = String(addonId || "");
 
   return balances.find((bucket) => {
     if (!bucket) return false;
     if (requirePositiveRemaining && Number(bucket.remainingQty || 0) <= 0) return false;
-    if (addonPlanId && String(bucket.addonPlanId || bucket.addonId || "") === String(addonPlanId)) return true;
-    if (addonId && String(bucket.addonId || "") === String(addonId)) return true;
-    if (category && bucket.category === category) return true;
-    if (category) {
-      return entitlements.some((entry) => {
-        const entryPlanId = String(entry.addonPlanId || entry.addonId || "");
-        const bucketPlanId = String(bucket.addonPlanId || bucket.addonId || "");
-        return entry.category === category && entryPlanId && entryPlanId === bucketPlanId;
-      });
-    }
-    if (unitPriceHalala !== null && Number(bucket.unitPriceHalala || 0) === Number(unitPriceHalala || 0)) return true;
-    return false;
+
+    const bucketCategory = normalizeSubscriptionAddonCategory(bucket.category, { allowEmpty: true });
+    const bucketPlanId = String(bucket.addonPlanId || bucket.addonId || "");
+    const bucketAddonId = String(bucket.addonId || "");
+
+    if (normalizedCategory && bucketCategory !== normalizedCategory) return false;
+    if (normalizedPlanId && bucketPlanId !== normalizedPlanId) return false;
+    if (normalizedAddonId && bucketAddonId !== normalizedAddonId && bucketPlanId !== normalizedAddonId) return false;
+    if (unitPriceHalala !== null && Number(bucket.unitPriceHalala || 0) !== Number(unitPriceHalala || 0)) return false;
+
+    return Boolean(normalizedCategory || normalizedPlanId || normalizedAddonId || unitPriceHalala !== null);
   }) || null;
 }
 
@@ -256,6 +273,7 @@ module.exports = {
   hasModernAddonProductSnapshot,
   isAddonEntitlementEligibleForProduct,
   isAddonChoiceEligibleForAllowance,
+  normalizeSubscriptionAddonCategory,
   resolveAddonCategoryForMenuProduct,
   resolveEntitlementPlanId,
   selectAddonEntitlementForProduct,
