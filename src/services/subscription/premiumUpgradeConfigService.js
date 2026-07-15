@@ -1426,8 +1426,11 @@ async function createConfig(data, adminId) {
  */
 async function updateConfig(id, data, adminId) {
   const { expectedRevision, upgradeDeltaHalala, sortOrder, metadata, isActive, isEnabled, isVisible, currency } = data;
+  const hasSourceId = Object.prototype.hasOwnProperty.call(data || {}, "sourceId");
+  const hasSourceProductId = Object.prototype.hasOwnProperty.call(data || {}, "sourceProductId");
+  const hasSourceGroupId = Object.prototype.hasOwnProperty.call(data || {}, "sourceGroupId");
   const isRelink = Object.prototype.hasOwnProperty.call(data || {}, "kind")
-    || Object.prototype.hasOwnProperty.call(data || {}, "sourceId")
+    || hasSourceId
     || Object.prototype.hasOwnProperty.call(data || {}, "sourceType");
   const immutableField = IMMUTABLE_PATCH_FIELDS.find((field) => Object.prototype.hasOwnProperty.call(data || {}, field));
   if (immutableField) {
@@ -1451,13 +1454,20 @@ async function updateConfig(id, data, adminId) {
 
   let relinkSourceDoc = null;
   if (isRelink) {
+    const sourceIdChanged = hasSourceId && !idsEqual(data.sourceId, config.sourceId);
+    const sourceProductId = hasSourceProductId
+      ? data.sourceProductId
+      : (sourceIdChanged ? null : config.sourceProductId);
+    const sourceGroupId = hasSourceGroupId
+      ? data.sourceGroupId
+      : (sourceIdChanged ? null : config.sourceGroupId);
     const identity = await resolvePremiumSourceIdentity({
       ...data,
       kind: data.kind || SOURCE_TYPE_TO_ADMIN_KIND[config.sourceType],
       sourceId: data.sourceId || config.sourceId,
-      sourceProductId: data.sourceProductId || config.sourceProductId,
-      sourceGroupId: data.sourceGroupId || config.sourceGroupId,
-    }, { requireExactOptionRelation: true });
+      sourceProductId,
+      sourceGroupId,
+    }, { requireExactOptionRelation: hasSourceProductId && hasSourceGroupId });
     assertRelinkCompatible(config, identity);
     await assertNoActiveConflicts(identity, { excludeId: config._id });
     const previousSources = Array.isArray(config.metadata?.previousSources)

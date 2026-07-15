@@ -735,8 +735,29 @@ async function main() {
       isAvailable: true,
       publishedAt: new Date(),
     });
+    const alternateRelinkProduct = await MenuProduct.create({
+      categoryId: basicMeal.categoryId,
+      key: "alternate_relink_meal",
+      name: { en: "Alternate Relink Meal", ar: "وجبة ربط بديلة" },
+      priceHalala: 4500,
+      availableFor: ["subscription"],
+      isActive: true,
+      isVisible: true,
+      isAvailable: true,
+      publishedAt: new Date(),
+    });
+    await ProductOptionGroup.create({
+      productId: alternateRelinkProduct._id,
+      groupId: proteinsGroup._id,
+      minSelections: 1,
+      maxSelections: 1,
+      isRequired: true,
+      isActive: true,
+      isVisible: true,
+      isAvailable: true,
+    });
     await ProductGroupOption.create({
-      productId: basicMeal._id,
+      productId: alternateRelinkProduct._id,
       groupId: proteinsGroup._id,
       optionId: relinkTargetOption._id,
       extraPriceHalala: 2100,
@@ -745,15 +766,13 @@ async function main() {
       expectedRevision: relinkConfig.revision,
       kind: "option",
       sourceId: String(relinkTargetOption._id),
-      sourceProductId: String(basicMeal._id),
-      sourceGroupId: String(proteinsGroup._id),
     });
-    expectStatus(res, 200, "broken source can be relinked");
+    expectStatus(res, 200, "broken source can be relinked with simplified option payload");
     assert.strictEqual(res.body.data.key, "broken_relink_source");
     assert.strictEqual(res.body.data.health.status, "ready");
     const relinkedDoc = await PremiumUpgradeConfig.findById(relinkConfig.id).lean();
     assert.strictEqual(relinkedDoc.premiumKey, "broken_relink_source");
-    assert.strictEqual(String(relinkedDoc.sourceProductId), String(basicMeal._id));
+    assert.strictEqual(String(relinkedDoc.sourceProductId), String(alternateRelinkProduct._id));
     assert.strictEqual(String(relinkedDoc.sourceGroupId), String(proteinsGroup._id));
     assert.strictEqual(relinkedDoc.revision, relinkConfig.revision + 1);
     assert.strictEqual(relinkedDoc.metadata.previousSources[0].premiumKey, "broken_relink_source");

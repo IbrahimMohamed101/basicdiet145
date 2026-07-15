@@ -934,9 +934,9 @@
 
   ## Purpose
 
-  Update editable fields only.
+  Update editable fields only. Source relink uses the same endpoint, but it is a separate payload mode described in section 12.5.
 
-  Allowed editable fields for frontend:
+  Allowed fields for normal edit payloads:
 
   ```text
   upgradeDeltaHalala
@@ -945,7 +945,7 @@
   metadata
   ```
 
-  Do not send immutable fields:
+  Do not send source identity fields in normal edit payloads:
 
   ```text
   sourceType
@@ -956,6 +956,8 @@
   premiumKey
   currency
   ```
+
+  `sourceProductId` and `sourceGroupId` are response/display fields. For relink, the frontend sends only `kind` and `sourceId`; the backend derives the stored relation context.
 
   ---
 
@@ -1100,6 +1102,32 @@
   2. Re-fetch list.
   3. Re-open modal with latest revision if admin wants to retry.
   ```
+
+  ---
+
+  ## 12.5 Source Relink Payload
+
+  Canonical relink request:
+
+  ```json
+  {
+    "expectedRevision": 4,
+    "kind": "option",
+    "sourceId": "6a3551b13f6b8e45eac5b5f8"
+  }
+  ```
+
+  For product-backed premium salad relink:
+
+  ```json
+  {
+    "expectedRevision": 4,
+    "kind": "product",
+    "sourceId": "6a3552293f6b8e45eac5b947"
+  }
+  ```
+
+  Frontend rule: do not send `sourceProductId`, `sourceGroupId`, `selectionType`, or `premiumKey` for relink. The backend resolves and validates the product/group relation from `kind + sourceId`, preserves the existing `premiumKey`, rejects incompatible sources with `PREMIUM_RELINK_KEY_MISMATCH`, and rejects unresolved/ambiguous option relations with `PREMIUM_SOURCE_RELATION_INVALID`.
 
   ---
 

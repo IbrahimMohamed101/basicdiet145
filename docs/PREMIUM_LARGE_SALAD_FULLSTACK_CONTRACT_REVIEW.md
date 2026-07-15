@@ -591,7 +591,7 @@ PATCH /api/dashboard/premium-upgrades/:id
 
 ### Purpose
 
-Update editable config fields.
+Update editable config fields. Source relink uses the same endpoint, but it is a separate payload mode.
 
 Editable examples:
 
@@ -602,7 +602,7 @@ sortOrder
 metadata
 ```
 
-Immutable fields:
+Do not send source identity fields in normal edit payloads:
 
 ```text
 sourceType
@@ -613,6 +613,20 @@ selectionType
 premiumKey
 currency
 ```
+
+Source relink exception:
+
+```json
+{
+  "expectedRevision": 4,
+  "kind": "option",
+  "sourceId": "optionId"
+}
+```
+
+For product-backed premium salad relink, use `"kind": "product"` and the product `sourceId`.
+
+The frontend should not send `sourceProductId`, `sourceGroupId`, `selectionType`, or `premiumKey` for relink. The backend derives and validates option `sourceProductId`/`sourceGroupId` from `kind + sourceId`, preserves the existing `premiumKey`, rejects incompatible sources with `PREMIUM_RELINK_KEY_MISMATCH`, and rejects unresolved/ambiguous option relations with `PREMIUM_SOURCE_RELATION_INVALID`.
 
 ### Payload Form Definition (Update Details)
 
