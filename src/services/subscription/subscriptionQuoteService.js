@@ -859,6 +859,7 @@ async function resolveCheckoutQuoteOrThrow(
     const isExplicitlyFree = upgrade.isConfigured && unitExtraFeeHalala === 0;
 
     if (!Number.isSafeInteger(unitExtraFeeHalala) || (unitExtraFeeHalala === 0 && !isExplicitlyFree) || unitExtraFeeHalala < 0) {
+      console.log('DEBUG: upgrade=', upgrade, 'resolved=', resolved);
       const err = new Error(`Premium upgrade has invalid canonical pricing: ${premiumKey}`);
       err.code = "INVALID_PREMIUM_ITEM";
       throw err;

@@ -43,6 +43,7 @@ const Zone = require('../src/models/Zone');
 const Setting = require('../src/models/Setting');
 const Addon = require('../src/models/Addon');
 const MenuCategory = require('../src/models/MenuCategory');
+const MenuOption = require('../src/models/MenuOption');
 const MenuProduct = require('../src/models/MenuProduct');
 const PremiumUpgradeConfig = require('../src/models/PremiumUpgradeConfig');
 const { ensureSafeForDestructiveOp } = require('../src/utils/dbSafety');
@@ -181,6 +182,15 @@ async function createTestUserAndAuthenticate() {
 }
 
 async function seedBuilderCatalog() {
+  await Promise.all([
+    BuilderCategory.deleteMany({}),
+    BuilderProtein.deleteMany({}),
+    MenuOption.deleteMany({}),
+    MenuProduct.deleteMany({}),
+    MenuCategory.deleteMany({}),
+    PremiumUpgradeConfig.deleteMany({}),
+  ]);
+
   builderCategory = await BuilderCategory.findOne({ dimension: 'protein' });
   if (!builderCategory) {
     builderCategory = new BuilderCategory({
