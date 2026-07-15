@@ -8,8 +8,8 @@ const { startJobs } = require("./jobs");
 const { validateEnv } = require("./utils/validateEnv");
 const { logger } = require("./utils/logger");
 
-process.on("unhandledRejection", (reason, promise) => {
-  console.error("[railway-startup] Unhandled Rejection at Promise", {
+process.on("unhandledRejection", (reason) => {
+  logger.error("[startup] Unhandled rejection", {
     reason: reason instanceof Error ? reason.message : reason,
     stack: reason instanceof Error ? reason.stack : undefined
   });
@@ -17,17 +17,15 @@ process.on("unhandledRejection", (reason, promise) => {
 });
 
 process.on("uncaughtException", (error) => {
-  console.error("[railway-startup] Uncaught Exception thrown", {
+  logger.error("[startup] Uncaught exception", {
     message: error.message,
     stack: error.stack
   });
   process.exit(1);
 });
 
-console.log(`NODE_ENV: ${process.env.NODE_ENV}, PORT: ${process.env.PORT}`);
-
 if (!process.env.PORT) {
-  console.error('PORT environment variable is required');
+  logger.error("PORT environment variable is required");
   process.exit(1);
 }
 
@@ -38,27 +36,36 @@ const server = createServer(app);
 
 const envCheck = validateEnv();
 if (!envCheck.ok) {
-  console.error(envCheck); process.exit(1);
+  logger.error("Environment validation failed", {
+    missing: envCheck.missing,
+    invalid: envCheck.invalid,
+    securityViolations: envCheck.securityViolations,
+    message: envCheck.message,
+  });
+  process.exit(1);
 }
 
-console.log(`Resolved PORT: ${PORT} (env.PORT: ${process.env.PORT || 'undefined'})`);
+logger.info("[startup] Runtime configuration resolved", {
+  nodeEnv: process.env.NODE_ENV || "development",
+  port: PORT,
+});
 
-console.log("[railway-startup] Starting database connection");
+logger.info("[startup] Starting database connection");
 connectDb()
   .then(async () => {
-    console.log("[railway-startup] MongoDB connected");
+    logger.info("[startup] MongoDB connected");
 
-    console.log("[railway-startup] Starting background jobs");
+    logger.info("[startup] Starting background jobs");
     startJobs();
-    console.log("[railway-startup] Background jobs started");
+    logger.info("[startup] Background jobs started");
 
-    console.log(`[railway-startup] Starting HTTP server on port: ${PORT}`);
+    logger.info("[startup] Starting HTTP server", { port: PORT, host: "0.0.0.0" });
     server.listen(PORT, "0.0.0.0", () => {
-      console.log(`[railway-startup] API listening on port: ${PORT}, host: 0.0.0.0`);
+      logger.info("[startup] API listening", { port: PORT, host: "0.0.0.0" });
     });
   })
   .catch((err) => {
-    console.error("[railway-startup] Failed to connect DB", { error: err.message, stack: err.stack });
+    logger.error("[startup] Failed to connect DB", { error: err.message, stack: err.stack });
     process.exit(1);
   });
 

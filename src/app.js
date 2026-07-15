@@ -97,6 +97,23 @@ function parseConfiguredCorsOrigins() {
   ].filter(Boolean)));
 }
 
+async function resolveDatabaseReadiness() {
+  const state = mongoose.connection.readyState;
+  if (state !== 1) {
+    return { ready: false, statusCode: 503, payload: { ok: false, db: { state } } };
+  }
+
+  try {
+    if (mongoose.connection.db) {
+      await mongoose.connection.db.admin().ping();
+    }
+    return { ready: true, statusCode: 200, payload: { status: true, db: { state: "up" } } };
+  } catch (err) {
+    logger.error("Readiness DB ping failed", { error: err.message });
+    return { ready: false, statusCode: 503, payload: { ok: false, db: { state: "down" } } };
+  }
+}
+
 function createApp() {
   const app = express();
 
@@ -173,20 +190,18 @@ function createApp() {
    *         description: Database unavailable
    */
 
+  app.get("/live", (_req, res) => {
+    return res.status(200).json({ status: true });
+  });
+
+  app.get("/ready", async (_req, res) => {
+    const readiness = await resolveDatabaseReadiness();
+    return res.status(readiness.statusCode).json(readiness.payload);
+  });
+
   app.get("/health", async (_req, res) => {
-    const state = mongoose.connection.readyState;
-    if (state !== 1) {
-      return res.status(503).json({ ok: false, db: { state } });
-    }
-    try {
-      if (mongoose.connection.db) {
-        await mongoose.connection.db.admin().ping();
-      }
-      return res.status(200).json({ status: true, db: { state: "up" } });
-    } catch (err) {
-      logger.error("Health check DB ping failed", { error: err.message });
-      return res.status(503).json({ ok: false, db: { state: "down" } });
-    }
+    const readiness = await resolveDatabaseReadiness();
+    return res.status(readiness.statusCode).json(readiness.payload);
   });
 
   // Keep a simple root health endpoint for deployment smoke tests.
