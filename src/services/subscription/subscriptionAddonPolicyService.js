@@ -73,6 +73,9 @@ function buildAddonEntitlementEligibility(subscription) {
       }
       continue;
     }
+    if (category) {
+      eligibleProductIdsByCategory.set(category, null);
+    }
   }
 
   return {
@@ -86,6 +89,7 @@ function isAddonChoiceEligibleForAllowance(eligibility, category, productId) {
   const normalizedCategory = normalizeSubscriptionAddonCategory(category);
   if (!normalizedCategory) return false;
   const ids = eligibility.eligibleProductIdsByCategory.get(normalizedCategory);
+  if (ids === null) return true;
   return Boolean(ids && ids.has(String(productId || "")));
 }
 
@@ -103,6 +107,10 @@ function isAddonEntitlementEligibleForProduct(entitlement, { productId, category
   const productIds = getEntitlementMenuProductIds(entitlement);
   if (normalizedProductId && productIds.length > 0) {
     return productIds.some((id) => String(id) === normalizedProductId);
+  }
+
+  if (normalizedProductId && normalizedCategory && entitlementCategory) {
+    return normalizedCategory === entitlementCategory;
   }
 
   if (normalizedProductId) {

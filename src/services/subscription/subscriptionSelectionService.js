@@ -297,8 +297,10 @@ async function consumeAddonBalanceAtomically({ subscription, dayId, date, addonI
   return {
     consumed: true,
     addonPlanId: bucket.addonPlanId || bucket.addonId,
-    unitPriceHalala: bucket.unitPriceHalala,
-    currency: bucket.currency,
+    balanceBucketId: bucket._id,
+    unitPriceHalala: Number(bucket.unitPriceHalala || 0),
+    currency: bucket.currency || "SAR",
+    category: bucket.category || category,
   };
 }
 
@@ -1122,9 +1124,11 @@ async function performDaySelectionUpdate({ userId, subscriptionId, date, selecti
                        addonPlanId: sel.addonPlanId || walletResult.addonPlanId || null,
                        source: "subscription",
                        priceHalala: 0,
-                       balanceBucketId: ownedResolution && ownedResolution.bucket ? ownedResolution.bucket._id : null,
+                       balanceBucketId: walletResult.balanceBucketId || (ownedResolution && ownedResolution.bucket ? ownedResolution.bucket._id : null),
                        entitlementKey: ownedResolution ? ownedResolution.entitlementKey : undefined,
-                       category: ownedResolution ? ownedResolution.category : (sel.category || ""),
+                       category: walletResult.category || (ownedResolution ? ownedResolution.category : (sel.category || "")),
+                       unitPriceHalala: walletResult.unitPriceHalala,
+                       currency: walletResult.currency || sel.currency || "SAR",
                      });
                   } else {
                      if (walletResult.reason === "bucket_identity_mismatch" || walletResult.reason === "atomic_consume_failed") {

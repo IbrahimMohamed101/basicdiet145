@@ -1,5 +1,6 @@
 const Addon = require("../models/Addon");
 const { startSafeSession } = require("../utils/mongoTransactionSupport");
+const MenuCategory = require("../models/MenuCategory");
 const MenuProduct = require("../models/MenuProduct");
 const { getRequestLang } = require("../utils/i18n");
 const { resolveAddonCatalogEntry } = require("../utils/subscription/subscriptionCatalog");
@@ -14,6 +15,7 @@ const {
 } = require("../utils/requestFields");
 const {
   normalizeSubscriptionAddonCategory,
+  resolveAddonCategoryForMenuProduct,
 } = require("../services/subscription/subscriptionAddonPolicyService");
 
 const SYSTEM_CURRENCY = "SAR";
@@ -346,6 +348,37 @@ async function assertAddonPlanProductsExist(payload) {
       code: "INVALID_MENU_PRODUCT_ID",
       message: "menuProductIds must reference customer-selectable MenuProduct records",
       details: { productId: String(invalidProduct._id) },
+    };
+  }
+
+  const expectedCategory = normalizeSubscriptionAddonCategory(payload.category);
+  const categoryIds = [...new Set(products.map((product) => String(product.categoryId || "")).filter(Boolean))];
+  const categories = categoryIds.length
+    ? await MenuCategory.find({ _id: { $in: categoryIds } }).lean()
+    : [];
+  const categoriesById = new Map(categories.map((category) => [String(category._id), category]));
+
+  const mismatchedProduct = products.find((product) => {
+    const menuCategory = categoriesById.get(String(product.categoryId || ""));
+    const resolvedCategory = normalizeSubscriptionAddonCategory(
+      resolveAddonCategoryForMenuProduct(product, menuCategory && menuCategory.key)
+    );
+    return !resolvedCategory || resolvedCategory !== expectedCategory;
+  });
+  if (mismatchedProduct) {
+    const menuCategory = categoriesById.get(String(mismatchedProduct.categoryId || ""));
+    throw {
+      status: 400,
+      code: "ADDON_PLAN_CATEGORY_PRODUCT_MISMATCH",
+      message: "menuProductIds must match the add-on plan category",
+      details: {
+        productId: String(mismatchedProduct._id),
+        productKey: mismatchedProduct.key || "",
+        expectedCategory,
+        actualCategory: normalizeSubscriptionAddonCategory(
+          resolveAddonCategoryForMenuProduct(mismatchedProduct, menuCategory && menuCategory.key)
+        ),
+      },
     };
   }
 }
