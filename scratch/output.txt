@@ -1,1 +1,0 @@
-✅ slot-based pickup request reserves selected slot only

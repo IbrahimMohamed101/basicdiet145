@@ -80,3 +80,19 @@ output.json
 output2.json
 query.js
 query2.js
+
+# Backend generated/local artifacts
+output/
+test-reports/
+scratch/*
+!scratch/.gitkeep
+drive-download-*/
+repro_output.txt
+test-output.txt
+jest_exits.txt
+final_report*.txt
+e2e_out.txt
+ls_output.txt
+changes.patch
+debug_*.js
+scratch*.js

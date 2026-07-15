@@ -1,6 +1,0 @@
---- JEST EXIT CHECKS ---
-vatInclusivePricing exit=1
-vatSystem exit=1
-oneTimeOrders exit=1
-oneTimeOrderOps exit=1
-mealPlannerPaymentContract exit=1
