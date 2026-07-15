@@ -19,8 +19,7 @@ migrate_working_dir/
 .idea/
 
 # The .vscode folder contains launch configuration and tasks you configure in
-# VS Code which you may wish to be included in version control, so this line
-# is commented out by default.
+# VS Code, so this line is commented out by default.
 #.vscode/
 
 # Flutter/Dart/Pub related
@@ -55,24 +54,23 @@ graph.png
 graph.svg
 graph.dot
 
-
 .env
-
 node_modules/
 dist/
-.env
 .env.*
 !.env.example
-*.log
 logs/
 scripts/logs/
 scripts/cloudinary-onboarding.js
 tmp/
-graphify-out/
-graph.dot
-graph.png
-graph.svg
 .DS_Store
+
+# Local database backups
+backups/
+*.archive
+*.archive.gz
+*.bson
+*.metadata.json
 
 # Local debug / query outputs
 mealbuilder.json
