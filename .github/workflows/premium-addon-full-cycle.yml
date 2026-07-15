@@ -1,0 +1,63 @@
+name: Premium and Add-on Full Backend Cycle
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  full-cycle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      NODE_ENV: test
+      JWT_SECRET: test-premium-addon-cycle-secret
+      TZ: Africa/Cairo
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Premium identity and activation
+        run: node tests/premiumLifecycleIdentity.test.js
+
+      - name: Premium purchase limit
+        run: node tests/subscriptionPremiumUpgradeLimit.test.js
+
+      - name: Dashboard premium source lifecycle
+        run: node tests/dashboardPremiumUpgrades.test.js
+
+      - name: Checkout lifecycle
+        run: node tests/checkout.integration.test.js
+
+      - name: Meal planner full integration
+        run: node tests/mealPlanner.integration.test.js
+
+      - name: Exact add-on entitlement and allocation
+        run: npm run test:addon-credit-allocation
+
+      - name: Add-on balance consume and release lifecycle
+        run: npm run test:addon-credit-lifecycle
+
+      - name: Subscription balance and fulfillment lifecycle
+        run: npm run test:subscriptions
+
+      - name: Pickup and dashboard operation lifecycle
+        run: npm run test:dashboard-manual-deduction
+
+      - name: Builder catalog contract
+        run: npm run test:builder-catalog-v2-contract
+
+      - name: Dashboard/mobile menu parity
+        run: npm run test:meal-builder-dashboard-mobile-parity
