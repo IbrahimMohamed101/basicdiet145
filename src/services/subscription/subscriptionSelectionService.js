@@ -16,6 +16,11 @@ const {
   isCanonicalPlannerRequest,
   validateCanonicalMealSlots,
 } = require("./canonicalMealSlotPlannerService");
+const {
+  MEAL_SELECTION_TYPES,
+  PREMIUM_LARGE_SALAD_PREMIUM_KEY,
+  PREMIUM_LARGE_SALAD_FIXED_PRICE_HALALA,
+} = require("../../config/mealPlannerContract");
 const { assertSubscriptionDayModifiable } = require("./subscriptionDayModificationPolicyService");
 const { reconcileAddonInclusions } = require("./subscriptionAddonAllocationService");
 const { findAddonBalanceBucket } = require("./subscriptionAddonPolicyService");
@@ -88,7 +93,8 @@ async function consumePremiumBalanceAtomically({ subscription, dayId, date, prem
   if (!premiumKey) {
     return { consumed: false, reason: "no_premium_key", premiumSource: "pending_payment", premiumExtraFeeHalala: 0 };
   }
-  const canonicalUpgrade = await resolveSubscriptionPremiumUpgradePricing(premiumKey, { session, fallbackPriceHalala: unitExtraFeeHalala });
+  const fallbackPriceHalala = premiumKey === PREMIUM_LARGE_SALAD_PREMIUM_KEY ? PREMIUM_LARGE_SALAD_FIXED_PRICE_HALALA : unitExtraFeeHalala;
+  const canonicalUpgrade = await resolveSubscriptionPremiumUpgradePricing(premiumKey, { session, fallbackPriceHalala });
   const resolvedUnitExtraFeeHalala = canonicalUpgrade.priceHalala;
 
   if (!subscription || !Array.isArray(subscription.premiumBalance)) {
@@ -771,7 +777,8 @@ async function performDaySelectionUpdate({ userId, subscriptionId, date, selecti
           const mapKey = `${sel.baseSlotKey}_${sel.premiumKey}`;
           const existingClaim = existingBalanceMap.get(mapKey);
 
-          const upgrade = await resolveSubscriptionPremiumUpgradePricing(sel.premiumKey, { session, fallbackPriceHalala: sel.unitExtraFeeHalala });
+          const fallbackPriceHalala = sel.premiumKey === PREMIUM_LARGE_SALAD_PREMIUM_KEY ? PREMIUM_LARGE_SALAD_FIXED_PRICE_HALALA : sel.unitExtraFeeHalala;
+          const upgrade = await resolveSubscriptionPremiumUpgradePricing(sel.premiumKey, { session, fallbackPriceHalala });
           if (existingClaim) {
              processedPremiumSelections.push({ ...sel, premiumSource: "balance", unitExtraFeeHalala: upgrade.priceHalala });
              existingBalanceMap.delete(mapKey);
