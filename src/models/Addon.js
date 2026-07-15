@@ -1,4 +1,7 @@
 const mongoose = require("mongoose");
+const {
+  normalizeSubscriptionAddonCategory,
+} = require("../services/subscription/subscriptionAddonPolicyService");
 
 const AddonSchema = new mongoose.Schema(
   {
@@ -60,7 +63,6 @@ const AddonSchema = new mongoose.Schema(
 
     category: {
       type: String,
-      enum: ["juice", "snack", "small_salad", "meal", "dessert", "premium_meal", "premium_large_salad"],
       required: true,
       trim: true,
     },
@@ -100,6 +102,13 @@ const AddonSchema = new mongoose.Schema(
 );
 
 AddonSchema.pre("validate", function syncBillingModeAndKind(next) {
+  const normalizedCategory = normalizeSubscriptionAddonCategory(this.category);
+  if (!normalizedCategory) {
+    this.invalidate("category", "category must be a non-empty normalized key");
+  } else {
+    this.category = normalizedCategory;
+  }
+
   // 1. Sync legacy priceHalala
   if (this.priceHalala === undefined && Number.isFinite(this.price)) {
     this.priceHalala = Math.max(0, Math.round(Number(this.price) * 100));

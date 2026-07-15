@@ -15,11 +15,19 @@ const ALL_SUPPORTED_SUBSCRIPTION_ADDON_CATEGORIES = Object.freeze([
   ...SUBSCRIPTION_ADDON_CATEGORIES,
   ...DYNAMIC_SUBSCRIPTION_ADDON_CATEGORIES,
 ]);
+const MAX_SUBSCRIPTION_ADDON_CATEGORY_LENGTH = 64;
 
 function normalizeSubscriptionAddonCategory(value, { allowEmpty = false } = {}) {
-  const normalized = String(value || "").trim().toLowerCase();
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_")
+    .replace(/[^a-z0-9_]/g, "")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, MAX_SUBSCRIPTION_ADDON_CATEGORY_LENGTH);
   if (!normalized && allowEmpty) return "";
-  return ALL_SUPPORTED_SUBSCRIPTION_ADDON_CATEGORIES.includes(normalized) ? normalized : null;
+  return normalized || null;
 }
 
 function resolveEntitlementPlanId(entitlement) {

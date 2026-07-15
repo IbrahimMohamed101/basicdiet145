@@ -2,7 +2,6 @@ const Plan = require("../../models/Plan");
 const BuilderProtein = require("../../models/BuilderProtein");
 const MenuOption = require("../../models/MenuOption");
 const MenuOptionGroup = require("../../models/MenuOptionGroup");
-const MenuCategory = require("../../models/MenuCategory");
 const MenuProduct = require("../../models/MenuProduct");
 const Addon = require("../../models/Addon");
 const AddonPlanPrice = require("../../models/AddonPlanPrice");
@@ -38,7 +37,6 @@ const {
 } = require("./subscriptionMenuEligibilityPolicyService");
 const {
   normalizeSubscriptionAddonCategory,
-  resolveAddonCategoryForMenuProduct,
 } = require("./subscriptionAddonPolicyService");
 
 async function findMenuPremiumOptionsByIds(ids) {
@@ -596,9 +594,6 @@ async function resolveCheckoutAddonSelectionsOrThrow(rawItems, { basePlanId } = 
       throw createAddonSelectionError("ADDON_PRODUCT_NOT_IN_PLAN", "Selected add-on product does not belong to the selected plan", "productId", { productId: notInPlanProductId, addonPlanId });
     }
 
-    const categoryIds = uniqueStrings(productIds.map((productId) => productById.get(String(productId)).categoryId));
-    const categories = categoryIds.length ? await MenuCategory.find({ _id: { $in: categoryIds } }).lean() : [];
-    const categoryById = new Map(categories.map((category) => [String(category._id), category]));
     const requestedCategory = shape.category ? normalizeSubscriptionAddonCategory(shape.category) : null;
     if (shape.category && (!requestedCategory || requestedCategory !== planCategory)) {
       throw createAddonSelectionError("ADDON_CATEGORY_MISMATCH", "Requested add-on category does not match the add-on plan", "category", {
@@ -608,15 +603,6 @@ async function resolveCheckoutAddonSelectionsOrThrow(rawItems, { basePlanId } = 
     }
     for (const productId of productIds) {
       const product = productById.get(String(productId));
-      const sourceCategory = categoryById.get(String(product.categoryId));
-      const productCategory = normalizeSubscriptionAddonCategory(resolveAddonCategoryForMenuProduct(product, sourceCategory && sourceCategory.key));
-      if (!productCategory || (planCategory && productCategory !== planCategory)) {
-        throw createAddonSelectionError("ADDON_CATEGORY_MISMATCH", "Selected add-on product category does not match the add-on plan", "productId", {
-          productId,
-          productCategory,
-          planCategory,
-        });
-      }
       if (!isNewSaleProductUsable(product)) {
         throw createAddonSelectionError("ADDON_PRODUCT_UNAVAILABLE_FOR_NEW_PURCHASE", "Selected add-on product is unavailable for new purchase", "productId", { productId });
       }

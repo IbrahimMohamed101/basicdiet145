@@ -14,6 +14,7 @@ const {
   SUBSCRIPTION_ADDON_CHOICE_MAPPINGS,
   buildAddonEntitlementEligibility,
   isAddonChoiceEligibleForAllowance,
+  normalizeSubscriptionAddonCategory,
   resolveAddonCategoryForMenuProduct,
 } = require("./subscriptionAddonPolicyService");
 const {
@@ -71,8 +72,8 @@ function normalizeCategoryFilter(category) {
   if (category === undefined || category === null || String(category).trim() === "") {
     return ALL_SUPPORTED_SUBSCRIPTION_ADDON_CATEGORIES;
   }
-  const normalized = String(category).trim();
-  if (!ALL_SUPPORTED_SUBSCRIPTION_ADDON_CATEGORIES.includes(normalized)) {
+  const normalized = normalizeSubscriptionAddonCategory(category);
+  if (!normalized) {
     const err = new Error();
     err.status = 400;
     err.code = "INVALID";
@@ -157,7 +158,7 @@ function normalizeOptionalCategory(category) {
   if (category === undefined || category === null || String(category).trim() === "") {
     return null;
   }
-  return String(category).trim();
+  return normalizeSubscriptionAddonCategory(category);
 }
 
 function normalizeIdList(ids) {

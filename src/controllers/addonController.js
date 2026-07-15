@@ -1,6 +1,5 @@
 const Addon = require("../models/Addon");
 const { startSafeSession } = require("../utils/mongoTransactionSupport");
-const MenuCategory = require("../models/MenuCategory");
 const MenuProduct = require("../models/MenuProduct");
 const { getRequestLang } = require("../utils/i18n");
 const { resolveAddonCatalogEntry } = require("../utils/subscription/subscriptionCatalog");
@@ -14,21 +13,20 @@ const {
   parseLocalizedFieldFromBody,
 } = require("../utils/requestFields");
 const {
-  resolveDisplayCategoryForProduct,
-} = require("../services/subscription/subscriptionAddonChoicesService");
+  normalizeSubscriptionAddonCategory,
+} = require("../services/subscription/subscriptionAddonPolicyService");
 
 const SYSTEM_CURRENCY = "SAR";
 const ADDON_IMAGE_FOLDER = "addons";
 const ADDON_BILLING_MODES = new Set(["flat_once", "per_day", "per_meal"]);
 const ADDON_KINDS = new Set(["plan", "item"]);
-const ADDON_CATEGORIES = new Set(["juice", "snack", "small_salad", "meal", "dessert", "premium_meal", "premium_large_salad"]);
 const PLAN_BILLING_MODES = new Set(["per_day", "per_meal"]);
 const ITEM_BILLING_MODES = new Set(["flat_once"]);
 
 /**
- * Canonical add-on plan categories for dashboard meta select options.
- * These are the ONLY valid entitlement plan categories.
- * Do not add menu product categories (salads, proteins, sandwiches, etc.) here.
+ * Suggested add-on plan categories for dashboard meta select options.
+ * They are not an allowlist; dashboard requests may submit any safe normalized
+ * category key and existing stored categories are returned alongside these.
  */
 const ADDON_PLAN_CATEGORIES_META = [
   {
@@ -154,12 +152,9 @@ function normalizeAddonKind(value, { forceKind = null } = {}) {
 }
 
 function normalizeAddonCategory(value) {
-  const category = String(value || "").trim();
+  const category = normalizeSubscriptionAddonCategory(value);
   if (!category) {
-    throw { status: 400, code: "INVALID", message: "category is required" };
-  }
-  if (!ADDON_CATEGORIES.has(category)) {
-    throw { status: 400, code: "INVALID", message: "category must be one of: juice, snack, small_salad" };
+    throw { status: 400, code: "INVALID_ADDON_CATEGORY", message: "category must be a non-empty normalized key" };
   }
   return category;
 }
@@ -266,16 +261,30 @@ function validateAddonPayloadOrThrow(payload, { forceKind = null, dashboardPlanC
     menuProductId = payload.menuProductId;
   }
 
-  const menuProductIds = Array.isArray(payload.menuProductIds)
-    ? payload.menuProductIds.map((id) => {
-        validateObjectId(id, "menuProductIds");
-        return id;
-      })
-    : [];
+  const seenMenuProductIds = new Set();
+  const menuProductIds = [];
+  if (Array.isArray(payload.menuProductIds)) {
+    for (let index = 0; index < payload.menuProductIds.length; index++) {
+      const id = payload.menuProductIds[index];
+      try {
+        validateObjectId(id, `menuProductIds[${index}]`);
+      } catch (_err) {
+        throw {
+          status: 400,
+          code: "INVALID_MENU_PRODUCT_ID",
+          message: `menuProductIds[${index}] must be a valid MenuProduct id`,
+        };
+      }
+      const key = String(id);
+      if (seenMenuProductIds.has(key)) continue;
+      seenMenuProductIds.add(key);
+      menuProductIds.push(id);
+    }
+  }
 
   if (kind === "plan") {
     if (menuProductIds.length === 0) {
-      throw { status: 400, code: "INVALID", message: "menuProductIds must contain at least one product" };
+      throw { status: 400, code: "EMPTY_ADDON_PLAN_PRODUCTS", message: "menuProductIds must contain at least one product" };
     }
   }
 
@@ -312,36 +321,71 @@ function validateAddonPayloadOrThrow(payload, { forceKind = null, dashboardPlanC
   };
 }
 
-async function assertAddonPlanProductCategoryCompatibility(payload) {
+async function assertAddonPlanProductsExist(payload) {
   if (!payload || payload.kind !== "plan" || !Array.isArray(payload.menuProductIds) || payload.menuProductIds.length === 0) {
     return;
   }
   const products = await MenuProduct.find({ _id: { $in: payload.menuProductIds } }).lean();
   const productIds = new Set(products.map((product) => String(product._id)));
   if (productIds.size !== payload.menuProductIds.length) {
-    throw { status: 400, code: "INVALID", message: "One or more menuProductIds do not exist" };
+    throw { status: 400, code: "MENU_PRODUCT_NOT_FOUND", message: "One or more menuProductIds do not exist" };
   }
-
-  const categoryIds = [...new Set(products.map((product) => String(product.categoryId || "")).filter(Boolean))];
-  const categories = await MenuCategory.find({ _id: { $in: categoryIds } }).lean();
-  const categoryById = new Map(categories.map((category) => [String(category._id), category]));
-  const displayCategories = products
-    .map((product) => resolveDisplayCategoryForProduct(product, categoryById.get(String(product.categoryId)), {
-      entitlementCategory: payload.category,
-    }))
-    .filter(Boolean);
-
-  if (displayCategories.length > 0 && !displayCategories.includes(payload.category)) {
+  const invalidProduct = products.find((product) => (
+    product.isArchived === true
+    || product.isDeleted === true
+    || product.archivedAt
+    || product.deletedAt
+    || String(product.kind || "").toLowerCase() === "plan"
+    || String(product.type || "").toLowerCase() === "subscription"
+    || String(product.itemType || "").toLowerCase() === "subscription"
+    || String(product.billingMode || "").toLowerCase() === "per_day"
+  ));
+  if (invalidProduct) {
     throw {
       status: 400,
-      code: "ADDON_PLAN_CATEGORY_PRODUCT_MISMATCH",
-      message: "Add-on plan category does not match any linked product category",
-      details: {
-        planCategory: payload.category,
-        productDisplayCategories: [...new Set(displayCategories)],
-      },
+      code: "INVALID_MENU_PRODUCT_ID",
+      message: "menuProductIds must reference customer-selectable MenuProduct records",
+      details: { productId: String(invalidProduct._id) },
     };
   }
+}
+
+function titleizeCategoryKey(category) {
+  return String(category || "")
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+async function buildAddonPlanCategoriesMeta({ lean = false } = {}) {
+  const predefinedByKey = new Map(ADDON_PLAN_CATEGORIES_META.map((entry) => [entry.key, entry]));
+  const storedCategories = await Addon.distinct("category", {
+    kind: "plan",
+    category: { $type: "string", $ne: "" },
+  });
+  const keys = [
+    ...ADDON_PLAN_CATEGORIES_META.map((entry) => entry.key),
+    ...storedCategories.map((category) => normalizeSubscriptionAddonCategory(category)),
+  ].filter(Boolean);
+
+  const rows = [...new Set(keys)].sort((a, b) => {
+    const predefinedA = predefinedByKey.has(a);
+    const predefinedB = predefinedByKey.has(b);
+    if (predefinedA !== predefinedB) return predefinedA ? -1 : 1;
+    return a.localeCompare(b);
+  }).map((key) => {
+    const predefined = predefinedByKey.get(key);
+    const fallbackLabel = titleizeCategoryKey(key);
+    return predefined || {
+      key,
+      label: { ar: fallbackLabel, en: fallbackLabel },
+      description: { ar: "", en: "" },
+      custom: true,
+    };
+  });
+
+  return lean ? rows.map((row) => ({ key: row.key, label: row.label })) : rows;
 }
 
 function resolveAdminAddonFilters(query = {}, { forceKind = null } = {}) {
@@ -721,7 +765,15 @@ async function listAddonsAdmin(req, res, options = {}) {
         };
       });
 
-      return res.status(200).json({ status: true, data: mapped, meta: { filters, totalCount: rows.length } });
+      return res.status(200).json({
+        status: true,
+        data: mapped,
+        meta: {
+          filters,
+          totalCount: rows.length,
+          addonPlanCategories: await buildAddonPlanCategoriesMeta({ lean: true }),
+        },
+      });
     }
 
     const allAddons = await Addon.find({
@@ -783,7 +835,7 @@ async function listAddonsAdmin(req, res, options = {}) {
       data: {
         plans: viewFull ? plans : plans.map(toDashboardAddonPlanLeanDTO),
         meta: {
-          addonPlanCategories: viewFull ? ADDON_PLAN_CATEGORIES_META : ADDON_PLAN_CATEGORIES_META.map(c => ({ key: c.key, label: c.label })),
+          addonPlanCategories: await buildAddonPlanCategoriesMeta({ lean: !viewFull }),
         },
         summary: {
           plansCount: plans.length,
@@ -897,7 +949,7 @@ async function createAddon(req, res, options = {}) {
       if (uniqueProductIds.length !== payload.menuProductIds.length) {
         throw { status: 400, code: "INVALID", message: "Duplicate menuProductIds are not allowed" };
       }
-      await assertAddonPlanProductCategoryCompatibility(payload);
+      await assertAddonPlanProductsExist(payload);
     }
 
     const imageState = await resolveManagedImageFromRequest({
@@ -1046,7 +1098,7 @@ async function updateAddon(req, res, options = {}) {
       if (uniqueProductIds.length !== payload.menuProductIds.length) {
         throw { status: 400, code: "INVALID", message: "Duplicate menuProductIds are not allowed" };
       }
-      await assertAddonPlanProductCategoryCompatibility(payload);
+      await assertAddonPlanProductsExist(payload);
     }
 
     const imageState = await resolveManagedImageFromRequest({

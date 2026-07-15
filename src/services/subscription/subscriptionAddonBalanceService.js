@@ -9,6 +9,19 @@ const {
 
 const SYSTEM_CURRENCY = "SAR";
 
+function collectAddonCategoriesFromSubscription(subscription) {
+  const categories = new Set(ALL_SUPPORTED_SUBSCRIPTION_ADDON_CATEGORIES);
+  for (const row of Array.isArray(subscription && subscription.addonBalance) ? subscription.addonBalance : []) {
+    const category = normalizeSubscriptionAddonCategory(row && row.category);
+    if (category) categories.add(category);
+  }
+  for (const row of Array.isArray(subscription && subscription.addonSubscriptions) ? subscription.addonSubscriptions : []) {
+    const category = normalizeSubscriptionAddonCategory(row && row.category);
+    if (category) categories.add(category);
+  }
+  return [...categories];
+}
+
 function buildAddonBalanceRowsFromEntitlements(addonSubscriptions, { daysCount = 0 } = {}) {
   return (Array.isArray(addonSubscriptions) ? addonSubscriptions : []).map((row) => {
     const quantityPerDay = Math.max(1, Math.floor(Number(row && (row.quantityPerDay || row.purchasedDailyQty) || 1)));
@@ -75,7 +88,7 @@ function buildClientAddonBalance(subscription, businessDate, auditedConsumptionM
   const entitlements = Array.isArray(subscription.addonSubscriptions) ? subscription.addonSubscriptions : [];
   const auditMap = auditedConsumptionMap || subscription._auditedAddonConsumption || {};
 
-  for (const category of ALL_SUPPORTED_SUBSCRIPTION_ADDON_CATEGORIES) {
+  for (const category of collectAddonCategoriesFromSubscription(subscription)) {
     const categoryBuckets = balances.filter((bucket) => normalizeSubscriptionAddonCategory(bucket && bucket.category) === category);
     if (categoryBuckets.length) {
       const totalUnits = categoryBuckets.reduce((sum, bucket) => sum + Number(bucket.includedTotalQty || 0), 0);
