@@ -2,7 +2,10 @@
 
 const SubscriptionDay = require("../../models/SubscriptionDay");
 const { toKSADateString } = require("../../utils/date");
-const { logger } = require("../../utils/logger");
+const {
+  SUBSCRIPTION_ADDON_CATEGORIES,
+  normalizeSubscriptionAddonCategory,
+} = require("./subscriptionAddonPolicyService");
 
 const SYSTEM_CURRENCY = "SAR";
 
@@ -16,11 +19,12 @@ function buildAddonBalanceRowsFromEntitlements(addonSubscriptions, { daysCount =
     const extraPurchasedQty = Math.max(0, Math.floor(Number(row && row.extraPurchasedQty || 0)));
     const purchasedQty = includedTotalQty + extraPurchasedQty;
     const addonPlanId = row && (row.addonPlanId || row.addonId);
+    const category = normalizeSubscriptionAddonCategory(row && row.category, { allowEmpty: true });
     return {
       addonPlanId,
       addonId: row && (row.addonId || row.addonPlanId),
       name: row && (row.addonPlanName || row.name || ""),
-      category: row && row.category || "",
+      category,
       purchasedDailyQty: quantityPerDay,
       includedTotalQty,
       purchasedQty,
@@ -35,28 +39,23 @@ function buildAddonBalanceRowsFromEntitlements(addonSubscriptions, { daysCount =
       currency: row && row.currency || SYSTEM_CURRENCY,
       purchasedAt: new Date(),
     };
-  }).filter((row) => row.addonId);
+  }).filter((row) => row.addonId && row.category);
 }
 
 async function resolveSubscriptionAddonBalanceWithAudit(subscription) {
   if (!subscription) return null;
-
-  // 1. Audit historical consumption from SubscriptionDay records
   const auditResult = await SubscriptionDay.aggregate([
     { $match: { subscriptionId: subscription._id, status: { $nin: ["skipped", "frozen", "canceled"] } } },
     { $unwind: "$addonSelections" },
     { $match: { "addonSelections.source": "subscription" } },
-    { $group: { _id: "$addonSelections.category", consumed: { $sum: 1 } } }
+    { $group: { _id: "$addonSelections.category", consumed: { $sum: 1 } } },
   ]);
 
   const auditedConsumptionMap = {};
   for (const row of auditResult) {
-    if (row._id) {
-      auditedConsumptionMap[row._id] = Number(row.consumed || 0);
-    }
+    const category = normalizeSubscriptionAddonCategory(row && row._id);
+    if (category) auditedConsumptionMap[category] = Number(row.consumed || 0);
   }
-
-  // 2. Attach the audited map to the subscription object (in-memory)
   subscription._auditedAddonConsumption = auditedConsumptionMap;
   return auditedConsumptionMap;
 }
@@ -72,64 +71,55 @@ function buildClientAddonBalance(subscription, businessDate, auditedConsumptionM
 
   const result = {};
   let needsReviewFlag = false;
-
   const balances = Array.isArray(subscription.addonBalance) ? subscription.addonBalance : [];
   const entitlements = Array.isArray(subscription.addonSubscriptions) ? subscription.addonSubscriptions : [];
-
-  const categories = ["juice", "snack", "small_salad"];
-
-  // Fallback to in-memory audit if not provided directly
   const auditMap = auditedConsumptionMap || subscription._auditedAddonConsumption || {};
 
-  for (const category of categories) {
-    // 1. Check if we have an explicit addonBalance bucket for this category
-    const bucket = balances.find(b => b.category === category);
-    
-    if (bucket) {
-      // Modern path: addonBalance array is populated
-      const remainingMeals = Number(bucket.remainingQty || 0);
+  for (const category of SUBSCRIPTION_ADDON_CATEGORIES) {
+    const categoryBuckets = balances.filter((bucket) => normalizeSubscriptionAddonCategory(bucket && bucket.category) === category);
+    if (categoryBuckets.length) {
+      const totalUnits = categoryBuckets.reduce((sum, bucket) => sum + Number(bucket.includedTotalQty || 0), 0);
+      const remainingUnits = categoryBuckets.reduce((sum, bucket) => sum + Math.max(0, Number(bucket.remainingQty || 0)), 0);
+      const consumedUnits = categoryBuckets.reduce((sum, bucket) => sum + Number(bucket.consumedQty || 0), 0);
       result[category] = {
-        totalUnits: Number(bucket.includedTotalQty || 0),
-        remainingUnits: Math.max(0, remainingMeals),
-        consumedUnits: Number(bucket.consumedQty || 0),
-        canConsumeNow: isSubscriptionActive && isInsideValidity && remainingMeals > 0,
+        totalUnits,
+        remainingUnits,
+        consumedUnits,
+        canConsumeNow: isSubscriptionActive && isInsideValidity && remainingUnits > 0,
         unitPolicy: "TOTAL_BALANCE_WITHIN_VALIDITY",
       };
-    } else {
-      // 2. Missing Balance Path: An entitlement exists but NO cumulative balance bucket exists.
-      const entitlement = entitlements.find(e => e.category === category);
-      if (entitlement) {
-        // This subscription requires administrative review to backfill the missing addonBalance.
-        needsReviewFlag = true;
-        
-        result[category] = {
-          totalUnits: 0,
-          remainingUnits: 0,
-          consumedUnits: auditMap[category] || 0,
-          canConsumeNow: false,
-          unitPolicy: "TOTAL_BALANCE_WITHIN_VALIDITY",
-          missingBalance: true
-        };
-      }
+      continue;
+    }
+
+    const entitlement = entitlements.find((entry) => normalizeSubscriptionAddonCategory(entry && entry.category) === category);
+    if (entitlement) {
+      needsReviewFlag = true;
+      result[category] = {
+        totalUnits: 0,
+        remainingUnits: 0,
+        consumedUnits: auditMap[category] || 0,
+        canConsumeNow: false,
+        unitPolicy: "TOTAL_BALANCE_WITHIN_VALIDITY",
+        missingBalance: true,
+      };
     }
   }
 
-  // If any category needs review, tag the whole object so we can block selections
   if (needsReviewFlag) {
     Object.defineProperty(result, "addonBalanceNeedsReview", {
       value: true,
-      enumerable: false, // Don't expose to client directly unless we want to, but useful for validation logic
+      enumerable: false,
     });
   }
-
   return Object.keys(result).length > 0 ? result : undefined;
 }
 
 function countReservedAddonSelectionsForCategory(day = {}, category = "") {
+  const normalizedCategory = normalizeSubscriptionAddonCategory(category, { allowEmpty: true });
   const selections = Array.isArray(day && day.addonSelections) ? day.addonSelections : [];
   return selections.reduce((sum, selection) => {
     if (!selection || selection.source !== "subscription") return sum;
-    if (category && selection.category !== category) return sum;
+    if (normalizedCategory && normalizeSubscriptionAddonCategory(selection.category) !== normalizedCategory) return sum;
     return sum + Math.max(1, Math.floor(Number(selection.qty || 1)));
   }, 0);
 }
@@ -142,8 +132,8 @@ function buildAddonCategoryAllowances(subscription, day = {}) {
   const byCategory = new Map();
 
   for (const entitlement of entitlements) {
-    if (!entitlement || !entitlement.category) continue;
-    const category = String(entitlement.category);
+    const category = normalizeSubscriptionAddonCategory(entitlement && entitlement.category);
+    if (!category) continue;
     if (!byCategory.has(category)) {
       byCategory.set(category, {
         category,
@@ -152,7 +142,7 @@ function buildAddonCategoryAllowances(subscription, day = {}) {
         reservedQty: 0,
         remainingIncludedQty: 0,
         overageUnitPriceHalala: Number(entitlement.unitPlanPriceHalala || entitlement.priceHalala || 0),
-        currency: entitlement.currency || "SAR",
+        currency: entitlement.currency || SYSTEM_CURRENCY,
         hasBalanceBucket: false,
       });
     }
@@ -161,21 +151,18 @@ function buildAddonCategoryAllowances(subscription, day = {}) {
     if (!row.overageUnitPriceHalala) {
       row.overageUnitPriceHalala = Number(entitlement.unitPlanPriceHalala || entitlement.priceHalala || 0);
     }
-    row.currency = row.currency || entitlement.currency || "SAR";
   }
 
   for (const bucket of balances) {
-    if (!bucket || !bucket.category) continue;
-    const category = String(bucket.category);
+    const category = normalizeSubscriptionAddonCategory(bucket && bucket.category);
+    if (!category) continue;
     const includedTotalQty = Math.max(0, Math.floor(Number(
       bucket.includedTotalQty != null ? bucket.includedTotalQty : bucket.purchasedQty || 0
     )));
     const remainingQty = Math.max(0, Math.floor(Number(bucket.remainingQty || 0)));
     const reservedQty = countReservedAddonSelectionsForCategory(day, category);
     const rawConsumedQty = Math.max(0, Math.floor(Number(
-      bucket.consumedQty != null
-        ? bucket.consumedQty
-        : includedTotalQty - remainingQty
+      bucket.consumedQty != null ? bucket.consumedQty : includedTotalQty - remainingQty
     )));
     const consumedQty = Math.max(0, rawConsumedQty - reservedQty);
 
@@ -186,7 +173,7 @@ function buildAddonCategoryAllowances(subscription, day = {}) {
       reservedQty: 0,
       remainingIncludedQty: 0,
       overageUnitPriceHalala: 0,
-      currency: bucket.currency || "SAR",
+      currency: bucket.currency || SYSTEM_CURRENCY,
       hasBalanceBucket: false,
     };
     if (!current.hasBalanceBucket) {
@@ -206,7 +193,7 @@ function buildAddonCategoryAllowances(subscription, day = {}) {
         ? bucket.overageUnitPriceHalala
         : bucket.unitPriceHalala || current.overageUnitPriceHalala || 0
     );
-    current.currency = bucket.currency || current.currency || "SAR";
+    current.currency = bucket.currency || current.currency || SYSTEM_CURRENCY;
     byCategory.set(category, current);
   }
 
@@ -218,7 +205,7 @@ function buildAddonCategoryAllowances(subscription, day = {}) {
       reservedQty: Math.max(0, Math.floor(Number(row.reservedQty || 0))),
       remainingIncludedQty: Math.max(0, Math.floor(Number(row.remainingIncludedQty || 0))),
       overageUnitPriceHalala: Math.max(0, Math.floor(Number(row.overageUnitPriceHalala || 0))),
-      currency: row.currency || "SAR",
+      currency: row.currency || SYSTEM_CURRENCY,
     }))
     .sort((a, b) => a.category.localeCompare(b.category));
 }
