@@ -1,3 +1,4 @@
+const mongoose = require("mongoose");
 const PremiumUpgradeConfig = require("../../models/PremiumUpgradeConfig");
 const MenuOption = require("../../models/MenuOption");
 const MenuProduct = require("../../models/MenuProduct");
@@ -13,7 +14,21 @@ const {
   isMenuItemEnabledForSubscription,
 } = require("./subscriptionMenuEligibilityPolicyService");
 
-const KNOWN_PREMIUM_KEYS = Object.freeze([]);
+const ADMIN_KIND_TO_SOURCE_TYPE = Object.freeze({
+  product: "menu_product",
+  option: "menu_option",
+});
+const SOURCE_TYPE_TO_ADMIN_KIND = Object.freeze({
+  menu_product: "product",
+  menu_option: "option",
+});
+const SOURCE_TYPE_TO_SELECTION_TYPE = Object.freeze({
+  menu_product: "premium_large_salad",
+  menu_option: "premium_meal",
+});
+const HEALTH_READY = "ready";
+const HEALTH_BROKEN = "broken";
+const SYSTEM_PREMIUM_CURRENCY = "SAR";
 
 function createError(message, code, status = 400) {
   const err = new Error(message);
@@ -24,30 +39,135 @@ function createError(message, code, status = 400) {
 }
 
 const IMMUTABLE_PATCH_FIELDS = [
-  "sourceType",
-  "sourceId",
   "sourceProductId",
   "sourceGroupId",
   "selectionType",
   "premiumKey",
-  "currency",
 ];
 
 function normalizePremiumKey(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+function normalizeSlug(value, fallback = "premium_upgrade") {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return normalized || fallback;
+}
+
+function normalizeObjectIdString(value) {
+  if (!value) return "";
+  return String(value).trim();
+}
+
+function idsEqual(left, right) {
+  return normalizeObjectIdString(left) === normalizeObjectIdString(right);
+}
+
+function isValidObjectId(value) {
+  return mongoose.Types.ObjectId.isValid(String(value || ""));
+}
+
+function localizedName(value) {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return {
+      ar: typeof value.ar === "string" ? value.ar : "",
+      en: typeof value.en === "string" ? value.en : "",
+    };
+  }
+  return { ar: "", en: "" };
+}
+
+function sourceKeyFor(doc) {
+  return normalizePremiumKey(doc?.premiumKey || doc?.key)
+    || normalizeSlug(doc?.name?.en || doc?.name?.ar || (doc?._id ? String(doc._id) : ""));
+}
+
+function normalizeAdminKind(data = {}) {
+  const explicitKind = data.kind ? String(data.kind).trim().toLowerCase() : "";
+  const sourceType = data.sourceType ? String(data.sourceType).trim() : "";
+
+  if (explicitKind && !ADMIN_KIND_TO_SOURCE_TYPE[explicitKind]) {
+    throw createError("Invalid premium source kind", "PREMIUM_SOURCE_TYPE_MISMATCH", 400);
+  }
+  if (sourceType && !SOURCE_TYPE_TO_ADMIN_KIND[sourceType]) {
+    throw createError("Invalid premium source type", "PREMIUM_SOURCE_TYPE_MISMATCH", 400);
+  }
+  if (explicitKind && sourceType && ADMIN_KIND_TO_SOURCE_TYPE[explicitKind] !== sourceType) {
+    throw createError("Conflicting premium source kind and sourceType", "PREMIUM_SOURCE_TYPE_MISMATCH", 400);
+  }
+  if (explicitKind) return explicitKind;
+  if (sourceType) return SOURCE_TYPE_TO_ADMIN_KIND[sourceType];
+  throw createError("kind is required", "PREMIUM_SOURCE_TYPE_MISMATCH", 400);
+}
+
+function statusFromConfig(config) {
+  if (config.status === "archived") return "archived";
+  if (config.isEnabled === false) return "disabled";
+  if (config.isVisible === false) return "hidden";
+  return "active";
+}
+
+function isActivePublishedAvailable(doc) {
+  return Boolean(doc)
+    && doc.isActive !== false
+    && doc.isVisible !== false
+    && doc.isAvailable !== false
+    && Boolean(doc.publishedAt);
+}
+
+function isActiveAvailableRelation(doc) {
+  return Boolean(doc)
+    && doc.isActive !== false
+    && doc.isVisible !== false
+    && doc.isAvailable !== false;
+}
+
+function isSelectableProduct(product) {
+  return isActivePublishedAvailable(product)
+    && isMenuItemEnabledForSubscription(product)
+    && !isAddonProduct(product);
+}
+
+function isSelectableOption(option) {
+  return isActivePublishedAvailable(option)
+    && isMenuItemEnabledForSubscription(option);
+}
+
+function compactIssueMessage(code) {
+  switch (code) {
+    case "SOURCE_NOT_FOUND":
+      return "The linked source no longer exists";
+    case "SOURCE_RELATION_INVALID":
+      return "The linked source relation is no longer valid";
+    case "SOURCE_NOT_SELECTABLE":
+      return "The linked source is not selectable for subscriptions";
+    default:
+      return null;
+  }
+}
+
 async function loadClientPremiumUpgradeConfigState({ session = null } = {}) {
   let query = PremiumUpgradeConfig.find({});
   if (session && typeof query.session === "function") query = query.session(session);
   const configs = await query.lean();
-  const activeVisibleConfigs = (configs || []).filter((config) => (
-    config
-    && config.status === "active"
-    && config.isEnabled !== false
-    && config.isVisible !== false
-    && config.premiumKey
-  ));
+  const healthRows = await Promise.all((configs || []).map(async (config) => ({
+    config,
+    health: await resolveConfigHealth(config, { session }),
+  })));
+  const activeVisibleConfigs = healthRows
+    .filter(({ config, health }) => (
+      config
+      && config.status === "active"
+      && config.isEnabled !== false
+      && config.isVisible !== false
+      && config.premiumKey
+      && health.status === HEALTH_READY
+    ))
+    .map(({ config }) => config);
   const activeByKey = new Map();
   for (const config of activeVisibleConfigs) {
     activeByKey.set(normalizePremiumKey(config.premiumKey), config);
@@ -104,6 +224,14 @@ async function resolvePremiumUpgrade(premiumKey, { session = null, includeHidden
       409
     );
   }
+  const health = await resolveConfigHealth(config, { session });
+  if (health.status !== HEALTH_READY) {
+    throw createError(
+      `Premium upgrade source is not available: ${normalizedKey}`,
+      "PREMIUM_UPGRADE_UNAVAILABLE",
+      409
+    );
+  }
 
   const priceHalala = Number(config.upgradeDeltaHalala);
   if (!Number.isSafeInteger(priceHalala) || priceHalala < 0) {
@@ -129,10 +257,106 @@ async function resolvePremiumUpgrade(premiumKey, { session = null, includeHidden
   });
 }
 
-/**
- * Maps a PremiumUpgradeConfig to a Dashboard DTO
- */
-function mapConfigToDTO(config, sourceDoc = null) {
+function buildHealth(status, code = null) {
+  return {
+    status,
+    code,
+    message: code ? compactIssueMessage(code) : null,
+  };
+}
+
+async function resolveOptionRelationContext(config, optionDoc, { session = null } = {}) {
+  const groupId = config.sourceGroupId || optionDoc.groupId || null;
+  if (!groupId) return { valid: false, code: "SOURCE_RELATION_INVALID" };
+
+  let groupQuery = MenuOptionGroup.findById(groupId);
+  if (session && typeof groupQuery.session === "function") groupQuery = groupQuery.session(session);
+  const group = await groupQuery.lean();
+  if (!isActivePublishedAvailable(group)) return { valid: false, code: "SOURCE_RELATION_INVALID", group };
+
+  const relationFilter = {
+    optionId: optionDoc._id,
+    groupId,
+    ...(config.sourceProductId ? { productId: config.sourceProductId } : {}),
+  };
+  let relationQuery = ProductGroupOption.findOne(relationFilter);
+  if (session && typeof relationQuery.session === "function") relationQuery = relationQuery.session(session);
+  const optionRelation = await relationQuery.lean();
+  if (!isActiveAvailableRelation(optionRelation)) {
+    return { valid: false, code: "SOURCE_RELATION_INVALID", group, optionRelation };
+  }
+
+  let productQuery = MenuProduct.findById(optionRelation.productId);
+  if (session && typeof productQuery.session === "function") productQuery = productQuery.session(session);
+  const product = await productQuery.lean();
+  if (!isSelectableProduct(product)) return { valid: false, code: "SOURCE_RELATION_INVALID", group, optionRelation, product };
+
+  let productGroupQuery = ProductOptionGroup.findOne({ productId: product._id, groupId });
+  if (session && typeof productGroupQuery.session === "function") productGroupQuery = productGroupQuery.session(session);
+  const productGroup = await productGroupQuery.lean();
+  if (!isActiveAvailableRelation(productGroup)) {
+    return { valid: false, code: "SOURCE_RELATION_INVALID", group, optionRelation, product, productGroup };
+  }
+
+  if (!idsEqual(optionDoc.groupId, group._id)) {
+    return { valid: false, code: "SOURCE_RELATION_INVALID", group, optionRelation, product, productGroup };
+  }
+
+  return { valid: true, group, optionRelation, product, productGroup };
+}
+
+async function resolveConfigHealth(config, { sourceDoc = null, session = null } = {}) {
+  if (!config) return buildHealth(HEALTH_BROKEN, "SOURCE_NOT_FOUND");
+  const sourceType = config.sourceType;
+  let resolvedSource = sourceDoc;
+  if (!resolvedSource) {
+    let sourceQuery = sourceType === "menu_product"
+      ? MenuProduct.findById(config.sourceId)
+      : sourceType === "menu_option"
+        ? MenuOption.findById(config.sourceId)
+        : null;
+    if (!sourceQuery) return buildHealth(HEALTH_BROKEN, "SOURCE_NOT_FOUND");
+    if (session && typeof sourceQuery.session === "function") sourceQuery = sourceQuery.session(session);
+    resolvedSource = await sourceQuery.lean();
+  }
+  if (!resolvedSource) return buildHealth(HEALTH_BROKEN, "SOURCE_NOT_FOUND");
+
+  if (sourceType === "menu_product") {
+    if (!isSelectableProduct(resolvedSource)) return buildHealth(HEALTH_BROKEN, "SOURCE_NOT_SELECTABLE");
+    return buildHealth(HEALTH_READY);
+  }
+
+  if (sourceType === "menu_option") {
+    if (!isSelectableOption(resolvedSource)) return buildHealth(HEALTH_BROKEN, "SOURCE_NOT_SELECTABLE");
+    const relation = await resolveOptionRelationContext(config, resolvedSource, { session });
+    if (!relation.valid) return buildHealth(HEALTH_BROKEN, relation.code || "SOURCE_RELATION_INVALID");
+    return buildHealth(HEALTH_READY);
+  }
+
+  return buildHealth(HEALTH_BROKEN, "SOURCE_NOT_FOUND");
+}
+
+async function mapConfigToCompactDTO(config, sourceDoc = null) {
+  const health = await resolveConfigHealth(config, { sourceDoc });
+  const sourceName = sourceDoc?.name || config.sourceSnapshot?.name || {};
+  const sourceKey = sourceKeyFor(sourceDoc) || config.sourceSnapshot?.key || config.premiumKey;
+  return {
+    id: config._id.toString(),
+    key: config.premiumKey || sourceKey,
+    name: localizedName(sourceName),
+    kind: SOURCE_TYPE_TO_ADMIN_KIND[config.sourceType] || null,
+    sourceId: config.sourceId ? config.sourceId.toString() : null,
+    priceHalala: Number(config.upgradeDeltaHalala || 0),
+    priceSar: Number(config.upgradeDeltaHalala || 0) / 100,
+    currency: config.currency || SYSTEM_PREMIUM_CURRENCY,
+    status: statusFromConfig(config),
+    health: health.status,
+    issueCode: health.code,
+    sortOrder: Number(config.sortOrder || 0),
+  };
+}
+
+function mapConfigToCompatibilityDTO(config, sourceDoc = null) {
   const exists = Boolean(sourceDoc);
   const active = exists ? Boolean(sourceDoc.isActive) : false;
   const visible = exists ? Boolean(sourceDoc.isVisible !== false) : false;
@@ -194,6 +418,42 @@ function mapConfigToDTO(config, sourceDoc = null) {
   };
 }
 
+async function mapConfigToDetailDTO(config, sourceDoc = null) {
+  const health = await resolveConfigHealth(config, { sourceDoc });
+  const sourceName = sourceDoc?.name || config.sourceSnapshot?.name || {};
+  const sourceKey = sourceKeyFor(sourceDoc) || config.sourceSnapshot?.key || config.premiumKey;
+  return {
+    id: config._id.toString(),
+    revision: config.revision,
+    key: config.premiumKey || sourceKey,
+    name: localizedName(sourceName),
+    kind: SOURCE_TYPE_TO_ADMIN_KIND[config.sourceType] || null,
+    source: {
+      type: config.sourceType,
+      id: config.sourceId ? config.sourceId.toString() : null,
+      productId: config.sourceProductId ? config.sourceProductId.toString() : null,
+      groupId: config.sourceGroupId ? config.sourceGroupId.toString() : null,
+      groupKey: config.sourceSnapshot?.context?.groupKey || null,
+      key: sourceKey,
+    },
+    pricing: {
+      upgradeDeltaHalala: Number(config.upgradeDeltaHalala || 0),
+      upgradeDeltaSar: Number(config.upgradeDeltaHalala || 0) / 100,
+      currency: config.currency || SYSTEM_PREMIUM_CURRENCY,
+    },
+    display: {
+      enabled: config.isEnabled !== false,
+      visible: config.isVisible !== false,
+      sortOrder: Number(config.sortOrder || 0),
+    },
+    behavior: {
+      consumesMealSlot: true,
+    },
+    health,
+    compatibility: mapConfigToCompatibilityDTO(config, sourceDoc),
+  };
+}
+
 async function fetchSourcesForConfigs(configs) {
   const optionIds = [];
   const productIds = [];
@@ -222,14 +482,35 @@ async function getConfigs(query) {
   const { status, isEnabled, isVisible, sourceType, selectionType, q, page = 1, limit = 20 } = query;
   const filter = {};
   
-  if (status) filter.status = status;
+  if (status === "archived") filter.status = "archived";
+  if (status === "disabled") {
+    filter.status = { $ne: "archived" };
+    filter.isEnabled = false;
+  }
+  if (status === "hidden") {
+    filter.status = { $ne: "archived" };
+    filter.isEnabled = { $ne: false };
+    filter.isVisible = false;
+  }
+  if (status === "active") {
+    filter.status = { $ne: "archived" };
+    filter.isEnabled = { $ne: false };
+    filter.isVisible = { $ne: false };
+  }
   if (isEnabled !== undefined) filter.isEnabled = isEnabled === "true";
   if (isVisible !== undefined) filter.isVisible = isVisible === "true";
   if (sourceType) filter.sourceType = sourceType;
+  if (query.kind) filter.sourceType = ADMIN_KIND_TO_SOURCE_TYPE[String(query.kind).trim().toLowerCase()];
   if (selectionType) filter.selectionType = selectionType;
 
   if (q) {
-    filter["sourceSnapshot.key"] = new RegExp(q, "i");
+    const rx = new RegExp(q, "i");
+    filter.$or = [
+      { premiumKey: rx },
+      { "sourceSnapshot.key": rx },
+      { "sourceSnapshot.name.en": rx },
+      { "sourceSnapshot.name.ar": rx },
+    ];
   }
 
   const skip = (Math.max(1, parseInt(page, 10)) - 1) * parseInt(limit, 10);
@@ -244,14 +525,121 @@ async function getConfigs(query) {
   ]);
 
   const sourceMap = await fetchSourcesForConfigs(configs);
+  const data = await Promise.all(configs.map(c => mapConfigToCompactDTO(c, sourceMap.get(`${c.sourceType}_${c.sourceId}`))));
 
   return {
-    data: configs.map(c => mapConfigToDTO(c, sourceMap.get(`${c.sourceType}_${c.sourceId}`))),
+    data,
     meta: {
       total,
       page: parseInt(page, 10),
       limit: limitNum
+    },
+    status: true,
+  };
+}
+
+async function getConfigDetail(id) {
+  if (!isValidObjectId(id)) throw createError("Config not found", "NOT_FOUND", 404);
+  const config = await PremiumUpgradeConfig.findById(id).lean();
+  if (!config) throw createError("Config not found", "NOT_FOUND", 404);
+  const sourceMap = await fetchSourcesForConfigs([config]);
+  return mapConfigToDetailDTO(config, sourceMap.get(`${config.sourceType}_${config.sourceId}`));
+}
+
+function mapCandidateToSource(candidate) {
+  return {
+    id: candidate.sourceId,
+    kind: SOURCE_TYPE_TO_ADMIN_KIND[candidate.sourceType],
+    key: candidate.key || candidate.premiumKey || "",
+    name: localizedName(candidate.name),
+    imageUrl: candidate.imageUrl || "",
+    group: {
+      id: candidate.sourceGroupId || null,
+      key: candidate.sourceGroupKey || (candidate.sourceType === "menu_product" ? "premium" : null),
+    },
+    selectable: true,
+  };
+}
+
+async function getSources(query = {}) {
+  const kind = normalizeAdminKind({ kind: query.kind || "option" });
+  const status = String(query.status || "active").toLowerCase();
+  if (!["active", "all"].includes(status)) {
+    throw createError("Invalid source status", "PREMIUM_SOURCE_STATUS_INVALID", 400);
+  }
+  const pageNum = Math.max(1, parseInt(query.page || 1, 10));
+  const limitNum = Math.max(1, Math.min(100, parseInt(query.limit || 20, 10)));
+  const search = String(query.q || "").trim().toLowerCase();
+
+  if (status === "active") {
+    const { candidates } = await loadEligiblePremiumCandidates();
+    let rows = candidates
+      .filter((candidate) => candidate.sourceType === ADMIN_KIND_TO_SOURCE_TYPE[kind])
+      .map(mapCandidateToSource);
+    if (search) {
+      rows = rows.filter((row) => (
+        row.key.includes(search)
+        || String(row.name.en || "").toLowerCase().includes(search)
+        || String(row.name.ar || "").toLowerCase().includes(search)
+      ));
     }
+    const total = rows.length;
+    const skip = (pageNum - 1) * limitNum;
+    return {
+      data: rows.slice(skip, skip + limitNum),
+      meta: { total, page: pageNum, limit: limitNum },
+      status: true,
+    };
+  }
+
+  const rx = search ? new RegExp(search, "i") : null;
+  if (kind === "product") {
+    const filter = rx ? { $or: [{ key: rx }, { "name.en": rx }, { "name.ar": rx }] } : {};
+    const products = await MenuProduct.find(filter).sort({ sortOrder: 1, createdAt: -1 }).lean();
+    const rows = products.map((product) => ({
+      id: String(product._id),
+      kind,
+      key: sourceKeyFor(product),
+      name: localizedName(product.name),
+      imageUrl: product.imageUrl || "",
+      group: { id: null, key: "premium" },
+      selectable: isSelectableProduct(product),
+    }));
+    const total = rows.length;
+    const skip = (pageNum - 1) * limitNum;
+    return {
+      data: rows.slice(skip, skip + limitNum),
+      meta: { total, page: pageNum, limit: limitNum },
+      status: true,
+    };
+  }
+
+  const filter = rx ? { $or: [{ key: rx }, { premiumKey: rx }, { "name.en": rx }, { "name.ar": rx }] } : {};
+  const options = await MenuOption.find(filter).sort({ sortOrder: 1, createdAt: -1 }).lean();
+  const groupIds = [...new Set(options.map((option) => String(option.groupId)).filter(Boolean))];
+  const groups = await MenuOptionGroup.find({ _id: { $in: groupIds } }).lean();
+  const groupById = new Map(groups.map((group) => [String(group._id), group]));
+  const rows = options.map((option) => {
+    const group = groupById.get(String(option.groupId));
+    return {
+      id: String(option._id),
+      kind,
+      key: sourceKeyFor(option),
+      name: localizedName(option.name),
+      imageUrl: option.imageUrl || "",
+      group: {
+        id: group ? String(group._id) : (option.groupId ? String(option.groupId) : null),
+        key: group?.key || null,
+      },
+      selectable: isSelectableOption(option),
+    };
+  });
+  const total = rows.length;
+  const skip = (pageNum - 1) * limitNum;
+  return {
+    data: rows.slice(skip, skip + limitNum),
+    meta: { total, page: pageNum, limit: limitNum },
+    status: true,
   };
 }
 
@@ -262,21 +650,6 @@ function isAddonProduct(product) {
   const itemType = normalizePremiumKey(product?.itemType);
   const cardVariant = normalizePremiumKey(product?.ui?.cardVariant);
   return itemType === "addon" || cardVariant === "addon" || cardVariant === "addon_card";
-}
-
-function isActivePublishedAvailable(doc) {
-  return Boolean(doc)
-    && doc.isActive !== false
-    && doc.isVisible !== false
-    && doc.isAvailable !== false
-    && Boolean(doc.publishedAt);
-}
-
-function isActiveAvailableRelation(doc) {
-  return Boolean(doc)
-    && doc.isActive !== false
-    && doc.isVisible !== false
-    && doc.isAvailable !== false;
 }
 
 function relationIdentity({ sourceType, sourceId, sourceProductId }) {
@@ -375,6 +748,7 @@ async function loadEligiblePremiumCandidates() {
         key: premiumKey,
         premiumKey,
         name: { ar: option.name?.ar || null, en: option.name?.en || null },
+        imageUrl: option.imageUrl || "",
         selectionType: "premium_meal",
         upgradeDeltaHalala: Number(relation.extraPriceHalala ?? option.extraFeeHalala ?? option.extraPriceHalala ?? 0),
         currency: "SAR",
@@ -402,11 +776,8 @@ async function loadEligiblePremiumCandidates() {
       diagnostics.excludedAddons++;
       continue;
     }
-    if (normalizePremiumKey(product.key) !== PREMIUM_LARGE_SALAD_PREMIUM_KEY) {
-      diagnostics.excludedUnsupportedProductScope++;
-      continue;
-    }
     const identity = relationIdentity({ sourceType: "menu_product", sourceId: product._id, sourceProductId: product._id });
+    const premiumKey = sourceKeyFor(product);
     candidates.push({
       id: String(product._id),
       sourceId: String(product._id),
@@ -416,13 +787,14 @@ async function loadEligiblePremiumCandidates() {
       sourceGroupId: null,
       sourceProductKey: product.key,
       sourceGroupKey: null,
-      key: PREMIUM_LARGE_SALAD_PREMIUM_KEY,
-      premiumKey: PREMIUM_LARGE_SALAD_PREMIUM_KEY,
+      key: premiumKey,
+      premiumKey,
       name: { ar: product.name?.ar || null, en: product.name?.en || null },
-      selectionType: "premium_large_salad",
+      imageUrl: product.imageUrl || "",
+      selectionType: SOURCE_TYPE_TO_SELECTION_TYPE.menu_product,
       upgradeDeltaHalala: Number(product.priceHalala || 0),
       currency: "SAR",
-      isLinked: linkedRelations.has(identity) || linkedKeys.has(PREMIUM_LARGE_SALAD_PREMIUM_KEY),
+      isLinked: linkedRelations.has(identity) || linkedKeys.has(premiumKey),
       eligibilityDiagnostics: { eligible: true, issues: [] },
     });
   }
@@ -606,98 +978,157 @@ async function getReadiness() {
 /**
  * Create a new PremiumUpgradeConfig
  */
+async function assertSourceCollectionMatch(kind, sourceId) {
+  if (!isValidObjectId(sourceId)) {
+    throw createError("Premium source was not found", "PREMIUM_SOURCE_NOT_FOUND", 404);
+  }
+  if (kind === "product") {
+    const option = await MenuOption.exists({ _id: sourceId });
+    if (option) throw createError("Premium source type mismatch", "PREMIUM_SOURCE_TYPE_MISMATCH", 400);
+  }
+  if (kind === "option") {
+    const product = await MenuProduct.exists({ _id: sourceId });
+    if (product) throw createError("Premium source type mismatch", "PREMIUM_SOURCE_TYPE_MISMATCH", 400);
+  }
+}
+
+async function resolvePremiumSourceIdentity(data = {}) {
+  const kind = normalizeAdminKind(data);
+  const sourceType = ADMIN_KIND_TO_SOURCE_TYPE[kind];
+  const sourceId = data.sourceId;
+  await assertSourceCollectionMatch(kind, sourceId);
+
+  if (kind === "product") {
+    const product = await MenuProduct.findById(sourceId).lean();
+    if (!product) throw createError("Premium source was not found", "PREMIUM_SOURCE_NOT_FOUND", 404);
+    if (!isSelectableProduct(product)) {
+      throw createError("Premium source is not selectable", "PREMIUM_SOURCE_NOT_SELECTABLE", 400);
+    }
+    const premiumKey = sourceKeyFor(product);
+    if (!premiumKey) throw createError("Premium source has no key", "PREMIUM_SOURCE_NOT_SELECTABLE", 400);
+    return {
+      kind,
+      sourceType,
+      sourceId: product._id,
+      sourceProductId: product._id,
+      sourceGroupId: null,
+      sourceProductKey: product.key || null,
+      sourceGroupKey: null,
+      selectionType: SOURCE_TYPE_TO_SELECTION_TYPE[sourceType],
+      premiumKey,
+      sourceDoc: product,
+    };
+  }
+
+  const option = await MenuOption.findById(sourceId).lean();
+  if (!option) throw createError("Premium source was not found", "PREMIUM_SOURCE_NOT_FOUND", 404);
+  if (!isSelectableOption(option)) {
+    throw createError("Premium source is not selectable", "PREMIUM_SOURCE_NOT_SELECTABLE", 400);
+  }
+
+  const probeConfig = {
+    sourceType,
+    sourceId: option._id,
+    sourceProductId: data.sourceProductId || null,
+    sourceGroupId: data.sourceGroupId || option.groupId || null,
+  };
+  const relation = await resolveOptionRelationContext(probeConfig, option);
+  if (!relation.valid) {
+    throw createError("Premium source relation is invalid", "PREMIUM_SOURCE_RELATION_INVALID", 400);
+  }
+  const premiumKey = sourceKeyFor(option);
+  if (!premiumKey) throw createError("Premium source has no key", "PREMIUM_SOURCE_NOT_SELECTABLE", 400);
+  return {
+    kind,
+    sourceType,
+    sourceId: option._id,
+    sourceProductId: relation.product._id,
+    sourceGroupId: relation.group._id,
+    sourceProductKey: relation.product.key || null,
+    sourceGroupKey: relation.group.key || null,
+    selectionType: SOURCE_TYPE_TO_SELECTION_TYPE[sourceType],
+    premiumKey,
+    sourceDoc: option,
+  };
+}
+
+async function assertNoActiveConflicts(identity, { excludeId = null } = {}) {
+  const excludeFilter = excludeId ? { _id: { $ne: excludeId } } : {};
+  const sourceConflict = await PremiumUpgradeConfig.findOne({
+    ...excludeFilter,
+    status: "active",
+    sourceType: identity.sourceType,
+    sourceId: identity.sourceId,
+  }).lean();
+  if (sourceConflict) {
+    throw createError("Duplicate premium source", "PREMIUM_SOURCE_CONFLICT", 409);
+  }
+
+  const keyConflict = await PremiumUpgradeConfig.findOne({
+    ...excludeFilter,
+    status: "active",
+    premiumKey: identity.premiumKey,
+  }).lean();
+  if (keyConflict) {
+    throw createError("Duplicate premiumKey", "PREMIUM_KEY_CONFLICT", 409);
+  }
+}
+
+function normalizePremiumWriteFields(data = {}) {
+  const currency = data.currency ? String(data.currency).trim().toUpperCase() : SYSTEM_PREMIUM_CURRENCY;
+  if (currency !== SYSTEM_PREMIUM_CURRENCY) {
+    throw createError("Invalid premium currency", "PREMIUM_UPGRADE_INVALID_CURRENCY", 400);
+  }
+  const upgradeDeltaHalala = Number(data.upgradeDeltaHalala);
+  if (!Number.isSafeInteger(upgradeDeltaHalala) || upgradeDeltaHalala < 0) {
+    throw createError("Invalid upgrade delta halala", "PREMIUM_UPGRADE_INVALID_DELTA", 400);
+  }
+  return {
+    upgradeDeltaHalala,
+    currency,
+    isEnabled: data.isActive !== undefined ? data.isActive !== false : data.isEnabled !== false,
+    isVisible: data.isVisible !== false,
+    sortOrder: Number.isFinite(Number(data.sortOrder)) ? Number(data.sortOrder) : 0,
+  };
+}
+
 async function createConfig(data, adminId) {
-  const {
-    sourceType, sourceId, sourceProductId, sourceGroupId,
-    selectionType, displayGroupKey, upgradeDeltaHalala,
-    isEnabled, isVisible, sortOrder
-  } = data;
-
-  if (!["menu_option", "menu_product"].includes(sourceType)) {
-    throw createError("Invalid sourceType", "PREMIUM_UPGRADE_INVALID_SOURCE_ID");
-  }
-
-  if (typeof upgradeDeltaHalala !== 'number' || upgradeDeltaHalala < 0) {
-    throw createError("Invalid upgrade delta halala", "PREMIUM_UPGRADE_INVALID_DELTA");
-  }
-
-  if (!["premium_meal", "premium_large_salad"].includes(selectionType)) {
-    throw createError("Invalid selectionType", "PREMIUM_UPGRADE_INVALID_SOURCE_ID");
-  }
-  if (selectionType === "premium_large_salad" && sourceType !== "menu_product") {
-    throw createError("premium_large_salad must be backed by a menu product", "PREMIUM_UPGRADE_INVALID_RELATION");
-  }
-  if (selectionType === "premium_meal" && sourceType !== "menu_option") {
-    throw createError("premium_meal must be backed by a menu option", "PREMIUM_UPGRADE_INVALID_RELATION");
-  }
-
-  const sourceDoc = sourceType === "menu_product"
-    ? await MenuProduct.findById(sourceId)
-    : await MenuOption.findById(sourceId);
-  if (!sourceDoc) {
-    throw createError("Source not found", "PREMIUM_UPGRADE_SOURCE_NOT_FOUND");
-  }
-  const { candidates: eligibleCandidates } = await loadEligiblePremiumCandidates();
-  const eligibleCandidate = eligibleCandidates.find((candidate) => (
-    candidate.sourceType === sourceType
-    && String(candidate.sourceId) === String(sourceId)
-    && String(candidate.sourceProductId || "") === String(sourceProductId || (sourceType === "menu_product" ? sourceId : ""))
-    && String(candidate.sourceGroupId || "") === String(sourceGroupId || "")
-    && candidate.selectionType === selectionType
-  ));
-  if (!eligibleCandidate) {
-    throw createError("Source or relation is not eligible for subscription premium upgrades", "PREMIUM_UPGRADE_INVALID_RELATION");
-  }
-
-  // Derive premium key
-  const premiumKey = eligibleCandidate.premiumKey;
-  if (!premiumKey) {
-    throw createError("Source has no key", "PREMIUM_UPGRADE_SOURCE_NOT_ELIGIBLE");
-  }
-
-  // Check unique key
-  const existingKey = await PremiumUpgradeConfig.findOne({ premiumKey });
-  if (existingKey) {
-    throw createError("Duplicate premiumKey", "PREMIUM_UPGRADE_KEY_CONFLICT", 409);
-  }
-
-  // Check unique source relation
-  const existingRelation = await PremiumUpgradeConfig.findOne({ sourceType, sourceId, sourceProductId: sourceProductId || null });
-  if (existingRelation) {
-    throw createError("Duplicate source relation", "PREMIUM_UPGRADE_DUPLICATE", 409);
-  }
+  const identity = await resolvePremiumSourceIdentity(data);
+  const writeFields = normalizePremiumWriteFields(data);
+  await assertNoActiveConflicts(identity);
 
   const config = new PremiumUpgradeConfig({
-    sourceType,
-    sourceId,
-    sourceProductId: sourceProductId || null,
-    sourceGroupId: sourceGroupId || null,
-    selectionType,
-    premiumKey,
-    displayGroupKey: displayGroupKey || "premium",
-    upgradeDeltaHalala,
-    isEnabled: isEnabled !== false,
-    isVisible: isVisible !== false,
-    sortOrder: sortOrder || 0,
+    sourceType: identity.sourceType,
+    sourceId: identity.sourceId,
+    sourceProductId: identity.sourceProductId || null,
+    sourceGroupId: identity.sourceGroupId || null,
+    selectionType: identity.selectionType,
+    premiumKey: identity.premiumKey,
+    displayGroupKey: "premium",
+    upgradeDeltaHalala: writeFields.upgradeDeltaHalala,
+    currency: writeFields.currency,
+    isEnabled: writeFields.isEnabled,
+    isVisible: writeFields.isVisible,
+    sortOrder: writeFields.sortOrder,
     sourceSnapshot: {
-      key: sourceDoc.key,
-      name: sourceDoc.name,
+      key: identity.sourceDoc.key,
+      name: identity.sourceDoc.name,
       context: {
-        productKey: eligibleCandidate.sourceProductKey,
-        groupKey: eligibleCandidate.sourceGroupKey,
+        productKey: identity.sourceProductKey,
+        groupKey: identity.sourceGroupKey,
       }
     }
   });
 
   await config.save();
-  return mapConfigToDTO(config, sourceDoc);
+  return mapConfigToDetailDTO(config, identity.sourceDoc);
 }
 
 /**
  * Update safe fields
  */
 async function updateConfig(id, data, adminId) {
-  const { expectedRevision, upgradeDeltaHalala, displayGroupKey, sortOrder, metadata } = data;
+  const { expectedRevision, upgradeDeltaHalala, sortOrder, metadata, isActive, isEnabled, isVisible, currency } = data;
   const immutableField = IMMUTABLE_PATCH_FIELDS.find((field) => Object.prototype.hasOwnProperty.call(data || {}, field));
   if (immutableField) {
     throw createError(`${immutableField} cannot be changed`, "PREMIUM_UPGRADE_IMMUTABLE_FIELD", 400);
@@ -706,7 +1137,7 @@ async function updateConfig(id, data, adminId) {
   const config = await PremiumUpgradeConfig.findById(id);
   if (!config) throw createError("Config not found", "NOT_FOUND", 404);
 
-  if (config.revision !== expectedRevision) {
+  if (expectedRevision !== undefined && config.revision !== expectedRevision) {
     throw createError("Revision conflict", "PREMIUM_UPGRADE_REVISION_CONFLICT", 409);
   }
 
@@ -714,22 +1145,75 @@ async function updateConfig(id, data, adminId) {
     throw createError("Cannot update archived config", "PREMIUM_UPGRADE_ARCHIVED", 400);
   }
 
-  if (upgradeDeltaHalala !== undefined) {
-    if (typeof upgradeDeltaHalala !== 'number' || upgradeDeltaHalala < 0) {
-      throw createError("Invalid upgrade delta halala", "PREMIUM_UPGRADE_INVALID_DELTA");
-    }
-    config.upgradeDeltaHalala = upgradeDeltaHalala;
+  const isRelink = Object.prototype.hasOwnProperty.call(data || {}, "kind")
+    || Object.prototype.hasOwnProperty.call(data || {}, "sourceId")
+    || Object.prototype.hasOwnProperty.call(data || {}, "sourceType");
+  let relinkSourceDoc = null;
+  if (isRelink) {
+    const identity = await resolvePremiumSourceIdentity({
+      ...data,
+      kind: data.kind || SOURCE_TYPE_TO_ADMIN_KIND[config.sourceType],
+      sourceId: data.sourceId || config.sourceId,
+    });
+    await assertNoActiveConflicts(identity, { excludeId: config._id });
+    const previousSources = Array.isArray(config.metadata?.previousSources)
+      ? config.metadata.previousSources
+      : [];
+    config.metadata = {
+      ...(config.metadata || {}),
+      previousSources: previousSources.concat({
+        sourceType: config.sourceType,
+        sourceId: config.sourceId ? String(config.sourceId) : null,
+        sourceProductId: config.sourceProductId ? String(config.sourceProductId) : null,
+        sourceGroupId: config.sourceGroupId ? String(config.sourceGroupId) : null,
+        premiumKey: config.premiumKey,
+        revision: config.revision,
+        snapshot: config.sourceSnapshot || {},
+        changedAt: new Date(),
+        changedBy: adminId ? String(adminId) : null,
+      }),
+    };
+    config.sourceType = identity.sourceType;
+    config.sourceId = identity.sourceId;
+    config.sourceProductId = identity.sourceProductId || null;
+    config.sourceGroupId = identity.sourceGroupId || null;
+    config.selectionType = identity.selectionType;
+    config.premiumKey = identity.premiumKey;
+    config.displayGroupKey = "premium";
+    config.sourceSnapshot = {
+      key: identity.sourceDoc.key,
+      name: identity.sourceDoc.name,
+      context: {
+        productKey: identity.sourceProductKey,
+        groupKey: identity.sourceGroupKey,
+      },
+    };
+    relinkSourceDoc = identity.sourceDoc;
   }
+
+  if (upgradeDeltaHalala !== undefined) {
+    const amount = Number(upgradeDeltaHalala);
+    if (!Number.isSafeInteger(amount) || amount < 0) {
+      throw createError("Invalid upgrade delta halala", "PREMIUM_UPGRADE_INVALID_DELTA", 400);
+    }
+    config.upgradeDeltaHalala = amount;
+  }
+  if (currency !== undefined && String(currency).trim().toUpperCase() !== SYSTEM_PREMIUM_CURRENCY) {
+    throw createError("Invalid premium currency", "PREMIUM_UPGRADE_INVALID_CURRENCY", 400);
+  }
+  if (currency !== undefined) config.currency = SYSTEM_PREMIUM_CURRENCY;
   
-  if (displayGroupKey !== undefined) config.displayGroupKey = displayGroupKey;
   if (sortOrder !== undefined) config.sortOrder = sortOrder;
-  if (metadata !== undefined) config.metadata = metadata;
+  if (metadata !== undefined) config.metadata = { ...(config.metadata || {}), ...metadata };
+  if (isActive !== undefined) config.isEnabled = isActive !== false;
+  if (isEnabled !== undefined) config.isEnabled = isEnabled !== false;
+  if (isVisible !== undefined) config.isVisible = isVisible !== false;
 
   config.revision += 1;
   await config.save();
   
-  const sourceMap = await fetchSourcesForConfigs([config]);
-  return mapConfigToDTO(config, sourceMap.get(`${config.sourceType}_${config.sourceId}`));
+  const sourceMap = relinkSourceDoc ? null : await fetchSourcesForConfigs([config]);
+  return mapConfigToDetailDTO(config, relinkSourceDoc || sourceMap.get(`${config.sourceType}_${config.sourceId}`));
 }
 
 /**
@@ -741,7 +1225,7 @@ async function updateConfigState(id, data, adminId) {
   const config = await PremiumUpgradeConfig.findById(id);
   if (!config) throw createError("Config not found", "NOT_FOUND", 404);
 
-  if (config.revision !== expectedRevision) {
+  if (expectedRevision !== undefined && config.revision !== expectedRevision) {
     throw createError("Revision conflict", "PREMIUM_UPGRADE_REVISION_CONFLICT", 409);
   }
 
@@ -763,7 +1247,7 @@ async function updateConfigState(id, data, adminId) {
   await config.save();
   
   const sourceMap = await fetchSourcesForConfigs([config]);
-  return mapConfigToDTO(config, sourceMap.get(`${config.sourceType}_${config.sourceId}`));
+  return mapConfigToDetailDTO(config, sourceMap.get(`${config.sourceType}_${config.sourceId}`));
 }
 
 /**
@@ -775,7 +1259,7 @@ async function archiveConfig(id, data, adminId) {
   const config = await PremiumUpgradeConfig.findById(id);
   if (!config) throw createError("Config not found", "NOT_FOUND", 404);
 
-  if (config.revision !== expectedRevision) {
+  if (expectedRevision !== undefined && config.revision !== expectedRevision) {
     throw createError("Revision conflict", "PREMIUM_UPGRADE_REVISION_CONFLICT", 409);
   }
 
@@ -788,7 +1272,7 @@ async function archiveConfig(id, data, adminId) {
   await config.save();
   
   const sourceMap = await fetchSourcesForConfigs([config]);
-  return mapConfigToDTO(config, sourceMap.get(`${config.sourceType}_${config.sourceId}`));
+  return mapConfigToDetailDTO(config, sourceMap.get(`${config.sourceType}_${config.sourceId}`));
 }
 
 /**
@@ -919,6 +1403,8 @@ module.exports = {
   resolveSubscriptionPremiumUpgradePricing,
   loadClientPremiumUpgradeConfigState,
   getConfigs,
+  getSources,
+  getConfigDetail,
   getCandidates,
   getReadiness,
   createConfig,

@@ -23,6 +23,34 @@ async function getConfigs(req, res, next) {
 }
 
 /**
+ * @route GET /api/dashboard/premium-upgrades/sources
+ * @description Get selectable premium source records
+ * @access Admin/Superadmin
+ */
+async function getSources(req, res, next) {
+  try {
+    const result = await premiumUpgradeConfigService.getSources(req.query);
+    res.json(result);
+  } catch (error) {
+    return handlePremiumUpgradeError(res, error, next);
+  }
+}
+
+/**
+ * @route GET /api/dashboard/premium-upgrades/:id
+ * @description Get premium upgrade diagnostics
+ * @access Admin/Superadmin
+ */
+async function getConfigDetail(req, res, next) {
+  try {
+    const result = await premiumUpgradeConfigService.getConfigDetail(req.params.id);
+    res.json({ data: result, status: true });
+  } catch (error) {
+    return handlePremiumUpgradeError(res, error, next);
+  }
+}
+
+/**
  * @route GET /api/dashboard/premium-upgrades/candidates
  * @description Get eligible candidates for premium upgrades
  * @access Admin/Superadmin
@@ -112,6 +140,8 @@ async function archiveConfig(req, res, next) {
 
 module.exports = {
   getConfigs,
+  getSources,
+  getConfigDetail,
   getCandidates,
   getReadiness,
   createConfig,
