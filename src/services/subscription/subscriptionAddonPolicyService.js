@@ -147,10 +147,12 @@ function toNonNegativeInteger(value, fallback = 0) {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
-function resolveAddonBalanceCapacity(bucket) {
-  if (!bucket) return 0;
+function resolveAddonBalanceCapacity(bucket, entitlement = null) {
+  if (!bucket && !entitlement) return 0;
   const purchasedQty = toNonNegativeInteger(rawValue(bucket, "purchasedQty"), 0);
-  const includedTotalQty = toNonNegativeInteger(rawValue(bucket, "includedTotalQty"), 0);
+  const bucketIncludedTotalQty = toNonNegativeInteger(rawValue(bucket, "includedTotalQty"), 0);
+  const entitlementIncludedTotalQty = toNonNegativeInteger(entitlement && entitlement.includedTotalQty, 0);
+  const includedTotalQty = Math.max(bucketIncludedTotalQty, entitlementIncludedTotalQty);
   const extraPurchasedQty = toNonNegativeInteger(rawValue(bucket, "extraPurchasedQty"), 0);
   return Math.max(purchasedQty, includedTotalQty + extraPurchasedQty, includedTotalQty);
 }
@@ -159,24 +161,28 @@ function hasPositivePurchasedAddonUnits(bucket) {
   return hasOwnValue(bucket, "purchasedQty") && toNonNegativeInteger(rawValue(bucket, "purchasedQty"), 0) > 0;
 }
 
-function isRecoverableUninitializedAddonBalanceBucket(bucket) {
+function hasPositiveEntitlementUnits(entitlement) {
+  return toNonNegativeInteger(entitlement && entitlement.includedTotalQty, 0) > 0;
+}
+
+function isRecoverableUninitializedAddonBalanceBucket(bucket, { entitlement = null } = {}) {
   if (!bucket) return false;
   if (!hasOwnValue(bucket, "remainingQty")) return false;
   const rawRemainingQty = Number(rawValue(bucket, "remainingQty") || 0);
   if (!Number.isFinite(rawRemainingQty) || rawRemainingQty !== 0) return false;
-  if (!hasPositivePurchasedAddonUnits(bucket)) return false;
-  if (resolveAddonBalanceCapacity(bucket) <= 0) return false;
+  if (!hasPositivePurchasedAddonUnits(bucket) && !hasPositiveEntitlementUnits(entitlement)) return false;
+  if (resolveAddonBalanceCapacity(bucket, entitlement) <= 0) return false;
   return toNonNegativeInteger(rawValue(bucket, "consumedQty"), 0) === 0
     && toNonNegativeInteger(rawValue(bucket, "reservedQty"), 0) === 0
     && toNonNegativeInteger(rawValue(bucket, "overageConsumedQty"), 0) === 0;
 }
 
-function resolveAddonBalanceRemainingQty(bucket) {
+function resolveAddonBalanceRemainingQty(bucket, { entitlement = null } = {}) {
   if (!bucket) return 0;
   const rawRemainingQty = Math.floor(Number(rawValue(bucket, "remainingQty")));
   if (Number.isFinite(rawRemainingQty) && rawRemainingQty > 0) return rawRemainingQty;
-  if (isRecoverableUninitializedAddonBalanceBucket(bucket)) {
-    return resolveAddonBalanceCapacity(bucket);
+  if (isRecoverableUninitializedAddonBalanceBucket(bucket, { entitlement })) {
+    return resolveAddonBalanceCapacity(bucket, entitlement);
   }
   return 0;
 }
@@ -201,12 +207,14 @@ function selectAddonEntitlementForProduct(subscription, {
   if (!addonPlanId && matches.length > 1) return null;
 
   if (preferPositiveRemaining) {
-    const positive = matches.find(({ entry }) => Boolean(findAddonBalanceBucket(subscription, {
-      addonPlanId: entry && (entry.addonPlanId || entry.addonId),
-      addonId: entry && (entry.addonId || entry.addonPlanId),
-      category: entry && entry.category,
-      requirePositiveRemaining: true,
-    })));
+    const positive = matches.find(({ entry }) => {
+      const bucket = findAddonBalanceBucket(subscription, {
+        addonPlanId: entry && (entry.addonPlanId || entry.addonId),
+        addonId: entry && (entry.addonId || entry.addonPlanId),
+        category: entry && entry.category,
+      });
+      return resolveAddonBalanceRemainingQty(bucket, { entitlement: entry }) > 0;
+    });
     if (positive) return positive.entry;
   }
   return matches[0].entry;
@@ -292,7 +300,7 @@ function buildSimulatedAddonRemainingByEntitlement(subscription, day = {}) {
       addonId: entitlement.addonId || entitlement.addonPlanId,
       category: entitlement.category,
     });
-    simulatedRemaining.set(key, resolveAddonBalanceRemainingQty(bucket));
+    simulatedRemaining.set(key, resolveAddonBalanceRemainingQty(bucket, { entitlement }));
   });
 
   for (const selection of existingSelections) {
