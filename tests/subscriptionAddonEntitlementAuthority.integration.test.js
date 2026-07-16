@@ -197,6 +197,41 @@ async function createSubscriptionFixture({
   return { subscription, dates, token: issueAppAccessToken(user) };
 }
 
+async function replaceEntitlementWithMissingSnapshotProduct(subscriptionId, missingProductId, existingProductId) {
+  await Subscription.collection.updateOne(
+    { _id: subscriptionId },
+    {
+      $set: {
+        "addonSubscriptions.0.menuProductIds": [missingProductId, existingProductId],
+      },
+      $unset: {
+        "addonSubscriptions.0.menuProductsSnapshot": "",
+      },
+    }
+  );
+}
+
+function assertMissingOwnedPlaceholder(row, { total, remaining, unitPriceHalala, covered }, label) {
+  assertCoverageFields(row, label);
+  assert.strictEqual(row.name, "Unavailable add-on", `${label}: name`);
+  assert.strictEqual(row.nameAr, "إضافة غير متاحة", `${label}: Arabic name`);
+  assert.strictEqual(row.snapshotMissing, true, `${label}: snapshotMissing`);
+  assert.strictEqual(row.liveCatalogMissing, true, `${label}: liveCatalogMissing`);
+  assert.strictEqual(row.ownedSnapshot, false, `${label}: ownedSnapshot`);
+  assert.strictEqual(row.available, false, `${label}: available`);
+  assert.strictEqual(row.active, false, `${label}: active`);
+  assert.strictEqual(row.availableForNewSale, false, `${label}: availableForNewSale`);
+  assert.strictEqual(row.isEligibleForAllowance, true, `${label}: eligible`);
+  assert.strictEqual(row.includedTotalQty, total, `${label}: included total`);
+  assert.strictEqual(row.remainingQty, remaining, `${label}: remaining`);
+  assert.strictEqual(row.coveredQty, covered ? 1 : 0, `${label}: covered`);
+  assert.strictEqual(row.paidQty, covered ? 0 : 1, `${label}: paid`);
+  assert.strictEqual(row.unitPriceHalala, unitPriceHalala, `${label}: unit price`);
+  assert.strictEqual(row.payableTotalHalala, covered ? 0 : unitPriceHalala, `${label}: payable`);
+  assert.strictEqual(row.pricingMode, covered ? "allowance_covered" : "paid_overage", `${label}: pricing mode`);
+  assert.notStrictEqual(row.pricingMode, "paid_no_entitlement", `${label}: never a non-entitled extra`);
+}
+
 async function main() {
   const mongo = await MongoMemoryReplSet.create({ replSet: { count: 1, storageEngine: "wiredTiger" } });
   await mongoose.connect(mongo.getUri(`addon_entitlement_authority_${Date.now()}`));
@@ -498,6 +533,153 @@ async function main() {
     assert.strictEqual(res.status, 200, JSON.stringify(res.body));
     assert.strictEqual(res.body.data.paymentRequirement.requiresPayment, true);
     assert.strictEqual(res.body.data.paymentRequirement.addonPendingPaymentCount, 1);
+
+    const historicalMissingProductId = new mongoose.Types.ObjectId();
+    const historicalUser = await createUser("Historical missing snapshot user");
+    const historical = await createSubscriptionFixture({
+      user: historicalUser,
+      plan,
+      addonPlan,
+      products,
+      includedTotalQty: 7,
+      startOffset: 12,
+    });
+    await replaceEntitlementWithMissingSnapshotProduct(
+      historical.subscription._id,
+      historicalMissingProductId,
+      products[0]._id
+    );
+    const historicalAuth = { Authorization: `Bearer ${historical.token}`, "Accept-Language": "en" };
+
+    res = await api.get("/api/subscriptions/addon-choices").set(historicalAuth);
+    assert.strictEqual(res.status, 200, JSON.stringify(res.body));
+    const historicalChoices = res.body.data.juice.choices;
+    const missingCoveredChoice = historicalChoices.find((row) => String(row.id) === String(historicalMissingProductId));
+    const historicalExistingChoice = historicalChoices.find((row) => String(row.id) === String(products[0]._id));
+    const historicalUnrelatedChoice = historicalChoices.find((row) => String(row.id) === String(products[4]._id));
+    assertMissingOwnedPlaceholder(
+      missingCoveredChoice,
+      { total: 7, remaining: 7, unitPriceHalala: 1000, covered: true },
+      "GET missing owned placeholder"
+    );
+    assertIncluded(historicalExistingChoice, 7, 7, "GET historical existing product");
+    assertPaidNoEntitlement(historicalUnrelatedChoice, products[4].priceHalala, "GET historical unrelated product");
+
+    res = await api.get("/api/subscriptions/meal-planner-menu?lang=en").set(historicalAuth);
+    assert.strictEqual(res.status, 200, JSON.stringify(res.body));
+    const plannerMissing = res.body.data.addonCatalog.items
+      .find((row) => String(row.id) === String(historicalMissingProductId));
+    assertMissingOwnedPlaceholder(
+      plannerMissing,
+      { total: 7, remaining: 7, unitPriceHalala: 1000, covered: true },
+      "meal planner missing owned placeholder"
+    );
+
+    const historicalMissingPayload = selectionBody({
+      protein,
+      carb,
+      addonIds: [historicalMissingProductId],
+    });
+    res = await api
+      .post(`/api/subscriptions/${historical.subscription._id}/days/${historical.dates[0]}/selection/validate`)
+      .set(historicalAuth)
+      .send(historicalMissingPayload);
+    assert.strictEqual(res.status, 200, JSON.stringify(res.body));
+    assert.strictEqual(res.body.data.addonSelections[0].source, "subscription");
+    assert.strictEqual(res.body.data.addonSelections[0].snapshotMissing, true);
+    assert.strictEqual(res.body.data.addonSelections[0].coveredQty, 1);
+    assert.strictEqual(res.body.data.addonSelections[0].paidQty, 0);
+    assert.strictEqual(res.body.data.addonSelections[0].pricingMode, "allowance_covered");
+    assert.strictEqual(res.body.data.paymentRequirement.requiresPayment, false);
+
+    res = await api
+      .put(`/api/subscriptions/${historical.subscription._id}/days/${historical.dates[0]}/selection`)
+      .set(historicalAuth)
+      .send(historicalMissingPayload);
+    assert.strictEqual(res.status, 200, JSON.stringify(res.body));
+    assert.strictEqual(res.body.data.addonSelections[0].source, "subscription");
+    assert.strictEqual(res.body.data.addonSelections[0].snapshotMissing, true);
+    assert.strictEqual(res.body.data.addonSelections[0].coveredQty, 1);
+    assert.strictEqual(res.body.data.addonSelections[0].paidQty, 0);
+    assert.strictEqual(res.body.data.paymentRequirement.requiresPayment, false);
+
+    const exhaustedMissingProductId = new mongoose.Types.ObjectId();
+    const exhaustedMissingUser = await createUser("Exhausted missing snapshot user");
+    const exhaustedMissing = await createSubscriptionFixture({
+      user: exhaustedMissingUser,
+      plan,
+      addonPlan,
+      products,
+      includedTotalQty: 7,
+      purchasedQty: 7,
+      remainingQty: 0,
+      consumedQty: 7,
+      startOffset: 14,
+    });
+    await replaceEntitlementWithMissingSnapshotProduct(
+      exhaustedMissing.subscription._id,
+      exhaustedMissingProductId,
+      products[0]._id
+    );
+    const exhaustedMissingAuth = { Authorization: `Bearer ${exhaustedMissing.token}`, "Accept-Language": "en" };
+    res = await api.get("/api/subscriptions/addon-choices").set(exhaustedMissingAuth);
+    assert.strictEqual(res.status, 200, JSON.stringify(res.body));
+    const missingOverageChoice = res.body.data.juice.choices
+      .find((row) => String(row.id) === String(exhaustedMissingProductId));
+    assertMissingOwnedPlaceholder(
+      missingOverageChoice,
+      { total: 7, remaining: 0, unitPriceHalala: 1000, covered: false },
+      "exhausted missing owned placeholder"
+    );
+    res = await api
+      .post(`/api/subscriptions/${exhaustedMissing.subscription._id}/days/${exhaustedMissing.dates[0]}/selection/validate`)
+      .set(exhaustedMissingAuth)
+      .send(selectionBody({ protein, carb, addonIds: [exhaustedMissingProductId] }));
+    assert.strictEqual(res.status, 200, JSON.stringify(res.body));
+    assert.strictEqual(res.body.data.addonSelections[0].isEligibleForAllowance, true);
+    assert.strictEqual(res.body.data.addonSelections[0].pricingMode, "paid_overage");
+    assert.notStrictEqual(res.body.data.addonSelections[0].pricingMode, "paid_no_entitlement");
+
+    const recoveredMissingProductId = new mongoose.Types.ObjectId();
+    const recoveredMissingUser = await createUser("Recovered missing snapshot balance user");
+    const recoveredMissing = await createSubscriptionFixture({
+      user: recoveredMissingUser,
+      plan,
+      addonPlan,
+      products,
+      includedTotalQty: 7,
+      balanceIncludedTotalQty: 0,
+      purchasedQty: 0,
+      remainingQty: 0,
+      consumedQty: 0,
+      startOffset: 16,
+    });
+    await replaceEntitlementWithMissingSnapshotProduct(
+      recoveredMissing.subscription._id,
+      recoveredMissingProductId,
+      products[0]._id
+    );
+    const recoveredMissingAuth = { Authorization: `Bearer ${recoveredMissing.token}`, "Accept-Language": "en" };
+    res = await api.get("/api/subscriptions/addon-choices").set(recoveredMissingAuth);
+    assert.strictEqual(res.status, 200, JSON.stringify(res.body));
+    const recoveredMissingChoice = res.body.data.juice.choices
+      .find((row) => String(row.id) === String(recoveredMissingProductId));
+    assertMissingOwnedPlaceholder(
+      recoveredMissingChoice,
+      { total: 7, remaining: 7, unitPriceHalala: 1000, covered: true },
+      "recovered balance missing owned placeholder"
+    );
+    res = await api
+      .put(`/api/subscriptions/${recoveredMissing.subscription._id}/days/${recoveredMissing.dates[0]}/selection`)
+      .set(recoveredMissingAuth)
+      .send(selectionBody({ protein, carb, addonIds: [recoveredMissingProductId] }));
+    assert.strictEqual(res.status, 200, JSON.stringify(res.body));
+    assert.strictEqual(res.body.data.addonSelections[0].source, "subscription");
+    assert.strictEqual(res.body.data.addonSelections[0].pricingMode, "allowance_covered");
+    assert.strictEqual(res.body.data.paymentRequirement.requiresPayment, false);
+    const repairedRecoveredMissing = await Subscription.findById(recoveredMissing.subscription._id).lean();
+    assert.strictEqual(repairedRecoveredMissing.addonBalance[0].remainingQty, 6);
+    assert.strictEqual(repairedRecoveredMissing.addonBalance[0].consumedQty, 1);
 
     console.log("subscription add-on entitlement authority integration test passed");
   } finally {

@@ -141,6 +141,9 @@ function serializeChoice(product, categoryKey, lang) {
     type: "menu_product",
     available: product.isAvailable !== false,
     active: product.isActive !== false,
+    availableForNewSale: product.availableForNewSale !== false,
+    snapshotMissing: product._snapshotMissing === true,
+    liveCatalogMissing: product._liveCatalogMissing === true,
     ui: normalizeProductUiMetadata(product.ui),
   };
 }
@@ -410,7 +413,7 @@ async function buildSubscriptionAddonChoicesCatalog({
     const { rowsById: categoriesById, fallbackCategory } = await loadOwnedCategoryRowsForProducts(productsList, entitlementCategory, { MenuCategoryModel: models.MenuCategoryModel });
     const metadata = buildEntitlementMetadata(subscription, entitlement, index);
     const groupedChoices = new Map();
-    for (const { product, fromSnapshot } of loadedProducts) {
+    for (const { product, fromSnapshot, snapshotMissing, liveCatalogMissing } of loadedProducts) {
       if (!product) continue;
       const sourceCategory = categoriesById.get(String(product.categoryId)) || fallbackCategory;
       if (!sourceCategory) continue;
@@ -424,6 +427,11 @@ async function buildSubscriptionAddonChoicesCatalog({
         category: displayCategory,
         entitlementCategory,
         availableForNewSale: false,
+        available: product.isAvailable !== false,
+        active: product.isActive !== false,
+        ownedSnapshot: fromSnapshot === true,
+        snapshotMissing: snapshotMissing === true,
+        liveCatalogMissing: liveCatalogMissing === true,
         currency: serialized.currency,
       };
       const list = groupedChoices.get(displayCategory) || [];
@@ -616,6 +624,14 @@ async function buildAddonChoicesCatalog({
     const merged = overlayEntitlementMetadata(data, entitlementData);
     for (const [groupCategory, group] of Object.entries(merged)) {
       for (const choice of group.choices || []) {
+        const availabilityMetadata = {
+          ownedSnapshot: choice.ownedSnapshot === true,
+          snapshotMissing: choice.snapshotMissing === true,
+          liveCatalogMissing: choice.liveCatalogMissing === true,
+          available: choice.available !== false,
+          active: choice.active !== false,
+          availableForNewSale: choice.availableForNewSale !== false,
+        };
         const authoritative = buildGenericChoicePricingMetadata({
           _id: choice.id,
           priceHalala: choice.priceHalala,
@@ -623,6 +639,7 @@ async function buildAddonChoicesCatalog({
           maxPerDay: choice.maxPerDay,
         }, subscription, groupCategory);
         Object.assign(choice, authoritative);
+        Object.assign(choice, availabilityMetadata);
       }
     }
     return filterCatalogToRequestedCategory(merged, category);
@@ -672,11 +689,22 @@ async function resolveAddonChoiceProductById(productId, {
         MenuProductModel: models.MenuProductModel || MenuProduct,
       });
       if (results.length > 0 && results[0].product) {
+        const resolvedProduct = results[0].snapshotMissing === true
+          ? {
+            ...results[0].product,
+            priceHalala: Number.isInteger(Number(owned.unitPriceHalala))
+              ? Math.max(0, Number(owned.unitPriceHalala))
+              : Number(results[0].product.priceHalala || 0),
+            currency: owned.currency || results[0].product.currency || SYSTEM_CURRENCY,
+          }
+          : results[0].product;
         return {
-          product: results[0].product,
+          product: resolvedProduct,
           category: syntheticCategoryFromKey(owned.category),
           addonCategory: owned.category,
           fromOwnedSnapshot: results[0].fromSnapshot,
+          snapshotMissing: results[0].snapshotMissing === true,
+          liveCatalogMissing: results[0].liveCatalogMissing === true,
           ownedResolution: owned,
         };
       }

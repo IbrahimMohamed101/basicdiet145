@@ -8,6 +8,9 @@ const {
   normalizeSubscriptionAddonCategory,
   resolveAddonCategoryForMenuProduct,
 } = require("../src/services/subscription/subscriptionAddonPolicyService");
+const {
+  loadOwnedSnapshotProducts,
+} = require("../src/services/subscription/subscriptionOwnedAddonSnapshotService");
 
 function objectId(index) {
   return Number(index).toString(16).padStart(24, "0");
@@ -80,7 +83,7 @@ function subscriptionFixture() {
   };
 }
 
-function run() {
+async function run() {
   const subscription = subscriptionFixture();
 
   assert.strictEqual(normalizeSubscriptionAddonCategory("meal"), "meal");
@@ -139,7 +142,28 @@ function run() {
   });
   assert.strictEqual(JSON.stringify(subscription.addonBalance), before);
 
+  const missing = await loadOwnedSnapshotProducts(
+    [MEAL_PRODUCT_ID],
+    subscription.addonSubscriptions[0],
+    {
+      MenuProductModel: {
+        find() {
+          return { lean: async () => [] };
+        },
+      },
+    }
+  );
+  assert.strictEqual(missing.length, 1);
+  assert.strictEqual(String(missing[0].product._id), MEAL_PRODUCT_ID);
+  assert.strictEqual(missing[0].snapshotMissing, true);
+  assert.strictEqual(missing[0].liveCatalogMissing, true);
+  assert.strictEqual(missing[0].product.isActive, false);
+  assert.strictEqual(missing[0].product.name.en, "Unavailable add-on");
+
   console.log("owned add-on entitlement snapshot tests passed");
 }
 
-run();
+run().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

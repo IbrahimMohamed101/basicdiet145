@@ -18,7 +18,6 @@ const {
 const {
   buildMenuProductsSnapshot,
   ERROR_CODE_BALANCE_BUCKET_MISMATCH,
-  ERROR_CODE_SNAPSHOT_MISSING,
   resolveOwnedAddonEntitlementChoice,
 } = require("../src/services/subscription/subscriptionOwnedAddonSnapshotService");
 const {
@@ -241,14 +240,19 @@ async function run() {
     assert.strictEqual(generic, null);
   });
 
-  await step("missing snapshot plus missing live product fails with explicit integrity error", async () => {
+  await step("missing snapshot plus missing live product returns an unavailable owned placeholder", async () => {
     const product = await createProduct(fixture.categories.meal, "deleted_owned_meal", "meal", 2300);
     const sub = await createSubscription({ product, snapshot: undefined, planId: oid() });
     await MenuProduct.deleteOne({ _id: product._id });
-    await assert.rejects(
-      () => buildSubscriptionAddonChoicesCatalog({ subscriptionId: sub._id }),
-      (err) => err && err.code === ERROR_CODE_SNAPSHOT_MISSING
-    );
+    const catalog = await buildSubscriptionAddonChoicesCatalog({ subscriptionId: sub._id });
+    const placeholder = catalog.meal.choices.find((choice) => choice.id === String(product._id));
+    assert(placeholder);
+    assert.strictEqual(placeholder.snapshotMissing, true);
+    assert.strictEqual(placeholder.liveCatalogMissing, true);
+    assert.strictEqual(placeholder.available, false);
+    assert.strictEqual(placeholder.active, false);
+    assert.strictEqual(placeholder.isEligibleForAllowance, true);
+    assert.notStrictEqual(placeholder.pricingMode, "paid_no_entitlement");
   });
 
   await step("historical menuProductIds without snapshot can use archived live product", async () => {
@@ -518,16 +522,14 @@ async function run() {
     assert.strictEqual(String(resolved.addonPlanId), String(fixture.planIds.mealDuplicate));
   });
 
-  await step("same product across plans is ambiguous without a plan id", async () => {
+  await step("same product across plans deterministically uses the first positive entitlement without a plan id", async () => {
     const sub = await Subscription.findOne({ "addonSubscriptions.addonPlanId": fixture.planIds.mealDuplicate }).lean();
-    await assert.rejects(
-      () => resolveOwnedAddonEntitlementChoice({
-        subscription: sub,
-        productId: fixture.products.meal._id,
-        category: "meal",
-      }),
-      (err) => err && err.code === "ENTITLEMENT_AMBIGUOUS"
-    );
+    const resolved = await resolveOwnedAddonEntitlementChoice({
+      subscription: sub,
+      productId: fixture.products.meal._id,
+      category: "meal",
+    });
+    assert.strictEqual(String(resolved.addonPlanId), String(fixture.planIds.meal));
   });
 
   await step("meal release does not alter snack or juice buckets", async () => {
@@ -618,17 +620,16 @@ async function run() {
     assert.strictEqual(result.reason, "bucket_not_found");
   });
 
-  await step("entitlement category mismatch fails closed", async () => {
+  await step("exact product and plan identity outrank a stale category label", async () => {
     const sub = await createSubscription({ planId: oid() });
-    await assert.rejects(
-      () => resolveOwnedAddonEntitlementChoice({
-        subscription: sub.toObject(),
-        productId: fixture.products.meal._id,
-        addonPlanId: bucketOf(sub).addonPlanId,
-        category: "snack",
-      }),
-      (err) => err && err.code === "ENTITLEMENT_CATEGORY_MISMATCH"
-    );
+    const resolved = await resolveOwnedAddonEntitlementChoice({
+      subscription: sub.toObject(),
+      productId: fixture.products.meal._id,
+      addonPlanId: bucketOf(sub).addonPlanId,
+      category: "snack",
+    });
+    assert.strictEqual(String(resolved.productId), String(fixture.products.meal._id));
+    assert.strictEqual(resolved.category, "meal");
   });
 
   await step("snapshot display payload includes the mobile/dashboard contract fields", async () => {

@@ -151,6 +151,42 @@ function materializeProductFromSnapshot(snapshot) {
   };
 }
 
+function materializeUnavailableOwnedProduct(productId, entitlement) {
+  const entitlementCategory = normalizeSubscriptionAddonCategory(
+    entitlement && entitlement.category,
+    { allowEmpty: true }
+  ) || String(entitlement && entitlement.category || "legacy");
+  const unitPriceHalala = Number(
+    entitlement && (
+      entitlement.unitPriceHalala
+      ?? entitlement.unitPlanPriceHalala
+      ?? entitlement.priceHalala
+    ) || 0
+  );
+  return {
+    _id: productId,
+    key: "",
+    name: { en: "Unavailable add-on", ar: "إضافة غير متاحة" },
+    nameI18n: { en: "Unavailable add-on", ar: "إضافة غير متاحة" },
+    description: "",
+    descriptionI18n: { en: "", ar: "" },
+    imageUrl: "",
+    categoryId: null,
+    category: entitlementCategory,
+    categoryKey: entitlementCategory,
+    itemType: entitlementCategory,
+    priceHalala: Number.isInteger(unitPriceHalala) && unitPriceHalala >= 0 ? unitPriceHalala : 0,
+    currency: entitlement && entitlement.currency || "SAR",
+    isActive: false,
+    isAvailable: false,
+    isVisible: false,
+    availableForNewSale: false,
+    _isOwnedSnapshot: false,
+    _snapshotMissing: true,
+    _liveCatalogMissing: true,
+  };
+}
+
 // ─── Generic selectable product loader (NEW PURCHASE / GENERIC CATALOG) ───────
 
 /**
@@ -196,10 +232,10 @@ async function loadGenericSelectableProducts(productIds, { MenuProductModel = Me
  * For each requested product ID:
  *  1. Uses the immutable `menuProductsSnapshot` stored in the entitlement.
  *  2. Falls back to the live/archived MenuProduct document (without live availability filters).
- *  3. If neither is available, emits OWNED_ENTITLEMENT_PRODUCT_SNAPSHOT_MISSING.
+ *  3. If neither is available, returns an unavailable owned placeholder.
  *
  * Returns an array of { product, fromSnapshot } objects in the same order as productIds,
- * omitting only ids where neither DB record nor snapshot is available (error is emitted).
+ * Historical missing rows are never allowed to abort an entire owned catalog.
  */
 async function loadOwnedSnapshotProducts(productIds, entitlement, {
   MenuProductModel = MenuProduct,
@@ -240,12 +276,22 @@ async function loadOwnedSnapshotProducts(productIds, entitlement, {
       continue;
     }
 
-    // Neither DB nor snapshot — integrity error
+    // Neither DB nor snapshot. Exact menuProductIds membership still proves
+    // ownership, so preserve that identity as an unavailable placeholder. This
+    // is non-fatal for historical subscriptions created before snapshots were
+    // persisted and must never be reclassified as a generic paid extra.
+    const warning = createSnapshotIntegrityError(id, entitlementKey);
     if (typeof onMissingProduct === "function") {
-      onMissingProduct(createSnapshotIntegrityError(id, entitlementKey));
-    } else {
-      throw createSnapshotIntegrityError(id, entitlementKey);
+      onMissingProduct(warning);
     }
+    results.push({
+      product: materializeUnavailableOwnedProduct(id, entitlement),
+      fromSnapshot: false,
+      snapshotMissing: true,
+      liveCatalogMissing: true,
+      warning,
+      id,
+    });
   }
 
   return results;
@@ -316,7 +362,8 @@ async function loadOwnedCategoryRowsForProducts(products, entitlementCategory, {
  *
  * Throws 403 if ownership cannot be confirmed.
  * Throws 404 if subscription or entitlement not found.
- * Throws 409 with OWNED_ENTITLEMENT_PRODUCT_SNAPSHOT_MISSING if product data is unavailable.
+ * Product catalog availability is resolved separately; ownership resolution
+ * never fails merely because a historical product row/snapshot is missing.
  */
 async function resolveOwnedAddonEntitlementChoice({
   subscription,
@@ -594,6 +641,7 @@ module.exports = {
   loadGenericSelectableProducts,
   loadOwnedCategoryRowsForProducts,
   loadOwnedSnapshotProducts,
+  materializeUnavailableOwnedProduct,
   resolveOwnedAddonEntitlementChoice,
   buildMenuProductsSnapshot,
   syntheticCategoryFromKey,
