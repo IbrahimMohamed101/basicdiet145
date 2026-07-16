@@ -3,12 +3,10 @@ const {
 } = require("./subscriptionAddonChoicesService");
 const {
   buildSimulatedAddonRemainingByEntitlement,
-  findAddonBalanceBucket,
-  getAddonEntitlementKey,
-  getEligibleAddonEntitlementsForProduct,
+  resolveAddonEntitlementContext,
 } = require("./subscriptionAddonPolicyService");
 const {
-  resolveAuthoritativeAddonUnitPriceHalala,
+  buildAddonChoicePricingPreview,
 } = require("./subscriptionAddonPricingService");
 
 function resolveAddonSelectionName(addonDoc) {
@@ -61,25 +59,15 @@ async function reconcileAddonInclusions(
 
     const doc = choice.product;
     const category = choice.addonCategory;
-    const eligibleEntitlements = getEligibleAddonEntitlementsForProduct(subscription, {
+    const entitlementContext = resolveAddonEntitlementContext(subscription, {
       productId: doc && doc._id ? doc._id : addonId,
       category,
+      preferPositiveRemaining: true,
+      remainingQtyByEntitlement: simulatedRemaining,
     });
-    const selectedMatch = eligibleEntitlements.find(({ entry, index }) => {
-      const key = getAddonEntitlementKey(entry, index);
-      return Number(simulatedRemaining.get(key) || 0) > 0;
-    }) || eligibleEntitlements[0] || null;
-    const entitlement = selectedMatch ? selectedMatch.entry : null;
-    const entitlementKey = selectedMatch ? getAddonEntitlementKey(selectedMatch.entry, selectedMatch.index) : null;
-    const balanceBucket = entitlement ? findAddonBalanceBucket(subscription, {
-      addonPlanId: entitlement.addonPlanId || entitlement.addonId,
-      addonId: entitlement.addonId || entitlement.addonPlanId,
-      category,
-    }) : null;
-    let source = "pending_payment";
-    let unitPriceHalala = resolveAuthoritativeAddonUnitPriceHalala(doc, { required: !entitlement });
-    let priceHalala = unitPriceHalala;
-
+    const entitlement = entitlementContext ? entitlementContext.entitlement : null;
+    const entitlementKey = entitlementContext ? entitlementContext.entitlementKey : null;
+    const balanceBucket = entitlementContext ? entitlementContext.bucket : null;
     const existingPaid = (day.addonSelections || []).find(
       (selection) => String(selection.addonId) === String(addonId) && selection.source === "paid"
     );
@@ -88,45 +76,56 @@ async function reconcileAddonInclusions(
       continue;
     }
 
-    if (entitlement) {
-      const remainingQty = simulatedRemaining.get(entitlementKey) || 0;
-      if (remainingQty > 0) {
-        simulatedRemaining.set(entitlementKey, remainingQty - 1);
-        source = "subscription";
-        priceHalala = 0;
-      } else {
-        unitPriceHalala = resolveAuthoritativeAddonUnitPriceHalala(doc, { required: true });
-        priceHalala = unitPriceHalala;
-      }
-    }
-
     const quantity = 1;
-    const coveredQty = source === "subscription" ? quantity : 0;
-    const paidQty = source === "subscription" ? 0 : quantity;
     const productId = doc && doc._id ? doc._id : addonId;
-    const addonPlanId = entitlement ? (entitlement.addonPlanId || entitlement.addonId) : null;
+    const availableBefore = entitlement ? Number(simulatedRemaining.get(entitlementKey) || 0) : 0;
+    const preview = buildAddonChoicePricingPreview({
+      subscription,
+      entitlement,
+      product: doc,
+      category,
+      addonPlanId: entitlement ? (entitlement.addonPlanId || entitlement.addonId) : null,
+      balanceBucketId: balanceBucket && balanceBucket._id,
+      entitlementKey,
+      quantity,
+      remainingQtyOverride: availableBefore,
+    });
+    if (entitlement) {
+      simulatedRemaining.set(entitlementKey, preview.remainingAfter);
+    }
 
     newSelections.push({
       addonId: productId,
       productId,
       menuProductId: productId,
-      addonPlanId,
+      addonPlanId: preview.addonPlanId,
       addonKey: doc.key || "",
       productKey: doc.key || "",
       name: resolveAddonSelectionName(doc),
       nameI18n: resolveAddonSelectionNameI18n(doc),
       imageUrl: doc.imageUrl || "",
       category,
-      entitlementKey: source === "subscription" ? entitlementKey : "",
-      balanceBucketId: source === "subscription" && balanceBucket ? balanceBucket._id : null,
-      source,
+      entitlementCategory: preview.entitlementCategory || "",
+      entitlementKey: preview.entitlementKey || "",
+      balanceBucketId: preview.balanceBucketId || null,
+      ownedSnapshot: preview.ownedSnapshot,
+      isEligibleForAllowance: preview.isEligibleForAllowance,
+      source: preview.source,
       qty: quantity,
       quantity,
-      coveredQty,
-      paidQty,
-      priceHalala,
-      unitPriceHalala,
-      payableTotalHalala: paidQty * unitPriceHalala,
+      requestedQty: preview.requestedQty,
+      includedTotalQty: preview.includedTotalQty,
+      remainingQty: preview.remainingQty,
+      freeQtyAvailable: preview.freeQtyAvailable,
+      coveredQty: preview.coveredQty,
+      paidQty: preview.paidQty,
+      remainingBefore: preview.remainingBefore,
+      remainingAfter: preview.remainingAfter,
+      priceHalala: preview.payableTotalHalala,
+      unitPriceHalala: preview.unitPriceHalala,
+      payableTotalHalala: preview.payableTotalHalala,
+      pricingMode: preview.pricingMode,
+      maxPerDay: preview.maxPerDay,
       currency: doc.currency || "SAR",
       consumedAt: new Date(),
     });

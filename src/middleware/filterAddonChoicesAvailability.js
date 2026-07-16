@@ -18,7 +18,13 @@ const {
 const LEGACY_GENERIC_CATEGORIES = new Set(["juice", "snack", "small_salad"]);
 
 function planIdOf(value) {
-  return String(value && (value.addonPlanId || value.addonId) || "").trim();
+  if (!value) return "";
+  if (value.addonPlanId) return String(value.addonPlanId).trim();
+  // Authoritative choice rows use addonId as the selected MenuProduct ID.
+  // Falling back to it as though it were a dashboard plan ID incorrectly
+  // removes visible paid extras from the merged 4-owned/5-catalog response.
+  if (value.productId || value.menuProductId || value.type === "menu_product") return "";
+  return String(value.addonId || "").trim();
 }
 
 function localizedPlanName(plan) {

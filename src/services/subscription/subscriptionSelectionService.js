@@ -18,7 +18,12 @@ const {
 } = require("./canonicalMealSlotPlannerService");
 const { assertSubscriptionDayModifiable } = require("./subscriptionDayModificationPolicyService");
 const { reconcileAddonInclusions } = require("./subscriptionAddonAllocationService");
-const { findAddonBalanceBucket } = require("./subscriptionAddonPolicyService");
+const {
+  findAddonBalanceBucket,
+  isRecoverableUninitializedAddonBalanceBucket,
+  resolveAddonBalanceCapacity,
+  resolveAddonBalanceRemainingQty,
+} = require("./subscriptionAddonPolicyService");
 const {
   buildDayCommercialState,
   finalizeDayCommercialStateForPersistence,
@@ -240,7 +245,7 @@ async function releasePremiumBalanceAtomically({ subscription, dayId, date, prem
   return { released: true, remainingQty: atomicResult.premiumBalance[bucketIndex]?.remainingQty || 0, balanceBucketId: bucket._id };
 }
 
-async function consumeAddonBalanceAtomically({ subscription, dayId, date, addonId, addonPlanId = null, category = null, balanceBucketId = null, session }) {
+async function consumeAddonBalanceAtomically({ subscription, dayId, date, addonId, addonPlanId = null, category = null, balanceBucketId = null, entitlement = null, session }) {
   if (!session) throw new Error("consumeAddonBalanceAtomically requires a session");
   if (!subscription || !Array.isArray(subscription.addonBalance)) return { consumed: false, reason: "bucket_not_found" };
 
@@ -261,9 +266,11 @@ async function consumeAddonBalanceAtomically({ subscription, dayId, date, addonI
   if (!suppliedAddonReleaseIdentityMatchesBucket(bucket, { addonId, addonPlanId, category })) {
     return { consumed: false, reason: "bucket_identity_mismatch" };
   }
-  if (Number(bucket.remainingQty || 0) <= 0) return { consumed: false, reason: "no_remaining_balance" };
+  if (resolveAddonBalanceRemainingQty(bucket, { entitlement }) <= 0) {
+    return { consumed: false, reason: "no_remaining_balance" };
+  }
 
-  const atomicResult = await Subscription.findOneAndUpdate(
+  let atomicResult = await Subscription.findOneAndUpdate(
     {
       _id: subscription._id,
       addonBalance: {
@@ -279,6 +286,44 @@ async function consumeAddonBalanceAtomically({ subscription, dayId, date, addonI
     { session, new: true }
   );
 
+  // Production subscriptions exist where the entitlement total and exact
+  // product snapshot are valid but the corresponding balance bucket was saved
+  // with zero/missing counters. Recover that bucket only under a guarded
+  // zero-consumption predicate, then consume the first unit in the same atomic
+  // write. A genuinely exhausted bucket (consumedQty > 0) cannot match.
+  if (!atomicResult && isRecoverableUninitializedAddonBalanceBucket(bucket, { entitlement })) {
+    const capacity = resolveAddonBalanceCapacity(bucket, entitlement);
+    const includedTotalQty = Math.max(
+      Number(bucket.includedTotalQty || 0),
+      Number(entitlement && entitlement.includedTotalQty || 0)
+    );
+    atomicResult = await Subscription.findOneAndUpdate(
+      {
+        _id: subscription._id,
+        addonBalance: {
+          $elemMatch: {
+            ...buildAddonBalanceAtomicIdentity(bucket),
+            $and: [
+              { $or: [{ remainingQty: { $lte: 0 } }, { remainingQty: { $exists: false } }] },
+              { $or: [{ consumedQty: { $lte: 0 } }, { consumedQty: { $exists: false } }] },
+              { $or: [{ reservedQty: { $lte: 0 } }, { reservedQty: { $exists: false } }] },
+              { $or: [{ overageConsumedQty: { $lte: 0 } }, { overageConsumedQty: { $exists: false } }] },
+            ],
+          },
+        },
+      },
+      {
+        $set: {
+          "addonBalance.$.includedTotalQty": includedTotalQty,
+          "addonBalance.$.purchasedQty": capacity,
+          "addonBalance.$.remainingQty": Math.max(0, capacity - 1),
+          "addonBalance.$.consumedQty": 1,
+        },
+      },
+      { session, new: true }
+    );
+  }
+
   if (!atomicResult) return { consumed: false, reason: "atomic_consume_failed" };
 
   // Keep the in-memory Mongoose document synchronized with the atomic
@@ -286,9 +331,13 @@ async function consumeAddonBalanceAtomically({ subscription, dayId, date, addonI
   // the subsequent subscription.save({ session }) could overwrite the
   // atomically updated addonBalance with stale in-memory values.
   const inMemoryBucket = subscription.addonBalance[bucketIndex];
+  const updatedBucketIndex = findAddonBalanceBucketIndex(atomicResult.addonBalance, bucket._id);
+  const updatedBucket = updatedBucketIndex >= 0 ? atomicResult.addonBalance[updatedBucketIndex] : null;
   if (inMemoryBucket) {
-    inMemoryBucket.remainingQty = Math.max(0, (inMemoryBucket.remainingQty || 0) - 1);
-    inMemoryBucket.consumedQty = (inMemoryBucket.consumedQty || 0) + 1;
+    inMemoryBucket.includedTotalQty = Number(updatedBucket && updatedBucket.includedTotalQty || inMemoryBucket.includedTotalQty || 0);
+    inMemoryBucket.purchasedQty = Number(updatedBucket && updatedBucket.purchasedQty || inMemoryBucket.purchasedQty || 0);
+    inMemoryBucket.remainingQty = Number(updatedBucket && updatedBucket.remainingQty || 0);
+    inMemoryBucket.consumedQty = Number(updatedBucket && updatedBucket.consumedQty || 0);
     if (typeof subscription.markModified === "function") {
       subscription.markModified("addonBalance");
     }
@@ -301,6 +350,7 @@ async function consumeAddonBalanceAtomically({ subscription, dayId, date, addonI
     unitPriceHalala: Number(bucket.unitPriceHalala || 0),
     currency: bucket.currency || "SAR",
     category: bucket.category || category,
+    remainingQty: Number(updatedBucket && updatedBucket.remainingQty || 0),
   };
 }
 
@@ -1103,6 +1153,7 @@ async function performDaySelectionUpdate({ userId, subscriptionId, date, selecti
                        addonPlanId: sel.addonPlanId || null,
                        category: sel.category || null,
                        balanceBucketId: sel.balanceBucketId || null,
+                       entitlementKey: sel.entitlementKey || null,
                        userId: subInSession.userId,
                        session,
                      });
@@ -1116,6 +1167,7 @@ async function performDaySelectionUpdate({ userId, subscriptionId, date, selecti
                      addonPlanId: sel.addonPlanId || null,
                      category: sel.category || null,
                      balanceBucketId: ownedResolution && ownedResolution.bucket ? ownedResolution.bucket._id : null,
+                     entitlement: ownedResolution && ownedResolution.entitlement,
                      session
                   });
                   if (walletResult.consumed) {
@@ -1124,6 +1176,12 @@ async function performDaySelectionUpdate({ userId, subscriptionId, date, selecti
                        addonPlanId: sel.addonPlanId || walletResult.addonPlanId || null,
                        source: "subscription",
                        priceHalala: 0,
+                       requestedQty: 1,
+                       coveredQty: 1,
+                       paidQty: 0,
+                       payableTotalHalala: 0,
+                       pricingMode: "allowance_covered",
+                       isEligibleForAllowance: true,
                        balanceBucketId: walletResult.balanceBucketId || (ownedResolution && ownedResolution.bucket ? ownedResolution.bucket._id : null),
                        entitlementKey: ownedResolution ? ownedResolution.entitlementKey : undefined,
                        category: walletResult.category || (ownedResolution ? ownedResolution.category : (sel.category || "")),
@@ -1142,6 +1200,14 @@ async function performDaySelectionUpdate({ userId, subscriptionId, date, selecti
                        ...sel,
                        source: "pending_payment",
                        priceHalala: Number(sel.unitPriceHalala || sel.priceHalala || 0),
+                       requestedQty: 1,
+                       coveredQty: 0,
+                       paidQty: 1,
+                       payableTotalHalala: Number(sel.unitPriceHalala || sel.priceHalala || 0),
+                       remainingBefore: 0,
+                       remainingAfter: 0,
+                       freeQtyAvailable: 0,
+                       pricingMode: sel.isEligibleForAllowance === false ? "paid_no_entitlement" : "paid_overage",
                      });
                   }
                }
@@ -1208,8 +1274,19 @@ async function performDaySelectionUpdate({ userId, subscriptionId, date, selecti
              payableTotalHalala: Number(sel.payableTotalHalala || sel.priceHalala || 0),
              currency: sel.currency,
              category: sel.category || "",
+             entitlementCategory: sel.entitlementCategory || "",
              entitlementKey: sel.entitlementKey || "",
              balanceBucketId: sel.balanceBucketId || null,
+             ownedSnapshot: Boolean(sel.ownedSnapshot),
+             isEligibleForAllowance: Boolean(sel.isEligibleForAllowance),
+             requestedQty: Math.max(1, Math.floor(Number(sel.requestedQty || sel.quantity || sel.qty || 1))),
+             includedTotalQty: Math.max(0, Math.floor(Number(sel.includedTotalQty || 0))),
+             remainingQty: Math.max(0, Math.floor(Number(sel.remainingQty || 0))),
+             freeQtyAvailable: Math.max(0, Math.floor(Number(sel.freeQtyAvailable || 0))),
+             remainingBefore: Math.max(0, Math.floor(Number(sel.remainingBefore || 0))),
+             remainingAfter: Math.max(0, Math.floor(Number(sel.remainingAfter || 0))),
+             pricingMode: sel.pricingMode || "",
+             maxPerDay: Math.max(1, Math.floor(Number(sel.maxPerDay || 1))),
              source: sel.source || "",
            });
          }

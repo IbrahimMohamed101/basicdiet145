@@ -20,6 +20,7 @@ const {
 const { getMealPlannerCatalog } = require("../services/subscription/mealPlannerCatalogService");
 const { resolvePremiumUpgrade } = require("../services/subscription/premiumUpgradeConfigService");
 const { resolvePremiumKeyFromName } = require("../utils/subscription/premiumIdentity");
+const { buildAddonChoicesCatalog } = require("../services/subscription/subscriptionAddonChoicesService");
 
 const SYSTEM_CURRENCY = "SAR";
 
@@ -136,6 +137,29 @@ function buildAddonCatalogFromLegacyPlannerAddons(legacyPlannerAddons = {}) {
     items,
     byCategory: grouped.byCategory,
     totalCount: Number(legacyPlannerAddons?.totalCount ?? items.length),
+  };
+}
+
+function buildAuthoritativePlannerAddonCatalog(choiceGroups = {}) {
+  const byCategory = {};
+  const items = [];
+  const seen = new Set();
+  for (const [category, group] of Object.entries(choiceGroups || {})) {
+    const choices = Array.isArray(group && group.choices) ? group.choices : [];
+    byCategory[category] = choices;
+    for (const choice of choices) {
+      const id = String(choice && choice.id || "");
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      items.push(choice);
+    }
+  }
+  return {
+    items,
+    byCategory,
+    totalCount: items.length,
+    entitlementResolved: true,
+    source: "subscription_addon_choices",
   };
 }
 
@@ -477,12 +501,22 @@ async function getSubscriptionMealPlannerMenu(req, res) {
     addons,
   });
   const legacyPlannerAddons = mealCatalog?.mealPlanner?.addons || { items: [], totalCount: 0 };
+  const authoritativeAddonChoices = req.userId
+    ? await buildAddonChoicesCatalog({ lang, userId: req.userId })
+    : null;
+  const legacyAddonCatalog = buildAddonCatalogFromLegacyPlannerAddons(legacyPlannerAddons);
 
   const data = {
     builderCatalog: appBuilderCatalog,
-    addonCatalog: buildAddonCatalogFromLegacyPlannerAddons(legacyPlannerAddons),
+    addonCatalog: authoritativeAddonChoices
+      ? buildAuthoritativePlannerAddonCatalog(authoritativeAddonChoices)
+      : { ...legacyAddonCatalog, entitlementResolved: false, source: "global_legacy_catalog" },
     plannerCatalog: plannerCatalog || { sections: [] },
   };
+  if (authoritativeAddonChoices) {
+    data.addonChoices = authoritativeAddonChoices;
+    data.legacyAddonCatalog = legacyAddonCatalog;
+  }
   if (builderCatalogV2) {
     data.builderCatalogV2 = builderCatalogV2;
   }

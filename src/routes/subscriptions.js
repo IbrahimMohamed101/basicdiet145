@@ -80,7 +80,7 @@ router.get("/menu", asyncHandler(menuController.getSubscriptionMenu));
  *                       byCategory: {}
  *                       totalCount: 0
  */
-router.get("/meal-planner-menu", asyncHandler(menuController.getSubscriptionMealPlannerMenu));
+router.get("/meal-planner-menu", optionalAuthMiddleware, asyncHandler(menuController.getSubscriptionMealPlannerMenu));
 router.get("/meal-builder", asyncHandler(mealBuilderController.getPublishedMealBuilder));
 router.get("/delivery-options", asyncHandler(menuController.getDeliveryOptions));
 router.get("/addon-choices", optionalAuthMiddleware, asyncHandler(controller.getSubscriptionAddonChoices));

@@ -93,13 +93,31 @@ function buildAddonSummary({ addonSelections, currency = SYSTEM_CURRENCY }) {
   const pending = selections.filter((s) => s.source === "pending_payment");
   const sub = selections.filter((s) => s.source === "subscription");
   const paid = selections.filter((s) => s.source === "paid");
+  const quantityOf = (selection) => Math.max(1, normalizeNumber(
+    selection && (selection.requestedQty || selection.quantity || selection.qty || 1)
+  ));
+  const coveredOf = (selection) => Math.max(0, normalizeNumber(
+    selection && selection.coveredQty != null
+      ? selection.coveredQty
+      : (selection && selection.source === "subscription" ? quantityOf(selection) : 0)
+  ));
+  const paidOf = (selection) => Math.max(0, normalizeNumber(
+    selection && selection.paidQty != null
+      ? selection.paidQty
+      : (selection && selection.source !== "subscription" ? quantityOf(selection) : 0)
+  ));
+  const payableOf = (selection) => Math.max(0, normalizeNumber(
+    selection && selection.payableTotalHalala != null
+      ? selection.payableTotalHalala
+      : selection && selection.priceHalala
+  ));
 
   return {
-    selectedCount: selections.length,
-    inclusiveCount: sub.length,
-    pendingPaymentCount: pending.length,
-    paidCount: paid.length,
-    totalExtraHalala: pending.reduce((sum, s) => sum + normalizeNumber(s.priceHalala), 0),
+    selectedCount: selections.reduce((sum, selection) => sum + quantityOf(selection), 0),
+    inclusiveCount: sub.reduce((sum, selection) => sum + coveredOf(selection), 0),
+    pendingPaymentCount: pending.reduce((sum, selection) => sum + paidOf(selection), 0),
+    paidCount: paid.reduce((sum, selection) => sum + paidOf(selection), 0),
+    totalExtraHalala: pending.reduce((sum, selection) => sum + payableOf(selection), 0),
     currency,
   };
 }

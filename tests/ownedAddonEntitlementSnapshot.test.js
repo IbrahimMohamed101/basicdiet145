@@ -102,7 +102,7 @@ function run() {
   assert.strictEqual(isAddonEntitlementEligibleForProduct(
     subscription.addonSubscriptions[0],
     { productId: MEAL_PRODUCT_ID, category: "snack", addonPlanId: MEAL_PLAN_ID }
-  ), false);
+  ), true, "exact immutable product membership outranks a stale display category");
 
   assert.strictEqual(findAddonBalanceBucket(subscription, {
     addonPlanId: MEAL_PLAN_ID,

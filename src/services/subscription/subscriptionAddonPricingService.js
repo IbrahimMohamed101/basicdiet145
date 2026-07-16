@@ -1,8 +1,9 @@
 const {
   findAddonBalanceBucket,
+  getEntitlementMenuProductIds,
   resolveAddonBalanceRemainingQty,
+  resolveAddonEntitlementContext,
   resolveEntitlementPlanId,
-  selectAddonEntitlementForProduct,
 } = require("./subscriptionAddonPolicyService");
 
 const SYSTEM_CURRENCY = "SAR";
@@ -23,11 +24,9 @@ function resolveEntitlementBalance(subscription, entitlement) {
     addonId: entitlement && (entitlement.addonId || entitlement.addonPlanId),
     category: entitlement && entitlement.category,
   });
-  const includedTotalQty = toNonNegativeInteger(
-    bucket && bucket.includedTotalQty != null
-      ? bucket.includedTotalQty
-      : entitlement && entitlement.includedTotalQty,
-    0
+  const includedTotalQty = Math.max(
+    toNonNegativeInteger(bucket && bucket.includedTotalQty, 0),
+    toNonNegativeInteger(entitlement && entitlement.includedTotalQty, 0)
   );
   const remainingQty = bucket
     ? resolveAddonBalanceRemainingQty(bucket, { entitlement })
@@ -74,17 +73,50 @@ function buildAddonChoicePricingPreview({
   entitlement = null,
   category = null,
   quantity = 1,
+  addonPlanId = null,
+  balanceBucketId = null,
+  entitlementKey = null,
+  remainingQtyOverride = null,
 } = {}) {
   const requestedQty = toPositiveInteger(quantity, 1);
-  const selectedEntitlement = entitlement || selectAddonEntitlementForProduct(subscription, {
-    productId: product && product._id,
-    category,
-  });
+  const productId = String(product && (product._id || product.id || product.productId || product.menuProductId) || "");
+  const resolvedContext = entitlement
+    ? resolveAddonEntitlementContext(subscription, {
+      productId,
+      addonPlanId: addonPlanId || resolveEntitlementPlanId(entitlement),
+      balanceBucketId,
+      entitlementKey,
+      category,
+    })
+    : resolveAddonEntitlementContext(subscription, {
+      productId,
+      category,
+      addonPlanId,
+      balanceBucketId,
+      entitlementKey,
+      preferPositiveRemaining: true,
+    });
+  const selectedEntitlement = resolvedContext && resolvedContext.entitlement;
   const currency = (product && product.currency) || (selectedEntitlement && selectedEntitlement.currency) || SYSTEM_CURRENCY;
+  const baseIdentity = {
+    id: productId || null,
+    productId: productId || null,
+    menuProductId: productId || null,
+    addonId: productId || null,
+    addonPlanId: resolvedContext && resolvedContext.addonPlanId ? String(resolvedContext.addonPlanId) : null,
+    entitlementKey: resolvedContext && resolvedContext.entitlementKey || null,
+    balanceBucketId: resolvedContext && resolvedContext.balanceBucketId
+      ? String(resolvedContext.balanceBucketId)
+      : (resolvedContext && resolvedContext.bucket && resolvedContext.bucket._id ? String(resolvedContext.bucket._id) : null),
+    entitlementCategory: resolvedContext && resolvedContext.entitlementCategory || null,
+    ownedSnapshot: Boolean(resolvedContext && resolvedContext.ownedSnapshot),
+    isEligibleForAllowance: Boolean(selectedEntitlement),
+  };
 
   if (!selectedEntitlement) {
     const unitPriceHalala = resolveAuthoritativeAddonUnitPriceHalala(product, { required: true, entitlement: null });
     return {
+      ...baseIdentity,
       requestedQty,
       coveredQty: 0,
       paidQty: requestedQty,
@@ -94,7 +126,12 @@ function buildAddonChoicePricingPreview({
       remainingBefore: 0,
       remainingAfter: 0,
       pricingMode: "paid_no_entitlement",
+      source: "pending_payment",
       entitlement: null,
+      includedTotalQty: 0,
+      remainingQty: 0,
+      freeQtyAvailable: 0,
+      maxPerDay: toPositiveInteger(product && product.maxPerDay, 1),
     };
   }
 
@@ -110,7 +147,9 @@ function buildAddonChoicePricingPreview({
   }
 
   const { includedTotalQty, remainingQty } = resolveEntitlementBalance(subscription, selectedEntitlement);
-  const remainingBefore = remainingQty;
+  const remainingBefore = remainingQtyOverride === null || remainingQtyOverride === undefined
+    ? remainingQty
+    : toNonNegativeInteger(remainingQtyOverride, 0);
   const coveredQty = Math.min(requestedQty, remainingBefore);
   const paidQty = requestedQty - coveredQty;
   const remainingAfter = Math.max(0, remainingBefore - coveredQty);
@@ -122,6 +161,7 @@ function buildAddonChoicePricingPreview({
   const unitPriceHalala = resolveAuthoritativeAddonUnitPriceHalala(product, { required: paidQty > 0, entitlement: selectedEntitlement });
 
   return {
+    ...baseIdentity,
     requestedQty,
     coveredQty,
     paidQty,
@@ -131,17 +171,64 @@ function buildAddonChoicePricingPreview({
     remainingBefore,
     remainingAfter,
     pricingMode,
+    source: paidQty === 0 ? "subscription" : "pending_payment",
     entitlement: selectedEntitlement,
     includedTotalQty,
     remainingQty,
+    freeQtyAvailable: remainingBefore,
     maxPerDay,
   };
 }
 
+function buildSubscriptionAddonCoverageSummary(subscription) {
+  const entitlements = Array.isArray(subscription && subscription.addonSubscriptions)
+    ? subscription.addonSubscriptions
+    : [];
+  const rows = [];
+
+  entitlements.forEach((entitlement, entitlementIndex) => {
+    const productIds = getEntitlementMenuProductIds(entitlement);
+    const snapshots = new Map(
+      (Array.isArray(entitlement && entitlement.menuProductsSnapshot) ? entitlement.menuProductsSnapshot : [])
+        .map((snapshot) => [String(snapshot && (snapshot.id || snapshot._id) || ""), snapshot])
+        .filter(([id]) => id)
+    );
+    const ids = productIds.length ? productIds : [null];
+    for (const productId of ids) {
+      const snapshot = productId ? snapshots.get(String(productId)) : null;
+      const product = {
+        _id: productId,
+        priceHalala: Number(
+          snapshot && snapshot.priceHalala != null
+            ? snapshot.priceHalala
+            : entitlement && (entitlement.unitPriceHalala ?? entitlement.unitPlanPriceHalala ?? entitlement.priceHalala) || 0
+        ),
+        currency: snapshot && snapshot.currency || entitlement && entitlement.currency || SYSTEM_CURRENCY,
+      };
+      const preview = buildAddonChoicePricingPreview({
+        subscription,
+        entitlement,
+        product,
+        category: entitlement && entitlement.category,
+        addonPlanId: resolveEntitlementPlanId(entitlement),
+        entitlementKey: `${entitlement && entitlement.category || "legacy"}:${resolveEntitlementPlanId(entitlement) || entitlementIndex}`,
+        quantity: 1,
+      });
+      rows.push({
+        ...preview,
+        key: snapshot && snapshot.key || "",
+        category: entitlement && entitlement.category || "",
+        entitlementCategory: entitlement && entitlement.category || "",
+      });
+    }
+  });
+  return rows;
+}
+
 module.exports = {
   buildAddonChoicePricingPreview,
+  buildSubscriptionAddonCoverageSummary,
   createInvalidAddonPriceError,
   resolveAuthoritativeAddonUnitPriceHalala,
   resolveEntitlementBalance,
-  selectAddonEntitlementForProduct,
 };

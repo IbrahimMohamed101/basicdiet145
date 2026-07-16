@@ -39,38 +39,6 @@ const PremiumBalanceSchema = new mongoose.Schema(
   { _id: true }
 );
 
-function toNonNegativeInteger(value, fallback = 0) {
-  const parsed = Math.floor(Number(value));
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
-}
-
-function addonBalanceCapacity(bucket) {
-  if (!bucket) return 0;
-  const purchasedQty = toNonNegativeInteger(bucket.purchasedQty, 0);
-  const includedTotalQty = toNonNegativeInteger(bucket.includedTotalQty, 0);
-  const extraPurchasedQty = toNonNegativeInteger(bucket.extraPurchasedQty, 0);
-  return Math.max(purchasedQty, includedTotalQty + extraPurchasedQty, includedTotalQty);
-}
-
-function isRecoverableUninitializedAddonBalanceBucket(bucket, rawRemainingValue = undefined, { requirePersistedRemaining = false } = {}) {
-  if (!bucket) return false;
-  if (requirePersistedRemaining && !Object.prototype.hasOwnProperty.call(bucket, "remainingQty")) return false;
-  const rawRemainingQty = Number(rawRemainingValue !== undefined ? rawRemainingValue : bucket.remainingQty || 0);
-  if (!Number.isFinite(rawRemainingQty) || rawRemainingQty !== 0) return false;
-  if (addonBalanceCapacity(bucket) <= 0) return false;
-  return toNonNegativeInteger(bucket.consumedQty, 0) === 0
-    && toNonNegativeInteger(bucket.reservedQty, 0) === 0
-    && toNonNegativeInteger(bucket.overageConsumedQty, 0) === 0;
-}
-
-function addonBalanceRemainingGetter(value) {
-  if (Number(value || 0) > 0) return value;
-  if (isRecoverableUninitializedAddonBalanceBucket(this, value)) {
-    return addonBalanceCapacity(this);
-  }
-  return value;
-}
-
 const AddonBalanceSchema = new mongoose.Schema(
   {
     addonPlanId: { type: mongoose.Schema.Types.ObjectId, ref: "Addon", default: null },
@@ -82,7 +50,7 @@ const AddonBalanceSchema = new mongoose.Schema(
     purchasedQty: { type: Number, min: 0, default: 0 },
     consumedQty: { type: Number, min: 0, default: 0 },
     reservedQty: { type: Number, min: 0, default: 0 },
-    remainingQty: { type: Number, min: 0, default: 0, get: addonBalanceRemainingGetter },
+    remainingQty: { type: Number, min: 0, default: 0 },
     extraPurchasedQty: { type: Number, min: 0, default: 0 },
     overageConsumedQty: { type: Number, min: 0, default: 0 },
     unitIncludedPriceHalala: { type: Number, min: 0, default: 0 },
@@ -157,8 +125,23 @@ const AddonSelectionSchema = new mongoose.Schema(
     // Owned entitlement identity — populated on save so edit/cancel can release the exact bucket.
     // All fields are optional for backward compatibility with historical selections.
     category:        { type: String, default: "" },
+    entitlementCategory: { type: String, default: "" },
     entitlementKey:  { type: String, default: "" },
     balanceBucketId: { type: mongoose.Schema.Types.ObjectId, default: null },
+    ownedSnapshot: { type: Boolean, default: false },
+    isEligibleForAllowance: { type: Boolean, default: false },
+    requestedQty: { type: Number, min: 1, default: 1 },
+    includedTotalQty: { type: Number, min: 0, default: 0 },
+    remainingQty: { type: Number, min: 0, default: 0 },
+    freeQtyAvailable: { type: Number, min: 0, default: 0 },
+    remainingBefore: { type: Number, min: 0, default: 0 },
+    remainingAfter: { type: Number, min: 0, default: 0 },
+    pricingMode: {
+      type: String,
+      enum: ["allowance_covered", "allowance_partial", "paid_overage", "paid_no_entitlement", ""],
+      default: "",
+    },
+    maxPerDay: { type: Number, min: 1, default: 1 },
     source:          { type: String, default: "" },
   },
   { _id: true }
@@ -323,93 +306,5 @@ SubscriptionSchema.index(
   { userId: 1 },
   { unique: true, partialFilterExpression: { status: "active" } }
 );
-
-function isAddonBalanceConsumeUpdate(query, update) {
-  const elemMatch = query && query.addonBalance && query.addonBalance.$elemMatch;
-  const inc = update && update.$inc;
-  return Boolean(
-    query
-      && query._id
-      && elemMatch
-      && elemMatch._id
-      && elemMatch.remainingQty
-      && Number(elemMatch.remainingQty.$gt || 0) > 0
-      && inc
-      && Number(inc["addonBalance.$.remainingQty"] || 0) < 0
-      && Number(inc["addonBalance.$.consumedQty"] || 0) > 0
-  );
-}
-
-function matchesAddonBucketIdentity(bucket, identity) {
-  if (!bucket || !identity) return false;
-  for (const [key, value] of Object.entries(identity)) {
-    if (key === "remainingQty") continue;
-    if (value === undefined) continue;
-    if (String(bucket[key] || "") !== String(value || "")) return false;
-  }
-  return true;
-}
-
-function buildZeroOrMissingCondition(field) {
-  return {
-    $or: [
-      { [field]: { $lte: 0 } },
-      { [field]: { $exists: false } },
-    ],
-  };
-}
-
-SubscriptionSchema.pre("findOneAndUpdate", async function recoverUninitializedAddonBalance(next) {
-  try {
-    const query = this.getQuery() || {};
-    const update = this.getUpdate() || {};
-    if (!isAddonBalanceConsumeUpdate(query, update)) return next();
-
-    const elemMatch = query.addonBalance.$elemMatch;
-    const identity = { ...elemMatch };
-    delete identity.remainingQty;
-
-    const subscription = await this.model.findOne({
-      _id: query._id,
-      addonBalance: { $elemMatch: identity },
-    }).select({ addonBalance: 1 }).lean();
-
-    const bucket = (subscription && Array.isArray(subscription.addonBalance) ? subscription.addonBalance : [])
-      .find((row) => matchesAddonBucketIdentity(row, identity));
-
-    if (!isRecoverableUninitializedAddonBalanceBucket(bucket, bucket && bucket.remainingQty, { requirePersistedRemaining: true })) {
-      return next();
-    }
-
-    const capacity = addonBalanceCapacity(bucket);
-    const guardedIdentity = {
-      ...identity,
-      remainingQty: { $lte: 0 },
-      $and: [
-        buildZeroOrMissingCondition("consumedQty"),
-        buildZeroOrMissingCondition("reservedQty"),
-        buildZeroOrMissingCondition("overageConsumedQty"),
-      ],
-    };
-    this.setQuery({ ...query, addonBalance: { $elemMatch: guardedIdentity } });
-
-    const nextInc = { ...(update.$inc || {}) };
-    delete nextInc["addonBalance.$.remainingQty"];
-    nextInc["addonBalance.$.consumedQty"] = Number(nextInc["addonBalance.$.consumedQty"] || 0) || 1;
-
-    this.setUpdate({
-      ...update,
-      $set: {
-        ...(update.$set || {}),
-        "addonBalance.$.remainingQty": Math.max(0, capacity - 1),
-      },
-      $inc: nextInc,
-    });
-
-    return next();
-  } catch (err) {
-    return next(err);
-  }
-});
 
 module.exports = mongoose.model("Subscription", SubscriptionSchema);

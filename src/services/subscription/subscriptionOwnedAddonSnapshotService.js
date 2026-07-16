@@ -25,6 +25,8 @@ const { availableForChannelQuery } = require("./subscriptionMenuEligibilityPolic
 const {
   findAddonBalanceBucket,
   normalizeSubscriptionAddonCategory,
+  resolveAddonBalanceRemainingQty,
+  resolveAddonEntitlementContext,
 } = require("./subscriptionAddonPolicyService");
 
 // ─── Error codes ──────────────────────────────────────────────────────────────
@@ -322,6 +324,7 @@ async function resolveOwnedAddonEntitlementChoice({
   addonPlanId = null,
   category = null,
   balanceBucketId = null,
+  entitlementKey = null,
   userId,
   session = null,
 }) {
@@ -345,6 +348,7 @@ async function resolveOwnedAddonEntitlementChoice({
   const normalizedProductId = String(productId || "").trim();
   const normalizedAddonPlanId = String(addonPlanId || "").trim();
   const normalizedBalanceBucketId = String(balanceBucketId || "").trim();
+  const normalizedEntitlementKey = String(entitlementKey || "").trim();
   const normalizedCategory = category
     ? normalizeSubscriptionAddonCategory(String(category).trim()) || String(category).trim()
     : null;
@@ -355,14 +359,25 @@ async function resolveOwnedAddonEntitlementChoice({
 
   // 3. Search addonSubscriptions for a matching entitlement.
   // Category is only an isolation check. It is never sufficient to prove coverage.
-  let matchedEntitlement = null;
-  let matchedIndex = -1;
+  const authoritativeContext = resolveAddonEntitlementContext(subscription, {
+    productId: normalizedProductId,
+    addonPlanId: normalizedAddonPlanId,
+    balanceBucketId: normalizedBalanceBucketId,
+    entitlementKey: normalizedEntitlementKey,
+    category: normalizedCategory,
+    preferPositiveRemaining: true,
+  });
+  const matchedEntitlement = authoritativeContext && authoritativeContext.entitlement || null;
+  const matchedIndex = authoritativeContext ? authoritativeContext.entitlementIndex : -1;
   let sawPlanMismatch = false;
   let sawCategoryMismatch = false;
   let sawProductMismatch = false;
-  const hasExplicitIdentity = Boolean(normalizedAddonPlanId || normalizedBalanceBucketId);
+  let diagnosticMatchCount = 0;
+  const hasExplicitIdentity = Boolean(normalizedAddonPlanId || normalizedBalanceBucketId || normalizedEntitlementKey);
 
-  for (let i = 0; i < entitlements.length; i++) {
+  // This loop diagnoses why the authoritative resolver rejected the request;
+  // it must never select a different entitlement on its own.
+  for (let i = 0; !matchedEntitlement && i < entitlements.length; i++) {
     const entry = entitlements[i];
     if (!entry) continue;
 
@@ -374,42 +389,42 @@ async function resolveOwnedAddonEntitlementChoice({
       sawPlanMismatch = true;
       continue;
     }
-    if (normalizedCategory && entryCategory !== normalizedCategory) {
-      sawCategoryMismatch = true;
-      continue;
-    }
-
     const productIds = entitlementProductIds(entry);
+    let hasExactProductSnapshotMatch = false;
     if (normalizedProductId) {
       if (productIds.length > 0) {
         if (!productIds.includes(normalizedProductId)) {
           sawProductMismatch = true;
           continue;
         }
+        hasExactProductSnapshotMatch = true;
       } else if (entryPlanId !== normalizedProductId && (!normalizedAddonPlanId || entryPlanId !== normalizedAddonPlanId)) {
-        sawProductMismatch = true;
-        continue;
+        if (!normalizedCategory || entryCategory !== normalizedCategory) {
+          sawProductMismatch = true;
+          continue;
+        }
       }
     } else if (!hasExplicitIdentity) {
       continue;
     }
+    if (normalizedCategory && entryCategory !== normalizedCategory && !hasExactProductSnapshotMatch) {
+      sawCategoryMismatch = true;
+      continue;
+    }
+    if (normalizedEntitlementKey && buildEntitlementKey(entry, i) !== normalizedEntitlementKey) continue;
 
-    // Product-only legacy payloads are allowed only when exactly one plan contains the product.
-    if (matchedEntitlement !== null && !normalizedAddonPlanId) {
+    diagnosticMatchCount += 1;
+  }
+
+  if (!matchedEntitlement) {
+    if (diagnosticMatchCount > 1) {
       const err = new Error(
-        "Ambiguous owned entitlement: multiple buckets match the add-on product. Supply addonPlanId."
+        "Ambiguous owned entitlement: multiple buckets match the add-on product. Supply exact entitlement identity."
       );
       err.status = 409;
       err.code = "ENTITLEMENT_AMBIGUOUS";
       throw err;
     }
-
-    matchedEntitlement = entry;
-    matchedIndex = i;
-    if (normalizedAddonPlanId) break; // strong match — stop early
-  }
-
-  if (!matchedEntitlement) {
     if (normalizedAddonPlanId && sawPlanMismatch) {
       throw createIntegrityError(ERROR_CODE_ADDON_PLAN_MISMATCH, "Owned entitlement add-on plan mismatch", {
         addonPlanId: normalizedAddonPlanId,
@@ -481,7 +496,7 @@ async function resolveOwnedAddonEntitlementChoice({
   }
 
   // 7. Build result
-  const entitlementKey = buildEntitlementKey(matchedEntitlement, matchedIndex);
+  const resolvedEntitlementKey = buildEntitlementKey(matchedEntitlement, matchedIndex);
   const unitPriceHalala = Number(
     (bucket && bucket.unitPriceHalala) ||
     matchedEntitlement.unitPriceHalala ||
@@ -493,18 +508,17 @@ async function resolveOwnedAddonEntitlementChoice({
     matchedEntitlement.currency ||
     "SAR"
   );
-  const remainingQty = Number(bucket && bucket.remainingQty || 0);
-  const includedTotalQty = Number(
-    (bucket && bucket.includedTotalQty != null ? bucket.includedTotalQty : null) ??
-    matchedEntitlement.includedTotalQty ??
-    0
+  const remainingQty = resolveAddonBalanceRemainingQty(bucket, { entitlement: matchedEntitlement });
+  const includedTotalQty = Math.max(
+    Number(bucket && bucket.includedTotalQty || 0),
+    Number(matchedEntitlement.includedTotalQty || 0)
   );
 
   return {
     entitlement: matchedEntitlement,
     bucket,
     balanceBucketId: bucket._id,
-    entitlementKey,
+    entitlementKey: resolvedEntitlementKey,
     entitlementIndex: matchedIndex,
     category: entryCategory,
     addonPlanId: entryPlanId,

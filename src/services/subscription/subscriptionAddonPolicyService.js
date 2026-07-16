@@ -101,23 +101,31 @@ function isAddonEntitlementEligibleForProduct(entitlement, { productId, category
   const normalizedPlanId = String(addonPlanId || "");
   const entryPlanId = resolveEntitlementPlanId(entitlement);
 
-  if (normalizedPlanId && entryPlanId !== normalizedPlanId) return false;
-  if (normalizedCategory && entitlementCategory && normalizedCategory !== entitlementCategory) return false;
-
   const productIds = getEntitlementMenuProductIds(entitlement);
+  if (normalizedPlanId && entryPlanId !== normalizedPlanId) return false;
+
+  // A modern immutable product snapshot is the strongest ownership proof. A
+  // stale/misclassified display category must never override an exact product
+  // match, and a same-category product absent from the snapshot must never be
+  // admitted through the legacy fallback.
   if (normalizedProductId && productIds.length > 0) {
     return productIds.some((id) => String(id) === normalizedProductId);
+  }
+
+  if (normalizedProductId && entryPlanId === normalizedProductId) {
+    return true;
   }
 
   if (normalizedProductId && normalizedCategory && entitlementCategory) {
     return normalizedCategory === entitlementCategory;
   }
 
-  if (normalizedProductId) {
-    return Boolean(entryPlanId && entryPlanId === normalizedProductId);
-  }
+  if (normalizedProductId) return false;
+  if (normalizedPlanId && entryPlanId === normalizedPlanId) return true;
 
-  return Boolean(normalizedPlanId && entryPlanId === normalizedPlanId);
+  // Category-only coverage is intentionally limited to historical
+  // entitlements that have no product snapshot or other exact identity.
+  return Boolean(normalizedCategory && entitlementCategory && normalizedCategory === entitlementCategory);
 }
 
 function getAddonEntitlementKey(entitlement, index = 0) {
@@ -167,7 +175,6 @@ function hasPositiveEntitlementUnits(entitlement) {
 
 function isRecoverableUninitializedAddonBalanceBucket(bucket, { entitlement = null } = {}) {
   if (!bucket) return false;
-  if (!hasOwnValue(bucket, "remainingQty")) return false;
   const rawRemainingQty = Number(rawValue(bucket, "remainingQty") || 0);
   if (!Number.isFinite(rawRemainingQty) || rawRemainingQty !== 0) return false;
   if (!hasPositivePurchasedAddonUnits(bucket) && !hasPositiveEntitlementUnits(entitlement)) return false;
@@ -175,6 +182,116 @@ function isRecoverableUninitializedAddonBalanceBucket(bucket, { entitlement = nu
   return toNonNegativeInteger(rawValue(bucket, "consumedQty"), 0) === 0
     && toNonNegativeInteger(rawValue(bucket, "reservedQty"), 0) === 0
     && toNonNegativeInteger(rawValue(bucket, "overageConsumedQty"), 0) === 0;
+}
+
+function findAddonBalanceBucketById(subscription, balanceBucketId) {
+  const normalizedId = String(balanceBucketId || "");
+  if (!normalizedId) return null;
+  return (Array.isArray(subscription && subscription.addonBalance) ? subscription.addonBalance : [])
+    .find((bucket) => String(bucket && rawValue(bucket, "_id") || "") === normalizedId) || null;
+}
+
+function resolveAddonEntitlementContext(subscription, {
+  productId = null,
+  addonPlanId = null,
+  balanceBucketId = null,
+  entitlementKey = null,
+  category = null,
+  preferPositiveRemaining = false,
+  remainingQtyByEntitlement = null,
+} = {}) {
+  const entitlements = Array.isArray(subscription && subscription.addonSubscriptions)
+    ? subscription.addonSubscriptions
+    : [];
+  const normalizedProductId = String(productId || "");
+  const normalizedPlanId = String(addonPlanId || "");
+  const normalizedEntitlementKey = String(entitlementKey || "");
+  const normalizedCategory = normalizeSubscriptionAddonCategory(category, { allowEmpty: true });
+  const explicitBucket = findAddonBalanceBucketById(subscription, balanceBucketId);
+  const explicitBucketPlanId = String(explicitBucket && (
+    rawValue(explicitBucket, "addonPlanId") || rawValue(explicitBucket, "addonId")
+  ) || "");
+
+  const indexed = entitlements.map((entry, index) => ({ entry, index }));
+  const exactProductMatches = normalizedProductId
+    ? indexed.filter(({ entry }) => getEntitlementMenuProductIds(entry).includes(normalizedProductId))
+    : [];
+
+  let candidates = exactProductMatches;
+  let matchType = exactProductMatches.length ? "menu_product_snapshot" : null;
+
+  const filterStrongIdentity = (rows) => rows.filter(({ entry, index }) => {
+    const entryPlanId = resolveEntitlementPlanId(entry);
+    if (normalizedPlanId && entryPlanId !== normalizedPlanId) return false;
+    if (explicitBucketPlanId && entryPlanId !== explicitBucketPlanId) return false;
+    if (normalizedEntitlementKey && getAddonEntitlementKey(entry, index) !== normalizedEntitlementKey) return false;
+    return true;
+  });
+
+  if (candidates.length) {
+    candidates = filterStrongIdentity(candidates);
+  } else if (!normalizedProductId && normalizedPlanId) {
+    candidates = indexed.filter(({ entry }) => resolveEntitlementPlanId(entry) === normalizedPlanId);
+    matchType = "addon_plan";
+  } else if (!normalizedProductId && explicitBucketPlanId) {
+    candidates = indexed.filter(({ entry }) => resolveEntitlementPlanId(entry) === explicitBucketPlanId);
+    matchType = "balance_bucket";
+  } else if (!normalizedProductId && normalizedEntitlementKey) {
+    candidates = indexed.filter(({ entry, index }) => getAddonEntitlementKey(entry, index) === normalizedEntitlementKey);
+    matchType = "entitlement_key";
+  } else {
+    // A product ID that is not present in any modern snapshot may only use the
+    // category fallback against a genuinely legacy entitlement.
+    candidates = indexed.filter(({ entry }) => (
+      !hasModernAddonProductSnapshot(entry)
+      && isAddonEntitlementEligibleForProduct(entry, {
+        productId: normalizedProductId,
+        category: normalizedCategory,
+        addonPlanId: normalizedPlanId || null,
+      })
+    ));
+    matchType = candidates.length ? "legacy_category" : null;
+  }
+
+  if (candidates.length > 1 && preferPositiveRemaining) {
+    const positive = candidates.filter(({ entry, index }) => {
+      const key = getAddonEntitlementKey(entry, index);
+      if (remainingQtyByEntitlement instanceof Map && remainingQtyByEntitlement.has(key)) {
+        return Number(remainingQtyByEntitlement.get(key) || 0) > 0;
+      }
+      const bucket = findAddonBalanceBucket(subscription, {
+        addonPlanId: resolveEntitlementPlanId(entry),
+        addonId: entry && (entry.addonId || entry.addonPlanId),
+        category: entry && entry.category,
+      });
+      return resolveAddonBalanceRemainingQty(bucket, { entitlement: entry }) > 0;
+    });
+    // Product snapshots can legitimately overlap across purchased plans. Pick
+    // the first positive bucket in subscription order; allocation passes its
+    // simulated map so repeated selections advance to the next bucket.
+    candidates = [positive[0] || candidates[0]];
+  }
+
+  if (candidates.length !== 1) return null;
+  const { entry: entitlement, index: entitlementIndex } = candidates[0];
+  const bucket = explicitBucket || findAddonBalanceBucket(subscription, {
+    addonPlanId: resolveEntitlementPlanId(entitlement),
+    addonId: entitlement && (entitlement.addonId || entitlement.addonPlanId),
+    category: entitlement && entitlement.category,
+  });
+  if (explicitBucket && explicitBucketPlanId !== resolveEntitlementPlanId(entitlement)) return null;
+
+  return {
+    entitlement,
+    entitlementIndex,
+    entitlementKey: getAddonEntitlementKey(entitlement, entitlementIndex),
+    addonPlanId: resolveEntitlementPlanId(entitlement),
+    entitlementCategory: normalizeSubscriptionAddonCategory(entitlement && entitlement.category, { allowEmpty: true }),
+    bucket,
+    balanceBucketId: bucket && rawValue(bucket, "_id") ? String(rawValue(bucket, "_id")) : null,
+    matchType,
+    ownedSnapshot: matchType === "menu_product_snapshot",
+  };
 }
 
 function resolveAddonBalanceRemainingQty(bucket, { entitlement = null } = {}) {
@@ -202,22 +319,13 @@ function selectAddonEntitlementForProduct(subscription, {
   addonPlanId = null,
   preferPositiveRemaining = false,
 } = {}) {
-  const matches = getEligibleAddonEntitlementsForProduct(subscription, { productId, category, addonPlanId });
-  if (!matches.length) return null;
-  if (!addonPlanId && matches.length > 1) return null;
-
-  if (preferPositiveRemaining) {
-    const positive = matches.find(({ entry }) => {
-      const bucket = findAddonBalanceBucket(subscription, {
-        addonPlanId: entry && (entry.addonPlanId || entry.addonId),
-        addonId: entry && (entry.addonId || entry.addonPlanId),
-        category: entry && entry.category,
-      });
-      return resolveAddonBalanceRemainingQty(bucket, { entitlement: entry }) > 0;
-    });
-    if (positive) return positive.entry;
-  }
-  return matches[0].entry;
+  const context = resolveAddonEntitlementContext(subscription, {
+    productId,
+    category,
+    addonPlanId,
+    preferPositiveRemaining,
+  });
+  return context ? context.entitlement : null;
 }
 
 function resolveAddonCategoryForMenuProduct(product, menuCategoryKey) {
@@ -305,13 +413,15 @@ function buildSimulatedAddonRemainingByEntitlement(subscription, day = {}) {
 
   for (const selection of existingSelections) {
     if (!selection || selection.source !== "subscription") continue;
-    const match = getEligibleAddonEntitlementsForProduct(subscription, {
-      productId: selection.addonId,
+    const context = resolveAddonEntitlementContext(subscription, {
+      productId: selection.productId || selection.menuProductId || selection.addonId,
       category: selection.category,
       addonPlanId: selection.addonPlanId,
-    })[0];
-    if (!match) continue;
-    const key = getAddonEntitlementKey(match.entry, match.index);
+      balanceBucketId: selection.balanceBucketId,
+      entitlementKey: selection.entitlementKey,
+    });
+    if (!context) continue;
+    const key = context.entitlementKey;
     simulatedRemaining.set(key, (simulatedRemaining.get(key) || 0) + Math.max(1, Math.floor(Number(selection.qty || 1))));
   }
   return simulatedRemaining;
@@ -358,6 +468,7 @@ module.exports = {
   findAddonBalanceBucket,
   findAddonEntitlementForChoice,
   getAddonEntitlementKey,
+  getEntitlementMenuProductIds,
   getEligibleAddonEntitlementsForProduct,
   hasModernAddonProductSnapshot,
   isAddonEntitlementEligibleForProduct,
@@ -365,6 +476,7 @@ module.exports = {
   isRecoverableUninitializedAddonBalanceBucket,
   normalizeSubscriptionAddonCategory,
   resolveAddonBalanceRemainingQty,
+  resolveAddonEntitlementContext,
   resolveEntitlementPlanId,
   resolveAddonCategoryForMenuProduct,
   resolveAddonBalanceCapacity,

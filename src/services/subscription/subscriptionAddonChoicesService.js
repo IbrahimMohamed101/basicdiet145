@@ -12,8 +12,6 @@ const {
   ALL_SUPPORTED_SUBSCRIPTION_ADDON_CATEGORIES,
   SUBSCRIPTION_ADDON_CATEGORIES,
   SUBSCRIPTION_ADDON_CHOICE_MAPPINGS,
-  buildAddonEntitlementEligibility,
-  isAddonChoiceEligibleForAllowance,
   normalizeSubscriptionAddonCategory,
   resolveAddonCategoryForMenuProduct,
 } = require("./subscriptionAddonPolicyService");
@@ -215,6 +213,17 @@ function buildChoicePricingMetadata(subscription, entitlement, product) {
     quantity: 1,
   });
   return {
+    id: preview.id,
+    productId: preview.productId,
+    menuProductId: preview.menuProductId,
+    addonId: preview.addonId,
+    addonPlanId: preview.addonPlanId,
+    entitlementKey: preview.entitlementKey,
+    balanceBucketId: preview.balanceBucketId,
+    entitlementCategory: preview.entitlementCategory,
+    ownedSnapshot: preview.ownedSnapshot,
+    isEligibleForAllowance: preview.isEligibleForAllowance,
+    source: preview.source,
     requestedQty: preview.requestedQty,
     freeQtyAvailable: preview.remainingBefore,
     coveredQty: preview.coveredQty,
@@ -225,6 +234,43 @@ function buildChoicePricingMetadata(subscription, entitlement, product) {
     currency: preview.currency,
     remainingBefore: preview.remainingBefore,
     remainingAfter: preview.remainingAfter,
+    remainingQty: preview.remainingQty,
+    includedTotalQty: preview.includedTotalQty,
+    maxPerDay: preview.maxPerDay,
+  };
+}
+
+function buildGenericChoicePricingMetadata(product, subscription = null, category = null) {
+  const preview = buildAddonChoicePricingPreview({
+    subscription,
+    product,
+    category,
+    quantity: 1,
+  });
+  return {
+    productId: preview.productId,
+    menuProductId: preview.menuProductId,
+    addonId: preview.addonId,
+    addonPlanId: preview.addonPlanId,
+    entitlementKey: preview.entitlementKey,
+    balanceBucketId: preview.balanceBucketId,
+    entitlementCategory: preview.entitlementCategory,
+    ownedSnapshot: preview.ownedSnapshot,
+    isEligibleForAllowance: preview.isEligibleForAllowance,
+    source: preview.source,
+    requestedQty: preview.requestedQty,
+    freeQtyAvailable: preview.freeQtyAvailable,
+    coveredQty: preview.coveredQty,
+    paidQty: preview.paidQty,
+    payableTotalHalala: preview.payableTotalHalala,
+    pricingMode: preview.pricingMode,
+    unitPriceHalala: preview.unitPriceHalala,
+    currency: preview.currency,
+    remainingBefore: preview.remainingBefore,
+    remainingAfter: preview.remainingAfter,
+    remainingQty: preview.remainingQty,
+    includedTotalQty: preview.includedTotalQty,
+    maxPerDay: preview.maxPerDay,
   };
 }
 
@@ -377,11 +423,7 @@ async function buildSubscriptionAddonChoicesCatalog({
         ...buildChoicePricingMetadata(subscription, entitlement, product),
         category: displayCategory,
         entitlementCategory,
-        source: "subscription",
-        ownedSnapshot: true,
         availableForNewSale: false,
-        addonId: serialized.id,
-        unitPriceHalala: serialized.priceHalala,
         currency: serialized.currency,
       };
       const list = groupedChoices.get(displayCategory) || [];
@@ -430,6 +472,7 @@ async function buildGenericAddonChoicesCatalog({
         if (displayCategory !== addonCategory) return null;
         return {
           ...serializeChoice(product, sourceCategory.key, lang),
+          ...buildGenericChoicePricingMetadata(product, null, addonCategory),
           category: addonCategory,
         };
       })
@@ -571,16 +614,15 @@ async function buildAddonChoicesCatalog({
       models,
     });
     const merged = overlayEntitlementMetadata(data, entitlementData);
-    const entitlementEligibility = buildAddonEntitlementEligibility(subscription);
     for (const [groupCategory, group] of Object.entries(merged)) {
       for (const choice of group.choices || []) {
-        if (choice.isEligibleForAllowance !== true) {
-          choice.isEligibleForAllowance = isAddonChoiceEligibleForAllowance(
-            entitlementEligibility,
-            groupCategory,
-            choice.id
-          ) === true;
-        }
+        const authoritative = buildGenericChoicePricingMetadata({
+          _id: choice.id,
+          priceHalala: choice.priceHalala,
+          currency: choice.currency,
+          maxPerDay: choice.maxPerDay,
+        }, subscription, groupCategory);
+        Object.assign(choice, authoritative);
       }
     }
     return filterCatalogToRequestedCategory(merged, category);

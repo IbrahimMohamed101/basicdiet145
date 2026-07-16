@@ -35,6 +35,12 @@ function run() {
         choices: [
           { id: "inactive-meal", addonPlanId: inactivePlanId },
           { id: "generic-meal" },
+          {
+            id: "authoritative-paid-extra",
+            addonId: "507f191e810c19729de86200",
+            productId: "507f191e810c19729de86200",
+            isEligibleForAllowance: false,
+          },
         ],
         entitlements: [{ addonPlanId: inactivePlanId }],
       },
@@ -65,14 +71,20 @@ function run() {
     ["generic-juice", "active-juice"],
     "inactive plan choices are removed without removing generic legacy products"
   );
-  assert.strictEqual(filtered.data.meal, undefined, "inactive dynamic meal plan category is removed");
-  assert.strictEqual(filtered.data.dessert, undefined, "archived dynamic plan category is removed");
+  assert(filtered.data.meal, "purchased dynamic entitlement group remains available");
+  assert.deepStrictEqual(
+    filtered.data.meal.choices.map((choice) => choice.id),
+    ["generic-meal", "authoritative-paid-extra"],
+    "paid MenuProduct rows remain visible and are not interpreted as inactive add-on plans"
+  );
+  assert(filtered.data.dessert, "archived live plan does not erase an immutable purchased entitlement");
+  assert.deepStrictEqual(filtered.data.dessert.choices, []);
   assert.deepStrictEqual(
     filtered.data.hot_drinks.choices.map((choice) => choice.id),
     ["coffee"],
     "active dynamic categories remain while inactive plan rows are removed"
   );
-  assert.strictEqual(filtered.data.hot_drinks.entitlements.length, 1);
+  assert.strictEqual(filtered.data.hot_drinks.entitlements.length, 2, "purchased entitlement snapshots are retained");
 
   const activePlanCatalog = {
     meal: {
@@ -100,8 +112,14 @@ function run() {
   };
   const merged = mergeActivePlanCatalog(filtered, activePlanCatalog);
   assert(merged.data.meal, "a newly activated dashboard plan creates its dynamic mobile category");
-  assert.deepStrictEqual(merged.data.meal.choices.map((choice) => choice.id), ["dashboard-active-meal"]);
-  assert.strictEqual(merged.data.meal.choices[0].isEligibleForAllowance, false);
+  assert.deepStrictEqual(
+    merged.data.meal.choices.map((choice) => choice.id),
+    ["generic-meal", "authoritative-paid-extra", "dashboard-active-meal"]
+  );
+  assert.strictEqual(
+    merged.data.meal.choices.find((choice) => choice.id === "dashboard-active-meal").isEligibleForAllowance,
+    false
+  );
   assert.strictEqual(
     merged.data.hot_drinks.choices.filter((choice) => choice.id === "coffee").length,
     1,

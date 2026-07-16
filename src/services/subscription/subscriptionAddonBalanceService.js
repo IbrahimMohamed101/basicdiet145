@@ -193,9 +193,12 @@ function buildAddonCategoryAllowances(subscription, day = {}) {
     const category = normalizeSubscriptionAddonCategory(bucket && bucket.category);
     if (!category) continue;
     const entitlement = resolveEntitlementForBucket(bucket, entitlements);
-    const includedTotalQty = Math.max(0, Math.floor(Number(
-      bucket.includedTotalQty != null ? bucket.includedTotalQty : bucket.purchasedQty || entitlement && entitlement.includedTotalQty || 0
-    )));
+    const includedTotalQty = Math.max(
+      0,
+      Math.floor(Number(bucket.includedTotalQty || 0)),
+      Math.floor(Number(bucket.purchasedQty || 0)),
+      Math.floor(Number(entitlement && entitlement.includedTotalQty || 0))
+    );
     const remainingQty = resolveAddonBalanceRemainingQty(bucket, { entitlement });
     const reservedQty = countReservedAddonSelectionsForCategory(day, category);
     const rawConsumedQty = Math.max(0, Math.floor(Number(
