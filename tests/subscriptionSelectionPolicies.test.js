@@ -85,18 +85,19 @@ function run() {
   );
 
   const balanceSubscription = {
-    addonBalance: [{ category: "juice", remainingQty: 5, includedTotalQty: 10, consumedQty: 3, reservedQty: 2 }],
+    addonSubscriptions: [{ addonPlanId: "plan-juice", addonId: "plan-juice", category: "juice", menuProductIds: ["juice-1"] }],
+    addonBalance: [{ addonPlanId: "plan-juice", addonId: "plan-juice", category: "juice", remainingQty: 5, includedTotalQty: 10, consumedQty: 3, reservedQty: 2 }],
   };
   const existingDay = {
     addonSelections: [
-      { category: "juice", source: "subscription" },
-      { category: "juice", source: "subscription" },
+      { productId: "juice-1", addonPlanId: "plan-juice", entitlementKey: "juice:plan-juice", category: "juice", source: "subscription" },
+      { productId: "juice-1", addonPlanId: "plan-juice", entitlementKey: "juice:plan-juice", category: "juice", source: "subscription" },
       { category: "juice", source: "pending_payment" },
     ],
   };
   const before = JSON.stringify({ balanceSubscription, existingDay });
-  const simulatedRemaining = addonPolicy.buildSimulatedAddonRemainingByCategory(balanceSubscription, existingDay);
-  assert.strictEqual(simulatedRemaining.get("juice"), 7);
+  const simulatedRemaining = addonPolicy.buildSimulatedAddonRemainingByEntitlement(balanceSubscription, existingDay);
+  assert.strictEqual(simulatedRemaining.get("juice:plan-juice"), 7);
   assert.strictEqual(JSON.stringify({ balanceSubscription, existingDay }), before);
 
   const initializedRows = buildAddonBalanceRowsFromEntitlements([{

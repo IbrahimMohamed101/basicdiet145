@@ -257,8 +257,8 @@ async function run() {
   assert.strictEqual(result.summary.covered, 2);
   assert.strictEqual(result.summary.pending, 0);
 
-  // Duplicate product across two plans is allocated deterministically: the
-  // first matching entitlement is consumed first, then the second.
+  // Duplicate product across two plans never spills based on category or the
+  // first positive balance. Exact plan identity selects each bucket.
   sub = {
     status: "active",
     addonSubscriptions: [
@@ -270,7 +270,14 @@ async function run() {
       balance({ category: "juice", planId: SNACK_PLAN_ID, remainingQty: 1, includedTotalQty: 1 }),
     ],
   };
-  result = await allocate(sub, [JUICE_IDS[0], JUICE_IDS[0]]);
+  result = await allocate(sub, [JUICE_IDS[0]]);
+  assert.strictEqual(result.summary.covered, 0);
+  assert.strictEqual(result.summary.pending, 1);
+
+  result = await allocate(sub, [
+    { productId: JUICE_IDS[0], addonPlanId: JUICE_PLAN_ID },
+    { productId: JUICE_IDS[0], addonPlanId: SNACK_PLAN_ID },
+  ]);
   assert.strictEqual(result.summary.covered, 2);
   assert.deepStrictEqual(
     result.day.addonSelections.map((row) => String(row.addonPlanId)),

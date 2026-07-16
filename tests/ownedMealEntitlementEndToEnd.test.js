@@ -522,14 +522,16 @@ async function run() {
     assert.strictEqual(String(resolved.addonPlanId), String(fixture.planIds.mealDuplicate));
   });
 
-  await step("same product across plans deterministically uses the first positive entitlement without a plan id", async () => {
+  await step("same product across plans rejects ambiguous selection without plan identity", async () => {
     const sub = await Subscription.findOne({ "addonSubscriptions.addonPlanId": fixture.planIds.mealDuplicate }).lean();
-    const resolved = await resolveOwnedAddonEntitlementChoice({
-      subscription: sub,
-      productId: fixture.products.meal._id,
-      category: "meal",
-    });
-    assert.strictEqual(String(resolved.addonPlanId), String(fixture.planIds.meal));
+    await assert.rejects(
+      () => resolveOwnedAddonEntitlementChoice({
+        subscription: sub,
+        productId: fixture.products.meal._id,
+        category: "meal",
+      }),
+      (error) => error && error.code === "ENTITLEMENT_AMBIGUOUS"
+    );
   });
 
   await step("meal release does not alter snack or juice buckets", async () => {

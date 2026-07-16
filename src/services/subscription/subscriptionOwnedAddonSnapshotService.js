@@ -562,6 +562,16 @@ async function resolveOwnedAddonEntitlementChoice({
     ? subscription.addonSubscriptions
     : [];
 
+  if (normalizedBalanceBucketId && !(Array.isArray(subscription.addonBalance) ? subscription.addonBalance : [])
+    .some((row) => row && row._id && String(row._id) === normalizedBalanceBucketId)) {
+    throw createIntegrityError(ERROR_CODE_BALANCE_BUCKET_MISMATCH, "Owned entitlement balance bucket id was not found", {
+      addonPlanId: normalizedAddonPlanId || null,
+      category: normalizedCategory,
+      productId: normalizedProductId,
+      balanceBucketId: normalizedBalanceBucketId,
+    });
+  }
+
   await ensureLegacyRecoveredAddonEntitlements(subscription, { session });
 
   // 3. Search addonSubscriptions for a matching entitlement.

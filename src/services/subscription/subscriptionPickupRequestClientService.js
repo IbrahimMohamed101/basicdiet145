@@ -23,7 +23,7 @@ const { assertRestaurantOpenForOrdering } = require("../restaurantHoursService")
 const {
   assertSubscriptionActiveAndOwned,
 } = require("./subscriptionDateRangeHelperService");
-const { buildAddonChoicesCatalog } = require("./subscriptionAddonChoicesService");
+const { buildAddonChoiceGroups } = require("./subscriptionAddonChoicesService");
 const {
   assertSelectedPickupItemsAvailable,
   assertSelectedSlotsAvailableForPickup,
@@ -749,8 +749,8 @@ async function getPickupAvailabilityForClient({
 
   const pickupRequests = await findBlockingPickupRequests({ subscriptionId: subscription._id, date, session });
   const catalogMaps = day ? await loadPickupAvailabilityCatalogMaps(day, { session }) : {};
-  const addonChoices = await buildAddonChoicesCatalog({
-    subscriptionId: subscription._id,
+  const addonChoiceGroups = await buildAddonChoiceGroups({
+    subscription,
     lang: "en",
   });
   const fullAvailability = buildAvailabilityFromDay({
@@ -758,7 +758,7 @@ async function getPickupAvailabilityForClient({
     pickupRequests,
     subscription,
     catalogMaps,
-    addonChoices,
+    addonChoiceGroups,
   });
   const availability = filterAvailabilityForVisibility(fullAvailability, { includeUnavailable, includeHistory });
   availability.hiddenUnavailableCount = Math.max(0, (fullAvailability.pickupItems || []).length - (availability.pickupItems || []).length);
@@ -773,6 +773,7 @@ async function getPickupAvailabilityForClient({
     paymentRequirement: availability.paymentRequirement,
     commercialState: availability.commercialState,
     addonCategoryAllowances: availability.addonCategoryAllowances,
+    addonSubscriptionAllowances: availability.addonSubscriptionAllowances,
     wallet,
     summary,
     slots: availability.slots,

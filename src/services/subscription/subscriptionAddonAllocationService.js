@@ -29,6 +29,37 @@ function resolveAddonSelectionNameI18n(addonDoc) {
   };
 }
 
+function normalizeRequestedAddonSelection(value) {
+  const prototype = value && typeof value === "object" ? Object.getPrototypeOf(value) : null;
+  const isPlainObject = Boolean(value && typeof value === "object" && !Array.isArray(value)
+    && (prototype === Object.prototype || prototype === null));
+  const isStructured = Boolean(isPlainObject && (
+    value.productId || value.menuProductId || value.addonId || value.id
+  ));
+  const productId = String(isStructured
+    ? (value.productId || value.menuProductId || value.addonId || value.id)
+    : (value || "")
+  ).trim();
+  return {
+    productId,
+    addonPlanId: isStructured ? String(value.addonPlanId || value.groupId || "").trim() : "",
+    balanceBucketId: isStructured ? String(value.balanceBucketId || "").trim() : "",
+    entitlementKey: isStructured ? String(value.entitlementKey || "").trim() : "",
+    category: isStructured
+      ? String(value.displayCategory || value.category || value.allowanceCategory || "").trim()
+      : "",
+  };
+}
+
+function requestedAddonSelectionKey(selection) {
+  return [
+    selection.productId,
+    selection.balanceBucketId,
+    selection.addonPlanId,
+    selection.entitlementKey,
+  ].join(":");
+}
+
 async function reconcileAddonInclusions(
   subscription,
   day,
@@ -40,39 +71,50 @@ async function reconcileAddonInclusions(
     return;
   }
 
+  const requestedSelections = requestedAddonIds.map(normalizeRequestedAddonSelection);
   const choiceMap = new Map();
-  for (const addonId of requestedAddonIds) {
-    if (choiceMap.has(String(addonId))) continue;
-    const choice = await resolveChoiceProductById(addonId, { subscription });
-    if (choice) choiceMap.set(String(addonId), choice);
+  for (const requestedSelection of requestedSelections) {
+    const selectionKey = requestedAddonSelectionKey(requestedSelection);
+    if (choiceMap.has(selectionKey)) continue;
+    const choice = await resolveChoiceProductById(requestedSelection.productId, {
+      subscription,
+      addonPlanId: requestedSelection.addonPlanId || null,
+      balanceBucketId: requestedSelection.balanceBucketId || null,
+      entitlementKey: requestedSelection.entitlementKey || null,
+      category: requestedSelection.category || null,
+    });
+    if (choice) choiceMap.set(selectionKey, choice);
   }
 
   const simulatedRemaining = buildSimulatedAddonRemainingByEntitlement(subscription, day);
   const newSelections = [];
 
-  for (const addonId of requestedAddonIds) {
-    const choice = choiceMap.get(String(addonId));
+  for (const requestedSelection of requestedSelections) {
+    const choice = choiceMap.get(requestedAddonSelectionKey(requestedSelection));
     if (!choice) {
       throw {
         status: 400,
         code: "INVALID_ONE_TIME_ADDON_SELECTION",
-        message: `Add-on choice ${String(addonId)} is not an active one-time MenuProduct in an allowed subscription add-on category`,
+        message: `Add-on choice ${requestedSelection.productId} is not an active one-time MenuProduct in an allowed subscription add-on category`,
       };
     }
 
     const doc = choice.product;
     const category = choice.addonCategory;
-    const entitlementContext = resolveAddonEntitlementContext(subscription, {
-      productId: doc && doc._id ? doc._id : addonId,
-      category,
-      preferPositiveRemaining: true,
-      remainingQtyByEntitlement: simulatedRemaining,
+    const entitlementContext = choice.ownedResolution || resolveAddonEntitlementContext(subscription, {
+      productId: doc && doc._id ? doc._id : requestedSelection.productId,
+      category: requestedSelection.category || category,
+      addonPlanId: requestedSelection.addonPlanId || null,
+      balanceBucketId: requestedSelection.balanceBucketId || null,
+      entitlementKey: requestedSelection.entitlementKey || null,
     });
     const entitlement = entitlementContext ? entitlementContext.entitlement : null;
     const entitlementKey = entitlementContext ? entitlementContext.entitlementKey : null;
     const balanceBucket = entitlementContext ? entitlementContext.bucket : null;
     const existingPaid = (day.addonSelections || []).find(
-      (selection) => String(selection.addonId) === String(addonId) && selection.source === "paid"
+      (selection) => String(selection.addonId) === String(requestedSelection.productId)
+        && (!requestedSelection.addonPlanId || String(selection.addonPlanId) === requestedSelection.addonPlanId)
+        && selection.source === "paid"
     );
     if (existingPaid) {
       newSelections.push(existingPaid);
@@ -80,7 +122,7 @@ async function reconcileAddonInclusions(
     }
 
     const quantity = 1;
-    const productId = doc && doc._id ? doc._id : addonId;
+    const productId = doc && doc._id ? doc._id : requestedSelection.productId;
     const availableBefore = entitlement ? Number(simulatedRemaining.get(entitlementKey) || 0) : 0;
     const preview = buildAddonChoicePricingPreview({
       subscription,

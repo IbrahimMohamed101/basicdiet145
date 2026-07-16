@@ -119,6 +119,45 @@ function validateIdList(value, field) {
   return null;
 }
 
+function validateAddonSelectionList(value, field = "addonsOneTime") {
+  if (value === undefined) return null;
+  if (!Array.isArray(value)) {
+    return validationError(`${field} must be an array`, { field });
+  }
+  const optionalIdentityFields = [
+    "addonPlanId",
+    "groupId",
+    "balanceBucketId",
+    "entitlementKey",
+    "displayCategory",
+    "category",
+    "allowanceCategory",
+  ];
+  for (let index = 0; index < value.length; index += 1) {
+    const row = value[index];
+    if (!isPlainObject(row)) {
+      const scalarError = validateIdList([row], `${field}[${index}]`);
+      if (scalarError) return scalarError;
+      continue;
+    }
+    const productId = row.productId || row.menuProductId || row.addonId || row.id;
+    if (!productId || Array.isArray(productId) || isPlainObject(productId) || !String(productId).trim()) {
+      return validationError(`${field}[${index}].productId is required`, {
+        field: `${field}[${index}].productId`,
+      });
+    }
+    for (const identityField of optionalIdentityFields) {
+      if (row[identityField] === undefined || row[identityField] === null) continue;
+      if (Array.isArray(row[identityField]) || isPlainObject(row[identityField]) || !String(row[identityField]).trim()) {
+        return validationError(`${field}[${index}].${identityField} must be a non-empty string`, {
+          field: `${field}[${index}].${identityField}`,
+        });
+      }
+    }
+  }
+  return null;
+}
+
 function validateLegacyCarbsShape(slot, slotIndex) {
   if (slot.carbs === undefined || slot.carbs === null) return null;
   if (!Array.isArray(slot.carbs)) {
@@ -209,7 +248,7 @@ function validateMealSlotsRequestShape({ mealSlots, requestedOneTimeAddonIds }) 
     return validationError("mealSlots array is required", { field: "mealSlots" });
   }
 
-  const addonError = validateIdList(requestedOneTimeAddonIds, "addonsOneTime");
+  const addonError = validateAddonSelectionList(requestedOneTimeAddonIds, "addonsOneTime");
   if (addonError) return addonError;
 
   for (let slotIndex = 0; slotIndex < mealSlots.length; slotIndex += 1) {

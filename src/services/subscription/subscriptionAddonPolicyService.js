@@ -289,6 +289,7 @@ function resolveAddonEntitlementContext(subscription, {
   const normalizedEntitlementKey = String(entitlementKey || "");
   const normalizedCategory = normalizeSubscriptionAddonCategory(category, { allowEmpty: true });
   const explicitBucket = findAddonBalanceBucketById(subscription, balanceBucketId);
+  if (balanceBucketId && !explicitBucket) return null;
   const explicitBucketPlanId = String(explicitBucket && (
     rawValue(explicitBucket, "addonPlanId") || rawValue(explicitBucket, "addonId")
   ) || "");
@@ -334,25 +335,9 @@ function resolveAddonEntitlementContext(subscription, {
     matchType = candidates.length ? "legacy_category" : null;
   }
 
-  if (candidates.length > 1 && preferPositiveRemaining) {
-    const positive = candidates.filter(({ entry, index }) => {
-      const key = getAddonEntitlementKey(entry, index);
-      if (remainingQtyByEntitlement instanceof Map && remainingQtyByEntitlement.has(key)) {
-        return Number(remainingQtyByEntitlement.get(key) || 0) > 0;
-      }
-      const bucket = findAddonBalanceBucket(subscription, {
-        addonPlanId: resolveEntitlementPlanId(entry),
-        addonId: entry && (entry.addonId || entry.addonPlanId),
-        category: entry && entry.category,
-      });
-      return resolveAddonBalanceRemainingQty(bucket, { entitlement: entry }) > 0;
-    });
-    // Product snapshots can legitimately overlap across purchased plans. Pick
-    // the first positive bucket in subscription order; allocation passes its
-    // simulated map so repeated selections advance to the next bucket.
-    candidates = [positive[0] || candidates[0]];
-  }
-
+  // Never choose another positive bucket when identity is ambiguous. A shared
+  // product must carry balanceBucketId/addonPlanId/entitlementKey from its UI
+  // group; category totals are compatibility summaries, not spendable pools.
   if (candidates.length !== 1) return null;
   const { entry: entitlement, index: entitlementIndex } = candidates[0];
   const recoveredProductMetadata = normalizedProductId
@@ -463,25 +448,6 @@ function findAddonEntitlementForChoice(subscription, category, addonId = null) {
   });
 }
 
-function buildSimulatedAddonRemainingByCategory(subscription, day = {}) {
-  const balances = Array.isArray(subscription && subscription.addonBalance) ? subscription.addonBalance : [];
-  const existingSelections = Array.isArray(day && day.addonSelections) ? day.addonSelections : [];
-  const simulatedRemaining = new Map();
-
-  for (const bucket of balances) {
-    const category = normalizeSubscriptionAddonCategory(bucket && bucket.category);
-    if (!category) continue;
-    let remainingQty = resolveAddonBalanceRemainingQty(bucket);
-    for (const selection of existingSelections) {
-      if (selection && selection.source === "subscription" && normalizeSubscriptionAddonCategory(selection.category) === category) {
-        remainingQty += Math.max(1, Math.floor(Number(selection.qty || 1)));
-      }
-    }
-    simulatedRemaining.set(category, (simulatedRemaining.get(category) || 0) + remainingQty);
-  }
-  return simulatedRemaining;
-}
-
 function buildSimulatedAddonRemainingByEntitlement(subscription, day = {}) {
   const entitlements = Array.isArray(subscription && subscription.addonSubscriptions) ? subscription.addonSubscriptions : [];
   const existingSelections = Array.isArray(day && day.addonSelections) ? day.addonSelections : [];
@@ -539,6 +505,14 @@ function findAddonBalanceBucket(subscription, {
     return matches.length === 1 ? matches[0] : null;
   };
 
+  if (normalizedBucketId) {
+    const byBucketId = uniqueMatch((bucket) => String(
+      rawValue(bucket, "_id") || rawValue(bucket, "balanceBucketId") || ""
+    ) === normalizedBucketId);
+    if (byBucketId) return byBucketId;
+    return null;
+  }
+
   if (normalizedPlanId) {
     const exactPlan = uniqueMatch((bucket) => {
       const bucketPlanId = String(rawValue(bucket, "addonPlanId") || rawValue(bucket, "addonId") || "");
@@ -558,13 +532,6 @@ function findAddonBalanceBucket(subscription, {
       );
     });
     if (byEntitlementKey) return byEntitlementKey;
-  }
-
-  if (normalizedBucketId) {
-    const byBucketId = uniqueMatch((bucket) => String(
-      rawValue(bucket, "_id") || rawValue(bucket, "balanceBucketId") || ""
-    ) === normalizedBucketId);
-    if (byBucketId) return byBucketId;
   }
 
   if (normalizedAddonId) {
@@ -598,7 +565,6 @@ module.exports = {
   SUBSCRIPTION_ADDON_CHOICE_MAPPINGS,
   buildAddonEntitlementEligibility,
   buildSimulatedAddonRemainingByEntitlement,
-  buildSimulatedAddonRemainingByCategory,
   findAddonBalanceBucket,
   findAddonEntitlementForChoice,
   getAddonEntitlementKey,

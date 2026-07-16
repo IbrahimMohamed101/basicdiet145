@@ -101,6 +101,16 @@ async function run() {
   const planABucket = { _id: new mongoose.Types.ObjectId(), addonPlanId: planA, addonId: planA, category: "snack" };
   const planBBucket = { _id: new mongoose.Types.ObjectId(), addonPlanId: planB, addonId: planB, category: "snack" };
   const wallet = { addonBalance: [planABucket, planBBucket] };
+  assert.strictEqual(
+    findAddonBalanceBucket(wallet, { balanceBucketId: planABucket._id, addonPlanId: planB, category: "snack" }),
+    planABucket,
+    "explicit balanceBucketId has highest lookup priority"
+  );
+  assert.strictEqual(
+    findAddonBalanceBucket(wallet, { balanceBucketId: new mongoose.Types.ObjectId(), addonPlanId: planB }),
+    null,
+    "unknown explicit balanceBucketId fails closed instead of falling through to another plan"
+  );
   assert.strictEqual(findAddonBalanceBucket(wallet, { addonPlanId: planB, category: "juice" }), planBBucket);
   assert.strictEqual(findAddonBalanceBucket(wallet, { category: "snack" }), null, "ambiguous category fallback never collapses plans");
 

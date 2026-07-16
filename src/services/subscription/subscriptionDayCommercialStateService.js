@@ -473,21 +473,34 @@ function buildDayCommercialState(day = {}, { subscription = null } = {}) {
   };
 }
 
-function evaluateAddonChoicePayment({ choice, categoryAllowance }) {
+function evaluateAddonChoicePayment({ choice, subscriptionAllowance }) {
   if (!choice) return { required: false, status: "not_required", reason: null, amountDueHalala: 0, currency: "SAR" };
-  
-  const allowance = categoryAllowance || {};
+
+  const allowance = subscriptionAllowance || {};
   const priceHalala = Math.max(0, Math.floor(Number(choice.priceHalala || 0)));
   const remainingIncludedQty = Math.max(0, Math.floor(Number(allowance.remainingIncludedQty || 0)));
   const isEligibleForAllowance = choice.isEligibleForAllowance !== false;
-  
-  const required = (!isEligibleForAllowance || remainingIncludedQty <= 0) && priceHalala > 0;
+  const hasAuthoritativePricing = Boolean(choice.pricingMode)
+    || choice.coveredQty !== undefined
+    || choice.paidQty !== undefined
+    || choice.payableTotalHalala !== undefined;
+  const authoritativeAmountDue = Math.max(0, Math.floor(Number(
+    choice.payableTotalHalala != null
+      ? choice.payableTotalHalala
+      : Number(choice.paidQty || 0) * Number(choice.unitPriceHalala || priceHalala)
+  )));
+  const required = hasAuthoritativePricing
+    ? (Number(choice.paidQty || 0) > 0 || authoritativeAmountDue > 0 || choice.source === "pending_payment")
+    : ((!isEligibleForAllowance || remainingIncludedQty <= 0) && priceHalala > 0);
+  const amountDueHalala = hasAuthoritativePricing
+    ? authoritativeAmountDue
+    : (required ? priceHalala : 0);
   
   return {
     required,
     status: required ? "pending" : "not_required",
     reason: required ? "ADDON_PAYMENT_REQUIRED" : null,
-    amountDueHalala: required ? priceHalala : 0,
+    amountDueHalala,
     currency: choice.currency || allowance.currency || "SAR"
   };
 }

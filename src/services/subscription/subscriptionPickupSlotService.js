@@ -706,17 +706,61 @@ function normalizeAddonCategoryAllowance(row = {}) {
     reservedQty: Math.max(0, Math.floor(Number(row.reservedQty || 0))),
     overageUnitPriceHalala: Math.max(0, Math.floor(Number(row.overageUnitPriceHalala || 0))),
     currency: row.currency || "SAR",
+    allowanceScope: row.allowanceScope || "category_aggregate",
+    sourceOfTruth: row.sourceOfTruth === true,
+    spendable: row.spendable === true,
+    aggregateCompatibilityOnly: row.aggregateCompatibilityOnly !== false,
   };
 }
 
-function buildAddonChoicePickupItem(choice = {}, categoryAllowance = {}, index = 0) {
+function normalizeAddonSubscriptionAllowance(row = {}) {
+  return {
+    ...normalizeAddonCategoryAllowance({ ...row, category: row.allowanceCategory || row.entitlementCategory || row.category }),
+    addonPlanId: normalizeSlotId(row.addonPlanId || row.addonId),
+    balanceBucketId: normalizeSlotId(row.balanceBucketId),
+    entitlementKey: normalizeSlotId(row.entitlementKey),
+    displayKey: normalizeSlotId(row.displayKey || row.displayCategory),
+    displayCategory: normalizeSlotId(row.displayCategory || row.displayKey),
+    allowanceCategory: normalizeSlotId(row.allowanceCategory || row.entitlementCategory || row.category),
+    allowanceScope: "addon_subscription",
+    sourceOfTruth: true,
+    spendable: true,
+    aggregateCompatibilityOnly: false,
+  };
+}
+
+function resolveAddonSubscriptionAllowance(choice, group, allowances) {
+  const rows = (Array.isArray(allowances) ? allowances : []).map(normalizeAddonSubscriptionAllowance);
+  const unique = (predicate) => {
+    const matches = rows.filter(predicate);
+    return matches.length === 1 ? matches[0] : null;
+  };
+  const balanceBucketId = normalizeSlotId(choice.balanceBucketId || group.balanceBucketId);
+  if (balanceBucketId) return unique((row) => row.balanceBucketId === balanceBucketId);
+  const addonPlanId = normalizeSlotId(choice.addonPlanId || group.addonPlanId || group.groupId);
+  if (addonPlanId) return unique((row) => row.addonPlanId === addonPlanId);
+  const entitlementKey = normalizeSlotId(choice.entitlementKey);
+  if (entitlementKey) return unique((row) => row.entitlementKey === entitlementKey);
+  const displayKey = normalizeSlotId(group.displayKey || group.displayCategory || choice.displayCategory);
+  if (displayKey) {
+    const displayMatch = unique((row) => row.displayKey === displayKey || row.displayCategory === displayKey);
+    if (displayMatch) return displayMatch;
+  }
+  const allowanceCategory = normalizeSlotId(group.allowanceCategory || choice.allowanceCategory || choice.entitlementCategory);
+  return allowanceCategory ? unique((row) => row.allowanceCategory === allowanceCategory) : null;
+}
+
+function buildAddonChoicePickupItem(choice = {}, subscriptionAllowance = {}, index = 0, group = {}) {
   const allowance = normalizeAddonCategoryAllowance({
-    ...categoryAllowance,
-    category: categoryAllowance.category || choice.addonCategory || choice.category || null,
-    currency: categoryAllowance.currency || choice.currency || "SAR",
+    ...subscriptionAllowance,
+    category: subscriptionAllowance.allowanceCategory || choice.allowanceCategory || choice.entitlementCategory || null,
+    currency: subscriptionAllowance.currency || choice.currency || "SAR",
   });
-  
-  const paymentEvaluation = evaluateAddonChoicePayment({ choice, categoryAllowance: allowance });
+  const addonPlanId = normalizeSlotId(choice.addonPlanId || group.addonPlanId || group.groupId);
+  const balanceBucketId = normalizeSlotId(choice.balanceBucketId || subscriptionAllowance.balanceBucketId);
+  const entitlementKey = normalizeSlotId(choice.entitlementKey || subscriptionAllowance.entitlementKey);
+
+  const paymentEvaluation = evaluateAddonChoicePayment({ choice, subscriptionAllowance: allowance });
   const paymentRequired = paymentEvaluation.required;
   const paymentStatus = paymentEvaluation.status;
   const remainingIncludedQty = allowance.remainingIncludedQty;
@@ -732,7 +776,9 @@ function buildAddonChoicePickupItem(choice = {}, categoryAllowance = {}, index =
     paymentStatus,
     image: choice.imageUrl || choice.image || null,
   };
-  const itemId = addon.id ? `addon_choice_${addon.id}` : `addon_choice_${allowance.category || "unknown"}_${index + 1}`;
+  const itemId = addon.id
+    ? `addon_choice_${addonPlanId || "catalog"}_${addon.id}`
+    : `addon_choice_${addonPlanId || allowance.category || "unknown"}_${index + 1}`;
   const display = buildDisplayFromAddon({ addon, paymentRequired });
   const payment = {
     required: paymentRequired,
@@ -766,6 +812,10 @@ function buildAddonChoicePickupItem(choice = {}, categoryAllowance = {}, index =
     source: "addonChoice",
     sourceId: addon.id,
     addonId: addon.id,
+    addonPlanId: addonPlanId || null,
+    groupId: normalizeSlotId(group.groupId || addonPlanId) || null,
+    balanceBucketId: balanceBucketId || null,
+    entitlementKey: entitlementKey || null,
     addonKey: addon.key,
     slotId: null,
     slotKey: null,
@@ -808,32 +858,36 @@ function buildAddonChoicePickupItem(choice = {}, categoryAllowance = {}, index =
     addonScope: "subscription",
     inheritedFromDay: false,
     remainingBalance: {
+      addonPlanId: addonPlanId || null,
+      balanceBucketId: balanceBucketId || null,
+      entitlementKey: entitlementKey || null,
       category: allowance.category,
       remainingIncludedQty,
       includedTotalQty: allowance.includedTotalQty,
       overageUnitPriceHalala: allowance.overageUnitPriceHalala,
       currency: allowance.currency,
     },
-    categoryAllowance: allowance,
+    addonSubscriptionAllowance: {
+      ...allowance,
+      addonPlanId: addonPlanId || null,
+      balanceBucketId: balanceBucketId || null,
+      entitlementKey: entitlementKey || null,
+      allowanceScope: "addon_subscription",
+      sourceOfTruth: true,
+    },
   };
 }
 
-function buildAddonChoicePickupItems({ addonChoices = {}, addonCategoryAllowances = [] } = {}) {
-  const allowanceByCategory = new Map(
-    (Array.isArray(addonCategoryAllowances) ? addonCategoryAllowances : [])
-      .map(normalizeAddonCategoryAllowance)
-      .filter((row) => row.category)
-      .map((row) => [row.category, row])
-  );
+function buildAddonChoicePickupItems({ addonChoiceGroups = [], addonSubscriptionAllowances = [] } = {}) {
   const items = [];
-  for (const [category, group] of Object.entries(addonChoices || {})) {
-    const allowance = allowanceByCategory.get(category) || {};
+  for (const group of Array.isArray(addonChoiceGroups) ? addonChoiceGroups : []) {
     const choices = Array.isArray(group && group.choices) ? group.choices : [];
     for (const choice of choices) {
+      const allowance = resolveAddonSubscriptionAllowance(choice, group, addonSubscriptionAllowances) || {};
       items.push(buildAddonChoicePickupItem({
         ...choice,
-        addonCategory: category,
-      }, allowance, items.length));
+        addonCategory: group.displayCategory || group.displayKey || choice.category,
+      }, allowance, items.length, group));
     }
   }
   return items;
@@ -1081,11 +1135,14 @@ function filterAvailabilityForVisibility(availability, { includeUnavailable = fa
   };
 }
 
-function buildAvailabilityFromDay({ day, pickupRequests = [], subscription = {}, catalogMaps = {}, addonChoices = null }) {
+function buildAvailabilityFromDay({ day, pickupRequests = [], subscription = {}, catalogMaps = {}, addonChoiceGroups = null }) {
   const resolvedDay = enrichDayMealSlotsWithResolvedSnapshots(day || {}, catalogMaps);
   const commercialState = buildDayCommercialState(resolvedDay || {}, { subscription });
   const addonCategoryAllowances = Array.isArray(commercialState.addonCategoryAllowances)
     ? commercialState.addonCategoryAllowances.map(normalizeAddonCategoryAllowance)
+    : [];
+  const addonSubscriptionAllowances = Array.isArray(commercialState.addonSubscriptionAllowances)
+    ? commercialState.addonSubscriptionAllowances.map(normalizeAddonSubscriptionAllowance)
     : [];
   const reservationMap = buildSlotReservationMap(pickupRequests);
   const itemReservationMap = buildPickupItemReservationMap(pickupRequests);
@@ -1122,8 +1179,8 @@ function buildAvailabilityFromDay({ day, pickupRequests = [], subscription = {},
   });
   const dayAddons = expandDayAddonPickupItems(Array.isArray(resolvedDay && resolvedDay.addonSelections) ? resolvedDay.addonSelections : [])
     .map((item) => applyReservationToPickupItem(item, itemReservationMap.get(item.itemId)));
-  const availableAddonChoices = addonChoices
-    ? buildAddonChoicePickupItems({ addonChoices, addonCategoryAllowances })
+  const availableAddonChoices = addonChoiceGroups
+    ? buildAddonChoicePickupItems({ addonChoiceGroups, addonSubscriptionAllowances })
     : [];
   const pickupItems = [
     ...slots.map(buildPickupItemFromSlot),
@@ -1138,6 +1195,7 @@ function buildAvailabilityFromDay({ day, pickupRequests = [], subscription = {},
     paymentRequirement: commercialState.paymentRequirement,
     commercialState: commercialState.commercialState,
     addonCategoryAllowances,
+    addonSubscriptionAllowances,
     slots,
     dayAddons,
     availableAddonChoices,
@@ -1145,6 +1203,7 @@ function buildAvailabilityFromDay({ day, pickupRequests = [], subscription = {},
       ...buildAddonSummary(dayAddons),
       availableChoiceCount: availableAddonChoices.length,
       categoryAllowances: addonCategoryAllowances,
+      subscriptionAllowances: addonSubscriptionAllowances,
     },
     pickupItems,
     sections,

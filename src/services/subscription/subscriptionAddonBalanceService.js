@@ -258,6 +258,13 @@ function resolveBalanceBucketForEntitlement(entitlement, entitlementIndex, balan
   const identity = entitlementIdentity(entitlement, entitlementIndex);
   const rows = Array.isArray(balances) ? balances.filter(Boolean) : [];
 
+  const requestedBucketId = objectIdString(entitlement && entitlement.balanceBucketId);
+  if (requestedBucketId) {
+    const matches = rows.filter((bucket) => objectIdString(bucket && (bucket._id || bucket.balanceBucketId)) === requestedBucketId);
+    if (matches.length === 1) return { bucket: matches[0], matchSource: "balanceBucketId" };
+    return { bucket: null, matchSource: "balanceBucketId_mismatch" };
+  }
+
   if (identity.addonPlanId) {
     const matches = rows.filter((bucket) => {
       const bucketPlanId = objectIdString(bucket && (bucket.addonPlanId || bucket.addonId));
@@ -273,12 +280,6 @@ function resolveBalanceBucketForEntitlement(entitlement, entitlementIndex, balan
         || Boolean(identity.addonPlanId && bucketKey.includes(identity.addonPlanId));
     });
     if (matches.length === 1) return { bucket: matches[0], matchSource: "entitlementKey" };
-  }
-
-  const requestedBucketId = objectIdString(entitlement && entitlement.balanceBucketId);
-  if (requestedBucketId) {
-    const matches = rows.filter((bucket) => objectIdString(bucket && (bucket._id || bucket.balanceBucketId)) === requestedBucketId);
-    if (matches.length === 1) return { bucket: matches[0], matchSource: "balanceBucketId" };
   }
 
   const requestedDisplayKey = normalizeDisplayCategory(
@@ -369,6 +370,12 @@ function buildAddonSubscriptionAllowances(subscription, day = {}) {
     const consumedQty = Math.max(0, rawConsumedQty - reservedQty);
     const displayCategory = resolveEntitlementDisplayCategory(entitlement, identity.allowanceCategory);
     const menuProductIds = entitlementProductIds(entitlement);
+    const nameI18n = entitlement.addonPlanNameI18n && typeof entitlement.addonPlanNameI18n === "object"
+      ? entitlement.addonPlanNameI18n
+      : {};
+    const fallbackLabel = String(entitlement.addonPlanName || entitlement.name || "");
+    const labelAr = String(nameI18n.ar || fallbackLabel);
+    const labelEn = String(nameI18n.en || fallbackLabel || labelAr);
 
     return {
       entitlementIndex,
@@ -376,6 +383,10 @@ function buildAddonSubscriptionAllowances(subscription, day = {}) {
       addonPlanId: identity.addonPlanId || null,
       addonId: objectIdString(entitlement.addonId || entitlement.addonPlanId) || null,
       addonPlanName: entitlement.addonPlanName || entitlement.name || "",
+      label: labelAr || labelEn,
+      labelAr,
+      labelEn,
+      labelI18n: { ar: labelAr, en: labelEn },
       category: displayCategory,
       entitlementCategory: identity.allowanceCategory,
       displayCategory,
@@ -402,6 +413,10 @@ function buildAddonSubscriptionAllowances(subscription, day = {}) {
       menuProductIds,
       maxPerDay: Math.max(1, Math.floor(Number(entitlement.maxPerDay || entitlement.quantityPerDay || 1))),
       source: "subscription",
+      allowanceScope: "addon_subscription",
+      sourceOfTruth: true,
+      spendable: true,
+      aggregateCompatibilityOnly: false,
     };
   });
 }
@@ -509,6 +524,10 @@ function buildAddonCategoryAllowances(subscription, day = {}) {
       remainingIncludedQty: Math.max(0, Math.floor(Number(row.remainingIncludedQty || 0))),
       overageUnitPriceHalala: Math.max(0, Math.floor(Number(row.overageUnitPriceHalala || 0))),
       currency: row.currency || SYSTEM_CURRENCY,
+      allowanceScope: "category_aggregate",
+      sourceOfTruth: false,
+      spendable: false,
+      aggregateCompatibilityOnly: true,
     }))
     .sort((a, b) => a.category.localeCompare(b.category));
 }
