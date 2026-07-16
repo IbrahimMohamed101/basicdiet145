@@ -676,8 +676,7 @@ async function resolveOwnedAddonEntitlementChoice({
     });
   }
   const bucketPlanId = String(bucket.addonPlanId || bucket.addonId || "");
-  const bucketCategory = normalizeSubscriptionAddonCategory(bucket.category, { allowEmpty: true }) || String(bucket.category || "");
-  if (bucketPlanId !== entryPlanId || bucketCategory !== entryCategory) {
+  if (bucketPlanId !== entryPlanId) {
     throw createIntegrityError(ERROR_CODE_BALANCE_BUCKET_MISMATCH, "Owned entitlement balance bucket identity mismatch", {
       addonPlanId: entryPlanId,
       category: entryCategory,

@@ -22,7 +22,10 @@ function resolveEntitlementBalance(subscription, entitlement) {
   const bucket = findAddonBalanceBucket(subscription, {
     addonPlanId: entitlement && (entitlement.addonPlanId || entitlement.addonId),
     addonId: entitlement && (entitlement.addonId || entitlement.addonPlanId),
-    category: entitlement && entitlement.category,
+    entitlementKey: entitlement && entitlement.entitlementKey,
+    balanceBucketId: entitlement && entitlement.balanceBucketId,
+    displayKey: entitlement && (entitlement.displayKey || entitlement.displayCategory),
+    category: entitlement && (entitlement.allowanceCategory || entitlement.category),
   });
   const includedTotalQty = Math.max(
     toNonNegativeInteger(bucket && bucket.includedTotalQty, 0),

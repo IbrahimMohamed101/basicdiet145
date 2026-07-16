@@ -458,6 +458,9 @@ async function buildCurrentSubscriptionOverview({ userId, lang, runtime: runtime
         statusLabel: serializedSubscription.statusLabel,
       }),
       ...skipUsage,
+      // Stable client identity. Never require callers to infer the subscription
+      // from `_id`, `id`, a plan id, or the literal `current` route segment.
+      subscriptionId,
       businessDate: restaurantHours.businessDate,
       addonBalanceSummary: buildClientAddonBalance(sub, restaurantHours.businessDate),
       addonCategoryAllowances: buildAddonCategoryAllowances(sub),

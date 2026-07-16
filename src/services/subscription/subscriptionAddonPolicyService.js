@@ -517,6 +517,9 @@ function buildSimulatedAddonRemainingByEntitlement(subscription, day = {}) {
 function findAddonBalanceBucket(subscription, {
   addonId = null,
   addonPlanId = null,
+  entitlementKey = null,
+  balanceBucketId = null,
+  displayKey = null,
   category = null,
   unitPriceHalala = null,
   requirePositiveRemaining = false,
@@ -525,24 +528,68 @@ function findAddonBalanceBucket(subscription, {
   const normalizedCategory = category == null ? null : normalizeSubscriptionAddonCategory(category);
   const normalizedPlanId = String(addonPlanId || "");
   const normalizedAddonId = String(addonId || "");
+  const normalizedEntitlementKey = String(entitlementKey || "").trim();
+  const normalizedBucketId = String(balanceBucketId || "");
+  const normalizedDisplayKey = normalizeSubscriptionAddonCategory(displayKey, { allowEmpty: true });
+  const eligible = balances.filter((bucket) => (
+    bucket && (!requirePositiveRemaining || resolveAddonBalanceRemainingQty(bucket) > 0)
+  ));
+  const uniqueMatch = (predicate) => {
+    const matches = eligible.filter(predicate);
+    return matches.length === 1 ? matches[0] : null;
+  };
 
-  return balances.find((bucket) => {
+  if (normalizedPlanId) {
+    const exactPlan = uniqueMatch((bucket) => {
+      const bucketPlanId = String(rawValue(bucket, "addonPlanId") || rawValue(bucket, "addonId") || "");
+      return bucketPlanId === normalizedPlanId;
+    });
+    if (exactPlan) return exactPlan;
+  }
+
+  if (normalizedPlanId || normalizedEntitlementKey) {
+    const planToken = normalizedPlanId || normalizedEntitlementKey;
+    const byEntitlementKey = uniqueMatch((bucket) => {
+      const bucketKey = String(rawValue(bucket, "entitlementKey") || "").trim();
+      return bucketKey && (
+        (normalizedEntitlementKey && bucketKey === normalizedEntitlementKey)
+        || (normalizedPlanId && bucketKey.includes(normalizedPlanId))
+        || (!normalizedPlanId && bucketKey.includes(planToken))
+      );
+    });
+    if (byEntitlementKey) return byEntitlementKey;
+  }
+
+  if (normalizedBucketId) {
+    const byBucketId = uniqueMatch((bucket) => String(
+      rawValue(bucket, "_id") || rawValue(bucket, "balanceBucketId") || ""
+    ) === normalizedBucketId);
+    if (byBucketId) return byBucketId;
+  }
+
+  if (normalizedAddonId) {
+    const byAddonId = uniqueMatch((bucket) => {
+      const bucketAddonId = String(rawValue(bucket, "addonId") || rawValue(bucket, "addonPlanId") || "");
+      return bucketAddonId === normalizedAddonId;
+    });
+    if (byAddonId) return byAddonId;
+  }
+
+  if (normalizedDisplayKey) {
+    const byDisplayKey = uniqueMatch((bucket) => normalizeSubscriptionAddonCategory(
+      rawValue(bucket, "displayKey") || rawValue(bucket, "displayCategory"),
+      { allowEmpty: true }
+    ) === normalizedDisplayKey);
+    if (byDisplayKey) return byDisplayKey;
+  }
+
+  const byCategory = uniqueMatch((bucket) => {
     if (!bucket) return false;
-    if (requirePositiveRemaining && resolveAddonBalanceRemainingQty(bucket) <= 0) return false;
-
     const bucketCategory = normalizeSubscriptionAddonCategory(rawValue(bucket, "category"), { allowEmpty: true });
-    const bucketPlanId = String(rawValue(bucket, "addonPlanId") || rawValue(bucket, "addonId") || "");
-    const bucketAddonId = String(rawValue(bucket, "addonId") || "");
-
-    if (normalizedCategory && bucketCategory !== normalizedCategory) return false;
-    if (normalizedPlanId) {
-      if (bucketPlanId !== normalizedPlanId) return false;
-    } else if (normalizedAddonId && bucketAddonId !== normalizedAddonId && bucketPlanId !== normalizedAddonId) {
-      return false;
-    }
     if (unitPriceHalala !== null && Number(rawValue(bucket, "unitPriceHalala") || 0) !== Number(unitPriceHalala || 0)) return false;
-    return Boolean(normalizedCategory || normalizedPlanId || normalizedAddonId || unitPriceHalala !== null);
-  }) || null;
+    return Boolean(normalizedCategory && bucketCategory === normalizedCategory);
+  });
+  return byCategory || null;
 }
 
 module.exports = {

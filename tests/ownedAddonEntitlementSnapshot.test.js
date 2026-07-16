@@ -117,7 +117,7 @@ async function run() {
     addonPlanId: MEAL_PLAN_ID,
     addonId: MEAL_PLAN_ID,
     category: "snack",
-  }), null);
+  }).category, "meal", "addonPlanId outranks a stale category hint");
 
   assert.strictEqual(findAddonBalanceBucket(subscription, {
     addonPlanId: SNACK_PLAN_ID,

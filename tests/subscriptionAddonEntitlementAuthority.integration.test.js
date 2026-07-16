@@ -146,6 +146,7 @@ async function createSubscriptionFixture({
   startOffset = 2,
 }) {
   const start = dateOffset(startOffset);
+  const subscriptionStart = dateOffset(0);
   const dates = [start, dateOffset(startOffset + 1), dateOffset(startOffset + 2)];
   const entitlementProducts = products.slice(0, 4);
   const balance = {
@@ -166,7 +167,7 @@ async function createSubscriptionFixture({
     userId: user._id,
     planId: plan._id,
     status: "active",
-    startDate: dateStart(start),
+    startDate: dateStart(subscriptionStart),
     endDate: dateEnd(dateOffset(startOffset + 10)),
     validityEndDate: dateEnd(dateOffset(startOffset + 10)),
     totalMeals: 11,
@@ -266,7 +267,8 @@ async function createMultiPlanAllowanceFixture({ user, plan }) {
     menuCategoryKeys: [],
     sortOrder: 20 + index,
   })));
-  const start = dateOffset(20);
+  const start = dateOffset(0);
+  const selectionDate = dateOffset(20);
   const entitlementRows = definitions.map((definition, index) => ({
     addonId: addonPlans[index]._id,
     addonPlanId: addonPlans[index]._id,
@@ -324,13 +326,13 @@ async function createMultiPlanAllowanceFixture({ user, plan }) {
   });
   await SubscriptionDay.create({
     subscriptionId: subscription._id,
-    date: start,
+    date: selectionDate,
     status: "open",
     addonSelections: [],
   });
   return {
     subscription,
-    date: start,
+    date: selectionDate,
     token: issueAppAccessToken(user),
     addonPlans,
     planProducts,
@@ -573,6 +575,8 @@ async function main() {
 
     res = await api.get("/api/subscriptions/current/overview").set(primaryAuth);
     assert.strictEqual(res.status, 200, JSON.stringify(res.body));
+    assert(mongoose.Types.ObjectId.isValid(res.body.data.subscriptionId), JSON.stringify(res.body.data));
+    assert.strictEqual(res.body.data.subscriptionId, String(primary.subscription._id));
     assert(Array.isArray(res.body.data.addonCoverage));
     const overviewIncluded = res.body.data.addonCoverage.find((row) => String(row.productId) === String(products[0]._id));
     assert(overviewIncluded, "overview contains exact included product coverage");
@@ -580,6 +584,13 @@ async function main() {
     assert.strictEqual(overviewIncluded.remainingQty, 6);
     assert.strictEqual(res.body.data.addonBalanceSummary.juice.remainingUnits, 6);
     assert.strictEqual(res.body.data.addonSubscriptionAllowances.length, 1);
+
+    const overviewSubscriptionId = res.body.data.subscriptionId;
+    res = await api
+      .get(`/api/subscriptions/${overviewSubscriptionId}/days/${primary.dates[0]}`)
+      .set(primaryAuth);
+    assert.strictEqual(res.status, 200, JSON.stringify(res.body));
+    assert.notStrictEqual(res.body.error && res.body.error.code, "INVALID_ID");
 
     const multiPlanUser = await createUser("Four plan allowance user");
     const multiPlan = await createMultiPlanAllowanceFixture({ user: multiPlanUser, plan });
@@ -633,6 +644,7 @@ async function main() {
 
     res = await api.get("/api/subscriptions/current/overview").set(multiPlanAuth);
     assert.strictEqual(res.status, 200, JSON.stringify(res.body));
+    assert.strictEqual(res.body.data.subscriptionId, String(multiPlan.subscription._id));
     assert.strictEqual(res.body.data.addonCategoryAllowances.length, 3);
     assert.strictEqual(res.body.data.addonSubscriptionAllowances.length, 4);
 
@@ -644,6 +656,7 @@ async function main() {
     assert.strictEqual(res.status, 200, JSON.stringify(res.body));
     assert(Array.isArray(res.body.addonChoiceGroups), JSON.stringify(res.body));
     assert.strictEqual(res.body.addonChoiceGroups.length, 4, JSON.stringify(res.body.addonChoiceGroups));
+    assert.strictEqual(res.body.subscriptionId, String(multiPlan.subscription._id));
     assert.deepStrictEqual(
       res.body.addonChoiceGroups.map((group) => group.displayKey),
       ["juice", "small_salad", "snack", "ice_cream"]

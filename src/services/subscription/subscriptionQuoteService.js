@@ -1330,15 +1330,19 @@ async function resolveCheckoutQuoteOrThrow(
       ? item.menuProductIds
       : item.addon.menuProductIds || []
     ).map(String);
+    const addonPlanId = item.addon._id;
+    const allowanceCategory = item.addon.allowanceCategory || item.category || item.addon.category;
     addonSubscriptions.push({
       addonId: item.addon._id,
-      addonPlanId: item.addon._id,
+      addonPlanId,
       name: pickLang(item.addon.name, lang),
       addonPlanName: pickLang(item.addon.name, lang),
       addonPlanNameI18n: item.addon.name || null,
       category: item.category || item.addon.category,
+      allowanceCategory,
       displayKey: item.addon.displayKey || item.addon.displayCategory || item.addon.category,
       displayCategory: item.addon.displayCategory || item.addon.displayKey || item.addon.category,
+      entitlementKey: `${allowanceCategory || "addon"}:${addonPlanId}`,
       sortOrder: Number(item.addon.sortOrder || 0),
       maxPerDay: item.addon.maxPerDay || 1,
       basePlanId: plan._id,

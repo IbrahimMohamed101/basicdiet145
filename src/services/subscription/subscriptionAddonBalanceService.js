@@ -37,8 +37,12 @@ function buildAddonBalanceRowsFromEntitlements(addonSubscriptions, { daysCount =
     return {
       addonPlanId,
       addonId: row && (row.addonId || row.addonPlanId),
+      entitlementKey: row && row.entitlementKey || `${category || "addon"}:${addonPlanId || ""}`,
       name: row && (row.addonPlanName || row.name || ""),
       category,
+      allowanceCategory: normalizeSubscriptionAddonCategory(row && (row.allowanceCategory || row.category), { allowEmpty: true }),
+      displayKey: row && (row.displayKey || row.displayCategory) || "",
+      displayCategory: row && (row.displayCategory || row.displayKey) || "",
       purchasedDailyQty: quantityPerDay,
       includedTotalQty,
       purchasedQty,
@@ -76,18 +80,35 @@ async function resolveSubscriptionAddonBalanceWithAudit(subscription) {
 
 function resolveEntitlementForBucket(bucket, entitlements) {
   if (!bucket) return null;
+  const rows = (Array.isArray(entitlements) ? entitlements : []).filter(Boolean);
   const bucketCategory = normalizeSubscriptionAddonCategory(bucket.category, { allowEmpty: true });
   const bucketPlanId = String(bucket.addonPlanId || bucket.addonId || "");
   const bucketAddonId = String(bucket.addonId || "");
-  return (Array.isArray(entitlements) ? entitlements : []).find((entry) => {
-    if (!entry) return false;
-    const entryCategory = normalizeSubscriptionAddonCategory(entry.category, { allowEmpty: true });
+  if (bucketPlanId || bucketAddonId) {
+    const identityMatches = rows.filter((entry) => {
+      const entryPlanId = String(entry.addonPlanId || entry.addonId || "");
+      const entryAddonId = String(entry.addonId || entry.addonPlanId || "");
+      return Boolean(bucketPlanId && (entryPlanId === bucketPlanId || entryAddonId === bucketPlanId))
+        || Boolean(bucketAddonId && (entryAddonId === bucketAddonId || entryPlanId === bucketAddonId));
+    });
+    if (identityMatches.length === 1) return identityMatches[0];
+  }
+
+  const bucketEntitlementKey = String(bucket.entitlementKey || "").trim();
+  if (bucketEntitlementKey) {
+    const keyMatches = rows.filter((entry, index) => entitlementIdentity(entry, index).entitlementKey === bucketEntitlementKey);
+    if (keyMatches.length === 1) return keyMatches[0];
+  }
+
+  const categoryMatches = rows.filter((entry) => {
+    const entryCategory = normalizeSubscriptionAddonCategory(
+      entry.allowanceCategory || entry.category,
+      { allowEmpty: true }
+    );
     const entryPlanId = String(entry.addonPlanId || entry.addonId || "");
-    const entryAddonId = String(entry.addonId || entry.addonPlanId || "");
-    if (bucketCategory && entryCategory && bucketCategory !== entryCategory) return false;
-    return Boolean(bucketPlanId && (entryPlanId === bucketPlanId || entryAddonId === bucketPlanId))
-      || Boolean(bucketAddonId && (entryAddonId === bucketAddonId || entryPlanId === bucketAddonId));
-  }) || null;
+    return Boolean(bucketCategory && entryCategory === bucketCategory && entryPlanId);
+  });
+  return categoryMatches.length === 1 ? categoryMatches[0] : null;
 }
 
 function buildClientAddonBalance(subscription, businessDate, auditedConsumptionMap = null) {
@@ -220,7 +241,10 @@ function resolveEntitlementDisplayCategory(entitlement, allowanceCategory) {
 }
 
 function entitlementIdentity(entitlement, entitlementIndex) {
-  const allowanceCategory = normalizeSubscriptionAddonCategory(entitlement && entitlement.category, { allowEmpty: true });
+  const allowanceCategory = normalizeSubscriptionAddonCategory(
+    entitlement && (entitlement.allowanceCategory || entitlement.category),
+    { allowEmpty: true }
+  );
   const addonPlanId = objectIdString(entitlement && (entitlement.addonPlanId || entitlement.addonId));
   const explicitEntitlementKey = String(entitlement && entitlement.entitlementKey || "").trim();
   return {
@@ -243,7 +267,11 @@ function resolveBalanceBucketForEntitlement(entitlement, entitlementIndex, balan
   }
 
   if (identity.entitlementKey) {
-    const matches = rows.filter((bucket) => String(bucket && bucket.entitlementKey || "").trim() === identity.entitlementKey);
+    const matches = rows.filter((bucket) => {
+      const bucketKey = String(bucket && bucket.entitlementKey || "").trim();
+      return bucketKey === identity.entitlementKey
+        || Boolean(identity.addonPlanId && bucketKey.includes(identity.addonPlanId));
+    });
     if (matches.length === 1) return { bucket: matches[0], matchSource: "entitlementKey" };
   }
 
@@ -251,6 +279,16 @@ function resolveBalanceBucketForEntitlement(entitlement, entitlementIndex, balan
   if (requestedBucketId) {
     const matches = rows.filter((bucket) => objectIdString(bucket && (bucket._id || bucket.balanceBucketId)) === requestedBucketId);
     if (matches.length === 1) return { bucket: matches[0], matchSource: "balanceBucketId" };
+  }
+
+  const requestedDisplayKey = normalizeDisplayCategory(
+    entitlement && (entitlement.displayKey || entitlement.displayCategory)
+  );
+  if (requestedDisplayKey) {
+    const matches = rows.filter((bucket) => normalizeDisplayCategory(
+      bucket && (bucket.displayKey || bucket.displayCategory)
+    ) === requestedDisplayKey);
+    if (matches.length === 1) return { bucket: matches[0], matchSource: "displayKey" };
   }
 
   if (identity.allowanceCategory) {
@@ -295,7 +333,10 @@ function buildAddonSubscriptionAllowances(subscription, day = {}) {
   const entitlements = Array.isArray(subscription.addonSubscriptions) ? subscription.addonSubscriptions : [];
   const balances = Array.isArray(subscription.addonBalance) ? subscription.addonBalance : [];
   const entitlementCountsByCategory = entitlements.reduce((counts, entitlement) => {
-    const category = normalizeSubscriptionAddonCategory(entitlement && entitlement.category, { allowEmpty: true });
+    const category = normalizeSubscriptionAddonCategory(
+      entitlement && (entitlement.allowanceCategory || entitlement.category),
+      { allowEmpty: true }
+    );
     if (category) counts.set(category, (counts.get(category) || 0) + 1);
     return counts;
   }, new Map());
@@ -378,7 +419,7 @@ function buildAddonCategoryAllowances(subscription, day = {}) {
   const byCategory = new Map();
 
   for (const entitlement of entitlements) {
-    const category = normalizeSubscriptionAddonCategory(entitlement && entitlement.category);
+    const category = normalizeSubscriptionAddonCategory(entitlement && (entitlement.allowanceCategory || entitlement.category));
     if (!category) continue;
     if (!byCategory.has(category)) {
       byCategory.set(category, {

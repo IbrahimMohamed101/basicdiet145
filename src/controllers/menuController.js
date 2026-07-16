@@ -510,14 +510,14 @@ async function getSubscriptionMealPlannerMenu(req, res) {
     addons,
   });
   const legacyPlannerAddons = mealCatalog?.mealPlanner?.addons || { items: [], totalCount: 0 };
+  const allowanceSubscription = req.userId
+    ? await findCurrentSubscriptionForUser(req.userId, { SubscriptionModel: Subscription })
+    : null;
   const authoritativeAddonChoiceGroups = req.userId
-    ? await buildAddonChoiceGroups({ lang, userId: req.userId })
+    ? await buildAddonChoiceGroups({ lang, userId: req.userId, subscription: allowanceSubscription })
     : null;
   const authoritativeAddonChoices = authoritativeAddonChoiceGroups
     ? buildAddonChoicesCompatibilityMap(authoritativeAddonChoiceGroups)
-    : null;
-  const allowanceSubscription = req.userId
-    ? await findCurrentSubscriptionForUser(req.userId, { SubscriptionModel: Subscription })
     : null;
   const legacyAddonCatalog = buildAddonCatalogFromLegacyPlannerAddons(legacyPlannerAddons);
 
@@ -534,6 +534,7 @@ async function getSubscriptionMealPlannerMenu(req, res) {
     data.legacyAddonCatalog = legacyAddonCatalog;
   }
   if (allowanceSubscription) {
+    data.subscriptionId = String(allowanceSubscription._id);
     data.addonCategoryAllowances = buildAddonCategoryAllowances(allowanceSubscription);
     data.addonSubscriptionAllowances = buildAddonSubscriptionAllowances(allowanceSubscription);
   }

@@ -43,8 +43,13 @@ const AddonBalanceSchema = new mongoose.Schema(
   {
     addonPlanId: { type: mongoose.Schema.Types.ObjectId, ref: "Addon", default: null },
     addonId: { type: mongoose.Schema.Types.ObjectId, ref: "Addon", required: true },
+    entitlementKey: { type: String, default: "", trim: true },
+    balanceBucketId: { type: mongoose.Schema.Types.ObjectId, default: null },
     name: { type: mongoose.Schema.Types.Mixed, default: "" },
     category: { type: String, default: "" },
+    allowanceCategory: { type: String, default: "" },
+    displayKey: { type: String, default: "" },
+    displayCategory: { type: String, default: "" },
     purchasedDailyQty: { type: Number, min: 0, default: 1 },
     includedTotalQty: { type: Number, min: 0, default: 0 },
     purchasedQty: { type: Number, min: 0, default: 0 },
@@ -182,8 +187,11 @@ const AddonSubscriptionEntitlementSchema = new mongoose.Schema(
     addonPlanName: { type: String, default: "" },
     addonPlanNameI18n: { type: mongoose.Schema.Types.Mixed, default: null },
     category: { type: String, required: true },
+    allowanceCategory: { type: String, default: "" },
     displayKey: { type: String, default: "" },
     displayCategory: { type: String, default: "" },
+    entitlementKey: { type: String, default: "", trim: true },
+    balanceBucketId: { type: mongoose.Schema.Types.ObjectId, default: null },
     sortOrder: { type: Number, default: 0 },
     maxPerDay: { type: Number, min: 1, default: 1 },
     basePlanId: { type: mongoose.Schema.Types.ObjectId, ref: "Plan" },
@@ -200,6 +208,7 @@ const AddonSubscriptionEntitlementSchema = new mongoose.Schema(
     menuProductIds: { type: [mongoose.Schema.Types.ObjectId], ref: "MenuProduct", default: [] },
     menuCategoryKeys: { type: [String], default: [] },
     priceSource: { type: String, default: "" },
+    sourceRequestShape: { type: mongoose.Schema.Types.Mixed, default: null },
     // Immutable product snapshot. Optional — absent on historical subscriptions.
     // Use as fallback when the live MenuProduct document is no longer accessible.
     menuProductsSnapshot: { type: [MenuProductSnapshotSchema], default: undefined },

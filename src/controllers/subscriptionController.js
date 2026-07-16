@@ -2395,17 +2395,31 @@ async function getSubscriptionAddonChoices(req, res) {
   }
   try {
     const requestedCategory = req.query && req.query.category ? String(req.query.category).trim() : "";
+    let allowanceSubscription = null;
+    if (subscriptionId) {
+      allowanceSubscription = await Subscription.findById(subscriptionId).lean();
+      if (!allowanceSubscription) {
+        return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
+      }
+      if (String(allowanceSubscription.userId || "") !== String(req.userId || "")) {
+        return errorResponse(res, 403, "FORBIDDEN", "Subscription does not belong to the authenticated user");
+      }
+    } else if (req.userId) {
+      allowanceSubscription = await findCurrentSubscriptionForUser(req.userId, { SubscriptionModel: Subscription });
+    }
     const addonChoiceGroups = await buildAddonChoiceGroups({
       lang,
       category: requestedCategory,
-      subscriptionId,
+      subscription: allowanceSubscription,
       userId: req.userId,
     });
     const responseData = buildAddonChoicesCompatibilityMap(addonChoiceGroups);
-    const allowanceSubscription = subscriptionId
-      ? await Subscription.findById(subscriptionId).lean()
-      : (req.userId ? await findCurrentSubscriptionForUser(req.userId, { SubscriptionModel: Subscription }) : null);
-    const response = { status: true, data: responseData, addonChoiceGroups };
+    const response = {
+      status: true,
+      subscriptionId: allowanceSubscription ? String(allowanceSubscription._id) : null,
+      data: responseData,
+      addonChoiceGroups,
+    };
     if (allowanceSubscription) {
       response.addonCategoryAllowances = buildAddonCategoryAllowances(allowanceSubscription);
       response.addonSubscriptionAllowances = buildAddonSubscriptionAllowances(allowanceSubscription);

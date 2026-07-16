@@ -394,6 +394,8 @@ if (proteinsWithoutKey.length >= 2) {
       description: { ar: 'اشتراك يومي للعصير', en: 'Daily juice subscription' },
       kind: 'plan',
       category: 'juice',
+      displayKey: 'juice',
+      displayCategory: 'juice',
       billingMode: 'per_day',
       priceHalala: 1100,
       currency: 'SAR',
@@ -405,6 +407,8 @@ if (proteinsWithoutKey.length >= 2) {
     addonPlanJuice.isActive = true;
     addonPlanJuice.isArchived = false;
     addonPlanJuice.priceHalala = 1100;
+    addonPlanJuice.displayKey = 'juice';
+    addonPlanJuice.displayCategory = 'juice';
     await addonPlanJuice.save();
   }
 
@@ -970,6 +974,11 @@ async function runTests() {
     assertTrue(Array.isArray(draft.addonSubscriptions), 'addonSubscriptions array exists');
     assertEqual(draft.addonSubscriptions.length, 1, 'one addon entitlement created');
     assertEqual(draft.addonSubscriptions[0].category, 'juice', 'entitlement category preserved');
+    assertEqual(draft.addonSubscriptions[0].allowanceCategory, 'juice', 'entitlement allowance category preserved');
+    assertEqual(draft.addonSubscriptions[0].displayKey, 'juice', 'dashboard display key preserved');
+    assertEqual(draft.addonSubscriptions[0].displayCategory, 'juice', 'dashboard display category preserved');
+    assertTrue(String(draft.addonSubscriptions[0].entitlementKey || '').includes(String(addonPlanJuice._id)), 'plan-first entitlement key persisted');
+    assertTrue(Boolean(draft.addonSubscriptions[0].sourceRequestShape), 'source request shape preserved');
     assertEqual(String(draft.addonSubscriptions[0].addonId), String(addonPlanJuice._id), 'plan addon id persisted');
   });
 
@@ -981,7 +990,7 @@ async function runTests() {
       planId: String(testPlan._id),
       grams: 300,
       mealsPerDay: 2,
-      startDate,
+      startDate: sameDayStartDate,
       delivery: {
         type: 'delivery',
         address: { street: 'Test Street', city: 'Riyadh' },
