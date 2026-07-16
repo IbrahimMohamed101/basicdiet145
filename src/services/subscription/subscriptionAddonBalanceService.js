@@ -74,6 +74,22 @@ async function resolveSubscriptionAddonBalanceWithAudit(subscription) {
   return auditedConsumptionMap;
 }
 
+function resolveEntitlementForBucket(bucket, entitlements) {
+  if (!bucket) return null;
+  const bucketCategory = normalizeSubscriptionAddonCategory(bucket.category, { allowEmpty: true });
+  const bucketPlanId = String(bucket.addonPlanId || bucket.addonId || "");
+  const bucketAddonId = String(bucket.addonId || "");
+  return (Array.isArray(entitlements) ? entitlements : []).find((entry) => {
+    if (!entry) return false;
+    const entryCategory = normalizeSubscriptionAddonCategory(entry.category, { allowEmpty: true });
+    const entryPlanId = String(entry.addonPlanId || entry.addonId || "");
+    const entryAddonId = String(entry.addonId || entry.addonPlanId || "");
+    if (bucketCategory && entryCategory && bucketCategory !== entryCategory) return false;
+    return Boolean(bucketPlanId && (entryPlanId === bucketPlanId || entryAddonId === bucketPlanId))
+      || Boolean(bucketAddonId && (entryAddonId === bucketAddonId || entryPlanId === bucketAddonId));
+  }) || null;
+}
+
 function buildClientAddonBalance(subscription, businessDate, auditedConsumptionMap = null) {
   if (!subscription) return undefined;
 
@@ -92,8 +108,14 @@ function buildClientAddonBalance(subscription, businessDate, auditedConsumptionM
   for (const category of collectAddonCategoriesFromSubscription(subscription)) {
     const categoryBuckets = balances.filter((bucket) => normalizeSubscriptionAddonCategory(bucket && bucket.category) === category);
     if (categoryBuckets.length) {
-      const totalUnits = categoryBuckets.reduce((sum, bucket) => sum + Number(bucket.includedTotalQty || 0), 0);
-      const remainingUnits = categoryBuckets.reduce((sum, bucket) => sum + resolveAddonBalanceRemainingQty(bucket), 0);
+      const totalUnits = categoryBuckets.reduce((sum, bucket) => {
+        const entitlement = resolveEntitlementForBucket(bucket, entitlements);
+        return sum + Math.max(Number(bucket.includedTotalQty || 0), Number(entitlement && entitlement.includedTotalQty || 0));
+      }, 0);
+      const remainingUnits = categoryBuckets.reduce((sum, bucket) => {
+        const entitlement = resolveEntitlementForBucket(bucket, entitlements);
+        return sum + resolveAddonBalanceRemainingQty(bucket, { entitlement });
+      }, 0);
       const consumedUnits = categoryBuckets.reduce((sum, bucket) => sum + Number(bucket.consumedQty || 0), 0);
       result[category] = {
         totalUnits,
@@ -170,10 +192,11 @@ function buildAddonCategoryAllowances(subscription, day = {}) {
   for (const bucket of balances) {
     const category = normalizeSubscriptionAddonCategory(bucket && bucket.category);
     if (!category) continue;
+    const entitlement = resolveEntitlementForBucket(bucket, entitlements);
     const includedTotalQty = Math.max(0, Math.floor(Number(
-      bucket.includedTotalQty != null ? bucket.includedTotalQty : bucket.purchasedQty || 0
+      bucket.includedTotalQty != null ? bucket.includedTotalQty : bucket.purchasedQty || entitlement && entitlement.includedTotalQty || 0
     )));
-    const remainingQty = resolveAddonBalanceRemainingQty(bucket);
+    const remainingQty = resolveAddonBalanceRemainingQty(bucket, { entitlement });
     const reservedQty = countReservedAddonSelectionsForCategory(day, category);
     const rawConsumedQty = Math.max(0, Math.floor(Number(
       bucket.consumedQty != null ? bucket.consumedQty : includedTotalQty - remainingQty
@@ -201,7 +224,7 @@ function buildAddonCategoryAllowances(subscription, day = {}) {
     current.includedTotalQty += includedTotalQty;
     current.consumedQty += consumedQty;
     current.reservedQty += reservedQty;
-    current.remainingIncludedQty += Math.max(0, includedTotalQty - consumedQty - reservedQty);
+    current.remainingIncludedQty += Math.max(0, remainingQty - reservedQty);
     current.overageUnitPriceHalala = Number(
       bucket.overageUnitPriceHalala != null
         ? bucket.overageUnitPriceHalala
