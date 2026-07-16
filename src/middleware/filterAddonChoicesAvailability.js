@@ -225,6 +225,13 @@ async function filterAddonChoicesAvailability(req, res, next) {
     const originalJson = res.json.bind(res);
 
     res.json = function filteredJson(payload) {
+      // The plan-level service already returns the union of active dashboard
+      // plans and immutable purchased entitlements. Re-merging by category here
+      // would collapse distinct addonPlanId groups and make the compatibility
+      // map disagree with addonChoiceGroups.
+      if (payload && Array.isArray(payload.addonChoiceGroups)) {
+        return originalJson(payload);
+      }
       const filtered = filterAddonChoicesPayload(payload, activePlanIds);
       const requestedCategory = req.query && req.query.category ? String(req.query.category).trim() : "";
       return originalJson(mergeActivePlanCatalog(filtered, activePlanCatalog, { requestedCategory }));

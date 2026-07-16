@@ -21,7 +21,8 @@ const {
   buildSubscriptionTimeline,
 } = require("../services/subscription/subscriptionService");
 const {
-  buildAddonChoicesCatalog,
+  buildAddonChoiceGroups,
+  buildAddonChoicesCompatibilityMap,
   findCurrentSubscriptionForUser,
 } = require("../services/subscription/subscriptionAddonChoicesService");
 const {
@@ -2394,19 +2395,17 @@ async function getSubscriptionAddonChoices(req, res) {
   }
   try {
     const requestedCategory = req.query && req.query.category ? String(req.query.category).trim() : "";
-    const data = await buildAddonChoicesCatalog({
+    const addonChoiceGroups = await buildAddonChoiceGroups({
       lang,
       category: requestedCategory,
       subscriptionId,
       userId: req.userId,
     });
-    const responseData = requestedCategory
-      ? (data && data[requestedCategory] ? { [requestedCategory]: data[requestedCategory] } : {})
-      : data;
+    const responseData = buildAddonChoicesCompatibilityMap(addonChoiceGroups);
     const allowanceSubscription = subscriptionId
       ? await Subscription.findById(subscriptionId).lean()
       : (req.userId ? await findCurrentSubscriptionForUser(req.userId, { SubscriptionModel: Subscription }) : null);
-    const response = { status: true, data: responseData };
+    const response = { status: true, data: responseData, addonChoiceGroups };
     if (allowanceSubscription) {
       response.addonCategoryAllowances = buildAddonCategoryAllowances(allowanceSubscription);
       response.addonSubscriptionAllowances = buildAddonSubscriptionAllowances(allowanceSubscription);

@@ -455,7 +455,9 @@ async function main() {
       userId: String(subscription.userId),
     });
     assert.strictEqual(choicesResponse.statusCode, 200);
-    assert.deepStrictEqual(ids(choicesResponse.body.data.juice.choices), configuredIds.slice(0, 3));
+    const dynamicJuiceIds = [...new Set([...updatedIds, ...configuredIds.slice(0, 3)])];
+    assert.deepStrictEqual(ids(choicesResponse.body.data.juice.choices), dynamicJuiceIds);
+    assert.strictEqual(choicesResponse.body.addonChoiceGroups.length, 1);
 
     const api = request(createApp());
     const appHeaders = {
@@ -469,25 +471,23 @@ async function main() {
     assert.strictEqual(mobileChoicesResponse.body.status, true);
     assert.deepStrictEqual(
       Object.keys(mobileChoicesResponse.body.data).sort(),
-      ["dessert", "juice", "meal", "snack"],
-      "current subscription is resolved and merged with generic categories"
+      ["dessert", "juice", "meal"],
+      "compatibility map contains one entry per active or purchased dashboard plan"
     );
-    for (const categoryKey of ["juice", "meal", "dessert", "snack"]) {
+    assert.strictEqual(mobileChoicesResponse.body.addonChoiceGroups.length, 3);
+    for (const categoryKey of ["juice", "meal", "dessert"]) {
       assert.strictEqual(mobileChoicesResponse.body.data[categoryKey].category, categoryKey);
       assert(Array.isArray(mobileChoicesResponse.body.data[categoryKey].choices), `${categoryKey} keeps choices array`);
       mobileChoicesResponse.body.data[categoryKey].choices.forEach(assertFlutterChoiceFields);
     }
-    assert.deepStrictEqual(ids(mobileChoicesResponse.body.data.juice.choices), ids(eligibleProducts));
+    assert.deepStrictEqual(ids(mobileChoicesResponse.body.data.juice.choices), dynamicJuiceIds);
     assert.deepStrictEqual(ids(mobileChoicesResponse.body.data.meal.choices), [
-      String(mealProducts[0]._id),
       String(mealProducts[1]._id),
-      String(mealProducts[2]._id),
+      String(mealProducts[0]._id),
     ]);
     assert.deepStrictEqual(ids(mobileChoicesResponse.body.data.dessert.choices), [
       String(dessertProducts[0]._id),
-      String(dessertProducts[1]._id),
     ]);
-    assert.deepStrictEqual(ids(mobileChoicesResponse.body.data.snack.choices), [String(dessertProducts[2]._id)]);
     assert.strictEqual(
       mobileChoicesResponse.body.data.juice.choices.find((choice) => String(choice.id) === configuredIds[0]).isEligibleForAllowance,
       true
@@ -501,20 +501,15 @@ async function main() {
         .filter((choice) => choice.isEligibleForAllowance)
         .map((choice) => String(choice.id)),
       [
-        String(mealProducts[0]._id),
         String(mealProducts[1]._id),
+        String(mealProducts[0]._id),
       ]
     );
-    assert(
-      mobileChoicesResponse.body.data.meal.choices.some((choice) => String(choice.id) === String(mealProducts[2]._id) && choice.isEligibleForAllowance === false),
-      "unrelated global meal product remains visible but is not allowance-eligible"
-    );
-    assert(
-      mobileChoicesResponse.body.data.snack.choices.some((choice) => String(choice.id) === String(dessertProducts[2]._id) && choice.isEligibleForAllowance === false),
-      "unrelated generic snack product remains visible but is not allowance-eligible"
-    );
-    assert.strictEqual(mobileChoicesResponse.body.data.juice.choices[0].payableTotalHalala, 0);
-    assert.strictEqual(mobileChoicesResponse.body.data.juice.choices[0].coveredQty, 1);
+    assert(!mobileChoicesResponse.body.data.meal.choices.some((choice) => String(choice.id) === String(mealProducts[2]._id)));
+    const coveredJuiceChoice = mobileChoicesResponse.body.data.juice.choices
+      .find((choice) => String(choice.id) === configuredIds[0]);
+    assert.strictEqual(coveredJuiceChoice.payableTotalHalala, 0);
+    assert.strictEqual(coveredJuiceChoice.coveredQty, 1);
     const paidMealChoice = mobileChoicesResponse.body.data.meal.choices.find((choice) => String(choice.id) === String(mealProducts[1]._id));
     assert.strictEqual(paidMealChoice.coveredQty, 0);
     assert.strictEqual(paidMealChoice.paidQty, 1);
@@ -526,17 +521,16 @@ async function main() {
     assert.strictEqual(mobileMealOnlyResponse.status, 200, JSON.stringify(mobileMealOnlyResponse.body));
     assert.deepStrictEqual(Object.keys(mobileMealOnlyResponse.body.data), ["meal"]);
     assert.deepStrictEqual(ids(mobileMealOnlyResponse.body.data.meal.choices), [
-      String(mealProducts[0]._id),
       String(mealProducts[1]._id),
-      String(mealProducts[2]._id),
+      String(mealProducts[0]._id),
     ]);
     assert.deepStrictEqual(
       mobileMealOnlyResponse.body.data.meal.choices
         .filter((choice) => choice.isEligibleForAllowance)
         .map((choice) => String(choice.id)),
       [
-        String(mealProducts[0]._id),
         String(mealProducts[1]._id),
+        String(mealProducts[0]._id),
       ]
     );
 

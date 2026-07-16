@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const Addon = require("../../models/Addon");
 const MenuCategory = require("../../models/MenuCategory");
 const MenuProduct = require("../../models/MenuProduct");
 const { pickLang } = require("../../utils/i18n");
@@ -122,6 +123,7 @@ function serializeChoice(product, categoryKey, lang) {
     key: product.key || "",
     name: localized(product.name, lang),
     nameAr: pickLang(product.name, "ar") || "",
+    nameEn: pickLang(product.name, "en") || "",
     nameI18n: {
       ar: pickLang(product.name, "ar") || "",
       en: pickLang(product.name, "en") || "",
@@ -147,6 +149,213 @@ function serializeChoice(product, categoryKey, lang) {
     liveCatalogMissing: product._liveCatalogMissing === true,
     ui: normalizeProductUiMetadata(product.ui),
   };
+}
+
+function objectIdString(value) {
+  if (value === undefined || value === null) return "";
+  if (typeof value === "object" && value._id) return String(value._id);
+  return String(value);
+}
+
+function uniqueIdStrings(values) {
+  return [...new Set((Array.isArray(values) ? values : [])
+    .map(objectIdString)
+    .map((value) => value.trim())
+    .filter((value) => mongoose.Types.ObjectId.isValid(value)))];
+}
+
+function entitlementProductIds(entitlement) {
+  return uniqueIdStrings([
+    ...(Array.isArray(entitlement && entitlement.menuProductIds) ? entitlement.menuProductIds : []),
+    ...(Array.isArray(entitlement && entitlement.menuProductsSnapshot)
+      ? entitlement.menuProductsSnapshot.map((snapshot) => snapshot && (snapshot.id || snapshot._id || snapshot.productId))
+      : []),
+  ]);
+}
+
+function normalizeDynamicDisplayKey(value, fallbackId = "") {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_")
+    .replace(/[^a-z0-9_]/g, "")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return normalized || String(fallbackId || "");
+}
+
+function firstLocalizedValue(source, lang) {
+  if (source === undefined || source === null) return "";
+  if (typeof source === "string") return source.trim();
+  if (typeof source !== "object" || Array.isArray(source)) return "";
+  const direct = source[lang];
+  if (typeof direct === "string" && direct.trim()) return direct.trim();
+  return "";
+}
+
+function resolvePlanLocalizedFields(plan, entitlement, displayKey, lang) {
+  const labelI18n = plan && (plan.labelI18n || plan.label) || null;
+  const nameI18n = plan && (plan.nameI18n || plan.name)
+    || entitlement && entitlement.addonPlanNameI18n
+    || null;
+  const entitlementName = String(entitlement && (entitlement.addonPlanName || entitlement.name) || "").trim();
+  const labelAr = String(
+    plan && (plan.labelAr || plan.titleAr || plan.nameAr) || ""
+  ).trim()
+    || firstLocalizedValue(labelI18n, "ar")
+    || firstLocalizedValue(nameI18n, "ar")
+    || entitlementName;
+  const labelEn = String(
+    plan && (plan.labelEn || plan.titleEn || plan.nameEn) || ""
+  ).trim()
+    || firstLocalizedValue(labelI18n, "en")
+    || firstLocalizedValue(nameI18n, "en")
+    || entitlementName;
+  const fallback = displayKey
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ") || objectIdString(plan && plan._id);
+  const resolvedAr = labelAr || labelEn || fallback;
+  const resolvedEn = labelEn || labelAr || fallback;
+  const label = lang === "ar" ? resolvedAr : resolvedEn;
+  return {
+    label,
+    labelText: label,
+    labelAr: resolvedAr,
+    labelEn: resolvedEn,
+    labelI18n: { ar: resolvedAr, en: resolvedEn },
+    addonPlanName: label,
+    nameAr: resolvedAr,
+    nameEn: resolvedEn,
+    nameI18n: { ar: resolvedAr, en: resolvedEn },
+  };
+}
+
+function entitlementDisplayKey(entitlement) {
+  const explicit = entitlement && (
+    entitlement.displayKey
+    || entitlement.displayCategory
+    || entitlement.categoryKey
+    || entitlement.displayCategoryKey
+  );
+  if (explicit) return normalizeDynamicDisplayKey(explicit);
+  const configuredKeys = (Array.isArray(entitlement && entitlement.menuCategoryKeys)
+    ? entitlement.menuCategoryKeys
+    : []).map((key) => normalizeDynamicDisplayKey(key)).filter(Boolean);
+  if (new Set(configuredKeys).size === 1) return configuredKeys[0];
+  const snapshotKeys = (Array.isArray(entitlement && entitlement.menuProductsSnapshot)
+    ? entitlement.menuProductsSnapshot
+    : []).map((snapshot) => normalizeDynamicDisplayKey(
+      snapshot && (snapshot.displayKey || snapshot.displayCategory || snapshot.categoryKey || snapshot.category)
+    )).filter(Boolean);
+  if (new Set(snapshotKeys).size === 1) return snapshotKeys[0];
+  return normalizeDynamicDisplayKey(entitlement && entitlement.category);
+}
+
+function planDisplayKey(plan, entitlement, planId) {
+  const explicit = plan && (
+    plan.displayKey
+    || plan.displayCategory
+    || plan.categoryKey
+    || plan.displayCategoryKey
+  );
+  if (explicit) return normalizeDynamicDisplayKey(explicit, planId);
+  const configuredKeys = (Array.isArray(plan && plan.menuCategoryKeys) ? plan.menuCategoryKeys : [])
+    .map((key) => normalizeDynamicDisplayKey(key))
+    .filter(Boolean);
+  if (new Set(configuredKeys).size === 1) return configuredKeys[0];
+  return normalizeDynamicDisplayKey(plan && plan.category)
+    || entitlementDisplayKey(entitlement)
+    || planId;
+}
+
+function numericPlanOrder(plan) {
+  for (const value of [
+    plan && plan.sortOrder,
+    plan && plan.displayOrder,
+    plan && plan.order,
+  ]) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+async function loadDynamicAddonPlans(subscription, { AddonModel = Addon } = {}) {
+  const entitlements = Array.isArray(subscription && subscription.addonSubscriptions)
+    ? subscription.addonSubscriptions.filter(Boolean)
+    : [];
+  const purchasedPlanIds = uniqueIdStrings(entitlements.map((entitlement) => (
+    entitlement && (entitlement.addonPlanId || entitlement.addonId)
+  )));
+
+  const activeRows = await AddonModel.find({
+    kind: "plan",
+    isActive: true,
+    isArchived: { $ne: true },
+  }).sort({ sortOrder: 1, createdAt: -1 }).lean();
+  const rowsById = new Map(activeRows.map((row) => [objectIdString(row._id), row]));
+  const missingPurchasedIds = purchasedPlanIds.filter((id) => !rowsById.has(id));
+  if (missingPurchasedIds.length) {
+    const purchasedRows = await AddonModel.find({
+      _id: { $in: missingPurchasedIds },
+      kind: "plan",
+    }).lean();
+    for (const row of purchasedRows) rowsById.set(objectIdString(row._id), row);
+  }
+  return { rowsById, entitlements };
+}
+
+async function loadLivePlanProducts(productIds, {
+  MenuProductModel = MenuProduct,
+} = {}) {
+  const ids = uniqueIdStrings(productIds);
+  if (!ids.length) return [];
+  const rows = await MenuProductModel.find(activePublishedQuery({
+    _id: { $in: ids },
+    ...availableForChannelQuery("one_time"),
+  })).lean();
+  const catalogItemsById = await loadCatalogItemsByIdForDocs(rows);
+  const usableById = new Map(
+    filterGloballyAvailable(rows, catalogItemsById)
+      .filter(isDailyAddonMenuProduct)
+      .map((row) => [objectIdString(row._id), row])
+  );
+  return ids.map((id) => usableById.get(id)).filter(Boolean);
+}
+
+function buildAddonChoicesCompatibilityMap(groups) {
+  const data = {};
+  for (const group of Array.isArray(groups) ? groups : []) {
+    const preferredKey = normalizeDynamicDisplayKey(group.displayKey, group.addonPlanId);
+    const key = !Object.prototype.hasOwnProperty.call(data, preferredKey)
+      ? preferredKey
+      : `${preferredKey}:${group.addonPlanId}`;
+    data[key] = {
+      category: group.displayCategory,
+      displayKey: group.displayKey,
+      displayCategory: group.displayCategory,
+      groupId: group.groupId,
+      addonPlanId: group.addonPlanId,
+      addonPlanName: group.addonPlanName,
+      allowanceCategory: group.allowanceCategory,
+      entitlementCategory: group.entitlementCategory,
+      label: group.label,
+      labelText: group.labelText,
+      labelAr: group.labelAr,
+      labelEn: group.labelEn,
+      labelI18n: group.labelI18n,
+      source: group.source,
+      isPurchased: group.isPurchased,
+      includedTotalQty: group.includedTotalQty,
+      remainingIncludedQty: group.remainingIncludedQty,
+      choices: group.choices,
+      entitlements: group.entitlements,
+      catalogType: "addon_plan_groups_compatibility",
+    };
+  }
+  return data;
 }
 
 function createServiceError(status, code, message) {
@@ -670,6 +879,171 @@ async function buildAddonChoicesCatalog({
   return filterCatalogToRequestedCategory(data, category);
 }
 
+async function buildAddonChoiceGroups({
+  lang = "en",
+  category,
+  subscriptionId = null,
+  userId = null,
+  subscription: suppliedSubscription = null,
+  models = {},
+} = {}) {
+  const SubscriptionModel = models.SubscriptionModel || mongoose.model("Subscription");
+  const AddonModel = models.AddonModel || Addon;
+  let subscription = suppliedSubscription;
+  if (!subscription && subscriptionId) {
+    if (!mongoose.Types.ObjectId.isValid(String(subscriptionId))) {
+      throw createServiceError(400, "INVALID_ID", "subscriptionId is not a valid id");
+    }
+    subscription = await SubscriptionModel.findById(subscriptionId).lean();
+    if (!subscription) throw createServiceError(404, "NOT_FOUND", "Subscription not found");
+  } else if (!subscription && userId) {
+    subscription = await findCurrentSubscriptionForUser(userId, { SubscriptionModel });
+  }
+  if (subscription && userId && String(subscription.userId || "") !== String(userId)) {
+    throw createServiceError(403, "FORBIDDEN", "Subscription does not belong to the authenticated user");
+  }
+
+  const { rowsById: planRowsById, entitlements } = await loadDynamicAddonPlans(subscription, { AddonModel });
+  const entitlementRows = entitlements.map((entitlement, entitlementIndex) => ({
+    entitlement,
+    entitlementIndex,
+    addonPlanId: objectIdString(entitlement && (entitlement.addonPlanId || entitlement.addonId)),
+  })).filter((row) => row.addonPlanId);
+  const entitlementByPlanId = new Map(entitlementRows.map((row) => [row.addonPlanId, row]));
+  const allPlanIds = [...new Set([
+    ...planRowsById.keys(),
+    ...entitlementRows.map((row) => row.addonPlanId),
+  ])];
+  const requestedDisplayKey = category
+    ? normalizeDynamicDisplayKey(category)
+    : "";
+  const groups = [];
+
+  for (const addonPlanId of allPlanIds) {
+    const plan = planRowsById.get(addonPlanId) || null;
+    const entitlementRow = entitlementByPlanId.get(addonPlanId) || null;
+    const entitlement = entitlementRow && entitlementRow.entitlement;
+    const displayKey = planDisplayKey(plan, entitlement, addonPlanId);
+    if (requestedDisplayKey && requestedDisplayKey !== displayKey && requestedDisplayKey !== addonPlanId) {
+      continue;
+    }
+    const allowanceCategory = String(entitlement && entitlement.category || plan && plan.category || "").trim();
+    const configuredProductIds = uniqueIdStrings([
+      ...(Array.isArray(plan && plan.menuProductIds) ? plan.menuProductIds : []),
+      ...entitlementProductIds(entitlement),
+    ]);
+    const entitlementIds = new Set(entitlementProductIds(entitlement));
+    const loadedById = new Map();
+    const ownedMetadataById = new Map();
+
+    if (entitlement && entitlementIds.size) {
+      const ownedRows = await loadOwnedSnapshotProducts([...entitlementIds], entitlement, {
+        AddonModel,
+        MenuProductModel: models.MenuProductModel,
+        entitlementIndex: entitlementRow.entitlementIndex,
+        subscription,
+      });
+      for (const owned of ownedRows) {
+        if (!owned || !owned.product) continue;
+        const productId = objectIdString(owned.product._id);
+        loadedById.set(productId, owned.product);
+        ownedMetadataById.set(productId, owned);
+      }
+    }
+
+    const missingLiveIds = configuredProductIds.filter((id) => !loadedById.has(id));
+    const liveProducts = await loadLivePlanProducts(missingLiveIds, {
+      MenuProductModel: models.MenuProductModel || MenuProduct,
+    });
+    for (const product of liveProducts) loadedById.set(objectIdString(product._id), product);
+
+    const products = configuredProductIds.map((id) => loadedById.get(id)).filter(Boolean);
+    const categoriesById = await loadCategoryRowsForProducts(products, {
+      MenuCategoryModel: models.MenuCategoryModel || MenuCategory,
+    });
+    const choices = products.map((product) => {
+      const productId = objectIdString(product._id);
+      const categoryRow = categoriesById.get(objectIdString(product.categoryId));
+      const serialized = serializeChoice(
+        product,
+        categoryRow && categoryRow.key || product.categoryKey || product.category || product.itemType || "",
+        lang
+      );
+      const isEntitledProduct = Boolean(entitlement && entitlementIds.has(productId));
+      const pricing = isEntitledProduct
+        ? buildChoicePricingMetadata(subscription, entitlement, product)
+        : buildGenericChoicePricingMetadata(product, subscription, allowanceCategory);
+      const isOwnedChoice = isEntitledProduct
+        || pricing.isEligibleForAllowance === true;
+      const owned = ownedMetadataById.get(productId);
+      return {
+        ...serialized,
+        ...pricing,
+        addonPlanId,
+        category: displayKey,
+        displayCategory: displayKey,
+        allowanceCategory,
+        entitlementCategory: entitlement && entitlement.category || null,
+        ownedSnapshot: owned ? owned.fromSnapshot === true : pricing.ownedSnapshot,
+        snapshotMissing: owned ? owned.snapshotMissing === true : serialized.snapshotMissing,
+        liveCatalogMissing: owned ? owned.liveCatalogMissing === true : serialized.liveCatalogMissing,
+        legacyRecovered: owned ? owned.legacyRecovered === true : pricing.legacyRecovered,
+        legacySourceProductId: owned && owned.legacySourceProductId || pricing.legacySourceProductId || null,
+        availableForNewSale: isOwnedChoice ? false : serialized.availableForNewSale,
+      };
+    });
+    const balance = entitlement
+      ? resolveEntitlementBalance(subscription, entitlement)
+      : { includedTotalQty: 0, remainingQty: 0, bucket: null };
+    const localizedFields = resolvePlanLocalizedFields(plan, entitlement, displayKey, lang);
+    const sortOrder = numericPlanOrder(plan);
+    const entitlementIndex = entitlementRow ? entitlementRow.entitlementIndex : Number.POSITIVE_INFINITY;
+
+    groups.push({
+      groupId: addonPlanId,
+      addonPlanId,
+      ...localizedFields,
+      displayKey,
+      displayCategory: displayKey,
+      allowanceCategory,
+      entitlementCategory: entitlement && entitlement.category || allowanceCategory || null,
+      sortOrder: sortOrder == null
+        ? (Number.isFinite(entitlementIndex) ? entitlementIndex : 0)
+        : sortOrder,
+      isPurchased: Boolean(entitlement),
+      source: entitlement ? "subscription" : "catalog",
+      includedTotalQty: Number(balance.includedTotalQty || 0),
+      remainingIncludedQty: Number(balance.remainingQty || 0),
+      balanceBucketId: balance.bucket && balance.bucket._id ? String(balance.bucket._id) : null,
+      choicesCount: choices.length,
+      choices,
+      entitlements: entitlement ? [{
+        entitlementIndex: entitlementRow.entitlementIndex,
+        entitlementKey: `${entitlement.category || "addon"}:${addonPlanId}`,
+        addonPlanId,
+        allowanceCategory,
+        includedTotalQty: Number(balance.includedTotalQty || 0),
+        remainingQty: Number(balance.remainingQty || 0),
+      }] : [],
+      _sortOrder: sortOrder,
+      _entitlementIndex: entitlementIndex,
+    });
+  }
+
+  groups.sort((left, right) => {
+    const leftHasOrder = Number.isFinite(left._sortOrder);
+    const rightHasOrder = Number.isFinite(right._sortOrder);
+    if (leftHasOrder !== rightHasOrder) return leftHasOrder ? -1 : 1;
+    if (leftHasOrder && left._sortOrder !== right._sortOrder) return left._sortOrder - right._sortOrder;
+    if (left._entitlementIndex !== right._entitlementIndex) return left._entitlementIndex - right._entitlementIndex;
+    const labelOrder = String(left.addonPlanName || "").localeCompare(String(right.addonPlanName || ""), lang);
+    if (labelOrder !== 0) return labelOrder;
+    return left.addonPlanId.localeCompare(right.addonPlanId);
+  });
+
+  return groups.map(({ _sortOrder, _entitlementIndex, ...group }) => group);
+}
+
 function isOwnedResolutionHardError(err) {
   return [
     ERROR_CODE_ADDON_PLAN_MISMATCH,
@@ -792,6 +1166,8 @@ async function resolveAddonChoiceProductById(productId, {
 module.exports = {
   SUBSCRIPTION_ADDON_CHOICE_MAPPINGS,
   SUBSCRIPTION_ADDON_CATEGORIES,
+  buildAddonChoiceGroups,
+  buildAddonChoicesCompatibilityMap,
   buildAddonChoicesCatalog,
   buildGenericAddonChoicesCatalog,
   buildSubscriptionAddonChoicesCatalog,

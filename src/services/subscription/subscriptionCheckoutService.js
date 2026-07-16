@@ -496,7 +496,11 @@ async function performSubscriptionCheckout(userId, idempotencyKey, body, lang, r
             addonPlanId: sub.addonPlanId,
             name: sub.name,
             addonPlanName: sub.addonPlanName,
+            addonPlanNameI18n: sub.addonPlanNameI18n || null,
             category: sub.category,
+            displayKey: sub.displayKey || sub.displayCategory || sub.category,
+            displayCategory: sub.displayCategory || sub.displayKey || sub.category,
+            sortOrder: Number(sub.sortOrder || 0),
             maxPerDay: sub.maxPerDay,
             basePlanId: sub.basePlanId,
             priceHalala: sub.priceHalala,
@@ -508,7 +512,9 @@ async function performSubscriptionCheckout(userId, idempotencyKey, body, lang, r
             totalHalala: sub.totalHalala,
             currency: sub.currency,
             menuProductIds: sub.menuProductIds,
-            menuCategoryKeys: [],
+            menuCategoryKeys: Array.isArray(sub.menuCategoryKeys)
+              ? sub.menuCategoryKeys.map(String)
+              : [],
             priceSource: sub.priceSource,
             sourceRequestShape: sub.sourceRequestShape || null,
             menuProductsSnapshot,

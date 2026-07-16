@@ -297,7 +297,7 @@ async function run() {
   assert.deepStrictEqual(Object.keys(data), ["juice", "snack", "small_salad"]);
 
   const juiceCategoryKeys = data.juice.choices.map((choice) => choice.categoryKey).sort();
-  assert.deepStrictEqual(juiceCategoryKeys, ["drinks", "juices"]);
+  assert.deepStrictEqual(juiceCategoryKeys, ["juices"]);
   assert(data.juice.choices.every((choice) => choice.type === "menu_product"));
   assert(!data.juice.choices.some((choice) => choice.kind === "plan" || choice.type === "subscription"));
   assert(!data.juice.choices.some((choice) => choice.id === fixtureModels.ids.planAddon));
@@ -344,14 +344,13 @@ async function run() {
     userId: fixtureModels.ids.subscriptionOwner,
     models: fixtureModels,
   });
-  assert.deepStrictEqual(Object.keys(currentSubscriptionData), ["juice", "snack", "small_salad", "meal"]);
+  assert.deepStrictEqual(Object.keys(currentSubscriptionData), ["juice", "small_salad", "meal"]);
   assert.deepStrictEqual(
     currentSubscriptionData.meal.choices.map((choice) => choice.id),
     [fixtureModels.ids.chickenMeal, fixtureModels.ids.beefMeal, fixtureModels.ids.unrelatedMeal],
     "authenticated requests without subscriptionId merge generic meal products with entitlement metadata"
   );
   assert(currentSubscriptionData.juice, "merged catalog keeps generic juice category");
-  assert(currentSubscriptionData.snack, "merged catalog keeps generic snack category");
   assert(currentSubscriptionData.small_salad, "merged catalog keeps generic small_salad category");
   assert.strictEqual(
     currentSubscriptionData.meal.choices.find((choice) => choice.id === fixtureModels.ids.beefMeal).isEligibleForAllowance,
@@ -412,7 +411,7 @@ async function run() {
     models: mismatchedModels,
   });
   assert(mismatchedData.juice, "mismatched entitlement merge keeps generic juice");
-  assert(mismatchedData.snack, "mismatched entitlement merge keeps generic snack");
+  assert(!mismatchedData.snack, "empty legacy snack group is removed after exact entitlement overlay");
   assert(mismatchedData.small_salad, "mismatched entitlement merge keeps generic small_salad");
   assert(mismatchedData.meal, "mismatched entitlement merge adds meal category");
   assert.deepStrictEqual(
@@ -420,7 +419,6 @@ async function run() {
     [mismatchedModels.ids.chickenMeal, mismatchedModels.ids.beefMeal, mismatchedModels.ids.unrelatedMeal],
     "meal products from a snack-stored entitlement are grouped under meal while generic meal products remain visible"
   );
-  assert(!mismatchedData.snack.choices.some((choice) => choice.id === mismatchedModels.ids.beefMeal));
   assert.strictEqual(
     mismatchedData.meal.choices.find((choice) => choice.id === mismatchedModels.ids.beefMeal).entitlementCategory,
     "snack",
@@ -435,8 +433,8 @@ async function run() {
     false
   );
   assert(
-    mismatchedData.snack.choices.some((choice) => choice.id === mismatchedModels.ids.brownie && choice.isEligibleForAllowance === true),
-    "mixed snapshots keep dessert/snack products under snack"
+    mismatchedData.dessert.choices.some((choice) => choice.id === mismatchedModels.ids.brownie && choice.isEligibleForAllowance === true),
+    "legacy product category remains metadata-driven in the deprecated catalog builder"
   );
   const mismatchedMealOnly = await buildAddonChoicesCatalog({
     lang: "en",
@@ -606,14 +604,10 @@ async function run() {
     subscriptionId: "507f191e810c19729de86998",
     models: legacyModels,
   });
-  assert.deepStrictEqual(
-    legacyEntitledData.juice.choices.map((choice) => choice.id).sort(),
-    [legacyModels.ids.berry, legacyModels.ids.water].sort(),
-    "legacy rows without menuProductIds use the controlled category mapping fallback"
-  );
+  assert.deepStrictEqual(legacyEntitledData, {}, "deprecated catalog builder does not synthesize plan groups without product identity");
 
   const snackCategoryKeys = data.snack.choices.map((choice) => choice.categoryKey);
-  assert.deepStrictEqual(snackCategoryKeys, ["desserts"]);
+  assert.deepStrictEqual(snackCategoryKeys, []);
   assert(data.snack.choices.every((choice) => choice.type === "menu_product"));
   assert(data.snack.choices.every((choice) => choice.itemType === "dessert"));
 
@@ -637,7 +631,7 @@ async function run() {
 
   const models = buildModels();
   const resolved = await resolveAddonChoiceProductById(models.ids.water, { models });
-  assert.strictEqual(resolved.addonCategory, "juice");
+  assert.strictEqual(resolved.addonCategory, "drink");
   assert.strictEqual(resolved.category.key, "drinks");
 
   const rejectedLightOption = await resolveAddonChoiceProductById(models.ids.yogurt, { models });

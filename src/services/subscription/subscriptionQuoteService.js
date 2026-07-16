@@ -1335,7 +1335,11 @@ async function resolveCheckoutQuoteOrThrow(
       addonPlanId: item.addon._id,
       name: pickLang(item.addon.name, lang),
       addonPlanName: pickLang(item.addon.name, lang),
+      addonPlanNameI18n: item.addon.name || null,
       category: item.category || item.addon.category,
+      displayKey: item.addon.displayKey || item.addon.displayCategory || item.addon.category,
+      displayCategory: item.addon.displayCategory || item.addon.displayKey || item.addon.category,
+      sortOrder: Number(item.addon.sortOrder || 0),
       maxPerDay: item.addon.maxPerDay || 1,
       basePlanId: plan._id,
       priceHalala: Number(item.unitPriceHalala || 0),
@@ -1346,7 +1350,9 @@ async function resolveCheckoutQuoteOrThrow(
       totalHalala: Number(item.totalHalala || 0),
       currency: item.currency || SYSTEM_CURRENCY,
       menuProductIds: resolvedProductIds,
-      menuCategoryKeys: [],
+      menuCategoryKeys: Array.isArray(item.addon.menuCategoryKeys)
+        ? item.addon.menuCategoryKeys.map(String)
+        : [],
       priceSource: "base_plan_addon_price",
       sourceRequestShape: item.sourceRequestShape || null,
     });

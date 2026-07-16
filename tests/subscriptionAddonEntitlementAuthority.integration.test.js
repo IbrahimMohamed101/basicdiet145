@@ -203,10 +203,10 @@ async function createSubscriptionFixture({
 
 async function createMultiPlanAllowanceFixture({ user, plan }) {
   const definitions = [
-    { allowanceCategory: "juice", displayCategory: "juice", sourceCategory: "juices", name: "Juice Subscription", priceHalala: 1000 },
-    { allowanceCategory: "small_salad", displayCategory: "small_salad", sourceCategory: "light_options", name: "Small Salad Subscription", priceHalala: 900 },
-    { allowanceCategory: "snack", displayCategory: "snack", sourceCategory: "desserts", name: "Snack Subscription", priceHalala: 1500 },
-    { allowanceCategory: "snack", displayCategory: "ice_cream", sourceCategory: "ice_cream", name: "Ice Cream Subscription", priceHalala: 500 },
+    { allowanceCategory: "juice", displayCategory: "juice", sourceCategory: "juices", name: "Juice Subscription", nameAr: "عصائر", priceHalala: 1000 },
+    { allowanceCategory: "small_salad", displayCategory: "small_salad", sourceCategory: "light_options", name: "Small Salad Subscription", nameAr: "سلطة صغيرة", priceHalala: 900 },
+    { allowanceCategory: "snack", displayCategory: "snack", sourceCategory: "desserts", name: "Snack Subscription", nameAr: "سناك", priceHalala: 1500 },
+    { allowanceCategory: "snack", displayCategory: "ice_cream", sourceCategory: "ice_cream", name: "Ice Cream Subscription", nameAr: "آيس كريم", priceHalala: 500 },
   ];
   const now = new Date();
   const planProducts = [];
@@ -214,7 +214,7 @@ async function createMultiPlanAllowanceFixture({ user, plan }) {
     const category = await MenuCategory.findOne({ key: definition.sourceCategory })
       || await MenuCategory.create({
         key: definition.sourceCategory,
-        name: { en: definition.name, ar: definition.name },
+        name: { en: definition.name, ar: definition.nameAr },
         isActive: true,
         isVisible: true,
         isAvailable: true,
@@ -225,7 +225,7 @@ async function createMultiPlanAllowanceFixture({ user, plan }) {
       key: `multi_${definition.displayCategory}_${productIndex + 1}`,
       name: {
         en: `${definition.name} Choice ${productIndex + 1}`,
-        ar: `${definition.name} Choice ${productIndex + 1}`,
+        ar: `${definition.nameAr} ${productIndex + 1}`,
       },
       itemType: definition.displayCategory,
       pricingModel: "fixed",
@@ -240,7 +240,7 @@ async function createMultiPlanAllowanceFixture({ user, plan }) {
     }))));
   }
   const addonPlans = await Addon.create(definitions.map((definition, index) => ({
-    name: { en: definition.name, ar: definition.name },
+    name: { en: definition.name, ar: definition.nameAr },
     category: definition.allowanceCategory,
     kind: "plan",
     type: "subscription",
@@ -485,21 +485,19 @@ async function main() {
     let res = await api.get("/api/subscriptions/addon-choices").set(primaryAuth);
     assert.strictEqual(res.status, 200, JSON.stringify(res.body));
     const choices = res.body.data.juice.choices;
-    assert.strictEqual(choices.length, 5, `four owned products plus one visible paid product: ${JSON.stringify(choices)}`);
+    assert.strictEqual(choices.length, 4, `group choices come only from the dashboard add-on plan: ${JSON.stringify(choices)}`);
     choices.forEach((choice, index) => assertCoverageFields(choice, `choice ${index + 1}`));
     const includedChoice = choices.find((choice) => String(choice.id) === String(products[0]._id));
-    const extraChoice = choices.find((choice) => String(choice.id) === String(products[4]._id));
     assertIncluded(includedChoice, 7, 7, "GET addon-choices included");
-    assertPaidNoEntitlement(extraChoice, products[4].priceHalala, "GET addon-choices extra");
+    assert(!choices.some((choice) => String(choice.id) === String(products[4]._id)), "unconfigured same-category product is not injected into the plan group");
 
     res = await api.get("/api/subscriptions/meal-planner-menu?lang=en").set(primaryAuth);
     assert.strictEqual(res.status, 200, JSON.stringify(res.body));
     assert.strictEqual(res.body.data.addonCatalog.entitlementResolved, true);
-    assert.strictEqual(res.body.data.addonCatalog.items.length, 5);
+    assert.strictEqual(res.body.data.addonCatalog.items.length, 4);
     const plannerIncluded = res.body.data.addonCatalog.items.find((choice) => String(choice.id) === String(products[0]._id));
-    const plannerExtra = res.body.data.addonCatalog.items.find((choice) => String(choice.id) === String(products[4]._id));
     assertIncluded(plannerIncluded, 7, 7, "meal-planner-menu included");
-    assertPaidNoEntitlement(plannerExtra, products[4].priceHalala, "meal-planner-menu extra");
+    assert(!res.body.data.addonCatalog.items.some((choice) => String(choice.id) === String(products[4]._id)));
 
     const includedPayload = selectionBody({ protein, carb, addonIds: [products[0]._id] });
     res = await api
@@ -625,8 +623,44 @@ async function main() {
     assert.strictEqual(res.body.data.addonCategoryAllowances.length, 3);
     assert.strictEqual(res.body.data.addonSubscriptionAllowances.length, 4);
 
-    res = await api.get("/api/subscriptions/addon-choices").set(multiPlanAuth);
+    await Addon.updateOne({ _id: addonPlan._id }, { $set: { isActive: false } });
+    res = await api.get("/api/subscriptions/addon-choices").set({
+      ...multiPlanAuth,
+      "Accept-Language": "ar",
+    });
     assert.strictEqual(res.status, 200, JSON.stringify(res.body));
+    assert(Array.isArray(res.body.addonChoiceGroups), JSON.stringify(res.body));
+    assert.strictEqual(res.body.addonChoiceGroups.length, 4, JSON.stringify(res.body.addonChoiceGroups));
+    assert.deepStrictEqual(
+      res.body.addonChoiceGroups.map((group) => group.displayKey),
+      ["juice", "small_salad", "snack", "ice_cream"]
+    );
+    assert.deepStrictEqual(
+      res.body.addonChoiceGroups.map((group) => group.label),
+      ["عصائر", "سلطة صغيرة", "سناك", "آيس كريم"]
+    );
+    assert(res.body.addonChoiceGroups.every((group) => group.label === group.labelText));
+    assert(res.body.addonChoiceGroups.every((group) => group.label === group.labelAr));
+    assert.strictEqual(new Set(res.body.addonChoiceGroups.map((group) => group.addonPlanId)).size, 4);
+    const snackChoiceGroup = res.body.addonChoiceGroups.find((group) => group.displayKey === "snack");
+    const iceCreamChoiceGroup = res.body.addonChoiceGroups.find((group) => group.displayKey === "ice_cream");
+    assert.strictEqual(snackChoiceGroup.allowanceCategory, "snack");
+    assert.strictEqual(iceCreamChoiceGroup.allowanceCategory, "snack");
+    assert.deepStrictEqual(
+      snackChoiceGroup.choices.map((choice) => choice.productId).sort(),
+      multiPlan.planProducts[2].map((product) => String(product._id)).sort()
+    );
+    assert.deepStrictEqual(
+      iceCreamChoiceGroup.choices.map((choice) => choice.productId).sort(),
+      multiPlan.planProducts[3].map((product) => String(product._id)).sort()
+    );
+    assert.strictEqual(
+      snackChoiceGroup.choices.some((choice) => iceCreamChoiceGroup.choices.some((iceChoice) => iceChoice.productId === choice.productId)),
+      false,
+      "Snack and Ice Cream do not share products unless the dashboard plans explicitly configure them"
+    );
+    const compatibilityKeys = Object.keys(res.body.data).sort();
+    assert.deepStrictEqual(compatibilityKeys, ["ice_cream", "juice", "small_salad", "snack"]);
     assert.strictEqual(res.body.addonCategoryAllowances.length, 3);
     assert.strictEqual(res.body.addonSubscriptionAllowances.length, 4);
     const exposedEntitlements = Object.values(res.body.data)
@@ -637,8 +671,13 @@ async function main() {
       .filter((choice) => choice.source === "subscription" && choice.pricingMode === "paid_no_entitlement");
     assert.strictEqual(badIncludedAsPaid.length, 0, JSON.stringify(badIncludedAsPaid));
 
-    res = await api.get("/api/subscriptions/meal-planner-menu?lang=en").set(multiPlanAuth);
+    res = await api.get("/api/subscriptions/meal-planner-menu?lang=ar").set(multiPlanAuth);
     assert.strictEqual(res.status, 200, JSON.stringify(res.body));
+    assert.strictEqual(res.body.data.addonChoiceGroups.length, 4);
+    assert.deepStrictEqual(
+      res.body.data.addonChoiceGroups.map((group) => group.label),
+      ["عصائر", "سلطة صغيرة", "سناك", "آيس كريم"]
+    );
     assert.strictEqual(res.body.data.addonCategoryAllowances.length, 3);
     assert.strictEqual(res.body.data.addonSubscriptionAllowances.length, 4);
 
@@ -731,9 +770,8 @@ async function main() {
     res = await api.get("/api/subscriptions/addon-choices").set(brokenAuth);
     assert.strictEqual(res.status, 200, JSON.stringify(res.body));
     const brokenIncluded = res.body.data.juice.choices.find((row) => String(row.id) === String(products[0]._id));
-    const brokenExtra = res.body.data.juice.choices.find((row) => String(row.id) === String(products[4]._id));
     assertIncluded(brokenIncluded, 7, 7, "recovered zero balance included");
-    assertPaidNoEntitlement(brokenExtra, products[4].priceHalala, "recovered zero balance unrelated");
+    assert(!res.body.data.juice.choices.some((row) => String(row.id) === String(products[4]._id)));
     res = await api
       .put(`/api/subscriptions/${broken.subscription._id}/days/${broken.dates[0]}/selection`)
       .set(brokenAuth)
@@ -849,14 +887,16 @@ async function main() {
       3,
       "recovery is capped to the historical entitlement product count"
     );
+    const currentPlanPaidChoice = historicalChoices.find((row) => String(row.id) === String(products[3]._id));
+    assert(currentPlanPaidChoice, JSON.stringify(historicalChoices));
     assertPaidNoEntitlement(
-      historicalChoices.find((row) => String(row.id) === String(products[3]._id)),
+      currentPlanPaidChoice,
       products[3].priceHalala,
       "current plan product beyond historical count",
       true,
       false
     );
-    assertPaidNoEntitlement(historicalUnrelatedChoice, products[4].priceHalala, "GET historical unrelated product");
+    assert.strictEqual(historicalUnrelatedChoice, undefined, "products outside the dashboard plan are not injected by category");
 
     res = await api.get("/api/subscriptions/meal-planner-menu?lang=en").set(historicalAuth);
     assert.strictEqual(res.status, 200, JSON.stringify(res.body));
@@ -1031,7 +1071,9 @@ async function main() {
     const unmappedAuth = { Authorization: `Bearer ${unmapped.token}`, "Accept-Language": "en" };
     res = await api.get("/api/subscriptions/addon-choices").set(unmappedAuth);
     assert.strictEqual(res.status, 200, JSON.stringify(res.body));
-    const unmappedPlaceholder = res.body.data.juice.choices
+    const unmappedGroup = res.body.addonChoiceGroups.find((group) => String(group.addonPlanId) === String(missingPlanId));
+    assert(unmappedGroup, JSON.stringify(res.body.addonChoiceGroups));
+    const unmappedPlaceholder = unmappedGroup.choices
       .find((row) => String(row.id) === String(unmappedMissingProductId));
     assertMissingOwnedPlaceholder(
       unmappedPlaceholder,

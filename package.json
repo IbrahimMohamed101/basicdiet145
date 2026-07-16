@@ -44,7 +44,7 @@
     "test:account-deletion": "NODE_ENV=test node tests/accountDeletion.test.js",
     "test:weekly-menu-dashboard": "NODE_ENV=test node tests/weeklyMenuDashboard.test.js",
     "test:addon-credit-allocation": "NODE_ENV=test node tests/ownedAddonEntitlementSnapshot.test.js && NODE_ENV=test node tests/subscriptionAddonCreditAllocation.test.js && NODE_ENV=test node tests/subscription_addon_selection_contract.test.js && NODE_ENV=test node tests/subscriptionSelectionPolicies.test.js && NODE_ENV=test node tests/addonMultiUserHardMatrix.test.js",
-    "test:addon-entitlement-authority": "NODE_ENV=test node tests/subscriptionAddonEntitlementAuthority.integration.test.js",
+    "test:addon-entitlement-authority": "NODE_ENV=test node tests/subscriptionAddonDynamicGroups.test.js && NODE_ENV=test node tests/subscriptionAddonEntitlementAuthority.integration.test.js",
     "test:owned-meal-entitlement": "NODE_ENV=test node tests/ownedMealEntitlementEndToEnd.test.js",
     "test:addon-hard-matrix": "NODE_ENV=test node tests/addonMultiUserHardMatrix.test.js",
     "test:addon-credit-lifecycle": "NODE_ENV=test node tests/addonBalanceReleaseIdempotency.test.js && NODE_ENV=test NODE_OPTIONS=--require=./tests/helpers/addonBalanceE2ECollectionWarmup.js node tests/addon_balance_e2e.test.js",

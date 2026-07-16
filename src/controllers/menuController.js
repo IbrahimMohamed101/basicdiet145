@@ -21,7 +21,8 @@ const { getMealPlannerCatalog } = require("../services/subscription/mealPlannerC
 const { resolvePremiumUpgrade } = require("../services/subscription/premiumUpgradeConfigService");
 const { resolvePremiumKeyFromName } = require("../utils/subscription/premiumIdentity");
 const {
-  buildAddonChoicesCatalog,
+  buildAddonChoiceGroups,
+  buildAddonChoicesCompatibilityMap,
   findCurrentSubscriptionForUser,
 } = require("../services/subscription/subscriptionAddonChoicesService");
 const Subscription = require("../models/Subscription");
@@ -509,8 +510,11 @@ async function getSubscriptionMealPlannerMenu(req, res) {
     addons,
   });
   const legacyPlannerAddons = mealCatalog?.mealPlanner?.addons || { items: [], totalCount: 0 };
-  const authoritativeAddonChoices = req.userId
-    ? await buildAddonChoicesCatalog({ lang, userId: req.userId })
+  const authoritativeAddonChoiceGroups = req.userId
+    ? await buildAddonChoiceGroups({ lang, userId: req.userId })
+    : null;
+  const authoritativeAddonChoices = authoritativeAddonChoiceGroups
+    ? buildAddonChoicesCompatibilityMap(authoritativeAddonChoiceGroups)
     : null;
   const allowanceSubscription = req.userId
     ? await findCurrentSubscriptionForUser(req.userId, { SubscriptionModel: Subscription })
@@ -526,6 +530,7 @@ async function getSubscriptionMealPlannerMenu(req, res) {
   };
   if (authoritativeAddonChoices) {
     data.addonChoices = authoritativeAddonChoices;
+    data.addonChoiceGroups = authoritativeAddonChoiceGroups;
     data.legacyAddonCatalog = legacyAddonCatalog;
   }
   if (allowanceSubscription) {
