@@ -1,5 +1,6 @@
 const {
   findAddonBalanceBucket,
+  resolveAddonBalanceRemainingQty,
   resolveEntitlementPlanId,
   selectAddonEntitlementForProduct,
 } = require("./subscriptionAddonPolicyService");
@@ -28,12 +29,9 @@ function resolveEntitlementBalance(subscription, entitlement) {
       : entitlement && entitlement.includedTotalQty,
     0
   );
-  const remainingQty = toNonNegativeInteger(
-    bucket && bucket.remainingQty != null
-      ? bucket.remainingQty
-      : includedTotalQty,
-    0
-  );
+  const remainingQty = bucket
+    ? resolveAddonBalanceRemainingQty(bucket)
+    : toNonNegativeInteger(includedTotalQty, 0);
   return { bucket, includedTotalQty, remainingQty };
 }
 
