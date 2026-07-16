@@ -1,13 +1,5 @@
 "use strict";
 
-/**
- * Lightweight fulfillment status service — Phase 5 (Status-based tracking, no WebSockets).
- *
- * Returns a compact payload for mobile to poll every N seconds.
- * Works for both pickup and delivery subscriptions.
- * Reuses buildFulfillmentReadFields to guarantee consistency with the timeline.
- */
-
 const Subscription = require("../../models/Subscription");
 const SubscriptionDay = require("../../models/SubscriptionDay");
 const {
@@ -42,9 +34,9 @@ function errorResult(err, fallbackCode = "FULFILLMENT_STATUS_UNAVAILABLE") {
   let status = Number.isInteger(knownStatus) && knownStatus >= 400 && knownStatus < 600 ? knownStatus : 500;
   if (status === 500) {
     if (["SUB_INACTIVE", "SUB_EXPIRED"].includes(code)) status = 422;
-    else if (code === "NOT_FOUND" || code === "DAY_NOT_FOUND") status = 404;
+    else if (["NOT_FOUND", "DAY_NOT_FOUND"].includes(code)) status = 404;
     else if (code === "FORBIDDEN") status = 403;
-    else if (code === "INVALID_DATE" || code === "VALIDATION_ERROR") status = 400;
+    else if (["INVALID_DATE", "VALIDATION_ERROR"].includes(code)) status = 400;
   }
   return {
     ok: false,
@@ -80,6 +72,37 @@ function fallbackReadFields({ subscription, day, lang }) {
     lockedReason: null,
     lockedMessage: null,
   };
+}
+
+function localizedPair(ar, en) {
+  const arText = String(ar || en || "");
+  const enText = String(en || ar || "");
+  return { ar: arText, en: enText };
+}
+
+function selected(pair, lang) {
+  return lang === "en" ? pair.en : pair.ar;
+}
+
+function safeBuildReadFields({ subscription, day, pickupLocations, fulfillmentState, lang, subscriptionId, date }) {
+  try {
+    return buildFulfillmentReadFields({
+      subscription,
+      day,
+      pickupLocations,
+      lang,
+      fulfillmentState,
+      statusLabel: resolveReadLabel("dayStatuses", day.status, lang) || "",
+    });
+  } catch (err) {
+    logger.warn("Fulfillment read fields fallback used", {
+      subscriptionId: String(subscriptionId),
+      date,
+      lang,
+      error: err.message,
+    });
+    return fallbackReadFields({ subscription, day, lang });
+  }
 }
 
 async function getDayFulfillmentStatusForClient({
@@ -142,29 +165,59 @@ async function getDayFulfillmentStatusForClient({
     }
   }
 
-  let readFields;
-  try {
-    readFields = buildFulfillmentReadFields({
-      subscription: sub,
-      day,
-      pickupLocations,
-      lang,
-      fulfillmentState,
-      statusLabel: resolveReadLabel("dayStatuses", day.status, lang) || "",
-    });
-  } catch (err) {
-    logger.warn("Fulfillment read fields fallback used", {
-      subscriptionId: String(subscriptionId),
-      date,
-      error: err.message,
-    });
-    readFields = fallbackReadFields({ subscription: sub, day, lang });
-  }
-
+  const readFieldsAr = safeBuildReadFields({
+    subscription: sub,
+    day,
+    pickupLocations,
+    fulfillmentState,
+    lang: "ar",
+    subscriptionId,
+    date,
+  });
+  const readFieldsEn = safeBuildReadFields({
+    subscription: sub,
+    day,
+    pickupLocations,
+    fulfillmentState,
+    lang: "en",
+    subscriptionId,
+    date,
+  });
+  const readFields = lang === "en" ? readFieldsEn : readFieldsAr;
+  const summaryAr = readFieldsAr.fulfillmentSummary || {};
+  const summaryEn = readFieldsEn.fulfillmentSummary || {};
+  const summary = readFields.fulfillmentSummary || {};
   const status = String(day.status || "open");
   const deliveryMode = readFields.deliveryMode || (sub.deliveryMode === "pickup" ? "pickup" : "delivery");
   const effectiveFulfillmentMode = readFields.effectiveFulfillmentMode || deliveryMode;
-  const summary = readFields.fulfillmentSummary || {};
+
+  const statusLabelI18n = localizedPair(summaryAr.statusLabel, summaryEn.statusLabel);
+  const messageI18n = localizedPair(summaryAr.message, summaryEn.message);
+  const nextActionI18n = localizedPair(summaryAr.nextAction, summaryEn.nextAction);
+  const lockedMessageI18n = localizedPair(
+    readFieldsAr.lockedMessage || summaryAr.lockedMessage,
+    readFieldsEn.lockedMessage || summaryEn.lockedMessage
+  );
+
+  const fulfillmentSummary = {
+    ...summary,
+    statusLabel: selected(statusLabelI18n, lang),
+    statusLabelAr: statusLabelI18n.ar,
+    statusLabelEn: statusLabelI18n.en,
+    statusLabelI18n,
+    message: selected(messageI18n, lang),
+    messageAr: messageI18n.ar,
+    messageEn: messageI18n.en,
+    messageI18n,
+    nextAction: selected(nextActionI18n, lang),
+    nextActionAr: nextActionI18n.ar,
+    nextActionEn: nextActionI18n.en,
+    nextActionI18n,
+    lockedMessage: selected(lockedMessageI18n, lang),
+    lockedMessageAr: lockedMessageI18n.ar,
+    lockedMessageEn: lockedMessageI18n.en,
+    lockedMessageI18n,
+  };
 
   return {
     ok: true,
@@ -178,19 +231,31 @@ async function getDayFulfillmentStatusForClient({
       pickupLocationIdOverride: readFields.pickupLocationIdOverride || null,
       firstDayFulfillmentOverride: Boolean(readFields.firstDayFulfillmentOverride),
       status,
-      statusLabel: summary.statusLabel || "",
-      message: summary.message || "",
-      nextAction: summary.nextAction || "",
+      statusLabel: selected(statusLabelI18n, lang),
+      statusLabelAr: statusLabelI18n.ar,
+      statusLabelEn: statusLabelI18n.en,
+      statusLabelI18n,
+      message: selected(messageI18n, lang),
+      messageAr: messageI18n.ar,
+      messageEn: messageI18n.en,
+      messageI18n,
+      nextAction: selected(nextActionI18n, lang),
+      nextActionAr: nextActionI18n.ar,
+      nextActionEn: nextActionI18n.en,
+      nextActionI18n,
       isTerminal: TERMINAL_STATUSES.has(status),
       pollingIntervalSeconds: resolvePollingIntervalSeconds(status),
       lastUpdatedAt: day.updatedAt ? new Date(day.updatedAt).toISOString() : null,
-      fulfillmentSummary: summary,
+      fulfillmentSummary,
       deliveryAddress: readFields.deliveryAddress || null,
       deliveryWindow: readFields.deliveryWindow || null,
       deliverySlot: readFields.deliverySlot || null,
       pickupLocation: readFields.pickupLocation || null,
       lockedReason: readFields.lockedReason || summary.lockedReason || null,
-      lockedMessage: readFields.lockedMessage || summary.lockedMessage || null,
+      lockedMessage: selected(lockedMessageI18n, lang),
+      lockedMessageAr: lockedMessageI18n.ar,
+      lockedMessageEn: lockedMessageI18n.en,
+      lockedMessageI18n,
       pickupCode: effectiveFulfillmentMode === "pickup" && status === "ready_for_pickup"
         ? (day.pickupCode || null)
         : null,
