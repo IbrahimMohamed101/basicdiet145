@@ -185,7 +185,7 @@ function walk(value, lang, parentKey = "") {
 
 function isSupportedSubscriptionBilingualPath(url = "") {
   const path = String(url).split("?")[0];
-  return path === "/api/subscriptions/addon-choices"
+  return /^\/api\/subscriptions\/addon-choices?$/.test(path)
     || /^\/api\/subscriptions\/[^/]+\/pickup-availability$/.test(path)
     || /^\/api\/subscriptions\/[^/]+\/days\/[^/]+\/fulfillment\/status$/.test(path);
 }

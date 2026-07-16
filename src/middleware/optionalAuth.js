@@ -9,7 +9,7 @@ const {
 const LEGACY_JWT_SECRET = process.env.JWT_SECRET;
 
 function continueRequest(req, res, next) {
-  if (String(req.originalUrl || req.url || "").includes("/subscriptions/addon-choices")) {
+  if (/\/subscriptions\/addon-choices?(?:\?|$)/.test(String(req.originalUrl || req.url || ""))) {
     return filterAddonChoicesAvailability(req, res, next);
   }
   return next();

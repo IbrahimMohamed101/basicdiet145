@@ -506,6 +506,12 @@ async function main() {
     assertIncluded(includedChoice, 7, 7, "GET addon-choices included");
     assert(!choices.some((choice) => String(choice.id) === String(products[4]._id)), "unconfigured same-category product is not injected into the plan group");
 
+    res = await api.get("/api/subscriptions/addon-choice").set(primaryAuth);
+    assert.strictEqual(res.status, 200, JSON.stringify(res.body));
+    assert.strictEqual(res.body.subscriptionId, String(primary.subscription._id));
+    assert.strictEqual(res.body.addonChoiceGroups.length, 1, JSON.stringify(res.body.addonChoiceGroups));
+    assert.strictEqual(res.body.addonChoiceGroups[0].source, "subscription");
+
     res = await api.get("/api/subscriptions/meal-planner-menu?lang=en").set(primaryAuth);
     assert.strictEqual(res.status, 200, JSON.stringify(res.body));
     assert.strictEqual(res.body.data.addonCatalog.entitlementResolved, true);

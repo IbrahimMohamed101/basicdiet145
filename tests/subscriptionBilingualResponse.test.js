@@ -65,6 +65,24 @@ function testExplicitEnglishStillWorks() {
   assert.strictEqual(result.data.snack.choices[0].nameAr, "سناك بروتين");
 }
 
+function testSingularAddonChoiceAliasIsLocalized() {
+  const payload = {
+    data: {
+      snack: {
+        category: "snack",
+        choices: [{ nameI18n: { ar: "سناك بروتين", en: "Protein Snack" } }],
+      },
+    },
+  };
+  const result = normalizeSubscriptionBilingualResponse(clone(payload), {
+    originalUrl: "/api/subscriptions/addon-choice",
+    query: {},
+    headers: {},
+  });
+  assert.strictEqual(result.data.snack.label, "السناك");
+  assert.strictEqual(result.data.snack.choices[0].name, "سناك بروتين");
+}
+
 function testPickupAvailabilityGetsCompleteBilingualCompatibilityFields() {
   const payload = {
     status: true,
@@ -196,6 +214,7 @@ function run() {
   assert.strictEqual(requestedLanguage({ query: {}, headers: {} }), "ar");
   testAddonChoicesDefaultToArabicAndKeepEnglish();
   testExplicitEnglishStillWorks();
+  testSingularAddonChoiceAliasIsLocalized();
   testPickupAvailabilityGetsCompleteBilingualCompatibilityFields();
   testPickupAvailabilityEnglishSelectionKeepsArabicPair();
   testUnrelatedEndpointsAreUntouched();

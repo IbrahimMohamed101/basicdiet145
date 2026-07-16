@@ -84,6 +84,9 @@ router.get("/meal-planner-menu", optionalAuthMiddleware, asyncHandler(menuContro
 router.get("/meal-builder", asyncHandler(mealBuilderController.getPublishedMealBuilder));
 router.get("/delivery-options", asyncHandler(menuController.getDeliveryOptions));
 router.get("/addon-choices", optionalAuthMiddleware, asyncHandler(controller.getSubscriptionAddonChoices));
+// Backward-compatible alias. Keep this before `/:id` so `addon-choice` is not
+// interpreted as a subscription id and rejected with INVALID_ID.
+router.get("/addon-choice", optionalAuthMiddleware, asyncHandler(controller.getSubscriptionAddonChoices));
 
 router.use(authMiddleware);
 
