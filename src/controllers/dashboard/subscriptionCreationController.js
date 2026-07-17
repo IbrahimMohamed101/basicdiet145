@@ -197,6 +197,125 @@ function buildLineItems(pricing, lang = "en") {
   return items;
 }
 
+function sectionLabels(lang = "en") {
+  return lang === "ar"
+    ? {
+      subscriptionMeals: "وجبات الاشتراك",
+      premiumMeals: "الوجبات المميزة",
+      addonSubscriptions: "اشتراكات الإضافات",
+    }
+    : {
+      subscriptionMeals: "Subscription meals",
+      premiumMeals: "Premium meals",
+      addonSubscriptions: "Add-on subscriptions",
+    };
+}
+
+function sectionMoney(amountHalala, currency) {
+  const money = moneyBlock(amountHalala, currency);
+  return {
+    totalHalala: money.amountHalala,
+    totalSar: money.amountSar,
+    totalLabel: money.label,
+    currency: money.currency,
+  };
+}
+
+function sumItemQuantities(items = []) {
+  return (Array.isArray(items) ? items : []).reduce((sum, item) => {
+    const parsed = Number(
+      item && item.qty !== undefined
+        ? item.qty
+        : item && item.quantity !== undefined
+          ? item.quantity
+          : item && item.quantityPerDay !== undefined
+            ? item.quantityPerDay
+            : 1
+    );
+    return sum + (Number.isFinite(parsed) ? Math.max(0, Math.round(parsed)) : 0);
+  }, 0);
+}
+
+function buildSubscriptionMealSection({ plan, data, pricing, subscriptionPrice, lang }) {
+  const labels = sectionLabels(lang);
+  const selectedOptions = data && data.selectedOptions && typeof data.selectedOptions === "object"
+    ? data.selectedOptions
+    : {};
+  const items = plan
+    ? [{
+      ...plan,
+      kind: "subscription_meals",
+      type: "base_subscription",
+      quantity: 1,
+      qty: 1,
+      selectedOptions: {
+        grams: selectedOptions.grams || plan.grams || plan.selectedGrams || null,
+        mealsPerDay: selectedOptions.mealsPerDay || plan.mealsPerDay || plan.selectedMealsPerDay || null,
+        startDate: selectedOptions.startDate || plan.startDate || null,
+        daysCount: plan.daysCount || selectedOptions.daysCount || null,
+      },
+      priceHalala: pricing.subscriptionPriceHalala,
+      totalHalala: pricing.subscriptionPriceHalala,
+      priceSar: pricing.subscriptionPriceHalala / 100,
+      totalSar: pricing.subscriptionPriceHalala / 100,
+      priceLabel: subscriptionPrice.label,
+      totalLabel: subscriptionPrice.label,
+    }]
+    : [];
+  return {
+    key: "subscription_meals",
+    id: "subscription_meals",
+    kind: "plan",
+    type: "subscription_meals",
+    title: labels.subscriptionMeals,
+    label: labels.subscriptionMeals,
+    itemCount: items.length,
+    totalQuantity: items.length,
+    ...sectionMoney(pricing.subscriptionPriceHalala, pricing.currency),
+    items,
+  };
+}
+
+function buildPremiumMealsSection({ premiumItems, pricing, lang }) {
+  const labels = sectionLabels(lang);
+  return {
+    key: "premium_meals",
+    id: "premium_meals",
+    kind: "premium",
+    type: "premium_meals",
+    title: labels.premiumMeals,
+    label: labels.premiumMeals,
+    itemCount: premiumItems.length,
+    totalQuantity: sumItemQuantities(premiumItems),
+    ...sectionMoney(pricing.premiumTotalHalala, pricing.currency),
+    items: premiumItems,
+  };
+}
+
+function buildAddonSubscriptionsSection({ addonPlans, pricing, lang }) {
+  const labels = sectionLabels(lang);
+  return {
+    key: "addon_subscriptions",
+    id: "addon_subscriptions",
+    kind: "addons",
+    type: "addon_subscriptions",
+    title: labels.addonSubscriptions,
+    label: labels.addonSubscriptions,
+    itemCount: addonPlans.length,
+    totalQuantity: sumItemQuantities(addonPlans),
+    ...sectionMoney(pricing.addonsTotalHalala, pricing.currency),
+    items: addonPlans,
+  };
+}
+
+function buildDashboardSelectionSections({ plan, data, premiumItems, addonPlans, pricing, subscriptionPrice, lang }) {
+  return [
+    buildSubscriptionMealSection({ plan, data, pricing, subscriptionPrice, lang }),
+    buildPremiumMealsSection({ premiumItems, pricing, lang }),
+    buildAddonSubscriptionsSection({ addonPlans, pricing, lang }),
+  ];
+}
+
 function enrichPremiumItem(item = {}) {
   const unitPriceHalala = firstNumber(item.unitPriceHalala, item.unitExtraFeeHalala, item.priceHalala);
   const qty = firstNumber(item.qty, item.quantity, 1);
@@ -289,6 +408,21 @@ function enrichDashboardSubscriptionData(data = {}, options = {}) {
     }
     : data.plan;
 
+  const selectionSections = buildDashboardSelectionSections({
+    plan,
+    data,
+    premiumItems,
+    addonPlans,
+    pricing,
+    subscriptionPrice,
+    lang,
+  });
+  const selectionGroups = {
+    subscriptionMeals: selectionSections[0],
+    premiumMeals: selectionSections[1],
+    addonSubscriptions: selectionSections[2],
+  };
+
   return {
     ...data,
     plan,
@@ -304,12 +438,17 @@ function enrichDashboardSubscriptionData(data = {}, options = {}) {
       subscriptionPrice,
       lineItems,
     },
+    selectionSections,
+    dashboardSections: selectionSections,
+    selectionGroups,
     checkoutSummary: {
       plan,
       subscriptionPrice,
       premiumItems,
       addonPlans,
       addons: addonPlans,
+      selectionSections,
+      selectionGroups,
       lineItems,
       pricing,
     },
@@ -317,6 +456,8 @@ function enrichDashboardSubscriptionData(data = {}, options = {}) {
       plan,
       premiumItems,
       addons: addonPlans,
+      selectionSections,
+      selectionGroups,
       lineItems,
     },
     lineItems,
