@@ -722,13 +722,11 @@ async function main() {
 
     res = await api.get("/api/dashboard/kitchen/queue?date=2026-05-10&method=delivery&view=legacy").set(kitchenHeaders);
     expectStatus(res, 200, "kitchen queue");
-    const openDeliveryQueueItem = res.body.data.items.find((item) => item.subscriptionDayId === String(deliveryDay._id));
+    const openDeliveryQueueItem = res.body.data.items.find((item) => item.entityId === String(deliveryDay._id));
     assert(openDeliveryQueueItem);
-    assert.deepStrictEqual(
-      openDeliveryQueueItem.allowedActions.map((action) => action.id),
-      ["prepare", "lock", "cancel"]
-    );
-    assert(openDeliveryQueueItem.allowedActions.every((action) => action.endpoint && action.method === "POST"));
+    assert.strictEqual(openDeliveryQueueItem.kitchen.version, "v2");
+    assert.strictEqual(openDeliveryQueueItem.kitchenDetails, undefined);
+    assert.strictEqual(openDeliveryQueueItem.kitchenCards, undefined);
 
     res = await api.post("/api/dashboard/kitchen/actions/lock?view=legacy").set(adminHeaders).send({
       entityId: String(deliveryDay._id),

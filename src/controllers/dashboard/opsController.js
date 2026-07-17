@@ -4,6 +4,10 @@ const opsReadService = require("../../services/dashboard/opsReadService");
 const opsSearchService = require("../../services/dashboard/opsSearchService");
 const errorResponse = require("../../utils/errorResponse");
 const { getRequestLang } = require("../../utils/i18n");
+const {
+  isTruthyQuery,
+  serializeKitchenOperation,
+} = require("../../services/dashboard/kitchenOperationsContractService");
 
 async function listOperations(req, res) {
   try {
@@ -19,7 +23,12 @@ async function listOperations(req, res) {
 
     const lang = getRequestLang(req);
     const role = req.userRole;
-    const data = await opsReadService.listOperations({ date, role, lang });
+    const operations = await opsReadService.listOperations({ date, role, lang });
+    const options = {
+      includeLegacy: isTruthyQuery(req.query.includeLegacy),
+      includeRaw: isTruthyQuery(req.query.includeRaw),
+    };
+    const data = operations.map((item) => serializeKitchenOperation(item, options));
 
     return res.status(200).json({
       status: true,

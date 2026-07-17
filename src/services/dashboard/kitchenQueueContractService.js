@@ -797,7 +797,9 @@ function normalizeKitchenQueueResponse(data = {}, options = {}) {
 }
 
 function shouldUseCleanQueueContract(screen, query = {}) {
-  return QUEUE_SCREENS.has(String(screen || ""))
+  const normalizedScreen = String(screen || "");
+  if (normalizedScreen === "kitchen") return true;
+  return QUEUE_SCREENS.has(normalizedScreen)
     && String(query.view || "").trim().toLowerCase() !== "legacy";
 }
 

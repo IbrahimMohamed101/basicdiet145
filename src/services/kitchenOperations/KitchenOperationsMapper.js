@@ -12,6 +12,7 @@ const {
   buildPlanPayload,
 } = require("../dashboard/opsPayloadService");
 const { buildKitchenProjection } = require("../dashboard/kitchenProjectionService");
+const { serializeKitchenOperation } = require("../dashboard/kitchenOperationsContractService");
 
 const MODE_LABELS = { delivery: "توصيل", pickup: "استلام" };
 
@@ -162,8 +163,8 @@ function mapOrderToRow(order, context = {}) {
   return row;
 }
 
-function sanitizeRow(row) {
-  return { id: row.id, entityType: row.entityType, reference: row.reference, customer: row.customer, date: row.date, mode: row.mode, modeLabel: row.modeLabel, fulfillmentType: row.fulfillmentType, plan: row.plan || null, kitchenDetails: row.kitchenDetails || null, kitchenProjectionVersion: row.kitchenProjectionVersion, kitchenCards: row.kitchenCards || [], kitchenAddonGroups: row.kitchenAddonGroups || [], paymentValidity: row.paymentValidity || null, delivery: row.delivery || null, pickup: row.pickup || null, timeWindow: row.timeWindow, items: row.items, status: row.status, statusLabel: row.statusLabel, progress: row.progress, actions: row.actions, badges: row.badges, verification: row.verification, ui: row.ui, timing: row.timing, meta: row.meta };
+function sanitizeRow(row, options = {}) {
+  return serializeKitchenOperation(row, options);
 }
 
 module.exports = { preferredLocalizedName, parseTimeWindow, mapSubscriptionDayToRow, mapOrderToRow, sanitizeRow };

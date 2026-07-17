@@ -428,6 +428,7 @@ function run() {
   assert.strictEqual(shouldUseCleanQueueContract("courier", {}), true);
   assert.strictEqual(shouldUseCleanQueueContract("pickup", { view: "legacy" }), false);
   assert.strictEqual(shouldUseCleanQueueContract("courier", { view: "legacy" }), false);
+  assert.strictEqual(shouldUseCleanQueueContract("kitchen", { view: "legacy" }), true);
 
   const sandwichResponse = normalizeKitchenQueueResponse({
     date: "2026-06-13",

@@ -250,18 +250,21 @@ async function run() {
     assert.strictEqual(snackGroup.items[0].payableTotalHalala, 0);
     assert.strictEqual(dto.kitchenDetails.addons[0].priceHalala, 0, "zero covered price must not fall through to the plan price");
 
-    const kitchenOperationsRow = sanitizeRow(mapSubscriptionDayToRow({
+    const mappedKitchenOperationsRow = mapSubscriptionDayToRow({
       ...day,
       subscriptionId: subscription,
     }, {
       catalogMaps,
       mealNameById: new Map(),
       addonNameById: new Map(),
-    }));
-    assert.strictEqual(kitchenOperationsRow.kitchenProjectionVersion, "v1");
-    assert.strictEqual(kitchenOperationsRow.kitchenCards.find((card) => card.type === "sandwich").title, "برجر لحم");
-    assert.strictEqual(kitchenOperationsRow.kitchenAddonGroups.length, 2);
-    assert(kitchenOperationsRow.kitchenDetails, "/api/kitchen/operations/list keeps legacy kitchenDetails");
+    });
+    const kitchenOperationsRow = sanitizeRow(mappedKitchenOperationsRow);
+    assert.strictEqual(kitchenOperationsRow.kitchen.version, "v2");
+    assert.strictEqual(kitchenOperationsRow.kitchen.cards.find((card) => card.type === "sandwich").title, "برجر لحم");
+    assert.strictEqual(kitchenOperationsRow.kitchen.addonGroups.length, 2);
+    assert.strictEqual(kitchenOperationsRow.kitchenDetails, undefined);
+    const legacyKitchenOperationsRow = sanitizeRow(mappedKitchenOperationsRow, { includeLegacy: true });
+    assert(legacyKitchenOperationsRow.kitchenDetails, "includeLegacy restores kitchenDetails");
 
     console.log("✅ legacy kitchen fixture projects resolved cards and addon-plan groups");
   } finally {

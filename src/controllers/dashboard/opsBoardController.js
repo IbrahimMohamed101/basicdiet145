@@ -42,6 +42,9 @@ const {
 } = require("../../services/dashboard/kitchenQueueContractService");
 const { buildKitchenCatalogMaps } = require("../../services/dashboard/kitchenCatalogService");
 const { buildKitchenProjection } = require("../../services/dashboard/kitchenProjectionService");
+const {
+  serializeKitchenOperationsCollection,
+} = require("../../services/dashboard/kitchenOperationsContractService");
 // Settlement on read is DISABLED — see pastSubscriptionDaySettlementService.js
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -444,6 +447,15 @@ async function queue(req, res) {
   }
 
   const data = await queryBoardDays(req, { screen });
+  if (screen === "kitchen") {
+    return res.status(200).json({
+      status: true,
+      data: serializeKitchenOperationsCollection(data, {
+        includeLegacy: isTruthyQuery(req.query.includeLegacy),
+        includeRaw: isTruthyQuery(req.query.includeRaw),
+      }),
+    });
+  }
   if (shouldUseCleanQueueContract(screen, req.query)) {
     return res.status(200).json({
       status: true,

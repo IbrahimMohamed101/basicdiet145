@@ -17,6 +17,7 @@ const {
 } = require("./KitchenOperationsMapper");
 const { STATUS_SORT_ORDER } = require("./KitchenOperationsStatusResolver");
 const { buildKitchenCatalogMaps } = require("../dashboard/kitchenCatalogService");
+const { isTruthyQuery } = require("../dashboard/kitchenOperationsContractService");
 
 const VALID_TABS = new Set(["subscriptions", "orders", "branch_pickup"]);
 const VALID_MODES = new Set(["all", "delivery", "pickup"]);
@@ -42,6 +43,8 @@ function normalizeQuery(rawQuery = {}) {
     kitchenId: rawQuery.kitchenId ? String(rawQuery.kitchenId).trim() : null,
     sortBy,
     sortOrder,
+    includeLegacy: isTruthyQuery(rawQuery.includeLegacy),
+    includeRaw: isTruthyQuery(rawQuery.includeRaw),
   };
 }
 
@@ -190,7 +193,10 @@ async function listKitchenOperations(rawQuery = {}, options = {}) {
   const total = sortedRows.length;
   const totalPages = total === 0 ? 0 : Math.ceil(total / query.limit);
   const offset = (query.page - 1) * query.limit;
-  const paginatedRows = sortedRows.slice(offset, offset + query.limit).map(sanitizeRow);
+  const paginatedRows = sortedRows.slice(offset, offset + query.limit).map((row) => sanitizeRow(row, {
+    includeLegacy: query.includeLegacy,
+    includeRaw: query.includeRaw,
+  }));
 
   return {
     date: query.date,

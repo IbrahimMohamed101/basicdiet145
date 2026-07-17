@@ -100,9 +100,15 @@ async function run() {
     assert(row.paymentValidity, 'payment validity is exposed');
 
     const sanitized = sanitizeRow(row);
-    assert.strictEqual(sanitized.plan.proteinGrams, 200);
-    assert.strictEqual(sanitized.kitchenDetails.mealSlots.length, 1);
-    assert.strictEqual(sanitized.delivery.deliveryId, 'delivery1');
+    assert.strictEqual(sanitized.kitchen.version, 'v2');
+    assert.strictEqual(sanitized.kitchen.cards.length, 1);
+    assert.strictEqual(sanitized.kitchenDetails, undefined);
+    assert.strictEqual(sanitized.kitchenCards, undefined);
+    assert.strictEqual(sanitized.fulfillment.mode, 'delivery');
+
+    const legacySanitized = sanitizeRow(row, { includeLegacy: true });
+    assert.strictEqual(legacySanitized.kitchenDetails.mealSlots.length, 1);
+    assert.strictEqual(legacySanitized.kitchenProjectionVersion, 'v1');
 
     console.log('✅ kitchen operations mapper uses operationalSku-based meal identities');
   } finally {
