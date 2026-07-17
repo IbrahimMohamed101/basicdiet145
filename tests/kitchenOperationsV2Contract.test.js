@@ -58,6 +58,21 @@ async function run() {
     paymentStatus: "paid",
     fulfillmentMethod: "pickup",
     fulfillmentDate: "2026-07-17",
+    pickup: {
+      branchId: "main",
+      branchName: { ar: "الفرع الرئيسي", en: "Main Branch" },
+      pickupWindow: "18:00-20:00",
+    },
+    pricing: {
+      subtotalHalala: 3400,
+      deliveryFeeHalala: 0,
+      discountHalala: 0,
+      totalHalala: 3400,
+      vatPercentage: 16,
+      vatHalala: 469,
+      vatIncluded: true,
+      currency: "SAR",
+    },
     userId: { _id: "6a522ed1b3fb649917aee620", name: "Order User", phone: "0100" },
     items: [{
       itemType: "basic_salad",
@@ -65,6 +80,17 @@ async function run() {
       name: { ar: "سلطة على مزاجك – 100جرام بروتين", en: "Build Your Salad" },
       productSnapshot: { key: "basic_salad" },
       qty: 1,
+      unitPriceHalala: 3400,
+      lineTotalHalala: 3400,
+      currency: "SAR",
+      pricingSnapshot: {
+        basePriceHalala: 2900,
+        optionsTotalHalala: 500,
+        unitPriceHalala: 3400,
+        lineTotalHalala: 3400,
+        currency: "SAR",
+        vatIncluded: true,
+      },
       selectedOptions: basicOptions,
       selections: { selectedOptions: basicOptions.map((option) => ({ ...option })) },
     }],
@@ -122,7 +148,16 @@ async function run() {
   assert.strictEqual(cleanOrder.kitchenDetails, undefined);
   assert.strictEqual(cleanOrder.kitchenCards, undefined);
   assert.strictEqual(cleanOrder.kitchenAddonGroups, undefined);
-  assert(!JSON.stringify(cleanOrder).includes("selectedOptions"));
+  assert.strictEqual(cleanOrder.customer.name, "Order User");
+  assert.deepStrictEqual(cleanOrder.allowedActions.map((action) => action.id), ["prepare", "cancel"]);
+  assert.strictEqual(cleanOrder.items[0].selectedOptions.length, basicOptions.length);
+  assert.strictEqual(cleanOrder.items[0].pricingSnapshot.basePriceHalala, 2900);
+  assert.strictEqual(cleanOrder.items[0].pricingSnapshot.optionsTotalHalala, 500);
+  assert.strictEqual(cleanOrder.items[0].pricingSnapshot.lineTotalHalala, 3400);
+  assert.strictEqual(cleanOrder.pricing.totalHalala, 3400);
+  assert.strictEqual(cleanOrder.fulfillment.pickup.branchName.ar, "الفرع الرئيسي");
+  assert.strictEqual(cleanOrder.fulfillment.pickup.pickupWindow, "18:00-20:00");
+  assert(!JSON.stringify(cleanOrder.kitchen).includes("selectedOptions"));
   assert(!JSON.stringify(cleanOrder).includes('"priceHalala"'));
 
   const rawOrder = serializeKitchenOperation(orderDto, { includeRaw: true });
@@ -134,6 +169,7 @@ async function run() {
   assert.strictEqual(rawOrder.kitchen.resolverDebug.sourceProjectionVersion, "v1");
   const legacyOrder = serializeKitchenOperation(orderDto, { includeLegacy: true });
   assert(legacyOrder.kitchenDetails);
+  assert.strictEqual(legacyOrder.kitchenDetails.mealSlots[0].selectedOptions.length, basicOptions.length);
   assert(Array.isArray(legacyOrder.kitchenCards));
   assert(Array.isArray(legacyOrder.kitchenAddonGroups));
 

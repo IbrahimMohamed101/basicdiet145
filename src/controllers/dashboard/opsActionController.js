@@ -10,6 +10,7 @@ const { validateSubscriptionDayOperationalGate } = require("../../services/dashb
 const errorResponse = require("../../utils/errorResponse");
 const { getRequestLang } = require("../../utils/i18n");
 const dateUtils = require("../../utils/date");
+const { serializeKitchenOperation } = require("../../services/dashboard/kitchenOperationsContractService");
 // Settlement on read is DISABLED — see pastSubscriptionDaySettlementService.js
 
 /**
@@ -51,13 +52,12 @@ async function handleAction(req, res) {
     if (entityType === "order") {
       try {
         const orderAction = action === "start_preparation" ? "prepare" : action;
-        const data = await executeDashboardOrderAction({
+        await executeDashboardOrderAction({
           orderId: entityId,
           action: orderAction,
           actor: { userId: req.dashboardUserId || req.userId, role },
           payload,
         });
-        return res.status(200).json({ status: true, data });
       } catch (err) {
         if (err.code === "PAYMENT_NOT_PAID" || err.code === "ORDER_PAYMENT_REQUIRED" || err.message === "ORDER_PAYMENT_REQUIRED") {
           return errorResponse(res, 409, "ORDER_PAYMENT_REQUIRED", "Paid orders are required for operational fulfillment");
@@ -172,7 +172,7 @@ async function handleAction(req, res) {
 
     return res.status(200).json({
       status: true,
-      data: updatedDTO,
+      data: entityType === "order" ? serializeKitchenOperation(updatedDTO) : updatedDTO,
     });
   } catch (err) {
     if (err.message === "INVALID_PICKUP_CODE") {

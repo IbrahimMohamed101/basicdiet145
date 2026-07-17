@@ -10,6 +10,7 @@ const request = require("supertest");
 
 const { createApp } = require("../src/app");
 const ActivityLog = require("../src/models/ActivityLog");
+const AppUser = require("../src/models/AppUser");
 const MenuCategory = require("../src/models/MenuCategory");
 const MenuOption = require("../src/models/MenuOption");
 const MenuOptionGroup = require("../src/models/MenuOptionGroup");
@@ -280,11 +281,19 @@ async function cleanupCatalog() {
       assert(createdOrder, "created order persisted");
       assert.strictEqual(createdOrder.fulfillmentMethod, "pickup");
       assert.strictEqual(createdOrder.pickup.branchId, "main");
+      assert.strictEqual(createdOrder.pickup.branchName.ar, "الفرع الرئيسي");
+      assert.strictEqual(createdOrder.pickup.branchName.en, "Main Branch");
       assert.strictEqual(createdOrder.pickup.pickupWindow, "18:00-20:00");
       assert.strictEqual(createdOrder.delivery.zoneId, undefined);
       assert.strictEqual(createdOrder.pricing.vatIncluded, true);
       assert(createdOrder.items.every((item) => item.productSnapshot), "item product snapshots are persisted");
       assert(createdOrder.items.every((item) => item.pricingSnapshot), "item pricing snapshots are persisted");
+      createdOrder.items.forEach((item, index) => {
+        assert.strictEqual(item.pricingSnapshot.unitPriceHalala, quoteRes.body.data.items[index].pricingSnapshot.unitPriceHalala);
+        assert.strictEqual(item.pricingSnapshot.lineTotalHalala, quoteRes.body.data.items[index].pricingSnapshot.lineTotalHalala);
+        assert.strictEqual(item.pricingSnapshot.currency, "SAR");
+        assert.strictEqual(item.pricingSnapshot.vatIncluded, true);
+      });
       const originalSnapshotNames = createdOrder.items.map((item) => item.productSnapshot.name.en);
 
       await MenuProduct.updateOne({ _id: water.id }, { $set: { name: { en: `${TEST_TAG} Mutated Water`, ar: "ماء معدل" }, priceHalala: 999999 } });
@@ -318,22 +327,85 @@ async function cleanupCatalog() {
       assert.strictEqual(verifyRes.body.data.applied, true);
       assert.strictEqual(verifyRes.body.data.isFinal, true);
 
+      const expectedCustomerName = `${TEST_TAG} App Profile`;
+      await AppUser.create({
+        coreUserId: user._id,
+        phone: user.phone,
+        fullName: expectedCustomerName,
+      });
+      await User.updateOne({ _id: user._id }, { $unset: { name: 1 } });
+
+      const expectedLabels = {
+        confirmed: "Confirmed",
+        in_preparation: "Preparing",
+        ready_for_pickup: "Ready for pickup",
+        fulfilled: "Fulfilled",
+      };
+      const opsActionIds = (row) => (row.allowedActions || []).map((action) => action.id);
+      const getOpsOrder = async (expectedStatus) => {
+        const response = await api
+          .get(`/api/dashboard/ops/list?date=${fulfillmentDate}`)
+          .set(adminHeaders);
+        expectStatus(response, 200, `ops list ${expectedStatus}`);
+        const row = response.body.data.find((item) => item.orderId === createRes.body.data.orderId);
+        assert(row, `ops list includes order in ${expectedStatus}`);
+        assert.strictEqual(row.status, expectedStatus);
+        assert.strictEqual(row.statusLabel, expectedLabels[expectedStatus]);
+        return row;
+      };
+      const executeOpsAction = async (action, expectedStatus) => {
+        const response = await api
+          .post(`/api/dashboard/ops/actions/${action}`)
+          .set(adminHeaders)
+          .send({
+            entityId: createRes.body.data.orderId,
+            entityType: "order",
+            source: "one_time_order",
+          });
+        expectStatus(response, 200, `ops action ${action}`);
+        assert.strictEqual(response.body.data.status, expectedStatus);
+        assert.strictEqual(response.body.data.statusLabel, expectedLabels[expectedStatus]);
+        const nextListRow = await getOpsOrder(expectedStatus);
+        assert.strictEqual(response.body.data.status, nextListRow.status);
+        assert.strictEqual(response.body.data.statusLabel, nextListRow.statusLabel);
+        assert.deepStrictEqual(opsActionIds(response.body.data), opsActionIds(nextListRow));
+        return { actionRow: response.body.data, listRow: nextListRow };
+      };
+
+      let canonicalRow = await getOpsOrder("confirmed");
+      assert.strictEqual(canonicalRow.customer.name, expectedCustomerName);
+      assert.deepStrictEqual(opsActionIds(canonicalRow), ["prepare", "cancel"]);
+      assert.strictEqual(canonicalRow.kitchenDetails, undefined, "canonical DTO omits legacy kitchenDetails mirror");
+      const saladItem = canonicalRow.items.find((item) => item.productKey === "basic_salad");
+      const persistedSaladItem = createdOrder.items.find((item) => item.productSnapshot.key === "basic_salad");
+      assert(saladItem, "canonical DTO includes the basic salad item");
+      assert.strictEqual(saladItem.selectedOptions.length, persistedSaladItem.selectedOptions.length);
+      assert.strictEqual(new Set(saladItem.selectedOptions.map((option) => `${option.groupId}:${option.optionId}`)).size, saladItem.selectedOptions.length);
+      assert.strictEqual(saladItem.pricingSnapshot.basePriceHalala, persistedSaladItem.pricingSnapshot.basePriceHalala);
+      assert.strictEqual(saladItem.pricingSnapshot.optionsTotalHalala, persistedSaladItem.pricingSnapshot.optionsTotalHalala);
+      assert.strictEqual(saladItem.pricingSnapshot.unitPriceHalala, persistedSaladItem.pricingSnapshot.unitPriceHalala);
+      assert.strictEqual(saladItem.pricingSnapshot.lineTotalHalala, persistedSaladItem.pricingSnapshot.lineTotalHalala);
+      assert.strictEqual(canonicalRow.pricing.subtotalHalala, createdOrder.pricing.subtotalHalala);
+      assert.strictEqual(canonicalRow.pricing.vatHalala, createdOrder.pricing.vatHalala);
+      assert.strictEqual(canonicalRow.pricing.totalHalala, createdOrder.pricing.totalHalala);
+      assert.strictEqual(canonicalRow.fulfillment.pickup.branchName.en, "Main Branch");
+      assert.strictEqual(canonicalRow.fulfillment.pickup.pickupWindow, "18:00-20:00");
+
+      ({ listRow: canonicalRow } = await executeOpsAction("prepare", "in_preparation"));
+      assert.deepStrictEqual(opsActionIds(canonicalRow), ["ready_for_pickup", "cancel"]);
+
+      ({ listRow: canonicalRow } = await executeOpsAction("ready_for_pickup", "ready_for_pickup"));
+      assert.deepStrictEqual(opsActionIds(canonicalRow), ["fulfill", "cancel"]);
+      assert(canonicalRow.fulfillment.pickup.pickupCode, "pickup code exists in canonical response");
+
+      ({ listRow: canonicalRow } = await executeOpsAction("fulfill", "fulfilled"));
+      assert.deepStrictEqual(opsActionIds(canonicalRow), []);
+
       let listRes = await api.get("/api/dashboard/orders").set(adminHeaders);
       expectStatus(listRes, 200, "dashboard list");
-      assert(listRes.body.data.items.some((item) => item.orderId === createRes.body.data.orderId), "dashboard list includes order");
-
-      let actionRes = await api.post(`/api/dashboard/orders/${createRes.body.data.orderId}/actions/prepare`).set(adminHeaders).send({});
-      expectStatus(actionRes, 200, "prepare");
-      assert.strictEqual(actionRes.body.data.status, "in_preparation");
-
-      actionRes = await api.post(`/api/dashboard/orders/${createRes.body.data.orderId}/actions/ready_for_pickup`).set(adminHeaders).send({});
-      expectStatus(actionRes, 200, "ready_for_pickup");
-      assert.strictEqual(actionRes.body.data.status, "ready_for_pickup");
-      assert(actionRes.body.data.pickup.pickupCode, "pickup code exists");
-
-      actionRes = await api.post(`/api/dashboard/orders/${createRes.body.data.orderId}/actions/fulfill`).set(adminHeaders).send({});
-      expectStatus(actionRes, 200, "fulfill");
-      assert.strictEqual(actionRes.body.data.status, "fulfilled");
+      const dashboardOrder = listRes.body.data.items.find((item) => item.orderId === createRes.body.data.orderId);
+      assert(dashboardOrder, "dashboard list includes fulfilled order for superadmin");
+      assert.strictEqual(dashboardOrder.status, "fulfilled");
 
       const detailRes = await api.get(`/api/dashboard/orders/${createRes.body.data.orderId}`).set(adminHeaders);
       expectStatus(detailRes, 200, "final detail");

@@ -14,6 +14,8 @@ module.exports = {
     },
     dayStatuses: {
       open: "Open",
+      pending_payment: "Pending payment",
+      confirmed: "Confirmed",
       locked: "Locked",
       frozen: "Frozen",
       preparing: "Preparing",
@@ -28,6 +30,9 @@ module.exports = {
       canceled_at_branch: "Canceled at branch",
       no_show: "No-show",
       skipped: "Skipped",
+      cancelled: "Cancelled",
+      canceled: "Cancelled",
+      expired: "Expired",
     },
     timelineStatuses: {
       open: "Open",

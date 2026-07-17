@@ -49,7 +49,8 @@ async function searchOperations(req, res) {
 
     const lang = getRequestLang(req);
     const role = req.userRole;
-    const data = await opsSearchService.search({ q, role, lang });
+    const operations = await opsSearchService.search({ q, role, lang });
+    const data = operations.map((item) => serializeKitchenOperation(item));
 
     return res.status(200).json({
       status: true,

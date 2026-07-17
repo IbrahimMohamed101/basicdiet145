@@ -165,6 +165,45 @@ function normalizeSelectedOption(option = {}, lang = "en") {
   };
 }
 
+function selectedOptionIdentity(option = {}) {
+  const groupIdentity = stringifyId(option.groupId)
+    || option.canonicalGroupKey
+    || option.groupKey
+    || option.groupName
+    || "";
+  const optionIdentity = stringifyId(option.optionId)
+    || option.optionKey
+    || option.name
+    || "";
+
+  if (groupIdentity || optionIdentity) {
+    return `${String(groupIdentity)}:${String(optionIdentity)}`;
+  }
+
+  return JSON.stringify({
+    quantity: Number(option.quantity || option.qty || 1),
+    grams: option.grams ?? null,
+    unitPriceHalala: Number(option.unitPriceHalala || option.extraPriceHalala || 0),
+    totalPriceHalala: Number(option.totalPriceHalala || option.totalHalala || 0),
+    extraWeightUnitGrams: Number(option.extraWeightUnitGrams || 0),
+    extraWeightPriceHalala: Number(option.extraWeightPriceHalala || 0),
+  });
+}
+
+function dedupeSelectedOptions(options = []) {
+  const seen = new Set();
+  const unique = [];
+
+  for (const option of Array.isArray(options) ? options : []) {
+    const identity = selectedOptionIdentity(option);
+    if (seen.has(identity)) continue;
+    seen.add(identity);
+    unique.push(option);
+  }
+
+  return unique;
+}
+
 function classifyOptions(options, matcher) {
   return options.filter((option) => {
     const key = String(option.canonicalGroupKey || option.groupKey || "").toLowerCase();
@@ -235,8 +274,10 @@ function buildMealSlotPayload(slot = {}, subscription = {}, lang = "en", catalog
   const confirmation = slot.confirmationSnapshot || {};
   const display = slot.displaySnapshot || {};
   const fulfillment = slot.fulfillmentSnapshot || {};
-  const selectedOptions = (Array.isArray(slot.selectedOptions) ? slot.selectedOptions : [])
-    .map((option) => normalizeSelectedOption(hydrateSelectedOption(option, catalogMaps, lang), lang));
+  const selectedOptions = dedupeSelectedOptions(
+    (Array.isArray(slot.selectedOptions) ? slot.selectedOptions : [])
+      .map((option) => normalizeSelectedOption(hydrateSelectedOption(option, catalogMaps, lang), lang))
+  );
   const carbSelections = Array.isArray(slot.carbSelections)
     ? slot.carbSelections
     : (Array.isArray(slot.carbs)
@@ -442,9 +483,11 @@ function buildOrderKitchenDetailsPayload(order = {}, lang = "en", catalogMaps = 
     }
 
     const selections = item.selections || {};
-    const selectedOptions = (Array.isArray(item.selectedOptions) ? item.selectedOptions : [])
-      .concat(Array.isArray(selections.selectedOptions) ? selections.selectedOptions : [])
-      .map((option) => normalizeSelectedOption(hydrateSelectedOption(option, catalogMaps, lang), lang));
+    const selectedOptions = dedupeSelectedOptions(
+      (Array.isArray(item.selectedOptions) ? item.selectedOptions : [])
+        .concat(Array.isArray(selections.selectedOptions) ? selections.selectedOptions : [])
+        .map((option) => normalizeSelectedOption(hydrateSelectedOption(option, catalogMaps, lang), lang))
+    );
     const productId = stringifyId(item.productId || item.mealId || (item.catalogRef && item.catalogRef.id));
     const productKey = item.productKey || (item.productSnapshot && item.productSnapshot.key) || null;
     const productDoc = resolveCatalogDoc(catalogMaps, "product", productId, productKey);

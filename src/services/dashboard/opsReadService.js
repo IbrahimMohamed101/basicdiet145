@@ -9,6 +9,7 @@ const User = require("../../models/User");
 const dashboardDtoService = require("./dashboardDtoService");
 const { buildKitchenCatalogMaps } = require("./kitchenCatalogService");
 const { shouldBlockOneTimeOrderDelivery } = require("../../utils/oneTimeOrderDeliveryGate");
+const { enrichCustomerUser, enrichCustomerUsers } = require("./customerDisplayNameService");
 const ar = require("../../locales/ar");
 const en = require("../../locales/en");
 // Settlement on read is DISABLED — see pastSubscriptionDaySettlementService.js
@@ -31,7 +32,7 @@ async function listOperations({ date, role, lang = "ar" }) {
   const orders = await Order.find({
     fulfillmentDate: date,
     paymentStatus: "paid",
-    status: { $in: ["confirmed", "in_preparation", "preparing", "ready_for_pickup", "out_for_delivery"] },
+    status: { $in: ["confirmed", "in_preparation", "preparing", "ready_for_pickup", "out_for_delivery", "fulfilled"] },
   }).lean();
   const pickupRequests = await SubscriptionPickupRequest.find({
     date,
@@ -69,8 +70,9 @@ async function listOperations({ date, role, lang = "ar" }) {
     }).lean()
   ]);
   
+  const enrichedUsers = await enrichCustomerUsers(users);
   const subMap = new Map(subscriptions.map(s => [String(s._id), s]));
-  const userMap = new Map(users.map(u => [String(u._id), u]));
+  const userMap = new Map(enrichedUsers.map(u => [String(u._id), u]));
   const deliveryByDayMap = new Map(deliveries.filter(d => d.dayId).map(d => [String(d.dayId), d]));
   const deliveryByOrderMap = new Map(deliveries.filter(d => d.orderId).map(d => [String(d.orderId), d]));
 
@@ -97,6 +99,7 @@ async function listOperations({ date, role, lang = "ar" }) {
       catalogMaps
     );
     dto.ui.label = getLocalizedLabel(day.status, lang);
+    dto.statusLabel = dto.ui.label;
     return dto;
   });
 
@@ -110,7 +113,8 @@ async function listOperations({ date, role, lang = "ar" }) {
       lang,
       catalogMaps
     );
-    dto.ui.label = getLocalizedLabel(order.status, lang);
+    dto.ui.label = getLocalizedLabel(dto.status, lang);
+    dto.statusLabel = dto.ui.label;
     return dto;
   });
   const pickupRequestDTOs = pickupRequests.map((pickupRequest) => {
@@ -125,6 +129,7 @@ async function listOperations({ date, role, lang = "ar" }) {
       catalogMaps
     );
     dto.ui.label = getLocalizedLabel(pickupRequest.status, lang);
+    dto.statusLabel = dto.ui.label;
     return dto;
   });
 
@@ -142,13 +147,15 @@ async function getEnrichedDTO({ entityId, entityType, role, lang = "ar" }) {
   if (entityType === "subscription_pickup_request") {
     const pickupRequest = await SubscriptionPickupRequest.findById(entityId).lean();
     if (!pickupRequest) return null;
-    const [sub, user] = await Promise.all([
+    const [sub, rawUser] = await Promise.all([
       Subscription.findById(pickupRequest.subscriptionId).populate("planId", "_id key name daysCount durationDays").lean(),
       User.findById(pickupRequest.userId).lean(),
     ]);
+    const user = await enrichCustomerUser(rawUser);
     const catalogMaps = await buildKitchenCatalogMaps([pickupRequest]);
     const dto = dashboardDtoService.mapSubscriptionPickupRequestToDTO(pickupRequest, sub || {}, user, role, lang, catalogMaps);
     dto.ui.label = getLocalizedLabel(pickupRequest.status, lang);
+    dto.statusLabel = dto.ui.label;
     return dto;
   }
 
@@ -168,24 +175,28 @@ async function getEnrichedDTO({ entityId, entityType, role, lang = "ar" }) {
       }).lean()
     ]);
 
-    const user = sub ? await User.findById(sub.userId).lean() : null;
+    const rawUser = sub ? await User.findById(sub.userId).lean() : null;
+    const user = await enrichCustomerUser(rawUser);
     const catalogMaps = await buildKitchenCatalogMaps([day]);
 
     const dto = dashboardDtoService.mapSubscriptionDayToDTO(day, delivery, sub || {}, user, role, lang, catalogMaps, pickupRequest);
     dto.ui.label = getLocalizedLabel(day.status, lang);
+    dto.statusLabel = dto.ui.label;
     return dto;
   } else {
     const order = await Order.findById(entityId).lean();
     if (!order) return null;
 
-    const [delivery, user] = await Promise.all([
+    const [delivery, rawUser] = await Promise.all([
       Delivery.findOne({ orderId: order._id }).lean(),
       User.findById(order.userId).lean()
     ]);
+    const user = await enrichCustomerUser(rawUser);
     const catalogMaps = await buildKitchenCatalogMaps([order]);
 
     const dto = dashboardDtoService.mapOrderToDTO(order, delivery, user, role, lang, catalogMaps);
-    dto.ui.label = getLocalizedLabel(order.status, lang);
+    dto.ui.label = getLocalizedLabel(dto.status, lang);
+    dto.statusLabel = dto.ui.label;
     return dto;
   }
 }

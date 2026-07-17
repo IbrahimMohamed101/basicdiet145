@@ -71,6 +71,19 @@ function getPickupLocationId(location) {
   return "";
 }
 
+function getPickupLocationName(location) {
+  if (!location || typeof location !== "object") return null;
+  const source = location.name || location.title || location.label || location.branchName;
+  if (!source) return null;
+  if (typeof source === "string") return { ar: source, en: source };
+  if (typeof source === "object" && !Array.isArray(source)) {
+    const ar = cleanString(source.ar || source.en);
+    const en = cleanString(source.en || source.ar);
+    return ar || en ? { ar: ar || en, en: en || ar } : null;
+  }
+  return null;
+}
+
 function isActivePickupLocation(location) {
   return Boolean(location)
     && typeof location === "object"
@@ -216,6 +229,7 @@ async function resolveRestaurantOpenState({
     messageEn: isOpenNow ? null : CLOSED_MESSAGE_EN,
     pickupLocationId: resolvedPickupLocationId || defaultPickupLocationId || null,
     resolvedPickupLocationId: resolvedPickupLocationId || null,
+    pickupLocationName: getPickupLocationName(selectedLocation),
     pickupLocationFound,
     pickupLocationError,
     defaultPickupLocationId,

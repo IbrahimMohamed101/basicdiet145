@@ -187,7 +187,6 @@ async function getDashboardOrder({ orderId, actor = {} }) {
   if (!order) {
     throw createServiceError(404, "ORDER_NOT_FOUND", "Order not found");
   }
-
   const [payment, activity] = await Promise.all([
     order.paymentId
       ? Payment.findById(order.paymentId).select("_id provider type status amount currency paidAt createdAt updatedAt").lean()
@@ -204,6 +203,28 @@ async function getDashboardOrder({ orderId, actor = {} }) {
 }
 
 async function executeDashboardOrderAction({ orderId, action, actor = {}, payload = {} }) {
+  const order = await Order.findById(orderId).lean();
+  if (!order) {
+    throw createServiceError(404, "ORDER_NOT_FOUND", "Order not found");
+  }
+  if (action === "reopen") {
+    throw createServiceError(409, "REOPEN_NOT_SUPPORTED", "Reopen is not supported for one-time orders");
+  }
+  const validation = opsActionPolicy.validateAction({
+    entityType: "order",
+    status: order.status,
+    mode: getOrderFulfillmentMethod(order),
+    role: actor.role,
+    actionId: action,
+  });
+  if (!validation.allowed) {
+    const permissionFailure = ["INSUFFICIENT_PERMISSIONS", "INVALID_ROLE_FOR_MODE"].includes(validation.reason);
+    throw createServiceError(
+      permissionFailure ? 403 : 409,
+      validation.reason || "ACTION_NOT_ALLOWED",
+      `Action ${action} is not allowed for this order`
+    );
+  }
   await opsTransitionService.executeAction(action, {
     entityId: orderId,
     entityType: "order",

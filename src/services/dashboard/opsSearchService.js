@@ -8,6 +8,7 @@ const Order = require("../../models/Order");
 const SubscriptionPickupRequest = require("../../models/SubscriptionPickupRequest");
 const dashboardDtoService = require("./dashboardDtoService");
 const { buildKitchenCatalogMaps } = require("./kitchenCatalogService");
+const { enrichCustomerUsers } = require("./customerDisplayNameService");
 
 /**
  * Fast Operational Search Service.
@@ -71,6 +72,14 @@ async function search({ q, role, lang = "ar" }) {
   }).limit(20).lean();
 
   const allOrders = [...ordersByRef, ...ordersByUser];
+  const knownUserIds = new Set(users.map((user) => String(user._id)));
+  const missingUserIds = allOrders
+    .map((order) => order.userId)
+    .filter((userId) => userId && !knownUserIds.has(String(userId)));
+  if (missingUserIds.length) {
+    users = users.concat(await User.find({ _id: { $in: missingUserIds } }).lean());
+  }
+  users = await enrichCustomerUsers(users);
 
   // 4. Search SubscriptionDays (By User Subscriptions or Pickup Code)
   const days = await SubscriptionDay.find({

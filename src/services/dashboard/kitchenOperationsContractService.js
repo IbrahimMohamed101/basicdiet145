@@ -157,7 +157,126 @@ function buildFulfillment(item = {}, mode) {
     delivery.window || delivery.deliveryWindow || context.window || timeWindow.label
   );
   compactOptional(fulfillment, "address", delivery.address || context.address);
+  if (mode === "pickup") {
+    const branchId = asId(pickup.branchId || pickup.locationId || pickup.pickupLocationId || item.branchId);
+    const pickupWindow = pickup.pickupWindow || pickup.window || context.window || null;
+    fulfillment.pickup = {
+      pickupRequestId: asId(pickup.pickupRequestId),
+      branchId,
+      locationId: asId(pickup.locationId || pickup.pickupLocationId || branchId),
+      branchName: pickup.branchName || context.branch || null,
+      pickupWindow,
+    };
+    compactOptional(fulfillment.pickup, "pickupCode", pickup.pickupCode || context.pickupCode);
+    compactOptional(fulfillment.pickup, "pickupCodeState", pickup.pickupCodeState);
+    compactOptional(fulfillment.pickup, "pickupCodeIssuedAt", pickup.pickupCodeIssuedAt || context.pickupCodeIssuedAt);
+    compactOptional(fulfillment.pickup, "pickupVerifiedAt", pickup.pickupVerifiedAt || context.pickupVerifiedAt);
+  } else {
+    fulfillment.delivery = {
+      deliveryId: asId(delivery.deliveryId || delivery.id),
+      date: delivery.date || context.date || null,
+      status: delivery.status || null,
+      address: delivery.address || context.address || null,
+      window: delivery.window || delivery.deliveryWindow || context.window || null,
+      zoneId: asId(delivery.zoneId),
+      courierId: asId(delivery.courierId),
+    };
+  }
   return fulfillment;
+}
+
+function localizedText(value) {
+  if (!value) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "object") {
+    return String(value.ar || value.en || value.displayName || value.name || "");
+  }
+  return String(value);
+}
+
+function sanitizeSelectedOption(option = {}) {
+  return {
+    groupId: asId(option.groupId),
+    groupKey: option.canonicalGroupKey || option.groupKey || null,
+    groupName: localizedText(option.groupName),
+    optionId: asId(option.optionId || option.id),
+    optionKey: option.optionKey || option.key || null,
+    optionName: localizedText(option.optionName || option.name || option.label),
+    quantity: Number(option.quantity || option.qty || 1),
+    grams: option.grams === undefined || option.grams === null ? null : Number(option.grams || 0),
+    unitPriceHalala: Number(option.unitPriceHalala || option.extraPriceHalala || 0),
+    totalPriceHalala: Number(option.totalPriceHalala || option.totalHalala || 0),
+    extraWeightUnitGrams: Number(option.extraWeightUnitGrams || 0),
+    extraWeightPriceHalala: Number(option.extraWeightPriceHalala || 0),
+  };
+}
+
+function sanitizeOrderItems(item = {}) {
+  const slotsByIndex = new Map(
+    (Array.isArray(item.kitchenDetails && item.kitchenDetails.mealSlots)
+      ? item.kitchenDetails.mealSlots
+      : [])
+      .map((slot) => [Number(slot && slot.slotIndex), slot])
+      .filter(([index]) => Number.isFinite(index))
+  );
+
+  return (Array.isArray(item.items) ? item.items : []).map((rawItem, index) => {
+    const productSnapshot = rawItem.productSnapshot && typeof rawItem.productSnapshot === "object"
+      ? rawItem.productSnapshot
+      : {};
+    const pricingSnapshot = rawItem.pricingSnapshot && typeof rawItem.pricingSnapshot === "object"
+      ? rawItem.pricingSnapshot
+      : {};
+    const slot = slotsByIndex.get(index + 1) || {};
+    const selectedOptions = (Array.isArray(slot.selectedOptions) ? slot.selectedOptions : [])
+      .map(sanitizeSelectedOption);
+
+    return {
+      id: asId(rawItem._id || rawItem.id) || `item_${index + 1}`,
+      itemType: rawItem.itemType || rawItem.type || null,
+      productId: asId(rawItem.productId || rawItem.mealId || (rawItem.catalogRef && rawItem.catalogRef.id)),
+      productKey: productSnapshot.key || rawItem.productKey || null,
+      productName: localizedText(rawItem.name || productSnapshot.name),
+      quantity: Number(rawItem.qty || rawItem.quantity || 1),
+      weightGrams: rawItem.weightGrams === undefined || rawItem.weightGrams === null
+        ? (productSnapshot.weightGrams ?? null)
+        : Number(rawItem.weightGrams || 0),
+      notes: rawItem.notes || null,
+      unitPriceHalala: Number(rawItem.unitPriceHalala || 0),
+      lineTotalHalala: Number(rawItem.lineTotalHalala || 0),
+      currency: rawItem.currency || pricingSnapshot.currency || "SAR",
+      productSnapshot: {
+        key: productSnapshot.key || rawItem.productKey || null,
+        name: productSnapshot.name || rawItem.name || null,
+        itemType: productSnapshot.itemType || rawItem.itemType || rawItem.type || null,
+        pricingModel: productSnapshot.pricingModel || null,
+        baseUnitGrams: productSnapshot.baseUnitGrams === undefined ? null : Number(productSnapshot.baseUnitGrams || 0),
+        weightGrams: productSnapshot.weightGrams === undefined ? null : Number(productSnapshot.weightGrams || 0),
+      },
+      selectedOptions,
+      pricingSnapshot: {
+        basePriceHalala: Number(pricingSnapshot.basePriceHalala || 0),
+        optionsTotalHalala: Number(pricingSnapshot.optionsTotalHalala || 0),
+        unitPriceHalala: Number(pricingSnapshot.unitPriceHalala ?? rawItem.unitPriceHalala ?? 0),
+        lineTotalHalala: Number(pricingSnapshot.lineTotalHalala ?? rawItem.lineTotalHalala ?? 0),
+        currency: pricingSnapshot.currency || rawItem.currency || "SAR",
+        vatIncluded: pricingSnapshot.vatIncluded !== false,
+      },
+    };
+  });
+}
+
+function sanitizeOrderPricing(pricing = {}) {
+  return {
+    subtotalHalala: Number(pricing.subtotalHalala || 0),
+    deliveryFeeHalala: Number(pricing.deliveryFeeHalala || 0),
+    discountHalala: Number(pricing.discountHalala || 0),
+    totalHalala: Number(pricing.totalHalala || 0),
+    vatPercentage: Number(pricing.vatPercentage || 0),
+    vatHalala: Number(pricing.vatHalala || 0),
+    vatIncluded: pricing.vatIncluded !== false,
+    currency: pricing.currency || "SAR",
+  };
 }
 
 function serializeKitchenOperation(item = {}, { includeLegacy = false, includeRaw = false } = {}) {
@@ -182,6 +301,12 @@ function serializeKitchenOperation(item = {}, { includeLegacy = false, includeRa
     status: item.status || null,
     statusLabel: item.statusLabel || (item.ui && item.ui.label) || item.status || null,
     mode,
+    ui: item.ui || null,
+    customer: {
+      id: asId(item.customer && item.customer.id),
+      name: localizedText(item.customer && item.customer.name),
+      phone: String(item.customer && item.customer.phone || ""),
+    },
     fulfillment: buildFulfillment(item, mode),
     kitchen: {
       version: KITCHEN_CONTRACT_VERSION,
@@ -190,12 +315,41 @@ function serializeKitchenOperation(item = {}, { includeLegacy = false, includeRa
       addonGroups,
       warnings,
     },
+    allowedActions: Array.isArray(item.allowedActions) ? item.allowedActions : [],
+    timestamps: item.timestamps || {
+      createdAt: item.createdAt || null,
+      updatedAt: item.updatedAt || null,
+    },
   };
 
   compactOptional(clean, "orderId", asId(item.orderId || (item.meta && item.meta.orderId)));
   compactOptional(clean, "subscriptionId", asId(item.subscriptionId || (item.meta && item.meta.subscriptionId)));
   compactOptional(clean, "orderNumber", item.orderNumber);
   compactOptional(clean, "paymentStatus", item.paymentStatus || (item.paymentValidity && item.paymentValidity.paymentStatus));
+
+  if (resolveSource(item) === "one_time_order") {
+    const orderItems = sanitizeOrderItems(item);
+    clean.items = orderItems;
+    clean.pricing = sanitizeOrderPricing(item.pricing || {});
+    clean.payment = {
+      paymentStatus: item.paymentStatus || (item.paymentValidity && item.paymentValidity.paymentStatus) || null,
+      paymentApplied: Boolean(item.paymentValidity && item.paymentValidity.paymentApplied),
+    };
+    clean.orderSummary = {
+      itemCount: orderItems.length,
+      mealCount: Number(item.mealCount || 0),
+      addonCount: (Array.isArray(item.kitchenDetails && item.kitchenDetails.addons)
+        ? item.kitchenDetails.addons
+        : []).length,
+    };
+  }
+
+  if (mode === "pickup" && clean.fulfillment.pickup) {
+    clean.pickup = clean.fulfillment.pickup;
+  }
+  if (mode === "delivery" && clean.fulfillment.delivery) {
+    clean.delivery = clean.fulfillment.delivery;
+  }
 
   if (includeRaw) {
     clean.kitchen.resolverDebug = {

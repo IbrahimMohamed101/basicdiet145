@@ -195,12 +195,13 @@ function run() {
       productId: "orderProduct1",
       name: { en: "Chicken Bowl" },
       qty: 2,
+      selectedOptions: [{ groupId: "group1", groupKey: "sauce", optionId: "garlic1", optionKey: "garlic", name: { en: "Garlic" } }],
       selections: {
         proteinId: "protein1",
         proteinName: { en: "Chicken" },
         carbs: [{ carbId: "carb1", name: { en: "Rice" }, grams: 150 }],
+        selectedOptions: [{ groupId: "group1", groupKey: "sauce", optionId: "garlic1", optionKey: "garlic", name: { en: "Garlic" } }],
       },
-      selectedOptions: [{ groupKey: "sauce", optionKey: "garlic", name: { en: "Garlic" } }],
     }],
   }, "en");
   assert.strictEqual(orderKitchenDetails.mealSlots.length, 1);
@@ -208,6 +209,7 @@ function run() {
   assert.strictEqual(orderKitchenDetails.mealSlots[0].quantity, 2);
   assert.strictEqual(orderKitchenDetails.mealSlots[0].proteinName, "Chicken");
   assert.strictEqual(orderKitchenDetails.mealSlots[0].sauce[0].optionKey, "garlic");
+  assert.strictEqual(orderKitchenDetails.mealSlots[0].selectedOptions.length, 1, "mirrored order option snapshots are deduplicated");
 
   const cleanResponse = normalizeKitchenQueueResponse({
     date: "2026-06-12",

@@ -166,6 +166,7 @@ function normalizeSingleBranchPickup(pickup = {}, restaurantHours = {}) {
     ...(pickup && typeof pickup === "object" ? pickup : {}),
     branchId,
     pickupLocationId: branchId,
+    branchName: restaurantHours.pickupLocationName || pickup.branchName || null,
   };
 }
 

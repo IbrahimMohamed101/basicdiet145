@@ -15,6 +15,8 @@ module.exports = {
     },
     dayStatuses: {
       open: "مفتوح",
+      pending_payment: "بانتظار الدفع",
+      confirmed: "مؤكد",
       locked: "مغلق",
       frozen: "مجمد",
       preparing: "قيد التحضير",
@@ -29,6 +31,9 @@ module.exports = {
       canceled_at_branch: "أُلغي من الفرع",
       no_show: "لم يحضر للاستلام",
       skipped: "متخطى",
+      cancelled: "ملغي",
+      canceled: "ملغي",
+      expired: "منتهي",
     },
     timelineStatuses: {
       open: "مفتوح",
@@ -42,6 +47,9 @@ module.exports = {
       consumed_without_preparation: "استهلك بدون تحضير",
       frozen: "مجمد",
       skipped: "تم التخطي",
+      cancelled: "ملغي",
+      canceled: "ملغي",
+      expired: "منتهي",
       extension: "تمديد",
     },
     timelineSources: {

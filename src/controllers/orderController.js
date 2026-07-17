@@ -310,6 +310,7 @@ async function createOrder(req, res) {
       pickup: quote.fulfillmentMethod === "pickup"
         ? {
           branchId: quote.pickup && quote.pickup.branchId ? quote.pickup.branchId : "main",
+          branchName: quote.pickup && quote.pickup.branchName ? quote.pickup.branchName : undefined,
           pickupWindow: quote.pickup && quote.pickup.pickupWindow ? quote.pickup.pickupWindow : "",
         }
         : undefined,

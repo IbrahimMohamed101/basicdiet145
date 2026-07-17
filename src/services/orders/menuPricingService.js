@@ -400,6 +400,7 @@ async function priceMenuCart({
     delivery: null,
     pickup: {
       branchId,
+      branchName: pickup && pickup.branchName ? pickup.branchName : null,
       pickupWindow: pickup && pickup.pickupWindow ? String(pickup.pickupWindow).trim() : "",
     },
   };

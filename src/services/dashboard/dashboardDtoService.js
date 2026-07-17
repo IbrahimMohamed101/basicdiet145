@@ -14,6 +14,7 @@ const {
   stringifyId,
 } = require("./opsPayloadService");
 const { buildKitchenProjection } = require("./kitchenProjectionService");
+const { DEFAULT_PICKUP_LOCATION } = require("../../constants/defaultPickupLocation");
 
 /**
  * Service to map internal models to the UnifiedOperationalDTO.
@@ -162,6 +163,14 @@ function mapOrderToDTO(order, delivery, user, role, lang, catalogMaps = {}) {
   const mode = getOrderFulfillmentMethod(order);
   const ui = resolveUiMetadata(status, lang);
   const pickupCode = order.pickupCode || (order.pickup && order.pickup.pickupCode) || null;
+  const orderPickup = order.pickup || {};
+  const pickupWindow = orderPickup.pickupWindow || "";
+  const pickupBranchNameI18n = orderPickup.branchName && (orderPickup.branchName.ar || orderPickup.branchName.en)
+    ? orderPickup.branchName
+    : (String(orderPickup.branchId || "") === "main" ? DEFAULT_PICKUP_LOCATION.name : null);
+  const pickupBranchName = pickupBranchNameI18n
+    ? (pickLang(pickupBranchNameI18n, lang) || pickLang(pickupBranchNameI18n, "ar") || pickLang(pickupBranchNameI18n, "en"))
+    : (orderPickup.branchId || null);
 
   const allowedActions = opsActionPolicy.getAllowedActions({
     entityType: "order",
@@ -223,16 +232,20 @@ function mapOrderToDTO(order, delivery, user, role, lang, catalogMaps = {}) {
     delivery: mode === "delivery" ? { ...(order.delivery || {}), ...deliveryPayload } : {},
     pickup: mode === "pickup" ? {
       ...buildPickupPayload({ subscription: {}, day: order }),
-      ...(order.pickup || {}),
+      ...orderPickup,
+      branchName: pickupBranchNameI18n,
+      pickupWindow,
       pickupCode,
       pickupCodeIssuedAt: order.pickupCodeIssuedAt || null,
       pickupVerifiedAt: order.pickupVerifiedAt || null,
     } : {},
     context: {
       date: order.fulfillmentDate || order.deliveryDate,
-      window: order.deliveryWindow || (order.delivery && order.delivery.deliveryWindow ? order.delivery.deliveryWindow : ""),
+      window: mode === "pickup"
+        ? pickupWindow
+        : (order.deliveryWindow || (order.delivery && order.delivery.deliveryWindow ? order.delivery.deliveryWindow : "")),
       address: order.deliveryAddress || (order.delivery && order.delivery.address ? order.delivery.address : null),
-      branch: mode === "pickup" ? "Main Branch" : null,
+      branch: mode === "pickup" ? pickupBranchName : null,
       pickupCode,
       pickupCodeIssuedAt: order.pickupCodeIssuedAt || null,
       pickupVerifiedAt: order.pickupVerifiedAt || null,
