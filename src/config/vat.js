@@ -3,28 +3,28 @@
  *
  * VAT is NOT configurable via the database. It is fixed in code.
  * Even if the database is wiped or has no vat_percentage setting,
- * VAT will always be 16% inclusive.
+ * VAT will always be 15% inclusive.
  *
  * Formula: VAT is INCLUDED inside the displayed total.
  *   vatHalala = Math.round(totalHalala * VAT_PERCENTAGE / (100 + VAT_PERCENTAGE))
  *   netHalala = totalHalala - vatHalala
  *
  * Example (total = 1000):
- *   vatHalala = round(1000 * 16 / 116) = 138
- *   netHalala = 1000 - 138 = 862
+ *   vatHalala = round(1000 * 15 / 115) = 130
+ *   netHalala = 1000 - 130 = 870
  *   customerPays = 1000 (same as displayed — VAT is extracted, not added)
  */
 
 "use strict";
 
-const VAT_PERCENTAGE = 16;
+const VAT_PERCENTAGE = 15;
 const VAT_INCLUDED = true;
 
 /**
  * Returns the system VAT percentage.
- * Always returns 16 — never reads from the database.
+ * Always returns 15 — never reads from the database.
  *
- * @returns {number} 16
+ * @returns {number} 15
  */
 function getSystemVatPercentage() {
   return VAT_PERCENTAGE;
