@@ -50,6 +50,20 @@ function findSubscriptionById(subscriptionId, session) {
   return Subscription.findById(subscriptionId).session(session);
 }
 
+function buildPremiumRemainingExpression() {
+  return {
+    $sum: {
+      $ifNull: ["$premiumBalance.remainingQty", []],
+    },
+  };
+}
+
+function buildRegularRemainingExpression() {
+  return {
+    $subtract: ["$remainingMeals", buildPremiumRemainingExpression()],
+  };
+}
+
 async function deductAtomically({ subscription, counts, session }) {
   const allocations = buildPremiumAllocation(subscription, counts.premiumMeals);
   const filter = {
@@ -59,6 +73,14 @@ async function deductAtomically({ subscription, counts, session }) {
   };
 
   const andClauses = [];
+  if (counts.regularMeals > 0) {
+    andClauses.push({
+      $expr: {
+        $gte: [buildRegularRemainingExpression(), counts.regularMeals],
+      },
+    });
+  }
+
   if (allocations.length) {
     andClauses.push(...allocations.map((allocation) => ({
       premiumBalance: {
@@ -97,6 +119,7 @@ async function deductAtomically({ subscription, counts, session }) {
     if (!update.$inc) update.$inc = {};
     allocations.forEach((allocation, index) => {
       update.$inc[`premiumBalance.$[p${index}].remainingQty`] = -allocation.qty;
+      update.$inc[`premiumBalance.$[p${index}].consumedQty`] = allocation.qty;
       arrayFilters.push({ [`p${index}._id`]: allocation.rowId });
     });
   }
