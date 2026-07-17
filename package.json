@@ -37,6 +37,7 @@
     "test:payment-init-logging": "NODE_ENV=test node tests/paymentInitLogging.test.js",
     "test:integration": "NODE_ENV=test node tests/mealPlanner.integration.test.js",
     "test:dashboard-manual-deduction": "NODE_ENV=test node tests/dashboardManualDeductionAndOrderPickup.test.js",
+    "test:dashboard-subscription-create": "NODE_ENV=test node tests/dashboardSubscriptionCreationContract.test.js",
     "test:dashboard-accounting": "NODE_ENV=test node tests/dashboardAccountingDailyReport.test.js",
     "test:one-time-menu": "NODE_ENV=test node tests/oneTimeMenuCatalog.test.js",
     "test:builder-catalog-v2-contract": "NODE_ENV=test node tests/builderCatalogV2Contract.test.js",
@@ -109,7 +110,7 @@
     "mongodb": "^6.13.0",
     "mongoose": "^8.10.0",
     "multer": "^2.1.1",
-    "swagger-jsdoc": "^6.2.8",
+    "swagger-jsdoc": "^6.2.2",
     "swagger-ui-express": "^5.0.0",
     "winston": "^3.14.2"
   },
