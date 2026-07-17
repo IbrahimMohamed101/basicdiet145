@@ -71,6 +71,69 @@ function buildSaladSections(slot = {}) {
   return sections;
 }
 
+function basicSaladGroupIdentity(option = {}) {
+  const groupName = nameI18n(option.groupNameI18n || option.groupName).ar;
+  return String(
+    option.canonicalGroupKey
+      || option.groupKey
+      || groupName
+      || asId(option.groupId)
+      || "other"
+  );
+}
+
+function buildBasicSaladSections(slot = {}) {
+  const groups = new Map();
+
+  (Array.isArray(slot.selectedOptions) ? slot.selectedOptions : []).forEach((option) => {
+    if (!option || typeof option !== "object") return;
+    const key = basicSaladGroupIdentity(option);
+    const labelI18n = nameI18n(
+      option.groupNameI18n || option.groupName,
+      key
+    );
+    if (!groups.has(key)) {
+      groups.set(key, {
+        key,
+        label: labelI18n.ar,
+        labelI18n,
+        items: [],
+        seenOptions: new Map(),
+      });
+    }
+
+    const group = groups.get(key);
+    const optionId = asId(option.optionId || option.id || option._id);
+    const optionKey = option.optionKey || option.key || null;
+    const dedupeKey = [asId(option.groupId) || "", optionId || "", optionKey || ""].join(":");
+    const quantity = Math.max(1, Number(option.quantity || option.qty || 1));
+    const existingIndex = group.seenOptions.get(dedupeKey);
+
+    if (existingIndex !== undefined) {
+      // Both one-time order snapshot locations can contain the same option.
+      // Preserve an explicitly requested quantity without counting the snapshot twice.
+      group.items[existingIndex].quantity = Math.max(group.items[existingIndex].quantity, quantity);
+      return;
+    }
+
+    const item = {
+      ...component({
+        id: optionId,
+        key: optionKey,
+        nameI18n: option.nameI18n || option.name || option.optionName || option.label,
+      }),
+      quantity,
+      grams: option.grams === undefined || option.grams === null ? null : Number(option.grams || 0),
+      unitPriceHalala: Number(option.unitPriceHalala || option.extraPriceHalala || 0),
+      totalPriceHalala: Number(option.totalPriceHalala || option.totalHalala || 0),
+    };
+    group.seenOptions.set(dedupeKey, group.items.length);
+    group.items.push(item);
+  });
+
+  return [...groups.values()].map(({ seenOptions, ...group }) => group);
+}
+
 function badgeFor(type) {
   if (["premium_meal", "premium_large_salad"].includes(type)) return "Premium";
   if (type === "sandwich") return "ساندويتش";
@@ -80,7 +143,8 @@ function badgeFor(type) {
 }
 
 function buildKitchenCard(slot = {}, index = 0) {
-  const type = slot.selectionType || "meal";
+  const isBasicSalad = slot.selectionType === "basic_salad" || slot.productKey === "basic_salad";
+  const type = isBasicSalad ? "basic_salad" : (slot.selectionType || "meal");
   const protein = component({
     id: slot.proteinId,
     key: slot.proteinKey,
@@ -96,11 +160,23 @@ function buildKitchenCard(slot = {}, index = 0) {
     nameI18n: slot.productNameI18n || slot.sandwichNameI18n || slot.productName || slot.sandwichName,
   });
   const grams = slot.proteinGrams === undefined || slot.proteinGrams === null ? null : Number(slot.proteinGrams || 0);
-  const sections = type === "premium_large_salad" ? buildSaladSections(slot) : [];
+  const sections = type === "premium_large_salad"
+    ? buildSaladSections(slot)
+    : (isBasicSalad ? buildBasicSaladSections(slot) : []);
   const lines = [];
   let titleI18n;
 
-  if (type === "sandwich") {
+  if (isBasicSalad) {
+    titleI18n = product.name
+      ? product.nameI18n
+      : { ar: "سلطة", en: "Salad" };
+    sections.forEach((section) => {
+      const itemNames = section.items.map((item) => (
+        item.quantity > 1 ? `${item.name} ×${item.quantity}` : item.name
+      ));
+      lines.push(`${section.label}: ${itemNames.join("، ")}`);
+    });
+  } else if (type === "sandwich") {
     titleI18n = product.nameI18n;
     if (product.name) lines.push(`ساندويتش: ${product.name}`);
   } else if (type === "premium_large_salad") {
@@ -145,7 +221,7 @@ function buildKitchenCard(slot = {}, index = 0) {
     type,
     title: titleI18n.ar,
     titleI18n,
-    badge: badgeFor(type),
+    badge: isBasicSalad ? "سلطة" : badgeFor(type),
     quantity: Number(slot.quantity || 1),
     notes: slot.notes || null,
     imageUrl: slot.imageUrl || null,
@@ -155,7 +231,7 @@ function buildKitchenCard(slot = {}, index = 0) {
       product: product.id || product.key || product.name ? product : null,
       protein: protein.id || protein.key || protein.name ? { ...protein, grams } : null,
       carbs,
-      salad: sections.length > 0 ? { sections } : null,
+      salad: isBasicSalad || sections.length > 0 ? { sections } : null,
     },
     warnings,
     rawSelection: slot,
