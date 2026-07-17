@@ -26,6 +26,10 @@ function read(relativePath) {
   return fs.readFileSync(path.join(__dirname, "..", relativePath), "utf8");
 }
 
+function sectionByKey(sections, key) {
+  return (sections || []).find((section) => section && section.key === key);
+}
+
 (async function run() {
   await test("dashboard subscription routes expose quote and create endpoints", async () => {
     const source = read("src/routes/dashboardSubscriptions.js");
@@ -45,6 +49,11 @@ function read(relativePath) {
           name: "Monthly Plan",
           daysCount: 28,
           currency: "SAR",
+        },
+        selectedOptions: {
+          grams: 150,
+          mealsPerDay: 2,
+          startDate: "2026-07-20",
         },
         breakdown: {
           basePlanPriceHalala: 10000,
@@ -97,22 +106,50 @@ function read(relativePath) {
     assert.strictEqual(data.addonPlans[0].pricingModel, "daily_recurring");
     assert.strictEqual(data.addons[0].totalHalala, 7000);
     assert.strictEqual(data.checkoutSummary.subscriptionPrice.amountHalala, 10000);
+
+    assert.ok(Array.isArray(data.selectionSections), "selectionSections array exists");
+    assert.strictEqual(data.selectionSections.length, 3, "three dashboard sections returned");
+    assert.deepStrictEqual(
+      data.selectionSections.map((section) => section.key),
+      ["subscription_meals", "premium_meals", "addon_subscriptions"]
+    );
+
+    const subscriptionMeals = sectionByKey(data.selectionSections, "subscription_meals");
+    const premiumMeals = sectionByKey(data.selectionSections, "premium_meals");
+    const addonSubscriptions = sectionByKey(data.selectionSections, "addon_subscriptions");
+
+    assert.strictEqual(subscriptionMeals.totalHalala, 10000);
+    assert.strictEqual(subscriptionMeals.items[0].selectedOptions.grams, 150);
+    assert.strictEqual(subscriptionMeals.items[0].selectedOptions.mealsPerDay, 2);
+    assert.strictEqual(premiumMeals.totalHalala, 2500);
+    assert.strictEqual(premiumMeals.totalQuantity, 1);
+    assert.strictEqual(addonSubscriptions.totalHalala, 7000);
+    assert.strictEqual(addonSubscriptions.totalQuantity, 1);
+    assert.strictEqual(data.selectionGroups.subscriptionMeals.key, "subscription_meals");
+    assert.strictEqual(data.selectionGroups.premiumMeals.key, "premium_meals");
+    assert.strictEqual(data.selectionGroups.addonSubscriptions.key, "addon_subscriptions");
+    assert.deepStrictEqual(data.checkoutSummary.selectionSections.map((section) => section.key), data.selectionSections.map((section) => section.key));
   });
 
-  await test("create response also exposes subscription price from persisted subscription pricing", async () => {
+  await test("create response also exposes subscription price and separated dashboard sections from persisted subscription pricing", async () => {
     const payload = enrichDashboardSubscriptionPayload({
       status: true,
       data: {
         id: "sub_1",
+        plan: {
+          id: "plan_1",
+          name: "Monthly Plan",
+          daysCount: 28,
+        },
         basePlanPriceHalala: 12000,
         basePlanGrossHalala: 12000,
-        premiumBalance: [],
-        addonSubscriptions: [],
+        premiumItems: [{ premiumKey: "salmon", qty: 2, unitExtraFeeHalala: 2000, totalHalala: 4000 }],
+        addonPlans: [{ addonPlanId: "addon_2", qty: 1, unitPriceHalala: 500, totalHalala: 14000 }],
         pricingSummary: {
           basePlanPriceHalala: 12000,
-          totalPriceHalala: 12000,
+          totalPriceHalala: 30000,
           vatPercentage: 15,
-          vatHalala: 1565,
+          vatHalala: 3913,
           currency: "SAR",
         },
       },
@@ -122,8 +159,11 @@ function read(relativePath) {
     assert.strictEqual(data.subscriptionPrice.amountHalala, 12000);
     assert.strictEqual(data.subscriptionPriceHalala, 12000);
     assert.strictEqual(data.pricing.subscriptionPriceHalala, 12000);
-    assert.strictEqual(data.pricing.totalHalala, 12000);
+    assert.strictEqual(data.pricing.totalHalala, 30000);
     assert.ok(data.lineItems.some((item) => item.kind === "plan" && item.amountHalala === 12000));
+    assert.strictEqual(data.selectionGroups.subscriptionMeals.totalHalala, 12000);
+    assert.strictEqual(data.selectionGroups.premiumMeals.totalQuantity, 2);
+    assert.strictEqual(data.selectionGroups.addonSubscriptions.totalHalala, 14000);
   });
 
   if (results.failed > 0) process.exitCode = 1;
