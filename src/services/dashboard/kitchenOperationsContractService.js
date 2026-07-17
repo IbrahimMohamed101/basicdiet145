@@ -1,6 +1,10 @@
 "use strict";
 
 const KITCHEN_CONTRACT_VERSION = "v2";
+const DEFAULT_BRANCH_DISPLAY_NAMES = {
+  main: { ar: "الفرع الرئيسي", en: "Main Branch" },
+  branch_1: { ar: "الفرع الرئيسي", en: "Main Branch" },
+};
 
 function asId(value) {
   if (value === undefined || value === null || value === "") return null;
@@ -14,6 +18,40 @@ function isTruthyQuery(value) {
 
 function compactOptional(target, key, value) {
   if (value !== undefined && value !== null && value !== "") target[key] = value;
+}
+
+function cleanText(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function defaultBranchNameFor(value) {
+  const id = asId(value);
+  return id && DEFAULT_BRANCH_DISPLAY_NAMES[id] ? DEFAULT_BRANCH_DISPLAY_NAMES[id] : null;
+}
+
+function resolvePickupBranchName({ pickup = {}, context = {}, branchId, locationId, item = {} } = {}) {
+  const explicit = pickup.branchName;
+  if (explicit && typeof explicit === "object") return explicit;
+  const explicitText = cleanText(explicit);
+  const explicitDefault = defaultBranchNameFor(explicitText);
+  if (explicitText && !explicitDefault) return explicitText;
+
+  const contextBranch = context.branch;
+  if (contextBranch && typeof contextBranch === "object") return contextBranch;
+  const contextText = cleanText(contextBranch);
+  const contextDefault = defaultBranchNameFor(contextText);
+  if (contextText && !contextDefault) return contextText;
+
+  return explicitDefault
+    || contextDefault
+    || defaultBranchNameFor(branchId)
+    || defaultBranchNameFor(locationId)
+    || defaultBranchNameFor(pickup.pickupLocationId)
+    || defaultBranchNameFor(item.branchId)
+    || explicitText
+    || contextText
+    || branchId
+    || null;
 }
 
 function sanitizeSectionItem(item = {}) {
@@ -159,12 +197,13 @@ function buildFulfillment(item = {}, mode) {
   compactOptional(fulfillment, "address", delivery.address || context.address);
   if (mode === "pickup") {
     const branchId = asId(pickup.branchId || pickup.locationId || pickup.pickupLocationId || item.branchId);
+    const locationId = asId(pickup.locationId || pickup.pickupLocationId || branchId);
     const pickupWindow = pickup.pickupWindow || pickup.window || context.window || null;
     fulfillment.pickup = {
       pickupRequestId: asId(pickup.pickupRequestId),
       branchId,
-      locationId: asId(pickup.locationId || pickup.pickupLocationId || branchId),
-      branchName: pickup.branchName || context.branch || null,
+      locationId,
+      branchName: resolvePickupBranchName({ pickup, context, branchId, locationId, item }),
       pickupWindow,
     };
     compactOptional(fulfillment.pickup, "pickupCode", pickup.pickupCode || context.pickupCode);
@@ -192,6 +231,12 @@ function localizedText(value) {
     return String(value.ar || value.en || value.displayName || value.name || "");
   }
   return String(value);
+}
+
+function resolveCustomerDisplayName(customer = {}) {
+  const name = cleanText(localizedText(customer.name));
+  const phone = cleanText(customer.phone);
+  return name || phone || "";
 }
 
 function sanitizeSelectedOption(option = {}) {
@@ -286,6 +331,7 @@ function serializeKitchenOperation(item = {}, { includeLegacy = false, includeRa
   const cards = (Array.isArray(item.kitchenCards) ? item.kitchenCards : [])
     .map((card) => sanitizeCard(card, { includeRaw }));
   const addonGroups = sanitizeAddonGroups(item.kitchenAddonGroups);
+  const customer = item.customer && typeof item.customer === "object" ? item.customer : {};
   const warningsByKey = new Map();
   cards.flatMap((card) => card.warnings).forEach((warning) => {
     const key = typeof warning === "string" ? warning : JSON.stringify(warning);
@@ -303,9 +349,9 @@ function serializeKitchenOperation(item = {}, { includeLegacy = false, includeRa
     mode,
     ui: item.ui || null,
     customer: {
-      id: asId(item.customer && item.customer.id),
-      name: localizedText(item.customer && item.customer.name),
-      phone: String(item.customer && item.customer.phone || ""),
+      id: asId(customer.id),
+      name: resolveCustomerDisplayName(customer),
+      phone: cleanText(customer.phone),
     },
     fulfillment: buildFulfillment(item, mode),
     kitchen: {
