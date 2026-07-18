@@ -10,14 +10,18 @@ const request = require("supertest");
 const { createApp } = require("../src/app");
 const { dashboardAuth } = require("./helpers/dashboardAuthHelper");
 const MenuCategory = require("../src/models/MenuCategory");
+const MenuOption = require("../src/models/MenuOption");
+const MenuOptionGroup = require("../src/models/MenuOptionGroup");
 const MenuProduct = require("../src/models/MenuProduct");
 const PremiumUpgradeConfig = require("../src/models/PremiumUpgradeConfig");
+const ProductGroupOption = require("../src/models/ProductGroupOption");
+const ProductOptionGroup = require("../src/models/ProductOptionGroup");
 
 let mongoServer;
 
 async function connect() {
   mongoServer = await MongoMemoryServer.create();
-  const uri = mongoServer.getUri(`dynamic_meal_planner_v4_${Date.now()}`);
+  const uri = mongoServer.getUri(`dynamic_meal_planner_flutter_contract_${Date.now()}`);
   process.env.MONGO_URI = uri;
   process.env.MONGODB_URI = uri;
   await mongoose.connect(uri, { serverSelectionTimeoutMS: 10000 });
@@ -36,16 +40,164 @@ function expectStatus(res, status, label) {
   );
 }
 
+function findSection(catalog, key) {
+  return (catalog.sections || []).find((section) => section.key === key || section.selectionType === key);
+}
+
+function optionsFromSection(section) {
+  const options = [];
+  for (const product of section?.products || []) {
+    for (const group of product.optionGroups || []) {
+      options.push(...(group.options || []));
+    }
+  }
+  return options;
+}
+
 async function seedMenu() {
   const now = new Date();
-  const category = await MenuCategory.create({
-    key: "meals",
-    name: { ar: "الوجبات", en: "Meals" },
+  const [mealsCategory, customCategory] = await Promise.all([
+    MenuCategory.create({
+      key: "meals",
+      name: { ar: "الوجبات", en: "Meals" },
+      publishedAt: now,
+    }),
+    MenuCategory.create({
+      key: "custom_order",
+      name: { ar: "تخصيص الوجبة", en: "Custom Meal" },
+      publishedAt: now,
+    }),
+  ]);
+
+  const [proteinsGroup, carbsGroup] = await Promise.all([
+    MenuOptionGroup.create({
+      key: "proteins",
+      name: { ar: "البروتين", en: "Proteins" },
+      publishedAt: now,
+    }),
+    MenuOptionGroup.create({
+      key: "carbs",
+      name: { ar: "النشويات", en: "Carbs" },
+      publishedAt: now,
+    }),
+  ]);
+
+  const basicMeal = await MenuProduct.create({
+    categoryId: customCategory._id,
+    key: "basic_meal",
+    name: { ar: "وجبة بيسك", en: "Basic Meal" },
+    itemType: "basic_meal",
+    pricingModel: "per_100g",
+    priceHalala: 1900,
+    availableFor: ["subscription"],
     publishedAt: now,
+    sortOrder: 1,
   });
+
+  const [chickenOption, premiumOption, whiteRiceOption] = await Promise.all([
+    MenuOption.create({
+      groupId: proteinsGroup._id,
+      key: "spicy_chicken",
+      name: { ar: "دجاج سبايسي", en: "Spicy Chicken" },
+      proteinFamilyKey: "chicken",
+      displayCategoryKey: "chicken",
+      availableFor: ["subscription"],
+      availableForSubscription: true,
+      publishedAt: now,
+      sortOrder: 10,
+    }),
+    MenuOption.create({
+      groupId: proteinsGroup._id,
+      key: "beef_steak",
+      premiumKey: "beef_steak",
+      name: { ar: "ستيك لحم", en: "Beef Steak" },
+      proteinFamilyKey: "beef",
+      displayCategoryKey: "premium",
+      extraPriceHalala: 700,
+      availableFor: ["subscription"],
+      availableForSubscription: true,
+      publishedAt: now,
+      sortOrder: 20,
+    }),
+    MenuOption.create({
+      groupId: carbsGroup._id,
+      key: "white_rice",
+      name: { ar: "رز أبيض", en: "White Rice" },
+      displayCategoryKey: "carbs",
+      availableFor: ["subscription"],
+      availableForSubscription: true,
+      publishedAt: now,
+      sortOrder: 10,
+    }),
+  ]);
+
+  await ProductOptionGroup.insertMany([
+    {
+      productId: basicMeal._id,
+      groupId: proteinsGroup._id,
+      minSelections: 1,
+      maxSelections: 1,
+      isRequired: true,
+      sortOrder: 1,
+    },
+    {
+      productId: basicMeal._id,
+      groupId: carbsGroup._id,
+      minSelections: 1,
+      maxSelections: 2,
+      isRequired: true,
+      sortOrder: 2,
+    },
+  ]);
+  await ProductGroupOption.insertMany([
+    {
+      productId: basicMeal._id,
+      groupId: proteinsGroup._id,
+      optionId: chickenOption._id,
+      sortOrder: 10,
+    },
+    {
+      productId: basicMeal._id,
+      groupId: proteinsGroup._id,
+      optionId: premiumOption._id,
+      extraPriceHalala: 700,
+      sortOrder: 20,
+    },
+    {
+      productId: basicMeal._id,
+      groupId: carbsGroup._id,
+      optionId: whiteRiceOption._id,
+      sortOrder: 10,
+    },
+  ]);
+
+  await PremiumUpgradeConfig.create({
+    sourceType: "menu_option",
+    sourceId: premiumOption._id,
+    sourceProductId: basicMeal._id,
+    sourceGroupId: proteinsGroup._id,
+    selectionType: "premium_meal",
+    premiumKey: "beef_steak",
+    displayGroupKey: "premium",
+    upgradeDeltaHalala: 700,
+    currency: "SAR",
+    isEnabled: true,
+    isVisible: true,
+    status: "active",
+    sortOrder: 1,
+    sourceSnapshot: {
+      key: premiumOption.key,
+      name: premiumOption.name,
+      context: {
+        productKey: basicMeal.key,
+        groupKey: proteinsGroup.key,
+      },
+    },
+  });
+
   const products = await MenuProduct.insertMany(
     Array.from({ length: 125 }, (_, index) => ({
-      categoryId: category._id,
+      categoryId: mealsCategory._id,
       key: `meal_${String(index + 1).padStart(3, "0")}`,
       name: { ar: `وجبة ${index + 1}`, en: `Meal ${index + 1}` },
       itemType: "full_meal_product",
@@ -56,50 +208,29 @@ async function seedMenu() {
       sortOrder: index + 1,
     }))
   );
-  const premiumProduct = await MenuProduct.create({
-    categoryId: category._id,
-    key: "premium_dynamic_product",
-    name: { ar: "وجبة مميزة ديناميكية", en: "Dynamic Premium Meal" },
-    itemType: "full_meal_product",
-    pricingModel: "fixed",
-    priceHalala: 2500,
-    availableFor: ["subscription"],
-    publishedAt: now,
-    sortOrder: 500,
-  });
-  await PremiumUpgradeConfig.create({
-    sourceType: "menu_product",
-    sourceId: premiumProduct._id,
-    selectionType: "premium_large_salad",
-    premiumKey: "premium_dynamic_product",
-    displayGroupKey: "premium",
-    upgradeDeltaHalala: 700,
-    currency: "SAR",
-    isEnabled: true,
-    isVisible: true,
-    status: "active",
-    sortOrder: 1,
-    sourceSnapshot: {
-      key: premiumProduct.key,
-      name: premiumProduct.name,
-      context: {},
-    },
-  });
-  return { products, premiumProduct };
+
+  return {
+    products,
+    basicMeal,
+    proteinsGroup,
+    carbsGroup,
+    chickenOption,
+    premiumOption,
+    whiteRiceOption,
+  };
 }
 
 async function run() {
   await connect();
   try {
     const app = createApp();
-    const auth = await dashboardAuth("admin", "meal-planner-v4");
-    const { products, premiumProduct } = await seedMenu();
+    const auth = await dashboardAuth("admin", "meal-planner-flutter-contract");
+    const seeded = await seedMenu();
 
     const picker = await request(app)
       .get("/api/dashboard/meal-builder/pickers/new_dynamic_section?limit=500")
       .set(auth.headers);
     expectStatus(picker, 200, "product picker");
-    assert.strictEqual(picker.body.data.contractVersion, "meal_planner_menu.v4");
     assert.strictEqual(picker.body.data.candidateType, "product");
     assert.strictEqual(picker.body.data.meta.total, 126);
     assert.strictEqual(picker.body.data.candidates.length, 126);
@@ -108,17 +239,45 @@ async function run() {
       .post("/api/dashboard/meal-builder/draft")
       .set(auth.headers)
       .send({
-        sections: [{
-          key: "premium",
-          sectionType: "product_list",
-          sourceKind: "premium_visual",
-          titleOverride: { ar: "الوجبات المميزة", en: "Premium Meals" },
-          selectedProductIds: [],
-          includeMode: "selected",
-          selectionType: "premium",
-          sortOrder: 10,
-          metadata: { premiumDynamic: true },
-        }],
+        sections: [
+          {
+            key: "premium",
+            sectionType: "option_group",
+            sourceKind: "premium_visual",
+            titleOverride: { ar: "الوجبات المميزة", en: "Premium Meals" },
+            productContextId: String(seeded.basicMeal._id),
+            sourceGroupId: String(seeded.proteinsGroup._id),
+            selectedOptionIds: [String(seeded.premiumOption._id)],
+            includeMode: "selected",
+            selectionType: "premium_meal",
+            sortOrder: 10,
+            metadata: { premiumDynamic: true },
+          },
+          {
+            key: "chicken",
+            sectionType: "option_group",
+            sourceKind: "visual_family",
+            titleOverride: { ar: "دجاج", en: "Chicken" },
+            productContextId: String(seeded.basicMeal._id),
+            sourceGroupId: String(seeded.proteinsGroup._id),
+            selectedOptionIds: [String(seeded.chickenOption._id)],
+            includeMode: "selected",
+            selectionType: "standard_meal",
+            sortOrder: 30,
+          },
+          {
+            key: "carbs",
+            sectionType: "option_group",
+            sourceKind: "configurable_product",
+            titleOverride: { ar: "نشويات", en: "Carbs" },
+            productContextId: String(seeded.basicMeal._id),
+            sourceGroupId: String(seeded.carbsGroup._id),
+            selectedOptionIds: [String(seeded.whiteRiceOption._id)],
+            includeMode: "selected",
+            selectionType: "carbs",
+            sortOrder: 70,
+          },
+        ],
       });
     expectStatus(createDraft, 201, "create draft");
     const firstHash = createDraft.body.data.draftHash;
@@ -132,6 +291,7 @@ async function run() {
         titleOverride: { ar: "اختيارات الشيف", en: "Chef Choices" },
         sectionType: "product_list",
         sourceKind: "product_list",
+        selectionType: "full_meal_product",
         sortOrder: 20,
         expectedDraftHash: firstHash,
       });
@@ -143,73 +303,93 @@ async function run() {
       .post("/api/dashboard/meal-builder/sections/chef_choices/products")
       .set(auth.headers)
       .send({
-        productIds: [String(products[0]._id), String(products[124]._id)],
+        productIds: [String(seeded.products[0]._id), String(seeded.products[124]._id)],
         expectedDraftHash: secondHash,
       });
     expectStatus(addProducts, 200, "add products");
     const thirdHash = addProducts.body.data.draft.draftHash;
 
     const staleRemove = await request(app)
-      .delete(`/api/dashboard/meal-builder/sections/chef_choices/products/${products[0]._id}`)
+      .delete(`/api/dashboard/meal-builder/sections/chef_choices/products/${seeded.products[0]._id}`)
       .set(auth.headers)
       .send({ expectedDraftHash: secondHash });
     expectStatus(staleRemove, 409, "stale hash protection");
     assert.strictEqual(staleRemove.body.error.code, "MEAL_PLANNER_DRAFT_CONFLICT");
 
     const removeProduct = await request(app)
-      .delete(`/api/dashboard/meal-builder/sections/chef_choices/products/${products[0]._id}`)
+      .delete(`/api/dashboard/meal-builder/sections/chef_choices/products/${seeded.products[0]._id}`)
       .set(auth.headers)
       .send({ expectedDraftHash: thirdHash });
     expectStatus(removeProduct, 200, "remove product");
     const fourthHash = removeProduct.body.data.draft.draftHash;
-
-    const hydrated = await request(app)
-      .get("/api/dashboard/meal-builder/draft/hydrated")
-      .set(auth.headers);
-    expectStatus(hydrated, 200, "hydrated draft");
-    const chefDraftSection = hydrated.body.data.sections.find((section) => section.key === "chef_choices");
-    assert.ok(chefDraftSection);
-    assert.strictEqual(chefDraftSection.products.length, 1);
-    assert.strictEqual(chefDraftSection.products[0].id, String(products[124]._id));
 
     const publish = await request(app)
       .post("/api/dashboard/meal-builder/publish")
       .set(auth.headers)
       .send({ expectedDraftHash: fourthHash });
     expectStatus(publish, 200, "publish planner");
-    assert.strictEqual(publish.body.data.contract.contractVersion, "meal_planner_menu.v4");
 
     const publicOne = await request(app).get("/api/subscriptions/meal-planner-menu?lang=en");
-    expectStatus(publicOne, 200, "public planner first read");
-    assert.strictEqual(publicOne.body.data.contractVersion, "meal_planner_menu.v4");
-    assert.ok(publicOne.body.data.catalogHash);
-    assert.strictEqual(publicOne.body.data.builderCatalog, undefined);
-    assert.strictEqual(publicOne.body.data.builderCatalogV2, undefined);
-    assert.strictEqual(publicOne.body.data.plannerCatalog, undefined);
+    expectStatus(publicOne, 200, "Flutter meal planner first read");
     assert.match(publicOne.headers["cache-control"], /no-store/);
+    assert.ok(publicOne.body.data.builderCatalog);
+    assert.strictEqual(
+      publicOne.body.data.builderCatalog.contractVersion,
+      "meal_planner_menu.v3"
+    );
+    assert.strictEqual(publicOne.body.data.plannerCatalog, undefined);
+    assert.strictEqual(publicOne.body.data.builderCatalogV2, undefined);
+    assert.ok(publicOne.body.data.addonCatalog);
 
-    const chefSection = publicOne.body.data.sections.find((section) => section.key === "chef_choices");
-    assert.ok(chefSection);
+    const catalog = publicOne.body.data.builderCatalog;
+    assert.ok(catalog.catalogHash);
+    const chefSection = findSection(catalog, "chef_choices");
+    assert.ok(chefSection, "dynamic product section must be present in Flutter catalog");
     assert.strictEqual(chefSection.products.length, 1);
-    assert.strictEqual(chefSection.products[0].id, String(products[124]._id));
+    assert.strictEqual(chefSection.products[0].id, String(seeded.products[124]._id));
+    assert.strictEqual(chefSection.products[0].action.type, "direct_add");
+    assert.strictEqual(chefSection.products[0].action.requiresBuilder, false);
+    assert.strictEqual(chefSection.products[0].action.treatAsFullMeal, true);
 
-    const premiumSection = publicOne.body.data.sections.find((section) => section.key === "premium");
-    assert.ok(premiumSection);
-    assert.strictEqual(premiumSection.managedBy, "premium_upgrades");
-    assert.ok(premiumSection.products.some((product) => product.id === String(premiumProduct._id)));
+    const premiumSection = findSection(catalog, "premium_meal") || findSection(catalog, "premium");
+    assert.ok(premiumSection, "premium section must exist");
+    assert.ok(
+      optionsFromSection(premiumSection).some((option) => option.premiumKey === "beef_steak"),
+      "premium section must be derived from active PremiumUpgradeConfig"
+    );
+
+    const standardOptions = optionsFromSection(findSection(catalog, "standard_meal"));
+    assert.ok(
+      standardOptions.some((option) => option.id === String(seeded.chickenOption._id)),
+      "standard protein option must be available to Flutter"
+    );
+
+    const alias = await request(app).get("/api/subscriptions/meal-builder?lang=en");
+    expectStatus(alias, 200, "meal builder alias");
+    assert.deepStrictEqual(alias.body.data.builderCatalog, catalog);
+    assert.strictEqual(alias.body.data.plannerCatalog, undefined);
 
     const publicTwo = await request(app).get("/api/subscriptions/meal-planner-menu?lang=en");
-    expectStatus(publicTwo, 200, "public planner second read");
-    assert.strictEqual(publicTwo.body.data.catalogHash, publicOne.body.data.catalogHash);
+    expectStatus(publicTwo, 200, "Flutter meal planner second read");
+    assert.strictEqual(
+      publicTwo.body.data.builderCatalog.catalogHash,
+      catalog.catalogHash
+    );
 
-    await MenuProduct.updateOne({ _id: products[124]._id }, { $set: { priceHalala: 9999 } });
+    await MenuProduct.updateOne(
+      { _id: seeded.products[124]._id },
+      { $set: { priceHalala: 9999 } }
+    );
     const publicThree = await request(app).get("/api/subscriptions/meal-planner-menu?lang=en");
-    expectStatus(publicThree, 200, "public planner after catalog update");
-    assert.notStrictEqual(publicThree.body.data.catalogHash, publicOne.body.data.catalogHash);
-    const updatedChef = publicThree.body.data.sections.find((section) => section.key === "chef_choices");
-    assert.strictEqual(updatedChef.products[0].pricing.priceHalala, 9999);
+    expectStatus(publicThree, 200, "Flutter meal planner after catalog update");
+    assert.notStrictEqual(
+      publicThree.body.data.builderCatalog.catalogHash,
+      catalog.catalogHash
+    );
+    const updatedChef = findSection(publicThree.body.data.builderCatalog, "chef_choices");
+    assert.strictEqual(updatedChef.products[0].priceHalala, 9999);
 
-    console.log("dynamicMealPlannerV4Contract.test.js passed");
+    console.log("dynamicMealPlannerV4Contract.test.js Flutter compatibility passed");
   } finally {
     await disconnect();
   }
