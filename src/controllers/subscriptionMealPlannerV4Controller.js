@@ -1,6 +1,14 @@
-const mealPlannerService = require("../services/subscription/dynamicMealPlannerService");
+const menuController = require("./menuController");
 const errorResponse = require("../utils/errorResponse");
-const { getRequestLang } = require("../utils/i18n");
+
+const FLUTTER_CONTRACT_VERSION = "meal_planner_menu.v3";
+const OPTIONAL_ADDON_FIELDS = [
+  "addonChoices",
+  "addonChoiceGroups",
+  "subscriptionId",
+  "addonCategoryAllowances",
+  "addonSubscriptionAllowances",
+];
 
 function noStore(res) {
   res.set("Cache-Control", "private, no-store, no-cache, max-age=0, must-revalidate");
@@ -8,21 +16,75 @@ function noStore(res) {
   res.set("Expires", "0");
 }
 
+function sanitizePublicData(source = {}) {
+  const builderCatalog = source.builderCatalog || source.plannerCatalog || null;
+  if (!builderCatalog || builderCatalog.contractVersion !== FLUTTER_CONTRACT_VERSION) {
+    const err = new Error("Meal Planner catalog is not compatible with the current Flutter client");
+    err.code = "MEAL_PLANNER_FLUTTER_CONTRACT_INVALID";
+    err.status = 500;
+    err.details = {
+      expectedContractVersion: FLUTTER_CONTRACT_VERSION,
+      receivedContractVersion: builderCatalog?.contractVersion || null,
+    };
+    throw err;
+  }
+
+  const data = {
+    currency: builderCatalog.currency || source.currency || "SAR",
+    builderCatalog,
+    addonCatalog: source.addonCatalog || {
+      items: [],
+      byCategory: {},
+      totalCount: 0,
+      entitlementResolved: false,
+      source: "empty_catalog",
+    },
+  };
+
+  for (const field of OPTIONAL_ADDON_FIELDS) {
+    if (source[field] !== undefined) data[field] = source[field];
+  }
+
+  return data;
+}
+
 async function getMealPlannerMenu(req, res) {
   try {
-    const contract = await mealPlannerService.buildPublishedContract({ lang: getRequestLang(req) });
-    noStore(res);
-    res.set("ETag", `"${contract.catalogHash}"`);
-    res.set("X-Meal-Planner-Catalog-Hash", contract.catalogHash);
-    return res.status(200).json({ status: true, data: contract });
+    let statusCode = 200;
+    const proxy = {
+      status(code) {
+        statusCode = code;
+        return proxy;
+      },
+      set() {
+        return proxy;
+      },
+      json(payload) {
+        if (!payload || payload.status !== true || !payload.data) {
+          noStore(res);
+          return res.status(statusCode).json(payload);
+        }
+
+        const data = sanitizePublicData(payload.data);
+        noStore(res);
+        const catalogHash = data.builderCatalog.catalogHash;
+        if (catalogHash) {
+          res.set("ETag", `"${catalogHash}"`);
+          res.set("X-Meal-Planner-Catalog-Hash", catalogHash);
+        }
+        return res.status(statusCode).json({ status: true, data });
+      },
+    };
+
+    return await menuController.getSubscriptionMealPlannerMenu(req, proxy);
   } catch (err) {
     noStore(res);
     if (err?.status && err?.code) {
       return errorResponse(res, err.status, err.code, err.message, err.details);
     }
-    console.error("SubscriptionMealPlannerV4Controller error:", err);
+    console.error("SubscriptionMealPlannerCompatibilityController error:", err);
     return errorResponse(res, 500, "MEAL_PLANNER_INTERNAL_ERROR", "Unable to build Meal Planner catalog");
   }
 }
 
-module.exports = { getMealPlannerMenu };
+module.exports = { getMealPlannerMenu, sanitizePublicData };
