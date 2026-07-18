@@ -1,6 +1,7 @@
 const { Router } = require("express");
 
 const controller = require("../controllers/dashboard/menuController");
+const weightPricingController = require("../controllers/dashboard/weightPricingController");
 const asyncHandler = require("../middleware/asyncHandler");
 const {
   dashboardAuthMiddleware,
@@ -35,6 +36,7 @@ router.patch("/products/bulk", asyncHandler(controller.bulkUpdateProducts));
 router.patch("/products/reorder", asyncHandler(controller.reorderProducts));
 router.post("/products/:id/duplicate", asyncHandler(controller.duplicateProduct));
 router.patch("/products/:id/category", asyncHandler(controller.updateProduct)); // Already handles categoryId in normalizeProductPayload
+router.patch("/products/:id/weight-pricing", asyncHandler(weightPricingController.updateProductWeightPricing));
 router.get("/products/:productId/composer", asyncHandler(controller.getProductComposer));
 router.patch("/products/:productId/customization", asyncHandler(controller.updateProductCustomization));
 router.get("/products/:productId/option-groups", asyncHandler(controller.listProductGroups));
