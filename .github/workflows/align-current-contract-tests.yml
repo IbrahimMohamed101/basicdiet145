@@ -4,13 +4,16 @@ on:
   push:
     branches:
       - agent/fix-backend-contract-tests
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: write
 
 jobs:
   align-and-verify:
-    if: github.event.head_commit.message != 'fix: align backend tests with canonical contracts'
+    if: github.event_name == 'push' && github.event.head_commit.message != 'fix: align backend tests with canonical contracts'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -25,7 +28,7 @@ jobs:
           cache: npm
 
       - run: npm ci
-      - run: node scripts/align-current-contract-tests.js
+      - run: node scripts/align-current-contract-tests-v2.js
       - run: npm run test:integration
       - run: npm run validate:backend
       - run: npm run test:meal-builder-dashboard-mobile-parity
