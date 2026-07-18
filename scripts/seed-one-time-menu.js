@@ -11,6 +11,10 @@ const MenuProduct = require("../src/models/MenuProduct");
 const ProductGroupOption = require("../src/models/ProductGroupOption");
 const ProductOptionGroup = require("../src/models/ProductOptionGroup");
 const { publishMenu } = require("../src/services/orders/menuCatalogService");
+const {
+  testWeightPricingEligibility,
+  testWeightPricingUpdate,
+} = require("./lib/test-weight-pricing");
 
 const uri = process.env.MONGO_URI || process.env.MONGODB_URI || "mongodb://localhost:27017/basicdiet";
 const now = new Date();
@@ -190,7 +194,7 @@ const BASIC_MEAL_PROTEINS = ["بيض مسلوق", "تونا", "فاهيتا", "�
 
 const productRows = [
   { key: "basic_salad", category: "custom_order", name: name("سلطة بيسك", "Basic Salad"), pricingModel: "per_100g", priceHalala: 2900, groups: [["leafy_greens", 2, 2], ["vegetables_legumes", 0, 19], ["fruits", 0, 4], ["proteins", 1, 1], ["cheese_nuts", 0, 2], ["sauces", 1, 1]], optionNames: { fruits: BASIC_SALAD_FRUITS, proteins: BASIC_SALAD_PROTEINS } },
-  { key: "basic_meal", category: "custom_order", name: name("وجبة بيسك", "Basic Meal"), pricingModel: "per_100g", priceHalala: 1900, groups: [["carbs", 3, 3], ["proteins", 1, 1]], optionNames: { proteins: BASIC_MEAL_PROTEINS } },
+  { key: "basic_meal", category: "custom_order", itemType: "basic_meal", name: name("وجبة بيسك", "Basic Meal"), pricingModel: "per_100g", priceHalala: 1900, groups: [["carbs", 3, 3], ["proteins", 1, 1]], optionNames: { proteins: BASIC_MEAL_PROTEINS } },
   { key: "fruit_salad", category: "light_options", name: name("سلطة فواكه", "Fruit Salad"), pricingModel: "fixed", priceHalala: 1700, defaultWeightGrams: 150, groups: [["fruits", 9, 9]] },
   { key: "greek_yogurt", category: "light_options", name: name("زبادي يوناني", "Greek Yogurt"), pricingModel: "fixed", priceHalala: 1700, defaultWeightGrams: 200, groups: [["fruits", 5, 5], ["nuts", 0, 3]] },
   { key: "green_salad", category: "light_options", name: name("سلطة خضرا", "Green Salad"), pricingModel: "per_100g", priceHalala: 1500, groups: [["leafy_greens", 2, 2], ["vegetables_legumes", 0, 19], ["sauces", 1, 1]] },
@@ -427,6 +431,9 @@ async function seedOneTimeMenu({ actor = { role: "script" }, notes = "Seed one-t
 
   let productSort = 10;
   for (const productData of productRows) {
+    const weightPricing = testWeightPricingEligibility(productData, productData.category).eligible
+      ? testWeightPricingUpdate(productData)
+      : {};
     const product = await MenuProduct.findOneAndUpdate(
       { key: productData.key },
       {
@@ -442,6 +449,7 @@ async function seedOneTimeMenu({ actor = { role: "script" }, notes = "Seed one-t
           minWeightGrams: productData.pricingModel === "per_100g" ? 100 : 0,
           maxWeightGrams: productData.maxWeightGrams || 0,
           weightStepGrams: 50,
+          ...weightPricing,
           isActive: true,
           isVisible: true,
           isAvailable: true,

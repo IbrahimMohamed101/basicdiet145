@@ -42,9 +42,9 @@ async function main() {
       baseUnitGrams: 100,
       defaultWeightGrams: 100,
       minWeightGrams: 100,
-      maxWeightGrams: 300,
-      weightStepGrams: 50,
-      weightStepPriceHalala: null,
+      maxWeightGrams: 500,
+      weightStepGrams: 100,
+      weightStepPriceHalala: 500,
       availableFor: ["one_time"],
       isCustomizable: true,
       isActive: true,
@@ -55,6 +55,21 @@ async function main() {
 
     const { headers } = await dashboardAuth("admin", "weight-pricing-authority");
 
+    const initialMenu = await request(app).get("/api/orders/menu?includePublicV2=true");
+    assert.strictEqual(initialMenu.status, 200, JSON.stringify(initialMenu.body));
+    const initiallySeededProduct = initialMenu.body.data.categories
+      .flatMap((item) => item.products || [])
+      .find((item) => item.id === String(product._id));
+    assert(initiallySeededProduct, "test-priced product appears in the public menu");
+    assert.strictEqual(initiallySeededProduct.weightPricing.contractVersion, "weight_pricing.v1");
+    assert.deepStrictEqual(initiallySeededProduct.weightPricing.choices, [
+      { weightGrams: 100, priceHalala: 1900 },
+      { weightGrams: 200, priceHalala: 2400 },
+      { weightGrams: 300, priceHalala: 2900 },
+      { weightGrams: 400, priceHalala: 3400 },
+      { weightGrams: 500, priceHalala: 3900 },
+    ]);
+
     const incompatible = await request(app)
       .patch(`/api/dashboard/menu/products/${product._id}/weight-pricing`)
       .set(headers)
@@ -63,7 +78,7 @@ async function main() {
         baseUnitGrams: 120,
         defaultWeightGrams: 120,
         minWeightGrams: 120,
-        maxWeightGrams: 320,
+        maxWeightGrams: 500,
         weightStepGrams: 50,
         weightStepPriceHalala: 500,
       });
@@ -74,24 +89,25 @@ async function main() {
       .patch(`/api/dashboard/menu/products/${product._id}/weight-pricing`)
       .set(headers)
       .send({
-        priceHalala: 1900,
+        priceHalala: 2100,
         baseUnitGrams: 100,
         defaultWeightGrams: 100,
         minWeightGrams: 100,
-        maxWeightGrams: 300,
-        weightStepGrams: 50,
-        weightStepPriceHalala: 500,
+        maxWeightGrams: 500,
+        weightStepGrams: 100,
+        weightStepPriceHalala: 700,
       });
 
     assert.strictEqual(update.status, 200, JSON.stringify(update.body));
     assert.strictEqual(update.body.data.contractVersion, "dashboard_weight_pricing.v1");
-    assert.strictEqual(update.body.data.product.weightStepPriceHalala, 500);
+    assert.strictEqual(update.body.data.product.priceHalala, 2100);
+    assert.strictEqual(update.body.data.product.weightStepPriceHalala, 700);
     assert.deepStrictEqual(update.body.data.weightPricing.choices, [
-      { weightGrams: 100, priceHalala: 1900 },
-      { weightGrams: 150, priceHalala: 2400 },
-      { weightGrams: 200, priceHalala: 2900 },
-      { weightGrams: 250, priceHalala: 3400 },
-      { weightGrams: 300, priceHalala: 3900 },
+      { weightGrams: 100, priceHalala: 2100 },
+      { weightGrams: 200, priceHalala: 2800 },
+      { weightGrams: 300, priceHalala: 3500 },
+      { weightGrams: 400, priceHalala: 4200 },
+      { weightGrams: 500, priceHalala: 4900 },
     ]);
 
     const menu = await request(app).get("/api/orders/menu?includePublicV2=true");
@@ -100,9 +116,17 @@ async function main() {
       .flatMap((item) => item.products || [])
       .find((item) => item.id === String(product._id));
     assert(publicProduct, "weighted product appears in legacy public menu");
-    assert.strictEqual(publicProduct.weightStepPriceHalala, 500);
+    assert.strictEqual(publicProduct.priceHalala, 2100);
+    assert.strictEqual(publicProduct.weightStepPriceHalala, 700);
+    assert.strictEqual(publicProduct.weightPricing.contractVersion, "weight_pricing.v1");
     assert.strictEqual(publicProduct.weightPricing.strategy, "base_plus_steps");
-    assert.strictEqual(publicProduct.weightPricing.choices[3].priceHalala, 3400);
+    assert.deepStrictEqual(publicProduct.weightPricing.choices, [
+      { weightGrams: 100, priceHalala: 2100 },
+      { weightGrams: 200, priceHalala: 2800 },
+      { weightGrams: 300, priceHalala: 3500 },
+      { weightGrams: 400, priceHalala: 4200 },
+      { weightGrams: 500, priceHalala: 4900 },
+    ]);
 
     const publicV2Product = menu.body.data.publicMenuV2.sections
       .flatMap((item) => item.products || [])
@@ -110,10 +134,10 @@ async function main() {
     assert(publicV2Product, "weighted product appears in publicMenuV2");
     assert.strictEqual(publicV2Product.pricing.strategy, "base_plus_steps");
     assert.strictEqual(publicV2Product.pricing.requiresWeightSelection, true);
-    assert.strictEqual(publicV2Product.pricing.weightStepPriceHalala, 500);
-    assert.deepStrictEqual(publicV2Product.pricing.weightChoices[4], {
+    assert.strictEqual(publicV2Product.pricing.weightStepPriceHalala, 700);
+    assert.deepStrictEqual(publicV2Product.pricing.weightChoices[2], {
       weightGrams: 300,
-      priceHalala: 3900,
+      priceHalala: 3500,
     });
 
     const quote = await menuPricingService.priceMenuCart({
@@ -121,7 +145,7 @@ async function main() {
       items: [{
         productId: String(product._id),
         qty: 1,
-        weightGrams: 250,
+        weightGrams: 300,
         selectedOptions: [],
       }],
       fulfillmentMethod: "pickup",
@@ -130,13 +154,13 @@ async function main() {
       requestBody: {},
     });
 
-    assert.strictEqual(quote.items[0].weightGrams, 250);
-    assert.strictEqual(quote.items[0].unitPriceHalala, 3400);
-    assert.strictEqual(quote.items[0].lineTotalHalala, 3400);
+    assert.strictEqual(quote.items[0].weightGrams, 300);
+    assert.strictEqual(quote.items[0].unitPriceHalala, 3500);
+    assert.strictEqual(quote.items[0].lineTotalHalala, 3500);
     assert.strictEqual(quote.items[0].pricingSnapshot.weightPricing.strategy, "base_plus_steps");
-    assert.strictEqual(quote.items[0].pricingSnapshot.weightPricing.stepCount, 3);
-    assert.strictEqual(quote.pricing.subtotalHalala, 3400);
-    assert.strictEqual(quote.pricing.totalHalala, 3400);
+    assert.strictEqual(quote.items[0].pricingSnapshot.weightPricing.stepCount, 2);
+    assert.strictEqual(quote.pricing.subtotalHalala, 3500);
+    assert.strictEqual(quote.pricing.totalHalala, 3500);
 
     console.log("✅ dashboard weight pricing endpoint");
     console.log("✅ incompatible base/step validation");

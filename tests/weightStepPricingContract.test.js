@@ -28,8 +28,8 @@ const product = {
   baseUnitGrams: 100,
   defaultWeightGrams: 100,
   minWeightGrams: 100,
-  maxWeightGrams: 300,
-  weightStepGrams: 50,
+  maxWeightGrams: 500,
+  weightStepGrams: 100,
   weightStepPriceHalala: 500,
 };
 
@@ -41,20 +41,20 @@ test("calculates 100g at the base price", () => {
   assert.strictEqual(computeProductBasePrice(product, 100), 1900);
 });
 
-test("calculates 150g as one paid step", () => {
-  assert.strictEqual(computeProductBasePrice(product, 150), 2400);
+test("calculates 200g as one paid step", () => {
+  assert.strictEqual(computeProductBasePrice(product, 200), 2400);
 });
 
-test("calculates 200g as two paid steps", () => {
-  assert.strictEqual(computeProductBasePrice(product, 200), 2900);
+test("calculates 300g as two paid steps", () => {
+  assert.strictEqual(computeProductBasePrice(product, 300), 2900);
 });
 
-test("calculates 250g as three paid steps", () => {
-  assert.strictEqual(computeProductBasePrice(product, 250), 3400);
+test("calculates 400g as three paid steps", () => {
+  assert.strictEqual(computeProductBasePrice(product, 400), 3400);
 });
 
-test("calculates 300g as four paid steps", () => {
-  assert.strictEqual(computeProductBasePrice(product, 300), 3900);
+test("calculates 500g as four paid steps", () => {
+  assert.strictEqual(computeProductBasePrice(product, 500), 3900);
 });
 
 test("publishes canonical choices for Flutter", () => {
@@ -64,24 +64,32 @@ test("publishes canonical choices for Flutter", () => {
   assert.strictEqual(descriptor.requiresWeightSelection, true);
   assert.deepStrictEqual(descriptor.choices, [
     { weightGrams: 100, priceHalala: 1900 },
-    { weightGrams: 150, priceHalala: 2400 },
-    { weightGrams: 200, priceHalala: 2900 },
-    { weightGrams: 250, priceHalala: 3400 },
-    { weightGrams: 300, priceHalala: 3900 },
+    { weightGrams: 200, priceHalala: 2400 },
+    { weightGrams: 300, priceHalala: 2900 },
+    { weightGrams: 400, priceHalala: 3400 },
+    { weightGrams: 500, priceHalala: 3900 },
   ]);
 });
 
-test("validates steps relative to the configured minimum", () => {
-  assert.strictEqual(resolveWeightGrams({ weightGrams: 150 }, product), 150);
+test("validates steps and configured bounds", () => {
+  assert.strictEqual(resolveWeightGrams({ weightGrams: 200 }, product), 200);
   assert.throws(
-    () => resolveWeightGrams({ weightGrams: 125 }, product),
+    () => resolveWeightGrams({ weightGrams: 150 }, product),
+    (err) => err && err.code === "INVALID_WEIGHT_GRAMS"
+  );
+  assert.throws(
+    () => resolveWeightGrams({ weightGrams: 50 }, product),
+    (err) => err && err.code === "INVALID_WEIGHT_GRAMS"
+  );
+  assert.throws(
+    () => resolveWeightGrams({ weightGrams: 600 }, product),
     (err) => err && err.code === "INVALID_WEIGHT_GRAMS"
   );
 });
 
 test("rejects a range that does not divide evenly by the step", () => {
   assert.throws(
-    () => assertValidWeightPricingConfiguration({ ...product, maxWeightGrams: 325 }),
+    () => assertValidWeightPricingConfiguration({ ...product, maxWeightGrams: 550 }),
     (err) => err && err.code === "INVALID_WEIGHT_PRICING_CONFIGURATION"
   );
 });
@@ -96,18 +104,18 @@ test("rejects a minimum that differs from the base price weight", () => {
 test("keeps legacy per-unit pricing for unmigrated products", () => {
   const legacy = { ...product };
   delete legacy.weightStepPriceHalala;
-  assert.strictEqual(computeProductBasePrice(legacy, 150), 3800);
+  assert.strictEqual(computeProductBasePrice(legacy, 200), 3800);
   assert.strictEqual(buildWeightPricingDescriptor(legacy).strategy, "legacy_per_unit");
 });
 
 test("stores an auditable pricing snapshot", () => {
-  assert.deepStrictEqual(buildWeightPricingSnapshot(product, 250, 3400), {
+  assert.deepStrictEqual(buildWeightPricingSnapshot(product, 400, 3400), {
     contractVersion: "weight_pricing.v1",
     strategy: "base_plus_steps",
-    selectedWeightGrams: 250,
+    selectedWeightGrams: 400,
     baseWeightGrams: 100,
     basePriceHalala: 1900,
-    stepGrams: 50,
+    stepGrams: 100,
     stepPriceHalala: 500,
     stepCount: 3,
     calculatedPriceHalala: 3400,

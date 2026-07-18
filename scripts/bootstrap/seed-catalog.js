@@ -36,6 +36,10 @@ const {
   SUBSCRIPTION_PREMIUM_LARGE_SALAD_PROTEIN_KEYS,
 } = require("../../src/config/mealPlannerContract");
 const { resolveMongoUri } = require("../../src/utils/mongoUriResolver");
+const {
+  testWeightPricingEligibility,
+  testWeightPricingUpdate,
+} = require("../lib/test-weight-pricing");
 
 const canonicalCatalogItems = [
   // Carbs
@@ -1213,6 +1217,9 @@ async function seedProducts({ catalogItemMap = new Map(), categoryMap, groupMap,
     const row = productRows[productIndex];
     const category = categoryMap.get(row.category);
     if (!category) throw new Error(`Missing category ${row.category} for ${row.key}`);
+    const weightPricing = testWeightPricingEligibility(row, row.category).eligible
+      ? testWeightPricingUpdate(row)
+      : {};
 
     const catalogItemKey = menuProductCatalogItemKeyByProductKey[row.key];
     const catalogItem = catalogItemKey ? catalogItemMap.get(catalogItemKey) : null;
@@ -1234,6 +1241,7 @@ async function seedProducts({ catalogItemMap = new Map(), categoryMap, groupMap,
         minWeightGrams: row.pricingModel === "per_100g" ? 100 : 0,
         maxWeightGrams: row.maxWeightGrams || 0,
         weightStepGrams: 50,
+        ...weightPricing,
         currency: SYSTEM_CURRENCY,
         availableFor: row.availableFor,
         isCustomizable: productIsCustomizable(row),
