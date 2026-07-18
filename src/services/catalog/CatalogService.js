@@ -120,6 +120,25 @@ function activeRelationQuery(extra = {}) {
   };
 }
 
+function selectCanonicalBasicMealProduct(candidates) {
+  if (!Array.isArray(candidates) || candidates.length !== 1) return null;
+
+  const candidate = candidates[0];
+  if (candidate.itemType === "basic_meal") return candidate;
+  if (candidate.itemType !== "product") return null;
+
+  return { ...candidate, itemType: "basic_meal" };
+}
+
+async function findCanonicalBasicMealProduct() {
+  const candidates = await MenuProduct.find(activeCatalogQuery({
+    key: "basic_meal",
+    ...availableForChannelQuery("subscription"),
+  })).limit(2).lean();
+
+  return selectCanonicalBasicMealProduct(candidates);
+}
+
 function sortByCatalogOrder(left, right) {
   const leftSort = Number(left?.sortOrder || 0);
   const rightSort = Number(right?.sortOrder || 0);
@@ -1245,11 +1264,7 @@ async function buildSubscriptionBuilderCatalogBundle({ lang = "en", includeV2 = 
     }))
     .sort({ sortOrder: 1, createdAt: -1 })
     .lean(),
-    MenuProduct.findOne(activeCatalogQuery({
-      key: "basic_meal",
-      itemType: "basic_meal",
-      ...availableForChannelQuery("subscription"),
-    })).lean(),
+    findCanonicalBasicMealProduct(),
     MenuProduct.findOne(activeCatalogQuery({
       key: PREMIUM_LARGE_SALAD_PREMIUM_KEY,
       itemType: { $in: ["premium_large_salad", "basic_salad"] },
@@ -1471,4 +1486,5 @@ module.exports = {
   buildSubscriptionBuilderCatalogV2,
   getSubscriptionBuilderCatalog,
   getSubscriptionBuilderCatalogWithV2,
+  selectCanonicalBasicMealProduct,
 };

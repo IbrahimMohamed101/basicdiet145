@@ -10,7 +10,11 @@ const sinon = require("sinon");
 const { createApp } = require("../src/app");
 const MealBuilderConfig = require("../src/models/MealBuilderConfig");
 const MenuCategory = require("../src/models/MenuCategory");
+const MenuOption = require("../src/models/MenuOption");
+const MenuOptionGroup = require("../src/models/MenuOptionGroup");
 const MenuProduct = require("../src/models/MenuProduct");
+const ProductGroupOption = require("../src/models/ProductGroupOption");
+const ProductOptionGroup = require("../src/models/ProductOptionGroup");
 const { sanitizePublicData } = require("../src/controllers/subscriptionMealPlannerV4Controller");
 const CatalogService = require("../src/services/catalog/CatalogService");
 const mealBuilderConfigService = require("../src/services/subscription/mealBuilderConfigService");
@@ -97,6 +101,47 @@ async function seedCanonicalDirectProduct() {
   });
 }
 
+async function seedBasicMealOption({ product, groupKey, optionKey, familyKey = "" }) {
+  const group = await MenuOptionGroup.create({
+    key: groupKey,
+    name: { en: groupKey, ar: groupKey },
+    publishedAt: new Date(),
+  });
+  const option = await MenuOption.create({
+    groupId: group._id,
+    key: optionKey,
+    name: { en: optionKey, ar: optionKey },
+    availableFor: ["subscription"],
+    proteinFamilyKey: familyKey,
+    displayCategoryKey: familyKey,
+    publishedAt: new Date(),
+  });
+  await ProductOptionGroup.create({ productId: product._id, groupId: group._id, minSelections: 1, isRequired: true });
+  await ProductGroupOption.create({ productId: product._id, groupId: group._id, optionId: option._id });
+  return option;
+}
+
+async function seedLegacyBasicMeal() {
+  const category = await MenuCategory.create({
+    key: "legacy_basic_meal_category",
+    name: { en: "Meals", ar: "وجبات" },
+    publishedAt: new Date(),
+  });
+  const product = await MenuProduct.create({
+    categoryId: category._id,
+    key: "basic_meal",
+    name: { en: "Basic Meal", ar: "وجبة أساسية" },
+    itemType: "product",
+    pricingModel: "fixed",
+    priceHalala: 0,
+    availableFor: ["subscription"],
+    publishedAt: new Date(),
+  });
+  await seedBasicMealOption({ product, groupKey: "proteins", optionKey: "grilled_chicken", familyKey: "chicken" });
+  await seedBasicMealOption({ product, groupKey: "carbs", optionKey: "white_rice" });
+  return product;
+}
+
 async function plannerCatalog() {
   const bundle = await CatalogService.getSubscriptionBuilderCatalogWithV2({
     lang: "en",
@@ -162,6 +207,14 @@ function testValidatorBoundaries() {
   assert.strictEqual(hasFlutterPrimaryMealPickerContent(catalogWithProduct(standardProduct(2))), true);
   assert.strictEqual(hasFlutterPrimaryMealPickerContent(catalogWithProduct(directProduct("full-meal"))), true);
   assert.strictEqual(hasFlutterPrimaryMealPickerContent(catalogWithProduct(directProduct("sandwich", "sandwich"))), true);
+
+  const legacyCandidate = { _id: "legacy", itemType: "product" };
+  assert.deepStrictEqual(CatalogService.selectCanonicalBasicMealProduct([legacyCandidate]), {
+    _id: "legacy",
+    itemType: "basic_meal",
+  });
+  assert.strictEqual(CatalogService.selectCanonicalBasicMealProduct([legacyCandidate, legacyCandidate]), null);
+  assert.strictEqual(CatalogService.selectCanonicalBasicMealProduct([{ itemType: "unexpected" }]), null);
 }
 
 async function run() {
@@ -169,6 +222,20 @@ async function run() {
   const mongoServer = await connect();
   const warnStub = sinon.stub(logger, "warn");
   try {
+    const legacyBasicMeal = await seedLegacyBasicMeal();
+    const legacyCatalog = await plannerCatalog();
+    const standardSection = legacyCatalog.sections.find((section) => section.key === "standard_meal");
+    const canonicalStandardProduct = standardSection.products.find((product) => product.key === "basic_meal");
+    const proteinGroup = canonicalStandardProduct.optionGroups.find((group) => group.key === "proteins");
+    const carbGroup = canonicalStandardProduct.optionGroups.find((group) => group.key === "carbs");
+    assert.strictEqual(canonicalStandardProduct.itemType, "basic_meal", "legacy discriminator is normalized in public v3");
+    assert.strictEqual(proteinGroup.options[0].displayCategoryKey, "chicken");
+    assert.strictEqual(proteinGroup.options[0].proteinFamilyKey, "chicken");
+    assert(carbGroup.options.length > 0, "standard meal retains selectable carbs");
+    assert(hasFlutterPrimaryMealPickerContent(legacyCatalog));
+    const storedBasicMeal = await MenuProduct.findById(legacyBasicMeal._id).lean();
+    assert.strictEqual(storedBasicMeal.itemType, "product", "catalog normalization does not write MongoDB");
+
     const canonicalProduct = await seedCanonicalDirectProduct();
 
     assertCanonicalFallback(await plannerCatalog(), canonicalProduct);
