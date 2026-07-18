@@ -40,7 +40,7 @@
     "test:dashboard-subscription-create": "NODE_ENV=test node tests/dashboardSubscriptionCreationContract.test.js",
     "test:dashboard-accounting": "NODE_ENV=test node tests/dashboardAccountingDailyReport.test.js",
     "test:one-time-menu": "NODE_ENV=test node tests/oneTimeMenuCatalog.test.js",
-    "test:weight-pricing": "NODE_ENV=test node tests/weightStepPricingContract.test.js",
+    "test:weight-pricing": "NODE_ENV=test node tests/weightStepPricingContract.test.js && NODE_ENV=test node tests/weightPricingAuthorityContract.test.js",
     "test:builder-catalog-v2-contract": "NODE_ENV=test node tests/builderCatalogV2Contract.test.js",
     "test:premium-lifecycle": "NODE_ENV=test bash scripts/run-premium-meal-backend-lifecycle.sh",
     "test:database-reset-safety": "NODE_ENV=test node tests/databaseHandoverResetSafety.test.js",
