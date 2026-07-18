@@ -49,7 +49,7 @@ The legacy product payload adds:
 - `weightChoices`: backend-calculated `{ weightGrams, priceHalala }` rows
 - `weightPricingContractVersion: weight_pricing.v1`
 
-Clients should render the selector from `weightChoices` and must use `/api/orders/quote` as the final price authority.
+Clients render the selector and preliminary displayed price from `weightChoices`. They must still call `/api/orders/quote` and replace any preliminary price with the authoritative quote response before checkout.
 
 ## Quote request
 
