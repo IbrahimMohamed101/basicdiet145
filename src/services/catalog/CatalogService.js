@@ -53,7 +53,9 @@ const {
 } = require("../subscription/subscriptionMenuEligibilityPolicyService");
 const {
   PLANNER_CATALOG_V3_VERSION,
+  hasFlutterPrimaryMealPickerContent,
   hasSelectablePlannerContent,
+  summarizeFlutterPrimaryMealPickerContent,
 } = require("./plannerCatalogContentValidator");
 
 const BUILDER_CATALOG_V2_VERSION = "meal_planner_menu.v2";
@@ -1428,16 +1430,20 @@ async function buildSubscriptionBuilderCatalogBundle({ lang = "en", includeV2 = 
       const mealBuilderConfigService = require("../subscription/mealBuilderConfigService");
       const publishedBuilderPlannerCatalog = await mealBuilderConfigService.buildPlannerCatalogFromPublishedBuilder({ lang });
       if (publishedBuilderPlannerCatalog) {
-        if (hasSelectablePlannerContent(publishedBuilderPlannerCatalog)) {
+        if (hasFlutterPrimaryMealPickerContent(publishedBuilderPlannerCatalog)) {
           plannerCatalog = publishedBuilderPlannerCatalog;
         } else {
+          const primaryContent = summarizeFlutterPrimaryMealPickerContent(publishedBuilderPlannerCatalog);
           logger.warn("Published Meal Builder catalog rejected", {
             event: "published_meal_builder_catalog_rejected",
-            reason: "no_selectable_content",
+            reason: hasSelectablePlannerContent(publishedBuilderPlannerCatalog)
+              ? "no_flutter_primary_content"
+              : "no_selectable_content",
             contractVersion: publishedBuilderPlannerCatalog.contractVersion || null,
             sectionCount: Array.isArray(publishedBuilderPlannerCatalog.sections)
               ? publishedBuilderPlannerCatalog.sections.length
               : 0,
+            ...primaryContent,
           });
         }
       }

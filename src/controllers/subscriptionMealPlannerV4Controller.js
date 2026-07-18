@@ -2,7 +2,9 @@ const menuController = require("./menuController");
 const errorResponse = require("../utils/errorResponse");
 const {
   PLANNER_CATALOG_V3_VERSION,
+  hasFlutterPrimaryMealPickerContent,
   hasSelectablePlannerContent,
+  summarizeFlutterPrimaryMealPickerContent,
 } = require("../services/catalog/plannerCatalogContentValidator");
 
 const FLUTTER_CONTRACT_VERSION = PLANNER_CATALOG_V3_VERSION;
@@ -41,6 +43,13 @@ function sanitizePublicData(source = {}) {
       receivedContractVersion: builderCatalog.contractVersion || null,
       sectionCount: Array.isArray(builderCatalog.sections) ? builderCatalog.sections.length : 0,
     };
+    throw err;
+  }
+  if (!hasFlutterPrimaryMealPickerContent(builderCatalog)) {
+    const err = new Error("Meal Planner catalog contains no Flutter primary picker content");
+    err.code = "MEAL_PLANNER_PRIMARY_CONTENT_EMPTY";
+    err.status = 503;
+    err.details = summarizeFlutterPrimaryMealPickerContent(builderCatalog);
     throw err;
   }
 

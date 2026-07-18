@@ -15,7 +15,9 @@ const { sanitizePublicData } = require("../src/controllers/subscriptionMealPlann
 const CatalogService = require("../src/services/catalog/CatalogService");
 const mealBuilderConfigService = require("../src/services/subscription/mealBuilderConfigService");
 const {
+  hasFlutterPrimaryMealPickerContent,
   hasSelectablePlannerContent,
+  summarizeFlutterPrimaryMealPickerContent,
 } = require("../src/services/catalog/plannerCatalogContentValidator");
 const { logger } = require("../src/utils/logger");
 
@@ -32,12 +34,36 @@ function catalogWithProduct(product, overrides = {}) {
   };
 }
 
-function directProduct(key = "direct") {
+function directProduct(key = "direct", selectionType = "full_meal_product") {
   return {
     id: key,
     key,
+    selectionType,
     action: { type: "direct_add", requiresBuilder: false },
     optionGroups: [],
+  };
+}
+
+function standardProduct(optionCount = 1) {
+  return {
+    id: "standard",
+    key: "standard",
+    selectionType: "standard_meal",
+    action: { type: "open_builder", requiresBuilder: true },
+    optionGroups: [{
+      key: "proteins",
+      options: Array.from({ length: optionCount }, (_, index) => ({ id: `protein-${index + 1}` })),
+    }],
+  };
+}
+
+function premiumLargeSaladProduct() {
+  return {
+    id: "premium-large-salad",
+    key: "premium_large_salad",
+    selectionType: "premium_large_salad",
+    action: { type: "open_builder", requiresBuilder: true },
+    optionGroups: [{ key: "protein", options: [{ id: "salad-protein" }] }],
   };
 }
 
@@ -92,6 +118,7 @@ async function withPublishedCatalog(publishedCatalog, check) {
 
 function assertCanonicalFallback(catalog, canonicalProduct) {
   assert(hasSelectablePlannerContent(catalog), "canonical fallback remains selectable");
+  assert(hasFlutterPrimaryMealPickerContent(catalog), "canonical fallback supports Flutter primary picker");
   assert(
     catalog.sections.some((section) => (
       (section.products || []).some((product) => String(product.id) === String(canonicalProduct._id))
@@ -122,6 +149,19 @@ function testValidatorBoundaries() {
     action: { type: "open_builder", requiresBuilder: true },
     optionGroups: [{ key: "protein", options: [{ id: "chicken" }] }],
   })), true);
+
+  const premiumSaladOnly = catalogWithProduct(premiumLargeSaladProduct());
+  assert.strictEqual(hasSelectablePlannerContent(premiumSaladOnly), true);
+  assert.strictEqual(hasFlutterPrimaryMealPickerContent(premiumSaladOnly), false);
+  assert.deepStrictEqual(summarizeFlutterPrimaryMealPickerContent(premiumSaladOnly), {
+    standardProductCount: 0,
+    standardProteinOptionCount: 0,
+    directMealCount: 0,
+    premiumLargeSaladCount: 1,
+  });
+  assert.strictEqual(hasFlutterPrimaryMealPickerContent(catalogWithProduct(standardProduct(2))), true);
+  assert.strictEqual(hasFlutterPrimaryMealPickerContent(catalogWithProduct(directProduct("full-meal"))), true);
+  assert.strictEqual(hasFlutterPrimaryMealPickerContent(catalogWithProduct(directProduct("sandwich", "sandwich"))), true);
 }
 
 async function run() {
@@ -164,11 +204,15 @@ async function run() {
       assertCanonicalFallback(await plannerCatalog(), canonicalProduct);
     });
 
-    const publishedOptionsCatalog = catalogWithProduct({
-      id: "published-configurable-product",
-      action: { type: "open_builder", requiresBuilder: true },
-      optionGroups: [{ key: "protein", options: [{ id: "published-option" }] }],
-    }, { rules: { source: "meal_builder_config" }, source: "dashboard" });
+    const premiumSaladOnlyCatalog = catalogWithProduct(premiumLargeSaladProduct());
+    await withPublishedCatalog(premiumSaladOnlyCatalog, async () => {
+      assertCanonicalFallback(await plannerCatalog(), canonicalProduct);
+    });
+
+    const publishedOptionsCatalog = catalogWithProduct(
+      standardProduct(),
+      { rules: { source: "meal_builder_config" }, source: "dashboard" }
+    );
     await withPublishedCatalog(publishedOptionsCatalog, async () => {
       assert.strictEqual(await plannerCatalog(), publishedOptionsCatalog, "usable published options override canonical");
     });
@@ -181,23 +225,41 @@ async function run() {
       assert.strictEqual(await plannerCatalog(), publishedDirectCatalog, "usable published direct product overrides canonical");
     });
 
-    assert.strictEqual(warnStub.callCount, 3, "each unusable published catalog emits one warning");
-    for (const warningCall of warnStub.getCalls()) {
+    assert.strictEqual(warnStub.callCount, 4, "each unusable published catalog emits one warning");
+    for (const warningCall of warnStub.getCalls().slice(0, 3)) {
       assert.strictEqual(warningCall.args[1].event, "published_meal_builder_catalog_rejected");
       assert.strictEqual(warningCall.args[1].reason, "no_selectable_content");
     }
+    assert.strictEqual(warnStub.getCall(3).args[1].reason, "no_flutter_primary_content");
+    assert.strictEqual(warnStub.getCall(3).args[1].premiumLargeSaladCount, 1);
 
     const api = request(createApp());
     const success = await api.get("/api/subscriptions/meal-planner-menu?lang=ar");
     assert.strictEqual(success.status, 200, JSON.stringify(success.body));
     assert.strictEqual(success.body.status, true);
     assert(hasSelectablePlannerContent(success.body.data.builderCatalog));
+    assert(hasFlutterPrimaryMealPickerContent(success.body.data.builderCatalog));
     assert.strictEqual(success.body.data.plannerCatalog, undefined);
     assert.strictEqual(success.body.data.builderCatalogV2, undefined);
     assert.strictEqual(success.body.data.sections, undefined);
 
     const sanitized = sanitizePublicData({ builderCatalog: publishedDirectCatalog });
     assert.strictEqual(sanitized.builderCatalog, publishedDirectCatalog);
+
+    assert.throws(
+      () => sanitizePublicData({ builderCatalog: premiumSaladOnlyCatalog }),
+      (error) => {
+        assert.strictEqual(error.status, 503);
+        assert.strictEqual(error.code, "MEAL_PLANNER_PRIMARY_CONTENT_EMPTY");
+        assert.deepStrictEqual(error.details, {
+          standardProductCount: 0,
+          standardProteinOptionCount: 0,
+          directMealCount: 0,
+          premiumLargeSaladCount: 1,
+        });
+        return true;
+      }
+    );
 
     await MenuProduct.deleteMany({});
     const emptyResponse = await api.get("/api/subscriptions/meal-planner-menu?lang=ar");
