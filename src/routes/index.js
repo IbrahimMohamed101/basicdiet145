@@ -8,6 +8,7 @@ const dashboardStaffUserRoutes = require("./dashboardStaffUsers");
 const appAuthRoutes = require("./appAuth");
 const planRoutes = require("./plans");
 const popularPackageRoutes = require("./popularPackages");
+const subscriptionMealPlannerV4Routes = require("./subscriptionMealPlannerV4");
 const subscriptionRoutes = require("./subscriptions");
 const orderRoutes = require("./orders");
 const saladIngredientRoutes = require("./saladIngredients");
@@ -54,6 +55,9 @@ router.use("/dashboard/staff-users", dashboardStaffUserRoutes);
 router.use("/app", appAuthRoutes);
 router.use("/plans", planRoutes);
 router.use("/popular_packages", popularPackageRoutes);
+// Canonical Meal Planner v4 is mounted before the legacy subscription router so
+// the public endpoint has exactly one response contract and no version mirrors.
+router.use("/subscriptions", subscriptionMealPlannerV4Routes);
 router.use("/subscriptions", subscriptionRoutes);
 router.use("/orders", orderRoutes);
 router.use("/salad-ingredients", saladIngredientRoutes);
