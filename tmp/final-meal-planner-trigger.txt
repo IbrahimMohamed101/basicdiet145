@@ -1,1 +1,1 @@
-Trigger final Meal Planner contract diagnostics after applying the latest fixes.
+Trigger final Meal Planner artifact export.
