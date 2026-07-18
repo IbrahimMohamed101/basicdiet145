@@ -25,16 +25,21 @@ jobs:
           cache: npm
 
       - run: npm ci
-      - run: node scripts/align-current-contract-tests-v2.js
-      - run: npm run test:integration
-      - run: npm run validate:backend
-      - run: npm run test:meal-builder-dashboard-mobile-parity
-      - run: npm run test:mobile-contracts
+      - run: node scripts/align-current-contract-tests-v3.js
 
-      - name: Commit corrected backend tests
+      - name: Persist corrected backend tests
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add tests/mealPlanner.integration.test.js tests/oneTimeMenuCatalog.test.js tests/mealBuilderDashboardMobileParity.test.js
-          git commit -m "fix: align backend tests with canonical contracts"
-          git push origin HEAD:agent/fix-backend-contract-tests
+          if git diff --cached --quiet; then
+            echo "Tests already aligned"
+          else
+            git commit -m "fix: align backend tests with canonical contracts"
+            git push origin HEAD:agent/fix-backend-contract-tests
+          fi
+
+      - run: npm run test:integration
+      - run: npm run validate:backend
+      - run: npm run test:meal-builder-dashboard-mobile-parity
+      - run: npm run test:mobile-contracts
