@@ -1,4 +1,4 @@
-const mealBuilderService = require("../../services/subscription/dynamicMealPlannerService");
+const mealBuilderService = require("../../services/subscription/dashboardMealPlannerCompatibilityService");
 const errorResponse = require("../../utils/errorResponse");
 const { getRequestLang } = require("../../utils/i18n");
 
@@ -17,13 +17,11 @@ function noStore(res) {
 
 function send(res, data, statusCode = 200) {
   noStore(res);
-  if (data?.draftHash) res.set("X-Meal-Planner-Draft-Hash", data.draftHash);
-  if (data?.catalogHash) res.set("X-Meal-Planner-Catalog-Hash", data.catalogHash);
   return res.status(statusCode).json({ status: true, data });
 }
 
 function handleMealBuilderError(err, res) {
-  console.error("DynamicMealPlannerController error:", err);
+  console.error("MealBuilderController error:", err);
   if (err && err.status && err.code) {
     return errorResponse(res, err.status, err.code, err.message, err.details);
   }
@@ -31,15 +29,26 @@ function handleMealBuilderError(err, res) {
     return errorResponse(
       res,
       400,
-      "MEAL_PLANNER_VALIDATION_ERROR",
-      "Meal Planner validation failed",
+      "MEAL_BUILDER_VALIDATION_ERROR",
+      "Meal Builder validation failed",
       Object.values(err.errors || {}).map((item) => item.message)
     );
   }
   if (err && err.code === 11000) {
-    return errorResponse(res, 409, "MEAL_PLANNER_CONFLICT", "Meal Planner conflict", err.keyValue || undefined);
+    return errorResponse(
+      res,
+      409,
+      "MEAL_BUILDER_CONFLICT",
+      "Meal Builder conflict",
+      err.keyValue || undefined
+    );
   }
-  return errorResponse(res, 500, "MEAL_PLANNER_INTERNAL_ERROR", "Unexpected Meal Planner error");
+  return errorResponse(
+    res,
+    500,
+    "MEAL_BUILDER_INTERNAL_ERROR",
+    "Unexpected Meal Builder error"
+  );
 }
 
 function wrap(handler) {
@@ -58,28 +67,47 @@ function wrap(handler) {
 }
 
 const getMealBuilder = wrap(async (req, res) =>
-  send(res, await mealBuilderService.getDashboardState({ lang: getRequestLang(req) }))
+  send(
+    res,
+    await mealBuilderService.getDashboardState({ lang: getRequestLang(req) })
+  )
 );
 
 const getHydratedDraft = wrap(async (req, res) =>
-  send(res, await mealBuilderService.getHydratedDraft({ lang: getRequestLang(req) }))
+  send(
+    res,
+    await mealBuilderService.getHydratedDraft({ lang: getRequestLang(req) })
+  )
 );
 
 const getPublished = wrap(async (req, res) => {
-  const published = await mealBuilderService.getCurrentPublishedConfig();
+  const published = await mealBuilderService.getCurrentPublishedConfig({
+    allowVirtualFallback: true,
+  });
   if (!published) return send(res, null);
   return send(res, {
     config: mealBuilderService.serializeConfig(published),
-    contract: await mealBuilderService.buildPublishedContract({ config: published, lang: getRequestLang(req) }),
+    contract: await mealBuilderService.buildPublishedContract({
+      config: published,
+      lang: getRequestLang(req),
+    }),
   });
 });
 
 const openDraft = wrap(async (req, res) =>
-  send(res, await mealBuilderService.openWorkingDraft({ actor: actorFromRequest(req) }))
+  send(
+    res,
+    await mealBuilderService.openWorkingDraft({ actor: actorFromRequest(req) })
+  )
 );
 
 const resetDraft = wrap(async (req, res) =>
-  send(res, await mealBuilderService.resetDraftToPublished({ actor: actorFromRequest(req) }))
+  send(
+    res,
+    await mealBuilderService.resetDraftToPublished({
+      actor: actorFromRequest(req),
+    })
+  )
 );
 
 const createDraft = wrap(async (req, res) =>
@@ -95,101 +123,71 @@ const createDraft = wrap(async (req, res) =>
 );
 
 const updateDraft = wrap(async (req, res) =>
-  send(res, await mealBuilderService.updateDraft({
-    sections: req.body?.sections,
-    notes: req.body?.notes,
-    expectedDraftHash: req.body?.expectedDraftHash,
-    actor: actorFromRequest(req),
-  }))
+  send(
+    res,
+    await mealBuilderService.updateDraft({
+      sections: req.body?.sections,
+      notes: req.body?.notes,
+      actor: actorFromRequest(req),
+    })
+  )
 );
 
 const validateDraft = wrap(async (req, res) => {
   if (Array.isArray(req.body?.sections)) {
     return send(res, await mealBuilderService.validatePayload(req.body));
   }
-  const state = await mealBuilderService.getDashboardState({ lang: getRequestLang(req) });
-  return send(res, state.validation.draft || {
-    status: "error",
-    ready: false,
-    errors: [{ level: "error", code: "MEAL_PLANNER_DRAFT_NOT_FOUND" }],
-    warnings: [],
-    checks: [],
-    summary: { sections: 0, products: 0, errors: 1, warnings: 0 },
+  const state = await mealBuilderService.getDashboardState({
+    lang: getRequestLang(req),
   });
+  return send(
+    res,
+    state.validation.draft || {
+      status: "error",
+      ready: false,
+      errors: [
+        {
+          level: "error",
+          code: "MEAL_BUILDER_DRAFT_NOT_FOUND",
+          message: "No current Meal Builder draft found",
+        },
+      ],
+      warnings: [],
+      checks: [],
+      summary: { sections: 0, errors: 1, warnings: 0 },
+    }
+  );
 });
 
 const publishDraft = wrap(async (req, res) =>
-  send(res, await mealBuilderService.publishDraft({
-    notes: req.body?.notes,
-    expectedDraftHash: req.body?.expectedDraftHash,
-    actor: actorFromRequest(req),
-  }))
+  send(
+    res,
+    await mealBuilderService.publishDraft({
+      notes: req.body?.notes,
+      actor: actorFromRequest(req),
+    })
+  )
 );
 
 const getPicker = wrap(async (req, res) =>
-  send(res, await mealBuilderService.getSectionPicker({
-    sectionKey: req.params.sectionKey,
-    lang: getRequestLang(req),
-    q: req.query.q || req.query.search,
-    includeUnavailable: req.query.includeUnavailable,
-    page: req.query.page,
-    limit: req.query.limit,
-    kind: req.query.kind,
-    categoryId: req.query.categoryId,
-    productContextId: req.query.productContextId,
-    sourceGroupId: req.query.sourceGroupId,
-  }))
+  send(
+    res,
+    await mealBuilderService.getSectionPicker({
+      sectionKey: req.params.sectionKey,
+      lang: getRequestLang(req),
+      q: req.query.q || req.query.search,
+      include: req.query.include,
+      diagnostics: req.query.diagnostics,
+      includeUnavailable: req.query.includeUnavailable,
+      includeNotLinked: req.query.includeNotLinked,
+      page: req.query.page,
+      limit: req.query.limit,
+    })
+  )
 );
 
 const getReadiness = wrap(async (_req, res) =>
   send(res, await mealBuilderService.getReadinessReport())
-);
-
-const createSection = wrap(async (req, res) =>
-  send(
-    res,
-    await mealBuilderService.createSection({
-      section: req.body?.section || req.body || {},
-      expectedDraftHash: req.body?.expectedDraftHash,
-      actor: actorFromRequest(req),
-    }),
-    201
-  )
-);
-
-const updateSection = wrap(async (req, res) =>
-  send(res, await mealBuilderService.updateSection({
-    sectionKey: req.params.sectionKey,
-    patch: req.body?.patch || req.body || {},
-    expectedDraftHash: req.body?.expectedDraftHash,
-    actor: actorFromRequest(req),
-  }))
-);
-
-const deleteSection = wrap(async (req, res) =>
-  send(res, await mealBuilderService.deleteSection({
-    sectionKey: req.params.sectionKey,
-    expectedDraftHash: req.body?.expectedDraftHash || req.query.expectedDraftHash,
-    actor: actorFromRequest(req),
-  }))
-);
-
-const addProducts = wrap(async (req, res) =>
-  send(res, await mealBuilderService.addProductsToSection({
-    sectionKey: req.params.sectionKey,
-    productIds: req.body?.productIds || (req.body?.productId ? [req.body.productId] : []),
-    expectedDraftHash: req.body?.expectedDraftHash,
-    actor: actorFromRequest(req),
-  }))
-);
-
-const removeProduct = wrap(async (req, res) =>
-  send(res, await mealBuilderService.removeProductFromSection({
-    sectionKey: req.params.sectionKey,
-    productId: req.params.productId,
-    expectedDraftHash: req.body?.expectedDraftHash || req.query.expectedDraftHash,
-    actor: actorFromRequest(req),
-  }))
 );
 
 module.exports = {
@@ -204,9 +202,4 @@ module.exports = {
   resetDraft,
   updateDraft,
   validateDraft,
-  createSection,
-  updateSection,
-  deleteSection,
-  addProducts,
-  removeProduct,
 };
