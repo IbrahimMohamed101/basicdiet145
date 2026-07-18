@@ -174,12 +174,14 @@ const getPicker = wrap(async (req, res) =>
     res,
     await mealBuilderService.getSectionPicker({
       sectionKey: req.params.sectionKey,
+      targetSectionKey: req.query.targetSectionKey,
       lang: getRequestLang(req),
       q: req.query.q || req.query.search,
       include: req.query.include,
       diagnostics: req.query.diagnostics,
       includeUnavailable: req.query.includeUnavailable,
       includeNotLinked: req.query.includeNotLinked,
+      unassignedOnly: req.query.unassignedOnly,
       page: req.query.page,
       limit: req.query.limit,
     })
@@ -190,16 +192,77 @@ const getReadiness = wrap(async (_req, res) =>
   send(res, await mealBuilderService.getReadinessReport())
 );
 
+const createSection = wrap(async (req, res) =>
+  send(
+    res,
+    await mealBuilderService.createProductSection({
+      section: req.body?.section || req.body || {},
+      actor: actorFromRequest(req),
+    }),
+    201
+  )
+);
+
+const updateSection = wrap(async (req, res) =>
+  send(
+    res,
+    await mealBuilderService.updateProductSection({
+      sectionKey: req.params.sectionKey,
+      patch: req.body?.patch || req.body || {},
+      actor: actorFromRequest(req),
+    })
+  )
+);
+
+const deleteSection = wrap(async (req, res) =>
+  send(
+    res,
+    await mealBuilderService.deleteProductSection({
+      sectionKey: req.params.sectionKey,
+      actor: actorFromRequest(req),
+    })
+  )
+);
+
+const addProducts = wrap(async (req, res) =>
+  send(
+    res,
+    await mealBuilderService.addProductsToSection({
+      sectionKey: req.params.sectionKey,
+      productIds:
+        req.body?.productIds ||
+        (req.body?.productId ? [req.body.productId] : []),
+      actor: actorFromRequest(req),
+    })
+  )
+);
+
+const removeProduct = wrap(async (req, res) =>
+  send(
+    res,
+    await mealBuilderService.removeProductFromSection({
+      sectionKey: req.params.sectionKey,
+      productId: req.params.productId,
+      actor: actorFromRequest(req),
+    })
+  )
+);
+
 module.exports = {
+  addProducts,
   createDraft,
+  createSection,
+  deleteSection,
   getHydratedDraft,
   getMealBuilder,
-  getPublished,
   getPicker,
+  getPublished,
   getReadiness,
   openDraft,
   publishDraft,
+  removeProduct,
   resetDraft,
   updateDraft,
+  updateSection,
   validateDraft,
 };
