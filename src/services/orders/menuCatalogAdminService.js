@@ -71,7 +71,52 @@ function createMenuCatalogAdminService(deps) {
     assertRelationAvailable,
     getSettingValue,
     writeMenuAudit,
+    buildWeightPricingDescriptor,
   } = deps;
+
+  const hasOwn = (source, fieldName) => Object.prototype.hasOwnProperty.call(source || {}, fieldName);
+  const isProvided = (source, fieldName) => hasOwn(source, fieldName) && source[fieldName] !== undefined;
+
+  function assertNonNullablePatchFields(body, existing, fieldNames) {
+    if (!existing) return;
+    const fieldName = fieldNames.find((field) => hasOwn(body, field) && body[field] === null);
+    if (fieldName) {
+      throw new MenuValidationError(`${fieldName} cannot be null`, "NULL_NOT_ALLOWED", 400, { fieldName });
+    }
+  }
+
+  function serializeDashboardCategory(category) {
+    return serializeDoc(category);
+  }
+
+  function serializeDashboardProduct(product, { isCustomizable } = {}) {
+    const payload = serializeDoc(product);
+    if (!payload) return null;
+    payload.isCustomizable = isCustomizable === undefined
+      ? inferProductCustomizable(payload)
+      : Boolean(isCustomizable);
+    payload.weightStepPriceHalala = payload.weightStepPriceHalala === undefined
+      ? null
+      : payload.weightStepPriceHalala;
+    try {
+      payload.weightPricing = buildWeightPricingDescriptor(payload);
+    } catch {
+      payload.weightPricing = null;
+    }
+    return payload;
+  }
+
+  function serializeDashboardOptionGroup(group) {
+    return serializeDoc(group);
+  }
+
+  function serializeDashboardProductGroupRelation(relation) {
+    return serializeDoc(relation);
+  }
+
+  function serializeDashboardProductOptionRelation(relation) {
+    return serializeDoc(relation);
+  }
 
   function serializeDashboardOption(option) {
     const payload = serializeDoc(option);
@@ -355,7 +400,7 @@ function createMenuCatalogAdminService(deps) {
     }
     
     find = find.lean();
-    const serializeFn = isPickerView ? serializeDashboardPickerProduct : serializeDoc;
+    const serializeFn = isPickerView ? serializeDashboardPickerProduct : serializeDashboardProduct;
 
     if (!pagination) {
       const rows = await find;
@@ -449,11 +494,11 @@ function createMenuCatalogAdminService(deps) {
       };
     }
 
-    return listModel(MenuCategory, options);
+    return listModel(MenuCategory, options, {}, serializeDashboardCategory);
   }
 
   async function listOptionGroups(options = {}) {
-    return listModel(MenuOptionGroup, options);
+    return listModel(MenuOptionGroup, options, {}, serializeDashboardOptionGroup);
   }
 
   async function getModel(Model, id, extraQuery = {}) {
@@ -464,13 +509,11 @@ function createMenuCatalogAdminService(deps) {
   }
 
   function serializeAdminProductSummary(product) {
-    const payload = serializeDoc(product);
-    payload.isCustomizable = inferProductCustomizable(product);
-    return payload;
+    return serializeDashboardProduct(product);
   }
 
   function serializeCategoryDetailV3(category, products) {
-    const categoryPayload = serializeDoc(category);
+    const categoryPayload = serializeDashboardCategory(category);
     const categoryProducts = (products || []).filter((product) => (
       String(product.categoryId) === String(category._id)
     ));
@@ -527,13 +570,14 @@ function createMenuCatalogAdminService(deps) {
       ProductOptionGroup.countDocuments({ productId: id, isActive: true }),
     ]);
 
-    const payload = serializeDoc(product);
-    payload.isCustomizable = inferProductCustomizable(product, activeGroupCount > 0 ? [{}] : []);
+    const payload = serializeDashboardProduct(product, {
+      isCustomizable: inferProductCustomizable(product, activeGroupCount > 0 ? [{}] : []),
+    });
 
     return {
       contractVersion: "dashboard_product_detail.v3",
       product: payload,
-      category: category ? serializeDoc(category) : null,
+      category: category ? serializeDashboardCategory(category) : null,
       groupSummary: {
         linkedGroupCount: activeGroupCount,
         composerEndpoint: `/api/dashboard/menu/products/${id}/composer`,
@@ -557,7 +601,7 @@ function createMenuCatalogAdminService(deps) {
 
     return {
       contractVersion: "dashboard_option_group_detail.v3",
-      optionGroup: serializeDoc(group),
+      optionGroup: serializeDashboardOptionGroup(group),
       options: optionsRows.map(serializeDashboardOption),
       usage: {
         linkedProductsCount: linkedProductIds.length,
@@ -582,7 +626,7 @@ function createMenuCatalogAdminService(deps) {
     return {
       contractVersion: "dashboard_option_detail.v3",
       option: serializeDashboardOption(option),
-      optionGroup: group ? serializeDoc(group) : null,
+      optionGroup: group ? serializeDashboardOptionGroup(group) : null,
       usage: {
         linkedProductsCount: linkedProductIds.length,
       },
@@ -592,6 +636,18 @@ function createMenuCatalogAdminService(deps) {
   function normalizeCategoryPayload(body = {}, existing = null) {
     if (!isPlainObject(body)) throw new MenuValidationError("Request body must be an object");
     assertImmutableKey(body, existing, "key");
+    assertNonNullablePatchFields(body, existing, [
+      "name",
+      "description",
+      "imageUrl",
+      "isActive",
+      "isVisible",
+      "isAvailable",
+      "sortOrder",
+      "ui",
+      "branchIds",
+      "availability",
+    ]);
     const hasUi = body.ui !== undefined && body.ui !== null;
     if (
       hasUi
@@ -602,31 +658,67 @@ function createMenuCatalogAdminService(deps) {
     ) {
       throw new MenuValidationError("ui.cardVariant must be one of the supported public category card variants", "INVALID_CARD_VARIANT");
     }
-    return {
-      key: body.key === undefined && existing ? existing.key : normalizeOptionalKey(body.key),
-      name: body.name === undefined && existing ? existing.name : localizedString(body.name, "name", { required: true }),
-      description: optionalLocalizedString(body.description, "description") || (existing ? existing.description : { ar: "", en: "" }),
-      imageUrl: body.imageUrl === undefined && existing ? existing.imageUrl : String(body.imageUrl || "").trim(),
-      isActive: normalizeBoolean(body.isActive, "isActive", existing ? existing.isActive : true),
-      isVisible: normalizeBoolean(body.isVisible, "isVisible", existing ? truthyByDefault(existing.isVisible) : true),
-      isAvailable: normalizeBoolean(body.isAvailable, "isAvailable", existing ? truthyByDefault(existing.isAvailable) : true),
-      sortOrder: normalizeNonNegativeInteger(body.sortOrder, "sortOrder", existing ? existing.sortOrder : 0),
-      ui: hasUi ? normalizeCategoryUiMetadata(body.ui) : normalizeCategoryUiMetadata(existing && existing.ui),
-      availability: {
-        branchIds: (body.branchIds === undefined && (!body.availability || body.availability.branchIds === undefined) && existing)
-          ? ((existing.availability && existing.availability.branchIds) || [])
-          : normalizeStringArray(
-            body.branchIds !== undefined ? body.branchIds : body.availability && body.availability.branchIds,
-            "branchIds"
-          ),
-      },
-    };
+    if (existing && body.availability && hasOwn(body.availability, "branchIds") && body.availability.branchIds === null) {
+      throw new MenuValidationError("branchIds cannot be null", "NULL_NOT_ALLOWED", 400, { fieldName: "branchIds" });
+    }
+
+    const payload = {};
+    if (!existing || hasOwn(body, "key")) payload.key = normalizeOptionalKey(body.key);
+    if (!existing || hasOwn(body, "name")) payload.name = localizedString(body.name, "name", { required: true });
+    if (!existing || hasOwn(body, "description")) {
+      payload.description = optionalLocalizedString(body.description, "description") || { ar: "", en: "" };
+    }
+    if (!existing || hasOwn(body, "imageUrl")) payload.imageUrl = String(body.imageUrl || "").trim();
+    if (!existing || hasOwn(body, "isActive")) payload.isActive = normalizeBoolean(body.isActive, "isActive", true);
+    if (!existing || hasOwn(body, "isVisible")) payload.isVisible = normalizeBoolean(body.isVisible, "isVisible", true);
+    if (!existing || hasOwn(body, "isAvailable")) payload.isAvailable = normalizeBoolean(body.isAvailable, "isAvailable", true);
+    if (!existing || hasOwn(body, "sortOrder")) payload.sortOrder = normalizeNonNegativeInteger(body.sortOrder, "sortOrder", 0);
+    if (!existing || hasOwn(body, "ui")) {
+      payload.ui = normalizeCategoryUiMetadata(
+        existing ? { ...((existing && existing.ui) || {}), ...body.ui } : body.ui
+      );
+    }
+
+    const hasBranchIds = hasOwn(body, "branchIds")
+      || (isPlainObject(body.availability) && hasOwn(body.availability, "branchIds"));
+    if (!existing || hasBranchIds) {
+      payload.availability = {
+        branchIds: normalizeStringArray(
+          hasOwn(body, "branchIds") ? body.branchIds : body.availability && body.availability.branchIds,
+          "branchIds"
+        ),
+      };
+    }
+    return payload;
   }
 
   function normalizeProductPayload(body = {}, existing = null) {
     if (!isPlainObject(body)) throw new MenuValidationError("Request body must be an object");
     assertImmutableKey(body, existing, "key");
     assertImmutableCatalogItemLink(body, existing);
+    assertNonNullablePatchFields(body, existing, [
+      "categoryId",
+      "name",
+      "description",
+      "imageUrl",
+      "itemType",
+      "pricingModel",
+      "priceHalala",
+      "baseUnitGrams",
+      "defaultWeightGrams",
+      "minWeightGrams",
+      "maxWeightGrams",
+      "weightStepGrams",
+      "availableFor",
+      "isCustomizable",
+      "isActive",
+      "isVisible",
+      "isAvailable",
+      "sortOrder",
+      "ui",
+      "branchAvailability",
+      "branchIds",
+    ]);
     const hasUi = body.ui !== undefined && body.ui !== null;
     if (hasUi && !isPlainObject(body.ui)) {
       throw new MenuValidationError("ui must be an object", "INVALID_PRODUCT_UI");
@@ -640,49 +732,68 @@ function createMenuCatalogAdminService(deps) {
     const uiSource = hasUi && existing
       ? { ...((existing && existing.ui) || {}), ...body.ui }
       : (hasUi ? body.ui : existing && existing.ui);
-    const pricingModel = String(body.pricingModel || (existing && existing.pricingModel) || "fixed").trim();
+    const pricingModel = String(
+      hasOwn(body, "pricingModel") ? body.pricingModel : ((existing && existing.pricingModel) || "fixed")
+    ).trim();
     if (!["fixed", "per_100g"].includes(pricingModel)) {
       throw new MenuValidationError("pricingModel must be fixed or per_100g");
     }
-    const itemType = String(body.itemType || (existing && existing.itemType) || "product").trim();
-    return {
-      categoryId: body.categoryId === undefined && existing ? existing.categoryId : assertObjectId(body.categoryId, "categoryId"),
-      catalogItemId: normalizeOptionalObjectId(body.catalogItemId, "catalogItemId", existing ? (existing.catalogItemId || null) : null),
-      key: body.key === undefined && existing ? existing.key : normalizeOptionalKey(body.key),
-      name: body.name === undefined && existing ? existing.name : localizedString(body.name, "name", { required: true }),
-      description: optionalLocalizedString(body.description, "description") || (existing ? existing.description : { ar: "", en: "" }),
-      imageUrl: body.imageUrl === undefined && existing ? existing.imageUrl : String(body.imageUrl || "").trim(),
-      itemType,
-      pricingModel,
-      priceHalala: normalizeNonNegativeInteger(body.priceHalala, "priceHalala", existing ? existing.priceHalala : 0),
-      baseUnitGrams: normalizeNonNegativeInteger(body.baseUnitGrams, "baseUnitGrams", existing ? existing.baseUnitGrams : 100) || 100,
-      defaultWeightGrams: normalizeNonNegativeInteger(body.defaultWeightGrams, "defaultWeightGrams", existing ? existing.defaultWeightGrams : 0),
-      minWeightGrams: normalizeNonNegativeInteger(body.minWeightGrams, "minWeightGrams", existing ? existing.minWeightGrams : 0),
-      maxWeightGrams: normalizeNonNegativeInteger(body.maxWeightGrams, "maxWeightGrams", existing ? existing.maxWeightGrams : 0),
-      weightStepGrams: normalizeNonNegativeInteger(body.weightStepGrams, "weightStepGrams", existing ? existing.weightStepGrams : 50) || 50,
-      currency: SYSTEM_CURRENCY,
-      availableFor: normalizeAvailableFor(body.availableFor, "availableFor", existing ? (existing.availableFor || []) : ["one_time", "subscription"]),
-      isCustomizable: normalizeBoolean(
-        body.isCustomizable,
-        "isCustomizable",
-        existing
-          ? inferProductCustomizable(existing)
-          : (pricingModel === "per_100g")
-      ),
-      isActive: normalizeBoolean(body.isActive, "isActive", existing ? existing.isActive : true),
-      isVisible: normalizeBoolean(body.isVisible, "isVisible", existing ? truthyByDefault(existing.isVisible) : true),
-      isAvailable: normalizeBoolean(body.isAvailable, "isAvailable", existing ? truthyByDefault(existing.isAvailable) : true),
-      sortOrder: normalizeNonNegativeInteger(body.sortOrder, "sortOrder", existing ? existing.sortOrder : 0),
-      ui: normalizeProductUiMetadata(uiSource),
-      branchAvailability: (body.branchAvailability === undefined && body.branchIds === undefined && existing)
-        ? (existing.branchAvailability || [])
-        : normalizeStringArray(body.branchAvailability !== undefined ? body.branchAvailability : body.branchIds, "branchAvailability"),
-    };
+    const itemType = String(
+      hasOwn(body, "itemType") ? body.itemType : ((existing && existing.itemType) || "product")
+    ).trim();
+    if (!itemType) throw new MenuValidationError("itemType cannot be empty");
+    const payload = {};
+    if (!existing || hasOwn(body, "categoryId")) payload.categoryId = assertObjectId(body.categoryId, "categoryId");
+    if (!existing || hasOwn(body, "catalogItemId")) {
+      payload.catalogItemId = normalizeOptionalObjectId(body.catalogItemId, "catalogItemId", null);
+    }
+    if (!existing || hasOwn(body, "key")) payload.key = normalizeOptionalKey(body.key);
+    if (!existing || hasOwn(body, "name")) payload.name = localizedString(body.name, "name", { required: true });
+    if (!existing || hasOwn(body, "description")) {
+      payload.description = optionalLocalizedString(body.description, "description") || { ar: "", en: "" };
+    }
+    if (!existing || hasOwn(body, "imageUrl")) payload.imageUrl = String(body.imageUrl || "").trim();
+    if (!existing || hasOwn(body, "itemType")) payload.itemType = itemType;
+    if (!existing || hasOwn(body, "pricingModel")) payload.pricingModel = pricingModel;
+    if (!existing || hasOwn(body, "priceHalala")) payload.priceHalala = normalizeNonNegativeInteger(body.priceHalala, "priceHalala", 0);
+    if (!existing || hasOwn(body, "baseUnitGrams")) payload.baseUnitGrams = normalizeNonNegativeInteger(body.baseUnitGrams, "baseUnitGrams", 100) || 100;
+    if (!existing || hasOwn(body, "defaultWeightGrams")) payload.defaultWeightGrams = normalizeNonNegativeInteger(body.defaultWeightGrams, "defaultWeightGrams", 0);
+    if (!existing || hasOwn(body, "minWeightGrams")) payload.minWeightGrams = normalizeNonNegativeInteger(body.minWeightGrams, "minWeightGrams", 0);
+    if (!existing || hasOwn(body, "maxWeightGrams")) payload.maxWeightGrams = normalizeNonNegativeInteger(body.maxWeightGrams, "maxWeightGrams", 0);
+    if (!existing || hasOwn(body, "weightStepGrams")) payload.weightStepGrams = normalizeNonNegativeInteger(body.weightStepGrams, "weightStepGrams", 50) || 50;
+    if (!existing) payload.currency = SYSTEM_CURRENCY;
+    if (!existing || hasOwn(body, "availableFor")) {
+      payload.availableFor = normalizeAvailableFor(body.availableFor, "availableFor", ["one_time", "subscription"]);
+    }
+    if (!existing || hasOwn(body, "isCustomizable")) {
+      payload.isCustomizable = normalizeBoolean(body.isCustomizable, "isCustomizable", pricingModel === "per_100g");
+    }
+    if (!existing || hasOwn(body, "isActive")) payload.isActive = normalizeBoolean(body.isActive, "isActive", true);
+    if (!existing || hasOwn(body, "isVisible")) payload.isVisible = normalizeBoolean(body.isVisible, "isVisible", true);
+    if (!existing || hasOwn(body, "isAvailable")) payload.isAvailable = normalizeBoolean(body.isAvailable, "isAvailable", true);
+    if (!existing || hasOwn(body, "sortOrder")) payload.sortOrder = normalizeNonNegativeInteger(body.sortOrder, "sortOrder", 0);
+    if (!existing || hasOwn(body, "ui")) payload.ui = normalizeProductUiMetadata(uiSource);
+    if (!existing || hasOwn(body, "branchAvailability") || hasOwn(body, "branchIds")) {
+      payload.branchAvailability = normalizeStringArray(
+        hasOwn(body, "branchAvailability") ? body.branchAvailability : body.branchIds,
+        "branchAvailability"
+      );
+    }
+    return payload;
   }
 
   function normalizeGroupPayload(body = {}, existing = null) {
     if (!isPlainObject(body)) throw new MenuValidationError("Request body must be an object");
     assertImmutableKey(body, existing, "key");
+    assertNonNullablePatchFields(body, existing, [
+      "name",
+      "description",
+      "isActive",
+      "isVisible",
+      "isAvailable",
+      "sortOrder",
+      "ui",
+    ]);
     const hasUi = body.ui !== undefined;
     if (
       hasUi
@@ -693,96 +804,143 @@ function createMenuCatalogAdminService(deps) {
     ) {
       throw new MenuValidationError("ui.displayStyle must be one of: chips, radio_cards, checkbox_grid, dropdown, stepper", "INVALID_DISPLAY_STYLE");
     }
-    return {
-      key: body.key === undefined && existing ? existing.key : normalizeOptionalKey(body.key),
-      name: body.name === undefined && existing ? existing.name : localizedString(body.name, "name", { required: true }),
-      description: optionalLocalizedString(body.description, "description") || (existing ? existing.description : { ar: "", en: "" }),
-      isActive: normalizeBoolean(body.isActive, "isActive", existing ? existing.isActive : true),
-      isVisible: normalizeBoolean(body.isVisible, "isVisible", existing ? truthyByDefault(existing.isVisible) : true),
-      isAvailable: normalizeBoolean(body.isAvailable, "isAvailable", existing ? truthyByDefault(existing.isAvailable) : true),
-      sortOrder: normalizeNonNegativeInteger(body.sortOrder, "sortOrder", existing ? existing.sortOrder : 0),
-      ui: hasUi ? normalizeGroupUiMetadata(body.ui) : normalizeGroupUiMetadata(existing && existing.ui),
-    };
+    const payload = {};
+    if (!existing || hasOwn(body, "key")) payload.key = normalizeOptionalKey(body.key);
+    if (!existing || hasOwn(body, "name")) payload.name = localizedString(body.name, "name", { required: true });
+    if (!existing || hasOwn(body, "description")) {
+      payload.description = optionalLocalizedString(body.description, "description") || { ar: "", en: "" };
+    }
+    if (!existing || hasOwn(body, "isActive")) payload.isActive = normalizeBoolean(body.isActive, "isActive", true);
+    if (!existing || hasOwn(body, "isVisible")) payload.isVisible = normalizeBoolean(body.isVisible, "isVisible", true);
+    if (!existing || hasOwn(body, "isAvailable")) payload.isAvailable = normalizeBoolean(body.isAvailable, "isAvailable", true);
+    if (!existing || hasOwn(body, "sortOrder")) payload.sortOrder = normalizeNonNegativeInteger(body.sortOrder, "sortOrder", 0);
+    if (!existing || hasOwn(body, "ui")) {
+      payload.ui = normalizeGroupUiMetadata(
+        existing ? { ...((existing && existing.ui) || {}), ...body.ui } : body.ui
+      );
+    }
+    return payload;
   }
 
   function normalizeOptionPayload(body = {}, existing = null) {
     if (!isPlainObject(body)) throw new MenuValidationError("Request body must be an object");
     assertImmutableKey(body, existing, "key");
     assertImmutableCatalogItemLink(body, existing);
+    assertNonNullablePatchFields(body, existing, [
+      "groupId",
+      "name",
+      "description",
+      "imageUrl",
+      "extraPriceHalala",
+      "extraFeeHalala",
+      "extraWeightUnitGrams",
+      "extraWeightPriceHalala",
+      "availableFor",
+      "isActive",
+      "isVisible",
+      "isAvailable",
+      "sortOrder",
+    ]);
 
-    let extraPriceHalala = normalizeNonNegativeInteger(body.extraPriceHalala, "extraPriceHalala", existing ? existing.extraPriceHalala : 0);
-    let extraFeeHalala = normalizeNonNegativeInteger(body.extraFeeHalala, "extraFeeHalala", existing ? (existing.extraFeeHalala || 0) : 0);
-
-    if (body.extraPriceHalala !== undefined && body.extraFeeHalala === undefined) {
-      extraFeeHalala = extraPriceHalala;
-    } else if (body.extraFeeHalala !== undefined && body.extraPriceHalala === undefined) {
-      extraPriceHalala = extraFeeHalala;
+    const payload = {};
+    if (!existing || hasOwn(body, "groupId")) payload.groupId = assertObjectId(body.groupId, "groupId");
+    if (!existing || hasOwn(body, "catalogItemId")) {
+      payload.catalogItemId = normalizeOptionalObjectId(body.catalogItemId, "catalogItemId", null);
     }
-    const isActive = normalizeBoolean(body.isActive, "isActive", existing ? existing.isActive : true);
-    const isVisible = normalizeBoolean(body.isVisible, "isVisible", existing ? truthyByDefault(existing.isVisible) : true);
-    const isAvailable = normalizeBoolean(body.isAvailable, "isAvailable", existing ? truthyByDefault(existing.isAvailable) : true);
+    if (!existing || hasOwn(body, "key")) payload.key = normalizeOptionalKey(body.key);
+    if (!existing || hasOwn(body, "name")) payload.name = localizedString(body.name, "name", { required: true });
+    if (!existing || hasOwn(body, "description")) {
+      payload.description = optionalLocalizedString(body.description, "description") || { ar: "", en: "" };
+    }
+    if (!existing || hasOwn(body, "imageUrl")) payload.imageUrl = String(body.imageUrl || "").trim();
 
-    return {
-      groupId: body.groupId === undefined && existing ? existing.groupId : assertObjectId(body.groupId, "groupId"),
-      catalogItemId: normalizeOptionalObjectId(body.catalogItemId, "catalogItemId", existing ? (existing.catalogItemId || null) : null),
-      key: body.key === undefined && existing ? existing.key : normalizeOptionalKey(body.key),
-      name: body.name === undefined && existing ? existing.name : localizedString(body.name, "name", { required: true }),
-      description: optionalLocalizedString(body.description, "description") || (existing ? existing.description : { ar: "", en: "" }),
-      imageUrl: body.imageUrl === undefined && existing ? existing.imageUrl : String(body.imageUrl || "").trim(),
-      extraPriceHalala,
-      extraWeightUnitGrams: normalizeNonNegativeInteger(body.extraWeightUnitGrams, "extraWeightUnitGrams", existing ? existing.extraWeightUnitGrams : 0),
-      extraWeightPriceHalala: normalizeNonNegativeInteger(body.extraWeightPriceHalala, "extraWeightPriceHalala", existing ? existing.extraWeightPriceHalala : 0),
-      currency: SYSTEM_CURRENCY,
-      availableFor: normalizeAvailableFor(body.availableFor, "availableFor", existing ? (existing.availableFor || []) : ["one_time", "subscription"]),
-      extraFeeHalala,
-      isActive,
-      isVisible,
-      isAvailable,
-      sortOrder: normalizeNonNegativeInteger(body.sortOrder, "sortOrder", existing ? existing.sortOrder : 0),
-    };
+    const hasExtraPrice = hasOwn(body, "extraPriceHalala");
+    const hasExtraFee = hasOwn(body, "extraFeeHalala");
+    if (!existing || hasExtraPrice || hasExtraFee) {
+      let extraPriceHalala = normalizeNonNegativeInteger(body.extraPriceHalala, "extraPriceHalala", 0);
+      let extraFeeHalala = normalizeNonNegativeInteger(body.extraFeeHalala, "extraFeeHalala", 0);
+      if (hasExtraPrice && !hasExtraFee) extraFeeHalala = extraPriceHalala;
+      if (hasExtraFee && !hasExtraPrice) extraPriceHalala = extraFeeHalala;
+      payload.extraPriceHalala = extraPriceHalala;
+      payload.extraFeeHalala = extraFeeHalala;
+    }
+
+    if (!existing || hasOwn(body, "extraWeightUnitGrams")) {
+      payload.extraWeightUnitGrams = normalizeNonNegativeInteger(body.extraWeightUnitGrams, "extraWeightUnitGrams", 0);
+    }
+    if (!existing || hasOwn(body, "extraWeightPriceHalala")) {
+      payload.extraWeightPriceHalala = normalizeNonNegativeInteger(body.extraWeightPriceHalala, "extraWeightPriceHalala", 0);
+    }
+    if (!existing) payload.currency = SYSTEM_CURRENCY;
+    if (!existing || hasOwn(body, "availableFor")) {
+      payload.availableFor = normalizeAvailableFor(body.availableFor, "availableFor", ["one_time", "subscription"]);
+    }
+    if (!existing || hasOwn(body, "isActive")) payload.isActive = normalizeBoolean(body.isActive, "isActive", true);
+    if (!existing || hasOwn(body, "isVisible")) payload.isVisible = normalizeBoolean(body.isVisible, "isVisible", true);
+    if (!existing || hasOwn(body, "isAvailable")) payload.isAvailable = normalizeBoolean(body.isAvailable, "isAvailable", true);
+    if (!existing || hasOwn(body, "sortOrder")) payload.sortOrder = normalizeNonNegativeInteger(body.sortOrder, "sortOrder", 0);
+    return payload;
   }
 
   function normalizeSelectionRulePayload(body = {}, existing = null, prefix = "") {
-    const min = normalizeNonNegativeInteger(body.minSelections, `${prefix}minSelections`, existing ? existing.minSelections : 0);
-    const max = normalizeNullableNonNegativeInteger(body.maxSelections, `${prefix}maxSelections`, existing ? existing.maxSelections : null);
+    assertNonNullablePatchFields(body, existing, ["minSelections", "isRequired"]);
+    const min = isProvided(body, "minSelections")
+      ? normalizeNonNegativeInteger(body.minSelections, `${prefix}minSelections`, 0)
+      : (existing ? existing.minSelections : 0);
+    const max = isProvided(body, "maxSelections")
+      ? normalizeNullableNonNegativeInteger(body.maxSelections, `${prefix}maxSelections`, null)
+      : (existing ? existing.maxSelections : null);
     if (max !== null && max < min) {
       throw new MenuValidationError(`${prefix}maxSelections must be null or >= minSelections`, "INVALID_SELECTION_RULES");
     }
     const requiredFallback = existing ? Boolean(existing.isRequired) : min > 0;
-    const isRequired = normalizeBoolean(body.isRequired, `${prefix}isRequired`, requiredFallback);
+    const isRequired = isProvided(body, "isRequired")
+      ? normalizeBoolean(body.isRequired, `${prefix}isRequired`, requiredFallback)
+      : requiredFallback;
     if (isRequired && min <= 0) {
       throw new MenuValidationError(`${prefix}minSelections must be > 0 when isRequired=true`, "INVALID_SELECTION_RULES");
     }
-    return { minSelections: min, maxSelections: max, isRequired };
+    const payload = {};
+    if (!existing || isProvided(body, "minSelections")) payload.minSelections = min;
+    if (!existing || isProvided(body, "maxSelections")) payload.maxSelections = max;
+    if (!existing || isProvided(body, "isRequired")) payload.isRequired = isRequired;
+    return payload;
   }
 
   function normalizeProductGroupRelationPayload(body = {}, existing = null) {
     if (!isPlainObject(body)) throw new MenuValidationError("Request body must be an object");
-    return {
-      productId: body.productId === undefined && existing ? existing.productId : assertObjectId(body.productId, "productId"),
-      groupId: body.groupId === undefined && existing ? existing.groupId : assertObjectId(body.groupId || body.id, "groupId"),
-      ...normalizeSelectionRulePayload(body, existing),
-      isActive: normalizeBoolean(body.isActive, "isActive", existing ? existing.isActive : true),
-      isVisible: normalizeBoolean(body.isVisible, "isVisible", existing ? truthyByDefault(existing.isVisible) : true),
-      isAvailable: normalizeBoolean(body.isAvailable, "isAvailable", existing ? truthyByDefault(existing.isAvailable) : true),
-      sortOrder: normalizeNonNegativeInteger(body.sortOrder, "sortOrder", existing ? existing.sortOrder : 0),
-    };
+    assertNonNullablePatchFields(body, existing, ["isActive", "isVisible", "isAvailable", "sortOrder"]);
+    const payload = { ...normalizeSelectionRulePayload(body, existing) };
+    if (!existing || hasOwn(body, "productId")) payload.productId = assertObjectId(body.productId, "productId");
+    if (!existing || hasOwn(body, "groupId") || hasOwn(body, "id")) {
+      payload.groupId = assertObjectId(body.groupId || body.id, "groupId");
+    }
+    if (!existing || isProvided(body, "isActive")) payload.isActive = normalizeBoolean(body.isActive, "isActive", true);
+    if (!existing || isProvided(body, "isVisible")) payload.isVisible = normalizeBoolean(body.isVisible, "isVisible", true);
+    if (!existing || isProvided(body, "isAvailable")) payload.isAvailable = normalizeBoolean(body.isAvailable, "isAvailable", true);
+    if (!existing || isProvided(body, "sortOrder")) payload.sortOrder = normalizeNonNegativeInteger(body.sortOrder, "sortOrder", 0);
+    return payload;
   }
 
   function normalizeProductGroupOptionRelationPayload(body = {}, existing = null) {
     if (!isPlainObject(body)) throw new MenuValidationError("Request body must be an object");
-    return {
-      productId: body.productId === undefined && existing ? existing.productId : assertObjectId(body.productId, "productId"),
-      groupId: body.groupId === undefined && existing ? existing.groupId : assertObjectId(body.groupId, "groupId"),
-      optionId: body.optionId === undefined && existing ? existing.optionId : assertObjectId(body.optionId || body.id, "optionId"),
-      extraPriceHalala: normalizeNullableNonNegativeInteger(body.extraPriceHalala, "extraPriceHalala", existing ? existing.extraPriceHalala : null),
-      extraWeightUnitGrams: normalizeNullableNonNegativeInteger(body.extraWeightUnitGrams, "extraWeightUnitGrams", existing ? existing.extraWeightUnitGrams : null),
-      extraWeightPriceHalala: normalizeNullableNonNegativeInteger(body.extraWeightPriceHalala, "extraWeightPriceHalala", existing ? existing.extraWeightPriceHalala : null),
-      isActive: normalizeBoolean(body.isActive, "isActive", existing ? existing.isActive : true),
-      isVisible: normalizeBoolean(body.isVisible, "isVisible", existing ? truthyByDefault(existing.isVisible) : true),
-      isAvailable: normalizeBoolean(body.isAvailable, "isAvailable", existing ? truthyByDefault(existing.isAvailable) : true),
-      sortOrder: normalizeNonNegativeInteger(body.sortOrder, "sortOrder", existing ? existing.sortOrder : 0),
-    };
+    assertNonNullablePatchFields(body, existing, ["isActive", "isVisible", "isAvailable", "sortOrder"]);
+    const payload = {};
+    if (!existing || hasOwn(body, "productId")) payload.productId = assertObjectId(body.productId, "productId");
+    if (!existing || hasOwn(body, "groupId")) payload.groupId = assertObjectId(body.groupId, "groupId");
+    if (!existing || hasOwn(body, "optionId") || hasOwn(body, "id")) {
+      payload.optionId = assertObjectId(body.optionId || body.id, "optionId");
+    }
+    for (const fieldName of ["extraPriceHalala", "extraWeightUnitGrams", "extraWeightPriceHalala"]) {
+      if (!existing || isProvided(body, fieldName)) {
+        payload[fieldName] = normalizeNullableNonNegativeInteger(body[fieldName], fieldName, null);
+      }
+    }
+    if (!existing || isProvided(body, "isActive")) payload.isActive = normalizeBoolean(body.isActive, "isActive", true);
+    if (!existing || isProvided(body, "isVisible")) payload.isVisible = normalizeBoolean(body.isVisible, "isVisible", true);
+    if (!existing || isProvided(body, "isAvailable")) payload.isAvailable = normalizeBoolean(body.isAvailable, "isAvailable", true);
+    if (!existing || isProvided(body, "sortOrder")) payload.sortOrder = normalizeNonNegativeInteger(body.sortOrder, "sortOrder", 0);
+    return payload;
   }
 
   function changeAction(payload, fallback = "update") {
@@ -1036,9 +1194,10 @@ function createMenuCatalogAdminService(deps) {
     const updated = await updateEntity(Model, id, {
       [fieldName]: normalizeBoolean(value, fieldName, truthyByDefault(existing[fieldName])),
     }, { entityType, actor, action });
-    if (Model === MenuOption) {
-      return serializeDashboardOption(updated);
-    }
+    if (Model === MenuCategory) return serializeDashboardCategory(updated);
+    if (Model === MenuProduct) return serializeDashboardProduct(updated);
+    if (Model === MenuOptionGroup) return serializeDashboardOptionGroup(updated);
+    if (Model === MenuOption) return serializeDashboardOption(updated);
     return serializeDoc(updated);
   }
 
@@ -1057,7 +1216,9 @@ function createMenuCatalogAdminService(deps) {
     if (payload.isActive) {
       payload.publishedAt = new Date();
     }
-    return createEntity(MenuCategory, payload, { entityType: "menu_category", actor });
+    return serializeDashboardCategory(
+      await createEntity(MenuCategory, payload, { entityType: "menu_category", actor })
+    );
   }
 
   async function createProduct(body, actor) {
@@ -1078,7 +1239,9 @@ function createMenuCatalogAdminService(deps) {
     const category = await MenuCategory.findOne({ _id: payload.categoryId, isActive: true }).lean();
     if (!category) throw new MenuValidationError("categoryId does not reference an active category", "CATEGORY_NOT_FOUND", 404);
     if (payload.catalogItemId) await assertCatalogItemLinkable(payload.catalogItemId);
-    return createEntity(MenuProduct, payload, { entityType: "menu_product", actor });
+    return serializeDashboardProduct(
+      await createEntity(MenuProduct, payload, { entityType: "menu_product", actor })
+    );
   }
 
   async function createOptionGroup(body, actor) {
@@ -1096,7 +1259,9 @@ function createMenuCatalogAdminService(deps) {
     if (payload.isActive) {
       payload.publishedAt = new Date();
     }
-    return createEntity(MenuOptionGroup, payload, { entityType: "menu_option_group", actor });
+    return serializeDashboardOptionGroup(
+      await createEntity(MenuOptionGroup, payload, { entityType: "menu_option_group", actor })
+    );
   }
 
   async function createOption(body, actor) {
@@ -1123,7 +1288,9 @@ function createMenuCatalogAdminService(deps) {
     const existing = await MenuCategory.findById(assertObjectId(id)).lean();
     if (!existing) throw new MenuNotFoundError();
     const payload = normalizeCategoryPayload(body, existing);
-    return updateEntity(MenuCategory, id, payload, { entityType: "menu_category", actor, action: changeAction(payload) });
+    return serializeDashboardCategory(
+      await updateEntity(MenuCategory, id, payload, { entityType: "menu_category", actor, action: changeAction(payload) })
+    );
   }
 
   async function updateProduct(id, body, actor) {
@@ -1140,9 +1307,10 @@ function createMenuCatalogAdminService(deps) {
       if (activeGroupCount > 0) existingForPayload = { ...existing, isCustomizable: true };
     }
     const payload = normalizeProductPayload(body, existingForPayload);
-    const category = await MenuCategory.findOne({ _id: payload.categoryId, isActive: true }).lean();
+    const effectiveCategoryId = hasOwn(payload, "categoryId") ? payload.categoryId : existing.categoryId;
+    const category = await MenuCategory.findOne({ _id: effectiveCategoryId, isActive: true }).lean();
     if (!category) throw new MenuValidationError("categoryId does not reference an active category", "CATEGORY_NOT_FOUND", 404);
-    if (payload.catalogItemId && String(payload.catalogItemId) !== String(existing.catalogItemId || "")) {
+    if (hasOwn(payload, "catalogItemId") && payload.catalogItemId && String(payload.catalogItemId) !== String(existing.catalogItemId || "")) {
       await assertCatalogItemLinkable(payload.catalogItemId);
     }
     const product = await updateEntity(MenuProduct, id, payload, { entityType: "menu_product", actor, action: changeAction(payload) });
@@ -1152,26 +1320,32 @@ function createMenuCatalogAdminService(deps) {
         ProductGroupOption.updateMany({ productId: id }, { $set: { isActive: false, isVisible: false, isAvailable: false } }),
       ]);
     }
-    await mirrorCompatibilityImage(Sandwich, id, payload.imageUrl);
-    return product;
+    if (Object.prototype.hasOwnProperty.call(payload, "imageUrl")) {
+      await mirrorCompatibilityImage(Sandwich, id, payload.imageUrl);
+    }
+    return serializeDashboardProduct(product);
   }
 
   async function updateOptionGroup(id, body, actor) {
     const existing = await MenuOptionGroup.findById(assertObjectId(id)).lean();
     if (!existing) throw new MenuNotFoundError();
     const payload = normalizeGroupPayload(body, existing);
-    return updateEntity(MenuOptionGroup, id, payload, { entityType: "menu_option_group", actor, action: changeAction(payload) });
+    return serializeDashboardOptionGroup(
+      await updateEntity(MenuOptionGroup, id, payload, { entityType: "menu_option_group", actor, action: changeAction(payload) })
+    );
   }
 
   async function updateOption(id, body, actor) {
     const existing = await MenuOption.findById(assertObjectId(id)).lean();
     if (!existing) throw new MenuNotFoundError();
     const payload = normalizeOptionPayload(body, existing);
-    if (payload.catalogItemId && String(payload.catalogItemId) !== String(existing.catalogItemId || "")) {
+    if (hasOwn(payload, "catalogItemId") && payload.catalogItemId && String(payload.catalogItemId) !== String(existing.catalogItemId || "")) {
       await assertCatalogItemLinkable(payload.catalogItemId);
     }
     const option = await updateEntity(MenuOption, id, payload, { entityType: "menu_option", actor, action: changeAction(payload) });
-    await mirrorCompatibilityImage(BuilderProtein, id, payload.imageUrl);
+    if (Object.prototype.hasOwnProperty.call(payload, "imageUrl")) {
+      await mirrorCompatibilityImage(BuilderProtein, id, payload.imageUrl);
+    }
     return serializeDashboardOption(option);
   }
 
@@ -1249,7 +1423,7 @@ function createMenuCatalogAdminService(deps) {
 
     if (!pagination) {
       const rows = await find;
-      return rows.map(serializeDoc);
+      return rows.map(serializeDashboardProductGroupRelation);
     }
 
     const [rows, total] = await Promise.all([
@@ -1258,7 +1432,7 @@ function createMenuCatalogAdminService(deps) {
     ]);
 
     return {
-      items: rows.map(serializeDoc),
+      items: rows.map(serializeDashboardProductGroupRelation),
       pagination: {
         page: pagination.page,
         limit: pagination.limit,
@@ -1613,16 +1787,7 @@ function createMenuCatalogAdminService(deps) {
     const linkedOptionCount = groups.reduce((sum, group) => sum + group.options.length, 0);
     return {
       contractVersion: "dashboard_product_composer.v4",
-      product: {
-        id: productPayload.id,
-        key: productPayload.key,
-        name: productPayload.name || { ar: "", en: "" },
-        categoryId: productPayload.categoryId ? String(productPayload.categoryId) : null,
-        isCustomizable: Boolean(productPayload.isCustomizable),
-        isActive: truthyByDefault(productPayload.isActive),
-        isVisible: truthyByDefault(productPayload.isVisible),
-        isAvailable: truthyByDefault(productPayload.isAvailable),
-      },
+      product: productPayload,
       category: category ? {
         id: String(category._id),
         key: category.key || "",
@@ -1694,10 +1859,11 @@ function createMenuCatalogAdminService(deps) {
     }).sort((left, right) => left.sortOrder - right.sortOrder);
 
     const requestedContractVersion = String(composerOptions.contractVersion || "").trim().toLowerCase();
-    const productPayload = serializeDoc(product);
-    productPayload.isCustomizable = requestedContractVersion === "v4"
-      ? Boolean(product.isCustomizable)
-      : inferProductCustomizable(product, linkedOptionGroups);
+    const productPayload = serializeDashboardProduct(product, {
+      isCustomizable: requestedContractVersion === "v4"
+        ? Boolean(product.isCustomizable)
+        : inferProductCustomizable(product, linkedOptionGroups),
+    });
 
     const validation = buildDashboardProductComposerValidation({
       product,
@@ -1907,7 +2073,7 @@ function createMenuCatalogAdminService(deps) {
 
     if (!pagination) {
       const rows = await find;
-      return rows.map(serializeDoc);
+      return rows.map(serializeDashboardProductOptionRelation);
     }
 
     const [rows, total] = await Promise.all([
@@ -1916,7 +2082,7 @@ function createMenuCatalogAdminService(deps) {
     ]);
 
     return {
-      items: rows.map(serializeDoc),
+      items: rows.map(serializeDashboardProductOptionRelation),
       pagination: {
         page: pagination.page,
         limit: pagination.limit,
@@ -2170,7 +2336,12 @@ function createMenuCatalogAdminService(deps) {
   }
 
   return {
+    serializeDashboardCategory,
+    serializeDashboardProduct,
+    serializeDashboardOptionGroup,
     serializeDashboardOption,
+    serializeDashboardProductGroupRelation,
+    serializeDashboardProductOptionRelation,
     getDashboardMenuPreview,
     buildListQuery,
     buildProductFilter,

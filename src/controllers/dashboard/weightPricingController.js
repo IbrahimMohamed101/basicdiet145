@@ -3,6 +3,7 @@ const mongoose = require("mongoose");
 const MenuProduct = require("../../models/MenuProduct");
 const MenuAuditLog = require("../../models/MenuAuditLog");
 const errorResponse = require("../../utils/errorResponse");
+const { serializeDashboardProduct } = require("../../services/orders/menuCatalogService");
 const {
   assertValidWeightPricingConfiguration,
   buildWeightPricingDescriptor,
@@ -42,17 +43,6 @@ function assertCurrentContractCompatibility(product) {
     err.details = { baseUnitGrams: baseWeightGrams, weightStepGrams: stepGrams };
     throw err;
   }
-}
-
-function serializeProduct(product) {
-  const row = product && typeof product.toObject === "function"
-    ? product.toObject()
-    : { ...product };
-  return {
-    id: String(row._id),
-    ...row,
-    _id: row._id,
-  };
 }
 
 async function updateProductWeightPricing(req, res) {
@@ -112,7 +102,7 @@ async function updateProductWeightPricing(req, res) {
       status: true,
       data: {
         contractVersion: "dashboard_weight_pricing.v1",
-        product: serializeProduct(product),
+        product: serializeDashboardProduct(product),
         weightPricing: buildWeightPricingDescriptor(product.toObject()),
       },
     });

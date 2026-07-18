@@ -53,6 +53,9 @@ const { validateMenuCatalog } = require("./menuCatalogValidationService");
 const {
   CUSTOMER_VISIBLE_CARB_KEYS,
 } = require("../../config/mealPlannerContract");
+const {
+  buildWeightPricingDescriptor,
+} = require("./weightPricingService");
 const SYSTEM_CURRENCY = "SAR";
 const SNAKE_CASE_PATTERN = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/;
 const CUSTOMER_VISIBLE_CARB_KEY_SET = new Set(CUSTOMER_VISIBLE_CARB_KEYS);
@@ -709,6 +712,7 @@ const menuCatalogAdminService = createMenuCatalogAdminService({
   assertRelationAvailable,
   getSettingValue,
   writeMenuAudit,
+  buildWeightPricingDescriptor,
 });
 
 const { createMenuReleaseService } = require("./menuReleaseService");
@@ -725,6 +729,12 @@ const menuReleaseService = createMenuReleaseService({
 module.exports = {
   MenuNotFoundError,
   MenuValidationError,
+  serializeDashboardCategory: (row) => menuCatalogAdminService.serializeDashboardCategory(row),
+  serializeDashboardProduct: (row, options) => menuCatalogAdminService.serializeDashboardProduct(row, options),
+  serializeDashboardOptionGroup: (row) => menuCatalogAdminService.serializeDashboardOptionGroup(row),
+  serializeDashboardOption: (row) => menuCatalogAdminService.serializeDashboardOption(row),
+  serializeDashboardProductGroupRelation: (row) => menuCatalogAdminService.serializeDashboardProductGroupRelation(row),
+  serializeDashboardProductOptionRelation: (row) => menuCatalogAdminService.serializeDashboardProductOptionRelation(row),
   getPublishedMenu,
   getDashboardMenuPreview,
   hasPublishedMenuCatalog,
