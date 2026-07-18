@@ -1,0 +1,59 @@
+name: Apply weight step pricing backend migration
+
+on:
+  push:
+    branches:
+      - agent/weight-step-pricing-active
+    paths:
+      - .github/workflows/apply-weight-step-pricing-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout working branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: agent/weight-step-pricing-active
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Apply backend patches
+        run: python3 scripts/apply-weight-step-pricing-patches.py
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify focused weight pricing contract
+        run: npm run test:weight-pricing
+
+      - name: Verify one-time menu contract
+        run: npm run test:one-time-menu
+
+      - name: Verify one-time order lifecycle
+        run: npm run test:orders
+
+      - name: Verify baseline tests
+        run: npm test
+
+      - name: Verify whitespace
+        run: git diff --check
+
+      - name: Commit verified backend implementation
+        run: |
+          rm -f scripts/apply-weight-step-pricing-patches.py
+          rm -f .github/workflows/apply-weight-step-pricing-once.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: make backend authoritative for weight step pricing"
+          git push origin HEAD:agent/weight-step-pricing-active
