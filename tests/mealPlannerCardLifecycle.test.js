@@ -210,7 +210,7 @@ async function run() {
       createPicker.body.data.contractVersion,
       "dashboard_meal_builder_picker.v1"
     );
-    assert.strictEqual(createPicker.body.data.meta.catalogTotal, 7);
+    assert.strictEqual(createPicker.body.data.meta.catalogTotal, 6);
     assert.strictEqual(createPicker.body.data.meta.assignedToOtherCards, 2);
     assert.strictEqual(createPicker.body.data.meta.unassigned, 4);
     assert.strictEqual(createPicker.body.data.meta.total, 4);

@@ -515,7 +515,7 @@ async function getDirectProductPicker({
       assignedToOtherCards: allRows.filter(
         (row) => row.state === "assigned_elsewhere"
       ).length,
-      unassigned: allRows.filter((row) => row.assignable).length,
+      unassigned: allRows.filter((row) => row.state === "eligible").length,
       unavailable: allRows.filter((row) => row.state === "unavailable").length,
     },
   };
