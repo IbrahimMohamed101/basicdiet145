@@ -5,6 +5,10 @@ const integerMinZero = {
   validator: Number.isInteger,
   message: "{PATH} must be an integer",
 };
+const nullableIntegerMinZero = {
+  validator: (value) => value === null || value === undefined || Number.isInteger(value),
+  message: "{PATH} must be null or an integer",
+};
 
 const LocalizedStringSchema = new mongoose.Schema(
   {
@@ -76,6 +80,7 @@ const MenuProductSchema = new mongoose.Schema(
     minWeightGrams: { type: Number, min: 0, default: 0, validate: integerMinZero },
     maxWeightGrams: { type: Number, min: 0, default: 0, validate: integerMinZero },
     weightStepGrams: { type: Number, min: 1, default: 50, validate: integerMinZero },
+    weightStepPriceHalala: { type: Number, min: 0, default: null, validate: nullableIntegerMinZero },
     currency: { type: String, default: SYSTEM_CURRENCY },
     availableFor: {
       type: [String],
