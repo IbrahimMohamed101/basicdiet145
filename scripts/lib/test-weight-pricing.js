@@ -4,7 +4,7 @@ const TEST_WEIGHT_PRICING_DEFAULTS = Object.freeze({
   baseUnitGrams: 100,
   defaultWeightGrams: 100,
   minWeightGrams: 100,
-  maxWeightGrams: 500,
+  maxWeightGrams: 250,
   weightStepGrams: 50,
   weightStepPriceHalala: 500,
 });
@@ -19,12 +19,15 @@ const MEAL_ITEM_TYPES = new Set([
 const SANDWICH_ITEM_TYPES = new Set(["cold_sandwich", "sandwich"]);
 const TEST_WEIGHT_PRICING_FIELDS = Object.keys(TEST_WEIGHT_PRICING_DEFAULTS);
 
-function testWeightPricingEligibility(product, categoryKey = "") {
+function testWeightPricingEligibility(product, categoryKey = "", optionGroupKeys = []) {
   if (product.isActive === false) return { eligible: false, reason: "product is inactive" };
 
   const itemType = String(product.itemType || "");
   if (MEAL_ITEM_TYPES.has(itemType)) return { eligible: true };
   if (itemType === "product" && categoryKey === "meals") return { eligible: true };
+  if (itemType === "product" && categoryKey === "custom_order" && optionGroupKeys.includes("carbs")) {
+    return { eligible: true };
+  }
   if (SANDWICH_ITEM_TYPES.has(itemType) && product.pricingModel === "per_100g") {
     return { eligible: true };
   }

@@ -1217,7 +1217,8 @@ async function seedProducts({ catalogItemMap = new Map(), categoryMap, groupMap,
     const row = productRows[productIndex];
     const category = categoryMap.get(row.category);
     if (!category) throw new Error(`Missing category ${row.category} for ${row.key}`);
-    const weightPricing = testWeightPricingEligibility(row, row.category).eligible
+    const optionGroupKeys = Array.isArray(row.groups) ? row.groups.map(([groupKey]) => groupKey) : [];
+    const weightPricing = testWeightPricingEligibility(row, row.category, optionGroupKeys).eligible
       ? testWeightPricingUpdate()
       : {};
 

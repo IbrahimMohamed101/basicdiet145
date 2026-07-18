@@ -28,7 +28,7 @@ const product = {
   baseUnitGrams: 100,
   defaultWeightGrams: 100,
   minWeightGrams: 100,
-  maxWeightGrams: 500,
+  maxWeightGrams: 250,
   weightStepGrams: 50,
   weightStepPriceHalala: 500,
 };
@@ -53,10 +53,6 @@ test("calculates 250g as three paid steps", () => {
   assert.strictEqual(computeProductBasePrice(product, 250), 3400);
 });
 
-test("calculates 300g as four paid steps", () => {
-  assert.strictEqual(computeProductBasePrice(product, 300), 3900);
-});
-
 test("publishes canonical choices for Flutter", () => {
   const descriptor = buildWeightPricingDescriptor(product);
   assert.strictEqual(descriptor.contractVersion, "weight_pricing.v1");
@@ -67,12 +63,9 @@ test("publishes canonical choices for Flutter", () => {
     { weightGrams: 150, priceHalala: 2400 },
     { weightGrams: 200, priceHalala: 2900 },
     { weightGrams: 250, priceHalala: 3400 },
-    { weightGrams: 300, priceHalala: 3900 },
-    { weightGrams: 350, priceHalala: 4400 },
-    { weightGrams: 400, priceHalala: 4900 },
-    { weightGrams: 450, priceHalala: 5400 },
-    { weightGrams: 500, priceHalala: 5900 },
   ]);
+  assert.strictEqual(descriptor.choices.length, 4);
+  assert(!descriptor.choices.some((choice) => choice.weightGrams === 300));
 });
 
 test("validates steps and configured bounds", () => {
@@ -86,14 +79,18 @@ test("validates steps and configured bounds", () => {
     (err) => err && err.code === "INVALID_WEIGHT_GRAMS"
   );
   assert.throws(
-    () => resolveWeightGrams({ weightGrams: 550 }, product),
+    () => resolveWeightGrams({ weightGrams: 175 }, product),
+    (err) => err && err.code === "INVALID_WEIGHT_GRAMS"
+  );
+  assert.throws(
+    () => resolveWeightGrams({ weightGrams: 300 }, product),
     (err) => err && err.code === "INVALID_WEIGHT_GRAMS"
   );
 });
 
 test("rejects a range that does not divide evenly by the step", () => {
   assert.throws(
-    () => assertValidWeightPricingConfiguration({ ...product, maxWeightGrams: 525 }),
+    () => assertValidWeightPricingConfiguration({ ...product, maxWeightGrams: 275 }),
     (err) => err && err.code === "INVALID_WEIGHT_PRICING_CONFIGURATION"
   );
 });

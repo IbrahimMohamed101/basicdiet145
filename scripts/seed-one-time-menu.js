@@ -431,7 +431,14 @@ async function seedOneTimeMenu({ actor = { role: "script" }, notes = "Seed one-t
 
   let productSort = 10;
   for (const productData of productRows) {
-    const weightPricing = testWeightPricingEligibility(productData, productData.category).eligible
+    const optionGroupKeys = Array.isArray(productData.groups)
+      ? productData.groups.map(([groupKey]) => groupKey)
+      : [];
+    const weightPricing = testWeightPricingEligibility(
+      productData,
+      productData.category,
+      optionGroupKeys
+    ).eligible
       ? testWeightPricingUpdate()
       : {};
     const product = await MenuProduct.findOneAndUpdate(

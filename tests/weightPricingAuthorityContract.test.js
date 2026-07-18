@@ -19,11 +19,6 @@ const TEST_WEIGHT_CHOICES = [
   { weightGrams: 150, priceHalala: 2400 },
   { weightGrams: 200, priceHalala: 2900 },
   { weightGrams: 250, priceHalala: 3400 },
-  { weightGrams: 300, priceHalala: 3900 },
-  { weightGrams: 350, priceHalala: 4400 },
-  { weightGrams: 400, priceHalala: 4900 },
-  { weightGrams: 450, priceHalala: 5400 },
-  { weightGrams: 500, priceHalala: 5900 },
 ];
 
 function quoteProduct(product, weightGrams) {
@@ -65,7 +60,7 @@ async function main() {
       baseUnitGrams: 100,
       defaultWeightGrams: 100,
       minWeightGrams: 100,
-      maxWeightGrams: 500,
+      maxWeightGrams: 250,
       weightStepGrams: 50,
       weightStepPriceHalala: 500,
       availableFor: ["one_time"],
@@ -86,13 +81,15 @@ async function main() {
     assert(initiallySeededProduct, "test-priced product appears in the public menu");
     assert.strictEqual(initiallySeededProduct.weightPricing.contractVersion, "weight_pricing.v1");
     assert.deepStrictEqual(initiallySeededProduct.weightPricing.choices, TEST_WEIGHT_CHOICES);
+    assert.strictEqual(initiallySeededProduct.weightPricing.choices.length, 4);
+    assert(!initiallySeededProduct.weightPricing.choices.some((choice) => choice.weightGrams === 300));
 
-    for (const choice of TEST_WEIGHT_CHOICES.slice(0, 5)) {
+    for (const choice of TEST_WEIGHT_CHOICES) {
       const quote = await quoteProduct(product, choice.weightGrams);
       assert.strictEqual(quote.items[0].unitPriceHalala, choice.priceHalala);
       assert.strictEqual(quote.pricing.totalHalala, choice.priceHalala);
     }
-    for (const invalidWeight of [125, 550]) {
+    for (const invalidWeight of [50, 125, 175, 300]) {
       await assert.rejects(
         () => quoteProduct(product, invalidWeight),
         (err) => err && err.code === "INVALID_WEIGHT_GRAMS"

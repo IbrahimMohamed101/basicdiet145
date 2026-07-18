@@ -4,7 +4,9 @@ require("dotenv").config();
 const mongoose = require("mongoose");
 
 const MenuCategory = require("../src/models/MenuCategory");
+const MenuOptionGroup = require("../src/models/MenuOptionGroup");
 const MenuProduct = require("../src/models/MenuProduct");
+const ProductOptionGroup = require("../src/models/ProductOptionGroup");
 const { assertValidWeightPricingConfiguration } = require("../src/services/orders/weightPricingService");
 const { resolveMongoUri } = require("../src/utils/mongoUriResolver");
 const {
@@ -23,6 +25,18 @@ async function categoryKeysById(products) {
 
 function createReport(inspected) {
   return { inspected, updated: 0, skipped: 0, unchanged: 0, skippedProducts: [] };
+}
+
+async function carbLinkedProductIds(products) {
+  const carbsGroup = await MenuOptionGroup.findOne({ key: "carbs" }).select("_id").lean();
+  if (!carbsGroup) return new Set();
+  const productIds = products.map((product) => product._id);
+  const relations = await ProductOptionGroup.find({
+    productId: { $in: productIds },
+    groupId: carbsGroup._id,
+    isActive: { $ne: false },
+  }).select("productId").lean();
+  return new Set(relations.map((relation) => String(relation.productId)));
 }
 
 function recordSkip(report, product, reason, log) {
@@ -46,12 +60,16 @@ async function updateEligibleProduct(product, report) {
 
 async function backfillTestWeightPricing({ log = console } = {}) {
   const products = await MenuProduct.find({ isActive: true }).lean();
-  const categoryKeys = await categoryKeysById(products);
+  const [categoryKeys, productsWithCarbs] = await Promise.all([
+    categoryKeysById(products),
+    carbLinkedProductIds(products),
+  ]);
   const report = createReport(products.length);
 
   for (const product of products) {
     const categoryKey = categoryKeys.get(String(product.categoryId)) || "";
-    const eligibility = testWeightPricingEligibility(product, categoryKey);
+    const optionGroupKeys = productsWithCarbs.has(String(product._id)) ? ["carbs"] : [];
+    const eligibility = testWeightPricingEligibility(product, categoryKey, optionGroupKeys);
     if (!eligibility.eligible) {
       recordSkip(report, product, eligibility.reason, log);
       continue;
