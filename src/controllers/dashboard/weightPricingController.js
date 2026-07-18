@@ -32,6 +32,18 @@ function normalizeInteger(value, fieldName, { nullable = false } = {}) {
   return parsed;
 }
 
+function assertCurrentContractCompatibility(product) {
+  const baseWeightGrams = Number(product.baseUnitGrams || 0);
+  const stepGrams = Number(product.weightStepGrams || 0);
+  if (stepGrams > 0 && baseWeightGrams % stepGrams !== 0) {
+    const err = new Error("baseUnitGrams must be divisible by weightStepGrams");
+    err.code = "INVALID_WEIGHT_PRICING_CONFIGURATION";
+    err.status = 400;
+    err.details = { baseUnitGrams: baseWeightGrams, weightStepGrams: stepGrams };
+    throw err;
+  }
+}
+
 function serializeProduct(product) {
   const row = product && typeof product.toObject === "function"
     ? product.toObject()
@@ -78,6 +90,7 @@ async function updateProductWeightPricing(req, res) {
     product.isCustomizable = true;
 
     assertValidWeightPricingConfiguration(product.toObject());
+    assertCurrentContractCompatibility(product);
     await product.save();
 
     await MenuAuditLog.create({
