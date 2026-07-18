@@ -1,0 +1,50 @@
+name: Temporary apply final Meal Planner fixes
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-test:
+    if: github.head_ref == 'agent/fix-backend-contract-tests'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      NODE_ENV: test
+      USE_MONGODB_MEMORY_REPLSET: "true"
+      JWT_SECRET: supersecret
+      DASHBOARD_JWT_SECRET: dashboard-test-secret
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/fix-backend-contract-tests
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+      - run: node scripts/fix-remaining-meal-planner-contracts.js
+
+      - name: Persist actual fixes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/services/catalog/CatalogService.js tests/mealPlanner.integration.test.js
+          if git diff --cached --quiet; then
+            echo "Actual fixes already applied"
+          else
+            git commit -m "fix: complete canonical Meal Planner contracts"
+            git push origin HEAD:agent/fix-backend-contract-tests
+          fi
+
+      - run: npm run test:integration
+      - run: npm run validate:backend
+      - run: npm run test:meal-builder-dashboard-mobile-parity
+      - run: npm run test:mobile-contracts
