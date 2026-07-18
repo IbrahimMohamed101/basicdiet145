@@ -484,21 +484,18 @@ async function getSubscriptionMenu(req, res) {
 async function getSubscriptionMealPlannerMenu(req, res) {
   const lang = getRequestLang(req);
   const includeLegacy = String(req.query?.includeLegacy || "").toLowerCase() === "true";
-  const requestedContractVersion = String(req.query?.contractVersion || req.query?.version || "").trim().toLowerCase();
-  const includeV3 = !requestedContractVersion
-    || requestedContractVersion === "v3"
-    || requestedContractVersion === "meal_planner_menu.v3";
+  // The public planner exposes one canonical Flutter-compatible contract only.
+  // Legacy version query parameters are intentionally ignored.
   const [regularMeals, mealCategories, rawAddons, mealPlannerCatalog] = await Promise.all([
     Meal.find({ type: "regular", isActive: true, availableForSubscription: { $ne: false }, categoryId: { $ne: null } })
       .sort({ sortOrder: 1, createdAt: -1 })
       .lean(),
     MealCategory.find({}).sort({ sortOrder: 1, createdAt: -1 }).lean(),
     Addon.find({ isActive: true, kind: "item", billingMode: "flat_once" }).sort({ sortOrder: 1, createdAt: -1 }).lean(),
-    getMealPlannerCatalog({ lang, includeV3, includeV2: includeLegacy || requestedContractVersion === "v2" }),
+    getMealPlannerCatalog({ lang, includeV3: true, includeV2: false }),
   ]);
   const addons = filterAndDedupeCanonicalAddons(rawAddons);
   const legacyBuilderCatalog = mealPlannerCatalog?.builderCatalog || mealPlannerCatalog || {};
-  const builderCatalogV2 = mealPlannerCatalog?.builderCatalogV2 || null;
   const plannerCatalog = mealPlannerCatalog?.plannerCatalog || null;
   const appBuilderCatalog = plannerCatalog || {};
   const premiumMeals = mapBuilderPremiumProteinsToLegacyRows(legacyBuilderCatalog);
@@ -538,10 +535,6 @@ async function getSubscriptionMealPlannerMenu(req, res) {
     data.addonCategoryAllowances = buildAddonCategoryAllowances(allowanceSubscription);
     data.addonSubscriptionAllowances = buildAddonSubscriptionAllowances(allowanceSubscription);
   }
-  if (builderCatalogV2) {
-    data.builderCatalogV2 = builderCatalogV2;
-  }
-
   if (includeLegacy) {
     data.legacyBuilderCatalog = legacyBuilderCatalog;
     data.currency = mealCatalog.currency;

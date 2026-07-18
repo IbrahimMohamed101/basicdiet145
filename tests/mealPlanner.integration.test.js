@@ -920,7 +920,7 @@ async function connectDatabase() {
   const mongoUri = useMemoryReplSet
     ? await (async () => {
       mongoReplSet = await MongoMemoryReplSet.create({ replSet: { storageEngine: 'wiredTiger' } });
-      return mongoReplSet.getUri(`meal_planner_integration_${Date.now()}`);
+      return mongoReplSet.getUri("meal_planner_integration_test");
     })()
     : resolveMongoUri();
   const dbName = getDbNameFromUri(mongoUri);
