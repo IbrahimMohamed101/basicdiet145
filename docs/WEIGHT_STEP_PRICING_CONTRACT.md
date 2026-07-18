@@ -14,6 +14,8 @@ For `pricingModel: per_100g`, canonical step pricing is enabled when `weightStep
 - `weightStepGrams`: grams added per step
 - `weightStepPriceHalala`: price added per step
 
+The current one-time menu contract also requires the base weight to align with the configured step. For example, 100g/50g is valid and every exposed choice remains accepted by the compatibility validator during migration.
+
 Example: base 100g at 1900 halala, step 50g at 500 halala, maximum 300g produces:
 
 - 100g = 1900 halala
