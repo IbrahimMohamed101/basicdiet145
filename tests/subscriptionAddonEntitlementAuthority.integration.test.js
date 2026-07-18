@@ -181,6 +181,24 @@ async function createUser(label) {
   });
 }
 
+async function createPlannerPrimaryFixture() {
+  const category = await MenuCategory.create({
+    key: "authority_primary_meals",
+    name: { en: "Primary Meals", ar: "الوجبات الأساسية" },
+    publishedAt: new Date(),
+  });
+  return MenuProduct.create({
+    categoryId: category._id,
+    key: "authority_primary_sandwich",
+    name: { en: "Primary Sandwich", ar: "ساندويتش أساسي" },
+    itemType: "cold_sandwich",
+    pricingModel: "fixed",
+    priceHalala: 1200,
+    availableFor: ["subscription"],
+    publishedAt: new Date(),
+  });
+}
+
 async function createSubscriptionFixture({
   user,
   plan,
@@ -552,6 +570,7 @@ async function main() {
       availableForSubscription: true,
       isActive: true,
     });
+    await createPlannerPrimaryFixture();
 
     const api = request(createApp());
     const primaryUser = await createUser("Primary authority user");

@@ -413,6 +413,8 @@ async function main() {
     });
     const mealAddonPlanId = new mongoose.Types.ObjectId();
     const dessertAddonPlanId = new mongoose.Types.ObjectId();
+    const activeStartDate = new Date(Date.now() - 86400000);
+    const activeEndDate = new Date(Date.now() + (7 * 86400000));
     const subscription = await Subscription.create({
       userId: clientUser._id,
       clientId: new mongoose.Types.ObjectId(),
@@ -421,6 +423,9 @@ async function main() {
       totalMeals: 7,
       remainingMeals: 7,
       duration: 7,
+      startDate: activeStartDate,
+      endDate: activeEndDate,
+      validityEndDate: activeEndDate,
       deliveryMode: "pickup",
       addonSubscriptions: [{
         addonId: created.body.data.id,
