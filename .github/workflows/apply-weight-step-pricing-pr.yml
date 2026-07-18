@@ -41,7 +41,17 @@ jobs:
         run: npm test
 
       - name: Verify backend validation
-        run: npm run validate:backend
+        shell: bash
+        run: |
+          set +e
+          npm run validate:backend > /tmp/backend-validation.log 2>&1
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            echo "Backend validation failed. Last 140 lines:"
+            tail -n 140 /tmp/backend-validation.log
+            exit "$status"
+          fi
+          tail -n 40 /tmp/backend-validation.log
 
       - name: Verify whitespace
         run: git diff --check origin/main...HEAD
