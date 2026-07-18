@@ -1,5 +1,7 @@
 const { Router } = require("express");
 
+require("../services/orders/installWeightPricingAuthority");
+
 const authRoutes = require("./auth");
 const dashboardAuthRoutes = require("./dashboardAuth");
 const dashboardStaffUserRoutes = require("./dashboardStaffUsers");
