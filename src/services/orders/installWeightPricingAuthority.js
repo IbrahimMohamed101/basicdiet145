@@ -17,17 +17,19 @@ function productIdOf(value) {
     (value && value.productId)
     || (value && value.menuProductId)
     || (value && value.catalogRef && value.catalogRef.id)
+    || (value && value.id)
     || ""
   );
 }
 
-function enrichPublicProduct(product = {}) {
-  const descriptor = buildWeightPricingDescriptor(product);
+function enrichPublicProduct(product = {}, pricingSource = product) {
+  const descriptor = buildWeightPricingDescriptor(pricingSource);
   return {
     ...product,
-    weightStepPriceHalala: product.weightStepPriceHalala === null || product.weightStepPriceHalala === undefined
+    weightStepPriceHalala: pricingSource.weightStepPriceHalala === null
+      || pricingSource.weightStepPriceHalala === undefined
       ? null
-      : Number(product.weightStepPriceHalala),
+      : Number(pricingSource.weightStepPriceHalala),
     weightPricing: descriptor,
   };
 }
@@ -156,6 +158,15 @@ function installPublicMenuAuthority() {
 
   const wrapped = async function getOneTimeOrderMenuWithWeightAuthority(args = {}) {
     const payload = await originalGetOneTimeOrderMenu(args);
+    const serializedProducts = Array.isArray(payload.categories)
+      ? payload.categories.flatMap((category) => category.products || [])
+      : [];
+    const productIds = [...new Set(serializedProducts.map(productIdOf).filter(Boolean))];
+    const productDocs = productIds.length
+      ? await MenuProduct.find({ _id: { $in: productIds } }).lean()
+      : [];
+    const productDocsById = new Map(productDocs.map((product) => [String(product._id), product]));
+    const productDocsByKey = new Map(productDocs.map((product) => [String(product.key || ""), product]));
     const productsById = new Map();
     const productsByKey = new Map();
 
@@ -163,7 +174,10 @@ function installPublicMenuAuthority() {
       payload.categories = payload.categories.map((category) => ({
         ...category,
         products: (category.products || []).map((product) => {
-          const enriched = enrichPublicProduct(product);
+          const pricingSource = productDocsById.get(productIdOf(product))
+            || productDocsByKey.get(String(product.key || ""))
+            || product;
+          const enriched = enrichPublicProduct(product, pricingSource);
           productsById.set(String(enriched.id || ""), enriched);
           productsByKey.set(String(enriched.key || ""), enriched);
           return enriched;
