@@ -54,6 +54,22 @@ async function main() {
     });
 
     const { headers } = await dashboardAuth("admin", "weight-pricing-authority");
+
+    const incompatible = await request(app)
+      .patch(`/api/dashboard/menu/products/${product._id}/weight-pricing`)
+      .set(headers)
+      .send({
+        priceHalala: 1900,
+        baseUnitGrams: 120,
+        defaultWeightGrams: 120,
+        minWeightGrams: 120,
+        maxWeightGrams: 320,
+        weightStepGrams: 50,
+        weightStepPriceHalala: 500,
+      });
+    assert.strictEqual(incompatible.status, 400, JSON.stringify(incompatible.body));
+    assert.strictEqual(incompatible.body.error.code, "INVALID_WEIGHT_PRICING_CONFIGURATION");
+
     const update = await request(app)
       .patch(`/api/dashboard/menu/products/${product._id}/weight-pricing`)
       .set(headers)
@@ -123,6 +139,7 @@ async function main() {
     assert.strictEqual(quote.pricing.totalHalala, 3400);
 
     console.log("✅ dashboard weight pricing endpoint");
+    console.log("✅ incompatible base/step validation");
     console.log("✅ legacy and publicMenuV2 serialization");
     console.log("✅ authoritative quote and stored pricing snapshot");
   } finally {
