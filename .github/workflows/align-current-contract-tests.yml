@@ -1,0 +1,44 @@
+name: Align current backend contracts
+
+on:
+  push:
+    branches:
+      - agent/fix-backend-contract-tests
+
+permissions:
+  contents: write
+
+jobs:
+  align-and-verify:
+    if: github.event.head_commit.message != 'fix: align backend tests with canonical contracts'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/fix-backend-contract-tests
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+      - run: node scripts/align-current-contract-tests.js
+      - run: npm run test:integration
+      - run: npm run validate:backend
+      - run: npm run test:meal-builder-dashboard-mobile-parity
+      - run: npm run test:mobile-contracts
+
+      - name: Commit aligned tests
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/mealPlanner.integration.test.js tests/oneTimeMenuCatalog.test.js tests/mealBuilderDashboardMobileParity.test.js
+          if git diff --cached --quiet; then
+            echo "No test changes to commit"
+            exit 0
+          fi
+          git commit -m "fix: align backend tests with canonical contracts"
+          git push origin HEAD:agent/fix-backend-contract-tests
