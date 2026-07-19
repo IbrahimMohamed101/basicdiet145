@@ -1,0 +1,237 @@
+name: Apply Canceled Subscription Visibility Fix
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/apply-hide-canceled-subscriptions-once.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply-fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Use Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Add client-visible subscription list service
+        shell: bash
+        run: |
+          cat > src/services/subscription/subscriptionListService.js <<'EOF'
+          "use strict";
+
+          const Subscription = require("../../models/Subscription");
+
+          async function listVisibleSubscriptionsForUser(userId, { SubscriptionModel = Subscription } = {}) {
+            return SubscriptionModel.find({
+              userId,
+              status: { $ne: "canceled" },
+            })
+              .sort({ createdAt: -1 })
+              .lean();
+          }
+
+          module.exports = {
+            listVisibleSubscriptionsForUser,
+          };
+          EOF
+
+      - name: Patch subscription controller
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("src/controllers/subscriptionController.js")
+          text = path.read_text()
+
+          import_anchor = 'const { buildCurrentSubscriptionOverview } = require("../services/subscription/subscriptionClientOverviewService");\n'
+          import_line = 'const { listVisibleSubscriptionsForUser } = require("../services/subscription/subscriptionListService");\n'
+          if import_line not in text:
+              if import_anchor not in text:
+                  raise SystemExit("subscription list import anchor not found")
+              text = text.replace(import_anchor, import_anchor + import_line, 1)
+
+          old = '''async function listCurrentUserSubscriptions(req, res) {
+            const subscriptions = await Subscription.find({ userId: req.userId }).sort({ createdAt: -1 }).lean();
+            const lang = getRequestLang(req);
+            const data = await Promise.all(subscriptions.map((subscription) => serializeSubscriptionForClient(subscription, lang)));
+            return res.status(200).json({ status: true, data });
+          }'''
+          new = '''async function listCurrentUserSubscriptions(req, res) {
+            const subscriptions = await listVisibleSubscriptionsForUser(req.userId);
+            const lang = getRequestLang(req);
+            const data = await Promise.all(subscriptions.map((subscription) => serializeSubscriptionForClient(subscription, lang)));
+            return res.status(200).json({ status: true, data });
+          }'''
+          if old not in text:
+              raise SystemExit("listCurrentUserSubscriptions implementation not found")
+          text = text.replace(old, new, 1)
+          path.write_text(text)
+
+      - name: Add regression test
+        shell: bash
+        run: |
+          cat > tests/subscriptionCanceledListVisibility.test.js <<'EOF'
+          "use strict";
+
+          process.env.NODE_ENV = "test";
+
+          const assert = require("node:assert/strict");
+          const mongoose = require("mongoose");
+          const { MongoMemoryServer } = require("mongodb-memory-server");
+
+          const Subscription = require("../src/models/Subscription");
+          const {
+            listVisibleSubscriptionsForUser,
+          } = require("../src/services/subscription/subscriptionListService");
+
+          function subscriptionPayload({ userId, planId, status, createdAt }) {
+            return {
+              userId,
+              planId,
+              status,
+              startDate: new Date("2026-07-19T00:00:00.000Z"),
+              endDate: new Date("2026-07-25T00:00:00.000Z"),
+              validityEndDate: new Date("2026-07-25T00:00:00.000Z"),
+              totalMeals: 7,
+              remainingMeals: status === "canceled" ? 0 : 7,
+              selectedMealsPerDay: 1,
+              deliveryMode: "pickup",
+              pickupLocationId: "branch_1",
+              createdAt,
+              updatedAt: createdAt,
+            };
+          }
+
+          async function main() {
+            const mongo = await MongoMemoryServer.create();
+            try {
+              await mongoose.connect(mongo.getUri(), { serverSelectionTimeoutMS: 10000 });
+
+              const userId = new mongoose.Types.ObjectId();
+              const planId = new mongoose.Types.ObjectId();
+              const otherUserId = new mongoose.Types.ObjectId();
+
+              const canceled = await Subscription.create(subscriptionPayload({
+                userId,
+                planId,
+                status: "canceled",
+                createdAt: new Date("2026-07-01T00:00:00.000Z"),
+              }));
+              const active = await Subscription.create(subscriptionPayload({
+                userId,
+                planId,
+                status: "active",
+                createdAt: new Date("2026-07-19T00:00:00.000Z"),
+              }));
+              const expired = await Subscription.create(subscriptionPayload({
+                userId,
+                planId,
+                status: "expired",
+                createdAt: new Date("2026-06-01T00:00:00.000Z"),
+              }));
+              await Subscription.create(subscriptionPayload({
+                userId: otherUserId,
+                planId,
+                status: "active",
+                createdAt: new Date("2026-07-20T00:00:00.000Z"),
+              }));
+
+              const visible = await listVisibleSubscriptionsForUser(userId);
+              const ids = visible.map((row) => String(row._id));
+
+              assert.deepEqual(ids, [String(active._id), String(expired._id)]);
+              assert.equal(ids.includes(String(canceled._id)), false);
+              assert.equal(visible.every((row) => row.status !== "canceled"), true);
+
+              console.log("subscriptionCanceledListVisibility.test.js passed");
+            } finally {
+              if (mongoose.connection.readyState !== 0) await mongoose.disconnect();
+              await mongo.stop();
+            }
+          }
+
+          main().catch((err) => {
+            console.error(err && err.stack ? err.stack : err);
+            process.exitCode = 1;
+          });
+          EOF
+
+      - name: Add permanent focused test workflow
+        shell: bash
+        run: |
+          cat > .github/workflows/subscription-list-visibility.yml <<'EOF'
+          name: Subscription List Visibility Test
+
+          on:
+            push:
+              branches: [main]
+              paths:
+                - "src/controllers/subscriptionController.js"
+                - "src/services/subscription/subscriptionListService.js"
+                - "tests/subscriptionCanceledListVisibility.test.js"
+                - ".github/workflows/subscription-list-visibility.yml"
+            pull_request:
+              paths:
+                - "src/controllers/subscriptionController.js"
+                - "src/services/subscription/subscriptionListService.js"
+                - "tests/subscriptionCanceledListVisibility.test.js"
+                - ".github/workflows/subscription-list-visibility.yml"
+            workflow_dispatch:
+
+          permissions:
+            contents: read
+
+          jobs:
+            subscription-list-visibility:
+              runs-on: ubuntu-latest
+              timeout-minutes: 15
+              steps:
+                - name: Checkout
+                  uses: actions/checkout@v4
+                - name: Use Node 20
+                  uses: actions/setup-node@v4
+                  with:
+                    node-version: 20
+                    cache: npm
+                - name: Install dependencies
+                  run: npm ci
+                - name: Run canceled subscription visibility regression
+                  env:
+                    NODE_ENV: test
+                  run: node tests/subscriptionCanceledListVisibility.test.js
+          EOF
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run regression test
+        env:
+          NODE_ENV: test
+        run: node tests/subscriptionCanceledListVisibility.test.js
+
+      - name: Remove one-time workflow and commit fix
+        shell: bash
+        run: |
+          rm .github/workflows/apply-hide-canceled-subscriptions-once.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/controllers/subscriptionController.js \
+            src/services/subscription/subscriptionListService.js \
+            tests/subscriptionCanceledListVisibility.test.js \
+            .github/workflows/subscription-list-visibility.yml \
+            .github/workflows/apply-hide-canceled-subscriptions-once.yml
+          git commit -m "fix(subscription): hide canceled subscriptions from client list"
+          git push origin HEAD:main
