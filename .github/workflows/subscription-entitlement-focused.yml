@@ -1,5 +1,6 @@
 name: Subscription Entitlement Focused Test
 
+# Verification-only branch change; workflow logic is identical to main.
 on:
   push:
     branches: [main]
