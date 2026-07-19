@@ -9,6 +9,7 @@ const routes = require("./routes");
 const paymentRoutes = require("./routes/payments");
 const { getAccountDeletionPage } = require("./controllers/accountDeletionController");
 const requestLanguageMiddleware = require("./middleware/requestLanguage");
+const { hideCanceledSubscriptionsFromClientList } = require("./middleware/clientSubscriptionVisibility");
 const errorResponse = require("./utils/errorResponse");
 const { logger } = require("./utils/logger");
 const { validateAndFixResponse } = require("./utils/encoding");
@@ -161,9 +162,13 @@ function createApp() {
   app.use((req, res, next) => {
     const originalJson = res.json.bind(res);
     res.json = (payload) => {
-      const normalized = normalizeTopLevelStatusField(payload, res.statusCode, req.originalUrl || req.path);
-      const bilingual = normalizeSubscriptionBilingualResponse(normalized, req);
       const requestUrl = req.originalUrl || req.path || "";
+      const normalized = normalizeTopLevelStatusField(payload, res.statusCode, requestUrl);
+      const visible = hideCanceledSubscriptionsFromClientList(normalized, {
+        method: req.method,
+        requestUrl,
+      });
+      const bilingual = normalizeSubscriptionBilingualResponse(visible, req);
       const shouldPreserveExactCopy = /^\/api\/subscriptions\/[^/]+\/pickup-availability(?:\?|$)/.test(requestUrl);
       const sanitized = shouldPreserveExactCopy ? bilingual : validateAndFixResponse(bilingual);
       try {
