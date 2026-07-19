@@ -387,11 +387,17 @@ function buildMealSlotPayload(slot = {}, subscription = {}, lang = "en", catalog
     || (resolvedProductDoc && resolvedProductDoc.name)
     || (sandwichDoc && sandwichDoc.name);
   const sandwichNameSource = (sandwichDoc && sandwichDoc.name) || product.name || product.title || productNameSource;
+  const selectedProteinId = premiumSalad && selectedProteinOption
+    ? selectedProteinOption.optionId
+    : null;
+  const selectedProteinKey = premiumSalad && selectedProteinOption
+    ? selectedProteinOption.optionKey
+    : null;
   const proteinDoc = resolveCatalogDoc(
     catalogMaps,
     "protein",
-    slot.proteinId || fulfillment.proteinId || materializedProduct.proteinId,
-    fulfillment.proteinKey || confirmation.proteinKey || slot.proteinFamilyKey || materializedProduct.proteinFamilyKey
+    selectedProteinId || slot.proteinId || fulfillment.proteinId || materializedProduct.proteinId,
+    selectedProteinKey || fulfillment.proteinKey || confirmation.proteinKey || slot.proteinFamilyKey || materializedProduct.proteinFamilyKey
   );
 
   const selectionType = slot.selectionType || null;
@@ -425,29 +431,27 @@ function buildMealSlotPayload(slot = {}, subscription = {}, lang = "en", catalog
       || (resolvedProductDoc && resolvedProductDoc.imageUrl)
       || (sandwichDoc && sandwichDoc.imageUrl)
       || null,
-    proteinId: stringifyId(slot.proteinId || fulfillment.proteinId || materializedProduct.proteinId),
-    proteinKey: slot.proteinKey
+    proteinId: stringifyId(selectedProteinId || slot.proteinId || fulfillment.proteinId || materializedProduct.proteinId),
+    proteinKey: selectedProteinKey
+      || slot.proteinKey
       || fulfillment.proteinKey
       || confirmation.proteinKey
       || (proteinDoc && (proteinDoc.key || proteinDoc.proteinFamilyKey))
-      || (selectedProteinOption && selectedProteinOption.optionKey)
       || slot.proteinFamilyKey
       || null,
-    proteinName: snapshotName(confirmation, ["protein", "name"], lang)
+    proteinName: (premiumSalad && selectedProteinOption
+      ? localizedName(selectedProteinOption.nameI18n || selectedProteinOption.name, lang)
+      : "")
+      || snapshotName(confirmation, ["protein", "name"], lang)
       || snapshotName(display, ["protein", "name"], lang)
-      || localizedName(
-        fulfillment.proteinName
-          || (selectedProteinOption && (selectedProteinOption.nameI18n || selectedProteinOption.name))
-          || (proteinDoc && proteinDoc.name),
-        lang
-      ),
+      || localizedName(fulfillment.proteinName || (proteinDoc && proteinDoc.name), lang),
     proteinNameI18n: localizedNameObject(
-      (confirmation.protein && confirmation.protein.name)
+      (premiumSalad && selectedProteinOption && (selectedProteinOption.nameI18n || selectedProteinOption.name))
+        || (confirmation.protein && confirmation.protein.name)
         || (display.protein && display.protein.name)
         || fulfillment.proteinName
-        || (selectedProteinOption && (selectedProteinOption.nameI18n || selectedProteinOption.name))
         || (proteinDoc && proteinDoc.name),
-      fulfillment.proteinKey || confirmation.proteinKey || slot.proteinFamilyKey || ""
+      selectedProteinKey || fulfillment.proteinKey || confirmation.proteinKey || slot.proteinFamilyKey || ""
     ),
     proteinGrams: Number(subscription && subscription.selectedGrams || 0) || null,
     proteinFamilyKey: slot.proteinFamilyKey || null,
