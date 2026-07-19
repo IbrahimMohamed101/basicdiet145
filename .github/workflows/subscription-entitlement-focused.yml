@@ -13,6 +13,7 @@ on:
       - "tests/subscriptionMealEntitlementLifecycle.test.js"
       - "tests/subscriptionEntitlementReservationRecovery.test.js"
       - "tests/subscriptionPaymentInitiationReservationCleanup.test.js"
+      - "tests/subscriptionPremiumPickupSingleDebit.test.js"
       - ".github/workflows/subscription-entitlement-focused.yml"
   pull_request:
     paths:
@@ -25,6 +26,7 @@ on:
       - "tests/subscriptionMealEntitlementLifecycle.test.js"
       - "tests/subscriptionEntitlementReservationRecovery.test.js"
       - "tests/subscriptionPaymentInitiationReservationCleanup.test.js"
+      - "tests/subscriptionPremiumPickupSingleDebit.test.js"
       - ".github/workflows/subscription-entitlement-focused.yml"
   workflow_dispatch:
 
@@ -52,3 +54,4 @@ jobs:
           node tests/subscriptionMealEntitlementLifecycle.test.js
           node tests/subscriptionEntitlementReservationRecovery.test.js
           node tests/subscriptionPaymentInitiationReservationCleanup.test.js
+          node tests/subscriptionPremiumPickupSingleDebit.test.js
