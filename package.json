@@ -2,7 +2,9 @@
   "name": "basicdiet145-backend",
   "version": "0.1.0",
   "private": true,
-  "engines": { "node": "^20.0.0" },
+  "engines": {
+    "node": "^20.0.0"
+  },
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
@@ -38,11 +40,12 @@
     "test:all": "bash scripts/run-all-tests.sh",
     "test:payment-init-logging": "NODE_ENV=test node tests/paymentInitLogging.test.js",
     "test:integration": "NODE_ENV=test node tests/mealPlanner.integration.test.js && NODE_ENV=test node tests/dynamicMealPlannerV4Contract.test.js && NODE_ENV=test node tests/mealPlannerCardLifecycle.test.js",
-    "test:meal-planner-contract": "NODE_ENV=test node tests/mealPlannerDashboardCompatibility.test.js && NODE_ENV=test node tests/mealPlannerCardLifecycle.test.js && NODE_ENV=test node tests/dashboardMealPlannerProductionProducts.test.js && NODE_ENV=test node tests/dashboardMealBuilderCompleteCatalog.test.js && NODE_ENV=test node tests/mealPlannerFullMealProductContract.test.js && NODE_ENV=test node tests/dashboardMealBuilderCompatibleDefaultSeed.test.js && NODE_ENV=test node tests/dashboardMealBuilderSandwichCardEndToEnd.test.js && NODE_ENV=test node tests/dashboardMealBuilderOptionCatalogClosure.test.js && NODE_ENV=test node tests/dashboardMealBuilderFullMealEndToEnd.test.js",
+    "test:meal-planner-flutter-cards": "NODE_ENV=test node tests/dashboardMealPlannerFlutterCardPolicy.test.js",
+    "test:meal-planner-contract": "NODE_ENV=test node tests/mealPlannerDashboardCompatibility.test.js && NODE_ENV=test node tests/mealPlannerCardLifecycle.test.js && NODE_ENV=test node tests/dashboardMealPlannerProductionProducts.test.js && NODE_ENV=test node tests/dashboardMealBuilderCompleteCatalog.test.js && NODE_ENV=test node tests/mealPlannerFullMealProductContract.test.js && NODE_ENV=test node tests/dashboardMealBuilderCompatibleDefaultSeed.test.js && NODE_ENV=test node tests/dashboardMealBuilderSandwichCardEndToEnd.test.js && NODE_ENV=test node tests/dashboardMealBuilderOptionCatalogClosure.test.js && NODE_ENV=test node tests/dashboardMealBuilderFullMealEndToEnd.test.js && npm run test:meal-planner-flutter-cards",
     "test:meal-planner-production-products": "NODE_ENV=test node tests/dashboardMealPlannerProductionProducts.test.js",
     "test:meal-builder-complete-catalog": "NODE_ENV=test node tests/dashboardMealBuilderCompleteCatalog.test.js",
     "test:meal-builder-sandwich-card": "NODE_ENV=test node tests/dashboardMealBuilderSandwichCardEndToEnd.test.js",
-    "test:meal-builder-backend-closure": "NODE_ENV=test node tests/dashboardMealBuilderCompleteCatalog.test.js && NODE_ENV=test node tests/mealPlannerFullMealProductContract.test.js && NODE_ENV=test node tests/dashboardMealBuilderCompatibleDefaultSeed.test.js && NODE_ENV=test node tests/dashboardMealBuilderSandwichCardEndToEnd.test.js && NODE_ENV=test node tests/dashboardMealBuilderOptionCatalogClosure.test.js && NODE_ENV=test node tests/dashboardMealBuilderFullMealEndToEnd.test.js && NODE_ENV=test node tests/mealBuilderDashboardMobileParity.test.js",
+    "test:meal-builder-backend-closure": "NODE_ENV=test node tests/dashboardMealBuilderCompleteCatalog.test.js && NODE_ENV=test node tests/mealPlannerFullMealProductContract.test.js && NODE_ENV=test node tests/dashboardMealBuilderCompatibleDefaultSeed.test.js && NODE_ENV=test node tests/dashboardMealBuilderSandwichCardEndToEnd.test.js && NODE_ENV=test node tests/dashboardMealBuilderOptionCatalogClosure.test.js && NODE_ENV=test node tests/dashboardMealBuilderFullMealEndToEnd.test.js && NODE_ENV=test node tests/mealBuilderDashboardMobileParity.test.js && npm run test:meal-planner-flutter-cards",
     "test:meal-planner-card-actions": "NODE_ENV=test node tests/mealPlannerCardLifecycle.test.js",
     "test:meal-planner-v4": "NODE_ENV=test node tests/dynamicMealPlannerV4Contract.test.js",
     "test:dashboard-manual-deduction": "NODE_ENV=test node tests/dashboardManualDeductionAndOrderPickup.test.js",
