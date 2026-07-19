@@ -20,7 +20,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: fix/payment-init-reservation-cleanup
-          fetch-depth: 0
+          fetch-depth: 1
       - name: Apply scoped source patch
         run: python3 scripts/apply-payment-init-reservation-cleanup.py
       - name: Use Node 20
