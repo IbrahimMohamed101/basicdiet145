@@ -1,8 +1,8 @@
 process.env.NODE_ENV = "test";
 process.env.JWT_SECRET =
-  process.env.JWT_SECRET || "test-only-jwt-key-sandwich-card-111111";
+  process.env.JWT_SECRET || "test-only-jwt-key-explicit-card-111111";
 process.env.DASHBOARD_JWT_SECRET =
-  process.env.DASHBOARD_JWT_SECRET || "test-only-dashboard-key-sandwich-card";
+  process.env.DASHBOARD_JWT_SECRET || "test-only-dashboard-key-explicit-card";
 
 const assert = require("assert");
 const mongoose = require("mongoose");
@@ -18,7 +18,7 @@ let mongoServer;
 
 async function connect() {
   mongoServer = await MongoMemoryServer.create();
-  const uri = mongoServer.getUri(`meal_builder_sandwich_card_${Date.now()}`);
+  const uri = mongoServer.getUri(`meal_builder_explicit_card_${Date.now()}`);
   process.env.MONGO_URI = uri;
   process.env.MONGODB_URI = uri;
   await mongoose.connect(uri, { serverSelectionTimeoutMS: 10000 });
@@ -55,15 +55,15 @@ async function run() {
   try {
     const now = new Date();
     const category = await MenuCategory.create({
-      key: "sandwich_card_e2e",
-      name: { ar: "ساندويتشات", en: "Sandwiches" },
+      key: "explicit_full_meal_card",
+      name: { ar: "ساندويتشات ووجبات", en: "Sandwiches and Meals" },
       publishedAt: now,
     });
 
-    const [sandwichOne, sandwichTwo, fullMeal] = await MenuProduct.insertMany([
+    const [sandwichOne, sandwichTwo, normalMeal] = await MenuProduct.insertMany([
       {
         categoryId: category._id,
-        key: "sandwich_card_chicken",
+        key: "manual_chicken_sandwich",
         name: { ar: "ساندويتش دجاج", en: "Chicken Sandwich" },
         itemType: "product",
         pricingModel: "fixed",
@@ -75,7 +75,7 @@ async function run() {
       },
       {
         categoryId: category._id,
-        key: "sandwich_card_beef",
+        key: "manual_beef_sandwich",
         name: { ar: "ساندويتش لحم", en: "Beef Sandwich" },
         itemType: "product",
         pricingModel: "fixed",
@@ -87,25 +87,25 @@ async function run() {
       },
       {
         categoryId: category._id,
-        key: "separate_ready_full_meal",
-        name: { ar: "وجبة جاهزة", en: "Ready Full Meal" },
-        itemType: "full_meal_product",
+        key: "manual_normal_product",
+        name: { ar: "منتج عادي", en: "Normal Product" },
+        itemType: "product",
         pricingModel: "fixed",
         priceHalala: 2200,
         availableFor: ["subscription"],
-        ui: { cardVariant: "ready_meal" },
+        ui: { cardVariant: "standard" },
         publishedAt: now,
         sortOrder: 30,
       },
     ]);
 
     const app = createApp();
-    const auth = await dashboardAuth("admin", "sandwich-card-e2e");
+    const auth = await dashboardAuth("admin", "explicit-full-meal-card");
 
     let response = await request(app)
       .post("/api/dashboard/meal-builder/draft")
       .set(auth.headers)
-      .send({ sections: [], notes: "sandwich card isolated draft" });
+      .send({ sections: [], notes: "explicit card isolated draft" });
     expectStatus(response, 201, "create empty draft");
 
     response = await request(app)
@@ -113,21 +113,33 @@ async function run() {
         "/api/dashboard/meal-builder/pickers/products?limit=500&includeUnavailable=true&unassignedOnly=false"
       )
       .set(auth.headers);
-    expectStatus(response, 200, "direct product picker");
-    const candidatesByKey = new Map(
-      response.body.data.candidates.map((candidate) => [candidate.key, candidate])
+    expectStatus(response, 200, "manual product picker");
+    const candidateKeys = new Set(
+      response.body.data.candidates.map((candidate) => candidate.key)
     );
+    assert(candidateKeys.has("manual_chicken_sandwich"));
+    assert(candidateKeys.has("manual_beef_sandwich"));
+    assert(candidateKeys.has("manual_normal_product"));
     assert.strictEqual(
-      candidatesByKey.get("sandwich_card_chicken").selectionType,
-      "sandwich"
+      response.body.data.rules.selectionTypeRequired,
+      true,
+      "picker tells Dashboard that card behavior must be chosen explicitly"
     );
+
+    response = await request(app)
+      .post("/api/dashboard/meal-builder/sections")
+      .set(auth.headers)
+      .send({
+        key: "missing_type",
+        titleOverride: { ar: "بدون نوع", en: "Missing type" },
+        selectedProductIds: [String(sandwichOne._id)],
+        sortOrder: 5,
+        visible: true,
+      });
+    expectStatus(response, 422, "reject card without explicit selectionType");
     assert.strictEqual(
-      candidatesByKey.get("sandwich_card_chicken").classification.kind,
-      "sandwich"
-    );
-    assert.strictEqual(
-      candidatesByKey.get("separate_ready_full_meal").selectionType,
-      "full_meal_product"
+      response.body.error.code,
+      "MEAL_BUILDER_CARD_SELECTION_TYPE_REQUIRED"
     );
 
     response = await request(app)
@@ -136,77 +148,68 @@ async function run() {
       .send({
         key: "sandwiches",
         titleOverride: { ar: "ساندويتشات", en: "Sandwiches" },
-        selectedProductIds: [String(sandwichOne._id)],
+        selectedProductIds: [
+          String(sandwichOne._id),
+          String(sandwichTwo._id),
+        ],
+        selectionType: "full_meal_product",
         sortOrder: 10,
         visible: true,
       });
-    expectStatus(response, 201, "create sandwich card without selectionType");
-    assert.strictEqual(response.body.data.section.selectionType, "sandwich");
+    expectStatus(response, 201, "create explicitly selected full-meal card");
     assert.strictEqual(
-      response.body.data.section.metadata.requiresBuilder,
-      false
+      response.body.data.section.selectionType,
+      "full_meal_product"
+    );
+    assert.strictEqual(
+      response.body.data.section.metadata.configuredExplicitly,
+      true
     );
     assert.strictEqual(
       response.body.data.section.metadata.treatAsFullMeal,
       true
     );
+    assert.strictEqual(
+      response.body.data.section.metadata.requiresBuilder,
+      false
+    );
     assert.strictEqual(response.body.data.section.rules.carbsRequired, false);
-    assert.strictEqual(
-      (await MenuProduct.findById(sandwichOne._id).lean()).itemType,
-      "cold_sandwich",
-      "modern sandwich_card product is normalized to canonical cold_sandwich"
-    );
 
-    response = await request(app)
-      .post("/api/dashboard/meal-builder/sections/sandwiches/products")
-      .set(auth.headers)
-      .send({ productIds: [String(sandwichTwo._id)] });
-    expectStatus(response, 200, "add second sandwich");
-    assert.deepStrictEqual(
-      response.body.data.section.selectedProductIds.map(String),
-      [String(sandwichOne._id), String(sandwichTwo._id)]
-    );
-    assert.strictEqual(
-      (await MenuProduct.findById(sandwichTwo._id).lean()).itemType,
-      "cold_sandwich",
-      "added sandwich_card product is normalized before legacy validation"
-    );
-
-    response = await request(app)
-      .post("/api/dashboard/meal-builder/sections/sandwiches/products")
-      .set(auth.headers)
-      .send({ productIds: [String(fullMeal._id)] });
-    expectStatus(response, 422, "reject mixed sandwich and full-meal card");
-    assert.strictEqual(
-      response.body.error.code,
-      "MEAL_BUILDER_DIRECT_CARD_MIXED_TYPES"
+    const productsAfterCreate = await MenuProduct.find({
+      _id: { $in: [sandwichOne._id, sandwichTwo._id] },
+    }).lean();
+    assert(
+      productsAfterCreate.every((product) => product.itemType === "product"),
+      "explicit card behavior must not mutate product itemType"
     );
 
     response = await request(app)
       .post("/api/dashboard/meal-builder/sections")
       .set(auth.headers)
       .send({
-        key: "ready_meals",
-        titleOverride: { ar: "وجبات جاهزة", en: "Ready Meals" },
-        selectedProductIds: [String(fullMeal._id)],
+        key: "chef_choice",
+        titleOverride: { ar: "اختيار الشيف", en: "Chef Choice" },
+        selectedProductIds: [String(normalMeal._id)],
+        selectionType: "full_meal_product",
         sortOrder: 20,
         visible: true,
       });
-    expectStatus(response, 201, "create full-meal card without selectionType");
+    expectStatus(response, 201, "mark an arbitrary product as a full meal explicitly");
     assert.strictEqual(
       response.body.data.section.selectionType,
       "full_meal_product"
     );
     assert.strictEqual(
-      response.body.data.section.metadata.treatAsFullMeal,
-      true
+      (await MenuProduct.findById(normalMeal._id).lean()).itemType,
+      "product",
+      "normal product remains unchanged"
     );
 
     response = await request(app)
       .post("/api/dashboard/meal-builder/publish")
       .set(auth.headers)
-      .send({ notes: "publish sandwich card e2e" });
-    expectStatus(response, 200, "publish Meal Builder");
+      .send({ notes: "publish explicit full meal cards" });
+    expectStatus(response, 200, "publish explicit Meal Builder cards");
 
     response = await request(app).get(
       "/api/subscriptions/meal-planner-menu?contractVersion=v3&lang=en"
@@ -215,26 +218,23 @@ async function run() {
 
     const contract = response.body.data.builderCatalog;
     const sandwichSection = findSection(contract, "sandwiches");
-    const readySection = findSection(contract, "ready_meals");
-    assert(sandwichSection, "sandwich section reaches public contract");
-    assert(readySection, "ready-meal section reaches public contract");
+    const chefSection = findSection(contract, "chef_choice");
+    assert(sandwichSection, "sandwich card reaches public contract");
+    assert(chefSection, "arbitrary full-meal card reaches public contract");
 
-    const publicSandwich = findProduct(sandwichSection, sandwichOne._id);
-    const publicFullMeal = findProduct(readySection, fullMeal._id);
-    assert(publicSandwich, "sandwich reaches public contract");
-    assert(publicFullMeal, "full meal reaches public contract");
+    for (const [section, productId] of [
+      [sandwichSection, sandwichOne._id],
+      [chefSection, normalMeal._id],
+    ]) {
+      const product = findProduct(section, productId);
+      assert(product, "selected product reaches public contract");
+      assert.strictEqual(product.selectionType, "full_meal_product");
+      assert.strictEqual(product.action.type, "direct_add");
+      assert.strictEqual(product.action.requiresBuilder, false);
+      assert.strictEqual(product.action.treatAsFullMeal, true);
+    }
 
-    assert.strictEqual(publicSandwich.selectionType, "sandwich");
-    assert.strictEqual(publicSandwich.action.type, "direct_add");
-    assert.strictEqual(publicSandwich.action.requiresBuilder, false);
-    assert.strictEqual(publicSandwich.action.treatAsFullMeal, true);
-
-    assert.strictEqual(publicFullMeal.selectionType, "full_meal_product");
-    assert.strictEqual(publicFullMeal.action.type, "direct_add");
-    assert.strictEqual(publicFullMeal.action.requiresBuilder, false);
-    assert.strictEqual(publicFullMeal.action.treatAsFullMeal, true);
-
-    console.log("dashboard Meal Builder sandwich card end-to-end passed");
+    console.log("dashboard Meal Builder explicit full-meal card end-to-end passed");
   } finally {
     await disconnect();
   }
