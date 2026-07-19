@@ -2,6 +2,7 @@ const { Router } = require("express");
 
 require("../services/orders/installWeightPricingAuthority");
 require("../services/installDashboardCatalogCompatibility");
+require("../services/installDashboardMealBuilderFinalization");
 
 const authRoutes = require("./auth");
 const dashboardAuthRoutes = require("./dashboardAuth");
