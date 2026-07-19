@@ -235,3 +235,5 @@ jobs:
             .github/workflows/apply-hide-canceled-subscriptions-once.yml
           git commit -m "fix(subscription): hide canceled subscriptions from client list"
           git push origin HEAD:main
+
+# Triggered after workflow registration.
