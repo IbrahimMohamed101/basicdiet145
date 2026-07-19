@@ -524,6 +524,9 @@ function topologyValidation(sections = []) {
       continue;
     }
     if (cardType === CARD_TYPES.OPTION_FAMILY) {
+      // Existing visual sections remain under the legacy validator during the dashboard migration.
+      // The strict Flutter topology is authoritative for cards written through the v2 card contract.
+      if (section.metadata?.cardType !== CARD_TYPES.OPTION_FAMILY) continue;
       const role = optionRole(section);
       const productId = String(section.productContextId || "");
       const groupId = String(section.sourceGroupId || "");
