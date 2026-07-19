@@ -75,6 +75,11 @@ const getMealBuilder = wrap(async (req, res) => {
   ]);
   return send(res, {
     ...state,
+    cardContract:
+      state.cardContract ||
+      (typeof mealBuilderService.getCardContract === "function"
+        ? mealBuilderService.getCardContract()
+        : null),
     catalog,
   });
 });
@@ -190,6 +195,10 @@ const getPicker = wrap(async (req, res) =>
     await mealBuilderService.getSectionPicker({
       sectionKey: req.params.sectionKey,
       targetSectionKey: req.query.targetSectionKey,
+      productContextId: req.query.productContextId,
+      sourceGroupId: req.query.sourceGroupId,
+      optionRole: req.query.optionRole,
+      familyKey: req.query.familyKey,
       lang: getRequestLang(req),
       q: req.query.q || req.query.search,
       include: req.query.include,
@@ -239,6 +248,18 @@ const deleteSection = wrap(async (req, res) =>
   )
 );
 
+const replaceItems = wrap(async (req, res) =>
+  send(
+    res,
+    await mealBuilderService.replaceSectionItems({
+      sectionKey: req.params.sectionKey,
+      productIds: req.body?.productIds || req.body?.selectedProductIds,
+      optionIds: req.body?.optionIds || req.body?.selectedOptionIds,
+      actor: actorFromRequest(req),
+    })
+  )
+);
+
 const addProducts = wrap(async (req, res) =>
   send(
     res,
@@ -263,7 +284,32 @@ const removeProduct = wrap(async (req, res) =>
   )
 );
 
+const addOptions = wrap(async (req, res) =>
+  send(
+    res,
+    await mealBuilderService.addOptionsToSection({
+      sectionKey: req.params.sectionKey,
+      optionIds:
+        req.body?.optionIds ||
+        (req.body?.optionId ? [req.body.optionId] : []),
+      actor: actorFromRequest(req),
+    })
+  )
+);
+
+const removeOption = wrap(async (req, res) =>
+  send(
+    res,
+    await mealBuilderService.removeOptionFromSection({
+      sectionKey: req.params.sectionKey,
+      optionId: req.params.optionId,
+      actor: actorFromRequest(req),
+    })
+  )
+);
+
 module.exports = {
+  addOptions,
   addProducts,
   createDraft,
   createSection,
@@ -276,7 +322,9 @@ module.exports = {
   getReadiness,
   openDraft,
   publishDraft,
+  removeOption,
   removeProduct,
+  replaceItems,
   resetDraft,
   updateDraft,
   updateSection,
