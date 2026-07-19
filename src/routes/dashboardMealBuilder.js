@@ -15,6 +15,7 @@ router.use(
 );
 
 router.get("/", asyncHandler(controller.getMealBuilder));
+router.get("/catalog", asyncHandler(controller.getCatalog));
 router.get("/published", asyncHandler(controller.getPublished));
 router.get("/draft", asyncHandler(controller.openDraft));
 router.get("/draft/hydrated", asyncHandler(controller.getHydratedDraft));
