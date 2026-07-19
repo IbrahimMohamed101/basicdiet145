@@ -1,20 +1,19 @@
-name: Apply Kitchen Premium Salad Snapshot Fix
+name: Verify Kitchen Premium Salad Snapshot Fix
 
 on:
   pull_request:
     branches: [main]
     paths:
-      - "scripts/apply-kitchen-premium-salad-snapshot-fix.py"
-      - "scripts/apply-kitchen-premium-salad-protein-priority.py"
-      - "scripts/apply-kitchen-premium-salad-regression-hardening.py"
+      - "src/services/dashboard/kitchenProjectionService.js"
+      - "src/services/dashboard/opsPayloadService.js"
       - "tests/kitchenPremiumSaladProjectionFallback.test.js"
       - "scripts/run-premium-meal-backend-lifecycle.sh"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  apply-and-test:
+  focused-test:
     if: github.head_ref == 'fix/kitchen-premium-salad-canonical-snapshot'
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -24,12 +23,6 @@ jobs:
         with:
           ref: fix/kitchen-premium-salad-canonical-snapshot
           fetch-depth: 1
-          token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Apply scoped backend patch
-        run: |
-          python3 scripts/apply-kitchen-premium-salad-snapshot-fix.py
-          python3 scripts/apply-kitchen-premium-salad-protein-priority.py
-          python3 scripts/apply-kitchen-premium-salad-regression-hardening.py
       - name: Validate JavaScript syntax
         run: |
           node --check src/services/dashboard/opsPayloadService.js
@@ -46,15 +39,3 @@ jobs:
         env:
           NODE_ENV: test
         run: node tests/kitchenPremiumSaladProjectionFallback.test.js
-      - name: Commit generated backend changes
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/services/dashboard/opsPayloadService.js src/services/dashboard/kitchenProjectionService.js tests/kitchenPremiumSaladProjectionFallback.test.js
-          git diff --cached --check
-          if git diff --cached --quiet; then
-            echo "Backend source already contains the verified patch"
-          else
-            git commit -m "fix(kitchen): project canonical premium salad snapshot"
-            git push origin HEAD:fix/kitchen-premium-salad-canonical-snapshot
-          fi
