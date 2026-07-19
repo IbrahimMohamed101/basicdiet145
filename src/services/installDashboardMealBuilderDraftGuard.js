@@ -36,8 +36,11 @@ function installDashboardMealBuilderDraftGuard() {
     "createProductSection",
     "updateProductSection",
     "deleteProductSection",
+    "replaceSectionItems",
     "addProductsToSection",
     "removeProductFromSection",
+    "addOptionsToSection",
+    "removeOptionFromSection",
   ]) {
     wrapDraftAction(methodName);
   }
