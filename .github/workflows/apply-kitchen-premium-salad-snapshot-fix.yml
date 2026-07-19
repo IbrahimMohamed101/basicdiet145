@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "scripts/apply-kitchen-premium-salad-snapshot-fix.py"
+      - "scripts/apply-kitchen-premium-salad-protein-priority.py"
       - "tests/kitchenPremiumSaladProjectionFallback.test.js"
       - "scripts/run-premium-meal-backend-lifecycle.sh"
 
@@ -24,7 +25,9 @@ jobs:
           fetch-depth: 1
           token: ${{ secrets.GITHUB_TOKEN }}
       - name: Apply scoped backend patch
-        run: python3 scripts/apply-kitchen-premium-salad-snapshot-fix.py
+        run: |
+          python3 scripts/apply-kitchen-premium-salad-snapshot-fix.py
+          python3 scripts/apply-kitchen-premium-salad-protein-priority.py
       - name: Validate JavaScript syntax
         run: |
           node --check src/services/dashboard/opsPayloadService.js
@@ -47,5 +50,9 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add src/services/dashboard/opsPayloadService.js src/services/dashboard/kitchenProjectionService.js
           git diff --cached --check
-          git commit -m "fix(kitchen): project canonical premium salad snapshot"
-          git push origin HEAD:fix/kitchen-premium-salad-canonical-snapshot
+          if git diff --cached --quiet; then
+            echo "Backend source already contains the verified patch"
+          else
+            git commit -m "fix(kitchen): project canonical premium salad snapshot"
+            git push origin HEAD:fix/kitchen-premium-salad-canonical-snapshot
+          fi
