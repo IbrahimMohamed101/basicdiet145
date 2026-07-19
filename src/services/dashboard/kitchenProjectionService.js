@@ -12,6 +12,10 @@ const SECTION_LABELS = {
 
 const SECTION_ORDER = ["leafy_greens", "vegetables_legumes", "protein", "cheese_nuts", "fruits", "sauce"];
 const VEGETABLE_GROUP_ALIASES = new Set(["vegetables", "vegetables_legumes"]);
+const PREMIUM_LARGE_SALAD_PRODUCT = Object.freeze({
+  key: "premium_large_salad",
+  nameI18n: { ar: "سلطة كبيرة مميزة", en: "Premium Large Salad" },
+});
 
 function asId(value) {
   if (!value) return null;
@@ -209,6 +213,17 @@ function buildPremiumSaladGroups(slot = {}) {
     }, ["existing", "incoming"]);
   }
 
+  // Legacy Flutter payloads can persist the selected protein in selectedOptions
+  // while the remaining Premium salad selections live only in salad.groups.
+  // Keep canonical selections authoritative inside any group they represent, but
+  // recover groups that are entirely absent instead of dropping them from Kitchen.
+  for (const [rawKey, values] of Object.entries(sourceGroups)) {
+    if (!Array.isArray(values) || values.length === 0) continue;
+    const key = canonicalPremiumSaladGroupKey(rawKey);
+    if (!key || (Array.isArray(groups[key]) && groups[key].length > 0)) continue;
+    groups[key] = mergeSaladGroupValues({ incoming: values }, ["incoming"]);
+  }
+
   return groups;
 }
 
@@ -309,6 +324,22 @@ function badgeFor(type) {
   return "وجبة";
 }
 
+function resolvePremiumLargeSaladProduct(product = {}, protein = {}) {
+  const sameAsProtein = Boolean(
+    (product.id && protein.id && String(product.id) === String(protein.id))
+      || (product.key && protein.key && String(product.key) === String(protein.key))
+  );
+  const hasCanonicalKey = product.key === PREMIUM_LARGE_SALAD_PRODUCT.key;
+  if (hasCanonicalKey && !sameAsProtein) return product;
+
+  return {
+    id: null,
+    key: PREMIUM_LARGE_SALAD_PRODUCT.key,
+    name: PREMIUM_LARGE_SALAD_PRODUCT.nameI18n.ar,
+    nameI18n: { ...PREMIUM_LARGE_SALAD_PRODUCT.nameI18n },
+  };
+}
+
 function buildKitchenCard(slot = {}, index = 0) {
   const isBasicSalad = slot.selectionType === "basic_salad" || slot.productKey === "basic_salad";
   const type = isBasicSalad ? "basic_salad" : (slot.selectionType || "meal");
@@ -321,11 +352,14 @@ function buildKitchenCard(slot = {}, index = 0) {
     ...component(carb, { idField: "carbId" }),
     grams: carb.grams === undefined || carb.grams === null ? null : Number(carb.grams || 0),
   }));
-  const product = component({
+  const rawProduct = component({
     id: slot.productId || slot.sandwichId,
     key: slot.productKey || slot.sandwichKey,
     nameI18n: slot.productNameI18n || slot.sandwichNameI18n || slot.productName || slot.sandwichName,
   });
+  const product = type === "premium_large_salad"
+    ? resolvePremiumLargeSaladProduct(rawProduct, protein)
+    : rawProduct;
   const grams = slot.proteinGrams === undefined || slot.proteinGrams === null ? null : Number(slot.proteinGrams || 0);
   const sections = type === "premium_large_salad"
     ? buildSaladSections(slot)
@@ -379,7 +413,7 @@ function buildKitchenCard(slot = {}, index = 0) {
   if (type === "sandwich" && (!product.id || !product.key || !product.name)) warnings.push("UNRESOLVED_SANDWICH");
   if (["standard_meal", "premium_meal"].includes(type) && !protein.key) warnings.push("UNRESOLVED_PROTEIN_KEY");
   if (carbs.some((carb) => !carb.key)) warnings.push("UNRESOLVED_CARB_KEY");
-  if (type === "premium_large_salad" && (!product.id || !product.key || !product.name)) warnings.push("UNRESOLVED_PREMIUM_SALAD_PRODUCT");
+  if (type === "premium_large_salad" && (!product.key || !product.name)) warnings.push("UNRESOLVED_PREMIUM_SALAD_PRODUCT");
 
   return {
     cardId: String(slot.slotKey || `slot_${slot.slotIndex || index + 1}`),
