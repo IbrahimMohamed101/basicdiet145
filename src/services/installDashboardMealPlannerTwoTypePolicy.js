@@ -19,6 +19,12 @@ function token(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+function isPlainObject(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
 function sectionCardType(section = {}) {
   const explicit = token(section.cardType || section.metadata?.cardType);
   if (explicit) return explicit;
@@ -50,45 +56,15 @@ function requestedCardType(section = {}) {
 
 function canonicalDirectSelectionType(value) {
   const selectionType = token(value);
-  if (selectionType === LEGACY_SANDWICH_SELECTION_TYPE) {
-    return FULL_MEAL_SELECTION_TYPE;
-  }
-  return selectionType || value;
-}
-
-function canonicalizeSection(section = {}) {
-  if (!section || typeof section !== "object" || Array.isArray(section)) {
-    return section;
-  }
-  const cardType = sectionCardType(section);
-  if (cardType !== DIRECT_CARD_TYPE) return { ...section };
-  const selectionType = canonicalDirectSelectionType(section.selectionType);
-  return {
-    ...section,
-    selectionType,
-    metadata: {
-      ...(section.metadata || {}),
-      cardType: DIRECT_CARD_TYPE,
-      requiresBuilder: false,
-      treatAsFullMeal: true,
-      cardKind: FULL_MEAL_SELECTION_TYPE,
-    },
-  };
-}
-
-function canonicalizeConfig(config) {
-  if (!config || typeof config !== "object" || Array.isArray(config)) return config;
-  return {
-    ...config,
-    sections: Array.isArray(config.sections)
-      ? config.sections.map(canonicalizeSection)
-      : config.sections,
-  };
+  return selectionType === LEGACY_SANDWICH_SELECTION_TYPE
+    ? FULL_MEAL_SELECTION_TYPE
+    : selectionType || value;
 }
 
 function canonicalizeSelectionTypesDeep(value) {
   if (Array.isArray(value)) return value.map(canonicalizeSelectionTypesDeep);
-  if (!value || typeof value !== "object") return value;
+  if (!isPlainObject(value)) return value;
+
   const output = {};
   for (const [key, entry] of Object.entries(value)) {
     if (
@@ -103,6 +79,34 @@ function canonicalizeSelectionTypesDeep(value) {
   return output;
 }
 
+function canonicalizeSection(section = {}) {
+  if (!isPlainObject(section)) return section;
+  const canonical = canonicalizeSelectionTypesDeep(section);
+  if (sectionCardType(canonical) !== DIRECT_CARD_TYPE) return canonical;
+  return {
+    ...canonical,
+    selectionType: canonicalDirectSelectionType(canonical.selectionType),
+    metadata: {
+      ...(canonical.metadata || {}),
+      cardType: DIRECT_CARD_TYPE,
+      requiresBuilder: false,
+      treatAsFullMeal: true,
+      cardKind: FULL_MEAL_SELECTION_TYPE,
+    },
+  };
+}
+
+function canonicalizeConfig(config) {
+  if (!isPlainObject(config)) return config;
+  const canonical = canonicalizeSelectionTypesDeep(config);
+  return {
+    ...canonical,
+    sections: Array.isArray(canonical.sections)
+      ? canonical.sections.map(canonicalizeSection)
+      : canonical.sections,
+  };
+}
+
 function canonicalCardContract(contract = {}) {
   const next = canonicalizeSelectionTypesDeep(contract || {});
   return {
@@ -112,15 +116,16 @@ function canonicalCardContract(contract = {}) {
       optionMeal: STANDARD_MEAL_SELECTION_TYPE,
       deprecatedAliases: [LEGACY_SANDWICH_SELECTION_TYPE],
     },
-    dynamicCardTypes: (next.dynamicCardTypes || []).map((entry) => {
-      if (entry.cardType !== DIRECT_CARD_TYPE) return entry;
-      return {
-        ...entry,
-        allowedSelectionTypes: [FULL_MEAL_SELECTION_TYPE],
-        deprecatedSelectionTypes: [LEGACY_SANDWICH_SELECTION_TYPE],
-        legacyInputPolicy: "normalize_to_full_meal_product",
-      };
-    }),
+    dynamicCardTypes: (next.dynamicCardTypes || []).map((entry) =>
+      entry.cardType === DIRECT_CARD_TYPE
+        ? {
+            ...entry,
+            allowedSelectionTypes: [FULL_MEAL_SELECTION_TYPE],
+            deprecatedSelectionTypes: [LEGACY_SANDWICH_SELECTION_TYPE],
+            legacyInputPolicy: "normalize_to_full_meal_product",
+          }
+        : entry
+    ),
   };
 }
 
@@ -144,9 +149,7 @@ function canonicalPicker(picker = {}) {
 }
 
 function canonicalResult(result) {
-  if (!result || typeof result !== "object" || Array.isArray(result)) {
-    return result;
-  }
+  if (!isPlainObject(result)) return result;
   const next = canonicalizeSelectionTypesDeep(result);
   if (next.section) next.section = canonicalizeSection(next.section);
   if (next.draft) next.draft = canonicalizeConfig(next.draft);
@@ -157,10 +160,11 @@ function canonicalResult(result) {
 
 function canonicalSectionsForWrite(sections = []) {
   if (!Array.isArray(sections)) return sections;
-  return sections.map((section) => {
-    if (sectionCardType(section) !== DIRECT_CARD_TYPE) return section;
-    return canonicalizeSection(section);
-  });
+  return sections.map((section) =>
+    sectionCardType(section) === DIRECT_CARD_TYPE
+      ? canonicalizeSection(section)
+      : section
+  );
 }
 
 function hasLegacyDirectSection(sections = []) {
@@ -172,10 +176,7 @@ function hasLegacyDirectSection(sections = []) {
 }
 
 async function migrateCurrentDraft(actor = {}) {
-  const draft = await MealBuilderConfig.findOne({
-    status: "draft",
-    isCurrent: true,
-  })
+  const draft = await MealBuilderConfig.findOne({ status: "draft", isCurrent: true })
     .sort({ updatedAt: -1 })
     .lean();
   if (!draft || !hasLegacyDirectSection(draft.sections || [])) return null;
@@ -191,10 +192,7 @@ function directWriteSection(section = {}) {
   if (token(section.selectionType) !== LEGACY_SANDWICH_SELECTION_TYPE) {
     return section;
   }
-  return {
-    ...section,
-    selectionType: FULL_MEAL_SELECTION_TYPE,
-  };
+  return { ...section, selectionType: FULL_MEAL_SELECTION_TYPE };
 }
 
 function wrapResultMethod(methodName) {
@@ -211,64 +209,35 @@ function installDashboardMealPlannerTwoTypePolicy() {
   if (installed) return;
   installed = true;
 
-  const originalCreateSection = mealBuilderService.createProductSection.bind(
-    mealBuilderService
-  );
-  const originalUpdateSection = mealBuilderService.updateProductSection.bind(
-    mealBuilderService
-  );
-  const originalCreateDraft = mealBuilderService.createDraft.bind(
-    mealBuilderService
-  );
-  const originalUpdateDraft = mealBuilderService.updateDraft.bind(
-    mealBuilderService
-  );
-  const originalValidate = mealBuilderService.validatePayload.bind(
-    mealBuilderService
-  );
-  const originalPublish = mealBuilderService.publishDraft.bind(
-    mealBuilderService
-  );
-  const originalGetState = mealBuilderService.getDashboardState.bind(
-    mealBuilderService
-  );
-  const originalSerialize = mealBuilderService.serializeConfig.bind(
-    mealBuilderService
-  );
-  const originalCardContract = mealBuilderService.getCardContract.bind(
-    mealBuilderService
-  );
-  const originalDirectPicker = mealBuilderService.getDirectProductPicker.bind(
-    mealBuilderService
-  );
-  const originalSectionPicker = mealBuilderService.getSectionPicker.bind(
-    mealBuilderService
-  );
-  const originalCompleteCatalog = completeCatalogService.getCompleteCatalog.bind(
-    completeCatalogService
-  );
-  const originalPublicCatalog =
-    CatalogService.getSubscriptionBuilderCatalogWithV2.bind(CatalogService);
+  const originalCreateSection = mealBuilderService.createProductSection.bind(mealBuilderService);
+  const originalUpdateSection = mealBuilderService.updateProductSection.bind(mealBuilderService);
+  const originalCreateDraft = mealBuilderService.createDraft.bind(mealBuilderService);
+  const originalUpdateDraft = mealBuilderService.updateDraft.bind(mealBuilderService);
+  const originalValidate = mealBuilderService.validatePayload.bind(mealBuilderService);
+  const originalPublish = mealBuilderService.publishDraft.bind(mealBuilderService);
+  const originalGetState = mealBuilderService.getDashboardState.bind(mealBuilderService);
+  const originalSerialize = mealBuilderService.serializeConfig.bind(mealBuilderService);
+  const originalCardContract = mealBuilderService.getCardContract.bind(mealBuilderService);
+  const originalDirectPicker = mealBuilderService.getDirectProductPicker.bind(mealBuilderService);
+  const originalSectionPicker = mealBuilderService.getSectionPicker.bind(mealBuilderService);
+  const originalCompleteCatalog = completeCatalogService.getCompleteCatalog.bind(completeCatalogService);
+  const originalPublicCatalog = CatalogService.getSubscriptionBuilderCatalogWithV2.bind(CatalogService);
 
-  mealBuilderService.createProductSection = async function createTwoTypeCard(
-    args = {}
-  ) {
-    const section = directWriteSection(args.section || {});
+  mealBuilderService.createProductSection = async function createTwoTypeCard(args = {}) {
     return canonicalResult(
-      await originalCreateSection({ ...args, section })
+      await originalCreateSection({
+        ...args,
+        section: directWriteSection(args.section || {}),
+      })
     );
   };
 
-  mealBuilderService.updateProductSection = async function updateTwoTypeCard(
-    args = {}
-  ) {
+  mealBuilderService.updateProductSection = async function updateTwoTypeCard(args = {}) {
     const patch = { ...(args.patch || {}) };
     if (token(patch.selectionType) === LEGACY_SANDWICH_SELECTION_TYPE) {
       patch.selectionType = FULL_MEAL_SELECTION_TYPE;
     }
-    return canonicalResult(
-      await originalUpdateSection({ ...args, patch })
-    );
+    return canonicalResult(await originalUpdateSection({ ...args, patch }));
   };
 
   mealBuilderService.createDraft = async function createTwoTypeDraft(args = {}) {
@@ -285,9 +254,7 @@ function installDashboardMealPlannerTwoTypePolicy() {
     return canonicalResult(await originalUpdateDraft({ ...args, sections }));
   };
 
-  mealBuilderService.validatePayload = async function validateTwoTypes(
-    payload = {}
-  ) {
+  mealBuilderService.validatePayload = async function validateTwoTypes(payload = {}) {
     const sections = Array.isArray(payload.sections)
       ? canonicalSectionsForWrite(payload.sections)
       : payload.sections;
@@ -299,15 +266,11 @@ function installDashboardMealPlannerTwoTypePolicy() {
     return canonicalResult(await originalPublish(args));
   };
 
-  mealBuilderService.getDashboardState = async function getTwoTypeState(
-    options = {}
-  ) {
+  mealBuilderService.getDashboardState = async function getTwoTypeState(options = {}) {
     const state = canonicalResult(await originalGetState(options));
     return {
       ...state,
-      cardContract: canonicalCardContract(
-        state.cardContract || originalCardContract()
-      ),
+      cardContract: canonicalCardContract(state.cardContract || originalCardContract()),
     };
   };
 
@@ -319,36 +282,25 @@ function installDashboardMealPlannerTwoTypePolicy() {
     return canonicalCardContract(originalCardContract());
   };
 
-  mealBuilderService.getDirectProductPicker = async function getTwoTypeDirectPicker(
-    options = {}
-  ) {
+  mealBuilderService.getDirectProductPicker = async function getTwoTypeDirectPicker(options = {}) {
     return canonicalPicker(await originalDirectPicker(options));
   };
 
-  mealBuilderService.getSectionPicker = async function getTwoTypePicker(
-    options = {}
-  ) {
+  mealBuilderService.getSectionPicker = async function getTwoTypePicker(options = {}) {
     return canonicalPicker(await originalSectionPicker(options));
   };
 
-  completeCatalogService.getCompleteCatalog = async function getTwoTypeCatalog(
-    options = {}
-  ) {
+  completeCatalogService.getCompleteCatalog = async function getTwoTypeCatalog(options = {}) {
     const catalog = canonicalResult(await originalCompleteCatalog(options));
     return {
       ...catalog,
-      cardContract: canonicalCardContract(
-        catalog.cardContract || originalCardContract()
-      ),
+      cardContract: canonicalCardContract(catalog.cardContract || originalCardContract()),
     };
   };
 
-  CatalogService.getSubscriptionBuilderCatalogWithV2 =
-    async function getTwoTypePublicCatalog(options = {}) {
-      return canonicalizeSelectionTypesDeep(
-        await originalPublicCatalog(options)
-      );
-    };
+  CatalogService.getSubscriptionBuilderCatalogWithV2 = async function getTwoTypePublicCatalog(options = {}) {
+    return canonicalizeSelectionTypesDeep(await originalPublicCatalog(options));
+  };
 
   for (const methodName of [
     "openWorkingDraft",
