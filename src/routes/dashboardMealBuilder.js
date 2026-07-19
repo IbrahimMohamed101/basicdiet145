@@ -26,6 +26,10 @@ router.get("/pickers/:sectionKey", asyncHandler(controller.getPicker));
 router.post("/sections", asyncHandler(controller.createSection));
 router.patch("/sections/:sectionKey", asyncHandler(controller.updateSection));
 router.delete("/sections/:sectionKey", asyncHandler(controller.deleteSection));
+router.put(
+  "/sections/:sectionKey/items",
+  asyncHandler(controller.replaceItems)
+);
 router.post(
   "/sections/:sectionKey/products",
   asyncHandler(controller.addProducts)
@@ -33,6 +37,14 @@ router.post(
 router.delete(
   "/sections/:sectionKey/products/:productId",
   asyncHandler(controller.removeProduct)
+);
+router.post(
+  "/sections/:sectionKey/options",
+  asyncHandler(controller.addOptions)
+);
+router.delete(
+  "/sections/:sectionKey/options/:optionId",
+  asyncHandler(controller.removeOption)
 );
 router.post("/validate", asyncHandler(controller.validateDraft));
 router.post("/publish", asyncHandler(controller.publishDraft));
