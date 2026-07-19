@@ -102,16 +102,21 @@ function isProductionDirectProduct(product = {}) {
   return itemType === "product" && PRODUCTION_DIRECT_PRODUCT_VARIANTS.has(productUiVariant(product));
 }
 
-async function filterProductionDirectCandidates(candidates = []) {
+async function loadProductsByCandidateIds(candidates = []) {
   const ids = candidates
     .map((candidate) => String(candidate.productId || candidate.id || "").trim())
     .filter(Boolean);
-  if (!ids.length) return [];
+  if (!ids.length) return new Map();
 
   const products = await MenuProduct.find({ _id: { $in: ids } })
-    .select("itemType ui.cardVariant")
+    .select("itemType ui.cardVariant key")
     .lean();
-  const productsById = new Map(products.map((product) => [String(product._id), product]));
+  return new Map(products.map((product) => [String(product._id), product]));
+}
+
+async function filterProductionDirectCandidates(candidates = []) {
+  const productsById = await loadProductsByCandidateIds(candidates);
+  if (!productsById.size) return [];
 
   return candidates
     .filter((candidate) => {
@@ -132,12 +137,79 @@ async function filterProductionDirectCandidates(candidates = []) {
     });
 }
 
+function normalizeProductIds(value) {
+  const source = Array.isArray(value) ? value : [];
+  return [...new Set(source.map((item) => String(item || "").trim()).filter(Boolean))];
+}
+
+async function assertProductionDirectProductIds(value) {
+  const ids = normalizeProductIds(value);
+  if (!ids.length) return;
+
+  const products = await MenuProduct.find({ _id: { $in: ids } })
+    .select("itemType ui.cardVariant key")
+    .lean();
+  const invalidProducts = products
+    .filter((product) => !isProductionDirectProduct(product))
+    .map((product) => ({
+      id: String(product._id),
+      key: product.key || "",
+      itemType: product.itemType || "",
+      cardVariant: productUiVariant(product),
+    }));
+
+  if (invalidProducts.length) {
+    throw new mealBuilderService.MealBuilderError(
+      "Only direct meal products can be added to this card",
+      "MEAL_BUILDER_PRODUCT_TYPE_INVALID",
+      422,
+      {
+        products: invalidProducts,
+        allowedItemTypes: [...EXPLICIT_DIRECT_PRODUCT_TYPES, "product"],
+        compatibleProductCardVariants: [...PRODUCTION_DIRECT_PRODUCT_VARIANTS],
+      }
+    );
+  }
+}
+
 function isProductCard(section = {}) {
   return String(section.sectionType || section.type || "") === "product_list";
 }
 
 function sectionKeyOf(section = {}) {
   return String(section.key || section.sectionKey || "").trim().toLowerCase();
+}
+
+function installMealBuilderActionCompatibility() {
+  const originalCreateProductSection = mealBuilderService.createProductSection.bind(mealBuilderService);
+  const originalAddProductsToSection = mealBuilderService.addProductsToSection.bind(mealBuilderService);
+  const originalUpdateProductSection = mealBuilderService.updateProductSection.bind(mealBuilderService);
+
+  mealBuilderService.createProductSection = async function compatibleCreateProductSection(args = {}) {
+    const section = args.section || {};
+    await assertProductionDirectProductIds(
+      section.selectedProductIds || section.productIds || []
+    );
+    return originalCreateProductSection(args);
+  };
+
+  mealBuilderService.addProductsToSection = async function compatibleAddProductsToSection(args = {}) {
+    await assertProductionDirectProductIds(args.productIds || []);
+    return originalAddProductsToSection(args);
+  };
+
+  mealBuilderService.updateProductSection = async function compatibleUpdateProductSection(args = {}) {
+    const patch = args.patch || {};
+    if (
+      Object.prototype.hasOwnProperty.call(patch, "selectedProductIds") ||
+      Object.prototype.hasOwnProperty.call(patch, "productIds")
+    ) {
+      await assertProductionDirectProductIds(
+        patch.selectedProductIds || patch.productIds || []
+      );
+    }
+    return originalUpdateProductSection(args);
+  };
 }
 
 function installMealBuilderPickerCompatibility() {
@@ -226,6 +298,7 @@ function installMealBuilderPickerCompatibility() {
   getCompatibleSectionPicker.__productionProductCompatibility = true;
   mealBuilderService.getDirectProductPicker = getCompatibleDirectProductPicker;
   mealBuilderService.getSectionPicker = getCompatibleSectionPicker;
+  installMealBuilderActionCompatibility();
 }
 
 function installDashboardCatalogCompatibility() {
