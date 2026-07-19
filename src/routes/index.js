@@ -6,6 +6,7 @@ require("../services/installDashboardMealBuilderFinalization");
 require("../services/installDashboardMealBuilderExplicitDirectCardPolicy");
 require("../services/installDashboardMealPlannerFlutterCardPolicy");
 require("../services/installDashboardMealPlannerCardActionDecorator");
+require("../services/installDashboardMealPlannerTwoTypePolicy");
 require("../services/installDashboardMealBuilderDraftGuard");
 
 const authRoutes = require("./auth");
