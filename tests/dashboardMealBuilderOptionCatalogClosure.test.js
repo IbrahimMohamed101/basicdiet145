@@ -211,7 +211,10 @@ async function run() {
     assert.strictEqual(readyPayload.mealPlanner.directAdd.selectionType, "full_meal_product");
     assert.strictEqual(readyPayload.mealPlanner.directAdd.eligible, true);
     const sandwichPayload = catalog.products.find((product) => product.key === "closure_sandwich");
-    assert.strictEqual(sandwichPayload.mealPlanner.directAdd.selectionType, "sandwich");
+    assert.strictEqual(
+      sandwichPayload.mealPlanner.directAdd.selectionType,
+      "full_meal_product"
+    );
     const fullPayload = catalog.products.find((product) => product.key === "closure_full");
     assert.strictEqual(fullPayload.mealPlanner.directAdd.selectionType, "full_meal_product");
     const addonPayload = catalog.products.find((product) => product.key === "closure_addon");
