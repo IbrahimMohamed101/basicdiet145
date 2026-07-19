@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - "scripts/apply-payment-init-reservation-cleanup.py"
+      - "scripts/apply-payment-init-reservation-cleanup-v2.py"
       - ".github/workflows/apply-payment-init-cleanup.yml"
       - "tests/subscriptionPaymentInitiationReservationCleanup.test.js"
 
@@ -22,7 +22,7 @@ jobs:
           ref: fix/payment-init-reservation-cleanup
           fetch-depth: 1
       - name: Apply scoped source patch
-        run: python3 scripts/apply-payment-init-reservation-cleanup.py
+        run: python3 scripts/apply-payment-init-reservation-cleanup-v2.py
       - name: Use Node 20
         uses: actions/setup-node@v4
         with:
