@@ -5,6 +5,7 @@ require("../services/installDashboardCatalogCompatibility");
 require("../services/installDashboardMealBuilderFinalization");
 require("../services/installDashboardMealBuilderExplicitDirectCardPolicy");
 require("../services/installDashboardMealPlannerFlutterCardPolicy");
+require("../services/installDashboardMealPlannerCardActionDecorator");
 require("../services/installDashboardMealBuilderDraftGuard");
 
 const authRoutes = require("./auth");
