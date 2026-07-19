@@ -15,6 +15,7 @@ on:
       - "tests/subscriptionPaymentInitiationReservationCleanup.test.js"
       - "tests/subscriptionPremiumPickupSingleDebit.test.js"
       - "tests/subscriptionPremiumBucketIdentityResolution.test.js"
+      - "tests/subscriptionPremiumBalanceBucketIdentityRecovery.test.js"
       - ".github/workflows/subscription-entitlement-focused.yml"
   pull_request:
     paths:
@@ -29,6 +30,7 @@ on:
       - "tests/subscriptionPaymentInitiationReservationCleanup.test.js"
       - "tests/subscriptionPremiumPickupSingleDebit.test.js"
       - "tests/subscriptionPremiumBucketIdentityResolution.test.js"
+      - "tests/subscriptionPremiumBalanceBucketIdentityRecovery.test.js"
       - ".github/workflows/subscription-entitlement-focused.yml"
   workflow_dispatch:
 
@@ -58,3 +60,4 @@ jobs:
           node tests/subscriptionPaymentInitiationReservationCleanup.test.js
           node tests/subscriptionPremiumPickupSingleDebit.test.js
           node tests/subscriptionPremiumBucketIdentityResolution.test.js
+          node tests/subscriptionPremiumBalanceBucketIdentityRecovery.test.js
