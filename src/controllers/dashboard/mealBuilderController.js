@@ -1,4 +1,5 @@
 const mealBuilderService = require("../../services/subscription/dashboardMealPlannerCompatibilityService");
+const dashboardCatalogService = require("../../services/subscription/dashboardMealBuilderCatalogService");
 const errorResponse = require("../../utils/errorResponse");
 const { getRequestLang } = require("../../utils/i18n");
 
@@ -66,10 +67,24 @@ function wrap(handler) {
   };
 }
 
-const getMealBuilder = wrap(async (req, res) =>
+const getMealBuilder = wrap(async (req, res) => {
+  const lang = getRequestLang(req);
+  const [state, catalog] = await Promise.all([
+    mealBuilderService.getDashboardState({ lang }),
+    dashboardCatalogService.getCompleteCatalog({ lang }),
+  ]);
+  return send(res, {
+    ...state,
+    catalog,
+  });
+});
+
+const getCatalog = wrap(async (req, res) =>
   send(
     res,
-    await mealBuilderService.getDashboardState({ lang: getRequestLang(req) })
+    await dashboardCatalogService.getCompleteCatalog({
+      lang: getRequestLang(req),
+    })
   )
 );
 
@@ -253,6 +268,7 @@ module.exports = {
   createDraft,
   createSection,
   deleteSection,
+  getCatalog,
   getHydratedDraft,
   getMealBuilder,
   getPicker,
