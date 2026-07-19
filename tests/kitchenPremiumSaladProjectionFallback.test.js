@@ -140,4 +140,69 @@ assert.strictEqual(card.components.protein.name, "بيض مسلوق");
 assert(!allItems.some((entry) => entry.key === "spicy_chicken"));
 assert(card.lines.some((line) => line.startsWith("خضروات وبقوليات:")));
 
+// Reproduce the production pickup-request shape: selectedOptions and the
+// display snapshot contain only the current protein, while the rest of the
+// chosen salad lives in legacy salad.groups. The current protein must override
+// the stale protein group, and all entirely missing groups must be recovered.
+const productionPickupDay = {
+  mealSlots: [{
+    slotIndex: 4,
+    slotKey: "slot_4",
+    status: "complete",
+    selectionType: "premium_large_salad",
+    productId: staleProtein.id,
+    productKey: staleProtein.key,
+    proteinId: staleProtein.id,
+    selectedOptions: [selectedOptions[0]],
+    displaySnapshot: {
+      product: {
+        id: staleProtein.id,
+        key: staleProtein.key,
+        name: staleProtein.name,
+      },
+      groups: [displaySelections[0]],
+    },
+    salad: {
+      groups: {
+        protein: [staleProtein],
+        leafy_greens: byGroup("leafy_greens"),
+        vegetables_legumes: byGroup("vegetables_legumes"),
+        cheese_nuts: byGroup("cheese_nuts"),
+        fruits: byGroup("fruits"),
+        sauce: byGroup("sauces"),
+      },
+    },
+    isPremium: true,
+    premiumKey: "premium_large_salad",
+    premiumSource: "paid_extra",
+  }],
+  materializedMeals: [],
+  premiumUpgradeSelections: [],
+  addonSelections: [],
+};
+
+const productionKitchenDetails = buildKitchenDetailsPayload(
+  productionPickupDay,
+  { selectedGrams: 100 },
+  "ar",
+  catalogMaps
+);
+const productionCard = buildKitchenProjection(productionKitchenDetails).kitchenCards[0];
+const productionItems = productionCard.sections.flatMap((section) => section.items);
+const productionVegetables = productionCard.sections.find((section) => section.key === "vegetables_legumes");
+const productionProtein = productionCard.sections.find((section) => section.key === "protein");
+
+assert.strictEqual(productionItems.length, 29);
+assert.strictEqual(new Set(productionItems.map((entry) => entry.id || entry.key)).size, 29);
+assert(productionVegetables);
+assert.strictEqual(productionVegetables.items.length, 19);
+assert(productionProtein);
+assert.deepStrictEqual(productionProtein.items.map((entry) => entry.key), ["boiled_eggs"]);
+assert(!productionItems.some((entry) => entry.key === "spicy_chicken"));
+assert.strictEqual(productionCard.title, "سلطة كبيرة مميزة");
+assert.strictEqual(productionCard.components.product.key, "premium_large_salad");
+assert.strictEqual(productionCard.components.product.id, null);
+assert.strictEqual(productionCard.components.protein.key, "boiled_eggs");
+assert(productionCard.lines.some((line) => line.startsWith("خضروات وبقوليات:")));
+
 console.log("kitchenPremiumSaladProjectionFallback.test.js passed");
