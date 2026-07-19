@@ -38,6 +38,23 @@ async function currentDraftSections() {
   return state?.draft?.sections || state?.published?.sections || [];
 }
 
+async function canonicalizeSandwichCardProducts(rows = []) {
+  const productIds = rows
+    .filter(
+      (row) =>
+        row.classification.directSelectionType === MEAL_SELECTION_TYPES.SANDWICH &&
+        row.itemType !== "cold_sandwich" &&
+        row.cardVariant === "sandwich_card"
+    )
+    .map((row) => row.id);
+  if (!productIds.length) return;
+
+  await MenuProduct.updateMany(
+    { _id: { $in: productIds } },
+    { $set: { itemType: "cold_sandwich" } }
+  );
+}
+
 async function inferDirectCardSelectionType(productIds, requestedSelectionType = "") {
   const ids = normalizeProductIds(productIds);
   if (!ids.length) {
@@ -140,6 +157,7 @@ async function inferDirectCardSelectionType(productIds, requestedSelectionType =
     );
   }
 
+  await canonicalizeSandwichCardProducts(rows);
   return inferred;
 }
 
@@ -258,6 +276,7 @@ function installDashboardMealBuilderDirectCardTypeInference() {
 installDashboardMealBuilderDirectCardTypeInference();
 
 module.exports = {
+  canonicalizeSandwichCardProducts,
   inferDirectCardSelectionType,
   installDashboardMealBuilderDirectCardTypeInference,
 };
