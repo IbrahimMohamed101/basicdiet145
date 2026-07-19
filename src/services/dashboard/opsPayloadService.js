@@ -204,6 +204,78 @@ function dedupeSelectedOptions(options = []) {
   return unique;
 }
 
+function canonicalSelectedOptionGroupKey(option = {}) {
+  const key = String(option.canonicalGroupKey || option.groupKey || "").trim().toLowerCase();
+  if (key === "vegetables_legumes") return "vegetables";
+  if (key === "proteins") return "protein";
+  if (key === "sauces") return "sauce";
+  return key;
+}
+
+function selectedOptionLookupKeys(option = {}) {
+  const groupId = stringifyId(option.groupId) || "";
+  const optionId = stringifyId(option.optionId || option.id || option._id) || "";
+  const groupKey = canonicalSelectedOptionGroupKey(option);
+  const optionKey = String(option.optionKey || option.key || "").trim();
+  return [
+    groupId && optionId ? `id:${groupId}:${optionId}` : "",
+    optionId ? `option:${optionId}` : "",
+    groupKey && optionKey ? `key:${groupKey}:${optionKey}` : "",
+    optionKey ? `optionKey:${optionKey}` : "",
+  ].filter(Boolean);
+}
+
+function buildSelectedOptionLookup(options = []) {
+  const lookup = new Map();
+  for (const option of Array.isArray(options) ? options : []) {
+    if (!option || typeof option !== "object") continue;
+    for (const key of selectedOptionLookupKeys(option)) {
+      if (!lookup.has(key)) lookup.set(key, option);
+    }
+  }
+  return lookup;
+}
+
+function findSelectedOptionSnapshot(lookup, option = {}) {
+  for (const key of selectedOptionLookupKeys(option)) {
+    if (lookup.has(key)) return lookup.get(key);
+  }
+  return null;
+}
+
+function resolveMealSlotSelectedOptionInputs(slot = {}) {
+  const rawOptions = Array.isArray(slot.selectedOptions) ? slot.selectedOptions : [];
+  const displayOptions = slot.displaySnapshot && Array.isArray(slot.displaySnapshot.groups)
+    ? slot.displaySnapshot.groups
+    : [];
+  const confirmationOptions = slot.confirmationSnapshot && Array.isArray(slot.confirmationSnapshot.selectedOptions)
+    ? slot.confirmationSnapshot.selectedOptions
+    : [];
+  const snapshotOptions = displayOptions.length > 0 ? displayOptions : confirmationOptions;
+  if (rawOptions.length === 0) return snapshotOptions;
+  if (snapshotOptions.length === 0) return rawOptions;
+
+  const snapshotLookup = buildSelectedOptionLookup(snapshotOptions);
+  const rawIsSnapshotSubset = rawOptions.every((option) => Boolean(findSelectedOptionSnapshot(snapshotLookup, option)));
+  const authoritativeOptions = snapshotOptions.length > rawOptions.length && rawIsSnapshotSubset
+    ? snapshotOptions
+    : rawOptions;
+  const rawLookup = buildSelectedOptionLookup(rawOptions);
+
+  return authoritativeOptions.map((option) => {
+    const raw = findSelectedOptionSnapshot(rawLookup, option) || {};
+    const snapshot = findSelectedOptionSnapshot(snapshotLookup, option) || {};
+    return {
+      ...snapshot,
+      ...raw,
+      ...option,
+      groupName: option.groupName || raw.groupName || snapshot.groupName || snapshot.groupLabel || snapshot.group,
+      optionName: option.optionName || raw.optionName || snapshot.optionName,
+      name: option.name || raw.name || snapshot.name || snapshot.optionName || snapshot.label,
+    };
+  });
+}
+
 function classifyOptions(options, matcher) {
   return options.filter((option) => {
     const key = String(option.canonicalGroupKey || option.groupKey || "").toLowerCase();
@@ -275,9 +347,12 @@ function buildMealSlotPayload(slot = {}, subscription = {}, lang = "en", catalog
   const display = slot.displaySnapshot || {};
   const fulfillment = slot.fulfillmentSnapshot || {};
   const selectedOptions = dedupeSelectedOptions(
-    (Array.isArray(slot.selectedOptions) ? slot.selectedOptions : [])
+    resolveMealSlotSelectedOptionInputs(slot)
       .map((option) => normalizeSelectedOption(hydrateSelectedOption(option, catalogMaps, lang), lang))
   );
+  const selectedProteinOption = selectedOptions.find((option) => (
+    canonicalSelectedOptionGroupKey(option) === "protein"
+  )) || null;
   const carbSelections = Array.isArray(slot.carbSelections)
     ? slot.carbSelections
     : (Array.isArray(slot.carbs)
@@ -355,15 +430,22 @@ function buildMealSlotPayload(slot = {}, subscription = {}, lang = "en", catalog
       || fulfillment.proteinKey
       || confirmation.proteinKey
       || (proteinDoc && (proteinDoc.key || proteinDoc.proteinFamilyKey))
+      || (selectedProteinOption && selectedProteinOption.optionKey)
       || slot.proteinFamilyKey
       || null,
     proteinName: snapshotName(confirmation, ["protein", "name"], lang)
       || snapshotName(display, ["protein", "name"], lang)
-      || localizedName(fulfillment.proteinName || (proteinDoc && proteinDoc.name), lang),
+      || localizedName(
+        fulfillment.proteinName
+          || (selectedProteinOption && (selectedProteinOption.nameI18n || selectedProteinOption.name))
+          || (proteinDoc && proteinDoc.name),
+        lang
+      ),
     proteinNameI18n: localizedNameObject(
       (confirmation.protein && confirmation.protein.name)
         || (display.protein && display.protein.name)
         || fulfillment.proteinName
+        || (selectedProteinOption && (selectedProteinOption.nameI18n || selectedProteinOption.name))
         || (proteinDoc && proteinDoc.name),
       fulfillment.proteinKey || confirmation.proteinKey || slot.proteinFamilyKey || ""
     ),

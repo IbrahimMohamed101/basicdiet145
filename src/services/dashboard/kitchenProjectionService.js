@@ -79,12 +79,85 @@ function canonicalPremiumSaladGroupKey(value) {
   return key;
 }
 
-function selectedOptionToSaladItem(option = {}) {
+function premiumSaladSelectionLookupKeys(option = {}) {
+  const groupId = asId(option.groupId) || "";
+  const optionId = asId(option.optionId || option.id || option._id || option.ingredientId) || "";
+  const groupKey = canonicalPremiumSaladGroupKey(option.canonicalGroupKey || option.groupKey);
+  const optionKey = String(option.optionKey || option.key || option.ingredientKey || "").trim();
+  return [
+    groupId && optionId ? `id:${groupId}:${optionId}` : "",
+    optionId ? `option:${optionId}` : "",
+    groupKey && optionKey ? `key:${groupKey}:${optionKey}` : "",
+    optionKey ? `optionKey:${optionKey}` : "",
+  ].filter(Boolean);
+}
+
+function addPremiumSaladLookupEntry(lookup, option) {
+  if (!option || typeof option !== "object") return;
+  for (const key of premiumSaladSelectionLookupKeys(option)) {
+    if (!lookup.has(key)) lookup.set(key, option);
+  }
+}
+
+function buildPremiumSaladSnapshotLookup(slot = {}) {
+  const lookup = new Map();
+  const confirmationSelections = slot.confirmationSnapshot
+    && Array.isArray(slot.confirmationSnapshot.selectedOptions)
+    ? slot.confirmationSnapshot.selectedOptions
+    : [];
+  const displaySelections = slot.displaySnapshot
+    && Array.isArray(slot.displaySnapshot.groups)
+    ? slot.displaySnapshot.groups
+    : [];
+
+  displaySelections.forEach((option) => addPremiumSaladLookupEntry(lookup, option));
+  confirmationSelections.forEach((option) => addPremiumSaladLookupEntry(lookup, option));
+  return lookup;
+}
+
+function buildPremiumSaladSourceLookup(sourceGroups = {}) {
+  const lookup = new Map();
+  for (const [rawKey, values] of Object.entries(sourceGroups)) {
+    const groupKey = canonicalPremiumSaladGroupKey(rawKey);
+    for (const value of Array.isArray(values) ? values : []) {
+      const item = value && typeof value === "object" ? value : { id: value };
+      addPremiumSaladLookupEntry(lookup, {
+        ...item,
+        groupKey,
+        canonicalGroupKey: groupKey,
+        optionId: item.optionId || item.id || item._id || item.ingredientId,
+        optionKey: item.optionKey || item.key || item.ingredientKey,
+      });
+    }
+  }
+  return lookup;
+}
+
+function findPremiumSaladLookupEntry(lookup, option = {}) {
+  for (const key of premiumSaladSelectionLookupKeys(option)) {
+    if (lookup.has(key)) return lookup.get(key);
+  }
+  return null;
+}
+
+function selectedOptionToSaladItem(option = {}, snapshot = {}, sourceItem = {}) {
   return {
-    id: asId(option.optionId || option.id || option._id),
-    key: option.optionKey || option.key || null,
-    nameI18n: option.nameI18n || option.name || option.optionName || option.label || "",
-    quantity: Math.max(1, Number(option.quantity || option.qty || 1)),
+    id: asId(
+      option.optionId || option.id || option._id || option.ingredientId
+      || snapshot.optionId || snapshot.id || snapshot._id || snapshot.ingredientId
+      || sourceItem.optionId || sourceItem.id || sourceItem._id || sourceItem.ingredientId
+    ),
+    key: option.optionKey || option.key || option.ingredientKey
+      || snapshot.optionKey || snapshot.key || snapshot.ingredientKey
+      || sourceItem.optionKey || sourceItem.key || sourceItem.ingredientKey
+      || null,
+    nameI18n: option.nameI18n || option.name || option.optionName || option.label
+      || snapshot.optionName || snapshot.nameI18n || snapshot.name || snapshot.label
+      || sourceItem.nameI18n || sourceItem.name || sourceItem.label
+      || "",
+    quantity: Math.max(1, Number(
+      option.quantity || option.qty || snapshot.quantity || sourceItem.quantity || 1
+    )),
   };
 }
 
@@ -92,24 +165,44 @@ function buildPremiumSaladGroups(slot = {}) {
   const sourceGroups = slot.salad && slot.salad.groups && typeof slot.salad.groups === "object"
     ? slot.salad.groups
     : {};
+  const selectedOptions = Array.isArray(slot.selectedOptions) ? slot.selectedOptions : [];
+  const confirmationSelections = slot.confirmationSnapshot
+    && Array.isArray(slot.confirmationSnapshot.selectedOptions)
+    ? slot.confirmationSnapshot.selectedOptions
+    : [];
+  const displaySelections = slot.displaySnapshot
+    && Array.isArray(slot.displaySnapshot.groups)
+    ? slot.displaySnapshot.groups
+    : [];
+  const authoritativeSelections = selectedOptions.length > 0
+    ? selectedOptions
+    : (displaySelections.length > 0 ? displaySelections : confirmationSelections);
   const groups = {};
 
-  for (const [rawKey, values] of Object.entries(sourceGroups)) {
-    if (!Array.isArray(values)) continue;
-    const key = canonicalPremiumSaladGroupKey(rawKey);
-    if (!key) continue;
-    groups[key] = mergeSaladGroupValues({
-      existing: groups[key] || [],
-      incoming: values,
-    }, ["existing", "incoming"]);
+  if (authoritativeSelections.length === 0) {
+    for (const [rawKey, values] of Object.entries(sourceGroups)) {
+      if (!Array.isArray(values)) continue;
+      const key = canonicalPremiumSaladGroupKey(rawKey);
+      if (!key) continue;
+      groups[key] = mergeSaladGroupValues({
+        existing: groups[key] || [],
+        incoming: values,
+      }, ["existing", "incoming"]);
+    }
+    return groups;
   }
 
-  for (const option of Array.isArray(slot.selectedOptions) ? slot.selectedOptions : []) {
+  const snapshotLookup = buildPremiumSaladSnapshotLookup(slot);
+  const sourceLookup = buildPremiumSaladSourceLookup(sourceGroups);
+
+  for (const option of authoritativeSelections) {
     if (!option || typeof option !== "object") continue;
     const key = canonicalPremiumSaladGroupKey(option.canonicalGroupKey || option.groupKey);
     if (!key) continue;
-    const item = selectedOptionToSaladItem(option);
-    if (!item.id && !item.key && !item.nameI18n) continue;
+    const snapshot = findPremiumSaladLookupEntry(snapshotLookup, option) || {};
+    const sourceItem = findPremiumSaladLookupEntry(sourceLookup, option) || {};
+    const item = selectedOptionToSaladItem(option, snapshot, sourceItem);
+    if (!item.id && !item.key && !nameI18n(item.nameI18n).ar) continue;
     groups[key] = mergeSaladGroupValues({
       existing: groups[key] || [],
       incoming: [item],
