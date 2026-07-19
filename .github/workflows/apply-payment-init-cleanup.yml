@@ -1,11 +1,12 @@
 name: Apply Payment Reservation Cleanup
 
 on:
-  push:
-    branches: [fix/payment-init-reservation-cleanup]
+  pull_request:
+    branches: [main]
     paths:
       - "scripts/apply-payment-init-reservation-cleanup.py"
       - ".github/workflows/apply-payment-init-cleanup.yml"
+      - "tests/subscriptionPaymentInitiationReservationCleanup.test.js"
 
 permissions:
   contents: write
@@ -15,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Checkout branch
+      - name: Checkout source branch
         uses: actions/checkout@v4
         with:
           ref: fix/payment-init-reservation-cleanup
