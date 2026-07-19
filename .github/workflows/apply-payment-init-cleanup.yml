@@ -21,6 +21,8 @@ jobs:
         with:
           ref: fix/payment-init-reservation-cleanup
           fetch-depth: 0
+      - name: Apply scoped source patch
+        run: python3 scripts/apply-payment-init-reservation-cleanup.py
       - name: Use Node 20
         uses: actions/setup-node@v4
         with:
@@ -28,8 +30,6 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
-      - name: Apply scoped source patch
-        run: python3 scripts/apply-payment-init-reservation-cleanup.py
       - name: Run focused entitlement tests
         env:
           NODE_ENV: test
