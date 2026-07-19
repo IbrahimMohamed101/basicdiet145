@@ -81,7 +81,7 @@ const day = {
     selectionType: "premium_large_salad",
     productId: "6a522f12b3fb649917aee5cc",
     productKey: "premium_large_salad",
-    proteinId: selectedOptions[0].optionId,
+    proteinId: staleProtein.id,
     selectedOptions,
     displaySnapshot: {
       product: {
@@ -111,7 +111,15 @@ const day = {
   addonSelections: [],
 };
 
-const kitchenDetails = buildKitchenDetailsPayload(day, { selectedGrams: 100 }, "ar", {});
+const catalogMaps = {
+  proteinById: new Map([[staleProtein.id, {
+    _id: staleProtein.id,
+    key: staleProtein.key,
+    proteinFamilyKey: staleProtein.key,
+    name: staleProtein.name,
+  }]]),
+};
+const kitchenDetails = buildKitchenDetailsPayload(day, { selectedGrams: 100 }, "ar", catalogMaps);
 assert.strictEqual(kitchenDetails.mealSlots.length, 1);
 assert.strictEqual(kitchenDetails.mealSlots[0].selectedOptions.length, 29);
 assert.strictEqual(kitchenDetails.mealSlots[0].proteinName, "بيض مسلوق");

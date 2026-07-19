@@ -437,6 +437,7 @@ function buildMealSlotPayload(slot = {}, subscription = {}, lang = "en", catalog
       || fulfillment.proteinKey
       || confirmation.proteinKey
       || (proteinDoc && (proteinDoc.key || proteinDoc.proteinFamilyKey))
+      || (selectedProteinOption && selectedProteinOption.optionKey)
       || slot.proteinFamilyKey
       || null,
     proteinName: (premiumSalad && selectedProteinOption
