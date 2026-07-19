@@ -1,0 +1,49 @@
+name: Verify Payment Initiation Cleanup Patch
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "scripts/apply-payment-init-reservation-cleanup.py"
+      - "tests/subscriptionPaymentInitiationReservationCleanup.test.js"
+      - ".github/workflows/apply-payment-init-cleanup.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-test:
+    if: github.head_ref == 'fix/payment-init-reservation-cleanup'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout source branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/payment-init-reservation-cleanup
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Use Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Apply scoped source patch
+        run: python3 scripts/apply-payment-init-reservation-cleanup.py
+      - name: Run focused entitlement tests
+        env:
+          NODE_ENV: test
+        run: |
+          node tests/subscriptionMealEntitlementLifecycle.test.js
+          node tests/subscriptionEntitlementReservationRecovery.test.js
+          node tests/subscriptionPaymentInitiationReservationCleanup.test.js
+      - name: Commit generated backend change
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/services/subscription/unifiedDayPaymentService.js
+          git diff --cached --check
+          git commit -m "fix(subscription): release failed payment reservations"
+          git push origin HEAD:fix/payment-init-reservation-cleanup
