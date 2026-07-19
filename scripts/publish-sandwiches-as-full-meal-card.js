@@ -14,11 +14,17 @@ const SECTION_KEY = "sandwich";
 const SELECTION_TYPE = "full_meal_product";
 
 function parseArgs(argv = process.argv.slice(2)) {
-  if (argv.length === 0) return { applyRequested: false };
-  if (argv.length === 1 && argv[0] === "--apply") {
-    return { applyRequested: true };
+  const allowed = new Set(["--apply", "--use-current-draft"]);
+  const unknown = argv.filter((argument) => !allowed.has(argument));
+  if (unknown.length) {
+    throw new Error(`Unknown argument(s): ${unknown.join(" ")}`);
   }
-  throw new Error(`Unknown argument(s): ${argv.join(" ")}`);
+  const applyRequested = argv.includes("--apply");
+  const useCurrentDraft = argv.includes("--use-current-draft");
+  if (useCurrentDraft && !applyRequested) {
+    throw new Error("--use-current-draft can only be used with --apply");
+  }
+  return { applyRequested, useCurrentDraft };
 }
 
 function resolveApplyMode(applyRequested, env = process.env) {
@@ -185,7 +191,10 @@ function buildNextSections(baseSections, sandwichProductIds) {
   };
 }
 
-async function publishSandwichesAsFullMealCard({ apply = false } = {}) {
+async function publishSandwichesAsFullMealCard({
+  apply = false,
+  useCurrentDraft = false,
+} = {}) {
   const products = await MenuProduct.find(readySandwichQuery())
     .sort({ sortOrder: 1, createdAt: 1 })
     .lean();
@@ -197,12 +206,19 @@ async function publishSandwichesAsFullMealCard({ apply = false } = {}) {
 
   const productIds = products.map((product) => String(product._id));
   const base = await loadBaseSections();
+  if (apply && base.source === "current_draft" && !useCurrentDraft) {
+    throw new Error(
+      "A current Meal Builder draft exists. Dry-run it first, then rerun with --apply --use-current-draft only when publishing all current draft changes is intended."
+    );
+  }
   const built = buildNextSections(base.sections, productIds);
   const validation = await baseService.validatePayload({ sections: built.sections });
 
   const report = {
     mode: apply ? "apply" : "dry_run",
     source: base.source,
+    requiresUseCurrentDraft:
+      base.source === "current_draft" && useCurrentDraft !== true,
     sectionKey: SECTION_KEY,
     selectionType: SELECTION_TYPE,
     treatAsFullMeal: true,
@@ -267,7 +283,7 @@ async function publishSandwichesAsFullMealCard({ apply = false } = {}) {
 }
 
 async function main() {
-  const { applyRequested } = parseArgs();
+  const { applyRequested, useCurrentDraft } = parseArgs();
   const apply = resolveApplyMode(applyRequested);
   await mongoose.connect(resolveMongoUri(), {
     serverSelectionTimeoutMS: 10000,
@@ -275,7 +291,10 @@ async function main() {
     autoIndex: false,
   });
   try {
-    const report = await publishSandwichesAsFullMealCard({ apply });
+    const report = await publishSandwichesAsFullMealCard({
+      apply,
+      useCurrentDraft,
+    });
     console.log(
       JSON.stringify({ database: mongoose.connection.name, ...report }, null, 2)
     );
