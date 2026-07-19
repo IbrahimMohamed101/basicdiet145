@@ -65,7 +65,7 @@ async function run() {
         categoryId: category._id,
         key: "sandwich_card_chicken",
         name: { ar: "ساندويتش دجاج", en: "Chicken Sandwich" },
-        itemType: "cold_sandwich",
+        itemType: "product",
         pricingModel: "fixed",
         priceHalala: 1700,
         availableFor: ["subscription"],
@@ -77,7 +77,7 @@ async function run() {
         categoryId: category._id,
         key: "sandwich_card_beef",
         name: { ar: "ساندويتش لحم", en: "Beef Sandwich" },
-        itemType: "cold_sandwich",
+        itemType: "product",
         pricingModel: "fixed",
         priceHalala: 1900,
         availableFor: ["subscription"],
@@ -151,6 +151,11 @@ async function run() {
       true
     );
     assert.strictEqual(response.body.data.section.rules.carbsRequired, false);
+    assert.strictEqual(
+      (await MenuProduct.findById(sandwichOne._id).lean()).itemType,
+      "cold_sandwich",
+      "modern sandwich_card product is normalized to canonical cold_sandwich"
+    );
 
     response = await request(app)
       .post("/api/dashboard/meal-builder/sections/sandwiches/products")
@@ -160,6 +165,11 @@ async function run() {
     assert.deepStrictEqual(
       response.body.data.section.selectedProductIds.map(String),
       [String(sandwichOne._id), String(sandwichTwo._id)]
+    );
+    assert.strictEqual(
+      (await MenuProduct.findById(sandwichTwo._id).lean()).itemType,
+      "cold_sandwich",
+      "added sandwich_card product is normalized before legacy validation"
     );
 
     response = await request(app)
