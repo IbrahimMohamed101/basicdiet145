@@ -30,12 +30,6 @@ const {
 } = require("./subscriptionDayCommercialStateService");
 const { buildMealBalance } = require("./subscriptionClientSupportService");
 const {
-  assertPremiumUpgradeLimit,
-  countPersistedPremiumUpgradesForSubscription,
-  countPremiumUpgradeSelections,
-  resolveTotalSubscriptionMealsFromSubscription,
-} = require("./premiumUpgradeLimitService");
-const {
   assertPlanningBalanceAfterSave,
 } = require("./subscriptionPlanningBalanceService");
 const { resolvePremiumUpgrade, resolveSubscriptionPremiumUpgradePricing } = require("./premiumUpgradeConfigService");
@@ -52,6 +46,10 @@ const {
   hasSupersededPayment,
 } = require("./subscriptionDayLockService");
 const { resolveSubscriptionAddonBalanceWithAudit, buildClientAddonBalance } = require("./subscriptionAddonBalanceService");
+const {
+  reserveDayEntitlements,
+  transitionAllocation,
+} = require("./subscriptionMealEntitlementService");
 
 function normalizePremiumKey(value) {
   return String(value || "").trim().toLowerCase();
@@ -186,6 +184,39 @@ async function consumePremiumBalanceAtomically({ subscription, dayId, date, prem
     balanceBucketId: bucket._id,
     configId: bucket.configId || null,
     revision: bucket.revision || 0,
+    bucket,
+  };
+}
+
+async function previewPremiumBalance({ subscription, premiumKey, unitExtraFeeHalala, balanceBucketId = null, configId = null, revision = null, session = null }) {
+  if (!premiumKey) {
+    return { consumed: false, reason: "no_premium_key", premiumSource: "pending_payment", premiumExtraFeeHalala: 0 };
+  }
+  const canonicalUpgrade = await resolveSubscriptionPremiumUpgradePricing(premiumKey, { session, fallbackPriceHalala: unitExtraFeeHalala });
+  const { bucket, bucketIndex, reason } = findExactPremiumBalanceBucket(subscription, {
+    balanceBucketId,
+    configId,
+    revision,
+    premiumKey,
+  });
+  if (bucketIndex < 0 || !bucket || Number(bucket.remainingQty || 0) <= 0) {
+    return {
+      consumed: false,
+      reason: reason || "no_remaining_balance",
+      premiumSource: "pending_payment",
+      premiumExtraFeeHalala: canonicalUpgrade.priceHalala,
+    };
+  }
+  return {
+    consumed: true,
+    previewOnly: true,
+    remainingQty: Number(bucket.remainingQty || 0),
+    premiumSource: "balance",
+    premiumKey: bucket.premiumKey,
+    proteinId: bucket.proteinId,
+    balanceBucketId: bucket._id,
+    configId: bucket.configId || null,
+    revision: Number(bucket.revision || 0),
     bucket,
   };
 }
@@ -801,17 +832,6 @@ async function evaluateDaySelectionPricingState({
   draft,
   requestedOneTimeAddonIds,
 }) {
-  const totalSubscriptionMeals = resolveTotalSubscriptionMealsFromSubscription(subscription);
-  const existingPremiumUpgradeCount = await countPersistedPremiumUpgradesForSubscription({
-    subscriptionId,
-    excludeDate: date,
-  });
-  const incomingPremiumUpgradeCount = countPremiumUpgradeSelections(draft.premiumUpgradeSelections);
-  assertPremiumUpgradeLimit({
-    premiumUpgradeCount: existingPremiumUpgradeCount + incomingPremiumUpgradeCount,
-    totalSubscriptionMeals,
-  });
-
   await assertPlanningBalanceAfterSave({
     subscription,
     affectedDates: [date],
@@ -1016,6 +1036,7 @@ async function performDaySelectionUpdate({ userId, subscriptionId, date, selecti
       materializedMeals: draft.materializedMeals,
       selections: draft.selections,
       premiumUpgradeSelections: draft.premiumUpgradeSelections,
+      premiumReservationMode: "deferred",
       baseMealSlots: draft.baseMealSlots,
       addonSelections: addonContainer.addonSelections,
     };
@@ -1072,7 +1093,7 @@ async function performDaySelectionUpdate({ userId, subscriptionId, date, selecti
              continue;
           }
 
-          const balanceResult = await consumePremiumBalanceAtomically({
+          const balanceResult = await previewPremiumBalance({
             subscription: subInSession,
             dayId: day._id,
             date,
@@ -1108,15 +1129,17 @@ async function performDaySelectionUpdate({ userId, subscriptionId, date, selecti
       day.premiumUpgradeSelections = processedPremiumSelections;
     }
 
-    for (const sel of existingBalanceMap.values()) {
-      await releasePremiumBalanceAtomically({
-        subscription: subInSession,
-        premiumKey: sel.premiumKey,
-        balanceBucketId: sel.balanceBucketId || sel.premiumWalletRowId || null,
-        configId: sel.configId || null,
-        revision: sel.revision || null,
-        session,
-      });
+    if (existingDay && existingDay.premiumReservationMode !== "deferred") {
+      for (const sel of existingBalanceMap.values()) {
+        await releasePremiumBalanceAtomically({
+          subscription: subInSession,
+          premiumKey: sel.premiumKey,
+          balanceBucketId: sel.balanceBucketId || sel.premiumWalletRowId || null,
+          configId: sel.configId || null,
+          revision: sel.revision || null,
+          session,
+        });
+      }
     }
 
     // ATOMIC: Addon balance sync
@@ -1556,6 +1579,7 @@ async function performBulkDaySelectionPlanningBalanceValidation({
 
 async function performDayPlanningConfirmation({ userId, subscriptionId, date, runtime }) {
   const session = await startSafeSession();
+  let confirmationReservation = null;
   session.startTransaction();
   try {
     let subInSession = await Subscription.findById(subscriptionId).session(session);
@@ -1617,20 +1641,6 @@ async function performDayPlanningConfirmation({ userId, subscriptionId, date, ru
         slotErrors: validatedDraft.slotErrors,
         debug: validatedDraft.debug,
       };
-    }
-
-    {
-      const totalSubscriptionMeals = resolveTotalSubscriptionMealsFromSubscription(subInSession);
-      const existingPremiumUpgradeCount = await countPersistedPremiumUpgradesForSubscription({
-        subscriptionId,
-        excludeDate: date,
-        session,
-      });
-      const incomingPremiumUpgradeCount = countPremiumUpgradeSelections(validatedDraft.premiumUpgradeSelections);
-      assertPremiumUpgradeLimit({
-        premiumUpgradeCount: existingPremiumUpgradeCount + incomingPremiumUpgradeCount,
-        totalSubscriptionMeals,
-      });
     }
 
     const plannerMeta = validatedDraft.plannerMeta;
@@ -1695,6 +1705,12 @@ async function performDayPlanningConfirmation({ userId, subscriptionId, date, ru
     day.plannerRevisionHash = derivedState.plannerRevisionHash;
     day.premiumExtraPayment = derivedState.premiumExtraPayment;
 
+    confirmationReservation = await reserveDayEntitlements({
+      subscriptionId,
+      day,
+      session,
+    });
+
     if (runtime && runtime.assertNoPendingOneTimeAddonPayment) {
       runtime.assertNoPendingOneTimeAddonPayment({ day });
     }
@@ -1737,6 +1753,11 @@ async function performDayPlanningConfirmation({ userId, subscriptionId, date, ru
     session.endSession();
     return { subscription: subInSession, day: confirmUpdateResult };
   } catch (err) {
+    if (confirmationReservation && Array.isArray(confirmationReservation.newlyReservedKeys)) {
+      for (const allocationKey of confirmationReservation.newlyReservedKeys) {
+        await transitionAllocation({ subscriptionId, allocationKey, toState: "released", session });
+      }
+    }
     if (session.inTransaction()) await session.abortTransaction();
     session.endSession();
     throw err;

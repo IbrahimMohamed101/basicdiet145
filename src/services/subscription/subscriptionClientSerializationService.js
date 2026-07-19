@@ -235,6 +235,11 @@ async function serializeSubscriptionForClient(subscription, lang) {
     };
   const data = { ...readSubscription };
   delete data.__v;
+  delete data.entitlementVersion;
+  delete data.reservedMeals;
+  delete data.consumedMeals;
+  delete data.forfeitedMeals;
+  delete data.baseMealAllocations;
 
   const businessDate = await getRestaurantBusinessDate();
   data.status = resolveEffectiveSubscriptionStatus(data, businessDate) || data.status;

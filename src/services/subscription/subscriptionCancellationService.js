@@ -12,6 +12,7 @@ const {
   assertAddonBalanceReleaseSucceeded,
   releasePremiumBalanceAtomically,
 } = require("./subscriptionSelectionService");
+const { transitionDayEntitlements } = require("./subscriptionMealEntitlementService");
 
 const CANCELABLE_STATUSES = new Set(["active", "pending_payment"]);
 const COMMITTED_DAY_STATUSES = ["locked", "in_preparation", "out_for_delivery", "ready_for_pickup"];
@@ -141,6 +142,12 @@ async function cancelSubscriptionDomain({
       });
 
       for (const day of futureDays) {
+        const entitlementRelease = await transitionDayEntitlements({
+          subscriptionId: subscription._id,
+          day,
+          toState: "released",
+          session,
+        });
         if (!day.addonCreditsReleased && Array.isArray(day.addonSelections)) {
           for (const sel of day.addonSelections) {
             if (sel.source === "subscription") {
@@ -159,14 +166,24 @@ async function cancelSubscriptionDomain({
           }
         }
 
-        if (!day.premiumCreditsReleased && Array.isArray(day.premiumUpgradeSelections)) {
+        if (!entitlementRelease.handled && !day.premiumCreditsReleased && Array.isArray(day.premiumUpgradeSelections)) {
           for (const sel of day.premiumUpgradeSelections) {
             if (sel.premiumSource === "balance") {
-              await releasePremiumBalanceAtomically({
+              const releaseResult = await releasePremiumBalanceAtomically({
                 subscription,
                 premiumKey: sel.premiumKey,
+                balanceBucketId: sel.balanceBucketId || sel.premiumWalletRowId || null,
+                configId: sel.configId || null,
+                revision: sel.revision != null ? sel.revision : null,
                 session,
               });
+              if (!releaseResult.released) {
+                const err = new Error("Premium balance bucket could not be released");
+                err.code = "DATA_INTEGRITY_ERROR";
+                err.status = 409;
+                err.details = { reason: releaseResult.reason || "release_failed" };
+                throw err;
+              }
             }
           }
         }

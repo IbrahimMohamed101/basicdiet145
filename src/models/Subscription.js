@@ -39,6 +39,36 @@ const PremiumBalanceSchema = new mongoose.Schema(
   { _id: true }
 );
 
+// Backend-only base entitlement ledger. Clients continue to use totalMeals,
+// remainingMeals and mealBalance; allocation identity is always server-derived.
+const BaseMealAllocationSchema = new mongoose.Schema(
+  {
+    allocationKey: { type: String, required: true, trim: true },
+    dayId: { type: mongoose.Schema.Types.ObjectId, ref: "SubscriptionDay", default: null },
+    date: { type: String, required: true, trim: true },
+    slotKey: { type: String, required: true, trim: true },
+    plannerRevisionHash: { type: String, default: "", trim: true },
+    quantity: { type: Number, min: 1, max: 1, default: 1 },
+    state: { type: String, enum: ["reserved", "consumed", "released", "forfeited"], required: true },
+    reservedAt: { type: Date, default: null },
+    consumedAt: { type: Date, default: null },
+    releasedAt: { type: Date, default: null },
+    forfeitedAt: { type: Date, default: null },
+    paymentId: { type: mongoose.Schema.Types.ObjectId, ref: "Payment", default: null },
+    pickupRequestId: { type: mongoose.Schema.Types.ObjectId, ref: "SubscriptionPickupRequest", default: null },
+    premiumFunding: {
+      source: { type: String, enum: ["none", "wallet", "pending_payment", "paid_difference"], default: "none" },
+      state: { type: String, enum: ["none", "reserved", "paid", "consumed", "released", "forfeited"], default: "none" },
+      premiumKey: { type: String, default: "", trim: true },
+      balanceBucketId: { type: mongoose.Schema.Types.ObjectId, default: null },
+      configId: { type: mongoose.Schema.Types.ObjectId, ref: "PremiumUpgradeConfig", default: null },
+      revision: { type: Number, min: 0, default: 0 },
+      paymentId: { type: mongoose.Schema.Types.ObjectId, ref: "Payment", default: null },
+    },
+  },
+  { _id: true }
+);
+
 const AddonBalanceSchema = new mongoose.Schema(
   {
     addonPlanId: { type: mongoose.Schema.Types.ObjectId, ref: "Addon", default: null },
@@ -259,6 +289,11 @@ const SubscriptionSchema = new mongoose.Schema(
     replacedAt: { type: Date, default: null },
     totalMeals: { type: Number, required: true },
     remainingMeals: { type: Number, required: true },
+    entitlementVersion: { type: Number, default: undefined },
+    reservedMeals: { type: Number, min: 0, default: undefined },
+    consumedMeals: { type: Number, min: 0, default: undefined },
+    forfeitedMeals: { type: Number, min: 0, default: undefined },
+    baseMealAllocations: { type: [BaseMealAllocationSchema], default: undefined },
     addonSubscriptions: { type: [AddonSubscriptionEntitlementSchema], default: [] },
     addonBalance: { type: [AddonBalanceSchema], default: [] },
     addonSelections: { type: [AddonSelectionSchema], default: [] },

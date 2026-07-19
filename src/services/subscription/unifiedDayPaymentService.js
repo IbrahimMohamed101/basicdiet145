@@ -3,6 +3,13 @@ const mongoose = require("mongoose");
 const Subscription = require("../../models/Subscription");
 const SubscriptionDay = require("../../models/SubscriptionDay");
 const Payment = require("../../models/Payment");
+const {
+  linkPaymentToAllocations,
+  markPaidFunding,
+  reserveDayEntitlements,
+  transitionAllocation,
+  validatePaymentAllocations,
+} = require("./subscriptionMealEntitlementService");
 const { logger } = require("../../utils/logger");
 const { buildPaymentDescription } = require("../../utils/subscription/subscriptionWriteLocalization");
 const {
@@ -325,6 +332,18 @@ async function createUnifiedDayPaymentFlow({
       return buildErrorResult(409, "DAY_PAYMENT_NOT_REQUIRED", "This day has no payable pending amount", requirement);
     }
 
+    let entitlementReservation = { allocationKeys: [], newlyReservedKeys: [] };
+    if (premiumSnapshot.extraPremiumCount > 0) {
+      try {
+        entitlementReservation = await reserveDayEntitlements({
+          subscriptionId: sub._id,
+          day: derivedDay,
+        });
+      } catch (err) {
+        return buildErrorResult(err.status || 422, err.code || "INSUFFICIENT_CREDITS", err.message || "Not enough credits");
+      }
+    }
+
     const appUrl = process.env.APP_URL || "https://example.com";
     const redirectContext = buildPaymentRedirectContext({
       appUrl,
@@ -393,6 +412,7 @@ async function createUnifiedDayPaymentFlow({
       oneTimeAddonCount: addonSnapshot.oneTimeAddonCount,
       currency: SYSTEM_CURRENCY,
       redirectToken: redirectContext.token,
+      baseAllocationKeys: entitlementReservation.allocationKeys,
     };
 
     const paymentDbMetadata = {
@@ -415,6 +435,9 @@ async function createUnifiedDayPaymentFlow({
         metadata: providerInvoiceMetadata,
       });
     } catch (err) {
+      for (const allocationKey of entitlementReservation.newlyReservedKeys) {
+        await transitionAllocation({ subscriptionId: sub._id, allocationKey, toState: "released" });
+      }
       logger.error("Unified day payment initiation: createInvoice failed", { error: err.message, subscriptionId, date });
       return buildErrorResult(err.status || 502, "PAYMENT_PROVIDER_ERROR", "Failed to create payment provider invoice");
     }
@@ -455,6 +478,13 @@ async function createUnifiedDayPaymentFlow({
     }
 
     const paymentId = payment && payment._id ? payment._id : payment && payment.id ? payment.id : null;
+    if (paymentId && entitlementReservation.allocationKeys.length) {
+      await linkPaymentToAllocations({
+        subscriptionId: sub._id,
+        allocationKeys: entitlementReservation.allocationKeys,
+        paymentId,
+      });
+    }
     if (premiumAmountHalala > 0 || addonsAmountHalala > 0) {
       let dayUpdateResult;
       try {
@@ -591,6 +621,16 @@ async function verifyUnifiedDayPaymentFlow({
     }));
     return dayResolution.result;
   }
+  if (Array.isArray(metadata.baseAllocationKeys) && metadata.baseAllocationKeys.length > 0) {
+    const allocationValidation = await validatePaymentAllocations({
+      subscriptionId,
+      allocationKeys: metadata.baseAllocationKeys,
+      plannerRevisionHash: metadata.revisionHash,
+    });
+    if (!allocationValidation.valid) {
+      return buildErrorResult(409, "DAY_PAYMENT_REVISION_MISMATCH", "Planner changed since payment creation");
+    }
+  }
   if (!payment.providerInvoiceId) return buildErrorResult(409, "CHECKOUT_IN_PROGRESS", "Day payment invoice is not initialized yet");
   if (TERMINAL_NON_PAYABLE_STATUSES.has(String(payment.status || ""))) {
     return buildTerminalPaymentError(payment);
@@ -613,6 +653,14 @@ async function verifyUnifiedDayPaymentFlow({
           await session.abortTransaction();
           session.endSession();
           return buildSupersededPaymentError(paymentInSession);
+        }
+        if (Array.isArray(metadata.baseAllocationKeys) && metadata.baseAllocationKeys.length > 0) {
+          await markPaidFunding({
+            subscriptionId,
+            allocationKeys: metadata.baseAllocationKeys,
+            paymentId: paymentInSession._id,
+            session,
+          });
         }
         reconcileResult = await applyPaymentSideEffectsFn({
           payment: paymentInSession,
@@ -698,6 +746,20 @@ async function verifyUnifiedDayPaymentFlow({
         },
       }
     );
+    if (Array.isArray(metadata.baseAllocationKeys)) {
+      for (const allocationKey of metadata.baseAllocationKeys) {
+        try {
+          await transitionAllocation({ subscriptionId, allocationKey, toState: "released" });
+        } catch (err) {
+          logger.error("Failed to release entitlement for terminal day payment", {
+            subscriptionId,
+            paymentId: String(paymentId),
+            allocationKey,
+            code: err.code || "ENTITLEMENT_RELEASE_FAILED",
+          });
+        }
+      }
+    }
     return buildTerminalPaymentError({ ...payment, status: normalizedStatus }, normalizedStatus);
   }
 
@@ -738,6 +800,20 @@ async function verifyUnifiedDayPaymentFlow({
     await paymentInSession.save({ session });
 
     if (normalizedStatus === "paid" && !paymentInSession.applied) {
+      if (Array.isArray(metadata.baseAllocationKeys) && metadata.baseAllocationKeys.length > 0) {
+        const fundingResult = await markPaidFunding({
+          subscriptionId,
+          allocationKeys: metadata.baseAllocationKeys,
+          paymentId: paymentInSession._id,
+          session,
+        });
+        if (!fundingResult.applied) {
+          const fundingError = new Error("Paid Premium funding has no matching base entitlement");
+          fundingError.code = "DATA_INTEGRITY_ERROR";
+          fundingError.status = 409;
+          throw fundingError;
+        }
+      }
       const claimedPayment = await Payment.findOneAndUpdate(
         { _id: paymentInSession._id, applied: false },
         { $set: { applied: true, status: "paid" } },
@@ -782,6 +858,7 @@ async function verifyUnifiedDayPaymentFlow({
       error: err.message,
       stack: err.stack,
     });
+    if (err.status && err.code) return buildErrorResult(err.status, err.code, err.message);
     return buildErrorResult(500, "INTERNAL", "Unified day payment verification failed");
   }
 

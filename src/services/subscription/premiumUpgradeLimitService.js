@@ -113,13 +113,26 @@ function countPremiumUpgradesFromDay(day) {
 
 async function countPersistedPremiumUpgradesForSubscription({ subscriptionId, excludeDate = null, session = null }) {
   if (!subscriptionId) return 0;
-  const filter = { subscriptionId };
+  const filter = {
+    subscriptionId,
+    status: { $nin: ["canceled", "cancelled", "delivery_canceled", "skipped", "frozen", "fulfilled", "no_show"] },
+  };
   if (excludeDate) filter.date = { $ne: excludeDate };
-  let query = SubscriptionDay.find(filter).select("premiumUpgradeSelections mealSlots plannerMeta planningMeta");
+  let query = SubscriptionDay.find(filter).select("status plannerState planningState premiumExtraPayment premiumUpgradeSelections mealSlots plannerMeta planningMeta");
   if (session) query = query.session(session);
   const days = await query.lean();
   return (Array.isArray(days) ? days : []).reduce(
-    (sum, day) => sum + countPremiumUpgradesFromDay(day),
+    (sum, day) => {
+      const paymentStatus = String(day?.premiumExtraPayment?.status || "").toLowerCase();
+      if (["failed", "expired", "superseded", "revision_mismatch", "canceled", "cancelled"].includes(paymentStatus)) {
+        return sum;
+      }
+      const plannerState = String(day?.plannerState || day?.planningState || "").toLowerCase();
+      const hasActiveFunding = (Array.isArray(day?.premiumUpgradeSelections) ? day.premiumUpgradeSelections : [])
+        .some((selection) => ["balance", "paid", "paid_extra"].includes(String(selection?.premiumSource || "").toLowerCase()));
+      if (plannerState !== "confirmed" && !hasActiveFunding) return sum;
+      return sum + countPremiumUpgradesFromDay(day);
+    },
     0
   );
 }

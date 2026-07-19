@@ -2,6 +2,10 @@
 
 const Subscription = require("../../models/Subscription");
 const SubscriptionPickupRequest = require("../../models/SubscriptionPickupRequest");
+const {
+  reservePickupEntitlements,
+  transitionPickupEntitlements,
+} = require("./subscriptionMealEntitlementService");
 
 function createServiceError(code, message, status = 400) {
   const err = new Error(message);
@@ -91,15 +95,11 @@ async function reserveSubscriptionMealsForPickupRequest({
     };
   }
 
-  const reserveResult = await Subscription.updateOne(
-    { _id: subscriptionId, remainingMeals: { $gte: resolvedMealCount } },
-    { $inc: { remainingMeals: -resolvedMealCount } },
-    withOptionalSession({}, session)
-  );
-
-  if (!reserveResult.modifiedCount) {
-    throw createServiceError("INSUFFICIENT_CREDITS", "رصيد وجباتك غير كافٍ", 422);
-  }
+  const reservation = await reservePickupEntitlements({
+    subscriptionId,
+    pickupRequest,
+    session,
+  });
 
   const now = new Date();
   const updatedPickupRequest = await SubscriptionPickupRequest.findOneAndUpdate(
@@ -108,13 +108,21 @@ async function reserveSubscriptionMealsForPickupRequest({
       $set: {
         creditsReserved: true,
         creditsReservedAt: now,
+        baseAllocationKeys: reservation.allocationKeys,
       },
     },
     withOptionalSession({ new: true }, session)
   );
 
   if (!updatedPickupRequest) {
-    await refundReservedDecrement({ subscriptionId, mealCount: resolvedMealCount, session });
+    for (const allocationKey of reservation.newlyReservedKeys) {
+      await transitionPickupEntitlements({
+        subscriptionId,
+        allocationKeys: [allocationKey],
+        toState: "released",
+        session,
+      });
+    }
     const currentPickupRequest = await findPickupRequestOrThrow(pickupRequestId, session);
     return {
       reserved: false,
@@ -134,6 +142,7 @@ async function reserveSubscriptionMealsForPickupRequest({
 
 async function consumeReservedPickupMeals({
   pickupRequestId,
+  entitlementState = "consumed",
   session = null,
 } = {}) {
   const now = new Date();
@@ -144,6 +153,14 @@ async function consumeReservedPickupMeals({
       await existing.save(withOptionalSession({}, session));
     }
     return buildZeroMealResult("consumed", existing);
+  }
+  if (Array.isArray(existing.baseAllocationKeys) && existing.baseAllocationKeys.length > 0) {
+    await transitionPickupEntitlements({
+      subscriptionId: existing.subscriptionId,
+      allocationKeys: existing.baseAllocationKeys,
+      toState: entitlementState,
+      session,
+    });
   }
   const updatedPickupRequest = await SubscriptionPickupRequest.findOneAndUpdate(
     {
@@ -205,6 +222,14 @@ async function releaseReservedPickupMeals({
     }
     return buildZeroMealResult("released", existing);
   }
+  if (Array.isArray(existing.baseAllocationKeys) && existing.baseAllocationKeys.length > 0) {
+    await transitionPickupEntitlements({
+      subscriptionId,
+      allocationKeys: existing.baseAllocationKeys,
+      toState: "released",
+      session,
+    });
+  }
   const releasedPickupRequest = await SubscriptionPickupRequest.findOneAndUpdate(
     {
       _id: pickupRequestId,
@@ -242,11 +267,13 @@ async function releaseReservedPickupMeals({
   const mealCount = Number(releasedPickupRequest.mealCount || 0);
   assertPositiveMealCount(mealCount);
 
-  await Subscription.updateOne(
-    { _id: subscriptionId },
-    { $inc: { remainingMeals: mealCount } },
-    withOptionalSession({}, session)
-  );
+  if (!Array.isArray(releasedPickupRequest.baseAllocationKeys) || releasedPickupRequest.baseAllocationKeys.length === 0) {
+    await Subscription.updateOne(
+      { _id: subscriptionId },
+      { $inc: { remainingMeals: mealCount } },
+      withOptionalSession({}, session)
+    );
+  }
 
   return {
     released: true,

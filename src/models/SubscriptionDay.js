@@ -347,6 +347,10 @@ const SubscriptionDaySchema = new mongoose.Schema(
       default: [],
     },
     creditsDeducted: { type: Boolean, default: false },
+    // Internal projection only; removed by the mobile compatibility adapter.
+    baseAllocationKeys: { type: [String], default: undefined },
+    entitlementTransitionState: { type: String, default: undefined, trim: true },
+    premiumReservationMode: { type: String, enum: ["deferred"], default: undefined },
     addonCreditsReleased: { type: Boolean, default: false },
     premiumCreditsReleased: { type: Boolean, default: false },
     autoLocked: { type: Boolean, default: false },

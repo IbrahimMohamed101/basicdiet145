@@ -109,13 +109,14 @@ async function consumeSubscriptionDayCredits({
   );
 
   if (!updateResult.modifiedCount) {
-    if (!session) {
-      await SubscriptionDay.updateOne(
-        { _id: day._id },
-        { $set: { creditsDeducted: false } }
-      );
-      day.creditsDeducted = false;
-    }
+    // A safe-session on standalone MongoDB does not provide rollback. Always
+    // compensate the guard so a failed debit cannot masquerade as consumption.
+    await SubscriptionDay.updateOne(
+      { _id: day._id },
+      { $set: { creditsDeducted: false } },
+      session ? { session } : {}
+    );
+    day.creditsDeducted = false;
     const err = new Error("Not enough credits");
     err.code = "INSUFFICIENT_CREDITS";
     throw err;

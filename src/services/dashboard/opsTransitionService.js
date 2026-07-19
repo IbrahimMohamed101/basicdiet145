@@ -36,6 +36,10 @@ const {
   releasePremiumBalanceAtomically,
   consumePremiumBalanceAtomically,
 } = require("../subscription/subscriptionSelectionService");
+const {
+  reopenDayEntitlements,
+  transitionDayEntitlements,
+} = require("../subscription/subscriptionMealEntitlementService");
 
 /**
  * Unified Operations Transition Service.
@@ -768,10 +772,17 @@ async function handleCancel({ entityId, entityType, payload, userId, role, sessi
     // Only load subscription once for both addon + premium release
     const needsAddonRelease = !doc.addonCreditsReleased;
     const needsPremiumRelease = !doc.premiumCreditsReleased;
+    let entitlementRelease = { handled: false };
 
     if (needsAddonRelease || needsPremiumRelease) {
       const sub = await Subscription.findById(doc.subscriptionId).session(session);
       if (sub) {
+        entitlementRelease = await transitionDayEntitlements({
+          subscriptionId: sub._id,
+          day: doc,
+          toState: "released",
+          session,
+        });
         // --- Addon balance rollback ---
         if (needsAddonRelease && Array.isArray(doc.addonSelections)) {
           for (const sel of doc.addonSelections) {
@@ -795,20 +806,31 @@ async function handleCancel({ entityId, entityType, payload, userId, role, sessi
         }
 
         // --- Premium balance rollback ---
-        if (needsPremiumRelease && Array.isArray(doc.premiumUpgradeSelections)) {
+        if (needsPremiumRelease && !entitlementRelease.handled && Array.isArray(doc.premiumUpgradeSelections)) {
           for (const sel of doc.premiumUpgradeSelections) {
             if (sel.premiumSource === "balance") {
-              await releasePremiumBalanceAtomically({
+              const releaseResult = await releasePremiumBalanceAtomically({
                 subscription: sub,
                 premiumKey: sel.premiumKey,
+                balanceBucketId: sel.balanceBucketId || sel.premiumWalletRowId || null,
+                configId: sel.configId || null,
+                revision: sel.revision != null ? sel.revision : null,
                 session,
               });
+              if (!releaseResult.released) {
+                const err = new Error("Premium balance bucket could not be released");
+                err.code = "DATA_INTEGRITY_ERROR";
+                err.status = 409;
+                err.details = { reason: releaseResult.reason || "release_failed" };
+                throw err;
+              }
               // Mark as pending_payment to prevent double-release if reopened
               sel.premiumSource = "pending_payment";
             }
           }
           doc.premiumCreditsReleased = true;
         }
+        if (entitlementRelease.handled) doc.premiumCreditsReleased = true;
       }
     }
   }
@@ -859,12 +881,13 @@ async function handleNoShow({ entityId, entityType, payload, userId, role, sessi
     doc.canceledAt = doc.canceledAt || new Date();
     doc.cancellationReason = payload.reason || "no_show";
     doc.cancellationNote = payload.notes || payload.note;
-    appendPickupRequestAudit(doc, "no_show", userId, role);
-    await doc.save({ session });
     await consumeReservedPickupMeals({
       pickupRequestId: doc._id,
+      entitlementState: "forfeited",
       session,
     });
+    appendPickupRequestAudit(doc, "no_show", userId, role);
+    await doc.save({ session });
     const updated = await SubscriptionPickupRequest.findById(entityId).session(session);
     return {
       data: updated || doc,
@@ -892,6 +915,12 @@ async function handleNoShow({ entityId, entityType, payload, userId, role, sessi
     
     // Policy Fix: no_show forfeits meals AND balances. 
     // We explicitly DO NOT call releaseAddonBalanceAtomically or releasePremiumBalanceAtomically here.
+    await transitionDayEntitlements({
+      subscriptionId: doc.subscriptionId,
+      day: doc,
+      toState: "forfeited",
+      session,
+    });
 
     appendOperationAudit(doc, "no_show", userId, role);
     await doc.save({ session });
@@ -949,6 +978,11 @@ async function handleReopen({ entityId, entityType, userId, role, payload, sessi
     if (doc.addonCreditsReleased || doc.premiumCreditsReleased) {
       const sub = await Subscription.findById(doc.subscriptionId).session(session);
       if (sub) {
+        const entitlementReopen = await reopenDayEntitlements({
+          subscriptionId: sub._id,
+          day: doc,
+          session,
+        });
         if (doc.addonCreditsReleased && Array.isArray(doc.addonSelections)) {
           for (const sel of doc.addonSelections) {
             if (sel.source === "pending_payment") {
@@ -968,7 +1002,7 @@ async function handleReopen({ entityId, entityType, userId, role, payload, sessi
           }
         }
         
-        if (doc.premiumCreditsReleased && Array.isArray(doc.premiumUpgradeSelections)) {
+        if (doc.premiumCreditsReleased && !entitlementReopen.handled && Array.isArray(doc.premiumUpgradeSelections)) {
           for (const sel of doc.premiumUpgradeSelections) {
             if (sel.premiumSource === "pending_payment") {
               const walletResult = await consumePremiumBalanceAtomically({
@@ -976,11 +1010,23 @@ async function handleReopen({ entityId, entityType, userId, role, payload, sessi
                 dayId: doc._id,
                 date: doc.date,
                 premiumKey: sel.premiumKey,
+                balanceBucketId: sel.balanceBucketId || sel.premiumWalletRowId || null,
+                configId: sel.configId || null,
+                revision: sel.revision != null ? sel.revision : null,
                 session
               });
-              if (walletResult.consumed) {
-                sel.premiumSource = "balance";
+              if (!walletResult.consumed) {
+                const err = new Error("Premium balance bucket could not be reacquired");
+                err.code = "DATA_INTEGRITY_ERROR";
+                err.status = 409;
+                err.details = { reason: walletResult.reason || "consume_failed" };
+                throw err;
               }
+              sel.premiumSource = "balance";
+              sel.balanceBucketId = walletResult.balanceBucketId || sel.balanceBucketId || null;
+              sel.premiumWalletRowId = walletResult.balanceBucketId || sel.premiumWalletRowId || null;
+              sel.configId = walletResult.configId || sel.configId || null;
+              sel.revision = walletResult.revision != null ? walletResult.revision : sel.revision;
             }
           }
         }

@@ -7,6 +7,7 @@ const { isPhase2CanonicalDayPlanningEnabled } = require("../utils/featureFlags")
 const { buildScopedCanonicalPlanningSnapshot } = require("./subscription/subscriptionDayPlanningService");
 const { consumeSubscriptionDayCredits, resolveDayMealsToDeduct } = require("./subscription/subscriptionDayConsumptionService");
 const { consumeReservedPickupMeals } = require("./subscription/subscriptionPickupRequestBalanceService");
+const { transitionDayEntitlements } = require("./subscription/subscriptionMealEntitlementService");
 
 async function fulfillSubscriptionDay({ subscriptionId, date, dayId, session }) {
   const dayQuery = dayId ? { _id: dayId } : { subscriptionId, date };
@@ -61,6 +62,74 @@ async function fulfillSubscriptionDay({ subscriptionId, date, dayId, session }) 
     fulfilledSnapshot.planning = planningSnapshot;
   }
 
+  // Pickup requests reserve their base meals when the request is created. The
+  // linked day therefore projects that same settlement instead of debiting the
+  // subscription a second time.
+  let entitlementSettlement = null;
+  try {
+    entitlementSettlement = await transitionDayEntitlements({
+      subscriptionId: sub._id,
+      day,
+      toState: "consumed",
+      session,
+    });
+  } catch (err) {
+    return { ok: false, code: err.code || "CONSUMPTION_FAILED", message: err.message || "Entitlement consumption failed" };
+  }
+  if (entitlementSettlement.handled && !day.creditsDeducted) {
+    await SubscriptionDay.updateOne(
+      { _id: day._id, creditsDeducted: { $ne: true } },
+      { $set: { creditsDeducted: true } },
+      session ? { session } : {}
+    );
+    day.creditsDeducted = true;
+  }
+
+  let pickupSettlement = null;
+  if (!entitlementSettlement.handled && (sub.deliveryMode === "pickup" || day.pickupRequested)) {
+    const pickupRequest = await SubscriptionPickupRequest.findOne({
+      subscriptionId: day.subscriptionId,
+      date: day.date,
+      creditsReserved: true,
+      creditsReleasedAt: null,
+    }).session(session);
+    if (pickupRequest) {
+      pickupSettlement = await consumeReservedPickupMeals({
+        pickupRequestId: pickupRequest._id,
+        session,
+      });
+      if (!day.creditsDeducted) {
+        await SubscriptionDay.updateOne(
+          { _id: day._id, creditsDeducted: { $ne: true } },
+          { $set: { creditsDeducted: true } },
+          session ? { session } : {}
+        );
+        day.creditsDeducted = true;
+      }
+    }
+  }
+
+  let consumption = entitlementSettlement.handled
+    ? { deductedCredits: entitlementSettlement.changedCount, alreadyDeducted: entitlementSettlement.changedCount === 0 }
+    : pickupSettlement
+    ? { deductedCredits: 0, alreadyDeducted: Boolean(pickupSettlement.alreadyConsumed) }
+    : null;
+  if (!day.creditsDeducted) {
+    try {
+      consumption = await consumeSubscriptionDayCredits({
+        day,
+        subscription: sub,
+        session,
+        reason: "fulfilled",
+      });
+    } catch (err) {
+      if (err.code === "INSUFFICIENT_CREDITS") {
+        return { ok: false, code: "INSUFFICIENT_CREDITS", message: "Not enough credits" };
+      }
+      throw err;
+    }
+  }
+
   const updatedDay = day.status === "fulfilled"
     ? day
     : await SubscriptionDay.findOneAndUpdate(
@@ -89,25 +158,12 @@ async function fulfillSubscriptionDay({ subscriptionId, date, dayId, session }) 
       };
     }
 
-    try {
-      const consumption = await consumeSubscriptionDayCredits({
-        day: currentDay || day,
-        subscription: sub,
-        session,
-        reason: "fulfilled",
-      });
-      return {
-        ok: true,
-        alreadyFulfilled: Boolean(consumption.alreadyDeducted),
-        day: currentDay || day,
-        deductedCredits: consumption.deductedCredits,
-      };
-    } catch (err) {
-      if (err.code === "INSUFFICIENT_CREDITS") {
-        return { ok: false, code: "INSUFFICIENT_CREDITS", message: "Not enough credits" };
-      }
-      throw err;
-    }
+    return {
+      ok: true,
+      alreadyFulfilled: Boolean(consumption && consumption.alreadyDeducted),
+      day: currentDay || day,
+      deductedCredits: consumption ? consumption.deductedCredits : 0,
+    };
   }
 
   if (updatedDay.creditsDeducted) {
@@ -119,25 +175,12 @@ async function fulfillSubscriptionDay({ subscriptionId, date, dayId, session }) 
     };
   }
 
-  try {
-    const consumption = await consumeSubscriptionDayCredits({
-      day: updatedDay,
-      subscription: sub,
-      session,
-      reason: "fulfilled",
-    });
-    return {
-      ok: true,
-      alreadyFulfilled: Boolean(consumption.alreadyDeducted),
-      day: updatedDay,
-      deductedCredits: consumption.deductedCredits,
-    };
-  } catch (err) {
-    if (err.code === "INSUFFICIENT_CREDITS") {
-      return { ok: false, code: "INSUFFICIENT_CREDITS", message: "Not enough credits" };
-    }
-    throw err;
-  }
+  return {
+    ok: true,
+    alreadyFulfilled: Boolean(consumption && consumption.alreadyDeducted),
+    day: updatedDay,
+    deductedCredits: consumption ? consumption.deductedCredits : 0,
+  };
 }
 
 async function fulfillSubscriptionPickupRequest({ requestId, actorId = null, session }) {

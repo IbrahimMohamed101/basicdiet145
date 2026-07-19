@@ -46,6 +46,9 @@ function buildSupportRuntime(runtimeOverrides = null) {
 function serializeSubscriptionDayForClient(subscription, day, runtimeOverrides = null) {
   const runtime = buildSupportRuntime(runtimeOverrides);
   const serializedDay = { ...day, status: mapRawDayStatusToClientStatus(day.status) };
+  delete serializedDay.baseAllocationKeys;
+  delete serializedDay.entitlementTransitionState;
+  delete serializedDay.premiumReservationMode;
 
   const actionType = day.canonicalDayActionType;
   if (actionType !== undefined && actionType !== null) {
@@ -155,6 +158,9 @@ function shapeMealPlannerReadFields({ subscription = null, day, lang = "ar", pic
     }),
     today: businessDate || undefined,
   });
+  delete shaped.baseAllocationKeys;
+  delete shaped.entitlementTransitionState;
+  delete shaped.premiumReservationMode;
   const commercialStateLabel = resolveReadLabel("commercialStates", shaped.commercialState, lang);
   const premiumExtraPaymentStatus = (shaped.premiumExtraPayment && shaped.premiumExtraPayment.status) || "none";
   const premiumExtraPaymentStatusLabel = resolveReadLabel("premiumExtraPaymentStatuses", premiumExtraPaymentStatus, lang);
@@ -312,7 +318,10 @@ function logWalletIntegrityError(context, meta = {}) {
 function buildMealBalance(subscription, businessDate) {
   const remainingMeals = Number(subscription.remainingMeals || 0);
   const totalMeals = Number(subscription.totalMeals || 0);
-  const consumedMeals = Math.max(0, totalMeals - remainingMeals);
+  const hasEntitlementLedger = Number(subscription.entitlementVersion || 0) >= 2;
+  const consumedMeals = hasEntitlementLedger
+    ? Math.max(0, Number(subscription.consumedMeals || 0) + Number(subscription.forfeitedMeals || 0))
+    : Math.max(0, totalMeals - remainingMeals);
   const isSubscriptionActive = subscription.status === "active";
 
   const validityEndDateStr = subscription.validityEndDate
