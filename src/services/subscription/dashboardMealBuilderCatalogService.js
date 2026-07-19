@@ -8,7 +8,7 @@ const ProductOptionGroup = require("../../models/ProductOptionGroup");
 const ProductGroupOption = require("../../models/ProductGroupOption");
 const { pickLang } = require("../../utils/i18n");
 const {
-  isLinkedDocGloballyAvailable,
+  isCatalogItemUsable,
   loadCatalogItemsByIdForDocs,
 } = require("../catalog/catalogAvailabilityService");
 
@@ -54,10 +54,10 @@ function serializeStatus(doc = {}, catalogItemsById = new Map()) {
     (!Array.isArray(doc.availableFor) ||
       doc.availableFor.length === 0 ||
       doc.availableFor.includes("subscription"));
-  const catalogItemAvailable = isLinkedDocGloballyAvailable(
-    doc,
-    catalogItemsById
-  );
+  const catalogItemId = stringId(doc.catalogItemId);
+  const catalogItemAvailable = catalogItemId
+    ? isCatalogItemUsable(catalogItemsById.get(catalogItemId))
+    : true;
   const reasonCodes = [];
   if (!active) reasonCodes.push("INACTIVE");
   if (!visible) reasonCodes.push("HIDDEN");
@@ -129,21 +129,23 @@ function classifyProduct({ product, optionGroups, status }) {
   const hasBuilderRelations = optionGroups.length > 0;
   const hasActiveBuilderRelations = activeGroups.length > 0;
   const selectionType = directSelectionType(product);
-  const directCardEligible = Boolean(selectionType);
-  const composedCardEligible =
+  const directCardCompatible = Boolean(selectionType);
+  const composedCardCompatible =
     hasBuilderRelations || product.isCustomizable === true;
   const suggestedSelectionTypes = [];
   if (selectionType) suggestedSelectionTypes.push(selectionType);
-  if (composedCardEligible) suggestedSelectionTypes.push("standard_meal");
+  if (composedCardCompatible) suggestedSelectionTypes.push("standard_meal");
 
   const reasonCodes = [];
-  if (!status.subscriptionEnabled) reasonCodes.push("NOT_SUBSCRIPTION_ENABLED");
   if (!status.customerReady) reasonCodes.push(...status.reasonCodes);
   if (NON_MEAL_CARD_VARIANTS.has(cardVariant)) {
     reasonCodes.push("NON_MEAL_CARD_VARIANT");
   }
-  if (!directCardEligible) reasonCodes.push("NOT_DIRECT_MEAL_PRODUCT");
-  if (!composedCardEligible) reasonCodes.push("NO_BUILDER_RELATIONS");
+  if (!directCardCompatible) reasonCodes.push("NOT_DIRECT_MEAL_PRODUCT");
+  if (!composedCardCompatible) reasonCodes.push("NO_BUILDER_RELATIONS");
+  if (composedCardCompatible && !hasActiveBuilderRelations) {
+    reasonCodes.push("NO_ACTIVE_BUILDER_RELATIONS");
+  }
 
   return {
     canonicalAuthority: "meal_builder_section.selectionType",
@@ -151,13 +153,18 @@ function classifyProduct({ product, optionGroups, status }) {
     cardVariant,
     suggestedSelectionTypes: [...new Set(suggestedSelectionTypes)],
     directAdd: {
-      eligible: directCardEligible && status.subscriptionEnabled,
+      compatible: directCardCompatible,
+      eligible: directCardCompatible && status.customerReady,
       selectionType,
       requiresBuilder: false,
       carbsRequired: false,
     },
     composedMeal: {
-      eligible: composedCardEligible && status.subscriptionEnabled,
+      compatible: composedCardCompatible,
+      eligible:
+        composedCardCompatible &&
+        hasActiveBuilderRelations &&
+        status.customerReady,
       selectionType: "standard_meal",
       requiresBuilder: true,
       carbsRequired: hasCarbGroup,
@@ -241,6 +248,11 @@ async function getCompleteCatalog({ lang = "en" } = {}) {
   );
   const optionsById = new Map(
     options.map((option) => [String(option._id), option])
+  );
+  const groupRelationKeys = new Set(
+    groupRelations.map((relation) =>
+      relationKey(relation.productId, relation.groupId)
+    )
   );
   const optionRelationsByProductGroup = new Map();
   for (const relation of optionRelations) {
@@ -356,6 +368,20 @@ async function getCompleteCatalog({ lang = "en" } = {}) {
         !optionsById.has(String(relation.optionId))
     )
     .map((relation) => String(relation._id));
+  const unscopedOptionRelationIds = optionRelations
+    .filter(
+      (relation) =>
+        !groupRelationKeys.has(
+          relationKey(relation.productId, relation.groupId)
+        )
+    )
+    .map((relation) => String(relation._id));
+  const mismatchedOptionGroupRelationIds = optionRelations
+    .filter((relation) => {
+      const option = optionsById.get(String(relation.optionId));
+      return option && String(option.groupId) !== String(relation.groupId);
+    })
+    .map((relation) => String(relation._id));
 
   return {
     contractVersion: CONTRACT_VERSION,
@@ -411,10 +437,15 @@ async function getCompleteCatalog({ lang = "en" } = {}) {
       orphanProductIds,
       orphanGroupRelationIds,
       orphanOptionRelationIds,
+      unscopedOptionRelationIds,
+      mismatchedOptionGroupRelationIds,
       hasOrphans:
         orphanProductIds.length > 0 ||
         orphanGroupRelationIds.length > 0 ||
         orphanOptionRelationIds.length > 0,
+      hasRelationIntegrityIssues:
+        unscopedOptionRelationIds.length > 0 ||
+        mismatchedOptionGroupRelationIds.length > 0,
     },
   };
 }
