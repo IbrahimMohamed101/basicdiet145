@@ -56,10 +56,12 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/services/subscription/subscriptionPickupRequestBalanceService.js \
-                  tests/subscriptionPremiumPickupSingleDebit.test.js \
-                  .github/workflows/subscription-entitlement-focused.yml \
-                  scripts/patchPremiumPickupSingleDebit.py
+          # The permanent workflow update is applied later through the GitHub connector.
+          # Keep this bot push limited to backend code, regression test, and patch cleanup.
+          git checkout -- .github/workflows/subscription-entitlement-focused.yml
+          git add -A -- src/services/subscription/subscriptionPickupRequestBalanceService.js \
+                        tests/subscriptionPremiumPickupSingleDebit.test.js \
+                        scripts/patchPremiumPickupSingleDebit.py
           if ! git diff --cached --quiet; then
             git commit -m "fix(subscription): reuse premium day reservation for pickup"
             git push origin HEAD:${{ github.event.pull_request.head.ref }}
