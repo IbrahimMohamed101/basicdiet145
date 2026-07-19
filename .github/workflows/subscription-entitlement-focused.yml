@@ -1,5 +1,6 @@
 name: Subscription Entitlement Focused Test
 
+# Temporary verification trigger; workflow commands match main.
 on:
   push:
     branches: [main]
