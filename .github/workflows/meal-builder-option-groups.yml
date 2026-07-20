@@ -1,0 +1,44 @@
+name: Meal Builder option groups
+
+on:
+  pull_request:
+    paths:
+      - "src/controllers/dashboard/mealBuilderController.js"
+      - "src/services/subscription/dashboardMealBuilderAuthoringCatalogService.js"
+      - "src/services/subscription/dashboardMealPlannerCardFacadeService.js"
+      - "tests/dashboardMealBuilderAuthoringCatalog.test.js"
+      - "tests/dashboardMealBuilderOptionFamilyLifecycle.test.js"
+      - ".github/workflows/meal-builder-option-groups.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  option-group-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Authoritative authoring catalog
+        run: NODE_ENV=test node tests/dashboardMealBuilderAuthoringCatalog.test.js
+
+      - name: Option-family card lifecycle
+        run: NODE_ENV=test node tests/dashboardMealBuilderOptionFamilyLifecycle.test.js
+
+      - name: Existing Meal Builder contract
+        run: npm run test:meal-planner-contract
+
+      - name: Dashboard and mobile parity
+        run: npm run test:meal-builder-dashboard-mobile-parity
