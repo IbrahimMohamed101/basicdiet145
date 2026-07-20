@@ -1,7 +1,7 @@
 "use strict";
 
 const mealBuilderService = require("../../services/subscription/dashboardMealPlannerCardFacadeService");
-const dashboardCatalogService = require("../../services/subscription/dashboardMealBuilderAuthoringCatalogService");
+const dashboardCatalogService = require("../../services/subscription/dashboardMealBuilderAuthoringContractService");
 const errorResponse = require("../../utils/errorResponse");
 const { getRequestLang } = require("../../utils/i18n");
 
@@ -81,7 +81,7 @@ const getMealBuilder = wrap(async (req, res) => {
       state.cardContract ||
       (typeof mealBuilderService.getCardContract === "function"
         ? mealBuilderService.getCardContract()
-        : null),
+        : dashboardCatalogService.getCardContract()),
     catalog,
   });
 });
