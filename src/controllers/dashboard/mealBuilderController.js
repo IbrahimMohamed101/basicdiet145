@@ -1,7 +1,7 @@
 "use strict";
 
 const mealBuilderService = require("../../services/subscription/dashboardMealPlannerCardFacadeService");
-const dashboardCatalogService = require("../../services/subscription/dashboardMealBuilderCatalogService");
+const dashboardCatalogService = require("../../services/subscription/dashboardMealBuilderAuthoringCatalogService");
 const errorResponse = require("../../utils/errorResponse");
 const { getRequestLang } = require("../../utils/i18n");
 
