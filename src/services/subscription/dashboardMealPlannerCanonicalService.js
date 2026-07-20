@@ -166,11 +166,12 @@ function isSystemManagedCard(section = {}) {
 
 function isOptionCard(section = {}) {
   const explicit = String(section.cardType || section.metadata?.cardType || "").trim();
+  const sectionType = String(section.sectionType || section.type || "").trim();
   return (
     !isSystemManagedCard(section) &&
     (explicit === "option_family" ||
-      String(section.sectionType || section.type || "") === "option_group" ||
-      (Array.isArray(section.selectedOptionIds) && section.selectedOptionIds.length > 0) ||
+      sectionType === "option_group" ||
+      sectionType === "option_family" ||
       Boolean(section.productContextId && section.sourceGroupId))
   );
 }
@@ -179,11 +180,12 @@ function isDirectCard(section = {}) {
   if (isSystemManagedCard(section) || isOptionCard(section)) return false;
   const explicit = String(section.cardType || section.metadata?.cardType || "").trim();
   const sectionType = String(section.sectionType || section.type || "").trim();
+  const selectionType = String(section.selectionType || "").trim();
   return (
     explicit === "direct_product" ||
-    sectionType === "product_list" ||
-    sectionType === "product_category" ||
-    Array.isArray(section.selectedProductIds)
+    selectionType === DIRECT_SELECTION_TYPE ||
+    selectionType === "sandwich" ||
+    sectionType === "product_list"
   );
 }
 
@@ -281,12 +283,7 @@ function productCardVariant(product = {}) {
 }
 
 function directCatalogCompatible(product = {}) {
-  const itemType = String(product.itemType || "").trim().toLowerCase();
-  const variant = productCardVariant(product);
-  return (
-    DIRECT_ITEM_TYPES.has(itemType) ||
-    (itemType === "product" && DIRECT_CARD_VARIANTS.has(variant))
-  );
+  return explicitDirectCompatible(product);
 }
 
 function explicitDirectCompatible(product = {}) {
@@ -488,6 +485,12 @@ function buildDirectSection({ source = {}, key, productIds, sections, existing =
       cardType: "direct_product",
       cardKind: "full_meal_product",
       dashboardManaged: true,
+      configuredExplicitly: Boolean(
+        source.cardType === "direct_product" ||
+          source.selectionType === DIRECT_SELECTION_TYPE ||
+          source.selectionType === "sandwich" ||
+          current?.metadata?.configuredExplicitly
+      ),
       requiresBuilder: false,
       treatAsFullMeal: true,
     },
@@ -794,8 +797,46 @@ async function createProductSection({ section = {}, actor = {} } = {}) {
       { sectionKey: key }
     );
   }
+  const requestedProductIds = normalizeIds(
+    section.selectedProductIds || section.productIds,
+    "productIds",
+    true
+  );
+  const requestedSelectionType = String(section.selectionType || "").trim();
+  const explicitDirect =
+    cardType === "direct_product" ||
+    requestedSelectionType === DIRECT_SELECTION_TYPE ||
+    requestedSelectionType === "sandwich";
+  if (
+    requestedSelectionType &&
+    requestedSelectionType !== DIRECT_SELECTION_TYPE &&
+    requestedSelectionType !== "sandwich"
+  ) {
+    throw mealBuilderError(
+      "Direct product cards must use full_meal_product",
+      "MEAL_BUILDER_CARD_SELECTION_TYPE_INVALID",
+      422,
+      { selectionType: requestedSelectionType }
+    );
+  }
+  if (!explicitDirect) {
+    const requestedProducts = await MenuProduct.find({
+      _id: { $in: requestedProductIds },
+    }).lean();
+    const requiresExplicitType = requestedProducts.some(
+      (product) => !DIRECT_ITEM_TYPES.has(String(product.itemType || "").trim().toLowerCase())
+    );
+    if (requiresExplicitType) {
+      throw mealBuilderError(
+        "Card selectionType is required for generic products",
+        "MEAL_BUILDER_CARD_SELECTION_TYPE_REQUIRED",
+        422,
+        { allowedSelectionTypes: [DIRECT_SELECTION_TYPE] }
+      );
+    }
+  }
   const productIds = await assertDirectProductsAssignable({
-    productIds: section.selectedProductIds || section.productIds,
+    productIds: requestedProductIds,
     sections,
   });
   const nextSection = buildDirectSection({
