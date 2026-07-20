@@ -17,7 +17,7 @@ permissions:
 jobs:
   option-group-contract:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -35,10 +35,53 @@ jobs:
         run: NODE_ENV=test node tests/dashboardMealBuilderAuthoringCatalog.test.js
 
       - name: Option-family card lifecycle
+        if: always()
         run: NODE_ENV=test node tests/dashboardMealBuilderOptionFamilyLifecycle.test.js
 
-      - name: Existing Meal Builder contract
-        run: npm run test:meal-planner-contract
+      - name: Dashboard compatibility
+        if: always()
+        run: NODE_ENV=test node tests/mealPlannerDashboardCompatibility.test.js
+
+      - name: Card lifecycle
+        if: always()
+        run: NODE_ENV=test node tests/mealPlannerCardLifecycle.test.js
+
+      - name: Production product compatibility
+        if: always()
+        run: NODE_ENV=test node tests/dashboardMealPlannerProductionProducts.test.js
+
+      - name: Complete catalog
+        if: always()
+        run: NODE_ENV=test node tests/dashboardMealBuilderCompleteCatalog.test.js
+
+      - name: Full meal product contract
+        if: always()
+        run: NODE_ENV=test node tests/mealPlannerFullMealProductContract.test.js
+
+      - name: Compatible default seed
+        if: always()
+        run: NODE_ENV=test node tests/dashboardMealBuilderCompatibleDefaultSeed.test.js
+
+      - name: Sandwich card end to end
+        if: always()
+        run: NODE_ENV=test node tests/dashboardMealBuilderSandwichCardEndToEnd.test.js
+
+      - name: Existing option catalog closure
+        if: always()
+        run: NODE_ENV=test node tests/dashboardMealBuilderOptionCatalogClosure.test.js
+
+      - name: Full meal end to end
+        if: always()
+        run: NODE_ENV=test node tests/dashboardMealBuilderFullMealEndToEnd.test.js
+
+      - name: Flutter card policy
+        if: always()
+        run: NODE_ENV=test node tests/dashboardMealPlannerFlutterCardPolicy.test.js
+
+      - name: Two-type policy
+        if: always()
+        run: NODE_ENV=test node tests/dashboardMealPlannerTwoTypePolicy.test.js
 
       - name: Dashboard and mobile parity
+        if: always()
         run: npm run test:meal-builder-dashboard-mobile-parity
