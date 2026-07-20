@@ -93,6 +93,7 @@ function parseConfiguredCorsOrigins() {
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "https://basicdiet145.onrender.com",
+    "https://clientdashbourd-production.up.railway.app",
     process.env.FRONTEND_URL,
     process.env.DASHBOARD_URL,
     ...listOrigins,
