@@ -61,6 +61,36 @@ function canonicalDirectSelectionType(value) {
     : selectionType || value;
 }
 
+function plannerSectionHasCanonicalDirectProduct(section = {}) {
+  const sectionType = token(
+    section.type || section.sectionType || section.builderSectionType
+  );
+  if (sectionType !== "product_list") return false;
+  const items = [
+    ...(Array.isArray(section.products) ? section.products : []),
+    ...(Array.isArray(section.items)
+      ? section.items.filter((item) => item?.type === "product")
+      : []),
+  ];
+  return items.some((item) => {
+    const selectionType = canonicalDirectSelectionType(item?.selectionType);
+    return (
+      selectionType === FULL_MEAL_SELECTION_TYPE ||
+      item?.action?.type === "direct_add" ||
+      item?.action?.treatAsFullMeal === true
+    );
+  });
+}
+
+function canonicalizePlannerSection(section = {}) {
+  if (!isPlainObject(section)) return section;
+  if (!plannerSectionHasCanonicalDirectProduct(section)) return section;
+  return {
+    ...section,
+    selectionType: FULL_MEAL_SELECTION_TYPE,
+  };
+}
+
 function canonicalizeSelectionTypesDeep(value) {
   if (Array.isArray(value)) return value.map(canonicalizeSelectionTypesDeep);
   if (!isPlainObject(value)) return value;
@@ -75,6 +105,9 @@ function canonicalizeSelectionTypesDeep(value) {
     } else {
       output[key] = canonicalizeSelectionTypesDeep(entry);
     }
+  }
+  if (Array.isArray(output.sections)) {
+    output.sections = output.sections.map(canonicalizePlannerSection);
   }
   return output;
 }
