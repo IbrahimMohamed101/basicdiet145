@@ -1,0 +1,111 @@
+name: Meal Builder option groups
+
+on:
+  pull_request:
+    paths:
+      - "src/controllers/dashboard/mealBuilderController.js"
+      - "src/services/subscription/dashboardMealBuilderAuthoringCatalogService.js"
+      - "src/services/subscription/dashboardMealBuilderAuthoringContractService.js"
+      - "src/services/subscription/dashboardMealPlannerCardFacadeService.js"
+      - "src/services/subscription/dashboardMealPlannerCanonicalService.js"
+      - "src/services/subscription/dashboardMealPlannerDashboardService.js"
+      - "tests/dashboardMealBuilderAuthoringCatalog.test.js"
+      - "tests/dashboardMealBuilderOptionFamilyLifecycle.test.js"
+      - "tests/mealPlannerCardLifecycle.test.js"
+      - "tests/dashboardMealPlannerProductionProducts.test.js"
+      - "tests/dashboardMealBuilderFullMealEndToEnd.test.js"
+      - ".github/workflows/meal-builder-option-groups.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Authoritative authoring catalog
+            artifact: authoring-catalog
+            command: NODE_ENV=test node tests/dashboardMealBuilderAuthoringCatalog.test.js
+          - name: Option-family card lifecycle
+            artifact: option-family-lifecycle
+            command: NODE_ENV=test node tests/dashboardMealBuilderOptionFamilyLifecycle.test.js
+          - name: Dashboard compatibility
+            artifact: dashboard-compatibility
+            command: NODE_ENV=test node tests/mealPlannerDashboardCompatibility.test.js
+          - name: Card lifecycle
+            artifact: card-lifecycle
+            command: NODE_ENV=test node tests/mealPlannerCardLifecycle.test.js
+          - name: Production product compatibility
+            artifact: production-products
+            command: NODE_ENV=test node tests/dashboardMealPlannerProductionProducts.test.js
+          - name: Complete catalog
+            artifact: complete-catalog
+            command: NODE_ENV=test node tests/dashboardMealBuilderCompleteCatalog.test.js
+          - name: Full meal product contract
+            artifact: full-meal-contract
+            command: NODE_ENV=test node tests/mealPlannerFullMealProductContract.test.js
+          - name: Compatible default seed
+            artifact: default-seed
+            command: NODE_ENV=test node tests/dashboardMealBuilderCompatibleDefaultSeed.test.js
+          - name: Sandwich card end to end
+            artifact: sandwich-e2e
+            command: NODE_ENV=test node tests/dashboardMealBuilderSandwichCardEndToEnd.test.js
+          - name: Existing option catalog closure
+            artifact: option-catalog-closure
+            command: NODE_ENV=test node tests/dashboardMealBuilderOptionCatalogClosure.test.js
+          - name: Full meal end to end
+            artifact: full-meal-e2e
+            command: NODE_ENV=test node tests/dashboardMealBuilderFullMealEndToEnd.test.js
+          - name: Flutter card policy
+            artifact: flutter-card-policy
+            command: NODE_ENV=test node tests/dashboardMealPlannerFlutterCardPolicy.test.js
+          - name: Two-type policy
+            artifact: two-type-policy
+            command: NODE_ENV=test node tests/dashboardMealPlannerTwoTypePolicy.test.js
+          - name: Dashboard mobile parity
+            artifact: dashboard-mobile-parity
+            command: npm run test:meal-builder-dashboard-mobile-parity
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          show-progress: false
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --silent
+
+      - name: Run ${{ matrix.name }}
+        id: regression
+        shell: bash
+        run: |
+          set +e
+          bash -lc '${{ matrix.command }}' > test-output.log 2>&1
+          code=$?
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          tail -n 80 test-output.log
+          exit 0
+
+      - name: Upload failure log
+        if: steps.regression.outputs.code != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: test-output.log
+          if-no-files-found: error
+          retention-days: 2
+
+      - name: Fail regression
+        if: steps.regression.outputs.code != '0'
+        run: exit ${{ steps.regression.outputs.code }}

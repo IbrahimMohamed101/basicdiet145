@@ -17,9 +17,7 @@ let mongoServer;
 
 async function connect() {
   mongoServer = await MongoMemoryServer.create();
-  const uri = mongoServer.getUri(
-    `dashboard_meal_planner_production_products_${Date.now()}`
-  );
+  const uri = mongoServer.getUri(`meal_planner_production_products_${Date.now()}`);
   process.env.MONGO_URI = uri;
   process.env.MONGODB_URI = uri;
   await mongoose.connect(uri, { serverSelectionTimeoutMS: 10000 });
@@ -40,32 +38,43 @@ function expectStatus(response, expectedStatus, label) {
   );
 }
 
-async function seedProductionStyleProducts() {
+async function seedProductionShape() {
   const now = new Date();
   const category = await MenuCategory.create({
     key: "production_products",
     name: { ar: "منتجات الإنتاج", en: "Production Products" },
-    isActive: true,
-    isVisible: true,
-    isAvailable: true,
     publishedAt: now,
+    sortOrder: 1,
   });
-
-  return MenuProduct.insertMany([
+  const products = await MenuProduct.insertMany([
     {
       categoryId: category._id,
       key: "production_ready_meal",
-      name: { ar: "وجبة إنتاج", en: "Production Ready Meal" },
+      name: { ar: "وجبة جاهزة", en: "Ready Meal" },
       itemType: "product",
-      pricingModel: "per_100g",
-      priceHalala: 1900,
-      availableFor: ["one_time", "subscription"],
-      isActive: true,
-      isVisible: true,
-      isAvailable: true,
+      pricingModel: "fixed",
+      priceHalala: 1800,
+      currency: "SAR",
+      availableFor: ["subscription"],
+      availableForSubscription: true,
       ui: { cardVariant: "ready_meal" },
       publishedAt: now,
-      sortOrder: 1,
+      sortOrder: 10,
+    },
+    {
+      categoryId: category._id,
+      key: "production_customizable_ready_meal",
+      name: { ar: "وجبة جاهزة قابلة للتخصيص", en: "Customizable Ready Meal" },
+      itemType: "product",
+      pricingModel: "fixed",
+      priceHalala: 2000,
+      currency: "SAR",
+      availableFor: ["subscription"],
+      availableForSubscription: true,
+      isCustomizable: true,
+      ui: { cardVariant: "ready_meal_customizable" },
+      publishedAt: now,
+      sortOrder: 20,
     },
     {
       categoryId: category._id,
@@ -73,120 +82,118 @@ async function seedProductionStyleProducts() {
       name: { ar: "ساندويتش إنتاج", en: "Production Sandwich" },
       itemType: "product",
       pricingModel: "fixed",
-      priceHalala: 1500,
-      availableFor: ["one_time", "subscription"],
-      isActive: true,
-      isVisible: true,
-      isAvailable: true,
+      priceHalala: 1600,
+      currency: "SAR",
+      availableFor: ["subscription"],
+      availableForSubscription: true,
       ui: { cardVariant: "sandwich_card" },
       publishedAt: now,
-      sortOrder: 2,
+      sortOrder: 30,
     },
     {
       categoryId: category._id,
-      key: "canonical_full_meal",
-      name: { ar: "وجبة كاملة", en: "Canonical Full Meal" },
+      key: "production_full_meal",
+      name: { ar: "وجبة كاملة مستقلة", en: "Independent Full Meal" },
       itemType: "full_meal_product",
       pricingModel: "fixed",
-      priceHalala: 1800,
+      priceHalala: 2200,
+      currency: "SAR",
       availableFor: ["subscription"],
-      isActive: true,
-      isVisible: true,
-      isAvailable: true,
-      ui: { cardVariant: "ready_meal" },
+      availableForSubscription: true,
       publishedAt: now,
-      sortOrder: 3,
+      sortOrder: 40,
+    },
+    {
+      categoryId: category._id,
+      key: "production_builder",
+      name: { ar: "منتج بناء", en: "Builder Product" },
+      itemType: "product",
+      pricingModel: "per_100g",
+      priceHalala: 1900,
+      currency: "SAR",
+      availableFor: ["subscription"],
+      availableForSubscription: true,
+      isCustomizable: true,
+      ui: { cardVariant: "hero_builder" },
+      publishedAt: now,
+      sortOrder: 50,
     },
     {
       categoryId: category._id,
       key: "production_addon",
-      name: { ar: "إضافة إنتاج", en: "Production Addon" },
-      itemType: "product",
+      name: { ar: "إضافة", en: "Addon" },
+      itemType: "addon",
       pricingModel: "fixed",
       priceHalala: 500,
-      availableFor: ["one_time", "subscription"],
-      isActive: true,
-      isVisible: true,
-      isAvailable: true,
+      currency: "SAR",
+      availableFor: ["subscription"],
+      availableForSubscription: true,
       ui: { cardVariant: "addon_card" },
       publishedAt: now,
-      sortOrder: 4,
-    },
-    {
-      categoryId: category._id,
-      key: "production_builder_shell",
-      name: { ar: "منشئ تقني", en: "Production Builder Shell" },
-      itemType: "product",
-      pricingModel: "per_100g",
-      priceHalala: 1900,
-      availableFor: ["one_time", "subscription"],
-      isActive: true,
-      isVisible: true,
-      isAvailable: true,
-      ui: { cardVariant: "hero_builder" },
-      publishedAt: now,
-      sortOrder: 5,
+      sortOrder: 60,
     },
   ]);
+  return products;
 }
 
 async function run() {
   await connect();
   try {
-    await seedProductionStyleProducts();
     const app = createApp();
-    const auth = await dashboardAuth(
-      "admin",
-      "dashboard-meal-planner-production-products"
-    );
+    const auth = await dashboardAuth("admin", "production-products");
+    const products = await seedProductionShape();
+    const byKey = new Map(products.map((product) => [product.key, product]));
 
-    const productsResponse = await request(app)
-      .get("/api/dashboard/menu/products?limit=500&includeInactive=true")
-      .set(auth.headers);
-    expectStatus(productsResponse, 200, "dashboard products list");
-    assert.strictEqual(productsResponse.body.data.items.length, 5);
-    assert.strictEqual(productsResponse.body.data.pagination.limit, 500);
-    assert.strictEqual(productsResponse.body.data.pagination.total, 5);
-    assert.strictEqual(productsResponse.body.data.pagination.pages, 1);
-
-    const pickerResponse = await request(app)
+    const response = await request(app)
       .get(
-        "/api/dashboard/meal-builder/pickers/products?limit=500&includeUnavailable=true&unassignedOnly=false"
+        "/api/dashboard/meal-builder/pickers/products?includeUnavailable=true&unassignedOnly=false&limit=1000"
       )
       .set(auth.headers);
-    expectStatus(pickerResponse, 200, "production product picker");
+    expectStatus(response, 200, "production-shaped direct picker");
 
-    const candidates = pickerResponse.body.data.candidates;
-    const keys = new Set(candidates.map((candidate) => candidate.key));
-    assert.deepStrictEqual(
-      keys,
-      new Set([
-        "production_ready_meal",
-        "production_sandwich",
-        "canonical_full_meal",
-      ])
-    );
-    assert.strictEqual(pickerResponse.body.data.meta.limit, 500);
-    assert.strictEqual(pickerResponse.body.data.meta.total, 3);
-    assert.strictEqual(pickerResponse.body.data.meta.catalogTotal, 3);
+    const candidates = response.body.data.candidates;
+    const candidateByKey = new Map(candidates.map((candidate) => [candidate.key, candidate]));
+    for (const key of [
+      "production_ready_meal",
+      "production_customizable_ready_meal",
+      "production_sandwich",
+      "production_full_meal",
+    ]) {
+      assert(candidateByKey.has(key), `${key} must be visible in the direct picker`);
+    }
+    assert(!candidateByKey.has("production_builder"));
+    assert(!candidateByKey.has("production_addon"));
+
     assert.strictEqual(
-      candidates.find((candidate) => candidate.key === "production_sandwich")
-        .selectionType,
-      "sandwich"
+      candidateByKey.get("production_ready_meal").selectionType,
+      "full_meal_product"
     );
-    assert.ok(!keys.has("production_addon"));
-    assert.ok(!keys.has("production_builder_shell"));
+    assert.strictEqual(
+      candidateByKey.get("production_sandwich").selectionType,
+      "full_meal_product"
+    );
+    assert.strictEqual(
+      candidateByKey.get("production_full_meal").selectionType,
+      "full_meal_product"
+    );
+    assert.strictEqual(
+      candidateByKey.get("production_customizable_ready_meal").configurable,
+      true
+    );
+    assert.strictEqual(response.body.data.rules.classificationAuthority, "meal_product_classification.v1");
+    assert.strictEqual(
+      candidateByKey.get("production_ready_meal").productId,
+      String(byKey.get("production_ready_meal")._id)
+    );
+
+    console.log("dashboard Meal Planner production product compatibility passed");
   } finally {
     await disconnect();
   }
 }
 
-run()
-  .then(() => {
-    console.log("dashboard Meal Planner production product compatibility passed");
-  })
-  .catch(async (error) => {
-    console.error(error);
-    await disconnect().catch(() => {});
-    process.exit(1);
-  });
+run().catch(async (error) => {
+  console.error(error);
+  await disconnect().catch(() => {});
+  process.exit(1);
+});

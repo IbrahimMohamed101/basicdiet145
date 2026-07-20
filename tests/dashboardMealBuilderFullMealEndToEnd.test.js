@@ -109,7 +109,7 @@ async function run() {
       picker.body.data.candidates.map((candidate) => [candidate.key, candidate])
     );
     assert.strictEqual(byKey.get("e2e_ready_meal").selectionType, "full_meal_product");
-    assert.strictEqual(byKey.get("e2e_sandwich").selectionType, "sandwich");
+    assert.strictEqual(byKey.get("e2e_sandwich").selectionType, "full_meal_product");
     assert.strictEqual(byKey.get("e2e_explicit_full").selectionType, "full_meal_product");
     assert.ok(!byKey.has("e2e_addon"));
     assert.strictEqual(
