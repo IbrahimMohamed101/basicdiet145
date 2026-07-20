@@ -5,9 +5,14 @@ on:
     paths:
       - "src/controllers/dashboard/mealBuilderController.js"
       - "src/services/subscription/dashboardMealBuilderAuthoringCatalogService.js"
+      - "src/services/subscription/dashboardMealBuilderAuthoringContractService.js"
       - "src/services/subscription/dashboardMealPlannerCardFacadeService.js"
+      - "src/services/subscription/dashboardMealPlannerCanonicalService.js"
       - "tests/dashboardMealBuilderAuthoringCatalog.test.js"
       - "tests/dashboardMealBuilderOptionFamilyLifecycle.test.js"
+      - "tests/mealPlannerCardLifecycle.test.js"
+      - "tests/dashboardMealPlannerProductionProducts.test.js"
+      - "tests/dashboardMealBuilderFullMealEndToEnd.test.js"
       - ".github/workflows/meal-builder-option-groups.yml"
   workflow_dispatch:
 
@@ -15,9 +20,42 @@ permissions:
   contents: read
 
 jobs:
-  option-group-contract:
+  regression:
+    name: ${{ matrix.name }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Authoritative authoring catalog
+            command: NODE_ENV=test node tests/dashboardMealBuilderAuthoringCatalog.test.js
+          - name: Option-family card lifecycle
+            command: NODE_ENV=test node tests/dashboardMealBuilderOptionFamilyLifecycle.test.js
+          - name: Dashboard compatibility
+            command: NODE_ENV=test node tests/mealPlannerDashboardCompatibility.test.js
+          - name: Card lifecycle
+            command: NODE_ENV=test node tests/mealPlannerCardLifecycle.test.js
+          - name: Production product compatibility
+            command: NODE_ENV=test node tests/dashboardMealPlannerProductionProducts.test.js
+          - name: Complete catalog
+            command: NODE_ENV=test node tests/dashboardMealBuilderCompleteCatalog.test.js
+          - name: Full meal product contract
+            command: NODE_ENV=test node tests/mealPlannerFullMealProductContract.test.js
+          - name: Compatible default seed
+            command: NODE_ENV=test node tests/dashboardMealBuilderCompatibleDefaultSeed.test.js
+          - name: Sandwich card end to end
+            command: NODE_ENV=test node tests/dashboardMealBuilderSandwichCardEndToEnd.test.js
+          - name: Existing option catalog closure
+            command: NODE_ENV=test node tests/dashboardMealBuilderOptionCatalogClosure.test.js
+          - name: Full meal end to end
+            command: NODE_ENV=test node tests/dashboardMealBuilderFullMealEndToEnd.test.js
+          - name: Flutter card policy
+            command: NODE_ENV=test node tests/dashboardMealPlannerFlutterCardPolicy.test.js
+          - name: Two-type policy
+            command: NODE_ENV=test node tests/dashboardMealPlannerTwoTypePolicy.test.js
+          - name: Dashboard mobile parity
+            command: npm run test:meal-builder-dashboard-mobile-parity
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -31,57 +69,5 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Authoritative authoring catalog
-        run: NODE_ENV=test node tests/dashboardMealBuilderAuthoringCatalog.test.js
-
-      - name: Option-family card lifecycle
-        if: always()
-        run: NODE_ENV=test node tests/dashboardMealBuilderOptionFamilyLifecycle.test.js
-
-      - name: Dashboard compatibility
-        if: always()
-        run: NODE_ENV=test node tests/mealPlannerDashboardCompatibility.test.js
-
-      - name: Card lifecycle
-        if: always()
-        run: NODE_ENV=test node tests/mealPlannerCardLifecycle.test.js
-
-      - name: Production product compatibility
-        if: always()
-        run: NODE_ENV=test node tests/dashboardMealPlannerProductionProducts.test.js
-
-      - name: Complete catalog
-        if: always()
-        run: NODE_ENV=test node tests/dashboardMealBuilderCompleteCatalog.test.js
-
-      - name: Full meal product contract
-        if: always()
-        run: NODE_ENV=test node tests/mealPlannerFullMealProductContract.test.js
-
-      - name: Compatible default seed
-        if: always()
-        run: NODE_ENV=test node tests/dashboardMealBuilderCompatibleDefaultSeed.test.js
-
-      - name: Sandwich card end to end
-        if: always()
-        run: NODE_ENV=test node tests/dashboardMealBuilderSandwichCardEndToEnd.test.js
-
-      - name: Existing option catalog closure
-        if: always()
-        run: NODE_ENV=test node tests/dashboardMealBuilderOptionCatalogClosure.test.js
-
-      - name: Full meal end to end
-        if: always()
-        run: NODE_ENV=test node tests/dashboardMealBuilderFullMealEndToEnd.test.js
-
-      - name: Flutter card policy
-        if: always()
-        run: NODE_ENV=test node tests/dashboardMealPlannerFlutterCardPolicy.test.js
-
-      - name: Two-type policy
-        if: always()
-        run: NODE_ENV=test node tests/dashboardMealPlannerTwoTypePolicy.test.js
-
-      - name: Dashboard and mobile parity
-        if: always()
-        run: npm run test:meal-builder-dashboard-mobile-parity
+      - name: Run ${{ matrix.name }}
+        run: ${{ matrix.command }}
