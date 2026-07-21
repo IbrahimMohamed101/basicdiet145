@@ -48,8 +48,9 @@ function installSubscriptionDayFullMealCompatibility() {
 }
 
 installSubscriptionDayFullMealCompatibility();
-require("./installPickupCanonicalRuntimeGuard");
+const pickupEntitlementClosure = require("./installPickupEntitlementClosure");
 require("./installPickupCanonicalQueryGuard");
+pickupEntitlementClosure.patchPickupClientService();
 
 module.exports = {
   installSubscriptionDayFullMealCompatibility,
