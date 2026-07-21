@@ -1,6 +1,7 @@
 "use strict";
 
 const canonicalService = require("./dashboardMealPlannerCanonicalService");
+const compatibilityService = require("./dashboardMealPlannerCompatibilityService");
 const cardFacade = require("./dashboardMealPlannerCardFacadeService");
 const CatalogService = require("../catalog/CatalogService");
 
@@ -106,7 +107,7 @@ async function getDirectPicker(options = {}) {
   const pagination = normalizePagination(options);
   const includeUnavailable = normalizeBoolean(options.includeUnavailable, false);
   const unassignedOnly = normalizeBoolean(options.unassignedOnly, true);
-  const complete = await canonicalService.getSectionPicker({
+  const complete = await compatibilityService.getDirectProductPicker({
     ...options,
     includeUnavailable: true,
     unassignedOnly: false,
@@ -134,6 +135,7 @@ async function getDirectPicker(options = {}) {
     rules: {
       ...(complete.rules || {}),
       excludeProductsAssignedToOtherCards: unassignedOnly,
+      classificationAuthority: "mealProductClassificationService",
     },
     meta: {
       ...(complete.meta || {}),
@@ -162,28 +164,70 @@ async function getSectionPicker(options = {}) {
   return getDirectPicker(options);
 }
 
+async function currentSection(sectionKey, lang = "en") {
+  const key = String(sectionKey || "").trim().toLowerCase();
+  if (!key) return null;
+  const state = await canonicalService.getDashboardState({ lang });
+  const config = state?.draft || state?.published || null;
+  return (
+    (config?.sections || []).find(
+      (section) => String(section.key || section.sectionKey || "").trim().toLowerCase() === key
+    ) || null
+  );
+}
+
+async function serviceForSection(sectionKey, fallbackSection = null) {
+  if (fallbackSection && isOptionSection(fallbackSection)) return canonicalService;
+  const section = await currentSection(sectionKey);
+  return section && isOptionSection(section)
+    ? canonicalService
+    : compatibilityService;
+}
+
 async function createProductSection(args = {}) {
-  return compatibleAction(await canonicalService.createProductSection(args));
+  const section = args.section || {};
+  const service = isOptionSection(section)
+    ? canonicalService
+    : compatibilityService;
+  return compatibleAction(await service.createProductSection(args));
 }
 
 async function updateProductSection(args = {}) {
-  return compatibleAction(await canonicalService.updateProductSection(args));
+  const service = await serviceForSection(args.sectionKey, args.patch || null);
+  return compatibleAction(await service.updateProductSection(args));
 }
 
 async function deleteProductSection(args = {}) {
-  return compatibleAction(await canonicalService.deleteProductSection(args));
+  const service = await serviceForSection(args.sectionKey);
+  return compatibleAction(await service.deleteProductSection(args));
 }
 
 async function replaceSectionItems(args = {}) {
-  return compatibleAction(await canonicalService.replaceSectionItems(args));
+  const service = await serviceForSection(args.sectionKey, {
+    sectionType: Array.isArray(args.optionIds) ? "option_group" : "product_list",
+  });
+  if (service === canonicalService) {
+    return compatibleAction(await canonicalService.replaceSectionItems(args));
+  }
+  return compatibleAction(
+    await compatibilityService.updateProductSection({
+      sectionKey: args.sectionKey,
+      patch: { selectedProductIds: args.productIds || [] },
+      actor: args.actor || {},
+    })
+  );
 }
 
 async function addProductsToSection(args = {}) {
-  return compatibleAction(await canonicalService.addProductsToSection(args));
+  return compatibleAction(
+    await compatibilityService.addProductsToSection(args)
+  );
 }
 
 async function removeProductFromSection(args = {}) {
-  return compatibleAction(await canonicalService.removeProductFromSection(args));
+  return compatibleAction(
+    await compatibilityService.removeProductFromSection(args)
+  );
 }
 
 async function addOptionsToSection(args = {}) {
