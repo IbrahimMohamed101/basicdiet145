@@ -5,6 +5,10 @@ const {
   isLinkedDocGloballyAvailable,
   loadCatalogItemsByIdForDocs,
 } = require("../catalog/catalogAvailabilityService");
+const {
+  directSelectionType: classifyDirectSelectionType,
+  isProductionDirectProduct,
+} = require("../catalog/mealProductClassificationService");
 const baseService = require("./mealBuilderConfigService");
 
 const PICKER_VERSION = "dashboard_meal_builder_picker.v1";
@@ -149,9 +153,7 @@ function productStatus(product = {}, catalogItemsById = new Map()) {
 }
 
 function directSelectionType(product = {}) {
-  return product.itemType === "cold_sandwich"
-    ? "sandwich"
-    : "full_meal_product";
+  return classifyDirectSelectionType(product) || "full_meal_product";
 }
 
 function sectionKeyOf(section = {}) {
@@ -257,11 +259,10 @@ function findProductCard(sections = [], sectionKey) {
 }
 
 async function loadDirectProducts() {
-  const products = await MenuProduct.find({
-    itemType: { $in: DIRECT_PRODUCT_ITEM_TYPES },
-  })
+  const allProducts = await MenuProduct.find({})
     .sort({ sortOrder: 1, createdAt: -1 })
     .lean();
+  const products = allProducts.filter(isProductionDirectProduct);
   const catalogItemsById = await loadCatalogItemsByIdForDocs(products);
   return { products, catalogItemsById };
 }
@@ -293,8 +294,13 @@ async function assertDirectProductsAssignable({
   }
 
   const invalidTypeProducts = products
-    .filter((product) => !DIRECT_PRODUCT_ITEM_TYPES.includes(product.itemType))
-    .map((product) => ({ id: String(product._id), itemType: product.itemType }));
+    .filter((product) => !isProductionDirectProduct(product))
+    .map((product) => ({
+      id: String(product._id),
+      key: product.key || "",
+      itemType: product.itemType || "",
+      cardVariant: String(product?.ui?.cardVariant || ""),
+    }));
   if (invalidTypeProducts.length) {
     throw mealBuilderError(
       "Only direct meal products can be added to this card",

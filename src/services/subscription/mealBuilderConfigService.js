@@ -34,6 +34,9 @@ const {
   summarizeFlutterPrimaryMealPickerContent,
 } = require("../catalog/plannerCatalogContentValidator");
 const {
+  classifyMealProduct,
+} = require("../catalog/mealProductClassificationService");
+const {
   loadClientPremiumUpgradeConfigState,
   listActiveReadyPremiumUpgradeConfigs,
   resolvePremiumUpgrade,
@@ -971,10 +974,23 @@ function serializeHydratedProduct({
   const categoryKey = String(category?.key || "").trim().toLowerCase();
 
   if (requireSandwich) {
-    const validItemTypes = ["cold_sandwich", "full_meal_product"];
-    if (!validItemTypes.includes(String(product.itemType || ""))) {
+    const productId = String(product._id);
+    const productGroupRelations = (docs.groupRelations || []).filter(
+      (relation) => String(relation.productId) === productId
+    );
+    const classification = classifyMealProduct(product, {
+      hasBuilderRelations: productGroupRelations.length > 0,
+      hasActiveBuilderRelations: productGroupRelations.some(relationReady),
+    });
+    if (!classification.directCompatible) {
       reasonCodes.push("SANDWICH_ITEM_TYPE_MISMATCH");
-      errors.push(statusIssue("error", "SANDWICH_ITEM_TYPE_MISMATCH", "Sandwich/standalone product must use itemType=cold_sandwich or full_meal_product"));
+      errors.push(
+        statusIssue(
+          "error",
+          "SANDWICH_ITEM_TYPE_MISMATCH",
+          "Product is not compatible with a standalone Meal Planner card"
+        )
+      );
     }
   }
   if (requirePremiumLargeSalad && product.key !== "premium_large_salad") {
@@ -1575,7 +1591,7 @@ async function buildSandwichPicker({ sectionKey, section, context, lang, q, pagi
   const selectedSet = new Set(selectedProductIds);
   const category = context.category;
   const candidateProducts = category
-    ? await MenuProduct.find({ categoryId: category._id, itemType: "cold_sandwich" }).sort({ sortOrder: 1, createdAt: -1 }).lean()
+    ? await MenuProduct.find({ categoryId: category._id }).sort({ sortOrder: 1, createdAt: -1 }).lean()
     : [];
   const docs = await buildPickerDocs({
     category,

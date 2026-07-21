@@ -32,6 +32,11 @@ const NON_MEAL_ITEM_TYPES = new Set([
   "addon",
   "subscription_addon",
 ]);
+const BUILDER_ITEM_TYPES = new Set([
+  "basic_meal",
+  "custom_meal",
+  "meal_builder",
+]);
 
 function normalize(value) {
   return String(value || "").trim().toLowerCase();
@@ -54,21 +59,34 @@ function classifyMealProduct(
 ) {
   const itemType = productItemType(product);
   const cardVariant = productCardVariant(product);
-  const sandwich =
-    itemType === "cold_sandwich" || SANDWICH_CARD_VARIANTS.has(cardVariant);
-  const fullMeal =
-    !sandwich &&
-    (itemType === "full_meal_product" ||
-      FULL_MEAL_CARD_VARIANTS.has(cardVariant));
+  const explicitSandwich =
+    itemType === "cold_sandwich" ||
+    itemType === "sourdough" ||
+    itemType.includes("sandwich") ||
+    itemType.includes("sourdough") ||
+    SANDWICH_CARD_VARIANTS.has(cardVariant);
+  const explicitFullMeal =
+    itemType === "full_meal_product" ||
+    FULL_MEAL_CARD_VARIANTS.has(cardVariant);
   const nonMeal =
     NON_MEAL_ITEM_TYPES.has(itemType) || NON_MEAL_CARD_VARIANTS.has(cardVariant);
-  const directCompatible = !nonMeal && (sandwich || fullMeal);
-  const composedCompatible =
+  const builderPreferred =
     !nonMeal &&
-    !directCompatible &&
-    (Boolean(hasBuilderRelations) ||
+    !explicitSandwich &&
+    !explicitFullMeal &&
+    (BUILDER_ITEM_TYPES.has(itemType) ||
+      Boolean(hasBuilderRelations) ||
       product.isCustomizable === true ||
       BUILDER_CARD_VARIANTS.has(cardVariant));
+  const genericStandalone =
+    !nonMeal &&
+    !explicitSandwich &&
+    !explicitFullMeal &&
+    !builderPreferred;
+  const sandwich = explicitSandwich;
+  const fullMeal = !sandwich && (explicitFullMeal || genericStandalone);
+  const directCompatible = !nonMeal && (sandwich || fullMeal);
+  const composedCompatible = builderPreferred;
 
   const directSelectionType = sandwich
     ? MEAL_SELECTION_TYPES.SANDWICH
@@ -208,6 +226,7 @@ function buildMealPlannerClassification({
 
 module.exports = {
   BUILDER_CARD_VARIANTS,
+  BUILDER_ITEM_TYPES,
   DIRECT_PRODUCT_CARD_VARIANTS,
   EXPLICIT_DIRECT_PRODUCT_TYPES,
   FULL_MEAL_CARD_VARIANTS,

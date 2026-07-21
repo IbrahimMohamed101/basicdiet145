@@ -11,6 +11,9 @@ const {
   isCatalogItemUsable,
   loadCatalogItemsByIdForDocs,
 } = require("../catalog/catalogAvailabilityService");
+const {
+  buildMealPlannerClassification,
+} = require("../catalog/mealProductClassificationService");
 
 const CONTRACT_VERSION = "dashboard_meal_builder_catalog.v1";
 const DIRECT_ITEM_TYPES = new Set(["cold_sandwich", "full_meal_product"]);
@@ -114,67 +117,11 @@ function relationKey(productId, groupId) {
 }
 
 function classifyProduct({ product, optionGroups, status }) {
-  const itemType = String(product.itemType || "").trim().toLowerCase();
-  const cardVariant = productCardVariant(product);
-  const groupKeys = new Set(
-    optionGroups
-      .map((entry) => String(entry.group?.key || "").trim().toLowerCase())
-      .filter(Boolean)
-  );
-  const activeGroups = optionGroups.filter(
-    (entry) => entry.relationStatus.effective && entry.groupStatus?.customerReady
-  );
-  const hasProteinGroup = groupKeys.has("protein") || groupKeys.has("proteins");
-  const hasCarbGroup = groupKeys.has("carb") || groupKeys.has("carbs");
-  const hasBuilderRelations = optionGroups.length > 0;
-  const hasActiveBuilderRelations = activeGroups.length > 0;
-  const selectionType = directSelectionType(product);
-  const directCardCompatible = Boolean(selectionType);
-  const composedCardCompatible =
-    hasBuilderRelations || product.isCustomizable === true;
-  const suggestedSelectionTypes = [];
-  if (selectionType) suggestedSelectionTypes.push(selectionType);
-  if (composedCardCompatible) suggestedSelectionTypes.push("standard_meal");
-
-  const reasonCodes = [];
-  if (!status.customerReady) reasonCodes.push(...status.reasonCodes);
-  if (NON_MEAL_CARD_VARIANTS.has(cardVariant)) {
-    reasonCodes.push("NON_MEAL_CARD_VARIANT");
-  }
-  if (!directCardCompatible) reasonCodes.push("NOT_DIRECT_MEAL_PRODUCT");
-  if (!composedCardCompatible) reasonCodes.push("NO_BUILDER_RELATIONS");
-  if (composedCardCompatible && !hasActiveBuilderRelations) {
-    reasonCodes.push("NO_ACTIVE_BUILDER_RELATIONS");
-  }
-
-  return {
-    canonicalAuthority: "meal_builder_section.selectionType",
-    itemType,
-    cardVariant,
-    suggestedSelectionTypes: [...new Set(suggestedSelectionTypes)],
-    directAdd: {
-      compatible: directCardCompatible,
-      eligible: directCardCompatible && status.customerReady,
-      selectionType,
-      requiresBuilder: false,
-      carbsRequired: false,
-    },
-    composedMeal: {
-      compatible: composedCardCompatible,
-      eligible:
-        composedCardCompatible &&
-        hasActiveBuilderRelations &&
-        status.customerReady,
-      selectionType: "standard_meal",
-      requiresBuilder: true,
-      carbsRequired: hasCarbGroup,
-      hasProteinGroup,
-      hasCarbGroup,
-      hasBuilderRelations,
-      hasActiveBuilderRelations,
-    },
-    reasonCodes: [...new Set(reasonCodes)],
-  };
+  return buildMealPlannerClassification({
+    product,
+    optionGroups,
+    status,
+  });
 }
 
 function serializeOptionNode({ relation, option, catalogItemsById }) {
