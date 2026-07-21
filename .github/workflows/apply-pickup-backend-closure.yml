@@ -1,0 +1,58 @@
+name: Apply pickup backend closure
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/pickup-backend-closure-trigger
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Apply reviewed backend closure patch
+        run: python3 .github/scripts/apply_pickup_backend_closure.py
+
+      - name: Run focused pickup tests
+        run: npm run test:pickup-backend-closure
+
+      - name: Validate backend module loading
+        run: npm run validate:backend
+
+      - name: Commit implementation
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/controllers/subscriptionController.js \
+                  src/models/SubscriptionPickupRequest.js \
+                  src/services/installSubscriptionDayFullMealCompatibility.js \
+                  src/services/installPickupCanonicalContract.js \
+                  src/services/subscription/pickupCanonicalPresentationService.js \
+                  src/services/subscription/pickupEntitlementLinkService.js \
+                  src/services/subscription/subscriptionPickupRequestBalanceService.js \
+                  src/services/subscription/subscriptionPickupRequestClientService.js \
+                  src/services/subscription/subscriptionPickupSlotService.js \
+                  src/utils/subscriptionBilingualResponse.js \
+                  scripts/diagnose-pickup-entitlements.js \
+                  tests/pickupEntitlementLinkPolicy.test.js \
+                  tests/pickupAvailabilityEntitlementParity.test.js \
+                  tests/pickupEntitlementLifecycle.integration.test.js \
+                  package.json
+          git add -u src/services/installPickupCanonicalRuntimeGuard.js tests/pickupCanonicalRuntimeGuard.test.js || true
+          git commit -m "fix(pickup): close entitlement and availability lifecycle"
+          git push origin main
