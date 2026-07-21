@@ -48,6 +48,7 @@ function installSubscriptionDayFullMealCompatibility() {
 }
 
 installSubscriptionDayFullMealCompatibility();
+require("./installPickupCanonicalContract");
 
 module.exports = {
   installSubscriptionDayFullMealCompatibility,
