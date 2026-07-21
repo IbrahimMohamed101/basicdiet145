@@ -125,8 +125,16 @@ function localizedPair(value, fallback = "", state = null, depth = 0) {
   return { ar: fallbackText, en: fallbackText };
 }
 
+function isOpaqueRuntimeObject(value) {
+  return value instanceof Date
+    || value instanceof Map
+    || value instanceof Set
+    || (typeof Buffer !== "undefined" && Buffer.isBuffer(value));
+}
+
 function normalizeLocalizedFields(value, state = null) {
   if (value === undefined || value === null || typeof value !== "object") return value;
+  if (isOpaqueRuntimeObject(value)) return value;
   const context = state || { completed: new WeakMap() };
   if (context.completed.has(value)) return context.completed.get(value);
 
@@ -173,6 +181,7 @@ function normalizeLocalizedFields(value, state = null) {
 
 function sanitizeInvalidDisplayStrings(value, state = null) {
   if (value === undefined || value === null || typeof value !== "object") return value;
+  if (isOpaqueRuntimeObject(value)) return value;
   const context = state || { completed: new WeakMap() };
   if (context.completed.has(value)) return context.completed.get(value);
 
