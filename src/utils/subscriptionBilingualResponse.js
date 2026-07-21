@@ -22,6 +22,25 @@ const FLAT_TEXT_BASES = Object.freeze([
   "availabilityLabel", "sectionLabel", "label", "nextAction", "lockedMessage",
 ]);
 
+const GENERIC_PICKUP_TITLES = new Set([
+  "وجبة",
+  "وجبة عادية",
+  "وجبة مميزة",
+  "سلطة مميزة",
+  "ساندويتش",
+  "ساندوتش",
+  "إضافة",
+  "عنصر",
+  "meal",
+  "standard meal",
+  "premium meal",
+  "premium salad",
+  "sandwich",
+  "add-on",
+  "addon",
+  "item",
+]);
+
 function cleanText(value) {
   if (value === undefined || value === null) return "";
   return String(value).trim();
@@ -167,6 +186,182 @@ function normalizeCategoryGroup(group, categoryKey, lang) {
   return group;
 }
 
+function isGenericPickupTitle(value) {
+  return GENERIC_PICKUP_TITLES.has(cleanText(value).toLowerCase());
+}
+
+function usefulPair(...values) {
+  for (const value of values) {
+    const pair = pairFrom(value);
+    if ((!pair.ar || isGenericPickupTitle(pair.ar)) && (!pair.en || isGenericPickupTitle(pair.en))) continue;
+    return pair;
+  }
+  return { ar: "", en: "" };
+}
+
+function joinPairs(parts, separator = " + ") {
+  const pairs = (Array.isArray(parts) ? parts : []).filter((pair) => pair && (pair.ar || pair.en));
+  if (!pairs.length) return { ar: "", en: "" };
+  return {
+    ar: pairs.map((pair) => pair.ar || pair.en).filter(Boolean).join(separator),
+    en: pairs.map((pair) => pair.en || pair.ar).filter(Boolean).join(separator),
+  };
+}
+
+function componentPair(component) {
+  return usefulPair(
+    component && component.name,
+    component && component.nameI18n,
+    component && { ar: component.nameAr, en: component.nameEn }
+  );
+}
+
+function componentKind(component) {
+  const source = [
+    component && component.type,
+    component && component.groupKey,
+    component && component.categoryKey,
+    component && component.groupName && component.groupName.en,
+  ].map((value) => cleanText(value).toLowerCase()).join(" ");
+  if (source.includes("protein") || source.includes("بروتين")) return "protein";
+  if (source.includes("carb") || source.includes("كارب")) return "carb";
+  if (source.includes("addon") || source.includes("إضاف")) return "addon";
+  return "other";
+}
+
+function componentPairsByKind(item, kinds) {
+  const accepted = new Set(Array.isArray(kinds) ? kinds : [kinds]);
+  const seen = new Set();
+  const pairs = [];
+  const components = Array.isArray(item && item.components)
+    ? item.components
+    : (Array.isArray(item && item.options) ? item.options : []);
+  for (const component of components) {
+    if (!accepted.has(componentKind(component))) continue;
+    const pair = componentPair(component);
+    const key = `${pair.ar}\u0000${pair.en}`;
+    if ((!pair.ar && !pair.en) || seen.has(key)) continue;
+    seen.add(key);
+    pairs.push(pair);
+  }
+  return pairs;
+}
+
+function currentPickupTitlePair(item) {
+  return usefulPair(
+    item && item.product && item.product.name,
+    item && item.meal && item.meal.title,
+    item && item.title,
+    item && item.display && { ar: item.display.titleAr, en: item.display.titleEn }
+  );
+}
+
+function hasSandwichHint(item, title) {
+  const selectionType = cleanText(item && item.selectionType).toLowerCase();
+  const itemType = cleanText(item && item.itemType).toLowerCase();
+  if (selectionType === "sandwich" || itemType === "sandwich") return true;
+  const hints = [
+    item && item.categoryKey,
+    item && item.sectionKey,
+    item && item.product && item.product.key,
+    item && item.productKey,
+    title && title.ar,
+    title && title.en,
+  ].map((value) => cleanText(value).toLowerCase()).join(" ");
+  return hints.includes("sandwich") || hints.includes("cold_sandwich") || /ساند(?:وتش|ويتش)/.test(hints);
+}
+
+function sandwichTitle(base) {
+  const arBase = cleanText(base.ar);
+  const enBase = cleanText(base.en);
+  return {
+    ar: /ساند(?:وتش|ويتش)/.test(arBase) ? arBase : (arBase ? `ساندوتش ${arBase}` : "ساندوتش"),
+    en: /\bsandwich\b/i.test(enBase) ? enBase : (enBase ? `${enBase} Sandwich` : "Sandwich"),
+  };
+}
+
+function pickupTitleFor(item) {
+  if (!item || typeof item !== "object" || Array.isArray(item)) return null;
+  const selectionType = cleanText(item.selectionType).toLowerCase();
+  const itemType = cleanText(item.itemType).toLowerCase();
+  const title = currentPickupTitlePair(item);
+
+  if (itemType === "addon" || selectionType === "addon") {
+    const addonName = usefulPair(
+      item.product && item.product.name,
+      item.title,
+      ...(componentPairsByKind(item, "addon"))
+    );
+    return addonName.ar || addonName.en ? addonName : null;
+  }
+
+  if (itemType === "large_salad" || selectionType === "premium_large_salad") {
+    const protein = joinPairs(componentPairsByKind(item, "protein"));
+    return {
+      ar: protein.ar ? `سلطة كبيرة + ${protein.ar}` : "سلطة كبيرة",
+      en: protein.en ? `Large Salad + ${protein.en}` : "Large Salad",
+    };
+  }
+
+  if (hasSandwichHint(item, title)) {
+    return sandwichTitle(title);
+  }
+
+  if (["meal", "premium_meal"].includes(itemType)
+    || ["standard_meal", "premium_meal", "basic_meal"].includes(selectionType)) {
+    const mealParts = componentPairsByKind(item, ["protein", "carb"]);
+    const composed = joinPairs(mealParts);
+    if (composed.ar || composed.en) return composed;
+    return title.ar || title.en ? title : null;
+  }
+
+  if (selectionType === "full_meal_product") {
+    return title.ar || title.en ? title : null;
+  }
+
+  return null;
+}
+
+function applyPickupTitle(item, title) {
+  if (!item || !title || (!title.ar && !title.en)) return item;
+  const pair = pairFrom(title);
+  item.title = pair;
+  item.display = item.display && typeof item.display === "object" && !Array.isArray(item.display)
+    ? item.display
+    : {};
+  item.display.titleAr = pair.ar;
+  item.display.titleEn = pair.en;
+  if (item.meal && typeof item.meal === "object" && !Array.isArray(item.meal)) {
+    item.meal.title = pair;
+  }
+  return item;
+}
+
+function normalizePickupAvailabilityDisplayNames(payload) {
+  const data = payload && payload.data && typeof payload.data === "object" ? payload.data : payload;
+  if (!data || typeof data !== "object" || Array.isArray(data)) return payload;
+  const visited = new WeakSet();
+  const normalizeEntry = (entry) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry) || visited.has(entry)) return;
+    visited.add(entry);
+    const title = pickupTitleFor(entry);
+    if (title) applyPickupTitle(entry, title);
+  };
+  const normalizeList = (value) => {
+    if (!Array.isArray(value)) return;
+    value.forEach(normalizeEntry);
+  };
+
+  normalizeList(data.pickupItems);
+  normalizeList(data.slots);
+  normalizeList(data.dayAddons);
+  normalizeList(data.availableAddonChoices);
+  for (const section of Array.isArray(data.sections) ? data.sections : []) {
+    normalizeList(section && section.items);
+  }
+  return payload;
+}
+
 function walk(value, lang, parentKey = "") {
   if (Array.isArray(value)) {
     value.forEach((item) => walk(item, lang, parentKey));
@@ -190,15 +385,23 @@ function isSupportedSubscriptionBilingualPath(url = "") {
     || /^\/api\/subscriptions\/[^/]+\/days\/[^/]+\/fulfillment\/status$/.test(path);
 }
 
+function isPickupAvailabilityPath(url = "") {
+  const path = String(url).split("?")[0];
+  return /^\/api\/subscriptions\/[^/]+\/pickup-availability$/.test(path);
+}
+
 function normalizeSubscriptionBilingualResponse(payload, req) {
-  if (!isSupportedSubscriptionBilingualPath(req && (req.originalUrl || req.path))) return payload;
+  const url = req && (req.originalUrl || req.path);
+  if (!isSupportedSubscriptionBilingualPath(url)) return payload;
   if (!payload || typeof payload !== "object") return payload;
+  if (isPickupAvailabilityPath(url)) normalizePickupAvailabilityDisplayNames(payload);
   return walk(payload, requestedLanguage(req));
 }
 
 module.exports = {
   CATEGORY_LABELS,
   isSupportedSubscriptionBilingualPath,
+  normalizePickupAvailabilityDisplayNames,
   normalizeSubscriptionBilingualResponse,
   pairFrom,
   requestedLanguage,
