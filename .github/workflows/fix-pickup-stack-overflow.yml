@@ -1,0 +1,313 @@
+name: Fix pickup stack overflow
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/fix-pickup-stack-overflow.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Harden pickup canonical conversion and response traversal
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              if old not in text:
+                  raise SystemExit(f"missing patch target in {path}: {old[:140]!r}")
+              p.write_text(text.replace(old, new, 1))
+
+          path = "src/services/subscription/pickupCanonicalPresentationService.js"
+          replace_once(
+              path,
+              '''function clean(value) {
+            if (value === undefined || value === null) return "";
+            return String(value).trim();
+          }
+
+          function asId(value) {
+            if (value === undefined || value === null || value === "") return null;
+            if (value && typeof value === "object" && value._id) return asId(value._id);
+            const text = clean(value);
+            return text || null;
+          }
+
+          function pair(value, fallback = null) {
+            if (value && typeof value === "object" && !Array.isArray(value)) {
+              const nested = value.nameI18n || value.titleI18n || value.name || value.title || value.labelI18n || value.label;
+              if (nested && nested !== value) return pair(nested, fallback);
+              const ar = clean(value.ar || value.nameAr || value.titleAr || value.arabic);
+              const en = clean(value.en || value.nameEn || value.titleEn || value.english);
+              if (ar || en) return { ar: ar || en, en: en || ar };
+            }
+            const text = clean(value || fallback);
+            return { ar: text, en: text };
+          }''',
+              '''function clean(value) {
+            if (value === undefined || value === null) return "";
+            try {
+              return String(value).trim();
+            } catch (_err) {
+              return "";
+            }
+          }
+
+          function asId(value, seen = new WeakSet()) {
+            if (value === undefined || value === null || value === "") return null;
+            if (value && typeof value === "object") {
+              if (typeof value.toHexString === "function") {
+                try {
+                  const hex = clean(value.toHexString());
+                  if (hex) return hex;
+                } catch (_err) {
+                  // Fall through to guarded nested-id/string handling.
+                }
+              }
+              if (seen.has(value)) return null;
+              seen.add(value);
+              let nestedId;
+              try {
+                nestedId = value._id;
+              } catch (_err) {
+                nestedId = null;
+              }
+              if (nestedId !== undefined && nestedId !== null && nestedId !== value) {
+                return asId(nestedId, seen);
+              }
+            }
+            const text = clean(value);
+            return text || null;
+          }
+
+          function pair(value, fallback = null, seen = new WeakSet()) {
+            if (value && typeof value === "object" && !Array.isArray(value)) {
+              if (seen.has(value)) {
+                const fallbackText = clean(fallback);
+                return { ar: fallbackText, en: fallbackText };
+              }
+              seen.add(value);
+              const nested = value.nameI18n || value.titleI18n || value.name || value.title || value.labelI18n || value.label;
+              if (nested && nested !== value) return pair(nested, fallback, seen);
+              const ar = clean(value.ar || value.nameAr || value.titleAr || value.arabic);
+              const en = clean(value.en || value.nameEn || value.titleEn || value.english);
+              if (ar || en) return { ar: ar || en, en: en || ar };
+            }
+            const text = clean(value || fallback);
+            return { ar: text, en: text };
+          }'''
+          )
+
+          path = "src/utils/subscriptionBilingualResponse.js"
+          replace_once(
+              path,
+              '''function cleanText(value) {
+            if (value === undefined || value === null) return "";
+            return String(value).trim();
+          }''',
+              '''function cleanText(value) {
+            if (value === undefined || value === null) return "";
+            try {
+              return String(value).trim();
+            } catch (_err) {
+              return "";
+            }
+          }'''
+          )
+          replace_once(
+              path,
+              '''function walk(value, lang, parentKey = "") {
+            if (Array.isArray(value)) {
+              value.forEach((item) => walk(item, lang, parentKey));
+              return value;
+            }
+            if (!value || typeof value !== "object") return value;
+            normalizeNamedObject(value, lang);
+            for (const [key, child] of Object.entries(value)) {
+              if (child && typeof child === "object") {
+                if (!Array.isArray(child) && Array.isArray(child.choices)) normalizeCategoryGroup(child, key, lang);
+                walk(child, lang, key);
+              }
+            }
+            return value;
+          }''',
+              '''function isTraversableObject(value) {
+            if (!value || typeof value !== "object") return false;
+            if (value instanceof Date || Buffer.isBuffer(value)) return false;
+            if (typeof value.toHexString === "function") return false;
+            return true;
+          }
+
+          function walk(value, lang, parentKey = "", visited = new WeakSet()) {
+            if (Array.isArray(value)) {
+              if (visited.has(value)) return value;
+              visited.add(value);
+              value.forEach((item) => walk(item, lang, parentKey, visited));
+              return value;
+            }
+            if (!isTraversableObject(value) || visited.has(value)) return value;
+            visited.add(value);
+            normalizeNamedObject(value, lang);
+            for (const [key, child] of Object.entries(value)) {
+              if (isTraversableObject(child) || Array.isArray(child)) {
+                if (!Array.isArray(child) && Array.isArray(child.choices)) normalizeCategoryGroup(child, key, lang);
+                walk(child, lang, key, visited);
+              }
+            }
+            return value;
+          }'''
+          )
+
+          path = "src/services/installPickupCanonicalContract.js"
+          replace_once(
+              path,
+              '''function pair(value, fallback = "") {
+            if (value && typeof value === "object" && !Array.isArray(value)) {
+              const nested = value.nameI18n || value.titleI18n || value.name || value.title || value.labelI18n || value.label;
+              if (nested && nested !== value) return pair(nested, fallback);
+              const ar = clean(value.ar || value.nameAr || value.titleAr || value.arabic);
+              const en = clean(value.en || value.nameEn || value.titleEn || value.english);
+              if (ar || en) return { ar: ar || en, en: en || ar };
+            }
+            const text = clean(value || fallback);
+            return { ar: text, en: text };
+          }''',
+              '''function pair(value, fallback = "", seen = new WeakSet()) {
+            if (value && typeof value === "object" && !Array.isArray(value)) {
+              if (seen.has(value)) {
+                const fallbackText = clean(fallback);
+                return { ar: fallbackText, en: fallbackText };
+              }
+              seen.add(value);
+              const nested = value.nameI18n || value.titleI18n || value.name || value.title || value.labelI18n || value.label;
+              if (nested && nested !== value) return pair(nested, fallback, seen);
+              const ar = clean(value.ar || value.nameAr || value.titleAr || value.arabic);
+              const en = clean(value.en || value.nameEn || value.titleEn || value.english);
+              if (ar || en) return { ar: ar || en, en: en || ar };
+            }
+            const text = clean(value || fallback);
+            return { ar: text, en: text };
+          }'''
+          )
+
+          Path("tests/pickupStackOverflowRegression.test.js").write_text(r'''"use strict";
+
+process.env.NODE_ENV = "test";
+
+const assert = require("assert");
+const mongoose = require("mongoose");
+const canonical = require("../src/services/subscription/pickupCanonicalPresentationService");
+const { normalizeSubscriptionBilingualResponse } = require("../src/utils/subscriptionBilingualResponse");
+
+function run() {
+  const productId = new mongoose.Types.ObjectId();
+  const optionId = new mongoose.Types.ObjectId();
+
+  const rawDay = {
+    mealSlots: [{
+      slotIndex: 1,
+      slotKey: "slot_1",
+      selectionType: "full_meal_product",
+      productId,
+      productNameI18n: { ar: "حلوم كلاسيك", en: "Classic Halloumi" },
+      selectedOptions: [{
+        optionId,
+        groupKey: "protein",
+        nameI18n: { ar: "حلوم", en: "Halloumi" },
+      }],
+    }],
+  };
+
+  const availability = {
+    slots: [{
+      slotId: "slot_1",
+      slotKey: "slot_1",
+      selectionType: "full_meal_product",
+      product: { id: productId, name: { ar: "حلوم كلاسيك", en: "Classic Halloumi" } },
+      available: true,
+    }],
+    pickupItems: [{
+      itemId: "slot_1",
+      slotId: "slot_1",
+      selectionType: "full_meal_product",
+      productId,
+      product: { id: productId, name: { ar: "حلوم كلاسيك", en: "Classic Halloumi" } },
+      components: [{
+        id: optionId,
+        optionId,
+        type: "protein",
+        groupKey: "protein",
+        name: { ar: "حلوم", en: "Halloumi" },
+      }],
+      availability: { available: true, canSelect: true, state: "available" },
+    }],
+    sections: [{ sectionKey: "meals", items: [{ itemId: "slot_1", slotId: "slot_1" }] }],
+  };
+
+  let normalized;
+  assert.doesNotThrow(() => {
+    normalized = canonical.normalizeAvailability(availability, rawDay);
+  });
+  assert.strictEqual(normalized.pickupItems[0].product.id, productId.toHexString());
+  assert.strictEqual(normalized.pickupItems[0].components[0].id, optionId.toHexString());
+  assert.strictEqual(normalized.pickupItems[0].title.ar, "حلوم");
+
+  const payload = { status: true, data: normalized };
+  assert.doesNotThrow(() => normalizeSubscriptionBilingualResponse(payload, {
+    originalUrl: "/api/subscriptions/sub_1/pickup-availability?lang=ar",
+    query: { lang: "ar" },
+    headers: {},
+  }));
+
+  const selfNamed = {};
+  selfNamed.name = selfNamed;
+  assert.doesNotThrow(() => canonical.normalizePickupItem({
+    itemId: "cycle_1",
+    selectionType: "full_meal_product",
+    product: { id: productId, name: selfNamed },
+  }));
+
+  console.log("pickup stack overflow regression checks passed");
+}
+
+run();
+''')
+          PY
+
+      - name: Run pickup regression tests
+        run: |
+          NODE_ENV=test node tests/pickupStackOverflowRegression.test.js
+          NODE_ENV=test node tests/pickupCanonicalObjectId.test.js
+          npm run test:subscription-bilingual
+
+      - name: Commit hardened pickup flow
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/services/subscription/pickupCanonicalPresentationService.js \
+                  src/services/installPickupCanonicalContract.js \
+                  src/utils/subscriptionBilingualResponse.js \
+                  tests/pickupStackOverflowRegression.test.js
+          git commit -m "fix(pickup): eliminate ObjectId and response traversal recursion"
+          git push origin main
