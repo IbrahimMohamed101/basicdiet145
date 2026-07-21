@@ -69,6 +69,68 @@ async function createPaidDraftPayment({ userId, planId, suffix }) {
   return { draft, payment };
 }
 
+async function verifySequentialDeliveryReplacement({ userId, planId }) {
+  const pickup = await createPaidDraftPayment({ userId, planId, suffix: "sequential-pickup" });
+  const pickupResult = await finalizeSubscriptionDraftPaymentFlow({
+    draft: pickup.draft,
+    payment: pickup.payment,
+  });
+  assert.strictEqual(pickupResult.applied, true, "first activation succeeds without a supplied session");
+
+  const deliveryZoneId = new mongoose.Types.ObjectId(objectId(703));
+  const delivery = await createPaidDraftPayment({ userId, planId, suffix: "sequential-delivery" });
+  delivery.draft.delivery = {
+    type: "delivery",
+    address: {
+      street: "Replacement Street",
+      building: "12",
+      apartment: "5",
+      district: "Replacement District",
+      city: "Riyadh",
+    },
+    zoneId: deliveryZoneId,
+    zoneName: "Replacement Zone",
+    slot: {
+      type: "delivery",
+      window: "12:00-14:00",
+      slotId: "delivery_slot_1",
+      label: "12 PM - 2 PM",
+    },
+  };
+  delivery.draft.contractSnapshot = {
+    delivery: {
+      mode: "delivery",
+      address: delivery.draft.delivery.address,
+      zoneId: String(deliveryZoneId),
+      zoneName: "Replacement Zone",
+      slot: delivery.draft.delivery.slot,
+    },
+  };
+  await delivery.draft.save();
+
+  const deliveryResult = await finalizeSubscriptionDraftPaymentFlow({
+    draft: delivery.draft,
+    payment: delivery.payment,
+  });
+  assert.strictEqual(deliveryResult.applied, true, "replacement delivery activation succeeds without a supplied session");
+
+  const [oldSubscription, newSubscription] = await Promise.all([
+    Subscription.findById(pickupResult.subscriptionId).lean(),
+    Subscription.findById(deliveryResult.subscriptionId).lean(),
+  ]);
+  assert.strictEqual(oldSubscription.status, "canceled", "old subscription is hidden from active reads");
+  assert.strictEqual(String(oldSubscription.replacedBySubscriptionId), deliveryResult.subscriptionId, "old subscription records its replacement");
+  assert.strictEqual(newSubscription.status, "active", "replacement is the only active subscription");
+  assert.strictEqual(newSubscription.deliveryMode, "delivery", "replacement keeps delivery mode");
+  assert.strictEqual(newSubscription.deliveryAddress.street, "Replacement Street", "replacement keeps delivery address");
+  assert.strictEqual(String(newSubscription.deliveryZoneId), String(deliveryZoneId), "replacement keeps delivery zone");
+  assert.strictEqual(newSubscription.deliveryWindow, "12:00-14:00", "replacement keeps delivery window");
+  assert.strictEqual(newSubscription.deliverySlot.slotId, "delivery_slot_1", "replacement keeps delivery slot");
+
+  const activeCount = await Subscription.countDocuments({ userId, status: "active" });
+  assert.strictEqual(activeCount, 1, "sequential replacement leaves exactly one active subscription");
+}
+
 async function activateInTransaction({ draftId, paymentId }) {
   for (let attempt = 1; attempt <= 5; attempt += 1) {
     const session = await mongoose.startSession();
@@ -114,6 +176,10 @@ async function run() {
   await Payment.createCollection();
   await Subscription.syncIndexes();
   await SubscriptionDay.syncIndexes();
+
+  const sequentialUserId = new mongoose.Types.ObjectId(objectId(700));
+  const sequentialPlanId = new mongoose.Types.ObjectId(objectId(704));
+  await verifySequentialDeliveryReplacement({ userId: sequentialUserId, planId: sequentialPlanId });
 
   const userId = new mongoose.Types.ObjectId(objectId(701));
   const planId = new mongoose.Types.ObjectId(objectId(702));

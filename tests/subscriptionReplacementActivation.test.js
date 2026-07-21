@@ -3,6 +3,7 @@ const mongoose = require("mongoose");
 
 const {
   cancelPreviousActiveSubscriptionsForReplacement,
+  finalizeSubscriptionDraftPaymentFlow,
   isDuplicateActiveSubscriptionError,
 } = require("../src/services/subscription/subscriptionActivationService");
 
@@ -83,6 +84,59 @@ async function run() {
     }),
     true
   );
+
+  const transactionCalls = [];
+  const ownedSession = {
+    async withTransaction(work) {
+      transactionCalls.push("transaction:start");
+      await work();
+      transactionCalls.push("transaction:commit");
+    },
+    async endSession() {
+      transactionCalls.push("session:end");
+    },
+  };
+  const draft = { _id: objectId(104), userId, status: "pending_payment" };
+  const payment = { _id: objectId(105), userId, status: "paid" };
+  const finalizationResult = await finalizeSubscriptionDraftPaymentFlow(
+    { draft, payment },
+    {
+      async startSession() {
+        transactionCalls.push("session:start");
+        return ownedSession;
+      },
+      async findDraftById(id, sessionArg) {
+        assert.strictEqual(id, draft._id);
+        assert.strictEqual(sessionArg, ownedSession);
+        transactionCalls.push("draft:reload");
+        return draft;
+      },
+      async findPaymentById(id, sessionArg) {
+        assert.strictEqual(id, payment._id);
+        assert.strictEqual(sessionArg, ownedSession);
+        transactionCalls.push("payment:reload");
+        return payment;
+      },
+      async activateSubscriptionFromCanonicalDraft(payload) {
+        assert.strictEqual(payload.session, ownedSession);
+        transactionCalls.push("activation:atomic");
+        return { applied: true, subscriptionId: String(newSubscriptionId) };
+      },
+    }
+  );
+  assert.deepStrictEqual(finalizationResult, {
+    applied: true,
+    subscriptionId: String(newSubscriptionId),
+  });
+  assert.deepStrictEqual(transactionCalls, [
+    "session:start",
+    "transaction:start",
+    "draft:reload",
+    "payment:reload",
+    "activation:atomic",
+    "transaction:commit",
+    "session:end",
+  ]);
 
   console.log("subscription replacement activation tests passed");
 }

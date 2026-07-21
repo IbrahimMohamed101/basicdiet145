@@ -4,9 +4,11 @@ const mongoose = require("mongoose");
 const Plan = require("../../models/Plan");
 const BuilderProtein = require("../../models/BuilderProtein");
 const CheckoutDraft = require("../../models/CheckoutDraft");
+const Payment = require("../../models/Payment");
 const Subscription = require("../../models/Subscription");
 const SubscriptionDay = require("../../models/SubscriptionDay");
 const { toKSADateString } = require("../../utils/date");
+const { startSafeSession } = require("../../utils/mongoTransactionSupport");
 const { createLocalizedError } = require("../../utils/errorLocalization");
 const {
   PHASE1_CONTRACT_VERSION,
@@ -761,13 +763,44 @@ async function activateSubscriptionFromCanonicalContract({ userId, planId, contr
 
 const finalizeRuntime = {
   activateSubscriptionFromCanonicalDraft: (...args) => activateSubscriptionFromCanonicalDraft(...args),
+  startSession: () => startSafeSession(),
+  findDraftById: (draftId, session) => CheckoutDraft.findById(draftId).session(session),
+  findPaymentById: (paymentId, session) => Payment.findById(paymentId).session(session),
 };
 
 
 async function finalizeSubscriptionDraftPaymentFlow({ draft, payment, session }, runtimeOverrides = null) {
-  const runtime = runtimeOverrides || finalizeRuntime;
+  const runtime = runtimeOverrides
+    ? { ...finalizeRuntime, ...runtimeOverrides }
+    : finalizeRuntime;
   if (!draft) return { applied: false, reason: "draft_not_found" };
+  if (!payment) return { applied: false, reason: "payment_not_found" };
   if (String(draft.userId) !== String(payment.userId)) return { applied: false, reason: "draft_user_mismatch" };
+
+  // Every paid activation must use the same atomic replacement path. Some
+  // callers (notably the reusable paid-checkout path) do not already own a
+  // transaction. Previously those callers created the new subscription
+  // without canceling the old active one because replacement was guarded by
+  // `session`, which either left duplicate active rows or hit the unique index.
+  if (!session) {
+    const ownedSession = await runtime.startSession();
+    let result;
+    try {
+      await ownedSession.withTransaction(async () => {
+        const [draftInSession, paymentInSession] = await Promise.all([
+          runtime.findDraftById(draft._id, ownedSession),
+          runtime.findPaymentById(payment._id, ownedSession),
+        ]);
+        result = await finalizeSubscriptionDraftPaymentFlow(
+          { draft: draftInSession, payment: paymentInSession, session: ownedSession },
+          runtime
+        );
+      });
+      return result;
+    } finally {
+      await ownedSession.endSession();
+    }
+  }
 
   if (draft.subscriptionId) {
     const existingSub = await Subscription.findById(draft.subscriptionId).session(session);
