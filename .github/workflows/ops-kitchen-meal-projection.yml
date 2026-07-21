@@ -1,0 +1,38 @@
+name: Ops kitchen meal projection
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/controllers/dashboard/opsController.js"
+      - "src/services/dashboard/opsReadServiceV2.js"
+      - "src/services/dashboard/subscriptionDayOpsMealSourceService.js"
+      - "src/services/dashboard/opsPayloadService.js"
+      - "src/services/dashboard/kitchenProjectionService.js"
+      - "tests/dashboardOpsLegacyMealSelectionProjection.test.js"
+      - ".github/workflows/ops-kitchen-meal-projection.yml"
+  pull_request:
+    paths:
+      - "src/controllers/dashboard/opsController.js"
+      - "src/services/dashboard/opsReadServiceV2.js"
+      - "src/services/dashboard/subscriptionDayOpsMealSourceService.js"
+      - "src/services/dashboard/opsPayloadService.js"
+      - "src/services/dashboard/kitchenProjectionService.js"
+      - "tests/dashboardOpsLegacyMealSelectionProjection.test.js"
+      - ".github/workflows/ops-kitchen-meal-projection.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Verify legacy and snapshot meal projection
+        run: NODE_ENV=test node tests/dashboardOpsLegacyMealSelectionProjection.test.js
+      - name: Verify backend startup
+        run: NODE_ENV=test node -e 'require("./src/app"); console.log("APP STARTUP OK")'
