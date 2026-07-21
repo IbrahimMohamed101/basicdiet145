@@ -172,7 +172,16 @@ function createApp() {
         requestUrl,
       });
       const bilingual = normalizeSubscriptionBilingualResponse(visible, req);
-      const productNamed = normalizePickupProductNamesResponse(bilingual, requestUrl);
+      let productNamed = bilingual;
+      try {
+        productNamed = normalizePickupProductNamesResponse(bilingual, requestUrl);
+      } catch (err) {
+        logger.warn("Pickup product-name response normalization skipped", {
+          requestId: req.requestId,
+          route: requestUrl,
+          error: err.message,
+        });
+      }
       const shouldPreserveExactCopy = /^\/api\/subscriptions\/[^/]+\/pickup-availability(?:\?|$)/.test(requestUrl);
       const sanitized = shouldPreserveExactCopy ? productNamed : validateAndFixResponse(productNamed);
       try {
