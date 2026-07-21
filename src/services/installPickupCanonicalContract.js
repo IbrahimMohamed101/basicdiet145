@@ -16,7 +16,28 @@ function clean(value) {
 
 function asId(value) {
   if (value === undefined || value === null || value === "") return null;
-  if (value && typeof value === "object" && value._id) return asId(value._id);
+
+  if (value && typeof value === "object") {
+    if (typeof value.toHexString === "function") {
+      try {
+        const hex = clean(value.toHexString());
+        if (hex) return hex;
+      } catch (_err) {
+        // Fall through to nested-id/string handling.
+      }
+    }
+
+    let nestedId;
+    try {
+      nestedId = value._id;
+    } catch (_err) {
+      nestedId = null;
+    }
+    if (nestedId !== undefined && nestedId !== null && nestedId !== value) {
+      return asId(nestedId);
+    }
+  }
+
   const text = clean(value);
   return text || null;
 }
