@@ -74,9 +74,10 @@ jobs:
           catalog_text = catalog_file.read_text(encoding="utf-8")
           start = catalog_text.index("function classifyProduct({ product, optionGroups, status }) {")
           end = catalog_text.index("\nfunction serializeOptionNode", start)
-          replacement = '''function classifyProduct({ product, optionGroups, status }) {\n  return buildMealPlannerClassification({\n    product,\n    optionGroups,\n    status,\n  });\n}\n'''
           catalog_file.write_text(
-              catalog_text[:start] + replacement + catalog_text[end:],
+              catalog_text[:start]
+              + '''function classifyProduct({ product, optionGroups, status }) {\n  return buildMealPlannerClassification({\n    product,\n    optionGroups,\n    status,\n  });\n}\n'''
+              + catalog_text[end:],
               encoding="utf-8",
           )
 
@@ -118,9 +119,13 @@ jobs:
               '''  const invalidTypeProducts = products\n    .filter((product) => !DIRECT_PRODUCT_ITEM_TYPES.includes(product.itemType))\n    .map((product) => ({ id: String(product._id), itemType: product.itemType }));''',
               '''  const invalidTypeProducts = products\n    .filter((product) => !isProductionDirectProduct(product))\n    .map((product) => ({\n      id: String(product._id),\n      key: product.key || "",\n      itemType: product.itemType || "",\n      cardVariant: String(product?.ui?.cardVariant || ""),\n    }));'''
           )
+          PY
 
-          test_path = Path("tests/mealBuilderGenericStandaloneProducts.test.js")
-          test_path.write_text(r'''process.env.NODE_ENV = "test";
+      - name: Add regression test
+        shell: bash
+        run: |
+          cat > tests/mealBuilderGenericStandaloneProducts.test.js <<'EOF'
+          process.env.NODE_ENV = "test";
           process.env.JWT_SECRET = process.env.JWT_SECRET || "test-only-jwt-key-0000000000000000";
           process.env.DASHBOARD_JWT_SECRET =
             process.env.DASHBOARD_JWT_SECRET || "test-only-dashboard-key-000000000";
@@ -225,14 +230,8 @@ jobs:
                 },
               ]);
 
-              assert.strictEqual(
-                classifyMealProduct(sourdough).directSelectionType,
-                "sandwich"
-              );
-              assert.strictEqual(
-                classifyMealProduct(juice).directSelectionType,
-                "full_meal_product"
-              );
+              assert.strictEqual(classifyMealProduct(sourdough).directSelectionType, "sandwich");
+              assert.strictEqual(classifyMealProduct(juice).directSelectionType, "full_meal_product");
               assert.strictEqual(classifyMealProduct(addon).directCompatible, false);
               assert.strictEqual(classifyMealProduct(builder).directCompatible, false);
 
@@ -247,6 +246,20 @@ jobs:
 
               const app = createApp();
               const auth = await dashboardAuth("admin", "generic-products");
+
+              const catalogResponse = await request(app)
+                .get("/api/dashboard/meal-builder/catalog?lang=en")
+                .set(auth.headers);
+              expectStatus(catalogResponse, 200, "complete catalog");
+              const catalogProducts = catalogResponse.body.data.products || [];
+              const sourdoughCatalog = catalogProducts.find((item) => item.key === "sourdough_turkey");
+              const juiceCatalog = catalogProducts.find((item) => item.key === "orange_juice");
+              const addonCatalog = catalogProducts.find((item) => item.key === "extra_sauce");
+              assert.strictEqual(sourdoughCatalog.mealPlanner.directAdd.eligible, true);
+              assert.strictEqual(sourdoughCatalog.mealPlanner.directAdd.selectionType, "sandwich");
+              assert.strictEqual(juiceCatalog.mealPlanner.directAdd.eligible, true);
+              assert.strictEqual(juiceCatalog.mealPlanner.directAdd.selectionType, "full_meal_product");
+              assert.strictEqual(addonCatalog.mealPlanner.directAdd.eligible, false);
 
               const picker = await request(app)
                 .get("/api/dashboard/meal-builder/pickers/products?limit=1000")
@@ -264,15 +277,16 @@ jobs:
                 .post("/api/dashboard/meal-builder/sections")
                 .set(auth.headers)
                 .send({
-                  key: "generic_products",
-                  titleOverride: { ar: "منتجات", en: "Products" },
-                  selectedProductIds: [String(sourdough._id), String(juice._id)],
+                  key: "sourdough_products",
+                  titleOverride: { ar: "ساوردو", en: "Sourdough" },
+                  selectedProductIds: [String(sourdough._id)],
+                  selectionType: "sandwich",
                   sortOrder: 10,
                 });
-              expectStatus(createCard, 201, "create category-agnostic card");
+              expectStatus(createCard, 201, "create sourdough card");
               assert.deepStrictEqual(
-                new Set(createCard.body.data.section.selectedProductIds),
-                new Set([String(sourdough._id), String(juice._id)])
+                createCard.body.data.section.selectedProductIds,
+                [String(sourdough._id)]
               );
               assert.strictEqual(createCard.body.data.validation.ready, true);
 
@@ -286,8 +300,8 @@ jobs:
             console.error(error && error.stack ? error.stack : error);
             process.exitCode = 1;
           });
-          '''.replace(/^          /gm, ""), encoding="utf-8")
-          PY
+          EOF
+          sed -i 's/^          //' tests/mealBuilderGenericStandaloneProducts.test.js
 
       - name: Check syntax
         run: |
