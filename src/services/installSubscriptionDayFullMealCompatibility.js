@@ -48,6 +48,10 @@ function installSubscriptionDayFullMealCompatibility() {
 }
 
 installSubscriptionDayFullMealCompatibility();
+// Keep the cycle/ObjectId guard until all historical Mixed snapshots have been
+// migrated to plain canonical objects. The entitlement closure is installed
+// before route modules capture service functions.
+require("./installPickupCanonicalRuntimeGuard");
 const pickupEntitlementClosure = require("./installPickupEntitlementClosure");
 require("./installPickupCanonicalQueryGuard");
 pickupEntitlementClosure.patchPickupClientService();
