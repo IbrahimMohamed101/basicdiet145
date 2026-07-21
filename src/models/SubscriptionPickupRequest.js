@@ -84,6 +84,11 @@ const SubscriptionPickupRequestSchema = new mongoose.Schema(
     creditsReleasedAt: { type: Date, default: null },
     // Server-derived entitlement references; never required from a client.
     baseAllocationKeys: { type: [String], default: undefined },
+    baseAllocationMode: {
+      type: String,
+      enum: ["none", "linked_day", "standalone"],
+      default: "none",
+    },
     idempotencyKey: { type: String, trim: true, default: null },
     snapshot: { type: mongoose.Schema.Types.Mixed, default: null },
     operationAuditLog: {
