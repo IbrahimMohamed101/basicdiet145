@@ -1,6 +1,6 @@
 "use strict";
 
-const opsReadService = require("../../services/dashboard/opsReadService");
+const opsReadService = require("../../services/dashboard/opsReadServiceV2");
 const opsSearchService = require("../../services/dashboard/opsSearchService");
 const errorResponse = require("../../utils/errorResponse");
 const { getRequestLang } = require("../../utils/i18n");
