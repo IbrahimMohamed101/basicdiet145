@@ -1,0 +1,42 @@
+name: Pickup backend closure
+
+on:
+  pull_request:
+    paths:
+      - "src/controllers/subscriptionController.js"
+      - "src/models/SubscriptionPickupRequest.js"
+      - "src/services/installPickup*.js"
+      - "src/services/subscription/pickup*.js"
+      - "src/services/subscription/subscriptionPickup*.js"
+      - "src/utils/subscriptionBilingualResponse.js"
+      - "tests/pickup*.test.js"
+      - "scripts/diagnose-pickup-entitlements.js"
+      - "package.json"
+  push:
+    branches:
+      - main
+    paths:
+      - "src/controllers/subscriptionController.js"
+      - "src/models/SubscriptionPickupRequest.js"
+      - "src/services/installPickup*.js"
+      - "src/services/subscription/pickup*.js"
+      - "src/services/subscription/subscriptionPickup*.js"
+      - "src/utils/subscriptionBilingualResponse.js"
+      - "tests/pickup*.test.js"
+      - "scripts/diagnose-pickup-entitlements.js"
+      - "package.json"
+
+jobs:
+  pickup-closure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: node tests/pickupEntitlementInstaller.test.js
+      - run: npm run test:pickup-backend-closure
+      - run: npm run validate:backend
