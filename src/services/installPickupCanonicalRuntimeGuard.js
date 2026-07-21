@@ -1,5 +1,10 @@
 "use strict";
 
+const {
+  normalizeLocalizedFields,
+  sanitizeInvalidDisplayStrings,
+} = require("../utils/safeLocalizedText");
+
 const INSTALL_KEY = Symbol.for("basicdiet.pickupCanonical.runtimeGuardInstalled");
 const WRAPPED_KEY = Symbol.for("basicdiet.pickupCanonical.runtimeGuardWrapped");
 
@@ -29,7 +34,7 @@ function sanitizeCanonicalValue(value, state = null) {
 
   const objectId = objectIdString(value);
   if (objectId) return objectId;
-  if (value instanceof Date || Buffer.isBuffer(value)) return value;
+  if (value instanceof Date || value instanceof Map || value instanceof Set || Buffer.isBuffer(value)) return value;
 
   const context = state || {
     active: new WeakSet(),
@@ -81,18 +86,26 @@ function sanitizeCanonicalValue(value, state = null) {
   return output;
 }
 
+function prepareCanonicalArgument(value) {
+  return normalizeLocalizedFields(sanitizeCanonicalValue(value));
+}
+
+function finalizeCanonicalResult(value) {
+  return sanitizeInvalidDisplayStrings(sanitizeCanonicalValue(value));
+}
+
 function wrapExports(target, functionNames) {
   for (const name of functionNames) {
     const original = target && target[name];
     if (typeof original !== "function" || original[WRAPPED_KEY]) continue;
 
     const wrapped = function guardedPickupCanonicalCall(...args) {
-      const sanitizedArgs = args.map((arg) => sanitizeCanonicalValue(arg));
+      const sanitizedArgs = args.map((arg) => prepareCanonicalArgument(arg));
       const result = original.apply(this, sanitizedArgs);
       if (result && typeof result.then === "function") {
-        return result.then((resolved) => sanitizeCanonicalValue(resolved));
+        return result.then((resolved) => finalizeCanonicalResult(resolved));
       }
-      return sanitizeCanonicalValue(result);
+      return finalizeCanonicalResult(result);
     };
     wrapped[WRAPPED_KEY] = true;
     wrapped.__original = original;
@@ -127,7 +140,9 @@ function installPickupCanonicalRuntimeGuard() {
 installPickupCanonicalRuntimeGuard();
 
 module.exports = {
+  finalizeCanonicalResult,
   installPickupCanonicalRuntimeGuard,
   objectIdString,
+  prepareCanonicalArgument,
   sanitizeCanonicalValue,
 };
