@@ -10,8 +10,8 @@ on:
       - "src/services/subscription/subscriptionPickup*.js"
       - "src/utils/pickupErrorResponseLocalization.js"
       - "src/utils/subscriptionBilingualResponse.js"
-      - "tests/meal_planner_types.test.js"
       - "tests/pickup*.test.js"
+      - "tests/cases/pickup*.js"
       - "scripts/diagnose-pickup-entitlements.js"
       - "scripts/run-pickup-backend-closure-tests.sh"
       - "scripts/test-pickup-api-local.js"
@@ -27,122 +27,27 @@ on:
       - "src/services/subscription/subscriptionPickup*.js"
       - "src/utils/pickupErrorResponseLocalization.js"
       - "src/utils/subscriptionBilingualResponse.js"
-      - "tests/meal_planner_types.test.js"
       - "tests/pickup*.test.js"
+      - "tests/cases/pickup*.js"
       - "scripts/diagnose-pickup-entitlements.js"
       - "scripts/run-pickup-backend-closure-tests.sh"
       - "scripts/test-pickup-api-local.js"
       - "package.json"
 
-permissions:
-  contents: write
-
 jobs:
   pickup-closure:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     env:
       NODE_ENV: test
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          ref: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
       - run: npm ci --silent
-      - name: Repair planner query mock on verification branch
-        if: github.event_name == 'pull_request' && github.head_ref == 'ci/pickup-backend-closure-verify'
-        run: |
-          python3 <<'PY'
-          from pathlib import Path
-          path = Path('tests/meal_planner_types.test.js')
-          text = path.read_text()
-          if '      limit() {\n        return this;\n      },' in text:
-              raise SystemExit(0)
-          old = '''    select() {
-                return this;
-              },
-              lean() {'''
-          new = '''    select() {
-                return this;
-              },
-              limit() {
-                return this;
-              },
-              lean() {'''
-          if old not in text:
-              raise SystemExit('mockQuery select/lean target not found')
-          path.write_text(text.replace(old, new, 1))
-          PY
-      - name: Startup installer contract
-        run: node tests/pickupEntitlementInstaller.test.js
-      - name: Active claim availability
-        run: node tests/pickupActiveClaimAvailability.test.js
-      - name: Linked allocation policy
-        run: node tests/pickupEntitlementLinkPolicy.test.js
-      - name: Availability entitlement parity
-        run: node tests/pickupAvailabilityEntitlementParity.test.js
-      - name: Entitlement lifecycle integration
-        id: lifecycle
-        shell: bash
-        run: |
-          set +e
-          node tests/pickupEntitlementLifecycle.integration.test.js > pickup-lifecycle.log 2>&1
-          status=$?
-          echo "status=$status" >> "$GITHUB_OUTPUT"
-          exit 0
-      - name: Upload lifecycle diagnostics
-        if: steps.lifecycle.outputs.status != '0'
-        uses: actions/upload-artifact@v4
-        with:
-          name: pickup-lifecycle-diagnostics
-          path: pickup-lifecycle.log
-          if-no-files-found: error
-          retention-days: 3
-      - name: Fail on lifecycle integration error
-        if: steps.lifecycle.outputs.status != '0'
-        run: |
-          cat pickup-lifecycle.log
-          exit 1
-      - name: Canonical ObjectId regression
-        run: node tests/pickupCanonicalObjectId.test.js
-      - name: Bilingual pickup contracts
-        run: npm run test:subscription-bilingual
-      - name: Localized pickup errors
-        run: node tests/pickupErrorResponseLocalization.test.js
-      - name: Backend validation
-        id: backend_validation
-        shell: bash
-        run: |
-          set +e
-          npm run validate:backend > backend-validation.log 2>&1
-          status=$?
-          echo "status=$status" >> "$GITHUB_OUTPUT"
-          exit 0
-      - name: Upload backend validation diagnostics
-        if: steps.backend_validation.outputs.status != '0'
-        uses: actions/upload-artifact@v4
-        with:
-          name: pickup-backend-validation-diagnostics
-          path: backend-validation.log
-          if-no-files-found: error
-          retention-days: 3
-      - name: Fail on backend validation error
-        if: steps.backend_validation.outputs.status != '0'
-        run: |
-          tail -n 250 backend-validation.log
-          exit 1
-      - name: Commit planner mock repair to verification branch
-        if: github.event_name == 'pull_request' && github.head_ref == 'ci/pickup-backend-closure-verify'
-        run: |
-          if git diff --quiet -- tests/meal_planner_types.test.js; then
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add tests/meal_planner_types.test.js
-          git commit -m "test: support limit in planner query mock"
-          git push origin HEAD:${{ github.head_ref }}
+      - name: Pickup backend closure suite
+        run: bash scripts/run-pickup-backend-closure-tests.sh
+      - name: App startup smoke test
+        run: node -e "const { createApp } = require('./src/app'); const app = createApp(); if (!app) process.exit(1); console.log('app startup smoke passed')"
