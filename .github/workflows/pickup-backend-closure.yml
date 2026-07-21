@@ -36,6 +36,8 @@ jobs:
   pickup-closure:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      NODE_ENV: test
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -43,5 +45,21 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - run: bash scripts/run-pickup-backend-closure-tests.sh
-      - run: npm run validate:backend
+      - name: Startup installer contract
+        run: node tests/pickupEntitlementInstaller.test.js
+      - name: Active claim availability
+        run: node tests/pickupActiveClaimAvailability.test.js
+      - name: Linked allocation policy
+        run: node tests/pickupEntitlementLinkPolicy.test.js
+      - name: Availability entitlement parity
+        run: node tests/pickupAvailabilityEntitlementParity.test.js
+      - name: Entitlement lifecycle integration
+        run: node tests/pickupEntitlementLifecycle.integration.test.js
+      - name: Canonical ObjectId regression
+        run: node tests/pickupCanonicalObjectId.test.js
+      - name: Bilingual pickup contracts
+        run: npm run test:subscription-bilingual
+      - name: Localized pickup errors
+        run: node tests/pickupErrorResponseLocalization.test.js
+      - name: Backend module validation
+        run: npm run validate:backend
