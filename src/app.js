@@ -15,6 +15,7 @@ const errorResponse = require("./utils/errorResponse");
 const { logger } = require("./utils/logger");
 const { validateAndFixResponse } = require("./utils/encoding");
 const { normalizeSubscriptionBilingualResponse } = require("./utils/subscriptionBilingualResponse");
+const { normalizePickupProductNamesResponse } = require("./utils/pickupProductNameResponse");
 const swaggerSpec = require("./docs/swagger");
 
 function normalizeTopLevelStatusField(payload, responseStatusCode, reqPath = "") {
@@ -171,8 +172,9 @@ function createApp() {
         requestUrl,
       });
       const bilingual = normalizeSubscriptionBilingualResponse(visible, req);
+      const productNamed = normalizePickupProductNamesResponse(bilingual, requestUrl);
       const shouldPreserveExactCopy = /^\/api\/subscriptions\/[^/]+\/pickup-availability(?:\?|$)/.test(requestUrl);
-      const sanitized = shouldPreserveExactCopy ? bilingual : validateAndFixResponse(bilingual);
+      const sanitized = shouldPreserveExactCopy ? productNamed : validateAndFixResponse(productNamed);
       try {
         JSON.stringify(sanitized);
         return originalJson(sanitized);
