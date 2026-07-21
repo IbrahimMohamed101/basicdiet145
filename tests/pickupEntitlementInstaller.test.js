@@ -1,6 +1,6 @@
 "use strict";
 
-// This file is part of the main-branch pickup closure gate.
+// Verification branch executes the exact current main pickup closure gate.
 process.env.NODE_ENV = "test";
 
 const assert = require("assert");
