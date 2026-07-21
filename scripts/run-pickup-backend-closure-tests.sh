@@ -12,6 +12,9 @@ node tests/pickupEntitlementInstaller.test.js
 echo "[pickup] verifying active-claim visibility under corrupted historical state"
 node tests/pickupActiveClaimAvailability.test.js
 
+echo "[pickup] verifying nested localized product names"
+node tests/pickupLocalizedNameGuard.test.js
+
 echo "[pickup] running entitlement, availability, integration, ObjectId, and bilingual contracts"
 npm run test:pickup-backend-closure
 
