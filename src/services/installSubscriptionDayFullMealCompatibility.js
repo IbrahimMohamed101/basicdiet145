@@ -48,6 +48,9 @@ function installSubscriptionDayFullMealCompatibility() {
 }
 
 installSubscriptionDayFullMealCompatibility();
+// Normalize catalog display names before route modules capture the catalog
+// builder and before pickup serializers turn Mixed localized objects into text.
+require("./installPickupLocalizedCatalogGuard");
 // Keep the cycle/ObjectId guard until all historical Mixed snapshots have been
 // migrated to plain canonical objects. The entitlement closure is installed
 // before route modules capture service functions.
