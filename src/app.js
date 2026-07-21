@@ -16,6 +16,7 @@ const { logger } = require("./utils/logger");
 const { validateAndFixResponse } = require("./utils/encoding");
 const { normalizeSubscriptionBilingualResponse } = require("./utils/subscriptionBilingualResponse");
 const { normalizePickupProductNamesResponse } = require("./utils/pickupProductNameResponse");
+const { normalizePickupErrorResponse } = require("./utils/pickupErrorResponseLocalization");
 const swaggerSpec = require("./docs/swagger");
 
 function normalizeTopLevelStatusField(payload, responseStatusCode, reqPath = "") {
@@ -167,7 +168,8 @@ function createApp() {
     res.json = (payload) => {
       const requestUrl = req.originalUrl || req.path || "";
       const normalized = normalizeTopLevelStatusField(payload, res.statusCode, requestUrl);
-      const visible = hideCanceledSubscriptionsFromClientList(normalized, {
+      const pickupLocalized = normalizePickupErrorResponse(normalized, req, requestUrl);
+      const visible = hideCanceledSubscriptionsFromClientList(pickupLocalized, {
         method: req.method,
         requestUrl,
       });
