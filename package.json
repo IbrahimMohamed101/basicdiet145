@@ -26,7 +26,7 @@
     "test:dashboard-staff-users": "NODE_ENV=test node tests/dashboardStaffUsersPolicy.test.js",
     "test:bootstrap-initial-data": "NODE_ENV=test node tests/bootstrapInitialDataSemantics.test.js",
     "test:new-menu-bootstrap": "NODE_ENV=test node tests/newMenuBootstrapContract.test.js",
-    "test:subscription-bilingual": "NODE_ENV=test node tests/subscriptionBilingualResponse.test.js && NODE_ENV=test node tests/pickupProductNameResponse.test.js",
+    "test:subscription-bilingual": "NODE_ENV=test node tests/subscriptionBilingualResponse.test.js && NODE_ENV=test node tests/pickupProductNameResponse.test.js && NODE_ENV=test node tests/pickupCanonicalQueryGuard.test.js",
     "test:current-subscription": "NODE_ENV=test node tests/subscriptionCurrentResolver.test.js",
     "test:checkout": "NODE_ENV=test node tests/checkout.integration.test.js",
     "test:checkout-concurrency": "NODE_ENV=test node tests/subscriptionCheckoutInvoiceConcurrency.test.js",
