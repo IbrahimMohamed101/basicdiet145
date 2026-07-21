@@ -25,17 +25,41 @@ const GENERIC_TITLES = new Set([
   "غير معروف",
 ]);
 
+const OPERATION_CONTAINER_KEYS = Object.freeze([
+  "data",
+  "item",
+  "items",
+  "result",
+  "results",
+  "operation",
+  "operations",
+]);
+
 function clean(value) {
   if (value === undefined || value === null) return "";
-  return String(value).trim();
+  try {
+    return String(value).trim();
+  } catch (_err) {
+    return "";
+  }
+}
+
+function asRecord(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : null;
 }
 
 function pair(value) {
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    const nested = value.nameI18n || value.titleI18n || value.name || value.title || value.labelI18n || value.label;
-    if (nested && nested !== value) return pair(nested);
-    const ar = clean(value.ar || value.nameAr || value.titleAr || value.arabic);
-    const en = clean(value.en || value.nameEn || value.titleEn || value.english);
+  const source = asRecord(value);
+  if (source) {
+    const nested = source.nameI18n
+      || source.titleI18n
+      || source.name
+      || source.title
+      || source.labelI18n
+      || source.label;
+    if (nested && nested !== source) return pair(nested);
+    const ar = clean(source.ar || source.nameAr || source.titleAr || source.arabic);
+    const en = clean(source.en || source.nameEn || source.titleEn || source.english);
     if (ar || en) return { ar: ar || en, en: en || ar };
     return { ar: "", en: "" };
   }
@@ -62,14 +86,16 @@ function usefulPair(...values) {
   return { ar: "", en: "" };
 }
 
-function componentKind(component = {}) {
+function componentKind(component) {
+  const sourceComponent = asRecord(component);
+  if (!sourceComponent) return "other";
   const source = [
-    component.type,
-    component.groupKey,
-    component.canonicalGroupKey,
-    component.categoryKey,
-    component.groupName,
-    component.groupNameI18n,
+    sourceComponent.type,
+    sourceComponent.groupKey,
+    sourceComponent.canonicalGroupKey,
+    sourceComponent.categoryKey,
+    sourceComponent.groupName,
+    sourceComponent.groupNameI18n,
   ].map((value) => {
     const localized = pair(value);
     return `${localized.ar} ${localized.en}`.toLowerCase();
@@ -79,22 +105,25 @@ function componentKind(component = {}) {
   return "other";
 }
 
-function componentName(component = {}) {
+function componentName(component) {
+  const source = asRecord(component);
+  if (!source) return { ar: "", en: "" };
   return usefulPair(
-    component.nameI18n,
-    component.name,
-    component.optionName,
-    component.label,
-    { ar: component.nameAr, en: component.nameEn }
+    source.nameI18n,
+    source.name,
+    source.optionName,
+    source.label,
+    { ar: source.nameAr, en: source.nameEn }
   );
 }
 
 function composedMealTitle(entry = {}) {
-  const components = Array.isArray(entry.components)
-    ? entry.components
-    : (Array.isArray(entry.options)
-      ? entry.options
-      : (Array.isArray(entry.selectedOptions) ? entry.selectedOptions : []));
+  const source = asRecord(entry) || {};
+  const components = Array.isArray(source.components)
+    ? source.components
+    : (Array.isArray(source.options)
+      ? source.options
+      : (Array.isArray(source.selectedOptions) ? source.selectedOptions : []));
   const rows = [];
   const seen = new Set();
   for (const component of components) {
@@ -114,145 +143,195 @@ function composedMealTitle(entry = {}) {
 }
 
 function productTitle(entry = {}) {
+  const source = asRecord(entry) || {};
+  const product = asRecord(source.product);
   return usefulPair(
-    entry.product && entry.product.nameI18n,
-    entry.product && entry.product.name,
-    entry.productNameI18n,
-    entry.sandwichNameI18n,
-    entry.productName,
-    entry.sandwichName
+    product && product.nameI18n,
+    product && product.name,
+    source.productNameI18n,
+    source.sandwichNameI18n,
+    source.productName,
+    source.sandwichName
   );
 }
 
 function resolveEntryTitle(entry = {}) {
-  const product = productTitle(entry);
+  const source = asRecord(entry) || {};
+  const product = productTitle(source);
   if (product.ar || product.en) return product;
+  const meal = asRecord(source.meal);
+  const display = asRecord(source.display);
   const current = usefulPair(
-    entry.canonicalTitleI18n,
-    entry.titleI18n,
-    entry.title,
-    entry.meal && entry.meal.title,
-    entry.display && { ar: entry.display.titleAr, en: entry.display.titleEn }
+    source.canonicalTitleI18n,
+    source.titleI18n,
+    source.title,
+    meal && meal.title,
+    display && { ar: display.titleAr, en: display.titleEn }
   );
   if (current.ar || current.en) return current;
-  return composedMealTitle(entry);
+  return composedMealTitle(source);
 }
 
 function applyAvailabilityEntry(entry) {
-  if (!entry || typeof entry !== "object" || Array.isArray(entry)) return entry;
-  const title = resolveEntryTitle(entry);
-  if (!title.ar && !title.en) return entry;
+  const source = asRecord(entry);
+  if (!source) return entry;
+  try {
+    const title = resolveEntryTitle(source);
+    if (!title.ar && !title.en) return entry;
 
-  entry.title = title;
-  entry.titleI18n = title;
-  entry.titleAr = title.ar;
-  entry.titleEn = title.en;
-  entry.label = title.ar || title.en;
-  entry.productNameI18n = title;
-  entry.productName = title.en || title.ar;
-  entry.canonicalTitleI18n = title;
+    source.title = title;
+    source.titleI18n = title;
+    source.titleAr = title.ar;
+    source.titleEn = title.en;
+    source.label = title.ar || title.en;
+    source.productNameI18n = title;
+    source.productName = title.en || title.ar;
+    source.canonicalTitleI18n = title;
 
-  entry.display = entry.display && typeof entry.display === "object" && !Array.isArray(entry.display)
-    ? entry.display
-    : {};
-  entry.display.titleAr = title.ar;
-  entry.display.titleEn = title.en;
+    const display = asRecord(source.display) || {};
+    display.titleAr = title.ar;
+    display.titleEn = title.en;
+    source.display = display;
 
-  if (entry.meal && typeof entry.meal === "object" && !Array.isArray(entry.meal)) {
-    entry.meal.title = title;
+    const meal = asRecord(source.meal);
+    if (meal) meal.title = title;
+    return source;
+  } catch (_err) {
+    return entry;
   }
-  return entry;
 }
 
 function normalizeAvailability(data) {
-  if (!data || typeof data !== "object" || Array.isArray(data)) return data;
+  const source = asRecord(data);
+  if (!source) return data;
   const byId = new Map();
   const normalizeList = (value) => {
     if (!Array.isArray(value)) return;
     value.forEach((entry) => {
-      applyAvailabilityEntry(entry);
-      const id = clean(entry && (entry.itemId || entry.slotId || entry.slotKey || entry.slotIndex));
-      if (id) byId.set(id, entry);
+      const normalized = applyAvailabilityEntry(entry);
+      const record = asRecord(normalized);
+      const id = clean(record && (record.itemId || record.slotId || record.slotKey || record.slotIndex));
+      if (id) byId.set(id, normalized);
     });
   };
 
-  normalizeList(data.slots);
-  normalizeList(data.pickupItems);
-  normalizeList(data.dayAddons);
-  normalizeList(data.availableAddonChoices);
+  normalizeList(source.slots);
+  normalizeList(source.pickupItems);
+  normalizeList(source.dayAddons);
+  normalizeList(source.availableAddonChoices);
 
-  for (const section of Array.isArray(data.sections) ? data.sections : []) {
-    if (!section || !Array.isArray(section.items)) continue;
-    section.items = section.items.map((entry) => {
-      const id = clean(entry && (entry.itemId || entry.slotId || entry.slotKey || entry.slotIndex));
-      return (id && byId.get(id)) || applyAvailabilityEntry(entry);
-    });
+  for (const section of Array.isArray(source.sections) ? source.sections : []) {
+    const sectionRecord = asRecord(section);
+    if (!sectionRecord || !Array.isArray(sectionRecord.items)) continue;
+    try {
+      sectionRecord.items = sectionRecord.items.map((entry) => {
+        const record = asRecord(entry);
+        const id = clean(record && (record.itemId || record.slotId || record.slotKey || record.slotIndex));
+        return (id && byId.get(id)) || applyAvailabilityEntry(entry);
+      });
+    } catch (_err) {
+      // Fail open: naming must never break the client response.
+    }
   }
-  return data;
+  return source;
 }
 
 function cardProductTitle(card = {}) {
-  const product = card.components && card.components.product;
+  const source = asRecord(card) || {};
+  const components = asRecord(source.components);
+  const product = components && asRecord(components.product);
   return usefulPair(
     product && product.nameI18n,
     product && product.name,
-    card.productNameI18n,
-    card.productName
+    source.productNameI18n,
+    source.productName
   );
 }
 
 function applyKitchenCard(card, slot = null) {
-  if (!card || typeof card !== "object" || Array.isArray(card)) return card;
-  const title = usefulPair(
-    cardProductTitle(card),
-    slot && productTitle(slot),
-    slot && slot.canonicalTitleI18n,
-    card.titleI18n,
-    card.title,
-    slot && composedMealTitle(slot)
-  );
-  if (!title.ar && !title.en) return card;
-  card.title = title.ar || title.en;
-  card.titleI18n = title;
-  return card;
+  const source = asRecord(card);
+  if (!source) return card;
+  try {
+    const slotRecord = asRecord(slot);
+    const title = usefulPair(
+      cardProductTitle(source),
+      slotRecord && productTitle(slotRecord),
+      slotRecord && slotRecord.canonicalTitleI18n,
+      source.titleI18n,
+      source.title,
+      slotRecord && composedMealTitle(slotRecord)
+    );
+    if (!title.ar && !title.en) return card;
+    source.title = title.ar || title.en;
+    source.titleI18n = title;
+    return source;
+  } catch (_err) {
+    return card;
+  }
 }
 
 function normalizeOperationalItem(item) {
-  if (!item || typeof item !== "object" || Array.isArray(item)) return item;
-  const slots = item.kitchenDetails && Array.isArray(item.kitchenDetails.mealSlots)
-    ? item.kitchenDetails.mealSlots
-    : [];
-  slots.forEach(applyAvailabilityEntry);
+  const source = asRecord(item);
+  if (!source) return item;
+  try {
+    const kitchenDetails = asRecord(source.kitchenDetails);
+    const slots = kitchenDetails && Array.isArray(kitchenDetails.mealSlots)
+      ? kitchenDetails.mealSlots
+      : [];
+    slots.forEach(applyAvailabilityEntry);
 
-  const normalizeCards = (cards) => {
-    if (!Array.isArray(cards)) return;
-    cards.forEach((card, index) => applyKitchenCard(card, slots[index] || null));
-  };
-  normalizeCards(item.kitchenCards);
-  if (item.kitchen && typeof item.kitchen === "object") normalizeCards(item.kitchen.cards);
-  return item;
+    const normalizeCards = (cards) => {
+      if (!Array.isArray(cards)) return;
+      cards.forEach((card, index) => applyKitchenCard(card, slots[index] || null));
+    };
+    normalizeCards(source.kitchenCards);
+    const kitchen = asRecord(source.kitchen);
+    if (kitchen) normalizeCards(kitchen.cards);
+  } catch (_err) {
+    // Fail open: the original operational item is still safe to return.
+  }
+  return source;
 }
 
-function walkOperationalPayload(value, visited = new WeakSet()) {
-  if (!value || typeof value !== "object" || visited.has(value)) return value;
-  visited.add(value);
-  if (Array.isArray(value)) {
-    value.forEach((entry) => walkOperationalPayload(entry, visited));
-    return value;
+function looksLikeOperationalItem(value) {
+  const source = asRecord(value);
+  return Boolean(source && (source.kitchen || source.kitchenDetails || source.kitchenCards));
+}
+
+function normalizeOperationalPayload(payload) {
+  const queue = [payload];
+  const visited = new WeakSet();
+
+  while (queue.length) {
+    const current = queue.shift();
+    if (!current || typeof current !== "object" || visited.has(current)) continue;
+    visited.add(current);
+
+    if (Array.isArray(current)) {
+      current.forEach((entry) => queue.push(entry));
+      continue;
+    }
+
+    if (looksLikeOperationalItem(current)) normalizeOperationalItem(current);
+    for (const key of OPERATION_CONTAINER_KEYS) {
+      if (Object.prototype.hasOwnProperty.call(current, key)) queue.push(current[key]);
+    }
   }
-  if (value.kitchen || value.kitchenDetails || value.kitchenCards) normalizeOperationalItem(value);
-  Object.values(value).forEach((child) => walkOperationalPayload(child, visited));
-  return value;
+  return payload;
 }
 
 function normalizePickupProductNamesResponse(payload, requestUrl = "") {
   if (!payload || typeof payload !== "object") return payload;
-  const path = String(requestUrl).split("?")[0];
-  if (/^\/api\/subscriptions\/[^/]+\/pickup-availability$/.test(path)) {
-    normalizeAvailability(payload.data && typeof payload.data === "object" ? payload.data : payload);
-  }
-  if (/^\/api\/dashboard\/ops(?:\/|$)/.test(path)) {
-    walkOperationalPayload(payload);
+  try {
+    const path = String(requestUrl).split("?")[0];
+    if (/^\/api\/subscriptions\/[^/]+\/pickup-availability$/.test(path)) {
+      normalizeAvailability(asRecord(payload.data) || payload);
+    }
+    if (/^\/api\/dashboard\/ops(?:\/|$)/.test(path)) {
+      normalizeOperationalPayload(payload);
+    }
+  } catch (_err) {
+    // This is a response presentation fallback. It must never turn a valid API response into a 500.
   }
   return payload;
 }
