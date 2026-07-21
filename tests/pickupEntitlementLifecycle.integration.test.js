@@ -10,7 +10,7 @@ const SubscriptionPickupRequest = require("../src/models/SubscriptionPickupReque
 const {
   releaseReservedPickupMeals,
   reserveSubscriptionMealsForPickupRequest,
-} = require("../src/services/subscription/subscriptionPickupRequestBalanceService");
+} = require("../src/services/subscription/subscriptionPickupRequestBalanceClosureService");
 
 function baseAllocation({ dayId, requestId = null, state = "reserved", slotKey = "slot_1" }) {
   return {
