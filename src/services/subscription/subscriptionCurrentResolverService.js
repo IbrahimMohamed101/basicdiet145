@@ -47,18 +47,28 @@ function explainSubscriptionCurrentState(subscription, businessDate = getTodayKS
   };
 }
 
-function selectCurrentSubscription(rows, { businessDate = getTodayKSADate() } = {}) {
+function selectCurrentSubscription(rows, {
+  businessDate = getTodayKSADate(),
+  includeUpcoming = false,
+} = {}) {
   const evaluated = (Array.isArray(rows) ? rows : []).map((subscription) => ({
     subscription,
     evaluation: explainSubscriptionCurrentState(subscription, businessDate),
   }));
   const eligible = evaluated.filter((row) => row.evaluation.eligible);
+  const upcoming = includeUpcoming
+    ? evaluated.filter((row) => row.evaluation.reason === "not_started")
+    : [];
+  const selectedRow = eligible[0] || upcoming[0] || null;
   return {
-    subscription: eligible.length ? eligible[0].subscription : null,
-    reason: eligible.length ? "newest_active_in_current_date_window" : "no_active_subscription_in_current_date_window",
+    subscription: selectedRow ? selectedRow.subscription : null,
+    reason: eligible.length
+      ? "newest_active_in_current_date_window"
+      : (upcoming.length ? "newest_active_upcoming_subscription" : "no_active_subscription_in_current_date_window"),
     businessDate,
     evaluated,
     eligible,
+    upcoming,
   };
 }
 
@@ -89,13 +99,14 @@ async function findCurrentActiveSubscriptionForUser(userId, {
   lean = true,
   context = "current_subscription",
   businessDate = getTodayKSADate(),
+  includeUpcoming = false,
 } = {}) {
   const rows = await findActiveSubscriptionsForUser(userId, {
     SubscriptionModel,
     session,
     lean,
   });
-  const resolution = selectCurrentSubscription(rows, { businessDate });
+  const resolution = selectCurrentSubscription(rows, { businessDate, includeUpcoming });
   const selected = resolution.subscription;
 
   if (resolution.eligible.length > 1) {
@@ -118,6 +129,7 @@ async function findCurrentActiveSubscriptionForUser(userId, {
     selectedDateWindow: selected ? subscriptionDateWindow(selected) : null,
     activeCandidateCount: rows.length,
     eligibleCandidateCount: resolution.eligible.length,
+    upcomingCandidateCount: resolution.upcoming.length,
     rejectedCandidates: resolution.evaluated
       .filter((row) => !row.evaluation.eligible)
       .map((row) => ({

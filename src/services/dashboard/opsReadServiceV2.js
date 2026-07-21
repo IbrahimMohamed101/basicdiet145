@@ -9,6 +9,7 @@ const User = require("../../models/User");
 const dashboardDtoService = require("./dashboardDtoService");
 const { buildKitchenCatalogMaps } = require("./kitchenCatalogService");
 const { hydrateSubscriptionDayForOps } = require("./subscriptionDayOpsMealSourceService");
+const { isActiveSubscriptionForOperations } = require("./subscriptionOperationsVisibilityService");
 const { shouldBlockOneTimeOrderDelivery } = require("../../utils/oneTimeOrderDeliveryGate");
 const { enrichCustomerUser, enrichCustomerUsers } = require("./customerDisplayNameService");
 const ar = require("../../locales/ar");
@@ -77,6 +78,7 @@ async function listOperations({ date, role, lang = "ar" }) {
 
   const dayDTOs = days.filter((day) => {
     const subscription = subMap.get(String(day.subscriptionId));
+    if (!isActiveSubscriptionForOperations(subscription)) return false;
     const effectiveMode = day.fulfillmentModeOverride || (subscription && subscription.deliveryMode === "pickup" ? "pickup" : "delivery");
     return !(effectiveMode === "pickup" && pickupRequestDayKeys.has(`${String(day.subscriptionId)}:${day.date}`));
   }).map((day) => {
@@ -111,7 +113,9 @@ async function listOperations({ date, role, lang = "ar" }) {
     return dto;
   });
 
-  const pickupRequestDTOs = pickupRequests.map((pickupRequest) => {
+  const pickupRequestDTOs = pickupRequests.filter((pickupRequest) => (
+    isActiveSubscriptionForOperations(subMap.get(String(pickupRequest.subscriptionId)))
+  )).map((pickupRequest) => {
     const subscription = subMap.get(String(pickupRequest.subscriptionId));
     const user = userMap.get(String(pickupRequest.userId));
     const dto = dashboardDtoService.mapSubscriptionPickupRequestToDTO(
@@ -140,6 +144,7 @@ async function getEnrichedDTO({ entityId, entityType, role, lang = "ar" }) {
       Subscription.findById(pickupRequest.subscriptionId).populate("planId", "_id key name daysCount durationDays").lean(),
       User.findById(pickupRequest.userId).lean(),
     ]);
+    if (!isActiveSubscriptionForOperations(subscription)) return null;
     const user = await enrichCustomerUser(rawUser);
     const catalogMaps = await buildKitchenCatalogMaps([pickupRequest]);
     const dto = dashboardDtoService.mapSubscriptionPickupRequestToDTO(pickupRequest, subscription || {}, user, role, lang, catalogMaps);
@@ -162,6 +167,7 @@ async function getEnrichedDTO({ entityId, entityType, role, lang = "ar" }) {
         status: { $ne: "canceled" },
       }).lean(),
     ]);
+    if (!isActiveSubscriptionForOperations(subscription)) return null;
 
     const rawUser = subscription ? await User.findById(subscription.userId).lean() : null;
     const user = await enrichCustomerUser(rawUser);

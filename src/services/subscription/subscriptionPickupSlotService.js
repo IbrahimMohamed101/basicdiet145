@@ -5,6 +5,7 @@ const crypto = require("crypto");
 const SubscriptionPickupRequest = require("../../models/SubscriptionPickupRequest");
 const { buildKitchenDetailsPayload } = require("../dashboard/opsPayloadService");
 const { buildDayCommercialState, evaluateAddonChoicePayment } = require("./subscriptionDayCommercialStateService");
+const { hydrateSubscriptionDayMealSources } = require("./subscriptionDayMealSourceService");
 
 const ACTIVE_OR_CONSUMING_PICKUP_STATUSES = ["locked", "in_preparation", "ready_for_pickup", "fulfilled", "no_show"];
 
@@ -1136,7 +1137,8 @@ function filterAvailabilityForVisibility(availability, { includeUnavailable = fa
 }
 
 function buildAvailabilityFromDay({ day, pickupRequests = [], subscription = {}, catalogMaps = {}, addonChoiceGroups = null }) {
-  const resolvedDay = enrichDayMealSlotsWithResolvedSnapshots(day || {}, catalogMaps);
+  const hydratedDay = hydrateSubscriptionDayMealSources(day || {});
+  const resolvedDay = enrichDayMealSlotsWithResolvedSnapshots(hydratedDay, catalogMaps);
   const commercialState = buildDayCommercialState(resolvedDay || {}, { subscription });
   const addonCategoryAllowances = Array.isArray(commercialState.addonCategoryAllowances)
     ? commercialState.addonCategoryAllowances.map(normalizeAddonCategoryAllowance)

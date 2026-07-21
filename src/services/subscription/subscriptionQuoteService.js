@@ -728,13 +728,6 @@ function toKsaMidnightDate(dateStr) {
   return new Date(`${dateStr}T00:00:00+03:00`);
 }
 
-function createSameDayPickupLocationError(message = "A default active pickup location is required for same-day delivery starts") {
-  const err = new Error(message);
-  err.code = "SAME_DAY_PICKUP_LOCATION_NOT_CONFIGURED";
-  err.status = 422;
-  return err;
-}
-
 function isActivePickupLocation(location) {
   return Boolean(location)
     && typeof location === "object"
@@ -751,20 +744,6 @@ function isActivePickupLocation(location) {
     && location.pickupAvailable !== false
     && location.availableForPickup !== false
     && location.acceptsPickup !== false;
-}
-
-function getPickupLocationId(location) {
-  if (!location || typeof location !== "object") return "";
-  return String(
-    location.id
-    || location.locationId
-    || location.pickupLocationId
-    || location.branchId
-    || location.key
-    || location.code
-    || location.slug
-    || ""
-  ).trim();
 }
 
 function normalizeFirstDayOverride(override) {
@@ -797,22 +776,6 @@ function normalizeFirstDayOverrideOrThrow(override) {
   return { type: "pickup", pickupLocationId };
 }
 
-function resolveAutomaticSameDayPickupLocation(activePickupLocations = []) {
-  const defaults = activePickupLocations.filter((location) => location && location.isDefault === true);
-  if (defaults.length === 1) {
-    const pickupLocationId = getPickupLocationId(defaults[0]);
-    if (pickupLocationId) return pickupLocationId;
-  }
-  if (defaults.length > 1) {
-    throw createSameDayPickupLocationError("Multiple default pickup locations are configured");
-  }
-  if (activePickupLocations.length === 1) {
-    const pickupLocationId = getPickupLocationId(activePickupLocations[0]);
-    if (pickupLocationId) return pickupLocationId;
-  }
-  throw createSameDayPickupLocationError();
-}
-
 function validateFirstDayPickupOverrideOrThrow({ override, activePickupLocations, lang }) {
   const normalized = normalizeFirstDayOverrideOrThrow(override);
   if (!normalized) return null;
@@ -830,8 +793,16 @@ function validateFirstDayPickupOverrideOrThrow({ override, activePickupLocations
   return normalized;
 }
 
-async function applySameDayDeliveryPickupOverride({ delivery, requestedStartDate, currentBusinessDate, lang }) {
+async function applySameDayDeliveryPickupOverride({ delivery, lang }) {
   if (!delivery || delivery.type !== "delivery") return delivery;
+
+  // A first-day pickup is an explicit customer choice. For a normal same-day
+  // delivery request, preserve delivery mode and let resolveFirstServiceDate
+  // move service to the next available delivery day.
+  if (!delivery.firstDayFulfillmentOverride) {
+    delivery.firstDayFulfillmentOverride = null;
+    return delivery;
+  }
 
   const pickupLocations = await getSettingValue("pickup_locations", []);
   const activePickupLocations = Array.isArray(pickupLocations)
@@ -846,16 +817,6 @@ async function applySameDayDeliveryPickupOverride({ delivery, requestedStartDate
     delivery.firstDayFulfillmentOverride = existingOverride;
     return delivery;
   }
-
-  const requestedDate = requestedStartDate
-    ? dateUtils.toKSADateString(requestedStartDate)
-    : currentBusinessDate;
-  if (requestedDate !== currentBusinessDate) {
-    return delivery;
-  }
-
-  const pickupLocationId = resolveAutomaticSameDayPickupLocation(activePickupLocations);
-  delivery.firstDayFulfillmentOverride = { type: "pickup", pickupLocationId };
   return delivery;
 }
 
@@ -1418,7 +1379,9 @@ async function resolveCheckoutQuoteOrThrow(
 }
 
 module.exports = {
+  applySameDayDeliveryPickupOverride,
   resolveCheckoutQuoteOrThrow,
   buildAddonBalanceRowsFromQuote,
   resolveCheckoutAddonSelectionsOrThrow,
+  resolveFirstServiceDate,
 };

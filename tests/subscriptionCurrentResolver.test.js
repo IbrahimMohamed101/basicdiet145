@@ -77,6 +77,19 @@ async function run() {
     ["not_started", "date_window_ended"]
   );
 
+  const upcomingOnly = selectCurrentSubscription(
+    [future, expiredNewest],
+    { businessDate, includeUpcoming: true }
+  );
+  assert.strictEqual(upcomingOnly.subscription, future);
+  assert.strictEqual(upcomingOnly.reason, "newest_active_upcoming_subscription");
+
+  const strictCurrentOnly = selectCurrentSubscription(
+    [future, expiredNewest],
+    { businessDate }
+  );
+  assert.strictEqual(strictCurrentOnly.subscription, null);
+
   // The resolver performs a fresh query on every call. A newly created/current
   // subscription therefore replaces the old result without cache invalidation.
   const batches = [[currentOld], [currentNew, currentOld]];

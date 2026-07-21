@@ -9,6 +9,8 @@ const SubscriptionPickupRequest = require("../../models/SubscriptionPickupReques
 const dashboardDtoService = require("./dashboardDtoService");
 const { buildKitchenCatalogMaps } = require("./kitchenCatalogService");
 const { enrichCustomerUsers } = require("./customerDisplayNameService");
+const { hydrateSubscriptionDayForOps } = require("./subscriptionDayOpsMealSourceService");
+const { isActiveSubscriptionForOperations } = require("./subscriptionOperationsVisibilityService");
 
 /**
  * Fast Operational Search Service.
@@ -56,7 +58,7 @@ async function search({ q, role, lang = "ar" }) {
   }
 
   const [subscriptions, ordersByRef] = await Promise.all([
-    Subscription.find({ userId: { $in: userIds } })
+    Subscription.find({ userId: { $in: userIds }, status: "active" })
       .populate("planId", "_id key name daysCount durationDays")
       .limit(50)
       .lean(),
@@ -82,7 +84,7 @@ async function search({ q, role, lang = "ar" }) {
   users = await enrichCustomerUsers(users);
 
   // 4. Search SubscriptionDays (By User Subscriptions or Pickup Code)
-  const days = await SubscriptionDay.find({
+  const rawDays = await SubscriptionDay.find({
     $or: [
       { subscriptionId: { $in: subIds } },
       { pickupCode: query }
@@ -91,6 +93,7 @@ async function search({ q, role, lang = "ar" }) {
   .sort({ date: -1 })
   .limit(30)
   .lean();
+  const days = rawDays.map((day) => hydrateSubscriptionDayForOps(day));
 
   const pickupRequests = await SubscriptionPickupRequest.find({
     subscriptionId: { $in: days.map(d => d.subscriptionId).filter(Boolean) },
@@ -118,6 +121,7 @@ async function search({ q, role, lang = "ar" }) {
   for (const day of days) {
     if (seenIds.has(String(day._id))) continue;
     const sub = subMap.get(String(day.subscriptionId));
+    if (!isActiveSubscriptionForOperations(sub)) continue;
     const user = sub ? userMap.get(String(sub.userId)) : null;
     const pickupRequest = pickupRequestMap.get(`${String(day.subscriptionId)}:${day.date}`) || null;
     results.push(dashboardDtoService.mapSubscriptionDayToDTO(day, null, sub || {}, user, role, lang, catalogMaps, pickupRequest));

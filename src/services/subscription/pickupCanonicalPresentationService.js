@@ -348,13 +348,18 @@ function normalizeAvailability(availability = {}, day = {}) {
   const normalizeItem = (item) => {
     const key = clean(item.slotId || item.slotKey || item.itemId || item.slotIndex);
     const matchingSlot = slotById.get(key);
+    const matchingComponents = matchingSlot
+      && Array.isArray(matchingSlot.options)
+      && matchingSlot.options.length > 0
+      ? matchingSlot.options
+      : item.components;
     return normalizePickupItem({
       ...item,
       ...(matchingSlot ? {
         selectionType: matchingSlot.selectionType,
         product: matchingSlot.product,
         meal: matchingSlot.meal,
-        components: matchingSlot.options,
+        components: matchingComponents,
         display: matchingSlot.display,
       } : {}),
     }, lookup.get(key) || null);

@@ -337,6 +337,7 @@ function defaultRuntime() {
       return findCurrentActiveSubscriptionForUser(userId, {
         SubscriptionModel: Subscription,
         context: "current_subscription_overview",
+        includeUpcoming: true,
       });
     },
     findPlanById(planId) {
