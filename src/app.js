@@ -4,6 +4,7 @@ const crypto = require("crypto");
 const helmet = require("helmet");
 const cors = require("cors");
 const mongoose = require("mongoose");
+require("./services/installSubscriptionDayFullMealCompatibility");
 const swaggerUi = require("swagger-ui-express");
 const routes = require("./routes");
 const paymentRoutes = require("./routes/payments");
