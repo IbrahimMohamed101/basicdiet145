@@ -2,6 +2,7 @@
 
 const kitchenCatalogService = require("./dashboard/kitchenCatalogService");
 const { localizedPair } = require("../utils/safeLocalizedText");
+const { normalizeLocalizedFieldsInPlace } = require("../utils/normalizeLocalizedFieldsInPlace");
 
 const INSTALL_KEY = Symbol.for("basicdiet.pickupLocalizedCatalogGuard.installed");
 const WRAPPED_KEY = Symbol.for("basicdiet.pickupLocalizedCatalogGuard.wrapped");
@@ -40,10 +41,17 @@ function normalizeCatalogMaps(catalogMaps = {}) {
     for (const row of value.values()) {
       if (!row || typeof row !== "object" || visited.has(row)) continue;
       visited.add(row);
+      normalizeLocalizedFieldsInPlace(row);
       normalizeCatalogRowName(row);
     }
   }
   return catalogMaps;
+}
+
+function normalizeCatalogSourceRows(source) {
+  const rows = Array.isArray(source) ? source : (source ? [source] : []);
+  rows.forEach((row) => normalizeLocalizedFieldsInPlace(row));
+  return source;
 }
 
 function installPickupLocalizedCatalogGuard() {
@@ -54,6 +62,10 @@ function installPickupLocalizedCatalogGuard() {
   if (typeof original !== "function" || original[WRAPPED_KEY]) return;
 
   const wrapped = async function buildKitchenCatalogMapsWithSafeNames(...args) {
+    // The same day/order objects are consumed immediately after catalog loading by
+    // pickup serializers. Normalize their historical Mixed snapshots in place so
+    // local legacy pair() helpers never receive an opaque object.
+    if (args.length > 0) normalizeCatalogSourceRows(args[0]);
     const maps = await original.apply(this, args);
     return normalizeCatalogMaps(maps);
   };
@@ -68,4 +80,5 @@ module.exports = {
   installPickupLocalizedCatalogGuard,
   normalizeCatalogMaps,
   normalizeCatalogRowName,
+  normalizeCatalogSourceRows,
 };
