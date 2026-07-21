@@ -163,9 +163,14 @@ async function run() {
     () => resolvePublicAddonFilters({ type: "subscription", kind: "item" }),
     (err) => err && err.message === "type and kind filters are incompatible"
   );
+  assert.strictEqual(
+    resolvePublicAddonFilters({ category: "delivery" }).category,
+    "delivery",
+    "public add-on categories are dynamic normalized keys, not a fixed allowlist"
+  );
   assert.throws(
-    () => resolvePublicAddonFilters({ category: "delivery" }),
-    (err) => err && /category must be one of/.test(err.message)
+    () => resolvePublicAddonFilters({ category: "###" }),
+    (err) => err && err.code === "INVALID_ADDON_CATEGORY"
   );
 
   const subscriptionResult = await invokeListAddons({

@@ -204,7 +204,7 @@ async function runPaidButUnappliedVerifyTest() {
   };
 
   try {
-    sandbox.stub(mongoose, "startSession").resolves(fakeSession);
+    sandbox.stub(mongoose.connection, "startSession").resolves(fakeSession);
     sandbox.stub(Subscription, "findById").returns({ lean: () => Promise.resolve(subscription) });
     sandbox.stub(Payment, "findOne").returns({ lean: () => Promise.resolve(payment), session: () => Promise.resolve(paymentDoc) });
     sandbox.stub(SubscriptionDay, "findById").returns({
