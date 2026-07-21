@@ -24,7 +24,6 @@ function run() {
     slotKey: "slot_1",
     selectionType: "full_meal_product",
     productId,
-    sandwichId,
     productNameI18n: { ar: "حلوم كلاسيك", en: "Classic Halloumi" },
     selectedOptions: [{
       optionId,
@@ -40,22 +39,32 @@ function run() {
   });
   assert(kitchenSlot);
   assert.strictEqual(kitchenSlot.productId, productId.toHexString());
-  assert.strictEqual(kitchenSlot.sandwichId, productId.toHexString());
+  assert.strictEqual(kitchenSlot.sandwichId, null);
   assert.strictEqual(kitchenSlot.selectedOptions[0].optionId, optionId.toHexString());
   assert.deepStrictEqual(kitchenSlot.productNameI18n, {
     ar: "حلوم",
     en: "Halloumi",
   });
 
+  const sandwichSlot = sourceSlotToKitchenSlot({
+    slotIndex: 2,
+    slotKey: "slot_2",
+    selectionType: "sandwich",
+    sandwichId,
+    sandwichNameI18n: { ar: "ساندوتش حلوم", en: "Halloumi Sandwich" },
+  }, 1, {});
+  assert.strictEqual(sandwichSlot.productId, sandwichId.toHexString());
+  assert.strictEqual(sandwichSlot.sandwichId, sandwichId.toHexString());
+
   const cyclic = {};
   cyclic._id = cyclic;
   assert.doesNotThrow(() => sourceSlotToKitchenSlot({
-    slotIndex: 2,
-    slotKey: "slot_2",
+    slotIndex: 3,
+    slotKey: "slot_3",
     selectionType: "full_meal_product",
     productId: cyclic,
     productNameI18n: { ar: "منتج تجريبي", en: "Test Product" },
-  }, 1, {}));
+  }, 2, {}));
 
   console.log("pickup canonical ObjectId conversion checks passed");
 }
