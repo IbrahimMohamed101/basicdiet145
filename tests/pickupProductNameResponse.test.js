@@ -98,10 +98,57 @@ function testDashboardKitchenCardUsesSameProductName() {
   assert.strictEqual(result.data[0].kitchenCards[0].title, "دجاج ترياكي");
 }
 
+function testMalformedComponentsCannotBreakOpsList() {
+  const payload = {
+    status: true,
+    data: [{
+      kitchenDetails: {
+        mealSlots: [{
+          productNameI18n: { ar: "دجاج ترياكي", en: "Chicken Teriyaki" },
+          selectedOptions: [null, "legacy-option"],
+        }],
+      },
+      kitchen: {
+        version: "v2",
+        cards: [{
+          title: "وجبة",
+          components: { product: { nameI18n: { ar: "دجاج ترياكي", en: "Chicken Teriyaki" } } },
+        }],
+      },
+    }],
+  };
+
+  assert.doesNotThrow(() => normalizePickupProductNamesResponse(
+    payload,
+    "/api/dashboard/ops/list?date=2026-07-21"
+  ));
+  assert.strictEqual(payload.data[0].kitchen.cards[0].title, "دجاج ترياكي");
+}
+
+function testFrozenLegacyCardFailsOpen() {
+  const frozenCard = Object.freeze({ title: "وجبة" });
+  const payload = {
+    data: [{
+      kitchenDetails: {
+        mealSlots: [{ productNameI18n: { ar: "دجاج", en: "Chicken" } }],
+      },
+      kitchenCards: [frozenCard],
+    }],
+  };
+
+  assert.doesNotThrow(() => normalizePickupProductNamesResponse(
+    payload,
+    "/api/dashboard/ops/list"
+  ));
+  assert.strictEqual(payload.data[0].kitchenCards[0].title, "وجبة");
+}
+
 function run() {
   testFlutterAvailabilityUsesRealProductName();
   testGenericProductFallsBackToComponents();
   testDashboardKitchenCardUsesSameProductName();
+  testMalformedComponentsCannotBreakOpsList();
+  testFrozenLegacyCardFailsOpen();
   console.log("pickup product name response checks passed");
 }
 
