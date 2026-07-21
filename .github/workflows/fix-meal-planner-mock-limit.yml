@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - .github/workflows/fix-meal-planner-mock-limit.yml
+      - .github/meal-planner-mock-trigger
 
 permissions:
   contents: write
