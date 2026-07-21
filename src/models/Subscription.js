@@ -287,6 +287,7 @@ const SubscriptionSchema = new mongoose.Schema(
     cancellationReason: { type: String, trim: true, default: "" },
     replacedBySubscriptionId: { type: mongoose.Schema.Types.ObjectId, ref: "Subscription", default: null },
     replacedAt: { type: Date, default: null },
+    replacementState: { type: String, enum: ["", "staged", "switching", "completed"], default: "" },
     totalMeals: { type: Number, required: true },
     remainingMeals: { type: Number, required: true },
     entitlementVersion: { type: Number, default: undefined },

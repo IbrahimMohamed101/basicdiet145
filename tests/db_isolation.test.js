@@ -134,6 +134,9 @@ async function runTests() {
     setEnv({ NODE_ENV: "development", MONGODB_URI: "mongodb://localhost/other_db" });
     assert.strictEqual(resolveMongoUri(), "mongodb://localhost/other_db");
 
+    setEnv({ NODE_ENV: "production", MONGO_URL: "mongodb://localhost/railway_db" });
+    assert.strictEqual(resolveMongoUri(), "mongodb://localhost/railway_db");
+
     setEnv({ NODE_ENV: "development" });
     assert.throws(() => resolveMongoUri(), /Missing MongoDB connection string/);
 

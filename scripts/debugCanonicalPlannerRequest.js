@@ -42,7 +42,11 @@ async function main() {
   }
 
   // Connect to database
-  const mongoUri = process.env.MONGO_URI || process.env.MONGO_URI_TEST || "mongodb+srv://hemaatar:011461519790@cluster0.w8vukgr.mongodb.net/basicdiet145?retryWrites=true&w=majority&appName=Cluster0";
+  const mongoUri = process.env.MONGO_URI || process.env.MONGODB_URI || process.env.MONGO_URL || process.env.MONGO_URI_TEST;
+  if (!mongoUri) {
+    console.error("Error: MONGO_URI, MONGODB_URI, MONGO_URL, or MONGO_URI_TEST is required");
+    process.exit(1);
+  }
   console.log("Connecting to database...");
   await mongoose.connect(mongoUri);
 

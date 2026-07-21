@@ -56,7 +56,7 @@ function collectPickupSlotKeys(pickupRequest = {}) {
     add(item.slotKey);
     add(item.slotId);
     if (item.source === "mealSlot") add(item.sourceId);
-    if (["meal", "premium_meal", "large_salad"].includes(String(item.itemType || ""))) add(item.itemId);
+    if (["meal", "premium_meal", "large_salad", "sandwich"].includes(String(item.itemType || ""))) add(item.itemId);
   }
 
   const snapshotSlots = pickupRequest.snapshot && Array.isArray(pickupRequest.snapshot.mealSlots)

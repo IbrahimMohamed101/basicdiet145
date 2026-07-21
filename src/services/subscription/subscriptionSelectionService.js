@@ -1608,6 +1608,7 @@ async function performDayPlanningConfirmation({ userId, subscriptionId, date, ru
       session.endSession();
       return { subscription: subInSession, day, idempotent: true };
     }
+    const persistedPlannerRevisionHash = String(day.plannerRevisionHash || "");
 
     const planningLimits = await resolveMealSlotPlanningLimits(subInSession);
     const requiredSlotCount = planningLimits.requiredSlotCount;
@@ -1719,6 +1720,17 @@ async function performDayPlanningConfirmation({ userId, subscriptionId, date, ru
       {
         _id: day._id,
         status: "open",
+        ...(persistedPlannerRevisionHash
+          ? { plannerRevisionHash: persistedPlannerRevisionHash }
+          : {
+            $and: [{
+              $or: [
+                { plannerRevisionHash: "" },
+                { plannerRevisionHash: null },
+                { plannerRevisionHash: { $exists: false } },
+              ],
+            }],
+          }),
         $or: [
           { plannerState: { $ne: "confirmed" } },
           { plannerState: { $exists: false } },
@@ -1744,9 +1756,21 @@ async function performDayPlanningConfirmation({ userId, subscriptionId, date, ru
 
     if (!confirmUpdateResult) {
       const alreadyConfirmedDay = await SubscriptionDay.findById(day._id).session(session);
-      await session.abortTransaction();
-      session.endSession();
-      return { subscription: subInSession, day: alreadyConfirmedDay || day, idempotent: true };
+      const sameRevisionWasConfirmed = Boolean(
+        alreadyConfirmedDay
+          && (alreadyConfirmedDay.plannerState === "confirmed" || alreadyConfirmedDay.planningState === "confirmed")
+          && String(alreadyConfirmedDay.plannerRevisionHash || "") === String(day.plannerRevisionHash || "")
+      );
+      if (sameRevisionWasConfirmed) {
+        await session.abortTransaction();
+        session.endSession();
+        return { subscription: subInSession, day: alreadyConfirmedDay, idempotent: true };
+      }
+
+      const conflict = new Error("Planner changed while meal credits were being reserved");
+      conflict.status = 409;
+      conflict.code = "PLANNER_REVISION_CONFLICT";
+      throw conflict;
     }
 
     await session.commitTransaction();

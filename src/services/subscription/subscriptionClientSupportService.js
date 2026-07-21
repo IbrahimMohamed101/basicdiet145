@@ -319,6 +319,9 @@ function buildMealBalance(subscription, businessDate) {
   const remainingMeals = Number(subscription.remainingMeals || 0);
   const totalMeals = Number(subscription.totalMeals || 0);
   const hasEntitlementLedger = Number(subscription.entitlementVersion || 0) >= 2;
+  const reservedMeals = hasEntitlementLedger
+    ? Math.max(0, Number(subscription.reservedMeals || 0))
+    : 0;
   const consumedMeals = hasEntitlementLedger
     ? Math.max(0, Number(subscription.consumedMeals || 0) + Number(subscription.forfeitedMeals || 0))
     : Math.max(0, totalMeals - remainingMeals);
@@ -339,6 +342,8 @@ function buildMealBalance(subscription, businessDate) {
   return {
     totalMeals,
     remainingMeals,
+    availableMeals: remainingMeals,
+    reservedMeals,
     consumedMeals,
     canConsumeNow,
     maxConsumableMealsNow,

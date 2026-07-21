@@ -8,6 +8,9 @@ const { applyPaymentSideEffects } = require("./paymentApplicationService");
 const { runMongoTransactionWithRetry } = require("./mongoTransactionRetryService");
 const { logger } = require("../utils/logger");
 const { validateRedirectUrl } = require("../utils/security");
+const {
+  cleanupTerminalNonPaidDayPayment,
+} = require("./subscription/subscriptionDayPaymentLifecycleService");
 
 const TERMINAL_PAYMENT_STATUSES = new Set(["paid", "failed", "canceled", "expired", "refunded"]);
 
@@ -280,6 +283,13 @@ async function synchronizePaymentForRedirect(query, { source = "redirect_verify"
     }
 
     if (normalizedStatus !== "paid") {
+      if (["failed", "canceled", "expired"].includes(normalizedStatus)) {
+        await cleanupTerminalNonPaidDayPayment({
+          payment,
+          status: normalizedStatus,
+          session,
+        });
+      }
       const nonPaidUpdate = {
         status: normalizedStatus,
       };

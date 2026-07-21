@@ -16,6 +16,9 @@ const {
 const { applyOrderWebhookInvoice } = require("../services/orders/orderPaymentService");
 const { releasePromoCodeUsageReservation } = require("../services/promoCodeService");
 const { runMongoTransactionWithRetry } = require("../services/mongoTransactionRetryService");
+const {
+  cleanupTerminalNonPaidDayPayment,
+} = require("../services/subscription/subscriptionDayPaymentLifecycleService");
 const { writeLog } = require("../utils/log");
 const { logger } = require("../utils/logger");
 const { toKSADateString } = require("../utils/date");
@@ -254,6 +257,13 @@ async function handleMoyasarWebhook(req, res, runtimeOverrides = null) {
 
         const latestPayment = await Payment.findById(paymentInSession._id).session(session);
         const terminalFailureStatuses = new Set(["failed", "canceled", "expired"]);
+        if (terminalFailureStatuses.has(latestPayment.status)) {
+          await cleanupTerminalNonPaidDayPayment({
+            payment: latestPayment,
+            status: latestPayment.status,
+            session,
+          });
+        }
         if (latestPayment.type === "subscription_activation" && terminalFailureStatuses.has(latestPayment.status)) {
           const nonPaidMetadata = latestPayment.metadata || {};
           if (nonPaidMetadata.draftId && mongoose.Types.ObjectId.isValid(nonPaidMetadata.draftId)) {

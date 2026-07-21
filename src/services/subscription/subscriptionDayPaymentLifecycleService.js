@@ -1,11 +1,13 @@
 "use strict";
 
 const Payment = require("../../models/Payment");
+const SubscriptionDay = require("../../models/SubscriptionDay");
 const {
   transitionAllocation,
 } = require("./subscriptionMealEntitlementService");
 
 const DAY_PLANNING_PAYMENT_TYPE = "day_planning_payment";
+const TERMINAL_NON_PAID_STATUSES = new Set(["failed", "canceled", "expired"]);
 
 function getPaymentMetadata(payment) {
   return payment && payment.metadata && typeof payment.metadata === "object"
@@ -41,7 +43,13 @@ async function savePaymentMetadata(payment, metadata, session = null) {
   await payment.save(session ? { session } : undefined);
 }
 
-async function releaseSupersededPaymentAllocations({ payment, subscriptionId, session = null }) {
+async function releaseDayPaymentAllocations({
+  payment,
+  subscriptionId,
+  session = null,
+  transitionAllocationFn = transitionAllocation,
+  savePaymentMetadataFn = savePaymentMetadata,
+}) {
   const metadata = getPaymentMetadata(payment);
   if (metadata.entitlementAllocationsReleasedAt) {
     return { releasedCount: 0, alreadyReleased: true };
@@ -50,7 +58,7 @@ async function releaseSupersededPaymentAllocations({ payment, subscriptionId, se
   const allocationKeys = paymentAllocationKeys(payment);
   let releasedCount = 0;
   for (const allocationKey of allocationKeys) {
-    const result = await transitionAllocation({
+    const result = await transitionAllocationFn({
       subscriptionId,
       allocationKey,
       toState: "released",
@@ -59,13 +67,52 @@ async function releaseSupersededPaymentAllocations({ payment, subscriptionId, se
     if (result.changed) releasedCount += 1;
   }
 
-  await savePaymentMetadata(payment, {
+  await savePaymentMetadataFn(payment, {
     ...getPaymentMetadata(payment),
     entitlementReleasePending: false,
     entitlementAllocationsReleasedAt: new Date(),
   }, session);
 
   return { releasedCount, alreadyReleased: false };
+}
+
+const releaseSupersededPaymentAllocations = releaseDayPaymentAllocations;
+
+async function cleanupTerminalNonPaidDayPayment({
+  payment,
+  status = null,
+  session = null,
+  releaseAllocationsFn = releaseDayPaymentAllocations,
+  updateDayFn = (filter, update, options) => SubscriptionDay.updateOne(filter, update, options),
+} = {}) {
+  const terminalStatus = String(status || (payment && payment.status) || "").trim().toLowerCase();
+  if (!payment || payment.type !== DAY_PLANNING_PAYMENT_TYPE || !TERMINAL_NON_PAID_STATUSES.has(terminalStatus)) {
+    return { applied: false, reason: "not_terminal_day_payment" };
+  }
+
+  const metadata = getPaymentMetadata(payment);
+  const subscriptionId = payment.subscriptionId || metadata.subscriptionId;
+  if (!subscriptionId) return { applied: false, reason: "subscription_missing" };
+  const dayPaymentStatus = terminalStatus === "expired" ? "expired" : "failed";
+
+  const releaseResult = await releaseAllocationsFn({ payment, subscriptionId, session });
+  const dayFilter = {
+    subscriptionId,
+    ...(metadata.dayId ? { _id: metadata.dayId } : { date: metadata.date }),
+    ...(metadata.revisionHash ? { plannerRevisionHash: metadata.revisionHash } : {}),
+    "premiumExtraPayment.paymentId": payment._id,
+  };
+  await updateDayFn(
+    dayFilter,
+    {
+      $set: {
+        "premiumExtraPayment.status": dayPaymentStatus,
+      },
+    },
+    session ? { session } : {}
+  );
+
+  return { applied: true, status: terminalStatus, ...releaseResult };
 }
 
 async function supersedeInitiatedDayPlanningPaymentsForRevisionChange({
@@ -142,7 +189,9 @@ async function supersedeInitiatedDayPlanningPaymentsForRevisionChange({
 module.exports = {
   DAY_PLANNING_PAYMENT_TYPE,
   buildSupersededPaymentErrorDetails,
+  cleanupTerminalNonPaidDayPayment,
   isPaymentSuperseded,
+  releaseDayPaymentAllocations,
   releaseSupersededPaymentAllocations,
   supersedeInitiatedDayPlanningPaymentsForRevisionChange,
 };

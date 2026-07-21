@@ -25,6 +25,10 @@ async function checkMongoTransactionSupport(connection = mongoose.connection) {
 async function startSafeSession(connection = mongoose.connection) {
   const isSupported = await checkMongoTransactionSupport(connection);
   const session = await connection.startSession();
+  // Callers use this explicit capability bit to choose a compare-and-set /
+  // compensation workflow when Railway is connected to standalone MongoDB.
+  // A session by itself does not imply transaction support.
+  session.supportsTransactions = isSupported;
 
   if (!isSupported) {
     // Monkey-patch the session object to make transaction methods no-ops

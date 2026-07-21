@@ -606,6 +606,21 @@ function itemTypeForSelectionType(selectionType, isPremium = false) {
   return "unknown";
 }
 
+const BASE_MEAL_PICKUP_ITEM_TYPES = new Set([
+  "meal",
+  "premium_meal",
+  "large_salad",
+  "sandwich",
+]);
+
+function pickupItemConsumesBaseMealCredit(item = {}) {
+  return Boolean(
+    item
+      && item.slotId
+      && BASE_MEAL_PICKUP_ITEM_TYPES.has(String(item.itemType || ""))
+  );
+}
+
 function categoryKeyForItemType(itemType) {
   const map = {
     meal: "meals",
@@ -1267,11 +1282,11 @@ async function assertSelectedPickupItemsAvailable({
     selectedPickupItems: normalizedIds.map((id) => byId.get(id)),
     selectedMealSlotIds: normalizedIds.filter((id) => {
       const item = byId.get(id);
-      return item && item.slotId && ["meal", "premium_meal", "large_salad", "sandwich"].includes(item.itemType);
+      return pickupItemConsumesBaseMealCredit(item);
     }),
     mealCreditCount: normalizedIds.filter((id) => {
       const item = byId.get(id);
-      return item && ["meal", "premium_meal"].includes(item.itemType);
+      return pickupItemConsumesBaseMealCredit(item);
     }).length,
     availability,
   };
@@ -1333,6 +1348,7 @@ module.exports = {
   filterAvailabilityForVisibility,
   normalizeSelectedMealSlotIds,
   normalizeSelectedPickupItemIds,
+  pickupItemConsumesBaseMealCredit,
   resolveCanonicalPaymentReason,
   resolveSlotId,
   expandDayAddonPickupItems,

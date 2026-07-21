@@ -192,6 +192,7 @@ const CheckoutDraftSchema = new mongoose.Schema(
     paymentUrl: { type: String, default: "" },
     invoiceInitialization: { type: InvoiceInitializationSchema, default: () => ({}) },
     subscriptionId: { type: mongoose.Schema.Types.ObjectId, ref: "Subscription" },
+    activationSubscriptionId: { type: mongoose.Schema.Types.ObjectId, ref: "Subscription", default: null },
     completedAt: { type: Date },
     failedAt: { type: Date },
     failureReason: { type: String, default: "" },

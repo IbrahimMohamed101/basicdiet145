@@ -101,6 +101,15 @@ function withOptionalSession(options, session) {
 
 function buildPickupAvailabilityWallet(subscription = {}, availability = {}) {
   const remainingMeals = Number(subscription.remainingMeals || 0);
+  const subscriptionDayId = String(availability.subscriptionDayId || "");
+  const availableReservedDayMeals = Array.isArray(subscription.baseMealAllocations)
+    ? subscription.baseMealAllocations.filter((allocation) => (
+      allocation
+        && allocation.state === "reserved"
+        && !allocation.pickupRequestId
+        && (!subscriptionDayId || String(allocation.dayId || "") === subscriptionDayId)
+    )).length
+    : 0;
   const reservedMeals = Array.isArray(availability.slots)
     ? availability.slots.filter((slot) => slot && slot.reservedByPickupRequestId && slot.unavailableReason !== "SLOT_ALREADY_FULFILLED").length
     : 0;
@@ -109,7 +118,10 @@ function buildPickupAvailabilityWallet(subscription = {}, availability = {}) {
     : 0;
   return {
     remainingMeals,
-    availableMeals: remainingMeals,
+    // remainingMeals excludes confirmed-day reservations. Those exact slots
+    // are still available for pickup and must remain visible as spendable UX
+    // capacity without being debited a second time.
+    availableMeals: remainingMeals + availableReservedDayMeals,
     reservedMeals,
     consumedMeals,
     totalEntitlement: Number(subscription.totalMeals || subscription.mealCount || 0),
@@ -138,7 +150,10 @@ function buildPickupAvailabilitySummary({ subscription = {}, availability = {} }
     fulfilledCount,
     noShowCount,
     hiddenUnavailableCount: Number(availability.hiddenUnavailableCount || 0),
-    availableMealSlotCount: availableByType("meal") + availableByType("premium_meal"),
+    availableMealSlotCount: availableByType("meal")
+      + availableByType("premium_meal")
+      + availableByType("large_salad")
+      + availableByType("sandwich"),
     availableAddonCount: availableByType("addon"),
     availableSaladCount: availableByType("large_salad"),
     availableProteinExtraCount: availableByType("protein_extra"),
@@ -687,10 +702,6 @@ async function _createSubscriptionPickupRequestForClientInternal({
     }
   }
 
-  if (Number(subscription.remainingMeals || 0) < normalizedMealCount) {
-    throw createServiceError("INSUFFICIENT_CREDITS", "رصيد وجباتك غير كافٍ", 422);
-  }
-
   let pickupRequest;
   try {
     pickupRequest = await createPickupRequestDocument({
@@ -877,6 +888,8 @@ async function getSubscriptionPickupRequestStatusForClient({
 }
 
 module.exports = {
+  buildPickupAvailabilitySummary,
+  buildPickupAvailabilityWallet,
   createSubscriptionPickupRequestForClient,
   getPickupAvailabilityForClient,
   getSubscriptionPickupRequestStatusForClient,

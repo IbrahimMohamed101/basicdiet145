@@ -234,17 +234,16 @@ async function serializeSubscriptionForClient(subscription, lang) {
       slotId: "",
     };
   const data = { ...readSubscription };
+  const businessDate = await getRestaurantBusinessDate();
+  data.status = resolveEffectiveSubscriptionStatus(data, businessDate) || data.status;
+  const mealBalance = buildMealBalance(data, businessDate);
   delete data.__v;
   delete data.entitlementVersion;
   delete data.reservedMeals;
   delete data.consumedMeals;
   delete data.forfeitedMeals;
   delete data.baseMealAllocations;
-
-  const businessDate = await getRestaurantBusinessDate();
-  data.status = resolveEffectiveSubscriptionStatus(data, businessDate) || data.status;
-
-  const mealBalance = buildMealBalance(data, businessDate);
+  delete data.replacementState;
 
   return localizeSubscriptionReadPayload({
     ...data,

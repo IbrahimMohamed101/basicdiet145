@@ -856,6 +856,7 @@ async function run() {
 
     const directBalance = buildMealBalance(subscription.toObject(), BUSINESS_DATE);
     assert.deepStrictEqual(Object.keys(directBalance).sort(), [
+      "availableMeals",
       "canConsumeNow",
       "consumedMeals",
       "dailyMealLimitEnforced",
@@ -863,6 +864,7 @@ async function run() {
       "maxConsumableMealsNow",
       "mealBalancePolicy",
       "remainingMeals",
+      "reservedMeals",
       "totalMeals",
     ]);
   });
