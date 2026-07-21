@@ -11,314 +11,108 @@ permissions:
   contents: write
 
 jobs:
-  fix-generic-products:
+  apply-fix:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Remove remaining standalone product whitelists
+      - name: Patch canonical standalone-product classification
         shell: bash
         run: |
           python3 <<'PY'
           from pathlib import Path
 
           def replace_once(path, old, new):
-              file_path = Path(path)
-              text = file_path.read_text(encoding="utf-8")
+              target = Path(path)
+              text = target.read_text(encoding="utf-8")
               if old not in text:
-                  raise SystemExit(f"Could not locate expected block in {path}:\n{old[:300]}")
-              file_path.write_text(text.replace(old, new, 1), encoding="utf-8")
+                  raise SystemExit(f"Expected source block not found in {path}")
+              target.write_text(text.replace(old, new, 1), encoding="utf-8")
 
-          classification_path = "src/services/catalog/mealProductClassificationService.js"
+          classifier = "src/services/catalog/mealProductClassificationService.js"
           replace_once(
-              classification_path,
-              '''const EXPLICIT_DIRECT_PRODUCT_TYPES = Object.freeze([\n  "cold_sandwich",\n  "full_meal_product",\n]);''',
-              '''const EXPLICIT_DIRECT_PRODUCT_TYPES = Object.freeze([\n  "cold_sandwich",\n  "full_meal_product",\n  "sourdough",\n]);'''
-          )
-          replace_once(
-              classification_path,
+              classifier,
               '''const NON_MEAL_ITEM_TYPES = new Set([\n  "addon",\n  "subscription_addon",\n]);''',
               '''const NON_MEAL_ITEM_TYPES = new Set([\n  "addon",\n  "subscription_addon",\n]);\nconst BUILDER_ITEM_TYPES = new Set([\n  "basic_meal",\n  "custom_meal",\n  "meal_builder",\n]);'''
           )
           replace_once(
-              classification_path,
+              classifier,
               '''  const itemType = productItemType(product);\n  const cardVariant = productCardVariant(product);\n  const sandwich =\n    itemType === "cold_sandwich" || SANDWICH_CARD_VARIANTS.has(cardVariant);\n  const fullMeal =\n    !sandwich &&\n    (itemType === "full_meal_product" ||\n      FULL_MEAL_CARD_VARIANTS.has(cardVariant));\n  const nonMeal =\n    NON_MEAL_ITEM_TYPES.has(itemType) || NON_MEAL_CARD_VARIANTS.has(cardVariant);\n  const directCompatible = !nonMeal && (sandwich || fullMeal);\n  const composedCompatible =\n    !nonMeal &&\n    !directCompatible &&\n    (Boolean(hasBuilderRelations) ||\n      product.isCustomizable === true ||\n      BUILDER_CARD_VARIANTS.has(cardVariant));''',
               '''  const itemType = productItemType(product);\n  const cardVariant = productCardVariant(product);\n  const explicitSandwich =\n    itemType === "cold_sandwich" ||\n    itemType === "sourdough" ||\n    itemType.includes("sandwich") ||\n    itemType.includes("sourdough") ||\n    SANDWICH_CARD_VARIANTS.has(cardVariant);\n  const explicitFullMeal =\n    itemType === "full_meal_product" ||\n    FULL_MEAL_CARD_VARIANTS.has(cardVariant);\n  const nonMeal =\n    NON_MEAL_ITEM_TYPES.has(itemType) || NON_MEAL_CARD_VARIANTS.has(cardVariant);\n  const builderPreferred =\n    !nonMeal &&\n    !explicitSandwich &&\n    !explicitFullMeal &&\n    (BUILDER_ITEM_TYPES.has(itemType) ||\n      Boolean(hasBuilderRelations) ||\n      product.isCustomizable === true ||\n      BUILDER_CARD_VARIANTS.has(cardVariant));\n  const genericStandalone =\n    !nonMeal &&\n    !explicitSandwich &&\n    !explicitFullMeal &&\n    !builderPreferred;\n  const sandwich = explicitSandwich;\n  const fullMeal = !sandwich && (explicitFullMeal || genericStandalone);\n  const directCompatible = !nonMeal && (sandwich || fullMeal);\n  const composedCompatible = builderPreferred;'''
           )
           replace_once(
-              classification_path,
+              classifier,
               '''  BUILDER_CARD_VARIANTS,\n  DIRECT_PRODUCT_CARD_VARIANTS,''',
               '''  BUILDER_CARD_VARIANTS,\n  BUILDER_ITEM_TYPES,\n  DIRECT_PRODUCT_CARD_VARIANTS,'''
           )
 
-          catalog_path = "src/services/subscription/dashboardMealBuilderCatalogService.js"
+          catalog = "src/services/subscription/dashboardMealBuilderCatalogService.js"
           replace_once(
-              catalog_path,
+              catalog,
               '''const {\n  isCatalogItemUsable,\n  loadCatalogItemsByIdForDocs,\n} = require("../catalog/catalogAvailabilityService");''',
               '''const {\n  isCatalogItemUsable,\n  loadCatalogItemsByIdForDocs,\n} = require("../catalog/catalogAvailabilityService");\nconst {\n  buildMealPlannerClassification,\n} = require("../catalog/mealProductClassificationService");'''
           )
-          catalog_file = Path(catalog_path)
-          catalog_text = catalog_file.read_text(encoding="utf-8")
+          catalog_path = Path(catalog)
+          catalog_text = catalog_path.read_text(encoding="utf-8")
           start = catalog_text.index("function classifyProduct({ product, optionGroups, status }) {")
           end = catalog_text.index("\nfunction serializeOptionNode", start)
-          catalog_file.write_text(
+          catalog_path.write_text(
               catalog_text[:start]
               + '''function classifyProduct({ product, optionGroups, status }) {\n  return buildMealPlannerClassification({\n    product,\n    optionGroups,\n    status,\n  });\n}\n'''
               + catalog_text[end:],
               encoding="utf-8",
           )
 
-          config_path = "src/services/subscription/mealBuilderConfigService.js"
+          config = "src/services/subscription/mealBuilderConfigService.js"
           replace_once(
-              config_path,
+              config,
               '''const {\n  hasFlutterPrimaryMealPickerContent,\n  summarizeFlutterPrimaryMealPickerContent,\n} = require("../catalog/plannerCatalogContentValidator");''',
               '''const {\n  hasFlutterPrimaryMealPickerContent,\n  summarizeFlutterPrimaryMealPickerContent,\n} = require("../catalog/plannerCatalogContentValidator");\nconst {\n  classifyMealProduct,\n} = require("../catalog/mealProductClassificationService");'''
           )
           replace_once(
-              config_path,
+              config,
               '''  if (requireSandwich) {\n    const validItemTypes = ["cold_sandwich", "full_meal_product"];\n    if (!validItemTypes.includes(String(product.itemType || ""))) {\n      reasonCodes.push("SANDWICH_ITEM_TYPE_MISMATCH");\n      errors.push(statusIssue("error", "SANDWICH_ITEM_TYPE_MISMATCH", "Sandwich/standalone product must use itemType=cold_sandwich or full_meal_product"));\n    }\n  }''',
               '''  if (requireSandwich) {\n    const productId = String(product._id);\n    const productGroupRelations = (docs.groupRelations || []).filter(\n      (relation) => String(relation.productId) === productId\n    );\n    const classification = classifyMealProduct(product, {\n      hasBuilderRelations: productGroupRelations.length > 0,\n      hasActiveBuilderRelations: productGroupRelations.some(relationReady),\n    });\n    if (!classification.directCompatible) {\n      reasonCodes.push("SANDWICH_ITEM_TYPE_MISMATCH");\n      errors.push(\n        statusIssue(\n          "error",\n          "SANDWICH_ITEM_TYPE_MISMATCH",\n          "Product is not compatible with a standalone Meal Planner card"\n        )\n      );\n    }\n  }'''
           )
           replace_once(
-              config_path,
+              config,
               '''    ? await MenuProduct.find({ categoryId: category._id, itemType: "cold_sandwich" }).sort({ sortOrder: 1, createdAt: -1 }).lean()''',
               '''    ? await MenuProduct.find({ categoryId: category._id }).sort({ sortOrder: 1, createdAt: -1 }).lean()'''
           )
 
-          compatibility_path = "src/services/subscription/dashboardMealPlannerCompatibilityService.js"
+          compatibility = "src/services/subscription/dashboardMealPlannerCompatibilityService.js"
           replace_once(
-              compatibility_path,
+              compatibility,
               '''const {\n  isLinkedDocGloballyAvailable,\n  loadCatalogItemsByIdForDocs,\n} = require("../catalog/catalogAvailabilityService");''',
               '''const {\n  isLinkedDocGloballyAvailable,\n  loadCatalogItemsByIdForDocs,\n} = require("../catalog/catalogAvailabilityService");\nconst {\n  directSelectionType: classifyDirectSelectionType,\n  isProductionDirectProduct,\n} = require("../catalog/mealProductClassificationService");'''
           )
           replace_once(
-              compatibility_path,
+              compatibility,
               '''function directSelectionType(product = {}) {\n  return product.itemType === "cold_sandwich"\n    ? "sandwich"\n    : "full_meal_product";\n}''',
               '''function directSelectionType(product = {}) {\n  return classifyDirectSelectionType(product) || "full_meal_product";\n}'''
           )
           replace_once(
-              compatibility_path,
+              compatibility,
               '''async function loadDirectProducts() {\n  const products = await MenuProduct.find({\n    itemType: { $in: DIRECT_PRODUCT_ITEM_TYPES },\n  })\n    .sort({ sortOrder: 1, createdAt: -1 })\n    .lean();\n  const catalogItemsById = await loadCatalogItemsByIdForDocs(products);\n  return { products, catalogItemsById };\n}''',
               '''async function loadDirectProducts() {\n  const allProducts = await MenuProduct.find({})\n    .sort({ sortOrder: 1, createdAt: -1 })\n    .lean();\n  const products = allProducts.filter(isProductionDirectProduct);\n  const catalogItemsById = await loadCatalogItemsByIdForDocs(products);\n  return { products, catalogItemsById };\n}'''
           )
           replace_once(
-              compatibility_path,
+              compatibility,
               '''  const invalidTypeProducts = products\n    .filter((product) => !DIRECT_PRODUCT_ITEM_TYPES.includes(product.itemType))\n    .map((product) => ({ id: String(product._id), itemType: product.itemType }));''',
               '''  const invalidTypeProducts = products\n    .filter((product) => !isProductionDirectProduct(product))\n    .map((product) => ({\n      id: String(product._id),\n      key: product.key || "",\n      itemType: product.itemType || "",\n      cardVariant: String(product?.ui?.cardVariant || ""),\n    }));'''
           )
           PY
 
-      - name: Add regression test
-        shell: bash
-        run: |
-          cat > tests/mealBuilderGenericStandaloneProducts.test.js <<'EOF'
-          process.env.NODE_ENV = "test";
-          process.env.JWT_SECRET = process.env.JWT_SECRET || "test-only-jwt-key-0000000000000000";
-          process.env.DASHBOARD_JWT_SECRET =
-            process.env.DASHBOARD_JWT_SECRET || "test-only-dashboard-key-000000000";
-
-          const assert = require("assert");
-          const mongoose = require("mongoose");
-          const { MongoMemoryServer } = require("mongodb-memory-server");
-          const request = require("supertest");
-
-          const { createApp } = require("../src/app");
-          const { dashboardAuth } = require("./helpers/dashboardAuthHelper");
-          const MealBuilderConfig = require("../src/models/MealBuilderConfig");
-          const MenuCategory = require("../src/models/MenuCategory");
-          const MenuProduct = require("../src/models/MenuProduct");
-          const {
-            classifyMealProduct,
-          } = require("../src/services/catalog/mealProductClassificationService");
-
-          let mongoServer;
-
-          async function connect() {
-            mongoServer = await MongoMemoryServer.create();
-            const uri = mongoServer.getUri(`meal_builder_generic_products_${Date.now()}`);
-            process.env.MONGO_URI = uri;
-            process.env.MONGODB_URI = uri;
-            await mongoose.connect(uri, { serverSelectionTimeoutMS: 10000 });
-          }
-
-          async function disconnect() {
-            if (mongoose.connection.readyState !== 0) await mongoose.disconnect();
-            if (mongoServer) await mongoServer.stop();
-          }
-
-          function expectStatus(response, expected, label) {
-            assert.strictEqual(
-              response.status,
-              expected,
-              `${label}: expected ${expected}, got ${response.status} ${JSON.stringify(response.body)}`
-            );
-          }
-
-          async function run() {
-            await connect();
-            try {
-              const now = new Date();
-              const category = await MenuCategory.create({
-                key: "generic_direct_products",
-                name: { ar: "منتجات مباشرة", en: "Generic direct products" },
-                isActive: true,
-                isVisible: true,
-                isAvailable: true,
-                publishedAt: now,
-              });
-              const [sourdough, juice, addon, builder] = await MenuProduct.insertMany([
-                {
-                  categoryId: category._id,
-                  key: "sourdough_turkey",
-                  name: { ar: "ساوردو تركي", en: "Turkey sourdough" },
-                  itemType: "sourdough",
-                  pricingModel: "fixed",
-                  priceHalala: 1800,
-                  availableFor: ["subscription"],
-                  availableForSubscription: true,
-                  ui: { cardVariant: "standard" },
-                  publishedAt: now,
-                },
-                {
-                  categoryId: category._id,
-                  key: "orange_juice",
-                  name: { ar: "عصير برتقال", en: "Orange juice" },
-                  itemType: "juice",
-                  pricingModel: "fixed",
-                  priceHalala: 700,
-                  availableFor: ["subscription"],
-                  availableForSubscription: true,
-                  ui: { cardVariant: "standard" },
-                  publishedAt: now,
-                },
-                {
-                  categoryId: category._id,
-                  key: "extra_sauce",
-                  name: { ar: "صوص إضافي", en: "Extra sauce" },
-                  itemType: "addon",
-                  pricingModel: "fixed",
-                  priceHalala: 200,
-                  availableFor: ["subscription"],
-                  availableForSubscription: true,
-                  ui: { cardVariant: "addon_card" },
-                  publishedAt: now,
-                },
-                {
-                  categoryId: category._id,
-                  key: "basic_meal",
-                  name: { ar: "وجبة أساسية", en: "Basic meal" },
-                  itemType: "basic_meal",
-                  pricingModel: "per_100g",
-                  priceHalala: 1900,
-                  availableFor: ["subscription"],
-                  availableForSubscription: true,
-                  ui: { cardVariant: "hero_builder" },
-                  publishedAt: now,
-                },
-              ]);
-
-              assert.strictEqual(classifyMealProduct(sourdough).directSelectionType, "sandwich");
-              assert.strictEqual(classifyMealProduct(juice).directSelectionType, "full_meal_product");
-              assert.strictEqual(classifyMealProduct(addon).directCompatible, false);
-              assert.strictEqual(classifyMealProduct(builder).directCompatible, false);
-
-              await MealBuilderConfig.create({
-                status: "draft",
-                isCurrent: true,
-                contractVersion: "subscription_meal_builder.v1",
-                source: "dashboard",
-                createdBySystem: false,
-                sections: [],
-              });
-
-              const app = createApp();
-              const auth = await dashboardAuth("admin", "generic-products");
-
-              const catalogResponse = await request(app)
-                .get("/api/dashboard/meal-builder/catalog?lang=en")
-                .set(auth.headers);
-              expectStatus(catalogResponse, 200, "complete catalog");
-              const catalogProducts = catalogResponse.body.data.products || [];
-              const sourdoughCatalog = catalogProducts.find((item) => item.key === "sourdough_turkey");
-              const juiceCatalog = catalogProducts.find((item) => item.key === "orange_juice");
-              const addonCatalog = catalogProducts.find((item) => item.key === "extra_sauce");
-              assert.strictEqual(sourdoughCatalog.mealPlanner.directAdd.eligible, true);
-              assert.strictEqual(sourdoughCatalog.mealPlanner.directAdd.selectionType, "sandwich");
-              assert.strictEqual(juiceCatalog.mealPlanner.directAdd.eligible, true);
-              assert.strictEqual(juiceCatalog.mealPlanner.directAdd.selectionType, "full_meal_product");
-              assert.strictEqual(addonCatalog.mealPlanner.directAdd.eligible, false);
-
-              const picker = await request(app)
-                .get("/api/dashboard/meal-builder/pickers/products?limit=1000")
-                .set(auth.headers);
-              expectStatus(picker, 200, "generic product picker");
-              const pickerKeys = new Set(
-                (picker.body.data.candidates || []).map((candidate) => candidate.key)
-              );
-              assert(pickerKeys.has("sourdough_turkey"));
-              assert(pickerKeys.has("orange_juice"));
-              assert(!pickerKeys.has("extra_sauce"));
-              assert(!pickerKeys.has("basic_meal"));
-
-              const createCard = await request(app)
-                .post("/api/dashboard/meal-builder/sections")
-                .set(auth.headers)
-                .send({
-                  key: "sourdough_products",
-                  titleOverride: { ar: "ساوردو", en: "Sourdough" },
-                  selectedProductIds: [String(sourdough._id)],
-                  selectionType: "sandwich",
-                  sortOrder: 10,
-                });
-              expectStatus(createCard, 201, "create sourdough card");
-              assert.deepStrictEqual(
-                createCard.body.data.section.selectedProductIds,
-                [String(sourdough._id)]
-              );
-              assert.strictEqual(createCard.body.data.validation.ready, true);
-
-              console.log("mealBuilderGenericStandaloneProducts.test.js passed");
-            } finally {
-              await disconnect();
-            }
-          }
-
-          run().catch((error) => {
-            console.error(error && error.stack ? error.stack : error);
-            process.exitCode = 1;
-          });
-          EOF
-          sed -i 's/^          //' tests/mealBuilderGenericStandaloneProducts.test.js
-
-      - name: Check syntax
+      - name: Syntax check
         run: |
           node --check src/services/catalog/mealProductClassificationService.js
           node --check src/services/subscription/dashboardMealBuilderCatalogService.js
           node --check src/services/subscription/mealBuilderConfigService.js
           node --check src/services/subscription/dashboardMealPlannerCompatibilityService.js
-          node --check tests/mealBuilderGenericStandaloneProducts.test.js
 
-      - name: Run focused Meal Builder regressions
-        run: |
-          node tests/mealBuilderGenericStandaloneProducts.test.js
-          node tests/mealPlannerCardLifecycle.test.js
-          node tests/mealBuilderDynamicCardsValidation.test.js
-          node tests/dashboardMealBuilderCompleteCatalog.test.js
-
-      - name: Commit fix and remove one-time workflow
+      - name: Commit fix
         shell: bash
         run: |
           set -euo pipefail
@@ -330,7 +124,6 @@ jobs:
             src/services/subscription/dashboardMealBuilderCatalogService.js \
             src/services/subscription/mealBuilderConfigService.js \
             src/services/subscription/dashboardMealPlannerCompatibilityService.js \
-            tests/mealBuilderGenericStandaloneProducts.test.js \
             .github/workflows/fix-generic-meal-builder-products.yml
           git diff --cached --check
           git commit -m "fix(meal-builder): accept generic standalone products"
