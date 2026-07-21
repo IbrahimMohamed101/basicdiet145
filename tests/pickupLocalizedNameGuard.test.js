@@ -1,5 +1,6 @@
 "use strict";
 
+// CI validation branch marker; the production fix is already on main.
 const assert = require("assert");
 const {
   isInvalidDisplayText,
