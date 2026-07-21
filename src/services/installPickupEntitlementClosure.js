@@ -6,12 +6,26 @@ const SubscriptionPickupRequest = require("../models/SubscriptionPickupRequest")
 const canonical = require("./subscription/pickupCanonicalPresentationService");
 const {
   applyEntitlementAvailability,
+  slotAliases,
 } = require("./subscription/pickupEntitlementLinkService");
 const balanceClosure = require("./subscription/subscriptionPickupRequestBalanceClosureService");
 
 const INSTALL_KEY = Symbol.for("basicdiet.pickupEntitlementClosure.installed");
 const WRAPPED_KEY = Symbol.for("basicdiet.pickupEntitlementClosure.wrapped");
 const ACTIVE_PICKUP_STATUSES = ["locked", "in_preparation", "ready_for_pickup", "fulfilled", "no_show"];
+const ACTIVE_PICKUP_STATUS_SET = new Set(ACTIVE_PICKUP_STATUSES);
+
+function clean(value) {
+  if (value === undefined || value === null) return "";
+  try {
+    if (value && typeof value === "object" && typeof value.toHexString === "function") {
+      return String(value.toHexString()).trim();
+    }
+    return String(value).trim();
+  } catch (_err) {
+    return "";
+  }
+}
 
 function recomputeSummary(result = {}) {
   const items = Array.isArray(result.pickupItems) ? result.pickupItems : [];
@@ -55,6 +69,98 @@ function filterVisible(result, { includeUnavailable = false, includeHistory = fa
     ...section,
     items: (section.items || []).filter((item) => itemIds.has(String(item.itemId || ""))),
   }));
+  return {
+    ...result,
+    slots,
+    pickupItems,
+    sections,
+    availableSlotIds: slots.filter((slot) => slot.available).map((slot) => slot.slotId),
+    unavailableSlotIds: slots.filter((slot) => !slot.available).map((slot) => slot.slotId),
+  };
+}
+
+function markReserved(item, claimId) {
+  const copy = {
+    ar: "تم طلب استلام هذه الوجبة بالفعل",
+    en: "This meal has already been requested for pickup",
+  };
+  return {
+    ...item,
+    available: false,
+    canSelect: false,
+    unavailableReason: "SLOT_ALREADY_RESERVED",
+    reasons: [...new Set([...(item.reasons || []), "SLOT_ALREADY_RESERVED"])],
+    reservedByPickupRequestId: claimId,
+    availabilityState: "reserved",
+    availability: item.availability ? {
+      ...item.availability,
+      state: "reserved",
+      available: false,
+      canSelect: false,
+      unavailableReason: "SLOT_ALREADY_RESERVED",
+      reasonLabel: copy,
+      reservedByPickupRequestId: claimId,
+      reasons: [...new Set([...(item.availability.reasons || []), "SLOT_ALREADY_RESERVED"])],
+    } : item.availability,
+    display: item.display ? {
+      ...item.display,
+      statusTextAr: copy.ar,
+      statusTextEn: copy.en,
+      selectionTextAr: "",
+      selectionTextEn: "",
+      unavailableTextAr: copy.ar,
+      unavailableTextEn: copy.en,
+    } : item.display,
+  };
+}
+
+function enforceActiveClaimAvailability({ result, subscription, day, pickupRequests = [] } = {}) {
+  if (!result || !subscription || !day) return result;
+  const activeIds = new Set((Array.isArray(pickupRequests) ? pickupRequests : [])
+    .filter((request) => request
+      && ACTIVE_PICKUP_STATUS_SET.has(clean(request.status))
+      && !request.creditsReleasedAt)
+    .map((request) => clean(request._id))
+    .filter(Boolean));
+  if (!activeIds.size) return result;
+
+  const dayId = clean(day._id);
+  const conflicts = [];
+  for (const allocation of Array.isArray(subscription.baseMealAllocations)
+    ? subscription.baseMealAllocations
+    : []) {
+    if (clean(allocation.dayId) !== dayId) continue;
+    const claimId = clean(allocation.pickupRequestId);
+    if (!claimId || !activeIds.has(claimId)) continue;
+    conflicts.push({ claimId, aliases: new Set(slotAliases(allocation.slotKey)) });
+  }
+  if (!conflicts.length) return result;
+
+  const claimFor = (value) => {
+    const aliases = slotAliases(value);
+    const conflict = conflicts.find((row) => aliases.some((alias) => row.aliases.has(alias)));
+    return conflict ? conflict.claimId : null;
+  };
+
+  const slots = (result.slots || []).map((slot) => {
+    const claimId = claimFor(slot.slotKey || slot.slotId || slot.slotIndex);
+    return claimId ? markReserved(slot, claimId) : slot;
+  });
+  const slotClaims = new Map(slots.map((slot) => [
+    clean(slot.slotId || slot.slotKey || slot.slotIndex),
+    slot.reservedByPickupRequestId || null,
+  ]));
+  const pickupItems = (result.pickupItems || []).map((item) => {
+    if (!item.slotId) return item;
+    const claimId = slotClaims.get(clean(item.slotId || item.slotKey || item.itemId || item.slotIndex));
+    return claimId ? markReserved(item, claimId) : item;
+  });
+  const itemById = new Map(pickupItems.map((item) => [clean(item.itemId), item]));
+  const sections = (result.sections || []).map((section) => ({
+    ...section,
+    items: (section.items || []).map((item) => itemById.get(clean(item.itemId)) || item),
+  }));
+
   return {
     ...result,
     slots,
@@ -114,6 +220,7 @@ function patchPickupClientService() {
       day,
       pickupRequests,
     });
+    result = enforceActiveClaimAvailability({ result, subscription, day, pickupRequests });
     result = filterVisible(result, args);
     result.summary = recomputeSummary(result);
     return result;
@@ -133,6 +240,8 @@ function installPickupEntitlementClosure() {
 installPickupEntitlementClosure();
 
 module.exports = {
+  enforceActiveClaimAvailability,
+  filterVisible,
   installPickupEntitlementClosure,
   patchBalanceService,
   patchPickupClientService,
