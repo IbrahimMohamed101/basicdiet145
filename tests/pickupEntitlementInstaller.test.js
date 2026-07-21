@@ -28,4 +28,5 @@ function run() {
   console.log("pickup entitlement startup installer checks passed");
 }
 
+// Branch-only final closure verification trigger; never merge this comment.
 run();
