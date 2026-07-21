@@ -4,6 +4,7 @@ const SubscriptionDay = require("../models/SubscriptionDay");
 const SubscriptionPickupRequest = require("../models/SubscriptionPickupRequest");
 
 const QUERY_PATCHED = Symbol.for("basicdiet.pickupCanonical.queryPatched");
+const QUERY_EXEC_PATCHED = Symbol.for("basicdiet.pickupCanonical.safeExecPatched");
 const SAFE_QUERY_INSTALLED = Symbol.for("basicdiet.pickupCanonical.safeQueryInstalled");
 const OBJECT_ID_RE = /^[a-fA-F0-9]{24}$/;
 
@@ -100,13 +101,14 @@ function installSafePickupQueryPatch() {
   for (const [methodName, original] of Object.entries(originals)) {
     const wrapped = function safeCanonicalPickupQuery(...args) {
       const query = original.apply(this, args);
-      if (!query || typeof query.exec !== "function") return query;
+      if (!query || typeof query.exec !== "function" || query[QUERY_EXEC_PATCHED]) return query;
 
       const originalExec = query.exec.bind(query);
       query.exec = async function safeCanonicalPickupExec(...execArgs) {
         const result = await originalExec(...execArgs);
         return attachSourceDaysSafe(result);
       };
+      query[QUERY_EXEC_PATCHED] = true;
       return query;
     };
     wrapped[QUERY_PATCHED] = true;
