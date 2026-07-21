@@ -8,6 +8,7 @@ const {
 } = require("../src/utils/safeLocalizedText");
 const {
   normalizeCatalogMaps,
+  normalizeCatalogSourceRows,
 } = require("../src/services/installPickupLocalizedCatalogGuard");
 
 require("../src/services/installPickupCanonicalRuntimeGuard");
@@ -65,6 +66,29 @@ const canonical = require("../src/services/subscription/pickupCanonicalPresentat
     en: "Classic Halloumi",
   });
   assert.deepStrictEqual(row.nameI18n, row.name);
+})();
+
+(function testHistoricalSnapshotNormalization() {
+  const day = {
+    mealSlots: [{
+      slotKey: "slot_2",
+      confirmationSnapshot: {
+        product: {
+          name: {
+            payload: {
+              ar: { value: "حلوم كلاسيك" },
+              en: { text: "Classic Halloumi" },
+            },
+          },
+        },
+      },
+    }],
+  };
+  normalizeCatalogSourceRows([day]);
+  assert.deepStrictEqual(day.mealSlots[0].confirmationSnapshot.product.name, {
+    ar: "حلوم كلاسيك",
+    en: "Classic Halloumi",
+  });
 })();
 
 (function testCanonicalPickupItemNeverSerializesObjectObject() {
