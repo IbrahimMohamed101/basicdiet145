@@ -4,10 +4,20 @@ const Subscription = require("../models/Subscription");
 const SubscriptionDay = require("../models/SubscriptionDay");
 const SubscriptionPickupRequest = require("../models/SubscriptionPickupRequest");
 const canonical = require("./subscription/pickupCanonicalPresentationService");
+const linkPolicy = require("./subscription/pickupEntitlementLinkService");
+const {
+  installAtomicLinkedClaimService,
+} = require("./subscription/pickupEntitlementAtomicClaimService");
+
+// Patch the exported linked-allocation primitives before the balance closure
+// module destructures them. Positional `$` updates avoid Mongoose array-filter
+// casting failures on historical embedded entitlement documents.
+installAtomicLinkedClaimService();
+
 const {
   applyEntitlementAvailability,
   slotAliases,
-} = require("./subscription/pickupEntitlementLinkService");
+} = linkPolicy;
 const balanceClosure = require("./subscription/subscriptionPickupRequestBalanceClosureService");
 
 const INSTALL_KEY = Symbol.for("basicdiet.pickupEntitlementClosure.installed");
