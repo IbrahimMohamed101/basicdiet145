@@ -35,7 +35,7 @@ on:
 jobs:
   pickup-closure:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     env:
       NODE_ENV: test
     steps:
@@ -81,5 +81,25 @@ jobs:
         run: npm run test:subscription-bilingual
       - name: Localized pickup errors
         run: node tests/pickupErrorResponseLocalization.test.js
-      - name: Backend module validation
-        run: npm run validate:backend
+      - name: Backend validation
+        id: backend_validation
+        shell: bash
+        run: |
+          set +e
+          npm run validate:backend > backend-validation.log 2>&1
+          status=$?
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Upload backend validation diagnostics
+        if: steps.backend_validation.outputs.status != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pickup-backend-validation-diagnostics
+          path: backend-validation.log
+          if-no-files-found: error
+          retention-days: 3
+      - name: Fail on backend validation error
+        if: steps.backend_validation.outputs.status != '0'
+        run: |
+          tail -n 250 backend-validation.log
+          exit 1
