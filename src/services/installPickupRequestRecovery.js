@@ -2,12 +2,6 @@
 
 const SubscriptionPickupRequest = require("../models/SubscriptionPickupRequest");
 const recoveryService = require("./subscription/subscriptionPickupRequestRecoveryService");
-const {
-  assertLinkedDayAllocationIntegrity,
-} = require("./subscription/pickupLinkedDayIntegrityService");
-const {
-  repairLinkedDayAllocations,
-} = require("./subscription/pickupLinkedDayAllocationRepairService");
 
 const INSTALL_KEY = Symbol.for("basicdiet.pickupRequestRecovery.installed");
 const WRAPPED_KEY = Symbol.for("basicdiet.pickupRequestRecovery.wrapped");
@@ -27,27 +21,10 @@ function installPickupRequestRecovery() {
   if (typeof original !== "function" || original[WRAPPED_KEY]) return;
 
   const wrapped = async function recoverablePickupCreate(args = {}) {
-    // Historical subscriptions can contain an aggregate debit for a confirmed
-    // day while the per-slot allocation row is missing. Materialize that debit
-    // first (or reserve a genuinely new slot once), then keep the strict
-    // no-standalone-fallback assertion as a fail-closed boundary.
-    await repairLinkedDayAllocations({
-      subscriptionId: args.subscriptionId,
-      date: args.date,
-      mealCount: args.mealCount,
-      selectedMealSlotIds: args.selectedMealSlotIds,
-      selectedPickupItemIds: args.selectedPickupItemIds,
-      session: args.session || null,
-    });
-    await assertLinkedDayAllocationIntegrity({
-      subscriptionId: args.subscriptionId,
-      date: args.date,
-      mealCount: args.mealCount,
-      selectedMealSlotIds: args.selectedMealSlotIds,
-      selectedPickupItemIds: args.selectedPickupItemIds,
-      session: args.session || null,
-    });
-
+    // The original create service resolves idempotency before reaching the
+    // guarded balance mutation. Linked-day ledger repair deliberately lives at
+    // that mutation boundary so a replay of an already completed request can
+    // return the existing document without reopening or revalidating credits.
     const result = await original(args);
     const request = await resolveResultRequest(result);
     if (!request) return result;
@@ -81,7 +58,7 @@ function installPickupRequestRecovery() {
   wrapped.__original = original;
   wrapped.__pickupReservationRecovery = true;
   wrapped.__linkedDayIntegrityPreflight = true;
-  wrapped.__linkedDayAllocationRepair = true;
+  wrapped.__linkedDayRepairAtMutationBoundary = true;
   pickupService.createSubscriptionPickupRequestForClient = wrapped;
 }
 
