@@ -9,6 +9,9 @@ export NODE_ENV=test
 echo "[pickup] verifying startup installation"
 node tests/pickupEntitlementInstaller.test.js
 
+echo "[pickup] verifying incomplete reservation recovery installation"
+node tests/pickupRequestRecoveryInstaller.test.js
+
 echo "[pickup] verifying active-claim visibility under corrupted historical state"
 node tests/pickupActiveClaimAvailability.test.js
 
