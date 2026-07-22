@@ -119,6 +119,7 @@ async function testPremiumPaymentRevisionDoesNotDebitAgain() {
   assert.strictEqual(stored.consumedMeals, 0);
   assert.strictEqual(activeDayRows(stored, day._id).length, 3);
 
+  const paymentId = oid();
   const paidSlots = day.mealSlots.map((slot) => {
     const plain = slot.toObject ? slot.toObject() : { ...slot };
     return plain.slotKey === "slot_3"
@@ -132,6 +133,9 @@ async function testPremiumPaymentRevisionDoesNotDebitAgain() {
         mealSlots: paidSlots,
         plannerRevisionHash: "revision-after-premium-payment",
         "premiumExtraPayment.status": "paid",
+        "premiumUpgradeSelections.0.premiumSource": "paid_extra",
+        "premiumUpgradeSelections.0.source": "paid",
+        "premiumUpgradeSelections.0.paymentId": paymentId,
       },
     },
     { new: true }
@@ -140,6 +144,7 @@ async function testPremiumPaymentRevisionDoesNotDebitAgain() {
   const second = await entitlementService.reserveDayEntitlements({
     subscriptionId: subscription._id,
     day: paidDay,
+    paymentId,
   });
 
   assert.deepStrictEqual(second.allocationKeys.sort(), first.allocationKeys.sort());
@@ -150,7 +155,13 @@ async function testPremiumPaymentRevisionDoesNotDebitAgain() {
   assert.strictEqual(stored.remainingMeals, 11);
   assert.strictEqual(stored.reservedMeals, 3);
   assert.strictEqual(stored.consumedMeals, 0);
-  assert.strictEqual(activeDayRows(stored, day._id).length, 3);
+  const activeRows = activeDayRows(stored, day._id);
+  assert.strictEqual(activeRows.length, 3);
+  assert(activeRows.every((row) => row.plannerRevisionHash === "revision-after-premium-payment"));
+  const premiumAllocation = activeRows.find((row) => row.slotKey === "slot_3");
+  assert.strictEqual(premiumAllocation.premiumFunding.source, "paid_difference");
+  assert.strictEqual(premiumAllocation.premiumFunding.state, "paid");
+  assert.strictEqual(String(premiumAllocation.paymentId), String(paymentId));
 
   const storedDay = await SubscriptionDay.findById(day._id).lean();
   assert.strictEqual(storedDay.baseAllocationKeys.length, 3);
@@ -170,6 +181,11 @@ async function testConcurrentDifferentRevisionsStillReserveOnce() {
       const plain = slot.toObject ? slot.toObject() : { ...slot };
       return plain.slotKey === "slot_3" ? { ...plain, premiumSource: "paid_extra" } : plain;
     }),
+    premiumUpgradeSelections: day.premiumUpgradeSelections.map((selection) => ({
+      ...(selection.toObject ? selection.toObject() : selection),
+      premiumSource: "paid_extra",
+      source: "paid",
+    })),
   };
 
   const [first, second] = await Promise.all([
