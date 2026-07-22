@@ -21,6 +21,9 @@ node tests/subscriptionPooledDayPlanningPolicy.test.js
 echo "[addons] resolving upcoming entitlements, canonical pricing, and zero-invoice protection"
 node tests/subscriptionAddonClientContract.test.js
 
+echo "[addons] verifying current/upcoming resolution and every add-on payment boundary"
+node tests/subscriptionAddonPaymentBoundaryGuard.test.js
+
 echo "[startup] verifying full route composition after add-on contract installation"
 node -e "const { createApp } = require('./src/app'); const app = createApp(); if (!app) process.exit(1); console.log('app startup smoke passed')"
 
