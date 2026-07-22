@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}" )/.." && pwd)"
 cd "$ROOT_DIR"
 
 export NODE_ENV=test
@@ -26,6 +26,9 @@ node tests/subscriptionPaidPremiumRecovery.test.js
 
 echo "[payments] restoring the exact 14/8/6 duplicate reservation shape to 14/11/3"
 node tests/subscriptionPaidPremiumDuplicateRecovery.test.js
+
+echo "[payments] verifying a Premium append after an earlier same-day pickup"
+node tests/subscriptionUnifiedDayPaymentSecondPickupCycle.test.js
 
 echo "[entitlements] verifying guarded repair of duplicated day-slot reservations"
 node tests/subscriptionDuplicateMealAllocationRepair.test.js
