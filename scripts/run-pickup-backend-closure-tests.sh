@@ -18,6 +18,9 @@ node tests/subscriptionBackendRepairComposition.test.js
 echo "[ownership] resolving stale Flutter subscription ids without crossing customer boundaries"
 node tests/pickupSubscriptionOwnershipRecovery.test.js
 
+echo "[ownership] resolving Flutter plan ids to the authenticated pickup subscription"
+node tests/pickupPlanIdCompatibility.test.js
+
 echo "[dashboard] verifying nullable menu UI compatibility"
 node tests/dashboardMenuUiNullCompatibility.test.js
 
