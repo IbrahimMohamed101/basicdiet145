@@ -1,5 +1,6 @@
 "use strict";
 
+const MealBuilderConfig = require("../models/MealBuilderConfig");
 const mealBuilderConfigService = require("./subscription/mealBuilderConfigService");
 const {
   CANONICAL_SOURCE_KINDS,
@@ -91,6 +92,52 @@ function normalizeConfig(value) {
   };
 }
 
+function normalizeQueryResult(value) {
+  if (Array.isArray(value)) return value.map((row) => normalizeConfig(row));
+  return normalizeConfig(value);
+}
+
+function installPersistedConfigReadNormalization() {
+  for (const methodName of ["findOne", "find", "findById"]) {
+    const current = MealBuilderConfig[methodName];
+    if (
+      typeof current !== "function" ||
+      current.__mealBuilderSourceKindCompatibility === true
+    ) {
+      continue;
+    }
+
+    const original = current;
+    const wrapped = function findWithCanonicalSourceKinds(...args) {
+      const query = original.apply(this, args);
+      if (!query || typeof query.lean !== "function") return query;
+
+      const originalLean = query.lean.bind(query);
+      query.lean = function leanWithCanonicalSourceKinds(...leanArgs) {
+        const leanQuery = originalLean(...leanArgs);
+        if (
+          !leanQuery ||
+          typeof leanQuery.exec !== "function" ||
+          leanQuery.__mealBuilderSourceKindCompatibility === true
+        ) {
+          return leanQuery;
+        }
+
+        const originalExec = leanQuery.exec.bind(leanQuery);
+        leanQuery.exec = async function execWithCanonicalSourceKinds(...execArgs) {
+          return normalizeQueryResult(await originalExec(...execArgs));
+        };
+        leanQuery.__mealBuilderSourceKindCompatibility = true;
+        return leanQuery;
+      };
+      return query;
+    };
+
+    wrapped.__mealBuilderSourceKindCompatibility = true;
+    MealBuilderConfig[methodName] = wrapped;
+  }
+}
+
 function normalizeLifecycle(value) {
   if (!isObject(value)) return value;
   let changed = false;
@@ -144,6 +191,7 @@ function sameSourceKinds(left = [], right = []) {
 function installMealBuilderSourceKindCompatibility() {
   if (installed) return;
   installed = true;
+  installPersistedConfigReadNormalization();
 
   const originalCreateDraft = mealBuilderConfigService.createDraft.bind(
     mealBuilderConfigService
@@ -255,9 +303,11 @@ installMealBuilderSourceKindCompatibility();
 
 module.exports = {
   installMealBuilderSourceKindCompatibility,
+  installPersistedConfigReadNormalization,
   normalizeConfig,
   normalizeDraftArgs,
   normalizeLifecycle,
+  normalizeQueryResult,
   normalizeSectionArgs,
   normalizeSectionByStructure,
 };
