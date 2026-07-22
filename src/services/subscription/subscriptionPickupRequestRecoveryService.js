@@ -6,6 +6,9 @@ const {
   assertLinkedDayAllocationIntegrity,
 } = require("./pickupLinkedDayIntegrityService");
 const {
+  ensureEntitlementLedger,
+} = require("./subscriptionMealEntitlementService");
+const {
   repairLinkedDayAllocations,
 } = require("./pickupLinkedDayAllocationRepairService");
 
@@ -122,6 +125,7 @@ async function recoverIncompletePickupReservation({
   }, { incAttempt: true, session }) || request;
 
   try {
+    await ensureEntitlementLedger(request.subscriptionId, session);
     await repairLinkedDayAllocations({
       subscriptionId: request.subscriptionId,
       date: request.date,
