@@ -1,10 +1,6 @@
 const { Router } = require("express");
 
 require("../services/installSubscriptionBackendRepairComposition");
-// Final read boundary for the Flutter pickup sheet. Install after the existing
-// composition so it can recover internal presentation/enrichment failures while
-// preserving every ownership, entitlement, and payment policy inside it.
-require("../services/installPickupAvailabilityCanonicalReadClosure");
 require("../services/orders/installWeightPricingAuthority");
 require("../services/installDashboardCatalogCompatibility");
 require("../services/installDashboardMealBuilderFinalization");
