@@ -337,7 +337,7 @@ async function createPickupRequest(api, headers, subscriptionId, mealCount, idem
       assert.strictEqual(await remainingMeals(pickupA._id), 7);
     });
 
-    await test("branch pickup no_show consumes reserved balance and cancel releases before consumption", async () => {
+    await test("branch pickup no_show and cancel both release unfulfilled reservations", async () => {
       const noShow = await createPickupRequest(api, headers.clientA, pickupA._id, 2, `${TEST_TAG}-pickup-a-noshow`);
       assert.strictEqual(noShow.status, 200, JSON.stringify(noShow.body));
       assert.strictEqual(await remainingMeals(pickupA._id), 5);
@@ -347,20 +347,22 @@ async function createPickupRequest(api, headers, subscriptionId, mealCount, idem
         reason: "customer_no_show",
       });
       assert.strictEqual(noShowRes.status, 200, JSON.stringify(noShowRes.body));
-      assert.strictEqual(await remainingMeals(pickupA._id), 5);
-      assert((await SubscriptionPickupRequest.findById(noShow.body.data.requestId).lean()).creditsConsumedAt);
+      assert.strictEqual(await remainingMeals(pickupA._id), 7);
+      const noShowRow = await SubscriptionPickupRequest.findById(noShow.body.data.requestId).lean();
+      assert(noShowRow.creditsReleasedAt);
+      assert.strictEqual(noShowRow.creditsConsumedAt, null);
 
       const cancel = await createPickupRequest(api, headers.clientA, pickupA._id, 1, `${TEST_TAG}-pickup-a-cancel`);
       assert.strictEqual(cancel.status, 200, JSON.stringify(cancel.body));
-      assert.strictEqual(await remainingMeals(pickupA._id), 4);
+      assert.strictEqual(await remainingMeals(pickupA._id), 6);
       const cancelRes = await dashboardAction(api, headers.admin, "cancel", "subscription_pickup_request", cancel.body.data.requestId, {
         reason: "customer_cancelled",
       });
       assert.strictEqual(cancelRes.status, 200, JSON.stringify(cancelRes.body));
-      assert.strictEqual(await remainingMeals(pickupA._id), 5);
+      assert.strictEqual(await remainingMeals(pickupA._id), 7);
       const fulfillCanceled = await dashboardAction(api, headers.admin, "fulfill", "subscription_pickup_request", cancel.body.data.requestId);
       assert.strictEqual(fulfillCanceled.status, 409, JSON.stringify(fulfillCanceled.body));
-      assert.strictEqual(await remainingMeals(pickupA._id), 5);
+      assert.strictEqual(await remainingMeals(pickupA._id), 7);
     });
 
     await test("multiple same-day pickup requests remain independent", async () => {

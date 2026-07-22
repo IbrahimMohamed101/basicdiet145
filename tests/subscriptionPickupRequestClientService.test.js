@@ -4,6 +4,7 @@ require("dotenv").config();
 
 const assert = require("assert");
 const mongoose = require("mongoose");
+const { MongoMemoryServer } = require("mongodb-memory-server");
 
 const Subscription = require("../src/models/Subscription");
 const SubscriptionDay = require("../src/models/SubscriptionDay");
@@ -27,6 +28,7 @@ const SUBSCRIPTION_START_DATE = dateUtils.addDaysToKSADateString(TODAY, -7);
 const SUBSCRIPTION_END_DATE = dateUtils.addDaysToKSADateString(TODAY, 30);
 
 const results = { passed: 0, failed: 0 };
+let mongoServer = null;
 
 async function test(name, fn) {
   try {
@@ -42,8 +44,13 @@ async function test(name, fn) {
 
 async function connect() {
   if (mongoose.connection.readyState !== 0) return;
-  const mongoUri = process.env.MONGO_URI || process.env.MONGODB_URI || "mongodb://localhost:27017/basicdiet_test";
+  let mongoUri = process.env.MONGO_URI || process.env.MONGODB_URI;
+  if (!mongoUri) {
+    mongoServer = await MongoMemoryServer.create();
+    mongoUri = mongoServer.getUri();
+  }
   await mongoose.connect(mongoUri);
+  await SubscriptionPickupRequest.init();
 }
 
 async function cleanup() {
@@ -381,6 +388,27 @@ async function getRemainingMeals(subscriptionId) {
       assert.strictEqual(await getRemainingMeals(subscription._id), 6);
     });
 
+    await test("concurrent same idempotencyKey reserves exactly once", async () => {
+      const { subscription } = await seedSubscriptionWithDay({ remainingMeals: 10 });
+      const idempotencyKey = `${TEST_TAG}-concurrent-idem`;
+      const payload = {
+        userId: TEST_USER_ID,
+        subscriptionId: subscription._id,
+        date: TODAY,
+        mealCount: 4,
+        idempotencyKey,
+      };
+
+      const [first, second] = await Promise.all([
+        createSubscriptionPickupRequestForClient(payload),
+        createSubscriptionPickupRequestForClient(payload),
+      ]);
+
+      assert.strictEqual(String(first.data.requestId), String(second.data.requestId));
+      assert.strictEqual(await SubscriptionPickupRequest.countDocuments({ subscriptionId: subscription._id }), 1);
+      assert.strictEqual(await getRemainingMeals(subscription._id), 6);
+    });
+
     await test("old fulfilled request does not block new request if balance remains", async () => {
       const { subscription } = await seedSubscriptionWithDay({ remainingMeals: 10, dayStatus: "fulfilled" });
 
@@ -415,6 +443,7 @@ async function getRemainingMeals(subscriptionId) {
     if (mongoose.connection.readyState !== 0) {
       await mongoose.disconnect();
     }
+    if (mongoServer) await mongoServer.stop();
   }
 
   console.log(`\nResult: ${results.passed} passed, ${results.failed} failed`);

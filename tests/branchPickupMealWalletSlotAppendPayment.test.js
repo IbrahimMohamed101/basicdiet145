@@ -1070,7 +1070,7 @@ function legacyBuilderSlot(slotIndex, fixture, { premium = false } = {}) {
       assert.notStrictEqual(second.body.data.requestId, first.body.data.requestId);
     });
 
-    await test("no-show consumes credits and leaves selected slot unavailable", async () => {
+    await test("no-show returns credits and makes the selected slot reusable", async () => {
       const { user, subscription } = await seedSubscriptionWithDay({ label: "no-show-lock", remainingMeals: 2, slots: [mealSlot(1)] });
       const headers = auth(token(user._id));
       const requestRes = await api.post(`/api/subscriptions/${subscription._id}/pickup-requests`).set(headers).send({ date: TODAY, selectedMealSlotIds: ["slot_1"] });
@@ -1080,10 +1080,10 @@ function legacyBuilderSlot(slotIndex, fixture, { premium = false } = {}) {
       const noShow = await dashboardAction(api, adminHeaders, "no_show", requestRes.body.data.requestId, { reason: "customer_no_show" });
       assert.strictEqual(noShow.status, 200, JSON.stringify(noShow.body));
       const sub = await Subscription.findById(subscription._id).lean();
-      assert.strictEqual(sub.remainingMeals, 1);
+      assert.strictEqual(sub.remainingMeals, 2);
       const retry = await api.post(`/api/subscriptions/${subscription._id}/pickup-requests`).set(headers).send({ date: TODAY, selectedMealSlotIds: ["slot_1"] });
-      assert.strictEqual(retry.status, 422, JSON.stringify(retry.body));
-      assert.strictEqual(retry.body.error.code, "MEAL_SLOT_UNAVAILABLE");
+      assert.strictEqual(retry.status, 200, JSON.stringify(retry.body));
+      assert.notStrictEqual(retry.body.data.requestId, requestRes.body.data.requestId);
     });
 
     await test("fulfill consumes once and duplicate fulfill does not double decrement or release slot", async () => {

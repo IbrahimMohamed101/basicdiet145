@@ -21,6 +21,7 @@ const {
 } = require("./subscriptionMealEntitlementService");
 const {
   consumeReservedPickupMeals,
+  releaseReservedPickupMeals,
 } = require("./subscriptionPickupRequestBalanceService");
 const {
   clearLinkedClaims,
@@ -149,8 +150,8 @@ function walletFromSubscription(subscription) {
   return wallet;
 }
 
-async function readWallet(subscriptionId) {
-  const subscription = await ensureEntitlementLedger(subscriptionId);
+async function readWallet(subscriptionId, session = null) {
+  const subscription = await ensureEntitlementLedger(subscriptionId, session);
   return walletFromSubscription(subscription);
 }
 
@@ -336,15 +337,15 @@ async function reconcileConfirmedDayAllocations({ subscriptionId, date = null, d
   return { ...result, reconciled: true, missingSlotKeys };
 }
 
-async function releaseAllocationKeys({ subscriptionId, allocationKeys = [] } = {}) {
+async function releaseAllocationKeys({ subscriptionId, allocationKeys = [], session = null } = {}) {
   const keys = [...new Set(allocationKeys.map(clean).filter(Boolean))];
   if (!keys.length) return { changedCount: 0, releasedKeys: [] };
   let changedCount = 0;
   const releasedKeys = [];
   for (const key of keys) {
-    const subscription = await Subscription.findById(subscriptionId)
-      .select("baseMealAllocations")
-      .lean();
+    const query = Subscription.findById(subscriptionId).select("baseMealAllocations");
+    if (session) query.session(session);
+    const subscription = await query.lean();
     const allocation = (subscription && subscription.baseMealAllocations || [])
       .find((entry) => clean(entry.allocationKey) === key);
     if (!allocation) continue;
@@ -357,6 +358,7 @@ async function releaseAllocationKeys({ subscriptionId, allocationKeys = [] } = {
       subscriptionId,
       allocationKey: key,
       toState: "released",
+      session,
     });
     if (result.changed) changedCount += 1;
     releasedKeys.push(key);
@@ -393,19 +395,31 @@ async function releaseExpiredReservationsForSubscription({
     allocationKeys: [...allKeys],
   });
   const now = new Date();
+  let legacyReleasedCount = 0;
+  let settledRequestCount = 0;
 
   for (const request of activeRequests) {
     const requestKeys = (Array.isArray(request.baseAllocationKeys) ? request.baseAllocationKeys : [])
       .map(clean)
       .filter(Boolean);
+    if (!requestKeys.length && request.creditsReserved && !request.creditsReleasedAt) {
+      const legacyRelease = await releaseReservedPickupMeals({
+        subscriptionId,
+        pickupRequestId: request._id,
+      });
+      if (legacyRelease.released) {
+        legacyReleasedCount += Number(request.mealCount || 0);
+      }
+    }
     await clearLinkedClaims({
       subscriptionId,
       pickupRequestId: request._id,
       allocationKeys: requestKeys,
     }).catch(() => {});
-    await SubscriptionPickupRequest.updateOne(
+    const settlement = await SubscriptionPickupRequest.updateOne(
       {
         _id: request._id,
+        status: { $in: ACTIVE_PICKUP_REQUEST_STATUSES },
         creditsConsumedAt: null,
       },
       {
@@ -416,7 +430,7 @@ async function releaseExpiredReservationsForSubscription({
           canceledBy: "system",
           cancellationReason: "expired_uncollected_returned_to_balance",
           settlementReason: "next_business_day_release",
-          settlementBy: "system",
+          settledBy: "system",
           settledAt: now,
         },
         $push: {
@@ -428,6 +442,7 @@ async function releaseExpiredReservationsForSubscription({
         },
       }
     );
+    if (Number(settlement.modifiedCount || 0) === 1) settledRequestCount += 1;
   }
 
   const affectedDayIds = [...new Set(historicalReserved.map((allocation) => clean(allocation.dayId)).filter(Boolean))];
@@ -440,9 +455,9 @@ async function releaseExpiredReservationsForSubscription({
 
   const latest = await Subscription.findById(subscriptionId).lean();
   return {
-    releasedCount: releaseResult.changedCount,
+    releasedCount: releaseResult.changedCount + legacyReleasedCount,
     releasedAllocationKeys: releaseResult.releasedKeys,
-    settledRequestCount: activeRequests.length,
+    settledRequestCount,
     businessDate: clean(resolvedBusinessDate),
     wallet: walletFromSubscription(latest),
   };
@@ -460,8 +475,16 @@ async function releaseExpiredReservationsForUser({ userId, businessDate = null }
   });
 }
 
-async function settlePickupRequestAsUncollected({ requestId, userId = null, reason = "no_show" } = {}) {
-  const request = await SubscriptionPickupRequest.findById(requestId).lean();
+async function settlePickupRequestAsUncollected({
+  requestId,
+  userId = null,
+  reason = "no_show",
+  now = new Date(),
+  session = null,
+} = {}) {
+  const requestQuery = SubscriptionPickupRequest.findById(requestId);
+  if (session) requestQuery.session(session);
+  const request = await requestQuery.lean();
   if (!request) throw serviceError("NOT_FOUND", "Pickup request not found", 404);
   if (request.creditsConsumedAt) {
     throw serviceError("CREDITS_CONSUMED", "Pickup request was already fulfilled", 409);
@@ -470,7 +493,7 @@ async function settlePickupRequestAsUncollected({ requestId, userId = null, reas
     return {
       pickupRequest: request,
       releasedCount: 0,
-      wallet: await readWallet(request.subscriptionId),
+      wallet: await readWallet(request.subscriptionId, session),
       idempotent: true,
     };
   }
@@ -478,19 +501,38 @@ async function settlePickupRequestAsUncollected({ requestId, userId = null, reas
   const keys = (Array.isArray(request.baseAllocationKeys) ? request.baseAllocationKeys : [])
     .map(clean)
     .filter(Boolean);
-  const releaseResult = await releaseAllocationKeys({
-    subscriptionId: request.subscriptionId,
-    allocationKeys: keys,
-  });
+  // Canonical requests carry allocation keys, so returning the credit is a
+  // compare-and-set transition on the Subscription ledger. Historical requests
+  // may have only the old creditsReserved marker; keep that path recoverable and
+  // idempotent through the balance service instead of silently marking the
+  // request released without restoring its directly-decremented balance.
+  const releaseResult = keys.length
+    ? await releaseAllocationKeys({
+      subscriptionId: request.subscriptionId,
+      allocationKeys: keys,
+      session,
+    })
+    : await releaseReservedPickupMeals({
+      subscriptionId: request.subscriptionId,
+      pickupRequestId: request._id,
+      session,
+    }).then((result) => ({
+      changedCount: result.released ? Number(result.mealCount || 0) : 0,
+      releasedKeys: [],
+    }));
   await clearLinkedClaims({
     subscriptionId: request.subscriptionId,
     pickupRequestId: request._id,
     allocationKeys: keys,
+    session,
   }).catch(() => {});
 
-  const now = new Date();
   const updated = await SubscriptionPickupRequest.findOneAndUpdate(
-    { _id: request._id, creditsConsumedAt: null },
+    {
+      _id: request._id,
+      status: { $in: ACTIVE_PICKUP_REQUEST_STATUSES },
+      creditsConsumedAt: null,
+    },
     {
       $set: {
         status: "no_show",
@@ -500,7 +542,7 @@ async function settlePickupRequestAsUncollected({ requestId, userId = null, reas
         canceledBy: clean(userId) || "system",
         cancellationReason: reason || "no_show",
         settlementReason: "uncollected_returned_to_balance",
-        settlementBy: clean(userId) || "system",
+        settledBy: clean(userId) || "system",
         settledAt: now,
       },
       $push: {
@@ -511,13 +553,35 @@ async function settlePickupRequestAsUncollected({ requestId, userId = null, reas
         },
       },
     },
-    { new: true }
+    { new: true, ...(session ? { session } : {}) }
   ).lean();
 
+  if (!updated) {
+    const currentQuery = SubscriptionPickupRequest.findById(request._id);
+    if (session) currentQuery.session(session);
+    const current = await currentQuery.lean();
+    if (current && current.status === "no_show" && current.creditsReleasedAt) {
+      return {
+        pickupRequest: current,
+        releasedCount: 0,
+        wallet: await readWallet(request.subscriptionId, session),
+        idempotent: true,
+      };
+    }
+    if (current && current.creditsConsumedAt) {
+      throw serviceError("CREDITS_CONSUMED", "Pickup request was already fulfilled", 409);
+    }
+    throw serviceError(
+      "INVALID_TRANSITION",
+      "Pickup request is no longer eligible for no-show settlement",
+      409
+    );
+  }
+
   return {
-    pickupRequest: updated || request,
+    pickupRequest: updated,
     releasedCount: releaseResult.changedCount,
-    wallet: await readWallet(request.subscriptionId),
+    wallet: await readWallet(request.subscriptionId, session),
     idempotent: false,
   };
 }
@@ -545,7 +609,7 @@ async function fulfillPickupRequestSafely({ requestId, actorId = null } = {}) {
         fulfilledAt: request.fulfilledAt || now,
         fulfilledByDashboardUserId: actorId || request.fulfilledByDashboardUserId || null,
         settlementReason: "fulfilled_consumed",
-        settlementBy: clean(actorId) || "dashboard",
+        settledBy: clean(actorId) || "dashboard",
         settledAt: now,
       },
       $push: {

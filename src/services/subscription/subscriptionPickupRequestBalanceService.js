@@ -6,6 +6,9 @@ const {
   reservePickupEntitlements,
   transitionPickupEntitlements,
 } = require("./subscriptionMealEntitlementService");
+const {
+  applyLegacyPickupRelease,
+} = require("./subscriptionLegacyMealBalanceOperationService");
 
 function createServiceError(code, message, status = 400) {
   const err = new Error(message);
@@ -248,14 +251,6 @@ async function findPickupRequestOrThrow(pickupRequestId, session) {
   return pickupRequest;
 }
 
-async function refundReservedDecrement({ subscriptionId, mealCount, session }) {
-  await Subscription.updateOne(
-    { _id: subscriptionId },
-    { $inc: { remainingMeals: mealCount } },
-    withOptionalSession({}, session)
-  );
-}
-
 async function reserveSubscriptionMealsForPickupRequest({
   subscriptionId,
   pickupRequestId,
@@ -466,11 +461,22 @@ async function releaseReservedPickupMeals({
     }
     return buildZeroMealResult("released", existing);
   }
-  if (Array.isArray(existing.baseAllocationKeys) && existing.baseAllocationKeys.length > 0) {
+  const mealCount = Number(existing.mealCount || 0);
+  assertPositiveMealCount(mealCount);
+  const hasAllocationKeys = Array.isArray(existing.baseAllocationKeys)
+    && existing.baseAllocationKeys.length > 0;
+  if (hasAllocationKeys) {
     await transitionPickupEntitlements({
       subscriptionId,
       allocationKeys: existing.baseAllocationKeys,
       toState: "released",
+      session,
+    });
+  } else {
+    await applyLegacyPickupRelease({
+      subscriptionId,
+      pickupRequestId,
+      mealCount,
       session,
     });
   }
@@ -506,17 +512,6 @@ async function releaseReservedPickupMeals({
       throw createServiceError("CREDITS_NOT_RESERVED", "Pickup request meals are not reserved", 409);
     }
     throw createServiceError("INVALID_PICKUP_REQUEST_STATE", "Pickup request cannot be released", 409);
-  }
-
-  const mealCount = Number(releasedPickupRequest.mealCount || 0);
-  assertPositiveMealCount(mealCount);
-
-  if (!Array.isArray(releasedPickupRequest.baseAllocationKeys) || releasedPickupRequest.baseAllocationKeys.length === 0) {
-    await Subscription.updateOne(
-      { _id: subscriptionId },
-      { $inc: { remainingMeals: mealCount } },
-      withOptionalSession({}, session)
-    );
   }
 
   return {

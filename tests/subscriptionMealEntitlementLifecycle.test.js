@@ -637,7 +637,9 @@ async function run() {
     const secondFulfill = await fulfillSubscriptionDay({ subscriptionId: subscription._id, date: day.date });
     const finalSubscription = await Subscription.findById(subscription._id).lean();
     assert.strictEqual(firstFulfill.ok, true);
+    assert.strictEqual(firstFulfill.alreadyFulfilled, false);
     assert.strictEqual(secondFulfill.ok, true);
+    assert.strictEqual(secondFulfill.alreadyFulfilled, true);
     assert.strictEqual(finalSubscription.totalMeals, 7, "Premium difference must not create base entitlement");
     assert.strictEqual(finalSubscription.remainingMeals, 0, "Premium fulfillment consumes one base meal exactly once");
   });

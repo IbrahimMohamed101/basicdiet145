@@ -74,6 +74,7 @@ const { startSafeSession } = require("../../utils/mongoTransactionSupport");
   const dateUtils = require("../../utils/date");
   const { getRestaurantBusinessDate } = require("../restaurantHoursService");
   const { consumeSubscriptionDayCredits } = require("./subscriptionDayConsumptionService");
+  const { transitionDayEntitlements } = require("./subscriptionMealEntitlementService");
 
   function _normalizeActor(a) {
     if (!a || typeof a !== "object") return { actorType: "system", actorId: null, settledBy: "system" };
@@ -119,7 +120,16 @@ const { startSafeSession } = require("../../utils/mongoTransactionSupport");
       const dayReason = reason || (toStatus === "no_show" ? "PICKUP_NO_SHOW_AUTO_SETTLED" : "PAST_DAY_AUTO_CONSUMED");
 
       try {
-        await consumeSubscriptionDayCredits({ day, subscription: sub, session, reason: dayReason });
+        if (toStatus === "no_show") {
+          await transitionDayEntitlements({
+            subscriptionId: day.subscriptionId,
+            day,
+            toState: "released",
+            session,
+          });
+        } else {
+          await consumeSubscriptionDayCredits({ day, subscription: sub, session, reason: dayReason });
+        }
       } catch (err) {
         if (err && err.code === "INSUFFICIENT_CREDITS") { result.failed += 1; result.failures.push({ dayId: String(day._id), date: day.date, code: err.code }); continue; }
         throw err;

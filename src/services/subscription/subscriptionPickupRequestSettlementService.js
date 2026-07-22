@@ -1,9 +1,10 @@
 "use strict";
 
-const mongoose = require("mongoose");
 const { startSafeSession } = require("../../utils/mongoTransactionSupport");
 const SubscriptionPickupRequest = require("../../models/SubscriptionPickupRequest");
-const { consumeReservedPickupMeals } = require("./subscriptionPickupRequestBalanceService");
+const {
+  settlePickupRequestAsUncollected,
+} = require("./subscriptionPickupCycleAuthorityService");
 
 const OPEN_PICKUP_REQUEST_STATUSES = Object.freeze([
   "locked",
@@ -26,59 +27,45 @@ function buildSettlementResult(date) {
 }
 
 async function settlePickupRequest({ pickupRequestId, now, actor, reason, session }) {
-  const updatedRequest = await SubscriptionPickupRequest.findOneAndUpdate(
-    {
-      _id: pickupRequestId,
-      status: { $in: OPEN_PICKUP_REQUEST_STATUSES },
-    },
-    {
-      $set: {
-        status: "no_show",
-        pickupNoShowAt: now,
-        settledAt: now,
-        settlementReason: reason,
-        settledBy: actor,
-        cancellationReason: reason,
-      },
-    },
-    { new: true, session }
-  );
-
-  if (!updatedRequest) {
+  const query = SubscriptionPickupRequest.findOne({
+    _id: pickupRequestId,
+    status: { $in: OPEN_PICKUP_REQUEST_STATUSES },
+  });
+  if (session) query.session(session);
+  const current = await query.lean();
+  if (!current) {
     return { settled: false, skipped: true };
   }
 
-  await consumeReservedPickupMeals({
-    pickupRequestId: updatedRequest._id,
+  // No-show is an uncollected operation: return the reservation first, then
+  // finalize the request projection. The authority uses deterministic
+  // allocation transitions, so a crash or retry cannot refund twice.
+  const settlement = await settlePickupRequestAsUncollected({
+    requestId: current._id,
+    userId: actor,
+    reason,
+    now,
     session,
   });
-
-  const settledRequest = await SubscriptionPickupRequest.findById(updatedRequest._id).session(session);
   return {
     settled: true,
     skipped: false,
-    pickupRequest: settledRequest || updatedRequest,
+    pickupRequest: settlement.pickupRequest,
   };
 }
 
-async function runWithOwnedTransaction(fn) {
+async function settleOnePickupRequest(options) {
+  if (options.session) return settlePickupRequest(options);
   const session = await startSafeSession();
   try {
     let output;
     await session.withTransaction(async () => {
-      output = await fn(session);
+      output = await settlePickupRequest({ ...options, session });
     });
     return output;
   } finally {
     session.endSession();
   }
-}
-
-async function settleOnePickupRequest(options) {
-  if (options.session) {
-    return settlePickupRequest(options);
-  }
-  return runWithOwnedTransaction((session) => settlePickupRequest({ ...options, session }));
 }
 
 async function settleOpenSubscriptionPickupRequestsForDate({

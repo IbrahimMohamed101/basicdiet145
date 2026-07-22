@@ -305,7 +305,7 @@ async function getRemainingMeals(subscriptionId) {
       assert.strictEqual(res.body.error.code, "INVALID_TRANSITION");
     });
 
-    await test("no_show consumes reserved credits without releasing balance", async () => {
+    await test("no_show releases reserved credits without consuming balance", async () => {
       const { subscription, pickupRequest } = await seedReservedPickupRequest({ status: "ready_for_pickup", remainingMeals: 8 });
 
       const res = await api.post("/api/dashboard/ops/actions/no_show").set(adminHeaders).send({
@@ -317,8 +317,9 @@ async function getRemainingMeals(subscriptionId) {
       assert.strictEqual(res.status, 200, JSON.stringify(res.body));
       const updatedRequest = await SubscriptionPickupRequest.findById(pickupRequest._id).lean();
       assert.strictEqual(updatedRequest.status, "no_show");
-      assert(updatedRequest.creditsConsumedAt, "creditsConsumedAt should be set");
-      assert.strictEqual(await getRemainingMeals(subscription._id), 8);
+      assert(updatedRequest.creditsReleasedAt, "creditsReleasedAt should be set");
+      assert.strictEqual(updatedRequest.creditsConsumedAt, null);
+      assert.strictEqual(await getRemainingMeals(subscription._id), 10);
     });
 
     await test("cancel releases reserved credits once", async () => {

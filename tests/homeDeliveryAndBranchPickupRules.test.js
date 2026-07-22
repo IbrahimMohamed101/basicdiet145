@@ -410,7 +410,7 @@ async function sumPickupMealCounts(subscriptionId) {
       assert.strictEqual(await remainingMeals(subscription._id), 0);
     });
 
-    await test("branch pickup cancel releases and no_show consumes reserved balance", async () => {
+    await test("branch pickup cancel and no_show release unfulfilled reservations", async () => {
       const { user, subscription } = await seedSubscription({
         label: "branch-pickup-release",
         deliveryMode: "pickup",
@@ -437,8 +437,9 @@ async function sumPickupMealCounts(subscriptionId) {
       assert.strictEqual(noShowRes.status, 200, JSON.stringify(noShowRes.body));
       const noShowRow = await SubscriptionPickupRequest.findById(noShowRequest.body.data.requestId).lean();
       assert.strictEqual(noShowRow.status, "no_show");
-      assert(noShowRow.creditsConsumedAt, "no_show should consume reserved credits");
-      assert.strictEqual(await remainingMeals(subscription._id), 1);
+      assert(noShowRow.creditsReleasedAt, "no_show should release reserved credits");
+      assert.strictEqual(noShowRow.creditsConsumedAt, null);
+      assert.strictEqual(await remainingMeals(subscription._id), 3);
     });
   } finally {
     await cleanup().catch(() => {});

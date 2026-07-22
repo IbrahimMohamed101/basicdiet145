@@ -1046,7 +1046,7 @@ function buildSlotReservationMap(pickupRequests = []) {
       map.set(id, {
         requestId: String(request._id),
         status: request.status,
-        consumed: Boolean(request.creditsConsumedAt || request.status === "fulfilled" || request.status === "no_show"),
+        consumed: Boolean(request.creditsConsumedAt || request.status === "fulfilled"),
       });
     }
   }
@@ -1065,7 +1065,7 @@ function buildPickupItemReservationMap(pickupRequests = []) {
       map.set(id, {
         requestId: String(request._id),
         status: request.status,
-        consumed: Boolean(request.creditsConsumedAt || request.status === "fulfilled" || request.status === "no_show"),
+        consumed: Boolean(request.creditsConsumedAt || request.status === "fulfilled"),
       });
     }
   }

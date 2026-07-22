@@ -302,6 +302,10 @@ const SubscriptionSchema = new mongoose.Schema(
     consumedMeals: { type: Number, min: 0, default: undefined },
     forfeitedMeals: { type: Number, min: 0, default: undefined },
     baseMealAllocations: { type: [BaseMealAllocationSchema], default: undefined },
+    // Backend-only idempotency ledger for historical pickup requests that were
+    // created before baseMealAllocations existed. New Daily/Pickup operations
+    // use allocationKey instead.
+    legacyMealBalanceOperationKeys: { type: [String], default: undefined },
     addonSubscriptions: { type: [AddonSubscriptionEntitlementSchema], default: [] },
     addonBalance: { type: [AddonBalanceSchema], default: [] },
     addonSelections: { type: [AddonSelectionSchema], default: [] },

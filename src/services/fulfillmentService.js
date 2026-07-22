@@ -166,15 +166,6 @@ async function fulfillSubscriptionDay({ subscriptionId, date, dayId, session }) 
     };
   }
 
-  if (updatedDay.creditsDeducted) {
-    return {
-      ok: true,
-      alreadyFulfilled: true,
-      day: updatedDay,
-      deductedCredits: 0,
-    };
-  }
-
   return {
     ok: true,
     alreadyFulfilled: Boolean(consumption && consumption.alreadyDeducted),
@@ -238,7 +229,7 @@ async function fulfillSubscriptionPickupRequest({ requestId, actorId = null, ses
         fulfilledAt: pickupRequest.fulfilledAt || now,
         fulfilledByDashboardUserId: actorId || pickupRequest.fulfilledByDashboardUserId || null,
         settlementReason: "fulfilled_consumed",
-        settlementBy: actorId ? String(actorId) : "dashboard",
+        settledBy: actorId ? String(actorId) : "dashboard",
         settledAt: now,
       },
     },

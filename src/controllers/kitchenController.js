@@ -24,6 +24,7 @@ const {
 } = require("../services/subscription/subscriptionDayExecutionValidationService");
 const { buildSubscriptionDayFulfillmentState } = require("../services/subscription/subscriptionDayFulfillmentStateService");
 const { consumeSubscriptionDayCredits } = require("../services/subscription/subscriptionDayConsumptionService");
+const { transitionDayEntitlements } = require("../services/subscription/subscriptionMealEntitlementService");
 const { logger } = require("../utils/logger");
 const { runMongoTransactionWithRetry } = require("../services/mongoTransactionRetryService");
 const validateObjectId = require("../utils/validateObjectId");
@@ -1102,6 +1103,12 @@ async function markPickupNoShow(req, res) {
         throw err;
       }
       if (day.status === "no_show") {
+        await transitionDayEntitlements({
+          subscriptionId: day.subscriptionId,
+          day,
+          toState: "released",
+          session,
+        });
         return { idempotent: true };
       }
       if (day.status !== "ready_for_pickup") {
@@ -1132,6 +1139,12 @@ async function markPickupNoShow(req, res) {
       }
 
       deductedCredits = 0;
+      await transitionDayEntitlements({
+        subscriptionId: day.subscriptionId,
+        day,
+        toState: "released",
+        session,
+      });
       day.status = "no_show";
       day.pickupRequested = false;
       day.pickupNoShowAt = new Date();
@@ -1150,7 +1163,7 @@ async function markPickupNoShow(req, res) {
         status: true,
         data: day,
         deductedCredits: 0,
-        restoreCreditsPolicy: false,
+        restoreCreditsPolicy: true,
         idempotent: true,
       });
     }
@@ -1171,7 +1184,7 @@ async function markPickupNoShow(req, res) {
       byRole: req.userRole,
       meta: {
         deductedCredits,
-        restoreCreditsPolicy: false,
+        restoreCreditsPolicy: true,
       },
     });
   } catch (err) {
@@ -1182,7 +1195,7 @@ async function markPickupNoShow(req, res) {
     status: true,
     data: day,
     deductedCredits,
-    restoreCreditsPolicy: false,
+    restoreCreditsPolicy: true,
   });
 }
 

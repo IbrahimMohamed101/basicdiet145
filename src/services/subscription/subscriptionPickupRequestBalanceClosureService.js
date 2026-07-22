@@ -1,6 +1,5 @@
 "use strict";
 
-const Subscription = require("../../models/Subscription");
 const SubscriptionPickupRequest = require("../../models/SubscriptionPickupRequest");
 const {
   reservePickupEntitlements,
@@ -11,6 +10,9 @@ const {
   clearLinkedClaims,
   releasePickupAllocationsForRequest,
 } = require("./pickupEntitlementLinkService");
+const {
+  applyLegacyPickupRelease,
+} = require("./subscriptionLegacyMealBalanceOperationService");
 
 function serviceError(code, message, status = 400, details = undefined) {
   const err = new Error(message);
@@ -253,6 +255,18 @@ async function releaseReservedPickupMeals({
     ? await releasePickupAllocationsForRequest({ subscriptionId, pickupRequest, session })
     : { mode: pickupRequest.baseAllocationMode || "none", changedCount: 0 };
 
+  // Apply the legacy refund before the request marker. The operation key lives
+  // on Subscription, so a crash here is replay-safe: retry observes the key,
+  // skips the second increment, and completes creditsReleasedAt.
+  if (allocationKeys.length === 0) {
+    await applyLegacyPickupRelease({
+      subscriptionId,
+      pickupRequestId,
+      mealCount: requestMealCount,
+      session,
+    });
+  }
+
   const updated = await SubscriptionPickupRequest.findOneAndUpdate(
     {
       _id: pickupRequestId,
@@ -284,15 +298,6 @@ async function releaseReservedPickupMeals({
       throw serviceError("CREDITS_CONSUMED", "Reserved pickup meals were already consumed", 409);
     }
     throw serviceError("INVALID_PICKUP_REQUEST_STATE", "Pickup request cannot be released", 409);
-  }
-
-  // Legacy requests without allocation keys directly decremented remainingMeals.
-  if (allocationKeys.length === 0) {
-    await Subscription.updateOne(
-      { _id: subscriptionId },
-      { $inc: { remainingMeals: requestMealCount } },
-      withOptionalSession({}, session)
-    );
   }
 
   return {

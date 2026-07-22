@@ -12,11 +12,19 @@ const SubscriptionPickupRequest = require("../src/models/SubscriptionPickupReque
 const {
   settleOpenSubscriptionPickupRequestsForDate,
 } = require("../src/services/subscription/subscriptionPickupRequestSettlementService");
+const {
+  reserveSubscriptionMealsForPickupRequest,
+} = require("../src/services/subscription/subscriptionPickupRequestBalanceService");
 const { processDailyCutoff } = require("../src/services/automationService");
 
 const TEST_TAG = `pickup-request-settlement-${Date.now()}`;
 const TEST_PLAN_ID = new mongoose.Types.ObjectId();
 const TARGET_DATE = "2026-05-18";
+const OPEN_PICKUP_REQUEST_STATUSES_FOR_TEST = new Set([
+  "locked",
+  "in_preparation",
+  "ready_for_pickup",
+]);
 const results = { passed: 0, failed: 0 };
 
 async function test(name, fn) {
@@ -67,6 +75,11 @@ async function seedContext({ remainingMeals = 8, dayStatus = "open" } = {}) {
     validityEndDate: new Date("2026-06-01T00:00:00Z"),
     totalMeals: 10,
     remainingMeals,
+    entitlementVersion: 2,
+    reservedMeals: 0,
+    consumedMeals: 10 - remainingMeals,
+    forfeitedMeals: 0,
+    baseMealAllocations: [],
     selectedGrams: 200,
     selectedMealsPerDay: 1,
     deliveryMode: "pickup",
@@ -98,8 +111,10 @@ async function seedPickupRequest({
     date,
     mealCount,
     status,
-    creditsReserved: true,
-    creditsReservedAt: new Date("2026-05-18T08:00:00Z"),
+    creditsReserved: !OPEN_PICKUP_REQUEST_STATUSES_FOR_TEST.has(status),
+    creditsReservedAt: !OPEN_PICKUP_REQUEST_STATUSES_FOR_TEST.has(status)
+      ? new Date("2026-05-18T08:00:00Z")
+      : null,
     snapshot: { createdFrom: "settlement_test" },
   };
   if (status === "fulfilled") {
@@ -115,6 +130,14 @@ async function seedPickupRequest({
     attrs.creditsReleasedAt = new Date("2026-05-18T10:00:00Z");
   }
   const pickupRequest = await SubscriptionPickupRequest.create(attrs);
+  if (OPEN_PICKUP_REQUEST_STATUSES_FOR_TEST.has(status)) {
+    const reservation = await reserveSubscriptionMealsForPickupRequest({
+      subscriptionId: subscription._id,
+      pickupRequestId: pickupRequest._id,
+      mealCount,
+    });
+    return { user, subscription, day, pickupRequest: reservation.pickupRequest };
+  }
   return { user, subscription, day, pickupRequest };
 }
 
@@ -142,7 +165,8 @@ async function getRemainingMeals(subscriptionId) {
       assert.strictEqual(result.settledCount, 1);
       assert.strictEqual(updated.status, "no_show");
       assert(updated.pickupNoShowAt, "pickupNoShowAt should be set");
-      assert(updated.creditsConsumedAt, "creditsConsumedAt should be set");
+      assert(updated.creditsReleasedAt, "creditsReleasedAt should be set");
+      assert.strictEqual(updated.creditsConsumedAt, null);
     });
 
     await test("in_preparation request becomes no_show", async () => {
@@ -150,7 +174,8 @@ async function getRemainingMeals(subscriptionId) {
       await settleOpenSubscriptionPickupRequestsForDate({ date: TARGET_DATE });
       const updated = await getRequest(pickupRequest._id);
       assert.strictEqual(updated.status, "no_show");
-      assert(updated.creditsConsumedAt, "creditsConsumedAt should be set");
+      assert(updated.creditsReleasedAt, "creditsReleasedAt should be set");
+      assert.strictEqual(updated.creditsConsumedAt, null);
     });
 
     await test("ready_for_pickup request becomes no_show", async () => {
@@ -158,7 +183,8 @@ async function getRemainingMeals(subscriptionId) {
       await settleOpenSubscriptionPickupRequestsForDate({ date: TARGET_DATE });
       const updated = await getRequest(pickupRequest._id);
       assert.strictEqual(updated.status, "no_show");
-      assert(updated.creditsConsumedAt, "creditsConsumedAt should be set");
+      assert(updated.creditsReleasedAt, "creditsReleasedAt should be set");
+      assert.strictEqual(updated.creditsConsumedAt, null);
     });
 
     await test("fulfilled request is not changed", async () => {
@@ -190,7 +216,7 @@ async function getRemainingMeals(subscriptionId) {
       assert.strictEqual(String(after.creditsConsumedAt), String(before.creditsConsumedAt));
     });
 
-    await test("settlement consumes reserved credits without decrementing remainingMeals again", async () => {
+    await test("settlement returns reserved credits without consuming them", async () => {
       const { subscription, pickupRequest, day } = await seedPickupRequest({
         status: "ready_for_pickup",
         remainingMeals: 8,
@@ -200,7 +226,8 @@ async function getRemainingMeals(subscriptionId) {
       const updated = await getRequest(pickupRequest._id);
       const updatedDay = await SubscriptionDay.findById(day._id).lean();
       assert.strictEqual(updated.status, "no_show");
-      assert(updated.creditsConsumedAt, "creditsConsumedAt should be set");
+      assert(updated.creditsReleasedAt, "creditsReleasedAt should be set");
+      assert.strictEqual(updated.creditsConsumedAt, null);
       assert.strictEqual(await getRemainingMeals(subscription._id), 8);
       assert.strictEqual(updatedDay.status, "consumed_without_preparation");
     });
@@ -214,7 +241,8 @@ async function getRemainingMeals(subscriptionId) {
       assert.strictEqual(first.settledCount, 1);
       assert.strictEqual(second.matchedCount, 0);
       assert.strictEqual(second.settledCount, 0);
-      assert.strictEqual(String(afterSecond.creditsConsumedAt), String(afterFirst.creditsConsumedAt));
+      assert.strictEqual(String(afterSecond.creditsReleasedAt), String(afterFirst.creditsReleasedAt));
+      assert.strictEqual(afterSecond.creditsConsumedAt, null);
       assert.strictEqual(await getRemainingMeals(subscription._id), 8);
     });
 
@@ -225,7 +253,8 @@ async function getRemainingMeals(subscriptionId) {
       assert.strictEqual(result.status, true);
       assert.strictEqual(result.pickupRequestSettlement.settledCount, 1);
       assert.strictEqual(updated.status, "no_show");
-      assert(updated.creditsConsumedAt, "creditsConsumedAt should be set");
+      assert(updated.creditsReleasedAt, "creditsReleasedAt should be set");
+      assert.strictEqual(updated.creditsConsumedAt, null);
     });
   } finally {
     await cleanup().catch(() => {});
