@@ -18,7 +18,11 @@ function canCreateDailyAddonDefaultsForStatus(status) {
 
 function activeSubscriptionAddonSelections(day) {
   return (Array.isArray(day && day.addonSelections) ? day.addonSelections : [])
-    .filter((selection) => selection && selection.source === "subscription")
+    .filter((selection) => selection && (
+      selection.autoDailyAddon === true
+      || selection.dailyEntitlement === true
+      || ["subscription", "wallet"].includes(clean(selection.source))
+    ))
     .filter((selection) => clean(selection.addonSettlementState) !== "released");
 }
 
