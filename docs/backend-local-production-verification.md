@@ -2,12 +2,52 @@
 
 This runbook verifies branch `fix/backend-entitlement-lifecycle` without changing Flutter or the Dashboard.
 
-## 1. Install and run isolated tests
+## 1. Select the exact branch and Node version
+
+The project supports Node 20. The repository already contains `.nvmrc`; Node 22 may run some commands but is not the supported verification runtime.
+
+```bash
+nvm install 20
+nvm use 20
+node --version
+npm --version
+```
+
+Expected Node output starts with:
+
+```text
+v20.
+```
+
+Fetch the repair branch and ensure it tracks exactly one upstream branch:
+
+```bash
+git fetch origin
+git checkout fix/backend-entitlement-lifecycle
+git branch --set-upstream-to=origin/fix/backend-entitlement-lifecycle
+```
+
+If `git pull --ff-only origin fix/backend-entitlement-lifecycle` reports `Cannot rebase onto multiple branches`, repair only the duplicated local tracking configuration:
+
+```bash
+git config --unset-all branch.fix/backend-entitlement-lifecycle.merge || true
+git config branch.fix/backend-entitlement-lifecycle.remote origin
+git config --add branch.fix/backend-entitlement-lifecycle.merge refs/heads/fix/backend-entitlement-lifecycle
+git pull --ff-only
+```
+
+Before using `reset --hard`, inspect local work first:
+
+```bash
+git status --short
+git log --oneline --decorate -5
+```
+
+## 2. Install and run isolated tests
 
 These tests use test databases or `mongodb-memory-server`. Do not point their environment variables at production.
 
 ```bash
-git checkout fix/backend-entitlement-lifecycle
 npm ci
 npm run test:release-gates
 bash scripts/run-pickup-backend-closure-tests.sh
@@ -15,7 +55,9 @@ bash scripts/run-pickup-backend-closure-tests.sh
 
 Expected result: every command exits with code `0`.
 
-## 2. Start the Backend against the intended local/staging database
+Do not run `npm audit fix --force` as part of verification. It may introduce breaking dependency upgrades. Review production and development dependency findings separately.
+
+## 3. Start the Backend against the intended local/staging database
 
 Use a database copy when possible. Verify the selected database name before starting.
 
@@ -28,7 +70,7 @@ npm start
 
 Do not run test files containing `dropDatabase`, `deleteMany`, seed, reset, migration, backfill, or cleanup logic against the real production database.
 
-## 3. Run the Flutter response contract verifier
+## 4. Run the Flutter response contract verifier
 
 The verifier calls GET endpoints only. It does not confirm a day, create a Pickup request, append meals, consume balances, or change operations state.
 
@@ -55,7 +97,7 @@ Basic-Diet/mobile_app@6e1be0b38272160bc377cedf391cf082d0f2abfa
 
 A failure prints the exact response path that is incompatible with the current Dart model.
 
-## 4. Inspect stale operations — dry run
+## 5. Inspect stale operations — dry run
 
 This command is read-only unless `--apply --confirm-safe-recovery` are both provided.
 
@@ -73,7 +115,7 @@ Exit codes:
 - `2`: one or more rows need an idempotent API retry or manual review; no data was changed.
 - `1`: configuration, connection, or execution error.
 
-## 5. Apply only provably safe recovery actions
+## 6. Apply only provably safe recovery actions
 
 Take a database backup first. Review the dry-run JSON and target one operation where possible.
 
@@ -94,7 +136,7 @@ The command applies only these conservative actions:
 
 It does not automatically compensate revision conflicts, missing days, missing ledgers, `day_saved`, or ambiguous `recovery_required` rows.
 
-## 6. Before/after balance verification
+## 7. Before/after balance verification
 
 For each real account used in write E2E, record these values before every action:
 
