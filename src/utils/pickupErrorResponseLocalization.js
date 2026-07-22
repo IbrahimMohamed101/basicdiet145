@@ -47,6 +47,18 @@ const PICKUP_ERROR_COPY = Object.freeze({
     ar: "تم استخدام مفتاح الطلب نفسه مع اختيارات مختلفة.",
     en: "The same request key was already used with different selections.",
   },
+  FORBIDDEN: {
+    ar: "هذا الاشتراك غير مرتبط بالحساب الحالي. سجّل الدخول برقم الهاتف المرتبط بالاشتراك.",
+    en: "This subscription is not linked to the current account. Sign in with the phone number linked to the subscription.",
+  },
+  PICKUP_SUBSCRIPTION_AMBIGUOUS: {
+    ar: "يوجد أكثر من اشتراك استلام نشط على الحساب. يرجى التواصل مع الدعم.",
+    en: "More than one active pickup subscription is linked to this account. Please contact support.",
+  },
+  SUBSCRIPTION_OWNERSHIP_RECOVERY_CONFLICT: {
+    ar: "الحساب مرتبط بالفعل باشتراك نشط آخر. لم يتم نقل أي بيانات.",
+    en: "This account is already linked to another active subscription. No data was transferred.",
+  },
   INTERNAL: {
     ar: "تعذر إتمام طلب الاستلام بسبب خطأ داخلي. حاول مرة أخرى.",
     en: "The pickup request could not be completed because of an internal error. Try again.",
@@ -79,7 +91,7 @@ function normalizePickupErrorResponse(payload, req, requestUrl = "") {
   const details = payload.error.details && typeof payload.error.details === "object"
     ? payload.error.details
     : {};
-  const messageI18n = normalizePair(details.messageI18n, fallback);
+  const messageI18n = normalizePair(details.messageI18n || details, fallback);
   const lang = getRequestLang(req);
 
   return {
