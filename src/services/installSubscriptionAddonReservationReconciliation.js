@@ -116,36 +116,35 @@ async function resolveDay(args = {}, result = null) {
   return null;
 }
 
-async function updateAutomaticSelectionName({ dayId, selection, desiredName, nameI18n, planI18n }) {
-  const allocationKey = clean(selection && selection.dailyAllocationKey);
-  if (allocationKey) {
-    return SubscriptionDay.updateOne(
-      { _id: dayId, "addonSelections.dailyAllocationKey": allocationKey },
-      {
-        $set: {
-          "addonSelections.$[selection].name": desiredName,
-          "addonSelections.$[selection].nameI18n": nameI18n,
-          "addonSelections.$[selection].subscriptionAddonLabelI18n": planI18n,
-        },
-      },
-      { arrayFilters: [{ "selection.dailyAllocationKey": allocationKey }] }
-    );
-  }
-
-  if (selection && selection._id) {
-    return SubscriptionDay.updateOne(
-      { _id: dayId, "addonSelections._id": selection._id },
-      {
-        $set: {
-          "addonSelections.$.name": desiredName,
-          "addonSelections.$.nameI18n": nameI18n,
-          "addonSelections.$.subscriptionAddonLabelI18n": planI18n,
-        },
-      }
-    );
-  }
-
-  return { matchedCount: 0, modifiedCount: 0 };
+function normalizedAutomaticSelection(subscription, selection) {
+  if (!selection || selection.autoDailyAddon !== true) return selection;
+  const entitlement = entitlementForSelection(subscription, selection);
+  const nameI18n = composeDefaultName(selection, entitlement);
+  const planI18n = subscriptionLabel(
+    selection.subscriptionAddonLabelI18n
+      || (entitlement && (
+        entitlement.addonPlanNameI18n
+        || entitlement.addonPlanName
+        || entitlement.name
+      ))
+      || selection.entitlementCategory
+      || selection.category
+  );
+  const desiredName = nameI18n.ar || nameI18n.en;
+  const currentI18n = localizedPair(selection.nameI18n);
+  const currentPlan = localizedPair(selection.subscriptionAddonLabelI18n);
+  const unchanged = clean(selection.name) === desiredName
+    && currentI18n.ar === nameI18n.ar
+    && currentI18n.en === nameI18n.en
+    && currentPlan.ar === planI18n.ar
+    && currentPlan.en === planI18n.en;
+  if (unchanged) return selection;
+  return {
+    ...selection,
+    name: desiredName,
+    nameI18n,
+    subscriptionAddonLabelI18n: planI18n,
+  };
 }
 
 async function normalizeAutomaticDefaultNames({ dayId } = {}) {
@@ -153,50 +152,30 @@ async function normalizeAutomaticDefaultNames({ dayId } = {}) {
   if (!day) return { updatedCount: 0, skipped: true, reason: "DAY_NOT_FOUND" };
   const subscription = await Subscription.findById(day.subscriptionId).lean();
   if (!subscription) return { updatedCount: 0, skipped: true, reason: "SUBSCRIPTION_NOT_FOUND" };
+
+  const source = Array.isArray(day.addonSelections) ? day.addonSelections : [];
   let updatedCount = 0;
+  const nextSelections = source.map((selection) => {
+    const normalized = normalizedAutomaticSelection(subscription, selection);
+    if (normalized !== selection) updatedCount += 1;
+    return normalized;
+  });
+  if (!updatedCount) return { updatedCount: 0 };
 
-  for (const selection of Array.isArray(day.addonSelections) ? day.addonSelections : []) {
-    if (!selection || selection.autoDailyAddon !== true) continue;
-    const entitlement = entitlementForSelection(subscription, selection);
-    const nameI18n = composeDefaultName(selection, entitlement);
-    const planI18n = subscriptionLabel(
-      selection.subscriptionAddonLabelI18n
-        || (entitlement && (
-          entitlement.addonPlanNameI18n
-          || entitlement.addonPlanName
-          || entitlement.name
-        ))
-        || selection.entitlementCategory
-        || selection.category
-    );
-    const desiredName = nameI18n.ar || nameI18n.en;
-    const currentName = clean(selection.name);
-    const currentI18n = localizedPair(selection.nameI18n);
-    const currentPlan = localizedPair(selection.subscriptionAddonLabelI18n);
-    if (
-      currentName === desiredName
-      && currentI18n.ar === nameI18n.ar
-      && currentI18n.en === nameI18n.en
-      && currentPlan.ar === planI18n.ar
-      && currentPlan.en === planI18n.en
-    ) {
-      continue;
-    }
-
-    const result = await updateAutomaticSelectionName({
-      dayId: day._id,
-      selection,
-      desiredName,
-      nameI18n,
-      planI18n,
-    });
-    const matched = Number(
-      result && (result.matchedCount !== undefined ? result.matchedCount : result.n) || 0
-    );
-    if (matched > 0) updatedCount += 1;
+  const filter = { _id: day._id };
+  if (clean(day.plannerRevisionHash)) filter.plannerRevisionHash = day.plannerRevisionHash;
+  const updated = await SubscriptionDay.findOneAndUpdate(
+    filter,
+    { $set: { addonSelections: nextSelections } },
+    { new: true }
+  ).lean();
+  if (!updated) {
+    const err = new Error("Subscription day changed while normalizing daily add-on labels");
+    err.code = "DAY_CHANGED";
+    err.status = 409;
+    throw err;
   }
-
-  return { updatedCount };
+  return { updatedCount, day: updated };
 }
 
 function installSubscriptionAddonReservationReconciliation() {
@@ -218,14 +197,15 @@ function installSubscriptionAddonReservationReconciliation() {
     day = await resolveDay(args, result);
     if (!day) return result;
 
-    await normalizeAutomaticDefaultNames({ dayId: day._id });
+    const normalized = await normalizeAutomaticDefaultNames({ dayId: day._id });
     const [latestDay, subscription] = await Promise.all([
-      SubscriptionDay.findById(day._id).lean(),
+      normalized.day || SubscriptionDay.findById(day._id).lean(),
       Subscription.findById(day.subscriptionId).lean(),
     ]);
 
     return {
       ...(result || {}),
+      normalizationUpdatedCount: Number(normalized.updatedCount || 0),
       day: latestDay,
       wallet: dailyAddonService.buildDailyAddonWallet(subscription),
     };
@@ -233,6 +213,7 @@ function installSubscriptionAddonReservationReconciliation() {
 
   wrapped[WRAPPED_KEY] = true;
   wrapped.__original = originalEnsure;
+  wrapped.__reservationReconciliation = true;
   dailyAddonService.ensureDailyAddonDefaultsForDay = wrapped;
 }
 
@@ -243,5 +224,5 @@ module.exports = {
   entitlementForSelection,
   installSubscriptionAddonReservationReconciliation,
   normalizeAutomaticDefaultNames,
-  updateAutomaticSelectionName,
+  normalizedAutomaticSelection,
 };
