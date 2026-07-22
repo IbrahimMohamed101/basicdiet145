@@ -43,6 +43,14 @@ const PICKUP_ERROR_COPY = Object.freeze({
     ar: "لم يتم العثور على يوم الاشتراك المطلوب.",
     en: "The requested subscription day was not found.",
   },
+  NOT_FOUND: {
+    ar: "لم يتم العثور على الاشتراك المطلوب. حدّث بيانات الاشتراك ثم حاول مرة أخرى.",
+    en: "The requested subscription was not found. Refresh the subscription data and try again.",
+  },
+  PICKUP_REQUEST_NOT_FOUND: {
+    ar: "لم يتم العثور على طلب الاستلام المطلوب.",
+    en: "The requested pickup request was not found.",
+  },
   IDEMPOTENCY_CONFLICT: {
     ar: "تم استخدام مفتاح الطلب نفسه مع اختيارات مختلفة.",
     en: "The same request key was already used with different selections.",
