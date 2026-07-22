@@ -19,6 +19,11 @@ function nonNegativeInt(value) {
   return Number.isFinite(numberValue) && numberValue > 0 ? numberValue : 0;
 }
 
+function positiveInt(value, fallback = 1) {
+  const numberValue = Math.floor(Number(value));
+  return Number.isFinite(numberValue) && numberValue > 0 ? numberValue : fallback;
+}
+
 function hasExplicitAddonPayload(body = {}) {
   return Object.prototype.hasOwnProperty.call(body, "addonsOneTime")
     || Object.prototype.hasOwnProperty.call(body, "oneTimeAddonSelections");
@@ -170,6 +175,39 @@ async function markSelectionState({
   );
 }
 
+async function syncSubscriptionProjectionState({ subscriptionId, dayId, date, state, reason = null }) {
+  const now = new Date();
+  const set = {
+    "addonSelections.$[selection].addonSettlementState": state,
+    "addonSelections.$[selection].settlementReason": reason,
+    "addonSelections.$[selection].settledAt": state === "reserved" ? null : now,
+  };
+  if (state === "reserved") {
+    set["addonSelections.$[selection].reservedAt"] = now;
+    set["addonSelections.$[selection].releasedAt"] = null;
+    set["addonSelections.$[selection].consumedAt"] = null;
+    set["addonSelections.$[selection].dailyEntitlement"] = true;
+    set["addonSelections.$[selection].autoDailyAddon"] = false;
+    set["addonSelections.$[selection].selectionOrigin"] = "customer_selected";
+  } else if (state === "consumed") {
+    set["addonSelections.$[selection].consumedAt"] = now;
+  } else if (state === "released") {
+    set["addonSelections.$[selection].releasedAt"] = now;
+  }
+
+  await Subscription.updateOne(
+    { _id: subscriptionId },
+    { $set: set },
+    {
+      arrayFilters: [{
+        "selection.dayId": dayId,
+        "selection.date": date,
+        "selection.source": "subscription",
+      }],
+    }
+  ).catch(() => {});
+}
+
 async function reserveExplicitSubscriptionSelectionsForDay({ dayId } = {}) {
   const day = await SubscriptionDay.findById(dayId).lean();
   if (!day) return { reservedCount: 0, skipped: true, reason: "DAY_NOT_FOUND" };
@@ -242,8 +280,11 @@ async function reserveExplicitSubscriptionSelectionsForDay({ dayId } = {}) {
       state: "reserved",
       origin: "customer_selected",
     });
+    const matchedCount = Number(
+      dayUpdate && (dayUpdate.matchedCount !== undefined ? dayUpdate.matchedCount : dayUpdate.n) || 0
+    );
 
-    if (!dayUpdate || Number(dayUpdate.matchedCount || 0) === 0) {
+    if (matchedCount === 0) {
       await dailyAddonService.releaseBalanceAllocation({
         subscriptionId: day.subscriptionId,
         bucketId: selection.balanceBucketId,
@@ -273,6 +314,15 @@ async function reserveExplicitSubscriptionSelectionsForDay({ dayId } = {}) {
 
     if (!reservation.idempotent) reservedCount += 1;
     results.push({ reserved: true, idempotent: Boolean(reservation.idempotent), allocationKey });
+  }
+
+  if (selections.length > 0) {
+    await syncSubscriptionProjectionState({
+      subscriptionId: day.subscriptionId,
+      dayId: day._id,
+      date: day.date,
+      state: "reserved",
+    });
   }
 
   return { reservedCount, selectionsCount: selections.length, results };
@@ -317,6 +367,74 @@ async function releaseDetachedAutoReservations({ dayId, previousSelections = [] 
   return { releasedCount, selectionsCount: detached.length };
 }
 
+async function trimDefaultsCoveredByExplicitSelections({ dayId } = {}) {
+  let day = await SubscriptionDay.findById(dayId).lean();
+  if (!day) return { releasedCount: 0, skipped: true, reason: "DAY_NOT_FOUND" };
+  const subscription = await Subscription.findById(day.subscriptionId).lean();
+  if (!subscription) return { releasedCount: 0, skipped: true, reason: "SUBSCRIPTION_NOT_FOUND" };
+
+  const entitlements = Array.isArray(subscription.addonSubscriptions)
+    ? subscription.addonSubscriptions.filter(Boolean)
+    : [];
+  let releasedCount = 0;
+
+  for (let entitlementIndex = 0; entitlementIndex < entitlements.length; entitlementIndex += 1) {
+    const entitlement = entitlements[entitlementIndex];
+    const bucket = dailyAddonService.findBalanceBucket(subscription, entitlement, entitlementIndex);
+    if (!bucket) continue;
+    const matches = (selection) => dailyAddonService.selectionMatchesEntitlement(
+      selection,
+      entitlement,
+      bucket,
+      entitlementIndex
+    );
+    const dailyQty = positiveInt(
+      entitlement.quantityPerDay || entitlement.purchasedDailyQty,
+      1
+    );
+    const active = (Array.isArray(day.addonSelections) ? day.addonSelections : [])
+      .filter(isActiveSelection)
+      .filter(matches);
+    const explicitCount = active.filter((selection) => selection.autoDailyAddon !== true).length;
+    const defaults = active.filter((selection) => selection.autoDailyAddon === true);
+    const allowedDefaults = Math.max(0, dailyQty - explicitCount);
+    const surplus = defaults.slice(allowedDefaults);
+
+    for (const selection of surplus) {
+      const result = await dailyAddonService.releaseBalanceAllocation({
+        subscriptionId: day.subscriptionId,
+        bucketId: selection.balanceBucketId,
+        allocationKey: selection.dailyAllocationKey,
+      });
+      if (!result.released) {
+        const err = new Error(`Explicit-selection priority release failed: ${result.reason || "unknown"}`);
+        err.code = "DAILY_ADDON_RELEASE_FAILED";
+        err.status = 409;
+        throw err;
+      }
+      if (!result.idempotent) releasedCount += 1;
+      await SubscriptionDay.updateOne(
+        { _id: day._id },
+        { $pull: { addonSelections: { dailyAllocationKey: selection.dailyAllocationKey } } }
+      );
+      await SubscriptionDailyAddonOperation.updateOne(
+        { subscriptionDayId: day._id, allocationKey: selection.dailyAllocationKey },
+        {
+          $set: {
+            status: "released",
+            releasedAt: new Date(),
+            errorCode: null,
+            errorMessage: null,
+          },
+        }
+      );
+      day = await SubscriptionDay.findById(day._id).lean();
+    }
+  }
+
+  return { releasedCount };
+}
+
 async function consumeSubscriptionAddonReservationsForDay({ dayId, reason = "fulfilled" } = {}) {
   const day = await SubscriptionDay.findById(dayId).lean();
   if (!day) return { consumedCount: 0, skipped: true, reason: "DAY_NOT_FOUND" };
@@ -349,6 +467,16 @@ async function consumeSubscriptionAddonReservationsForDay({ dayId, reason = "ful
       { subscriptionDayId: day._id, allocationKey: selection.dailyAllocationKey },
       { $set: { status: "consumed", consumedAt: new Date() } }
     );
+  }
+
+  if (selections.length > 0) {
+    await syncSubscriptionProjectionState({
+      subscriptionId: day.subscriptionId,
+      dayId: day._id,
+      date: day.date,
+      state: "consumed",
+      reason,
+    });
   }
 
   return { consumedCount, selectionsCount: selections.length };
@@ -389,6 +517,16 @@ async function releaseReservedSubscriptionAddonSelectionsForDay({
       { subscriptionDayId: day._id, allocationKey: selection.dailyAllocationKey },
       { $set: { status: "released", releasedAt: new Date() } }
     );
+  }
+
+  if (selections.length > 0) {
+    await syncSubscriptionProjectionState({
+      subscriptionId: day.subscriptionId,
+      dayId: day._id,
+      date: day.date,
+      state: "released",
+      reason,
+    });
   }
 
   return { releasedCount, selectionsCount: selections.length };
@@ -438,8 +576,29 @@ function buildExactDailyAddonWallet(subscription) {
 function patchDailyAddonService() {
   if (dailyAddonService.__reservationClosurePatched) return;
 
+  const originalEnsureDefaults = dailyAddonService.ensureDailyAddonDefaultsForDay.bind(dailyAddonService);
   const originalReleaseDefaults = dailyAddonService.releaseDailyAddonReservationsForDay.bind(dailyAddonService);
   const originalReleaseAll = dailyAddonService.releaseSubscriptionAddonSelectionsForDay.bind(dailyAddonService);
+
+  dailyAddonService.ensureDailyAddonDefaultsForDay = async function explicitPriorityDefaults(args = {}) {
+    const result = await originalEnsureDefaults(args);
+    const dayId = clean(args.dayId)
+      || clean(result && result.day && result.day._id);
+    if (!dayId) return result;
+
+    const trimmed = await trimDefaultsCoveredByExplicitSelections({ dayId });
+    const [day, subscription] = await Promise.all([
+      SubscriptionDay.findById(dayId).lean(),
+      SubscriptionDay.findById(dayId).select("subscriptionId").lean()
+        .then((row) => row && Subscription.findById(row.subscriptionId).lean()),
+    ]);
+    return {
+      ...(result || {}),
+      releasedForExplicitPriority: Number(trimmed.releasedCount || 0),
+      day,
+      wallet: buildExactDailyAddonWallet(subscription),
+    };
+  };
 
   dailyAddonService.releaseDailyAddonReservationsForDay = async function deferredCustomerReplacement(args = {}) {
     if (args.reason === CUSTOMER_REPLACEMENT_REASON && args.removeSelections === true) {
@@ -542,4 +701,5 @@ module.exports = {
   releaseDetachedAutoReservations,
   releaseReservedSubscriptionAddonSelectionsForDay,
   reserveExplicitSubscriptionSelectionsForDay,
+  trimDefaultsCoveredByExplicitSelections,
 };
