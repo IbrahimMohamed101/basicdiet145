@@ -11,6 +11,7 @@ require("../services/installDashboardMealBuilderDraftGuard");
 require("../services/installSubscriptionDailyAddonPolicy");
 require("../services/installSubscriptionAddonReservationClosure");
 require("../services/installSubscriptionAddonReservationReconciliation");
+require("../services/installSubscriptionAddonOpsIdentityClosure");
 
 const authRoutes = require("./auth");
 const dashboardAuthRoutes = require("./dashboardAuth");
