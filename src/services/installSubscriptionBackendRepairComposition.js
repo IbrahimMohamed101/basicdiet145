@@ -177,6 +177,13 @@ function verifyComposition() {
     "Pickup availability diagnostics can still break the Flutter read contract"
   );
   assertInstalled(
+    pickupService.createSubscriptionPickupRequestForClient
+      && pickupService.createSubscriptionPickupRequestForClient.__pickupSubscriptionOwnershipRecovery === true
+      && pickupService.getPickupAvailabilityForClient
+      && pickupService.getPickupAvailabilityForClient.__pickupSubscriptionOwnershipRecovery === true,
+    "Pickup routes did not capture the authenticated subscription ownership resolver"
+  );
+  assertInstalled(
     opsPayloadService.buildKitchenDetailsPayload
       && opsPayloadService.buildKitchenDetailsPayload.__stableAddonIdentity === true,
     "Ops add-on DTO stable identity mapper is not installed"
@@ -194,6 +201,7 @@ function verifyComposition() {
     deliveryAppendSaga: true,
     pickupRequestRecovery: true,
     pickupAvailabilityDiagnosticsFailOpen: true,
+    pickupSubscriptionOwnershipRecovery: true,
     stableOpsAddonIdentity: true,
   };
 }
@@ -230,6 +238,9 @@ function installSubscriptionBackendRepairComposition() {
     require("./installPickupRequestRecovery");
     require("./installSubscriptionDeliveryAppendSaga");
     require("./installReadOnlySubscriptionQueries");
+    // This wrapper must be outermost so stale Flutter subscription ids are
+    // resolved before recovery, diagnostics, or balance mutation code executes.
+    require("./installPickupSubscriptionOwnershipRecovery");
 
     state.verification = verifyComposition();
     state.status = "installed";
