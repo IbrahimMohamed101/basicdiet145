@@ -24,6 +24,8 @@ function clean(value) {
 
 function localizedPair(value) {
   if (value && typeof value === "object" && !Array.isArray(value)) {
+    const nested = value.nameI18n || value.name || value.labelI18n || value.label;
+    if (nested && nested !== value) return localizedPair(nested);
     const ar = clean(value.ar || value.en);
     const en = clean(value.en || value.ar);
     return { ar, en };
@@ -32,11 +34,68 @@ function localizedPair(value) {
   return { ar: text, en: text };
 }
 
-function composeDefaultName(selection = {}) {
-  const product = localizedPair(selection.resolvedProductNameI18n);
-  const plan = localizedPair(selection.subscriptionAddonLabelI18n);
-  if (!plan.ar && !plan.en) return null;
-  if (!product.ar && !product.en) return plan;
+function subscriptionLabel(value) {
+  const source = localizedPair(value);
+  const ar = source.ar || source.en || "إضافة يومية";
+  const en = source.en || source.ar || "Daily Add-on";
+  return {
+    ar: /اشتراك/.test(ar) ? ar : `اشتراك ${ar}`,
+    en: /subscription/i.test(en) ? en : `${en} Subscription`,
+  };
+}
+
+function entitlementForSelection(subscription, selection) {
+  const entitlements = Array.isArray(subscription && subscription.addonSubscriptions)
+    ? subscription.addonSubscriptions.filter(Boolean)
+    : [];
+  const balances = Array.isArray(subscription && subscription.addonBalance)
+    ? subscription.addonBalance.filter(Boolean)
+    : [];
+  const selectionBucketId = clean(selection && selection.balanceBucketId);
+  const selectionEntitlementKey = clean(selection && selection.entitlementKey);
+  const selectionPlanId = clean(selection && selection.addonPlanId);
+
+  let bucket = null;
+  if (selectionBucketId) {
+    bucket = balances.find((row) => clean(row && (row._id || row.balanceBucketId)) === selectionBucketId) || null;
+  }
+  const bucketEntitlementKey = clean(bucket && bucket.entitlementKey);
+  const bucketPlanId = clean(bucket && (bucket.addonPlanId || bucket.addonId));
+
+  const byKey = entitlements.filter((row) => {
+    const key = clean(row && row.entitlementKey);
+    return key && (key === selectionEntitlementKey || key === bucketEntitlementKey);
+  });
+  if (byKey.length === 1) return byKey[0];
+
+  const targetPlanId = selectionPlanId || bucketPlanId;
+  const byPlan = entitlements.filter((row) => (
+    targetPlanId && clean(row && (row.addonPlanId || row.addonId)) === targetPlanId
+  ));
+  return byPlan.length === 1 ? byPlan[0] : null;
+}
+
+function composeDefaultName(selection = {}, entitlement = null) {
+  const planSource = selection.subscriptionAddonLabelI18n
+    || (entitlement && (
+      entitlement.addonPlanNameI18n
+      || entitlement.addonPlanName
+      || entitlement.name
+    ))
+    || selection.entitlementCategory
+    || selection.category;
+  const plan = subscriptionLabel(planSource);
+
+  if (selection.requiresKitchenChoice === true) return plan;
+
+  const product = localizedPair(
+    selection.resolvedProductNameI18n
+      || selection.nameI18n
+      || selection.name
+  );
+  const productLooksLikePlan = /اشتراك/.test(product.ar) || /subscription/i.test(product.en);
+  if ((!product.ar && !product.en) || productLooksLikePlan) return plan;
+
   return {
     ar: `${product.ar || product.en} — ${plan.ar || plan.en}`,
     en: `${product.en || product.ar} — ${plan.en || plan.ar}`,
@@ -60,19 +119,34 @@ async function resolveDay(args = {}, result = null) {
 async function normalizeAutomaticDefaultNames({ dayId } = {}) {
   const day = await SubscriptionDay.findById(dayId).lean();
   if (!day) return { updatedCount: 0, skipped: true, reason: "DAY_NOT_FOUND" };
+  const subscription = await Subscription.findById(day.subscriptionId).lean();
+  if (!subscription) return { updatedCount: 0, skipped: true, reason: "SUBSCRIPTION_NOT_FOUND" };
   let updatedCount = 0;
 
   for (const selection of Array.isArray(day.addonSelections) ? day.addonSelections : []) {
     if (!selection || selection.autoDailyAddon !== true) continue;
-    const nameI18n = composeDefaultName(selection);
-    if (!nameI18n) continue;
+    const entitlement = entitlementForSelection(subscription, selection);
+    const nameI18n = composeDefaultName(selection, entitlement);
+    const planI18n = subscriptionLabel(
+      selection.subscriptionAddonLabelI18n
+        || (entitlement && (
+          entitlement.addonPlanNameI18n
+          || entitlement.addonPlanName
+          || entitlement.name
+        ))
+        || selection.entitlementCategory
+        || selection.category
+    );
     const desiredName = nameI18n.ar || nameI18n.en;
     const currentName = clean(selection.name);
     const currentI18n = localizedPair(selection.nameI18n);
+    const currentPlan = localizedPair(selection.subscriptionAddonLabelI18n);
     if (
       currentName === desiredName
       && currentI18n.ar === nameI18n.ar
       && currentI18n.en === nameI18n.en
+      && currentPlan.ar === planI18n.ar
+      && currentPlan.en === planI18n.en
     ) {
       continue;
     }
@@ -83,6 +157,7 @@ async function normalizeAutomaticDefaultNames({ dayId } = {}) {
         $set: {
           "addonSelections.$.name": desiredName,
           "addonSelections.$.nameI18n": nameI18n,
+          "addonSelections.$.subscriptionAddonLabelI18n": planI18n,
         },
       }
     );
@@ -136,6 +211,7 @@ installSubscriptionAddonReservationReconciliation();
 
 module.exports = {
   composeDefaultName,
+  entitlementForSelection,
   installSubscriptionAddonReservationReconciliation,
   normalizeAutomaticDefaultNames,
 };
