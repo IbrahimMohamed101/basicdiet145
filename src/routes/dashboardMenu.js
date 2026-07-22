@@ -4,6 +4,9 @@ const controller = require("../controllers/dashboard/menuController");
 const weightPricingController = require("../controllers/dashboard/weightPricingController");
 const asyncHandler = require("../middleware/asyncHandler");
 const {
+  dashboardMenuUiNullCompatibility,
+} = require("../middleware/dashboardMenuUiNullCompatibility");
+const {
   dashboardAuthMiddleware,
   dashboardRoleMiddleware,
   dashboardMutationRoleMiddleware,
@@ -17,6 +20,10 @@ router.use(dashboardAuthMiddleware, dashboardRoleMiddleware(["admin", "superadmi
 // an administrative concern. Keep all reads available while denying every
 // mutation unless the current Dashboard user is an admin/superadmin.
 router.use(dashboardMutationRoleMiddleware(["admin", "superadmin"]));
+// Older Dashboard forms serialize omitted UI metadata as null. Treat that exact
+// value as an omitted field so existing/default metadata is preserved. Invalid
+// UI objects still pass through to the service validators and remain rejected.
+router.use(dashboardMenuUiNullCompatibility);
 
 router.get("/preview", asyncHandler(controller.getPreview));
 
