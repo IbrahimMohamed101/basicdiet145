@@ -120,6 +120,7 @@ function suppressLegacyCarryoverWrappers() {
 function verifyComposition() {
   const presentation = require("./subscription/pickupCanonicalPresentationService");
   const entitlementService = require("./subscription/subscriptionMealEntitlementService");
+  const unifiedPaymentService = require("./subscription/unifiedDayPaymentService");
   const premiumPaymentService = require("./subscription/premiumExtraDayPaymentService");
   const selectionService = require("./subscription/subscriptionSelectionService");
   const pricingService = require("./subscription/subscriptionAddonPricingService");
@@ -137,6 +138,20 @@ function verifyComposition() {
     entitlementService.reserveDayEntitlements
       && entitlementService.reserveDayEntitlements.__stableDaySlotIdentity === true,
     "Day meal entitlement reservation is still revision-dependent"
+  );
+  assertInstalled(
+    entitlementService.linkPaymentToAllocations
+      && entitlementService.linkPaymentToAllocations.__unifiedDayPaymentAllocationScoped === true
+      && entitlementService.validatePaymentAllocations
+      && entitlementService.validatePaymentAllocations.__unifiedDayPaymentAllocationScoped === true
+      && entitlementService.markPaidFunding
+      && entitlementService.markPaidFunding.__unifiedDayPaymentAllocationScoped === true,
+    "Unified same-day payment can still bind consumed historical allocations from an earlier pickup cycle"
+  );
+  assertInstalled(
+    unifiedPaymentService.verifyUnifiedDayPaymentFlow
+      && unifiedPaymentService.verifyUnifiedDayPaymentFlow.__unifiedDayPaymentTerminalReleaseScoped === true,
+    "Unified same-day payment terminal release is not scoped to the current reservation cycle"
   );
   assertInstalled(
     premiumPaymentService.settlePaidPremiumExtraDayPayment
@@ -194,7 +209,7 @@ function verifyComposition() {
   assertInstalled(
     pickupService.getPickupAvailabilityForClient
       && pickupService.getPickupAvailabilityForClient.__pickupAvailabilityDiagnosticFailOpen === true,
-    "Pickup availability diagnostics can still break the Flutter read contract"
+    "Pickup availability diagnostics can still break Flutter pickup availability"
   );
   assertInstalled(
     pickupService.createSubscriptionPickupRequestForClient
@@ -213,6 +228,7 @@ function verifyComposition() {
     staticAddonSchemas: true,
     objectIdGuard: true,
     stableDaySlotMealReservation: true,
+    unifiedDayPaymentAllocationScope: true,
     paidPremiumStateConsistency: true,
     carryoverPricingCore: true,
     legacyCarryoverSuppressed: true,
@@ -253,6 +269,7 @@ function installSubscriptionBackendRepairComposition() {
     // Install before planning, Pickup, Delivery, payment, or recovery services
     // capture entitlement and paid-state functions by destructuring them.
     require("./installStableDayMealReservationIdentity");
+    require("./installUnifiedDayPaymentAllocationScope");
     require("./installPaidPremiumStateConsistency");
     state.legacyCarryoverProtection = suppressLegacyCarryoverWrappers();
     require("./installSubscriptionDailyAddonPolicy");
