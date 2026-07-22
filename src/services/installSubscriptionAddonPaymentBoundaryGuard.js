@@ -25,11 +25,6 @@ function positiveInteger(value) {
     : 0;
 }
 
-function nonNegativeInteger(value, fallback = 0) {
-  const parsed = Math.floor(Number(value));
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
-}
-
 function normalizeCurrency(value) {
   return clean(value || SYSTEM_CURRENCY).toUpperCase();
 }
@@ -41,16 +36,9 @@ function resolvePendingAddonPayableHalala(selection = {}) {
   const storedTotal = positiveInteger(selection.priceHalala);
   if (storedTotal > 0) return storedTotal;
 
-  const unitPriceHalala = positiveInteger(
-    selection.unitPriceHalala
-      || selection.referenceUnitPriceHalala
-      || selection.overageUnitPriceHalala
-  );
-  const paidQty = nonNegativeInteger(selection.paidQty, 0);
-  if (unitPriceHalala > 0 && paidQty > 0) {
-    return unitPriceHalala * paidQty;
-  }
-
+  // A unit/reference price is useful for display, but it is not enough to
+  // reconstruct a payable invoice safely after the persisted total was lost.
+  // Fail closed so stale or corrupted rows cannot become a free add-on.
   return 0;
 }
 
