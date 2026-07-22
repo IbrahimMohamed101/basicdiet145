@@ -2,6 +2,7 @@ process.env.DASHBOARD_JWT_SECRET = process.env.DASHBOARD_JWT_SECRET || "dashboar
 process.env.NODE_ENV = process.env.NODE_ENV || "test";
 
 require("dotenv").config();
+require("./customerTemporaryPasswordPolicy.test");
 
 const assert = require("assert");
 const mongoose = require("mongoose");
