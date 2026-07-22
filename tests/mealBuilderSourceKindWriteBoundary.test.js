@@ -79,10 +79,31 @@ function testNestedAndResponseNormalization() {
   assert.strictEqual(lifecycle.published.sections[0].sourceKind, "visual_family");
 }
 
+function testPersistedUnknownAliasesUseCardStructure() {
+  const persisted = installer.normalizeQueryResult({
+    status: "draft",
+    sections: [
+      directSection("historical_direct_card_alias"),
+      optionSection("historical_option_card_alias"),
+    ],
+  });
+
+  assert.strictEqual(persisted.sections[0].sourceKind, "product_list");
+  assert.strictEqual(persisted.sections[1].sourceKind, "visual_family");
+
+  const malformed = installer.normalizeSectionByStructure({
+    key: "broken",
+    sectionType: "unknown_section_type",
+    sourceKind: "truly_unknown_source",
+  });
+  assert.strictEqual(malformed.sourceKind, "truly_unknown_source");
+}
+
 async function run() {
   try {
     await testUpdateBoundaryNormalizesWholeMixedDraft();
     testNestedAndResponseNormalization();
+    testPersistedUnknownAliasesUseCardStructure();
     console.log("meal builder sourceKind write boundary checks passed");
   } finally {
     mealBuilderConfigService.updateDraft = originalUpdateDraft;
