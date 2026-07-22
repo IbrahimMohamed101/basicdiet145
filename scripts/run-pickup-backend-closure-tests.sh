@@ -15,6 +15,9 @@ node tests/subscriptionBackendRepairComposition.test.js
 echo "[dashboard] verifying nullable menu UI compatibility"
 node tests/dashboardMenuUiNullCompatibility.test.js
 
+echo "[audit] verifying read-only entitlement integrity classifications"
+node tests/subscriptionEntitlementAuditService.test.js
+
 echo "[pickup] verifying startup installation"
 node tests/pickupEntitlementInstaller.test.js
 
