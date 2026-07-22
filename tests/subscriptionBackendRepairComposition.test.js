@@ -28,6 +28,7 @@ assert.deepStrictEqual(state.legacyCarryoverProtection, {
 assert.deepStrictEqual(verifyComposition(), {
   staticAddonSchemas: true,
   objectIdGuard: true,
+  stableDaySlotMealReservation: true,
   carryoverPricingCore: true,
   legacyCarryoverSuppressed: true,
   addonChoicesPricingCore: true,
@@ -42,6 +43,13 @@ assert.deepStrictEqual(verifyComposition(), {
 });
 assert.strictEqual(globalThis[STATE_KEY], state);
 assert.strictEqual(installSubscriptionBackendRepairComposition(), state, "composition re-entry after success must be idempotent");
+
+const entitlementService = require("../src/services/subscription/subscriptionMealEntitlementService");
+assert.strictEqual(
+  entitlementService.reserveDayEntitlements.__stableDaySlotIdentity,
+  true,
+  "day reservation identity must be day + slot, not planner revision"
+);
 
 const pickupService = require("../src/services/subscription/subscriptionPickupRequestClientService");
 assert.strictEqual(
