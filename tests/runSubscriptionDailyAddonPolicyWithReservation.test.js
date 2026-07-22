@@ -5,6 +5,7 @@ process.env.NODE_ENV = "test";
 require("../src/services/installSubscriptionDailyAddonPolicy");
 require("../src/services/installSubscriptionAddonReservationClosure");
 require("../src/services/installSubscriptionAddonReservationReconciliation");
+require("../src/services/installSubscriptionAddonOpsIdentityClosure");
 
 const dailyAddonService = require("../src/services/subscription/subscriptionDailyAddonService");
 const composedEnsure = dailyAddonService.ensureDailyAddonDefaultsForDay;
