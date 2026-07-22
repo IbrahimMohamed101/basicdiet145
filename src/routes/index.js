@@ -9,6 +9,7 @@ require("../services/installDashboardMealPlannerCardActionDecorator");
 require("../services/installDashboardMealPlannerTwoTypePolicy");
 require("../services/installDashboardMealBuilderDraftGuard");
 require("../services/installSubscriptionDailyAddonPolicy");
+require("../services/installSubscriptionAddonReservationClosure");
 
 const authRoutes = require("./auth");
 const dashboardAuthRoutes = require("./dashboardAuth");
