@@ -43,7 +43,7 @@ echo "[pickup] verifying legacy release crash replay is idempotent"
 node tests/subscriptionLegacyMealBalanceOperation.test.js
 
 echo "[pickup] verifying concurrent API idempotency-key replay"
-node tests/subscriptionPickupRequestClientService.test.js
+node tests/subscriptionPickupRequestIdempotency.integration.test.js
 
 echo "[pickup] verifying linked days cannot fall back to standalone debit"
 node tests/pickupLinkedDayNoFallback.test.js
