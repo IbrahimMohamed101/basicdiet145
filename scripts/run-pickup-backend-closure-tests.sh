@@ -42,6 +42,12 @@ node tests/pickupLocalizedNameGuard.test.js
 echo "[pickup] verifying cyclic ObjectId inputs at the canonical presentation boundary"
 node tests/pickupCanonicalObjectIdCoreGuard.test.js
 
+echo "[presentation] verifying Pickup and Delivery return each carb with its own grams"
+node tests/mealComponentGramsPresentation.test.js
+
+echo "[dates] verifying Pickup and Delivery share the KSA business-date cycle"
+node tests/pickupDeliveryBusinessDateCycle.test.js
+
 echo "[pickup] verifying same-day multi-cycle reservations, fulfillment, and next-day release"
 node tests/pickupMultiCyclePolicy.integration.test.js
 
