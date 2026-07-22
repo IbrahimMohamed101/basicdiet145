@@ -113,9 +113,9 @@ function testPendingAddonPricingInspection() {
   assert.strictEqual(payable.pendingCount, 1);
   assert.strictEqual(payable.totalHalala, 1900);
 
-  const recoverableStoredShape = boundary.inspectPendingAddonSelections({
+  const staleZeroTotal = boundary.inspectPendingAddonSelections({
     addonSelections: [{
-      addonId: "recoverable",
+      addonId: "stale-zero-total",
       source: "pending_payment",
       payableTotalHalala: 0,
       priceHalala: 0,
@@ -124,8 +124,8 @@ function testPendingAddonPricingInspection() {
       currency: "SAR",
     }],
   });
-  assert.strictEqual(recoverableStoredShape.valid, true);
-  assert.strictEqual(recoverableStoredShape.totalHalala, 1900);
+  assert.strictEqual(staleZeroTotal.valid, false);
+  assert.strictEqual(staleZeroTotal.error.code, "INVALID_ADDON_PRICE");
 
   const invalid = boundary.inspectPendingAddonSelections({
     addonSelections: [{
@@ -287,7 +287,7 @@ async function testZeroPriceIsRejectedBeforePaymentProvider() {
       paidQty: 1,
       coveredQty: 0,
       priceHalala: 0,
-      unitPriceHalala: 0,
+      unitPriceHalala: 1900,
       payableTotalHalala: 0,
       currency: "SAR",
     }],
