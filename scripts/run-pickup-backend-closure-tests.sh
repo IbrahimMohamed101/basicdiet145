@@ -54,6 +54,9 @@ node tests/subscriptionDailyAddonReservationLifecycle.test.js
 echo "[addons] verifying paid or pending explicit choices suppress duplicate daily defaults"
 node tests/subscriptionDailyAddonExplicitPriority.test.js
 
+echo "[addons] verifying daily defaults and accumulated wallet spend are separate"
+node tests/subscriptionDailyAddonCarryoverAuthority.test.js
+
 echo "[pickup] running entitlement, availability, integration, ObjectId, and bilingual contracts"
 npm run test:pickup-backend-closure
 
