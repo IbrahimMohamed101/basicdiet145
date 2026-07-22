@@ -1,7 +1,6 @@
 "use strict";
 
 const crypto = require("node:crypto");
-const Subscription = require("../../models/Subscription");
 const SubscriptionDay = require("../../models/SubscriptionDay");
 const SubscriptionMealReservationLock = require("../../models/SubscriptionMealReservationLock");
 
@@ -152,11 +151,15 @@ async function acquireReservationLock({ subscriptionId, day }) {
   for (let attempt = 0; attempt < RESERVATION_LOCK_WAIT_ATTEMPTS; attempt += 1) {
     const now = new Date();
     const leaseExpiresAt = new Date(now.getTime() + RESERVATION_LOCK_LEASE_MS);
-    const current = await SubscriptionMealReservationLock.findOne({ subscriptionDayId: dayId });
+    // The lock document deliberately uses the SubscriptionDay ObjectId as _id.
+    // MongoDB enforces _id uniqueness before any secondary unique index is built,
+    // so two fresh application instances cannot both create a lock at startup.
+    const current = await SubscriptionMealReservationLock.findById(dayId);
 
     if (!current) {
       try {
         const created = await SubscriptionMealReservationLock.create({
+          _id: dayId,
           subscriptionDayId: dayId,
           subscriptionId,
           date: clean(day.date),
@@ -172,7 +175,7 @@ async function acquireReservationLock({ subscriptionId, day }) {
     } else if (!lockIsActive(current, now)) {
       const acquired = await SubscriptionMealReservationLock.findOneAndUpdate(
         {
-          _id: current._id,
+          _id: dayId,
           $or: [
             { releasedAt: { $ne: null } },
             { leaseExpiresAt: { $lte: now } },
@@ -180,6 +183,7 @@ async function acquireReservationLock({ subscriptionId, day }) {
         },
         {
           $set: {
+            subscriptionDayId: dayId,
             subscriptionId,
             date: clean(day.date),
             token,
@@ -215,7 +219,6 @@ async function releaseReservationLock(lock) {
 
 function createStableDayEntitlementReservationService({
   originalService,
-  SubscriptionModel = Subscription,
   SubscriptionDayModel = SubscriptionDay,
 } = {}) {
   if (!originalService || typeof originalService.reserveDayEntitlements !== "function") {
