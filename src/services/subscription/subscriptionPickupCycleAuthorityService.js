@@ -673,6 +673,16 @@ async function acquireAppendOperation({ subscriptionId, day, date, userId, body 
     date,
     idempotencyKey,
   });
+  if (!existing) {
+    // Flutter creates a fresh key when a user manually retries an append. The
+    // logical slot keys and payload remain stable, so reuse the durable
+    // operation before assigning new server slot numbers or reserving again.
+    existing = await SubscriptionDayAppendOperation.findOne({
+      subscriptionId,
+      date,
+      requestHash,
+    }).sort({ createdAt: -1 });
+  }
   if (existing) {
     if (existing.requestHash !== requestHash) {
       throw serviceError("IDEMPOTENCY_CONFLICT", "idempotencyKey was already used with a different append payload", 409);
@@ -972,6 +982,7 @@ function attachWalletToOverview(result, wallet) {
 }
 
 module.exports = {
+  acquireAppendOperation,
   appendMealsWithAuthority,
   attachWalletToAvailability,
   attachWalletToOverview,

@@ -10,6 +10,7 @@ require("../src/services/installPickupEntitlementClosure");
 
 const Subscription = require("../src/models/Subscription");
 const SubscriptionDay = require("../src/models/SubscriptionDay");
+const SubscriptionDayAppendOperation = require("../src/models/SubscriptionDayAppendOperation");
 const SubscriptionPickupRequest = require("../src/models/SubscriptionPickupRequest");
 const {
   checkEntitlementInvariants,
@@ -21,6 +22,7 @@ const {
   fulfillSubscriptionPickupRequest,
 } = require("../src/services/fulfillmentService");
 const {
+  acquireAppendOperation,
   readWallet,
   releaseExpiredReservationsForSubscription,
   reserveMissingDaySlotAllocations,
@@ -269,6 +271,57 @@ async function testAppendAfterFirstFulfillmentAndSecondPickup() {
   });
 }
 
+async function testFlutterAppendRetryWithFreshKeyReusesCompletedOperation() {
+  const subscriptionId = new mongoose.Types.ObjectId();
+  const dayId = new mongoose.Types.ObjectId();
+  const userId = new mongoose.Types.ObjectId();
+  await insertSubscription({
+    subscriptionId,
+    userId,
+    dayId,
+    totalMeals: 14,
+    remainingMeals: 14,
+    reservedMeals: 0,
+    consumedMeals: 0,
+    allocations: [],
+  });
+  const day = await SubscriptionDay.findById(dayId).lean();
+  const mealSlots = [{
+    slotIndex: 5,
+    slotKey: "slot_5",
+    selectionType: "standard_meal",
+    proteinId: String(new mongoose.Types.ObjectId()),
+    carbs: [],
+  }];
+
+  const first = await acquireAppendOperation({
+    subscriptionId,
+    day,
+    date: DATE,
+    userId,
+    body: { mealSlots, idempotencyKey: "flutter-append-first-key" },
+  });
+  await SubscriptionDayAppendOperation.updateOne(
+    { _id: first._id },
+    { $set: { status: "completed", active: false, completedAt: new Date() } }
+  );
+
+  const replay = await acquireAppendOperation({
+    subscriptionId,
+    day: await SubscriptionDay.findById(dayId).lean(),
+    date: DATE,
+    userId,
+    body: { mealSlots, idempotencyKey: "flutter-append-retry-new-key" },
+  });
+  assert.strictEqual(String(replay._id), String(first._id));
+  assert.strictEqual(replay.status, "completed");
+  assert.strictEqual(
+    await SubscriptionDayAppendOperation.countDocuments({ subscriptionId, date: DATE }),
+    1,
+    "same Flutter append payload must have one durable operation even when the retry key changes"
+  );
+}
+
 async function testUncollectedMealsReturnNextBusinessDay() {
   const subscriptionId = new mongoose.Types.ObjectId();
   const dayId = new mongoose.Types.ObjectId();
@@ -420,6 +473,8 @@ async function run() {
   const mongod = await MongoMemoryServer.create();
   try {
     await mongoose.connect(mongod.getUri(), { dbName: "pickup-multi-cycle-policy" });
+    await testFlutterAppendRetryWithFreshKeyReusesCompletedOperation();
+    await mongoose.connection.dropDatabase();
     await testAppendAfterFirstFulfillmentAndSecondPickup();
     await mongoose.connection.dropDatabase();
     await testUncollectedMealsReturnNextBusinessDay();

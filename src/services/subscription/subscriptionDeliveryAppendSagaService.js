@@ -244,6 +244,13 @@ async function acquireOperation({ args, subscription, day, requestPayload }) {
     date: day.date,
     idempotencyKey,
   });
+  if (!operation) {
+    operation = await SubscriptionDayAppendOperation.findOne({
+      subscriptionId: subscription._id,
+      date: day.date,
+      requestHash,
+    }).sort({ createdAt: -1 });
+  }
 
   if (operation) {
     const legacyCompleted = !operation.requestPayload && operation.status === "completed";

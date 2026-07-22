@@ -330,7 +330,47 @@ async function releasePickupAllocationsPositional({
     : inferredMode;
 
   if (mode === "linked_day") {
-    const result = await clearLinkedClaimsPositional({
+    const foundKeys = new Set(allocations.map((allocation) => clean(allocation.allocationKey)));
+    const missingKeys = keys.filter((key) => !foundKeys.has(key));
+    if (missingKeys.length) {
+      throw serviceError(
+        "DATA_INTEGRITY_ERROR",
+        "Linked pickup entitlement allocation was not found",
+        409,
+        { missingAllocationKeys: missingKeys }
+      );
+    }
+    for (const allocation of allocations) {
+      if (!["reserved", "released"].includes(allocation.state)) {
+        throw serviceError(
+          "INVALID_PICKUP_REQUEST_STATE",
+          "Linked pickup entitlement cannot be released",
+          409,
+          { allocationKey: clean(allocation.allocationKey), state: allocation.state }
+        );
+      }
+      const claimId = clean(allocation.pickupRequestId);
+      if (allocation.state === "reserved" && claimId && claimId !== clean(pickupRequest._id)) {
+        throw serviceError(
+          "MEAL_SLOT_UNAVAILABLE",
+          "Linked pickup entitlement belongs to another pickup request",
+          409,
+          { allocationKey: clean(allocation.allocationKey), pickupRequestId: claimId }
+        );
+      }
+    }
+    let changedCount = 0;
+    for (const allocation of allocations) {
+      if (allocation.state === "released") continue;
+      const result = await transitionAllocation({
+        subscriptionId,
+        allocationKey: allocation.allocationKey,
+        toState: "released",
+        session,
+      });
+      if (result.changed) changedCount += 1;
+    }
+    await clearLinkedClaimsPositional({
       subscriptionId,
       pickupRequestId: pickupRequest._id,
       allocationKeys: keys,
@@ -338,7 +378,7 @@ async function releasePickupAllocationsPositional({
     });
     return {
       mode,
-      changedCount: Number(result.modifiedCount || 0),
+      changedCount,
       allocationKeys: keys,
     };
   }

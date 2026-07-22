@@ -130,12 +130,11 @@ function patchCarryoverPricing() {
   });
 }
 
-function appendRequestHash(args, existingSlotCount) {
+function appendRequestHash(args, _existingSlotCount) {
   const body = args.body || {};
   return crypto.createHash("sha256").update(JSON.stringify({
     subscriptionId: clean(args.subscriptionId),
     date: clean(args.date),
-    existingSlotCount,
     mealSlots: Array.isArray(body.mealSlots) ? body.mealSlots : [],
     addonsOneTime: body.addonsOneTime !== undefined ? body.addonsOneTime : body.oneTimeAddonSelections,
   })).digest("hex");
@@ -227,6 +226,13 @@ async function acquireDeliveryAppendOperation({ args, day, requestHash, expected
     date: args.date,
     idempotencyKey,
   });
+  if (!operation) {
+    operation = await SubscriptionDayAppendOperation.findOne({
+      subscriptionId: args.subscriptionId,
+      date: args.date,
+      requestHash,
+    }).sort({ createdAt: -1 });
+  }
   if (operation) {
     if (operation.requestHash !== requestHash) {
       return { error: { ok: false, status: 409, code: "IDEMPOTENCY_CONFLICT", message: "idempotencyKey was already used with a different append payload" } };

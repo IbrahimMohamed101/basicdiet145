@@ -139,9 +139,9 @@ async function testLinkedLifecycle() {
   assert.strictEqual(released.pickupRequest.baseAllocationMode, "linked_day");
 
   state = await readAllocation(subscriptionId, allocation.allocationKey);
-  assert.strictEqual(state.subscription.remainingMeals, 9, "canceling linked pickup must not refund the planned meal");
-  assert.strictEqual(state.subscription.reservedMeals, 1);
-  assert.strictEqual(state.allocation.state, "reserved");
+  assert.strictEqual(state.subscription.remainingMeals, 10, "canceling linked pickup must return the unfulfilled meal");
+  assert.strictEqual(state.subscription.reservedMeals, 0);
+  assert.strictEqual(state.allocation.state, "released");
   assert.strictEqual(state.allocation.pickupRequestId, null);
 
   const second = await createRequest({ subscriptionId, dayId, userId });
