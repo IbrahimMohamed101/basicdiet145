@@ -72,6 +72,9 @@ node tests/subscriptionOperationRecoveryService.test.js
 echo "[reads] verifying pickup reads never invoke cleanup commands"
 node tests/pickupReadOnlyPolicy.test.js
 
+echo "[reads] verifying optional diagnostics cannot break Flutter pickup availability"
+node tests/pickupAvailabilityDiagnosticFailOpen.test.js
+
 echo "[reads] verifying Ops and reconciliation diagnostics never mutate Mongo state"
 node tests/subscriptionReadOnlyQueries.integration.test.js
 
