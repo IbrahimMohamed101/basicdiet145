@@ -18,6 +18,9 @@ node tests/subscriptionBackendRepairComposition.test.js
 echo "[planner] allowing pooled meal and add-on credits on one valid subscription day"
 node tests/subscriptionPooledDayPlanningPolicy.test.js
 
+echo "[addons] resolving upcoming entitlements and blocking zero-value invoices"
+node tests/subscriptionAddonClientContract.test.js
+
 echo "[entitlements] preventing a Premium payment revision from reserving the same day slots twice"
 node tests/subscriptionStableDayMealReservation.test.js
 
