@@ -47,7 +47,7 @@ function requestedMealCount({ mealCount, selectedMealSlotIds, selectedPickupItem
     : (Array.isArray(request.selectedPickupItemIds) ? request.selectedPickupItemIds : []);
   return itemIds.filter((id) => {
     const value = clean(id).toLowerCase();
-    return value && !value.startsWith("addon_") && !value.startsWith("protein_");
+    return /^(?:slot|meal|meal_slot|pickup_item)[_-]?\d+$/.test(value);
   }).length;
 }
 
