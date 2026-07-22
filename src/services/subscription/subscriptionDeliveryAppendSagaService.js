@@ -20,7 +20,6 @@ const { logger } = require("../../utils/logger");
 
 const OPERATION_LEASE_MS = 5 * 60 * 1000;
 const RESUMABLE_STATUSES = new Set(["started", "day_saved", "credits_reserved", "addons_reserved"]);
-const TERMINAL_REPLAY_STATUSES = new Set(["completed", "payment_pending"]);
 
 function serviceError(code, message, status = 409, details = undefined) {
   const err = new Error(message);
@@ -190,14 +189,10 @@ function previousWasConfirmed(operation) {
   return snapshot.plannerState === "confirmed" || snapshot.planningState === "confirmed";
 }
 
-async function markOperation(operationId, set, options = {}) {
+async function markOperation(operationId, set, { incrementAttempt = false } = {}) {
   const update = { $set: set };
-  if (options.incrementAttempt) update.$inc = { attemptCount: 1 };
-  return SubscriptionDayAppendOperation.findByIdAndUpdate(
-    operationId,
-    update,
-    { new: true }
-  );
+  if (incrementAttempt) update.$inc = { attemptCount: 1 };
+  return SubscriptionDayAppendOperation.findByIdAndUpdate(operationId, update, { new: true });
 }
 
 async function releaseOperationLease(operation, { status, active = false, extra = {} } = {}) {
@@ -218,10 +213,7 @@ async function clearStaleStartedBlocker(blocker, day) {
       _id: blocker._id,
       active: true,
       status: "started",
-      $or: [
-        { leaseExpiresAt: null },
-        { leaseExpiresAt: { $lte: new Date() } },
-      ],
+      $or: [{ leaseExpiresAt: null }, { leaseExpiresAt: { $lte: new Date() } }],
     },
     {
       $set: {
@@ -240,9 +232,7 @@ async function clearStaleStartedBlocker(blocker, day) {
 
 async function acquireOperation({ args, subscription, day, requestPayload }) {
   const idempotencyKey = clean(args.body && args.body.idempotencyKey);
-  if (!idempotencyKey) {
-    throw serviceError("IDEMPOTENCY_KEY_REQUIRED", "idempotencyKey is required", 400);
-  }
+  if (!idempotencyKey) throw serviceError("IDEMPOTENCY_KEY_REQUIRED", "idempotencyKey is required", 400);
   const requestHash = hashAppendRequest({
     subscriptionId: subscription._id,
     date: day.date,
@@ -260,14 +250,13 @@ async function acquireOperation({ args, subscription, day, requestPayload }) {
     if (operation.requestHash !== requestHash && !legacyCompleted) {
       throw serviceError("IDEMPOTENCY_CONFLICT", "idempotencyKey was already used with a different append payload", 409);
     }
-    if (legacyCompleted) return operation;
+    if (legacyCompleted || operation.status === "completed") return operation;
     if (operation.status === "recovery_required") {
       throw serviceError("APPEND_RECOVERY_REQUIRED", "This append operation requires reconciliation before it can continue", 409, {
         operationId: clean(operation._id),
         failureStep: operation.failureStep,
       });
     }
-    if (operation.status === "completed") return operation;
     if (operation.status === "payment_pending" && requiresPayment(day)) return operation;
 
     if (["failed", "compensated"].includes(operation.status)) {
@@ -297,7 +286,7 @@ async function acquireOperation({ args, subscription, day, requestPayload }) {
     }
 
     if (operation.status === "payment_pending") {
-      operation = await SubscriptionDayAppendOperation.findOneAndUpdate(
+      return SubscriptionDayAppendOperation.findOneAndUpdate(
         { _id: operation._id, status: "payment_pending" },
         {
           $set: {
@@ -312,10 +301,9 @@ async function acquireOperation({ args, subscription, day, requestPayload }) {
         },
         { new: true }
       );
-      return operation;
     }
 
-    operation = await SubscriptionDayAppendOperation.findOneAndUpdate(
+    return SubscriptionDayAppendOperation.findOneAndUpdate(
       { _id: operation._id },
       {
         $set: {
@@ -328,13 +316,9 @@ async function acquireOperation({ args, subscription, day, requestPayload }) {
       },
       { new: true }
     );
-    return operation;
   }
 
-  let blocker = await SubscriptionDayAppendOperation.findOne({
-    subscriptionDayId: day._id,
-    active: true,
-  });
+  let blocker = await SubscriptionDayAppendOperation.findOne({ subscriptionDayId: day._id, active: true });
   if (blocker && await clearStaleStartedBlocker(blocker, day)) blocker = null;
   if (blocker) {
     if (blocker.status === "payment_pending") {
@@ -359,7 +343,6 @@ async function acquireOperation({ args, subscription, day, requestPayload }) {
   );
   const expectedSlotKeys = requestPayload.mealSlots.map((_slot, index) => `slot_${maxSlotIndex + index + 1}`);
   const leaseToken = crypto.randomUUID();
-
   try {
     return await SubscriptionDayAppendOperation.create({
       subscriptionId: subscription._id,
@@ -426,9 +409,6 @@ async function renewOperation(operation) {
 }
 
 async function setPlannerDraftForMutation(day, operation) {
-  if (!previousWasConfirmed(operation) && day.plannerState !== "confirmed" && day.planningState !== "confirmed") {
-    return day;
-  }
   if (day.plannerState !== "confirmed" && day.planningState !== "confirmed") return day;
   const updated = await SubscriptionDay.findOneAndUpdate(
     {
@@ -443,13 +423,27 @@ async function setPlannerDraftForMutation(day, operation) {
   return updated;
 }
 
-async function restorePlannerProjection({ dayId, expectedRevision, snapshot }) {
+async function restorePlannerProjection({
+  dayId,
+  expectedRevision,
+  snapshot,
+  restoreFullMetadata = true,
+} = {}) {
   const set = {
     plannerState: snapshot && snapshot.plannerState || "draft",
     planningState: snapshot && snapshot.planningState || snapshot && snapshot.plannerState || "draft",
   };
-  if (snapshot && snapshot.plannerMeta !== undefined) set.plannerMeta = snapshot.plannerMeta;
-  if (snapshot && snapshot.planningMeta !== undefined) set.planningMeta = snapshot.planningMeta;
+  if (restoreFullMetadata) {
+    if (snapshot && snapshot.plannerMeta !== undefined) set.plannerMeta = snapshot.plannerMeta;
+    if (snapshot && snapshot.planningMeta !== undefined) set.planningMeta = snapshot.planningMeta;
+  } else {
+    const plannerMeta = snapshot && snapshot.plannerMeta || {};
+    const planningMeta = snapshot && snapshot.planningMeta || {};
+    if (plannerMeta.confirmedAt !== undefined) set["plannerMeta.confirmedAt"] = plannerMeta.confirmedAt;
+    if (plannerMeta.confirmedByRole !== undefined) set["plannerMeta.confirmedByRole"] = plannerMeta.confirmedByRole;
+    if (planningMeta.confirmedAt !== undefined) set["planningMeta.confirmedAt"] = planningMeta.confirmedAt;
+    if (planningMeta.confirmedByRole !== undefined) set["planningMeta.confirmedByRole"] = planningMeta.confirmedByRole;
+  }
   const result = await SubscriptionDay.findOneAndUpdate(
     { _id: dayId, plannerRevisionHash: clean(expectedRevision), status: "open" },
     { $set: set },
@@ -482,9 +476,7 @@ async function releaseAllocationKeys({ subscriptionId, allocationKeys = [] }) {
   const keys = [...new Set(allocationKeys.map(clean).filter(Boolean))];
   let releasedCount = 0;
   for (const key of keys) {
-    const subscription = await Subscription.findById(subscriptionId)
-      .select("baseMealAllocations")
-      .lean();
+    const subscription = await Subscription.findById(subscriptionId).select("baseMealAllocations").lean();
     const allocation = (subscription && subscription.baseMealAllocations || [])
       .find((row) => clean(row && row.allocationKey) === key);
     if (!allocation || allocation.state === "released") continue;
@@ -494,11 +486,7 @@ async function releaseAllocationKeys({ subscriptionId, allocationKeys = [] }) {
         state: allocation.state,
       });
     }
-    const result = await transitionAllocation({
-      subscriptionId,
-      allocationKey: key,
-      toState: "released",
-    });
+    const result = await transitionAllocation({ subscriptionId, allocationKey: key, toState: "released" });
     if (result && result.changed) releasedCount += 1;
   }
   return { releasedCount };
@@ -567,6 +555,7 @@ async function compensateOperation({ operation, args, updateSelectionFn, failure
           dayId: day._id,
           expectedRevision: day.plannerRevisionHash,
           snapshot: operation.previousDaySnapshot,
+          restoreFullMetadata: true,
         });
       }
       await releaseOperationLease(operation, {
@@ -574,10 +563,7 @@ async function compensateOperation({ operation, args, updateSelectionFn, failure
         active: false,
         extra: { failedAt: new Date() },
       });
-      await lockService.releaseDayMutationLock({
-        subscriptionDayId: day._id,
-        token: operation.leaseToken,
-      });
+      await lockService.releaseDayMutationLock({ subscriptionDayId: day._id, token: operation.leaseToken });
       return { compensated: true, beforeDaySave: true };
     } catch (_err) {
       await releaseOperationLease(operation, {
@@ -623,6 +609,7 @@ async function compensateOperation({ operation, args, updateSelectionFn, failure
       dayId: revertedDay._id,
       expectedRevision: revertedDay.plannerRevisionHash,
       snapshot: operation.previousDaySnapshot,
+      restoreFullMetadata: true,
     });
     await releaseExtraAutomaticAddons({
       dayId: revertedDay._id,
@@ -640,10 +627,7 @@ async function compensateOperation({ operation, args, updateSelectionFn, failure
         compensationPlannerRevisionHash: clean(revertedDay.plannerRevisionHash),
       },
     });
-    await lockService.releaseDayMutationLock({
-      subscriptionDayId: day._id,
-      token: operation.leaseToken,
-    });
+    await lockService.releaseDayMutationLock({ subscriptionDayId: day._id, token: operation.leaseToken });
     return { compensated: true, reverseResult };
   } catch (err) {
     await releaseOperationLease(operation, {
@@ -727,6 +711,7 @@ function createDeliveryAppendSagaService({ faultInjector = null } = {}) {
   async function appendDeliveryMeals({ args, updateSelectionFn } = {}) {
     let operation = null;
     let step = "validate";
+    let reservationResult = null;
     try {
       const requestPayload = normalizeRequestPayload(args);
       if (!requestPayload.mealSlots.length) {
@@ -811,42 +796,44 @@ function createDeliveryAppendSagaService({ faultInjector = null } = {}) {
           paymentPendingAt: new Date(),
           leaseExpiresAt: null,
         });
-        await lockService.releaseDayMutationLock({
-          subscriptionDayId: day._id,
-          token: operation.leaseToken,
-        });
+        await lockService.releaseDayMutationLock({ subscriptionDayId: day._id, token: operation.leaseToken });
         return shapeAppendResponse({ args, operation, day: currentDay, idempotent: false, status: 402 });
       }
 
-      if (operation.status === "day_saved") {
+      if (operation.status === "day_saved" && previousWasConfirmed(operation)) {
         step = "credits_reserve";
         await renewOperation(operation);
-        if (previousWasConfirmed(operation)) {
-          currentDay = await restorePlannerProjection({
-            dayId: currentDay._id,
-            expectedRevision: currentDay.plannerRevisionHash,
-            snapshot: operation.previousDaySnapshot,
-          });
-        }
-        const reservation = await pickupAuthority.reserveMissingDaySlotAllocations({
+        currentDay = await restorePlannerProjection({
+          dayId: currentDay._id,
+          expectedRevision: currentDay.plannerRevisionHash,
+          snapshot: operation.previousDaySnapshot,
+          restoreFullMetadata: false,
+        });
+        reservationResult = await pickupAuthority.reserveMissingDaySlotAllocations({
           subscriptionId: args.subscriptionId,
           dayId: currentDay._id,
           slotKeys: operation.expectedSlotKeys,
         });
-        if ((reservation.allocationKeys || []).length !== operation.expectedSlotKeys.length) {
+        if ((reservationResult.allocationKeys || []).length !== operation.expectedSlotKeys.length) {
           throw serviceError("APPEND_ALLOCATION_MISMATCH", "Not all appended meal slots received an allocation", 409, {
             expectedSlotKeys: operation.expectedSlotKeys,
-            allocationKeys: reservation.allocationKeys || [],
+            allocationKeys: reservationResult.allocationKeys || [],
           });
         }
         operation = await markOperation(operation._id, {
           status: "credits_reserved",
-          allocationKeys: reservation.allocationKeys || [],
-          newlyChangedAllocationKeys: reservation.newlyChangedAllocationKeys || [],
+          allocationKeys: reservationResult.allocationKeys || [],
+          newlyChangedAllocationKeys: reservationResult.newlyChangedAllocationKeys || [],
           creditsReservedAt: new Date(),
         });
-        operation.__reservation = reservation;
-        await inject("after_credits_reserved", { operation, day: currentDay, reservation });
+        await inject("after_credits_reserved", { operation, day: currentDay, reservation: reservationResult });
+      } else if (operation.status === "day_saved") {
+        operation = await markOperation(operation._id, {
+          status: "credits_reserved",
+          allocationKeys: [],
+          newlyChangedAllocationKeys: [],
+          creditsReservedAt: new Date(),
+        });
       }
 
       if (operation.status === "credits_reserved") {
@@ -865,10 +852,12 @@ function createDeliveryAppendSagaService({ faultInjector = null } = {}) {
       if (!currentDay || !expectedSlotsPresent(currentDay, operation)) {
         throw serviceError("APPEND_PROJECTION_MISMATCH", "Appended meal slots disappeared before completion", 409);
       }
-      const reservation = operation.__reservation || {
-        wallet: await pickupAuthority.readWallet(args.subscriptionId),
-        reservedDelta: 0,
-      };
+      if (!reservationResult) {
+        reservationResult = {
+          wallet: await pickupAuthority.readWallet(args.subscriptionId),
+          reservedDelta: 0,
+        };
+      }
       operation = await releaseOperationLease(operation, {
         status: "completed",
         active: false,
@@ -880,16 +869,13 @@ function createDeliveryAppendSagaService({ faultInjector = null } = {}) {
           errorMessage: null,
         },
       });
-      await lockService.releaseDayMutationLock({
-        subscriptionDayId: day._id,
-        token: operation.leaseToken,
-      });
+      await lockService.releaseDayMutationLock({ subscriptionDayId: day._id, token: operation.leaseToken });
       return shapeAppendResponse({
         args,
         operation,
         day: currentDay,
         idempotent: false,
-        reservation,
+        reservation: reservationResult,
       });
     } catch (err) {
       if (operation) {
@@ -915,9 +901,7 @@ function createDeliveryAppendSagaService({ faultInjector = null } = {}) {
     }
   }
 
-  return {
-    appendDeliveryMeals,
-  };
+  return { appendDeliveryMeals };
 }
 
 const defaultService = createDeliveryAppendSagaService();
