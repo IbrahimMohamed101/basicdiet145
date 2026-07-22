@@ -77,7 +77,15 @@ jobs:
           cache: npm
       - run: npm ci --silent
       - name: Pickup backend closure suite
-        run: bash scripts/run-pickup-backend-closure-tests.sh
+        run: bash scripts/run-pickup-backend-closure-tests.sh 2>&1 | tee pickup-closure.log
+      - name: Upload closure log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pickup-closure-log
+          path: pickup-closure.log
+          if-no-files-found: ignore
+          retention-days: 7
       - name: App startup smoke test
         run: node -e "const { createApp } = require('./src/app'); const app = createApp(); if (!app) process.exit(1); console.log('app startup smoke passed')"
       - name: Publish final status
