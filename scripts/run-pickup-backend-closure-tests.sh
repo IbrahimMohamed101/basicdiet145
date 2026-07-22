@@ -15,6 +15,9 @@ node tests/subscriptionAddonStaticSchemaAuthority.test.js
 echo "[composition] verifying fail-closed subscription backend repair installation"
 node tests/subscriptionBackendRepairComposition.test.js
 
+echo "[ownership] resolving stale Flutter subscription ids without crossing customer boundaries"
+node tests/pickupSubscriptionOwnershipRecovery.test.js
+
 echo "[dashboard] verifying nullable menu UI compatibility"
 node tests/dashboardMenuUiNullCompatibility.test.js
 
