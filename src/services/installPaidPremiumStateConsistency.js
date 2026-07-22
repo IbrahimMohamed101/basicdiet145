@@ -13,6 +13,9 @@ function installPaidPremiumStateConsistency() {
     createPaidPremiumSettlementWrapper,
   } = require("./subscription/subscriptionPaidPremiumStateService");
   const {
+    createIdempotentPaidPremiumSettlementWrapper,
+  } = require("./subscription/subscriptionPaidPremiumIdempotentSettlementService");
+  const {
     createPaidPremiumBulkPlannerRecoveryWrapper,
     createPaidPremiumPlannerRecoveryWrapper,
   } = require("./subscription/subscriptionPaidPremiumRecoveryService");
@@ -22,6 +25,14 @@ function installPaidPremiumStateConsistency() {
     || premiumPaymentService.settlePaidPremiumExtraDayPayment.__paidPremiumStateSynchronized !== true
   ) {
     premiumPaymentService.settlePaidPremiumExtraDayPayment = createPaidPremiumSettlementWrapper(
+      premiumPaymentService.settlePaidPremiumExtraDayPayment
+    );
+  }
+  if (
+    premiumPaymentService.settlePaidPremiumExtraDayPayment
+    && premiumPaymentService.settlePaidPremiumExtraDayPayment.__paidPremiumSettlementIdempotent !== true
+  ) {
+    premiumPaymentService.settlePaidPremiumExtraDayPayment = createIdempotentPaidPremiumSettlementWrapper(
       premiumPaymentService.settlePaidPremiumExtraDayPayment
     );
   }
@@ -67,6 +78,10 @@ function installPaidPremiumStateConsistency() {
     settlementSynchronized: Boolean(
       premiumPaymentService.settlePaidPremiumExtraDayPayment
         && premiumPaymentService.settlePaidPremiumExtraDayPayment.__paidPremiumStateSynchronized === true
+    ),
+    settlementIdempotent: Boolean(
+      premiumPaymentService.settlePaidPremiumExtraDayPayment
+        && premiumPaymentService.settlePaidPremiumExtraDayPayment.__paidPremiumSettlementIdempotent === true
     ),
     updatePreservesPaidState: Boolean(
       selectionService.performDaySelectionUpdate
