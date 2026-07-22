@@ -24,6 +24,12 @@ node tests/subscriptionDailyAddonPolicy.integration.test.js
 echo "[addons] verifying explicit customer choices win over daily defaults"
 node tests/subscriptionDailyAddonSelectionPreference.test.js
 
+echo "[addons] verifying explicit subscription choices stay reserved until fulfillment"
+node tests/subscriptionDailyAddonReservationLifecycle.test.js
+
+echo "[addons] verifying paid or pending explicit choices suppress duplicate daily defaults"
+node tests/subscriptionDailyAddonExplicitPriority.test.js
+
 echo "[pickup] running entitlement, availability, integration, ObjectId, and bilingual contracts"
 npm run test:pickup-backend-closure
 
