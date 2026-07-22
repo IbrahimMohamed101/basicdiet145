@@ -1,6 +1,9 @@
 const { Router } = require("express");
 
 require("../services/installSubscriptionBackendRepairComposition");
+// Install after entitlement/payment composition but before any route module
+// captures payment initiation or settlement functions.
+require("../services/installSubscriptionAddonPaymentBoundaryGuard");
 require("../services/orders/installWeightPricingAuthority");
 require("../services/installDashboardCatalogCompatibility");
 require("../services/installDashboardMealBuilderFinalization");
