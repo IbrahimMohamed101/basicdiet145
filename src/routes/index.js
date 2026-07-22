@@ -1,5 +1,6 @@
 const { Router } = require("express");
 
+require("../services/installPickupCanonicalObjectIdCoreGuard");
 require("../services/orders/installWeightPricingAuthority");
 require("../services/installDashboardCatalogCompatibility");
 require("../services/installDashboardMealBuilderFinalization");
