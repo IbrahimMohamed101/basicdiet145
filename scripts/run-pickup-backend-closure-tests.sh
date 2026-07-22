@@ -18,6 +18,9 @@ node tests/pickupLocalizedNameGuard.test.js
 echo "[pickup] verifying same-day multi-cycle reservations, fulfillment, and next-day release"
 node tests/pickupMultiCyclePolicy.integration.test.js
 
+echo "[pickup] verifying crash recovery and concurrent idempotent replay"
+node tests/pickupRequestRecovery.integration.test.js
+
 echo "[addons] verifying final daily add-on runtime composition"
 node tests/subscriptionDailyAddonRuntimeComposition.test.js
 
