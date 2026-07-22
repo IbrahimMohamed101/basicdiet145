@@ -172,6 +172,11 @@ function verifyComposition() {
     "Pickup request crash recovery is not installed"
   );
   assertInstalled(
+    pickupService.getPickupAvailabilityForClient
+      && pickupService.getPickupAvailabilityForClient.__pickupAvailabilityDiagnosticFailOpen === true,
+    "Pickup availability diagnostics can still break the Flutter read contract"
+  );
+  assertInstalled(
     opsPayloadService.buildKitchenDetailsPayload
       && opsPayloadService.buildKitchenDetailsPayload.__stableAddonIdentity === true,
     "Ops add-on DTO stable identity mapper is not installed"
@@ -188,6 +193,7 @@ function verifyComposition() {
     readOnlyQueries: true,
     deliveryAppendSaga: true,
     pickupRequestRecovery: true,
+    pickupAvailabilityDiagnosticsFailOpen: true,
     stableOpsAddonIdentity: true,
   };
 }
