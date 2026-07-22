@@ -2,6 +2,7 @@
 
 require("./installPickupEntitlementClosure");
 
+const Subscription = require("../models/Subscription");
 const authority = require("./subscription/subscriptionPickupCycleAuthorityService");
 
 const INSTALL_KEY = Symbol.for("basicdiet.pickupMultiCyclePolicy.installed");
@@ -13,6 +14,33 @@ function wrapExport(target, name, factory) {
   const wrapped = factory(original);
   wrapped[WRAPPED_KEY] = true;
   target[name] = wrapped;
+}
+
+async function releaseExpiredForPickupSubscription(subscriptionId) {
+  if (!subscriptionId) return null;
+  const subscription = await Subscription.findById(subscriptionId)
+    .select("_id deliveryMode")
+    .lean();
+  if (!subscription || subscription.deliveryMode !== "pickup") return null;
+  return authority.releaseExpiredReservationsForSubscription({
+    subscriptionId: subscription._id,
+  });
+}
+
+async function releaseExpiredForPickupUser(userId) {
+  if (!userId) return null;
+  const subscription = await Subscription.findOne({
+    userId,
+    status: "active",
+    deliveryMode: "pickup",
+  })
+    .sort({ createdAt: -1 })
+    .select("_id")
+    .lean();
+  if (!subscription) return null;
+  return authority.releaseExpiredReservationsForSubscription({
+    subscriptionId: subscription._id,
+  });
 }
 
 function balanceEventForStatus(status) {
@@ -49,9 +77,7 @@ function patchPickupRequestService() {
   const service = require("./subscription/subscriptionPickupRequestClientService");
 
   wrapExport(service, "getPickupAvailabilityForClient", (original) => async function authoritativeAvailability(args = {}) {
-    await authority.releaseExpiredReservationsForSubscription({
-      subscriptionId: args.subscriptionId,
-    });
+    await releaseExpiredForPickupSubscription(args.subscriptionId);
     await authority.reconcileConfirmedDayAllocations({
       subscriptionId: args.subscriptionId,
       date: args.date,
@@ -62,9 +88,7 @@ function patchPickupRequestService() {
   });
 
   wrapExport(service, "createSubscriptionPickupRequestForClient", (original) => async function authoritativeCreate(args = {}) {
-    await authority.releaseExpiredReservationsForSubscription({
-      subscriptionId: args.subscriptionId,
-    });
+    await releaseExpiredForPickupSubscription(args.subscriptionId);
     await authority.reconcileConfirmedDayAllocations({
       subscriptionId: args.subscriptionId,
       date: args.date,
@@ -75,18 +99,14 @@ function patchPickupRequestService() {
   });
 
   wrapExport(service, "getSubscriptionPickupRequestStatusForClient", (original) => async function authoritativeStatus(args = {}) {
-    await authority.releaseExpiredReservationsForSubscription({
-      subscriptionId: args.subscriptionId,
-    });
+    await releaseExpiredForPickupSubscription(args.subscriptionId);
     const result = await original(args);
     const wallet = await authority.readWallet(args.subscriptionId);
     return attachLifecycleBalance(result, wallet);
   });
 
   wrapExport(service, "listSubscriptionPickupRequestsForClient", (original) => async function authoritativeList(args = {}) {
-    await authority.releaseExpiredReservationsForSubscription({
-      subscriptionId: args.subscriptionId,
-    });
+    await releaseExpiredForPickupSubscription(args.subscriptionId);
     const result = await original(args);
     const wallet = await authority.readWallet(args.subscriptionId);
     return {
@@ -102,7 +122,7 @@ function patchPickupRequestService() {
 function patchOverviewService() {
   const service = require("./subscription/subscriptionClientOverviewService");
   wrapExport(service, "buildCurrentSubscriptionOverview", (original) => async function authoritativeOverview(args = {}) {
-    await authority.releaseExpiredReservationsForUser({ userId: args.userId });
+    await releaseExpiredForPickupUser(args.userId);
     const result = await original(args);
     if (!result || !result.data || !result.data.subscriptionId) return result;
     const wallet = await authority.readWallet(result.data.subscriptionId);
@@ -153,4 +173,6 @@ module.exports = {
   patchOverviewService,
   patchPickupRequestService,
   patchPlanningService,
+  releaseExpiredForPickupSubscription,
+  releaseExpiredForPickupUser,
 };
