@@ -4,6 +4,9 @@ const {
   PREMIUM_LARGE_SALAD_PRESET_KEY,
   PROTEIN_FAMILY_KEYS,
 } = require("../config/mealPlannerContract");
+const {
+  addonSelectionLifecycleFields,
+} = require("./schemaFragments/subscriptionAddonLifecycleFields");
 
 const MealSlotSchema = new mongoose.Schema(
   {
@@ -193,7 +196,7 @@ const SubscriptionDaySchema = new mongoose.Schema(
         "fulfilled",
         "consumed_without_preparation",
         // Item 11: Terminal delivery failures.
-        // These statuses do NOT trigger automatic compensation. 
+        // These statuses do NOT trigger automatic compensation.
         // Compensation is strictly admin-controlled via explicit addition of days.
         "delivery_canceled",
         "canceled_at_branch",
@@ -262,6 +265,7 @@ const SubscriptionDaySchema = new mongoose.Schema(
         currency: { type: String, default: "SAR" },
         paymentId: { type: mongoose.Schema.Types.ObjectId, ref: "Payment", default: null },
         consumedAt: { type: Date, default: Date.now },
+        ...addonSelectionLifecycleFields(mongoose),
       },
     ],
     premiumUpgradeSelections: [
