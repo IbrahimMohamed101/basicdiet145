@@ -1,5 +1,6 @@
 "use strict";
 
+const Subscription = require("../models/Subscription");
 const resolver = require("./subscription/subscriptionPickupOwnershipResolverService");
 const { logger } = require("../utils/logger");
 
@@ -24,6 +25,20 @@ function clean(value) {
   }
 }
 
+function attachSession(query, session) {
+  return session && query && typeof query.session === "function"
+    ? query.session(session)
+    : query;
+}
+
+function serviceError(code, message, status = 409, details = undefined) {
+  const error = new Error(message);
+  error.code = code;
+  error.status = status;
+  if (details !== undefined) error.details = details;
+  return error;
+}
+
 function copyFunctionProperties(source, target) {
   for (const key of Reflect.ownKeys(source)) {
     if (["name", "length", "prototype", "arguments", "caller"].includes(String(key))) continue;
@@ -37,6 +52,38 @@ function copyFunctionProperties(source, target) {
   }
 }
 
+async function findAuthenticatedPickupSubscriptionByPlanAlias({
+  planId,
+  userId,
+  date = null,
+  session = null,
+  SubscriptionModel = Subscription,
+} = {}) {
+  const rows = await attachSession(
+    SubscriptionModel.find({
+      userId,
+      planId,
+      status: "active",
+      deliveryMode: "pickup",
+    }).sort({ createdAt: -1, _id: -1 }),
+    session
+  ).lean();
+
+  const eligible = rows.filter((row) => resolver.subscriptionIncludesDate(row, date));
+  if (eligible.length > 1) {
+    throw serviceError(
+      "PICKUP_SUBSCRIPTION_AMBIGUOUS",
+      "More than one active pickup subscription matches this plan for the authenticated account",
+      409,
+      {
+        messageAr: "يوجد أكثر من اشتراك استلام نشط لنفس الخطة على الحساب. يرجى التواصل مع الدعم.",
+        messageEn: "More than one active pickup subscription for this plan is linked to the account. Please contact support.",
+      }
+    );
+  }
+  return eligible[0] || null;
+}
+
 async function resolvePickupContextForRoute(args = {}) {
   try {
     return await resolver.resolvePickupSubscriptionContext({
@@ -47,6 +94,32 @@ async function resolvePickupContextForRoute(args = {}) {
     });
   } catch (error) {
     if (!error || error.code !== "NOT_FOUND") throw error;
+
+    // The current Flutter integration has historically sent planId in the route
+    // segment that is named subscriptionId. Resolve that alias only inside the
+    // authenticated user's own active pickup subscriptions and requested date.
+    const byPlanAlias = await findAuthenticatedPickupSubscriptionByPlanAlias({
+      planId: args.subscriptionId,
+      userId: args.userId,
+      date: args.date || null,
+      session: args.session || null,
+    });
+    if (byPlanAlias) {
+      logger.warn("pickup plan id resolved to authenticated subscription id", {
+        requestedPlanId: clean(args.subscriptionId),
+        resolvedSubscriptionId: clean(byPlanAlias._id),
+        userId: clean(args.userId),
+        date: clean(args.date),
+      });
+      return {
+        subscription: byPlanAlias,
+        subscriptionId: clean(byPlanAlias._id),
+        requestedSubscriptionId: clean(args.subscriptionId),
+        requestedPlanId: clean(args.subscriptionId),
+        resolution: "authenticated_plan_id_alias",
+        ownershipRecovered: false,
+      };
+    }
 
     // Flutter may retain an id from an overview response that was replaced or
     // deleted during account/subscription recovery. Never query another user's
@@ -75,6 +148,20 @@ async function resolvePickupContextForRoute(args = {}) {
   }
 }
 
+function decorateResolvedResult(result, context) {
+  if (!result || typeof result !== "object" || Array.isArray(result)) return result;
+  if (!context || context.resolution === "exact_owner") return result;
+  return {
+    ...result,
+    identifierResolution: {
+      requestedId: clean(context.requestedSubscriptionId),
+      requestedPlanId: clean(context.requestedPlanId) || null,
+      subscriptionId: clean(context.subscriptionId),
+      resolution: context.resolution,
+    },
+  };
+}
+
 function wrapPickupFunction(pickupService, functionName) {
   const original = pickupService && pickupService[functionName];
   if (typeof original !== "function") {
@@ -86,15 +173,17 @@ function wrapPickupFunction(pickupService, functionName) {
 
   const wrapped = async function pickupWithCanonicalAuthenticatedSubscription(args = {}) {
     const context = await resolvePickupContextForRoute(args);
-    return original({
+    const result = await original({
       ...args,
       subscriptionId: context.subscriptionId,
     });
+    return decorateResolvedResult(result, context);
   };
 
   copyFunctionProperties(original, wrapped);
   Object.defineProperty(wrapped, WRAPPED_KEY, { value: true });
   Object.defineProperty(wrapped, "__pickupSubscriptionOwnershipRecovery", { value: true });
+  Object.defineProperty(wrapped, "__pickupPlanIdCompatibility", { value: true });
   Object.defineProperty(wrapped, "__pickupOwnershipOriginal", { value: original });
   pickupService[functionName] = wrapped;
   return wrapped;
@@ -123,6 +212,8 @@ module.exports = {
   FUNCTION_NAMES,
   INSTALL_KEY,
   WRAPPED_KEY,
+  decorateResolvedResult,
+  findAuthenticatedPickupSubscriptionByPlanAlias,
   installPickupSubscriptionOwnershipRecovery,
   resolvePickupContextForRoute,
 };
