@@ -2,6 +2,7 @@
 
 const INSTALL_KEY = Symbol.for("basicdiet.subscriptionAddonClientContract.installed");
 const WRAPPED_KEY = Symbol.for("basicdiet.subscriptionAddonClientContract.wrapped");
+const LEGACY_DAILY_ADDON_WRAP_KEY = Symbol.for("basicdiet.subscriptionDailyAddonPolicy.wrapped");
 
 function clean(value) {
   return value === undefined || value === null ? "" : String(value).trim();
@@ -182,13 +183,44 @@ function wrapExport(target, name, factory) {
   return wrapped;
 }
 
+function installPricingCoreGuard(pricing) {
+  const originalCore = pricing.buildAddonChoicePricingPreviewCore
+    || pricing.buildAddonChoicePricingPreview;
+  if (typeof originalCore !== "function") {
+    throw new Error("subscriptionAddonPricingService.buildAddonChoicePricingPreviewCore is missing");
+  }
+  if (originalCore[WRAPPED_KEY]) {
+    pricing.buildAddonChoicePricingPreviewCore = originalCore;
+    pricing.buildAddonChoicePricingPreview = originalCore;
+    return originalCore;
+  }
+
+  const guardedCore = function guardedAddonPricingPreview(args = {}) {
+    return normalizeAddonPricingPreview(originalCore(args), args);
+  };
+  Object.defineProperty(guardedCore, WRAPPED_KEY, { value: true });
+  Object.defineProperty(guardedCore, "__original", { value: originalCore });
+  // The backend composition intentionally protects this exact canonical core
+  // from the deprecated carryover mutation wrapper. Keep both exported names
+  // identical so every later service captures the same non-mutating authority.
+  Object.defineProperty(guardedCore, LEGACY_DAILY_ADDON_WRAP_KEY, {
+    value: true,
+    configurable: true,
+  });
+  Object.defineProperty(guardedCore, "__legacyCarryoverProtected", {
+    value: true,
+    configurable: true,
+  });
+  pricing.buildAddonChoicePricingPreviewCore = guardedCore;
+  pricing.buildAddonChoicePricingPreview = guardedCore;
+  return guardedCore;
+}
+
 function installSubscriptionAddonClientContract() {
   if (globalThis[INSTALL_KEY]) return globalThis[INSTALL_KEY];
 
   const pricing = require("./subscription/subscriptionAddonPricingService");
-  wrapExport(pricing, "buildAddonChoicePricingPreview", (original) => function guardedAddonPricingPreview(args = {}) {
-    return normalizeAddonPricingPreview(original(args), args);
-  });
+  installPricingCoreGuard(pricing);
   wrapExport(pricing, "resolveAuthoritativeAddonUnitPriceHalala", (original) => function guardedAddonUnitPrice(product, options = {}) {
     const originalPrice = positiveHalala(original(product, { ...options, required: false }));
     const fallback = resolvePositiveAddonUnitPrice({
@@ -207,8 +239,8 @@ function installSubscriptionAddonClientContract() {
     return normalizeAddonCoverageRows(original(subscription));
   });
 
-  // Load the choices service only after pricing exports are guarded, because it
-  // captures buildAddonChoicePricingPreview during module initialization.
+  // Load the choices service only after the canonical pricing core is guarded,
+  // because it captures buildAddonChoicePricingPreview during initialization.
   const choices = require("./subscription/subscriptionAddonChoicesService");
   const {
     findCurrentActiveSubscriptionForUser,
@@ -239,6 +271,7 @@ function installSubscriptionAddonClientContract() {
     installedAt: new Date(),
     includesUpcomingSubscriptions: true,
     zeroAmountInvoicesBlocked: true,
+    pricingCoreIdentityPreserved: true,
     flutterRepositoryChanged: false,
   });
   globalThis[INSTALL_KEY] = state;
@@ -249,6 +282,7 @@ installSubscriptionAddonClientContract();
 
 module.exports = {
   INSTALL_KEY,
+  installPricingCoreGuard,
   installSubscriptionAddonClientContract,
   invalidAddonPriceError,
   normalizeAddonChoiceGroups,
