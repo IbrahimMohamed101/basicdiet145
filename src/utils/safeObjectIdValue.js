@@ -34,17 +34,36 @@ function safeObjectIdString(value, seen = new WeakSet()) {
   }
 }
 
+function createSanitizeContext(state = null) {
+  if (state && state.seen instanceof WeakMap) {
+    if (!(state.active instanceof WeakSet)) state.active = new WeakSet();
+    return state;
+  }
+  return {
+    seen: new WeakMap(),
+    active: new WeakSet(),
+  };
+}
+
 function sanitizeObjectIdCycles(value, state = null) {
-  const context = state || { seen: new WeakMap() };
+  const context = createSanitizeContext(state);
   if (value === undefined || value === null) return value;
   if (typeof value !== "object") return value;
   if (value instanceof Date) return new Date(value.getTime());
   if (typeof Buffer !== "undefined" && Buffer.isBuffer(value)) return Buffer.from(value);
   if (typeof value.toHexString === "function") return safeObjectIdString(value);
-  if (context.seen.has(value)) return null;
+
+  if (context.seen.has(value)) {
+    // Repeated references are common in pickup availability: the same item is
+    // exposed in pickupItems and again in sections.items. They are not cycles
+    // and must remain present. Only a reference to an object still being walked
+    // is a real cycle and should be cut.
+    return context.active.has(value) ? null : context.seen.get(value);
+  }
 
   const output = Array.isArray(value) ? [] : {};
   context.seen.set(value, output);
+  context.active.add(value);
 
   const source = !Array.isArray(value) && typeof value.toObject === "function"
     ? (() => {
@@ -57,8 +76,14 @@ function sanitizeObjectIdCycles(value, state = null) {
     })()
     : value;
 
-  if (source !== value && context.seen.has(source)) return context.seen.get(source);
-  if (source !== value && typeof source === "object" && source !== null) context.seen.set(source, output);
+  if (source !== value && typeof source === "object" && source !== null) {
+    if (context.seen.has(source) && context.active.has(source)) {
+      context.active.delete(value);
+      return null;
+    }
+    context.seen.set(source, output);
+    context.active.add(source);
+  }
 
   for (const key of Object.keys(source)) {
     const nested = source[key];
@@ -68,6 +93,11 @@ function sanitizeObjectIdCycles(value, state = null) {
       continue;
     }
     output[key] = sanitizeObjectIdCycles(nested, context);
+  }
+
+  context.active.delete(value);
+  if (source !== value && typeof source === "object" && source !== null) {
+    context.active.delete(source);
   }
   return output;
 }
