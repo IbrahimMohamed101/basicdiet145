@@ -29,6 +29,7 @@ assert.deepStrictEqual(verifyComposition(), {
   staticAddonSchemas: true,
   objectIdGuard: true,
   stableDaySlotMealReservation: true,
+  paidPremiumStateConsistency: true,
   carryoverPricingCore: true,
   legacyCarryoverSuppressed: true,
   addonChoicesPricingCore: true,
@@ -50,6 +51,17 @@ assert.strictEqual(
   true,
   "day reservation identity must be day + slot, not planner revision"
 );
+
+const premiumPaymentService = require("../src/services/subscription/premiumExtraDayPaymentService");
+assert.strictEqual(
+  premiumPaymentService.settlePaidPremiumExtraDayPayment.__paidPremiumStateSynchronized,
+  true,
+  "paid Premium settlement must update the day and parent subscription mirrors"
+);
+
+const selectionService = require("../src/services/subscription/subscriptionSelectionService");
+assert.strictEqual(selectionService.performDaySelectionUpdate.__preservesPaidPremiumState, true);
+assert.strictEqual(selectionService.performDaySelectionValidation.__preservesPaidPremiumState, true);
 
 const pickupService = require("../src/services/subscription/subscriptionPickupRequestClientService");
 assert.strictEqual(
