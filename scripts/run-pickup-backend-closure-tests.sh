@@ -27,6 +27,12 @@ node tests/pickupRequestRecovery.integration.test.js
 echo "[pickup] verifying linked days cannot fall back to standalone debit"
 node tests/pickupLinkedDayNoFallback.test.js
 
+echo "[delivery] verifying append saga installation order"
+node tests/subscriptionDeliveryAppendSagaInstaller.test.js
+
+echo "[delivery] verifying idempotency, compensation, payment, and revision conflicts"
+node tests/subscriptionDeliveryAppendSaga.test.js
+
 echo "[addons] verifying final daily add-on runtime composition"
 node tests/subscriptionDailyAddonRuntimeComposition.test.js
 
