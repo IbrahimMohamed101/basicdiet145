@@ -1,4 +1,8 @@
 const mongoose = require("mongoose");
+const {
+  canonicalSourceKind,
+  canonicalSourceKindForSection,
+} = require("../services/subscription/mealBuilderSourceKindCompatibility");
 
 const LocalizedStringSchema = new mongoose.Schema(
   {
@@ -21,6 +25,7 @@ const MealBuilderSectionSchema = new mongoose.Schema(
       enum: ["", "visual_family", "configurable_product", "product_list", "premium_visual"],
       default: "",
       trim: true,
+      set: canonicalSourceKind,
     },
     titleOverride: { type: LocalizedStringSchema, default: () => ({}) },
     productContextId: { type: mongoose.Schema.Types.ObjectId, ref: "MenuProduct", default: null },
@@ -46,6 +51,14 @@ const MealBuilderSectionSchema = new mongoose.Schema(
   },
   { _id: true }
 );
+
+MealBuilderSectionSchema.pre("validate", function canonicalizeSectionSourceKind() {
+  this.sourceKind = canonicalSourceKindForSection(
+    typeof this.toObject === "function"
+      ? this.toObject({ depopulate: true, getters: false, virtuals: false })
+      : this
+  );
+});
 
 const MealBuilderConfigSchema = new mongoose.Schema(
   {
@@ -77,6 +90,48 @@ const MealBuilderConfigSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+function normalizeSectionResult(section) {
+  if (!section || typeof section !== "object") return section;
+  const source = typeof section.toObject === "function"
+    ? section.toObject({ depopulate: true, getters: false, virtuals: false })
+    : section;
+  const sourceKind = canonicalSourceKindForSection(source);
+  if (typeof section.set === "function") {
+    section.set("sourceKind", sourceKind, { strict: false });
+  } else {
+    section.sourceKind = sourceKind;
+  }
+  return section;
+}
+
+function normalizeConfigResult(config) {
+  if (!config || typeof config !== "object") return config;
+  const sections = Array.isArray(config.sections) ? config.sections : [];
+  sections.forEach(normalizeSectionResult);
+  return config;
+}
+
+function normalizeQueryResult(result) {
+  if (Array.isArray(result)) {
+    result.forEach(normalizeConfigResult);
+    return result;
+  }
+  return normalizeConfigResult(result);
+}
+
+MealBuilderConfigSchema.post("init", function normalizeInitializedConfig(doc) {
+  normalizeConfigResult(doc);
+});
+MealBuilderConfigSchema.post("find", function normalizeFoundConfigs(result) {
+  normalizeQueryResult(result);
+});
+MealBuilderConfigSchema.post("findOne", function normalizeFoundConfig(result) {
+  normalizeQueryResult(result);
+});
+MealBuilderConfigSchema.post("findOneAndUpdate", function normalizeUpdatedConfig(result) {
+  normalizeQueryResult(result);
+});
 
 MealBuilderConfigSchema.index({ status: 1, isCurrent: 1, updatedAt: -1 });
 MealBuilderConfigSchema.index({ "sections.productContextId": 1 });
