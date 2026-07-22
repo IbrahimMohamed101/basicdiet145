@@ -56,6 +56,11 @@ require("./installPickupLocalizedCatalogGuard");
 // before route modules capture service functions.
 require("./installPickupCanonicalRuntimeGuard");
 const pickupEntitlementClosure = require("./installPickupEntitlementClosure");
+// Install the mutation-boundary guard after the atomic linked-claim primitive is
+// composed, but before the client service captures the balance reserve export.
+// Canonical Flutter pickup requests can therefore never fall back to a second
+// standalone debit when a planned day's ledger is missing or mismatched.
+require("./subscription/pickupLinkedDayMutationGuardService");
 require("./installPickupCanonicalQueryGuard");
 pickupEntitlementClosure.patchPickupClientService();
 
