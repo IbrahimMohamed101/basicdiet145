@@ -6,6 +6,9 @@ cd "$ROOT_DIR"
 
 export NODE_ENV=test
 
+echo "[baseline] running the repository test suite"
+npm test
+
 echo "[schema] verifying subscription add-on lifecycle fields are static"
 node tests/subscriptionAddonStaticSchemaAuthority.test.js
 
@@ -47,6 +50,9 @@ node tests/subscriptionPickupRequestIdempotency.integration.test.js
 
 echo "[pickup] verifying linked days cannot fall back to standalone debit"
 node tests/pickupLinkedDayNoFallback.test.js
+
+echo "[pickup] verifying Flutter linked-day requests cannot debit standalone or claim a mismatched slot"
+node tests/pickupLinkedDayMutationGuard.test.js
 
 echo "[delivery] verifying append saga installation order"
 node tests/subscriptionDeliveryAppendSagaInstaller.test.js
