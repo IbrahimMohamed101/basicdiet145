@@ -21,6 +21,9 @@ node tests/pickupMultiCyclePolicy.integration.test.js
 echo "[addons] verifying daily defaults, pooled carryover, fulfillment, skip, and no-show release"
 node tests/subscriptionDailyAddonPolicy.integration.test.js
 
+echo "[addons] verifying explicit customer choices win over daily defaults"
+node tests/subscriptionDailyAddonSelectionPreference.test.js
+
 echo "[pickup] running entitlement, availability, integration, ObjectId, and bilingual contracts"
 npm run test:pickup-backend-closure
 
