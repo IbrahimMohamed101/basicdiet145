@@ -18,9 +18,8 @@ node tests/pickupLocalizedNameGuard.test.js
 echo "[pickup] verifying same-day multi-cycle reservations, fulfillment, and next-day release"
 node tests/pickupMultiCyclePolicy.integration.test.js
 
-echo "[addons] verifying daily defaults, pooled carryover, fulfillment, skip, and no-show release"
-node --require ./tests/helpers/subscriptionAddonReservationClosure.js \
-  tests/subscriptionDailyAddonPolicy.integration.test.js
+echo "[addons] verifying daily defaults through the final backend composition"
+node tests/runSubscriptionDailyAddonPolicyWithReservation.test.js
 
 echo "[addons] verifying explicit customer choices win over daily defaults"
 node tests/subscriptionDailyAddonSelectionPreference.test.js
