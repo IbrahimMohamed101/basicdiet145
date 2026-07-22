@@ -6,6 +6,9 @@ cd "$ROOT_DIR"
 
 export NODE_ENV=test
 
+echo "[schema] verifying subscription add-on lifecycle fields are static"
+node tests/subscriptionAddonStaticSchemaAuthority.test.js
+
 echo "[composition] verifying fail-closed subscription backend repair installation"
 node tests/subscriptionBackendRepairComposition.test.js
 
