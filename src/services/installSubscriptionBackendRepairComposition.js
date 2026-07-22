@@ -120,6 +120,8 @@ function suppressLegacyCarryoverWrappers() {
 function verifyComposition() {
   const presentation = require("./subscription/pickupCanonicalPresentationService");
   const entitlementService = require("./subscription/subscriptionMealEntitlementService");
+  const premiumPaymentService = require("./subscription/premiumExtraDayPaymentService");
+  const selectionService = require("./subscription/subscriptionSelectionService");
   const pricingService = require("./subscription/subscriptionAddonPricingService");
   const addonChoicesService = require("./subscription/subscriptionAddonChoicesService");
   const dailyAddonService = require("./subscription/subscriptionDailyAddonService");
@@ -135,6 +137,18 @@ function verifyComposition() {
     entitlementService.reserveDayEntitlements
       && entitlementService.reserveDayEntitlements.__stableDaySlotIdentity === true,
     "Day meal entitlement reservation is still revision-dependent"
+  );
+  assertInstalled(
+    premiumPaymentService.settlePaidPremiumExtraDayPayment
+      && premiumPaymentService.settlePaidPremiumExtraDayPayment.__paidPremiumStateSynchronized === true,
+    "Paid Premium settlement does not synchronize SubscriptionDay and Subscription mirrors"
+  );
+  assertInstalled(
+    selectionService.performDaySelectionUpdate
+      && selectionService.performDaySelectionUpdate.__preservesPaidPremiumState === true
+      && selectionService.performDaySelectionValidation
+      && selectionService.performDaySelectionValidation.__preservesPaidPremiumState === true,
+    "Planner writes can downgrade an already-paid Premium selection"
   );
   assertInstalled(
     pricingService.buildAddonChoicePricingPreview === pricingService.buildAddonChoicePricingPreviewCore,
@@ -199,6 +213,7 @@ function verifyComposition() {
     staticAddonSchemas: true,
     objectIdGuard: true,
     stableDaySlotMealReservation: true,
+    paidPremiumStateConsistency: true,
     carryoverPricingCore: true,
     legacyCarryoverSuppressed: true,
     addonChoicesPricingCore: true,
@@ -236,8 +251,9 @@ function installSubscriptionBackendRepairComposition() {
     state.staticSchemaAuthority = verifyStaticAddonSchemas();
     require("./installPickupCanonicalObjectIdCoreGuard");
     // Install before planning, Pickup, Delivery, payment, or recovery services
-    // capture reserveDayEntitlements by destructuring it from the module.
+    // capture entitlement and paid-state functions by destructuring them.
     require("./installStableDayMealReservationIdentity");
+    require("./installPaidPremiumStateConsistency");
     state.legacyCarryoverProtection = suppressLegacyCarryoverWrappers();
     require("./installSubscriptionDailyAddonPolicy");
     require("./installSubscriptionAddonCarryoverAuthority");
