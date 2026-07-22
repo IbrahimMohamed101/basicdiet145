@@ -28,6 +28,35 @@ function nonNegativeInteger(value, fallback = 0) {
   return Number.isFinite(number) && number >= 0 ? number : fallback;
 }
 
+function plainSubscriptionView(subscription) {
+  if (!subscription || typeof subscription !== "object") return {};
+
+  let converted = null;
+  if (typeof subscription.toObject === "function") {
+    try {
+      converted = subscription.toObject({
+        depopulate: false,
+        flattenMaps: true,
+        flattenObjectIds: false,
+        getters: false,
+        virtuals: false,
+      });
+    } catch (_err) {
+      converted = null;
+    }
+  }
+
+  const mongooseDocumentData = subscription._doc && typeof subscription._doc === "object"
+    ? subscription._doc
+    : null;
+
+  return {
+    ...(mongooseDocumentData || {}),
+    ...(converted || {}),
+    ...subscription,
+  };
+}
+
 function completeMealSlotCount(day) {
   return (Array.isArray(day && day.mealSlots) ? day.mealSlots : []).filter(
     (slot) => slot && String(slot.status || "complete") === "complete"
@@ -91,9 +120,14 @@ function buildDayPooledMealBalance({ subscription, day, businessDate = null, bui
 function resolvePooledPlannerMax({ subscription, maxSlotCount = null } = {}) {
   const supplied = Number(maxSlotCount);
   const suppliedMax = Number.isFinite(supplied) ? Math.max(0, Math.floor(supplied)) : 0;
-  const totalMeals = nonNegativeInteger(subscription && subscription.totalMeals, 0);
-  const remainingMeals = nonNegativeInteger(subscription && subscription.remainingMeals, 0);
-  return Math.max(suppliedMax, totalMeals || remainingMeals);
+  const readableSubscription = plainSubscriptionView(subscription);
+  const totalMeals = nonNegativeInteger(readableSubscription.totalMeals, 0);
+  const remainingMeals = nonNegativeInteger(readableSubscription.remainingMeals, 0);
+  const balanceMax = nonNegativeInteger(
+    readableSubscription.mealBalance && readableSubscription.mealBalance.maxConsumableMealsNow,
+    0
+  );
+  return Math.max(suppliedMax, totalMeals || remainingMeals, balanceMax);
 }
 
 function normalizePlannerLimitResult(result) {
@@ -207,5 +241,6 @@ module.exports = {
   committedDayMealCount,
   installSubscriptionPooledDayPlanningPolicy,
   normalizePlannerLimitResult,
+  plainSubscriptionView,
   resolvePooledPlannerMax,
 };
