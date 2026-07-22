@@ -9,11 +9,14 @@ on:
       - "src/services/subscription/dashboardMealPlannerCardFacadeService.js"
       - "src/services/subscription/dashboardMealPlannerCanonicalService.js"
       - "src/services/subscription/dashboardMealPlannerDashboardService.js"
+      - "src/services/subscription/mealBuilderSourceKindCompatibility.js"
       - "tests/dashboardMealBuilderAuthoringCatalog.test.js"
       - "tests/dashboardMealBuilderOptionFamilyLifecycle.test.js"
+      - "tests/mealBuilderSourceKindCompatibility.test.js"
       - "tests/mealPlannerCardLifecycle.test.js"
       - "tests/dashboardMealPlannerProductionProducts.test.js"
       - "tests/dashboardMealBuilderFullMealEndToEnd.test.js"
+      - "package.json"
       - ".github/workflows/meal-builder-option-groups.yml"
   workflow_dispatch:
 
@@ -29,6 +32,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - name: Source kind compatibility
+            artifact: source-kind-compatibility
+            command: npm run test:meal-builder-source-kind
           - name: Authoritative authoring catalog
             artifact: authoring-catalog
             command: NODE_ENV=test node tests/dashboardMealBuilderAuthoringCatalog.test.js
