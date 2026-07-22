@@ -13,6 +13,7 @@ require("../services/installSubscriptionAddonReservationClosure");
 require("../services/installSubscriptionAddonReservationReconciliation");
 require("../services/installSubscriptionAddonOpsIdentityClosure");
 require("../services/installPickupRequestRecovery");
+require("../services/installSubscriptionDeliveryAppendSaga");
 
 const authRoutes = require("./auth");
 const dashboardAuthRoutes = require("./dashboardAuth");
