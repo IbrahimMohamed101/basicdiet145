@@ -2,6 +2,9 @@
 
 const SubscriptionPickupRequest = require("../../models/SubscriptionPickupRequest");
 const pickupBalanceService = require("./subscriptionPickupRequestBalanceService");
+const {
+  assertLinkedDayAllocationIntegrity,
+} = require("./pickupLinkedDayIntegrityService");
 
 const TERMINAL_STATUSES = new Set(["fulfilled", "no_show", "canceled"]);
 
@@ -116,6 +119,14 @@ async function recoverIncompletePickupReservation({
   }, { incAttempt: true, session }) || request;
 
   try {
+    await assertLinkedDayAllocationIntegrity({
+      subscriptionId: request.subscriptionId,
+      date: request.date,
+      mealCount,
+      pickupRequest: request,
+      session,
+    });
+
     const reservation = await pickupBalanceService.reserveSubscriptionMealsForPickupRequest({
       subscriptionId: request.subscriptionId,
       pickupRequestId: request._id,
