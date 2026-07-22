@@ -15,6 +15,12 @@ node tests/subscriptionAddonStaticSchemaAuthority.test.js
 echo "[composition] verifying fail-closed subscription backend repair installation"
 node tests/subscriptionBackendRepairComposition.test.js
 
+echo "[entitlements] preventing a Premium payment revision from reserving the same day slots twice"
+node tests/subscriptionStableDayMealReservation.test.js
+
+echo "[entitlements] verifying guarded repair of duplicated day-slot reservations"
+node tests/subscriptionDuplicateMealAllocationRepair.test.js
+
 echo "[ownership] resolving stale Flutter subscription ids without crossing customer boundaries"
 node tests/pickupSubscriptionOwnershipRecovery.test.js
 
