@@ -37,6 +37,7 @@ const SubscriptionDayAppendOperationSchema = new mongoose.Schema(
     allocationKeys: { type: [String], default: [] },
     previousPlannerRevisionHash: { type: String, default: "", trim: true },
     appliedPlannerRevisionHash: { type: String, default: "", trim: true },
+    previousDaySnapshot: { type: mongoose.Schema.Types.Mixed, default: null },
     startedAt: { type: Date, default: Date.now },
     completedAt: { type: Date, default: null },
     failedAt: { type: Date, default: null },
