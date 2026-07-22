@@ -33,6 +33,9 @@ node tests/subscriptionDeliveryAppendSagaInstaller.test.js
 echo "[delivery] verifying idempotency, compensation, payment, and revision conflicts"
 node tests/subscriptionDeliveryAppendSaga.test.js
 
+echo "[recovery] verifying only provably safe stale operations can be auto-recovered"
+node tests/subscriptionOperationRecoveryService.test.js
+
 echo "[reads] verifying pickup reads never invoke cleanup commands"
 node tests/pickupReadOnlyPolicy.test.js
 
