@@ -4,6 +4,9 @@ require("../services/installSubscriptionBackendRepairComposition");
 // Install after entitlement/payment composition but before any route module
 // captures payment initiation or settlement functions.
 require("../services/installSubscriptionAddonPaymentBoundaryGuard");
+// Operations cards are a food-preparation contract. Install before dashboard
+// route modules capture DTO builders or the canonical serializer.
+require("../services/dashboard/installKitchenPreparationContract");
 require("../services/orders/installWeightPricingAuthority");
 require("../services/installDashboardCatalogCompatibility");
 require("../services/installDashboardMealBuilderFinalization");
