@@ -4,7 +4,7 @@ This runbook verifies branch `fix/backend-entitlement-lifecycle` without changin
 
 ## 1. Select the exact branch and Node version
 
-The project supports Node 20. The repository already contains `.nvmrc`; Node 22 may run some commands but is not the supported verification runtime.
+The project supports Node 20. The repository contains `.nvmrc` and `.npmrc`; `npm ci` now fails on an unsupported Node version instead of continuing with an engine warning.
 
 ```bash
 nvm install 20
@@ -95,14 +95,64 @@ The contract baseline is:
 Basic-Diet/mobile_app@6e1be0b38272160bc377cedf391cf082d0f2abfa
 ```
 
-A failure prints the exact response path that is incompatible with the current Dart model.
+A failure prints the exact response path that is incompatible with the current Dart model. The validator rejects scalar coercions that Dart cannot parse, such as a string in a Boolean or integer field.
 
-## 5. Inspect stale operations — dry run
+## 5. Audit real subscription data — read only
+
+This audit has no write mode. It rejects `--apply`, `--execute`, and `--write` and only reads subscriptions, days, Pickup requests, Delivery append operations, and daily add-on operations.
+
+Audit one subscription first:
+
+```bash
+export MONGODB_URI='mongodb://.../basicdiet_test_copy'
+
+node scripts/audit-subscription-entitlements.js \
+  --subscription-id 'ACTIVE_SUBSCRIPTION_OBJECT_ID' \
+  --stale-minutes 5
+```
+
+Audit active subscriptions in a database copy:
+
+```bash
+node scripts/audit-subscription-entitlements.js \
+  --limit 200 \
+  --stale-minutes 5
+```
+
+Useful optional filters:
+
+```text
+--user-id USER_OBJECT_ID
+--all-statuses
+--fail-on-warning
+```
+
+It checks:
+
+```text
+totalMeals = remainingMeals + reservedMeals + consumedMeals + forfeitedMeals
+purchasedQty = remainingQty + reservedQty + consumedQty
+unique base allocation keys
+unique active day/slot meal allocations
+non-overlapping add-on reservation/consumed/released ledgers
+day selection settlement ↔ wallet ledger parity
+no consumed add-on before fulfillment
+no reserved add-on after fulfillment/skip/cancel/no-show
+incomplete Pickup reservations
+stale Delivery append and daily add-on operations
+```
+
+Exit codes:
+
+- `0`: no integrity errors were found.
+- `2`: integrity errors were found, or warnings were found with `--fail-on-warning`; no data was changed.
+- `1`: configuration, connection, or execution error.
+
+## 6. Inspect stale operations — dry run
 
 This command is read-only unless `--apply --confirm-safe-recovery` are both provided.
 
 ```bash
-export MONGODB_URI='mongodb://.../basicdiet_test_copy'
 node scripts/recover-subscription-operations.js \
   --type all \
   --stale-minutes 5 \
@@ -115,7 +165,7 @@ Exit codes:
 - `2`: one or more rows need an idempotent API retry or manual review; no data was changed.
 - `1`: configuration, connection, or execution error.
 
-## 6. Apply only provably safe recovery actions
+## 7. Apply only provably safe recovery actions
 
 Take a database backup first. Review the dry-run JSON and target one operation where possible.
 
@@ -136,7 +186,7 @@ The command applies only these conservative actions:
 
 It does not automatically compensate revision conflicts, missing days, missing ledgers, `day_saved`, or ambiguous `recovery_required` rows.
 
-## 7. Before/after balance verification
+## 8. Before/after balance verification
 
 For each real account used in write E2E, record these values before every action:
 
