@@ -15,6 +15,9 @@ node tests/subscriptionAddonStaticSchemaAuthority.test.js
 echo "[composition] verifying fail-closed subscription backend repair installation"
 node tests/subscriptionBackendRepairComposition.test.js
 
+echo "[planner] allowing pooled meal and add-on credits on one valid subscription day"
+node tests/subscriptionPooledDayPlanningPolicy.test.js
+
 echo "[entitlements] preventing a Premium payment revision from reserving the same day slots twice"
 node tests/subscriptionStableDayMealReservation.test.js
 
