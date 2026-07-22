@@ -5,6 +5,7 @@ const helmet = require("helmet");
 const cors = require("cors");
 const mongoose = require("mongoose");
 require("./services/installSubscriptionDayFullMealCompatibility");
+require("./services/installMealBuilderSourceKindCompatibility");
 const swaggerUi = require("swagger-ui-express");
 const routes = require("./routes");
 const paymentRoutes = require("./routes/payments");
@@ -116,7 +117,7 @@ async function resolveDatabaseReadiness() {
     return { ready: true, statusCode: 200, payload: { status: true, db: { state: "up" } } };
   } catch (err) {
     logger.error("Readiness DB ping failed", { error: err.message });
-    return { ready: false, statusCode: 503, payload: { ok: false, db: { state: "down" } } };
+    return { ready: false, statusCode: 503, payload: { ok: false, db: { state: "down" } };
   }
 }
 
