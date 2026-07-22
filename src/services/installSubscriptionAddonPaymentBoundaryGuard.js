@@ -241,6 +241,11 @@ function patchPaymentApplicationBoundary() {
 function installSubscriptionAddonPaymentBoundaryGuard() {
   if (globalThis[INSTALL_KEY]) return globalThis[INSTALL_KEY];
 
+  // This installer may be required directly by tests or future entry points.
+  // Ensure entitlement/payment composition has finished before loading services
+  // that destructure its patched exports.
+  require("./installSubscriptionBackendRepairComposition");
+
   const oneTimePlanning = require("./subscription/oneTimeAddonDayPlanningPaymentService");
   const unifiedDayPayment = require("./subscription/unifiedDayPaymentService");
   const legacyAddonPayment = require("./subscription/legacyOneTimeAddonPaymentService");
@@ -255,6 +260,7 @@ function installSubscriptionAddonPaymentBoundaryGuard() {
     installedAt: new Date(),
     zeroAmountInvoiceBlocked: true,
     zeroAmountSettlementBlocked: true,
+    compositionOrderVerified: true,
     flutterRepositoryChanged: false,
   });
   globalThis[INSTALL_KEY] = state;
