@@ -206,27 +206,16 @@ async function fulfillSubscriptionPickupRequest({ requestId, actorId = null, ses
     return { ok: false, code: "CREDITS_RELEASED", message: "Reserved pickup credits were already released" };
   }
 
-  if (pickupRequest.status !== "fulfilled") {
-    pickupRequest.status = "fulfilled";
-    pickupRequest.fulfilledAt = new Date();
-    if (actorId) {
-      pickupRequest.fulfilledByDashboardUserId = actorId;
-    }
-    await pickupRequest.save({ session });
-  }
-
+  // Railway may use standalone MongoDB, where a session has no rollback boundary.
+  // Consume the single-document entitlement ledger first. Every allocation
+  // transition is compare-and-set/idempotent, so a retry can safely complete the
+  // request projection without ever exposing a fulfilled request with unpaid debt.
+  let consumption;
   try {
-    const consumption = await consumeReservedPickupMeals({
+    consumption = await consumeReservedPickupMeals({
       pickupRequestId: pickupRequest._id,
       session,
     });
-    const currentRequest = await SubscriptionPickupRequest.findById(pickupRequest._id).session(session);
-    return {
-      ok: true,
-      alreadyFulfilled: Boolean(consumption.alreadyConsumed),
-      pickupRequest: currentRequest || pickupRequest,
-      consumedCredits: consumption.consumed ? consumption.mealCount : 0,
-    };
   } catch (err) {
     return {
       ok: false,
@@ -234,6 +223,51 @@ async function fulfillSubscriptionPickupRequest({ requestId, actorId = null, ses
       message: err.message || "Pickup request consumption failed",
     };
   }
+
+  const now = new Date();
+  const updated = await SubscriptionPickupRequest.findOneAndUpdate(
+    {
+      _id: pickupRequest._id,
+      status: { $in: ["ready_for_pickup", "fulfilled"] },
+      creditsConsumedAt: { $ne: null },
+      creditsReleasedAt: null,
+    },
+    {
+      $set: {
+        status: "fulfilled",
+        fulfilledAt: pickupRequest.fulfilledAt || now,
+        fulfilledByDashboardUserId: actorId || pickupRequest.fulfilledByDashboardUserId || null,
+        settlementReason: "fulfilled_consumed",
+        settlementBy: actorId ? String(actorId) : "dashboard",
+        settledAt: now,
+      },
+    },
+    { new: true, session }
+  );
+
+  if (!updated) {
+    const current = await SubscriptionPickupRequest.findById(pickupRequest._id).session(session);
+    if (current && current.status === "fulfilled" && current.creditsConsumedAt) {
+      return {
+        ok: true,
+        alreadyFulfilled: true,
+        pickupRequest: current,
+        consumedCredits: 0,
+      };
+    }
+    return {
+      ok: false,
+      code: "DATA_INTEGRITY_ERROR",
+      message: "Pickup credits were consumed but the request projection could not be finalized",
+    };
+  }
+
+  return {
+    ok: true,
+    alreadyFulfilled: Boolean(consumption.alreadyConsumed),
+    pickupRequest: updated,
+    consumedCredits: consumption.consumed ? Number(consumption.mealCount || 0) : 0,
+  };
 }
 
 module.exports = { fulfillSubscriptionDay, fulfillSubscriptionPickupRequest };
