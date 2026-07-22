@@ -9,7 +9,11 @@ const {
   resolveBalances,
   validateBalances,
   validateCounts,
+  validateSubscriptionCanDeduct,
 } = require("../src/services/dashboard/manualDeduction/manualDeductionPolicy");
+const {
+  buildDeductionAtomicMutation,
+} = require("../src/services/dashboard/manualDeduction/manualDeductionRepository");
 
 const ADDON_ID = new mongoose.Types.ObjectId();
 
@@ -156,6 +160,30 @@ function run() {
     () => validateBalances(insufficient, validateCounts({ regularMeals: 0, premiumMeals: 0, addons: [{ addonId: ADDON_ID, qty: 8 }] })),
     "INSUFFICIENT_ADDON_BALANCE"
   );
+  expectCode(
+    () => validateCounts({ regularMeals: Number.MAX_SAFE_INTEGER + 1, premiumMeals: 0 }),
+    "INVALID_MEAL_COUNT"
+  );
+  expectCode(
+    () => validateCounts({ regularMeals: 1, premiumMeals: 0, addons: { addonId: ADDON_ID, qty: 1 } }),
+    "INVALID_ADDON_COUNT"
+  );
+  expectCode(
+    () => validateSubscriptionCanDeduct({
+      status: "active",
+      startDate: new Date("2026-08-01T00:00:00.000Z"),
+      validityEndDate: new Date("2026-08-07T00:00:00.000Z"),
+    }, "2026-07-22"),
+    "SUBSCRIPTION_OUTSIDE_VALIDITY"
+  );
+  expectCode(
+    () => validateCounts({
+      regularMeals: 1,
+      premiumMeals: 0,
+      addons: Array.from({ length: 51 }, (_, index) => ({ addonId: new mongoose.Types.ObjectId(), qty: index + 1 })),
+    }),
+    "INVALID_ADDON_COUNT"
+  );
 
   const operations = [
     ...Array.from({ length: 10 }, () => ({ regularMeals: 1, premiumMeals: 0 })),
@@ -167,6 +195,43 @@ function run() {
     for (const operation of deterministicShuffle(operations, seed)) consume(randomized, operation);
     assertBalances(randomized, { total: 0, regular: 0, premium: 0, addon: 0, addonConsumed: 7 });
   }
+
+  const ledgerSubscription = {
+    ...subscriptionFixture(),
+    entitlementVersion: 2,
+    reservedMeals: 0,
+    consumedMeals: 0,
+    forfeitedMeals: 0,
+  };
+  const ledgerCounts = validateCounts({
+    regularMeals: 1,
+    premiumMeals: 2,
+    addons: [{ addonId: ADDON_ID, qty: 2 }],
+  });
+  const ledgerMutation = buildDeductionAtomicMutation({
+    subscription: ledgerSubscription,
+    counts: ledgerCounts,
+  });
+  assert.strictEqual(ledgerMutation.filter.entitlementVersion, 2);
+  assert.strictEqual(ledgerMutation.update.$inc.remainingMeals, -3);
+  assert.strictEqual(ledgerMutation.update.$inc.consumedMeals, 3);
+  assert.strictEqual(
+    ledgerMutation.update.$inc["addonBalance.$[a0].remainingQty"],
+    -2
+  );
+  assert.strictEqual(
+    Object.entries(ledgerMutation.update.$inc)
+      .filter(([key, value]) => key.includes("premiumBalance") && value < 0)
+      .reduce((sum, [, value]) => sum + Math.abs(value), 0),
+    2
+  );
+
+  const legacyMutation = buildDeductionAtomicMutation({
+    subscription: subscriptionFixture(),
+    counts: validateCounts({ regularMeals: 1, premiumMeals: 0 }),
+  });
+  assert.strictEqual(legacyMutation.update.$inc.consumedMeals, undefined);
+  assert(legacyMutation.filter.$and.some((clause) => Array.isArray(clause.$or)));
 
   console.log("✅ manual deduction balance policy matrix passed (50 mixed orderings)");
 }

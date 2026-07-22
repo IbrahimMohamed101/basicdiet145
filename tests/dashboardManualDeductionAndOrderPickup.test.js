@@ -26,6 +26,7 @@ const TEST_PHONES = [
   "+966500001003",
   "+966500001004",
   "+966500001005",
+  "+966500001006",
 ];
 
 let app;
@@ -143,6 +144,11 @@ async function createSubscription({ user = customer, deliveryMode = "pickup", st
     validityEndDate: new Date(Date.now() + 30 * 86400000),
     totalMeals: 10,
     remainingMeals,
+    entitlementVersion: 2,
+    reservedMeals: 0,
+    consumedMeals: 10 - remainingMeals,
+    forfeitedMeals: 0,
+    baseMealAllocations: [],
     selectedMealsPerDay: 2,
     deliveryMode,
     premiumBalance: premiumRemaining.map((remainingQty, index) => ({
@@ -230,6 +236,7 @@ async function testManualSubscriptionSearchAndPickupDeductions() {
   assert.deepStrictEqual(res.body.data.remaining, { regularMeals: 4, premiumMeals: 0, totalMeals: 4, addons: [] });
 
   const refreshedAfterPremium = await Subscription.findById(sub._id).lean();
+  assert.strictEqual(refreshedAfterPremium.consumedMeals, 6, "canonical consumed counter updated with the debit");
   assert.strictEqual(refreshedAfterPremium.premiumBalance.reduce((sum, row) => sum + Number(row.remainingQty || 0), 0), 0, "premium remaining deducted");
   assert.strictEqual(refreshedAfterPremium.premiumBalance.reduce((sum, row) => sum + Number(row.consumedQty || 0), 0), 2, "premium consumed incremented");
 
@@ -345,8 +352,34 @@ async function testConcurrentDeductionCannotOverspend() {
   assert.deepStrictEqual(statuses, [200, 409], "one concurrent deduction wins and one fails");
   const refreshed = await Subscription.findById(sub._id).lean();
   assert.strictEqual(refreshed.remainingMeals, 0, "remaining total not overspent");
+  assert.strictEqual(refreshed.consumedMeals, 10, "concurrent winner keeps canonical meal ledger balanced");
   assert.strictEqual(refreshed.premiumBalance.reduce((sum, row) => sum + Number(row.remainingQty || 0), 0), 0, "premium not overspent");
   assert.strictEqual(refreshed.premiumBalance.reduce((sum, row) => sum + Number(row.consumedQty || 0), 0), 1, "premium consumed once");
+}
+
+async function testLegacyCashierRouteUsesCanonicalPolicy() {
+  const legacyUser = await User.create({ phone: "+966500001006", name: "Legacy Cashier Customer", role: "client", isActive: true });
+  const sub = await createSubscription({ user: legacyUser, deliveryMode: "pickup", remainingMeals: 2, premiumRemaining: [1] });
+
+  let res = await auth(request(app).post("/api/dashboard/ops/cashier/customer-consumption"))
+    .send({ phone: legacyUser.phone, subscriptionId: String(sub._id), mealCount: 2 });
+  assert.strictEqual(res.status, 409, "legacy route cannot silently spend Premium balance as regular meals");
+  await assertError(res, "INSUFFICIENT_REGULAR_MEALS");
+
+  res = await auth(request(app).post("/api/dashboard/ops/cashier/customer-consumption"))
+    .send({ phone: legacyUser.phone, subscriptionId: String(sub._id), mealCount: 1 });
+  assert.strictEqual(res.status, 200, "legacy route delegates a valid regular deduction");
+
+  const refreshed = await Subscription.findById(sub._id).lean();
+  assert.strictEqual(refreshed.remainingMeals, 1);
+  assert.strictEqual(refreshed.consumedMeals, 9);
+  assert.strictEqual(refreshed.premiumBalance[0].remainingQty, 1, "legacy regular deduction preserves Premium balance");
+
+  res = await auth(
+    request(app).post("/api/dashboard/ops/cashier/customer-consumption"),
+    kitchenToken
+  ).send({ phone: legacyUser.phone, subscriptionId: String(sub._id), mealCount: 1 });
+  assert.strictEqual(res.status, 403, "kitchen cannot use the legacy manual-deduction alias");
 }
 
 async function run() {
@@ -357,6 +390,7 @@ async function run() {
     await testDeliveryOncePerBusinessDay();
     await testValidationFailures();
     await testConcurrentDeductionCannotOverspend();
+    await testLegacyCashierRouteUsesCanonicalPolicy();
     console.log("✅ dashboard manual deduction and one-time pickup tests passed");
   } finally {
     await cleanup();

@@ -42,7 +42,7 @@ function createManualDeductionCommandService({ repository, getBusinessDate, runT
     try {
       return await runTransactionWithRetry(async (session) => {
         const subscription = await repository.findSubscriptionById(subscriptionId, session);
-        validateSubscriptionCanDeduct(subscription);
+        validateSubscriptionCanDeduct(subscription, businessDate);
         await validateSubscriptionCustomerExists(subscription, session);
         await ensureNoDeliveryDeductionToday(subscription, businessDate, session);
         const before = validateBalances(subscription, counts);

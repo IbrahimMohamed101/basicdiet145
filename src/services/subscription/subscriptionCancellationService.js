@@ -64,6 +64,51 @@ function resolveRuntime(runtime = null) {
   return { ...defaultRuntime, ...runtime };
 }
 
+function entitlementVersionGuard(subscription) {
+  if (Number(subscription && subscription.entitlementVersion || 0) >= 2) {
+    return { entitlementVersion: subscription.entitlementVersion };
+  }
+  return {
+    $or: [
+      { entitlementVersion: { $exists: false } },
+      { entitlementVersion: null },
+      { entitlementVersion: { $lt: 2 } },
+    ],
+  };
+}
+
+function buildCancellationBalanceUpdate(subscription, creditsToForfeit) {
+  const quantity = Math.max(0, Number(creditsToForfeit || 0));
+  const increment = { remainingMeals: -quantity };
+  if (Number(subscription && subscription.entitlementVersion || 0) >= 2) {
+    increment.forfeitedMeals = quantity;
+  }
+  return { $inc: increment };
+}
+
+function buildCancellationFallbackUpdate(subscription, preservedCredits, canceledAt, replacementSet) {
+  const statusFields = {
+    status: "canceled",
+    canceledAt,
+    ...replacementSet,
+  };
+  if (Number(subscription && subscription.entitlementVersion || 0) < 2) {
+    return { $set: { remainingMeals: preservedCredits, ...statusFields } };
+  }
+  return [{
+    $set: {
+      ...statusFields,
+      forfeitedMeals: {
+        $add: [
+          { $ifNull: ["$forfeitedMeals", 0] },
+          { $max: [0, { $subtract: ["$remainingMeals", preservedCredits] }] },
+        ],
+      },
+      remainingMeals: { $min: ["$remainingMeals", preservedCredits] },
+    },
+  }];
+}
+
 async function cancelSubscriptionDomain({
   subscriptionId,
   actor,
@@ -210,15 +255,18 @@ async function cancelSubscriptionDomain({
     
     // Atomic update to avoid in-memory read-then-write race conditions
     // Try $inc first to preserve any concurrent deductions
-    const updateQuery = { _id: subscription._id };
+    const updateQuery = {
+      _id: subscription._id,
+      ...entitlementVersionGuard(subscription),
+    };
     if (creditsToForfeit > 0) {
       updateQuery.remainingMeals = { $gte: creditsToForfeit };
     }
 
     let updatedSub = await Subscription.findOneAndUpdate(
       updateQuery,
-      { 
-        $inc: { remainingMeals: -creditsToForfeit },
+      {
+        ...buildCancellationBalanceUpdate(subscription, creditsToForfeit),
         $set: { 
           status: "canceled", 
           canceledAt,
@@ -231,17 +279,25 @@ async function cancelSubscriptionDomain({
     if (!updatedSub && creditsToForfeit > 0) {
       // Fallback: if balance dropped concurrently below the forfeit amount, force it to preservedCredits
       updatedSub = await Subscription.findOneAndUpdate(
-        { _id: subscription._id },
-        { 
-          $set: { 
-            remainingMeals: preservedCredits, 
-            status: "canceled", 
-            canceledAt,
-            ...replacementSet,
-          } 
+        {
+          _id: subscription._id,
+          ...entitlementVersionGuard(subscription),
         },
+        buildCancellationFallbackUpdate(
+          subscription,
+          preservedCredits,
+          canceledAt,
+          replacementSet
+        ),
         { session, new: true }
       );
+    }
+
+    if (!updatedSub) {
+      const err = new Error("Subscription balance changed during cancellation");
+      err.code = "SUBSCRIPTION_BALANCE_CONFLICT";
+      err.status = 409;
+      throw err;
     }
     
     subscription.remainingMeals = updatedSub ? updatedSub.remainingMeals : preservedCredits;
@@ -280,5 +336,8 @@ async function cancelSubscriptionDomain({
 }
 
 module.exports = {
+  buildCancellationBalanceUpdate,
+  buildCancellationFallbackUpdate,
   cancelSubscriptionDomain,
+  entitlementVersionGuard,
 };

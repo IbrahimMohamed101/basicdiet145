@@ -6,13 +6,13 @@
  * Provides the cashier-dashboard flow for manually recording meal consumption
  * for a customer identified by phone number.
  *
- * This is the ONLY authorised path for manual (non-fulfillment) meal deductions
- * under the new TOTAL_BALANCE_WITHIN_VALIDITY policy.
+ * Kept as a compatibility adapter for the older cashier endpoint. The
+ * canonical manualSubscriptionDeductionService is the only balance writer.
  */
 
 const User = require("../../models/User");
 const Subscription = require("../../models/Subscription");
-const { consumeSubscriptionMealBalance } = require("../subscription/subscriptionDayConsumptionService");
+const manualDeductionService = require("./manualSubscriptionDeductionService");
 const dateUtils = require("../../utils/date");
 
 /**
@@ -45,6 +45,9 @@ async function getActiveSubscriptionsForUser(userId) {
 function serializeSubscriptionForCashier(sub) {
   const remainingMeals = Number(sub.remainingMeals || 0);
   const totalMeals = Number(sub.totalMeals || 0);
+  const consumedMeals = Number(sub.entitlementVersion || 0) >= 2
+    ? Math.max(0, Number(sub.consumedMeals || 0))
+    : Math.max(0, totalMeals - remainingMeals);
 
   const validityStartDate = sub.startDate
     ? dateUtils.toKSADateString(sub.startDate)
@@ -55,6 +58,7 @@ function serializeSubscriptionForCashier(sub) {
 
   const today = dateUtils.getTodayKSADate();
   const canConsumeNow = sub.status === "active"
+    && (!validityStartDate || today >= validityStartDate)
     && (!validityEndDate || today <= validityEndDate);
 
   return {
@@ -62,7 +66,7 @@ function serializeSubscriptionForCashier(sub) {
     status: sub.status,
     remainingMeals,
     totalMeals,
-    consumedMeals: Math.max(0, totalMeals - remainingMeals),
+    consumedMeals,
     validityStartDate,
     validityEndDate,
     dailyMealsDefault: Number(sub.selectedMealsPerDay || sub.mealsPerDay || 0),
@@ -190,15 +194,19 @@ async function recordCashierConsumption({
     throw err;
   }
 
-  // 6. Execute deduction via the centralized function
-  const result = await consumeSubscriptionMealBalance({
+  // Compatibility wrapper only. The canonical command owns balance
+  // classification, atomic updates, delivery policy and audit logging. Because
+  // this old payload has no Premium selector, mealCount is always regular.
+  const result = await manualDeductionService.manualDeduction({
     subscriptionId: targetSub._id,
-    subscription: targetSub,
-    mealCount: count,
-    source: "cashier_dashboard",
-    actor,
-    reason: "cashier_manual_consumption",
-    note,
+    body: {
+      regularMeals: count,
+      premiumMeals: 0,
+      reason: "cashier_manual_consumption",
+      notes: note,
+    },
+    actorId: actor && actor.actorId,
+    actorRole: actor && actor.actorType,
   });
 
   return {
@@ -209,8 +217,8 @@ async function recordCashierConsumption({
     },
     subscription: {
       id: String(targetSub._id),
-      remainingMealsBefore: result.remainingMealsBefore,
-      remainingMealsAfter: result.remainingMealsAfter,
+      remainingMealsBefore: Number(targetSub.remainingMeals || 0),
+      remainingMealsAfter: Number(result.remaining.totalMeals || 0),
       validityStartDate: targetSub.startDate
         ? dateUtils.toKSADateString(targetSub.startDate)
         : null,

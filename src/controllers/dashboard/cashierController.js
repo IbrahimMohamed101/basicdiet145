@@ -3,7 +3,8 @@
 /**
  * Cashier Controller
  *
- * Exposes two endpoints for the kitchen/cashier dashboard:
+ * Exposes two backward-compatible endpoints for the admin/cashier dashboard.
+ * The write endpoint delegates to the canonical manual-deduction command.
  *
  *   GET  /api/dashboard/kitchen/customer-lookup?phone=05xxxxxxxx
  *     Search a customer by phone number and return their profile and active

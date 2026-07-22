@@ -3,10 +3,12 @@
 const { ACTIVE_STATUS } = require("./constants");
 const { ManualDeductionError } = require("./ManualDeductionError");
 
+const MAX_ADDON_TYPES_PER_DEDUCTION = 50;
+
 function normalizeCount(value) {
   if (value === undefined || value === null || value === "") return 0;
   const numeric = Number(value);
-  if (!Number.isInteger(numeric)) return NaN;
+  if (!Number.isSafeInteger(numeric)) return NaN;
   return numeric;
 }
 
@@ -20,9 +22,12 @@ function resolveBalances(subscription) {
   const remainingMeals = Math.max(0, Math.floor(Number(subscription && subscription.remainingMeals) || 0));
   const remainingPremiumMeals = resolvePremiumRemaining(subscription);
   const remainingRegularMeals = Math.max(0, remainingMeals - remainingPremiumMeals);
+  const hasEntitlementLedger = Number(subscription && subscription.entitlementVersion || 0) >= 2;
   return {
     totalMeals,
-    consumedMeals: Math.max(0, totalMeals - remainingMeals),
+    consumedMeals: hasEntitlementLedger
+      ? Math.max(0, Math.floor(Number(subscription && subscription.consumedMeals) || 0))
+      : Math.max(0, totalMeals - remainingMeals),
     remainingMeals,
     remainingRegularMeals,
     remainingPremiumMeals,
@@ -71,7 +76,13 @@ function validateCounts({ regularMeals, premiumMeals, addons }) {
 
   const addonCountById = new Map();
   let addonsTotal = 0;
-  if (addons && Array.isArray(addons)) {
+  if (addons !== undefined && addons !== null && !Array.isArray(addons)) {
+    throw new ManualDeductionError("INVALID_ADDON_COUNT", "Addons must be an array", 400);
+  }
+  if (Array.isArray(addons) && addons.length > MAX_ADDON_TYPES_PER_DEDUCTION) {
+    throw new ManualDeductionError("INVALID_ADDON_COUNT", "Too many addon rows", 400);
+  }
+  if (Array.isArray(addons)) {
     addons.forEach((addon) => {
       const qty = normalizeCount(addon.qty);
       if (!addon.addonId || qty < 0) {
@@ -79,6 +90,9 @@ function validateCounts({ regularMeals, premiumMeals, addons }) {
       }
       const addonId = String(addon.addonId);
       addonsTotal += qty;
+      if (!Number.isSafeInteger(addonsTotal)) {
+        throw new ManualDeductionError("INVALID_ADDON_COUNT", "Invalid addon total", 400);
+      }
       addonCountById.set(addonId, (addonCountById.get(addonId) || 0) + qty);
     });
   }
@@ -98,12 +112,30 @@ function validateCounts({ regularMeals, premiumMeals, addons }) {
   return { regularMeals: regular, premiumMeals: premium, total: regular + premium, addons: validAddons };
 }
 
-function validateSubscriptionCanDeduct(subscription) {
+function toDateOnly(value) {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString().slice(0, 10);
+}
+
+function validateSubscriptionCanDeduct(subscription, businessDate = null) {
   if (!subscription) {
     throw new ManualDeductionError("SUBSCRIPTION_NOT_FOUND", "Subscription not found", 404);
   }
   if (subscription.status !== ACTIVE_STATUS) {
     throw new ManualDeductionError("SUBSCRIPTION_NOT_ACTIVE", "Subscription is not active", 409);
+  }
+  if (businessDate) {
+    const startDate = toDateOnly(subscription.startDate);
+    const endDate = toDateOnly(subscription.validityEndDate || subscription.endDate);
+    if ((startDate && businessDate < startDate) || (endDate && businessDate > endDate)) {
+      throw new ManualDeductionError(
+        "SUBSCRIPTION_OUTSIDE_VALIDITY",
+        "Date outside subscription validity",
+        409
+      );
+    }
   }
 }
 

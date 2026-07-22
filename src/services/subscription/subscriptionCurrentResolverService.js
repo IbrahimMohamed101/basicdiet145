@@ -24,6 +24,12 @@ function subscriptionDateWindow(subscription) {
   return { startDate, endDate };
 }
 
+function isWithinSubscriptionDateWindow(subscription, businessDate = getTodayKSADate()) {
+  const { startDate, endDate } = subscriptionDateWindow(subscription);
+  return (!startDate || businessDate >= startDate)
+    && (!endDate || businessDate <= endDate);
+}
+
 function explainSubscriptionCurrentState(subscription, businessDate = getTodayKSADate()) {
   const { startDate, endDate } = subscriptionDateWindow(subscription);
   if (!subscription || String(subscription.status || "") !== "active") {
@@ -148,6 +154,7 @@ module.exports = {
   explainSubscriptionCurrentState,
   findActiveSubscriptionsForUser,
   findCurrentActiveSubscriptionForUser,
+  isWithinSubscriptionDateWindow,
   selectCurrentSubscription,
   subscriptionDateWindow,
 };

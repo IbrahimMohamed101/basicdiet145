@@ -28,7 +28,7 @@ async function findLastManualDeduction(subscriptionId, businessDate = null, sess
 }
 
 function findUserByPhone(phone) {
-  return User.findOne({ phone }).lean();
+  return User.findOne({ phone, role: "client" }).lean();
 }
 
 function findActiveSubscriptionsByUserId(userId) {
@@ -43,7 +43,7 @@ function findPlansByIds(planIds) {
 }
 
 async function customerExists(customerId, session) {
-  return User.exists({ _id: customerId }).session(session);
+  return User.exists({ _id: customerId, role: "client" }).session(session);
 }
 
 function findSubscriptionById(subscriptionId, session) {
@@ -64,8 +64,9 @@ function buildRegularRemainingExpression() {
   };
 }
 
-async function deductAtomically({ subscription, counts, session }) {
+function buildDeductionAtomicMutation({ subscription, counts }) {
   const allocations = buildPremiumAllocation(subscription, counts.premiumMeals);
+  const usesEntitlementLedger = Number(subscription.entitlementVersion || 0) >= 2;
   const filter = {
     _id: subscription._id,
     status: ACTIVE_STATUS,
@@ -73,6 +74,20 @@ async function deductAtomically({ subscription, counts, session }) {
   };
 
   const andClauses = [];
+  // Never allow a concurrent legacy-to-v2 migration to leave the canonical
+  // ledger half-updated. A failed compare-and-set is safer than a corrupt row.
+  if (usesEntitlementLedger) {
+    filter.entitlementVersion = subscription.entitlementVersion;
+  } else {
+    andClauses.push({
+      $or: [
+        { entitlementVersion: { $exists: false } },
+        { entitlementVersion: null },
+        { entitlementVersion: { $lt: 2 } },
+      ],
+    });
+  }
+
   if (counts.regularMeals > 0) {
     andClauses.push({
       $expr: {
@@ -103,18 +118,15 @@ async function deductAtomically({ subscription, counts, session }) {
     })));
   }
 
-  if (andClauses.length > 0) {
-    filter.$and = andClauses;
-  }
+  if (andClauses.length > 0) filter.$and = andClauses;
 
   const update = {};
   if (counts.total > 0) {
     update.$inc = { remainingMeals: -counts.total };
+    if (usesEntitlementLedger) update.$inc.consumedMeals = counts.total;
   }
 
-  const options = { new: true, session };
   const arrayFilters = [];
-
   if (allocations.length) {
     if (!update.$inc) update.$inc = {};
     allocations.forEach((allocation, index) => {
@@ -133,6 +145,12 @@ async function deductAtomically({ subscription, counts, session }) {
     });
   }
 
+  return { filter, update, arrayFilters, usesEntitlementLedger };
+}
+
+async function deductAtomically({ subscription, counts, session }) {
+  const { filter, update, arrayFilters } = buildDeductionAtomicMutation({ subscription, counts });
+  const options = { new: true, session };
   if (arrayFilters.length > 0) {
     options.arrayFilters = arrayFilters;
   }
@@ -157,6 +175,7 @@ function listManualDeductionLogs(subscriptionId, limit) {
 }
 
 module.exports = {
+  buildDeductionAtomicMutation,
   createDeductionLog,
   customerExists,
   deductAtomically,

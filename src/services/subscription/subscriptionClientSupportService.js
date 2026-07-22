@@ -29,6 +29,9 @@ const {
 const {
   buildClientAddonBalance,
 } = require("./subscriptionAddonBalanceService");
+const {
+  isWithinSubscriptionDateWindow,
+} = require("./subscriptionCurrentResolverService");
 const { toKSADateString } = require("../../utils/date");
 const { logger } = require("../../utils/logger");
 
@@ -323,15 +326,10 @@ function buildMealBalance(subscription, businessDate) {
     ? Math.max(0, Number(subscription.reservedMeals || 0))
     : 0;
   const consumedMeals = hasEntitlementLedger
-    ? Math.max(0, Number(subscription.consumedMeals || 0) + Number(subscription.forfeitedMeals || 0))
+    ? Math.max(0, Number(subscription.consumedMeals || 0))
     : Math.max(0, totalMeals - remainingMeals);
   const isSubscriptionActive = subscription.status === "active";
-
-  const validityEndDateStr = subscription.validityEndDate
-    ? toKSADateString(subscription.validityEndDate)
-    : (subscription.endDate ? toKSADateString(subscription.endDate) : null);
-
-  const isInsideValidity = !validityEndDateStr || businessDate <= validityEndDateStr;
+  const isInsideValidity = isWithinSubscriptionDateWindow(subscription, businessDate);
 
   // canConsumeNow is true only if active, in validity, AND has remaining meals
   const canConsumeNow = isSubscriptionActive && isInsideValidity && remainingMeals > 0;
