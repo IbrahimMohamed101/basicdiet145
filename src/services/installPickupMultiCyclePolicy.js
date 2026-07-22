@@ -15,6 +15,29 @@ function wrapExport(target, name, factory) {
   target[name] = wrapped;
 }
 
+function balanceEventForStatus(status) {
+  if (status === "fulfilled") return "pickup_fulfilled_consumed";
+  if (status === "no_show" || status === "canceled") return "pickup_uncollected_returned";
+  return "pickup_reserved_pending_fulfillment";
+}
+
+function attachLifecycleBalance(payload, wallet) {
+  if (!payload || typeof payload !== "object") return payload;
+  return {
+    ...payload,
+    entitlementWallet: wallet,
+    balanceChange: {
+      event: balanceEventForStatus(String(payload.status || "")),
+      remainingMeals: wallet.remainingMeals,
+      reservedMeals: wallet.reservedMeals,
+      consumedMeals: wallet.consumedMeals,
+      forfeitedMeals: wallet.forfeitedMeals,
+      sourceOfTruth: wallet.sourceOfTruth,
+      consumptionAppliedAtFulfillment: true,
+    },
+  };
+}
+
 function patchPlanningService() {
   const service = require("./subscription/subscriptionPlanningClientService");
   wrapExport(service, "appendDayMealsForClient", (original) => async function multiCycleAppend(args = {}) {
@@ -49,6 +72,30 @@ function patchPickupRequestService() {
     const result = await original(args);
     const wallet = await authority.readWallet(args.subscriptionId);
     return authority.attachWalletToPickupCreateResult(result, wallet);
+  });
+
+  wrapExport(service, "getSubscriptionPickupRequestStatusForClient", (original) => async function authoritativeStatus(args = {}) {
+    await authority.releaseExpiredReservationsForSubscription({
+      subscriptionId: args.subscriptionId,
+    });
+    const result = await original(args);
+    const wallet = await authority.readWallet(args.subscriptionId);
+    return attachLifecycleBalance(result, wallet);
+  });
+
+  wrapExport(service, "listSubscriptionPickupRequestsForClient", (original) => async function authoritativeList(args = {}) {
+    await authority.releaseExpiredReservationsForSubscription({
+      subscriptionId: args.subscriptionId,
+    });
+    const result = await original(args);
+    const wallet = await authority.readWallet(args.subscriptionId);
+    return {
+      ...result,
+      entitlementWallet: wallet,
+      requests: Array.isArray(result && result.requests)
+        ? result.requests.map((request) => attachLifecycleBalance(request, wallet))
+        : [],
+    };
   });
 }
 
@@ -100,6 +147,7 @@ function installPickupMultiCyclePolicy() {
 installPickupMultiCyclePolicy();
 
 module.exports = {
+  attachLifecycleBalance,
   installPickupMultiCyclePolicy,
   patchOpsTransitionService,
   patchOverviewService,
