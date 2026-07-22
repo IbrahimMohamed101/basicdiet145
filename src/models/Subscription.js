@@ -4,6 +4,11 @@ const {
   CONTRACT_COMPLETENESS_VALUES,
   CONTRACT_SOURCES,
 } = require("../constants/phase1Contract");
+const {
+  addonBalanceLedgerFields,
+  addonSelectionLifecycleFields,
+} = require("./schemaFragments/subscriptionAddonLifecycleFields");
+
 const PremiumBalanceSchema = new mongoose.Schema(
   {
     configId: { type: mongoose.Schema.Types.ObjectId, ref: "PremiumUpgradeConfig", default: null },
@@ -93,6 +98,7 @@ const AddonBalanceSchema = new mongoose.Schema(
     unitPriceHalala: { type: Number, min: 0, default: 0 },
     currency: { type: String, default: "SAR" },
     purchasedAt: { type: Date, default: Date.now },
+    ...addonBalanceLedgerFields(),
   },
   { _id: true }
 );
@@ -159,9 +165,9 @@ const AddonSelectionSchema = new mongoose.Schema(
     consumedAt: { type: Date, default: Date.now },
     // Owned entitlement identity — populated on save so edit/cancel can release the exact bucket.
     // All fields are optional for backward compatibility with historical selections.
-    category:        { type: String, default: "" },
+    category: { type: String, default: "" },
     entitlementCategory: { type: String, default: "" },
-    entitlementKey:  { type: String, default: "" },
+    entitlementKey: { type: String, default: "" },
     balanceBucketId: { type: mongoose.Schema.Types.ObjectId, default: null },
     ownedSnapshot: { type: Boolean, default: false },
     snapshotMissing: { type: Boolean, default: false },
@@ -192,7 +198,8 @@ const AddonSelectionSchema = new mongoose.Schema(
       default: "",
     },
     maxPerDay: { type: Number, min: 1, default: 1 },
-    source:          { type: String, default: "" },
+    source: { type: String, default: "" },
+    ...addonSelectionLifecycleFields(mongoose),
   },
   { _id: true }
 );
