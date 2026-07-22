@@ -116,6 +116,38 @@ async function resolveDay(args = {}, result = null) {
   return null;
 }
 
+async function updateAutomaticSelectionName({ dayId, selection, desiredName, nameI18n, planI18n }) {
+  const allocationKey = clean(selection && selection.dailyAllocationKey);
+  if (allocationKey) {
+    return SubscriptionDay.updateOne(
+      { _id: dayId, "addonSelections.dailyAllocationKey": allocationKey },
+      {
+        $set: {
+          "addonSelections.$[selection].name": desiredName,
+          "addonSelections.$[selection].nameI18n": nameI18n,
+          "addonSelections.$[selection].subscriptionAddonLabelI18n": planI18n,
+        },
+      },
+      { arrayFilters: [{ "selection.dailyAllocationKey": allocationKey }] }
+    );
+  }
+
+  if (selection && selection._id) {
+    return SubscriptionDay.updateOne(
+      { _id: dayId, "addonSelections._id": selection._id },
+      {
+        $set: {
+          "addonSelections.$.name": desiredName,
+          "addonSelections.$.nameI18n": nameI18n,
+          "addonSelections.$.subscriptionAddonLabelI18n": planI18n,
+        },
+      }
+    );
+  }
+
+  return { matchedCount: 0, modifiedCount: 0 };
+}
+
 async function normalizeAutomaticDefaultNames({ dayId } = {}) {
   const day = await SubscriptionDay.findById(dayId).lean();
   if (!day) return { updatedCount: 0, skipped: true, reason: "DAY_NOT_FOUND" };
@@ -151,16 +183,13 @@ async function normalizeAutomaticDefaultNames({ dayId } = {}) {
       continue;
     }
 
-    const result = await SubscriptionDay.updateOne(
-      { _id: day._id, "addonSelections._id": selection._id },
-      {
-        $set: {
-          "addonSelections.$.name": desiredName,
-          "addonSelections.$.nameI18n": nameI18n,
-          "addonSelections.$.subscriptionAddonLabelI18n": planI18n,
-        },
-      }
-    );
+    const result = await updateAutomaticSelectionName({
+      dayId: day._id,
+      selection,
+      desiredName,
+      nameI18n,
+      planI18n,
+    });
     const matched = Number(
       result && (result.matchedCount !== undefined ? result.matchedCount : result.n) || 0
     );
@@ -214,4 +243,5 @@ module.exports = {
   entitlementForSelection,
   installSubscriptionAddonReservationReconciliation,
   normalizeAutomaticDefaultNames,
+  updateAutomaticSelectionName,
 };
