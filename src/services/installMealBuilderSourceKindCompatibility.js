@@ -1,10 +1,7 @@
 "use strict";
 
-const MealBuilderConfig = require("../models/MealBuilderConfig");
 const mealBuilderConfigService = require("./subscription/mealBuilderConfigService");
 const {
-  CANONICAL_SOURCE_KINDS,
-  canonicalSourceKind,
   normalizeMealBuilderSectionSourceKind,
 } = require("./subscription/mealBuilderSourceKindCompatibility");
 
@@ -16,65 +13,7 @@ function isObject(value) {
 
 function normalizeSectionByStructure(section = {}) {
   if (!isObject(section)) return section;
-
-  const normalized = normalizeMealBuilderSectionSourceKind(section);
-  const currentKind = canonicalSourceKind(normalized.sourceKind || "");
-  if (CANONICAL_SOURCE_KINDS.has(currentKind)) {
-    return { ...normalized, sourceKind: currentKind };
-  }
-
-  const sectionType = String(
-    normalized.sectionType || normalized.type || ""
-  ).trim().toLowerCase();
-  const selectionType = String(normalized.selectionType || "")
-    .trim()
-    .toLowerCase();
-  const key = String(normalized.key || normalized.sectionKey || "")
-    .trim()
-    .toLowerCase();
-  const hasProducts =
-    Array.isArray(normalized.selectedProductIds) ||
-    Array.isArray(normalized.productIds);
-  const hasOptions =
-    Array.isArray(normalized.selectedOptionIds) ||
-    Array.isArray(normalized.optionIds) ||
-    Boolean(normalized.productContextId || normalized.sourceGroupId);
-
-  if (
-    sectionType === "product_list" ||
-    sectionType === "product_category" ||
-    selectionType === "full_meal_product" ||
-    selectionType === "sandwich" ||
-    (hasProducts && !hasOptions)
-  ) {
-    return { ...normalized, sourceKind: "product_list" };
-  }
-
-  if (
-    key === "premium" ||
-    selectionType === "premium_meal" ||
-    selectionType === "premium_large_salad"
-  ) {
-    return { ...normalized, sourceKind: "premium_visual" };
-  }
-
-  if (sectionType === "option_group" || hasOptions) {
-    const raw = String(
-      normalized.sourceKind || normalized.source?.kind || ""
-    ).toLowerCase();
-    const configurable =
-      raw.includes("configurable") ||
-      raw.includes("product_option") ||
-      raw.includes("product_context");
-    return {
-      ...normalized,
-      sourceKind: configurable ? "configurable_product" : "visual_family",
-    };
-  }
-
-  // Leave genuinely malformed/unknown shapes untouched so the core validator
-  // still fails closed instead of silently changing their meaning.
-  return normalized;
+  return normalizeMealBuilderSectionSourceKind(section);
 }
 
 function normalizeSections(value) {
@@ -95,47 +34,6 @@ function normalizeConfig(value) {
 function normalizeQueryResult(value) {
   if (Array.isArray(value)) return value.map((row) => normalizeConfig(row));
   return normalizeConfig(value);
-}
-
-function installPersistedConfigReadNormalization() {
-  for (const methodName of ["findOne", "find", "findById"]) {
-    const current = MealBuilderConfig[methodName];
-    if (
-      typeof current !== "function" ||
-      current.__mealBuilderSourceKindCompatibility === true
-    ) {
-      continue;
-    }
-
-    const original = current;
-    const wrapped = function findWithCanonicalSourceKinds(...args) {
-      const query = original.apply(this, args);
-      if (!query || typeof query.lean !== "function") return query;
-
-      const originalLean = query.lean.bind(query);
-      query.lean = function leanWithCanonicalSourceKinds(...leanArgs) {
-        const leanQuery = originalLean(...leanArgs);
-        if (
-          !leanQuery ||
-          typeof leanQuery.exec !== "function" ||
-          leanQuery.__mealBuilderSourceKindCompatibility === true
-        ) {
-          return leanQuery;
-        }
-
-        const originalExec = leanQuery.exec.bind(leanQuery);
-        leanQuery.exec = async function execWithCanonicalSourceKinds(...execArgs) {
-          return normalizeQueryResult(await originalExec(...execArgs));
-        };
-        leanQuery.__mealBuilderSourceKindCompatibility = true;
-        return leanQuery;
-      };
-      return query;
-    };
-
-    wrapped.__mealBuilderSourceKindCompatibility = true;
-    MealBuilderConfig[methodName] = wrapped;
-  }
 }
 
 function normalizeLifecycle(value) {
@@ -191,7 +89,6 @@ function sameSourceKinds(left = [], right = []) {
 function installMealBuilderSourceKindCompatibility() {
   if (installed) return;
   installed = true;
-  installPersistedConfigReadNormalization();
 
   const originalCreateDraft = mealBuilderConfigService.createDraft.bind(
     mealBuilderConfigService
@@ -303,7 +200,6 @@ installMealBuilderSourceKindCompatibility();
 
 module.exports = {
   installMealBuilderSourceKindCompatibility,
-  installPersistedConfigReadNormalization,
   normalizeConfig,
   normalizeDraftArgs,
   normalizeLifecycle,
