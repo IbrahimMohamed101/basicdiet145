@@ -7,6 +7,9 @@ const liveBalanceService = require("./subscriptionPickupRequestBalanceService");
 const balanceClosureService = require("./subscriptionPickupRequestBalanceClosureService");
 const linkPolicy = require("./pickupEntitlementLinkService");
 const { dayHasPlannedMeals } = require("./pickupLinkedDayIntegrityService");
+const {
+  repairLinkedDayAllocations,
+} = require("./pickupLinkedDayAllocationRepairService");
 
 const INSTALL_KEY = Symbol.for("basicdiet.pickupLinkedDayMutationGuard.installed");
 const WRAPPED_KEY = Symbol.for("basicdiet.pickupLinkedDayMutationGuard.wrapped");
@@ -96,6 +99,8 @@ async function assertLinkedDayMutationIntegrity({
       "Linked subscription day was not found",
       409,
       {
+        messageAr: "تعذر العثور على يوم الاشتراك المرتبط بطلب الاستلام.",
+        messageEn: "The subscription day linked to this pickup request could not be found.",
         subscriptionId: clean(subscriptionId),
         subscriptionDayId: clean(pickupRequest.subscriptionDayId),
         pickupRequestId: clean(pickupRequest._id),
@@ -139,7 +144,12 @@ async function assertLinkedDayMutationIntegrity({
       "LINKED_DAY_ENTITLEMENT_INCONSISTENT",
       "The planned pickup day has no entitlement allocations; refusing standalone debit",
       409,
-      { ...details, reason: "linked_day_allocations_missing" }
+      {
+        ...details,
+        reason: "linked_day_allocations_missing",
+        messageAr: "تعذر تأكيد رصيد وجبات هذا اليوم. لم يتم خصم رصيد إضافي.",
+        messageEn: "This day's meal balance could not be verified. No extra credit was deducted.",
+      }
     );
   }
 
@@ -157,6 +167,8 @@ async function assertLinkedDayMutationIntegrity({
           ...details,
           reason: "selected_slots_do_not_match_allocations",
           exactMatchCount: exactAllocationKeys.length,
+          messageAr: "تعذر مطابقة الوجبات المحددة مع رصيد اليوم. لم يتم خصم رصيد إضافي.",
+          messageEn: "The selected meals could not be matched to this day's balance. No extra credit was deducted.",
         }
       );
     }
@@ -182,6 +194,21 @@ function buildGuardedReserve(originalReserve) {
       return originalReserve(args);
     }
 
+    // Repair only after the create service has resolved the idempotency key and
+    // reached the actual credit mutation. Historical aggregate debits are
+    // materialized into exact slot allocations; genuinely new slots reserve one
+    // credit exactly once. The strict assertion remains the final fail-closed
+    // check before the balance closure can claim or debit anything.
+    await repairLinkedDayAllocations({
+      subscriptionId: args.subscriptionId,
+      date: pickupRequest.date,
+      dayId: pickupRequest.subscriptionDayId,
+      pickupRequest,
+      mealCount: pickupRequest.mealCount,
+      selectedMealSlotIds: pickupRequest.selectedMealSlotIds,
+      selectedPickupItemIds: pickupRequest.selectedPickupItemIds,
+      session: args.session || null,
+    });
     await assertLinkedDayMutationIntegrity({
       subscriptionId: args.subscriptionId,
       pickupRequest,
@@ -192,6 +219,7 @@ function buildGuardedReserve(originalReserve) {
   guarded[WRAPPED_KEY] = true;
   guarded.__original = originalReserve;
   guarded.__linkedDayMutationGuard = true;
+  guarded.__linkedDayAllocationRepair = true;
   return guarded;
 }
 
