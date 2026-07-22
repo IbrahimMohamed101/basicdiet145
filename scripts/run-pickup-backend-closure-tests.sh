@@ -9,6 +9,9 @@ export NODE_ENV=test
 echo "[composition] verifying fail-closed subscription backend repair installation"
 node tests/subscriptionBackendRepairComposition.test.js
 
+echo "[dashboard] verifying nullable menu UI compatibility"
+node tests/dashboardMenuUiNullCompatibility.test.js
+
 echo "[pickup] verifying startup installation"
 node tests/pickupEntitlementInstaller.test.js
 
