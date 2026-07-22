@@ -2,14 +2,12 @@
 
 const SubscriptionPickupRequest = require("../models/SubscriptionPickupRequest");
 const recoveryService = require("./subscription/subscriptionPickupRequestRecoveryService");
+const {
+  assertLinkedDayAllocationIntegrity,
+} = require("./subscription/pickupLinkedDayIntegrityService");
 
 const INSTALL_KEY = Symbol.for("basicdiet.pickupRequestRecovery.installed");
 const WRAPPED_KEY = Symbol.for("basicdiet.pickupRequestRecovery.wrapped");
-
-function clean(value) {
-  if (value === undefined || value === null) return "";
-  return String(value).trim();
-}
 
 async function resolveResultRequest(result) {
   if (result && result.pickupRequest && result.pickupRequest._id) return result.pickupRequest;
@@ -26,6 +24,15 @@ function installPickupRequestRecovery() {
   if (typeof original !== "function" || original[WRAPPED_KEY]) return;
 
   const wrapped = async function recoverablePickupCreate(args = {}) {
+    await assertLinkedDayAllocationIntegrity({
+      subscriptionId: args.subscriptionId,
+      date: args.date,
+      mealCount: args.mealCount,
+      selectedMealSlotIds: args.selectedMealSlotIds,
+      selectedPickupItemIds: args.selectedPickupItemIds,
+      session: args.session || null,
+    });
+
     const result = await original(args);
     const request = await resolveResultRequest(result);
     if (!request) return result;
@@ -58,6 +65,7 @@ function installPickupRequestRecovery() {
   wrapped[WRAPPED_KEY] = true;
   wrapped.__original = original;
   wrapped.__pickupReservationRecovery = true;
+  wrapped.__linkedDayIntegrityPreflight = true;
   pickupService.createSubscriptionPickupRequestForClient = wrapped;
 }
 
