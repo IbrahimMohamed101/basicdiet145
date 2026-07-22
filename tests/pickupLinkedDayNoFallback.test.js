@@ -81,7 +81,7 @@ async function assertWalletUnchanged(subscriptionId, expected) {
   assert.strictEqual((subscription.baseMealAllocations || []).length, expected.allocations);
 }
 
-async function testPlannedDayWithoutLedgerIsRejected() {
+async function testPlannedDayWithoutLedgerIsRejectedByPureIntegrityCheck() {
   const subscription = await createSubscription();
   const day = await createPlannedDay(subscription._id);
 
@@ -105,7 +105,7 @@ async function testPlannedDayWithoutLedgerIsRejected() {
   });
 }
 
-async function testIncompleteLinkedRequestDoesNotDoubleDebit() {
+async function testIncompleteLinkedRequestRepairsMissingLedgerWithoutDoubleDebit() {
   const subscription = await createSubscription();
   const day = await createPlannedDay(subscription._id, { date: "2026-07-23" });
   const request = await SubscriptionPickupRequest.create({
@@ -123,25 +123,28 @@ async function testIncompleteLinkedRequestDoesNotDoubleDebit() {
     reservationState: "pending",
   });
 
-  await assert.rejects(
-    () => recoverIncompletePickupReservation({
-      pickupRequestId: request._id,
-      subscriptionId: subscription._id,
-    }),
-    (err) => err && err.code === "LINKED_DAY_ENTITLEMENT_INCONSISTENT"
-  );
+  const result = await recoverIncompletePickupReservation({
+    pickupRequestId: request._id,
+    subscriptionId: subscription._id,
+  });
+  assert.strictEqual(result.recovered, true);
+  assert.strictEqual(result.allocationMode, "linked_day");
 
   const savedRequest = await SubscriptionPickupRequest.findById(request._id).lean();
-  assert.strictEqual(savedRequest.creditsReserved, false);
-  assert.strictEqual(savedRequest.reservationState, "failed");
-  assert.strictEqual(savedRequest.reservationErrorCode, "LINKED_DAY_ENTITLEMENT_INCONSISTENT");
-  assert.strictEqual((savedRequest.baseAllocationKeys || []).length, 0);
+  assert.strictEqual(savedRequest.creditsReserved, true);
+  assert.strictEqual(savedRequest.reservationState, "reserved");
+  assert.strictEqual(savedRequest.reservationErrorCode, null);
+  assert.strictEqual((savedRequest.baseAllocationKeys || []).length, 1);
 
-  await assertWalletUnchanged(subscription._id, {
-    remainingMeals: 3,
-    reservedMeals: 1,
-    allocations: 0,
-  });
+  const savedSubscription = await Subscription.findById(subscription._id).lean();
+  assert.strictEqual(Number(savedSubscription.remainingMeals), 3);
+  assert.strictEqual(Number(savedSubscription.reservedMeals), 1);
+  assert.strictEqual((savedSubscription.baseMealAllocations || []).length, 1);
+  assert.strictEqual(savedSubscription.baseMealAllocations[0].state, "reserved");
+  assert.strictEqual(
+    String(savedSubscription.baseMealAllocations[0].pickupRequestId),
+    String(request._id)
+  );
 }
 
 async function testLinkedDayWithLedgerPasses() {
@@ -269,9 +272,9 @@ async function run() {
   const mongod = await MongoMemoryServer.create();
   try {
     await mongoose.connect(mongod.getUri(), { dbName: `pickup-linked-integrity-${Date.now()}` });
-    await testPlannedDayWithoutLedgerIsRejected();
+    await testPlannedDayWithoutLedgerIsRejectedByPureIntegrityCheck();
     await mongoose.connection.dropDatabase();
-    await testIncompleteLinkedRequestDoesNotDoubleDebit();
+    await testIncompleteLinkedRequestRepairsMissingLedgerWithoutDoubleDebit();
     await mongoose.connection.dropDatabase();
     await testLinkedDayWithLedgerPasses();
     await mongoose.connection.dropDatabase();
