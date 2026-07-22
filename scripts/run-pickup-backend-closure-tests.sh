@@ -21,6 +21,9 @@ node tests/subscriptionStableDayMealReservation.test.js
 echo "[payments] synchronizing paid Premium state across planner, subscription, and pickup"
 node tests/subscriptionPaidPremiumStateConsistency.test.js
 
+echo "[payments] recovering a paid provider result before a planner retry"
+node tests/subscriptionPaidPremiumRecovery.test.js
+
 echo "[entitlements] verifying guarded repair of duplicated day-slot reservations"
 node tests/subscriptionDuplicateMealAllocationRepair.test.js
 
