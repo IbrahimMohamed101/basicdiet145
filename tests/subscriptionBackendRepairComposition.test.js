@@ -37,10 +37,23 @@ assert.deepStrictEqual(verifyComposition(), {
   deliveryAppendSaga: true,
   pickupRequestRecovery: true,
   pickupAvailabilityDiagnosticsFailOpen: true,
+  pickupSubscriptionOwnershipRecovery: true,
   stableOpsAddonIdentity: true,
 });
 assert.strictEqual(globalThis[STATE_KEY], state);
 assert.strictEqual(installSubscriptionBackendRepairComposition(), state, "composition re-entry after success must be idempotent");
+
+const pickupService = require("../src/services/subscription/subscriptionPickupRequestClientService");
+assert.strictEqual(
+  pickupService.getPickupAvailabilityForClient.__pickupSubscriptionOwnershipRecovery,
+  true,
+  "pickup availability must resolve the authenticated subscription before reading"
+);
+assert.strictEqual(
+  pickupService.createSubscriptionPickupRequestForClient.__pickupSubscriptionOwnershipRecovery,
+  true,
+  "pickup creation must resolve the authenticated subscription before reserving credits"
+);
 
 const pricingService = require("../src/services/subscription/subscriptionAddonPricingService");
 const addonChoicesService = require("../src/services/subscription/subscriptionAddonChoicesService");
