@@ -53,6 +53,25 @@ function explainSubscriptionCurrentState(subscription, businessDate = getTodayKS
   };
 }
 
+function createdAtTimestamp(subscription) {
+  const parsed = Date.parse(subscription && subscription.createdAt ? subscription.createdAt : 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function compareUpcomingResolutionRows(left, right) {
+  const leftStart = String(left && left.evaluation && left.evaluation.startDate || "9999-12-31");
+  const rightStart = String(right && right.evaluation && right.evaluation.startDate || "9999-12-31");
+  const startOrder = leftStart.localeCompare(rightStart);
+  if (startOrder !== 0) return startOrder;
+
+  const createdOrder = createdAtTimestamp(right && right.subscription)
+    - createdAtTimestamp(left && left.subscription);
+  if (createdOrder !== 0) return createdOrder;
+
+  return String(right && right.subscription && right.subscription._id || "")
+    .localeCompare(String(left && left.subscription && left.subscription._id || ""));
+}
+
 function selectCurrentSubscription(rows, {
   businessDate = getTodayKSADate(),
   includeUpcoming = false,
@@ -63,14 +82,16 @@ function selectCurrentSubscription(rows, {
   }));
   const eligible = evaluated.filter((row) => row.evaluation.eligible);
   const upcoming = includeUpcoming
-    ? evaluated.filter((row) => row.evaluation.reason === "not_started")
+    ? evaluated
+      .filter((row) => row.evaluation.reason === "not_started")
+      .sort(compareUpcomingResolutionRows)
     : [];
   const selectedRow = eligible[0] || upcoming[0] || null;
   return {
     subscription: selectedRow ? selectedRow.subscription : null,
     reason: eligible.length
       ? "newest_active_in_current_date_window"
-      : (upcoming.length ? "newest_active_upcoming_subscription" : "no_active_subscription_in_current_date_window"),
+      : (upcoming.length ? "nearest_active_upcoming_subscription" : "no_active_subscription_in_current_date_window"),
     businessDate,
     evaluated,
     eligible,
@@ -151,6 +172,7 @@ async function findCurrentActiveSubscriptionForUser(userId, {
 
 module.exports = {
   ACTIVE_SUBSCRIPTION_SORT,
+  compareUpcomingResolutionRows,
   explainSubscriptionCurrentState,
   findActiveSubscriptionsForUser,
   findCurrentActiveSubscriptionForUser,
