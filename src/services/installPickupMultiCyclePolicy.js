@@ -3,6 +3,7 @@
 require("./installPickupEntitlementClosure");
 
 const Subscription = require("../models/Subscription");
+const { getRestaurantBusinessDate } = require("./restaurantHoursService");
 const authority = require("./subscription/subscriptionPickupCycleAuthorityService");
 
 const INSTALL_KEY = Symbol.for("basicdiet.pickupMultiCyclePolicy.installed");
@@ -43,6 +44,16 @@ async function releaseExpiredForPickupUser(userId) {
   });
 }
 
+async function reconcileCurrentPickupDay(subscriptionId, date) {
+  if (!subscriptionId || !date) return null;
+  const businessDate = await getRestaurantBusinessDate();
+  if (String(date) !== String(businessDate)) return null;
+  return authority.reconcileConfirmedDayAllocations({
+    subscriptionId,
+    date,
+  });
+}
+
 function balanceEventForStatus(status) {
   if (status === "fulfilled") return "pickup_fulfilled_consumed";
   if (status === "no_show" || status === "canceled") return "pickup_uncollected_returned";
@@ -78,10 +89,7 @@ function patchPickupRequestService() {
 
   wrapExport(service, "getPickupAvailabilityForClient", (original) => async function authoritativeAvailability(args = {}) {
     await releaseExpiredForPickupSubscription(args.subscriptionId);
-    await authority.reconcileConfirmedDayAllocations({
-      subscriptionId: args.subscriptionId,
-      date: args.date,
-    });
+    await reconcileCurrentPickupDay(args.subscriptionId, args.date);
     const result = await original(args);
     const wallet = await authority.readWallet(args.subscriptionId);
     return authority.attachWalletToAvailability(result, wallet);
@@ -89,10 +97,7 @@ function patchPickupRequestService() {
 
   wrapExport(service, "createSubscriptionPickupRequestForClient", (original) => async function authoritativeCreate(args = {}) {
     await releaseExpiredForPickupSubscription(args.subscriptionId);
-    await authority.reconcileConfirmedDayAllocations({
-      subscriptionId: args.subscriptionId,
-      date: args.date,
-    });
+    await reconcileCurrentPickupDay(args.subscriptionId, args.date);
     const result = await original(args);
     const wallet = await authority.readWallet(args.subscriptionId);
     return authority.attachWalletToPickupCreateResult(result, wallet);
@@ -173,6 +178,7 @@ module.exports = {
   patchOverviewService,
   patchPickupRequestService,
   patchPlanningService,
+  reconcileCurrentPickupDay,
   releaseExpiredForPickupSubscription,
   releaseExpiredForPickupUser,
 };
