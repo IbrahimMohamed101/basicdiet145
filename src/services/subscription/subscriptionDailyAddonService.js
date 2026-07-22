@@ -38,11 +38,6 @@ function nonNegativeInt(value) {
   return Number.isFinite(numberValue) && numberValue > 0 ? numberValue : 0;
 }
 
-function plain(value) {
-  if (!value) return value;
-  return typeof value.toObject === "function" ? value.toObject() : value;
-}
-
 function localizedObject(value, fallback = "") {
   if (value && typeof value === "object" && !Array.isArray(value)) {
     const ar = clean(value.ar || value.en || fallback);
@@ -114,7 +109,7 @@ function selectionMatchesEntitlement(selection, entitlement, bucket, index = 0) 
 }
 
 function activeSelection(selection) {
-  return Boolean(selection && selection.addonSettlementState !== "released");
+  return Boolean(selection && clean(selection.addonSettlementState) !== "released");
 }
 
 function resolveSingleProduct(entitlement) {
@@ -155,6 +150,10 @@ function resolveSingleProduct(entitlement) {
 
 function dailyAllocationKey({ subscriptionId, date, entitlementKey, ordinal }) {
   return `daily-addon:${clean(subscriptionId)}:${clean(date)}:${clean(entitlementKey)}:${Number(ordinal)}`;
+}
+
+function explicitReleaseKey(dayId, selection, index) {
+  return `released-addon:${clean(dayId)}:${clean(selection && selection._id) || index}:${clean(selection && selection.balanceBucketId)}`;
 }
 
 function buildDefaultSelection({ subscription, day, entitlement, bucket, entitlementIndex, ordinal }) {
@@ -221,8 +220,11 @@ function buildDefaultSelection({ subscription, day, entitlement, bucket, entitle
     remainingBefore: nonNegativeInt(bucket && bucket.remainingQty),
     remainingAfter: Math.max(0, nonNegativeInt(bucket && bucket.remainingQty) - 1),
     pricingMode: "allowance_covered",
-    maxPerDay: positiveInt(entitlement && (entitlement.maxPerDay || entitlement.quantityPerDay), 1),
-    source: "subscription",
+    maxPerDay: Math.max(
+      positiveInt(entitlement && (entitlement.maxPerDay || entitlement.quantityPerDay), 1),
+      nonNegativeInt(bucket && bucket.remainingQty)
+    ),
+    source: "wallet",
     qty: 1,
     quantity: 1,
     coveredQty: 1,
@@ -359,6 +361,36 @@ async function releaseBalanceAllocation({ subscriptionId, bucketId, allocationKe
   return { released: false, reason: "ADDON_RELEASE_FAILED" };
 }
 
+async function releaseExplicitConsumedSelection({ subscriptionId, bucketId, releaseKey }) {
+  const updated = await Subscription.findOneAndUpdate(
+    {
+      _id: subscriptionId,
+      addonBalance: {
+        $elemMatch: {
+          _id: bucketId,
+          consumedQty: { $gt: 0 },
+          releasedAllocationKeys: { $ne: releaseKey },
+        },
+      },
+    },
+    {
+      $inc: {
+        "addonBalance.$.remainingQty": 1,
+        "addonBalance.$.consumedQty": -1,
+      },
+      $addToSet: { "addonBalance.$.releasedAllocationKeys": releaseKey },
+    },
+    { new: true }
+  ).lean();
+  if (updated) return { released: true, idempotent: false };
+  const bucket = await readBucket(subscriptionId, bucketId);
+  const releasedKeys = Array.isArray(bucket && bucket.releasedAllocationKeys)
+    ? bucket.releasedAllocationKeys.map(clean)
+    : [];
+  if (releasedKeys.includes(releaseKey)) return { released: true, idempotent: true };
+  return { released: false, reason: "EXPLICIT_ADDON_RELEASE_FAILED" };
+}
+
 async function getOrCreateOperation({ subscription, day, selection }) {
   let operation = await SubscriptionDailyAddonOperation.findOne({
     subscriptionDayId: day._id,
@@ -489,7 +521,7 @@ async function ensureDailyAddonDefaultsForDay({ subscriptionId, dayId = null, da
     const activeSelections = (Array.isArray(currentDay.addonSelections) ? currentDay.addonSelections : [])
       .filter(activeSelection)
       .filter((selection) => selectionMatchesEntitlement(selection, entitlement, bucket, entitlementIndex))
-      .filter((selection) => selection.source === "subscription" || selection.autoDailyAddon === true);
+      .filter((selection) => ["subscription", "wallet"].includes(clean(selection.source)) || selection.autoDailyAddon === true);
 
     if (activeSelections.length >= dailyQty) continue;
 
@@ -497,7 +529,7 @@ async function ensureDailyAddonDefaultsForDay({ subscriptionId, dayId = null, da
       const currentActiveCount = (Array.isArray(currentDay.addonSelections) ? currentDay.addonSelections : [])
         .filter(activeSelection)
         .filter((selection) => selectionMatchesEntitlement(selection, entitlement, bucket, entitlementIndex))
-        .filter((selection) => selection.source === "subscription" || selection.autoDailyAddon === true)
+        .filter((selection) => ["subscription", "wallet"].includes(clean(selection.source)) || selection.autoDailyAddon === true)
         .length;
       if (currentActiveCount >= dailyQty) break;
 
@@ -531,19 +563,33 @@ async function ensureDailyAddonDefaultsForDay({ subscriptionId, dayId = null, da
   };
 }
 
-async function markDaySelectionState({ dayId, allocationKey, state, reason = null }) {
+async function markDaySelectionState({
+  dayId,
+  allocationKey = null,
+  selectionId = null,
+  state,
+  reason = null,
+  source = null,
+}) {
   const now = new Date();
+  const selector = allocationKey
+    ? { "selection.dailyAllocationKey": allocationKey }
+    : { "selection._id": selectionId };
   const set = {
     "addonSelections.$[selection].addonSettlementState": state,
     "addonSelections.$[selection].settledAt": now,
     "addonSelections.$[selection].settlementReason": reason,
   };
+  if (source) set["addonSelections.$[selection].source"] = source;
   if (state === "consumed") set["addonSelections.$[selection].consumedAt"] = now;
   if (state === "released") set["addonSelections.$[selection].releasedAt"] = now;
+  const filter = allocationKey
+    ? { _id: dayId, "addonSelections.dailyAllocationKey": allocationKey }
+    : { _id: dayId, "addonSelections._id": selectionId };
   await SubscriptionDay.updateOne(
-    { _id: dayId, "addonSelections.dailyAllocationKey": allocationKey },
+    filter,
     { $set: set },
-    { arrayFilters: [{ "selection.dailyAllocationKey": allocationKey }] }
+    { arrayFilters: [selector] }
   );
 }
 
@@ -627,6 +673,72 @@ async function releaseDailyAddonReservationsForDay({
   return { releasedCount, selectionsCount: selections.length };
 }
 
+async function releaseSubscriptionAddonSelectionsForDay({
+  dayId,
+  reason = "day_not_fulfilled_returned_to_balance",
+} = {}) {
+  const day = await SubscriptionDay.findById(dayId).lean();
+  if (!day) return { releasedCount: 0, skipped: true, reason: "DAY_NOT_FOUND" };
+  let releasedCount = 0;
+  const selections = Array.isArray(day.addonSelections) ? day.addonSelections : [];
+
+  for (let index = 0; index < selections.length; index += 1) {
+    const selection = selections[index];
+    if (!selection || clean(selection.addonSettlementState) === "released") continue;
+
+    if (selection.autoDailyAddon === true) {
+      if (clean(selection.addonSettlementState || "reserved") !== "reserved") continue;
+      const result = await releaseBalanceAllocation({
+        subscriptionId: day.subscriptionId,
+        bucketId: selection.balanceBucketId,
+        allocationKey: selection.dailyAllocationKey,
+      });
+      if (!result.released) {
+        const err = new Error(`Daily add-on release failed: ${result.reason || "unknown"}`);
+        err.code = "DAILY_ADDON_RELEASE_FAILED";
+        err.status = 409;
+        throw err;
+      }
+      releasedCount += result.idempotent ? 0 : 1;
+      await markDaySelectionState({
+        dayId: day._id,
+        allocationKey: selection.dailyAllocationKey,
+        state: "released",
+        reason,
+      });
+      await SubscriptionDailyAddonOperation.updateOne(
+        { subscriptionDayId: day._id, allocationKey: selection.dailyAllocationKey },
+        { $set: { status: "released", releasedAt: new Date() } }
+      );
+      continue;
+    }
+
+    if (clean(selection.source) !== "subscription" || !selection.balanceBucketId) continue;
+    const releaseKey = explicitReleaseKey(day._id, selection, index);
+    const result = await releaseExplicitConsumedSelection({
+      subscriptionId: day.subscriptionId,
+      bucketId: selection.balanceBucketId,
+      releaseKey,
+    });
+    if (!result.released) {
+      const err = new Error(`Explicit subscription add-on release failed: ${result.reason || "unknown"}`);
+      err.code = "DAILY_ADDON_RELEASE_FAILED";
+      err.status = 409;
+      throw err;
+    }
+    releasedCount += result.idempotent ? 0 : 1;
+    await markDaySelectionState({
+      dayId: day._id,
+      selectionId: selection._id,
+      state: "released",
+      reason,
+      source: "pending_payment",
+    });
+  }
+
+  return { releasedCount, selectionsCount: selections.length };
+}
+
 async function reconcileDayDailyAddonState({ dayId } = {}) {
   const day = await SubscriptionDay.findById(dayId).lean();
   if (!day) return { skipped: true, reason: "DAY_NOT_FOUND" };
@@ -634,7 +746,7 @@ async function reconcileDayDailyAddonState({ dayId } = {}) {
     return consumeDailyAddonReservationsForDay({ dayId: day._id, reason: "fulfilled" });
   }
   if (RELEASE_DAY_STATUSES.has(clean(day.status))) {
-    return releaseDailyAddonReservationsForDay({
+    return releaseSubscriptionAddonSelectionsForDay({
       dayId: day._id,
       reason: `day_${clean(day.status)}_returned_to_balance`,
     });
@@ -695,6 +807,7 @@ function buildDailyAddonWallet(subscription) {
     consumedQty: rows.reduce((sum, row) => sum + row.consumedQty, 0),
     invariantValid: rows.every((row) => row.purchasedQty === 0
       || row.purchasedQty >= row.remainingQty + row.reservedQty + row.consumedQty),
+    pooledCarryoverEnabled: true,
   };
 }
 
@@ -710,6 +823,7 @@ module.exports = {
   reconcileDailyAddonsForUser,
   reconcileDayDailyAddonState,
   releaseDailyAddonReservationsForDay,
+  releaseSubscriptionAddonSelectionsForDay,
   reserveBalanceAllocation,
   consumeBalanceAllocation,
   releaseBalanceAllocation,
