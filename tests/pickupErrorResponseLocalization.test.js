@@ -54,6 +54,21 @@ function run() {
   assert.strictEqual(forbidden.error.message.includes("internal error"), false);
   assert.strictEqual(forbidden.error.details.messageAr.includes("غير مرتبط بالحساب الحالي"), true);
 
+  const notFound = normalizePickupErrorResponse(
+    {
+      ok: false,
+      error: {
+        code: "NOT_FOUND",
+        message: "Subscription not found",
+      },
+    },
+    request("en"),
+    "/api/subscriptions/deleted_id/pickup-availability?date=2026-07-22"
+  );
+  assert.strictEqual(notFound.error.message.includes("subscription was not found"), true);
+  assert.strictEqual(notFound.error.message.includes("internal error"), false);
+  assert.strictEqual(notFound.error.details.messageAr.includes("لم يتم العثور على الاشتراك"), true);
+
   const explicitOwnershipMessage = normalizePickupErrorResponse(
     {
       ok: false,
