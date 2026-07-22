@@ -1,0 +1,120 @@
+name: Apply core Meal Builder source kind normalization
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/apply-meal-builder-source-kind-core-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Patch central normalizer
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/services/subscription/mealBuilderConfigService.js')
+          text = path.read_text()
+
+          import_old = 'const { pickLang } = require("../../utils/i18n");\n'
+          import_new = import_old + 'const { canonicalSourceKind } = require("./mealBuilderSourceKindCompatibility");\n'
+          if 'canonicalSourceKind } = require("./mealBuilderSourceKindCompatibility")' not in text:
+              if import_old not in text:
+                  raise SystemExit('pickLang import anchor not found')
+              text = text.replace(import_old, import_new, 1)
+
+          anchor = '''  if (!normalized.sourceKind && sourceKind) {
+    if (sourceKind === "premium_mixed") normalized.sourceKind = "premium_visual";
+    else if (sourceKind === "option_family") normalized.sourceKind = "visual_family";
+    else if (sourceKind === "option_group") normalized.sourceKind = "visual_family";
+    else if (sourceKind === "product_category" || sourceKind === "product_list") normalized.sourceKind = "product_list";
+  }
+
+'''
+          insertion = anchor + '''  normalized.sourceKind = canonicalSourceKind(
+    normalized.sourceKind || sourceKind
+  );
+
+  // Historical Dashboard builds emitted UI aliases in sourceKind. Infer the
+  // canonical stored kind from the section structure when an alias is unknown,
+  // while still failing closed for genuinely malformed section shapes.
+  if (!SOURCE_KINDS.has(normalized.sourceKind)) {
+    const sectionType = String(normalized.sectionType || normalized.type || "").trim();
+    const selectionType = String(normalized.selectionType || "").trim();
+    const sectionKey = String(normalized.key || normalized.sectionKey || "").trim().toLowerCase();
+    const hasProductIds = Array.isArray(normalized.selectedProductIds)
+      || Array.isArray(normalized.productIds);
+    const hasOptionContext = Array.isArray(normalized.selectedOptionIds)
+      || Array.isArray(normalized.optionIds)
+      || Boolean(normalized.productContextId || normalized.sourceGroupId);
+
+    if (
+      sectionType === "product_list"
+      || sectionType === "product_category"
+      || selectionType === MEAL_SELECTION_TYPES.FULL_MEAL_PRODUCT
+      || selectionType === MEAL_SELECTION_TYPES.SANDWICH
+      || (hasProductIds && !hasOptionContext)
+    ) {
+      normalized.sourceKind = "product_list";
+    } else if (
+      sectionKey === "premium"
+      || selectionType === MEAL_SELECTION_TYPES.PREMIUM_MEAL
+      || selectionType === MEAL_SELECTION_TYPES.PREMIUM_LARGE_SALAD
+    ) {
+      normalized.sourceKind = "premium_visual";
+    } else if (sectionType === "option_group" || hasOptionContext) {
+      const rawKind = String(normalized.sourceKind || sourceKind || "").toLowerCase();
+      normalized.sourceKind = rawKind.includes("configurable")
+        || rawKind.includes("product_option")
+        || rawKind.includes("product_context")
+        ? "configurable_product"
+        : "visual_family";
+    }
+  }
+
+'''
+          marker = 'normalized.sourceKind = canonicalSourceKind('
+          if marker not in text:
+              if anchor not in text:
+                  raise SystemExit('sourceKind normalization anchor not found')
+              text = text.replace(anchor, insertion, 1)
+
+          path.write_text(text)
+
+          package = Path('package.json')
+          package_text = package.read_text()
+          old = '"test:meal-builder-source-kind": "NODE_ENV=test node tests/mealBuilderSourceKindCompatibility.test.js"'
+          new = '"test:meal-builder-source-kind": "NODE_ENV=test node tests/mealBuilderSourceKindCompatibility.test.js && NODE_ENV=test node tests/mealBuilderSourceKindWriteBoundary.test.js"'
+          if old in package_text:
+              package.write_text(package_text.replace(old, new, 1))
+
+          Path('.github/workflows/apply-meal-builder-source-kind-core-fix.yml').unlink()
+          PY
+
+      - name: Validate
+        run: |
+          node --check src/services/subscription/mealBuilderConfigService.js
+          node --check src/services/installMealBuilderSourceKindCompatibility.js
+          npm run test:meal-builder-source-kind
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix(meal-builder): canonicalize source kinds in core normalizer"
+          git pull --rebase origin main
+          git push origin HEAD:main
