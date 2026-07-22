@@ -17,6 +17,8 @@ function wrapExport(target, name, factory) {
   target[name] = wrapped;
 }
 
+// Explicit command helpers retained for scheduled recovery and transition paths.
+// Read endpoints must never invoke them implicitly.
 async function releaseExpiredForPickupSubscription(subscriptionId) {
   if (!subscriptionId) return null;
   const subscription = await Subscription.findById(subscriptionId)
@@ -77,6 +79,14 @@ function attachLifecycleBalance(payload, wallet) {
   };
 }
 
+function readOnlyConsistencyMetadata() {
+  return {
+    readOnly: true,
+    reconciliationApplied: false,
+    reconciliationSource: "explicit_commands_and_recovery_workers",
+  };
+}
+
 function patchPlanningService() {
   const service = require("./subscription/subscriptionPlanningClientService");
   wrapExport(service, "appendDayMealsForClient", (original) => async function multiCycleAppend(args = {}) {
@@ -88,35 +98,38 @@ function patchPickupRequestService() {
   const service = require("./subscription/subscriptionPickupRequestClientService");
 
   wrapExport(service, "getPickupAvailabilityForClient", (original) => async function authoritativeAvailability(args = {}) {
-    await releaseExpiredForPickupSubscription(args.subscriptionId);
-    await reconcileCurrentPickupDay(args.subscriptionId, args.date);
     const result = await original(args);
     const wallet = await authority.readWallet(args.subscriptionId);
-    return authority.attachWalletToAvailability(result, wallet);
+    return {
+      ...authority.attachWalletToAvailability(result, wallet),
+      readConsistency: readOnlyConsistencyMetadata(),
+    };
   });
 
+  // Create is a command, so recovery/reconciliation may run before it in later
+  // wrappers. The multi-cycle layer only attaches the resulting wallet.
   wrapExport(service, "createSubscriptionPickupRequestForClient", (original) => async function authoritativeCreate(args = {}) {
-    await releaseExpiredForPickupSubscription(args.subscriptionId);
-    await reconcileCurrentPickupDay(args.subscriptionId, args.date);
     const result = await original(args);
     const wallet = await authority.readWallet(args.subscriptionId);
     return authority.attachWalletToPickupCreateResult(result, wallet);
   });
 
   wrapExport(service, "getSubscriptionPickupRequestStatusForClient", (original) => async function authoritativeStatus(args = {}) {
-    await releaseExpiredForPickupSubscription(args.subscriptionId);
     const result = await original(args);
     const wallet = await authority.readWallet(args.subscriptionId);
-    return attachLifecycleBalance(result, wallet);
+    return {
+      ...attachLifecycleBalance(result, wallet),
+      readConsistency: readOnlyConsistencyMetadata(),
+    };
   });
 
   wrapExport(service, "listSubscriptionPickupRequestsForClient", (original) => async function authoritativeList(args = {}) {
-    await releaseExpiredForPickupSubscription(args.subscriptionId);
     const result = await original(args);
     const wallet = await authority.readWallet(args.subscriptionId);
     return {
       ...result,
       entitlementWallet: wallet,
+      readConsistency: readOnlyConsistencyMetadata(),
       requests: Array.isArray(result && result.requests)
         ? result.requests.map((request) => attachLifecycleBalance(request, wallet))
         : [],
@@ -127,11 +140,12 @@ function patchPickupRequestService() {
 function patchOverviewService() {
   const service = require("./subscription/subscriptionClientOverviewService");
   wrapExport(service, "buildCurrentSubscriptionOverview", (original) => async function authoritativeOverview(args = {}) {
-    await releaseExpiredForPickupUser(args.userId);
     const result = await original(args);
     if (!result || !result.data || !result.data.subscriptionId) return result;
     const wallet = await authority.readWallet(result.data.subscriptionId);
-    return authority.attachWalletToOverview(result, wallet);
+    const attached = authority.attachWalletToOverview(result, wallet);
+    attached.data.readConsistency = readOnlyConsistencyMetadata();
+    return attached;
   });
 }
 
@@ -178,6 +192,7 @@ module.exports = {
   patchOverviewService,
   patchPickupRequestService,
   patchPlanningService,
+  readOnlyConsistencyMetadata,
   reconcileCurrentPickupDay,
   releaseExpiredForPickupSubscription,
   releaseExpiredForPickupUser,
