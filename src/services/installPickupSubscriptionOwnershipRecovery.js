@@ -1,6 +1,7 @@
 "use strict";
 
 const resolver = require("./subscription/subscriptionPickupOwnershipResolverService");
+const { logger } = require("../utils/logger");
 
 const INSTALL_KEY = Symbol.for("basicdiet.pickupSubscriptionOwnershipRecovery.installed");
 const WRAPPED_KEY = Symbol.for("basicdiet.pickupSubscriptionOwnershipRecovery.wrapped");
@@ -10,6 +11,18 @@ const FUNCTION_NAMES = Object.freeze([
   "getSubscriptionPickupRequestStatusForClient",
   "listSubscriptionPickupRequestsForClient",
 ]);
+
+function clean(value) {
+  if (value === undefined || value === null) return "";
+  try {
+    if (value && typeof value === "object" && typeof value.toHexString === "function") {
+      return String(value.toHexString()).trim();
+    }
+    return String(value).trim();
+  } catch (_error) {
+    return "";
+  }
+}
 
 function copyFunctionProperties(source, target) {
   for (const key of Reflect.ownKeys(source)) {
@@ -24,6 +37,44 @@ function copyFunctionProperties(source, target) {
   }
 }
 
+async function resolvePickupContextForRoute(args = {}) {
+  try {
+    return await resolver.resolvePickupSubscriptionContext({
+      requestedSubscriptionId: args.subscriptionId,
+      userId: args.userId,
+      date: args.date || null,
+      session: args.session || null,
+    });
+  } catch (error) {
+    if (!error || error.code !== "NOT_FOUND") throw error;
+
+    // Flutter may retain an id from an overview response that was replaced or
+    // deleted during account/subscription recovery. Never query another user's
+    // subscription: resolve only the authenticated user's single active pickup
+    // subscription for the requested business date.
+    const current = await resolver.findCurrentPickupSubscription({
+      userId: args.userId,
+      date: args.date || null,
+      session: args.session || null,
+    });
+    if (!current) throw error;
+
+    logger.warn("deleted stale pickup subscription id resolved to authenticated user's current subscription", {
+      requestedSubscriptionId: clean(args.subscriptionId),
+      resolvedSubscriptionId: clean(current._id),
+      userId: clean(args.userId),
+    });
+
+    return {
+      subscription: current,
+      subscriptionId: clean(current._id),
+      requestedSubscriptionId: clean(args.subscriptionId),
+      resolution: "deleted_stale_id_authenticated_current_subscription",
+      ownershipRecovered: false,
+    };
+  }
+}
+
 function wrapPickupFunction(pickupService, functionName) {
   const original = pickupService && pickupService[functionName];
   if (typeof original !== "function") {
@@ -34,12 +85,7 @@ function wrapPickupFunction(pickupService, functionName) {
   if (original[WRAPPED_KEY]) return original;
 
   const wrapped = async function pickupWithCanonicalAuthenticatedSubscription(args = {}) {
-    const context = await resolver.resolvePickupSubscriptionContext({
-      requestedSubscriptionId: args.subscriptionId,
-      userId: args.userId,
-      date: args.date || null,
-      session: args.session || null,
-    });
+    const context = await resolvePickupContextForRoute(args);
     return original({
       ...args,
       subscriptionId: context.subscriptionId,
@@ -78,4 +124,5 @@ module.exports = {
   INSTALL_KEY,
   WRAPPED_KEY,
   installPickupSubscriptionOwnershipRecovery,
+  resolvePickupContextForRoute,
 };
