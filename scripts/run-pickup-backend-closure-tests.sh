@@ -18,6 +18,9 @@ node tests/pickupLocalizedNameGuard.test.js
 echo "[pickup] verifying same-day multi-cycle reservations, fulfillment, and next-day release"
 node tests/pickupMultiCyclePolicy.integration.test.js
 
+echo "[addons] verifying daily defaults, pooled carryover, fulfillment, skip, and no-show release"
+node tests/subscriptionDailyAddonPolicy.integration.test.js
+
 echo "[pickup] running entitlement, availability, integration, ObjectId, and bilingual contracts"
 npm run test:pickup-backend-closure
 
