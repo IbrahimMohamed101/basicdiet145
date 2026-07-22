@@ -17,5 +17,10 @@ assert.strictEqual(
   true,
   "startup must recover incomplete idempotent pickup reservations before route binding"
 );
+assert.strictEqual(
+  pickupService.createSubscriptionPickupRequestForClient.__linkedDayIntegrityPreflight,
+  true,
+  "startup must block linked-day requests from falling back to standalone debit"
+);
 
 console.log("pickup request recovery installer checks passed");
