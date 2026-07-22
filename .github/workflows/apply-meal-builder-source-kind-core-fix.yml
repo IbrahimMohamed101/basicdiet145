@@ -118,3 +118,5 @@ jobs:
           git commit -m "fix(meal-builder): canonicalize source kinds in core normalizer"
           git pull --rebase origin main
           git push origin HEAD:main
+
+# Triggered after the workflow already existed on the default branch.
