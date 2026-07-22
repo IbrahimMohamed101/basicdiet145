@@ -52,6 +52,10 @@ installSubscriptionDayFullMealCompatibility();
 // service exports. The mobile client can then spend any remaining subscription
 // meal/add-on credits on one valid day without treating mealsPerDay as a hard cap.
 require("./installSubscriptionPooledDayPlanningPolicy");
+// Resolve the authenticated current-or-upcoming subscription for add-on choices,
+// preserve purchased allowance pricing, and reject zero-value payable invoices
+// before controllers and planning services capture their dependencies.
+require("./installSubscriptionAddonClientContract");
 // Normalize catalog display names before route modules capture the catalog
 // builder and before pickup serializers turn Mixed localized objects into text.
 require("./installPickupLocalizedCatalogGuard");
