@@ -18,7 +18,7 @@ node tests/subscriptionBackendRepairComposition.test.js
 echo "[planner] allowing pooled meal and add-on credits on one valid subscription day"
 node tests/subscriptionPooledDayPlanningPolicy.test.js
 
-echo "[addons] resolving upcoming entitlements and blocking zero-value invoices"
+echo "[addons] resolving upcoming entitlements, canonical pricing, and zero-invoice protection"
 node tests/subscriptionAddonClientContract.test.js
 
 echo "[startup] verifying full route composition after add-on contract installation"
