@@ -56,6 +56,9 @@ require("./installSubscriptionPooledDayPlanningPolicy");
 // preserve purchased allowance pricing, and reject zero-value payable invoices
 // before controllers and planning services capture their dependencies.
 require("./installSubscriptionAddonClientContract");
+// Guard every add-on payment initiation and settlement boundary before controllers,
+// webhook routes, or verification services capture the exported functions.
+require("./installSubscriptionAddonPaymentBoundaryGuard");
 // Normalize catalog display names before route modules capture the catalog
 // builder and before pickup serializers turn Mixed localized objects into text.
 require("./installPickupLocalizedCatalogGuard");
