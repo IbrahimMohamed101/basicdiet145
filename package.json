@@ -49,7 +49,8 @@
     "test:meal-planner-production-products": "NODE_ENV=test node tests/dashboardMealPlannerProductionProducts.test.js",
     "test:meal-builder-complete-catalog": "NODE_ENV=test node tests/dashboardMealBuilderCompleteCatalog.test.js",
     "test:meal-builder-sandwich-card": "NODE_ENV=test node tests/dashboardMealBuilderSandwichCardEndToEnd.test.js",
-    "test:meal-builder-backend-closure": "NODE_ENV=test node tests/dashboardMealBuilderCompleteCatalog.test.js && NODE_ENV=test node tests/mealPlannerFullMealProductContract.test.js && NODE_ENV=test node tests/dashboardMealBuilderCompatibleDefaultSeed.test.js && NODE_ENV=test node tests/dashboardMealBuilderSandwichCardEndToEnd.test.js && NODE_ENV=test node tests/dashboardMealBuilderOptionCatalogClosure.test.js && NODE_ENV=test node tests/dashboardMealBuilderFullMealEndToEnd.test.js && NODE_ENV=test node tests/mealBuilderDashboardMobileParity.test.js && npm run test:meal-planner-flutter-cards",
+    "test:meal-builder-source-kind": "NODE_ENV=test node tests/mealBuilderSourceKindCompatibility.test.js",
+    "test:meal-builder-backend-closure": "npm run test:meal-builder-source-kind && NODE_ENV=test node tests/dashboardMealBuilderCompleteCatalog.test.js && NODE_ENV=test node tests/mealPlannerFullMealProductContract.test.js && NODE_ENV=test node tests/dashboardMealBuilderCompatibleDefaultSeed.test.js && NODE_ENV=test node tests/dashboardMealBuilderSandwichCardEndToEnd.test.js && NODE_ENV=test node tests/dashboardMealBuilderOptionCatalogClosure.test.js && NODE_ENV=test node tests/dashboardMealBuilderFullMealEndToEnd.test.js && NODE_ENV=test node tests/mealBuilderDashboardMobileParity.test.js && npm run test:meal-planner-flutter-cards",
     "test:meal-planner-card-actions": "NODE_ENV=test node tests/mealPlannerCardLifecycle.test.js",
     "test:meal-planner-v4": "NODE_ENV=test node tests/dynamicMealPlannerV4Contract.test.js",
     "test:dashboard-manual-deduction-policy": "NODE_ENV=test node tests/manualDeductionBalancePolicy.test.js",
@@ -117,7 +118,7 @@
   "dependencies": {
     "bcryptjs": "^2.4.3",
     "cloudinary": "^2.10.0",
-    "cors": "^2.8.5",
+    "cors": "^4.18.2",
     "date-fns": "^3.6.0",
     "date-fns-tz": "^3.1.3",
     "dotenv": "^16.6.1",
