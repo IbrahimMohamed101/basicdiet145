@@ -8,6 +8,9 @@ const balanceClosureService = require("./subscriptionPickupRequestBalanceClosure
 const linkPolicy = require("./pickupEntitlementLinkService");
 const { dayHasPlannedMeals } = require("./pickupLinkedDayIntegrityService");
 const {
+  ensureEntitlementLedger,
+} = require("./subscriptionMealEntitlementService");
+const {
   repairLinkedDayAllocations,
 } = require("./pickupLinkedDayAllocationRepairService");
 
@@ -113,9 +116,6 @@ async function assertLinkedDayMutationIntegrity({
     || ["pickup_item_ids", "slot_ids"].includes(clean(pickupRequest.selectionMode));
   const plannedDay = dayHasPlannedMeals(day);
 
-  // A true legacy quantity-only request against an empty day is intentionally
-  // standalone. Every planned or explicitly selected Flutter request is linked
-  // and must never fall back to a second debit from remainingMeals.
   if (!isCanonicalSelection && !plannedDay) {
     return { linked: false, reason: "legacy_empty_day" };
   }
@@ -188,17 +188,15 @@ function buildGuardedReserve(originalReserve) {
     if (args.session) requestQuery.session(args.session);
     const pickupRequest = await requestQuery;
 
-    // Preserve the closure service's own not-found/mismatch errors and its
-    // idempotent replay path without introducing a new failure mode.
     if (!pickupRequest || pickupRequest.creditsReserved || Number(pickupRequest.mealCount || 0) <= 0) {
       return originalReserve(args);
     }
 
-    // Repair only after the create service has resolved the idempotency key and
-    // reached the actual credit mutation. Historical aggregate debits are
-    // materialized into exact slot allocations; genuinely new slots reserve one
-    // credit exactly once. The strict assertion remains the final fail-closed
-    // check before the balance closure can claim or debit anything.
+    // Upgrade legacy aggregate-only balances first. The migration reclassifies
+    // totalMeals - remainingMeals as an unmaterialized consumed aggregate; the
+    // linked-day repair can then adopt that existing debit instead of charging
+    // remainingMeals again.
+    await ensureEntitlementLedger(args.subscriptionId, args.session || null);
     await repairLinkedDayAllocations({
       subscriptionId: args.subscriptionId,
       date: pickupRequest.date,
@@ -220,6 +218,7 @@ function buildGuardedReserve(originalReserve) {
   guarded.__original = originalReserve;
   guarded.__linkedDayMutationGuard = true;
   guarded.__linkedDayAllocationRepair = true;
+  guarded.__legacyEntitlementUpgrade = true;
   return guarded;
 }
 
