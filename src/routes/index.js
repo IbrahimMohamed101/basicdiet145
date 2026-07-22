@@ -11,6 +11,7 @@ require("../services/installDashboardMealPlannerTwoTypePolicy");
 require("../services/installDashboardMealBuilderDraftGuard");
 require("../services/installSubscriptionDailyAddonPolicy");
 require("../services/installSubscriptionAddonCarryoverAuthority");
+require("../services/installSubscriptionDailyAddonOperationBoundary");
 require("../services/installSubscriptionAddonReservationClosure");
 require("../services/installSubscriptionAddonReservationReconciliation");
 require("../services/installSubscriptionAddonOpsIdentityClosure");
