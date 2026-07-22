@@ -24,6 +24,9 @@ node tests/pickupMultiCyclePolicy.integration.test.js
 echo "[pickup] verifying crash recovery and concurrent idempotent replay"
 node tests/pickupRequestRecovery.integration.test.js
 
+echo "[pickup] verifying linked days cannot fall back to standalone debit"
+node tests/pickupLinkedDayNoFallback.test.js
+
 echo "[addons] verifying final daily add-on runtime composition"
 node tests/subscriptionDailyAddonRuntimeComposition.test.js
 
