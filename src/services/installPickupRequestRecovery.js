@@ -5,6 +5,9 @@ const recoveryService = require("./subscription/subscriptionPickupRequestRecover
 const {
   assertLinkedDayAllocationIntegrity,
 } = require("./subscription/pickupLinkedDayIntegrityService");
+const {
+  repairLinkedDayAllocations,
+} = require("./subscription/pickupLinkedDayAllocationRepairService");
 
 const INSTALL_KEY = Symbol.for("basicdiet.pickupRequestRecovery.installed");
 const WRAPPED_KEY = Symbol.for("basicdiet.pickupRequestRecovery.wrapped");
@@ -24,6 +27,18 @@ function installPickupRequestRecovery() {
   if (typeof original !== "function" || original[WRAPPED_KEY]) return;
 
   const wrapped = async function recoverablePickupCreate(args = {}) {
+    // Historical subscriptions can contain an aggregate debit for a confirmed
+    // day while the per-slot allocation row is missing. Materialize that debit
+    // first (or reserve a genuinely new slot once), then keep the strict
+    // no-standalone-fallback assertion as a fail-closed boundary.
+    await repairLinkedDayAllocations({
+      subscriptionId: args.subscriptionId,
+      date: args.date,
+      mealCount: args.mealCount,
+      selectedMealSlotIds: args.selectedMealSlotIds,
+      selectedPickupItemIds: args.selectedPickupItemIds,
+      session: args.session || null,
+    });
     await assertLinkedDayAllocationIntegrity({
       subscriptionId: args.subscriptionId,
       date: args.date,
@@ -66,6 +81,7 @@ function installPickupRequestRecovery() {
   wrapped.__original = original;
   wrapped.__pickupReservationRecovery = true;
   wrapped.__linkedDayIntegrityPreflight = true;
+  wrapped.__linkedDayAllocationRepair = true;
   pickupService.createSubscriptionPickupRequestForClient = wrapped;
 }
 
