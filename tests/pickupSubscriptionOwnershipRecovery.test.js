@@ -15,6 +15,9 @@ const {
   normalizedIdentityPhone,
   resolvePickupSubscriptionContext,
 } = require("../src/services/subscription/subscriptionPickupOwnershipResolverService");
+const {
+  resolvePickupContextForRoute,
+} = require("../src/services/installPickupSubscriptionOwnershipRecovery");
 
 function oid() {
   return new mongoose.Types.ObjectId();
@@ -78,6 +81,39 @@ async function testStaleIdResolvesOnlyAuthenticatedUsersOwnSubscription() {
 
   const unchangedStale = await Subscription.findById(staleSubscription._id).lean();
   assert.strictEqual(String(unchangedStale.userId), String(previousAccount._id));
+}
+
+async function testDeletedStaleIdResolvesAuthenticatedUsersOwnSubscription() {
+  const currentAccount = await createUser("+966511111108");
+  const currentSubscription = await createSubscription(currentAccount._id);
+  const deletedSubscriptionId = oid();
+
+  const result = await resolvePickupContextForRoute({
+    subscriptionId: deletedSubscriptionId,
+    userId: currentAccount._id,
+    date: "2026-07-22",
+  });
+
+  assert.strictEqual(
+    result.resolution,
+    "deleted_stale_id_authenticated_current_subscription"
+  );
+  assert.strictEqual(result.subscriptionId, String(currentSubscription._id));
+  assert.strictEqual(result.requestedSubscriptionId, String(deletedSubscriptionId));
+}
+
+async function testDeletedStaleIdWithoutOwnedSubscriptionStaysNotFound() {
+  const currentAccount = await createUser("+966511111109");
+  const deletedSubscriptionId = oid();
+
+  await assert.rejects(
+    () => resolvePickupContextForRoute({
+      subscriptionId: deletedSubscriptionId,
+      userId: currentAccount._id,
+      date: "2026-07-22",
+    }),
+    (error) => error && error.code === "NOT_FOUND" && error.status === 404
+  );
 }
 
 async function testSamePhoneLegacyAccountTransfersAtomically() {
@@ -205,6 +241,10 @@ async function run() {
     await testExactOwnership();
     await mongoose.connection.dropDatabase();
     await testStaleIdResolvesOnlyAuthenticatedUsersOwnSubscription();
+    await mongoose.connection.dropDatabase();
+    await testDeletedStaleIdResolvesAuthenticatedUsersOwnSubscription();
+    await mongoose.connection.dropDatabase();
+    await testDeletedStaleIdWithoutOwnedSubscriptionStaysNotFound();
     await mongoose.connection.dropDatabase();
     await testSamePhoneLegacyAccountTransfersAtomically();
     await mongoose.connection.dropDatabase();
