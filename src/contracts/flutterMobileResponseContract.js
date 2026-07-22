@@ -42,6 +42,10 @@ function optional(value, validator, path) {
   if (value !== undefined && value !== null) validator(value, path);
 }
 
+function defaultWhenNullish(value, fallback) {
+  return value === undefined || value === null ? fallback : value;
+}
+
 function successfulEnvelope(payload, path = "response") {
   object(payload, path);
   const success = typeof payload.status === "boolean"
@@ -88,10 +92,10 @@ function validateOverview(payload) {
   number(data.totalMeals, "overview.data.totalMeals");
   number(data.remainingMeals, "overview.data.remainingMeals");
   string(data.deliveryMode, "overview.data.deliveryMode");
-  array(data.addonBalances || [], "overview.data.addonBalances");
-  array(data.addonSubscriptionAllowances || [], "overview.data.addonSubscriptionAllowances")
+  array(defaultWhenNullish(data.addonBalances, []), "overview.data.addonBalances");
+  array(defaultWhenNullish(data.addonSubscriptionAllowances, []), "overview.data.addonSubscriptionAllowances")
     .forEach((row, index) => validateAddonAllowance(row, `overview.data.addonSubscriptionAllowances[${index}]`));
-  array(data.addonCategoryAllowances || [], "overview.data.addonCategoryAllowances");
+  array(defaultWhenNullish(data.addonCategoryAllowances, []), "overview.data.addonCategoryAllowances");
   optional(data.mealBalance, (value, path) => {
     object(value, path);
     number(value.totalMeals, `${path}.totalMeals`);
@@ -168,7 +172,7 @@ function validateMealPlannerMenu(payload) {
     string(section.id, `mealPlannerMenu.sections[${sectionIndex}].id`);
     string(section.key, `mealPlannerMenu.sections[${sectionIndex}].key`);
     string(section.selectionType, `mealPlannerMenu.sections[${sectionIndex}].selectionType`);
-    array(section.products || [], `mealPlannerMenu.sections[${sectionIndex}].products`)
+    array(defaultWhenNullish(section.products, []), `mealPlannerMenu.sections[${sectionIndex}].products`)
       .forEach((product, index) => validateBuilderProduct(product, `mealPlannerMenu.sections[${sectionIndex}].products[${index}]`));
   });
   object(data.addons || data.addonCatalog, "mealPlannerMenu.data.addons");
@@ -179,11 +183,11 @@ function validateMealSlot(slot, path) {
   object(slot, path);
   number(slot.slotIndex, `${path}.slotIndex`);
   string(slot.slotKey, `${path}.slotKey`);
-  string(slot.status, `${path}.status`);
-  array(slot.carbs || [], `${path}.carbs`);
-  boolean(Boolean(slot.isPremium), `${path}.isPremium`);
-  string(slot.premiumSource || "none", `${path}.premiumSource`);
-  number(Number(slot.premiumExtraFeeHalala || 0), `${path}.premiumExtraFeeHalala`);
+  string(defaultWhenNullish(slot.status, "empty"), `${path}.status`);
+  array(defaultWhenNullish(slot.carbs, []), `${path}.carbs`);
+  boolean(defaultWhenNullish(slot.isPremium, false), `${path}.isPremium`);
+  string(defaultWhenNullish(slot.premiumSource, "none"), `${path}.premiumSource`);
+  number(defaultWhenNullish(slot.premiumExtraFeeHalala, 0), `${path}.premiumExtraFeeHalala`);
 }
 
 function validateSubscriptionDay(payload) {
@@ -193,11 +197,11 @@ function validateSubscriptionDay(payload) {
   string(data.status, "subscriptionDay.data.status");
   array(data.mealSlots, "subscriptionDay.data.mealSlots")
     .forEach((slot, index) => validateMealSlot(slot, `subscriptionDay.data.mealSlots[${index}]`));
-  array(data.addonSelections || [], "subscriptionDay.data.addonSelections");
-  array(data.addonBalance || data.addonBalances || [], "subscriptionDay.data.addonBalance");
-  array(data.addonSubscriptionAllowances || [], "subscriptionDay.data.addonSubscriptionAllowances")
+  array(defaultWhenNullish(data.addonSelections, []), "subscriptionDay.data.addonSelections");
+  array(defaultWhenNullish(data.addonBalance, defaultWhenNullish(data.addonBalances, [])), "subscriptionDay.data.addonBalance");
+  array(defaultWhenNullish(data.addonSubscriptionAllowances, []), "subscriptionDay.data.addonSubscriptionAllowances")
     .forEach((row, index) => validateAddonAllowance(row, `subscriptionDay.data.addonSubscriptionAllowances[${index}]`));
-  object(data.paymentRequirement || {}, "subscriptionDay.data.paymentRequirement");
+  object(defaultWhenNullish(data.paymentRequirement, {}), "subscriptionDay.data.paymentRequirement");
   return payload;
 }
 
@@ -224,9 +228,9 @@ function validatePickupAvailability(payload) {
   number(wallet.consumedMeals, "pickupAvailability.data.wallet.consumedMeals");
   number(wallet.reservedMeals, "pickupAvailability.data.wallet.reservedMeals");
   number(wallet.availableMeals != null ? wallet.availableMeals : wallet.remainingMeals, "pickupAvailability.data.wallet.availableMeals");
-  const slots = data.slots || data.plannedSlots || [];
+  const slots = data.slots != null ? data.slots : defaultWhenNullish(data.plannedSlots, []);
   array(slots, "pickupAvailability.data.slots").forEach((slot, index) => validatePickupSlot(slot, `pickupAvailability.data.slots[${index}]`));
-  array(data.pickupItems || [], "pickupAvailability.data.pickupItems");
+  array(defaultWhenNullish(data.pickupItems, []), "pickupAvailability.data.pickupItems");
   object(data.summary, "pickupAvailability.data.summary");
   boolean(data.canAppendMeals, "pickupAvailability.data.canAppendMeals");
   number(data.appendLimit, "pickupAvailability.data.appendLimit");
@@ -245,8 +249,8 @@ function validatePickupRequestData(data, path) {
   boolean(data.creditsReserved, `${path}.creditsReserved`);
   boolean(data.isReady, `${path}.isReady`);
   boolean(data.isCompleted, `${path}.isCompleted`);
-  array(data.selectedMealSlotIds || [], `${path}.selectedMealSlotIds`);
-  array(data.selectedPickupItemIds || [], `${path}.selectedPickupItemIds`);
+  array(defaultWhenNullish(data.selectedMealSlotIds, []), `${path}.selectedMealSlotIds`);
+  array(defaultWhenNullish(data.selectedPickupItemIds, []), `${path}.selectedPickupItemIds`);
 }
 
 function validatePickupRequest(payload) {
@@ -260,7 +264,7 @@ function validatePickupRequests(payload) {
   const source = Array.isArray(payload.data)
     ? payload.data
     : payload.data && (payload.data.requests || payload.data.pickupRequests || payload.data.items);
-  array(source || [], "pickupRequests.data").forEach((row, index) => validatePickupRequestData(row, `pickupRequests.data[${index}]`));
+  array(defaultWhenNullish(source, []), "pickupRequests.data").forEach((row, index) => validatePickupRequestData(row, `pickupRequests.data[${index}]`));
   return payload;
 }
 
@@ -302,6 +306,7 @@ function validateFulfillmentStatus(payload) {
 
 module.exports = {
   FlutterContractError,
+  defaultWhenNullish,
   validateAddonChoices,
   validateFulfillmentStatus,
   validateMealPlannerMenu,
