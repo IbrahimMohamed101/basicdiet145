@@ -150,3 +150,4 @@ function run() {
 }
 
 run();
+require("./mealBuilderSourceKindWriteBoundary.test");
