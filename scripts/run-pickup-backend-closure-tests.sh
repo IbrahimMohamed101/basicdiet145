@@ -57,6 +57,9 @@ node tests/subscriptionDailyAddonExplicitPriority.test.js
 echo "[addons] verifying daily defaults and accumulated wallet spend are separate"
 node tests/subscriptionDailyAddonCarryoverAuthority.test.js
 
+echo "[flutter] verifying backend fixtures against current mobile response models"
+node tests/flutterMobileResponseContract.test.js
+
 echo "[pickup] running entitlement, availability, integration, ObjectId, and bilingual contracts"
 npm run test:pickup-backend-closure
 
