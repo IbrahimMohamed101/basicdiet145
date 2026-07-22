@@ -40,6 +40,50 @@ function resolveEntitlementBalance(subscription, entitlement) {
   return { bucket, includedTotalQty, remainingQty };
 }
 
+function resolveAddonSpendLimits({
+  subscription,
+  entitlement = null,
+  product = null,
+  remainingQtyOverride = null,
+} = {}) {
+  const defaultDailyQty = toPositiveInteger(
+    entitlement && (
+      entitlement.quantityPerDay
+      || entitlement.purchasedDailyQty
+      || entitlement.dailyQuantity
+      || entitlement.maxPerDay
+    ) || product && product.maxPerDay,
+    1
+  );
+
+  if (!entitlement) {
+    return {
+      defaultDailyQty,
+      walletRemainingQty: 0,
+      maximumSpendableFromWallet: 0,
+      legacyMaxPerDay: defaultDailyQty,
+      includedTotalQty: 0,
+      bucket: null,
+    };
+  }
+
+  const balance = resolveEntitlementBalance(subscription, entitlement);
+  const walletRemainingQty = remainingQtyOverride === null || remainingQtyOverride === undefined
+    ? toNonNegativeInteger(balance.remainingQty, 0)
+    : toNonNegativeInteger(remainingQtyOverride, 0);
+  const maximumSpendableFromWallet = walletRemainingQty;
+
+  return {
+    ...balance,
+    defaultDailyQty,
+    walletRemainingQty,
+    maximumSpendableFromWallet,
+    // Flutter 1.0.2+8 still parses maxPerDay. Keep it as an additive
+    // compatibility alias while the explicit fields carry the real semantics.
+    legacyMaxPerDay: Math.max(defaultDailyQty, maximumSpendableFromWallet),
+  };
+}
+
 function createInvalidAddonPriceError(product) {
   const err = new Error("Invalid add-on price");
   err.status = 422;
@@ -121,6 +165,13 @@ function buildAddonChoicePricingPreview({
     isEligibleForAllowance: Boolean(selectedEntitlement),
   };
 
+  const limits = resolveAddonSpendLimits({
+    subscription,
+    entitlement: selectedEntitlement,
+    product,
+    remainingQtyOverride,
+  });
+
   if (!selectedEntitlement) {
     const unitPriceHalala = resolveAuthoritativeAddonUnitPriceHalala(product, { required: true, entitlement: null });
     return {
@@ -139,26 +190,16 @@ function buildAddonChoicePricingPreview({
       includedTotalQty: 0,
       remainingQty: 0,
       freeQtyAvailable: 0,
-      maxPerDay: toPositiveInteger(product && product.maxPerDay, 1),
+      maxPerDay: limits.legacyMaxPerDay,
+      defaultDailyQty: limits.defaultDailyQty,
+      walletRemainingQty: 0,
+      maximumSpendableFromWallet: 0,
+      pooledCarryoverEnabled: false,
     };
   }
 
-  const maxPerDay = toPositiveInteger(
-    selectedEntitlement.maxPerDay || selectedEntitlement.quantityPerDay,
-    1
-  );
-  if (requestedQty > maxPerDay) {
-    const err = new Error(`Requested quantity exceeds maxPerDay ${maxPerDay}`);
-    err.status = 400;
-    err.code = "ADDON_MAX_PER_DAY_EXCEEDED";
-    throw err;
-  }
-
-  const { includedTotalQty, remainingQty } = resolveEntitlementBalance(subscription, selectedEntitlement);
-  const remainingBefore = remainingQtyOverride === null || remainingQtyOverride === undefined
-    ? remainingQty
-    : toNonNegativeInteger(remainingQtyOverride, 0);
-  const coveredQty = Math.min(requestedQty, remainingBefore);
+  const remainingBefore = limits.walletRemainingQty;
+  const coveredQty = Math.min(requestedQty, limits.maximumSpendableFromWallet);
   const paidQty = requestedQty - coveredQty;
   const remainingAfter = Math.max(0, remainingBefore - coveredQty);
   const pricingMode = paidQty === 0
@@ -181,10 +222,14 @@ function buildAddonChoicePricingPreview({
     pricingMode,
     source: paidQty === 0 ? "subscription" : "pending_payment",
     entitlement: selectedEntitlement,
-    includedTotalQty,
-    remainingQty,
-    freeQtyAvailable: remainingBefore,
-    maxPerDay,
+    includedTotalQty: limits.includedTotalQty,
+    remainingQty: limits.walletRemainingQty,
+    freeQtyAvailable: limits.walletRemainingQty,
+    maxPerDay: limits.legacyMaxPerDay,
+    defaultDailyQty: limits.defaultDailyQty,
+    walletRemainingQty: limits.walletRemainingQty,
+    maximumSpendableFromWallet: limits.maximumSpendableFromWallet,
+    pooledCarryoverEnabled: true,
   };
 }
 
@@ -246,8 +291,10 @@ function buildSubscriptionAddonCoverageSummary(subscription) {
 
 module.exports = {
   buildAddonChoicePricingPreview,
+  buildAddonChoicePricingPreviewCore: buildAddonChoicePricingPreview,
   buildSubscriptionAddonCoverageSummary,
   createInvalidAddonPriceError,
+  resolveAddonSpendLimits,
   resolveAuthoritativeAddonUnitPriceHalala,
   resolveEntitlementBalance,
 };
