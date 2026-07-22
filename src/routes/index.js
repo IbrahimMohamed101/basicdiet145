@@ -1,6 +1,6 @@
 const { Router } = require("express");
 
-require("../services/installPickupCanonicalObjectIdCoreGuard");
+require("../services/installSubscriptionBackendRepairComposition");
 require("../services/orders/installWeightPricingAuthority");
 require("../services/installDashboardCatalogCompatibility");
 require("../services/installDashboardMealBuilderFinalization");
@@ -9,15 +9,6 @@ require("../services/installDashboardMealPlannerFlutterCardPolicy");
 require("../services/installDashboardMealPlannerCardActionDecorator");
 require("../services/installDashboardMealPlannerTwoTypePolicy");
 require("../services/installDashboardMealBuilderDraftGuard");
-require("../services/installSubscriptionDailyAddonPolicy");
-require("../services/installSubscriptionAddonCarryoverAuthority");
-require("../services/installSubscriptionAddonReservationClosure");
-require("../services/installSubscriptionAddonReservationReconciliation");
-require("../services/installSubscriptionDailyAddonOperationBoundary");
-require("../services/installSubscriptionAddonOpsIdentityClosure");
-require("../services/installPickupRequestRecovery");
-require("../services/installSubscriptionDeliveryAppendSaga");
-require("../services/installReadOnlySubscriptionQueries");
 
 const authRoutes = require("./auth");
 const dashboardAuthRoutes = require("./dashboardAuth");
