@@ -132,9 +132,14 @@ async function testInstallerUsesGuardedMutationAuthority() {
     true,
     "production startup must expose the guarded reserve authority before routes capture it"
   );
+  assert.strictEqual(
+    liveBalanceService.reserveSubscriptionMealsForPickupRequest.__linkedDayAllocationRepair,
+    true,
+    "the final credit mutation must repair historical linked-day allocations before claiming"
+  );
 }
 
-async function testCanonicalLinkedDayWithoutLedgerNeverDebitsStandalone() {
+async function testCanonicalLinkedDayWithoutLedgerRepairsAndNeverDebitsStandalone() {
   const subscription = await createSubscription({
     totalMeals: 5,
     remainingMeals: 4,
@@ -143,27 +148,26 @@ async function testCanonicalLinkedDayWithoutLedgerNeverDebitsStandalone() {
   const day = await createDay(subscription._id, { slotKey: "lunch-main" });
   const request = await createPickupRequest({ subscription, day, slotKey: "lunch-main" });
 
-  await assert.rejects(
-    () => liveBalanceService.reserveSubscriptionMealsForPickupRequest({
-      subscriptionId: subscription._id,
-      pickupRequestId: request._id,
-      mealCount: 1,
-    }),
-    (error) => error
-      && error.code === "LINKED_DAY_ENTITLEMENT_INCONSISTENT"
-      && error.details
-      && error.details.reason === "linked_day_allocations_missing"
-  );
+  const result = await liveBalanceService.reserveSubscriptionMealsForPickupRequest({
+    subscriptionId: subscription._id,
+    pickupRequestId: request._id,
+    mealCount: 1,
+  });
+  assert.strictEqual(result.reserved, true);
+  assert.strictEqual(result.allocationMode, "linked_day");
 
   const wallet = await readWallet(subscription._id);
-  assert.strictEqual(wallet.remainingMeals, 4);
+  assert.strictEqual(wallet.remainingMeals, 4, "historical debit must not be applied again");
   assert.strictEqual(wallet.reservedMeals, 1);
-  assert.strictEqual(wallet.baseMealAllocations.length, 0);
+  assert.strictEqual(wallet.baseMealAllocations.length, 1);
+  assert.strictEqual(wallet.baseMealAllocations[0].slotKey, "lunch-main");
+  assert.strictEqual(String(wallet.baseMealAllocations[0].pickupRequestId), String(request._id));
+
   const savedRequest = await SubscriptionPickupRequest.findById(request._id).lean();
-  assert.strictEqual(savedRequest.creditsReserved, false);
+  assert.strictEqual(savedRequest.creditsReserved, true);
 }
 
-async function testCanonicalSlotMismatchCannotClaimAnotherAllocationByCount() {
+async function testCanonicalSlotMismatchIsSafelyReprojectedInsteadOfClaimedByCount() {
   const dayId = oid();
   const linkedAllocation = allocation({ dayId, slotKey: "breakfast-main" });
   const subscription = await createSubscription({
@@ -178,23 +182,20 @@ async function testCanonicalSlotMismatchCannotClaimAnotherAllocationByCount() {
   });
   const request = await createPickupRequest({ subscription, day, slotKey: "lunch-main" });
 
-  await assert.rejects(
-    () => liveBalanceService.reserveSubscriptionMealsForPickupRequest({
-      subscriptionId: subscription._id,
-      pickupRequestId: request._id,
-      mealCount: 1,
-    }),
-    (error) => error
-      && error.code === "LINKED_DAY_ENTITLEMENT_INCONSISTENT"
-      && error.details
-      && error.details.reason === "selected_slots_do_not_match_allocations"
-  );
+  const result = await liveBalanceService.reserveSubscriptionMealsForPickupRequest({
+    subscriptionId: subscription._id,
+    pickupRequestId: request._id,
+    mealCount: 1,
+  });
+  assert.strictEqual(result.reserved, true);
+  assert.strictEqual(result.allocationMode, "linked_day");
 
   const wallet = await readWallet(subscription._id);
   assert.strictEqual(wallet.remainingMeals, 4);
   assert.strictEqual(wallet.reservedMeals, 1);
   assert.strictEqual(wallet.baseMealAllocations.length, 1);
-  assert.strictEqual(wallet.baseMealAllocations[0].pickupRequestId, null);
+  assert.strictEqual(wallet.baseMealAllocations[0].slotKey, "lunch-main");
+  assert.strictEqual(String(wallet.baseMealAllocations[0].pickupRequestId), String(request._id));
 }
 
 async function testMatchingCanonicalLinkedDayOnlyClaimsExistingReservation() {
@@ -277,9 +278,9 @@ async function run() {
     });
 
     await testInstallerUsesGuardedMutationAuthority();
-    await testCanonicalLinkedDayWithoutLedgerNeverDebitsStandalone();
+    await testCanonicalLinkedDayWithoutLedgerRepairsAndNeverDebitsStandalone();
     await mongoose.connection.dropDatabase();
-    await testCanonicalSlotMismatchCannotClaimAnotherAllocationByCount();
+    await testCanonicalSlotMismatchIsSafelyReprojectedInsteadOfClaimedByCount();
     await mongoose.connection.dropDatabase();
     await testMatchingCanonicalLinkedDayOnlyClaimsExistingReservation();
     await mongoose.connection.dropDatabase();
