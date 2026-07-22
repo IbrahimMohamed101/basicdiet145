@@ -33,6 +33,12 @@ node tests/subscriptionDeliveryAppendSagaInstaller.test.js
 echo "[delivery] verifying idempotency, compensation, payment, and revision conflicts"
 node tests/subscriptionDeliveryAppendSaga.test.js
 
+echo "[reads] verifying pickup reads never invoke cleanup commands"
+node tests/pickupReadOnlyPolicy.test.js
+
+echo "[reads] verifying Ops and reconciliation diagnostics never mutate Mongo state"
+node tests/subscriptionReadOnlyQueries.integration.test.js
+
 echo "[addons] verifying final daily add-on runtime composition"
 node tests/subscriptionDailyAddonRuntimeComposition.test.js
 
