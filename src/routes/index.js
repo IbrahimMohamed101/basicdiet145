@@ -14,6 +14,7 @@ require("../services/installSubscriptionAddonReservationReconciliation");
 require("../services/installSubscriptionAddonOpsIdentityClosure");
 require("../services/installPickupRequestRecovery");
 require("../services/installSubscriptionDeliveryAppendSaga");
+require("../services/installReadOnlySubscriptionQueries");
 
 const authRoutes = require("./auth");
 const dashboardAuthRoutes = require("./dashboardAuth");
