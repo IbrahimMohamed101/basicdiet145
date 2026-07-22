@@ -78,6 +78,9 @@ node tests/subscriptionDailyAddonCarryoverAuthority.test.js
 echo "[flutter] verifying backend fixtures against current mobile response models"
 node tests/flutterMobileResponseContract.test.js
 
+echo "[flutter] rejecting scalar coercions that Dart cannot parse"
+node tests/flutterMobileStrictScalarContract.test.js
+
 echo "[pickup] running entitlement, availability, integration, ObjectId, and bilingual contracts"
 npm run test:pickup-backend-closure
 
