@@ -51,11 +51,14 @@ node tests/subscriptionPickupRequestIdempotency.integration.test.js
 echo "[pickup] verifying linked days cannot fall back to standalone debit"
 node tests/pickupLinkedDayNoFallback.test.js
 
-echo "[pickup] verifying Flutter linked-day requests cannot debit standalone or claim a mismatched slot"
+echo "[pickup] verifying Flutter linked-day requests repair before claiming exact slots"
 node tests/pickupLinkedDayMutationGuard.test.js
 
 echo "[pickup] repairing historical aggregate debits into exact linked-day allocations"
 node tests/pickupLinkedDayAllocationRepair.test.js
+
+echo "[pickup] upgrading legacy aggregate-only balances without a second debit"
+node tests/pickupLegacyEntitlementRepair.test.js
 
 echo "[delivery] verifying append saga installation order"
 node tests/subscriptionDeliveryAppendSagaInstaller.test.js
