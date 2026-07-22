@@ -21,6 +21,9 @@ node tests/subscriptionPooledDayPlanningPolicy.test.js
 echo "[addons] resolving upcoming entitlements and blocking zero-value invoices"
 node tests/subscriptionAddonClientContract.test.js
 
+echo "[startup] verifying full route composition after add-on contract installation"
+node -e "const { createApp } = require('./src/app'); const app = createApp(); if (!app) process.exit(1); console.log('app startup smoke passed')"
+
 echo "[entitlements] preventing a Premium payment revision from reserving the same day slots twice"
 node tests/subscriptionStableDayMealReservation.test.js
 
