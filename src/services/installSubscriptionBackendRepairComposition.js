@@ -1,6 +1,7 @@
 "use strict";
 
 const STATE_KEY = Symbol.for("basicdiet.subscriptionBackendRepairComposition.state");
+const LEGACY_DAILY_ADDON_WRAP_KEY = Symbol.for("basicdiet.subscriptionDailyAddonPolicy.wrapped");
 
 function assertInstalled(condition, message) {
   if (!condition) {
@@ -10,9 +11,51 @@ function assertInstalled(condition, message) {
   }
 }
 
+function protectFunctionFromLegacyWrapper(fn, label) {
+  if (typeof fn !== "function") {
+    const error = new Error(`Missing function while protecting legacy carryover authority: ${label}`);
+    error.code = "SUBSCRIPTION_REPAIR_COMPOSITION_INCOMPLETE";
+    throw error;
+  }
+  Object.defineProperty(fn, LEGACY_DAILY_ADDON_WRAP_KEY, {
+    value: true,
+    configurable: true,
+  });
+  Object.defineProperty(fn, "__legacyCarryoverProtected", {
+    value: true,
+    configurable: true,
+  });
+  return fn;
+}
+
+function suppressLegacyCarryoverWrappers() {
+  const pricingService = require("./subscription/subscriptionAddonPricingService");
+  const balanceService = require("./subscription/subscriptionAddonBalanceService");
+
+  protectFunctionFromLegacyWrapper(
+    pricingService.buildAddonChoicePricingPreview,
+    "subscriptionAddonPricingService.buildAddonChoicePricingPreview"
+  );
+  protectFunctionFromLegacyWrapper(
+    balanceService.buildClientAddonBalance,
+    "subscriptionAddonBalanceService.buildClientAddonBalance"
+  );
+  protectFunctionFromLegacyWrapper(
+    balanceService.buildAddonSubscriptionAllowances,
+    "subscriptionAddonBalanceService.buildAddonSubscriptionAllowances"
+  );
+
+  return {
+    pricingCoreProtected: true,
+    clientBalanceProtected: true,
+    allowancesProtected: true,
+  };
+}
+
 function verifyComposition() {
   const presentation = require("./subscription/pickupCanonicalPresentationService");
   const pricingService = require("./subscription/subscriptionAddonPricingService");
+  const addonChoicesService = require("./subscription/subscriptionAddonChoicesService");
   const dailyAddonService = require("./subscription/subscriptionDailyAddonService");
   const planningService = require("./subscription/subscriptionPlanningClientService");
   const pickupService = require("./subscription/subscriptionPickupRequestClientService");
@@ -25,6 +68,14 @@ function verifyComposition() {
   assertInstalled(
     pricingService.buildAddonChoicePricingPreview === pricingService.buildAddonChoicePricingPreviewCore,
     "Add-on pricing is not using the non-mutating carryover core"
+  );
+  assertInstalled(
+    pricingService.buildAddonChoicePricingPreview.__legacyCarryoverProtected === true,
+    "The pricing core was exposed to the legacy entitlement mutation wrapper"
+  );
+  assertInstalled(
+    addonChoicesService.buildAddonChoicePricingPreview === pricingService.buildAddonChoicePricingPreviewCore,
+    "Add-on choices captured a legacy carryover pricing reference"
   );
   assertInstalled(
     dailyAddonService.__reservationClosurePatched === true,
@@ -64,6 +115,8 @@ function verifyComposition() {
   return {
     objectIdGuard: true,
     carryoverPricingCore: true,
+    legacyCarryoverSuppressed: true,
+    addonChoicesPricingCore: true,
     addonReservationLifecycle: true,
     addonOperationBoundary: true,
     readOnlyQueries: true,
@@ -87,11 +140,13 @@ function installSubscriptionBackendRepairComposition() {
     startedAt: new Date(),
     installedAt: null,
     verification: null,
+    legacyCarryoverProtection: null,
   };
   globalThis[STATE_KEY] = state;
 
   try {
     require("./installPickupCanonicalObjectIdCoreGuard");
+    state.legacyCarryoverProtection = suppressLegacyCarryoverWrappers();
     require("./installSubscriptionDailyAddonPolicy");
     require("./installSubscriptionAddonCarryoverAuthority");
     require("./installSubscriptionAddonReservationClosure");
@@ -117,7 +172,9 @@ function installSubscriptionBackendRepairComposition() {
 installSubscriptionBackendRepairComposition();
 
 module.exports = {
+  LEGACY_DAILY_ADDON_WRAP_KEY,
   STATE_KEY,
   installSubscriptionBackendRepairComposition,
+  suppressLegacyCarryoverWrappers,
   verifyComposition,
 };
