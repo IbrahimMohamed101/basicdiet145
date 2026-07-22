@@ -3,6 +3,10 @@
 const canonicalService = require("./dashboardMealPlannerCanonicalService");
 const compatibilityService = require("./dashboardMealPlannerCompatibilityService");
 const cardFacade = require("./dashboardMealPlannerCardFacadeService");
+const {
+  normalizeMealBuilderDraftArgs,
+  normalizeMealBuilderSectionArgs,
+} = require("./mealBuilderSourceKindCompatibility");
 const CatalogService = require("../catalog/CatalogService");
 
 const DIRECT_PICKER_VERSION = "dashboard_meal_builder_picker.v1";
@@ -185,16 +189,21 @@ async function serviceForSection(sectionKey, fallbackSection = null) {
 }
 
 async function createProductSection(args = {}) {
-  const section = args.section || {};
+  const normalizedArgs = normalizeMealBuilderSectionArgs(args, "section");
+  const section = normalizedArgs.section || {};
   const service = isOptionSection(section)
     ? canonicalService
     : compatibilityService;
-  return compatibleAction(await service.createProductSection(args));
+  return compatibleAction(await service.createProductSection(normalizedArgs));
 }
 
 async function updateProductSection(args = {}) {
-  const service = await serviceForSection(args.sectionKey, args.patch || null);
-  return compatibleAction(await service.updateProductSection(args));
+  const normalizedArgs = normalizeMealBuilderSectionArgs(args, "patch");
+  const service = await serviceForSection(
+    normalizedArgs.sectionKey,
+    normalizedArgs.patch || null
+  );
+  return compatibleAction(await service.updateProductSection(normalizedArgs));
 }
 
 async function deleteProductSection(args = {}) {
@@ -239,15 +248,15 @@ async function removeOptionFromSection(args = {}) {
 }
 
 async function createDraft(args = {}) {
-  return cardFacade.createDraft(args);
+  return cardFacade.createDraft(normalizeMealBuilderDraftArgs(args));
 }
 
 async function updateDraft(args = {}) {
-  return cardFacade.updateDraft(args);
+  return cardFacade.updateDraft(normalizeMealBuilderDraftArgs(args));
 }
 
 async function validatePayload(args = {}) {
-  return cardFacade.validatePayload(args);
+  return cardFacade.validatePayload(normalizeMealBuilderDraftArgs(args));
 }
 
 async function publishDraft(args = {}) {
