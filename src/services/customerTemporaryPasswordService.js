@@ -3,18 +3,26 @@ const { validateAppPassword, hashAppPassword } = require("./appPasswordService")
 const { revokeAllUserSessions } = require("./refreshSessionService");
 const { writeLog } = require("../utils/log");
 
-const DEFAULT_TEMP_PASSWORD_TTL_HOURS = 24;
+const DEFAULT_TEMP_PASSWORD_TTL_HOURS = 24 * 30;
+const MIN_TEMP_PASSWORD_TTL_HOURS = 24 * 30;
+const MAX_TEMP_PASSWORD_TTL_HOURS = 24 * 365;
 const TEMP_PASSWORD_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
 const UPPER = "ABCDEFGHJKLMNPQRSTUVWXYZ";
 const LOWER = "abcdefghijkmnopqrstuvwxyz";
 const DIGITS = "23456789";
 
 function resolveTemporaryPasswordTtlHours() {
-  const value = Number(process.env.ADMIN_TEMP_PASSWORD_TTL_HOURS || DEFAULT_TEMP_PASSWORD_TTL_HOURS);
-  if (!Number.isFinite(value) || value <= 0 || value > 168) {
+  const rawValue = process.env.ADMIN_TEMP_PASSWORD_TTL_HOURS;
+  if (rawValue === undefined || rawValue === null || String(rawValue).trim() === "") {
     return DEFAULT_TEMP_PASSWORD_TTL_HOURS;
   }
-  return value;
+
+  const value = Number(rawValue);
+  if (!Number.isFinite(value) || value <= 0) {
+    return DEFAULT_TEMP_PASSWORD_TTL_HOURS;
+  }
+
+  return Math.min(MAX_TEMP_PASSWORD_TTL_HOURS, Math.max(MIN_TEMP_PASSWORD_TTL_HOURS, value));
 }
 
 function shuffleSecure(chars) {
