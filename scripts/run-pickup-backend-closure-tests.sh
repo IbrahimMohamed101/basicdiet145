@@ -54,6 +54,9 @@ node tests/pickupPlanIdCompatibility.test.js
 echo "[dashboard] verifying nullable menu UI compatibility"
 node tests/dashboardMenuUiNullCompatibility.test.js
 
+echo "[dashboard] verifying bilingual grams and food-only operations payloads"
+node tests/dashboardKitchenPreparationContract.test.js
+
 echo "[audit] verifying read-only entitlement integrity classifications"
 node tests/subscriptionEntitlementAuditService.test.js
 
