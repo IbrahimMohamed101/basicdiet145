@@ -29,6 +29,7 @@ assert.deepStrictEqual(verifyComposition(), {
   staticAddonSchemas: true,
   objectIdGuard: true,
   stableDaySlotMealReservation: true,
+  unifiedDayPaymentAllocationScope: true,
   paidPremiumStateConsistency: true,
   carryoverPricingCore: true,
   legacyCarryoverSuppressed: true,
@@ -50,6 +51,28 @@ assert.strictEqual(
   entitlementService.reserveDayEntitlements.__stableDaySlotIdentity,
   true,
   "day reservation identity must be day + slot, not planner revision"
+);
+assert.strictEqual(
+  entitlementService.linkPaymentToAllocations.__unifiedDayPaymentAllocationScoped,
+  true,
+  "same-day payment must only link the current pending Premium slot allocations"
+);
+assert.strictEqual(
+  entitlementService.validatePaymentAllocations.__unifiedDayPaymentAllocationScoped,
+  true,
+  "same-day verification must ignore consumed allocations from an earlier pickup cycle"
+);
+assert.strictEqual(
+  entitlementService.markPaidFunding.__unifiedDayPaymentAllocationScoped,
+  true,
+  "paid funding must not overwrite an earlier pickup cycle's payment provenance"
+);
+
+const unifiedPaymentService = require("../src/services/subscription/unifiedDayPaymentService");
+assert.strictEqual(
+  unifiedPaymentService.verifyUnifiedDayPaymentFlow.__unifiedDayPaymentTerminalReleaseScoped,
+  true,
+  "terminal same-day payments must release only the current reservation cycle"
 );
 
 const premiumPaymentService = require("../src/services/subscription/premiumExtraDayPaymentService");
