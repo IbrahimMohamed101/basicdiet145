@@ -39,6 +39,39 @@ function run() {
   );
   assert.strictEqual(en.error.message.includes("selected meal"), true);
 
+  const forbidden = normalizePickupErrorResponse(
+    {
+      ok: false,
+      error: {
+        code: "FORBIDDEN",
+        message: "Forbidden",
+      },
+    },
+    request("en"),
+    "/api/subscriptions/sub_1/pickup-availability?date=2026-07-22"
+  );
+  assert.strictEqual(forbidden.error.message.includes("not linked to the current account"), true);
+  assert.strictEqual(forbidden.error.message.includes("internal error"), false);
+  assert.strictEqual(forbidden.error.details.messageAr.includes("غير مرتبط بالحساب الحالي"), true);
+
+  const explicitOwnershipMessage = normalizePickupErrorResponse(
+    {
+      ok: false,
+      error: {
+        code: "FORBIDDEN",
+        message: "Forbidden",
+        details: {
+          messageAr: "رسالة ملكية مخصصة",
+          messageEn: "Custom ownership message",
+        },
+      },
+    },
+    request("en"),
+    "/api/subscriptions/sub_1/pickup-requests"
+  );
+  assert.strictEqual(explicitOwnershipMessage.error.message, "Custom ownership message");
+  assert.strictEqual(explicitOwnershipMessage.error.details.messageAr, "رسالة ملكية مخصصة");
+
   const untouched = normalizePickupErrorResponse(
     source,
     request("ar"),
