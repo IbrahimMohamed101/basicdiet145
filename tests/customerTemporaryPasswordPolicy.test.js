@@ -1,6 +1,7 @@
 "use strict";
 
 const assert = require("assert");
+const User = require("../src/models/User");
 const {
   getTemporaryPasswordExpiresAt,
   resolveTemporaryPasswordTtlHours,
@@ -43,6 +44,26 @@ try {
     expiresAt.getTime() - issuedAt.getTime(),
     30 * 24 * 60 * 60 * 1000,
     "temporary credentials must stay valid for exactly 30 days by default"
+  );
+
+  const legacyUser = new User({
+    phone: "+966555000001",
+    phoneE164: "+966555000001",
+    role: "client",
+    forcePasswordChange: true,
+    temporaryPasswordIssuedAt: issuedAt,
+    temporaryPasswordExpiresAt: new Date(issuedAt.getTime() + 24 * 60 * 60 * 1000),
+  });
+  const effectiveLegacyExpiry = legacyUser.temporaryPasswordExpiresAt;
+  assert.strictEqual(
+    effectiveLegacyExpiry.getTime() - issuedAt.getTime(),
+    30 * 24 * 60 * 60 * 1000,
+    "previously issued 24-hour credentials must be treated as valid for 30 days"
+  );
+  assert.strictEqual(
+    legacyUser.toObject().temporaryPasswordExpiresAt.getTime(),
+    effectiveLegacyExpiry.getTime(),
+    "dashboard serialization must expose the same effective expiry used by authentication"
   );
 
   console.log("customer temporary password policy checks passed");
