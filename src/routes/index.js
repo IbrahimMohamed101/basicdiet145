@@ -77,7 +77,7 @@ router.use("/builder/premium-meals", builderPremiumMealRoutes);
 router.use("/addons", addonRoutes);
 router.use("/content", contentRoutes);
 router.use("/admin/meal-planner-menu", adminMealPlannerMenuRoutes);
-router.use("/dashboard/meal-planner", adminMealPlannerRoutes);
+router.use("/dashboard/meal-planner", adminMealPlannerMenuRoutes);
 router.use("/dashboard/menu", dashboardMenuRoutes);
 router.use("/dashboard/meal-builder", dashboardMealBuilderRoutes);
 router.use("/dashboard/catalog-items", dashboardCatalogItemRoutes);
