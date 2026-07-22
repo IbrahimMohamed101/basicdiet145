@@ -9,8 +9,8 @@ const {
 } = require("./subscriptionMealEntitlementService");
 const { slotAliases } = require("./pickupEntitlementLinkService");
 
-const REPAIR_RETRY_LIMIT = 6;
-const OPERATIONAL_DAY_STATUSES = new Set([
+const MAX_RETRIES = 6;
+const OPERATIONAL_STATUSES = new Set([
   "locked",
   "in_preparation",
   "ready_for_pickup",
@@ -43,7 +43,7 @@ function unique(values = []) {
   return [...new Set((Array.isArray(values) ? values : []).map(clean).filter(Boolean))];
 }
 
-function withOptionalSession(options, session) {
+function withSession(options, session) {
   return session ? { ...options, session } : options;
 }
 
@@ -52,9 +52,9 @@ function attachSession(query, session) {
   return query;
 }
 
-function slotKeyOf(slot, fallbackIndex = 0) {
+function slotKeyOf(slot, index = 0) {
   return clean(slot && (slot.slotKey || (slot.slotIndex ? `slot_${slot.slotIndex}` : "")))
-    || `slot_${fallbackIndex + 1}`;
+    || `slot_${index + 1}`;
 }
 
 function isCompleteSlot(slot) {
@@ -64,16 +64,12 @@ function isCompleteSlot(slot) {
 function isConfirmedOrOperationalDay(day) {
   if (!day) return false;
   if (day.plannerState === "confirmed" || day.planningState === "confirmed") return true;
-  return OPERATIONAL_DAY_STATUSES.has(clean(day.status));
+  return OPERATIONAL_STATUSES.has(clean(day.status));
 }
 
-function aliasesIntersect(left, right) {
-  const rightSet = new Set(slotAliases(right));
-  return slotAliases(left).some((alias) => rightSet.has(alias));
-}
-
-function allocationMatchesSlot(allocation, requestedSlotKey) {
-  return aliasesIntersect(allocation && allocation.slotKey, requestedSlotKey);
+function allocationMatchesSlot(allocation, slotKey) {
+  const wanted = new Set(slotAliases(slotKey));
+  return slotAliases(allocation && allocation.slotKey).some((alias) => wanted.has(alias));
 }
 
 function selectedSlotKeysFromInput({
@@ -83,55 +79,45 @@ function selectedSlotKeysFromInput({
   pickupRequest = null,
 } = {}) {
   const request = pickupRequest || {};
-  const directIds = unique([
+  const requestItemSlots = Array.isArray(request.selectedPickupItems)
+    ? request.selectedPickupItems
+      .filter((item) => item && ["meal", "premium_meal", "large_salad", "sandwich"].includes(clean(item.itemType)))
+      .map((item) => item.slotKey || item.slotId || item.sourceId || item.itemId)
+    : [];
+  const requestedIds = unique([
     ...(Array.isArray(selectedMealSlotIds) ? selectedMealSlotIds : []),
-    ...(Array.isArray(request.selectedMealSlotIds) ? request.selectedMealSlotIds : []),
-  ]);
-  const itemIds = unique([
     ...(Array.isArray(selectedPickupItemIds) ? selectedPickupItemIds : []),
+    ...(Array.isArray(request.selectedMealSlotIds) ? request.selectedMealSlotIds : []),
     ...(Array.isArray(request.selectedPickupItemIds) ? request.selectedPickupItemIds : []),
-    ...(Array.isArray(request.selectedPickupItems)
-      ? request.selectedPickupItems
-        .filter((item) => item && ["meal", "premium_meal", "large_salad", "sandwich"].includes(clean(item.itemType)))
-        .map((item) => item.slotKey || item.slotId || item.sourceId || item.itemId)
-      : []),
+    ...requestItemSlots,
   ]);
-  const requestedIds = unique([...directIds, ...itemIds]);
   if (!requestedIds.length) return [];
 
-  const slots = (Array.isArray(day && day.mealSlots) ? day.mealSlots : [])
-    .filter(isCompleteSlot);
   const matched = [];
+  const slots = (Array.isArray(day && day.mealSlots) ? day.mealSlots : []).filter(isCompleteSlot);
   slots.forEach((slot, index) => {
     const key = slotKeyOf(slot, index);
-    const indexAliases = slotAliases(slot && slot.slotIndex);
-    const keyAliases = new Set([...slotAliases(key), ...indexAliases]);
-    const matches = requestedIds.some((requestedId) => (
-      slotAliases(requestedId).some((alias) => keyAliases.has(alias))
-    ));
-    if (matches) matched.push(key);
+    const aliases = new Set([...slotAliases(key), ...slotAliases(slot.slotIndex)]);
+    if (requestedIds.some((id) => slotAliases(id).some((alias) => aliases.has(alias)))) {
+      matched.push(key);
+    }
   });
   return unique(matched);
 }
 
-function countLedgerStates(subscription) {
-  const result = {
-    reserved: 0,
-    consumed: 0,
-    released: 0,
-    forfeited: 0,
-  };
+function stateCounts(subscription) {
+  const counts = { reserved: 0, consumed: 0, released: 0, forfeited: 0 };
   for (const allocation of Array.isArray(subscription && subscription.baseMealAllocations)
     ? subscription.baseMealAllocations
     : []) {
     const state = clean(allocation && allocation.state);
-    if (Object.prototype.hasOwnProperty.call(result, state)) result[state] += 1;
+    if (Object.prototype.hasOwnProperty.call(counts, state)) counts[state] += 1;
   }
-  return result;
+  return counts;
 }
 
 function aggregateGaps(subscription) {
-  const ledger = countLedgerStates(subscription);
+  const ledger = stateCounts(subscription);
   return {
     reserved: Math.max(0, Number(subscription && subscription.reservedMeals || 0) - ledger.reserved),
     consumed: Math.max(0, Number(subscription && subscription.consumedMeals || 0) - ledger.consumed),
@@ -140,84 +126,85 @@ function aggregateGaps(subscription) {
   };
 }
 
+function dayAllocations(subscription, dayId) {
+  return (Array.isArray(subscription && subscription.baseMealAllocations)
+    ? subscription.baseMealAllocations
+    : []).filter((allocation) => clean(allocation && allocation.dayId) === clean(dayId));
+}
+
+function exactAllocation(allocations, spec) {
+  return allocations.find((allocation) => allocationMatchesSlot(allocation, spec.slotKey)) || null;
+}
+
 function normalizedPremiumKey(value) {
   return clean(value).toLowerCase();
 }
 
-function premiumFundingCompatible(left = {}, right = {}) {
+function fundingCompatible(left = {}, right = {}) {
   const leftSource = clean(left.source || "none");
   const rightSource = clean(right.source || "none");
   if (leftSource !== rightSource) return false;
   if (leftSource !== "wallet") return true;
-  const leftBucketId = clean(left.balanceBucketId);
-  const rightBucketId = clean(right.balanceBucketId);
-  if (leftBucketId && rightBucketId) return leftBucketId === rightBucketId;
+  const leftBucket = clean(left.balanceBucketId);
+  const rightBucket = clean(right.balanceBucketId);
+  if (leftBucket && rightBucket) return leftBucket === rightBucket;
   return normalizedPremiumKey(left.premiumKey) === normalizedPremiumKey(right.premiumKey)
     && (!clean(left.configId) || !clean(right.configId) || clean(left.configId) === clean(right.configId))
     && (!Number(left.revision || 0) || !Number(right.revision || 0)
       || Number(left.revision || 0) === Number(right.revision || 0));
 }
 
-function premiumBucketCandidates(subscription, funding = {}) {
+function premiumCandidates(subscription, funding = {}) {
   const buckets = Array.isArray(subscription && subscription.premiumBalance)
     ? subscription.premiumBalance
     : [];
   const bucketId = clean(funding.balanceBucketId);
   if (bucketId) return buckets.filter((bucket) => clean(bucket && bucket._id) === bucketId);
 
-  const premiumKey = normalizedPremiumKey(funding.premiumKey);
+  const key = normalizedPremiumKey(funding.premiumKey);
   const configId = clean(funding.configId);
   const revision = Number(funding.revision || 0);
   return buckets.filter((bucket) => {
-    if (normalizedPremiumKey(bucket && bucket.premiumKey) !== premiumKey) return false;
+    if (normalizedPremiumKey(bucket && bucket.premiumKey) !== key) return false;
     if (configId && clean(bucket && bucket.configId) !== configId) return false;
     if ((configId || revision > 0) && Number(bucket && bucket.revision || 0) !== revision) return false;
     return true;
   });
 }
 
-function fundedLedgerCount(subscription, bucket, states) {
+function fundedCount(subscription, bucket, states) {
   const bucketId = clean(bucket && bucket._id);
-  const premiumKey = normalizedPremiumKey(bucket && bucket.premiumKey);
-  const wantedStates = new Set(states);
+  const key = normalizedPremiumKey(bucket && bucket.premiumKey);
+  const wanted = new Set(states);
   return (Array.isArray(subscription && subscription.baseMealAllocations)
     ? subscription.baseMealAllocations
     : []).filter((allocation) => {
-    if (!wantedStates.has(clean(allocation && allocation.state))) return false;
+    if (!wanted.has(clean(allocation && allocation.state))) return false;
     const funding = allocation && allocation.premiumFunding || {};
     if (clean(funding.source) !== "wallet") return false;
-    const allocationBucketId = clean(funding.balanceBucketId);
-    if (allocationBucketId) return allocationBucketId === bucketId;
-    return normalizedPremiumKey(funding.premiumKey) === premiumKey;
+    const linkedBucketId = clean(funding.balanceBucketId);
+    return linkedBucketId ? linkedBucketId === bucketId : normalizedPremiumKey(funding.premiumKey) === key;
   }).length;
 }
 
-function premiumRepairPlan(subscription, spec, baseAdoptionMode) {
+function choosePremiumPlan(subscription, spec, baseMode) {
   const funding = spec && spec.premiumFunding || {};
   if (clean(funding.source) !== "wallet") return { kind: "none", bucket: null };
 
-  const candidates = premiumBucketCandidates(subscription, funding);
-  const evaluated = candidates.map((bucket) => ({
+  const rows = premiumCandidates(subscription, funding).map((bucket) => ({
     bucket,
-    reservedGap: Math.max(
-      0,
-      Number(bucket && bucket.reservedQty || 0) - fundedLedgerCount(subscription, bucket, ["reserved"])
-    ),
-    consumedGap: Math.max(
-      0,
-      Number(bucket && bucket.consumedQty || 0) - fundedLedgerCount(subscription, bucket, ["consumed", "forfeited"])
-    ),
-    remainingQty: Math.max(0, Number(bucket && bucket.remainingQty || 0)),
+    reservedGap: Math.max(0, Number(bucket.reservedQty || 0) - fundedCount(subscription, bucket, ["reserved"])),
+    consumedGap: Math.max(0, Number(bucket.consumedQty || 0) - fundedCount(subscription, bucket, ["consumed", "forfeited"])),
+    remainingQty: Math.max(0, Number(bucket.remainingQty || 0)),
   }));
-
-  const preference = baseAdoptionMode === "consumed_gap"
+  const order = baseMode === "consumed_gap"
     ? ["consumed_gap", "reserved_gap", "remaining"]
     : ["reserved_gap", "consumed_gap", "remaining"];
-  for (const kind of preference) {
-    const eligible = evaluated.filter((entry) => (
-      kind === "reserved_gap" ? entry.reservedGap > 0
-        : kind === "consumed_gap" ? entry.consumedGap > 0
-          : entry.remainingQty > 0
+  for (const kind of order) {
+    const eligible = rows.filter((row) => (
+      kind === "reserved_gap" ? row.reservedGap > 0
+        : kind === "consumed_gap" ? row.consumedGap > 0
+          : row.remainingQty > 0
     ));
     if (eligible.length === 1) return { kind, bucket: eligible[0].bucket };
   }
@@ -231,89 +218,77 @@ function premiumRepairPlan(subscription, spec, baseAdoptionMode) {
       messageEn: "The premium meal balance could not be repaired safely. No extra credit was deducted; please contact support.",
       premiumKey: clean(funding.premiumKey),
       balanceBucketId: clean(funding.balanceBucketId) || null,
-      candidateCount: candidates.length,
+      candidateCount: rows.length,
     }
   );
 }
 
-function applyPremiumRepairToAtomicUpdate({ subscription, spec, baseAdoptionMode, filter, update, options }) {
-  const plan = premiumRepairPlan(subscription, spec, baseAdoptionMode);
+function applyPremiumPlan({ subscription, allocation, baseMode, filter, update, options }) {
+  const plan = choosePremiumPlan(subscription, allocation, baseMode);
   if (plan.kind === "none") return plan;
 
   const bucket = plan.bucket;
-  spec.premiumFunding = {
-    ...(spec.premiumFunding || {}),
+  allocation.premiumFunding = {
+    ...(allocation.premiumFunding || {}),
     balanceBucketId: bucket._id,
-    configId: bucket.configId || spec.premiumFunding.configId || null,
-    revision: Number(bucket.revision || spec.premiumFunding.revision || 0),
+    configId: bucket.configId || allocation.premiumFunding.configId || null,
+    revision: Number(bucket.revision || allocation.premiumFunding.revision || 0),
     state: "reserved",
   };
-  filter.premiumBalance = { $elemMatch: { _id: bucket._id } };
-  options.arrayFilters = [...(options.arrayFilters || []), { "bucket._id": bucket._id }];
+  const bucketMatch = {
+    _id: bucket._id,
+    remainingQty: Number(bucket.remainingQty || 0),
+    reservedQty: Number(bucket.reservedQty || 0),
+    consumedQty: Number(bucket.consumedQty || 0),
+  };
+  filter.premiumBalance = { $elemMatch: bucketMatch };
 
-  if (plan.kind === "consumed_gap") {
-    filter.premiumBalance.$elemMatch.consumedQty = { $gte: 1 };
-    update.$inc["premiumBalance.$[bucket].consumedQty"] = -1;
-    update.$inc["premiumBalance.$[bucket].reservedQty"] = 1;
-  } else if (plan.kind === "remaining") {
-    filter.premiumBalance.$elemMatch.remainingQty = { $gte: 1 };
-    update.$inc["premiumBalance.$[bucket].remainingQty"] = -1;
-    update.$inc["premiumBalance.$[bucket].reservedQty"] = 1;
+  if (plan.kind === "consumed_gap" || plan.kind === "remaining") {
+    options.arrayFilters = [{ "bucket._id": bucket._id }];
+    if (plan.kind === "consumed_gap") {
+      update.$inc["premiumBalance.$[bucket].consumedQty"] = -1;
+      update.$inc["premiumBalance.$[bucket].reservedQty"] = 1;
+    } else {
+      update.$inc["premiumBalance.$[bucket].remainingQty"] = -1;
+      update.$inc["premiumBalance.$[bucket].reservedQty"] = 1;
+    }
   }
   return plan;
 }
 
-function currentDayAllocations(subscription, dayId) {
-  return (Array.isArray(subscription && subscription.baseMealAllocations)
-    ? subscription.baseMealAllocations
-    : []).filter((allocation) => clean(allocation && allocation.dayId) === clean(dayId));
-}
-
-function exactAllocationForSpec(allocations, spec) {
-  return allocations.find((allocation) => allocationMatchesSlot(allocation, spec.slotKey)) || null;
-}
-
-function safeReprojectionCandidates({ dayAllocations, allSpecs, missingSpecs }) {
-  const validSlotKeys = allSpecs.map((spec) => spec.slotKey);
-  const surplus = dayAllocations.filter((allocation) => {
+function safeReprojectionMap({ allocations, allSpecs, missingSpecs }) {
+  const surplus = allocations.filter((allocation) => {
     if (!["reserved", "released"].includes(clean(allocation && allocation.state))) return false;
     if (clean(allocation && allocation.pickupRequestId)) return false;
-    return !validSlotKeys.some((slotKey) => allocationMatchesSlot(allocation, slotKey));
+    return !allSpecs.some((spec) => allocationMatchesSlot(allocation, spec.slotKey));
   });
-  if (surplus.length !== missingSpecs.length || !surplus.length) return new Map();
+  if (!surplus.length || surplus.length !== missingSpecs.length) return new Map();
 
-  const mapping = new Map();
+  const map = new Map();
   for (let index = 0; index < missingSpecs.length; index += 1) {
-    const candidate = surplus[index];
-    const spec = missingSpecs[index];
-    if (!premiumFundingCompatible(candidate.premiumFunding || {}, spec.premiumFunding || {})) {
+    if (!fundingCompatible(surplus[index].premiumFunding || {}, missingSpecs[index].premiumFunding || {})) {
       return new Map();
     }
-    mapping.set(clean(spec.slotKey), candidate);
+    map.set(clean(missingSpecs[index].slotKey), surplus[index]);
   }
-  return mapping;
+  return map;
 }
 
 async function reprojectAllocation({ subscriptionId, day, spec, candidate, session = null }) {
-  for (let attempt = 0; attempt < REPAIR_RETRY_LIMIT; attempt += 1) {
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt += 1) {
     const subscription = await attachSession(
       Subscription.findById(subscriptionId).select("__v baseMealAllocations"),
       session
     ).lean();
     if (!subscription) throw serviceError("SUBSCRIPTION_NOT_FOUND", "Subscription not found", 404);
-    const dayAllocations = currentDayAllocations(subscription, day._id);
-    const exact = exactAllocationForSpec(dayAllocations, spec);
-    if (exact) return { allocation: exact, changed: false, mode: "already_materialized" };
+    const allocations = dayAllocations(subscription, day._id);
+    const already = exactAllocation(allocations, spec);
+    if (already) return { allocation: already, changed: false, mode: "already_materialized" };
 
-    const current = dayAllocations.find((allocation) => (
-      clean(allocation && allocation.allocationKey) === clean(candidate && candidate.allocationKey)
-    ));
-    if (!current
-      || !["reserved", "released"].includes(clean(current.state))
-      || clean(current.pickupRequestId)) {
+    const current = allocations.find((row) => clean(row.allocationKey) === clean(candidate.allocationKey));
+    if (!current || !["reserved", "released"].includes(clean(current.state)) || clean(current.pickupRequestId)) {
       return null;
     }
-
     const updated = await Subscription.findOneAndUpdate(
       {
         _id: subscriptionId,
@@ -322,10 +297,7 @@ async function reprojectAllocation({ subscriptionId, day, spec, candidate, sessi
           $elemMatch: {
             allocationKey: current.allocationKey,
             state: { $in: ["reserved", "released"] },
-            $or: [
-              { pickupRequestId: null },
-              { pickupRequestId: { $exists: false } },
-            ],
+            $or: [{ pickupRequestId: null }, { pickupRequestId: { $exists: false } }],
           },
         },
       },
@@ -337,21 +309,20 @@ async function reprojectAllocation({ subscriptionId, day, spec, candidate, sessi
         },
         $inc: { __v: 1 },
       },
-      withOptionalSession({ new: true }, session)
+      withSession({ new: true }, session)
     ).lean();
     if (!updated) continue;
-    const repaired = exactAllocationForSpec(currentDayAllocations(updated, day._id), spec);
-    return { allocation: repaired, changed: true, mode: "reprojected_stale_allocation" };
+    return {
+      allocation: exactAllocation(dayAllocations(updated, day._id), spec),
+      changed: true,
+      mode: "reprojected_stale_allocation",
+    };
   }
-  throw serviceError(
-    "LINKED_DAY_REPAIR_CONFLICT",
-    "Linked day allocation changed while it was being repaired",
-    409
-  );
+  throw serviceError("LINKED_DAY_REPAIR_CONFLICT", "Linked day allocation changed during repair", 409);
 }
 
 async function adoptAggregateGap({ subscriptionId, day, spec, session = null }) {
-  for (let attempt = 0; attempt < REPAIR_RETRY_LIMIT; attempt += 1) {
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt += 1) {
     const subscription = await attachSession(
       Subscription.findById(subscriptionId).select(
         "__v totalMeals remainingMeals reservedMeals consumedMeals forfeitedMeals baseMealAllocations premiumBalance"
@@ -359,15 +330,12 @@ async function adoptAggregateGap({ subscriptionId, day, spec, session = null }) 
       session
     ).lean();
     if (!subscription) throw serviceError("SUBSCRIPTION_NOT_FOUND", "Subscription not found", 404);
-
-    const exact = exactAllocationForSpec(currentDayAllocations(subscription, day._id), spec);
-    if (exact) return { allocation: exact, changed: false, mode: "already_materialized" };
+    const already = exactAllocation(dayAllocations(subscription, day._id), spec);
+    if (already) return { allocation: already, changed: false, mode: "already_materialized" };
 
     const gaps = aggregateGaps(subscription);
-    const baseAdoptionMode = gaps.reserved > 0
-      ? "reserved_gap"
-      : (gaps.consumed > 0 ? "consumed_gap" : null);
-    if (!baseAdoptionMode) return null;
+    const baseMode = gaps.reserved > 0 ? "reserved_gap" : (gaps.consumed > 0 ? "consumed_gap" : null);
+    if (!baseMode) return null;
 
     const allocation = {
       ...spec,
@@ -381,22 +349,25 @@ async function adoptAggregateGap({ subscriptionId, day, spec, session = null }) 
     const filter = {
       _id: subscriptionId,
       __v: Number(subscription.__v || 0),
+      remainingMeals: Number(subscription.remainingMeals || 0),
+      reservedMeals: Number(subscription.reservedMeals || 0),
+      consumedMeals: Number(subscription.consumedMeals || 0),
+      forfeitedMeals: Number(subscription.forfeitedMeals || 0),
       "baseMealAllocations.allocationKey": { $ne: allocation.allocationKey },
     };
     const update = {
       $push: { baseMealAllocations: allocation },
       $inc: { __v: 1 },
     };
-    if (baseAdoptionMode === "consumed_gap") {
-      filter.consumedMeals = { $gte: 1 };
+    if (baseMode === "consumed_gap") {
       update.$inc.consumedMeals = -1;
       update.$inc.reservedMeals = 1;
     }
-    const options = withOptionalSession({ new: true }, session);
-    const premiumPlan = applyPremiumRepairToAtomicUpdate({
+    const options = withSession({ new: true }, session);
+    const premiumPlan = applyPremiumPlan({
       subscription,
-      spec: allocation,
-      baseAdoptionMode,
+      allocation,
+      baseMode,
       filter,
       update,
       options,
@@ -404,74 +375,56 @@ async function adoptAggregateGap({ subscriptionId, day, spec, session = null }) 
 
     const updated = await Subscription.findOneAndUpdate(filter, update, options).lean();
     if (!updated) continue;
-    const repaired = exactAllocationForSpec(currentDayAllocations(updated, day._id), allocation);
     return {
-      allocation: repaired,
+      allocation: exactAllocation(dayAllocations(updated, day._id), allocation),
       changed: true,
-      mode: `adopted_${baseAdoptionMode}`,
+      mode: `adopted_${baseMode}`,
       premiumMode: premiumPlan.kind,
     };
   }
-  throw serviceError(
-    "LINKED_DAY_REPAIR_CONFLICT",
-    "Linked day allocation changed while aggregate credit was being materialized",
-    409
-  );
+  throw serviceError("LINKED_DAY_REPAIR_CONFLICT", "Aggregate meal credit changed during repair", 409);
 }
 
-function deltaDayForSpec(day, spec) {
-  const sourceSlots = Array.isArray(day && day.mealSlots) ? day.mealSlots : [];
-  const selectedSlots = sourceSlots.filter((slot, index) => (
-    allocationMatchesSlot({ slotKey: slotKeyOf(slot, index) }, spec.slotKey)
-  ));
-  const premiumSelections = (Array.isArray(day && day.premiumUpgradeSelections)
+function deltaDay(day, spec) {
+  const mealSlots = (Array.isArray(day && day.mealSlots) ? day.mealSlots : [])
+    .filter((slot, index) => allocationMatchesSlot({ slotKey: slotKeyOf(slot, index) }, spec.slotKey));
+  const premiumUpgradeSelections = (Array.isArray(day && day.premiumUpgradeSelections)
     ? day.premiumUpgradeSelections
     : []).filter((selection) => allocationMatchesSlot(
     { slotKey: selection && (selection.baseSlotKey || selection.slotKey) },
     spec.slotKey
   ));
-  return {
-    ...day,
-    mealSlots: selectedSlots,
-    premiumUpgradeSelections: premiumSelections,
-  };
+  return { ...day, mealSlots, premiumUpgradeSelections };
 }
 
-async function reserveFreshAllocation({ subscriptionId, day, spec, session = null }) {
+async function reserveFresh({ subscriptionId, day, spec, session = null }) {
   const reservation = await reserveDayEntitlements({
     subscriptionId,
-    day: deltaDayForSpec(day, spec),
+    day: deltaDay(day, spec),
     session,
   });
   const subscription = await attachSession(
     Subscription.findById(subscriptionId).select("baseMealAllocations"),
     session
   ).lean();
-  const exact = exactAllocationForSpec(currentDayAllocations(subscription, day._id), spec);
   return {
-    allocation: exact,
+    allocation: exactAllocation(dayAllocations(subscription, day._id), spec),
     changed: Boolean(reservation.newlyReservedKeys && reservation.newlyReservedKeys.length),
     mode: "reserved_fresh_credit",
   };
 }
 
-async function synchronizeDayAllocationProjection({ subscriptionId, dayId, session = null }) {
+async function syncDayProjection({ subscriptionId, dayId, session = null }) {
   const subscription = await attachSession(
     Subscription.findById(subscriptionId).select("baseMealAllocations"),
     session
   ).lean();
   if (!subscription) throw serviceError("SUBSCRIPTION_NOT_FOUND", "Subscription not found", 404);
-  const keys = unique(currentDayAllocations(subscription, dayId)
-    .map((allocation) => allocation && allocation.allocationKey));
+  const keys = unique(dayAllocations(subscription, dayId).map((row) => row.allocationKey));
   await SubscriptionDay.updateOne(
     { _id: dayId, subscriptionId },
-    {
-      $set: {
-        baseAllocationKeys: keys,
-        entitlementTransitionState: "reserved",
-      },
-    },
-    withOptionalSession({}, session)
+    { $set: { baseAllocationKeys: keys, entitlementTransitionState: "reserved" } },
+    withSession({}, session)
   );
   return keys;
 }
@@ -514,23 +467,18 @@ async function repairLinkedDayAllocations({
     selectedPickupItemIds,
     pickupRequest,
   });
-  const explicitMealCount = Number(
-    mealCount !== undefined && mealCount !== null
-      ? mealCount
-      : (pickupRequest && pickupRequest.mealCount)
-  );
-  const requiredCount = Number.isInteger(explicitMealCount) && explicitMealCount > 0
-    ? explicitMealCount
-    : requestedSlotKeys.length;
+  const rawCount = Number(mealCount !== undefined && mealCount !== null
+    ? mealCount
+    : (pickupRequest && pickupRequest.mealCount));
+  const requiredCount = Number.isInteger(rawCount) && rawCount > 0 ? rawCount : requestedSlotKeys.length;
   if (requiredCount <= 0) {
     return { repaired: false, linked: false, reason: "no_base_meal_items", day };
   }
 
   const allSpecs = buildDayAllocationSpecs({ subscriptionId, day });
-  let targetSpecs = requestedSlotKeys.length
+  const targetSpecs = (requestedSlotKeys.length
     ? allSpecs.filter((spec) => requestedSlotKeys.some((key) => allocationMatchesSlot(spec, key)))
-    : allSpecs.slice(0, requiredCount);
-  targetSpecs = targetSpecs.slice(0, requiredCount);
+    : allSpecs.slice(0, requiredCount)).slice(0, requiredCount);
   if (targetSpecs.length < requiredCount) {
     throw serviceError(
       "LINKED_DAY_ENTITLEMENT_INCONSISTENT",
@@ -554,13 +502,12 @@ async function repairLinkedDayAllocations({
     session
   ).lean();
   if (!subscription) throw serviceError("SUBSCRIPTION_NOT_FOUND", "Subscription not found", 404);
-
-  const initialDayAllocations = currentDayAllocations(subscription, day._id);
-  const initiallyMissing = targetSpecs.filter((spec) => !exactAllocationForSpec(initialDayAllocations, spec));
-  const reprojectionMap = safeReprojectionCandidates({
-    dayAllocations: initialDayAllocations,
+  const initialAllocations = dayAllocations(subscription, day._id);
+  const missingSpecs = targetSpecs.filter((spec) => !exactAllocation(initialAllocations, spec));
+  const reprojection = safeReprojectionMap({
+    allocations: initialAllocations,
     allSpecs,
-    missingSpecs: initiallyMissing,
+    missingSpecs,
   });
   const results = [];
 
@@ -571,58 +518,39 @@ async function repairLinkedDayAllocations({
       ),
       session
     ).lean();
-    let allocation = exactAllocationForSpec(currentDayAllocations(subscription, day._id), spec);
+    let allocation = exactAllocation(dayAllocations(subscription, day._id), spec);
     if (allocation) {
+      if (allocation.state === "reserved") {
+        results.push({ slotKey: spec.slotKey, allocationKey: allocation.allocationKey, changed: false, mode: "already_materialized" });
+        continue;
+      }
       if (allocation.state === "released") {
-        const reopened = await reacquireAllocation({
-          subscriptionId,
-          allocationKey: allocation.allocationKey,
-          session,
-        });
+        const reopened = await reacquireAllocation({ subscriptionId, allocationKey: allocation.allocationKey, session });
         results.push({
           slotKey: spec.slotKey,
           allocationKey: allocation.allocationKey,
           changed: Boolean(reopened.changed),
           mode: "reacquired_released_allocation",
         });
-      } else if (allocation.state === "reserved") {
-        results.push({
-          slotKey: spec.slotKey,
-          allocationKey: allocation.allocationKey,
-          changed: false,
-          mode: "already_materialized",
-        });
-      } else {
-        throw serviceError(
-          "PICKUP_ITEM_UNAVAILABLE",
-          "The selected meal entitlement was already settled",
-          422,
-          {
-            messageAr: "تم استهلاك هذه الوجبة أو تسويتها بالفعل.",
-            messageEn: "This meal was already consumed or settled.",
-            allocationKey: clean(allocation.allocationKey),
-            state: clean(allocation.state),
-          }
-        );
+        continue;
       }
-      continue;
+      throw serviceError("PICKUP_ITEM_UNAVAILABLE", "The selected meal entitlement was already settled", 422, {
+        messageAr: "تم استهلاك هذه الوجبة أو تسويتها بالفعل.",
+        messageEn: "This meal was already consumed or settled.",
+        allocationKey: clean(allocation.allocationKey),
+        state: clean(allocation.state),
+      });
     }
 
-    const candidate = reprojectionMap.get(clean(spec.slotKey));
+    const candidate = reprojection.get(clean(spec.slotKey));
     if (candidate) {
-      const reprojected = await reprojectAllocation({
-        subscriptionId,
-        day,
-        spec,
-        candidate,
-        session,
-      });
-      if (reprojected && reprojected.allocation) {
+      const repaired = await reprojectAllocation({ subscriptionId, day, spec, candidate, session });
+      if (repaired && repaired.allocation) {
         results.push({
           slotKey: spec.slotKey,
-          allocationKey: reprojected.allocation.allocationKey,
-          changed: Boolean(reprojected.changed),
-          mode: reprojected.mode,
+          allocationKey: repaired.allocation.allocationKey,
+          changed: Boolean(repaired.changed),
+          mode: repaired.mode,
         });
         continue;
       }
@@ -634,19 +562,14 @@ async function repairLinkedDayAllocations({
       ),
       session
     ).lean();
-    const dayAllocations = currentDayAllocations(subscription, day._id);
-    const hasUnsafeSurplus = dayAllocations.some((entry) => (
-      ["reserved", "released"].includes(clean(entry && entry.state))
-      && !allSpecs.some((knownSpec) => allocationMatchesSlot(entry, knownSpec.slotKey))
+    const currentAllocations = dayAllocations(subscription, day._id);
+    const unsafeSurplus = currentAllocations.some((row) => (
+      ["reserved", "released"].includes(clean(row && row.state))
+      && !allSpecs.some((known) => allocationMatchesSlot(row, known.slotKey))
     ));
 
-    let materialized = await adoptAggregateGap({
-      subscriptionId,
-      day,
-      spec,
-      session,
-    });
-    if (!materialized && hasUnsafeSurplus) {
+    let materialized = await adoptAggregateGap({ subscriptionId, day, spec, session });
+    if (!materialized && unsafeSurplus) {
       throw serviceError(
         "LINKED_DAY_ENTITLEMENT_INCONSISTENT",
         "Existing day allocations cannot be mapped safely to the selected meal",
@@ -659,20 +582,9 @@ async function repairLinkedDayAllocations({
         }
       );
     }
-    if (!materialized) {
-      materialized = await reserveFreshAllocation({
-        subscriptionId,
-        day,
-        spec,
-        session,
-      });
-    }
+    if (!materialized) materialized = await reserveFresh({ subscriptionId, day, spec, session });
     if (!materialized || !materialized.allocation) {
-      throw serviceError(
-        "LINKED_DAY_ENTITLEMENT_INCONSISTENT",
-        "Linked day allocation repair did not produce an entitlement allocation",
-        409
-      );
+      throw serviceError("LINKED_DAY_ENTITLEMENT_INCONSISTENT", "Linked day repair did not produce an allocation", 409);
     }
     results.push({
       slotKey: spec.slotKey,
@@ -683,11 +595,7 @@ async function repairLinkedDayAllocations({
     });
   }
 
-  const allocationKeys = await synchronizeDayAllocationProjection({
-    subscriptionId,
-    dayId: day._id,
-    session,
-  });
+  const allocationKeys = await syncDayProjection({ subscriptionId, dayId: day._id, session });
   return {
     repaired: results.some((result) => result.changed),
     linked: true,
