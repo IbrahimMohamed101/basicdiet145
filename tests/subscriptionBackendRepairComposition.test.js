@@ -36,6 +36,7 @@ assert.deepStrictEqual(verifyComposition(), {
   readOnlyQueries: true,
   deliveryAppendSaga: true,
   pickupRequestRecovery: true,
+  pickupAvailabilityDiagnosticsFailOpen: true,
   stableOpsAddonIdentity: true,
 });
 assert.strictEqual(globalThis[STATE_KEY], state);
