@@ -8,17 +8,25 @@ const {
   STATE_KEY,
   installSubscriptionBackendRepairComposition,
   verifyComposition,
+  verifyStaticAddonSchemas,
 } = require("../src/services/installSubscriptionBackendRepairComposition");
 
 const state = installSubscriptionBackendRepairComposition();
 assert.strictEqual(state.status, "installed");
 assert.ok(state.installedAt instanceof Date);
+assert.deepStrictEqual(state.staticSchemaAuthority, {
+  balanceLedgerStatic: true,
+  subscriptionSelectionStatic: true,
+  daySelectionStatic: true,
+});
+assert.deepStrictEqual(verifyStaticAddonSchemas(), state.staticSchemaAuthority);
 assert.deepStrictEqual(state.legacyCarryoverProtection, {
   pricingCoreProtected: true,
   clientBalanceProtected: true,
   allowancesProtected: true,
 });
 assert.deepStrictEqual(verifyComposition(), {
+  staticAddonSchemas: true,
   objectIdGuard: true,
   carryoverPricingCore: true,
   legacyCarryoverSuppressed: true,
