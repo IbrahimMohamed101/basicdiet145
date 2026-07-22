@@ -51,6 +51,9 @@ node tests/subscriptionDailyAddonRuntimeComposition.test.js
 echo "[addons] verifying daily defaults through the final backend composition"
 node tests/runSubscriptionDailyAddonPolicyWithReservation.test.js
 
+echo "[addons] verifying defaults cannot be created after preparation starts"
+node tests/subscriptionDailyAddonOperationBoundary.test.js
+
 echo "[addons] verifying explicit customer choices win over daily defaults"
 node tests/subscriptionDailyAddonSelectionPreference.test.js
 
