@@ -3,7 +3,10 @@
 const { subHours } = require("date-fns");
 const { formatInTimeZone, fromZonedTime } = require("date-fns-tz");
 const dateUtils = require("../../utils/date");
-const { getRestaurantBusinessDate } = require("../restaurantHoursService");
+const {
+  assertRestaurantOpenForOrdering,
+  getRestaurantBusinessDate,
+} = require("../restaurantHoursService");
 const { resolveEffectiveFulfillmentMode } = require("./subscriptionFulfillmentPolicyService");
 
 const DELIVERY_SELECTION_CUTOFF_HOURS = 2;
@@ -65,6 +68,14 @@ function resolveSameDayFulfillmentMethod({ subscription, day } = {}) {
   if (knownValues.includes("delivery")) return "delivery";
   if (knownValues.includes("pickup")) return "pickup";
   return "unknown";
+}
+
+function resolveEffectivePickupLocationId({ subscription, day } = {}) {
+  return day && day.pickupLocationIdOverride
+    ? day.pickupLocationIdOverride
+    : subscription && subscription.pickupLocationId
+      ? subscription.pickupLocationId
+      : null;
 }
 
 function resolveEffectiveDeliveryWindow({ subscription, day } = {}) {
@@ -155,6 +166,7 @@ async function assertSubscriptionDayModifiable({
   date,
   now = new Date(),
   getBusinessDateFn = getRestaurantBusinessDate,
+  assertRestaurantOpenForOrderingFn = assertRestaurantOpenForOrdering,
 } = {}) {
   if (!dateUtils.isValidKSADateString(date)) {
     throw buildPolicyError({
@@ -183,12 +195,19 @@ async function assertSubscriptionDayModifiable({
 
   const fulfillmentMethod = resolveSameDayFulfillmentMethod({ subscription, day });
   if (fulfillmentMethod === "pickup") {
+    const pickupLocationId = resolveEffectivePickupLocationId({ subscription, day });
+    const restaurantStatus = await assertRestaurantOpenForOrderingFn({
+      pickupLocationId,
+      deliveryMode: "pickup",
+    });
     return {
       allowed: true,
       date,
       businessDate,
       fulfillmentMethod,
       sameDay: true,
+      pickupLocationId: pickupLocationId ? String(pickupLocationId) : null,
+      restaurantStatus,
     };
   }
 
@@ -273,6 +292,7 @@ module.exports = {
   assertSubscriptionDayModifiable,
   localizePolicyErrorMessage,
   resolveEffectiveDeliveryWindow,
+  resolveEffectivePickupLocationId,
   resolveSameDayFulfillmentMethod,
   resolveScheduledDeliveryDateTime,
 };
