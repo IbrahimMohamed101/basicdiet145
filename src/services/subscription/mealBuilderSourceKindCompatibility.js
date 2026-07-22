@@ -14,6 +14,12 @@ const SOURCE_KIND_ALIASES = new Map([
   ["visual_option_family", "visual_family"],
   ["protein_family", "visual_family"],
   ["carbs_family", "visual_family"],
+  ["menu_option", "visual_family"],
+  ["menu_options", "visual_family"],
+  ["menu_option_group", "visual_family"],
+  ["menu_option_groups", "visual_family"],
+  ["builder_group", "visual_family"],
+  ["builder_groups", "visual_family"],
   ["product_category", "product_list"],
   ["direct_product", "product_list"],
   ["direct_products", "product_list"],
@@ -21,12 +27,16 @@ const SOURCE_KIND_ALIASES = new Map([
   ["menu_products", "product_list"],
   ["standalone_product", "product_list"],
   ["full_meal_product", "product_list"],
+  ["catalog_product", "product_list"],
+  ["catalog_products", "product_list"],
   ["premium_mixed", "premium_visual"],
   ["premium", "premium_visual"],
   ["premium_section", "premium_visual"],
   ["configurable", "configurable_product"],
   ["configurable_meal", "configurable_product"],
   ["product_option_group", "configurable_product"],
+  ["product_option_groups", "configurable_product"],
+  ["product_context", "configurable_product"],
 ]);
 
 function token(value) {
@@ -53,6 +63,54 @@ function sourceKindCandidate(section = {}) {
   return token(nestedSource && nestedSource.kind);
 }
 
+function canonicalSourceKindForSection(section = {}) {
+  if (!section || typeof section !== "object" || Array.isArray(section)) {
+    return "";
+  }
+
+  const candidate = canonicalSourceKind(sourceKindCandidate(section));
+  if (CANONICAL_SOURCE_KINDS.has(candidate)) return candidate;
+
+  const sectionType = token(section.sectionType || section.type);
+  const selectionType = token(section.selectionType);
+  const key = token(section.key || section.sectionKey);
+  const hasProductIds =
+    Array.isArray(section.selectedProductIds) ||
+    Array.isArray(section.productIds);
+  const hasOptionContext =
+    Array.isArray(section.selectedOptionIds) ||
+    Array.isArray(section.optionIds) ||
+    Boolean(section.productContextId || section.sourceGroupId);
+
+  if (
+    sectionType === "product_list" ||
+    sectionType === "product_category" ||
+    selectionType === "full_meal_product" ||
+    selectionType === "sandwich" ||
+    (hasProductIds && !hasOptionContext)
+  ) {
+    return "product_list";
+  }
+
+  if (
+    key === "premium" ||
+    selectionType === "premium_meal" ||
+    selectionType === "premium_large_salad"
+  ) {
+    return "premium_visual";
+  }
+
+  if (sectionType === "option_group" || hasOptionContext) {
+    return candidate.includes("configurable") ||
+      candidate.includes("product_option") ||
+      candidate.includes("product_context")
+      ? "configurable_product"
+      : "visual_family";
+  }
+
+  return candidate;
+}
+
 function normalizeMealBuilderSectionSourceKind(section = {}) {
   if (!section || typeof section !== "object" || Array.isArray(section)) {
     return section;
@@ -63,7 +121,7 @@ function normalizeMealBuilderSectionSourceKind(section = {}) {
 
   return {
     ...section,
-    sourceKind: canonicalSourceKind(candidate),
+    sourceKind: canonicalSourceKindForSection(section),
   };
 }
 
@@ -94,8 +152,10 @@ module.exports = {
   CANONICAL_SOURCE_KINDS,
   SOURCE_KIND_ALIASES,
   canonicalSourceKind,
+  canonicalSourceKindForSection,
   normalizeMealBuilderDraftArgs,
   normalizeMealBuilderSectionArgs,
   normalizeMealBuilderSectionSourceKind,
   normalizeMealBuilderSections,
+  sourceKindCandidate,
 };
