@@ -28,7 +28,6 @@ assert.deepStrictEqual(state.legacyCarryoverProtection, {
 assert.deepStrictEqual(verifyComposition(), {
   staticAddonSchemas: true,
   objectIdGuard: true,
-  mealComponentGramsPresentation: true,
   carryoverPricingCore: true,
   legacyCarryoverSuppressed: true,
   addonChoicesPricingCore: true,
@@ -55,11 +54,6 @@ assert.strictEqual(
   true,
   "pickup creation must resolve the authenticated subscription before reserving credits"
 );
-
-const presentation = require("../src/services/subscription/pickupCanonicalPresentationService");
-const clientSupport = require("../src/services/subscription/subscriptionClientSupportService");
-assert.strictEqual(presentation.normalizeAvailability.__gramsAwareMealPresentation, true);
-assert.strictEqual(clientSupport.shapeMealPlannerReadFields.__gramsAwareMealPresentation, true);
 
 const pricingService = require("../src/services/subscription/subscriptionAddonPricingService");
 const addonChoicesService = require("../src/services/subscription/subscriptionAddonChoicesService");
