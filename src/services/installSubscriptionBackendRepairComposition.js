@@ -119,7 +119,6 @@ function suppressLegacyCarryoverWrappers() {
 
 function verifyComposition() {
   const presentation = require("./subscription/pickupCanonicalPresentationService");
-  const clientSupport = require("./subscription/subscriptionClientSupportService");
   const pricingService = require("./subscription/subscriptionAddonPricingService");
   const addonChoicesService = require("./subscription/subscriptionAddonChoicesService");
   const dailyAddonService = require("./subscription/subscriptionDailyAddonService");
@@ -130,20 +129,6 @@ function verifyComposition() {
   assertInstalled(
     presentation.normalizePickupItem && presentation.normalizePickupItem.__cycleSafeObjectIds === true,
     "Pickup canonical presentation is missing the cycle-safe ObjectId boundary"
-  );
-  assertInstalled(
-    presentation.normalizeAvailability
-      && presentation.normalizeAvailability.__gramsAwareMealPresentation === true
-      && presentation.normalizePickupItem
-      && presentation.normalizePickupItem.__gramsAwareMealPresentation === true,
-    "Pickup presentation is not using the shared grams-aware meal title authority"
-  );
-  assertInstalled(
-    clientSupport.serializeSubscriptionDayForClient
-      && clientSupport.serializeSubscriptionDayForClient.__gramsAwareMealPresentation === true
-      && clientSupport.shapeMealPlannerReadFields
-      && clientSupport.shapeMealPlannerReadFields.__gramsAwareMealPresentation === true,
-    "Delivery/day responses are not using the shared grams-aware meal title authority"
   );
   assertInstalled(
     pricingService.buildAddonChoicePricingPreview === pricingService.buildAddonChoicePricingPreviewCore,
@@ -207,7 +192,6 @@ function verifyComposition() {
   return {
     staticAddonSchemas: true,
     objectIdGuard: true,
-    mealComponentGramsPresentation: true,
     carryoverPricingCore: true,
     legacyCarryoverSuppressed: true,
     addonChoicesPricingCore: true,
@@ -251,9 +235,6 @@ function installSubscriptionBackendRepairComposition() {
     require("./installSubscriptionAddonReservationReconciliation");
     require("./installSubscriptionDailyAddonOperationBoundary");
     require("./installSubscriptionAddonOpsIdentityClosure");
-    // Install one read/display authority before Pickup recovery and Delivery
-    // append services capture their serializer references.
-    require("./installMealComponentGramsPresentation");
     require("./installPickupRequestRecovery");
     require("./installSubscriptionDeliveryAppendSaga");
     require("./installReadOnlySubscriptionQueries");
