@@ -12,6 +12,10 @@ function installPaidPremiumStateConsistency() {
     createPaidPremiumSelectionOperationWrapper,
     createPaidPremiumSettlementWrapper,
   } = require("./subscription/subscriptionPaidPremiumStateService");
+  const {
+    createPaidPremiumBulkPlannerRecoveryWrapper,
+    createPaidPremiumPlannerRecoveryWrapper,
+  } = require("./subscription/subscriptionPaidPremiumRecoveryService");
 
   if (
     !premiumPaymentService.settlePaidPremiumExtraDayPayment
@@ -31,6 +35,14 @@ function installPaidPremiumStateConsistency() {
         selectionService[functionName]
       );
     }
+    if (
+      selectionService[functionName]
+      && selectionService[functionName].__recoversPaidPremiumBeforePlannerWrite !== true
+    ) {
+      selectionService[functionName] = createPaidPremiumPlannerRecoveryWrapper(
+        selectionService[functionName]
+      );
+    }
   }
 
   if (
@@ -38,6 +50,14 @@ function installPaidPremiumStateConsistency() {
     && selectionService.performBulkDaySelectionPlanningBalanceValidation.__preservesPaidPremiumState !== true
   ) {
     selectionService.performBulkDaySelectionPlanningBalanceValidation = createPaidPremiumBulkSelectionWrapper(
+      selectionService.performBulkDaySelectionPlanningBalanceValidation
+    );
+  }
+  if (
+    selectionService.performBulkDaySelectionPlanningBalanceValidation
+    && selectionService.performBulkDaySelectionPlanningBalanceValidation.__recoversPaidPremiumBeforePlannerWrite !== true
+  ) {
+    selectionService.performBulkDaySelectionPlanningBalanceValidation = createPaidPremiumBulkPlannerRecoveryWrapper(
       selectionService.performBulkDaySelectionPlanningBalanceValidation
     );
   }
@@ -56,9 +76,21 @@ function installPaidPremiumStateConsistency() {
       selectionService.performDaySelectionValidation
         && selectionService.performDaySelectionValidation.__preservesPaidPremiumState === true
     ),
+    updateRecoversPaidState: Boolean(
+      selectionService.performDaySelectionUpdate
+        && selectionService.performDaySelectionUpdate.__recoversPaidPremiumBeforePlannerWrite === true
+    ),
+    validationRecoversPaidState: Boolean(
+      selectionService.performDaySelectionValidation
+        && selectionService.performDaySelectionValidation.__recoversPaidPremiumBeforePlannerWrite === true
+    ),
     bulkPreservesPaidState: Boolean(
       selectionService.performBulkDaySelectionPlanningBalanceValidation
         && selectionService.performBulkDaySelectionPlanningBalanceValidation.__preservesPaidPremiumState === true
+    ),
+    bulkRecoversPaidState: Boolean(
+      selectionService.performBulkDaySelectionPlanningBalanceValidation
+        && selectionService.performBulkDaySelectionPlanningBalanceValidation.__recoversPaidPremiumBeforePlannerWrite === true
     ),
   };
   globalThis[INSTALL_KEY] = state;
