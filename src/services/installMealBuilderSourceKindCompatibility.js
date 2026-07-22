@@ -2,8 +2,9 @@
 
 const mealBuilderConfigService = require("./subscription/mealBuilderConfigService");
 const {
+  CANONICAL_SOURCE_KINDS,
+  canonicalSourceKind,
   normalizeMealBuilderSectionSourceKind,
-  normalizeMealBuilderSections,
 } = require("./subscription/mealBuilderSourceKindCompatibility");
 
 let installed = false;
@@ -12,8 +13,73 @@ function isObject(value) {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
+function normalizeSectionByStructure(section = {}) {
+  if (!isObject(section)) return section;
+
+  const normalized = normalizeMealBuilderSectionSourceKind(section);
+  const currentKind = canonicalSourceKind(normalized.sourceKind || "");
+  if (CANONICAL_SOURCE_KINDS.has(currentKind)) {
+    return { ...normalized, sourceKind: currentKind };
+  }
+
+  const sectionType = String(
+    normalized.sectionType || normalized.type || ""
+  ).trim().toLowerCase();
+  const selectionType = String(normalized.selectionType || "")
+    .trim()
+    .toLowerCase();
+  const key = String(normalized.key || normalized.sectionKey || "")
+    .trim()
+    .toLowerCase();
+  const hasProducts =
+    Array.isArray(normalized.selectedProductIds) ||
+    Array.isArray(normalized.productIds);
+  const hasOptions =
+    Array.isArray(normalized.selectedOptionIds) ||
+    Array.isArray(normalized.optionIds) ||
+    Boolean(normalized.productContextId || normalized.sourceGroupId);
+
+  if (
+    sectionType === "product_list" ||
+    sectionType === "product_category" ||
+    selectionType === "full_meal_product" ||
+    selectionType === "sandwich" ||
+    (hasProducts && !hasOptions)
+  ) {
+    return { ...normalized, sourceKind: "product_list" };
+  }
+
+  if (
+    key === "premium" ||
+    selectionType === "premium_meal" ||
+    selectionType === "premium_large_salad"
+  ) {
+    return { ...normalized, sourceKind: "premium_visual" };
+  }
+
+  if (sectionType === "option_group" || hasOptions) {
+    const raw = String(
+      normalized.sourceKind || normalized.source?.kind || ""
+    ).toLowerCase();
+    const configurable =
+      raw.includes("configurable") ||
+      raw.includes("product_option") ||
+      raw.includes("product_context");
+    return {
+      ...normalized,
+      sourceKind: configurable ? "configurable_product" : "visual_family",
+    };
+  }
+
+  // Leave genuinely malformed/unknown shapes untouched so the core validator
+  // still fails closed instead of silently changing their meaning.
+  return normalized;
+}
+
 function normalizeSections(value) {
-  return Array.isArray(value) ? normalizeMealBuilderSections(value) : value;
+  return Array.isArray(value)
+    ? value.map((section) => normalizeSectionByStructure(section))
+    : value;
 }
 
 function normalizeConfig(value) {
@@ -53,7 +119,7 @@ function normalizeSectionArgs(args = {}, fieldName = "section") {
   if (!isObject(value)) return args;
   return {
     ...args,
-    [fieldName]: normalizeMealBuilderSectionSourceKind(value),
+    [fieldName]: normalizeSectionByStructure(value),
   };
 }
 
@@ -193,4 +259,5 @@ module.exports = {
   normalizeDraftArgs,
   normalizeLifecycle,
   normalizeSectionArgs,
+  normalizeSectionByStructure,
 };
