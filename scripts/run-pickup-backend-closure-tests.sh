@@ -19,8 +19,8 @@ echo "[pickup] verifying same-day multi-cycle reservations, fulfillment, and nex
 node tests/pickupMultiCyclePolicy.integration.test.js
 
 echo "[addons] verifying daily defaults, pooled carryover, fulfillment, skip, and no-show release"
-NODE_OPTIONS=--require=./tests/helpers/subscriptionAddonReservationClosure.js \
-  node tests/subscriptionDailyAddonPolicy.integration.test.js
+node --require ./tests/helpers/subscriptionAddonReservationClosure.js \
+  tests/subscriptionDailyAddonPolicy.integration.test.js
 
 echo "[addons] verifying explicit customer choices win over daily defaults"
 node tests/subscriptionDailyAddonSelectionPreference.test.js
