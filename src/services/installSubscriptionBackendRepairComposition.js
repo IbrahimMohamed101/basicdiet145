@@ -1,0 +1,123 @@
+"use strict";
+
+const STATE_KEY = Symbol.for("basicdiet.subscriptionBackendRepairComposition.state");
+
+function assertInstalled(condition, message) {
+  if (!condition) {
+    const error = new Error(message);
+    error.code = "SUBSCRIPTION_REPAIR_COMPOSITION_INCOMPLETE";
+    throw error;
+  }
+}
+
+function verifyComposition() {
+  const presentation = require("./subscription/pickupCanonicalPresentationService");
+  const pricingService = require("./subscription/subscriptionAddonPricingService");
+  const dailyAddonService = require("./subscription/subscriptionDailyAddonService");
+  const planningService = require("./subscription/subscriptionPlanningClientService");
+  const pickupService = require("./subscription/subscriptionPickupRequestClientService");
+  const opsPayloadService = require("./dashboard/opsPayloadService");
+
+  assertInstalled(
+    presentation.normalizePickupItem && presentation.normalizePickupItem.__cycleSafeObjectIds === true,
+    "Pickup canonical presentation is missing the cycle-safe ObjectId boundary"
+  );
+  assertInstalled(
+    pricingService.buildAddonChoicePricingPreview === pricingService.buildAddonChoicePricingPreviewCore,
+    "Add-on pricing is not using the non-mutating carryover core"
+  );
+  assertInstalled(
+    dailyAddonService.__reservationClosurePatched === true,
+    "Daily add-on reservation lifecycle closure is not installed"
+  );
+  assertInstalled(
+    dailyAddonService.ensureDailyAddonDefaultsForDay
+      && dailyAddonService.ensureDailyAddonDefaultsForDay.__operationBoundaryAware === true,
+    "Daily add-on operations boundary is not the final ensure authority"
+  );
+  assertInstalled(
+    dailyAddonService.ensureDailyAddonDefaultsForDay.__original
+      && dailyAddonService.ensureDailyAddonDefaultsForDay.__original.__reservationReconciliation === true,
+    "Daily add-on reservation reconciliation is not inside the operation boundary"
+  );
+  assertInstalled(
+    dailyAddonService.reconcileDayDailyAddonState
+      && dailyAddonService.reconcileDayDailyAddonState.__readOnlyDiagnostic === true,
+    "Daily add-on read reconciliation is not read-only"
+  );
+  assertInstalled(
+    planningService.appendDayMealsForClient
+      && planningService.appendDayMealsForClient.__deliveryAppendSaga === true,
+    "Delivery append saga is not installed"
+  );
+  assertInstalled(
+    pickupService.createSubscriptionPickupRequestForClient
+      && pickupService.createSubscriptionPickupRequestForClient.__pickupReservationRecovery === true,
+    "Pickup request crash recovery is not installed"
+  );
+  assertInstalled(
+    opsPayloadService.buildKitchenDetailsPayload
+      && opsPayloadService.buildKitchenDetailsPayload.__stableAddonIdentity === true,
+    "Ops add-on DTO stable identity mapper is not installed"
+  );
+
+  return {
+    objectIdGuard: true,
+    carryoverPricingCore: true,
+    addonReservationLifecycle: true,
+    addonOperationBoundary: true,
+    readOnlyQueries: true,
+    deliveryAppendSaga: true,
+    pickupRequestRecovery: true,
+    stableOpsAddonIdentity: true,
+  };
+}
+
+function installSubscriptionBackendRepairComposition() {
+  const current = globalThis[STATE_KEY];
+  if (current && current.status === "installed") return current;
+  if (current && current.status === "installing") {
+    const error = new Error("Subscription backend repair composition was re-entered during installation");
+    error.code = "SUBSCRIPTION_REPAIR_COMPOSITION_REENTRANT";
+    throw error;
+  }
+
+  const state = {
+    status: "installing",
+    startedAt: new Date(),
+    installedAt: null,
+    verification: null,
+  };
+  globalThis[STATE_KEY] = state;
+
+  try {
+    require("./installPickupCanonicalObjectIdCoreGuard");
+    require("./installSubscriptionDailyAddonPolicy");
+    require("./installSubscriptionAddonCarryoverAuthority");
+    require("./installSubscriptionAddonReservationClosure");
+    require("./installSubscriptionAddonReservationReconciliation");
+    require("./installSubscriptionDailyAddonOperationBoundary");
+    require("./installSubscriptionAddonOpsIdentityClosure");
+    require("./installPickupRequestRecovery");
+    require("./installSubscriptionDeliveryAppendSaga");
+    require("./installReadOnlySubscriptionQueries");
+
+    state.verification = verifyComposition();
+    state.status = "installed";
+    state.installedAt = new Date();
+    return state;
+  } catch (error) {
+    state.status = "failed";
+    state.errorCode = error && error.code || "SUBSCRIPTION_REPAIR_COMPOSITION_FAILED";
+    state.errorMessage = error && error.message || "Subscription repair composition failed";
+    throw error;
+  }
+}
+
+installSubscriptionBackendRepairComposition();
+
+module.exports = {
+  STATE_KEY,
+  installSubscriptionBackendRepairComposition,
+  verifyComposition,
+};
