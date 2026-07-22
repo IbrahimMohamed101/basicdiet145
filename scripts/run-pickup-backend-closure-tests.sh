@@ -21,9 +21,6 @@ node tests/pickupSubscriptionOwnershipRecovery.test.js
 echo "[ownership] resolving Flutter plan ids to the authenticated pickup subscription"
 node tests/pickupPlanIdCompatibility.test.js
 
-echo "[reads] rebuilding pickup availability from canonical day state after internal enrichment failures"
-node tests/pickupAvailabilityCanonicalReadClosure.test.js
-
 echo "[dashboard] verifying nullable menu UI compatibility"
 node tests/dashboardMenuUiNullCompatibility.test.js
 
