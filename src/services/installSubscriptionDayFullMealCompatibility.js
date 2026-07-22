@@ -48,6 +48,10 @@ function installSubscriptionDayFullMealCompatibility() {
 }
 
 installSubscriptionDayFullMealCompatibility();
+// Install pooled day capacity before route modules capture planner and response
+// service exports. The mobile client can then spend any remaining subscription
+// meal/add-on credits on one valid day without treating mealsPerDay as a hard cap.
+require("./installSubscriptionPooledDayPlanningPolicy");
 // Normalize catalog display names before route modules capture the catalog
 // builder and before pickup serializers turn Mixed localized objects into text.
 require("./installPickupLocalizedCatalogGuard");
