@@ -18,6 +18,9 @@ node tests/subscriptionBackendRepairComposition.test.js
 echo "[entitlements] preventing a Premium payment revision from reserving the same day slots twice"
 node tests/subscriptionStableDayMealReservation.test.js
 
+echo "[payments] synchronizing paid Premium state across planner, subscription, and pickup"
+node tests/subscriptionPaidPremiumStateConsistency.test.js
+
 echo "[entitlements] verifying guarded repair of duplicated day-slot reservations"
 node tests/subscriptionDuplicateMealAllocationRepair.test.js
 
