@@ -1,6 +1,7 @@
 "use strict";
 
 const crypto = require("node:crypto");
+const Subscription = require("../../models/Subscription");
 const SubscriptionDay = require("../../models/SubscriptionDay");
 const SubscriptionMealReservationLock = require("../../models/SubscriptionMealReservationLock");
 
@@ -151,9 +152,6 @@ async function acquireReservationLock({ subscriptionId, day }) {
   for (let attempt = 0; attempt < RESERVATION_LOCK_WAIT_ATTEMPTS; attempt += 1) {
     const now = new Date();
     const leaseExpiresAt = new Date(now.getTime() + RESERVATION_LOCK_LEASE_MS);
-    // The lock document deliberately uses the SubscriptionDay ObjectId as _id.
-    // MongoDB enforces _id uniqueness before any secondary unique index is built,
-    // so two fresh application instances cannot both create a lock at startup.
     const current = await SubscriptionMealReservationLock.findById(dayId);
 
     if (!current) {
@@ -217,6 +215,85 @@ async function releaseReservationLock(lock) {
   );
 }
 
+function fundingSource(value) {
+  return clean(value && value.source) || "none";
+}
+
+function resolvedFundingForRebind(existing, spec) {
+  const current = clonePlain(plain(existing && existing.premiumFunding) || {});
+  const requested = clonePlain(plain(spec && spec.premiumFunding) || {});
+  const currentSource = fundingSource(current);
+  const requestedSource = fundingSource(requested);
+
+  if (currentSource === "wallet" || requestedSource === "wallet") {
+    const sameWallet = currentSource === "wallet"
+      && requestedSource === "wallet"
+      && clean(current.balanceBucketId) === clean(requested.balanceBucketId || current.balanceBucketId)
+      && clean(current.premiumKey) === clean(requested.premiumKey || current.premiumKey);
+    if (!sameWallet) {
+      throw serviceError(
+        "PREMIUM_FUNDING_IDENTITY_CONFLICT",
+        "A reserved premium wallet allocation cannot be rebound to a different funding source",
+        409,
+        { allocationKey: clean(existing && existing.allocationKey), currentSource, requestedSource }
+      );
+    }
+  }
+
+  // Never downgrade a payment that is already known to be paid just because a
+  // stale request still carries pending_payment. The forward transition from
+  // pending_payment to paid_difference is allowed and changes no meal counters.
+  if (currentSource === "paid_difference" && requestedSource === "pending_payment") {
+    return current;
+  }
+  return {
+    ...current,
+    ...requested,
+    paymentId: requested.paymentId || current.paymentId || null,
+  };
+}
+
+async function rebindReservedAllocationToSpec({ subscriptionId, existing, spec, session = null }) {
+  if (!existing || clean(existing.state) !== "reserved") return { changed: false };
+  const allocationKey = clean(existing.allocationKey);
+  const nextFunding = resolvedFundingForRebind(existing, spec);
+  const nextRevision = clean(spec && spec.plannerRevisionHash);
+  const nextPaymentId = (spec && spec.paymentId) || existing.paymentId || null;
+  const currentFunding = plain(existing.premiumFunding) || {};
+  const needsChange = clean(existing.plannerRevisionHash) !== nextRevision
+    || clean(existing.paymentId) !== clean(nextPaymentId)
+    || JSON.stringify(clonePlain(currentFunding)) !== JSON.stringify(clonePlain(nextFunding));
+  if (!needsChange) return { changed: false };
+
+  const result = await Subscription.updateOne(
+    {
+      _id: subscriptionId,
+      baseMealAllocations: {
+        $elemMatch: { allocationKey, state: "reserved" },
+      },
+    },
+    {
+      $set: {
+        "baseMealAllocations.$[allocation].plannerRevisionHash": nextRevision,
+        "baseMealAllocations.$[allocation].paymentId": nextPaymentId,
+        "baseMealAllocations.$[allocation].premiumFunding": nextFunding,
+      },
+    },
+    {
+      arrayFilters: [{ "allocation.allocationKey": allocationKey, "allocation.state": "reserved" }],
+      ...(session ? { session } : {}),
+    }
+  );
+  const matched = Number(result && (result.matchedCount !== undefined ? result.matchedCount : result.n) || 0);
+  if (!matched) {
+    throw serviceError("ALLOCATION_REBIND_CONFLICT", "Meal allocation changed while rebinding planner revision", 409, {
+      allocationKey,
+      plannerRevisionHash: nextRevision,
+    });
+  }
+  return { changed: true };
+}
+
 function createStableDayEntitlementReservationService({
   originalService,
   SubscriptionDayModel = SubscriptionDay,
@@ -269,6 +346,7 @@ function createStableDayEntitlementReservationService({
             session,
           });
           if (reopened && reopened.changed) newlyReservedKeys.push(actualKey);
+          existing.state = "reserved";
         } else if (!ACTIVE_ALLOCATION_STATES.has(clean(existing.state))) {
           throw serviceError("DATA_INTEGRITY_ERROR", "Unsupported meal allocation state", 409, {
             allocationKey: actualKey,
@@ -276,6 +354,12 @@ function createStableDayEntitlementReservationService({
           });
         }
 
+        await rebindReservedAllocationToSpec({
+          subscriptionId,
+          existing,
+          spec,
+          session,
+        });
         allocationKeyByIdentity.set(identity, actualKey);
       }
 
@@ -365,5 +449,7 @@ module.exports = {
   daySlotIdentity,
   groupDayAllocations,
   lockIsActive,
+  rebindReservedAllocationToSpec,
+  resolvedFundingForRebind,
   specIdentity,
 };
