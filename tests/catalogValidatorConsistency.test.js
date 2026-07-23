@@ -252,7 +252,7 @@ async function run() {
 
     let res = await api.get("/api/subscriptions/meal-planner-menu?contractVersion=v3&lang=en");
     assert.strictEqual(res.status, 200, `catalog status: ${JSON.stringify(res.body)}`);
-    const selection = findPublishedFixtureSelection(res.body.data.plannerCatalog, fixture);
+    const selection = findPublishedFixtureSelection(res.body.data.builderCatalog, fixture);
     assert.strictEqual(selection.selectionType, "standard_meal", "catalog selectionType");
     assert.strictEqual(selection.product.productId || selection.product.id, String(fixture.product._id), "catalog product identity");
     assert.strictEqual(selection.group.groupId || selection.group.id, String(fixture.group._id), "catalog group identity");
