@@ -33,6 +33,7 @@ on:
       - "src/services/installSubscriptionAddonReservation*.js"
       - "src/services/installSubscriptionDeliveryAppendSaga.js"
       - "src/services/installReadOnlySubscriptionQueries.js"
+      - "src/services/orders/menuCatalogPresenter.js"
       - "src/services/subscription/pickup*.js"
       - "src/services/subscription/subscriptionPickup*.js"
       - "src/services/subscription/subscriptionMealEntitlementIdentityService.js"
@@ -69,7 +70,11 @@ on:
       - "tests/subscriptionPickupRequestIdempotency.integration.test.js"
       - "tests/subscriptionOperationRecovery*.test.js"
       - "tests/subscriptionReadOnly*.test.js"
+      - "tests/bootstrapInitialDataSemantics.test.js"
+      - "tests/menuPresentationDatabaseAuthority.test.js"
+      - "tests/newMenuBootstrapContract.test.js"
       - "tests/cases/pickup*.js"
+      - "scripts/bootstrap/**"
       - "scripts/audit-subscription-entitlements.js"
       - "scripts/diagnose-pickup-entitlements.js"
       - "scripts/repair-duplicate-base-meal-allocations.js"
@@ -112,6 +117,7 @@ on:
       - "src/services/installSubscriptionAddonReservation*.js"
       - "src/services/installSubscriptionDeliveryAppendSaga.js"
       - "src/services/installReadOnlySubscriptionQueries.js"
+      - "src/services/orders/menuCatalogPresenter.js"
       - "src/services/subscription/pickup*.js"
       - "src/services/subscription/subscriptionPickup*.js"
       - "src/services/subscription/subscriptionMealEntitlementIdentityService.js"
@@ -148,7 +154,11 @@ on:
       - "tests/subscriptionPickupRequestIdempotency.integration.test.js"
       - "tests/subscriptionOperationRecovery*.test.js"
       - "tests/subscriptionReadOnly*.test.js"
+      - "tests/bootstrapInitialDataSemantics.test.js"
+      - "tests/menuPresentationDatabaseAuthority.test.js"
+      - "tests/newMenuBootstrapContract.test.js"
       - "tests/cases/pickup*.js"
+      - "scripts/bootstrap/**"
       - "scripts/audit-subscription-entitlements.js"
       - "scripts/diagnose-pickup-entitlements.js"
       - "scripts/repair-duplicate-base-meal-allocations.js"
@@ -184,6 +194,8 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci --silent
+      - name: Bootstrap initial-data authority tests
+        run: npm run test:bootstrap-initial-data && npm run test:menu-presentation-authority && npm run test:new-menu-bootstrap
       - name: Pickup backend closure suite
         shell: bash
         run: |
