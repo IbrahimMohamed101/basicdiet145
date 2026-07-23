@@ -8,6 +8,7 @@ run() {
 }
 
 run "Unit baseline" npm test
+run "Subscription repair startup composition" node tests/subscriptionRepairCompositionStartup.test.js
 run "Subscription planning transient transaction retry" node tests/subscriptionPlanningTransientRetry.test.js
 run "Catalog and validator consistency" npm run test:catalog-validator-consistency
 run "Dashboard and mobile menu parity" npm run test:menu-dashboard-mobile-parity
