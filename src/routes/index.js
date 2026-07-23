@@ -41,6 +41,9 @@ require("../services/installDirectMealProductEligibility");
 require("../services/installDashboardMealPlannerFlutterCardPolicy");
 require("../services/installDashboardMealPlannerCardActionDecorator");
 require("../services/installDashboardMealPlannerTwoTypePolicy");
+// There is one canonical direct type now, so omitted and legacy values are
+// normalized before they reach the older explicit-card validator.
+require("../services/installCanonicalDirectSelectionDefault");
 // The public planner canonicalizes old sandwich cards to full_meal_product. Keep
 // validator membership compatible with already-published versions that still
 // store those direct products under the historical sandwich selection type.
@@ -53,6 +56,9 @@ require("../services/installIndependentMealBuilderAuthoring");
 // and catalog composition so the final service export is hydrated before the
 // builder controller captures it.
 require("../services/installPremiumUpgradeImageHydration");
+// Load the dashboard facade after all catalog/Meal Builder composition is final,
+// then expose a stable versioned classifier identity to consumers.
+require("../services/installMealPlannerClassificationAuthority");
 
 const authRoutes = require("./auth");
 const dashboardAuthRoutes = require("./dashboardAuth");
