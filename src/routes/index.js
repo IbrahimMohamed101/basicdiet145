@@ -23,10 +23,11 @@ require("../services/installSubscriptionPlanningTransientRetry");
 // Install after entitlement/payment composition but before any route module
 // captures payment initiation or settlement functions.
 require("../services/installSubscriptionAddonPaymentBoundaryGuard");
+// Install branch-role policy before any DTO/service captures action-policy methods.
+require("../services/dashboard/installRestaurantOpsPolicy");
 // Operations cards are a food-preparation contract. Install before dashboard
 // route modules capture DTO builders or the canonical serializer.
 require("../services/dashboard/installKitchenPreparationContract");
-require("../services/dashboard/installRestaurantOpsPolicy");
 require("../services/orders/installWeightPricingAuthority");
 require("../services/installDashboardCatalogCompatibility");
 // Add-on administration must see the complete catalog even when an older
