@@ -881,7 +881,11 @@ async function seedMealBuilderConfig({ basicMeal, proteins, carbs, optionRows, o
   draftPayload.revisionHash = computeRevisionHash(draftPayload);
   const draft = await MealBuilderConfig.create(draftPayload);
   const readiness = await getReadinessReport();
-  if (readiness.status !== "ready") {
+  if (
+    readiness.status === "error"
+    || Number(readiness.summary?.errors || 0) > 0
+    || (Array.isArray(readiness.errors) && readiness.errors.length > 0)
+  ) {
     const error = new Error(`Workbook Meal Builder readiness failed: ${readiness.status}`);
     error.code = "WORKBOOK_MEAL_BUILDER_NOT_READY";
     error.details = readiness;
