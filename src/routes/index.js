@@ -26,6 +26,7 @@ require("../services/installSubscriptionAddonPaymentBoundaryGuard");
 // Operations cards are a food-preparation contract. Install before dashboard
 // route modules capture DTO builders or the canonical serializer.
 require("../services/dashboard/installKitchenPreparationContract");
+require("../services/dashboard/installRestaurantOpsPolicy");
 require("../services/orders/installWeightPricingAuthority");
 require("../services/installDashboardCatalogCompatibility");
 // Add-on administration must see the complete catalog even when an older
@@ -77,6 +78,7 @@ const dashboardSubscriptionRoutes = require("./dashboardSubscriptions");
 const dashboardAccountingRoutes = require("./dashboardAccounting");
 const dashboardOrderRoutes = require("./dashboardOrders");
 const dashboardBoardRoutes = require("./dashboardBoards");
+const dashboardRestaurantReadRoutes = require("./dashboardRestaurantRead");
 const dashboardMenuIdentityRoutes = require("./dashboardMenuIdentity");
 const dashboardCatalogItemRoutes = require("./dashboardCatalogItems");
 const dashboardPremiumUpgradesRoutes = require("./dashboardPremiumUpgrades");
@@ -127,6 +129,7 @@ router.use("/dashboard/subscriptions", dashboardSubscriptionRoutes);
 router.use("/dashboard/accounting", dashboardAccountingRoutes);
 router.use("/dashboard/orders", dashboardOrderRoutes);
 router.use("/dashboard", dashboardBoardRoutes);
+router.use("/dashboard", dashboardRestaurantReadRoutes);
 router.use("/dashboard", adminRoutes);
 router.use("/dashboard/menu-identities-audit", dashboardMenuIdentityRoutes);
 router.use("/dashboard", dashboardMenuIdentityRoutes);
