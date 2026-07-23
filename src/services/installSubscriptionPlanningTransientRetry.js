@@ -93,7 +93,7 @@ async function runWithTransientTransactionRetry(operation, {
 
 function copyFunctionMetadata(source, target) {
   for (const key of Reflect.ownKeys(source)) {
-    if (["length", "name", "prototype", "arguments", "caller"].includes(key)) continue;
+    if (["length", "name", "prototype", "arguments", "caller", "__original"].includes(key)) continue;
     if (key === RETRY_WRAPPED_KEY) continue;
     const descriptor = Object.getOwnPropertyDescriptor(source, key);
     if (!descriptor) continue;
