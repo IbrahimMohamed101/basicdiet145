@@ -20,6 +20,16 @@ const { BOOTSTRAP_MARKER_KEY, runFullBootstrap } = require("../scripts/bootstrap
 const quietLog = { log() {}, info() {}, warn() {}, error() {} };
 let mongoServer;
 
+async function connectForAssertions(uri) {
+  if (mongoose.connection.readyState === 0) {
+    await mongoose.connect(uri, { serverSelectionTimeoutMS: 10000 });
+  }
+}
+
+async function disconnectIfNeeded() {
+  if (mongoose.connection.readyState !== 0) await mongoose.disconnect();
+}
+
 async function run() {
   mongoServer = await MongoMemoryServer.create();
   const uri = mongoServer.getUri(`full_bootstrap_force_test_${Date.now()}`);
@@ -34,6 +44,7 @@ async function run() {
     assert.strictEqual(first.state.mode, "guarded-full-rebuild");
     assert(first.verification.readiness.every((row) => row.status !== "FAIL" && row.status !== "ERROR"));
 
+    await connectForAssertions(uri);
     assert.strictEqual(
       await MenuCategory.countDocuments({ isActive: true, isVisible: true, isAvailable: true, publishedAt: { $ne: null } }),
       source.metadata.categoryCount
@@ -66,24 +77,27 @@ async function run() {
     const marker = await Setting.findOne({ key: BOOTSTRAP_MARKER_KEY }).lean();
     assert.strictEqual(marker.value.status, "completed");
     assert.strictEqual(marker.value.mode, "guarded-full-rebuild");
+    await disconnectIfNeeded();
 
     const second = await runFullBootstrap({ includeAccounts: false, log: quietLog });
     assert.strictEqual(second.forced, true);
     assert.strictEqual(second.state.status, "completed");
     assert(second.verification.readiness.every((row) => row.status !== "FAIL" && row.status !== "ERROR"));
+
+    await connectForAssertions(uri);
     assert.strictEqual(await PremiumUpgradeConfig.countDocuments({ status: "active", isEnabled: true }), 4);
 
     console.log("fullBootstrapForce.integration.test.js passed");
   } finally {
     if (mongoose.connection.readyState !== 0) await mongoose.connection.dropDatabase();
-    if (mongoose.connection.readyState !== 0) await mongoose.disconnect();
+    await disconnectIfNeeded();
     if (mongoServer) await mongoServer.stop();
   }
 }
 
 run().catch(async (error) => {
   console.error(error && error.stack ? error.stack : error);
-  try { if (mongoose.connection.readyState !== 0) await mongoose.disconnect(); } catch (_error) {}
+  try { await disconnectIfNeeded(); } catch (_error) {}
   try { if (mongoServer) await mongoServer.stop(); } catch (_error) {}
   process.exit(1);
 });
