@@ -1,6 +1,7 @@
 process.env.NODE_ENV = process.env.NODE_ENV || "test";
 
 const assert = require("assert");
+require("./dashboardRestaurantRolePolicy.test");
 const {
   ASSIGNABLE_ROLES,
   LEGACY_STAFF_ROLES,
