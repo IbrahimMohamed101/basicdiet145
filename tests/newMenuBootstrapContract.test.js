@@ -1,6 +1,7 @@
 const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
+const { execFileSync } = require("child_process");
 
 const source = require("../scripts/bootstrap/fixtures/menu-workbook-source");
 const {
@@ -86,4 +87,13 @@ for (const requiredRoute of [
 }
 
 console.log("newMenuBootstrapContract.test.js static checks passed");
-require("./workbookMenuSource.integration.test");
+for (const testFile of [
+  "workbookMenuSource.integration.test.js",
+  "oneTimeMenuCatalog.test.js",
+]) {
+  execFileSync(process.execPath, [path.join(__dirname, testFile)], {
+    stdio: "inherit",
+    env: { ...process.env, NODE_ENV: "test" },
+  });
+}
+console.log("newMenuBootstrapContract.test.js full workbook suite passed");
