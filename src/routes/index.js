@@ -4,6 +4,10 @@ const { Router } = require("express");
 // this authority before subscription and route modules capture service methods.
 require("../services/installIndependentPremiumAuthority");
 require("../services/installSubscriptionBackendRepairComposition");
+// Install transaction retry only after the add-on/entitlement repair composition
+// has finalized service references. This prevents early subscription service
+// loading from capturing legacy carryover pricing functions.
+require("../services/installSubscriptionPlanningTransientRetry");
 // Install after entitlement/payment composition but before any route module
 // captures payment initiation or settlement functions.
 require("../services/installSubscriptionAddonPaymentBoundaryGuard");
