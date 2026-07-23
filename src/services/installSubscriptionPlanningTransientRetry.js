@@ -13,6 +13,7 @@ const TRANSIENT_TRANSACTION_LABELS = new Set([
   "TransientTransactionError",
   "UnknownTransactionCommitResult",
 ]);
+const RETRY_WRAPPED_KEY = Symbol.for("basicdiet.subscriptionPlanningTransientRetry.wrapped");
 
 let installed = false;
 
@@ -90,13 +91,29 @@ async function runWithTransientTransactionRetry(operation, {
   throw lastError;
 }
 
+function copyFunctionMetadata(source, target) {
+  for (const key of Reflect.ownKeys(source)) {
+    if (["length", "name", "prototype", "arguments", "caller"].includes(key)) continue;
+    if (key === RETRY_WRAPPED_KEY) continue;
+    const descriptor = Object.getOwnPropertyDescriptor(source, key);
+    if (!descriptor) continue;
+    try {
+      Object.defineProperty(target, key, descriptor);
+    } catch (_error) {
+      // Non-critical compatibility metadata must never block startup.
+    }
+  }
+  return target;
+}
+
 function wrapSelectionOperation(name) {
   const original = selectionService[name];
   if (typeof original !== "function") {
     throw new Error(`subscriptionSelectionService.${name} is missing`);
   }
+  if (original[RETRY_WRAPPED_KEY] === true) return original;
 
-  selectionService[name] = async function retryableSubscriptionSelectionOperation(args = {}) {
+  const wrapped = async function retryableSubscriptionSelectionOperation(args = {}) {
     return runWithTransientTransactionRetry(
       () => original.call(selectionService, args),
       {
@@ -108,6 +125,24 @@ function wrapSelectionOperation(name) {
       }
     );
   };
+
+  copyFunctionMetadata(original, wrapped);
+  Object.defineProperty(wrapped, RETRY_WRAPPED_KEY, {
+    value: true,
+    configurable: false,
+    enumerable: false,
+    writable: false,
+  });
+  Object.defineProperty(wrapped, "__transientTransactionRetry", {
+    value: true,
+    configurable: true,
+  });
+  Object.defineProperty(wrapped, "__original", {
+    value: original,
+    configurable: true,
+  });
+  selectionService[name] = wrapped;
+  return wrapped;
 }
 
 function installSubscriptionPlanningTransientRetry() {
@@ -121,8 +156,10 @@ function installSubscriptionPlanningTransientRetry() {
 installSubscriptionPlanningTransientRetry();
 
 module.exports = {
+  RETRY_WRAPPED_KEY,
   TRANSIENT_TRANSACTION_CODES,
   TRANSIENT_TRANSACTION_LABELS,
+  copyFunctionMetadata,
   installSubscriptionPlanningTransientRetry,
   isTransientMongoTransactionError,
   retryDelayMs,
