@@ -80,6 +80,19 @@ function findProduct(menu, key) {
   return flattenProducts(menu).find((product) => product.key === key);
 }
 
+function collectObjectKeys(value, output = []) {
+  if (Array.isArray(value)) {
+    value.forEach((entry) => collectObjectKeys(entry, output));
+    return output;
+  }
+  if (!value || typeof value !== "object") return output;
+  Object.entries(value).forEach(([key, entry]) => {
+    output.push(key);
+    collectObjectKeys(entry, output);
+  });
+  return output;
+}
+
 async function startMemoryMongo() {
   replSet = await MongoMemoryReplSet.create({
     replSet: { count: 1, dbName: TEST_DB_NAME },
@@ -428,54 +441,41 @@ async function cleanupCatalog() {
         undefined,
         "canonical DTO omits legacy kitchenDetails mirror"
       );
-
-      const secondaryItem = canonicalRow.items.find(
-        (item) => item.productKey === SECONDARY_PRODUCT_KEY
+      for (const key of [
+        "items",
+        "pricing",
+        "payment",
+        "paymentStatus",
+        "paymentValidity",
+        "orderSummary",
+      ]) {
+        assert.strictEqual(
+          canonicalRow[key],
+          undefined,
+          `canonical operations DTO omits financial/order field ${key}`
+        );
+      }
+      assert(canonicalRow.kitchen, "canonical DTO includes kitchen contract");
+      assert.strictEqual(canonicalRow.kitchen.version, "v2");
+      assert.strictEqual(canonicalRow.kitchen.purpose, "meal_preparation");
+      assert.strictEqual(canonicalRow.kitchen.financialDataIncluded, false);
+      assert.strictEqual(canonicalRow.kitchen.cards.length, 2);
+      const secondaryCard = canonicalRow.kitchen.cards.find(
+        (card) => card.components?.product?.key === SECONDARY_PRODUCT_KEY
       );
-      const persistedSecondaryItem = createdOrder.items.find(
-        (item) => item.productSnapshot.key === SECONDARY_PRODUCT_KEY
+      assert(secondaryCard, "kitchen cards include the current workbook product");
+      assert.strictEqual(secondaryCard.quantity, 1);
+      assert(
+        secondaryCard.title || secondaryCard.titleI18n?.en,
+        "kitchen card has a renderable title"
       );
-      assert(secondaryItem, "canonical DTO includes the current workbook product");
-      assert(persistedSecondaryItem, "persisted order includes the current workbook product");
-      assert.strictEqual(
-        secondaryItem.selectedOptions.length,
-        persistedSecondaryItem.selectedOptions.length
+      const financialKeys = collectObjectKeys(canonicalRow.kitchen).filter((key) =>
+        /(price|pricing|halala|currency|vat|tax|discount|payment|payable)/i.test(key)
       );
-      assert.strictEqual(
-        new Set(
-          secondaryItem.selectedOptions.map(
-            (option) => `${option.groupId}:${option.optionId}`
-          )
-        ).size,
-        secondaryItem.selectedOptions.length
-      );
-      assert.strictEqual(
-        secondaryItem.pricingSnapshot.basePriceHalala,
-        persistedSecondaryItem.pricingSnapshot.basePriceHalala
-      );
-      assert.strictEqual(
-        secondaryItem.pricingSnapshot.optionsTotalHalala,
-        persistedSecondaryItem.pricingSnapshot.optionsTotalHalala
-      );
-      assert.strictEqual(
-        secondaryItem.pricingSnapshot.unitPriceHalala,
-        persistedSecondaryItem.pricingSnapshot.unitPriceHalala
-      );
-      assert.strictEqual(
-        secondaryItem.pricingSnapshot.lineTotalHalala,
-        persistedSecondaryItem.pricingSnapshot.lineTotalHalala
-      );
-      assert.strictEqual(
-        canonicalRow.pricing.subtotalHalala,
-        createdOrder.pricing.subtotalHalala
-      );
-      assert.strictEqual(
-        canonicalRow.pricing.vatHalala,
-        createdOrder.pricing.vatHalala
-      );
-      assert.strictEqual(
-        canonicalRow.pricing.totalHalala,
-        createdOrder.pricing.totalHalala
+      assert.deepStrictEqual(
+        financialKeys,
+        [],
+        "kitchen v2 contract contains no financial keys"
       );
       assert.strictEqual(
         canonicalRow.fulfillment.pickup.branchName.en,
