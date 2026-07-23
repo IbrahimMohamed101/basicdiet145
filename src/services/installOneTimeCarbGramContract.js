@@ -301,7 +301,7 @@ function installOneTimeCarbGramContract() {
         const rawGrams = selection?.extraWeightGrams;
         const grams =
           rawGrams === undefined || rawGrams === null || rawGrams === ""
-            ? 0
+            ? policy.stepGrams
             : Number(rawGrams);
         if (!Number.isInteger(grams) || grams < 0) {
           throw invalidWeightError(
