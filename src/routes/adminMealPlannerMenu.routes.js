@@ -3,11 +3,16 @@ const controller = require("../controllers/admin/mealPlannerMenu.controller");
 const {
   dashboardAuthMiddleware: adminAuthMiddleware,
   dashboardRoleMiddleware,
+  dashboardMutationRoleMiddleware,
 } = require("../middleware/dashboardAuth");
 
 const router = Router();
 
-router.use(adminAuthMiddleware, dashboardRoleMiddleware(["admin"]));
+router.use(
+  adminAuthMiddleware,
+  dashboardRoleMiddleware(["admin", "restaurant", "kitchen"]),
+  dashboardMutationRoleMiddleware(["admin"])
+);
 
 router.get("/categories", controller.listCategories);
 router.post("/categories", controller.createCategory);
