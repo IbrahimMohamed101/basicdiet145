@@ -18,8 +18,6 @@
     "db:handover-reset:check": "node scripts/reset-database-for-handover.js",
     "db:handover-reset": "node scripts/reset-database-for-handover.js --execute",
     "bootstrap:superadmin": "node scripts/bootstrap-superadmin.js",
-    "bootstrap:new-menu": "node scripts/bootstrap/seed-new-menu.js",
-    "bootstrap:new-menu:sync": "BOOTSTRAP_SYNC=true node scripts/bootstrap/seed-new-menu.js --sync",
     "test": "node tests/meal_planner_types.test.js",
     "test:fast": "node tests/meal_planner_types.test.js",
     "test:canonical-authority": "node tests/canonicalAuthority.test.js",
@@ -121,7 +119,7 @@
   "dependencies": {
     "bcryptjs": "^2.4.3",
     "cloudinary": "^2.10.0",
-    "cors": "^2.8.5",
+    "cors": "^4.18.2",
     "date-fns": "^3.6.0",
     "date-fns-tz": "^3.1.3",
     "dotenv": "^16.6.1",
