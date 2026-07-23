@@ -38,7 +38,7 @@ function normalizeIds(value) {
 }
 
 function directProductError(products) {
-  const err = new baseService.MealBuilderError(
+  return new baseService.MealBuilderError(
     "Only direct meal products can be added to a direct Meal Planner card",
     "MEAL_BUILDER_PRODUCT_TYPE_INVALID",
     422,
@@ -47,7 +47,6 @@ function directProductError(products) {
       excludedKinds: ["composed_meal", "non_meal"],
     }
   );
-  return err;
 }
 
 async function assertDirectProductIds(productIds) {
@@ -80,7 +79,7 @@ async function directCandidateIds(candidates = []) {
   );
 }
 
-function rebuildPickerResponse(response, rows, pagination) {
+function rebuildPickerResponse(response, catalogRows, rows, pagination) {
   const total = rows.length;
   const candidates = rows.slice(
     pagination.skip,
@@ -95,13 +94,13 @@ function rebuildPickerResponse(response, rows, pagination) {
       limit: pagination.limit,
       total,
       pages: total === 0 ? 0 : Math.ceil(total / pagination.limit),
-      catalogTotal: rows.length,
-      selectedInCurrentCard: rows.filter((row) => row.selected).length,
-      assignedToOtherCards: rows.filter(
+      catalogTotal: catalogRows.length,
+      selectedInCurrentCard: catalogRows.filter((row) => row.selected).length,
+      assignedToOtherCards: catalogRows.filter(
         (row) => row.state === "assigned_elsewhere"
       ).length,
-      unassigned: rows.filter((row) => row.state === "eligible").length,
-      unavailable: rows.filter((row) => row.state === "unavailable").length,
+      unassigned: catalogRows.filter((row) => row.state === "eligible").length,
+      unavailable: catalogRows.filter((row) => row.state === "unavailable").length,
     },
   };
 }
@@ -130,7 +129,7 @@ async function filterDirectPicker(original, options = {}) {
         (candidate) => candidate.selected || candidate.assignable === true
       )
     : catalogRows;
-  return rebuildPickerResponse(complete, rows, pagination);
+  return rebuildPickerResponse(complete, catalogRows, rows, pagination);
 }
 
 function installDirectMealProductEligibility() {
@@ -154,21 +153,7 @@ function installDirectMealProductEligibility() {
   mealBuilderService.getSectionPicker = async (options = {}) => {
     const response = await originalGetSectionPicker(options);
     if (!response || response.candidateType !== "product") return response;
-    const pagination = normalizePagination(options);
-    const includeUnavailable = normalizeBoolean(options.includeUnavailable, false);
-    const unassignedOnly = normalizeBoolean(options.unassignedOnly, true);
-    const allowedIds = await directCandidateIds(response.candidates || []);
-    const catalogRows = (response.candidates || []).filter((candidate) => {
-      const id = String(candidate.productId || candidate.id || "");
-      if (!allowedIds.has(id)) return false;
-      return candidate.selected || includeUnavailable || candidate.available !== false;
-    });
-    const rows = unassignedOnly
-      ? catalogRows.filter(
-          (candidate) => candidate.selected || candidate.assignable === true
-        )
-      : catalogRows;
-    return rebuildPickerResponse(response, rows, pagination);
+    return filterDirectPicker(originalGetDirectProductPicker, options);
   };
 
   mealBuilderService.createProductSection = async (args = {}) => {
