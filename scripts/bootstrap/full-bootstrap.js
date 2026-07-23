@@ -3,6 +3,7 @@
 "use strict";
 
 require("dotenv").config();
+require("./workbook-production-readiness-policy");
 
 const mongoose = require("mongoose");
 const Setting = require("../../src/models/Setting");
