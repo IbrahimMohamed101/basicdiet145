@@ -1,5 +1,8 @@
 const { Router } = require("express");
 
+// Premium upgrades are authored directly from the current menu catalog. Install
+// this authority before subscription and route modules capture service methods.
+require("../services/installIndependentPremiumAuthority");
 require("../services/installSubscriptionBackendRepairComposition");
 // Install after entitlement/payment composition but before any route module
 // captures payment initiation or settlement functions.
@@ -21,14 +24,6 @@ require("../services/installDashboardMealBuilderDraftGuard");
 // Keep the historical bootstrap compatible when its source data exists, but do
 // not require old fixed products/groups for a fresh dashboard-owned catalog.
 require("../services/installIndependentMealBuilderAuthoring");
-// Dashboard premium authoring reads the current menu dynamically instead of a
-// fixed list of historical product keys.
-require("../services/installIndependentPremiumAuthoring");
-// In admin authoring, status=active means that the source record itself is
-// active. Missing product/group relations remain visible with selectable=false
-// so the administrator can diagnose and repair them instead of seeing an empty
-// picker.
-require("../services/installPremiumSourceVisibilityPolicy");
 
 const authRoutes = require("./auth");
 const dashboardAuthRoutes = require("./dashboardAuth");
