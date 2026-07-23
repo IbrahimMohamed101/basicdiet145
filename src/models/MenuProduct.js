@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { applyArchivableLifecycle } = require("./plugins/archivableLifecycle");
 
 const SYSTEM_CURRENCY = "SAR";
 const integerMinZero = {
@@ -99,6 +100,10 @@ const MenuProductSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+applyArchivableLifecycle(MenuProductSchema, {
+  deactivatePaths: ["isActive", "isVisible", "isAvailable"],
+});
 
 MenuProductSchema.index({ key: 1 }, { unique: true });
 MenuProductSchema.index({ categoryId: 1, isActive: 1, isVisible: 1, isAvailable: 1, publishedAt: 1, sortOrder: 1, createdAt: -1 });
