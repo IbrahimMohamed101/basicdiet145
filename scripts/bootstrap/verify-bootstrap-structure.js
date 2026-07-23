@@ -67,6 +67,7 @@ async function verifyBootstrapStructure({ strict = true, log = console } = {}) {
     productOptions,
     catalogItems,
     plans,
+    sellablePlans,
     addons,
     addonPrices,
   ] = await Promise.all([
@@ -78,6 +79,7 @@ async function verifyBootstrapStructure({ strict = true, log = console } = {}) {
     ProductGroupOption.find({}).lean(),
     CatalogItem.find({}).lean(),
     Plan.find({}).lean(),
+    Plan.find(Plan.getSellableQuery()).lean(),
     Addon.find({}).lean(),
     AddonPlanPrice.find({}).lean(),
   ]);
@@ -165,15 +167,8 @@ async function verifyBootstrapStructure({ strict = true, log = console } = {}) {
     }
   }
 
-  const sellablePlans = plans.filter((plan) => (
-    plan.isActive !== false
-    && plan.isDeleted !== true
-    && plan.isAvailable !== false
-    && plan.active !== false
-    && plan.available !== false
-  ));
   if (sellablePlans.length === 0) {
-    pushIssue(errors, "BOOTSTRAP_NO_SELLABLE_PLANS", "No sellable subscription plans were found");
+    pushIssue(errors, "BOOTSTRAP_NO_SELLABLE_PLANS", "No backend-sellable subscription plans were found");
   }
   for (const plan of sellablePlans) {
     if (!Plan.isViable(plan)) {
@@ -217,6 +212,9 @@ async function verifyBootstrapStructure({ strict = true, log = console } = {}) {
     if (!publicMenuV2 || publicMenuV2.contractVersion !== "one_time_menu.v2") {
       pushIssue(errors, "PUBLIC_MENU_V2_MISSING", "The seeded catalog did not produce one_time_menu.v2");
     } else {
+      if (!Array.isArray(publicMenuV2.sections) || publicMenuV2.sections.length === 0) {
+        pushIssue(errors, "PUBLIC_MENU_SECTIONS_EMPTY", "one_time_menu.v2 has no customer-visible sections");
+      }
       const seenProductIds = new Set();
       for (const section of publicMenuV2.sections || []) {
         if (!categoryById.has(id(section.id))) {
@@ -244,9 +242,8 @@ async function verifyBootstrapStructure({ strict = true, log = console } = {}) {
 
   try {
     const preview = await menuCatalogService.getDashboardMenuPreview({ lang: "en", includeInactive: true });
-    const storedCategoryById = categoryById;
     for (const category of preview.categories || []) {
-      const stored = storedCategoryById.get(id(category.id));
+      const stored = categoryById.get(id(category.id));
       if (!stored) continue;
       const expectedUi = normalizeCategoryUiMetadata(stored.ui);
       if (!same(category.ui || {}, expectedUi)) {
