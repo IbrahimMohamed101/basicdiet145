@@ -1,5 +1,7 @@
 "use strict";
 
+require("./installOneTimeOrderItemTypeCompatibility");
+
 // Install the database-driven Premium authority before pooled planning and
 // subscription services capture premium pricing/eligibility functions.
 require("./installIndependentPremiumAuthority");
